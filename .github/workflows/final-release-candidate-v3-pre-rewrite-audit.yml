@@ -1,0 +1,285 @@
+name: Final Release Candidate v3 Pre-Rewrite Acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-release-candidate-v3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/integration/final-release-candidate-v3') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor == 'always7895' &&
+       github.event.pull_request.head.ref == 'integration/final-release-candidate-v3')
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 180
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      LINE_ACCESS_MODE: 'disabled'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      PUBLIC_KV_SYNC_ENABLED: 'false'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      PYTHONUTF8: '1'
+      EXPECTED_WORKER_LOCK_SHA256: '365ca38feb288fbed62bb5723303186e5e591c44b7d60b242e530db357535a57'
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+
+    steps:
+      - name: Check out exact finalization revision with complete ancestry
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify exact finalization identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim()
+          if (-not $env:TARGET_SHA -or $actual -ne $env:TARGET_SHA) {
+            throw "Checked-out revision $actual does not match target $env:TARGET_SHA"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            if ($actual -ne $env:PR_HEAD_SHA) {
+              throw "Finalization audit must test exact PR head $env:PR_HEAD_SHA, found $actual"
+            }
+            if ($env:GITHUB_HEAD_REF -ne 'integration/final-release-candidate-v3') {
+              throw 'Finalization audit refuses a non-finalization PR head.'
+            }
+          }
+          $shallow = (git rev-parse --is-shallow-repository).Trim()
+          if ($shallow -ne 'false') {
+            throw 'Finalization history inventory requires complete ancestry.'
+          }
+
+      - name: Resolve deterministic verified Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-final-release-v3
+
+      - name: Enforce workflow supply-chain policy
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Run complete repository boundary and phase gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commands = @(
+            @('scripts/security_check.py'),
+            @('scripts/owner_config_boundary_gate.py'),
+            @('scripts/line_public_boundary_gate.py'),
+            @('scripts/documentation_boundary_gate.py'),
+            @('scripts/kv_namespace_isolation_gate.py'),
+            @('scripts/authoritative_adapter_gate.py'),
+            @('scripts/authoritative_source_catalog.py'),
+            @('scripts/source_claim_coverage_gate.py'),
+            @('scripts/source_diversity_gate.py'),
+            @('scripts/public_options_provider_gate.py'),
+            @('scripts/final_cleanup_gate.py'),
+            @('scripts/release_candidate_gate.py'),
+            @('scripts/canonical_release_candidate_gate_v2.py'),
+            @('scripts/schedule_planner.py', '--validate'),
+            @('scripts/phase8_fault_injection_gate.py')
+          )
+          foreach ($arguments in $commands) {
+            & $env:PROJECT_PYTHON @arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Repository gate failed: $($arguments -join ' ')"
+            }
+          }
+
+      - name: Compile and run complete Python regression suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile gate failed.' }
+          & $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Complete Python regression suite failed.' }
+
+      - name: Inventory exact candidate history without exposing matched content
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Join-Path $env:RUNNER_TEMP "finalization-history-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
+          Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
+          & $env:PROJECT_PYTHON scripts/full_history_privacy_scan.py --scope head --json-output $report
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate history inventory did not complete.' }
+          if (-not (Test-Path -LiteralPath $report -PathType Leaf)) {
+            throw 'Candidate history inventory report is missing.'
+          }
+          $value = Get-Content -LiteralPath $report -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($value.audited_head -ne $env:TARGET_SHA) {
+            throw 'Candidate history inventory audited an unexpected head.'
+          }
+          if ($value.matched_content_in_report -ne $false -or
+              $value.raw_paths_in_report -ne $false -or
+              $value.raw_email_addresses_in_report -ne $false) {
+            throw 'Candidate history inventory violated its content-free contract.'
+          }
+          $clean = if ($value.clean) { 'true' } else { 'false' }
+          "PRE_REWRITE_HISTORY_CLEAN=$clean" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PRE_REWRITE_HISTORY_FINDING_COUNT=$($value.finding_count)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
+
+      - name: Resolve service-accessible Node.js
+        shell: pwsh
+        run: .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+
+      - name: Verify committed Worker dependency lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path cloud/package-lock.json -PathType Leaf)) {
+            throw 'cloud/package-lock.json is required.'
+          }
+          $actual = (Get-FileHash cloud/package-lock.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:EXPECTED_WORKER_LOCK_SHA256) {
+            throw "Worker lock hash mismatch: $actual"
+          }
+
+      - name: Run immutable Worker type and unit gates
+        working-directory: cloud
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+          & $env:PROJECT_NPM run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
+          & $env:PROJECT_NPM test
+          if ($LASTEXITCODE -ne 0) { throw 'Worker test suite failed.' }
+
+      - name: Build, verify and clean-install a reproducible synthetic package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bootstrapPython = [System.IO.Path]::GetFullPath($env:PROJECT_PYTHON)
+          $short = $env:TARGET_SHA.Substring(0, 12)
+          $version = "0.0.0-dev.$short"
+          $packageRoot = Join-Path $env:RUNNER_TEMP "investor-intelligence-final-v3-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $extractRoot = Join-Path $packageRoot 'clean-install'
+          $cleanPipCache = Join-Path $packageRoot 'empty-pip-cache'
+          $cleanRuntimeRoot = Join-Path $env:RUNNER_TEMP 'portable-python-3.12.10-.venv-final-release-v3-clean-install'
+          Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $cleanRuntimeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $packageRoot,$cleanPipCache | Out-Null
+
+          & $bootstrapPython scripts/release_package.py --output-dir $packageRoot --version $version --synthetic
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic release package build failed.' }
+          $stem = "investor-intelligence-$version"
+          $archive = Join-Path $packageRoot "$stem.zip"
+          $checksum = Join-Path $packageRoot "$stem.sha256"
+          $manifest = Join-Path $packageRoot "$stem.manifest.json"
+          $sbom = Join-Path $packageRoot "$stem.sbom.spdx.json"
+          & $bootstrapPython scripts/run_repo_script.py verify_release_package.py --archive $archive --checksum $checksum --manifest $manifest --sbom $sbom --policy config/release-package-policy.json
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic release package verification failed.' }
+
+          .\scripts\resolve_python.ps1 -VenvPath .venv-final-release-v3-clean-install
+          $cleanPython = [System.IO.Path]::GetFullPath($env:PROJECT_PYTHON)
+          if (-not (Test-Path -LiteralPath $cleanPython -PathType Leaf)) {
+            throw 'Second verified portable Python executable is missing.'
+          }
+          if ($cleanPython.Equals($bootstrapPython, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Clean-install acceptance must use a distinct verified Python root.'
+          }
+          $cleanRuntimeActual = [System.IO.Path]::GetFullPath((Split-Path -Parent $cleanPython))
+          if (-not $cleanRuntimeActual.Equals([System.IO.Path]::GetFullPath($cleanRuntimeRoot), [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unexpected clean Python root: $cleanRuntimeActual"
+          }
+
+          $env:PIP_CACHE_DIR = $cleanPipCache
+          & $cleanPython -m pip install --isolated --no-cache-dir --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Clean Python hash-locked dependency installation failed.' }
+          & $cleanPython -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Clean Python dependency consistency check failed.' }
+          & $cleanPython scripts/run_repo_script.py clean_install_acceptance.py --archive $archive --checksum $checksum --manifest $manifest --sbom $sbom --policy config/release-package-policy.json --extract-to $extractRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Clean-install Python acceptance failed.' }
+          "PACKAGE_ROOT=$packageRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "EXTRACT_ROOT=$extractRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CLEAN_PYTHON_ROOT=$cleanRuntimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run Worker from clean extraction with empty npm cache
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $npmCache = Join-Path $env:PACKAGE_ROOT 'empty-npm-cache'
+          New-Item -ItemType Directory -Force -Path $npmCache | Out-Null
+          Push-Location (Join-Path $env:EXTRACT_ROOT 'cloud')
+          try {
+            & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund --cache $npmCache
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install npm ci failed.' }
+            & $env:PROJECT_NPM run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install Worker typecheck failed.' }
+            & $env:PROJECT_NPM test
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install Worker tests failed.' }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Record exact-head pre-rewrite acceptance scope
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $lines = @(
+            '## Final release candidate v3 — pre-rewrite acceptance',
+            "- Tested revision: ``$actual``",
+            '- Exact finalization branch: integration/final-release-candidate-v3',
+            '- Current-tree privacy, owner-config, LINE/broker and three-KV boundaries: PASS',
+            '- Authoritative catalog, adapters, claim coverage and source diversity: PASS',
+            '- Public-options licensing boundary: PASS; live shared quotes remain fail-closed and the unverified-input manual calculator remains available',
+            '- Phase 4, Phase 7 and Phase 8 retained regressions: PASS',
+            '- Complete Python, Worker typecheck and Worker tests: PASS',
+            '- Reproducible synthetic ZIP, SHA-256, manifest, SPDX SBOM and clean install: PASS',
+            "- Pre-rewrite history clean: $env:PRE_REWRITE_HISTORY_CLEAN",
+            "- Content-free history findings: $env:PRE_REWRITE_HISTORY_FINDING_COUNT",
+            '- History rewrite, force-push, deployment, LINE activation, IBKR connection or billing: not performed',
+            '- Final cleanup: locked; no backup or repository file deleted',
+            '- Final release: remains blocked until backup-first history remediation and post-rewrite fresh-clone acceptance'
+          )
+          ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Remove only ephemeral validation state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath .npm-cache -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:PACKAGE_ROOT) {
+            Remove-Item -LiteralPath $env:PACKAGE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          if ($env:CLEAN_PYTHON_ROOT) {
+            Remove-Item -LiteralPath $env:CLEAN_PYTHON_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }

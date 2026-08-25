@@ -1,0 +1,367 @@
+export type BotIntent =
+  | "help"
+  | "morning_report"
+  | "evening_report"
+  | "latest_report"
+  | "options"
+  | "portfolio"
+  | "ranking"
+  | "source_views"
+  | "health"
+  | "memory_status"
+  | "memory_enable"
+  | "memory_disable"
+  | "memory_clear"
+  | "delete_data"
+  | "job_result"
+  | "general_qa";
+
+export type OptionPeriod = "weekly" | "monthly" | null;
+
+export interface ParsedQuery {
+  intent: BotIntent;
+  ticker: string | null;
+  period: OptionPeriod;
+  referenceId: string | null;
+  normalized: string;
+}
+
+// Do not hard-code the repository owner's symbols, holdings or preferences into
+// the shared bot. Explicit ticker symbols are parsed directly from each query.
+const TICKER_ALIASES: Record<string, string> = {};
+const EXPLICIT_TICKER_TOKEN = "[A-Za-z0-9]{1,8}(?:[.-][A-Za-z0-9]{1,4})?";
+const CONTEXTUAL_TICKER_TOKEN = "[A-Za-z][A-Za-z0-9]{0,5}(?:[.-][A-Za-z0-9]{1,4})?";
+const CHINESE_TICKER_CONTEXT =
+  "(?:每週|每周|週選|周選|每月|月選|選擇權|选择权|期權|期权|評分|评分|股票|股價|股价|新聞|新闻|消息)";
+const ENGLISH_TICKER_CONTEXT = "(?:weekly|monthly|options?|bid|ask|ranking|score|news)";
+const IGNORED_TICKER_TOKENS = new Set([
+  "BID",
+  "ASK",
+  "IV",
+  "DTE",
+  "LINE",
+  "BOT",
+  "AI",
+  "ETF",
+  "CAGR",
+  "HELP",
+  "STATUS",
+  "CALL",
+  "PUT",
+  "OPTION",
+  "OPTIONS",
+  "WEEK",
+  "WEEKLY",
+  "MONTH",
+  "MONTHLY",
+  "PRICE",
+  "PRICES",
+  "VALUE",
+  "MARKET",
+  "STOCK",
+  "SHARE",
+  "SHARES",
+  "SELL",
+  "BUY",
+  "TOP",
+  "FOR",
+  "THE",
+  "AND",
+  "WHAT",
+  "WHY",
+  "HOW",
+  "NEWS",
+  "TODAY",
+  "LATEST",
+  "CURRENT",
+]);
+
+export function normalizeText(text: string): string {
+  return text.normalize("NFKC").trim().replace(/\s+/g, " ");
+}
+
+function normalizedTickerCandidate(raw: string | undefined): string | null {
+  const candidate = String(raw ?? "").replace(/^\$/, "").toUpperCase();
+  if (!candidate || /^\d+$/.test(candidate) || IGNORED_TICKER_TOKENS.has(candidate)) {
+    return null;
+  }
+  if (!new RegExp(`^${EXPLICIT_TICKER_TOKEN}$`, "i").test(candidate)) return null;
+  return candidate;
+}
+
+export function extractTicker(text: string): string | null {
+  const normalized = normalizeText(text);
+  const compact = normalized.toLowerCase().replace(/[^a-z0-9.]/g, "");
+  for (const [alias, ticker] of Object.entries(TICKER_ALIASES)) {
+    if (compact.includes(alias)) return ticker;
+  }
+
+  const candidatePatterns = [
+    new RegExp(`\\$(${EXPLICIT_TICKER_TOKEN})`, "gi"),
+    new RegExp(
+      `(?:ticker|symbol|stock|代號|代码|股票)\\s*(?:(?:is|為|是)\\s*)?[:：]?\\s*\\$?(${EXPLICIT_TICKER_TOKEN})`,
+      "gi",
+    ),
+    new RegExp(
+      `(?:^|[^A-Za-z0-9])(${CONTEXTUAL_TICKER_TOKEN})\\s*(?=${CHINESE_TICKER_CONTEXT})`,
+      "gi",
+    ),
+    new RegExp(
+      `${CHINESE_TICKER_CONTEXT}\\s*[:：]?\\s*\\$?(${CONTEXTUAL_TICKER_TOKEN})(?=$|[^A-Za-z0-9])`,
+      "gi",
+    ),
+    new RegExp(
+      `${ENGLISH_TICKER_CONTEXT}\\s+(?:for|of|[:：])\\s*\\$?(${CONTEXTUAL_TICKER_TOKEN})(?=$|[^A-Za-z0-9])`,
+      "gi",
+    ),
+  ];
+  for (const pattern of candidatePatterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const candidate = normalizedTickerCandidate(match[1]);
+      if (candidate) return candidate;
+    }
+  }
+
+  // A deliberately uppercase standalone token is an explicit symbol signal.
+  // Do not uppercase arbitrary prose before matching: doing so turns ordinary
+  // words such as "opto" into fake tickers and can select unrelated snapshots.
+  const uppercasePattern =
+    /(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{0,5}(?:[.-][A-Z0-9]{1,4})?)(?=$|[^A-Za-z0-9])/g;
+  for (const match of normalized.matchAll(uppercasePattern)) {
+    const candidate = normalizedTickerCandidate(match[1]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+export function extractPeriod(text: string): OptionPeriod {
+  const normalized = normalizeText(text).toLowerCase();
+  if (/(每週|每周|週選|周選|weekly|week)/i.test(normalized)) return "weekly";
+  if (/(每月|月選|monthly|month)/i.test(normalized)) return "monthly";
+  return null;
+}
+
+export function parseQuery(text: string): ParsedQuery {
+  const normalized = normalizeText(text);
+  const lowered = normalized.toLowerCase();
+  const ticker = extractTicker(normalized);
+  const period = extractPeriod(normalized);
+  const resultMatch = normalized.match(/(?:查看結果|查看结果|result)\s+([A-Z0-9]{6,16})/i);
+  const referenceId = resultMatch?.[1]?.toUpperCase() ?? null;
+
+  let intent: BotIntent = "general_qa";
+  if (/^(help|幫助|帮助|功能|選單|菜单|menu|指令|怎麼用|怎么用)$/i.test(normalized)) {
+    intent = "help";
+  } else if (/^(記憶狀態|记忆状态|memory status)$/i.test(normalized)) {
+    intent = "memory_status";
+  } else if (/^(開啟記憶|开启记忆|enable memory)$/i.test(normalized)) {
+    intent = "memory_enable";
+  } else if (/^(關閉記憶|关闭记忆|disable memory)$/i.test(normalized)) {
+    intent = "memory_disable";
+  } else if (/^(清除本次對話|清除本次对话|清除對話|清除对话|clear conversation)$/i.test(normalized)) {
+    intent = "memory_clear";
+  } else if (/^(刪除我的資料|删除我的资料|delete my data)$/i.test(normalized)) {
+    intent = "delete_data";
+  } else if (referenceId) {
+    intent = "job_result";
+  } else if (/(早報|早报|morning report|morning briefing)/i.test(lowered)) {
+    intent = "morning_report";
+  } else if (/(晚報|晚报|evening report|evening briefing|盤前報告|盘前报告)/i.test(lowered)) {
+    intent = "evening_report";
+  } else if (/(最新報告|最新报告|今日報告|今日报告|daily report|briefing)/i.test(lowered)) {
+    intent = "latest_report";
+  } else if (
+    /(選擇權|选择权|期權|期权|option|covered call|sell call|sell put|cash secured put|\bbid\b|\bask\b)/i.test(
+      lowered,
+    )
+  ) {
+    intent = "options";
+  } else if (/(持倉|持仓|部位|portfolio|position|我持有|資產配置|资产配置)/i.test(lowered)) {
+    intent = "portfolio";
+  } else if (/(排名|評分|评分|score|ranking|top\s*\d*)/i.test(lowered)) {
+    intent = "ranking";
+  } else if (/(serenity|aschenbrenner|leopold|來源觀點|来源观点|原始觀點|原始观点)/i.test(lowered)) {
+    intent = "source_views";
+  } else if (/^(健康|狀態|状态|health|status|系統狀態|系统状态)$/i.test(normalized)) {
+    intent = "health";
+  }
+
+  return { intent, ticker, period, referenceId, normalized };
+}
+
+export function splitLineText(text: string, maxLength = 4900, maxMessages = 5): string[] {
+  if (maxLength < 100) throw new Error("maxLength is too small");
+  const normalized = text.trim();
+  if (!normalized) return ["目前沒有可顯示的內容。"];
+
+  const chunks: string[] = [];
+  let current = "";
+  const paragraphs = normalized.split(/\n{2,}/);
+  const pushCurrent = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = "";
+  };
+
+  for (const paragraph of paragraphs) {
+    if (paragraph.length > maxLength) {
+      pushCurrent();
+      for (let start = 0; start < paragraph.length; start += maxLength) {
+        chunks.push(paragraph.slice(start, start + maxLength));
+      }
+      continue;
+    }
+    const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
+    if (candidate.length > maxLength) {
+      pushCurrent();
+      current = paragraph;
+    } else {
+      current = candidate;
+    }
+  }
+  pushCurrent();
+
+  if (chunks.length <= maxMessages) return chunks;
+  const limited = chunks.slice(0, maxMessages);
+  const suffix = "\n\n[內容過長，已截斷。請縮小問題範圍或指定股票／期間。]";
+  limited[maxMessages - 1] = `${limited[maxMessages - 1]!.slice(0, maxLength - suffix.length)}${suffix}`;
+  return limited;
+}
+
+function num(value: unknown): number | null {
+  const result = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function money(value: unknown, currency = "USD"): string {
+  const parsed = num(value);
+  return parsed === null ? "N/A" : `${currency} ${parsed.toFixed(2)}`;
+}
+
+function percent(value: unknown, alreadyPercent = false): string {
+  const parsed = num(value);
+  if (parsed === null) return "N/A";
+  return `${(alreadyPercent ? parsed : parsed * 100).toFixed(1)}%`;
+}
+
+function timestamp(value: unknown): string {
+  if (!value) return "時間未知";
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+}
+
+function limitObservation(candidate: Record<string, unknown>, currency: string): string {
+  const value = candidate.sell_limit_observation;
+  if (!value || typeof value !== "object") return "無可用參考";
+  const low = num((value as Record<string, unknown>).observed_limit_low);
+  const high = num((value as Record<string, unknown>).observed_limit_high);
+  if (low === null || high === null) return "無可用參考";
+  return `${currency} ${low.toFixed(2)}–${high.toFixed(2)}`;
+}
+
+function optionCandidateLines(
+  candidate: Record<string, unknown>,
+  currency: string,
+): string[] {
+  const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
+  return [
+    `• K ${money(candidate.strike, currency)}｜Bid ${money(candidate.bid, currency)}｜Ask ${money(candidate.ask, currency)}｜Mid ${money(candidate.midpoint, currency)}`,
+    `  參考限價 ${limitObservation(candidate, currency)}｜Spread ${percent(candidate.spread_pct_of_mid, true)}｜OI ${String(candidate.open_interest ?? 0)}｜Vol ${String(candidate.volume ?? 0)}`,
+    `  IV ${percent(candidate.implied_volatility_pct, true)}｜Delta ${candidate.delta ?? "N/A"}｜Bid/Mid/Ask 年化觀察 ${percent(yields.bid, true)} / ${percent(yields.mid, true)} / ${percent(yields.ask, true)}`,
+    `  資料 ${String(candidate.quote_source ?? "unknown")}｜${String(candidate.quote_delay_status ?? "unknown")}｜擷取 ${timestamp(candidate.retrieved_at)}｜流動性 ${candidate.liquidity_pass ? "PASS" : "FAIL"}`,
+  ];
+}
+
+export function formatOptionsAnswer(
+  raw: unknown,
+  ticker: string | null,
+  period: OptionPeriod,
+): string {
+  if (!Array.isArray(raw)) return "目前沒有可讀取的公開期權資料。";
+  const normalizedTicker = ticker?.toUpperCase() ?? null;
+  const records = raw.filter(
+    (item): item is Record<string, unknown> =>
+      !!item &&
+      typeof item === "object" &&
+      (!normalizedTicker || String((item as Record<string, unknown>).ticker ?? "").toUpperCase() === normalizedTicker),
+  );
+  if (records.length === 0) {
+    return normalizedTicker
+      ? `目前沒有 ${normalizedTicker} 的公開期權資料。資料來源可能未涵蓋該市場。`
+      : "目前沒有可顯示的公開期權資料。";
+  }
+
+  const lines = [
+    "公開期權 BID / ASK 報價觀察（唯讀、不下單）",
+    "只使用獨立公共資料快照；不含持倉、帳戶、覆蓋口數或 IBKR 資料。Bid/Ask、Mid 與限價區間不保證成交。",
+  ];
+  for (const record of records) {
+    const symbol = String(record.ticker ?? "N/A");
+    lines.push(
+      "",
+      `【${symbol}】狀態 ${String(record.status ?? "UNKNOWN")}｜來源 ${String(record.quote_source ?? "unknown")}｜資料時間 ${timestamp(record.retrieved_at)}`,
+    );
+    const periods = (record.periods ?? {}) as Record<string, unknown>;
+    for (const periodName of period ? [period] : ["weekly", "monthly"]) {
+      const periodRaw = periods[periodName];
+      if (!periodRaw || typeof periodRaw !== "object") {
+        lines.push(`${periodName === "weekly" ? "每週" : "每月"}：無資料`);
+        continue;
+      }
+      const periodRecord = periodRaw as Record<string, unknown>;
+      const status = String(periodRecord.status ?? "UNKNOWN");
+      lines.push(
+        `\n${periodName === "weekly" ? "每週" : "每月"}｜${status}｜到期 ${String(periodRecord.expiration ?? "N/A")}｜DTE ${String(periodRecord.actual_dte ?? "N/A")}`,
+      );
+      if (status !== "OK") continue;
+      for (const [key, label] of [
+        ["call_observations", "買權報價"],
+        ["put_observations", "賣權報價"],
+      ] as const) {
+        const strategyRaw = periodRecord[key];
+        if (!strategyRaw || typeof strategyRaw !== "object") continue;
+        const strategy = strategyRaw as Record<string, unknown>;
+        const candidates = Array.isArray(strategy.recommended_candidates)
+          ? strategy.recommended_candidates
+          : [];
+        lines.push(`${label}｜${String(strategy.status ?? "UNKNOWN")}`);
+        if (candidates.length === 0) {
+          lines.push("• 無符合公開資料與流動性條件的候選報價");
+          continue;
+        }
+        for (const candidate of candidates.slice(0, 3)) {
+          if (!candidate || typeof candidate !== "object") continue;
+          const value = candidate as Record<string, unknown>;
+          const currency = String(value.currency ?? record.currency ?? "USD");
+          if (!value.retrieved_at && record.retrieved_at) value.retrieved_at = record.retrieved_at;
+          lines.push(...optionCandidateLines(value, currency));
+        }
+      }
+    }
+  }
+  lines.push(
+    "",
+    "所有結果都只是公共報價觀察。LINE Bot 不連接券商、不讀取任何人的持倉，也不建立、送出或修改委託。",
+  );
+  return lines.join("\n");
+}
+
+export function helpText(): string {
+  return [
+    "Investor Intelligence LINE Bot（公開資料模式）",
+    "",
+    "可用自然語言提問，例如：",
+    "• 早報 / 晚報 / 最新報告",
+    "• ALPHA 每週期權 BID ASK",
+    "• BETA 每月期權",
+    "• 目前排名 / ALPHA 評分",
+    "• Serenity 原始觀點",
+    "• Aschenbrenner 原始觀點",
+    "• 系統狀態",
+    "• 記憶狀態 / 開啟記憶 / 關閉記憶",
+    "• 清除本次對話 / 刪除我的資料",
+    "• 查看結果 ABC12345",
+    "• 其他一般問題",
+    "",
+    "LINE 只讀取公開研究與公開期權快照，不具備 IBKR、券商帳戶、持倉或私人同步功能。記憶預設關閉且依租戶隔離；資料不足時會明確說明，不會捏造。",
+  ].join("\n");
+}

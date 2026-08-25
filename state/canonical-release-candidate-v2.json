@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "candidate_name": "canonical-release-candidate-v2",
+  "release_ready": false,
+  "deployed": false,
+  "billing_enabled": false,
+  "line_connected": false,
+  "ibkr_connected": false,
+  "private_sync_enabled": false,
+  "paid_fallback_enabled": false,
+  "git_history_rewritten": false,
+  "final_package_published": false,
+  "required_exact_head_gates": [
+    "canonical_release_candidate_meta_gate",
+    "current_tree_privacy",
+    "line_broker_separation",
+    "kv_isolation",
+    "source_catalog_and_adapters",
+    "phase4_public_report",
+    "phase7_recovery_and_scheduling",
+    "phase8_fault_clean_install",
+    "python_supply_chain",
+    "worker_supply_chain",
+    "reproducible_package"
+  ],
+  "status": "PENDING_EXACT_HEAD_ACCEPTANCE"
+}

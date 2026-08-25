@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "provider_id": "yfinance_unreviewed_delayed",
+  "purpose": "Offline/synthetic development compatibility for the existing option-chain transformer only.",
+  "official_authority": false,
+  "rights_status": "unreviewed",
+  "delay_status": "unknown",
+  "production_eligible": false,
+  "line_live_fetch_eligible": false,
+  "runtime_enabled": false,
+  "paid": false,
+  "ibkr_or_broker_derived": false,
+  "may_be_used_when_current_public_data_enabled": false,
+  "may_be_published_as_current": false,
+  "replacement_required_before_external_live_options": true
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "description": "Project-authored five-layer research score. It is a system operationalization, not an official Serenity or Leopold Aschenbrenner scoring model.",
+  "attribution": {
+    "type": "system_operationalization",
+    "source_views_affected": false,
+    "user_long_term_overlay_included": false
+  },
+  "layers": {
+    "L1_demand_wave": {
+      "weight": 20,
+      "description": "Demand and infrastructure alignment",
+      "indicators": {
+        "theme_alignment": 8,
+        "documented_demand": 7,
+        "implementation_stage": 5
+      }
+    },
+    "L2_supply_chain_bottleneck": {
+      "weight": 25,
+      "description": "Potential bottleneck, pricing power and replacement difficulty",
+      "indicators": {
+        "constraint_position": 10,
+        "pricing_power": 8,
+        "replacement_difficulty": 7
+      }
+    },
+    "L3_company_quality": {
+      "weight": 20,
+      "description": "Margins, cash flow, leverage and financing quality",
+      "indicators": {
+        "profitability": 7,
+        "cash_flow_quality": 6,
+        "balance_sheet_and_dilution": 7
+      }
+    },
+    "L4_valuation_catalyst": {
+      "weight": 15,
+      "description": "Valuation evidence, dated catalysts and expectation gap",
+      "indicators": {
+        "valuation_evidence": 7,
+        "dated_catalyst": 5,
+        "expectation_gap": 3
+      }
+    },
+    "L5_evidence_risk": {
+      "weight": 20,
+      "description": "Primary-source evidence, data completeness, thesis risk and disconfirmation",
+      "indicators": {
+        "evidence_quality": 8,
+        "observed_risk": 6,
+        "disconfirmation_readiness": 6
+      }
+    }
+  },
+  "user_overlay": {
+    "config": "config/user-preferences.local.json (ignored and optional)",
+    "description": "An optional local user's holding-horizon overlay is evaluated separately, remains outside Git and does not affect the five-layer research score."
+  }
+}

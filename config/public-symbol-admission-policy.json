@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "mode": "on_demand_public_only",
+  "owner_watchlist_inheritance": false,
+  "portfolio_inheritance": false,
+  "broker_symbol_discovery": false,
+  "popular_query_analytics": false,
+  "cross_tenant_query_history": false,
+  "raw_query_persistence": false,
+  "automatic_universe_promotion": false,
+  "official_instrument_reference_required": true,
+  "public_quote_provider_required": true,
+  "current_data_requires_reviewed_provider": true,
+  "allowed_security_types": [
+    "COMMON_STOCK",
+    "ADR",
+    "ETF"
+  ],
+  "allowed_ticker_pattern": "^[A-Z0-9][A-Z0-9.-]{0,11}$",
+  "maximum_ticker_length": 12,
+  "maximum_symbols_per_request": 5,
+  "maximum_new_symbols_per_tenant_per_minute": 3,
+  "public_cache_key_scope": "normalized_symbol_only",
+  "tenant_identifier_in_public_cache_key": false,
+  "unavailable_behavior": "fail_closed_without_broker_or_paid_fallback"
+}

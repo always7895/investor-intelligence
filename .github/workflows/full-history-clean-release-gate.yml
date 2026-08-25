@@ -1,0 +1,126 @@
+name: Final Full-History Clean Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: 'Exact 40-character release-candidate commit SHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-history-clean-release-gate
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.actor == 'always7895'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 60
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      LINE_ACCESS_MODE: 'disabled'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      FREE_ONLY_MODE: 'true'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      PYTHONUTF8: '1'
+      TARGET_SHA: ${{ inputs.candidate_sha }}
+
+    steps:
+      - name: Validate candidate SHA format
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:TARGET_SHA -notmatch '^[0-9a-fA-F]{40}$') {
+            throw 'candidate_sha must be an exact 40-character hexadecimal commit SHA.'
+          }
+
+      - name: Check out exact release candidate with complete available history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          clean: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tested revision identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:TARGET_SHA.ToLowerInvariant()) {
+            throw "Checked-out revision $actual does not match target $env:TARGET_SHA"
+          }
+
+      - name: Resolve deterministic verified Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-final-history-clean
+
+      - name: Enforce workflow supply-chain policy
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Validate current tree and scanner regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Current-tree security/privacy gate failed.' }
+          & $env:PROJECT_PYTHON -m unittest tests.test_security_check tests.test_full_history_privacy_scan tests.test_history_workflow_separation -v
+          if ($LASTEXITCODE -ne 0) { throw 'History scanner/workflow separation regressions failed.' }
+
+      - name: Require all available refs to be clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Join-Path $env:RUNNER_TEMP "final-history-clean-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
+          try {
+            & $env:PROJECT_PYTHON scripts/full_history_privacy_scan.py --scope all --require-clean --json-output $report
+            if ($LASTEXITCODE -ne 0) { throw 'Final full-history clean gate failed.' }
+            $inventory = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+            if ($inventory.audited_head -ne $env:TARGET_SHA.ToLowerInvariant()) {
+              throw 'Final history report is not bound to the requested candidate SHA.'
+            }
+            if ($inventory.clean -ne $true -or [int]$inventory.finding_count -ne 0 -or $inventory.remediation_required -ne $false) {
+              throw 'Final history report is internally inconsistent with a clean result.'
+            }
+            if ($inventory.matched_content_in_report -ne $false -or
+                $inventory.raw_paths_in_report -ne $false -or
+                $inventory.raw_email_addresses_in_report -ne $false) {
+              throw 'Final history report exposed prohibited raw content.'
+            }
+          } finally {
+            Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Record final history-clean scope
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $lines = @(
+            '## Final full-history clean release gate',
+            "- Audited revision: ``$actual``",
+            '- Scope: all available refs on the trusted self-hosted runner',
+            '- Finding count: 0',
+            '- Raw matched content, paths and e-mail addresses in report: false',
+            '- This workflow does not rewrite history or update release truth',
+            '- Deployment, credentials, billing and external-user admission: not performed'
+          )
+          ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "automatic_production_fault_injection": false,
+  "synthetic_offline_only": true,
+  "destructive_actions_allowed": false,
+  "real_credentials_allowed": false,
+  "real_user_data_allowed": false,
+  "release_requires_every_scenario_pass": true,
+  "scenarios": [
+    {
+      "id": "source_rate_limit_429",
+      "category": "source",
+      "required_outcome": "defer_with_retry_after_without_paid_fallback",
+      "test_module": "tests.test_source_health"
+    },
+    {
+      "id": "source_schema_change",
+      "category": "source",
+      "required_outcome": "quarantine_and_fail_closed",
+      "test_module": "tests.test_source_ingestion_boundaries"
+    },
+    {
+      "id": "source_private_ip_redirect",
+      "category": "network",
+      "required_outcome": "reject_before_payload_acceptance",
+      "test_module": "tests.test_secure_public_fetch_canonical"
+    },
+    {
+      "id": "source_payload_too_large",
+      "category": "network",
+      "required_outcome": "abort_without_partial_promotion",
+      "test_module": "tests.test_source_ingestion_boundaries"
+    },
+    {
+      "id": "public_snapshot_partial_upload",
+      "category": "snapshot",
+      "required_outcome": "current_pointer_not_promoted",
+      "test_module": "tests.test_sync_to_kv"
+    },
+    {
+      "id": "public_snapshot_unknown_field",
+      "category": "privacy",
+      "required_outcome": "reject_closed_schema",
+      "test_module": "tests.test_public_artifact_closed_schema"
+    },
+    {
+      "id": "public_option_private_field",
+      "category": "privacy",
+      "required_outcome": "reject_without_redaction_or_publish",
+      "test_module": "tests.test_line_public_options_closed_dto"
+    },
+    {
+      "id": "cross_tenant_job_reference",
+      "category": "tenant",
+      "required_outcome": "not_found_for_other_tenant",
+      "test_module": "cloud/test/storage.test.ts"
+    },
+    {
+      "id": "tenant_delete_during_retry",
+      "category": "tenant",
+      "required_outcome": "retry_cannot_resurrect_deleted_data",
+      "test_module": "cloud/test/storage.test.ts"
+    },
+    {
+      "id": "webhook_duplicate_redelivery",
+      "category": "line",
+      "required_outcome": "single_reply_best_effort",
+      "test_module": "cloud/test/worker.test.ts"
+    },
+    {
+      "id": "kv_namespace_id_reuse",
+      "category": "deployment",
+      "required_outcome": "preflight_rejects_duplicate_roles",
+      "test_module": "tests.test_validate_kv_namespace_ids"
+    },
+    {
+      "id": "clock_rollback",
+      "category": "scheduler",
+      "required_outcome": "scheduler_fails_closed",
+      "test_module": "tests.test_schedule_planner"
+    },
+    {
+      "id": "missed_schedule_backlog",
+      "category": "scheduler",
+      "required_outcome": "at_most_one_bounded_catch_up",
+      "test_module": "tests.test_schedule_planner"
+    },
+    {
+      "id": "public_provider_unavailable",
+      "category": "options",
+      "required_outcome": "unavailable_without_ibkr_or_paid_fallback",
+      "test_module": "tests.test_public_options_provider_gate"
+    },
+    {
+      "id": "local_model_route_redirect",
+      "category": "model",
+      "required_outcome": "reject_redirect_and_unallowlisted_host",
+      "test_module": "cloud/test/qa.test.ts"
+    },
+    {
+      "id": "release_partial_pass",
+      "category": "release",
+      "required_outcome": "release_ready_remains_false",
+      "test_module": "tests.test_release_candidate_gate"
+    },
+    {
+      "id": "clean_install_without_developer_cache",
+      "category": "installation",
+      "required_outcome": "reproducible_clean_install",
+      "test_module": "tests.test_release_package"
+    },
+    {
+      "id": "package_checksum_or_sbom_mismatch",
+      "category": "release",
+      "required_outcome": "package_rejected",
+      "test_module": "tests.test_release_package"
+    }
+  ]
+}

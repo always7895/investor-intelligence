@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "release_ready": false,
+  "deployed": false,
+  "billing_enabled": false,
+  "external_users_admitted": false,
+  "candidate_commit": null,
+  "candidate_version": null,
+  "gates": {
+    "canonical_stack_reconciled": "PASS",
+    "phase_1_2_exact_head": "PASS",
+    "phase_3_catalog_exact_head": "PASS",
+    "phase_3_adapters_exact_head": "PASS",
+    "phase_3_source_diversity": "PASS",
+    "line_broker_separation": "PASS",
+    "line_public_closed_schema": "PASS",
+    "public_options_provider_review": "PASS",
+    "physical_kv_namespace_isolation": "PASS",
+    "cross_tenant_fault_injection": "PASS",
+    "phase_4_reports": "PASS",
+    "phase_7_scheduling_recovery": "PASS",
+    "phase_8_disaster_recovery": "PASS",
+    "full_git_history_privacy_scan": "BLOCKED",
+    "clean_install": "PASS",
+    "reproducible_package": "PASS",
+    "sbom_manifest_checksums": "PASS"
+  },
+  "hard_blockers": [
+    "Official Git heads and tags still reference pre-remediation history; backup-first destructive history remediation and a fresh-clone --scope all --require-clean result are mandatory.",
+    "The final release receipt, semantic version and candidate SHA are not yet bound to a post-rewrite exact head."
+  ],
+  "local_action_required": false,
+  "secrets_required_now": false,
+  "notes": "Pre-rewrite development truth. Public-options provider review passed by pinning prohibited and pending decisions; live shared BID/ASK remains disabled, while the deterministic user-supplied calculator is available with an unverified-input label. PASS states must be rerun on every newer exact head and again after history remediation."
+}

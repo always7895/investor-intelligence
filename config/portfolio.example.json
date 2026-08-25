@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "description": "Example only. Do not commit the real portfolio. Production positions should be read from IBKR or config/portfolio.local.json, which is ignored by Git.",
+  "source": "local_example",
+  "as_of": "YYYY-MM-DDTHH:MM:SSZ",
+  "positions": [
+    {
+      "ticker": "EXAMPLE",
+      "exchange": "SMART",
+      "currency": "USD",
+      "shares": 100,
+      "options_enabled": true
+    }
+  ]
+}

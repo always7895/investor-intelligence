@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "package_name": "investor-intelligence",
+  "tracked_files_only": true,
+  "reproducible_zip": true,
+  "source_date_epoch_from_git_commit": true,
+  "final_build_requires_release_ready": true,
+  "synthetic_build_may_run_while_release_pending": true,
+  "maximum_file_bytes": 10000000,
+  "maximum_package_bytes": 50000000,
+  "required_paths": [
+    "README.md",
+    "requirements-ci.txt",
+    "cloud/package.json",
+    "cloud/package-lock.json",
+    "cloud/src/manual-options.ts",
+    "cloud/src/worker.ts",
+    "config/runtime-policy.json",
+    "config/release-candidate-status.json",
+    "config/release-package-policy.json",
+    "config/final-cleanup-policy.json",
+    "docs/FINAL_CLEANUP_POLICY.md",
+    "docs/MANUAL_OPTION_CALCULATOR.md",
+    "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
+    "scripts/security_check.py",
+    "scripts/release_package.py",
+    "scripts/verify_release_package.py",
+    "scripts/clean_install_acceptance.py",
+    "scripts/clean_install_gate_policy.py",
+    "scripts/final_cleanup_gate.py",
+    "scripts/manual_option_calculator_gate.py",
+    "scripts/public_options_provider_gate.py",
+    "scripts/run_repo_script.py"
+  ],
+  "forbidden_exact_paths": [
+    "config/watchlist.json",
+    "config/user-preferences.json",
+    "config/delivery.json",
+    "config/portfolio.local.json",
+    "config/users.local.json",
+    "config/tenants.local.json",
+    "config/line_user_id.txt",
+    "line_user_id.txt"
+  ],
+  "excluded_prefixes": [
+    ".git/",
+    ".github/",
+    ".venv/",
+    "data/",
+    "reports/",
+    "state/"
+  ],
+  "forbidden_path_segments": [
+    "__pycache__",
+    "node_modules",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".npm-cache",
+    "_work",
+    "_diag"
+  ],
+  "forbidden_suffixes": [
+    ".env",
+    ".pem",
+    ".key",
+    ".pfx",
+    ".p12",
+    ".sqlite",
+    ".db",
+    ".log",
+    ".tmp"
+  ],
+  "generated_entries": [
+    "release-manifest.json",
+    "release-metadata.json",
+    "sbom.spdx.json"
+  ],
+  "zip_timestamp_floor": "1980-01-01T00:00:00+00:00",
+  "privacy": {
+    "secrets_allowed": false,
+    "user_data_allowed": false,
+    "owner_watchlist_allowed": false,
+    "runner_state_allowed": false,
+    "developer_cache_allowed": false
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "policy_state": "LOCKED_UNTIL_FINAL_RECEIPT",
+  "automatic_cleanup": false,
+  "destructive_apply_default": false,
+  "receipt": {
+    "schema_version": 1,
+    "required": true,
+    "exact_candidate_binding": true,
+    "cleanup_authorized_must_be_true": true,
+    "required_true_assertions": [
+      "release_ready",
+      "post_rewrite_fresh_clone",
+      "full_history_scope_all_clean",
+      "canonical_acceptance",
+      "clean_install",
+      "reproducible_package",
+      "sbom_manifest_checksums"
+    ],
+    "required_false_assertions": [
+      "deployed",
+      "billing_enabled",
+      "external_users_admitted"
+    ]
+  },
+  "repository_cleanup": {
+    "enabled_after_receipt": true,
+    "allowed_relative_directories": [
+      ".npm-cache",
+      "cloud/node_modules",
+      "data/cache",
+      "data/history",
+      "reports"
+    ],
+    "allowed_relative_directory_prefixes": [
+      ".venv-"
+    ],
+    "forbidden_roots": [
+      ".git",
+      ".github",
+      "cloud/src",
+      "cloud/test",
+      "config",
+      "docs",
+      "schemas",
+      "scripts",
+      "skills",
+      "tests"
+    ]
+  },
+  "backup_cleanup": {
+    "enabled_after_receipt": true,
+    "explicit_backup_root_required": true,
+    "allowed_directory_prefixes": [
+      "investor-intelligence-pre-rewrite-",
+      "investor-intelligence-history-backup-"
+    ],
+    "minimum_verified_backups_to_keep": 1,
+    "keep_newest_verified_backup": true,
+    "minimum_cooling_off_days": 7,
+    "required_verification_files": [
+      "backup-manifest.json",
+      "repository-before.bundle"
+    ],
+    "delete_unverified_backups_automatically": false
+  },
+  "git_cleanup": {
+    "enabled_after_receipt": true,
+    "delete_only_explicit_inventory": true,
+    "protected_branches": [
+      "main",
+      "integration/final-release-candidate-v3"
+    ],
+    "protected_prefixes": [
+      "release/"
+    ],
+    "github_managed_pull_refs_are_read_only": true
+  },
+  "preserve_final_evidence": [
+    "final_release_zip",
+    "sha256_checksum",
+    "release_manifest",
+    "spdx_sbom",
+    "final_acceptance_receipt",
+    "newest_verified_rollback_bundle"
+  ]
+}

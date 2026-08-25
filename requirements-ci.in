@@ -1,0 +1,5 @@
+# Direct runtime dependencies for trusted Windows CI.
+# Transitive versions and archive hashes are generated into requirements-ci.txt.
+yfinance==1.5.2
+pandas==2.3.3
+requests==2.34.2

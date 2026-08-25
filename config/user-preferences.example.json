@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "privacy_class": "local_user_configuration",
+  "long_term_overlay": {
+    "enabled": false,
+    "minimum_holding_years": 2,
+    "owner": "local_user",
+    "affects_source_view": false,
+    "affects_methodology_research_score": false,
+    "report_title": "Local user-defined long-term suitability overlay",
+    "labels": {
+      "high": "較適合長期研究",
+      "conditional": "條件式長期觀察",
+      "event_driven": "偏事件／交易型",
+      "insufficient": "資料不足"
+    }
+  }
+}

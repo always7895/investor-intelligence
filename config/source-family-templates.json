@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "description": "Templates for source families that can expand without a fixed catalog count. A discovered instance is only a candidate until it is written into config/sources and passes the full admission lifecycle.",
+  "families": [
+    {
+      "family_id": "verified_issuer_investor_relations",
+      "display_name": "Verified Issuer Investor Relations",
+      "authority_class": "official_issuer",
+      "default_trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": ["official_press_release", "earnings_release", "presentation", "filing_mirror", "event_calendar"],
+      "discovery": {
+        "automatic_candidate_creation": true,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "domain_control_matches_issuer",
+          "regulator_or_exchange_cross_reference",
+          "tls_valid",
+          "canonical_company_identity_match"
+        ]
+      },
+      "rules": {
+        "primary_only_for_issuer_owned_facts": true,
+        "investment_inference_requires_independent_evidence": true,
+        "social_media_post_alone_is_not_primary_filing_evidence": true
+      }
+    },
+    {
+      "family_id": "tenant_regulated_broker_readonly",
+      "display_name": "Tenant-Authorized Regulated Broker Read-Only Data",
+      "authority_class": "regulated_broker",
+      "default_trust_tier": "T2_INSTITUTIONAL_CORROBORATION",
+      "evidence_roles": ["tenant_positions", "tenant_entitled_quotes", "option_chain", "account_currency"],
+      "discovery": {
+        "automatic_candidate_creation": false,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "tenant_explicit_authorization",
+          "regulated_broker_identity",
+          "read_only_endpoint_allowlist",
+          "no_new_paid_subscription_required"
+        ]
+      },
+      "rules": {
+        "tenant_scoped_only": true,
+        "global_cache_forbidden": true,
+        "raw_account_identifier_persistence_forbidden": true,
+        "exact_quantity_cloud_sync_forbidden": true,
+        "order_endpoints_forbidden": true,
+        "transfer_endpoints_forbidden": true
+      }
+    },
+    {
+      "family_id": "regulated_exchange_announcement_system",
+      "display_name": "Regulated Exchange Announcement System",
+      "authority_class": "regulated_exchange",
+      "default_trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": ["issuer_announcements", "corporate_actions", "listing_status", "market_notices"],
+      "discovery": {
+        "automatic_candidate_creation": true,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "exchange_regulatory_status_verified",
+          "official_domain_verified",
+          "public_access_terms_reviewed",
+          "commercial_market_feed_excluded"
+        ]
+      },
+      "rules": {
+        "announcement_correction_tracking_required": true,
+        "delayed_market_data_must_be_labelled": true
+      }
+    },
+    {
+      "family_id": "government_open_data_portal",
+      "display_name": "Government Open Data Portal",
+      "authority_class": "government_open_data",
+      "default_trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": ["official_statistics", "procurement", "permits", "regulatory_records", "sector_data"],
+      "discovery": {
+        "automatic_candidate_creation": true,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "government_ownership_verified",
+          "dataset_publisher_identified",
+          "license_or_access_terms_reviewed",
+          "revision_policy_identified"
+        ]
+      },
+      "rules": {
+        "portal_aggregation_does_not_replace_original_publisher": true,
+        "dataset_revision_tracking_required": true
+      }
+    },
+    {
+      "family_id": "central_bank_or_statistics_sdmx",
+      "display_name": "Central Bank or Statistics SDMX Service",
+      "authority_class": "other_authoritative_public_body",
+      "default_trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": ["macroeconomics", "rates", "labor", "prices", "trade"],
+      "discovery": {
+        "automatic_candidate_creation": true,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "official_institution_domain_verified",
+          "series_owner_metadata_preserved",
+          "revision_and_vintage_behavior_tested",
+          "rate_policy_reviewed"
+        ]
+      },
+      "rules": {
+        "series_vintage_required": true,
+        "preliminary_revised_final_labels_required": true,
+        "unit_and_seasonal_adjustment_required": true
+      }
+    },
+    {
+      "family_id": "reputable_secondary_public_media",
+      "display_name": "Reputable Secondary Public Media",
+      "authority_class": "reputable_financial_media",
+      "default_trust_tier": "T3_REPUTABLE_SECONDARY_LEAD",
+      "evidence_roles": ["news_lead", "context", "primary_source_discovery"],
+      "discovery": {
+        "automatic_candidate_creation": true,
+        "automatic_runtime_enable": false,
+        "required_identity_checks": [
+          "publisher_identity_verified",
+          "public_access_terms_reviewed",
+          "paywall_bypass_absent",
+          "correction_policy_reviewed"
+        ]
+      },
+      "rules": {
+        "may_replace_primary_evidence": false,
+        "may_drive_automatic_score_change_alone": false,
+        "public_metadata_only_when_full_text_not_lawfully_accessible": true
+      }
+    }
+  ]
+}

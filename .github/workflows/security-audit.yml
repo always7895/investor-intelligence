@@ -1,0 +1,66 @@
+name: Security and Dependency Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-audit-main
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 35
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      EMAIL_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      FREE_ONLY_MODE: 'true'
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out exact trusted revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve service-accessible Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-security
+
+      - name: Enforce workflow supply-chain policy
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Enforce security, compile and unit gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Security/privacy gate failed.' }
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile gate failed.' }
+          & $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python unit suite failed.' }

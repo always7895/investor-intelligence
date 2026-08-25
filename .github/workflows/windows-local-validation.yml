@@ -1,0 +1,112 @@
+name: Trusted Windows Full-Stack Reproducible Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/**'
+      - 'config/**'
+      - 'skills/**'
+      - 'docs/**'
+      - 'tests/**'
+      - 'cloud/**'
+      - 'requirements-ci.*'
+      - '.github/workflows/**'
+      - 'IMPLEMENTATION_STATUS.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-windows-full-stack-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 60
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      EMAIL_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      FREE_ONLY_MODE: 'true'
+      PYTHONUTF8: '1'
+      EXPECTED_WORKER_LOCK_SHA256: '365ca38feb288fbed62bb5723303186e5e591c44b7d60b242e530db357535a57'
+
+    steps:
+      - name: Check out exact trusted revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve service-accessible Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-full-stack-validation
+
+      - name: Enforce workflow supply-chain policy
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Run Python policy and unit gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Security/privacy gate failed.' }
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile gate failed.' }
+          & $env:PROJECT_PYTHON -c "import json,pathlib; [json.loads(p.read_text(encoding='utf-8')) for p in pathlib.Path('config').rglob('*.json')]; print('JSON validation passed')"
+          if ($LASTEXITCODE -ne 0) { throw 'JSON validation failed.' }
+          & $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python unit suite failed.' }
+
+      - name: Resolve service-accessible Node.js
+        shell: pwsh
+        run: .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+
+      - name: Verify committed Worker dependency lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path cloud/package-lock.json)) { throw 'cloud/package-lock.json is missing.' }
+          $actual = (Get-FileHash cloud/package-lock.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:EXPECTED_WORKER_LOCK_SHA256) { throw "Worker lock hash mismatch: $actual" }
+          Write-Host "Verified Worker lock SHA-256: $actual"
+
+      - name: Run immutable Worker gates
+        working-directory: cloud
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'npm lock install failed.' }
+          & $env:PROJECT_NPM run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
+          & $env:PROJECT_NPM test
+          if ($LASTEXITCODE -ne 0) { throw 'Worker test suite failed.' }
+
+      - name: Remove ephemeral Node working state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath .npm-cache -Recurse -Force -ErrorAction SilentlyContinue

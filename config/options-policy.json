@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "description": "Project-authored option-chain observation policy. This is not attributed to Serenity or Leopold Aschenbrenner and does not place orders.",
+  "data_source_priority": [
+    "ibkr",
+    "yfinance"
+  ],
+  "periods": {
+    "weekly": {
+      "target_dte": 7,
+      "minimum_dte": 3,
+      "maximum_dte": 14
+    },
+    "monthly": {
+      "target_dte": 30,
+      "minimum_dte": 21,
+      "maximum_dte": 45
+    }
+  },
+  "covered_call": {
+    "enabled": true,
+    "require_position_shares": 100,
+    "minimum_otm_pct": 0.05,
+    "maximum_otm_pct": 0.20,
+    "maximum_candidates": 3
+  },
+  "cash_secured_put": {
+    "enabled": true,
+    "minimum_otm_pct": 0.05,
+    "maximum_otm_pct": 0.20,
+    "maximum_candidates": 3
+  },
+  "liquidity": {
+    "require_two_sided_quote": true,
+    "maximum_spread_pct_of_mid": 0.4,
+    "minimum_open_interest": 5,
+    "minimum_volume": 0,
+    "maximum_last_trade_age_days": 7
+  },
+  "sell_limit_policy": {
+    "description": "For a sell order, display a non-binding limit range from one-quarter of the spread above bid up to midpoint. Never auto-submit an order.",
+    "lower_fraction_above_bid": 0.25,
+    "upper_reference": "midpoint",
+    "minimum_tick": 0.01
+  },
+  "event_risk": {
+    "flag_earnings_before_expiry": true,
+    "block_automatic_recommendation": false
+  },
+  "output": {
+    "show_bid": true,
+    "show_ask": true,
+    "show_midpoint": true,
+    "show_spread": true,
+    "show_bid_mid_ask_yields": true,
+    "show_open_interest": true,
+    "show_volume": true,
+    "show_quote_timestamp": true,
+    "show_data_delay_status": true,
+    "show_covered_contract_capacity": true
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "automatic_source_activation": false,
+  "model_may_override_authority": false,
+  "editorial_may_be_primary_evidence": false,
+  "material_claim_requires_scalar_evidence": true,
+  "independence_group_deduplication": true,
+  "same_content_hash_counts_once": true,
+  "conflicting_material_values_fail_closed": true,
+  "claim_families": {
+    "issuer_identity": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "regulator_filing",
+        "company_registry",
+        "entity_registry",
+        "exchange_disclosure"
+      ],
+      "required_fields": [
+        "legal_name",
+        "jurisdiction",
+        "identifier"
+      ]
+    },
+    "issuer_financial_statement": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "regulator_filing",
+        "exchange_disclosure",
+        "issuer_ir"
+      ],
+      "required_fields": [
+        "period",
+        "currency",
+        "value",
+        "filing_identifier"
+      ]
+    },
+    "issuer_guidance_or_contract": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "regulator_filing",
+        "exchange_disclosure",
+        "issuer_ir",
+        "government_procurement"
+      ],
+      "required_fields": [
+        "published_at",
+        "statement_or_award",
+        "issuer_identifier"
+      ]
+    },
+    "macro_indicator": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "national_statistics",
+        "central_bank_statistics",
+        "intergovernmental_statistics"
+      ],
+      "required_fields": [
+        "series_id",
+        "period",
+        "value",
+        "unit"
+      ]
+    },
+    "monetary_policy": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "central_bank_policy",
+        "central_bank_statistics"
+      ],
+      "required_fields": [
+        "decision_or_rate",
+        "effective_at",
+        "authority"
+      ]
+    },
+    "regulatory_or_enforcement_event": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "financial_regulator",
+        "market_regulator",
+        "government_legal_record"
+      ],
+      "required_fields": [
+        "authority",
+        "event_identifier",
+        "published_at"
+      ]
+    },
+    "market_or_exchange_event": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "regulated_exchange",
+        "exchange_disclosure",
+        "market_infrastructure"
+      ],
+      "required_fields": [
+        "venue",
+        "event_type",
+        "effective_at"
+      ]
+    },
+    "public_option_quote": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "regulated_exchange",
+        "clearing_house",
+        "reviewed_public_quote_provider"
+      ],
+      "required_fields": [
+        "symbol",
+        "expiration",
+        "strike",
+        "option_type",
+        "bid",
+        "ask",
+        "retrieved_at",
+        "delay_status"
+      ],
+      "broker_or_account_derived_evidence_allowed": false
+    },
+    "technology_patent_or_grant": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "patent_office",
+        "research_funding_authority",
+        "government_science_database"
+      ],
+      "required_fields": [
+        "record_identifier",
+        "applicant_or_recipient",
+        "published_at"
+      ]
+    },
+    "energy_grid_or_climate": {
+      "minimum_primary_sources": 1,
+      "minimum_independent_groups": 1,
+      "preferred_source_kinds": [
+        "energy_regulator",
+        "grid_operator",
+        "official_energy_statistics",
+        "climate_authority"
+      ],
+      "required_fields": [
+        "series_or_event_id",
+        "period",
+        "value_or_status"
+      ]
+    }
+  }
+}

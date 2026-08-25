@@ -1,0 +1,89 @@
+name: Phase 1 and 2 Reproducible Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/phase-1-2-privacy-free-v3
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase12-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor == 'always7895')
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 45
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      EMAIL_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      FREE_ONLY_MODE: 'true'
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out exact trusted revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve deterministic verified Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-phase12-audit
+
+      - name: Enforce workflow supply-chain policy
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Run security, compile, configuration and unit gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Security/privacy gate failed.' }
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile gate failed.' }
+          & $env:PROJECT_PYTHON -c "import json,pathlib; files=list(pathlib.Path('config').rglob('*.json')); [json.loads(p.read_text(encoding='utf-8')) for p in files]; print(f'Validated {len(files)} JSON documents')"
+          if ($LASTEXITCODE -ne 0) { throw 'JSON validation failed.' }
+          & $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python unit suite failed.' }
+
+      - name: Record exact-head acceptance scope
+        shell: pwsh
+        run: |
+          @"
+          ## Phase 1/2 exact-head acceptance
+          - Audited commit: `$env:GITHUB_SHA`
+          - Python install: isolated, binary-only, official index, hash-locked, pip-check verified
+          - Deployment: not performed
+          - Private/account data: not included
+          - Paid fallback: disabled
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

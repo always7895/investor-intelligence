@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.venv-*/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Cloudflare Worker generated state
+node_modules/
+cloud/node_modules/
+.wrangler/
+cloud/.wrangler/
+cloud/.dev.vars
+cloud/dist/
+
+# Generated public data and reports
+data/cache/
+data/history/
+reports/
+
+# Tenant-private/local runtime data
+data/private/
+data/tenants/
+data/conversations/
+conversations/
+memory/
+state/private/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.enc
+
+# Logs
+*.log
+logs/
+daily_briefing.log
+
+# Local secrets, identities and credentials
+.env
+.env.*
+!.env.example
+config/delivery.json
+config/delivery.local.json
+config/portfolio.local.json
+config/users.local.json
+config/tenants.local.json
+config/*.local.json
+config/*.tenant.local.json
+config/line_user_id.txt
+line_user_id.txt
+secrets.json
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# GitHub Actions self-hosted runner state
+.credentials
+.credentials_rsaparams
+.runner
+.service
+_diag/
+_work/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo

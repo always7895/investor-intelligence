@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "description": "Local IBKR Client Portal Gateway read-only provider. Long stock positions are discovered dynamically in memory; optional symbol/exchange overrides belong in a private local config, not Git.",
+  "enabled": false,
+  "base_url": "https://127.0.0.1:5000/v1/api",
+  "verify_tls": false,
+  "request_timeout_seconds": 20,
+  "snapshot_retry_count": 3,
+  "snapshot_retry_delay_seconds": 1.0,
+  "maximum_position_pages_per_account": 20,
+  "maximum_strikes_per_right_per_month": 18,
+  "market_data_fields": {
+    "last": "31",
+    "bid": "84",
+    "ask": "86"
+  },
+  "optional_market_data_fields": {
+    "description": "Add official Client Portal snapshot field tags only after they are verified against current IBKR documentation. Missing OI/volume/IV/delta remain unavailable; the system never guesses them.",
+    "option_volume": null,
+    "option_open_interest": null,
+    "implied_volatility": null,
+    "delta": null
+  },
+  "targets": [],
+  "target_policy": {
+    "discover_long_stock_positions": true,
+    "committed_target_list_is_not_a_portfolio": true,
+    "private_symbol_overrides_allowed": true
+  },
+  "security": {
+    "loopback_only": true,
+    "read_only": true,
+    "allow_order_endpoints": false,
+    "allow_transfer_endpoints": false,
+    "redact_account_identifiers": true,
+    "persist_raw_positions": false,
+    "persist_exact_quantities": false,
+    "persist_cost_basis": false
+  }
+}

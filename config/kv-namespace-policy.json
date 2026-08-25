@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "bindings": {
+    "public": "PUBLIC_CACHE",
+    "tenant_private": "TENANT_PRIVATE_CACHE",
+    "ephemeral_security": "EPHEMERAL_SECURITY_CACHE"
+  },
+  "same_namespace_id_forbidden": true,
+  "legacy_cache_binding_forbidden": true,
+  "public_namespace_allows_tenant_keys": false,
+  "tenant_private_namespace_allows_public_snapshots": false,
+  "ephemeral_namespace_allows_message_text": false,
+  "ephemeral_namespace_allows_raw_line_ids": false,
+  "memory_feature_default": false,
+  "generic_private_json_api_allowed": false,
+  "public_publisher_target": "PUBLIC_CACHE",
+  "release_requires_cross_namespace_tests": true
+}

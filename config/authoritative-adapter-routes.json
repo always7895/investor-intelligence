@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "dynamic_adapter_loading": false,
+  "automatic_adapter_activation": false,
+  "routes": [
+    {
+      "source_id": "sec_edgar",
+      "adapter_id": "sec_edgar",
+      "adapter_status": "adapter_reviewed",
+      "runtime_enabled": false,
+      "fixture_tests_required": true,
+      "claim_types": ["issuer_filing", "xbrl_fact"],
+      "notes": "Replayed from the reviewed PR #8 adapter onto the PR #12 privacy-first ancestry. Live use remains disabled until rights and health gates pass."
+    },
+    {
+      "source_id": "world_bank_indicators",
+      "adapter_id": "world_bank_indicators",
+      "adapter_status": "adapter_reviewed",
+      "runtime_enabled": false,
+      "fixture_tests_required": true,
+      "claim_types": ["official_indicator_value"],
+      "notes": "Replayed from the reviewed PR #8 adapter onto the PR #12 privacy-first ancestry. Live use remains disabled until rights and health gates pass."
+    },
+    {
+      "source_id": "gleif_lei",
+      "adapter_id": "gleif_lei",
+      "adapter_status": "adapter_replay_required",
+      "runtime_enabled": false,
+      "fixture_tests_required": true,
+      "claim_types": ["legal_entity_reference", "lei_relationship_record"],
+      "notes": "Catalogued and disabled. The old adapter must be reviewed and replayed without importing the legacy branch wholesale."
+    },
+    {
+      "source_id": "ecb_sdmx",
+      "adapter_id": "ecb_sdmx",
+      "adapter_status": "adapter_replay_required",
+      "runtime_enabled": false,
+      "fixture_tests_required": true,
+      "claim_types": ["official_indicator_value", "central_bank_policy_record"],
+      "notes": "Catalogued and disabled. The old adapter must be reviewed and replayed without importing the legacy branch wholesale."
+    }
+  ]
+}

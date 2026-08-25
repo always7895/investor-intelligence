@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "privacy_class": "local_user_configuration",
+  "stocks": [
+    {
+      "ticker": "EXAMPLE",
+      "name": "Example Company",
+      "category": "Example Category",
+      "source": "local-user-defined",
+      "primary_evidence": [],
+      "corroborating_evidence": [],
+      "disconfirmation_conditions": []
+    }
+  ]
+}

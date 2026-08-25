@@ -1,0 +1,64 @@
+name = "investor-intelligence-line-bot"
+main = "src/worker.ts"
+compatibility_date = "2026-08-23"
+workers_dev = true
+
+# Three physically separate namespaces are mandatory. Never point two bindings
+# at the same namespace ID in production or preview.
+[[kv_namespaces]]
+binding = "PUBLIC_CACHE"
+id = "REPLACE_WITH_PUBLIC_PRODUCTION_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PUBLIC_PREVIEW_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "TENANT_PRIVATE_CACHE"
+id = "REPLACE_WITH_TENANT_PRIVATE_PRODUCTION_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_TENANT_PRIVATE_PREVIEW_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "EPHEMERAL_SECURITY_CACHE"
+id = "REPLACE_WITH_EPHEMERAL_SECURITY_PRODUCTION_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_EPHEMERAL_SECURITY_PREVIEW_KV_NAMESPACE_ID"
+
+[vars]
+GENERAL_QA_ENABLED = "true"
+CURRENT_PUBLIC_DATA_ENABLED = "false"
+PUBLIC_DATA_MAX_AGE_SECONDS = "1800"
+OPTION_DATA_MAX_AGE_SECONDS = "1800"
+CLOUDFLARE_PLAN = "workers_free"
+LINE_ACCESS_MODE = "disabled"
+LOCAL_LLM_ALLOWED_HOSTS = ""
+MAX_REQUESTS_PER_MINUTE = "12"
+MAX_GENERAL_QA_INPUT_CHARS = "3000"
+MAX_WEBHOOK_AGE_SECONDS = "600"
+MAX_WEBHOOK_BODY_BYTES = "262144"
+# Keep conversation memory unavailable for the first external-user release.
+# A later release may set this true only after Phase 8 deletion/race acceptance.
+MEMORY_FEATURE_AVAILABLE = "false"
+PRIVATE_MEMORY_MAX_TTL_SECONDS = "86400"
+JOB_RESULT_TTL_SECONDS = "3600"
+
+# Required Worker Secrets; never commit values:
+# LINE_CHANNEL_SECRET
+# LINE_CHANNEL_ACCESS_TOKEN
+# TENANT_HASH_SECRET
+# TENANT_DATA_ENCRYPTION_KEY
+#
+# Optional shared-bot admission list. Entries are HMAC-derived tenant IDs,
+# never raw LINE IDs. Keep the list secret. The Worker supports only disabled
+# and allowlist admission; group and room chats are always rejected:
+# LINE_ALLOWED_TENANT_HASHES
+#
+# Optional authenticated HTTPS route to private llama.cpp / Qwen. Set the exact
+# hostname in LOCAL_LLM_ALLOWED_HOSTS. IP literals, wildcard hosts, non-443 ports
+# and redirects are rejected. At least one API-key/shared-secret header is
+# required. Model context is limited to public research snapshots plus the
+# current tenant's own opt-in memory when the memory feature is explicitly
+# available; public option chains remain deterministic tool data:
+# LOCAL_LLM_BASE_URL
+# LOCAL_LLM_MODEL
+# LOCAL_LLM_API_KEY
+# LOCAL_LLM_SHARED_SECRET
+#
+# There is no private-sync route, portfolio tool, IBKR/broker connection,
+# Workers AI binding, scheduled push or paid fallback in this Worker.

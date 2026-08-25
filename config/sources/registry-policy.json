@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "catalog_id": "registry-policy",
+  "description": "Policy for an unbounded, directory-based federation of authoritative global public sources.",
+  "source_count_policy": {
+    "artificial_total_limit": null,
+    "discovery_auto_enable": false,
+    "runtime_work_is_bounded_by": [
+      "per_host_concurrency",
+      "minimum_request_interval_seconds",
+      "bounded_retry",
+      "circuit_breaker",
+      "free_quota_budget",
+      "freshness_priority",
+      "cache_ttl"
+    ]
+  },
+  "allowed_trust_tiers": [
+    "T1_PRIMARY_OFFICIAL",
+    "T2_INSTITUTIONAL_CORROBORATION",
+    "T3_REPUTABLE_SECONDARY_LEAD",
+    "T4_QUARANTINED"
+  ],
+  "allowed_authority_classes": [
+    "securities_regulator",
+    "regulated_exchange",
+    "central_bank",
+    "finance_ministry_or_treasury",
+    "national_statistics_office",
+    "government_open_data",
+    "international_organization",
+    "court_or_legal_registry",
+    "patent_or_ip_office",
+    "official_issuer",
+    "regulated_broker",
+    "academic_repository",
+    "standards_body",
+    "public_sector_industry_body",
+    "reputable_newswire",
+    "reputable_financial_media",
+    "public_service_media",
+    "other_authoritative_public_body"
+  ],
+  "allowed_admission_statuses": [
+    "DISCOVERED",
+    "IDENTITY_VERIFIED",
+    "LEGAL_AND_FREE_ACCESS_APPROVED",
+    "ADAPTER_CONTRACT_VALIDATED",
+    "PROVENANCE_VALIDATED",
+    "PARSER_CANARY_PASS",
+    "HEALTH_SOAK_PASS",
+    "RUNTIME_ENABLED",
+    "QUARANTINED",
+    "DISABLED_PAYMENT_REQUIRED",
+    "DISABLED_TERMS_INCOMPATIBLE",
+    "DISABLED_IDENTITY_UNVERIFIED",
+    "DISABLED_SCHEMA_UNSTABLE",
+    "DISABLED_HEALTH_FAILURE",
+    "DISABLED_FREE_ONLY_POLICY"
+  ],
+  "allowed_adapter_statuses": [
+    "planned",
+    "implemented",
+    "manual_only",
+    "disabled"
+  ],
+  "runtime_enable_requirements": {
+    "minimum_admission_status": "RUNTIME_ENABLED",
+    "adapter_status": "implemented",
+    "terms_review_status": "approved",
+    "free_access_required": true,
+    "payment_required": false,
+    "https_required": true,
+    "provenance_required": true,
+    "health_check_required": true
+  },
+  "claim_policy": {
+    "direct_official_fact": {
+      "minimum": "one_relevant_T1_primary_source"
+    },
+    "material_secondary_or_interpretive_claim": {
+      "minimum": "one_relevant_T1_plus_independent_corroboration_or_two_independent_T2_sources"
+    },
+    "unresolved_conflict": {
+      "automatic_score_change_allowed": false,
+      "report_must_disclose_conflict": true
+    },
+    "T3_may_replace_primary_evidence": false,
+    "T4_may_affect_output": false
+  },
+  "privacy": {
+    "public_registry_only": true,
+    "tenant_private_data_allowed_in_source_requests": false,
+    "regulated_broker_data_is_tenant_scoped": true,
+    "raw_account_identifiers_persisted": false
+  },
+  "cost": {
+    "free_only_fail_closed": true,
+    "paid_api_allowed": false,
+    "automatic_paid_fallback": false,
+    "paywall_bypass": false,
+    "captcha_bypass": false,
+    "authentication_bypass": false
+  }
+}
