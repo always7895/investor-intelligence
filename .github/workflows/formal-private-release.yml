@@ -1,0 +1,307 @@
+name: Formal Private Release Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Strict SemVer without a leading v
+        required: true
+        default: '2.0.0'
+        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-formal-private-release
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: >-
+      github.repository == 'always7895/investor-intelligence' &&
+      github.actor == 'always7895' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' &&
+        github.event.head_commit.message == 'release: establish formal private v2.0.0'))
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 240
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      LINE_ACCESS_MODE: 'disabled'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      PUBLIC_KV_SYNC_ENABLED: 'false'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      PYTHONUTF8: '1'
+      GITHUB_TOKEN: ${{ github.token }}
+      TARGET_SHA: ${{ github.sha }}
+      RELEASE_VERSION: ${{ inputs.version || '2.0.0' }}
+      EXPECTED_WORKER_LOCK_SHA256: '365ca38feb288fbed62bb5723303186e5e591c44b7d60b242e530db357535a57'
+
+    steps:
+      - name: Check out exact privacy-clean main with complete ancestry
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify exact source identity and official ref convergence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($actual -ne $env:TARGET_SHA.ToLowerInvariant()) {
+            throw "Formal package checkout mismatch: $actual"
+          }
+          if ($env:RELEASE_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') {
+            throw 'Release version is not strict SemVer.'
+          }
+          $shallow = (git rev-parse --is-shallow-repository).Trim().ToLowerInvariant()
+          if ($shallow -ne 'false') { throw 'Formal release requires complete ancestry.' }
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+            'User-Agent' = 'investor-intelligence-formal-private-release'
+          }
+          $branches = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60)
+          if ($branches.Count -lt 1) { throw 'No official branches were returned.' }
+          $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+          if ($divergent.Count -ne 0) {
+            throw "Official branch convergence failed; divergent branch count=$($divergent.Count)."
+          }
+          $tags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60)
+          $divergentTags = @($tags | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+          if ($divergentTags.Count -ne 0) {
+            throw "Official tag convergence failed; divergent tag count=$($divergentTags.Count)."
+          }
+
+      - name: Resolve deterministic verified Python
+        shell: pwsh
+        run: .\scripts\resolve_python.ps1 -VenvPath .venv-formal-private-release
+
+      - name: Enforce workflow, storage and privacy policies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+          & $env:PROJECT_PYTHON scripts/actions_storage_policy_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Actions storage policy gate failed.' }
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Current-tree privacy/credential gate failed.' }
+
+      - name: Install immutable Python dependency lock
+        shell: pwsh
+        run: |
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Python dependency consistency check failed.' }
+
+      - name: Run complete retained repository gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commands = @(
+            @('scripts/owner_config_boundary_gate.py'),
+            @('scripts/line_public_boundary_gate.py'),
+            @('scripts/documentation_boundary_gate.py'),
+            @('scripts/kv_namespace_isolation_gate.py'),
+            @('scripts/authoritative_adapter_gate.py'),
+            @('scripts/authoritative_source_catalog.py'),
+            @('scripts/source_claim_coverage_gate.py'),
+            @('scripts/source_diversity_gate.py'),
+            @('scripts/public_options_provider_gate.py'),
+            @('scripts/manual_option_calculator_gate.py'),
+            @('scripts/final_cleanup_gate.py'),
+            @('scripts/release_candidate_gate.py'),
+            @('scripts/canonical_release_candidate_gate_v2.py'),
+            @('scripts/schedule_planner.py', '--validate'),
+            @('scripts/phase8_fault_injection_gate.py')
+          )
+          foreach ($arguments in $commands) {
+            & $env:PROJECT_PYTHON @arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Repository gate failed: $($arguments -join ' ')"
+            }
+          }
+
+      - name: Require zero-finding official-head history and complete Python regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts/full_history_privacy_scan.py --scope head --require-clean
+          if ($LASTEXITCODE -ne 0) { throw 'Official-head history is not clean.' }
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile gate failed.' }
+          & $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Complete Python regression suite failed.' }
+
+      - name: Resolve service-accessible Node.js
+        shell: pwsh
+        run: .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+
+      - name: Verify and run immutable Worker gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lock = (Get-FileHash cloud\package-lock.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($lock -ne $env:EXPECTED_WORKER_LOCK_SHA256) {
+            throw "Worker lock hash mismatch: $lock"
+          }
+          Push-Location cloud
+          try {
+            & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+            & $env:PROJECT_NPM run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
+            & $env:PROJECT_NPM test
+            if ($LASTEXITCODE -ne 0) { throw 'Worker test suite failed.' }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Build, verify and clean-install the formal package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bootstrapPython = [System.IO.Path]::GetFullPath($env:PROJECT_PYTHON)
+          $packageRoot = Join-Path $env:RUNNER_TEMP "investor-intelligence-formal-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $extractRoot = Join-Path $packageRoot 'clean-install'
+          $cleanPipCache = Join-Path $packageRoot 'empty-pip-cache'
+          $cleanNpmCache = Join-Path $packageRoot 'empty-npm-cache'
+          $statusPath = Join-Path $packageRoot 'ephemeral-formal-release-status.json'
+          $receiptPath = Join-Path $packageRoot 'final-acceptance-receipt.json'
+          $noticePath = Join-Path $packageRoot 'PRIVATE-DISTRIBUTION-NOTICE.md'
+          $cleanRuntimeRoot = Join-Path $env:RUNNER_TEMP 'portable-python-3.12.10-.venv-formal-private-release-clean'
+          Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $cleanRuntimeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $packageRoot,$cleanPipCache,$cleanNpmCache | Out-Null
+
+          & $bootstrapPython scripts/formal_release_status.py --version $env:RELEASE_VERSION --output $statusPath
+          if ($LASTEXITCODE -ne 0) { throw 'Formal release status generation failed.' }
+          & $bootstrapPython scripts/build_formal_release.py --output-dir $packageRoot --version $env:RELEASE_VERSION --release-status $statusPath
+          if ($LASTEXITCODE -ne 0) { throw 'Formal release package build failed.' }
+
+          $stem = "investor-intelligence-$env:RELEASE_VERSION"
+          $archive = Join-Path $packageRoot "$stem.zip"
+          $checksum = Join-Path $packageRoot "$stem.sha256"
+          $manifest = Join-Path $packageRoot "$stem.manifest.json"
+          $sbom = Join-Path $packageRoot "$stem.sbom.spdx.json"
+          & $bootstrapPython scripts/run_repo_script.py verify_release_package.py --archive $archive --checksum $checksum --manifest $manifest --sbom $sbom --policy config/release-package-policy.json
+          if ($LASTEXITCODE -ne 0) { throw 'Formal release package verification failed.' }
+
+          .\scripts\resolve_python.ps1 -VenvPath .venv-formal-private-release-clean
+          $cleanPython = [System.IO.Path]::GetFullPath($env:PROJECT_PYTHON)
+          if ($cleanPython.Equals($bootstrapPython, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Clean-install acceptance must use a distinct verified Python root.'
+          }
+          $env:PIP_CACHE_DIR = $cleanPipCache
+          & $cleanPython -m pip install --isolated --no-cache-dir --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Clean Python dependency installation failed.' }
+          & $cleanPython -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Clean Python dependency consistency check failed.' }
+          & $cleanPython scripts/run_repo_script.py clean_install_acceptance.py --archive $archive --checksum $checksum --manifest $manifest --sbom $sbom --policy config/release-package-policy.json --extract-to $extractRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Clean-install Python acceptance failed.' }
+
+          Push-Location (Join-Path $extractRoot 'cloud')
+          try {
+            & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund --cache $cleanNpmCache
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install npm ci failed.' }
+            & $env:PROJECT_NPM run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install Worker typecheck failed.' }
+            & $env:PROJECT_NPM test
+            if ($LASTEXITCODE -ne 0) { throw 'Clean-install Worker tests failed.' }
+          } finally {
+            Pop-Location
+          }
+
+          & $cleanPython scripts/final_release_receipt.py --archive $archive --version $env:RELEASE_VERSION --output $receiptPath --authorize-cleanup
+          if ($LASTEXITCODE -ne 0) { throw 'Final acceptance receipt generation failed.' }
+          & $cleanPython scripts/final_cleanup_gate.py --receipt $receiptPath --expected-candidate $env:TARGET_SHA --require-unlocked
+          if ($LASTEXITCODE -ne 0) { throw 'Final receipt validation failed.' }
+
+          @"
+          # Investor Intelligence v$env:RELEASE_VERSION — Private Direct Delivery
+
+          This package contains no inherited Git history, credentials, owner watchlist, owner preferences, portfolio, messages, tenant records, logs, caches or runner state.
+
+          Shared LINE live BID/ASK lookup remains disabled because no reviewed zero-cost provider currently satisfies automated-access and redistribution requirements. The deterministic manual calculator accepts user-supplied values and labels them unverified. LINE has no IBKR, broker-account, holdings or private-sync path.
+
+          The private development repository remains private. GitHub-managed pull refs may require platform-side purge before the repository itself could ever be made public. This does not add Git history to this clean package.
+
+          No deployment, LINE activation, IBKR connection, billing, credential installation or external-user admission was performed.
+          "@ | Set-Content -LiteralPath $noticePath -Encoding utf8NoBOM
+
+          "FORMAL_PACKAGE_ROOT=$packageRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_SBOM=$sbom" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_RECEIPT=$receiptPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_NOTICE=$noticePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FORMAL_CLEAN_RUNTIME=$cleanRuntimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload final release evidence for private delivery
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: investor-intelligence-${{ env.RELEASE_VERSION }}-formal-private-release
+          path: |
+            ${{ env.FORMAL_ARCHIVE }}
+            ${{ env.FORMAL_CHECKSUM }}
+            ${{ env.FORMAL_MANIFEST }}
+            ${{ env.FORMAL_SBOM }}
+            ${{ env.FORMAL_RECEIPT }}
+            ${{ env.FORMAL_NOTICE }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Record formal private release scope
+        shell: pwsh
+        run: |
+          $digestLine = (Get-Content -LiteralPath $env:FORMAL_CHECKSUM -Raw -Encoding ascii).Trim()
+          @"
+          ## Formal private release v$env:RELEASE_VERSION
+          - Exact source commit: ``$env:TARGET_SHA``
+          - Distribution scope: private direct delivery
+          - Public development-repository publication: not authorized
+          - Official branch/tag histories converge to the exact accepted head
+          - Full official-head history privacy scan: PASS
+          - Complete Python, Worker, Phase 4/7/8 and boundary gates: PASS
+          - Reproducible ZIP, checksum, manifest, SPDX SBOM and clean install: PASS
+          - Package checksum line: ``$digestLine``
+          - Artifact ID: ``${{ steps.upload.outputs.artifact-id }}``
+          - Artifact retention: one day
+          - Deployment, LINE, IBKR, billing, credentials and external users: not performed
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Remove ephemeral build and dependency state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath .npm-cache -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:FORMAL_PACKAGE_ROOT) {
+            Remove-Item -LiteralPath $env:FORMAL_PACKAGE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          if ($env:FORMAL_CLEAN_RUNTIME) {
+            Remove-Item -LiteralPath $env:FORMAL_CLEAN_RUNTIME -Recurse -Force -ErrorAction SilentlyContinue
+          }

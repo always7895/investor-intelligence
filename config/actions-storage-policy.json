@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "artifact_and_log_retention_days_target": 1,
+  "artifact_upload": {
+    "allowed": true,
+    "maximum_retention_days": 1,
+    "required_only_for_final_release_evidence": true,
+    "require_immutable_action_sha": true
+  },
+  "dependency_cache": {
+    "allowed": false,
+    "reason": "The repository uses deterministic self-hosted installs and must not consume Actions cache storage."
+  },
+  "workflow_run_cleanup": {
+    "completed_runs_may_be_deleted": true,
+    "preserve_exact_release_head": true,
+    "preserve_in_progress_runs": true,
+    "preserve_latest_runs_per_workflow": 2,
+    "preserve_latest_success_per_workflow": true,
+    "preserve_latest_failure_per_workflow": true,
+    "maximum_deletes_per_transaction": 3900,
+    "minimum_age_hours": 2
+  },
+  "safety": {
+    "local_history_backups_must_not_be_modified": true,
+    "git_refs_must_not_be_modified": true,
+    "deployment_must_not_be_performed": true,
+    "billing_must_not_be_enabled": true,
+    "line_and_ibkr_must_remain_disabled": true
+  }
+}

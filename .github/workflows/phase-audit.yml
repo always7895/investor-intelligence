@@ -35,15 +35,34 @@ jobs:
       ACTIVE_SCAN_APPLY_CHANGES: 'false'
       FREE_ONLY_MODE: 'true'
       PYTHONUTF8: '1'
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+      EVENT_SHA: ${{ github.sha }}
 
     steps:
       - name: Check out exact trusted revision
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.TARGET_SHA }}
           clean: true
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Verify exact tested revision identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim()
+          if (-not $env:TARGET_SHA -or $actual -ne $env:TARGET_SHA) {
+            throw "Checked-out revision $actual does not match target $env:TARGET_SHA"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            if (-not $env:PR_HEAD_SHA -or $actual -ne $env:PR_HEAD_SHA) {
+              throw "Phase 1/2 audit must test exact PR head $env:PR_HEAD_SHA, found $actual"
+            }
+          } elseif ($actual -ne $env:GITHUB_SHA) {
+            throw "Push/dispatch audit expected event SHA $env:GITHUB_SHA, found $actual"
+          }
 
       - name: Resolve deterministic verified Python
         shell: pwsh
@@ -79,9 +98,12 @@ jobs:
       - name: Record exact-head acceptance scope
         shell: pwsh
         run: |
+          $actual = (git rev-parse HEAD).Trim()
           @"
           ## Phase 1/2 exact-head acceptance
-          - Audited commit: `$env:GITHUB_SHA`
+          - Audited commit: ``$actual``
+          - PR head: ``$env:PR_HEAD_SHA``
+          - Event SHA: ``$env:EVENT_SHA``
           - Python install: isolated, binary-only, official index, hash-locked, pip-check verified
           - Deployment: not performed
           - Private/account data: not included

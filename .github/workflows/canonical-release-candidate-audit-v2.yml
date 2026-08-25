@@ -68,11 +68,13 @@ jobs:
         shell: pwsh
         run: .\scripts\resolve_python.ps1 -VenvPath .venv-canonical-rc-v2
 
-      - name: Enforce repository workflow supply-chain policy
+      - name: Enforce repository workflow and storage policies
         shell: pwsh
         run: |
           & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
           if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+          & $env:PROJECT_PYTHON scripts/actions_storage_policy_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Actions storage policy gate failed.' }
 
       - name: Install isolated immutable Python dependency lock
         shell: pwsh
@@ -142,6 +144,8 @@ jobs:
           ## Canonical release-candidate acceptance v2
           - Tested revision: `$actual`
           - Repository permissions: read only
+          - Actions artifacts/log target: one day
+          - Actions dependency cache: forbidden
           - External deployment: not performed
           - LINE/IBKR connection: not performed
           - Credentials installed: none
