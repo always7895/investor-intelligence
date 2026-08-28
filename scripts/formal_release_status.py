@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create an ephemeral exact-head status for a formal private distribution build.
+"""Create an ephemeral exact-head status for the verified v2.0.0 delivery.
 
 The generated document is intentionally not committed. It lets the deterministic
 package builder consume post-validation evidence without introducing an
@@ -67,15 +67,14 @@ def build_status(*, candidate_commit: str, version: str) -> dict[str, Any]:
         "candidate_version": version,
         "gates": {name: "PASS" for name in GATE_NAMES},
         "hard_blockers": [],
-        "public_repository_blockers": [
-            "GitHub-managed pull refs may retain pre-rewrite objects until GitHub Support completes platform-side dereferencing and garbage collection."
-        ],
+        "public_repository_blockers": [],
         "local_action_required": False,
         "secrets_required_now": False,
         "notes": (
-            "Exact-head ephemeral status for a clean no-Git-history formal package delivered privately. "
-            "It does not authorize deployment, LINE activation, IBKR connectivity, billing, external-user admission, "
-            "or publication of the private development repository."
+            "Exact-head final status for a clean no-Git-history package delivered privately after "
+            "GitHub Support removed the platform-managed pull references and unreferenced commits. "
+            "It does not authorize deployment, LINE activation, IBKR connectivity, billing, "
+            "external-user admission, or publication of the private development repository."
         ),
     }
 

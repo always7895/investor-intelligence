@@ -30,6 +30,8 @@ PACKAGE_COMPATIBLE_TEST_PATTERNS = (
     "test_kv_namespace_isolation_gate.py",
     "test_release_candidate_gate.py",
     "test_phase8_fault_injection_gate.py",
+    "test_final_distribution_scripts.py",
+    "test_delivery_bundle.py",
 )
 
 REPOSITORY_ONLY_GATE_SCRIPTS = (

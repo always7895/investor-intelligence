@@ -1,6 +1,6 @@
 # Final Release and Local Installation Plan
 
-_Last reconciled: 2026-08-25 Asia/Taipei_
+_Finalized: 2026-08-28 Asia/Taipei — GitHub Support purge completed_
 
 ## Normative boundary
 
@@ -29,11 +29,11 @@ Development branches must not:
 - restore private data or secrets;
 - enable billing, paid fallback or automatic upgrades.
 
-`install.ps1` and `register-task.ps1` remain intentionally disabled until a final reviewed package exists.
+`install.ps1` now delegates to the reviewed final `bootstrap.ps1`. Scheduling remains disabled by default and requires the explicit `register-task.ps1 -Enable` action after installation.
 
 ## Mandatory release gates
 
-No downloadable package is accepted until the exact final candidate passes:
+No downloadable package is accepted until the same exact `main` commit passes both the fresh all-object history workflow and the formal package workflow, collectively proving:
 
 1. current-tree security/privacy scan;
 2. immutable workflow/dependency supply-chain gates;
@@ -45,7 +45,7 @@ No downloadable package is accepted until the exact final candidate passes:
 8. scheduling, recovery, quota and synthetic fault-injection tests;
 9. reproducible package, checksum, manifest and SBOM verification;
 10. clean-install simulation from the package;
-11. destructive Git-history remediation followed by `--scope all --require-clean`;
+11. completed GitHub Support dereferencing plus a fresh isolated `--scope all --require-clean` result;
 12. final human review of release truth and package contents.
 
 An older successful workflow does not transfer to a newer head. Pending, queued or cancelled jobs are not PASS.
@@ -54,8 +54,8 @@ An older successful workflow does not transfer to a newer head. Pending, queued 
 
 The canonical release is produced only by the reviewed package builder from tracked files in an exported clean tree. It includes:
 
-- versioned source/application ZIP;
-- SHA-256 checksum;
+- deterministic outer final-delivery ZIP and separate SHA-256;
+- versioned source/application ZIP and its SHA-256;
 - internal release manifest and metadata;
 - SPDX SBOM;
 - locked Python and Node dependency metadata;
@@ -82,14 +82,15 @@ After final acceptance:
 1. freeze the accepted commit;
 2. build twice and prove byte reproducibility;
 3. verify ZIP contents, checksum, manifest and SBOM independently;
-4. attach the verified files to a private versioned GitHub release;
-5. provide the user a direct download link only after the files exist and pass verification.
+4. upload the exact application evidence with one-day retention;
+5. assemble the deterministic outer direct-delivery bundle twice from that accepted evidence and verify its separate SHA-256;
+6. provide the user a direct download link only after every file exists and passes verification.
 
 No development branch or runner workspace is used as an installer.
 
 ## First local installation
 
-Installation begins only from the verified final ZIP and must:
+Installation begins only after the outer delivery ZIP and inner application ZIP have been verified. The extracted delivery folder provides a double-click `install-final.cmd` path and a PowerShell `install-final.ps1` path. Installation must:
 
 - verify version and SHA-256 before extraction;
 - refuse to run inside the self-hosted runner workspace;
@@ -99,6 +100,7 @@ Installation begins only from the verified final ZIP and must:
 - start with LINE, public KV writes, schedules, memory and IBKR disabled;
 - run security, configuration and local smoke tests before any feature is enabled;
 - never print secrets or private values;
+- preserve existing generated data, reports and the local briefing log during an explicit verified force reinstall;
 - never enable a paid plan or provider.
 
 The local owner research workflow and optional local IBKR read-only workflow remain a separate trust domain. They have no outbound LINE delivery capability.

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Run the repository unit suite without downloading optional live providers.
+"""Run offline-safe tests in a repository checkout or clean release ZIP.
 
-Only absent optional packages are stubbed. Every stub fails closed if a test
-attempts a live network/provider operation, while import-time policy and parser
-tests remain available on a clean runner.
+Repository mode executes the complete suite. Distribution mode executes only
+package-compatible tests and never assumes ``.git``, ``.github`` or ``state``
+exists. Missing optional live providers are replaced by fail-closed import
+stubs; a test cannot silently perform network/provider activity through them.
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 import types
@@ -15,6 +17,49 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+
+DISTRIBUTION_SAFE_PATTERNS = (
+    "test_actions_storage_policy_gate.py",
+    "test_active_scan.py",
+    "test_attribution.py",
+    "test_authoritative_source_catalog.py",
+    "test_build_line_public_options.py",
+    "test_dependency_lock_renderer.py",
+    "test_derive_tenant_hash.py",
+    "test_delivery_bundle.py",
+    "test_final_cleanup_gate.py",
+    "test_final_distribution_scripts.py",
+    "test_free_only_runtime.py",
+    "test_generate_public_briefing.py",
+    "test_ibkr_readonly.py",
+    "test_kv_namespace_isolation_gate.py",
+    "test_line_public_options_closed_dto.py",
+    "test_local_research_config.py",
+    "test_manual_option_calculator_gate.py",
+    "test_options.py",
+    "test_options_service.py",
+    "test_phase8_fault_injection_gate.py",
+    "test_privacy_cost_policy.py",
+    "test_public_artifact_closed_schema.py",
+    "test_public_options_provider_gate.py",
+    "test_public_symbol_admission.py",
+    "test_release_candidate_gate.py",
+    "test_replayed_authoritative_adapters.py",
+    "test_report.py",
+    "test_schedule_planner.py",
+    "test_scoring.py",
+    "test_secure_public_fetch_canonical.py",
+    "test_security_check.py",
+    "test_source_claim_coverage_gate.py",
+    "test_source_diversity_gate.py",
+    "test_source_health.py",
+    "test_source_ingestion_boundaries.py",
+    "test_source_observation.py",
+    "test_source_registry.py",
+    "test_staged_gleif_ecb_adapters.py",
+    "test_sync_to_kv.py",
+    "test_validate_kv_namespace_ids.py",
+)
 
 
 class OfflineProviderUnavailable(RuntimeError):
@@ -39,8 +84,7 @@ def _install_yfinance_stub() -> None:
 def _install_pandas_stub() -> None:
     if importlib.util.find_spec("pandas") is not None:
         return
-    module = types.ModuleType("pandas")
-    sys.modules["pandas"] = module
+    sys.modules["pandas"] = types.ModuleType("pandas")
 
 
 def _install_requests_stub() -> None:
@@ -122,10 +166,34 @@ def install_optional_dependency_stubs() -> None:
     _install_urllib3_stub()
 
 
+def _distribution_suite(loader: unittest.TestLoader) -> unittest.TestSuite:
+    suite = unittest.TestSuite()
+    for pattern in DISTRIBUTION_SAFE_PATTERNS:
+        path = ROOT / "tests" / pattern
+        if not path.is_file():
+            raise FileNotFoundError(f"Distribution-safe test is missing: {pattern}")
+        suite.addTests(loader.discover(str(ROOT / "tests"), pattern=pattern))
+    return suite
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--repository", action="store_true")
+    mode.add_argument("--distribution", action="store_true")
+    args = parser.parse_args()
+
     install_optional_dependency_stubs()
+    repository_available = (ROOT / ".git").exists() and (ROOT / ".github" / "workflows").is_dir()
+    distribution_mode = args.distribution or (not args.repository and not repository_available)
+
     loader = unittest.TestLoader()
-    suite = loader.discover(str(ROOT / "tests"), pattern="test_*.py")
+    if distribution_mode:
+        print("OFFLINE TEST MODE: FINAL DISTRIBUTION (repository-only metadata gates excluded)")
+        suite = _distribution_suite(loader)
+    else:
+        print("OFFLINE TEST MODE: COMPLETE REPOSITORY")
+        suite = loader.discover(str(ROOT / "tests"), pattern="test_*.py")
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

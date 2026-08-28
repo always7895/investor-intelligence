@@ -1,0 +1,216 @@
+name: Final History and Support Purge Confirmation
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-final-history-confirmation
+  cancel-in-progress: false
+
+jobs:
+  confirm:
+    if: >-
+      github.repository == 'always7895/investor-intelligence' &&
+      github.actor == 'always7895' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'release: establish formal private v2.0.0'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 120
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+      SENSITIVE_COMMIT: '3553904999e7700c17fd862c1a17b4a7a8f8c21b'
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      LINE_ACCESS_MODE: 'disabled'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      FREE_ONLY_MODE: 'true'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out exact final source for policy validation
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify exact source and official branch convergence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($actual -ne $env:TARGET_SHA.ToLowerInvariant()) { throw "Checkout mismatch: $actual" }
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+            'User-Agent' = 'investor-intelligence-final-history-confirmation'
+          }
+          $branches = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60)
+          $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+          if ($branches.Count -lt 1 -or $divergent.Count -ne 0) {
+            throw "Official branch convergence failed; count=$($branches.Count), divergent=$($divergent.Count)."
+          }
+          $tags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60)
+          $divergentTags = @($tags | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+          if ($divergentTags.Count -ne 0) { throw "Official tag convergence failed; divergent=$($divergentTags.Count)." }
+
+      - name: Verify GitHub Support purge and inventory every remaining pull ref
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+            'User-Agent' = 'investor-intelligence-final-support-purge-check'
+          }
+          function Get-Status([string]$Uri) {
+            try {
+              $response = Invoke-WebRequest -Uri $Uri -Headers $headers -TimeoutSec 60
+              return [int]$response.StatusCode
+            }
+            catch {
+              if ($null -ne $_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+              throw
+            }
+          }
+          $commitStatus = Get-Status "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$env:SENSITIVE_COMMIT"
+          if ($commitStatus -notin @(404, 422)) { throw "Sensitive commit remains reachable; status=$commitStatus." }
+          foreach ($number in @(2,3,4,5,6,7,8,9,10,11,12,13,14,16)) {
+            foreach ($kind in @('head','merge')) {
+              $status = Get-Status "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/ref/pull/$number/$kind"
+              if ($status -ne 404) { throw "Pull ref remains reachable; pr=$number kind=$kind status=$status." }
+            }
+          }
+
+          $remaining = @()
+          $page = 1
+          do {
+            $batch = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/matching-refs/pull/?per_page=100&page=$page" -Headers $headers -TimeoutSec 60)
+            $remaining += $batch
+            $page += 1
+          } while ($batch.Count -eq 100)
+
+          $inventory = Join-Path $env:RUNNER_TEMP "final-pull-refs-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.txt"
+          $lines = @()
+          foreach ($entry in $remaining) {
+            $refName = [string]$entry.ref
+            $objectType = [string]$entry.object.type
+            $objectSha = ([string]$entry.object.sha).ToLowerInvariant()
+            if ($refName -notmatch '^refs/pull/[0-9]+/(head|merge)$' -or
+                $objectType -ne 'commit' -or $objectSha -notmatch '^[0-9a-f]{40}$') {
+              throw 'GitHub returned an unexpected pull-reference shape.'
+            }
+            if ($objectSha -eq $env:SENSITIVE_COMMIT.ToLowerInvariant()) {
+              throw 'A remaining pull reference points directly to the sensitive commit.'
+            }
+            $safeName = $refName.Substring('refs/pull/'.Length).Replace('/', '-')
+            $lines += "$safeName $refName $objectSha"
+          }
+          [System.IO.File]::WriteAllLines($inventory, [string[]]$lines, [System.Text.Encoding]::ASCII)
+          "PULL_REF_INVENTORY=$inventory" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PULL_REF_COUNT=$($lines.Count)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "GitHub Support purge verification passed; remaining clean pull refs=$($lines.Count)."
+
+      - name: Resolve verified Python and immutable dependency lock
+        shell: pwsh
+        run: |
+          .\scripts\resolve_python.ps1 -VenvPath .venv-final-history-confirmation
+          & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain gate failed.' }
+          & $env:PROJECT_PYTHON scripts/actions_storage_policy_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Actions storage policy gate failed.' }
+          & $env:PROJECT_PYTHON scripts/security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Current-tree privacy gate failed.' }
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Hash-locked dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency consistency check failed.' }
+
+      - name: Build a fresh isolated object database and require zero findings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fresh = Join-Path $env:RUNNER_TEMP "investor-intelligence-final-history-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $report = Join-Path $env:RUNNER_TEMP "final-history-confirmation-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.json"
+          Remove-Item -LiteralPath $fresh,$report -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $fresh | Out-Null
+          $credentialBytes = [System.Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GITHUB_TOKEN")
+          $basicCredential = [Convert]::ToBase64String($credentialBytes)
+          $auth = "http.https://github.com/.extraheader=AUTHORIZATION: basic $basicCredential"
+          try {
+            git -C $fresh init --quiet
+            git -C $fresh remote add origin "https://github.com/$env:GITHUB_REPOSITORY.git"
+            git -C $fresh -c $auth fetch --no-tags --force origin "+refs/heads/main:refs/remotes/origin/main"
+            if ($LASTEXITCODE -ne 0) { throw 'Fresh exact-main fetch failed.' }
+            $mainSha = (git -C $fresh rev-parse refs/remotes/origin/main).Trim().ToLowerInvariant()
+            if ($mainSha -ne $env:TARGET_SHA.ToLowerInvariant()) { throw "Fresh main identity mismatch: $mainSha" }
+            git -C $fresh checkout --quiet --detach $mainSha
+            if ($LASTEXITCODE -ne 0) { throw 'Fresh exact-head checkout failed.' }
+
+            $lines = @(Get-Content -LiteralPath $env:PULL_REF_INVENTORY -Encoding ascii | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            foreach ($line in $lines) {
+              $parts = $line.Split(' ', 3, [System.StringSplitOptions]::RemoveEmptyEntries)
+              if ($parts.Count -ne 3 -or $parts[0] -notmatch '^[0-9]+-(head|merge)$' -or
+                  $parts[1] -notmatch '^refs/pull/[0-9]+/(head|merge)$' -or
+                  $parts[2] -notmatch '^[0-9a-f]{40}$') {
+                throw 'Content-free pull-reference inventory line is invalid.'
+              }
+              $destination = "refs/remotes/pull-inventory/$($parts[0])"
+              git -C $fresh -c $auth fetch --no-tags --force origin "+$($parts[1]):$destination"
+              if ($LASTEXITCODE -ne 0) { throw "Fresh pull-ref fetch failed for $($parts[0])." }
+              $fetched = (git -C $fresh rev-parse $destination).Trim().ToLowerInvariant()
+              if ($fetched -ne $parts[2]) { throw "Fresh pull-ref identity mismatch for $($parts[0])." }
+            }
+
+            & $env:PROJECT_PYTHON (Join-Path $fresh 'scripts\full_history_privacy_scan.py') --scope all --require-clean --json-output $report
+            if ($LASTEXITCODE -ne 0) { throw 'Fresh all-object privacy scan failed.' }
+            $value = Get-Content -LiteralPath $report -Raw -Encoding utf8 | ConvertFrom-Json
+            if ($value.audited_head -ne $env:TARGET_SHA.ToLowerInvariant() -or
+                $value.clean -ne $true -or [int]$value.finding_count -ne 0 -or
+                $value.remediation_required -ne $false) {
+              throw 'History report is not an exact-head zero-finding result.'
+            }
+            if ($value.matched_content_in_report -ne $false -or
+                $value.raw_paths_in_report -ne $false -or
+                $value.raw_email_addresses_in_report -ne $false) {
+              throw 'History report violated its content-free contract.'
+            }
+          }
+          finally {
+            Remove-Item -LiteralPath $fresh,$report -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Record final history confirmation
+        shell: pwsh
+        run: |
+          @"
+          ## Final history and GitHub Support purge confirmation
+          - Exact source commit: ``$env:TARGET_SHA``
+          - Sensitive historical commit: inaccessible
+          - Affected internal pull refs: inaccessible
+          - Remaining clean pull refs scanned: $env:PULL_REF_COUNT
+          - Fresh isolated all-object inventory: clean, finding count 0
+          - Matched content, raw paths and raw email addresses emitted: false
+          - History rewrite, deployment, credentials, billing and external-user admission: not performed
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Remove ephemeral dependency state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath .venv-final-history-confirmation -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $env:PULL_REF_INVENTORY -Force -ErrorAction SilentlyContinue

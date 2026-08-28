@@ -4,6 +4,41 @@ Privacy-first, zero-cost market-research software for public-source analysis, Tr
 
 > Research software only. It does not provide personalized investment advice, guarantee returns or replace verification against primary sources.
 
+
+## Final v2.0.0 quick start
+
+The final delivery bundle includes `install-final.cmd`, `install-final.ps1`, the application ZIP, its SHA-256, manifest, SPDX SBOM and final acceptance receipt. The outer delivery ZIP also has its own SHA-256.
+
+Before extraction, the downloaded outer ZIP can be checked against the separate delivery SHA-256:
+
+```powershell
+(Get-FileHash .\investor-intelligence-2.0.0-final-delivery.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+Get-Content .\investor-intelligence-2.0.0-final-delivery.sha256
+```
+
+For the simplest Windows installation, extract the delivery bundle and double-click:
+
+```text
+install-final.cmd
+```
+
+The equivalent PowerShell command is:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\install-final.ps1 -CreateDesktopShortcut
+```
+
+The installer verifies the application ZIP before extraction, installs a verified portable Python 3.12.10 runtime, applies the committed hash-locked dependency set, runs `pip check`, and executes distribution-safe offline tests. An intentional `-Force` reinstall preserves existing `data`, `reports` and `daily_briefing.log`. It does not request or install LINE, Cloudflare, IBKR or brokerage credentials.
+
+First local run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\run-local.ps1" -OpenReports
+```
+
+The first run opens the local research-universe file when it still contains the `EXAMPLE` placeholder. Edit that ignored local file, save it, and run again. Scheduling is opt-in only through `register-task.ps1 -Enable`. See `docs/FINAL_RELEASE.md`.
+
 ## Non-negotiable policies
 
 - **Public-source provenance:** source claims, project scoring, model inference and local/private preferences remain separate layers.
@@ -97,19 +132,16 @@ Validation uses the trusted self-hosted Windows runner. Active workflows are rea
 
 Validation results are tied to exact commits. A success on an older commit is never promoted to a newer head.
 
-## Current development line
+## Release source status
 
-The canonical development stack is currently:
+The former stacked PR development line has been superseded and closed. The privacy-clean source is consolidated on `main`; GitHub Support completed deletion of the affected internal pull-request references and cleared the unreferenced historical commits.
 
-```text
-PR #12  shared LINE public-only privacy boundary
-   -> PR #13  privacy-first authoritative source catalog/adapters
-      -> PR #14  physical KV isolation + Phase 4/7/8/release hardening
-```
+Final v2.0.0 source acceptance requires two successful workflows on the same exact `main` commit:
 
-PR #13 exact-head Phase 3 catalog/diversity/adapter/public-options acceptance has passed on its accepted development head. PR #14 remains Draft and must pass every exact-head BARRY gate after each change.
+- `Final History and Support Purge Confirmation` performs the fresh isolated all-object history/privacy verification, including every remaining GitHub-managed pull ref.
+- `Formal Private Release Package` performs the complete Python, Worker, Phase 1–8, reproducibility, package-verification and clean-install acceptance and produces the exact receipt/evidence artifact.
 
-Legacy PRs are development history only and are not automatically merged into the canonical line.
+After both pass, the user-facing outer delivery ZIP is assembled deterministically from that exact artifact and verified twice before direct delivery. No PR, development branch or older workflow result is release authority.
 
 ## Repository layout
 
@@ -135,7 +167,7 @@ Generated data, reports, logs, tenant data, secrets, real portfolios, runner sta
 
 ## Final release gates
 
-A final package is forbidden until, at minimum:
+The two exact-head final workflows must collectively pass all of the following before a package is delivered:
 
 - all exact-head current-tree/BARRY gates pass;
 - LINE/IBKR separation and three-namespace KV isolation pass;
@@ -144,4 +176,4 @@ A final package is forbidden until, at minimum:
 - final ZIP reproducibility, manifest, checksum and SBOM verification pass;
 - release state remains fail-closed until the exact candidate satisfies every mandatory gate.
 
-History rewrite/force-push is destructive and is never performed automatically. It requires an offline backup and explicit approval.
+The backup-first rewrite and GitHub Support pull-reference purge are complete. No further history rewrite or force-push is part of normal installation or release delivery.
