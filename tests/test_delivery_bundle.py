@@ -19,7 +19,7 @@ class DeliveryBundleTests(unittest.TestCase):
             root = Path(temporary)
             first = root / "first.txt"
             second = root / "second.txt"
-            first.write_text("alpha\n", encoding="utf-8")
+            first.write_bytes(b"alpha\n")
             second.write_bytes(b"beta\x00\xff")
             inputs = [("B.txt", second), ("a.txt", first)]
 

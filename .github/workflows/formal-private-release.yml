@@ -78,16 +78,48 @@ jobs:
             'X-GitHub-Api-Version' = '2022-11-28'
             'User-Agent' = 'investor-intelligence-formal-private-release'
           }
-          $branches = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60)
-          if ($branches.Count -lt 1) { throw 'No official branches were returned.' }
-          $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
-          if ($divergent.Count -ne 0) {
-            throw "Official branch convergence failed; divergent branch count=$($divergent.Count)."
+          function ConvertTo-FlatArray([object]$Response) {
+            $items = [System.Collections.ArrayList]::new()
+            if ($null -ne $Response) {
+              foreach ($item in $Response) { [void]$items.Add($item) }
+            }
+            return $items
           }
-          $tags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60)
+
+          $branches = @()
+          $divergent = @()
+          for ($attempt = 1; $attempt -le 12; $attempt += 1) {
+            $branchResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60
+            $branches = @(ConvertTo-FlatArray $branchResponse)
+            $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+            if ($branches.Count -ge 1 -and $divergent.Count -eq 0) { break }
+            if ($attempt -lt 12) { Start-Sleep -Seconds 5 }
+          }
+          if ($branches.Count -lt 1 -or $divergent.Count -ne 0) {
+            throw "Official branch convergence failed; count=$($branches.Count), divergent=$($divergent.Count)."
+          }
+          $tagResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60
+          $tags = @(ConvertTo-FlatArray $tagResponse)
           $divergentTags = @($tags | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
           if ($divergentTags.Count -ne 0) {
             throw "Official tag convergence failed; divergent tag count=$($divergentTags.Count)."
+          }
+
+          function Get-Status([string]$Uri) {
+            try {
+              $response = Invoke-WebRequest -Uri $Uri -Headers $headers -TimeoutSec 60
+              return [int]$response.StatusCode
+            }
+            catch {
+              if ($null -ne $_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+              throw
+            }
+          }
+          foreach ($number in @(2,3,4,5,6,7,8,9,10,11,12,13,14,16,18)) {
+            foreach ($kind in @('head','merge')) {
+              $status = Get-Status "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/ref/pull/$number/$kind"
+              if ($status -ne 404) { throw "Blocked pull ref remains reachable; pr=$number kind=$kind status=$status." }
+            }
           }
 
       - name: Resolve deterministic verified Python
@@ -243,7 +275,7 @@ jobs:
 
           Shared LINE live BID/ASK lookup remains disabled because no reviewed zero-cost provider currently satisfies automated-access and redistribution requirements. The deterministic manual calculator accepts user-supplied values and labels them unverified. LINE has no IBKR, broker-account, holdings or private-sync path.
 
-          The private development repository remains private. GitHub-managed pull refs may require platform-side purge before the repository itself could ever be made public. This does not add Git history to this clean package.
+          The private development repository remains private. GitHub Support completed the platform-side pull-reference purge before this final package was built. This clean package contains no inherited Git history.
 
           No deployment, LINE activation, IBKR connection, billing, credential installation or external-user admission was performed.
           "@ | Set-Content -LiteralPath $noticePath -Encoding utf8NoBOM

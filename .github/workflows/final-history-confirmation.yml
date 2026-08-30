@@ -58,12 +58,28 @@ jobs:
             'X-GitHub-Api-Version' = '2022-11-28'
             'User-Agent' = 'investor-intelligence-final-history-confirmation'
           }
-          $branches = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60)
-          $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+          function ConvertTo-FlatArray([object]$Response) {
+            $items = [System.Collections.ArrayList]::new()
+            if ($null -ne $Response) {
+              foreach ($item in $Response) { [void]$items.Add($item) }
+            }
+            return $items
+          }
+
+          $branches = @()
+          $divergent = @()
+          for ($attempt = 1; $attempt -le 12; $attempt += 1) {
+            $branchResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches?per_page=100" -Headers $headers -TimeoutSec 60
+            $branches = @(ConvertTo-FlatArray $branchResponse)
+            $divergent = @($branches | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
+            if ($branches.Count -ge 1 -and $divergent.Count -eq 0) { break }
+            if ($attempt -lt 12) { Start-Sleep -Seconds 5 }
+          }
           if ($branches.Count -lt 1 -or $divergent.Count -ne 0) {
             throw "Official branch convergence failed; count=$($branches.Count), divergent=$($divergent.Count)."
           }
-          $tags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60)
+          $tagResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tags?per_page=100" -Headers $headers -TimeoutSec 60
+          $tags = @(ConvertTo-FlatArray $tagResponse)
           $divergentTags = @($tags | Where-Object { ([string]$_.commit.sha).ToLowerInvariant() -ne $actual })
           if ($divergentTags.Count -ne 0) { throw "Official tag convergence failed; divergent=$($divergentTags.Count)." }
 
@@ -89,17 +105,26 @@ jobs:
           }
           $commitStatus = Get-Status "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$env:SENSITIVE_COMMIT"
           if ($commitStatus -notin @(404, 422)) { throw "Sensitive commit remains reachable; status=$commitStatus." }
-          foreach ($number in @(2,3,4,5,6,7,8,9,10,11,12,13,14,16)) {
+          foreach ($number in @(2,3,4,5,6,7,8,9,10,11,12,13,14,16,18)) {
             foreach ($kind in @('head','merge')) {
               $status = Get-Status "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/ref/pull/$number/$kind"
               if ($status -ne 404) { throw "Pull ref remains reachable; pr=$number kind=$kind status=$status." }
             }
           }
 
+          function ConvertTo-FlatArray([object]$Response) {
+            $items = [System.Collections.ArrayList]::new()
+            if ($null -ne $Response) {
+              foreach ($item in $Response) { [void]$items.Add($item) }
+            }
+            return $items
+          }
+
           $remaining = @()
           $page = 1
           do {
-            $batch = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/matching-refs/pull/?per_page=100&page=$page" -Headers $headers -TimeoutSec 60)
+            $batchResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/matching-refs/pull/?per_page=100&page=$page" -Headers $headers -TimeoutSec 60
+            $batch = @(ConvertTo-FlatArray $batchResponse)
             $remaining += $batch
             $page += 1
           } while ($batch.Count -eq 100)
@@ -213,4 +238,6 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -LiteralPath .venv-final-history-confirmation -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath $env:PULL_REF_INVENTORY -Force -ErrorAction SilentlyContinue
+          if (-not [string]::IsNullOrWhiteSpace($env:PULL_REF_INVENTORY)) {
+            Remove-Item -LiteralPath $env:PULL_REF_INVENTORY -Force -ErrorAction SilentlyContinue
+          }
