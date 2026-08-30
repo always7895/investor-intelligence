@@ -1,5 +1,7 @@
 # Investor Intelligence System
 
+[繁體中文完整安裝與使用說明](README.zh-TW.md)｜English
+
 Privacy-first, zero-cost market-research software for public-source analysis, Traditional Chinese briefings, public option observations and a shared LINE research bot.
 
 > Research software only. It does not provide personalized investment advice, guarantee returns or replace verification against primary sources.
