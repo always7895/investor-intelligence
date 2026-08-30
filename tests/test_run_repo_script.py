@@ -80,6 +80,25 @@ class RepositoryScriptLauncherTests(unittest.TestCase):
         self.assertIn("--archive", completed.stdout)
         self.assertIn("--sbom", completed.stdout)
 
+    def test_executes_formal_builder_help_under_isolated_python(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                str(ROOT / "scripts" / "run_repo_script.py"),
+                "build_formal_release.py",
+                "--help",
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("--output-dir", completed.stdout)
+        self.assertIn("--release-status", completed.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

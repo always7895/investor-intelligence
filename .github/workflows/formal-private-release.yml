@@ -227,7 +227,7 @@ jobs:
 
           & $bootstrapPython scripts/formal_release_status.py --version $env:RELEASE_VERSION --output $statusPath
           if ($LASTEXITCODE -ne 0) { throw 'Formal release status generation failed.' }
-          & $bootstrapPython scripts/build_formal_release.py --output-dir $packageRoot --version $env:RELEASE_VERSION --release-status $statusPath
+          & $bootstrapPython scripts/run_repo_script.py build_formal_release.py --output-dir $packageRoot --version $env:RELEASE_VERSION --release-status $statusPath
           if ($LASTEXITCODE -ne 0) { throw 'Formal release package build failed.' }
 
           $stem = "investor-intelligence-$env:RELEASE_VERSION"

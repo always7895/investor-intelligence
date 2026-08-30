@@ -46,6 +46,16 @@ class FinalAcceptanceRuntimeHardeningTests(unittest.TestCase):
             FORMAL,
         )
 
+    def test_formal_builder_uses_reviewed_repository_launcher(self) -> None:
+        self.assertNotIn(
+            "& $bootstrapPython scripts/build_formal_release.py",
+            FORMAL,
+        )
+        self.assertIn(
+            "& $bootstrapPython scripts/run_repo_script.py build_formal_release.py",
+            FORMAL,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
