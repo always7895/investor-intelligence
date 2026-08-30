@@ -39,7 +39,7 @@ jobs:
       IBKR_READONLY_ENABLED: 'false'
       MEMORY_FEATURE_AVAILABLE: 'false'
       PYTHONUTF8: '1'
-      SEC_USER_AGENT: 'Investor Intelligence 2.1 public research; GitHub owner always7895'
+      SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
 
     steps:
       - name: Check out exact v2.1 development SHA

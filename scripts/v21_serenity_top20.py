@@ -72,6 +72,28 @@ DOMAIN_C = {"hbm", "memory", "optical", "photonics", "laser", "fiber", "foundry"
 LOGGER = logging.getLogger("v21-serenity")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+CONTACT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def sec_headers() -> dict[str, str]:
+    contact = os.getenv("SEC_CONTACT_EMAIL", "").strip()
+    if not CONTACT_RE.fullmatch(contact):
+        raise PipelineError(
+            "SEC_CONTACT_EMAIL must be configured locally as a valid contact address"
+        )
+    value = os.getenv(
+        "SEC_USER_AGENT",
+        f"Investor Intelligence/2.1 {contact}",
+    ).strip()
+    if contact not in value:
+        raise PipelineError("SEC_USER_AGENT must include SEC_CONTACT_EMAIL")
+    return {
+        "User-Agent": value,
+        "From": contact,
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+    }
+
 
 class PipelineError(RuntimeError):
     pass
@@ -200,6 +222,11 @@ def get_json(
         time.sleep(minimum_delay)
     response = http.get(url, headers=dict(headers), timeout=(10, 45))
     if not 200 <= response.status_code < 300:
+        if response.status_code == 403 and "sec.gov" in url:
+            LOGGER.error(
+                "SEC fair-access request was rejected with HTTP 403; "
+                "no bypass will be attempted"
+            )
         if cache_path.is_file():
             try:
                 stale = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -889,13 +916,7 @@ def run(*, synthetic: bool) -> dict[str, Any]:
     if synthetic:
         bundles = synthetic_candidates()
     else:
-        user_agent = os.getenv(
-            "SEC_USER_AGENT",
-            "Investor Intelligence 2.1 public research; GitHub owner always7895",
-        ).strip()
-        if len(user_agent) < 20:
-            raise PipelineError("SEC_USER_AGENT must identify the research client")
-        headers = {"User-Agent": user_agent, "Accept": "application/json"}
+        headers = sec_headers()
         seeds = discover_candidates(policy)
         reference = sec_reference(policy, http, headers)
         candidates = validate_candidates(seeds, reference, policy)

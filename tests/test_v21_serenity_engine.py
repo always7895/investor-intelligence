@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +58,27 @@ class SerenityEngineV21Tests(unittest.TestCase):
             sum(state == "deferred_catalog_member" for state in states.values()),
             96,
         )
+
+    def test_sec_contact_regex_accepts_normal_addresses(self) -> None:
+        at = chr(64)
+        self.assertTrue(v21.CONTACT_RE.fullmatch("user" + at + "example.com"))
+        self.assertTrue(
+            v21.CONTACT_RE.fullmatch("first.last+sec" + at + "example.co")
+        )
+        self.assertFalse(v21.CONTACT_RE.fullmatch("plainaddress"))
+        self.assertFalse(v21.CONTACT_RE.fullmatch("user" + at + "example"))
+
+    def test_sec_declared_user_agent_requires_injected_contact(self) -> None:
+        contact = "test" + chr(64) + "example.invalid"
+        with mock.patch.dict(
+            v21.os.environ,
+            {"SEC_CONTACT_EMAIL": contact},
+            clear=False,
+        ):
+            headers = v21.sec_headers()
+        self.assertIn("Investor Intelligence/2.1", headers["User-Agent"])
+        self.assertIn(contact, headers["User-Agent"])
+        self.assertEqual(headers["From"], contact)
 
     def test_public_top20_contains_no_private_fields(self) -> None:
         v21.run(synthetic=True)
