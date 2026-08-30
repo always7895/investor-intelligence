@@ -58,7 +58,7 @@ function Expand-ZipVerified {
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $OutputDirectory, $true)
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $OutputDirectory)
 }
 
 if ([string]::IsNullOrWhiteSpace($DestinationPath)) {

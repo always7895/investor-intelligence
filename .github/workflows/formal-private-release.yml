@@ -289,6 +289,28 @@ jobs:
           "FORMAL_NOTICE=$noticePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "FORMAL_CLEAN_RUNTIME=$cleanRuntimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Exercise final Windows PowerShell 5.1 installer path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerRoot = Join-Path $env:LOCALAPPDATA "InvestorIntelligence-InstallerAcceptance-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          Remove-Item -LiteralPath $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
+          try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 -ArchivePath $env:FORMAL_ARCHIVE -ChecksumPath $env:FORMAL_CHECKSUM -BaseInstallRoot $installerRoot -Force
+            if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 final installer acceptance failed.' }
+            $statePath = Join-Path $installerRoot 'install-state.json'
+            if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'Final installer did not create install-state.json.' }
+            $state = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+            if ([string]$state.version -ne $env:RELEASE_VERSION) { throw 'Installed version mismatch.' }
+            if ([string]$state.source_commit -ne $env:TARGET_SHA) { throw 'Installed source commit mismatch.' }
+            $universe = Join-Path $installerRoot 'UserData\config\research-universe.local.json'
+            $preferences = Join-Path $installerRoot 'UserData\config\user-preferences.local.json'
+            if (-not (Test-Path -LiteralPath $universe -PathType Leaf)) { throw 'Fresh install did not seed research-universe.local.json.' }
+            if (-not (Test-Path -LiteralPath $preferences -PathType Leaf)) { throw 'Fresh install did not seed user-preferences.local.json.' }
+          }
+          finally {
+            Remove-Item -LiteralPath $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - name: Upload final release evidence for private delivery
         id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

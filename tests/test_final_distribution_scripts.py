@@ -41,6 +41,21 @@ class FinalDistributionScriptTests(unittest.TestCase):
         for preserved in ("data", "reports", "daily_briefing.log"):
             self.assertIn(f"'{preserved}'", text)
 
+    def test_portable_python_bootstrap_is_windows_powershell_51_compatible(self) -> None:
+        text = self._read("scripts/bootstrap_portable_python.ps1")
+        self.assertIn(
+            "[System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $OutputDirectory)",
+            text,
+        )
+        self.assertNotIn(
+            "[System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $OutputDirectory, $true)",
+            text,
+        )
+
+    def test_bootstrap_seeds_the_exact_research_universe_example(self) -> None:
+        text = self._read("bootstrap.ps1")
+        self.assertIn("research-universe.example.json", text)
+        self.assertNotIn("research-unive.example.json", text)
     def test_cmd_wrapper_invokes_checksum_verifying_installer(self) -> None:
         text = self._read("install-final.cmd")
         self.assertIn("-ExecutionPolicy Bypass", text)

@@ -230,7 +230,7 @@ finally {
 $UniversePath = Join-Path $UserConfigRoot 'research-universe.local.json'
 $PreferencesPath = Join-Path $UserConfigRoot 'user-preferences.local.json'
 if (-not (Test-Path -LiteralPath $UniversePath -PathType Leaf)) {
-    Copy-Item -LiteralPath (Join-Path $ApplicationRoot 'config\research-unive.example.json') -Destination $UniversePath
+    Copy-Item -LiteralPath (Join-Path $ApplicationRoot 'config\research-universe.example.json') -Destination $UniversePath
 }
 if (-not (Test-Path -LiteralPath $PreferencesPath -PathType Leaf)) {
     Copy-Item -LiteralPath (Join-Path $ApplicationRoot 'config\user-preferences.example.json') -Destination $PreferencesPath

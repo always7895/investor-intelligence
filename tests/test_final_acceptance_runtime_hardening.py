@@ -46,6 +46,17 @@ class FinalAcceptanceRuntimeHardeningTests(unittest.TestCase):
             FORMAL,
         )
 
+    def test_formal_workflow_exercises_windows_powershell_51_installer(self) -> None:
+        self.assertIn(
+            "Exercise final Windows PowerShell 5.1 installer path",
+            FORMAL,
+        )
+        self.assertIn(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File",
+            FORMAL,
+        )
+        self.assertIn("install-final.ps1", FORMAL)
+        self.assertIn("-BaseInstallRoot $installerRoot", FORMAL)
     def test_formal_builder_uses_reviewed_repository_launcher(self) -> None:
         self.assertNotIn(
             "& $bootstrapPython scripts/build_formal_release.py",
