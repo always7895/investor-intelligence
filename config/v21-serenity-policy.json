@@ -1,0 +1,53 @@
+{
+  "allowed_exchanges": [
+    "Nasdaq",
+    "NYSE",
+    "NYSE American",
+    "Nasdaq Capital Market",
+    "Nasdaq Global Market",
+    "Nasdaq Global Select"
+  ],
+  "candidate_cache_hours": 12,
+  "candidate_screeners": [
+    {
+      "name": "growth_technology_stocks",
+      "weight": 6
+    },
+    {
+      "name": "undervalued_growth_stocks",
+      "weight": 5
+    },
+    {
+      "name": "most_actives",
+      "weight": 2
+    },
+    {
+      "name": "day_gainers",
+      "weight": 1
+    }
+  ],
+  "candidate_seed_limit": 120,
+  "factor_weights": {
+    "chokepoint": 15,
+    "demand_wave": 15,
+    "evidence_quality": 15,
+    "pricing_power": 15,
+    "replacement_friction": 10,
+    "tam_capture": 15,
+    "valuation_expectations": 15
+  },
+  "maximum_risk_penalty": 20,
+  "methodology": "serenity-first-v2.1.0",
+  "minimum_average_volume": 250000,
+  "minimum_market_cap": 500000000,
+  "minimum_price": 5,
+  "per_screener_count": 100,
+  "required_catalog_count": 99,
+  "schema_version": 1,
+  "sec_candidate_limit": 50,
+  "sec_companyfacts_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+  "sec_minimum_interval_seconds": 0.14,
+  "sec_ticker_exchange_url": "https://www.sec.gov/files/company_tickers_exchange.json",
+  "top_count": 20,
+  "world_bank_url": "https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
+}

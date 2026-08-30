@@ -1,0 +1,126 @@
+name: V2.1 Serenity Engine Acceptance
+
+on:
+  push:
+    branches:
+      - development/v2.1.0-serenity-top20-line
+    paths:
+      - "scripts/v21_serenity_top20.py"
+      - "config/v21-serenity-policy.json"
+      - "config/v21-source-activation.json"
+      - "tests/test_v21_serenity_engine.py"
+      - ".github/workflows/v21-serenity-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v21-serenity-engine
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: >-
+      github.repository == 'always7895/investor-intelligence' &&
+      github.actor == 'always7895' &&
+      github.ref == 'refs/heads/development/v2.1.0-serenity-top20-line'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 180
+    env:
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      PUBLIC_KV_SYNC_ENABLED: 'false'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      PYTHONUTF8: '1'
+      SEC_USER_AGENT: 'Investor Intelligence 2.1 public research; GitHub owner always7895'
+
+    steps:
+      - name: Check out exact v2.1 development SHA
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify branch, parent and noreply commit identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($head -ne $env:GITHUB_SHA.ToLowerInvariant()) { throw "Checkout mismatch: $head" }
+          $identity = (git show -s --format='%ae|%ce' HEAD).Trim()
+          if ($identity -notmatch '^[0-9]+\+always7895@users\.noreply\.github\.com\|[0-9]+\+always7895@users\.noreply\.github\.com$') {
+            throw 'V2.1 staging commit does not use GitHub noreply identity.'
+          }
+
+      - name: Resolve verified Python and immutable dependencies
+        shell: pwsh
+        run: |
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v21-serenity
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Hash-locked dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'pip check failed.' }
+
+      - name: Run repository privacy, policy and complete Python regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($args in @(
+            @('scripts/workflow_supply_chain_gate.py'),
+            @('scripts/actions_storage_policy_gate.py'),
+            @('scripts/security_check.py'),
+            @('scripts/authoritative_source_catalog.py'),
+            @('scripts/authoritative_adapter_gate.py'),
+            @('scripts/full_history_privacy_scan.py','--scope','head','--require-clean'),
+            @('-m','compileall','-q','scripts','tests'),
+            @('scripts/run_offline_tests.py','--repository'),
+            @('-m','unittest','discover','-s','tests','-p','test_v21_serenity_engine.py','-v'),
+            @('scripts/v21_serenity_top20.py','--self-test')
+          )) {
+            & $env:PROJECT_PYTHON @args
+            if ($LASTEXITCODE -ne 0) { throw "Gate failed: $($args -join ' ')" }
+          }
+
+      - name: Run one live Serenity-first Top 20 acceptance
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath data\cache\v21 -Recurse -Force -ErrorAction SilentlyContinue
+          & $env:PROJECT_PYTHON scripts\v21_serenity_top20.py
+          if ($LASTEXITCODE -ne 0) { throw 'Live Serenity engine acceptance failed.' }
+          $top = @(Get-Content -LiteralPath data\cache\top20_public_latest.json -Raw -Encoding utf8 | ConvertFrom-Json)
+          if ($top.Count -ne 20) { throw "Expected 20 ranked stocks, found $($top.Count)." }
+          for ($i = 0; $i -lt $top.Count; $i += 1) {
+            if ([int]$top[$i].rank -ne ($i + 1)) { throw 'Rank ordering failed.' }
+          }
+
+      - name: Record acceptance
+        shell: pwsh
+        run: |
+          @"
+          ## V2.1 Serenity Engine
+          - exact development SHA: ``$env:GITHUB_SHA``
+          - full 99-source planner: PASS
+          - SEC EDGAR + World Bank reviewed overlay: PASS
+          - yfinance T3 discovery-only boundary: PASS
+          - Serenity seven-factor synthetic acceptance: PASS
+          - Aschenbrenner overlay separation: PASS
+          - live exact Top 20: PASS
+          - repository privacy/tests: PASS
+          - LINE/Cloudflare/IBKR/billing deployment: not performed
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+      - name: Cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath .venv-v21-serenity -Recurse -Force -ErrorAction SilentlyContinue

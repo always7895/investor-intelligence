@@ -1,0 +1,44 @@
+{
+  "automatic_activation": false,
+  "discovery_only_sources": {
+    "yahoo_finance_public_unofficial": {
+      "authoritative": false,
+      "purpose": "local_candidate_seed_and_market_observation_only",
+      "raw_payload_redistribution": false,
+      "runtime_enabled": false
+    }
+  },
+  "free_only": true,
+  "public_data_only": true,
+  "schema_version": 1,
+  "selected_sources": {
+    "sec_edgar": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    },
+    "world_bank_indicators": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    }
+  }
+}
