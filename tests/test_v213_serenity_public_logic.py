@@ -20,20 +20,30 @@ class SerenityPublicLogicV213Tests(unittest.TestCase):
         self.policy = MODULE.load_policy()
 
     def fixture(self, **overrides):
+        filing = "https://example.com/filing"
+        customer = "https://example.com/customer"
         row = {
             "ticker": "TEST",
-            "architecture": {"current": "1.6T", "next": "CPO"},
+            "focal_company_node": "TEST",
+            "architecture": {"current": "1.6T", "next": "CPO", "evidence_urls": [customer]},
             "supply_chain_graph": [
-                {"from": "hyperscaler", "to": "module", "evidence_url": "https://example.com/a"},
-                {"from": "module", "to": "laser", "evidence_url": "https://example.com/b"},
+                {"from": "hyperscaler", "to": "module", "relationship": "uses", "evidence_url": customer, "as_of": "2026-01-01"},
+                {"from": "module", "to": "TEST", "relationship": "qualified supplier", "evidence_url": customer, "as_of": "2026-01-01"},
             ],
             "dependency_signals": ["semi_monopoly", "qualification_constraint"],
             "beneficiary_signal": True,
             "signals": ["qualification", "customer_named_ramp"],
-            "information_gap": {"coverage": "low"},
+            "signal_evidence": [
+                {"signal": "semi_monopoly", "evidence_url": customer, "as_of": "2026-01-01"},
+                {"signal": "qualification_constraint", "evidence_url": customer, "as_of": "2026-01-01"},
+                {"signal": "qualification", "evidence_url": filing, "as_of": "2026-01-01"},
+                {"signal": "customer_named_ramp", "evidence_url": customer, "as_of": "2026-01-01"},
+            ],
+            "information_gap": {"coverage": "low", "evidence_urls": [customer]},
+            "company_capture": {"state": "POSITIVE", "evidence_urls": [filing]},
             "evidence": [
-                {"tier": "primary_strong", "url": "https://example.com/filing"},
-                {"tier": "corroborating", "url": "https://example.com/customer"},
+                {"tier": "primary_strong", "url": filing},
+                {"tier": "corroborating", "url": customer},
             ],
             "thesis_killers": [],
             "disconfirmation_conditions": ["qualified alternative removes the constraint"],
@@ -41,77 +51,123 @@ class SerenityPublicLogicV213Tests(unittest.TestCase):
                 "operating_thesis_horizon": "company-specific",
                 "architecture_ramp_window": "source-specific",
             },
+            "serenity_source_views": [],
             "source_delta": [],
             "system_operationalization_score": 90,
         }
         row.update(overrides)
         return row
 
-    def test_policy_forbids_claiming_official_serenity_score(self) -> None:
+    def test_policy_is_fail_closed_and_severe_signals_are_usable(self) -> None:
+        self.assertEqual(self.policy["schema_version"], 2)
         self.assertEqual(self.policy["legacy_quantitative_overlay_label"], "System operationalization score")
         self.assertIn("Serenity score", self.policy["forbid_labels"])
         self.assertTrue(all(self.policy["fail_closed"].values()))
+        self.assertTrue(set(self.policy["severe_break_signals"]).issubset(self.policy["thesis_killers"]))
+        self.assertNotIn("customer_named_dependency", self.policy["bottleneck_proving_signals"])
 
-    def test_keyword_or_margin_alone_cannot_create_bottleneck(self) -> None:
-        result = MODULE.assess_public_logic(
-            self.fixture(
-                dependency_signals=[],
-                beneficiary_signal=True,
-                signals=["revenue_expansion"],
-            ),
-            self.policy,
-        )
-        fidelity = result["public_logic_fidelity"]
-        self.assertEqual(fidelity["dependency_role"], "BENEFICIARY")
-        self.assertEqual(fidelity["thesis_class"], "EXPANSION_THESIS")
-
-    def test_explicit_dependency_and_primary_evidence_can_support_bottleneck(self) -> None:
+    def test_evidence_bound_dependency_can_support_bottleneck(self) -> None:
         result = MODULE.assess_public_logic(self.fixture(), self.policy)
         fidelity = result["public_logic_fidelity"]
         self.assertEqual(fidelity["dependency_role"], "SEMI_MONOPOLY")
         self.assertEqual(fidelity["thesis_class"], "BOTTLENECK_THESIS")
         self.assertEqual(fidelity["thesis_state"], "COMMERCIAL_VALIDATION")
+        self.assertEqual(fidelity["company_capture"]["state"], "POSITIVE")
+        self.assertTrue(fidelity["architecture_evidence_bound"])
+        self.assertTrue(fidelity["graph_touches_focal_company"])
 
-    def test_severe_architecture_killer_overrides_positive_system_score(self) -> None:
+    def test_unbound_dependency_signal_is_not_used_as_proof(self) -> None:
+        result = MODULE.assess_public_logic(self.fixture(signal_evidence=[]), self.policy)
+        fidelity = result["public_logic_fidelity"]
+        self.assertEqual(fidelity["dependency_role"], "BENEFICIARY")
+        self.assertNotEqual(fidelity["thesis_class"], "BOTTLENECK_THESIS")
+        self.assertTrue(any("lacks evidence binding" in warning for warning in result["warnings"]))
+
+    def test_customer_named_dependency_alone_does_not_prove_chokepoint(self) -> None:
+        customer = "https://example.com/customer"
+        result = MODULE.assess_public_logic(
+            self.fixture(
+                dependency_signals=["customer_named_dependency"],
+                signal_evidence=[
+                    {"signal": "customer_named_dependency", "evidence_url": customer, "as_of": "2026-01-01"}
+                ],
+                signals=[],
+            ),
+            self.policy,
+        )
+        fidelity = result["public_logic_fidelity"]
+        self.assertEqual(fidelity["dependency_role"], "BENEFICIARY")
+        self.assertEqual(fidelity["thesis_class"], "UNPROVEN")
+        self.assertIn("customer_named_dependency", result["supported_signals"]["dependency"])
+
+    def test_graph_must_touch_focal_company_to_promote_dependency_role(self) -> None:
+        customer = "https://example.com/customer"
+        result = MODULE.assess_public_logic(
+            self.fixture(supply_chain_graph=[
+                {"from": "hyperscaler", "to": "module", "relationship": "uses", "evidence_url": customer, "as_of": "2026-01-01"}
+            ]),
+            self.policy,
+        )
+        self.assertEqual(result["public_logic_fidelity"]["dependency_role"], "BENEFICIARY")
+        self.assertTrue(any("focal company" in warning for warning in result["warnings"]))
+
+    def test_architecture_without_bound_evidence_cannot_create_bottleneck(self) -> None:
+        result = MODULE.assess_public_logic(
+            self.fixture(architecture={"current": "CPO", "evidence_urls": ["https://example.com/not-in-evidence"]}),
+            self.policy,
+        )
+        self.assertEqual(result["public_logic_fidelity"]["thesis_class"], "UNPROVEN")
+        self.assertFalse(result["public_logic_fidelity"]["architecture_evidence_bound"])
+
+    def test_severe_architecture_killer_requires_evidence_and_overrides_score(self) -> None:
+        filing = "https://example.com/filing"
         result = MODULE.assess_public_logic(
             self.fixture(
                 thesis_killers=["architecture_bypass"],
+                signal_evidence=self.fixture()["signal_evidence"] + [
+                    {"signal": "architecture_bypass", "evidence_url": filing, "as_of": "2026-01-02"}
+                ],
                 system_operationalization_score=100,
             ),
             self.policy,
         )
         self.assertEqual(result["public_logic_fidelity"]["thesis_state"], "BROKEN")
         self.assertFalse(result["system_score_can_override_broken_thesis"])
-        self.assertTrue(result["warnings"])
 
-    def test_material_dilution_weakens_thesis_without_needing_revenue_decline(self) -> None:
+    def test_unbound_killer_cannot_break_thesis(self) -> None:
+        result = MODULE.assess_public_logic(self.fixture(thesis_killers=["architecture_bypass"]), self.policy)
+        self.assertNotEqual(result["public_logic_fidelity"]["thesis_state"], "BROKEN")
+        self.assertIn("architecture_bypass", result["public_logic_fidelity"]["unproven_thesis_killer_claims"])
+
+    def test_destroyed_company_capture_breaks_equity_capture(self) -> None:
+        filing = "https://example.com/filing"
         result = MODULE.assess_public_logic(
-            self.fixture(thesis_killers=["repeated_atm_or_material_dilution"]),
+            self.fixture(company_capture={"state": "DESTROYED", "evidence_urls": [filing]}),
             self.policy,
         )
-        self.assertEqual(result["public_logic_fidelity"]["thesis_state"], "THESIS_WEAKENING")
+        self.assertEqual(result["public_logic_fidelity"]["thesis_state"], "BROKEN")
 
-    def test_foreign_ticker_is_not_excluded_for_lack_of_sec_companyfacts(self) -> None:
+    def test_company_capture_without_evidence_is_downgraded(self) -> None:
         result = MODULE.assess_public_logic(
-            self.fixture(
-                ticker="SIVE",
-                evidence=[{"tier": "primary_strong", "url": "https://example.se/exchange-announcement"}],
-            ),
+            self.fixture(company_capture={"state": "STRONG", "evidence_urls": []}),
             self.policy,
         )
-        self.assertEqual(result["ticker"], "SIVE")
-        self.assertNotEqual(result["public_logic_fidelity"]["thesis_state"], "INSUFFICIENT_EVIDENCE")
-
-    def test_disconfirmation_conditions_are_mandatory(self) -> None:
-        with self.assertRaises(MODULE.FidelityError):
-            MODULE.assess_public_logic(self.fixture(disconfirmation_conditions=[]), self.policy)
+        self.assertEqual(result["public_logic_fidelity"]["company_capture"]["state"], "UNPROVEN")
 
     def test_lead_only_social_evidence_cannot_prove_company_economics(self) -> None:
+        social = "https://x.com/example/status/1"
         result = MODULE.assess_public_logic(
             self.fixture(
+                architecture={"current": "CPO", "evidence_urls": [social]},
+                supply_chain_graph=[
+                    {"from": "module", "to": "TEST", "relationship": "claimed supplier", "evidence_url": social, "as_of": "2026-01-01"}
+                ],
                 dependency_signals=["semi_monopoly"],
-                evidence=[{"tier": "lead_only", "url": "https://x.com/example/status/1"}],
                 signals=[],
+                signal_evidence=[{"signal": "semi_monopoly", "evidence_url": social, "as_of": "2026-01-01"}],
+                evidence=[{"tier": "lead_only", "url": social}],
+                company_capture={"state": "UNPROVEN"},
+                information_gap={"state": "UNKNOWN", "evidence_urls": []},
             ),
             self.policy,
         )
@@ -119,30 +175,70 @@ class SerenityPublicLogicV213Tests(unittest.TestCase):
         self.assertEqual(result["public_logic_fidelity"]["thesis_state"], "INSUFFICIENT_EVIDENCE")
         self.assertIn("Lead-only evidence cannot prove company economics", result["warnings"])
 
-    def test_source_delta_is_append_only_structured_output(self) -> None:
+    def test_foreign_ticker_is_not_excluded_for_missing_sec_companyfacts(self) -> None:
+        result = MODULE.assess_public_logic(self.fixture(ticker="SIVE"), self.policy)
+        self.assertEqual(result["ticker"], "SIVE")
+
+    def test_source_delta_is_chronological_and_cross_run_append_only_is_not_overclaimed(self) -> None:
         source_delta = [
             {
                 "url": "https://x.com/aleabitoreddit/status/1",
                 "published_at": "2026-01-01T00:00:00Z",
+                "ticker_or_theme": "TEST",
+                "source_view": "initial thesis",
                 "stance": "positive",
+                "horizon": "company-specific",
                 "what_changed_vs_prior_source_view": "initial thesis",
+                "retrieval_status": "retrieved",
             },
             {
                 "url": "https://x.com/aleabitoreddit/status/2",
                 "published_at": "2026-02-01T00:00:00Z",
+                "ticker_or_theme": "TEST",
+                "source_view": "financing risk increased",
                 "stance": "mixed",
+                "horizon": "company-specific",
                 "what_changed_vs_prior_source_view": "financing risk increased",
+                "retrieval_status": "retrieved",
             },
         ]
         result = MODULE.assess_public_logic(self.fixture(source_delta=source_delta), self.policy)
         self.assertEqual(result["public_logic_fidelity"]["source_delta"], source_delta)
+        self.assertFalse(result["public_logic_fidelity"]["cross_run_source_delta_append_only_verified"])
+        with self.assertRaises(MODULE.FidelityError):
+            MODULE.assess_public_logic(self.fixture(source_delta=list(reversed(source_delta))), self.policy)
 
-    def test_policy_has_no_numeric_serenity_factor_weights(self) -> None:
+    def test_source_view_is_separate_from_company_fact_evidence(self) -> None:
+        result = MODULE.assess_public_logic(
+            self.fixture(serenity_source_views=[{
+                "url": "https://x.com/aleabitoreddit/status/1",
+                "published_at": "2026-01-01T00:00:00Z",
+                "source_view": "public market opinion",
+                "stance": "positive",
+                "horizon": "company-specific",
+                "retrieval_status": "retrieved",
+            }]),
+            self.policy,
+        )
+        self.assertEqual(len(result["serenity_source_views"]), 1)
+        self.assertEqual(result["evidence_summary"]["primary"], 1)
+
+    def test_disconfirmation_conditions_are_mandatory(self) -> None:
+        with self.assertRaises(MODULE.FidelityError):
+            MODULE.assess_public_logic(self.fixture(disconfirmation_conditions=[]), self.policy)
+
+    def test_unknown_signal_is_rejected(self) -> None:
+        with self.assertRaises(MODULE.FidelityError):
+            MODULE.assess_public_logic(self.fixture(signals=["made_up_signal"]), self.policy)
+
+    def test_system_score_is_bounded_and_not_called_serenity_score(self) -> None:
         encoded = json.dumps(self.policy, sort_keys=True).casefold()
         self.assertNotIn("factor_weights", encoded)
         self.assertNotIn("maximum_risk_penalty", encoded)
         self.assertNotIn("minimum_market_cap", encoded)
         self.assertNotIn("minimum_price", encoded)
+        with self.assertRaises(MODULE.FidelityError):
+            MODULE.assess_public_logic(self.fixture(system_operationalization_score=101), self.policy)
 
 
 if __name__ == "__main__":
