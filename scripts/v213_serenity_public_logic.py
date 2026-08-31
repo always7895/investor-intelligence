@@ -100,19 +100,23 @@ def _evidence_summary(rows: Any) -> EvidenceSummary:
         if not isinstance(row, Mapping):
             continue
         tier = _normalize_tier(row.get("tier"))
+        url = str(row.get("url") or "").strip()
+        # Provenance-less rows are not counted as proof. They can be preserved by
+        # upstream collectors, but the fidelity engine must not let them raise
+        # evidence confidence or lifecycle state.
+        if not HTTPS_RE.match(url):
+            continue
         if tier == "primary_strong":
             primary += 1
         elif tier == "corroborating":
             corroborating += 1
         else:
             lead_only += 1
-        url = str(row.get("url") or "").strip()
-        if HTTPS_RE.match(url):
-            if url not in urls:
-                urls.append(url)
-            current = tiers.get(url)
-            if current is None or strength[tier] > strength[current]:
-                tiers[url] = tier
+        if url not in urls:
+            urls.append(url)
+        current = tiers.get(url)
+        if current is None or strength[tier] > strength[current]:
+            tiers[url] = tier
     return EvidenceSummary(primary, corroborating, lead_only, tuple(urls), tiers)
 
 
@@ -125,6 +129,17 @@ def _iso_sort_key(value: str) -> tuple[int, str]:
         return (0, parsed.isoformat())
     except ValueError:
         return (1, text)
+
+
+def _valid_dateish(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return True
+    except ValueError:
+        return False
 
 
 def _validate_signal_claims(
@@ -149,7 +164,8 @@ def _validate_signal_claims(
             if not isinstance(row, Mapping) or str(row.get("signal") or "").strip() != signal:
                 continue
             url = str(row.get("evidence_url") or "").strip()
-            if not HTTPS_RE.match(url):
+            as_of = str(row.get("as_of") or "").strip()
+            if not HTTPS_RE.match(url) or not _valid_dateish(as_of):
                 continue
             if url not in evidence.tiers_by_url:
                 continue
@@ -170,6 +186,7 @@ def _validate_architecture(record: Mapping[str, Any], evidence: EvidenceSummary)
         return {}, False, ["Architecture/supercycle map is missing"]
     architecture = dict(raw)
     has_identity = bool(str(architecture.get("current") or architecture.get("cycle") or "").strip())
+    dated = _valid_dateish(architecture.get("as_of"))
     urls = architecture.get("evidence_urls")
     if not isinstance(urls, Sequence) or isinstance(urls, (str, bytes, bytearray)):
         urls = []
@@ -178,9 +195,11 @@ def _validate_architecture(record: Mapping[str, Any], evidence: EvidenceSummary)
     warnings: list[str] = []
     if not has_identity:
         warnings.append("Architecture/supercycle identity is missing")
+    if not dated:
+        warnings.append("Architecture/supercycle claim lacks a valid as_of date")
     if not strong:
         warnings.append("Architecture/supercycle claim lacks primary/corroborating evidence binding")
-    return architecture, bool(has_identity and strong), warnings
+    return architecture, bool(has_identity and dated and strong), warnings
 
 
 def _validate_graph(record: Mapping[str, Any], evidence: EvidenceSummary) -> tuple[list[dict[str, Any]], bool, bool, list[str]]:
@@ -200,7 +219,7 @@ def _validate_graph(record: Mapping[str, Any], evidence: EvidenceSummary) -> tup
         url = str(edge.get("evidence_url") or "").strip()
         as_of = str(edge.get("as_of") or "").strip()
         tier = evidence.tiers_by_url.get(url)
-        if not source or not target or not relationship or not as_of or tier not in {"primary_strong", "corroborating"}:
+        if not source or not target or not relationship or not _valid_dateish(as_of) or tier not in {"primary_strong", "corroborating"}:
             warnings.append(f"Supply-chain edge {index + 1} is incomplete or lacks bound evidence")
             continue
         valid.append(edge)
@@ -214,6 +233,21 @@ def _validate_graph(record: Mapping[str, Any], evidence: EvidenceSummary) -> tup
     if valid and not touches_focal:
         warnings.append("Supply-chain graph does not contain an evidence-bound edge touching the focal company node")
     return valid, bool(valid), touches_focal, warnings
+
+
+def _beneficiary_supported(record: Mapping[str, Any], evidence: EvidenceSummary) -> tuple[bool, list[str]]:
+    if not bool(record.get("beneficiary_signal")):
+        return False, []
+    urls = record.get("beneficiary_evidence_urls")
+    if not isinstance(urls, Sequence) or isinstance(urls, (str, bytes, bytearray)):
+        urls = []
+    supported = any(
+        evidence.tiers_by_url.get(str(url)) in {"primary_strong", "corroborating"}
+        for url in urls
+    )
+    if supported:
+        return True, []
+    return False, ["Beneficiary classification was asserted without primary/corroborating evidence binding"]
 
 
 def _dependency_role(signals: set[str], beneficiary_signal: bool) -> str:
@@ -321,13 +355,14 @@ def _thesis_state(
     institutional_signals: set[str],
     killers: set[str],
     severe_break_signals: set[str],
-    capture_state: str,
 ) -> str:
-    if killers & severe_break_signals or capture_state == "DESTROYED":
+    if killers & severe_break_signals:
         return "BROKEN"
-    if killers or capture_state == "WEAK":
+    if killers:
         return "THESIS_WEAKENING"
     if evidence.primary + evidence.corroborating == 0:
+        return "INSUFFICIENT_EVIDENCE"
+    if thesis_class == "UNPROVEN":
         return "INSUFFICIENT_EVIDENCE"
     commercial = bool(commercial_signals)
     institutional = bool(institutional_signals)
@@ -335,7 +370,7 @@ def _thesis_state(
         "SINGLE_SOURCE", "SEMI_MONOPOLY", "QUALIFICATION_CONSTRAINED",
         "CAPACITY_BOTTLENECK",
     }
-    if information_gap == "CONSENSUS" and commercial:
+    if information_gap == "CONSENSUS" and commercial and institutional:
         return "CONSENSUS"
     if commercial and institutional:
         return "INSTITUTIONAL_VALIDATION"
@@ -379,9 +414,16 @@ def _validated_source_views(record: Mapping[str, Any], policy: Mapping[str, Any]
         if not HTTPS_RE.match(url) or stance not in allowed_stance or retrieval not in allowed_retrieval:
             warnings.append(f"Serenity source view {index + 1} has invalid URL/stance/retrieval state")
             continue
-        if retrieval == "retrieved" and not str(item.get("source_view") or "").strip():
-            warnings.append(f"Serenity source view {index + 1} is retrieved but has no paraphrased source view")
-            continue
+        if retrieval == "retrieved":
+            if not str(item.get("source_view") or "").strip():
+                warnings.append(f"Serenity source view {index + 1} is retrieved but has no paraphrased source view")
+                continue
+            if not _valid_dateish(item.get("published_at")):
+                warnings.append(f"Serenity source view {index + 1} is retrieved but lacks a valid published_at")
+                continue
+            if not str(item.get("horizon") or "").strip():
+                warnings.append(f"Serenity source view {index + 1} is retrieved but lacks a horizon")
+                continue
         valid.append(item)
     return valid, warnings
 
@@ -408,6 +450,17 @@ def _validated_source_delta(record: Mapping[str, Any], policy: Mapping[str, Any]
         retrieval = str(item.get("retrieval_status") or "").strip().casefold()
         if not HTTPS_RE.match(url) or stance not in allowed_stance or retrieval not in allowed_retrieval:
             warnings.append(f"Source-delta item {index + 1} has invalid URL/stance/retrieval state")
+            continue
+        if retrieval == "retrieved" and not _valid_dateish(published):
+            warnings.append(f"Source-delta item {index + 1} is retrieved but has invalid published_at")
+            continue
+        if retrieval == "retrieved" and (
+            not str(item.get("ticker_or_theme") or "").strip()
+            or not str(item.get("source_view") or "").strip()
+            or not str(item.get("horizon") or "").strip()
+            or not str(item.get("what_changed_vs_prior_source_view") or "").strip()
+        ):
+            warnings.append(f"Source-delta item {index + 1} is retrieved but has empty semantic fields")
             continue
         identity = (url, published)
         if identity in seen:
@@ -474,8 +527,11 @@ def assess_public_logic(record: Mapping[str, Any], policy: Mapping[str, Any] | N
     graph, graph_valid, graph_touches_focal, w = _validate_graph(record, evidence)
     warnings.extend(w)
 
+    # A dependency claim cannot be promoted to a dependency role unless the
+    # supply-chain graph itself is evidence-bound and touches the focal company.
     effective_dependency = supported_dependency if graph_valid and graph_touches_focal else set()
-    beneficiary_signal = bool(record.get("beneficiary_signal"))
+    beneficiary_signal, w = _beneficiary_supported(record, evidence)
+    warnings.extend(w)
     dependency_role = _dependency_role(effective_dependency, beneficiary_signal)
 
     information_gap, w = _information_gap(record, evidence)
@@ -503,7 +559,6 @@ def assess_public_logic(record: Mapping[str, Any], policy: Mapping[str, Any] | N
         institutional_signals=institutional_signals,
         killers=supported_killers,
         severe_break_signals=set(policy["severe_break_signals"]),
-        capture_state=capture_state,
     )
 
     disconfirmation = record.get("disconfirmation_conditions")
@@ -592,13 +647,14 @@ def _fixture(**overrides: Any) -> dict[str, Any]:
     value: dict[str, Any] = {
         "ticker": "TEST",
         "focal_company_node": "TEST",
-        "architecture": {"current": "pluggable optics", "next": "CPO", "evidence_urls": [customer]},
+        "architecture": {"current": "pluggable optics", "next": "CPO", "as_of": "2026-01-01", "evidence_urls": [customer]},
         "supply_chain_graph": [
             {"from": "hyperscaler", "to": "module", "relationship": "uses", "evidence_url": customer, "as_of": "2026-01-01"},
             {"from": "module", "to": "TEST", "relationship": "qualified supplier", "evidence_url": customer, "as_of": "2026-01-01"},
         ],
         "dependency_signals": ["semi_monopoly", "qualification_constraint"],
         "beneficiary_signal": True,
+        "beneficiary_evidence_urls": [customer],
         "signals": ["qualification", "customer_named_ramp"],
         "signal_evidence": [
             {"signal": "semi_monopoly", "evidence_url": customer, "as_of": "2026-01-01"},
@@ -632,6 +688,7 @@ def self_test() -> None:
     assert fidelity["thesis_state"] == "COMMERCIAL_VALIDATION"
     assert fidelity["company_capture"]["state"] == "POSITIVE"
 
+    # A severe killer must be evidence-bound before it can break a thesis.
     filing = "https://example.com/filing"
     broken = assess_public_logic(
         _fixture(
@@ -646,6 +703,7 @@ def self_test() -> None:
     assert broken["public_logic_fidelity"]["thesis_state"] == "BROKEN"
     assert broken["system_score_can_override_broken_thesis"] is False
 
+    # Customer-named dependency alone validates a dependency but does not prove a chokepoint.
     customer = "https://example.com/customer"
     named = assess_public_logic(
         _fixture(
