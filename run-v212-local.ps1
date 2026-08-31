@@ -99,9 +99,14 @@ try {
     if (
         [string]$report.product_version -ne '2.1.2' -or
         @($report.records).Count -ne 20 -or
-        (@($report.display_columns) -join '/') -ne '股票/長期投資報酬率/短期投資報酬率/行業別/獲利簡述'
+        (@($report.display_columns) -join '/') -ne '股票/長期投資報酬率（近2年年化）/短期投資報酬率（近6個月）/行業別/獲利簡述'
     ) {
-        throw 'v2.1.2 Top 20 report closed presentation contract failed.'
+        throw 'v2.1.2 Top 20 closed presentation contract failed.'
+    }
+    foreach ($row in @($report.records)) {
+        if ([string]::IsNullOrWhiteSpace([string]$row.industry) -or [string]$row.industry -notmatch '[\u3400-\u9fff]') {
+            throw "v2.1.2 Top 20 industry is not Traditional-Chinese localized: $($row.ticker)"
+        }
     }
 
     if (-not $NoSync) {
@@ -119,8 +124,9 @@ try {
     }
 
     Write-Host "Investor Intelligence v2.1.2 refresh completed ($ScheduledSlot)." -ForegroundColor Green
-    Write-Host 'TOP20_DISPLAY_COLUMNS = 股票 / 長期投資報酬率 / 短期投資報酬率 / 行業別 / 獲利簡述' -ForegroundColor Green
+    Write-Host 'TOP20_DISPLAY_COLUMNS = 股票 / 長期投資報酬率（近2年年化） / 短期投資報酬率（近6個月） / 行業別 / 獲利簡述' -ForegroundColor Green
     Write-Host 'Long term = trailing ~2-year adjusted-close CAGR; short term = trailing ~6-month adjusted-close return.' -ForegroundColor Green
+    Write-Host 'Industry = Traditional-Chinese localized public market taxonomy.' -ForegroundColor Green
     Write-Host 'Profit summary is deterministic SEC EDGAR public evidence; no owner portfolio/brokerage data was used.' -ForegroundColor Green
     if ($OpenReports -and (Test-Path -LiteralPath (Join-Path $ApplicationRoot 'reports') -PathType Container)) {
         Start-Process explorer.exe -ArgumentList @((Join-Path $ApplicationRoot 'reports'))
