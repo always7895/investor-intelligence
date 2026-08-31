@@ -36,6 +36,7 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
 foreach ($relative in @(
     'scripts\v211_serenity_top20.py',
     'scripts\v211_serenity_top20_evidence_gate.py',
+    'scripts\v211_serenity_top20_coverage_gate.py',
     'scripts\build_v211_public_options.py',
     'scripts\build_v211_public_snapshot.py',
     'config\v211-serenity-policy.json'
@@ -80,11 +81,11 @@ try {
 
     Push-Location $ApplicationRoot
     try {
-        $engineArguments = @('scripts\v211_serenity_top20_evidence_gate.py')
+        $engineArguments = @('scripts\v211_serenity_top20_coverage_gate.py')
         if ($Synthetic) { $engineArguments += '--synthetic' }
         & $PythonExe @engineArguments
         if ($LASTEXITCODE -ne 0) {
-            throw "v$PatchVersion evidence-gated Serenity research-universe pipeline failed with exit code $LASTEXITCODE."
+            throw "v$PatchVersion coverage/evidence-gated Serenity research-universe pipeline failed with exit code $LASTEXITCODE."
         }
 
         if (-not $Synthetic) {
@@ -124,6 +125,7 @@ try {
     }
 
     Write-Host "Investor Intelligence v$PatchVersion research + public-options refresh completed ($ScheduledSlot)." -ForegroundColor Green
+    Write-Host 'Coverage gate: SEC official-name optical/photonics lane is enabled without ticker hard-coding.' -ForegroundColor Green
     Write-Host 'Evidence gate: every scored universe record has at least one public SEC evidence item.' -ForegroundColor Green
     Write-Host 'No owner watchlist, portfolio, brokerage write, automatic trading or paid fallback was used.' -ForegroundColor Green
     if ($OpenReports -and (Test-Path -LiteralPath (Join-Path $ApplicationRoot 'reports') -PathType Container)) {
