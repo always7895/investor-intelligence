@@ -1,7 +1,8 @@
 import { publicJson, publicText, type StorageEnv } from "../storage";
+import { formatV212Top20Report, parseV212Top20Report } from "../v212/top20-report";
 import { getOwnerPushTarget } from "./owner-storage";
 import { pushText, type V21LinePushEnv } from "./line-push";
-import { formatV21Top20, parseV21Top20 } from "./top20";
+import { parseV21Top20 } from "./top20";
 
 export interface V21BroadcastEnv extends StorageEnv, V21LinePushEnv {
   V21_SCHEDULED_PUSH_ENABLED?: string;
@@ -36,6 +37,14 @@ export async function broadcastV21Top20(
 
   const records = parseV21Top20(await publicJson<unknown>(env, ["v21:top20:latest"]));
   if (!records) return { status: "top20_unavailable" };
+  const report = parseV212Top20Report(
+    await publicJson<unknown>(env, ["v212:top20-report:latest"]),
+  );
+  if (!report) return { status: "top20_report_unavailable" };
+  if (report.records.some((item, index) => item.ticker !== records[index]?.ticker)) {
+    return { status: "top20_report_order_mismatch" };
+  }
+
   const stamp = (await publicText(env, ["last_successful_pipeline_timestamp"])) ?? records[0]!.generated_at;
   const parsed = Date.parse(stamp);
   const maxAge = Math.max(300, Math.min(86_400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
@@ -52,17 +61,13 @@ export async function broadcastV21Top20(
     return { status: "duplicate" };
   }
 
-  const title =
-    slot === "morning"
-      ? `Investor Intelligence 08:00 Top 20｜${date}`
-      : slot === "evening"
-        ? `Investor Intelligence 21:00 Top 20｜${date}`
-        : `Investor Intelligence 測試推送｜${date}`;
-  await pushText(env, owner.lineUserId, formatV21Top20(records, title));
+  // v2.1.2 requirement: no title/narrative/score fields in the Top 20 push.
+  // Only the exact five requested columns are emitted by the formatter.
+  await pushText(env, owner.lineUserId, formatV212Top20Report(report));
   if (slot !== "test") {
     await env.EPHEMERAL_SECURITY_CACHE.put(dedupeKey, "sent", { expirationTtl: 259200 });
   }
-  return { status: "sent", slot, run_id: runId, count: 20 };
+  return { status: "sent", slot, run_id: runId, count: 20, format: "v212_five_fields" };
 }
 
 export async function scheduledV21Broadcast(
