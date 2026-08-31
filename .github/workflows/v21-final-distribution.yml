@@ -1,0 +1,268 @@
+name: V2.1 Final Distribution Acceptance
+
+on:
+  push:
+    branches:
+      - development/v2.1.0-serenity-top20-line
+    paths:
+      - "bootstrap.ps1"
+      - "install-final.ps1"
+      - "install.ps1"
+      - "run-local.ps1"
+      - "register-task.ps1"
+      - "launcher/InvestorIntelligenceLauncher.cs"
+      - "config/release-package-policy.json"
+      - "tests/test_final_distribution_scripts.py"
+      - "docs/V2_1_0_FINAL.zh-TW.md"
+      - ".github/workflows/v21-final-distribution.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v21-final-distribution
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: >-
+      github.repository == 'always7895/investor-intelligence' &&
+      github.actor == 'always7895' &&
+      github.ref == 'refs/heads/development/v2.1.0-serenity-top20-line'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      BILLING_ENABLED: 'false'
+
+    steps:
+      - name: Check out exact v2.1 distribution SHA
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify exact branch and noreply identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($head -ne $env:GITHUB_SHA.ToLowerInvariant()) {
+            throw "Checkout mismatch: $head"
+          }
+          $identity = (git show -s --format='%ae|%ce' HEAD).Trim()
+          if ($identity -notmatch '^[0-9]+\+always7895@users\.noreply\.github\.com\|[0-9]+\+always7895@users\.noreply\.github\.com$') {
+            throw 'V2.1 final-distribution commit does not use the required GitHub noreply identity.'
+          }
+
+      - name: Resolve verified Python and immutable dependencies
+        shell: pwsh
+        run: |
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v21-final-distribution
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Hash-locked Python installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'pip check failed.' }
+
+      - name: Run privacy, policy and complete Python regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($arguments in @(
+            @('scripts/workflow_supply_chain_gate.py'),
+            @('scripts/actions_storage_policy_gate.py'),
+            @('scripts/security_check.py'),
+            @('scripts/v21_owner_line_delivery_gate.py'),
+            @('scripts/full_history_privacy_scan.py','--scope','head','--require-clean'),
+            @('-m','compileall','-q','scripts','tests'),
+            @('scripts/run_offline_tests.py','--repository'),
+            @('-m','unittest','discover','-s','tests','-p','test_final_distribution_scripts.py','-v'),
+            @('scripts/v21_serenity_top20.py','--self-test'),
+            @('scripts/build_v21_public_snapshot.py','--self-test')
+          )) {
+            & $env:PROJECT_PYTHON @arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Python gate failed: $($arguments -join ' ')"
+            }
+          }
+
+      - name: Run Worker typecheck and Vitest
+        shell: pwsh
+        run: |
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "ii-v21-final-npm-$env:GITHUB_RUN_ID"
+          Push-Location cloud
+          try {
+            & npm.cmd ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+            & npm.cmd run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'TypeScript typecheck failed.' }
+            & npm.cmd test
+            if ($LASTEXITCODE -ne 0) { throw 'Vitest failed.' }
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Parse PowerShell and compile launcher source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'bootstrap.ps1',
+            'install-final.ps1',
+            'install.ps1',
+            'run-local.ps1',
+            'register-task.ps1',
+            'setup-v21-owner-line.ps1',
+            'sync-v21-public-snapshot.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count) {
+              $errors | Out-String | Write-Host
+              throw "$path parser errors"
+            }
+          }
+
+          $csc = @(
+            "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+            "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $csc) { throw 'csc.exe is unavailable.' }
+
+          $launcher = Join-Path $env:RUNNER_TEMP 'InvestorIntelligence-v21-prepackage.exe'
+          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Windows.Forms.dll "/out:$launcher" launcher\InvestorIntelligenceLauncher.cs
+          if ($LASTEXITCODE -ne 0) { throw 'C# launcher compilation failed.' }
+          & $launcher --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'C# launcher self-test failed.' }
+
+      - name: Build and verify exact-head v2.1 final-format package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP "ii-v21-final-package-$env:GITHUB_RUN_ID"
+          $status = Join-Path $root 'ephemeral-release-status.json'
+          $extract = Join-Path $root 'verified-extract'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          [ordered]@{
+            schema_version = 1
+            release_ready = $true
+            deployed = $false
+            billing_enabled = $false
+            external_users_admitted = $false
+            candidate_commit = $env:GITHUB_SHA.ToLowerInvariant()
+            candidate_version = '2.1.0'
+            gates = [ordered]@{
+              v21_stage_a = 'PASS'
+              v21_owner_line = 'PASS'
+              v21_final_distribution_prepackage = 'PASS'
+              candidate_history_privacy = 'PASS'
+            }
+            hard_blockers = @()
+            local_action_required = $false
+            secrets_required_now = $false
+          } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $status -Encoding UTF8
+
+          & $env:PROJECT_PYTHON scripts\run_repo_script.py build_formal_release.py --output-dir $root --version 2.1.0 --release-status $status
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1 final-format package build failed.' }
+
+          $archive = Join-Path $root 'investor-intelligence-2.1.0.zip'
+          $checksum = Join-Path $root 'investor-intelligence-2.1.0.sha256'
+          $manifest = Join-Path $root 'investor-intelligence-2.1.0.manifest.json'
+          $sbom = Join-Path $root 'investor-intelligence-2.1.0.sbom.spdx.json'
+
+          & $env:PROJECT_PYTHON scripts\run_repo_script.py verify_release_package.py --archive $archive --checksum $checksum --manifest $manifest --sbom $sbom --policy config\release-package-policy.json --extract-to $extract
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1 final-format package verification failed.' }
+
+          "V21_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "V21_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "V21_PACKAGE_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Exercise Windows PowerShell 5.1 installer and EXE end to end
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP "ii-v21-final-install-$env:GITHUB_RUN_ID"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 `
+            -ArchivePath $env:V21_ARCHIVE `
+            -ChecksumPath $env:V21_CHECKSUM `
+            -BaseInstallRoot $installRoot `
+            -Force `
+            -SkipSecContactConfiguration
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows PowerShell 5.1 final installer failed.'
+          }
+
+          $statePath = Join-Path $installRoot 'install-state.json'
+          $state = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+          if ([string]$state.version -ne '2.1.0') {
+            throw 'Installed version is not 2.1.0.'
+          }
+          if ([string]$state.source_commit -ne $env:GITHUB_SHA.ToLowerInvariant()) {
+            throw 'Installed source commit does not match the exact workflow SHA.'
+          }
+          if ($state.manual_ticker_configuration_required -ne $false) {
+            throw 'Installed v2.1.0 unexpectedly requires manual ticker configuration.'
+          }
+          $exe = [string]$state.launcher_executable
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw 'Installed InvestorIntelligence.exe is missing.'
+          }
+
+          & $exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Installed EXE self-test failed.' }
+
+          & $exe --base-root $installRoot --synthetic --no-sync --no-open
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Installed EXE synthetic end-to-end run failed.'
+          }
+
+      - name: Record v2.1 final-distribution acceptance
+        shell: pwsh
+        run: |
+          $digest = (Get-FileHash -LiteralPath $env:V21_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          @"
+          ## Investor Intelligence v2.1 final-distribution acceptance
+          - exact development SHA: ``$env:GITHUB_SHA``
+          - complete Python regression: PASS
+          - Worker typecheck / Vitest: PASS
+          - PowerShell parser: PASS
+          - C# launcher compile/self-test: PASS
+          - final-format package / manifest / SBOM: PASS
+          - Windows PowerShell 5.1 install-final: PASS
+          - installed EXE synthetic end-to-end: PASS
+          - manual ticker configuration required: false
+          - local refresh defaults: 07:20 / 20:20
+          - LINE push schedule: 08:00 / 21:00 Asia/Taipei
+          - deployment / LINE secret / billing / IBKR: not performed
+          - application ZIP SHA-256: ``$digest``
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+      - name: Cleanup transient state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath .venv-v21-final-distribution -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:V21_PACKAGE_ROOT) {
+            Remove-Item -LiteralPath $env:V21_PACKAGE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          Remove-Item -LiteralPath "$env:RUNNER_TEMP\ii-v21-final-install-$env:GITHUB_RUN_ID" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath "$env:RUNNER_TEMP\InvestorIntelligence-v21-prepackage.exe" -Force -ErrorAction SilentlyContinue

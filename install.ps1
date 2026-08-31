@@ -1,9 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$BaseInstallRoot = '',
     [switch]$CreateDesktopShortcut,
     [switch]$Force,
-    [switch]$ValidateOnly
+    [switch]$ValidateOnly,
+    [switch]$SkipSecContactConfiguration
 )
 
 $ErrorActionPreference = 'Stop'

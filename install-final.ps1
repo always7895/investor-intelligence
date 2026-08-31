@@ -1,17 +1,18 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ArchivePath = '',
     [string]$ChecksumPath = '',
     [string]$BaseInstallRoot = '',
     [switch]$CreateDesktopShortcut,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$SkipSecContactConfiguration
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 
-$Version = '2.0.0'
+$Version = '2.1.0'
 if ([string]::IsNullOrWhiteSpace($ArchivePath)) {
     $ArchivePath = Join-Path $PSScriptRoot "investor-intelligence-$Version.zip"
 }
@@ -43,25 +44,42 @@ if ($actual -ne $expected) {
     throw "Final release SHA-256 verification failed. Expected $expected, received $actual."
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("investor-intelligence-final-" + [guid]::NewGuid().ToString('N'))
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+    "investor-intelligence-final-v21-" + [guid]::NewGuid().ToString('N')
+)
 try {
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     Expand-Archive -LiteralPath $ArchivePath -DestinationPath $tempRoot -Force
     $metadataPath = Join-Path $tempRoot 'release-metadata.json'
     $bootstrapPath = Join-Path $tempRoot 'bootstrap.ps1'
-    if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
+    if (
+        -not (Test-Path -LiteralPath $metadataPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)
+    ) {
         throw 'Verified archive is missing final installer metadata or bootstrap.ps1.'
     }
     $metadata = Get-Content -LiteralPath $metadataPath -Raw -Encoding utf8 | ConvertFrom-Json
     if ([string]$metadata.version -ne $Version -or [string]$metadata.build_mode -ne 'final_release') {
-        throw 'Extracted archive is not the expected final v2.0.0 release.'
+        throw 'Extracted archive is not the expected final v2.1.0 release.'
+    }
+    if ($metadata.secrets_included -ne $false -or $metadata.user_data_included -ne $false) {
+        throw 'Final archive metadata does not assert a secret-free and user-data-free package.'
     }
 
     $arguments = @{}
-    if (-not [string]::IsNullOrWhiteSpace($BaseInstallRoot)) { $arguments.BaseInstallRoot = $BaseInstallRoot }
-    if ($CreateDesktopShortcut) { $arguments.CreateDesktopShortcut = $true }
-    if ($Force) { $arguments.Force = $true }
+    if (-not [string]::IsNullOrWhiteSpace($BaseInstallRoot)) {
+        $arguments.BaseInstallRoot = $BaseInstallRoot
+    }
+    if ($CreateDesktopShortcut) {
+        $arguments.CreateDesktopShortcut = $true
+    }
+    if ($Force) {
+        $arguments.Force = $true
+    }
+    if ($SkipSecContactConfiguration) {
+        $arguments.SkipSecContactConfiguration = $true
+    }
+
     & $bootstrapPath @arguments
     if ($LASTEXITCODE -ne 0) {
         throw 'Final release bootstrap failed.'
