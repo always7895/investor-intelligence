@@ -68,7 +68,7 @@ function top20Report() {
     schema_version: 1,
     product_version: "2.1.2",
     generated_at: new Date().toISOString(),
-    display_columns: ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"],
+    display_columns: ["股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）", "行業別", "獲利簡述"],
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
     records: Array.from({ length: 20 }, (_, index) => ({
@@ -77,7 +77,7 @@ function top20Report() {
       ticker: `T${String(index).padStart(2, "0")}`,
       long_term_return_pct: 40 - index,
       short_term_return_pct: 12 - index / 2,
-      industry: "Synthetic Industry",
+      industry: "半導體",
       profit_summary: "獲利；營收年增 +20.0%；營益率 15.0%；淨利率 10.0%",
       long_term_window: "2y_cagr",
       short_term_window: "6m_price_return",
@@ -113,7 +113,7 @@ function runtime() {
 
 async function digest(text: string): Promise<string> {
   const value = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function signature(value: string): Promise<string> {
@@ -248,7 +248,9 @@ describe("v2.1 private owner LINE delivery", () => {
     expect(calls).toHaveLength(1);
     expect(String(calls[0]?.to ?? "")).toBe(LINE_TARGET);
     const body = JSON.stringify(calls[0]);
-    expect(body).toContain("股票｜長期投資報酬率｜短期投資報酬率｜行業別｜獲利簡述");
+    expect(body).toContain("股票｜長期投資報酬率（近2年年化）｜短期投資報酬率（近6個月）｜行業別｜獲利簡述");
+    expect(body).toContain("半導體");
+    expect(body).not.toContain("Semiconductors");
     expect(body).not.toContain("Serenity");
     expect(body).not.toContain("Aschenbrenner");
   });
