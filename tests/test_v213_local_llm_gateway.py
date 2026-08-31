@@ -66,8 +66,12 @@ class V213LocalGatewayFidelityTests(unittest.TestCase):
         directive = MODULE.PUBLIC_LOGIC_DIRECTIVE
         self.assertIn("Never call it an official Serenity score", directive)
         self.assertIn("named customer dependency alone", directive)
+        self.assertIn("BENEFICIARY label", directive)
         self.assertIn("Every dependency", directive)
+        self.assertIn("UNPROVEN cannot jump", directive)
+        self.assertIn("valid publication date", directive)
         self.assertIn("company capture", directive)
+        self.assertIn("company-capture label alone cannot break", directive)
         self.assertIn("cross-run append-only", directive)
         self.assertIn("foreign listing", directive)
 
