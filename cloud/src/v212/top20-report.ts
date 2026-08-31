@@ -22,7 +22,7 @@ export interface V212Top20Report {
   schema_version: 1;
   product_version: "2.1.2";
   generated_at: string;
-  display_columns: ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"];
+  display_columns: ["股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）", "行業別", "獲利簡述"];
   long_term_definition: "trailing_2y_adjusted_close_cagr";
   short_term_definition: "trailing_6m_adjusted_close_price_return";
   records: V212Top20ReportRecord[];
@@ -40,7 +40,14 @@ const DOCUMENT_KEYS = new Set([
   "long_term_definition", "short_term_definition", "records", "provider_scope",
   "owner_watchlist_inherited",
 ]);
-const DISPLAY_COLUMNS = ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"] as const;
+const DISPLAY_COLUMNS = [
+  "股票",
+  "長期投資報酬率（近2年年化）",
+  "短期投資報酬率（近6個月）",
+  "行業別",
+  "獲利簡述",
+] as const;
+const TRADITIONAL_CHINESE_RE = /[\u3400-\u9fff]/;
 
 function exactKeys(value: Record<string, unknown>, expected: Set<string>): boolean {
   const keys = Object.keys(value);
@@ -82,6 +89,7 @@ export function parseV212Top20Report(raw: unknown): V212Top20Report | null {
       !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) || seen.has(ticker) ||
       !finiteOrNull(item.long_term_return_pct) || !finiteOrNull(item.short_term_return_pct) ||
       typeof item.industry !== "string" || !item.industry.trim() || item.industry.length > 100 ||
+      !TRADITIONAL_CHINESE_RE.test(item.industry) ||
       typeof item.profit_summary !== "string" || !item.profit_summary.trim() || item.profit_summary.length > 120 ||
       item.long_term_window !== "2y_cagr" || item.short_term_window !== "6m_price_return" ||
       item.market_source !== "yfinance" || item.profit_source !== "sec_edgar" ||
@@ -101,7 +109,7 @@ function percent(value: number | null): string {
 
 export function formatV212Top20Report(report: V212Top20Report): string {
   return [
-    "股票｜長期投資報酬率｜短期投資報酬率｜行業別｜獲利簡述",
+    "股票｜長期投資報酬率（近2年年化）｜短期投資報酬率（近6個月）｜行業別｜獲利簡述",
     ...report.records.map((item) =>
       `${item.ticker}｜${percent(item.long_term_return_pct)}｜${percent(item.short_term_return_pct)}｜${item.industry}｜${item.profit_summary}`,
     ),
