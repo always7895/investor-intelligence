@@ -56,7 +56,7 @@ async function envWithUniverse(): Promise<StorageEnv> {
   };
 }
 
-describe("v2.1.2 signed-universe + local-research routing", () => {
+describe("v2.1.3 signed-universe + attribution-safe local-research routing", () => {
   it("accepts a ranked research universe larger than Top 20", () => {
     const parsed = parseV211ResearchUniverse(Array.from({ length: 25 }, (_, index) => record(index)));
     expect(parsed).not.toBeNull();
@@ -69,18 +69,23 @@ describe("v2.1.2 signed-universe + local-research routing", () => {
     expect(answer).not.toContain("LOCAL_MODEL_NOT_CONFIGURED");
   });
 
-  it("answers a ticker outside Top 20 from the scored universe", async () => {
+  it("answers a ticker outside Top 20 from the scored universe with attribution-safe labels", async () => {
     const answer = await v211ResearchAnswer(await envWithUniverse(), parseQuery("T20 怎麼看"));
     expect(answer).toContain("T20");
     expect(answer).toContain("#21/25");
-    expect(answer).toContain("未進 Top 20");
+    expect(answer).toContain("未進系統量化 Top 20");
+    expect(answer).toContain("系統量化分");
+    expect(answer).toContain("不是 Serenity 本人公布的公式");
+    expect(answer).not.toContain("Serenity-first universe");
   });
 
-  it("compares two scored tickers deterministically", async () => {
+  it("compares two scored tickers without calling the project score a Serenity score", async () => {
     const answer = await v211ResearchAnswer(await envWithUniverse(), parseQuery("T20 vs T21 比較"));
     expect(answer).toContain("T20 vs T21");
     expect(answer).toContain("需求");
     expect(answer).toContain("估值");
+    expect(answer).toContain("系統量化分");
+    expect(answer).toContain("不是 Serenity 本人公布的分數或權重");
   });
 
   it("falls through an explicit ticker outside the signed universe", async () => {
