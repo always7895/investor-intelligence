@@ -35,6 +35,10 @@ import v21_serenity_top20 as base
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
+LONG_TERM_WINDOW_DAYS = 730
+SHORT_TERM_WINDOW_DAYS = 183
+MIN_LONG_TERM_ELAPSED_DAYS = 600
+MIN_SHORT_TERM_ELAPSED_DAYS = 120
 
 
 class Top20ReportError(RuntimeError):
@@ -93,14 +97,14 @@ def _returns_from_history(history: Any) -> tuple[float | None, float | None]:
         elapsed = int((latest_time - window.index[0]).days)
         return first_price, elapsed
 
-    long_start, long_days = start_point(730)
+    long_start, long_days = start_point(LONG_TERM_WINDOW_DAYS)
     long_term = None
-    if long_start and long_start > 0 and long_days >= 600:
+    if long_start and long_start > 0 and long_days >= MIN_LONG_TERM_ELAPSED_DAYS:
         long_term = (latest_price / long_start) ** (365.25 / long_days) - 1
 
-    short_start, short_days = start_point(183)
+    short_start, short_days = start_point(SHORT_TERM_WINDOW_DAYS)
     short_term = None
-    if short_start and short_start > 0 and short_days >= 120:
+    if short_start and short_start > 0 and short_days >= MIN_SHORT_TERM_ELAPSED_DAYS:
         short_term = latest_price / short_start - 1
     return long_term, short_term
 
@@ -198,6 +202,8 @@ def self_test() -> None:
         raise Top20ReportError("Profit-summary loss fixture failed")
     if profit_summary({}) != "SEC 可用獲利指標不足":
         raise Top20ReportError("Profit-summary missing-data fixture failed")
+    if LONG_TERM_WINDOW_DAYS != 730 or SHORT_TERM_WINDOW_DAYS != 183:
+        raise Top20ReportError("Return-window constants changed")
     print("V212_TOP20_REPORT_SELF_TEST = PASS")
 
 
