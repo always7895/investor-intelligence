@@ -213,6 +213,14 @@
     "architecture_requires_dated_evidence_for_bottleneck_class": true,
     "company_capture_requires_evidence": true,
     "source_delta_must_be_chronological_within_snapshot": true,
-    "cross_run_append_only_requires_persistent_history": true
+    "cross_run_append_only_requires_persistent_history": true,
+    "evidence_without_https_provenance_is_not_proof": true,
+    "signal_evidence_requires_date": true,
+    "retrieved_source_view_requires_published_date": true,
+    "company_capture_state_cannot_break_without_supported_killer": true,
+    "consensus_requires_information_gap_and_validation_context": true,
+    "beneficiary_claim_requires_evidence_binding": true,
+    "unproven_thesis_cannot_reach_validation_states": true,
+    "retrieved_source_delta_requires_nonempty_source_view_and_horizon": true
   }
 }
