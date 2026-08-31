@@ -1,0 +1,131 @@
+name: V2.1 Owner LINE Delivery Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/v2.1.0-serenity-top20-line
+    paths:
+      - "cloud/src/v21/**"
+      - "cloud/test/v21-owner-line.test.ts"
+      - "cloud/wrangler.v21.production.template.toml"
+      - "config/v21-owner-line-policy.json"
+      - "docs/V21_OWNER_LINE_DELIVERY.zh-TW.md"
+      - "scripts/build_v21_public_snapshot.py"
+      - "scripts/v21_owner_line_delivery_gate.py"
+      - "tests/test_v21_owner_line_delivery.py"
+      - "sync-v21-public-snapshot.ps1"
+      - "setup-v21-owner-line.ps1"
+      - ".github/workflows/v21-owner-line-delivery.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v21-owner-line-delivery
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: >-
+      github.repository == 'always7895/investor-intelligence' &&
+      github.actor == 'always7895' &&
+      github.ref == 'refs/heads/development/v2.1.0-serenity-top20-line'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 180
+    env:
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      PUBLIC_KV_SYNC_ENABLED: 'false'
+      CURRENT_PUBLIC_DATA_ENABLED: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      MEMORY_FEATURE_AVAILABLE: 'false'
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Check out exact v2.1 source SHA
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Resolve Python and install immutable dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v21-owner-line
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Immutable Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Python dependency consistency failed.' }
+
+      - name: Run privacy, legacy-preservation and v2.1 Python gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts\security_check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Current-tree security acceptance failed.' }
+          & $env:PROJECT_PYTHON scripts\workflow_supply_chain_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow supply-chain acceptance failed.' }
+          & $env:PROJECT_PYTHON scripts\actions_storage_policy_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Actions storage-policy acceptance failed.' }
+          & $env:PROJECT_PYTHON scripts\v21_owner_line_delivery_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'V2.1 owner LINE architecture acceptance failed.' }
+          & $env:PROJECT_PYTHON scripts\build_v21_public_snapshot.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'V2.1 public-snapshot builder self-test failed.' }
+          & $env:PROJECT_PYTHON scripts\v21_serenity_top20.py --synthetic
+          if ($LASTEXITCODE -ne 0) { throw 'V2.1 synthetic Serenity run failed.' }
+          & $env:PROJECT_PYTHON scripts\build_v21_public_snapshot.py
+          if ($LASTEXITCODE -ne 0) { throw 'V2.1 synthetic public-snapshot build failed.' }
+          & $env:PROJECT_PYTHON scripts\run_offline_tests.py --repository
+          if ($LASTEXITCODE -ne 0) { throw 'Python repository acceptance failed.' }
+
+      - name: Run Worker typecheck and tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          Push-Location cloud
+          try {
+            & npm.cmd ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Node dependency installation failed.' }
+            & npm.cmd run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'TypeScript acceptance failed.' }
+            & npm.cmd test
+            if ($LASTEXITCODE -ne 0) { throw 'Worker regression failed.' }
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Parse v2.1 PowerShell setup and sync scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('sync-v21-public-snapshot.ps1', 'setup-v21-owner-line.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw "$path contains PowerShell parser errors."
+            }
+          }
+
+      - name: Require exact candidate ancestry privacy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts\full_history_privacy_scan.py --scope head --require-clean
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate ancestry privacy acceptance failed.' }

@@ -1,0 +1,66 @@
+{
+  "forbidden": {
+    "automatic_trading": true,
+    "brokerage": true,
+    "cloud_paid_model": true,
+    "holdings": true,
+    "ibkr_bridge": true,
+    "paid_market_data": true,
+    "portfolio": true,
+    "private_snapshot_sync": true
+  },
+  "legacy_shared_worker": {
+    "entrypoint": "cloud/src/worker.ts",
+    "must_remain_unchanged": true,
+    "push_path": false,
+    "reply_only": true,
+    "scheduled_trigger": false
+  },
+  "owner_admission": {
+    "direct_chat_only": true,
+    "one_time_pairing_code": true,
+    "pairing_code_stored_as_sha256_only": true,
+    "raw_line_user_id_logging": false,
+    "raw_line_user_id_storage": "aes_gcm_in_tenant_private_cache",
+    "single_owner": true
+  },
+  "research": {
+    "all_catalog_sources_claimed_active": false,
+    "aschenbrenner_included_in_serenity_score": false,
+    "automatic_source_activation": false,
+    "owner_watchlist_inherited": false,
+    "provider_scope": "public_only",
+    "reviewed_source_catalog_count": 99,
+    "scoring_version": "serenity-first-v2.1.0",
+    "sort": [
+      "serenity_score_desc",
+      "data_quality_desc",
+      "ticker_asc"
+    ],
+    "top_count": 20
+  },
+  "scheduled_delivery": {
+    "cloudflare_crons_utc": [
+      "0 0 * * *",
+      "0 13 * * *"
+    ],
+    "dedupe_required": true,
+    "freshness_fail_closed": true,
+    "maximum_pushes_per_day": 2,
+    "paid_fallback": false,
+    "times": [
+      "08:00",
+      "21:00"
+    ],
+    "timezone": "Asia/Taipei"
+  },
+  "schema_version": 1,
+  "service": "investor-intelligence-v21-owner-line",
+  "source_transaction": {
+    "deployment_performed": false,
+    "integration_modified": false,
+    "main_modified": false,
+    "secret_operation_performed": false,
+    "v2_0_0_modified": false
+  }
+}
