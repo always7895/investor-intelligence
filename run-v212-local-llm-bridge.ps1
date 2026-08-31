@@ -152,6 +152,66 @@ function Wait-TunnelUrl([int]$ProcessId) {
     throw 'Timed out waiting for the Cloudflare quick-tunnel URL.'
 }
 
+function Wait-PublicTunnelHealth([string]$PublicUrl, [int]$ProcessId, [int]$TimeoutSeconds = 90) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $attempt = 0
+    $lastError = ''
+    $hostName = ([uri]$PublicUrl).Host
+    while ((Get-Date) -lt $deadline) {
+        $attempt += 1
+        if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+            throw 'cloudflared exited before the quick tunnel became reachable.'
+        }
+        try {
+            $probeUri = $PublicUrl.TrimEnd('/') + '/health?bridge_probe=' +
+                [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString() + '-' + $attempt
+            $health = Invoke-RestMethod -Method Get -Uri $probeUri `
+                -Headers @{ 'cache-control' = 'no-cache'; 'pragma' = 'no-cache' } `
+                -TimeoutSec 15
+            if ($health.ok -eq $true -and $health.llama_reachable -eq $true) {
+                Write-Host "QUICK_TUNNEL_HEALTH = PASS; attempts=$attempt" -ForegroundColor Green
+                return $health
+            }
+            $lastError = "health ok=$($health.ok); llama_reachable=$($health.llama_reachable)"
+        }
+        catch {
+            $lastError = $_.Exception.Message
+
+            # A newly-created trycloudflare hostname can exist at authoritative
+            # DNS before the user's current resolver (or a local DNS filter) sees
+            # it. When possible, validate the same HTTPS hostname with an A record
+            # obtained directly from Cloudflare DNS. curl --resolve preserves SNI
+            # and certificate validation while bypassing only the local resolver.
+            try {
+                $resolver = Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
+                $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+                if ($null -ne $resolver -and $null -ne $curl) {
+                    $answer = Resolve-DnsName -Name $hostName -Type A -Server 1.1.1.1 -DnsOnly -ErrorAction Stop |
+                        Where-Object { $_.Type -eq 'A' -and $_.IPAddress } |
+                        Select-Object -First 1
+                    if ($null -ne $answer) {
+                        $resolveArg = '{0}:443:{1}' -f $hostName, [string]$answer.IPAddress
+                        $curlOutput = @(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '12' '--resolve' $resolveArg ($PublicUrl.TrimEnd('/') + '/health') 2>&1)
+                        if ($LASTEXITCODE -eq 0) {
+                            $curlHealth = (($curlOutput | ForEach-Object { [string]$_ }) -join "`n") | ConvertFrom-Json
+                            if ($curlHealth.ok -eq $true -and $curlHealth.llama_reachable -eq $true) {
+                                Write-Host "QUICK_TUNNEL_HEALTH = PASS; attempts=$attempt; dns=1.1.1.1" -ForegroundColor Green
+                                return $curlHealth
+                            }
+                        }
+                    }
+                }
+            }
+            catch {
+                # Keep the original system-resolver error as the diagnostic and retry.
+            }
+        }
+        Write-Host "Waiting for quick-tunnel DNS/edge readiness ($attempt): $lastError" -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
+    throw "Timed out waiting for quick-tunnel DNS/edge readiness after $TimeoutSeconds seconds. Last observation: $lastError"
+}
+
 function Set-LocalModelVars([string]$ConfigPath, [string]$PublicUrl, [string]$ModelName) {
     if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw "Production Wrangler config missing: $ConfigPath" }
     $text = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8
@@ -217,7 +277,7 @@ try {
     $tunnel = Start-Process -FilePath $CloudflaredExe -ArgumentList @('tunnel','--url',"http://127.0.0.1:$GatewayPort",'--no-autoupdate') `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $TunnelStdout -RedirectStandardError $TunnelStderr
     $PublicUrl = Wait-TunnelUrl $tunnel.Id
-    $publicHealth = Invoke-RestMethod -Method Get -Uri "$PublicUrl/health" -TimeoutSec 15
+    $publicHealth = Wait-PublicTunnelHealth $PublicUrl $tunnel.Id 90
     if ($publicHealth.ok -ne $true -or $publicHealth.llama_reachable -ne $true) { throw 'Public tunnel health failed.' }
     Write-Host "LOCAL_LLM_TUNNEL = PASS; host=$(([uri]$PublicUrl).Host)" -ForegroundColor Green
 
