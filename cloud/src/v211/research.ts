@@ -80,18 +80,19 @@ export function parseV211ResearchUniverse(raw: unknown): V21Top20Record[] | null
 
 function factorLine(item: V21Top20Record): string {
   const f = item.serenity_factors;
-  return `需求 ${f.demand_wave ?? 0}｜瓶頸 ${f.chokepoint ?? 0}｜定價 ${f.pricing_power ?? 0}｜替代摩擦 ${f.replacement_friction ?? 0}｜TAM ${f.tam_capture ?? 0}｜估值 ${f.valuation_expectations ?? 0}｜證據 ${f.evidence_quality ?? 0}`;
+  return `系統因子：需求 ${f.demand_wave ?? 0}｜瓶頸代理 ${f.chokepoint ?? 0}｜定價代理 ${f.pricing_power ?? 0}｜替代摩擦代理 ${f.replacement_friction ?? 0}｜TAM代理 ${f.tam_capture ?? 0}｜估值代理 ${f.valuation_expectations ?? 0}｜證據 ${f.evidence_quality ?? 0}`;
 }
 
 function formatResearchDetail(item: V21Top20Record, universeSize: number): string {
   const evidence = item.evidence.slice(0, 3).map((entry) => `• ${entry.title}｜${entry.url}`);
   return [
-    `${item.ticker}｜Serenity-first universe #${item.rank}/${universeSize}｜${item.serenity_score}/100｜品質 ${Math.round(item.data_quality * 100)}%｜${item.rating}`,
-    item.rank <= 20 ? "目前狀態：Top 20" : "目前狀態：未進 Top 20（本輪 cutoff 為 #20）",
+    `${item.ticker}｜系統量化 universe #${item.rank}/${universeSize}｜系統量化分 ${item.serenity_score}/100｜品質 ${Math.round(item.data_quality * 100)}%｜${item.rating}`,
+    "注意：此分數是本專案的 System operationalization，不是 Serenity 本人公布的公式或官方分數。",
+    item.rank <= 20 ? "目前狀態：系統量化 Top 20" : "目前狀態：未進系統量化 Top 20（本輪 cutoff 為 #20）",
     `${item.name}｜${item.category}`,
     factorLine(item),
-    `風險扣分 ${item.risk_penalty}｜風險 ${item.risk_flags.length ? item.risk_flags.join("、") : "無重大結構化旗標"}`,
-    `Aschenbrenner：Domain ${item.aschenbrenner_overlay.domain ?? "N/A"}，fit ${item.aschenbrenner_overlay.fit_score}（不計入 Serenity 主分）`,
+    `系統風險扣分 ${item.risk_penalty}｜風險 ${item.risk_flags.length ? item.risk_flags.join("、") : "無重大結構化旗標"}`,
+    `Aschenbrenner：Domain ${item.aschenbrenner_overlay.domain ?? "N/A"}，fit ${item.aschenbrenner_overlay.fit_score}（不計入系統量化分）`,
     "公開證據：",
     ...evidence,
   ].join("\n");
@@ -111,30 +112,31 @@ function compareRecords(left: V21Top20Record, right: V21Top20Record): string {
   const lf = left.serenity_factors;
   const rf = right.serenity_factors;
   const fields: Array<[string, string]> = [
-    ["需求", "demand_wave"], ["瓶頸", "chokepoint"], ["定價", "pricing_power"],
-    ["替代摩擦", "replacement_friction"], ["TAM", "tam_capture"],
-    ["估值", "valuation_expectations"], ["證據", "evidence_quality"],
+    ["需求", "demand_wave"], ["瓶頸代理", "chokepoint"], ["定價代理", "pricing_power"],
+    ["替代摩擦代理", "replacement_friction"], ["TAM代理", "tam_capture"],
+    ["估值代理", "valuation_expectations"], ["證據", "evidence_quality"],
   ];
   return [
-    `${left.ticker} vs ${right.ticker}｜Serenity-first 公開研究比較`,
-    `${left.ticker}: universe #${left.rank}｜${left.serenity_score}/100｜品質 ${Math.round(left.data_quality * 100)}%｜風險扣分 ${left.risk_penalty}`,
-    `${right.ticker}: universe #${right.rank}｜${right.serenity_score}/100｜品質 ${Math.round(right.data_quality * 100)}%｜風險扣分 ${right.risk_penalty}`,
+    `${left.ticker} vs ${right.ticker}｜公開研究比較（Serenity public-logic 與系統量化分分離）`,
+    `${left.ticker}: universe #${left.rank}｜系統量化分 ${left.serenity_score}/100｜品質 ${Math.round(left.data_quality * 100)}%｜系統風險扣分 ${left.risk_penalty}`,
+    `${right.ticker}: universe #${right.rank}｜系統量化分 ${right.serenity_score}/100｜品質 ${Math.round(right.data_quality * 100)}%｜系統風險扣分 ${right.risk_penalty}`,
     ...fields.map(([label, key]) => `${label}: ${left.ticker} ${lf[key] ?? 0} vs ${right.ticker} ${rf[key] ?? 0}`),
-    "Aschenbrenner overlay 為獨立 context，不計入上述 Serenity 主分。",
+    "上述數字是 System operationalization；不是 Serenity 本人公布的分數或權重。",
+    "Aschenbrenner overlay 為獨立 context，不計入上述系統量化分。",
   ].join("\n");
 }
 
 export function v211HelpText(): string {
   return [
-    "Investor Intelligence v2.1.2 公開研究問答。",
+    "Investor Intelligence v2.1.3 公開研究問答。",
     "你可以問：",
     "• Top 20",
     "• NVDA 評分 / NVDA 怎麼看 / 為什麼 NVDA",
     "• NVDA vs CRDO 比較",
     "• NVDA 這週 sell call / 每月期權",
-    "• 任何其他明確股票代號：若不在已同步 Serenity universe，會交給本機模型的多來源 on-demand 研究層，而不是直接回覆『沒有資料』。",
+    "• 任何其他明確股票代號：若不在已同步系統量化 universe，會交給本機模型的多來源 on-demand 研究層，而不是直接回覆『沒有資料』。",
     "• 最新報告 / 系統狀態 / 通知狀態",
-    "Serenity universe 與公開期權仍是 deterministic；開放式補充研究只使用已驗證的本機模型通道與公開來源。",
+    "系統量化 universe 與公開期權是 deterministic；Serenity 公開方法只以 public-logic fidelity reconstruction 呈現，與專案量化分數分離。",
   ].join("\n");
 }
 
@@ -154,9 +156,8 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
   const raw = await publicJson<unknown>(env, ["v211:universe:latest"]);
   const universe = parseV211ResearchUniverse(raw);
   if (!universe) {
-    // Missing/invalid synchronized universe is a deterministic availability issue.
     if (query.ticker || asksResearch(query.normalized)) {
-      return "目前沒有通過驗證的公開 Serenity universe；請等待下一次本機刷新與簽名同步。";
+      return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
     }
     return null;
   }
@@ -166,23 +167,18 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
   if (asksComparison(query.normalized) && tickers.length >= 2) {
     const left = universe.find((item) => item.ticker === tickers[0]);
     const right = universe.find((item) => item.ticker === tickers[1]);
-    // v2.1.2: if either symbol is outside the bounded deterministic universe,
-    // fall through to the local multi-source research layer instead of dead-ending.
     if (!left || !right) return null;
     return compareRecords(left, right);
   }
 
   if (query.ticker && (query.intent === "general_qa" || query.intent === "ranking" || query.intent === "source_views" || asksResearch(query.normalized))) {
     const item = universe.find((record) => record.ticker === query.ticker);
-    // v2.1.2: arbitrary explicit tickers are handled by the local-model gateway
-    // when they are not in the signed universe. This keeps Serenity deterministic
-    // while allowing broader stock Q&A.
     return item ? formatResearchDetail(item, universe.length) : null;
   }
 
   if (/^(?:研究範圍|研究范围|universe|research universe)$/i.test(query.normalized)) {
     const cutoff = universe[19];
-    return `本輪公開研究 universe 共 ${universe.length} 檔；Top 20 cutoff 為 ${cutoff?.ticker ?? "N/A"} ${cutoff?.serenity_score ?? "N/A"}/100。候選發現包含 broad screeners + AI-infrastructure thematic + SEC official-name coverage；主分公式未因 theme 加分。`;
+    return `本輪公開系統量化 universe 共 ${universe.length} 檔；Top 20 cutoff 為 ${cutoff?.ticker ?? "N/A"} 系統量化分 ${cutoff?.serenity_score ?? "N/A"}/100。候選發現包含 broad screeners + AI-infrastructure thematic + SEC official-name coverage；theme 本身不加分。此量化公式是專案 operationalization，不等於 Serenity 本人公式。`;
   }
   return null;
 }
@@ -191,12 +187,12 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
   if (answer === "LOCAL_MODEL_NOT_CONFIGURED") {
     return [
       "本機模型橋接尚未啟用，所以這個開放式問題目前無法自由生成回答。",
-      "已同步 Serenity universe、Top 20、公開期權、最新報告與系統狀態仍可直接使用。",
-      "v2.1.2 啟用本機模型橋接後，universe 外的明確股票代號會走多來源 on-demand 研究。",
+      "已同步系統量化 universe、Top 20、公開期權、最新報告與系統狀態仍可直接使用。",
+      "本機模型橋接啟用後，universe 外的明確股票代號會走多來源 on-demand 研究。",
     ].join("\n");
   }
   if (answer === "LOCAL_MODEL_OFFLINE") {
-    return "本機模型橋接目前離線；Serenity universe、Top 20、期權與報告型問答仍可使用。";
+    return "本機模型橋接目前離線；系統量化 universe、Top 20、期權與報告型問答仍可使用。";
   }
   if (answer === "OPTION_DATA_UNAVAILABLE") {
     return query.ticker
