@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.2",
+  "catalog_minimum_sources": 90,
+  "catalog_minimum_regions": 5,
+  "catalog_minimum_host_groups": 20,
+  "open_qa_minimum_successful_source_families": 3,
+  "open_qa_preferred_source_families": [
+    "sec_edgar",
+    "yahoo_finance_public_unofficial",
+    "gleif_lei",
+    "world_bank_indicators",
+    "bls_public_data"
+  ],
+  "company_claim_requires_primary_or_regulated_source": true,
+  "market_quote_may_use_t3_observation": true,
+  "additional_sources_do_not_change_serenity_score_without_explicit_factor_mapping": true,
+  "owner_watchlist_inherited": false,
+  "paid_fallback": false
+}
