@@ -8,9 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from build_v212_top20_report import (  # noqa: E402
+    DISPLAY_COLUMNS,
     LONG_TERM_WINDOW_DAYS,
+    MIN_LONG_TERM_ELAPSED_DAYS,
+    MIN_SHORT_TERM_ELAPSED_DAYS,
     SHORT_TERM_WINDOW_DAYS,
     profit_summary,
+    translate_industry,
 )
 
 
@@ -38,18 +42,39 @@ class V212Top20ReportTests(unittest.TestCase):
         )
         self.assertEqual(profit_summary({}), "SEC 可用獲利指標不足")
 
-    def test_module_defines_requested_return_windows(self) -> None:
+    def test_return_windows_and_display_labels_are_explicit(self) -> None:
+        self.assertEqual(LONG_TERM_WINDOW_DAYS, 730)
+        self.assertEqual(SHORT_TERM_WINDOW_DAYS, 183)
+        self.assertEqual(MIN_LONG_TERM_ELAPSED_DAYS, 600)
+        self.assertEqual(MIN_SHORT_TERM_ELAPSED_DAYS, 120)
+        self.assertEqual(
+            DISPLAY_COLUMNS,
+            [
+                "股票",
+                "長期投資報酬率（近2年年化）",
+                "短期投資報酬率（近6個月）",
+                "行業別",
+                "獲利簡述",
+            ],
+        )
         module_text = (ROOT / "scripts" / "build_v212_top20_report.py").read_text(
             encoding="utf-8"
         )
-        self.assertEqual(LONG_TERM_WINDOW_DAYS, 730)
-        self.assertEqual(SHORT_TERM_WINDOW_DAYS, 183)
-        self.assertIn('"2y_cagr"', module_text)
-        self.assertIn('"6m_price_return"', module_text)
-        self.assertIn('"股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"', module_text)
         self.assertIn('period="3y"', module_text)
         self.assertIn("start_point(LONG_TERM_WINDOW_DAYS)", module_text)
         self.assertIn("start_point(SHORT_TERM_WINDOW_DAYS)", module_text)
+
+    def test_industry_is_localized_to_traditional_chinese(self) -> None:
+        self.assertEqual(translate_industry("Semiconductors"), "半導體")
+        self.assertEqual(translate_industry("Computer Hardware"), "電腦硬體")
+        self.assertEqual(translate_industry("Software - Infrastructure"), "基礎架構軟體")
+        self.assertEqual(translate_industry("Electronic Components"), "電子零組件")
+        self.assertEqual(translate_industry("Communication Equipment"), "通訊設備")
+        self.assertEqual(
+            translate_industry("Semiconductor Equipment & Materials"),
+            "半導體設備與材料",
+        )
+        self.assertEqual(translate_industry("Unknown English Taxonomy"), "其他產業")
 
 
 if __name__ == "__main__":
