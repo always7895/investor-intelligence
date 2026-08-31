@@ -152,22 +152,40 @@ def claim_is_eventive(signal: str, excerpt: str) -> bool:
 def audit_h3_claims(result: Mapping[str, Any]) -> dict[str, Any]:
     extraction = result.get("extraction") if isinstance(result.get("extraction"), Mapping) else {}
     bindings = list(extraction.get("signal_evidence") or [])
+    dependency_candidates = list(extraction.get("dependency_candidates") or [])
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
+    accepted_dependency_candidates: list[dict[str, Any]] = []
     for binding in bindings:
         if not isinstance(binding, Mapping):
             continue
         signal = str(binding.get("signal") or "")
         if signal == "repeated_atm_or_material_dilution":
+            # H4 re-verifies ATM events from source documents separately.
             continue
         row = dict(binding)
+        row["claim_origin"] = "signal_evidence"
         if claim_is_eventive(signal, str(binding.get("excerpt") or "")):
             accepted.append(row)
         else:
             row["rejection_reason"] = "generic_or_hypothetical_not_observed_event"
             rejected.append(row)
-    return {"accepted": accepted, "rejected": rejected}
-
+    for candidate in dependency_candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        row = dict(candidate)
+        signal = str(row.get("signal") or "")
+        row["claim_origin"] = "dependency_candidate"
+        if claim_is_eventive(signal, str(row.get("excerpt") or "")):
+            accepted_dependency_candidates.append(row)
+        else:
+            row["rejection_reason"] = "generic_or_hypothetical_not_observed_event"
+            rejected.append(row)
+    return {
+        "accepted": accepted,
+        "accepted_dependency_candidates": accepted_dependency_candidates,
+        "rejected": rejected,
+    }
 
 def _atm_event_keys_from_text(text: str) -> set[str]:
     keys: set[str] = set()
