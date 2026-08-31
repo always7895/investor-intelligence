@@ -135,10 +135,10 @@ function Resolve-Cloudflared {
     return $command.Source
 }
 
-function Wait-TunnelUrl([int]$Pid) {
+function Wait-TunnelUrl([int]$ProcessId) {
     $deadline = (Get-Date).AddSeconds(45)
     while ((Get-Date) -lt $deadline) {
-        if (-not (Get-Process -Id $Pid -ErrorAction SilentlyContinue)) { throw 'cloudflared exited before producing a tunnel URL.' }
+        if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { throw 'cloudflared exited before producing a tunnel URL.' }
         $text = ''
         foreach ($path in @($TunnelStdout, $TunnelStderr)) {
             if (Test-Path -LiteralPath $path -PathType Leaf) {
