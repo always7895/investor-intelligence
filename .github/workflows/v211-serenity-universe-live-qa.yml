@@ -1,21 +1,8 @@
 name: v2.1.1 Serenity Universe + Live Q&A
 
+# Hosted Actions are optional for this patch. The production activation runner
+# performs the same Python/TypeScript gates locally before any live mutation.
 on:
-  push:
-    branches:
-      - development/v2.1.1-serenity-universe-live-qa
-  pull_request:
-    paths:
-      - 'config/v211-serenity-policy.json'
-      - 'scripts/v211_serenity_top20.py'
-      - 'scripts/build_v211_public_options.py'
-      - 'scripts/build_v211_public_snapshot.py'
-      - 'run-v211-local.ps1'
-      - 'cloud/src/v211/**'
-      - 'cloud/wrangler.v211.production.template.toml'
-      - 'cloud/test/v211-*.test.ts'
-      - 'tests/test_v211_serenity_universe.py'
-      - '.github/workflows/v211-serenity-universe-live-qa.yml'
   workflow_dispatch:
 
 permissions:
