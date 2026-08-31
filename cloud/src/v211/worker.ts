@@ -44,6 +44,8 @@ import {
   storeOwnerPairing,
 } from "../v21/owner-storage";
 import { v21Top20Answer } from "../v21/top20";
+import { ingestV212Top20Report } from "../v212/admin";
+import { v212Top20ReportAnswer } from "../v212/top20-report";
 import { ingestV211PublicSnapshot } from "./admin";
 import { humanizeFallback, v211HelpText, v211ResearchAnswer } from "./research";
 
@@ -75,6 +77,7 @@ function lineHelpText(): string {
     v211HelpText(),
     "",
     "通知：每天 08:00 與 21:00（Asia/Taipei）只在 freshness gate 通過後推送公開 Top 20。",
+    "Top 20 固定只顯示：股票／長期投資報酬率／短期投資報酬率／行業別／獲利簡述。",
     "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。99 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
   ].join("\n");
 }
@@ -196,12 +199,18 @@ async function processAuthorizedLineEvent(
     return;
   }
 
-  // v2.1.1 snapshot Q&A comes first for ticker research so a company outside
-  // Top 20 can still explain its universe rank/factors instead of returning a
-  // dead-end "not in Top 20" message.
+  // The signed Serenity universe remains the deterministic ticker-research lane.
   const research = await v211ResearchAnswer(env, query);
   if (research !== null) {
     await replyText(env, event.replyToken, research);
+    return;
+  }
+
+  // v2.1.2 no-ticker Top 20 presentation is deliberately constrained to the
+  // five user-facing columns. It is checked before the legacy Top 20 renderer.
+  const top20Report = await v212Top20ReportAnswer(env, query);
+  if (top20Report !== null) {
+    await replyText(env, event.replyToken, top20Report);
     return;
   }
 
@@ -344,7 +353,7 @@ async function handleWebhook(
   for (const event of events) {
     ctx.waitUntil(
       processLineEvent(env, ctx, event).catch((error) => {
-        console.error("V211_LINE_EVENT_FAILED", error instanceof Error ? error.name : "UNKNOWN");
+        console.error("V212_LINE_EVENT_FAILED", error instanceof Error ? error.name : "UNKNOWN");
       }),
     );
   }
@@ -372,11 +381,17 @@ async function handleAdmin(
           : await ingestV21PublicSnapshot(body, env)),
       });
     }
+    if (pathname === "/v212/admin/top20-report") {
+      return jsonResponse({
+        status: "accepted",
+        ...(await ingestV212Top20Report(body, env)),
+      });
+    }
     if (pathname === "/v21/admin/status") {
       const pointer = await env.PUBLIC_CACHE.get("snapshot:current");
       return jsonResponse({
         ok: true,
-        product_version: "2.1.1",
+        product_version: "2.1.2",
         owner_paired: await ownerPairingStatus(env),
         public_snapshot_available: Boolean(pointer),
       });
@@ -387,7 +402,7 @@ async function handleAdmin(
     return new Response("Not found", { status: 404 });
   } catch (error) {
     return jsonResponse(
-      { ok: false, code: error instanceof Error ? error.message : "V211_ADMIN_FAILED" },
+      { ok: false, code: error instanceof Error ? error.message : "V212_ADMIN_FAILED" },
       401,
     );
   }
@@ -396,15 +411,16 @@ async function handleAdmin(
 function health(): Response {
   return jsonResponse({
     ok: true,
-    service: "investor-intelligence-v211-owner-line",
-    product_version: "2.1.1",
+    service: "investor-intelligence-v212-owner-line",
+    product_version: "2.1.2",
     owner_only: true,
     direct_chat_only: true,
     scheduled_times: ["08:00 Asia/Taipei", "21:00 Asia/Taipei"],
     serenity_first: true,
     scoring_formula: "serenity-first-v2.1.0",
-    candidate_discovery: "broad_plus_ai_infrastructure_thematic",
-    research_universe_qa: "signed_public_snapshot",
+    candidate_discovery: "broad_plus_ai_infrastructure_thematic_plus_sec_name_coverage",
+    research_universe_qa: "signed_public_snapshot_plus_local_multi_source_fallback",
+    top20_presentation: "five_fields_only",
     public_options: "scored_universe_yfinance_public_only",
     source_catalog_count: 99,
     source_activation_claim: "reviewed_catalog_not_all_runtime_enabled",
@@ -426,7 +442,10 @@ export default {
     if (request.method === "POST" && url.pathname === "/webhook") {
       return handleWebhook(request, env, ctx);
     }
-    if (request.method === "POST" && url.pathname.startsWith("/v21/admin/")) {
+    if (
+      request.method === "POST" &&
+      (url.pathname.startsWith("/v21/admin/") || url.pathname.startsWith("/v212/admin/"))
+    ) {
       return handleAdmin(request, env, url.pathname);
     }
     return new Response("Not found", { status: 404 });
@@ -439,8 +458,8 @@ export default {
   ): Promise<void> {
     ctx.waitUntil(
       scheduledV21Broadcast(env, controller.cron, controller.scheduledTime)
-        .then((result) => console.log("V211_SCHEDULED_TOP20", String(result.status ?? "unknown")))
-        .catch((error) => console.error("V211_SCHEDULED_TOP20_FAILED", error instanceof Error ? error.name : "UNKNOWN")),
+        .then((result) => console.log("V212_SCHEDULED_TOP20", String(result.status ?? "unknown")))
+        .catch((error) => console.error("V212_SCHEDULED_TOP20_FAILED", error instanceof Error ? error.name : "UNKNOWN")),
     );
   },
 } satisfies ExportedHandler<V211Env>;
