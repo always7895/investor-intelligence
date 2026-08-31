@@ -30,6 +30,7 @@ ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
@@ -130,7 +131,7 @@ def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
         raw = json.loads(top20_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
         raise Top20ReportError(f"Unable to read Top 20: {top20_path}") from exc
-    top20 = base.validate_top20(raw)
+    top20 = snapshot.validate_top20(raw)
     policy, _activation = base.validate_policy()
     headers = base.sec_headers()
     http = base.session()
@@ -213,7 +214,7 @@ def main() -> int:
         atomic_write(args.output, document)
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
-    except (Top20ReportError, base.PipelineError, OSError, ValueError) as exc:
+    except (Top20ReportError, snapshot.SnapshotError, base.PipelineError, OSError, ValueError) as exc:
         print(f"V2.1.2 Top 20 report build failed: {exc}")
         return 1
 
