@@ -109,9 +109,14 @@ export function formatV212Top20Report(report: V212Top20Report): string {
 }
 
 export async function v212Top20ReportAnswer(env: StorageEnv, query: ParsedQuery): Promise<string | null> {
-  if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) {
-    return null;
-  }
+  const asksTop20 =
+    !query.ticker &&
+    query.intent === "ranking" &&
+    /(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized);
+  if (!asksTop20) return null;
   const report = parseV212Top20Report(await publicJson<unknown>(env, ["v212:top20-report:latest"]));
-  return report ? formatV212Top20Report(report) : null;
+  if (!report) {
+    return "目前五欄 Top 20 報告尚未通過本輪 freshness / validation gate，系統不會退回舊欄位格式。";
+  }
+  return formatV212Top20Report(report);
 }
