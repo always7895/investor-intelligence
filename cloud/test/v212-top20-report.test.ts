@@ -59,7 +59,7 @@ function report() {
     schema_version: 1,
     product_version: "2.1.2",
     generated_at: "2026-08-31T00:00:00Z",
-    display_columns: ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"],
+    display_columns: ["股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）", "行業別", "獲利簡述"],
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
     records: Array.from({ length: 20 }, (_, index) => ({
@@ -68,7 +68,7 @@ function report() {
       ticker: `T${String(index).padStart(2, "0")}`,
       long_term_return_pct: 40 - index,
       short_term_return_pct: 10 - index / 2,
-      industry: "Synthetic Industry",
+      industry: "半導體",
       profit_summary: "獲利；營收年增 +20.0%；營益率 15.0%；淨利率 10.0%",
       long_term_window: "2y_cagr",
       short_term_window: "6m_price_return",
@@ -96,18 +96,19 @@ function env() {
 }
 
 describe("v2.1.2 five-field Top 20", () => {
-  it("accepts exactly twenty closed-schema rows", () => {
+  it("accepts exactly twenty closed-schema zh-TW industry rows", () => {
     expect(parseV212Top20Report(report())).not.toBeNull();
     const bad = report() as Record<string, unknown>;
-    (bad.records as Array<Record<string, unknown>>)[0]!.serenity_score = 99;
+    (bad.records as Array<Record<string, unknown>>)[0]!.industry = "Semiconductors";
     expect(parseV212Top20Report(bad)).toBeNull();
   });
 
-  it("renders only the requested five display columns", () => {
+  it("renders only the requested five display columns with time bases", () => {
     const parsed = parseV212Top20Report(report());
     expect(parsed).not.toBeNull();
     const text = formatV212Top20Report(parsed!);
-    expect(text.split("\n")[0]).toBe("股票｜長期投資報酬率｜短期投資報酬率｜行業別｜獲利簡述");
+    expect(text.split("\n")[0]).toBe("股票｜長期投資報酬率（近2年年化）｜短期投資報酬率（近6個月）｜行業別｜獲利簡述");
+    expect(text).toContain("半導體");
     expect(text).not.toContain("Serenity");
     expect(text).not.toContain("品質");
     expect(text).not.toContain("Aschenbrenner");
@@ -123,7 +124,8 @@ describe("v2.1.2 five-field Top 20", () => {
     await publicKv.put("snapshot:current", JSON.stringify({ run_id: "run-1" }));
     await publicKv.put("snapshot:run-1:v212:top20-report:latest", JSON.stringify(report()));
     const answer = await v212Top20ReportAnswer(value, parseQuery("Top 20"));
-    expect(answer).toContain("股票｜長期投資報酬率｜短期投資報酬率｜行業別｜獲利簡述");
+    expect(answer).toContain("長期投資報酬率（近2年年化）");
+    expect(answer).toContain("短期投資報酬率（近6個月）");
 
     const missing = env().value;
     const blocked = await v212Top20ReportAnswer(missing, parseQuery("Top 20"));
