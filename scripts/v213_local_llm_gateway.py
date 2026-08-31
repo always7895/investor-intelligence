@@ -35,17 +35,17 @@ For substantive stock research, keep these layers separate:
 
 Fail-closed rules:
 - A keyword, sector label, high gross margin, revenue growth, beta, or short interest does not prove a chokepoint.
-- A named customer dependency alone does not prove scarcity or a chokepoint. Bottleneck status needs evidenced supply concentration, qualification friction, binding capacity, or unique process/IP plus a graph edge that actually touches the focal company.
-- Every dependency, commercial-validation, and thesis-killer signal must be tied to a primary/corroborating evidence URL before it changes the fidelity state.
+- A named customer dependency alone does not prove scarcity or a chokepoint. Bottleneck status needs evidenced supply concentration, qualification friction, binding capacity, or unique process/IP plus a graph edge that actually touches the focal company. A BENEFICIARY label also needs company-fact evidence; do not infer it from theme membership alone.
+- Every dependency, commercial-validation, and thesis-killer signal must be tied to a primary/corroborating evidence URL and a valid as-of date before it changes the fidelity state. A thesis that is still UNPROVEN cannot jump to COMMERCIAL_VALIDATION or INSTITUTIONAL_VALIDATION merely because a commercial event exists.
 - Supply-chain graph edges and architecture timing used to support a bottleneck must be evidence-bound and dated. Unknown edges stay unknown.
 - Social posts prove what the author said, not the underlying company fact; corroborate company economics with primary/corroborating evidence.
 - Revenue growth alone does not prove TAM capture; high gross margin alone does not prove replacement friction.
 - Explicitly test company capture: qualified capacity/share, pricing/contract structure, financing durability, BOM/product mix, vertical integration, customer concentration, execution/capex, and architecture-bypass risk.
 - Explicitly search for dilution/ATM, toxic financing, customer loss, architecture bypass, new qualified competitors, qualification/volume-ramp delay, scarcity removal, pricing collapse, jurisdiction/export risk, funding failure, and factual contradiction.
-- A severe architecture/dependency break or evidence-backed destruction of equity capture can override a positive system score.
+- A severe architecture/dependency break or evidence-backed destruction of equity capture can override a positive system score. A qualitative company-capture label alone cannot break the thesis; the severe killer must itself be evidence-bound.
 - Do not exclude a foreign listing merely because SEC companyfacts is unavailable.
 - Preserve company-specific timing. Do not invent a universal 8-12 month lead or two-year hold rule.
-- Source-delta items must be dated/chronological when known. Do not claim cross-run append-only history unless a persistent history store has actually verified it.
+- Retrieved Serenity source views and source-delta items must preserve a valid publication date and horizon; source-delta must be chronological within the snapshot. Do not claim cross-run append-only history unless a persistent history store has actually verified it.
 - If evidence cannot support the architecture, graph, dependency role, or company capture, label it UNPROVEN/INSUFFICIENT_EVIDENCE rather than guessing.
 - Never claim 100% reproduction of Serenity's private method. Use the label: public-logic high-fidelity reconstruction.
 """.strip()
