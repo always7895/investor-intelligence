@@ -16,27 +16,18 @@ function record(index: number) {
     rating: "A",
     category: index % 2 ? "Semiconductors" : "Communication Equipment",
     serenity_factors: {
-      demand_wave: 15,
-      chokepoint: 14,
-      pricing_power: 13,
-      replacement_friction: 9,
-      tam_capture: 14,
-      valuation_expectations: 13,
-      evidence_quality: 12,
+      demand_wave: 15, chokepoint: 14, pricing_power: 13,
+      replacement_friction: 9, tam_capture: 14,
+      valuation_expectations: 13, evidence_quality: 12,
     },
     risk_flags: [],
     aschenbrenner_overlay: {
-      domain: "C",
-      fit_score: 60,
-      included_in_serenity_score: false,
+      domain: "C", fit_score: 60, included_in_serenity_score: false,
       attribution: "system_operationalization_not_aschenbrenner_stock_score",
     },
     evidence: [{
-      source_id: "sec_edgar",
-      tier: "T0",
-      claim_type: "xbrl_fact",
-      title: `SEC evidence ${ticker}`,
-      url: `https://www.sec.gov/example/${ticker}`,
+      source_id: "sec_edgar", tier: "T0", claim_type: "xbrl_fact",
+      title: `SEC evidence ${ticker}`, url: `https://www.sec.gov/example/${ticker}`,
       as_of: "2026-08-31T00:00:00Z",
     }],
     evidence_count: 1,
@@ -65,7 +56,7 @@ async function envWithUniverse(): Promise<StorageEnv> {
   };
 }
 
-describe("v2.1.1 signed-snapshot research Q&A", () => {
+describe("v2.1.2 signed-universe + local-research routing", () => {
   it("accepts a ranked research universe larger than Top 20", () => {
     const parsed = parseV211ResearchUniverse(Array.from({ length: 25 }, (_, index) => record(index)));
     expect(parsed).not.toBeNull();
@@ -90,6 +81,16 @@ describe("v2.1.1 signed-snapshot research Q&A", () => {
     expect(answer).toContain("T20 vs T21");
     expect(answer).toContain("需求");
     expect(answer).toContain("估值");
+  });
+
+  it("falls through an explicit ticker outside the signed universe", async () => {
+    const answer = await v211ResearchAnswer(await envWithUniverse(), parseQuery("ZZZZ 怎麼看"));
+    expect(answer).toBeNull();
+  });
+
+  it("falls through a comparison if either ticker is outside the signed universe", async () => {
+    const answer = await v211ResearchAnswer(await envWithUniverse(), parseQuery("T20 vs ZZZZ 比較"));
+    expect(answer).toBeNull();
   });
 
   it("does not intercept the options intent", async () => {
