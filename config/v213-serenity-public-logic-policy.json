@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "methodology": "serenity-public-logic-high-fidelity-reconstruction",
+  "attribution_boundary": "public_source_only_not_private_process",
+  "legacy_quantitative_overlay_label": "System operationalization score",
+  "forbid_labels": [
+    "Serenity score",
+    "official Serenity score",
+    "Serenity formula"
+  ],
+  "dependency_roles": [
+    "SINGLE_SOURCE",
+    "SEMI_MONOPOLY",
+    "QUALIFICATION_CONSTRAINED",
+    "CAPACITY_BOTTLENECK",
+    "BENEFICIARY",
+    "UNPROVEN"
+  ],
+  "information_gap_states": [
+    "UNDISCOVERED",
+    "EARLY_DISCOVERY",
+    "BECOMING_KNOWN",
+    "CONSENSUS",
+    "UNKNOWN"
+  ],
+  "thesis_classes": [
+    "BOTTLENECK_THESIS",
+    "EXPANSION_THESIS",
+    "HYBRID",
+    "UNPROVEN"
+  ],
+  "thesis_states": [
+    "DISCOVERY",
+    "EARLY_VALIDATION",
+    "COMMERCIAL_VALIDATION",
+    "INSTITUTIONAL_VALIDATION",
+    "CONSENSUS",
+    "THESIS_WEAKENING",
+    "BROKEN",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "required_stages": [
+    "architecture",
+    "supply_chain_graph",
+    "information_gap",
+    "thesis_class",
+    "company_capture",
+    "thesis_killers",
+    "thesis_state",
+    "timing",
+    "source_delta"
+  ],
+  "hard_dependency_signals": [
+    "single_source",
+    "semi_monopoly",
+    "qualified_supplier_concentration",
+    "qualification_constraint",
+    "binding_capacity",
+    "unique_process_or_ip",
+    "customer_named_dependency"
+  ],
+  "commercial_validation_signals": [
+    "named_contract",
+    "design_win",
+    "qualification",
+    "capacity_reservation",
+    "prepayment",
+    "long_term_agreement",
+    "realized_revenue",
+    "customer_named_ramp"
+  ],
+  "institutional_validation_signals": [
+    "institutional_position_after_thesis",
+    "credible_industry_validation",
+    "sell_side_validation_after_thesis"
+  ],
+  "thesis_killers": [
+    "repeated_atm_or_material_dilution",
+    "toxic_warrants_or_financing",
+    "customer_loss",
+    "architecture_bypass",
+    "new_qualified_competitor",
+    "qualification_delay",
+    "volume_ramp_delay",
+    "scarcity_removed_by_capacity",
+    "pricing_collapse",
+    "export_or_jurisdiction_disruption",
+    "balance_sheet_funding_failure",
+    "factual_dependency_contradiction"
+  ],
+  "severe_break_signals": [
+    "architecture_bypass",
+    "factual_dependency_contradiction",
+    "equity_capture_destroyed_by_financing"
+  ],
+  "evidence_tiers": {
+    "primary_strong": [
+      "regulatory_filing",
+      "exchange_announcement",
+      "named_contract",
+      "customer_supplier_disclosure",
+      "audited_statement",
+      "official_roadmap",
+      "official_capacity_or_qualification"
+    ],
+    "corroborating": [
+      "adjacent_company_call",
+      "government_document",
+      "credible_technical_publication",
+      "credible_industry_publication",
+      "redistributable_institutional_research"
+    ],
+    "lead_only": [
+      "social_post",
+      "search_snippet",
+      "price_action",
+      "community_summary",
+      "unnamed_rumor"
+    ]
+  },
+  "global_universe": {
+    "exchange_agnostic": true,
+    "examples": [
+      "US",
+      "Canada",
+      "UK_AIM",
+      "Europe",
+      "Nordics",
+      "Taiwan",
+      "Japan",
+      "Korea",
+      "Hong_Kong"
+    ],
+    "sec_universe_is_not_methodology_limit": true
+  },
+  "fail_closed": {
+    "keyword_cannot_prove_bottleneck": true,
+    "gross_margin_cannot_prove_replacement_friction": true,
+    "revenue_growth_cannot_prove_tam_capture": true,
+    "missing_evidence_is_not_positive": true,
+    "social_post_cannot_prove_company_fact": true,
+    "quantitative_overlay_cannot_override_broken_thesis": true,
+    "foreign_listing_cannot_be_excluded_for_missing_sec_companyfacts": true,
+    "disconfirmation_conditions_required": true
+  }
+}
