@@ -7,6 +7,7 @@ legacy quantitative overlay with Serenity's public discretionary reasoning.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,26 +19,34 @@ if str(SCRIPT_DIR) not in sys.path:
 import v212_local_llm_gateway as base
 
 ORIGINAL_ENRICH = base.enrich_messages
+METHODOLOGY_RE = re.compile(
+    r"(?:serenity|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|supply\s*chain)",
+    re.I,
+)
 
 PUBLIC_LOGIC_DIRECTIVE = """
 [V2.1.3 SERENITY PUBLIC-LOGIC FIDELITY]
 For substantive stock research, keep these layers separate:
-1. Serenity source view: only what a dated identifiable Serenity public post supports.
-2. Public-logic fidelity state: architecture/supercycle -> supply-chain dependency graph -> information gap -> bottleneck-vs-expansion -> company capture/optionality -> thesis killers -> thesis lifecycle -> timing/source delta.
+1. Serenity source view: only what a dated identifiable Serenity public post supports. If no validated source view is supplied, explicitly say that no Serenity source view is attached for this ticker.
+2. Public-logic fidelity state: architecture/supercycle -> evidence-bound supply-chain dependency graph -> information gap -> bottleneck-vs-expansion -> company capture/optionality -> thesis killers -> thesis lifecycle -> timing/source delta.
 3. System operationalization score: the repository's legacy deterministic 100-point overlay. Never call it an official Serenity score or Serenity formula.
-4. Model inference: your evidence-based conclusion, explicitly labelled.
+4. Model inference: your evidence-based conclusion, explicitly labelled with confidence and missing-data warnings.
 5. User long-term overlay: separate user preference; never attribute it to Serenity.
 
 Fail-closed rules:
 - A keyword, sector label, high gross margin, revenue growth, beta, or short interest does not prove a chokepoint.
-- A bottleneck claim needs an evidenced dependency such as single/semi-monopoly, qualified-supplier concentration, qualification friction, binding capacity, unique process/IP, or named customer dependency.
+- A named customer dependency alone does not prove scarcity or a chokepoint. Bottleneck status needs evidenced supply concentration, qualification friction, binding capacity, or unique process/IP plus a graph edge that actually touches the focal company.
+- Every dependency, commercial-validation, and thesis-killer signal must be tied to a primary/corroborating evidence URL before it changes the fidelity state.
+- Supply-chain graph edges and architecture timing used to support a bottleneck must be evidence-bound and dated. Unknown edges stay unknown.
 - Social posts prove what the author said, not the underlying company fact; corroborate company economics with primary/corroborating evidence.
 - Revenue growth alone does not prove TAM capture; high gross margin alone does not prove replacement friction.
+- Explicitly test company capture: qualified capacity/share, pricing/contract structure, financing durability, BOM/product mix, vertical integration, customer concentration, execution/capex, and architecture-bypass risk.
 - Explicitly search for dilution/ATM, toxic financing, customer loss, architecture bypass, new qualified competitors, qualification/volume-ramp delay, scarcity removal, pricing collapse, jurisdiction/export risk, funding failure, and factual contradiction.
-- A severe architecture/dependency break can override a positive system score.
+- A severe architecture/dependency break or evidence-backed destruction of equity capture can override a positive system score.
 - Do not exclude a foreign listing merely because SEC companyfacts is unavailable.
 - Preserve company-specific timing. Do not invent a universal 8-12 month lead or two-year hold rule.
-- If evidence cannot support the supply-chain graph or dependency role, label it UNPROVEN/INSUFFICIENT_EVIDENCE rather than guessing.
+- Source-delta items must be dated/chronological when known. Do not claim cross-run append-only history unless a persistent history store has actually verified it.
+- If evidence cannot support the architecture, graph, dependency role, or company capture, label it UNPROVEN/INSUFFICIENT_EVIDENCE rather than guessing.
 - Never claim 100% reproduction of Serenity's private method. Use the label: public-logic high-fidelity reconstruction.
 """.strip()
 
@@ -52,8 +61,9 @@ def _last_user_text(messages: list[dict[str, Any]]) -> str:
 def enrich_messages(messages: list[dict[str, Any]]):
     enriched, context = ORIGINAL_ENRICH(messages)
     user_text = _last_user_text(messages)
-    ticker = base.extract_ticker(user_text)
-    methodology_requested = "serenity" in user_text.casefold() or ticker is not None
+    context_ticker = context.get("ticker") if isinstance(context, dict) else None
+    ticker = str(context_ticker or "").strip().upper() or base.extract_ticker(user_text)
+    methodology_requested = bool(ticker) or bool(METHODOLOGY_RE.search(user_text))
     if methodology_requested:
         if enriched and enriched[0].get("role") == "system":
             enriched[0] = {
@@ -65,6 +75,8 @@ def enrich_messages(messages: list[dict[str, Any]]):
         context = dict(context)
         context["serenity_public_logic_fidelity"] = "v2.1.3"
         context["legacy_quantitative_overlay_label"] = "System operationalization score"
+        context["private_process_reproduction_claimed"] = False
+        context["cross_run_source_delta_append_only_verified"] = False
     return enriched, context
 
 
