@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "product_version": "2.1.3",
   "methodology": "serenity-public-logic-high-fidelity-reconstruction",
   "attribution_boundary": "public_source_only_not_private_process",
@@ -40,6 +40,19 @@
     "BROKEN",
     "INSUFFICIENT_EVIDENCE"
   ],
+  "company_capture_states": [
+    "STRONG",
+    "POSITIVE",
+    "MIXED",
+    "WEAK",
+    "DESTROYED",
+    "UNPROVEN"
+  ],
+  "confidence_states": [
+    "HIGH",
+    "MEDIUM",
+    "LOW"
+  ],
   "required_stages": [
     "architecture",
     "supply_chain_graph",
@@ -51,7 +64,7 @@
     "timing",
     "source_delta"
   ],
-  "hard_dependency_signals": [
+  "dependency_signals": [
     "single_source",
     "semi_monopoly",
     "qualified_supplier_concentration",
@@ -59,6 +72,21 @@
     "binding_capacity",
     "unique_process_or_ip",
     "customer_named_dependency"
+  ],
+  "bottleneck_proving_signals": [
+    "single_source",
+    "semi_monopoly",
+    "qualified_supplier_concentration",
+    "qualification_constraint",
+    "binding_capacity",
+    "unique_process_or_ip"
+  ],
+  "expansion_signals": [
+    "revenue_expansion",
+    "capacity_expansion",
+    "market_share_expansion",
+    "bom_share_expansion",
+    "vertical_integration"
   ],
   "commercial_validation_signals": [
     "named_contract",
@@ -78,6 +106,7 @@
   "thesis_killers": [
     "repeated_atm_or_material_dilution",
     "toxic_warrants_or_financing",
+    "equity_capture_destroyed_by_financing",
     "customer_loss",
     "architecture_bypass",
     "new_qualified_competitor",
@@ -119,6 +148,40 @@
       "unnamed_rumor"
     ]
   },
+  "graph_edge_required_fields": [
+    "from",
+    "to",
+    "relationship",
+    "evidence_url",
+    "as_of"
+  ],
+  "signal_evidence_required_fields": [
+    "signal",
+    "evidence_url",
+    "as_of"
+  ],
+  "source_delta_required_fields": [
+    "url",
+    "published_at",
+    "ticker_or_theme",
+    "source_view",
+    "stance",
+    "horizon",
+    "what_changed_vs_prior_source_view",
+    "retrieval_status"
+  ],
+  "source_delta_stances": [
+    "positive",
+    "negative",
+    "mixed",
+    "neutral",
+    "unknown"
+  ],
+  "source_delta_retrieval_states": [
+    "retrieved",
+    "unavailable",
+    "lead_only"
+  ],
   "global_universe": {
     "exchange_agnostic": true,
     "examples": [
@@ -142,6 +205,14 @@
     "social_post_cannot_prove_company_fact": true,
     "quantitative_overlay_cannot_override_broken_thesis": true,
     "foreign_listing_cannot_be_excluded_for_missing_sec_companyfacts": true,
-    "disconfirmation_conditions_required": true
+    "disconfirmation_conditions_required": true,
+    "dependency_claim_requires_evidence_binding": true,
+    "killer_claim_requires_evidence_binding": true,
+    "commercial_claim_requires_evidence_binding": true,
+    "graph_edge_requires_evidence_binding": true,
+    "architecture_requires_dated_evidence_for_bottleneck_class": true,
+    "company_capture_requires_evidence": true,
+    "source_delta_must_be_chronological_within_snapshot": true,
+    "cross_run_append_only_requires_persistent_history": true
   }
 }
