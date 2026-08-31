@@ -352,8 +352,13 @@ def sec_counterparty_corroboration(ticker: str) -> list[dict[str, Any]]:
                     text = h3.fetch_sec_document(url)
                 except Exception:
                     continue
-                hits = [term for term in item["search_terms"] if re.search(re.escape(str(term)), text, re.I)]
-                if len(hits) >= 2:
+                terms = [str(term) for term in item["search_terms"]]
+                hits = [term for term in terms if re.search(re.escape(term), text, re.I)]
+                # The focal-company term (first configured term) must be present,
+                # plus at least one relationship/material term. This prevents an
+                # unrelated counterparty filing about InP/capacity from becoming
+                # false independent corroboration of the focal relationship.
+                if terms and terms[0] in hits and len(hits) >= 2:
                     row["matches"].append({"url": url, "matched_terms": hits})
             row["ok"] = bool(row["matches"])
         except Exception as exc:
@@ -435,20 +440,23 @@ def _add_official_non_us(record: dict[str, Any], identity: Mapping[str, Any]) ->
     for url in urls:
         record["evidence"].append({"tier": "primary_strong", "url": url})
     if record["ticker"] == "SIVE":
+        collaboration_url = next((url for url in urls if "globalfoundries" in url.casefold()), urls[0] if urls else "")
+        q2_url = next((url for url in urls if "q2-2026" in url.casefold()), urls[0] if urls else "")
         record["architecture"] = {
             "current": "silicon photonics / CPO ecosystem",
-            "as_of": "2026-08-27T00:00:00Z",
-            "evidence_urls": urls[:1],
+            "as_of": "2026-06-02T00:00:00Z",
+            "evidence_urls": [collaboration_url] if collaboration_url else [],
         }
-        if urls:
+        if collaboration_url:
             record["beneficiary_signal"] = True
-            record["beneficiary_evidence_urls"] = urls[:1]
-        signal = "customer_named_ramp"
-        record["signals"].append(signal)
-        record["signal_evidence"].append({
-            "signal": signal, "evidence_url": urls[0], "as_of": "2026-08-27T00:00:00Z",
-            "excerpt": "Official Sivers regulatory Q2 2026 source reports customer production ramps and product revenue growth.",
-        })
+            record["beneficiary_evidence_urls"] = [collaboration_url]
+        if q2_url:
+            signal = "customer_named_ramp"
+            record["signals"].append(signal)
+            record["signal_evidence"].append({
+                "signal": signal, "evidence_url": q2_url, "as_of": "2026-08-27T00:00:00Z",
+                "excerpt": "Official Sivers regulatory Q2 2026 source reports customer production ramps and product revenue growth.",
+            })
 
 
 def _add_independent_graph(record: dict[str, Any], corroboration: Sequence[Mapping[str, Any]]) -> int:
