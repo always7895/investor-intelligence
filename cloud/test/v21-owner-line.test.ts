@@ -63,6 +63,35 @@ function top20() {
   }));
 }
 
+function top20Report() {
+  return {
+    schema_version: 1,
+    product_version: "2.1.2",
+    generated_at: new Date().toISOString(),
+    display_columns: ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"],
+    long_term_definition: "trailing_2y_adjusted_close_cagr",
+    short_term_definition: "trailing_6m_adjusted_close_price_return",
+    records: Array.from({ length: 20 }, (_, index) => ({
+      schema_version: 1,
+      rank: index + 1,
+      ticker: `T${String(index).padStart(2, "0")}`,
+      long_term_return_pct: 40 - index,
+      short_term_return_pct: 12 - index / 2,
+      industry: "Synthetic Industry",
+      profit_summary: "獲利；營收年增 +20.0%；營益率 15.0%；淨利率 10.0%",
+      long_term_window: "2y_cagr",
+      short_term_window: "6m_price_return",
+      market_source: "yfinance",
+      profit_source: "sec_edgar",
+      retrieved_at: new Date().toISOString(),
+      provider_scope: "public_only",
+      owner_watchlist_inherited: false,
+    })),
+    provider_scope: "public_only",
+    owner_watchlist_inherited: false,
+  };
+}
+
 function runtime() {
   const publicKv = new MemoryKv();
   const privateKv = new MemoryKv();
@@ -192,6 +221,7 @@ describe("v2.1 private owner LINE delivery", () => {
     const runId = "20260830T000000Z-0123456789ab";
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
     publicKv.values.set(
       `snapshot:${runId}:last_successful_pipeline_timestamp`,
       new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -199,13 +229,14 @@ describe("v2.1 private owner LINE delivery", () => {
     expect((await broadcastV21Top20(env, "morning")).status).toBe("stale");
   });
 
-  it("pushes exactly one fresh scheduled message and deduplicates the slot", async () => {
+  it("pushes exactly one five-field fresh scheduled message and deduplicates the slot", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
     const runId = "20260830T000000Z-0123456789ab";
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     const calls: Array<Record<string, unknown>> = [];
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -216,5 +247,9 @@ describe("v2.1 private owner LINE delivery", () => {
     expect((await broadcastV21Top20(env, "morning")).status).toBe("duplicate");
     expect(calls).toHaveLength(1);
     expect(String(calls[0]?.to ?? "")).toBe(LINE_TARGET);
+    const body = JSON.stringify(calls[0]);
+    expect(body).toContain("股票｜長期投資報酬率｜短期投資報酬率｜行業別｜獲利簡述");
+    expect(body).not.toContain("Serenity");
+    expect(body).not.toContain("Aschenbrenner");
   });
 });
