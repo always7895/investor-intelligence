@@ -163,13 +163,45 @@ def load_system_scores(path: Path | None) -> dict[str, dict[str, Any]]:
     for row in raw:
         if not isinstance(row, Mapping):
             continue
-        symbol = clean_ticker(row.get("ticker"))
-        if symbol:
-            result[symbol] = {
-                "score": row.get("serenity_score"), "rank": row.get("rank"),
-                "quality": row.get("data_quality"), "scoring_version": row.get("scoring_version"),
-            }
+        ticker = clean_ticker(row.get("ticker"))
+        if not ticker:
+            continue
+        result[ticker] = {
+            "score": row.get("serenity_score"),
+            "rank": row.get("rank"),
+            "quality": row.get("data_quality"),
+            "scoring_version": row.get("scoring_version"),
+            "evidence": list(row.get("evidence") or []) if isinstance(row.get("evidence"), list) else [],
+        }
     return result
+
+
+def merge_system_evidence(evidence: list[dict[str, Any]], system: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    merged = [dict(row) for row in evidence]
+    seen = {str(row.get("url") or "") for row in merged if str(row.get("url") or "").startswith("https://")}
+    for raw in (system or {}).get("evidence", []):
+        if not isinstance(raw, Mapping):
+            continue
+        url = str(raw.get("url") or "").strip()
+        if not url.startswith("https://") or url in seen:
+            continue
+        source_id = str(raw.get("source_id") or "existing_system_public_evidence")
+        raw_tier = str(raw.get("tier") or "").strip().casefold()
+        if source_id == "sec_edgar" or raw_tier in {"t0", "t1", "primary", "primary_strong"}:
+            tier = "primary_strong"
+        elif source_id in {"world_bank_indicators", "bls_public_data", "gleif_lei"} or raw_tier in {"t2", "corroborating", "secondary"}:
+            tier = "corroborating"
+        else:
+            tier = "lead_only"
+        merged.append({
+            "tier": tier, "source_id": source_id,
+            "claim_scope": "existing_signed_system_public_evidence", "url": url,
+            "as_of": dateish(raw.get("as_of"), now_iso()),
+            "title": str(raw.get("title") or f"Existing signed public evidence: {source_id}")[:300],
+            "retrieved_at": now_iso(),
+        })
+        seen.add(url)
+    return merged
 
 
 def conservative_record(ticker: str, evidence: list[dict[str, Any]], adapter_status: Mapping[str, Any],
@@ -202,7 +234,9 @@ def shadow_one(ticker: str, *, system_scores: Mapping[str, Mapping[str, Any]]) -
         raise ValueError(f"Invalid symbol: {ticker}")
     context = sources.build_source_context(symbol, f"{symbol} public-logic shadow research")
     evidence, adapter_status = context_to_evidence(context)
-    record = conservative_record(symbol, evidence, adapter_status, system_scores.get(symbol))
+    system = system_scores.get(symbol)
+    evidence = merge_system_evidence(evidence, system)
+    record = conservative_record(symbol, evidence, adapter_status, system)
     assessed = fidelity.assess_public_logic(record)
     assessed["shadow_only"] = True
     assessed["source_context"] = {
@@ -250,7 +284,14 @@ def self_test() -> None:
     evidence, status = context_to_evidence(context)
     assert any(row["tier"] == "primary_strong" and row["source_id"] == "sec_edgar" for row in evidence)
     assert any(row["tier"] == "lead_only" and row["source_id"] == "yahoo_finance_public_unofficial" for row in evidence)
-    result = fidelity.assess_public_logic(conservative_record("TEST", evidence, status, {"score": 99, "rank": 1}))
+    system = {
+        "score": 99, "rank": 1,
+        "evidence": [{"source_id": "sec_edgar", "tier": "T0",
+                      "url": "https://www.sec.gov/Archives/existing.htm",
+                      "as_of": "2026-08-15T00:00:00Z", "title": "Existing signed evidence"}],
+    }
+    evidence = merge_system_evidence(evidence, system)
+    result = fidelity.assess_public_logic(conservative_record("TEST", evidence, status, system))
     assert result["public_logic_fidelity"]["dependency_role"] == "UNPROVEN"
     assert result["public_logic_fidelity"]["thesis_class"] == "UNPROVEN"
     assert result["system_operationalization_score"] == 99
