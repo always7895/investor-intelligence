@@ -65,7 +65,9 @@ Each document is bounded in bytes, the number of filings is bounded, and stored 
 
 ## Repeated shadow comparison
 
-The H3 Windows runner executes the same archetype set twice:
+The H3 Windows runner uses a bounded two-pass design to reduce unnecessary public-source traffic:
+
+**Pass 1 — full methodology archetype set**
 
 - AAOI
 - AXTI
@@ -75,7 +77,13 @@ The H3 Windows runner executes the same archetype set twice:
 - TSEM
 - SOI
 
-It compares safety-critical canonical states rather than retrieval timestamps. Transient source availability may reduce evidence, but no run is allowed to manufacture a hard dependency from issuer-only claims.
+**Pass 2 — bounded safety repeat**
+
+- AAOI
+- AXTI
+- SIVE
+
+The repeat compares safety-critical states rather than retrieval timestamps. Transient source availability may reduce evidence, but no run is allowed to manufacture a hard dependency from issuer-only claims.
 
 ## Remaining gaps after H3
 
