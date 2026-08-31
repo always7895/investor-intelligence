@@ -8,29 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from build_v212_top20_report import (  # noqa: E402
-    _returns_from_history,
+    LONG_TERM_WINDOW_DAYS,
+    SHORT_TERM_WINDOW_DAYS,
     profit_summary,
 )
-
-
-class FakeSeries:
-    def __init__(self, values, index):
-        self._values = list(values)
-        self.index = index
-        self.iloc = self
-
-    def dropna(self):
-        return self
-
-    def __len__(self):
-        return len(self._values)
-
-    def __getitem__(self, item):
-        if isinstance(item, int):
-            return self._values[item]
-        # boolean/date filter is exercised in production; fixtures below focus on
-        # deterministic profitability formatting rather than mocking pandas.
-        return self
 
 
 class V212Top20ReportTests(unittest.TestCase):
@@ -61,12 +42,14 @@ class V212Top20ReportTests(unittest.TestCase):
         module_text = (ROOT / "scripts" / "build_v212_top20_report.py").read_text(
             encoding="utf-8"
         )
+        self.assertEqual(LONG_TERM_WINDOW_DAYS, 730)
+        self.assertEqual(SHORT_TERM_WINDOW_DAYS, 183)
         self.assertIn('"2y_cagr"', module_text)
         self.assertIn('"6m_price_return"', module_text)
         self.assertIn('"股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述"', module_text)
         self.assertIn('period="3y"', module_text)
-        self.assertIn("days=730", module_text)
-        self.assertIn("days=183", module_text)
+        self.assertIn("start_point(LONG_TERM_WINDOW_DAYS)", module_text)
+        self.assertIn("start_point(SHORT_TERM_WINDOW_DAYS)", module_text)
 
 
 if __name__ == "__main__":
