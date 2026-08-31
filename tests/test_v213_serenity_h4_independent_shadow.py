@@ -21,6 +21,21 @@ class SerenityH4Tests(unittest.TestCase):
     def test_hypothetical_qualification_constraint_is_rejected(self):
         self.assertFalse(mod.claim_is_eventive("qualification_constraint", "If we fail to meet the product qualification requirements of a customer, we may lose sales to that customer"))
 
+    def test_dependency_candidate_audit_rejects_generic_risk_statement(self):
+        audited = mod.audit_h3_claims({
+            "extraction": {
+                "signal_evidence": [],
+                "dependency_candidates": [{
+                    "signal": "qualification_constraint",
+                    "excerpt": "If we fail to meet the product qualification and volume requirements of a customer, we may lose sales to that customer",
+                    "evidence_url": "https://www.sec.gov/example",
+                    "as_of": "2026-08-01T00:00:00Z",
+                }],
+            }
+        })
+        self.assertEqual(audited["accepted_dependency_candidates"], [])
+        self.assertEqual([row["signal"] for row in audited["rejected"]], ["qualification_constraint"])
+
     def test_hypothetical_qualification_delay_is_rejected(self):
         self.assertFalse(mod.claim_is_eventive("qualification_delay", "Any failure or delay in obtaining such qualification could delay revenue and increase costs"))
 
