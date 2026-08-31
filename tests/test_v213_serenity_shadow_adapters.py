@@ -76,6 +76,23 @@ class SerenityShadowAdaptersV213Tests(unittest.TestCase):
         self.assertEqual(result["public_logic_fidelity"]["dependency_role"], "UNPROVEN")
         self.assertEqual(result["public_logic_fidelity"]["thesis_class"], "UNPROVEN")
 
+    def test_signed_system_evidence_is_reused_as_context_without_creating_signals(self):
+        rows, status = MODULE.context_to_evidence(self.context())
+        system = {
+            "score": 99,
+            "evidence": [{
+                "source_id": "sec_edgar", "tier": "T0",
+                "url": "https://www.sec.gov/Archives/signed.htm",
+                "as_of": "2026-08-15T00:00:00Z", "title": "Signed SEC evidence",
+            }],
+        }
+        merged = MODULE.merge_system_evidence(rows, system)
+        self.assertTrue(any(row["url"].endswith("signed.htm") and row["tier"] == "primary_strong" for row in merged))
+        record = MODULE.conservative_record("TEST", merged, status, system)
+        self.assertEqual(record["dependency_signals"], [])
+        result = MODULE.fidelity.assess_public_logic(record)
+        self.assertEqual(result["public_logic_fidelity"]["dependency_role"], "UNPROVEN")
+
     def test_high_system_score_does_not_create_public_logic_bottleneck(self):
         rows, status = MODULE.context_to_evidence(self.context())
         record = MODULE.conservative_record("TEST", rows, status, {"score": 99, "rank": 1})
