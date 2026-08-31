@@ -11,14 +11,19 @@ import argparse
 import hashlib
 import json
 import math
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 import build_v21_public_snapshot as base
 
-ROOT = Path(__file__).resolve().parents[1]
 UNIVERSE_PATH = ROOT / "data" / "cache" / "research_universe_public_latest.json"
 OPTIONS_PATH = ROOT / "data" / "cache" / "options_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v211_public_snapshot_upload.json"
