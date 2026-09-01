@@ -124,7 +124,7 @@ namespace InvestorIntelligence
             {
                 int refresh = RunPowerShell("run-v213-local.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared -NoAutoActivation");
                 if (refresh != 0) return refresh;
-                return RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation");
+                return RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation -RequireLocalModel");
             }
 
             Application.EnableVisualStyles();
@@ -160,8 +160,8 @@ namespace InvestorIntelligence
 
                 Controls.Add(Button("正式啟用 08:00 / 21:00 七欄推送\nActivate scheduled seven-field LINE", 320, 90, delegate {
                     var answer = MessageBox.Show(
-                        "將先執行一次完整刷新與本地模型橋接，再正式部署 v2.1.3 Worker，並把每日 08:00 / 21:00 切換成已驗收的七欄格式。\n\n" +
-                        "A fresh refresh/model-bridge preflight runs first, then the accepted seven-field schedule is deployed.\n\nContinue?",
+                        "將先執行一次完整刷新與本地模型橋接；只有本地模型公開橋接 health gate 通過，才會正式部署 v2.1.3 Worker，並把每日 08:00 / 21:00 切換成已驗收的七欄格式。\n\n" +
+                        "A fresh refresh/model-bridge preflight runs first. Formal activation requires the local-model health gate to pass.\n\nContinue?",
                         "Confirm v2.1.3 activation", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (answer != DialogResult.Yes) return;
                     status.Text = "先刷新資料與模型橋接 / Refreshing before activation...";
@@ -172,7 +172,7 @@ namespace InvestorIntelligence
                         return;
                     }
                     status.Text = "正式啟用中 / Activating...";
-                    int code = RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation");
+                    int code = RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation -RequireLocalModel");
                     status.Text = code == 0 ? "正式啟用完成 / Activation completed" : "啟用失敗；已顯示 rollback/錯誤詳細資料 / Activation failed";
                 }));
 
