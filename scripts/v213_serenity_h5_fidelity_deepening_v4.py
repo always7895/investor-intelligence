@@ -52,7 +52,7 @@ def sive_financing_and_capacity_v4(april: str, june: str, q1: str, q2: str, aug3
     warrant = v3.fetch_text_complete(SIVE_WARRANT)
     _must(r"convert the convertible loan of \$12M into shares.{0,260}22,847,044 new ordinary shares", conversion, "SIVE Bootstrap conversion")
     _must(r"conversion price of SEK 4\.77 per share", conversion, "SIVE Bootstrap conversion price")
-    _must(r"dilution of approximately 6\.4 percent", conversion, "SIVE Bootstrap conversion dilution")
+    _must(r"dilution of approximately 6\.4 per\s*cent", conversion, "SIVE Bootstrap conversion dilution")
     _must(r"1,659,015 new ordinary shares", warrant, "SIVE warrant shares")
     _must(r"subscription price of SEK 4\.53 per share", warrant, "SIVE warrant exercise price")
     _must(r"proceeds of approximately SEK 7\.5 million", warrant, "SIVE warrant proceeds")
