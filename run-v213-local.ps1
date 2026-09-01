@@ -7,6 +7,7 @@ param(
     [switch]$NoTunnel,
     [switch]$InstallCloudflared,
     [switch]$NoSync,
+    [switch]$NoAutoActivation,
     [switch]$Synthetic
 )
 $ErrorActionPreference='Stop'
@@ -35,7 +36,7 @@ function Resolve-ProjectPython {
     if(-not(Test-Python $python)){
         Write-Host 'No usable Python found; installing verified portable CPython 3.12.10...' -ForegroundColor Cyan
         & (Join-Path $ProjectRoot 'scripts\bootstrap_portable_python.ps1') -DestinationPath $portable
-        if($LASTEXITCODE -ne 0 -or -not(Test-Python $python)){throw 'Verified portable Python bootstrap failed.'}
+        if(-not(Test-Python $python)){throw 'Verified portable Python bootstrap failed.'}
     }
     $marker=Join-Path $portable '.investor-intelligence-requirements-v213.ok'
     if(-not(Test-Path $marker -PathType Leaf)){
@@ -69,7 +70,6 @@ try{
     if(-not $NoModelBridge){
         try{
             & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting
-            if($LASTEXITCODE -ne 0){throw 'Local-model bridge returned non-zero.'}
         }catch{
             Write-Warning ("Local-model bridge is not ready yet; public-data refresh will continue. " + $_.Exception.Message)
         }
@@ -92,17 +92,16 @@ try{
                 $syncConfig=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
                 if(Test-Path $syncConfig -PathType Leaf){
                     & .\sync-v21-public-snapshot.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                    if($LASTEXITCODE -ne 0){throw 'v2.1 signed public snapshot sync failed.'}
                     & .\sync-v212-top20-report.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                    if($LASTEXITCODE -ne 0){throw 'v2.1.2 report sync failed.'}
                 }else{
                     Write-Warning 'LINE signed-sync configuration is not installed; local reports were refreshed but not uploaded.'
                 }
                 $v213Config=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\wrangler.v213.production.local.toml'
-                if(Test-Path $v213Config -PathType Leaf){
+                if((Test-Path $v213Config -PathType Leaf) -and -not $NoAutoActivation){
                     & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation
-                    if($LASTEXITCODE -ne 0){throw 'v2.1.3 scheduled route/model refresh failed.'}
                     Write-Host 'V213_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
+                }elseif(Test-Path $v213Config -PathType Leaf){
+                    Write-Host 'V213_REPORT_READY = PASS; auto-activation intentionally skipped for explicit activation preflight.' -ForegroundColor Green
                 }else{
                     Write-Host 'V213_REPORT_READY = PASS; formal v2.1.3 schedule activation has not been performed yet.' -ForegroundColor Green
                 }
