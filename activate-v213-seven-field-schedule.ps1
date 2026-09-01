@@ -2,7 +2,8 @@
 param(
     [string]$ProjectRoot = '',
     [ValidateSet('zh-TW','en','bilingual')][string]$FieldLocale = 'zh-TW',
-    [switch]$ConfirmActivation
+    [switch]$ConfirmActivation,
+    [switch]$RequireLocalModel
 )
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
@@ -81,7 +82,6 @@ function Get-HealthyModelState([string]$Path){
     }catch{return $null}
 }
 
-# Deterministic local Wrangler bootstrap; never let npx select an arbitrary version.
 & (Join-Path $ProjectRoot 'scripts\resolve_node.ps1') -MinimumVersion '22.0.0'
 $npm=if($env:PROJECT_NPM){$env:PROJECT_NPM}else{(Get-Command npm.cmd -ErrorAction Stop).Source}
 Push-Location $CloudRoot
@@ -100,12 +100,16 @@ $productionConfig=@(
 )|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
 if(-not$productionConfig){throw 'Installed Production Wrangler config was not found.'}
 
+$modelState=Join-Path $configRoot 'v213-local-model.json'
+$healthyModel=Get-HealthyModelState $modelState
+if($RequireLocalModel -and -not $healthyModel){
+    throw 'Formal activation requires a fresh healthy local-model bridge, but its public tunnel health check did not pass. Production was not changed.'
+}
+
 $temp=Join-Path $CloudRoot ('.wrangler.v213.activation.'+[guid]::NewGuid().ToString('N')+'.toml')
 $text=Get-Content $productionConfig -Raw -Encoding utf8
 $text=[regex]::Replace($text,'(?m)^\s*main\s*=.*$','main = "src/v213/production-worker.ts"',1)
 $text=Set-Var $text 'V213_FIELD_LOCALE' $FieldLocale
-$modelState=Join-Path $configRoot 'v213-local-model.json'
-$healthyModel=Get-HealthyModelState $modelState
 if($healthyModel){
     $text=Set-Var $text 'LOCAL_LLM_BASE_URL' ([string]$healthyModel.public_url)
     $text=Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string]$healthyModel.allowed_host)
@@ -113,7 +117,7 @@ if($healthyModel){
     Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; host=$($healthyModel.allowed_host)" -ForegroundColor Green
 }else{
     foreach($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')){$text=Remove-Var $text $key}
-    Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; activation will keep deterministic/public research features and fail closed for open-ended local-model generation.'
+    Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; deterministic/public research can activate but open-ended local-model generation will fail closed.'
 }
 [IO.File]::WriteAllText($temp,$text,[Text.UTF8Encoding]::new($false))
 $prior=''
@@ -140,8 +144,6 @@ try{
     if($current-eq$prior){throw 'Deployment did not produce a new active Worker version.'}
 
     & (Join-Path $ProjectRoot 'sync-v213-top20-report.ps1') -ProjectRoot $ProjectRoot
-
-    # Install a stable runtime before replacing the old 07:20 / 20:20 refresh actions.
     & (Join-Path $ProjectRoot 'install-v213-runtime.ps1') -ProjectRoot $ProjectRoot
     $stableRuntime=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
     & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
@@ -157,6 +159,7 @@ try{
         scheduled_format='v213_seven_fields';field_locale=$FieldLocale
         runtime_root=$stableRuntime
         local_model_route= $(if($healthyModel){'HEALTHY_WIRED'}else{'FAIL_CLOSED_NOT_WIRED'})
+        local_model_required=[bool]$RequireLocalModel
         rollback_on_failure=$true
     }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json') -Encoding utf8
     Write-Host "V2.1.3 SCHEDULED SEVEN-FIELD ACTIVATION = PASS; active_version=$current" -ForegroundColor Green
