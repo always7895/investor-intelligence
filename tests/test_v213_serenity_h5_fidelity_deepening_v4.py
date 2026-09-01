@@ -21,7 +21,7 @@ class H5V4Tests(unittest.TestCase):
         q1 = "qual builds and production readiness is on track for Q4 2026; massive multi-year imbalance in the demand-supply situation for optical networking"
         q2 = "Product Revenue Increases 18% Year-Over-Year; directed share issues amounting to approximately SEK 825 m"
         aug31 = "356,740,332 ordinary shares; increased by 1,659,015, from 355,081,317 to 356,740,332"
-        conversion = "convert the convertible loan of $12M into shares and issue 22,847,044 new ordinary shares; conversion price of SEK 4.77 per share; dilution of approximately 6.4 percent"
+        conversion = "convert the convertible loan of $12M into shares and issue 22,847,044 new ordinary shares; conversion price of SEK 4.77 per share; dilution of approximately 6.4 per cent"
         warrant = "1,659,015 new ordinary shares at a subscription price of SEK 4.53 per share; proceeds of approximately SEK 7.5 million"
         old = h5v4.v3.fetch_text_complete
         try:
