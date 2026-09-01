@@ -2,18 +2,18 @@
 """H6B1 R12: source-view fulfillment enrichment without changing current-order binding.
 
 R11 removed the mutable-dispatch recursion and successfully built the real 20-row
-shadow.  The real run then showed a different failure mode: a supported current
+shadow. The real run then showed a different failure mode: a supported current
 RPO can be selected from an early/duplicate iXBRL-visible occurrence whose
 bounded context does not contain the issuer's fulfillment sentence, even though
 the same selected SEC document contains another occurrence of the same RPO
 amount with the explicit schedule.
 
-R12 does not loosen current-order extraction.  It first runs the accepted R11
-semantic adapter unchanged.  Only when that adapter has SUPPORTED current orders
+R12 does not loosen current-order extraction. It first runs the accepted R11
+semantic adapter unchanged. Only when that adapter has SUPPORTED current orders
 and UNAVAILABLE future orders does R12 re-open the *same selected source view*,
 find another clause-safe occurrence with the same metric type and same normalized
 amount, and ask the non-recursive R11 fulfillment parser to classify its local
-context.  Different amounts, different metric types and different documents
+context. Different amounts, different metric types and different documents
 cannot supply the enrichment.
 """
 from __future__ import annotations
@@ -58,6 +58,25 @@ def _amount_from_current_summary(current: str) -> str | None:
     return amount
 
 
+def _next_metric_start(text: str, *, after: int, limit: int) -> int | None:
+    """Locate the next independently quantified order/RPO metric.
+
+    Fulfillment evidence for one current amount must never cross into the next
+    separately quantified current-order/RPO statement. This is the document-view
+    equivalent of R8's clause-safe amount binding.
+    """
+    next_start: int | None = None
+    for _priority, _label, _metric_type, pattern in r4.METRIC_PATTERNS:
+        for match in pattern.finditer(text, after, limit):
+            start = match.start()
+            if start <= after:
+                continue
+            if next_start is None or start < next_start:
+                next_start = start
+            break
+    return next_start
+
+
 def _same_metric_schedule_from_source(
     text: str,
     *,
@@ -66,7 +85,7 @@ def _same_metric_schedule_from_source(
 ) -> tuple[str, str] | None:
     """Return a future schedule only from the same metric+amount in one source.
 
-    This is deliberately narrower than a general document search.  It cannot
+    This is deliberately narrower than a general document search. It cannot
     borrow a schedule from another RPO balance or from a backlog/order metric.
     """
     target_amount = r11._normalize_amount_v6(amount)
@@ -78,7 +97,10 @@ def _same_metric_schedule_from_source(
             if candidate_amount != target_amount:
                 continue
             start, end = match.span()
-            context = text[max(0, start - 240) : min(len(text), end + 2400)]
+            hard_limit = min(len(text), end + 2400)
+            next_metric = _next_metric_start(text, after=end, limit=hard_limit)
+            context_end = next_metric if next_metric is not None else hard_limit
+            context = text[max(0, start - 240) : context_end]
             metric: dict[str, Any] = {
                 "label": label,
                 "metric_type": candidate_type,
@@ -147,7 +169,7 @@ def generic_sec_outlook_semantic_v7(
 
 
 # Both call sites exist in the current H6B stack: tests call the semantic module,
-# while the Top20 builder calls base.generic_sec_outlook.  Patch both to the same
+# while the Top20 builder calls base.generic_sec_outlook. Patch both to the same
 # non-recursive wrapper.
 r4.generic_sec_outlook_semantic = generic_sec_outlook_semantic_v7
 base.generic_sec_outlook = generic_sec_outlook_semantic_v7
@@ -171,7 +193,8 @@ def self_test() -> None:
     assert enriched is not None and enriched[1] == "INFERENCE" and "39%" in enriched[0]
     assert "非新增訂單預測" in enriched[0]
 
-    # Never borrow a schedule from a different RPO amount.
+    # Never borrow a schedule from a different RPO amount, even when it occurs
+    # within the broad source-view window.
     mixed_amounts = (
         "Remaining performance obligations were approximately $ 3.2 billion with no disclosed recognition schedule. "
         "A prior-period remaining performance obligations balance was approximately $ 2.6 billion. "
