@@ -120,8 +120,9 @@ function orderEvidenceSemantics(item: Record<string, unknown>): boolean {
   const confidence = item.orders_confidence.trim();
   if (!confidence || confidence.length > 80) return false;
   if (confidence === "UNAVAILABLE") {
+    const asOfIsAllowed = item.orders_as_of === "" || Number.isFinite(Date.parse(item.orders_as_of));
     return (
-      item.orders_as_of === "" &&
+      asOfIsAllowed &&
       item.current_orders === V213_NO_CURRENT_ORDERS &&
       item.future_orders_estimate === V213_NO_FUTURE_ORDER_ESTIMATE &&
       item.current_order_source_urls.length === 0 &&
