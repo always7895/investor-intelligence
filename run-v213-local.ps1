@@ -5,6 +5,7 @@ param(
     [string]$LlamaBaseUrl = '',
     [switch]$NoModelBridge,
     [switch]$NoTunnel,
+    [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$Synthetic
 )
@@ -20,7 +21,7 @@ function PythonExe {
 }
 $python=PythonExe
 if(-not $NoModelBridge){
-    & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel
+    & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared
     if($LASTEXITCODE -ne 0){throw 'Local-model bridge failed.'}
 }
 Push-Location $ProjectRoot
@@ -50,9 +51,12 @@ try {
             }
             $v213Config=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\wrangler.v213.production.local.toml'
             if(Test-Path $v213Config -PathType Leaf){
-                & .\sync-v213-top20-report.ps1 -ProjectRoot $ProjectRoot
-                if($LASTEXITCODE -ne 0){throw 'v2.1.3 report sync failed.'}
-                Write-Host 'V213_REPORT_SYNC = PASS' -ForegroundColor Green
+                # Re-apply the guarded activation after every new quick tunnel so
+                # the Worker local-model allowlist/secret never points at a dead
+                # trycloudflare hostname. This also promotes the fresh v2.1.3 report.
+                & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation
+                if($LASTEXITCODE -ne 0){throw 'v2.1.3 scheduled route/model refresh failed.'}
+                Write-Host 'V213_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
             } else {
                 Write-Host 'V213_REPORT_READY = PASS; formal v2.1.3 schedule activation has not been performed yet.' -ForegroundColor Green
             }
