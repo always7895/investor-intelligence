@@ -101,6 +101,8 @@ namespace InvestorIntelligence
                     "run-v213-local-llm-bridge.ps1",
                     "activate-v213-seven-field-schedule.ps1",
                     "sync-v213-top20-report.ps1",
+                    "install-v213-runtime.ps1",
+                    "register-v213-refresh-tasks.ps1",
                     @"scripts\build_v213_scheduled_top20_report.py",
                     @"scripts\bootstrap_portable_python.ps1",
                     "requirements-ci.txt"
@@ -119,7 +121,11 @@ namespace InvestorIntelligence
             if (args.Contains("--local"))
                 return RunPowerShell("run-v213-local.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared");
             if (args.Contains("--activate-schedule"))
+            {
+                int refresh = RunPowerShell("run-v213-local.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared -NoAutoActivation");
+                if (refresh != 0) return refresh;
                 return RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation");
+            }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -147,23 +153,33 @@ namespace InvestorIntelligence
                 });
 
                 Controls.Add(Button("啟動本地模型並更新資料\nStart local model + refresh", 24, 90, delegate {
+                    status.Text = "執行中 / Running...";
                     int code = RunPowerShell("run-v213-local.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared");
                     status.Text = code == 0 ? "更新完成 / Refresh completed" : "更新失敗；已顯示詳細原因 / Refresh failed";
                 }));
 
                 Controls.Add(Button("正式啟用 08:00 / 21:00 七欄推送\nActivate scheduled seven-field LINE", 320, 90, delegate {
                     var answer = MessageBox.Show(
-                        "這會正式部署 v2.1.3 Worker 並把每日 08:00 / 21:00 切換成已驗收的七欄格式。\n\n" +
-                        "This formally deploys the v2.1.3 Worker and activates the accepted seven-field schedule.\n\nContinue?",
+                        "將先執行一次完整刷新與本地模型橋接，再正式部署 v2.1.3 Worker，並把每日 08:00 / 21:00 切換成已驗收的七欄格式。\n\n" +
+                        "A fresh refresh/model-bridge preflight runs first, then the accepted seven-field schedule is deployed.\n\nContinue?",
                         "Confirm v2.1.3 activation", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (answer != DialogResult.Yes) return;
+                    status.Text = "先刷新資料與模型橋接 / Refreshing before activation...";
+                    int refresh = RunPowerShell("run-v213-local.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared -NoAutoActivation");
+                    if (refresh != 0)
+                    {
+                        status.Text = "前置刷新失敗；Production 未切換 / Preflight refresh failed";
+                        return;
+                    }
+                    status.Text = "正式啟用中 / Activating...";
                     int code = RunPowerShell("activate-v213-seven-field-schedule.ps1", "-ProjectRoot \"" + Root + "\" -ConfirmActivation");
                     status.Text = code == 0 ? "正式啟用完成 / Activation completed" : "啟用失敗；已顯示 rollback/錯誤詳細資料 / Activation failed";
                 }));
 
                 Controls.Add(Button("只啟動本地模型橋接\nStart local-model bridge only", 24, 190, delegate {
+                    status.Text = "本地模型橋接啟動中 / Starting model bridge...";
                     int code = RunPowerShell("run-v213-local-llm-bridge.ps1", "-ProjectRoot \"" + Root + "\" -InstallCloudflared -StopExisting");
-                    status.Text = code == 0 ? "本地模型橋接完成 / Model bridge ready" : "模型橋接失敗；已顯示詳細原因 / Bridge failed";
+                    status.Text = code == 0 ? "本地模型橋接完成；正式 Worker 路由會在刷新/啟用時更新 / Model bridge ready" : "模型橋接失敗；已顯示詳細原因 / Bridge failed";
                 }));
 
                 Controls.Add(Button("開啟程式資料夾\nOpen package folder", 320, 190, delegate {
