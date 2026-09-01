@@ -18,8 +18,8 @@ interface H6B2Envelope {
 
 const ACCEPTED_R15_SOURCE_SHA = "f1d6790de99c8af981a40e26993a12a444b214ba";
 const ACCEPTED_R15_REPORT_SHA256 = "cf0ff1a5a1499a8179fb0b68169511ec71c12f548069a3ee3a711955b705c284";
-const ACCEPTED_R15_PREVIEW_SHA256 = "b186136c5540cd9d0d50eb74cf2f0417ccba8b1e6ed16ad15de42e62a8b1334f";
-const ACCEPTED_R15_RECEIPT_SHA256 = "ffdb272c62ce537dc6537d7a80c9dbd112b064e1b816e3bdc8851f7d044b45d7";
+const ACCEPTED_R15R_PREVIEW_SHA256 = "ff0e0cfad5fffb6f0ed9c1482bc145f3ced7722f5eb571488e82a4f7b979c2c9";
+const ACCEPTED_R15R_RECEIPT_SHA256 = "a9298a29ed007f0b697d6d57789dc00c795a1ff34c66c10903a50018ea1b4282";
 const HEADER = "股票｜長期投資報酬率（近2年年化）｜短期投資報酬率（近6個月）｜行業別｜獲利簡述｜公司現在訂單｜未來訂單預估";
 const HEX64 = /^[0-9a-f]{64}$/;
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
@@ -86,12 +86,12 @@ function parseEnvelope(body: string): H6B2Envelope {
     value.stage !== "H6B2_REAL_LINE_SEVEN_FIELD_TEST" ||
     value.source_sha !== ACCEPTED_R15_SOURCE_SHA ||
     value.report_sha256 !== ACCEPTED_R15_REPORT_SHA256 ||
-    value.preview_sha256 !== ACCEPTED_R15_PREVIEW_SHA256 ||
-    value.receipt_sha256 !== ACCEPTED_R15_RECEIPT_SHA256 ||
+    value.preview_sha256 !== ACCEPTED_R15R_PREVIEW_SHA256 ||
+    value.receipt_sha256 !== ACCEPTED_R15R_RECEIPT_SHA256 ||
     typeof value.preview_text !== "string" ||
     !HEX64.test(String(value.preview_sha256))
   ) {
-    throw new Error("H6B2_ACCEPTED_R15_ATTESTATION_MISMATCH");
+    throw new Error("H6B2_ACCEPTED_R15R_ATTESTATION_MISMATCH");
   }
   return value as unknown as H6B2Envelope;
 }
@@ -101,7 +101,7 @@ export async function sendH6B2SevenFieldTestPush(
   body: string,
 ): Promise<Record<string, unknown>> {
   const envelope = parseEnvelope(body);
-  if ((await sha256(envelope.preview_text)) !== ACCEPTED_R15_PREVIEW_SHA256) {
+  if ((await sha256(envelope.preview_text)) !== ACCEPTED_R15R_PREVIEW_SHA256) {
     throw new Error("H6B2_PREVIEW_CONTENT_SHA_MISMATCH");
   }
   const parsedPreview = parseH6B2Preview(envelope.preview_text);
@@ -122,7 +122,8 @@ export async function sendH6B2SevenFieldTestPush(
     format: "v213_seven_fields",
     message_count: 1,
     source_sha: ACCEPTED_R15_SOURCE_SHA,
-    preview_sha256: ACCEPTED_R15_PREVIEW_SHA256,
+    preview_sha256: ACCEPTED_R15R_PREVIEW_SHA256,
+    order_reconciliation: "R15_ORDER_ONLY",
     public_or_tenant_payload_kv_write_performed: false,
     admin_replay_nonce_write_expected: true,
     scheduled_format_changed: false,

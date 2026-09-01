@@ -41,7 +41,8 @@ export default {
         ok: true,
         stage: "H6B2_REAL_LINE_SEVEN_FIELD_TEST",
         accepted_source_sha: "f1d6790de99c8af981a40e26993a12a444b214ba",
-        accepted_preview_sha256: "b186136c5540cd9d0d50eb74cf2f0417ccba8b1e6ed16ad15de42e62a8b1334f",
+        accepted_preview_sha256: "ff0e0cfad5fffb6f0ed9c1482bc145f3ced7722f5eb571488e82a4f7b979c2c9",
+        order_reconciliation: "R15_ORDER_ONLY",
         scheduled_worker_delegated: true,
       });
     }

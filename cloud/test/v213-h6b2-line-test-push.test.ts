@@ -2,21 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
-import {
-  parseH6B2Preview,
-  sendH6B2SevenFieldTestPush,
-} from "../src/v213/h6b2-line-test-push";
+import { parseH6B2Preview, sendH6B2SevenFieldTestPush } from "../src/v213/h6b2-line-test-push";
 
 const HASH_KEY = "SYNTHETIC_H6B2_HASH_KEY_NOT_REAL";
 const DATA_KEY = "SYNTHETIC_H6B2_DATA_KEY_NOT_REAL";
 const LINE_TARGET = String.fromCharCode(85) + "0".repeat(32);
 const R15_SOURCE_SHA = "f1d6790de99c8af981a40e26993a12a444b214ba";
 const R15_REPORT_SHA = "cf0ff1a5a1499a8179fb0b68169511ec71c12f548069a3ee3a711955b705c284";
-const R15_PREVIEW_SHA = "b186136c5540cd9d0d50eb74cf2f0417ccba8b1e6ed16ad15de42e62a8b1334f";
-const R15_RECEIPT_SHA = "ffdb272c62ce537dc6537d7a80c9dbd112b064e1b816e3bdc8851f7d044b45d7";
+const R15R_PREVIEW_SHA = "ff0e0cfad5fffb6f0ed9c1482bc145f3ced7722f5eb571488e82a4f7b979c2c9";
+const R15R_RECEIPT_SHA = "a9298a29ed007f0b697d6d57789dc00c795a1ff34c66c10903a50018ea1b4282";
 const TICKERS = [
   "MU", "NVDA", "CRDO", "WDC", "ALAB", "AMD", "PLTR", "APH", "AAOI", "OCC",
-  "AVGO", "LIF", "LRCX", "LASE", "NET", "CDE", "GWRE", "ADI", "CF", "SMCI",
+  "AVGO", "LIF", "LRCX", "LASE", "NET", "CDE", "GWRE", "SMCI", "ADI", "CF",
 ];
 
 const PREVIEW = [
@@ -38,9 +35,9 @@ const PREVIEW = [
   "NET｜+98.3%｜+68.5%｜基礎架構軟體｜虧損；營收年增 +29.8%；營益率 -20.0%；淨利率 -14.4%｜SEC揭露RPO（剩餘履約義務；非全部客戶訂單）約$2,732.0 million（文件日2026-08-06）；RPO常排除短期合約，不能視為公司全部客戶訂單｜公司預期約64%的該RPO於未來12個月認列；這是既有合約履約節奏，非新增訂單預測",
   "CDE｜+95.8%｜-22.8%｜其他產業｜獲利；營收年增 +96.4%；營益率 29.1%；淨利率 19.0%｜未揭露（無可靠公開訂單數字）｜無可靠公開預估",
   "GWRE｜+18.5%｜+37.4%｜應用軟體｜獲利；營收年增 +22.6%；營益率 8.2%；淨利率 10.1%｜SEC揭露RPO（剩餘履約義務；非全部客戶訂單）約$3.6 billion（文件日2026-06-05）；RPO常排除短期合約，不能視為公司全部客戶訂單｜無可靠公開預估",
-  "ADI｜+30.6%｜+3.4%｜半導體｜獲利；營收年增 +16.9%；營益率 36.9%；淨利率 31.0%｜未揭露（無可靠公開訂單數字）｜無可靠公開預估",
-  "CF｜+31.2%｜+25.8%｜其他產業｜獲利；營收年增 +19.3%；營益率 47.1%；淨利率 36.7%｜SEC揭露RPO（剩餘履約義務；非全部客戶訂單）約$1.5 billion（文件日2026-08-06）；RPO常排除短期合約，不能視為公司全部客戶訂單｜既有RPO履約節奏：2026剩餘期間約17%、2027–2029約43%、2030–2032約14%，其餘其後；非新增訂單預測",
   "SMCI｜-8.2%｜+17.1%｜電腦硬體｜獲利；營收年增 +46.6%；營益率 4.6%；淨利率 3.8%｜SEC揭露RPO（剩餘履約義務；非全部客戶訂單）約$2,612.0 million（文件日2026-08-31）；RPO常排除短期合約，不能視為公司全部客戶訂單｜公司預期約60%的該RPO於未來12個月認列；這是既有合約履約節奏，非新增訂單預測",
+  "ADI｜+30.6%｜+3.4%｜半導體｜獲利；營收年增 +16.9%；營益率 36.9%；淨利率 31.0%｜未揭露（無可靠公開訂單數字）｜無可靠公開預估",
+  "CF｜+31.2%｜+25.8%｜其他產業｜獲利；營收年增 +19.3%；營益率 47.1%；淨利率 36.7%｜SEC揭露RPO（剩餘履約義務；非全部客戶訂單）約$1.5 billion（文件日2026-08-06）；RPO常排除短期合約，不能視為公司全部客戶訂單｜既有RPO履約節奏：2026剩餘期間約17%、2027–2029約43%、2030–2032約14%，其餘其後；非新增訂單預測"
 ].join("\r\n") + "\r\n";
 
 function evidence(index: number) {
@@ -120,8 +117,8 @@ function envelope() {
     stage: "H6B2_REAL_LINE_SEVEN_FIELD_TEST",
     source_sha: R15_SOURCE_SHA,
     report_sha256: R15_REPORT_SHA,
-    preview_sha256: R15_PREVIEW_SHA,
-    receipt_sha256: R15_RECEIPT_SHA,
+    preview_sha256: R15R_PREVIEW_SHA,
+    receipt_sha256: R15R_RECEIPT_SHA,
     preview_text: PREVIEW,
   });
 }
@@ -131,20 +128,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("v2.1.3 H6B2 exact seven-field LINE acceptance", () => {
-  it("locks the exact accepted R15 preview bytes and seven-field structure", async () => {
-    expect(await digest(PREVIEW)).toBe(R15_PREVIEW_SHA);
+describe("v2.1.3 H6B2 order-reconciled seven-field LINE acceptance", () => {
+  it("locks the exact R15R reordered preview bytes and seven-field structure", async () => {
+    expect(await digest(PREVIEW)).toBe(R15R_PREVIEW_SHA);
     const parsed = parseH6B2Preview(PREVIEW);
     expect(parsed.tickers).toEqual(TICKERS);
     expect(parsed.canonical.split(/\r?\n/)).toHaveLength(21);
     expect(parsed.canonical.split(/\r?\n/).slice(1).every((row) => row.split("｜").length === 7)).toBe(true);
   });
 
-  it("pushes exactly one accepted seven-field message without public KV writes", async () => {
+  it("pushes exactly one reconciled seven-field message without public KV writes", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T000000Z-0123456789ab";
+    const runId = "20260901T122248Z-fccfd14d3c79";
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     const beforeKeys = [...publicKv.values.keys()].sort();
@@ -158,6 +155,7 @@ describe("v2.1.3 H6B2 exact seven-field LINE acceptance", () => {
     expect(result.status).toBe("sent");
     expect(result.format).toBe("v213_seven_fields");
     expect(result.message_count).toBe(1);
+    expect(result.order_reconciliation).toBe("R15_ORDER_ONLY");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.to).toBe(LINE_TARGET);
     const messages = calls[0]?.messages as Array<Record<string, unknown>>;
@@ -166,13 +164,13 @@ describe("v2.1.3 H6B2 exact seven-field LINE acceptance", () => {
     expect([...publicKv.values.keys()].sort()).toEqual(beforeKeys);
   });
 
-  it("fails closed when the live public Top20 order does not match the accepted preview", async () => {
+  it("fails closed when live public Top20 order drifts after reconciliation", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T000000Z-0123456789ab";
+    const runId = "20260901T122248Z-fccfd14d3c79";
     const wrong = [...TICKERS];
-    [wrong[0], wrong[1]] = [wrong[1]!, wrong[0]!];
+    [wrong[17], wrong[18]] = [wrong[18]!, wrong[17]!];
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20(wrong)));
     const fetchSpy = vi.fn();
