@@ -114,6 +114,23 @@ function lineSafeText(value: unknown, max: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= max && !value.includes("｜") && !/[\r\n]/.test(value);
 }
 
+function orderEvidenceSemantics(item: Record<string, unknown>): boolean {
+  if (typeof item.orders_as_of !== "string" || typeof item.orders_confidence !== "string") return false;
+  if (!httpsUrls(item.current_order_source_urls) || !httpsUrls(item.future_order_source_urls)) return false;
+  const confidence = item.orders_confidence.trim();
+  if (!confidence || confidence.length > 80) return false;
+  if (confidence === "UNAVAILABLE") {
+    return (
+      item.orders_as_of === "" &&
+      item.current_orders === V213_NO_CURRENT_ORDERS &&
+      item.future_orders_estimate === V213_NO_FUTURE_ORDER_ESTIMATE &&
+      item.current_order_source_urls.length === 0 &&
+      item.future_order_source_urls.length === 0
+    );
+  }
+  return Number.isFinite(Date.parse(item.orders_as_of));
+}
+
 export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const doc = raw as Record<string, unknown>;
@@ -149,9 +166,7 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
       !lineSafeText(item.current_orders, 150) || !lineSafeText(item.future_orders_estimate, 170) ||
       item.long_term_window !== "2y_cagr" || item.short_term_window !== "6m_price_return" ||
       item.market_source !== "yfinance" || item.profit_source !== "sec_edgar" ||
-      typeof item.orders_as_of !== "string" || !Number.isFinite(Date.parse(item.orders_as_of)) ||
-      typeof item.orders_confidence !== "string" || !item.orders_confidence.trim() || item.orders_confidence.length > 80 ||
-      !httpsUrls(item.current_order_source_urls) || !httpsUrls(item.future_order_source_urls) ||
+      !orderEvidenceSemantics(item) ||
       item.numeric_total_order_estimate_prohibited !== true ||
       item.provider_scope !== "public_only" || item.owner_watchlist_inherited !== false ||
       !Number.isFinite(Date.parse(String(item.retrieved_at ?? "")))
