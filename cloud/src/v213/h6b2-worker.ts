@@ -28,14 +28,23 @@ async function handleH6B2(request: Request, env: V21Env): Promise<Response> {
 /**
  * Temporary H6B2 acceptance entrypoint.
  *
- * Only the signed /v21/admin/v213-test-push route is added. Every other fetch
- * route and both scheduled broadcasts delegate to the already accepted v2.1
- * owner Worker. The H6B2 Windows runner rolls this deployment back immediately
- * after the one real owner LINE acceptance push.
+ * Only the signed /v21/admin/v213-test-push route and a non-sensitive readiness
+ * probe are added. Every other fetch route and both scheduled broadcasts
+ * delegate to the already accepted v2.1 owner Worker. The H6B2 Windows runner
+ * rolls this deployment back immediately after the one real owner LINE push.
  */
 export default {
   async fetch(request: Request, env: V21Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/h6b2/ready") {
+      return jsonResponse({
+        ok: true,
+        stage: "H6B2_REAL_LINE_SEVEN_FIELD_TEST",
+        accepted_source_sha: "f1d6790de99c8af981a40e26993a12a444b214ba",
+        accepted_preview_sha256: "b186136c5540cd9d0d50eb74cf2f0417ccba8b1e6ed16ad15de42e62a8b1334f",
+        scheduled_worker_delegated: true,
+      });
+    }
     if (request.method === "POST" && url.pathname === "/v21/admin/v213-test-push") {
       return handleH6B2(request, env);
     }
