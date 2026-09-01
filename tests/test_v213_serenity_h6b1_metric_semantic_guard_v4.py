@@ -22,7 +22,10 @@ class H6B1R9Tests(unittest.TestCase):
         future, klass = r9._future_from_context_v4(metric)
         self.assertEqual(klass, "INFERENCE")
         self.assertIn(needle, future)
-        self.assertIn("非新增訂單預測", future)
+        self.assertTrue(
+            "非新增訂單預測" in future or "不等於新增訂單預測" in future,
+            future,
+        )
 
     def test_nvda_39pct(self) -> None:
         self._assert_future(
@@ -105,6 +108,7 @@ class H6B1R9Tests(unittest.TestCase):
         self.assertIn("17%", future)
         self.assertIn("2027–2029", future)
         self.assertIn("14%", future)
+        self.assertIn("非新增訂單預測", future)
 
     def test_money_spacing_is_canonical(self) -> None:
         self.assertEqual(r9._normalize_amount_v4("$ 31.9 million"), "$31.9 million")
