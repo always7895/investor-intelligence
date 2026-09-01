@@ -124,14 +124,38 @@ function Stop-RecordedBridge([object]$OldState) {
     }
 }
 function Wait-PublicHealth([string]$Url,[int]$ProcessId){
-    $deadline=(Get-Date).AddSeconds(90);$last=''
+    $deadline=(Get-Date).AddSeconds(90);$last='';$hostName=([uri]$Url).Host
     while((Get-Date)-lt$deadline){
         if(-not(Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)){throw 'cloudflared exited before public health succeeded.'}
         try{
-            $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
+            $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 15
             if($health.ok -eq $true -and $health.llama_reachable -eq $true){return $health}
             $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable)"
-        }catch{$last=$_.Exception.Message}
+        }catch{
+            $last=$_.Exception.Message
+            # A new trycloudflare host can exist at authoritative DNS before the
+            # Windows resolver sees it. Resolve through Cloudflare DNS and use
+            # curl --resolve so HTTPS SNI/certificate verification are preserved.
+            try{
+                $resolver=Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
+                $curl=Get-Command curl.exe -ErrorAction SilentlyContinue
+                if($resolver -and $curl){
+                    $answer=Resolve-DnsName -Name $hostName -Type A -Server 1.1.1.1 -DnsOnly -ErrorAction Stop |
+                        Where-Object { $_.Type -eq 'A' -and $_.IPAddress } | Select-Object -First 1
+                    if($answer){
+                        $resolveArg='{0}:443:{1}' -f $hostName,[string]$answer.IPAddress
+                        $curlOutput=@(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '12' '--resolve' $resolveArg ($Url.TrimEnd('/')+'/health') 2>&1)
+                        if($LASTEXITCODE -eq 0){
+                            $curlHealth=(($curlOutput|ForEach-Object{[string]$_})-join"`n")|ConvertFrom-Json
+                            if($curlHealth.ok -eq $true -and $curlHealth.llama_reachable -eq $true){
+                                Write-Host 'QUICK_TUNNEL_HEALTH = PASS; dns=1.1.1.1' -ForegroundColor Green
+                                return $curlHealth
+                            }
+                        }
+                    }
+                }
+            }catch{}
+        }
         Start-Sleep -Seconds 2
     }
     throw "Quick tunnel public health timed out. Last observation: $last"
@@ -159,7 +183,7 @@ if(Test-Path $secPath -PathType Leaf){
     }catch{}
 }
 $oldSecret=$env:II_LOCAL_LLM_SHARED_SECRET;$oldLlama=$env:II_LLAMA_BASE_URL;$oldModel=$env:II_LOCAL_LLM_MODEL;$oldContact=$env:SEC_CONTACT_EMAIL
-$gateway=$null;$tunnel=$null;$success=$false
+$gateway=$null;$tunnel=$null
 try {
     $env:II_LOCAL_LLM_SHARED_SECRET=$secret;$env:II_LLAMA_BASE_URL=$llama;$env:II_LOCAL_LLM_MODEL=$Model
     if($secContact){$env:SEC_CONTACT_EMAIL=$secContact}
@@ -197,7 +221,6 @@ try {
         encrypted_shared_secret=$protected;gateway_pid=$gateway.Id;cloudflared_pid=$tunnelPid
         connected_at=(Get-Date).ToUniversalTime().ToString('o');shared_secret_plaintext_persisted=$false
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statePath -Encoding utf8
-    $success=$true
     Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort" -ForegroundColor Green
     if($publicUrl){ Write-Host "V213_LOCAL_MODEL_TUNNEL = PASS; host=$(([uri]$publicUrl).Host)" -ForegroundColor Green }
 }
