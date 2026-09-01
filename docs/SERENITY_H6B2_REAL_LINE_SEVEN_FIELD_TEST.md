@@ -28,14 +28,19 @@ The Windows acceptance runner:
 2. validates the H6B2 source scope and complete Worker tests;
 3. creates a temporary Wrangler config by copying the already installed v2.1
    production config and replacing only `main` with the H6B2 delegated entrypoint;
-4. deploys that temporary Worker version;
-5. sends one HMAC-authenticated request containing the exact R15 preview;
-6. requires LINE API success;
-7. immediately rolls the Worker back to the version active before H6B2.
+4. records the Worker version active before H6B2;
+5. deploys the temporary Worker version;
+6. sends one HMAC-authenticated request containing the exact R15 preview;
+7. requires LINE API success;
+8. immediately rolls the Worker back to the exact version that was active before
+   H6B2.
 
-No LINE credential, HMAC secret, owner LINE ID, KV record or scheduled format is
-written by the H6B2 route. The encrypted local HMAC is decrypted only in process
-memory and cleared after use.
+The H6B2 sender does not write public-snapshot or tenant payload data and does
+not change scheduled-format state. The existing admin authentication layer does
+write short-lived replay-nonce markers to `EPHEMERAL_SECURITY_CACHE`; that is an
+intentional security write and is not treated as a payload/publication mutation.
+No LINE credential, HMAC secret or raw owner LINE ID is printed or committed. The
+encrypted local HMAC is decrypted only in process memory and cleared after use.
 
 ## Acceptance result
 
