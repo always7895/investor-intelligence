@@ -2,7 +2,8 @@
 param(
     [string]$RuntimeRoot = '',
     [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')][string]$MorningRefreshTime = '07:20',
-    [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')][string]$EveningRefreshTime = '20:20'
+    [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')][string]$EveningRefreshTime = '20:20',
+    [switch]$ValidateOnly
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -11,18 +12,27 @@ $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $runScript=Join-Path $RuntimeRoot 'run-v213-local.ps1'
 if(-not(Test-Path $runScript -PathType Leaf)){ throw "Stable v2.1.3 runtime is missing: $runScript" }
 $taskNames=@('InvestorIntelligence-v21-MorningRefresh','InvestorIntelligence-v21-EveningRefresh')
+$ps=(Get-Command powershell.exe -ErrorAction Stop).Source
+$definitions=@(
+    @{Name=$taskNames[0];Time=$MorningRefreshTime},
+    @{Name=$taskNames[1];Time=$EveningRefreshTime}
+)
+if($ValidateOnly){
+    foreach($d in $definitions){
+        [void][DateTime]::ParseExact($d.Time,'HH:mm',$null)
+        $args="-NoProfile -ExecutionPolicy Bypass -File `"$runScript`" -ProjectRoot `"$RuntimeRoot`""
+        if($args -notlike '*run-v213-local.ps1*'){throw 'Scheduled task action construction failed.'}
+    }
+    Write-Host "V213_REFRESH_TASKS_VALIDATE = PASS; $MorningRefreshTime / $EveningRefreshTime" -ForegroundColor Green
+    exit 0
+}
 $backup=@{}
 foreach($name in $taskNames){
     $existing=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     if($existing){ try{$backup[$name]=Export-ScheduledTask -TaskName $name}catch{$backup[$name]=$null} } else {$backup[$name]=$null}
 }
-$ps=(Get-Command powershell.exe -ErrorAction Stop).Source
 $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-$definitions=@(
-    @{Name=$taskNames[0];Time=$MorningRefreshTime},
-    @{Name=$taskNames[1];Time=$EveningRefreshTime}
-)
 try{
     foreach($d in $definitions){
         $args="-NoProfile -ExecutionPolicy Bypass -File `"$runScript`" -ProjectRoot `"$RuntimeRoot`""
