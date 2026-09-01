@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""H6B1 R2 wrapper: preserve explicit zero-valued H6A attestations.
+"""H6B1 R3 wrapper: zero-safe H6A attestations on portable Python runtimes.
 
 The original H6B1 verifier used expressions such as
-``int(summary.get("failed") or -1)``.  In Python, integer zero is falsy, so a
+``int(summary.get("failed") or -1)``. In Python, integer zero is falsy, so a
 valid H6A ``failed: 0`` (and ``hard_dependency_count: 0``) was converted to
-``-1`` and rejected.  This wrapper fixes only that verifier boundary and then
-runs the original H6B1 builder unchanged.
+``-1`` and rejected.
+
+R2 fixed that verifier boundary but assumed normal CPython path bootstrap. The
+Investor Intelligence portable Windows runtime can use an embeddable/_pth-style
+configuration where the executing script directory is not automatically placed
+on ``sys.path``. R3 explicitly inserts this wrapper's ``scripts`` directory
+before importing its sibling H6B1 builder.
 """
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Any, Mapping
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 import v213_serenity_h6b_full_top20 as base
 
@@ -96,6 +106,8 @@ def self_test_zero_safe() -> None:
         else:
             raise AssertionError(f"missing {key} must fail closed")
 
+    assert str(SCRIPT_DIR) in sys.path
+    print("V213_H6B1_PORTABLE_IMPORT_BOOTSTRAP = PASS")
     print("V213_H6B1_ZERO_SAFE_H6A_GUARD = PASS")
 
 
