@@ -52,13 +52,14 @@ def axti_substitute_capacity_map_v5(
     _must(r"Sumitomo and JX also compete with us in the InP market", text_2026, "AXTI InP competitors")
 
     # Coherent filing order is: 6-inch InP product -> three-year term -> capacity
-    # commitment/prepayment/minimum-order mechanics.  Do not depend on one phrase
-    # appearing before the other inside an arbitrary character window.
-    _must(r"6-inch indium phosphide.{0,120}wafer substrates", coherent, "AXTI-Coherent 6-inch InP product")
-    _must(r"initial term of three\s*\(3\)\s*years", coherent, "AXTI-Coherent three-year term")
+    # commitment/prepayment/minimum-order mechanics.  Validate semantic anchors
+    # independently and tolerate normal legal drafting variants such as
+    # "initial term is three (3) years" and "initial term of three (3) years".
+    _must(r"6-inch indium phosphide.{0,160}wafer substrates", coherent, "AXTI-Coherent 6-inch InP product")
+    _must(r"initial\s+term.{0,80}three\s*\(3\)\s*years?", coherent, "AXTI-Coherent three-year term")
     _must(r"prepayment of\s+US\$22,288,500", coherent, "AXTI-Coherent prepayment")
     _must(r"minimum order quantity requirement", coherent, "AXTI-Coherent minimum order quantity")
-    _must(r"increase its manufacturing capacity.{0,180}2026 through 2028", coherent, "AXTI-Coherent capacity expansion")
+    _must(r"increase its manufacturing capacity.{0,220}2026 through 2028", coherent, "AXTI-Coherent capacity expansion")
 
     _must(r"Capacity Reservation Agreement", lumentum, "AXTI-Lumentum capacity reservation")
     _must(r"minimum annual commitment", lumentum, "AXTI-Lumentum annual commitment")
@@ -68,7 +69,7 @@ def axti_substitute_capacity_map_v5(
 
     _must(r"binding commitment to purchase a fixed aggregate quantity", casela, "AXTI-Casela fixed quantity")
     _must(r"January 1, 2027 through December 31, 2027", casela, "AXTI-Casela 2027 term")
-    _must(r"total price of RMB\s*173,000,000.{0,80}\$?25\.4 million", casela, "AXTI-Casela purchase value")
+    _must(r"total price of RMB\s*173,000,000.{0,100}\$?25\.4 million", casela, "AXTI-Casela purchase value")
     _must(r"purchase at least 80% of the fixed aggregate quantity", casela, "AXTI-Casela minimum take")
 
     return {
@@ -168,7 +169,13 @@ def self_test() -> None:
     assert result["dependency_promotion_allowed"] is False
     assert result["order_outlook"]["numeric_total_order_estimate_prohibited"] is True
     assert "RMB1.73億" in result["order_outlook"]["current_orders_summary"]
+
+    coherent_is = coherent.replace("initial term of three (3) years", "initial term is three (3) years")
+    result_is = axti_substitute_capacity_map_v5(text_2024, text_2026, coherent_is, lumentum, casela)
+    assert result_is["capacity_tightness_candidate"] is True
+
     print("V213_H5_V5_AXTI_AGREEMENT_ORDERING = PASS")
+    print("V213_H5_V5_AXTI_TERM_WORDING_VARIANTS = PASS")
     print("V213_H5_V5_AXTI_ORDER_OUTLOOK = PASS")
 
 
