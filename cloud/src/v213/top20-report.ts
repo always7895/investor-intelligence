@@ -1,3 +1,5 @@
+import { fieldLabel, type FieldLocale } from "./field-labels";
+
 export interface V213Top20ReportRecord {
   schema_version: 2;
   rank: number;
@@ -50,6 +52,26 @@ export const V213_TOP20_DISPLAY_COLUMNS = [
   "獲利簡述",
   "公司現在訂單",
   "未來訂單預估",
+] as const;
+
+export const V213_TOP20_DISPLAY_COLUMNS_EN = [
+  "Ticker",
+  "Long-term return (2Y annualized)",
+  "Short-term return (6M)",
+  "Industry",
+  "Profit summary",
+  "Current orders",
+  "Future order outlook",
+] as const;
+
+export const V213_TOP20_DISPLAY_COLUMNS_BILINGUAL = [
+  fieldLabel("ticker"),
+  fieldLabel("long_term_return_pct"),
+  fieldLabel("short_term_return_pct"),
+  fieldLabel("industry"),
+  fieldLabel("profit_summary"),
+  fieldLabel("current_orders"),
+  fieldLabel("future_orders_estimate"),
 ] as const;
 
 export const V213_NO_CURRENT_ORDERS = "未揭露（無可靠公開訂單數字）";
@@ -145,13 +167,23 @@ function percent(value: number | null): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function header(locale: FieldLocale): readonly string[] {
+  if (locale === "en") return V213_TOP20_DISPLAY_COLUMNS_EN;
+  if (locale === "bilingual") return V213_TOP20_DISPLAY_COLUMNS_BILINGUAL;
+  return V213_TOP20_DISPLAY_COLUMNS;
+}
+
 /**
- * Future v2.1.3 LINE renderer. This file is intentionally not wired into the
- * current Production Worker until order extraction + live LINE acceptance pass.
+ * Seven-field renderer accepted by H6B2. Machine keys remain stable English
+ * identifiers; display labels are available in Traditional Chinese, English,
+ * or bilingual form.
  */
-export function formatV213Top20Report(report: V213Top20Report): string {
+export function formatV213Top20Report(
+  report: V213Top20Report,
+  locale: FieldLocale = "zh-TW",
+): string {
   return [
-    V213_TOP20_DISPLAY_COLUMNS.join("｜"),
+    header(locale).join("｜"),
     ...report.records.map((item) => [
       item.ticker,
       percent(item.long_term_return_pct),
