@@ -67,9 +67,11 @@ try{
     Load-SecContact
     Write-Host "PROJECT_PYTHON = $python" -ForegroundColor Green
 
+    $modelBridgeReady=$false
     if(-not $NoModelBridge){
         try{
             & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting
+            $modelBridgeReady=$true
         }catch{
             Write-Warning ("Local-model bridge is not ready yet; public-data refresh will continue. " + $_.Exception.Message)
         }
@@ -97,17 +99,31 @@ try{
                     Write-Warning 'LINE signed-sync configuration is not installed; local reports were refreshed but not uploaded.'
                 }
                 $v213Config=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\wrangler.v213.production.local.toml'
-                if((Test-Path $v213Config -PathType Leaf) -and -not $NoAutoActivation){
-                    & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation
-                    Write-Host 'V213_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
-                }elseif(Test-Path $v213Config -PathType Leaf){
-                    Write-Host 'V213_REPORT_READY = PASS; auto-activation intentionally skipped for explicit activation preflight.' -ForegroundColor Green
+                if(Test-Path $v213Config -PathType Leaf){
+                    if(-not $NoAutoActivation -and $modelBridgeReady){
+                        & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel
+                        Write-Host 'V213_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
+                    }elseif(-not $NoAutoActivation){
+                        # Keep the already-activated seven-field Worker untouched when
+                        # the transient model tunnel is unavailable. The new report is
+                        # still promoted to the current snapshot so 08:00/21:00 does
+                        # not fail merely because open-ended generation is offline.
+                        if(Test-Path $syncConfig -PathType Leaf){
+                            & .\sync-v213-top20-report.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
+                            Write-Host 'V213_REPORT_SYNC = PASS; model route unchanged because bridge is offline.' -ForegroundColor Yellow
+                        }else{
+                            Write-Warning 'v2.1.3 Worker is configured but signed-sync config is missing; seven-field report could not be promoted.'
+                        }
+                    }else{
+                        Write-Host 'V213_REPORT_READY = PASS; auto-activation intentionally skipped for explicit activation preflight.' -ForegroundColor Green
+                    }
                 }else{
                     Write-Host 'V213_REPORT_READY = PASS; formal v2.1.3 schedule activation has not been performed yet.' -ForegroundColor Green
                 }
             }
         }
         Write-Host 'INVESTOR_INTELLIGENCE_V213_LOCAL = PASS' -ForegroundColor Green
+        Write-Host "LOCAL_MODEL_BRIDGE_READY = $modelBridgeReady" -ForegroundColor DarkGray
         Write-Host "LOG = $logPath" -ForegroundColor DarkGray
     }
     finally { Pop-Location }
