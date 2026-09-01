@@ -18,7 +18,7 @@ $GatewayScript = Join-Path $ProjectRoot 'scripts\v213_local_llm_gateway.py'
 if (-not (Test-Path -LiteralPath $GatewayScript -PathType Leaf)) { throw "Missing $GatewayScript" }
 
 function Test-Llama([string]$Base) {
-    foreach ($suffix in @('/health','/v1/models')) {
+    foreach ($suffix in @('/v1/models','/health')) {
         try {
             $r = Invoke-WebRequest -UseBasicParsing -Uri ($Base.TrimEnd('/') + $suffix) -TimeoutSec 4
             if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { return $true }
@@ -26,33 +26,49 @@ function Test-Llama([string]$Base) {
     }
     return $false
 }
+function Get-RunningLlamaCandidates {
+    $result=New-Object System.Collections.Generic.List[string]
+    try{
+        $processes=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)llama|localai|kobold' })
+        foreach($process in $processes){
+            try{
+                $listeners=Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
+                foreach($listener in $listeners){
+                    $port=[int]$listener.LocalPort
+                    if($port -gt 0){$candidate="http://127.0.0.1:$port";if(-not$result.Contains($candidate)){$result.Add($candidate)}}
+                }
+            }catch{}
+        }
+    }catch{}
+    return @($result)
+}
 function Resolve-Llama {
     if ($LlamaBaseUrl) {
         if ($LlamaBaseUrl -notmatch '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$') { throw 'LlamaBaseUrl must be loopback HTTP.' }
         if (-not (Test-Llama $LlamaBaseUrl)) { throw "llama.cpp unavailable: $LlamaBaseUrl" }
         return $LlamaBaseUrl.TrimEnd('/')
     }
-    foreach ($candidate in @(
-        'http://127.0.0.1:8080',
-        'http://127.0.0.1:7905',
-        'http://127.0.0.1:14410',
-        'http://127.0.0.1:8813',
-        'http://127.0.0.1:8081'
-    )) { if (Test-Llama $candidate) { return $candidate } }
+    $candidates=New-Object System.Collections.Generic.List[string]
+    foreach($candidate in @(
+        'http://127.0.0.1:8080','http://127.0.0.1:7905','http://127.0.0.1:14410',
+        'http://127.0.0.1:8813','http://127.0.0.1:8081','http://127.0.0.1:8000'
+    )){$candidates.Add($candidate)}
+    foreach($candidate in @(Get-RunningLlamaCandidates)){if(-not$candidates.Contains($candidate)){$candidates.Add($candidate)}}
+    foreach ($candidate in $candidates) { if (Test-Llama $candidate) { return $candidate } }
 
-    $starter = 'D:\LocalAI\Start-LocalAI.cmd'
-    if (Test-Path -LiteralPath $starter -PathType Leaf) {
-        Write-Host 'Starting local llama.cpp stack...' -ForegroundColor Cyan
-        Start-Process -FilePath $starter | Out-Null
-        $deadline=(Get-Date).AddSeconds(90)
-        while ((Get-Date) -lt $deadline) {
-            foreach ($candidate in @('http://127.0.0.1:8080','http://127.0.0.1:7905','http://127.0.0.1:14410','http://127.0.0.1:8813')) {
-                if (Test-Llama $candidate) { return $candidate }
+    foreach($starter in @('D:\LocalAI\Start-LocalAI.cmd','D:\llama.cpp\Start-LocalAI.cmd')){
+        if (Test-Path -LiteralPath $starter -PathType Leaf) {
+            Write-Host "Starting local llama.cpp stack: $starter" -ForegroundColor Cyan
+            Start-Process -FilePath $starter | Out-Null
+            $deadline=(Get-Date).AddSeconds(90)
+            while ((Get-Date) -lt $deadline) {
+                $retry=@('http://127.0.0.1:8080','http://127.0.0.1:7905','http://127.0.0.1:14410','http://127.0.0.1:8813') + @(Get-RunningLlamaCandidates)
+                foreach ($candidate in ($retry|Select-Object -Unique)) { if (Test-Llama $candidate) { return $candidate } }
+                Start-Sleep -Seconds 2
             }
-            Start-Sleep -Seconds 2
         }
     }
-    throw 'No healthy llama.cpp OpenAI-compatible loopback endpoint was found.'
+    throw 'No healthy llama.cpp OpenAI-compatible loopback endpoint was found. Start llama-server/OpenCode local model and retry.'
 }
 
 function Resolve-Model([string]$Base,[string]$Requested) {
@@ -76,7 +92,6 @@ function Resolve-Cloudflared {
     if(-not $command){$command=Get-Command cloudflared -ErrorAction Stop}
     return $command.Source
 }
-
 function Resolve-Python {
     if ($env:PROJECT_PYTHON -and (Test-Path -LiteralPath $env:PROJECT_PYTHON)) { return $env:PROJECT_PYTHON }
     foreach ($name in @('python.exe','python','py.exe','py')) {
@@ -91,18 +106,43 @@ function Random-Secret {
     try { $rng.GetBytes($b) } finally { $rng.Dispose() }
     return [Convert]::ToBase64String($b)
 }
+function Stop-RecordedBridge([object]$OldState) {
+    $gatewayPid=0;$tunnelPid=0;$oldPort=$GatewayPort
+    [void][int]::TryParse([string]$OldState.gateway_pid,[ref]$gatewayPid)
+    [void][int]::TryParse([string]$OldState.cloudflared_pid,[ref]$tunnelPid)
+    if($OldState.gateway_port){[void][int]::TryParse([string]$OldState.gateway_port,[ref]$oldPort)}
+    if($gatewayPid -gt 0){
+        try{
+            $process=Get-Process -Id $gatewayPid -ErrorAction Stop
+            $ownsPort=$false
+            try{$ownsPort=@(Get-NetTCPConnection -State Listen -LocalPort $oldPort -OwningProcess $gatewayPid -ErrorAction SilentlyContinue).Count -gt 0}catch{}
+            if($process.ProcessName -match '(?i)^python' -and $ownsPort){Stop-Process -Id $gatewayPid -Force -ErrorAction SilentlyContinue}
+        }catch{}
+    }
+    if($tunnelPid -gt 0){
+        try{$process=Get-Process -Id $tunnelPid -ErrorAction Stop;if($process.ProcessName -match '(?i)^cloudflared$'){Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue}}catch{}
+    }
+}
+function Wait-PublicHealth([string]$Url,[int]$ProcessId){
+    $deadline=(Get-Date).AddSeconds(90);$last=''
+    while((Get-Date)-lt$deadline){
+        if(-not(Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)){throw 'cloudflared exited before public health succeeded.'}
+        try{
+            $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
+            if($health.ok -eq $true -and $health.llama_reachable -eq $true){return $health}
+            $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable)"
+        }catch{$last=$_.Exception.Message}
+        Start-Sleep -Seconds 2
+    }
+    throw "Quick tunnel public health timed out. Last observation: $last"
+}
 
 $stateRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
 $logRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\logs\v213-local-model'
 New-Item -ItemType Directory -Force -Path $stateRoot,$logRoot | Out-Null
 $statePath=Join-Path $stateRoot 'v213-local-model.json'
 if ($StopExisting -and (Test-Path -LiteralPath $statePath)) {
-    try {
-        $old=Get-Content $statePath -Raw -Encoding utf8 | ConvertFrom-Json
-        foreach($p in @($old.gateway_pid,$old.cloudflared_pid)) {
-            if ($p) { Stop-Process -Id ([int]$p) -Force -ErrorAction SilentlyContinue }
-        }
-    } catch {}
+    try { Stop-RecordedBridge (Get-Content $statePath -Raw -Encoding utf8 | ConvertFrom-Json) } catch {}
 }
 
 $llama=Resolve-Llama
@@ -118,68 +158,55 @@ if(Test-Path $secPath -PathType Leaf){
         try{$secContact=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($cp)}finally{[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($cp)}
     }catch{}
 }
-$oldSecret=$env:II_LOCAL_LLM_SHARED_SECRET
-$oldLlama=$env:II_LLAMA_BASE_URL
-$oldModel=$env:II_LOCAL_LLM_MODEL
-$oldContact=$env:SEC_CONTACT_EMAIL
+$oldSecret=$env:II_LOCAL_LLM_SHARED_SECRET;$oldLlama=$env:II_LLAMA_BASE_URL;$oldModel=$env:II_LOCAL_LLM_MODEL;$oldContact=$env:SEC_CONTACT_EMAIL
+$gateway=$null;$tunnel=$null;$success=$false
 try {
-    $env:II_LOCAL_LLM_SHARED_SECRET=$secret
-    $env:II_LLAMA_BASE_URL=$llama
-    $env:II_LOCAL_LLM_MODEL=$Model
+    $env:II_LOCAL_LLM_SHARED_SECRET=$secret;$env:II_LLAMA_BASE_URL=$llama;$env:II_LOCAL_LLM_MODEL=$Model
     if($secContact){$env:SEC_CONTACT_EMAIL=$secContact}
-    $stdout=Join-Path $logRoot 'gateway.stdout.log'
-    $stderr=Join-Path $logRoot 'gateway.stderr.log'
+    $stdout=Join-Path $logRoot 'gateway.stdout.log';$stderr=Join-Path $logRoot 'gateway.stderr.log'
     Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
     $gateway=Start-Process -FilePath $python -ArgumentList @($GatewayScript,'--host','127.0.0.1','--port',[string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     Start-Sleep -Seconds 2
+    if(-not(Get-Process -Id $gateway.Id -ErrorAction SilentlyContinue)){throw 'Local gateway exited during startup.'}
     $health=Invoke-RestMethod -Uri "http://127.0.0.1:$GatewayPort/health" -TimeoutSec 10
     if ($health.ok -ne $true -or $health.llama_reachable -ne $true) { throw 'v2.1.3 local gateway health failed.' }
 
-    $publicUrl=''
-    $tunnelPid=0
+    $publicUrl='';$tunnelPid=0
     if (-not $NoTunnel) {
         $cloudflaredPath=Resolve-Cloudflared
-        $tout=Join-Path $logRoot 'cloudflared.stdout.log'
-        $terr=Join-Path $logRoot 'cloudflared.stderr.log'
+        $tout=Join-Path $logRoot 'cloudflared.stdout.log';$terr=Join-Path $logRoot 'cloudflared.stderr.log'
         Remove-Item $tout,$terr -Force -ErrorAction SilentlyContinue
         $tunnel=Start-Process -FilePath $cloudflaredPath -ArgumentList @('tunnel','--url',"http://127.0.0.1:$GatewayPort",'--no-autoupdate') -PassThru -WindowStyle Hidden -RedirectStandardOutput $tout -RedirectStandardError $terr
         $tunnelPid=$tunnel.Id
         $deadline=(Get-Date).AddSeconds(60)
         while ((Get-Date) -lt $deadline -and -not $publicUrl) {
-            Start-Sleep -Milliseconds 750
-            $text=''
+            Start-Sleep -Milliseconds 750;$text=''
             foreach($p in @($tout,$terr)){ if(Test-Path $p){$text+="`n"+(Get-Content $p -Raw -ErrorAction SilentlyContinue)}}
             $m=[regex]::Match($text,'https://[a-z0-9-]+\.trycloudflare\.com','IgnoreCase')
             if($m.Success){$publicUrl=$m.Value.TrimEnd('/')}
         }
         if(-not $publicUrl){ throw 'Quick tunnel URL was not produced.' }
+        [void](Wait-PublicHealth $publicUrl $tunnel.Id)
     }
 
-    # Store the shared secret only as a Windows DPAPI-protected value.
     $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
     [ordered]@{
-        schema_version=1
-        product_version='2.1.3'
-        model=$Model
-        llama_base_url=$llama
-        gateway_url="http://127.0.0.1:$GatewayPort"
-        public_url=$publicUrl
-        allowed_host= $(if($publicUrl){([uri]$publicUrl).Host}else{''})
-        encrypted_shared_secret=$protected
-        gateway_pid=$gateway.Id
-        cloudflared_pid=$tunnelPid
-        connected_at=(Get-Date).ToUniversalTime().ToString('o')
-        shared_secret_plaintext_persisted=$false
+        schema_version=1;product_version='2.1.3';model=$Model;llama_base_url=$llama
+        gateway_url="http://127.0.0.1:$GatewayPort";gateway_port=$GatewayPort;python_executable=$python
+        public_url=$publicUrl;allowed_host=$(if($publicUrl){([uri]$publicUrl).Host}else{''})
+        encrypted_shared_secret=$protected;gateway_pid=$gateway.Id;cloudflared_pid=$tunnelPid
+        connected_at=(Get-Date).ToUniversalTime().ToString('o');shared_secret_plaintext_persisted=$false
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statePath -Encoding utf8
-
+    $success=$true
     Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort" -ForegroundColor Green
     if($publicUrl){ Write-Host "V213_LOCAL_MODEL_TUNNEL = PASS; host=$(([uri]$publicUrl).Host)" -ForegroundColor Green }
 }
+catch{
+    if($tunnel){Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue}
+    if($gateway){Stop-Process -Id $gateway.Id -Force -ErrorAction SilentlyContinue}
+    throw
+}
 finally {
-    $env:II_LOCAL_LLM_SHARED_SECRET=$oldSecret
-    $env:II_LLAMA_BASE_URL=$oldLlama
-    $env:II_LOCAL_LLM_MODEL=$oldModel
-    $env:SEC_CONTACT_EMAIL=$oldContact
-    $secret=$null
-    $secContact=$null
+    $env:II_LOCAL_LLM_SHARED_SECRET=$oldSecret;$env:II_LLAMA_BASE_URL=$oldLlama;$env:II_LOCAL_LLM_MODEL=$oldModel;$env:SEC_CONTACT_EMAIL=$oldContact
+    $secret=$null;$secContact=$null
 }
