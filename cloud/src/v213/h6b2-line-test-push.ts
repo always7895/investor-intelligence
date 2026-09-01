@@ -123,7 +123,8 @@ export async function sendH6B2SevenFieldTestPush(
     message_count: 1,
     source_sha: ACCEPTED_R15_SOURCE_SHA,
     preview_sha256: ACCEPTED_R15_PREVIEW_SHA256,
-    kv_write_performed: false,
+    public_or_tenant_payload_kv_write_performed: false,
+    admin_replay_nonce_write_expected: true,
     scheduled_format_changed: false,
   };
 }
