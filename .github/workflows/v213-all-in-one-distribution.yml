@@ -1,0 +1,202 @@
+name: V2.1.3 All-in-One Distribution
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-all-in-one
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Validate v2.1.3 Python components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-package
+          & $env:PROJECT_PYTHON scripts\build_v213_scheduled_top20_report.py --self-test
+          if($LASTEXITCODE -ne 0){throw 'v2.1.3 scheduled report self-test failed.'}
+          & $env:PROJECT_PYTHON -m compileall -q scripts
+          if($LASTEXITCODE -ne 0){throw 'Python compileall failed.'}
+
+      - name: Typecheck and test Worker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          Push-Location cloud
+          try {
+            npm.cmd ci --ignore-scripts --no-audit --no-fund
+            if($LASTEXITCODE -ne 0){throw 'npm ci failed.'}
+            npm.cmd run typecheck
+            if($LASTEXITCODE -ne 0){throw 'TypeScript typecheck failed.'}
+            npm.cmd test
+            if($LASTEXITCODE -ne 0){throw 'Vitest failed.'}
+          } finally { Pop-Location }
+
+      - name: Parse PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($path in @(
+            'run-v213-local.ps1',
+            'run-v213-local-llm-bridge.ps1',
+            'activate-v213-seven-field-schedule.ps1',
+            'sync-v213-top20-report.ps1'
+          )){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|Out-String|Write-Host;throw "$path parser errors"}
+          }
+
+      - name: Compile bilingual EXE launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc=@(
+            "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+            "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          )|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          if(-not$csc){throw 'csc.exe unavailable.'}
+          $exe=Join-Path $env:RUNNER_TEMP 'InvestorIntelligence.exe'
+          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/out:$exe" launcher\InvestorIntelligenceLauncher.cs
+          if($LASTEXITCODE -ne 0){throw 'Launcher compilation failed.'}
+          "V213_EXE=$exe"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build one-click all-version ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP "ii-v213-all-$env:GITHUB_RUN_ID"
+          $stage=Join-Path $root 'Investor-Intelligence-v2.1.3-All-in-One'
+          $versions=Join-Path $stage 'versions'
+          New-Item -ItemType Directory -Force -Path $stage,$versions | Out-Null
+
+          $refs=[ordered]@{
+            '2.1.0'='bbc2987e54eccef350685447b48e1841c4e5ba19'
+            '2.1.1'='22593c82743ad97aff91469ba001700d2a384c48'
+            '2.1.2'='1a36935bf8532be074707eeb7f941d8a46be6ca9'
+            '2.1.3'=$env:GITHUB_SHA.ToLowerInvariant()
+          }
+          foreach($entry in $refs.GetEnumerator()){
+            $out=Join-Path $versions ("Investor-Intelligence-v"+$entry.Key+"-source.zip")
+            git archive --format=zip --output="$out" $entry.Value
+            if($LASTEXITCODE -ne 0){throw "git archive failed for v$($entry.Key)"}
+          }
+
+          # Expand the exact current v2.1.3 source at the outer-package root so
+          # InvestorIntelligence.exe can run immediately after extraction.
+          Expand-Archive (Join-Path $versions 'Investor-Intelligence-v2.1.3-source.zip') $stage -Force
+          Copy-Item $env:V213_EXE (Join-Path $stage 'InvestorIntelligence.exe')
+
+          $refDoc=[ordered]@{
+            schema_version=1
+            package_version='2.1.3'
+            current_commit=$env:GITHUB_SHA.ToLowerInvariant()
+            versions=$refs
+            launcher='InvestorIntelligence.exe'
+            local_model=[ordered]@{
+              preferred_endpoint='http://127.0.0.1:8080/v1'
+              supported_loopback_ports=@(8080,7905,14410,8813,8081)
+              default_model='auto_from_v1_models'
+              gateway='scripts/v213_local_llm_gateway.py'
+            }
+            bilingual_fields='config/field-labels.zh-en.json'
+            scheduled_format='v213_seven_fields'
+            schedule=@('08:00 Asia/Taipei','21:00 Asia/Taipei')
+          }
+          $refDoc|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stage 'VERSION-REFS.json') -Encoding utf8
+
+          $manifest=@()
+          Get-ChildItem $stage -File -Recurse|ForEach-Object{
+            $manifest += [ordered]@{
+              path=$_.FullName.Substring($stage.Length+1).Replace('\','/')
+              bytes=$_.Length
+              sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          }
+          [ordered]@{
+            schema_version=1
+            product='Investor Intelligence'
+            version='2.1.3'
+            commit=$env:GITHUB_SHA.ToLowerInvariant()
+            generated_utc=(Get-Date).ToUniversalTime().ToString('o')
+            files=$manifest
+          }|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stage 'MANIFEST.json') -Encoding utf8
+
+          $sums=Get-ChildItem $stage -File -Recurse|ForEach-Object{
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.FullName.Substring($stage.Length+1).Replace('\','/')
+          }
+          $sums|Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ascii
+
+          $zip=Join-Path $root 'Investor-Intelligence-v2.1.3-All-in-One.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+          $sha=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $shaFile=Join-Path $root 'Investor-Intelligence-v2.1.3-All-in-One.zip.sha256'
+          Set-Content $shaFile $sha -Encoding ascii
+          "ALL_IN_ONE_ZIP=$zip"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ALL_IN_ONE_SHA_FILE=$shaFile"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ALL_IN_ONE_SHA=$sha"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "ALL_IN_ONE_SHA256=$sha"
+
+      - name: Verify EXE from final package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $check=Join-Path $env:RUNNER_TEMP "ii-v213-check-$env:GITHUB_RUN_ID"
+          Expand-Archive $env:ALL_IN_ONE_ZIP $check
+          & (Join-Path $check 'InvestorIntelligence.exe') --self-test
+          if($LASTEXITCODE -ne 0){throw 'Packaged EXE self-test failed.'}
+
+      - name: Upload one-click package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-All-in-One
+          path: |
+            ${{ env.ALL_IN_ONE_ZIP }}
+            ${{ env.ALL_IN_ONE_SHA_FILE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## Investor Intelligence v2.1.3 All-in-One
+          - Worker typecheck/tests: PASS
+          - v2.1.3 scheduled report self-test: PASS
+          - PowerShell parser: PASS
+          - EXE launcher: PASS
+          - local llama.cpp bridge: included
+          - bilingual field dictionary: included
+          - v2.1.0 / v2.1.1 / v2.1.2 / v2.1.3 source ZIPs: included
+          - one-click outer ZIP SHA-256: ``$env:ALL_IN_ONE_SHA``
+          - Production deployment: NOT performed by packaging workflow
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
