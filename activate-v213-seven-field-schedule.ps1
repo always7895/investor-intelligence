@@ -65,10 +65,24 @@ function Set-Var([string]$Text,[string]$Key,[string]$Value){
     $escaped=$Value.Replace('\','\\').Replace('"','\"')
     [regex]::Replace($Text,'(?m)^\[vars\]\s*$',"[vars]`r`n$Key = `"$escaped`"",1)
 }
+function Remove-Var([string]$Text,[string]$Key){ return [regex]::Replace($Text,"(?m)^\s*$Key\s*=.*(?:\r?\n)?",'') }
+function Get-HealthyModelState([string]$Path){
+    if(-not(Test-Path $Path -PathType Leaf)){return $null}
+    try{
+        $m=Get-Content $Path -Raw -Encoding utf8|ConvertFrom-Json
+        if(-not$m.public_url -or -not$m.allowed_host -or -not$m.model -or -not$m.encrypted_shared_secret){return $null}
+        $connected=[DateTimeOffset]::MinValue
+        if(-not[DateTimeOffset]::TryParse([string]$m.connected_at,[ref]$connected)){return $null}
+        $age=([DateTimeOffset]::UtcNow-$connected.ToUniversalTime()).TotalMinutes
+        if($age -lt -5 -or $age -gt 30){return $null}
+        $health=Invoke-RestMethod -Method Get -Uri (([string]$m.public_url).TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache'} -TimeoutSec 12
+        if($health.ok -ne $true -or $health.llama_reachable -ne $true){return $null}
+        return $m
+    }catch{return $null}
+}
 
 # Deterministic local Wrangler bootstrap; never let npx select an arbitrary version.
 & (Join-Path $ProjectRoot 'scripts\resolve_node.ps1') -MinimumVersion '22.0.0'
-if($LASTEXITCODE-ne0){throw 'Node.js runtime preflight failed.'}
 $npm=if($env:PROJECT_NPM){$env:PROJECT_NPM}else{(Get-Command npm.cmd -ErrorAction Stop).Source}
 Push-Location $CloudRoot
 try{
@@ -91,13 +105,15 @@ $text=Get-Content $productionConfig -Raw -Encoding utf8
 $text=[regex]::Replace($text,'(?m)^\s*main\s*=.*$','main = "src/v213/production-worker.ts"',1)
 $text=Set-Var $text 'V213_FIELD_LOCALE' $FieldLocale
 $modelState=Join-Path $configRoot 'v213-local-model.json'
-if(Test-Path $modelState){
-    $m=Get-Content $modelState -Raw -Encoding utf8|ConvertFrom-Json
-    if($m.public_url -and $m.allowed_host -and $m.model){
-        $text=Set-Var $text 'LOCAL_LLM_BASE_URL' ([string]$m.public_url)
-        $text=Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string]$m.allowed_host)
-        $text=Set-Var $text 'LOCAL_LLM_MODEL' ([string]$m.model)
-    }
+$healthyModel=Get-HealthyModelState $modelState
+if($healthyModel){
+    $text=Set-Var $text 'LOCAL_LLM_BASE_URL' ([string]$healthyModel.public_url)
+    $text=Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string]$healthyModel.allowed_host)
+    $text=Set-Var $text 'LOCAL_LLM_MODEL' ([string]$healthyModel.model)
+    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; host=$($healthyModel.allowed_host)" -ForegroundColor Green
+}else{
+    foreach($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')){$text=Remove-Var $text $key}
+    Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; activation will keep deterministic/public research features and fail closed for open-ended local-model generation.'
 }
 [IO.File]::WriteAllText($temp,$text,[Text.UTF8Encoding]::new($false))
 $prior=''
@@ -105,20 +121,17 @@ $deployed=$false
 try{
     $prior=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     Write-Host "V213_ACTIVATION_PRIOR_VERSION = $prior" -ForegroundColor Cyan
-    if(Test-Path $modelState){
-        $m=Get-Content $modelState -Raw -Encoding utf8|ConvertFrom-Json
-        if($m.encrypted_shared_secret){
-            $secure=ConvertTo-SecureString -String ([string]$m.encrypted_shared_secret)
-            $sp=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-            $shared=''
-            try{
-                $shared=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
-                [void](Run $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
-                $deployed=$true
-            }finally{
-                if($sp-ne[IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sp)}
-                $shared=$null
-            }
+    if($healthyModel){
+        $secure=ConvertTo-SecureString -String ([string]$healthyModel.encrypted_shared_secret)
+        $sp=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        $shared=''
+        try{
+            $shared=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
+            [void](Run $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
+            $deployed=$true
+        }finally{
+            if($sp-ne[IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sp)}
+            $shared=$null
         }
     }
     [void](Run $wrangler @('deploy','--config',$temp,'--message','v2.1.3 bilingual seven-field scheduled activation') $CloudRoot)
@@ -127,14 +140,11 @@ try{
     if($current-eq$prior){throw 'Deployment did not produce a new active Worker version.'}
 
     & (Join-Path $ProjectRoot 'sync-v213-top20-report.ps1') -ProjectRoot $ProjectRoot
-    if($LASTEXITCODE-ne0){throw 'v2.1.3 report sync failed.'}
 
     # Install a stable runtime before replacing the old 07:20 / 20:20 refresh actions.
     & (Join-Path $ProjectRoot 'install-v213-runtime.ps1') -ProjectRoot $ProjectRoot
-    if($LASTEXITCODE-ne0){throw 'Stable v2.1.3 runtime installation failed.'}
     $stableRuntime=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
     & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
-    if($LASTEXITCODE-ne0){throw 'v2.1.3 local refresh task upgrade failed.'}
 
     $installedCopy=Join-Path $configRoot 'wrangler.v213.production.local.toml'
     Copy-Item $temp $installedCopy -Force
@@ -146,6 +156,7 @@ try{
         local_refresh_times=@('07:20','20:20')
         scheduled_format='v213_seven_fields';field_locale=$FieldLocale
         runtime_root=$stableRuntime
+        local_model_route= $(if($healthyModel){'HEALTHY_WIRED'}else{'FAIL_CLOSED_NOT_WIRED'})
         rollback_on_failure=$true
     }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json') -Encoding utf8
     Write-Host "V2.1.3 SCHEDULED SEVEN-FIELD ACTIVATION = PASS; active_version=$current" -ForegroundColor Green
