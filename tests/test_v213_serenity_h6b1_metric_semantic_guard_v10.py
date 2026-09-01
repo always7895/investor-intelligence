@@ -6,10 +6,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+TESTS = ROOT / "tests"
+for path in (SCRIPTS, TESTS):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
+# Import R15 first so R14's detector is repaired before the legacy R14 test
+# module imports/executes its test cases.
 import v213_serenity_h6b1_metric_semantic_guard_v10 as mod
+import test_v213_serenity_h6b1_metric_semantic_guard_v9 as legacy_r14
 
 
 class H6B1R15Tests(unittest.TestCase):
@@ -35,6 +40,10 @@ class H6B1R15Tests(unittest.TestCase):
                 "未來12個月認列，但未提供可安全量化的比例；非新增訂單預測"
             )
         )
+
+
+class H6B1R15LegacyR14Tests(legacy_r14.H6B1R14Tests):
+    """Run the complete R14 suite under the R15 detector patch."""
 
 
 if __name__ == "__main__":
