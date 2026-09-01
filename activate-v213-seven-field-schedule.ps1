@@ -13,16 +13,28 @@ $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $CloudRoot=Join-Path $ProjectRoot 'cloud'
 $ReportPath=Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
 if(-not(Test-Path $ReportPath -PathType Leaf)){throw 'Build the v2.1.3 seven-field report before activation.'}
+$report=Get-Content $ReportPath -Raw -Encoding utf8|ConvertFrom-Json
+if([string]$report.product_version -ne '2.1.3' -or @($report.records).Count -ne 20){throw 'The local v2.1.3 report failed the activation preflight.'}
+$reportTime=[DateTimeOffset]::MinValue
+if(-not [DateTimeOffset]::TryParse([string]$report.generated_at,[ref]$reportTime)){throw 'The v2.1.3 report generated_at value is invalid.'}
+$reportAge=([DateTimeOffset]::UtcNow-$reportTime.ToUniversalTime()).TotalSeconds
+if($reportAge -lt -300 -or $reportAge -gt 7200){throw "The v2.1.3 report is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($reportAge))). Refresh first."}
 
-function Capture([string]$Exe,[string[]]$Args,[string]$Cwd){
+function Capture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){
     $old=Get-Location
-    try{Set-Location $Cwd;$o=@(& $Exe @Args 2>&1);$c=$LASTEXITCODE;if($c-ne 0){throw "$Exe failed with exit code $c"};($o|%{[string]$_})-join"`n"}
-    finally{Set-Location $old}
+    try{
+        Set-Location $Cwd
+        if($InputText){$o=@($InputText|& $Exe @Args 2>&1)}else{$o=@(& $Exe @Args 2>&1)}
+        $c=$LASTEXITCODE
+        $text=($o|ForEach-Object{[string]$_})-join"`n"
+        if($c-ne0){$tail=($o|Select-Object -Last 20|ForEach-Object{[string]$_})-join"`n";throw "$Exe failed with exit code $c`n$tail"}
+        return $text
+    }finally{Set-Location $old}
 }
-function Run([string]$Exe,[string[]]$Args,[string]$Cwd){$x=Capture $Exe $Args $Cwd; if($x){Write-Host $x}; return $x}
+function Run([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){$x=Capture $Exe $Args $Cwd $InputText;if($x){Write-Host $x};return $x}
 function Parse-JsonOutput([string]$Raw){
     $v=$Raw.Trim();try{return($v|ConvertFrom-Json)}catch{}
-    $s=@($v.IndexOf('{'),$v.IndexOf('['))|?{$_-ge 0}|sort|select -First 1
+    $s=@($v.IndexOf('{'),$v.IndexOf('['))|Where-Object{$_-ge0}|Sort-Object|Select-Object -First 1
     if($null-eq$s){throw 'Wrangler JSON output missing.'}
     $e=[Math]::Max($v.LastIndexOf('}'),$v.LastIndexOf(']'))
     if($e-le$s){throw 'Wrangler JSON output truncated.'}
@@ -34,23 +46,17 @@ function Get-SingleActiveVersion([string]$Raw){
     function Visit($n){
         if($null-eq$n -or $n-is[string] -or $n-is[ValueType]){return}
         if($n-is[System.Collections.IEnumerable] -and -not($n-is[pscustomobject])){foreach($x in $n){Visit $x};return}
-        $props=@($n.PSObject.Properties);if($props.Count-eq 0){return}
+        $props=@($n.PSObject.Properties);if($props.Count-eq0){return}
         $ver=$null
-        foreach($name in @('version_id','versionId','version','id')){
-            $p=$props|?{$_.Name-eq$name}|select -First 1
-            if($p -and [string]$p.Value -match '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$'){$ver=([string]$p.Value).ToLowerInvariant();break}
-        }
+        foreach($name in @('version_id','versionId','version','id')){$p=$props|Where-Object{$_.Name-eq$name}|Select-Object -First 1;if($p -and [string]$p.Value -match '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$'){$ver=([string]$p.Value).ToLowerInvariant();break}}
         $pct=$null
-        foreach($name in @('percentage','percent','traffic_percentage','trafficPercentage')){
-            $p=$props|?{$_.Name-eq$name}|select -First 1
-            if($p){try{$pct=[double]$p.Value}catch{};if($null-ne$pct){break}}
-        }
+        foreach($name in @('percentage','percent','traffic_percentage','trafficPercentage')){$p=$props|Where-Object{$_.Name-eq$name}|Select-Object -First 1;if($p){try{$pct=[double]$p.Value}catch{};if($null-ne$pct){break}}}
         if($ver -and $null-ne$pct){$pairs.Add([pscustomobject]@{version=$ver;percentage=$pct})}
         foreach($p in $props){Visit $p.Value}
     }
     Visit $root
-    $valid=@($pairs|?{($_.percentage-ge99.999-and$_.percentage-le100.001)-or($_.percentage-ge.99999-and$_.percentage-le1.00001)})
-    $versions=@($valid.version|select -Unique)
+    $valid=@($pairs|Where-Object{($_.percentage-ge99.999-and$_.percentage-le100.001)-or($_.percentage-ge.99999-and$_.percentage-le1.00001)})
+    $versions=@($valid.version|Select-Object -Unique)
     if($versions.Count-ne1){throw "Expected exactly one 100% active Worker version; found $($versions.Count)."}
     [string]$versions[0]
 }
@@ -60,12 +66,24 @@ function Set-Var([string]$Text,[string]$Key,[string]$Value){
     [regex]::Replace($Text,'(?m)^\[vars\]\s*$',"[vars]`r`n$Key = `"$escaped`"",1)
 }
 
+# Deterministic local Wrangler bootstrap; never let npx select an arbitrary version.
+& (Join-Path $ProjectRoot 'scripts\resolve_node.ps1') -MinimumVersion '22.0.0'
+if($LASTEXITCODE-ne0){throw 'Node.js runtime preflight failed.'}
+$npm=if($env:PROJECT_NPM){$env:PROJECT_NPM}else{(Get-Command npm.cmd -ErrorAction Stop).Source}
+Push-Location $CloudRoot
+try{
+    & $npm ci --ignore-scripts --no-audit --no-fund
+    if($LASTEXITCODE-ne0){throw 'Hash-locked cloud npm ci failed.'}
+}finally{Pop-Location}
+$wrangler=Join-Path $CloudRoot 'node_modules\.bin\wrangler.cmd'
+if(-not(Test-Path $wrangler -PathType Leaf)){throw 'Pinned Wrangler executable is unavailable after npm ci.'}
+
 $configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
 $productionConfig=@(
     (Join-Path $configRoot 'wrangler.v213.production.local.toml'),
     (Join-Path $configRoot 'wrangler.v211.production.local.toml'),
     (Join-Path $configRoot 'wrangler.v21.production.local.toml')
-)|?{Test-Path $_ -PathType Leaf}|select -First 1
+)|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
 if(-not$productionConfig){throw 'Installed Production Wrangler config was not found.'}
 
 $temp=Join-Path $CloudRoot ('.wrangler.v213.activation.'+[guid]::NewGuid().ToString('N')+'.toml')
@@ -82,13 +100,10 @@ if(Test-Path $modelState){
     }
 }
 [IO.File]::WriteAllText($temp,$text,[Text.UTF8Encoding]::new($false))
-
-$npx=(Get-Command npx.cmd -ErrorAction SilentlyContinue)
-if(-not$npx){$npx=Get-Command npx -ErrorAction Stop}
 $prior=''
 $deployed=$false
 try{
-    $prior=Get-SingleActiveVersion (Capture $npx.Source @('wrangler','deployments','status','--json','--config',$temp) $CloudRoot)
+    $prior=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     Write-Host "V213_ACTIVATION_PRIOR_VERSION = $prior" -ForegroundColor Cyan
     if(Test-Path $modelState){
         $m=Get-Content $modelState -Raw -Encoding utf8|ConvertFrom-Json
@@ -98,26 +113,28 @@ try{
             $shared=''
             try{
                 $shared=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
-                $old=Get-Location
-                try{
-                    Set-Location $CloudRoot
-                    $secretOutput=@($shared | & $npx.Source 'wrangler' 'secret' 'put' 'LOCAL_LLM_SHARED_SECRET' '--config' $temp 2>&1)
-                    if($LASTEXITCODE-ne0){throw 'LOCAL_LLM_SHARED_SECRET update failed.'}
-                    $deployed=$true
-                }finally{Set-Location $old}
+                [void](Run $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
+                $deployed=$true
             }finally{
                 if($sp-ne[IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sp)}
                 $shared=$null
             }
         }
     }
-    $out=Run $npx.Source @('wrangler','deploy','--config',$temp,'--message','v2.1.3 bilingual seven-field scheduled activation') $CloudRoot
+    [void](Run $wrangler @('deploy','--config',$temp,'--message','v2.1.3 bilingual seven-field scheduled activation') $CloudRoot)
     $deployed=$true
-    $current=Get-SingleActiveVersion (Capture $npx.Source @('wrangler','deployments','status','--json','--config',$temp) $CloudRoot)
+    $current=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     if($current-eq$prior){throw 'Deployment did not produce a new active Worker version.'}
 
     & (Join-Path $ProjectRoot 'sync-v213-top20-report.ps1') -ProjectRoot $ProjectRoot
     if($LASTEXITCODE-ne0){throw 'v2.1.3 report sync failed.'}
+
+    # Install a stable runtime before replacing the old 07:20 / 20:20 refresh actions.
+    & (Join-Path $ProjectRoot 'install-v213-runtime.ps1') -ProjectRoot $ProjectRoot
+    if($LASTEXITCODE-ne0){throw 'Stable v2.1.3 runtime installation failed.'}
+    $stableRuntime=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
+    & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
+    if($LASTEXITCODE-ne0){throw 'v2.1.3 local refresh task upgrade failed.'}
 
     $installedCopy=Join-Path $configRoot 'wrangler.v213.production.local.toml'
     Copy-Item $temp $installedCopy -Force
@@ -126,7 +143,9 @@ try{
         activated_utc=(Get-Date).ToUniversalTime().ToString('o')
         prior_worker_version=$prior;active_worker_version=$current
         scheduled_times=@('08:00 Asia/Taipei','21:00 Asia/Taipei')
+        local_refresh_times=@('07:20','20:20')
         scheduled_format='v213_seven_fields';field_locale=$FieldLocale
+        runtime_root=$stableRuntime
         rollback_on_failure=$true
     }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json') -Encoding utf8
     Write-Host "V2.1.3 SCHEDULED SEVEN-FIELD ACTIVATION = PASS; active_version=$current" -ForegroundColor Green
@@ -134,8 +153,8 @@ try{
     $failure=$_.Exception.Message
     if($deployed -and $prior){
         Write-Host 'Activation failed; restoring exact prior Worker version...' -ForegroundColor Yellow
-        Run $npx.Source @('wrangler','versions','deploy',($prior+'@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 scheduled activation') $CloudRoot|Out-Null
-        $restored=Get-SingleActiveVersion (Capture $npx.Source @('wrangler','deployments','status','--json','--config',$temp) $CloudRoot)
+        [void](Run $wrangler @('versions','deploy',($prior+'@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 scheduled activation') $CloudRoot)
+        $restored=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
         if($restored-ne$prior){throw "ACTIVATION FAILED AND ROLLBACK COULD NOT BE VERIFIED. Original: $failure"}
         Write-Host 'V213_ACTIVATION_ROLLBACK = PASS' -ForegroundColor Green
     }
