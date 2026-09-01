@@ -172,8 +172,10 @@ jobs:
           $ErrorActionPreference='Stop'
           $check=Join-Path $env:RUNNER_TEMP "ii-v213-check-$env:GITHUB_RUN_ID"
           Expand-Archive $env:ALL_IN_ONE_ZIP $check
-          & (Join-Path $check 'InvestorIntelligence.exe') --self-test
-          if($LASTEXITCODE -ne 0){throw 'Packaged EXE self-test failed.'}
+          $launcher=Join-Path $check 'InvestorIntelligence.exe'
+          $process=Start-Process -FilePath $launcher -ArgumentList '--self-test' -Wait -PassThru
+          if($process.ExitCode -ne 0){throw "Packaged EXE self-test failed with exit code $($process.ExitCode)."}
+          Write-Host 'INVESTOR_INTELLIGENCE_V213_PACKAGED_EXE_SELF_TEST=PASS'
 
       - name: Upload one-click package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
