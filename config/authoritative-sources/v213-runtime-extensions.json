@@ -31,6 +31,35 @@
       null,
       null,
       "Official symbol-directory files; listing identity only, not a free consolidated price feed."
+    ],
+    [
+      "alpha_vantage",
+      "Alpha Vantage Market Data API",
+      "Alpha Vantage",
+      "T3",
+      "public_market_observation",
+      ["GLOBAL"],
+      ["GLOBAL"],
+      ["market", "prices", "adjusted_returns"],
+      ["public_market_observation"],
+      "https://www.alphavantage.co/documentation/",
+      ["https://www.alphavantage.co/query"],
+      "rest_json",
+      "free_api_key",
+      "ALPHA_VANTAGE_API_KEY",
+      "v213_source_federation",
+      "adapter_reviewed",
+      "www.alphavantage.co",
+      "daily",
+      43200,
+      5,
+      5,
+      5000000,
+      30.0,
+      "documented",
+      null,
+      null,
+      "Optional independent T3 market observation. It never becomes issuer or bottleneck authority and absence does not permit a Yahoo-only high-confidence market claim."
     ]
   ]
 }
