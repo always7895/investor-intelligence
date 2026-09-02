@@ -1,0 +1,82 @@
+name: V2.1.3 Hotfix5 Release Workflow Patch
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-hotfix5-release-workflow-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Patch release workflow
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = '.github/workflows/v213-final-source-diverse-r60-hotfix5.yml'
+          $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
+          $pattern = '(?ms)^          \$previous = -1\r?\n          foreach \(\$token in \$ordered\) \{\r?\n            \$position = \$refresh\.IndexOf\(\$token, \[StringComparison\]::Ordinal\)\r?\n            if \(\$position -le \$previous\) \{ throw "Refresh pipeline order is invalid at: \$token" \}\r?\n            \$previous = \$position\r?\n          \}'
+          $replacement = @(
+            '          $previous = $refresh.IndexOf("Stage 3 ''Provisional Top20 candidate engine", [StringComparison]::Ordinal)',
+            "          if (`$previous -lt 0) { throw 'Stage 3 runtime pipeline marker is missing.' }",
+            '          foreach ($token in $ordered) {',
+            '            $position = $refresh.IndexOf($token, $previous + 1, [StringComparison]::Ordinal)',
+            '            if ($position -le $previous) { throw "Refresh pipeline order is invalid at: $token" }',
+            '            $previous = $position',
+            '          }'
+          ) -join "`r`n"
+          $updated = [regex]::Replace($text, $pattern, $replacement, 1)
+          if ($updated -eq $text) {
+            if (-not $text.Contains('$refresh.IndexOf($token, $previous + 1')) {
+              throw 'The reviewed pipeline-audit block was not found.'
+            }
+          }
+          $updated = $updated.Replace(
+            "foreach (`$argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {",
+            "foreach (`$argument in @('--pipe-hold-self-test','--model-selection-self-test')) {")
+          [IO.File]::WriteAllText((Resolve-Path $path), $updated, [Text.UTF8Encoding]::new($false))
+          $verified = Get-Content -LiteralPath $path -Raw -Encoding utf8
+          if (-not $verified.Contains('$refresh.IndexOf($token, $previous + 1')) {
+            throw 'Pipeline-scoped order audit was not installed.'
+          }
+          $compileStart = $verified.IndexOf('- name: Compile Hotfix5 atomic model-select EXE')
+          $packageStart = $verified.IndexOf('- name: Build one-click Hotfix5 atomic ZIP')
+          if ($compileStart -lt 0 -or $packageStart -le $compileStart) {
+            throw 'Compile/package sections are missing.'
+          }
+          if ($verified.Substring($compileStart, $packageStart - $compileStart).Contains("'--self-test'")) {
+            throw 'Temporary EXE still executes a package-layout self-test before packaging.'
+          }
+          Write-Host 'V213_HOTFIX5_RELEASE_WORKFLOW_PATCH = PASS'
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.git\AUTO_MERGE.lock' -Force -ErrorAction SilentlyContinue
+          if (-not (git status --porcelain)) {
+            Write-Host 'V213_HOTFIX5_RELEASE_WORKFLOW_PATCH_COMMIT = NO_CHANGES'
+            exit 0
+          }
+          git config user.name 'Investor Intelligence Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/v213-final-source-diverse-r60-hotfix5.yml
+          git commit -m 'fix: scope Hotfix5 release checks to runtime pipeline'
+          git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
+          Write-Host 'V213_HOTFIX5_RELEASE_WORKFLOW_PATCH_COMMIT = PASS'
