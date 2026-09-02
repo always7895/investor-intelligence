@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "fragment_id": "v213-runtime-extensions",
+  "automatic_activation": false,
+  "members": [
+    [
+      "nasdaq_symbol_directory",
+      "Nasdaq Trader Symbol Directory",
+      "Nasdaq",
+      "T2",
+      "regulated_market",
+      ["AMERICAS"],
+      ["US"],
+      ["listings", "symbols", "exchange_identity"],
+      ["regulated_listing_identity"],
+      "https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs",
+      ["https://www.nasdaqtrader.com/dynamic/SymDir"],
+      "official_download",
+      "none",
+      null,
+      "nasdaq_symbol_directory",
+      "adapter_reviewed",
+      "www.nasdaqtrader.com",
+      "intraday",
+      3600,
+      4,
+      2,
+      3000000,
+      15.0,
+      "documented",
+      null,
+      null,
+      "Official symbol-directory files; listing identity only, not a free consolidated price feed."
+    ]
+  ]
+}
