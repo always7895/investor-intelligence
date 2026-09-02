@@ -13,6 +13,9 @@ param(
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 Set-StrictMode -Version Latest
+$utf8NoBom=New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding=$utf8NoBom
+$OutputEncoding=$utf8NoBom
 if([string]::IsNullOrWhiteSpace($ProjectRoot)){ $ProjectRoot=Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $runtimeRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime'
@@ -67,13 +70,13 @@ function Load-SecContact {
 }
 
 try{
-    Stage 1 7 'Python runtime and dependency preflight'
+    Stage 1 8 'Python runtime and dependency preflight'
     $python=Resolve-ProjectPython
     $env:PROJECT_PYTHON=$python
     Load-SecContact
     Write-Host "PROJECT_PYTHON = $python" -ForegroundColor Green
 
-    Stage 2 7 'Local llama.cpp bridge'
+    Stage 2 8 'Local llama.cpp bridge'
     $modelBridgeReady=$false
     if(-not $NoModelBridge){
         try{
@@ -89,30 +92,35 @@ try{
 
     Push-Location $ProjectRoot
     try {
-        Stage 3 7 'v2.1 Top20 public engine; clean first run may fetch SEC data'
+        Stage 3 8 'v2.1 Top20 public engine; clean first run may fetch SEC data'
         $engine=@('scripts\v213_v21_progress_runner.py')
         if($Synthetic){$engine+='--synthetic'}
         & $python @engine
         if($LASTEXITCODE -ne 0){throw 'Top20 engine failed.'}
         Write-Host 'II_PROGRESS v2.1 Top20 engine complete' -ForegroundColor Green
 
-        Stage 4 7 'Build v2.1 signed public snapshot'
+        Stage 4 8 'Build v2.1 signed public snapshot'
         & $python 'scripts\build_v21_public_snapshot.py'
         if($LASTEXITCODE -ne 0){throw 'v2.1 snapshot build failed.'}
         Write-Host 'II_PROGRESS v2.1 public snapshot complete' -ForegroundColor Green
 
         if(-not $Synthetic){
-            Stage 5 7 'Build v2.1.2 five-field report'
+            Stage 5 8 'Build v2.1.2 five-field report'
             & $python 'scripts\v213_v212_progress_runner.py'
             if($LASTEXITCODE -ne 0){throw 'v2.1.2 five-field refresh failed.'}
             Write-Host 'II_PROGRESS v2.1.2 report complete' -ForegroundColor Green
 
-            Stage 6 7 'Build v2.1.3 seven-field report'
-            & $python 'scripts\build_v213_scheduled_top20_report.py'
+            Stage 6 8 'Reconcile v2.1.3 order evidence to current Top20 membership'
+            & $python 'scripts\reconcile_v213_order_evidence.py'
+            if($LASTEXITCODE -ne 0){throw 'v2.1.3 order-evidence reconciliation failed.'}
+            Write-Host 'II_PROGRESS v2.1.3 order-evidence reconciliation complete' -ForegroundColor Green
+
+            Stage 7 8 'Build v2.1.3 seven-field report'
+            & $python 'scripts\build_v213_scheduled_top20_report.py' '--baseline' 'data\cache\v213_order_evidence_runtime.json'
             if($LASTEXITCODE -ne 0){throw 'v2.1.3 seven-field build failed.'}
             Write-Host 'II_PROGRESS v2.1.3 seven-field report complete' -ForegroundColor Green
 
-            Stage 7 7 'Signed sync and model-route refresh'
+            Stage 8 8 'Signed sync and model route refresh'
             if(-not $NoSync){
                 $syncConfig=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
                 if(Test-Path $syncConfig -PathType Leaf){
@@ -147,7 +155,7 @@ try{
                 Write-Host 'II_PROGRESS signed sync intentionally skipped (-NoSync)' -ForegroundColor DarkGray
             }
         }else{
-            Write-Host 'II_STAGE 5-7/7 | synthetic mode: report and sync stages skipped' -ForegroundColor DarkGray
+            Write-Host 'II_STAGE 5-8/8 | synthetic mode: report/reconciliation/sync stages skipped' -ForegroundColor DarkGray
         }
         Write-Host 'INVESTOR_INTELLIGENCE_V213_LOCAL = PASS' -ForegroundColor Green
         Write-Host "LOCAL_MODEL_BRIDGE_READY = $modelBridgeReady" -ForegroundColor DarkGray
