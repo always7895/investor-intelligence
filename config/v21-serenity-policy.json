@@ -45,7 +45,7 @@
   "minimum_market_cap": 500000000,
   "minimum_price": 5,
   "per_screener_count": 100,
-  "required_catalog_count": 100,
+  "required_catalog_count": 101,
   "schema_version": 2,
   "sec_candidate_limit": 50,
   "sec_companyfacts_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
