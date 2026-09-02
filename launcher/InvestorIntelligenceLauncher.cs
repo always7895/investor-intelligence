@@ -12,6 +12,7 @@ namespace InvestorIntelligence
     {
         const string Version = "2.1.3";
         static string LastPowerShellSummary = "";
+        static volatile string LastPowerShellLiveLine = "";
 
         static string Root
         {
@@ -22,6 +23,56 @@ namespace InvestorIntelligence
         {
             if (String.IsNullOrEmpty(text)) return "";
             return text.Length <= max ? text : text.Substring(text.Length - max);
+        }
+
+        static string UiSafeProgressLine(string line)
+        {
+            if (String.IsNullOrWhiteSpace(line)) return "";
+            string value = line.Trim().Replace("\r", " ").Replace("\n", " ");
+            if (
+                value.StartsWith("II_STAGE ", StringComparison.Ordinal) ||
+                value.StartsWith("II_PROGRESS ", StringComparison.Ordinal) ||
+                value.StartsWith("V213_", StringComparison.Ordinal) ||
+                value.StartsWith("INVESTOR_INTELLIGENCE_", StringComparison.Ordinal)
+            )
+            {
+                return value.Length <= 135 ? value : value.Substring(0, 132) + "...";
+            }
+            return "";
+        }
+
+        static void AppendTail(StringBuilder tail, string channel, string line)
+        {
+            tail.Append(channel).Append(" ").AppendLine(line);
+            const int keep = 18000;
+            if (tail.Length > keep + 4000)
+                tail.Remove(0, tail.Length - keep);
+        }
+
+        static void PumpStream(
+            StreamReader reader,
+            string channel,
+            StreamWriter writer,
+            object sync,
+            StringBuilder tail)
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                lock (sync)
+                {
+                    writer.Write(DateTime.Now.ToString("HH:mm:ss.fff"));
+                    writer.Write(" [");
+                    writer.Write(channel);
+                    writer.Write("] ");
+                    writer.WriteLine(line);
+                    writer.Flush();
+                    AppendTail(tail, channel, line);
+                }
+                string safe = UiSafeProgressLine(line);
+                if (!String.IsNullOrEmpty(safe))
+                    LastPowerShellLiveLine = safe;
+            }
         }
 
         static async Task<int> RunPowerShellAsync(string script, string arguments, bool showErrorDialog)
@@ -43,63 +94,81 @@ namespace InvestorIntelligence
                 logRoot,
                 DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" + Path.GetFileNameWithoutExtension(script) + ".log");
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + path + "\" " + arguments,
-                WorkingDirectory = Root,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
-            };
+            LastPowerShellLiveLine = "II_PROGRESS launcher log created / 啟動器即時記錄已建立";
+            var tail = new StringBuilder();
+            var sync = new object();
+            int exitCode = -1;
 
-            string stdout;
-            string stderr;
-            int exitCode;
-            using (var process = new Process())
+            using (var stream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(true)))
             {
-                process.StartInfo = psi;
-                if (!process.Start())
+                writer.AutoFlush = true;
+                writer.WriteLine("Investor Intelligence v" + Version + " live launcher log");
+                writer.WriteLine("SCRIPT=" + script);
+                writer.WriteLine("STARTED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
+                writer.WriteLine("LOG_MODE=LIVE_STREAMING");
+                writer.WriteLine("--- LIVE OUTPUT ---");
+
+                var psi = new ProcessStartInfo
                 {
-                    LastPowerShellSummary = "PowerShell process could not be started.";
-                    if (showErrorDialog)
-                        MessageBox.Show(LastPowerShellSummary, "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return 3;
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + path + "\" " + arguments,
+                    WorkingDirectory = Root,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                using (var process = new Process())
+                {
+                    process.StartInfo = psi;
+                    if (!process.Start())
+                    {
+                        LastPowerShellSummary = "PowerShell process could not be started.\r\nLog / 記錄：" + logPath;
+                        writer.WriteLine("PROCESS_START_FAILED");
+                        if (showErrorDialog)
+                            MessageBox.Show(LastPowerShellSummary, "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return 3;
+                    }
+
+                    writer.WriteLine("PROCESS_ID=" + process.Id);
+                    Task stdoutTask = Task.Run(delegate {
+                        PumpStream(process.StandardOutput, "OUT", writer, sync, tail);
+                    });
+                    Task stderrTask = Task.Run(delegate {
+                        PumpStream(process.StandardError, "ERR", writer, sync, tail);
+                    });
+                    Task waitTask = Task.Run(delegate { process.WaitForExit(); });
+
+                    await Task.WhenAll(stdoutTask, stderrTask, waitTask);
+                    exitCode = process.ExitCode;
                 }
 
-                // Read both redirected streams concurrently. Reading stdout and stderr
-                // sequentially can deadlock if the other pipe fills during a long refresh.
-                Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-                Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-                Task waitTask = Task.Run(delegate { process.WaitForExit(); });
-
-                await Task.WhenAll(stdoutTask, stderrTask, waitTask);
-                stdout = stdoutTask.Result;
-                stderr = stderrTask.Result;
-                exitCode = process.ExitCode;
+                lock (sync)
+                {
+                    writer.WriteLine("--- END OUTPUT ---");
+                    writer.WriteLine("EXIT_CODE=" + exitCode);
+                    writer.WriteLine("FINISHED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
+                }
             }
-
-            File.WriteAllText(logPath,
-                "SCRIPT=" + script + Environment.NewLine +
-                "EXIT_CODE=" + exitCode + Environment.NewLine +
-                "--- STDOUT ---" + Environment.NewLine + stdout + Environment.NewLine +
-                "--- STDERR ---" + Environment.NewLine + stderr,
-                Encoding.UTF8);
 
             if (exitCode == 0)
             {
                 LastPowerShellSummary = "PASS\r\nLog / 記錄：" + logPath;
+                LastPowerShellLiveLine = "INVESTOR_INTELLIGENCE operation PASS";
             }
             else
             {
-                string detail = Tail((stderr + "\r\n" + stdout).Trim(), 5000);
+                string detail;
+                lock (sync) { detail = Tail(tail.ToString().Trim(), 6000); }
                 LastPowerShellSummary =
                     "Exit code / 結束碼: " + exitCode + "\r\n\r\n" +
                     (String.IsNullOrWhiteSpace(detail) ? "No diagnostic output was returned." : detail) +
                     "\r\n\r\nLog / 完整記錄：\r\n" + logPath;
+                LastPowerShellLiveLine = "V213_OPERATION_FAILED; see live log / 請查看即時記錄";
                 if (showErrorDialog)
                     MessageBox.Show(LastPowerShellSummary, "Investor Intelligence - Error / 錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
@@ -174,7 +243,7 @@ namespace InvestorIntelligence
             {
                 Text = "Investor Intelligence v" + Version;
                 Width = 640;
-                Height = 390;
+                Height = 410;
                 StartPosition = FormStartPosition.CenterScreen;
                 FormBorderStyle = FormBorderStyle.FixedDialog;
                 MaximizeBox = false;
@@ -185,17 +254,17 @@ namespace InvestorIntelligence
                     Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold)
                 });
 
-                refreshButton = Button("啟動本地模型並更新資料\nStart local model + refresh", 24, 90);
-                activateButton = Button("正式啟用 08:00 / 21:00 七欄推送\nActivate scheduled seven-field LINE", 320, 90);
-                modelButton = Button("只啟動本地模型橋接\nStart local-model bridge only", 24, 190);
-                folderButton = Button("開啟程式資料夾\nOpen package folder", 320, 190);
+                refreshButton = MakeButton("啟動本地模型並更新資料\nStart local model + refresh", 24, 90);
+                activateButton = MakeButton("正式啟用 08:00 / 21:00 七欄推送\nActivate scheduled seven-field LINE", 320, 90);
+                modelButton = MakeButton("只啟動本地模型橋接\nStart local-model bridge only", 24, 190);
+                folderButton = MakeButton("開啟程式資料夾\nOpen package folder", 320, 190);
                 Controls.Add(refreshButton);
                 Controls.Add(activateButton);
                 Controls.Add(modelButton);
                 Controls.Add(folderButton);
 
                 status = new Label {
-                    Left = 24, Top = 292, Width = 580, Height = 45,
+                    Left = 24, Top = 292, Width = 580, Height = 66,
                     Text = "Ready / 就緒",
                     BorderStyle = BorderStyle.FixedSingle,
                     Padding = new Padding(8)
@@ -207,7 +276,10 @@ namespace InvestorIntelligence
                 elapsedTimer.Tick += delegate {
                     if (!busy) return;
                     TimeSpan elapsed = DateTime.UtcNow - operationStartedUtc;
-                    status.Text = operationLabel + "  " + elapsed.ToString(@"mm\:ss") + "\r\n請保持視窗開啟；介面可正常移動 / Keep this window open";
+                    string progress = LastPowerShellLiveLine;
+                    if (String.IsNullOrWhiteSpace(progress))
+                        progress = "請保持視窗開啟；即時 log 正在寫入 / Keep this window open; live log is being written";
+                    status.Text = operationLabel + "  " + elapsed.ToString(@"mm\:ss") + "\r\n" + progress;
                 };
 
                 refreshButton.Click += async delegate {
@@ -239,6 +311,7 @@ namespace InvestorIntelligence
                                 true);
                             if (refresh != 0) return refresh;
                             operationLabel = "正式啟用中 / Activating...";
+                            LastPowerShellLiveLine = "II_PROGRESS activation preflight complete / 啟用前刷新完成";
                             return await RunPowerShellAsync(
                                 "activate-v213-seven-field-schedule.ps1",
                                 "-ProjectRoot \"" + Root + "\" -ConfirmActivation -RequireLocalModel",
@@ -317,9 +390,10 @@ namespace InvestorIntelligence
                 UseWaitCursor = value;
                 if (value)
                 {
+                    LastPowerShellLiveLine = "II_PROGRESS preparing operation / 準備執行";
                     operationStartedUtc = DateTime.UtcNow;
                     operationLabel = label;
-                    status.Text = label + "\r\n請保持視窗開啟 / Keep this window open";
+                    status.Text = label + "\r\n" + LastPowerShellLiveLine;
                     elapsedTimer.Start();
                 }
                 else
@@ -330,7 +404,7 @@ namespace InvestorIntelligence
                 }
             }
 
-            Button Button(string text, int left, int top)
+            Button MakeButton(string text, int left, int top)
             {
                 return new Button {
                     Left = left,
