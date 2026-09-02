@@ -74,7 +74,7 @@ describe("v2.1.3 diversified Top20", () => {
     expect(text).toContain("系統量化分");
     expect(text).toContain("101 個來源是受審查目錄");
     expect(text).toContain("Yahoo/yfinance 僅為 T3 觀測");
-    expect(text).not.toContain("Serenity 官方公式");
+    expect(text).toContain("非 Serenity 官方公式");
   });
 
   it("rejects proxy-only chokepoint or replacement-friction points", () => {
