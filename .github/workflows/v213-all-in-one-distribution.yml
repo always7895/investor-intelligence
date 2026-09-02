@@ -64,7 +64,7 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Vitest failed.'}
           } finally { Pop-Location }
 
-      - name: Parse PowerShell in pwsh and Windows PowerShell 5.1
+      - name: Parse PowerShell and test isolated Wrangler JSON capture
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -93,23 +93,30 @@ jobs:
           '@ | Set-Content $probe -Encoding utf8
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Paths $paths
           if($LASTEXITCODE -ne 0){throw 'Windows PowerShell 5.1 parser gate failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'Isolated Wrangler JSON stdout/stderr capture self-test failed.'}
 
-      - name: Audit live refresh observability and reconciliation contract
+      - name: Audit model selection, live observability and reconciliation contracts
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $launcher=Get-Content launcher\InvestorIntelligenceLauncher.cs -Raw -Encoding utf8
           $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
           $bridge=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
+          $activation=Get-Content activate-v213-seven-field-schedule.ps1 -Raw -Encoding utf8
           foreach($needle in @(
             'LOG_MODE=LIVE_CHILD_FILE_TAIL',
             'ANONYMOUS_STDOUT_PIPES=FALSE',
             'RAW_OUTPUT_FINAL_DRAIN=COMPLETE',
             'FileShare.ReadWrite | FileShare.Delete',
             'PIPE_HOLD_PARENT_EXIT_TEST=PASS',
+            'ModelSelect-R43',
+            'RVN-Q6_K-multilingual-mtp',
+            'v213-model-selection.json',
+            '--model-selection-self-test',
             'LastPowerShellLiveLine'
           )){
-            if(-not $launcher.Contains($needle)){throw "Launcher pipe-free completion contract missing: $needle"}
+            if(-not $launcher.Contains($needle)){throw "Launcher model-selection/pipe-free contract missing: $needle"}
           }
           if($launcher.Contains('RedirectStandardOutput = true') -or $launcher.Contains('BeginOutputReadLine')){
             throw 'Launcher regressed to anonymous redirected stdout pipes.'
@@ -120,10 +127,21 @@ jobs:
           foreach($needle in @('reconcile_v213_order_evidence.py','v213_order_evidence_runtime.json','PYTHONUNBUFFERED=''1''')){
             if(-not $refresh.Contains($needle)){throw "Refresh reconciliation/progress contract missing: $needle"}
           }
-          foreach($needle in @('Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2')){
-            if(-not $bridge.Contains($needle)){throw "Quick-tunnel retry contract missing: $needle"}
+          foreach($needle in @(
+            'Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2',
+            'Resolve-Model','v213-model-selection.json','Test-SelectedModelRoute',
+            'selected_model_verified=true','selected_model_available'
+          )){
+            if(-not $bridge.Contains($needle)){throw "Selected-model bridge contract missing: $needle"}
           }
-          Write-Host 'V213_LIVE_OBSERVABILITY_RECONCILIATION_AND_PIPE_FREE_CAPTURE = PASS'
+          foreach($needle in @(
+            'Invoke-NativeCapture','RedirectStandardOutput=$true','RedirectStandardError=$true',
+            'V213_ACTIVATION_JSON_CAPTURE_SELF_TEST','V213_SELECTED_MODEL_PREFLIGHT',
+            'wrangler_json_stdout_isolated=$true'
+          )){
+            if(-not $activation.Contains($needle)){throw "Activation JSON/model contract missing: $needle"}
+          }
+          Write-Host 'V213_MODEL_SELECTION_JSON_CAPTURE_AND_OBSERVABILITY = PASS'
 
       - name: Compile and stress-test bilingual EXE launcher
         shell: pwsh
@@ -135,15 +153,17 @@ jobs:
           )|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
           if(-not$csc){throw 'csc.exe unavailable.'}
           $exe=Join-Path $env:RUNNER_TEMP 'InvestorIntelligence.exe'
-          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/out:$exe" launcher\InvestorIntelligenceLauncher.cs
+          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$exe" launcher\InvestorIntelligenceLauncher.cs
           if($LASTEXITCODE -ne 0){throw 'Launcher compilation failed.'}
-          $pipeTest=Start-Process -FilePath $exe -ArgumentList '--pipe-hold-self-test' -PassThru
-          if(-not $pipeTest.WaitForExit(20000)){
-            Stop-Process -Id $pipeTest.Id -Force -ErrorAction SilentlyContinue
-            throw 'Launcher inherited-handle self-test timed out.'
+          foreach($argument in @('--pipe-hold-self-test','--model-selection-self-test')){
+            $test=Start-Process -FilePath $exe -ArgumentList $argument -PassThru
+            if(-not $test.WaitForExit(20000)){
+              Stop-Process -Id $test.Id -Force -ErrorAction SilentlyContinue
+              throw "Launcher self-test timed out: $argument"
+            }
+            if($test.ExitCode -ne 0){throw "Launcher self-test failed ($argument): $($test.ExitCode)"}
           }
-          if($pipeTest.ExitCode -ne 0){throw "Launcher inherited-handle self-test failed: $($pipeTest.ExitCode)"}
-          Write-Host 'V213_LAUNCHER_CHILD_FILE_CAPTURE_SELF_TEST = PASS'
+          Write-Host 'V213_LAUNCHER_FILE_CAPTURE_AND_MODEL_SELECTION_SELF_TESTS = PASS'
           "V213_EXE=$exe"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build one-click all-version ZIP
@@ -170,10 +190,10 @@ jobs:
           Expand-Archive (Join-Path $versions 'Investor-Intelligence-v2.1.3-source.zip') $stage -Force
           Copy-Item $env:V213_EXE (Join-Path $stage 'InvestorIntelligence.exe')
 
-          $refDoc=[ordered]@{
+          $refsDoc=[ordered]@{
             schema_version=1
             package_version='2.1.3'
-            launcher_revision='FileCapture-R41'
+            launcher_revision='ModelSelect-R43'
             current_commit=$env:GITHUB_SHA.ToLowerInvariant()
             versions=$refs
             launcher='InvestorIntelligence.exe'
@@ -184,11 +204,20 @@ jobs:
               preferred_endpoint='http://127.0.0.1:8080/v1'
               supported_loopback_ports=@(8080,7905,14410,8813,8081,8000)
               dynamic_running_llama_port_discovery=$true
-              default_model='auto_from_v1_models'
+              selection_mode='explicit_persisted_exact_model'
+              selection_file='%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-selection.json'
+              preferred_model='RVN-Q6_K-multilingual-mtp'
+              silent_first_model_fallback=$false
+              model_route_probe_required=$true
               gateway='scripts/v213_local_llm_gateway.py'
               quick_tunnel_retry_attempts=3
               quick_tunnel_protocol='http2'
-              formal_activation_requires_healthy_bridge=$true
+              formal_activation_requires_healthy_exact_model_bridge=$true
+            }
+            activation=[ordered]@{
+              wrangler_json_stdout_stderr_isolated=$true
+              noisy_stderr_json_parser_regression_test=$true
+              exact_prior_version_rollback=$true
             }
             order_evidence=[ordered]@{
               historical_baseline='data/bootstrap/v213-r15r-order-baseline.json'
@@ -203,7 +232,7 @@ jobs:
             schedule=@('08:00 Asia/Taipei','21:00 Asia/Taipei')
             local_refresh=@('07:20','20:20')
           }
-          $refDoc|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stage 'VERSION-REFS.json') -Encoding utf8
+          $refsDoc|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stage 'VERSION-REFS.json') -Encoding utf8
 
           $manifest=@()
           Get-ChildItem $stage -File -Recurse|ForEach-Object{
@@ -255,14 +284,20 @@ jobs:
           $launcher=Join-Path $check 'InvestorIntelligence.exe'
           Invoke-BoundedExeTest $launcher '--self-test' 'Packaged EXE self-test'
           Invoke-BoundedExeTest $launcher '--pipe-hold-self-test' 'Packaged EXE inherited-handle self-test'
+          Invoke-BoundedExeTest $launcher '--model-selection-self-test' 'Packaged EXE model-selection self-test'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'activate-v213-seven-field-schedule.ps1') -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'Packaged activation JSON-capture self-test failed.'}
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
           if($LASTEXITCODE -ne 0){throw 'Stable runtime installation smoke test failed.'}
           $stableLauncher=Join-Path $stable 'InvestorIntelligence.exe'
           Invoke-BoundedExeTest $stableLauncher '--self-test' 'Stable runtime EXE self-test'
           Invoke-BoundedExeTest $stableLauncher '--pipe-hold-self-test' 'Stable runtime inherited-handle self-test'
+          Invoke-BoundedExeTest $stableLauncher '--model-selection-self-test' 'Stable runtime model-selection self-test'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'activate-v213-seven-field-schedule.ps1') -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'Stable runtime activation JSON-capture self-test failed.'}
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stable -ValidateOnly
           if($LASTEXITCODE -ne 0){throw 'Refresh-task non-mutating validation failed.'}
-          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_AND_FILE_CAPTURE = PASS'
+          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_MODEL_SELECTION_AND_JSON_CAPTURE = PASS'
 
       - name: Upload one-click package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -284,14 +319,16 @@ jobs:
           - v2.1.3 scheduled report self-test: PASS
           - complete bilingual current-public-schema audit: PASS
           - pwsh + Windows PowerShell 5.1 parser: PASS
+          - Wrangler JSON stdout isolated from noisy stderr: PASS
           - live launcher log + eight-stage refresh observability: PASS
           - anonymous stdout/stderr pipes removed from launcher: PASS
-          - inherited-handle reproduction and bounded child-file capture completion: PASS
-          - Top20 membership changes reconcile new tickers through fail-closed SEC order evidence: included
+          - inherited-handle bounded child-file capture: PASS
+          - explicit persistent local-model selector: PASS
+          - preferred model: RVN-Q6_K-multilingual-mtp
+          - silent first-model fallback removed: PASS
+          - selected model catalog match + minimal route probe + tunnel health binding: PASS
           - EXE launcher / stable-runtime copy: PASS
           - local refresh task action non-mutating validation: PASS
-          - local llama.cpp dynamic port discovery + 3-attempt HTTP/2 quick-tunnel health gate: included
-          - formal activation requires a healthy local-model bridge: true
           - v2.1.0 / v2.1.1 / v2.1.2 / v2.1.3 source ZIPs: included
           - one-click outer ZIP SHA-256: ``$env:ALL_IN_ONE_SHA``
           - Production deployment: NOT performed by packaging workflow
