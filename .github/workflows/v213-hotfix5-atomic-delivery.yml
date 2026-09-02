@@ -1,0 +1,327 @@
+name: V2.1.3 Hotfix5 Atomic Delivery
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-hotfix5-atomic-delivery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-hotfix5-atomic-delivery
+  cancel-in-progress: true
+
+jobs:
+  delivery:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      SOURCE_DIR: ${{ github.workspace }}\hf5-delivery-${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact source into isolated directory
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          path: hf5-delivery-${{ github.run_id }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Prepare verified Python and hash-locked dependencies
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-hf5-delivery
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Hash-locked Python dependency installation failed.' }
+          & $env:PROJECT_PYTHON -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Python dependency check failed.' }
+
+      - name: Validate methodology, evidence and bundle builders
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commands = @(
+            @('scripts\reconcile_v213_order_evidence.py','--self-test'),
+            @('scripts\build_v213_scheduled_top20_report.py','--self-test'),
+            @('scripts\v213_source_federation.py','--self-test'),
+            @('scripts\v213_source_federation_gate.py','--self-test'),
+            @('scripts\v213_apply_diversified_operationalization.py','--self-test'),
+            @('scripts\v213_build_v21_public_snapshot.py','--self-test'),
+            @('scripts\v213_pipeline_boundary_self_test.py'),
+            @('scripts\v213_source_independence_gate_v2.py','--wrapper-self-test'),
+            @('scripts\v213_source_independence_gate_v3.py','--wrapper-self-test'),
+            @('scripts\build_v213_activation_bundle.py','--self-test'),
+            @('scripts\build_v213_activation_bundle_v2.py','--self-test'),
+            @('scripts\v213_methodology_and_source_audit.py'),
+            @('scripts\v213_local_llm_gateway.py','--self-test'),
+            @('scripts\audit_v213_bilingual_public_fields.py'),
+            @('scripts\audit_v213_source_diversity_fields.py'),
+            @('tests\test_v213_v21_progress_runner.py'),
+            @('tests\test_v213_v212_progress_runner.py')
+          )
+          foreach ($command in $commands) {
+            & $env:PROJECT_PYTHON @command
+            if ($LASTEXITCODE -ne 0) { throw "Validation failed: $($command -join ' ')" }
+          }
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compileall failed.' }
+
+      - name: Typecheck and run complete Worker transaction regression
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          Push-Location cloud
+          try {
+            npm.cmd ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+            npm.cmd run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'TypeScript typecheck failed.' }
+            npm.cmd test
+            if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed.' }
+          }
+          finally { Pop-Location }
+
+      - name: Validate PowerShell and atomic activation contracts
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = @(
+            'run-v213-local-source-diverse.ps1',
+            'run-v213-local.ps1',
+            'run-v213-local-llm-bridge-source-diverse.ps1',
+            'scripts\run_v213_local_llm_bridge_core.ps1',
+            'scripts\run_v213_local_llm_bridge_core_v2.ps1',
+            'scripts\test_v213_activation_core.ps1',
+            'activate-v213-seven-field-schedule.ps1',
+            'activate-v213-seven-field-schedule-core.ps1',
+            'sync-v213-activation-bundle.ps1',
+            'install-v213-source-diverse-runtime-v2.ps1',
+            'install-v213-runtime.ps1',
+            'register-v213-refresh-tasks.ps1'
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { $errors | Out-String | Write-Host; throw "$path PowerShell 7 parser errors" }
+          }
+          $ps51Probe = Join-Path $env:RUNNER_TEMP 'v213-hf5-delivery-ps51.ps1'
+          @'
+          param([string[]]$Paths)
+          foreach ($path in $Paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { $errors | Out-String | Write-Host; exit 1 }
+          }
+          '@ | Set-Content -LiteralPath $ps51Probe -Encoding utf8
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ps51Probe -Paths $paths
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 parser gate failed.' }
+
+          $refresh = Get-Content run-v213-local-source-diverse.ps1 -Raw -Encoding utf8
+          $pipelineStart = $refresh.IndexOf("Stage 3 'Provisional Top20 candidate engine",[StringComparison]::Ordinal)
+          if ($pipelineStart -lt 0) { throw 'Stage 3 runtime marker is missing.' }
+          $ordered = @(
+            'v213_v21_progress_runner.py',
+            'v213_v212_progress_runner.py',
+            'reconcile_v213_order_evidence.py',
+            'build_v213_scheduled_top20_report.py',
+            'v213_source_federation.py',
+            'v213_source_federation_gate.py',
+            'v213_apply_diversified_operationalization.py',
+            'v213_source_independence_gate_v3.py',
+            'v213_build_v21_public_snapshot.py',
+            'build_v213_activation_bundle_v2.py'
+          )
+          $previous = $pipelineStart
+          foreach ($token in $ordered) {
+            $position = $refresh.IndexOf($token,$previous + 1,[StringComparison]::Ordinal)
+            if ($position -le $previous) { throw "Runtime pipeline order invalid at: $token" }
+            $previous = $position
+          }
+          if ($refresh.Contains("& `$python 'scripts\build_v21_public_snapshot.py'")) { throw 'Legacy snapshot builder remains active.' }
+          if ($refresh.Contains('sync-v21-public-snapshot.ps1')) { throw 'Legacy pre-activation sync remains active.' }
+          foreach ($marker in @('build_v213_activation_bundle_v2.py','legacy Worker sync intentionally skipped before formal v2.1.3 activation')) {
+            if (-not $refresh.Contains($marker)) { throw "Refresh contract missing: $marker" }
+          }
+          $core = Get-Content activate-v213-seven-field-schedule-core.ps1 -Raw -Encoding utf8
+          foreach ($marker in @('V213_ATOMIC_DATA_COMMIT = PASS','V213_ACTIVATION_POINTER_ROLLBACK = PASS','V213_ACTIVATION_WORKER_ROLLBACK = PASS','sync-v213-activation-bundle.ps1','pointer_written_last=true')) {
+            if (-not $core.Contains($marker)) { throw "Activation contract missing: $marker" }
+          }
+          $worker = Get-Content cloud\src\v213\production-worker.ts -Raw -Encoding utf8
+          if (-not $worker.Contains('./activation-v2')) { throw 'Production Worker does not route through activation-v2.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_v213_activation_core.ps1 -ProjectRoot $PWD.Path
+          if ($LASTEXITCODE -ne 0) { throw 'External activation-core contract test failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge-source-diverse.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'HealthSchema2 bridge self-test failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Source-diverse activation wrapper self-test failed.' }
+          Write-Host 'V213_HOTFIX5_DELIVERY_POWERSHELL = PASS'
+
+      - name: Run real Windows no-mutation end-to-end refresh
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        timeout-minutes: 60
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $testRoot = Join-Path $env:RUNNER_TEMP ('v213-hf5-delivery-live-' + [guid]::NewGuid().ToString('N'))
+          $savedLocal = $env:LOCALAPPDATA
+          $savedContact = $env:SEC_CONTACT_EMAIL
+          $env:LOCALAPPDATA = Join-Path $testRoot 'LocalAppData'
+          $env:SEC_CONTACT_EMAIL = 'investor-intelligence-public-research@example.com'
+          New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
+          try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-source-diverse.ps1 -ProjectRoot $PWD.Path -NoModelBridge -NoSync -NoAutoActivation
+            if ($LASTEXITCODE -ne 0) { throw 'Real no-mutation refresh failed.' }
+            $top20 = @(Get-Content data\cache\top20_public_latest.json -Raw -Encoding utf8 | ConvertFrom-Json)
+            $v212 = Get-Content data\cache\v212_top20_report_public_latest.json -Raw -Encoding utf8 | ConvertFrom-Json
+            $v213 = Get-Content data\cache\v213_top20_report_public_latest.json -Raw -Encoding utf8 | ConvertFrom-Json
+            $federation = Get-Content data\cache\v213_source_federation_latest.json -Raw -Encoding utf8 | ConvertFrom-Json
+            $sourceAudit = Get-Content data\cache\v213_source_independence_latest.json -Raw -Encoding utf8 | ConvertFrom-Json
+            $bundle = Get-Content data\cache\v213_activation_bundle_upload.json -Raw -Encoding utf8 | ConvertFrom-Json
+            if ($top20.Count -ne 20 -or @($v212.records).Count -ne 20 -or @($v213.records).Count -ne 20) { throw 'Final row counts are invalid.' }
+            if ($federation.gates.pass -ne $true -or [string]$sourceAudit.status -ne 'PASS') { throw 'Source gates did not pass.' }
+            if (@($sourceAudit.blocking_violations).Count -ne 0 -or @($sourceAudit.violations).Count -ne 0) { throw 'Source audit contains blockers.' }
+            if ([int]$bundle.schema_version -ne 4 -or [string]$bundle.transaction_id -notmatch '^[0-9a-f]{32}$') { throw 'Atomic bundle contract invalid.' }
+            if (@($bundle.payloads.PSObject.Properties.Name).Count -ne 7) { throw 'Atomic bundle does not contain seven payloads.' }
+            $bundleTop20 = @(ConvertFrom-Json ([string]$bundle.payloads.top20_json))
+            $bundleFederation = ConvertFrom-Json ([string]$bundle.payloads.source_federation_json)
+            $bundleAudit = ConvertFrom-Json ([string]$bundle.payloads.source_independence_json)
+            for ($index = 0; $index -lt 20; $index++) {
+              $ticker = [string]$top20[$index].ticker
+              if ([string]$top20[$index].scoring_version -ne 'system-operationalization-v2.1.3-diversified') { throw "Provisional row retained: $ticker" }
+              foreach ($actual in @([string]$v212.records[$index].ticker,[string]$v213.records[$index].ticker,[string]$bundleTop20[$index].ticker,[string]$bundleFederation.ticker_sources[$index].ticker,[string]$bundleAudit.records[$index].ticker)) {
+                if ($actual -ne $ticker) { throw "Atomic order mismatch at rank $($index + 1): $ticker / $actual" }
+              }
+            }
+            Write-Host ("V213_HOTFIX5_DELIVERY_LIVE_NO_MUTATION = PASS; run_id={0}; transaction_id={1}; market_status={2}" -f $bundle.run_id,$bundle.transaction_id,$sourceAudit.portfolio.market_corroboration_status)
+          }
+          finally {
+            $env:LOCALAPPDATA = $savedLocal
+            $env:SEC_CONTACT_EMAIL = $savedContact
+            Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Compile Hotfix5 Atomic EXE
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $csc = @("$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe","$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe") | Where-Object { Test-Path $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $csc) { throw 'csc.exe unavailable.' }
+          $source = Get-Content launcher\InvestorIntelligenceLauncher.cs -Raw -Encoding utf8
+          $source = [regex]::Replace($source,'const string Revision = "[^"]+";','const string Revision = "SourceDiverse-R60-Hotfix5-Atomic";',1)
+          $temporary = Join-Path $env:RUNNER_TEMP 'InvestorIntelligence-Hotfix5-Atomic.cs'
+          [IO.File]::WriteAllText($temporary,$source,[Text.UTF8Encoding]::new($false))
+          $exe = Join-Path $env:RUNNER_TEMP 'InvestorIntelligence-Hotfix5-Atomic.exe'
+          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$exe" $temporary
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher compilation failed.' }
+          foreach ($argument in @('--pipe-hold-self-test','--model-selection-self-test')) {
+            $process = Start-Process $exe -ArgumentList $argument -PassThru
+            if (-not $process.WaitForExit(25000)) { Stop-Process $process.Id -Force -ErrorAction SilentlyContinue; throw "Launcher test timed out: $argument" }
+            if ($process.ExitCode -ne 0) { throw "Launcher test failed: $argument / $($process.ExitCode)" }
+          }
+          "HF5_EXE=$exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build and verify one-click package
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP "ii-v213-hf5-delivery-$env:GITHUB_RUN_ID"
+          $stage = Join-Path $root 'Investor-Intelligence-v2.1.3-SourceDiverse-R60-Hotfix5-Atomic'
+          $versions = Join-Path $stage 'versions'
+          New-Item -ItemType Directory -Force -Path $stage,$versions | Out-Null
+          $refs = [ordered]@{'2.1.0'='bbc2987e54eccef350685447b48e1841c4e5ba19';'2.1.1'='22593c82743ad97aff91469ba001700d2a384c48';'2.1.2'='1a36935bf8532be074707eeb7f941d8a46be6ca9';'2.1.3'=$env:GITHUB_SHA.ToLowerInvariant()}
+          foreach ($entry in $refs.GetEnumerator()) {
+            $archive = Join-Path $versions ("Investor-Intelligence-v$($entry.Key)-source.zip")
+            git archive --format=zip --output="$archive" $entry.Value
+            if ($LASTEXITCODE -ne 0) { throw "git archive failed for v$($entry.Key)" }
+          }
+          Expand-Archive (Join-Path $versions 'Investor-Intelligence-v2.1.3-source.zip') $stage -Force
+          Copy-Item (Join-Path $stage 'run-v213-local-source-diverse.ps1') (Join-Path $stage 'run-v213-local.ps1') -Force
+          Copy-Item (Join-Path $stage 'run-v213-local-llm-bridge-source-diverse.ps1') (Join-Path $stage 'run-v213-local-llm-bridge.ps1') -Force
+          Copy-Item (Join-Path $stage 'install-v213-source-diverse-runtime-v2.ps1') (Join-Path $stage 'install-v213-source-diverse-runtime.ps1') -Force
+          Remove-Item (Join-Path $stage 'tmp') -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item $env:HF5_EXE (Join-Path $stage 'InvestorIntelligence.exe') -Force
+          [ordered]@{
+            schema_version=8; package_version='2.1.3'; launcher_revision='SourceDiverse-R60-Hotfix5-Atomic'; current_commit=$env:GITHUB_SHA.ToLowerInvariant(); versions=$refs
+            local_model=[ordered]@{explicit_selector=$true;preferred_model='RVN-Q6_K-multilingual-mtp';silent_model_substitution=$false;health_schema_version=2}
+            atomic_activation=[ordered]@{enabled=$true;payload_count=7;builder='scripts/build_v213_activation_bundle_v2.py';client='sync-v213-activation-bundle.ps1';worker='cloud/src/v213/activation-v2.ts';immutable_objects_before_pointer=$true;pointer_written_last=$true;pointer_readback_verified=$true;exact_pointer_rollback=$true;exact_worker_rollback=$true;idempotent_replay=$true;run_id_collision_rejected=$true}
+            source_fidelity=[ordered]@{yahoo_role='compatibility_calculation_only';market_endpoint_unavailability_is_global_blocker=$false;high_confidence_requires_market_corroboration=$true;uncorroborated_valuation_factor_max=3.75;source_conflicts_averaged=$false}
+            serenity_public_logic=[ordered]@{label='public-logic high-fidelity reconstruction';private_method_reproduced=$false;official_formula=$false;official_score=$false}
+            schedule=@('08:00 Asia/Taipei','21:00 Asia/Taipei');local_refresh=@('07:20','20:20');production_deployment_performed_by_packaging=$false
+          } | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $stage 'VERSION-REFS.json') -Encoding utf8
+          $manifest = @()
+          Get-ChildItem $stage -File -Recurse | ForEach-Object {$manifest += [ordered]@{path=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
+          [ordered]@{schema_version=8;commit=$env:GITHUB_SHA.ToLowerInvariant();generated_utc=(Get-Date).ToUniversalTime().ToString('o');files=$manifest} | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $stage 'MANIFEST.json') -Encoding utf8
+          Get-ChildItem $stage -File -Recurse | ForEach-Object {'{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.FullName.Substring($stage.Length+1).Replace('\','/')} | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ascii
+          $zip = Join-Path $root 'Investor-Intelligence-v2.1.3-SourceDiverse-R60-Hotfix5-Atomic.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $shaFile = $zip + '.sha256'
+          Set-Content $shaFile $sha -Encoding ascii
+
+          $check = Join-Path $root 'check'
+          $stable = Join-Path $root 'stable'
+          Expand-Archive $zip $check
+          foreach ($file in @('InvestorIntelligence.exe','scripts\test_v213_activation_core.ps1','sync-v213-activation-bundle.ps1','scripts\build_v213_activation_bundle_v2.py','cloud\src\v213\activation-v2.ts','cloud\test\v213-activation.test.ts','VERSION-REFS.json','MANIFEST.json','SHA256SUMS.txt')) {if (-not (Test-Path (Join-Path $check $file) -PathType Leaf)) {throw "Package missing: $file"}}
+          foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {$process=Start-Process (Join-Path $check 'InvestorIntelligence.exe') -ArgumentList $argument -PassThru;if (-not $process.WaitForExit(25000)) {Stop-Process $process.Id -Force -ErrorAction SilentlyContinue;throw "Packaged EXE test timed out: $argument"};if ($process.ExitCode -ne 0) {throw "Packaged EXE test failed: $argument / $($process.ExitCode)"}}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'scripts\test_v213_activation_core.ps1') -ProjectRoot $check
+          if ($LASTEXITCODE -ne 0) {throw 'Packaged activation-core test failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-source-diverse-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
+          if ($LASTEXITCODE -ne 0) {throw 'Stable runtime install failed.'}
+          foreach ($file in @('run-v213-local.ps1','sync-v213-activation-bundle.ps1','scripts\build_v213_activation_bundle_v2.py')) {if (-not (Test-Path (Join-Path $stable $file) -PathType Leaf)) {throw "Stable runtime missing: $file"}}
+          $manifestDocument=Get-Content (Join-Path $check 'MANIFEST.json') -Raw -Encoding utf8|ConvertFrom-Json
+          foreach ($entry in @($manifestDocument.files)) {$path=Join-Path $check ([string]$entry.path).Replace('/','\');if (-not (Test-Path $path -PathType Leaf)) {throw "Manifest missing: $($entry.path)"};if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$entry.sha256) {throw "Manifest hash mismatch: $($entry.path)"};if ((Get-Item $path).Length -ne [long]$entry.bytes) {throw "Manifest size mismatch: $($entry.path)"}}
+          $verification=Join-Path $root 'Investor-Intelligence-v2.1.3-SourceDiverse-R60-Hotfix5-Atomic-Verification.json'
+          [ordered]@{schema_version=1;status='PASS';commit=$env:GITHUB_SHA.ToLowerInvariant();workflow_run_id=[string]$env:GITHUB_RUN_ID;production_mutation=$false;real_windows_no_mutation_refresh=$true;worker_transaction_tests=$true;external_activation_core_test=$true;packaged_launcher_tests=$true;stable_runtime_test=$true;manifest_verified=$true;zip_sha256=$sha} | ConvertTo-Json -Depth 8 | Set-Content $verification -Encoding utf8
+          "HF5_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "HF5_SHA_FILE=$shaFile" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "HF5_VERIFICATION=$verification" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "HF5_SHA=$sha" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host 'V213_HOTFIX5_DELIVERY_PACKAGE = PASS'
+
+      - name: Upload Hotfix5 Atomic delivery
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-SourceDiverse-R60-Hotfix5-Atomic-Delivery
+          path: |
+            ${{ env.HF5_ZIP }}
+            ${{ env.HF5_SHA_FILE }}
+            ${{ env.HF5_VERIFICATION }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## Investor Intelligence v2.1.3 Hotfix5 Atomic Delivery
+          - Worker transaction tests: PASS
+          - Real Windows no-mutation refresh: PASS
+          - Seven-payload atomic bundle: PASS
+          - Exact pointer and Worker rollback paths: PASS
+          - Packaged EXE and stable runtime: PASS
+          - Production mutation by CI: false
+          - ZIP SHA-256: ``$env:HF5_SHA``
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
