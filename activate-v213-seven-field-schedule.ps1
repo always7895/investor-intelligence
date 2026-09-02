@@ -14,47 +14,69 @@ $utf8NoBom=New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding=$utf8NoBom
 $OutputEncoding=$utf8NoBom
 
+function Get-PropertyValue {
+    param([object]$Object,[string]$Name,[object]$Default=$null)
+    if($null-eq$Object){return $Default}
+    $property=$Object.PSObject.Properties[$Name]
+    if($null-eq$property){return $Default}
+    return $property.Value
+}
 function Get-Array([object]$Value){
     if($null-eq$Value){return @()}
     return @($Value)
 }
 function Get-BooleanProperty([object]$Value,[string]$Name,[bool]$Default=$false){
-    if($null-eq$Value){return $Default}
-    $property=$Value.PSObject.Properties[$Name]
-    if($null-eq$property){return $Default}
-    return [bool]$property.Value
+    return [bool](Get-PropertyValue $Value $Name $Default)
 }
-function Test-FederationDocument([object]$Document,[DateTimeOffset]$Now){
-    if($null-eq$Document){throw 'The live source federation document is missing.'}
-    if([int]$Document.schema_version-ne1-or[string]$Document.product_version-ne'2.1.3'){
-        throw 'The live source federation schema/product version is invalid.'
-    }
+function Get-IntProperty([object]$Value,[string]$Name,[int]$Default=0){
+    $result=$Default
+    [void][int]::TryParse([string](Get-PropertyValue $Value $Name $Default),[ref]$result)
+    return $result
+}
+function Get-DoubleProperty([object]$Value,[string]$Name,[double]$Default=0.0){
+    $result=$Default
+    [void][double]::TryParse([string](Get-PropertyValue $Value $Name $Default),[ref]$result)
+    return $result
+}
+function Get-FreshTimestamp([object]$Document,[string]$Label,[DateTimeOffset]$Now){
     $generated=[DateTimeOffset]::MinValue
-    if(-not[DateTimeOffset]::TryParse([string]$Document.generated_at,[ref]$generated)){
-        throw 'The live source federation generated_at value is invalid.'
+    if(-not[DateTimeOffset]::TryParse([string](Get-PropertyValue $Document 'generated_at' ''),[ref]$generated)){
+        throw "The $Label generated_at value is invalid."
     }
     $age=($Now.ToUniversalTime()-$generated.ToUniversalTime()).TotalSeconds
     if($age-lt-300-or$age-gt7200){
-        throw "The live source federation is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($age)))."
+        throw "The $Label is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($age)))."
     }
-    $gates=$Document.gates
+    return [pscustomobject]@{
+        generated_at=$generated.ToUniversalTime().ToString('o')
+        age_seconds=[Math]::Round($age)
+    }
+}
+function Test-FederationDocument([object]$Document,[DateTimeOffset]$Now){
+    if($null-eq$Document){throw 'The live source federation document is missing.'}
+    if((Get-IntProperty $Document 'schema_version')-ne1-or[string](Get-PropertyValue $Document 'product_version' '')-ne'2.1.3'){
+        throw 'The live source federation schema/product version is invalid.'
+    }
+    $stamp=Get-FreshTimestamp $Document 'live source federation' $Now
+    $gates=Get-PropertyValue $Document 'gates' $null
     if($null-eq$gates-or-not(Get-BooleanProperty $gates 'pass')){
         throw 'The live source federation truth gate did not pass.'
     }
-    $successful=@(Get-Array $gates.successful_families|ForEach-Object{[string]$_})
-    $official=@(Get-Array $gates.official_successful_families|ForEach-Object{[string]$_})
+    $successful=@(Get-Array (Get-PropertyValue $gates 'successful_families' @())|ForEach-Object{[string]$_})
+    $official=@(Get-Array (Get-PropertyValue $gates 'official_successful_families' @())|ForEach-Object{[string]$_})
     $required=@('us_sec','nasdaq','world_bank','us_bls','ecb')
-    $missingRequired=@($required|Where-Object{$successful -notcontains $_})
+    $missingRequired=@($required|Where-Object{$successful-notcontains$_})
     if($successful.Count-lt5-or$official.Count-lt4-or$missingRequired.Count-gt0){
         throw ('Live source federation lacks required independent families: '+($missingRequired-join','))
     }
-    if(@(Get-Array $gates.missing_required_families).Count-ne0){
+    if(@(Get-Array (Get-PropertyValue $gates 'missing_required_families' @())).Count-ne0){
         throw 'The live source federation reports missing required families.'
     }
-    if([double]$gates.ticker_coverage_ratio-lt0.8){
+    $tickerCoverage=Get-DoubleProperty $gates 'ticker_coverage_ratio'
+    if($tickerCoverage-lt0.8){
         throw 'Fewer than 80% of Top20 tickers passed multi-source identity/filing coverage.'
     }
-    if([int]$gates.unresolved_material_conflict_count-ne0){
+    if((Get-IntProperty $gates 'unresolved_material_conflict_count')-ne0){
         throw 'The live source federation contains unresolved material conflicts.'
     }
     if(-not(Get-BooleanProperty $gates 'concentration_pass')){
@@ -67,46 +89,170 @@ function Test-FederationDocument([object]$Document,[DateTimeOffset]$Now){
         throw 'The activation document does not distinguish catalog inventory from live use.'
     }
     return [pscustomobject]@{
-        generated_at=$generated.ToUniversalTime().ToString('o')
-        age_seconds=[Math]::Round($age)
+        generated_at=$stamp.generated_at
+        age_seconds=$stamp.age_seconds
         successful_families=$successful
         official_families=$official
-        ticker_coverage_ratio=[double]$gates.ticker_coverage_ratio
-        largest_family_share=[double]$gates.largest_family_share
+        ticker_coverage_ratio=$tickerCoverage
+        largest_family_share=Get-DoubleProperty $gates 'largest_family_share'
+    }
+}
+function Test-SourceIndependenceDocument {
+    param(
+        [object]$Document,
+        [DateTimeOffset]$Now,
+        [object[]]$Top20
+    )
+    if($null-eq$Document){throw 'The claim-level source-independence document is missing.'}
+    if((Get-IntProperty $Document 'schema_version')-lt3-or[string](Get-PropertyValue $Document 'product_version' '')-ne'2.1.3'){
+        throw 'The claim-level source-independence schema/product version is invalid.'
+    }
+    if([string](Get-PropertyValue $Document 'status' '')-ne'PASS'){
+        throw 'The claim-level source-independence gate is not PASS.'
+    }
+    $stamp=Get-FreshTimestamp $Document 'claim-level source-independence audit' $Now
+    $records=@(Get-Array (Get-PropertyValue $Document 'records' @()))
+    if($records.Count-ne20){throw 'The claim-level source-independence document must contain exactly 20 records.'}
+    if($Top20.Count-ne20){throw 'The diversified Top20 must contain exactly 20 rows.'}
+    for($index=0;$index-lt20;$index++){
+        $topTicker=[string](Get-PropertyValue $Top20[$index] 'ticker' '')
+        $sourceTicker=[string](Get-PropertyValue $records[$index] 'ticker' '')
+        if($topTicker-ne$sourceTicker){
+            throw "Top20/source-independence order mismatch at rank $($index+1): $topTicker vs $sourceTicker."
+        }
+    }
+
+    $portfolio=Get-PropertyValue $Document 'portfolio' $null
+    if($null-eq$portfolio){throw 'The source-independence portfolio summary is missing.'}
+    $families=Get-IntProperty $portfolio 'independent_source_families'
+    $domains=Get-IntProperty $portfolio 'independent_domains'
+    $claimFamilies=Get-IntProperty $portfolio 'claim_source_families'
+    $claimDomains=Get-IntProperty $portfolio 'claim_source_domains'
+    $nonYahoo=Get-DoubleProperty $portfolio 'non_yahoo_market_coverage_ratio'
+    $claimPrimary=Get-DoubleProperty $portfolio 'claim_primary_coverage_ratio'
+    $largestFamily=Get-DoubleProperty $portfolio 'maximum_single_family_share' 1.0
+    $marketConflicts=Get-IntProperty $portfolio 'market_conflict_ticker_count'
+    if($families-lt3-or$domains-lt3){throw 'Portfolio source-family/domain independence is below 3.'}
+    if($claimFamilies-lt2-or$claimDomains-lt2){throw 'Claim-relevant source-family/domain independence is below 2.'}
+    if($nonYahoo-lt0.75){throw "Non-Yahoo market corroboration is below 75% ($nonYahoo)."}
+    if($claimPrimary-lt0.75){throw "Claim-relevant primary-source coverage is below 75% ($claimPrimary)."}
+    if($largestFamily-gt0.70){throw "A single source family exceeds the 70% concentration cap ($largestFamily)."}
+    if($marketConflicts-ne0){throw "The source-independence document contains $marketConflicts unresolved market-source conflicts."}
+
+    $notice=Get-PropertyValue $Document 'methodology_notice' $null
+    if($null-eq$notice){throw 'The source-independence methodology notice is missing.'}
+    if(Get-BooleanProperty $notice 'official_serenity_formula' $true){throw 'The source document claims an official Serenity formula.'}
+    if(Get-BooleanProperty $notice 'official_serenity_score' $true){throw 'The source document claims an official Serenity score.'}
+    if(Get-BooleanProperty $notice 'private_method_reproduced' $true){throw 'The source document claims private-method reproduction.'}
+    if(Get-BooleanProperty $notice 'single_source_inference_allowed' $true){throw 'The source document permits single-source inference.'}
+    if(-not(Get-BooleanProperty $notice 'source_diversity_is_not_truth_by_itself')){throw 'The source document does not preserve the source-diversity/ground-truth distinction.'}
+    if(-not(Get-BooleanProperty $notice 'official_macro_is_not_company_claim_evidence')){throw 'The source document does not isolate official macro context from company claims.'}
+
+    foreach($record in $records){
+        if(-not(Get-BooleanProperty $record 'eligible_for_high_confidence_model_inference')){continue}
+        $metrics=Get-PropertyValue $record 'source_metrics' $null
+        $market=Get-PropertyValue $record 'market_corroboration' $null
+        if($null-eq$metrics-or$null-eq$market){throw 'A HIGH-eligible record lacks source metrics or market corroboration.'}
+        if((Get-IntProperty $metrics 'claim_relevant_independent_families')-lt2){throw 'A HIGH-eligible record has fewer than two claim-relevant source families.'}
+        if((Get-IntProperty $metrics 'claim_relevant_independent_domains')-lt2){throw 'A HIGH-eligible record has fewer than two claim-relevant source domains.'}
+        if((Get-IntProperty $metrics 'claim_relevant_primary_sources')-lt1){throw 'A HIGH-eligible record lacks claim-relevant primary evidence.'}
+        if((Get-DoubleProperty $metrics 'claim_dated_evidence_ratio')-lt0.8){throw 'A HIGH-eligible record has insufficient dated claim evidence.'}
+        if([string](Get-PropertyValue $market 'status' '')-ne'CORROBORATED'){throw 'A HIGH-eligible record does not have conflict-free market corroboration.'}
+        if((Get-IntProperty $market 'independent_provider_count')-lt1){throw 'A HIGH-eligible record lacks a non-Yahoo market provider.'}
+        $missing=@(Get-Array (Get-PropertyValue $record 'missing_or_review' @())|ForEach-Object{[string]$_})
+        if($missing-contains'MARKET_SOURCE_CONFLICT_REVIEW'){throw 'A HIGH-eligible record contains an unresolved market conflict.'}
+    }
+    return [pscustomobject]@{
+        generated_at=$stamp.generated_at
+        age_seconds=$stamp.age_seconds
+        independent_source_families=$families
+        independent_domains=$domains
+        claim_source_families=$claimFamilies
+        claim_source_domains=$claimDomains
+        non_yahoo_market_coverage_ratio=$nonYahoo
+        claim_primary_coverage_ratio=$claimPrimary
+        maximum_single_family_share=$largestFamily
+        high_confidence_eligible_count=Get-IntProperty $portfolio 'high_confidence_model_inference_eligible_count'
+        fred_macro_status=[string](Get-PropertyValue $portfolio 'fred_macro_status' 'UNKNOWN')
     }
 }
 function Test-Top20AndReport([object[]]$Top20,[object]$Report){
     if($Top20.Count-ne20){throw 'The diversified Top20 must contain exactly 20 rows.'}
-    if($null-eq$Report-or[string]$Report.product_version-ne'2.1.3'-or@(Get-Array $Report.records).Count-ne20){
+    if($null-eq$Report-or[string](Get-PropertyValue $Report 'product_version' '')-ne'2.1.3'-or@(Get-Array (Get-PropertyValue $Report 'records' @())).Count-ne20){
         throw 'The v2.1.3 seven-field report contract is invalid.'
     }
-    $reportRows=@(Get-Array $Report.records)
+    $reportRows=@(Get-Array (Get-PropertyValue $Report 'records' @()))
     for($index=0;$index-lt20;$index++){
         $row=$Top20[$index]
         $reportRow=$reportRows[$index]
-        if([int]$row.rank-ne($index+1)-or[int]$reportRow.rank-ne($index+1)){
+        if((Get-IntProperty $row 'rank')-ne($index+1)-or(Get-IntProperty $reportRow 'rank')-ne($index+1)){
             throw 'Top20/report ranks are not exactly 1..20.'
         }
-        if([string]$row.ticker-ne[string]$reportRow.ticker){
+        if([string](Get-PropertyValue $row 'ticker' '')-ne[string](Get-PropertyValue $reportRow 'ticker' '')){
             throw "Top20/report order mismatch at rank $($index+1)."
         }
-        if([string]$row.scoring_version-ne'system-operationalization-v2.1.3-diversified'){
+        if([string](Get-PropertyValue $row 'scoring_version' '')-ne'system-operationalization-v2.1.3-diversified'){
             throw "Top20 row $($index+1) does not use the diversified scoring version."
         }
-        if([int]$row.source_count-lt2-or@($row.evidence).Count-lt2){
+        if((Get-IntProperty $row 'source_count')-lt2-or@(Get-Array (Get-PropertyValue $row 'evidence' @())).Count-lt2){
             throw "Top20 row $($index+1) lacks transparent multi-source evidence."
         }
-        if([double]$row.serenity_factors.chokepoint-ne0-or[double]$row.serenity_factors.replacement_friction-ne0){
+        $factors=Get-PropertyValue $row 'serenity_factors' $null
+        if($null-eq$factors){throw "Top20 row $($index+1) lacks Serenity-factor compatibility fields."}
+        if((Get-DoubleProperty $factors 'chokepoint')-ne0-or(Get-DoubleProperty $factors 'replacement_friction')-ne0){
             throw "Top20 row $($index+1) bypassed the evidence-bound chokepoint/friction gate."
         }
     }
     return $true
 }
+function Test-HealthSchema2Payload([object]$Health,[string]$RequiredModel){
+    if($null-eq$Health){throw 'The local-model health payload is missing.'}
+    if(-not(Get-BooleanProperty $Health 'ok')){throw 'The local-model gateway health payload is not ok.'}
+    if([string](Get-PropertyValue $Health 'service' '')-ne'v213-local-llm-gateway'){throw 'The local-model gateway service identity is invalid.'}
+    if((Get-IntProperty $Health 'health_schema_version')-lt2){throw 'The local-model gateway is not health-schema-v2.'}
+    if(-not(Get-BooleanProperty $Health 'llama_reachable')){throw 'The selected llama.cpp model is not reachable.'}
+    if(-not(Get-BooleanProperty $Health 'selected_model_available')){throw 'The selected model is not available in the router catalog.'}
+    if([string](Get-PropertyValue $Health 'selected_model' '')-ine$RequiredModel){throw 'The local-model health payload silently substituted a different model.'}
+    if(-not(Get-BooleanProperty $Health 'source_independence_audit_available')){throw 'The gateway does not expose the current source-independence sidecar.'}
+    if([string](Get-PropertyValue $Health 'source_independence_audit_freshness' '')-ne'FRESH'){throw 'The gateway source-independence sidecar is not fresh.'}
+    if([string](Get-PropertyValue $Health 'source_independence_status' '')-ne'PASS'){throw 'The gateway source-independence status is not PASS.'}
+    return $true
+}
+function Get-HealthSchema2ModelState([string]$Path,[string]$RequiredModel){
+    if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){throw 'The v2.1.3 local-model state is missing.'}
+    $state=Get-Content -LiteralPath $Path -Raw -Encoding utf8|ConvertFrom-Json
+    $model=[string](Get-PropertyValue $state 'model' '')
+    if(-not$model){throw 'The local-model state does not identify a selected model.'}
+    if($RequiredModel-and$model-ine$RequiredModel){throw "The local-model state selected '$model', not required model '$RequiredModel'."}
+    if(-not(Get-BooleanProperty $state 'selected_model_verified')){throw 'The local-model state did not verify the selected model.'}
+    if((Get-IntProperty $state 'health_schema_version')-lt2){throw 'The persisted local-model state is not health-schema-v2.'}
+    $publicUrl=[string](Get-PropertyValue $state 'public_url' '')
+    $allowedHost=[string](Get-PropertyValue $state 'allowed_host' '')
+    $secret=[string](Get-PropertyValue $state 'encrypted_shared_secret' '')
+    if($publicUrl-notmatch'^https://'-or-not$allowedHost-or-not$secret){throw 'The public exact-model bridge state is incomplete.'}
+    try{
+        if(([uri]$publicUrl).Host-ine$allowedHost){throw 'The bridge allowed host does not match the public URL.'}
+    }catch{throw 'The public exact-model bridge URL is invalid.'}
+    $connected=[DateTimeOffset]::MinValue
+    if(-not[DateTimeOffset]::TryParse([string](Get-PropertyValue $state 'connected_at' ''),[ref]$connected)){throw 'The local-model connected_at value is invalid.'}
+    $age=([DateTimeOffset]::UtcNow-$connected.ToUniversalTime()).TotalMinutes
+    if($age-lt-5-or$age-gt30){throw "The local-model bridge is outside the 30-minute freshness gate (age_minutes=$([Math]::Round($age,1)))."}
+    $health=Invoke-RestMethod -Method Get -Uri ($publicUrl.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 20
+    [void](Test-HealthSchema2Payload $health $model)
+    return [pscustomobject]@{
+        model=$model
+        public_url=$publicUrl
+        allowed_host=$allowedHost
+        connected_at=$connected.ToUniversalTime().ToString('o')
+        health_schema_version=2
+        source_independence_policy_version=[string](Get-PropertyValue $health 'source_independence_policy_version' '')
+    }
+}
 
 if($SelfTest){
     $now=[DateTimeOffset]::UtcNow
     $families=@('us_sec','nasdaq','world_bank','us_bls','ecb')
-    $document=[pscustomobject]@{
+    $federation=[pscustomobject]@{
         schema_version=1;product_version='2.1.3';generated_at=$now.ToString('o')
         gates=[pscustomobject]@{
             pass=$true;successful_families=$families;official_successful_families=$families
@@ -116,31 +262,98 @@ if($SelfTest){
             catalog_source_count_is_not_live_use=$true
         }
     }
-    $result=Test-FederationDocument $document $now
-    if($result.successful_families.Count-ne5){throw 'Federation self-test count failed.'}
-    $document.gates.yahoo_authoritative=$true
-    try{[void](Test-FederationDocument $document $now);throw 'Yahoo authority self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Yahoo authority self-test did not fail closed.'){throw}}
-    Write-Host 'V213_DIVERSIFIED_ACTIVATION_PREFLIGHT_SELF_TEST = PASS' -ForegroundColor Green
+    $top20=@()
+    $sourceRecords=@()
+    for($index=1;$index-le20;$index++){
+        $ticker=('T{0:D2}'-f$index)
+        $top20+=[pscustomobject]@{rank=$index;ticker=$ticker}
+        $sourceRecords+=[pscustomobject]@{
+            rank=$index;ticker=$ticker;evidence_independence_score=90
+            eligible_for_high_confidence_model_inference=$true
+            source_metrics=[pscustomobject]@{
+                claim_relevant_independent_families=2
+                claim_relevant_independent_domains=2
+                claim_relevant_primary_sources=1
+                claim_dated_evidence_ratio=1.0
+            }
+            market_corroboration=[pscustomobject]@{status='CORROBORATED';independent_provider_count=1}
+            missing_or_review=@()
+        }
+    }
+    $sourceAudit=[pscustomobject]@{
+        schema_version=3;product_version='2.1.3';status='PASS';generated_at=$now.ToString('o')
+        portfolio=[pscustomobject]@{
+            independent_source_families=5;independent_domains=5
+            claim_source_families=2;claim_source_domains=2
+            non_yahoo_market_coverage_ratio=1.0;claim_primary_coverage_ratio=1.0
+            maximum_single_family_share=0.4;market_conflict_ticker_count=0
+            high_confidence_model_inference_eligible_count=20;fred_macro_status='LIVE'
+        }
+        methodology_notice=[pscustomobject]@{
+            official_serenity_formula=$false;official_serenity_score=$false
+            private_method_reproduced=$false;single_source_inference_allowed=$false
+            source_diversity_is_not_truth_by_itself=$true
+            official_macro_is_not_company_claim_evidence=$true
+        }
+        records=$sourceRecords
+    }
+    [void](Test-FederationDocument $federation $now)
+    $sourceResult=Test-SourceIndependenceDocument $sourceAudit $now $top20
+    if($sourceResult.non_yahoo_market_coverage_ratio-ne1.0){throw 'Source-independence self-test coverage failed.'}
+    $health=[pscustomobject]@{
+        ok=$true;service='v213-local-llm-gateway';health_schema_version=2
+        llama_reachable=$true;selected_model_available=$true;selected_model='model-a'
+        source_independence_audit_available=$true
+        source_independence_audit_freshness='FRESH';source_independence_status='PASS'
+    }
+    [void](Test-HealthSchema2Payload $health 'model-a')
+    $federation.gates.yahoo_authoritative=$true
+    try{[void](Test-FederationDocument $federation $now);throw 'Yahoo authority self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Yahoo authority self-test did not fail closed.'){throw}}
+    $sourceAudit.status='FAIL'
+    try{[void](Test-SourceIndependenceDocument $sourceAudit $now $top20);throw 'Source-independence status self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Source-independence status self-test did not fail closed.'){throw}}
+    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; health-schema-v2 = PASS' -ForegroundColor Green
     exit 0
 }
 
-if(-not$ConfirmActivation){throw 'Formal diversified scheduled activation requires -ConfirmActivation.'}
+if(-not$ConfirmActivation){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation.'}
 if([string]::IsNullOrWhiteSpace($ProjectRoot)){$ProjectRoot=Split-Path -Parent $MyInvocation.MyCommand.Path}
 $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $federationPath=Join-Path $ProjectRoot 'data\cache\v213_source_federation_latest.json'
+$sourcePath=Join-Path $ProjectRoot 'data\cache\v213_source_independence_latest.json'
 $top20Path=Join-Path $ProjectRoot 'data\cache\top20_public_latest.json'
 $reportPath=Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
 $inner=Join-Path $ProjectRoot 'activate-v213-seven-field-schedule-core.ps1'
-foreach($path in @($federationPath,$top20Path,$reportPath,$inner)){
+$sourceDiverseInstaller=Join-Path $ProjectRoot 'install-v213-source-diverse-runtime.ps1'
+foreach($path in @($federationPath,$sourcePath,$top20Path,$reportPath,$inner,$sourceDiverseInstaller)){
     if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Activation prerequisite is missing: $path"}
 }
 $federation=Get-Content -LiteralPath $federationPath -Raw -Encoding utf8|ConvertFrom-Json
-$top20=@(Get-Content -LiteralPath $top20Path -Raw -Encoding utf8|ConvertFrom-Json)
+$sourceAudit=Get-Content -LiteralPath $sourcePath -Raw -Encoding utf8|ConvertFrom-Json
+$top20Document=Get-Content -LiteralPath $top20Path -Raw -Encoding utf8|ConvertFrom-Json
+$top20Property=$top20Document.PSObject.Properties['records']
+$top20=if($null-ne$top20Property){@(Get-Array $top20Property.Value)}else{@($top20Document)}
 $report=Get-Content -LiteralPath $reportPath -Raw -Encoding utf8|ConvertFrom-Json
-$federationResult=Test-FederationDocument $federation ([DateTimeOffset]::UtcNow)
+$now=[DateTimeOffset]::UtcNow
+$federationResult=Test-FederationDocument $federation $now
+$sourceResult=Test-SourceIndependenceDocument $sourceAudit $now $top20
 [void](Test-Top20AndReport $top20 $report)
 $federationSha=(Get-FileHash -LiteralPath $federationPath -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host ("V213_DIVERSIFIED_SOURCE_PREFLIGHT = PASS; families={0}; official={1}; ticker_coverage={2:P0}; source_sha256={3}" -f $federationResult.successful_families.Count,$federationResult.official_families.Count,$federationResult.ticker_coverage_ratio,$federationSha) -ForegroundColor Green
+$sourceSha=(Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host ("V213_DIVERSIFIED_SOURCE_PREFLIGHT = PASS; families={0}; official={1}; ticker_coverage={2:P0}; source_sha256={3}"-f$federationResult.successful_families.Count,$federationResult.official_families.Count,$federationResult.ticker_coverage_ratio,$federationSha) -ForegroundColor Green
+Write-Host ("V213_SOURCE_INDEPENDENCE_PREFLIGHT = PASS; families={0}; domains={1}; claim_families={2}; claim_domains={3}; non_yahoo={4:P0}; claim_primary={5:P0}; source_sha256={6}"-f$sourceResult.independent_source_families,$sourceResult.independent_domains,$sourceResult.claim_source_families,$sourceResult.claim_source_domains,$sourceResult.non_yahoo_market_coverage_ratio,$sourceResult.claim_primary_coverage_ratio,$sourceSha) -ForegroundColor Green
+
+$configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
+$selectionPath=Join-Path $configRoot 'v213-model-selection.json'
+if(-not$ExpectedModel-and(Test-Path -LiteralPath $selectionPath -PathType Leaf)){
+    try{$ExpectedModel=[string](Get-PropertyValue (Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8|ConvertFrom-Json) 'model' '')}catch{}
+}
+if($ExpectedModel-and$ExpectedModel-notmatch'^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$'){throw 'ExpectedModel contains unsupported characters.'}
+$modelResult=$null
+if($RequireLocalModel){
+    if(-not$ExpectedModel){throw 'Formal exact-model activation requires an explicitly selected model.'}
+    $modelResult=Get-HealthSchema2ModelState (Join-Path $configRoot 'v213-local-model.json') $ExpectedModel
+    Write-Host "V213_SELECTED_MODEL_HEALTH_SCHEMA2_PREFLIGHT = PASS; health-schema-v2; model=$($modelResult.model); source_policy=$($modelResult.source_independence_policy_version)" -ForegroundColor Green
+}
 
 $arguments=@{
     ProjectRoot=$ProjectRoot
@@ -152,6 +365,19 @@ $arguments=@{
 & $inner @arguments
 if(-not$?){throw 'The inner exact-rollback activation script did not complete.'}
 
+$stableRuntime=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
+$stableRefresh=Join-Path $stableRuntime 'run-v213-local.ps1'
+$stableBridge=Join-Path $stableRuntime 'run-v213-local-llm-bridge.ps1'
+if(-not(Test-Path -LiteralPath $stableRefresh -PathType Leaf)-or-not(Test-Path -LiteralPath $stableBridge -PathType Leaf)){
+    throw 'The post-activation stable runtime is incomplete.'
+}
+if(-not(Get-Content -LiteralPath $stableRefresh -Raw -Encoding utf8).Contains('v213_source_independence_gate_v2.py')){
+    throw 'The stable runtime refresh entrypoint lost the claim-level source-independence gate.'
+}
+if(-not(Get-Content -LiteralPath $stableBridge -Raw -Encoding utf8).Contains('run_v213_local_llm_bridge_core_v2.ps1')){
+    throw 'The stable runtime bridge entrypoint lost health-schema-v2 dependency bootstrap.'
+}
+
 $receiptPath=Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json'
 if(Test-Path -LiteralPath $receiptPath -PathType Leaf){
     $receipt=Get-Content -LiteralPath $receiptPath -Raw -Encoding utf8|ConvertFrom-Json
@@ -160,9 +386,22 @@ if(Test-Path -LiteralPath $receiptPath -PathType Leaf){
     $receipt|Add-Member -NotePropertyName live_source_families -NotePropertyValue $federationResult.successful_families -Force
     $receipt|Add-Member -NotePropertyName official_live_source_families -NotePropertyValue $federationResult.official_families -Force
     $receipt|Add-Member -NotePropertyName ticker_multisource_coverage_ratio -NotePropertyValue $federationResult.ticker_coverage_ratio -Force
+    $receipt|Add-Member -NotePropertyName source_independence_sha256 -NotePropertyValue $sourceSha -Force
+    $receipt|Add-Member -NotePropertyName source_independence_generated_at -NotePropertyValue $sourceResult.generated_at -Force
+    $receipt|Add-Member -NotePropertyName independent_source_families -NotePropertyValue $sourceResult.independent_source_families -Force
+    $receipt|Add-Member -NotePropertyName independent_source_domains -NotePropertyValue $sourceResult.independent_domains -Force
+    $receipt|Add-Member -NotePropertyName claim_source_families -NotePropertyValue $sourceResult.claim_source_families -Force
+    $receipt|Add-Member -NotePropertyName claim_source_domains -NotePropertyValue $sourceResult.claim_source_domains -Force
+    $receipt|Add-Member -NotePropertyName non_yahoo_market_coverage_ratio -NotePropertyValue $sourceResult.non_yahoo_market_coverage_ratio -Force
+    $receipt|Add-Member -NotePropertyName claim_primary_coverage_ratio -NotePropertyValue $sourceResult.claim_primary_coverage_ratio -Force
+    $receipt|Add-Member -NotePropertyName high_confidence_eligible_count -NotePropertyValue $sourceResult.high_confidence_eligible_count -Force
+    $receipt|Add-Member -NotePropertyName fred_macro_status -NotePropertyValue $sourceResult.fred_macro_status -Force
+    $receipt|Add-Member -NotePropertyName local_model_health_schema_version -NotePropertyValue $(if($modelResult){2}else{0}) -Force
+    $receipt|Add-Member -NotePropertyName source_diverse_runtime_installer -NotePropertyValue 'install-v213-source-diverse-runtime.ps1' -Force
     $receipt|Add-Member -NotePropertyName scoring_version -NotePropertyValue 'system-operationalization-v2.1.3-diversified' -Force
-    $receipt|Add-Member -NotePropertyName serenity_evidence_standard -NotePropertyValue 'serenity-public-logic-evidence-standard-v3' -Force
+    $receipt|Add-Member -NotePropertyName serenity_evidence_standard -NotePropertyValue '2.1.3-source-independence-v3' -Force
     $receipt|Add-Member -NotePropertyName official_serenity_formula_claimed -NotePropertyValue $false -Force
-    $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $receiptPath -Encoding utf8
+    $receipt|Add-Member -NotePropertyName private_serenity_method_reproduced -NotePropertyValue $false -Force
+    $receipt|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $receiptPath -Encoding utf8
 }
-Write-Host 'V2.1.3 DIVERSIFIED SCHEDULE ACTIVATION WRAPPER = PASS' -ForegroundColor Green
+Write-Host 'V2.1.3 SOURCE-DIVERSE SCHEDULE ACTIVATION WRAPPER = PASS; source_independence=PASS; health-schema-v2 exact-model gate enforced; rollback delegated to verified core' -ForegroundColor Green

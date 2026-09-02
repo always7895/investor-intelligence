@@ -6,23 +6,44 @@ param(
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 Set-StrictMode -Version Latest
-if([string]::IsNullOrWhiteSpace($ProjectRoot)){ $ProjectRoot=Split-Path -Parent $MyInvocation.MyCommand.Path }
+if([string]::IsNullOrWhiteSpace($ProjectRoot)){$ProjectRoot=Split-Path -Parent $MyInvocation.MyCommand.Path}
 $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $baseRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence'
-if([string]::IsNullOrWhiteSpace($RuntimeRoot)){ $RuntimeRoot=Join-Path $baseRoot 'V213Runtime' }
+if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $baseRoot 'V213Runtime'}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $refs=Join-Path $ProjectRoot 'VERSION-REFS.json'
-if(-not(Test-Path $refs -PathType Leaf)){ throw 'This is not an Investor Intelligence v2.1.3 All-in-One package (VERSION-REFS.json missing).' }
-New-Item -ItemType Directory -Force -Path $baseRoot | Out-Null
-if($ProjectRoot.TrimEnd('\') -eq $RuntimeRoot.TrimEnd('\')){
-    Write-Host "V213_RUNTIME = READY; path=$RuntimeRoot" -ForegroundColor Green
-    return
+if(-not(Test-Path -LiteralPath $refs -PathType Leaf)){throw 'This is not an Investor Intelligence v2.1.3 All-in-One package (VERSION-REFS.json missing).'}
+New-Item -ItemType Directory -Force -Path $baseRoot,$RuntimeRoot|Out-Null
+
+$sameRoot=$ProjectRoot.TrimEnd('\')-eq$RuntimeRoot.TrimEnd('\')
+if(-not$sameRoot){
+    $robocopy=(Get-Command robocopy.exe -ErrorAction Stop).Source
+    & $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD '.git' 'versions' 'cloud\node_modules' '.venv-v213-local' '.npm-cache'
+    $code=$LASTEXITCODE
+    if($code-gt7){throw "Runtime copy failed with robocopy exit code $code."}
+}else{
+    Write-Host "V213_RUNTIME_SOURCE = IN_PLACE; path=$RuntimeRoot" -ForegroundColor DarkGray
 }
-New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
-$robocopy=(Get-Command robocopy.exe -ErrorAction Stop).Source
-& $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD '.git' 'versions' 'cloud\node_modules' '.venv-v213-local' '.npm-cache'
-$code=$LASTEXITCODE
-if($code -gt 7){ throw "Runtime copy failed with robocopy exit code $code." }
+
+# Canonicalize the source-diverse entrypoints inside the stable runtime.  This is
+# executed inside the activation core's rollback scope, so a missing or invalid
+# overlay prevents Production from remaining on an unverified deployment.
+$overlayMap=[ordered]@{
+    'run-v213-local-source-diverse.ps1'='run-v213-local.ps1'
+    'run-v213-local-llm-bridge-source-diverse.ps1'='run-v213-local-llm-bridge.ps1'
+    'install-v213-source-diverse-runtime-v2.ps1'='install-v213-source-diverse-runtime.ps1'
+}
+foreach($entry in $overlayMap.GetEnumerator()){
+    $source=Join-Path $RuntimeRoot $entry.Key
+    $destination=Join-Path $RuntimeRoot $entry.Value
+    if(-not(Test-Path -LiteralPath $source -PathType Leaf)){throw "Source-diverse runtime overlay is missing: $($entry.Key)"}
+    if($source-ine$destination){Copy-Item -LiteralPath $source -Destination $destination -Force}
+    if(-not(Test-Path -LiteralPath $destination -PathType Leaf)){throw "Source-diverse canonical entrypoint was not created: $($entry.Value)"}
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash-ne(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash){
+        throw "Source-diverse runtime overlay hash mismatch: $($entry.Value)"
+    }
+}
+
 $required=@(
     'run-v213-local.ps1',
     'run-v213-local-llm-bridge.ps1',
@@ -31,31 +52,73 @@ $required=@(
     'activate-v213-diversified-schedule.ps1',
     'sync-v213-top20-report.ps1',
     'register-v213-refresh-tasks.ps1',
+    'install-v213-source-diverse-runtime.ps1',
     'InvestorIntelligence.exe',
     'config\v213-source-federation-policy.json',
     'config\v213-serenity-evidence-standard-v3.json',
+    'config\v213-serenity-public-logic-policy.json',
+    'config\v213-source-diversity-field-labels.zh-en.json',
     'config\authoritative-sources\v213-runtime-extensions.json',
     'scripts\v213_source_federation.py',
     'scripts\v213_source_federation_gate.py',
     'scripts\v213_apply_diversified_operationalization.py',
     'scripts\v213_build_v21_public_snapshot.py',
     'scripts\v213_methodology_and_source_audit.py',
+    'scripts\v213_source_independence_gate.py',
+    'scripts\v213_source_independence_gate_v2.py',
+    'scripts\audit_v213_source_diversity_fields.py',
+    'scripts\v213_local_llm_gateway.py',
+    'scripts\run_v213_local_llm_bridge_core.ps1',
+    'scripts\run_v213_local_llm_bridge_core_v2.ps1',
     'scripts\adapters\nasdaq_symbol_directory.py'
 )
 foreach($item in $required){
-    if(-not(Test-Path (Join-Path $RuntimeRoot $item) -PathType Leaf)){ throw "Runtime installation missing $item" }
+    if(-not(Test-Path -LiteralPath (Join-Path $RuntimeRoot $item) -PathType Leaf)){throw "Runtime installation missing $item"}
 }
+
+$refresh=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local.ps1') -Raw -Encoding utf8
+$reconcileIndex=$refresh.IndexOf('reconcile_v213_order_evidence.py',[StringComparison]::Ordinal)
+$sourceGateIndex=$refresh.IndexOf('v213_source_independence_gate_v2.py',[StringComparison]::Ordinal)
+if($reconcileIndex-lt0-or$sourceGateIndex-lt0-or$sourceGateIndex-le$reconcileIndex){
+    throw 'The canonical stable refresh entrypoint does not reconcile order evidence before the source-independence gate.'
+}
+if(-not$refresh.Contains('--enforce')){throw 'The canonical stable refresh entrypoint does not enforce the source-independence gate.'}
+$bridge=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local-llm-bridge.ps1') -Raw -Encoding utf8
+if(-not$bridge.Contains('run_v213_local_llm_bridge_core_v2.ps1')){
+    throw 'The canonical stable bridge entrypoint does not use the HealthSchema2 dependency-bootstrap core.'
+}
+$activation=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'activate-v213-seven-field-schedule.ps1') -Raw -Encoding utf8
+foreach($needle in @('V213_SOURCE_INDEPENDENCE_PREFLIGHT','health-schema-v2','install-v213-source-diverse-runtime.ps1','rollback')){
+    if(-not$activation.Contains($needle)){throw "The stable activation entrypoint is missing contract: $needle"}
+}
+$gateway=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'scripts\v213_local_llm_gateway.py') -Raw -Encoding utf8
+foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_latest.json','cap confidence at LIMITED','Yahoo/yfinance','Conflicting sources')){
+    if(-not$gateway.Contains($needle)){throw "The stable local-model gateway is missing source contract: $needle"}
+}
+
 [ordered]@{
-    schema_version=2
+    schema_version=3
     product_version='2.1.3'
     runtime_root=$RuntimeRoot
     source_root=$ProjectRoot
     installed_utc=(Get-Date).ToUniversalTime().ToString('o')
+    runtime_profile='source-diverse-exact-model-health-schema2'
     scoring_version='system-operationalization-v2.1.3-diversified'
-    serenity_evidence_standard='serenity-public-logic-evidence-standard-v3'
+    serenity_evidence_standard='2.1.3-source-independence-v3'
     source_catalog_count=101
     source_catalog_is_not_live_use=$true
     live_source_federation_required=$true
+    claim_level_source_independence_required=$true
+    source_independence_gate='scripts/v213_source_independence_gate_v2.py'
+    source_independence_policy='config/v213-serenity-public-logic-policy.json'
+    source_diversity_labels='config/v213-source-diversity-field-labels.zh-en.json'
+    market_calculation_source='yfinance_compatibility_only'
+    independent_market_corroboration=@('stooq_daily_csv','nasdaq_historical_api','optional_alpha_vantage_adjusted')
+    official_macro_context='fred_official_macro'
+    preferred_model='RVN-Q6_K-multilingual-mtp'
+    health_schema_version=2
     official_serenity_formula_claimed=$false
-}|ConvertTo-Json -Depth 4|Set-Content (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
-Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; scoring=diversified; catalog=101" -ForegroundColor Green
+    official_serenity_score_claimed=$false
+    private_serenity_method_reproduced=$false
+}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
+Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2" -ForegroundColor Green
