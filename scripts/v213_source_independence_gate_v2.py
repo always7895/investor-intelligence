@@ -39,7 +39,11 @@ gate = load_core()
 
 def _safe_error(value: Any) -> str:
     text = str(value or "").replace("\r", " ").replace("\n", " ")
-    text = re.sub(r"(?i)(?:api[_-]?key|apikey|token)=([^&\s]+)", r"\1=<redacted>", text)
+    text = re.sub(
+        r"(?i)((?:api[_-]?key|apikey|token))=([^&\s]+)",
+        r"\1=<redacted>",
+        text,
+    )
     return " ".join(text.split())[:240] or "none"
 
 
@@ -98,6 +102,7 @@ def self_test() -> None:
         "https://api.nasdaq.com/api/quote/NVDA/historical"
     ) == "nasdaq.com"
     assert _safe_error("apikey=secret&x=1") == "apikey=<redacted>&x=1"
+    assert _safe_error("token=hunter2") == "token=<redacted>"
     print("V213_SOURCE_INDEPENDENCE_V2_SELF_TEST = PASS")
 
 
