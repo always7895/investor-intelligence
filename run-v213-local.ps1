@@ -68,23 +68,28 @@ function Load-SecContact {
         if($plain -match '^[^@\s]+@[^@\s]+\.[^@\s]+$'){$env:SEC_CONTACT_EMAIL=$plain}
     }catch{}
 }
+function Assert-Exit([string]$Label){
+    if($LASTEXITCODE -ne 0){throw "$Label failed with exit code $LASTEXITCODE."}
+}
 
 try{
-    Stage 1 8 'Python runtime and dependency preflight'
+    Stage 1 10 'Python runtime, dependency and methodology policy preflight'
     $python=Resolve-ProjectPython
     $env:PROJECT_PYTHON=$python
     Load-SecContact
+    & $python (Join-Path $ProjectRoot 'scripts\v213_methodology_and_source_audit.py')
+    Assert-Exit 'v2.1.3 methodology/source audit'
     Write-Host "PROJECT_PYTHON = $python" -ForegroundColor Green
 
-    Stage 2 8 'Local llama.cpp bridge'
+    Stage 2 10 'Exact selected llama.cpp model bridge'
     $modelBridgeReady=$false
     if(-not $NoModelBridge){
         try{
             & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting
             $modelBridgeReady=$true
-            Write-Host 'II_PROGRESS local-model bridge ready' -ForegroundColor Green
+            Write-Host 'II_PROGRESS exact selected-model bridge ready' -ForegroundColor Green
         }catch{
-            Write-Warning ("Local-model bridge is not ready yet; public-data refresh will continue. " + $_.Exception.Message)
+            Write-Warning ("Selected-model bridge is not ready yet; public-data refresh will continue but formal activation remains fail-closed. " + $_.Exception.Message)
         }
     }else{
         Write-Host 'II_PROGRESS local-model bridge intentionally skipped' -ForegroundColor DarkGray
@@ -92,41 +97,53 @@ try{
 
     Push-Location $ProjectRoot
     try {
-        Stage 3 8 'v2.1 Top20 public engine; clean first run may fetch SEC data'
+        Stage 3 10 'Candidate discovery and SEC fact extraction; Yahoo is T3 seed only'
         $engine=@('scripts\v213_v21_progress_runner.py')
         if($Synthetic){$engine+='--synthetic'}
         & $python @engine
-        if($LASTEXITCODE -ne 0){throw 'Top20 engine failed.'}
-        Write-Host 'II_PROGRESS v2.1 Top20 engine complete' -ForegroundColor Green
-
-        Stage 4 8 'Build v2.1 signed public snapshot'
-        & $python 'scripts\build_v21_public_snapshot.py'
-        if($LASTEXITCODE -ne 0){throw 'v2.1 snapshot build failed.'}
-        Write-Host 'II_PROGRESS v2.1 public snapshot complete' -ForegroundColor Green
+        Assert-Exit 'Top20 candidate engine'
+        Write-Host 'II_PROGRESS candidate and SEC extraction complete' -ForegroundColor Green
 
         if(-not $Synthetic){
-            Stage 5 8 'Build v2.1.2 five-field report'
+            Stage 4 10 'Build v2.1.2 market and SEC report'
             & $python 'scripts\v213_v212_progress_runner.py'
-            if($LASTEXITCODE -ne 0){throw 'v2.1.2 five-field refresh failed.'}
+            Assert-Exit 'v2.1.2 report build'
             Write-Host 'II_PROGRESS v2.1.2 report complete' -ForegroundColor Green
 
-            Stage 6 8 'Reconcile v2.1.3 order evidence to current Top20 membership'
+            Stage 5 10 'Reconcile evidence-bound order fields to current membership'
             & $python 'scripts\reconcile_v213_order_evidence.py'
-            if($LASTEXITCODE -ne 0){throw 'v2.1.3 order-evidence reconciliation failed.'}
+            Assert-Exit 'v2.1.3 order-evidence reconciliation'
             Write-Host 'II_PROGRESS v2.1.3 order-evidence reconciliation complete' -ForegroundColor Green
 
-            Stage 7 8 'Build v2.1.3 seven-field report'
+            Stage 6 10 'Build initial v2.1.3 seven-field report'
             & $python 'scripts\build_v213_scheduled_top20_report.py' '--baseline' 'data\cache\v213_order_evidence_runtime.json'
-            if($LASTEXITCODE -ne 0){throw 'v2.1.3 seven-field build failed.'}
-            Write-Host 'II_PROGRESS v2.1.3 seven-field report complete' -ForegroundColor Green
+            Assert-Exit 'v2.1.3 seven-field build'
+            Write-Host 'II_PROGRESS initial v2.1.3 seven-field report complete' -ForegroundColor Green
 
-            Stage 8 8 'Signed sync and model route refresh'
+            Stage 7 10 'Build live multi-source federation: SEC, Nasdaq, World Bank, BLS, ECB, GLEIF and market observations'
+            & $python 'scripts\v213_source_federation.py'
+            Assert-Exit 'v2.1.3 live source federation'
+            & $python 'scripts\v213_source_federation_gate.py'
+            Assert-Exit 'v2.1.3 source federation truth gate'
+            Write-Host 'II_PROGRESS live source federation and claim-scope gate complete' -ForegroundColor Green
+
+            Stage 8 10 'Apply diversified evidence-bound System operationalization'
+            & $python 'scripts\v213_apply_diversified_operationalization.py'
+            Assert-Exit 'v2.1.3 diversified operationalization'
+            Write-Host 'II_PROGRESS proxy-heavy legacy factors replaced and reports re-ordered' -ForegroundColor Green
+
+            Stage 9 10 'Build final signed public snapshot after diversified ranking'
+            & $python 'scripts\v213_build_v21_public_snapshot.py'
+            Assert-Exit 'v2.1.3 diversified public snapshot'
+            Write-Host 'II_PROGRESS diversified signed public snapshot complete' -ForegroundColor Green
+
+            Stage 10 10 'Signed sync and exact selected-model route refresh'
             if(-not $NoSync){
                 $syncConfig=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
                 if(Test-Path $syncConfig -PathType Leaf){
-                    Write-Host 'II_PROGRESS signed sync: v2.1 snapshot'
+                    Write-Host 'II_PROGRESS signed sync: diversified v2.1 snapshot'
                     & .\sync-v21-public-snapshot.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                    Write-Host 'II_PROGRESS signed sync: v2.1.2 report'
+                    Write-Host 'II_PROGRESS signed sync: re-ordered v2.1.2 report'
                     & .\sync-v212-top20-report.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
                 }else{
                     Write-Warning 'LINE signed-sync configuration is not installed; local reports were refreshed but not uploaded.'
@@ -134,8 +151,8 @@ try{
                 $v213Config=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\wrangler.v213.production.local.toml'
                 if(Test-Path $v213Config -PathType Leaf){
                     if(-not $NoAutoActivation -and $modelBridgeReady){
-                        Write-Host 'II_PROGRESS refreshing active v2.1.3 Worker/model route'
-                        & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel
+                        Write-Host 'II_PROGRESS refreshing active v2.1.3 Worker/model route under source-federation gate'
+                        & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model
                         Write-Host 'V213_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
                     }elseif(-not $NoAutoActivation){
                         if(Test-Path $syncConfig -PathType Leaf){
@@ -146,7 +163,7 @@ try{
                             Write-Warning 'v2.1.3 Worker is configured but signed-sync config is missing; seven-field report could not be promoted.'
                         }
                     }else{
-                        Write-Host 'V213_REPORT_READY = PASS; auto-activation intentionally skipped for explicit activation preflight.' -ForegroundColor Green
+                        Write-Host 'V213_REPORT_READY = PASS; explicit activation preflight completed without automatic deployment.' -ForegroundColor Green
                     }
                 }else{
                     Write-Host 'V213_REPORT_READY = PASS; formal v2.1.3 schedule activation has not been performed yet.' -ForegroundColor Green
@@ -155,10 +172,12 @@ try{
                 Write-Host 'II_PROGRESS signed sync intentionally skipped (-NoSync)' -ForegroundColor DarkGray
             }
         }else{
-            Write-Host 'II_STAGE 5-8/8 | synthetic mode: report/reconciliation/sync stages skipped' -ForegroundColor DarkGray
+            Write-Host 'II_STAGE 4-10/10 | synthetic mode: reports, source federation and sync skipped' -ForegroundColor DarkGray
         }
         Write-Host 'INVESTOR_INTELLIGENCE_V213_LOCAL = PASS' -ForegroundColor Green
         Write-Host "LOCAL_MODEL_BRIDGE_READY = $modelBridgeReady" -ForegroundColor DarkGray
+        Write-Host "SCORING_VERSION = system-operationalization-v2.1.3-diversified" -ForegroundColor DarkGray
+        Write-Host "SOURCE_FEDERATION = SEC,NASDAQ,WORLD_BANK,BLS,ECB,GLEIF,YAHOO_T3,ALPHA_OPTIONAL" -ForegroundColor DarkGray
         Write-Host "LOG = $logPath" -ForegroundColor DarkGray
     }
     finally { Pop-Location }
