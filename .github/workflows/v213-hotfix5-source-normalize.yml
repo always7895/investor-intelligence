@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/v213-hotfix5-source-normalize.yml
       - activate-v213-seven-field-schedule-core.ps1
+      - run-v213-local-source-diverse.ps1
+      - run-v213-local.ps1
+      - install-v213-runtime.ps1
+      - install-v213-source-diverse-runtime-v2.ps1
   workflow_dispatch:
 
 permissions:
@@ -30,31 +34,73 @@ jobs:
           clean: true
           persist-credentials: true
 
-      - name: Normalize exact PowerShell interpolation boundary
+      - name: Normalize Hotfix5 source contracts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $path = 'activate-v213-seven-field-schedule-core.ps1'
-          $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
-          $fixed = $text.Replace('$name: $($_.Exception.Message)', '${name}: $($_.Exception.Message)')
-          if ($fixed -eq $text -and $text.Contains('$name:')) {
-            throw 'The unsafe $name: interpolation remains but did not match the reviewed replacement.'
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          function Write-IfChanged([string]$Path,[string]$Text) {
+            $current = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+            if ($current -ne $Text) {
+              [IO.File]::WriteAllText((Resolve-Path $Path), $Text, $utf8)
+            }
           }
-          if ($fixed -ne $text) {
-            [IO.File]::WriteAllText((Resolve-Path $path), $fixed, [Text.UTF8Encoding]::new($false))
-          }
-          if ((Get-Content -LiteralPath $path -Raw -Encoding utf8).Contains('$name:')) {
+
+          $corePath = 'activate-v213-seven-field-schedule-core.ps1'
+          $core = Get-Content -LiteralPath $corePath -Raw -Encoding utf8
+          $core = $core.Replace('$name: $($_.Exception.Message)', '${name}: $($_.Exception.Message)')
+          Write-IfChanged $corePath $core
+          if ((Get-Content -LiteralPath $corePath -Raw -Encoding utf8).Contains('$name:')) {
             throw 'Unsafe variable-colon interpolation remains in activation core.'
           }
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path $path), [ref]$tokens, [ref]$errors)
-          if ($errors.Count) {
-            $errors | Out-String | Write-Host
-            throw 'Activation core still has PowerShell parser errors.'
+
+          foreach ($path in @('run-v213-local-source-diverse.ps1','run-v213-local.ps1')) {
+            $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
+            $text = $text.Replace("scripts\\build_v213_activation_bundle.py", "scripts\\build_v213_activation_bundle_v2.py")
+            Write-IfChanged $path $text
+            $verified = Get-Content -LiteralPath $path -Raw -Encoding utf8
+            if (-not $verified.Contains('build_v213_activation_bundle_v2.py')) {
+              throw "Hotfix5 builder is not canonical in $path"
+            }
           }
-          Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION = PASS'
+
+          $runtimePath = 'install-v213-runtime.ps1'
+          $runtime = Get-Content -LiteralPath $runtimePath -Raw -Encoding utf8
+          if (-not $runtime.Contains("'scripts\\build_v213_activation_bundle_v2.py'")) {
+            $runtime = $runtime.Replace(
+              "    'scripts\\v213_build_v21_public_snapshot.py',",
+              "    'scripts\\v213_build_v21_public_snapshot.py',`r`n    'scripts\\build_v213_activation_bundle_v2.py',`r`n    'sync-v213-activation-bundle.ps1',")
+          }
+          $runtime = $runtime.Replace("'build_v213_activation_bundle.py'", "'build_v213_activation_bundle_v2.py'")
+          Write-IfChanged $runtimePath $runtime
+
+          $overlayPath = 'install-v213-source-diverse-runtime-v2.ps1'
+          $overlay = Get-Content -LiteralPath $overlayPath -Raw -Encoding utf8
+          if (-not $overlay.Contains("'scripts\\build_v213_activation_bundle_v2.py'")) {
+            $overlay = $overlay.Replace(
+              "    'scripts\\v213_source_independence_gate_v3.py'='scripts\\v213_source_independence_gate_v3.py'",
+              "    'scripts\\v213_source_independence_gate_v3.py'='scripts\\v213_source_independence_gate_v3.py'`r`n    'scripts\\build_v213_activation_bundle_v2.py'='scripts\\build_v213_activation_bundle_v2.py'`r`n    'sync-v213-activation-bundle.ps1'='sync-v213-activation-bundle.ps1'")
+          }
+          Write-IfChanged $overlayPath $overlay
+
+          foreach ($path in @(
+            $corePath,
+            'run-v213-local-source-diverse.ps1',
+            'run-v213-local.ps1',
+            $runtimePath,
+            $overlayPath,
+            'sync-v213-activation-bundle.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) {
+              $errors | Out-String | Write-Host
+              throw "$path still has PowerShell parser errors."
+            }
+          }
+          Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION = PASS; builder=v2; runtime=atomic'
 
       - name: Remove tracked tool probes
         shell: pwsh
@@ -67,6 +113,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.git\AUTO_MERGE.lock' -Force -ErrorAction SilentlyContinue
           $changes = git status --porcelain
           if (-not $changes) {
             Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION_COMMIT = NO_CHANGES'
@@ -75,6 +122,6 @@ jobs:
           git config user.name 'Investor Intelligence Release Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add --all
-          git commit -m 'fix: normalize Hotfix5 PowerShell source and remove probes'
+          git commit -m 'fix: make Hotfix5 atomic builder canonical in runtime'
           git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
           Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION_COMMIT = PASS'
