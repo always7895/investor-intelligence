@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Path-stable compatibility entrypoint for the v2.1.3 source gate.
 
-The authoritative implementation is ``v213_source_independence_gate.py``.  This
-entrypoint is retained for packaged-runtime and scheduled-task compatibility and
-loads the sibling module explicitly from this script's directory.
+The authoritative implementation is ``v213_source_independence_gate.py``. This
+entrypoint is retained for packaged-runtime and scheduled-task compatibility,
+loads the sibling module explicitly, and emits no-secret provider diagnostics so
+a failed non-Yahoo corroboration gate is actionable rather than opaque.
 """
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CORE_PATH = SCRIPT_DIR / "v213_source_independence_gate.py"
@@ -34,6 +37,50 @@ def load_core() -> ModuleType:
 gate = load_core()
 
 
+def _safe_error(value: Any) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ")
+    text = re.sub(r"(?i)(?:api[_-]?key|apikey|token)=([^&\s]+)", r"\1=<redacted>", text)
+    return " ".join(text.split())[:240] or "none"
+
+
+_original_collect_observations = gate.collect_observations
+
+
+def diagnostic_collect_observations(
+    ticker: str,
+    cache: dict[str, Any],
+    api_key: str,
+    offline: bool,
+):
+    resolved_ticker, observations = _original_collect_observations(
+        ticker,
+        cache,
+        api_key,
+        offline,
+    )
+    for observation in observations:
+        status = str(getattr(observation, "status", "UNKNOWN"))
+        provider = str(getattr(observation, "provider", "unknown"))
+        if status in {"LIVE", "CACHED"}:
+            print(
+                "II_PROGRESS market corroboration "
+                f"{resolved_ticker} | {provider} | {status} | "
+                f"as_of={getattr(observation, 'as_of', '')}",
+                flush=True,
+            )
+        else:
+            print(
+                "II_DIAGNOSTIC market corroboration unavailable "
+                f"{resolved_ticker} | {provider} | status={status} | "
+                f"error={_safe_error(getattr(observation, 'error', ''))}",
+                flush=True,
+            )
+    return resolved_ticker, observations
+
+
+gate.collect_observations = diagnostic_collect_observations
+
+
 def self_test() -> None:
     assert gate.family_for(
         "fred_official_macro",
@@ -50,6 +97,7 @@ def self_test() -> None:
     assert gate.domain_of(
         "https://api.nasdaq.com/api/quote/NVDA/historical"
     ) == "nasdaq.com"
+    assert _safe_error("apikey=secret&x=1") == "apikey=<redacted>&x=1"
     print("V213_SOURCE_INDEPENDENCE_V2_SELF_TEST = PASS")
 
 
