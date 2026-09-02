@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed bilingual-label audit for the v2.1.3 source-diversity sidecar."""
+"""Fail-closed audits for v2.1.3 source-diversity labels and preselection."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import v213_v21_progress_runner as preselection
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = ROOT / "config" / "v213-source-diversity-field-labels.zh-en.json"
@@ -31,6 +33,42 @@ REQUIRED = {
 }
 
 
+def audit_safe_preselection_wrapper() -> None:
+    """Exercise the exact monkeypatch pattern used by the live Top20 runner."""
+    policy, _activation = preselection.validate_v213_policy()
+    candidate, metrics, evidence = preselection.engine.synthetic_candidates()[0]
+    original_score = preselection.engine.score_candidate
+    try:
+        preselection.engine.score_candidate = preselection.safe_preselection_score
+        result = preselection.engine.score_candidate(candidate, metrics, evidence, policy)
+    except RecursionError as exc:
+        raise SystemExit(
+            "SOURCE_DIVERSITY_PRESELECTION_AUDIT=FAIL; recursive scorer monkeypatch"
+        ) from exc
+    finally:
+        preselection.engine.score_candidate = original_score
+
+    factors = result.get("serenity_factors")
+    if result.get("scoring_version") != preselection.PRESELECTION_VERSION or not isinstance(factors, dict):
+        raise SystemExit(
+            "SOURCE_DIVERSITY_PRESELECTION_AUDIT=FAIL; safe preselection contract missing"
+        )
+    forbidden_positive = (
+        "demand_wave",
+        "chokepoint",
+        "pricing_power",
+        "replacement_friction",
+    )
+    if any(float(factors.get(name) or 0.0) != 0.0 for name in forbidden_positive):
+        raise SystemExit(
+            "SOURCE_DIVERSITY_PRESELECTION_AUDIT=FAIL; unsupported thesis factor became positive"
+        )
+    if float(factors.get("valuation_expectations") or 0.0) > 3.75:
+        raise SystemExit(
+            "SOURCE_DIVERSITY_PRESELECTION_AUDIT=FAIL; single-market valuation cap exceeded"
+        )
+
+
 def main() -> int:
     document = json.loads(LABELS.read_text(encoding="utf-8-sig"))
     fields = document.get("fields")
@@ -47,7 +85,11 @@ def main() -> int:
             "SOURCE_DIVERSITY_BILINGUAL_AUDIT=FAIL; missing=" + ",".join(missing) +
             "; invalid=" + ",".join(invalid)
         )
-    print(f"V213_SOURCE_DIVERSITY_BILINGUAL_AUDIT = PASS; fields={len(REQUIRED)}")
+    audit_safe_preselection_wrapper()
+    print(
+        f"V213_SOURCE_DIVERSITY_BILINGUAL_AUDIT = PASS; fields={len(REQUIRED)}; "
+        "safe_preselection_monkeypatch=PASS"
+    )
     return 0
 
 
