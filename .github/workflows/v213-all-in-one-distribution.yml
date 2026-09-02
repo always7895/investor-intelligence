@@ -46,6 +46,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'v2.1.3 scheduled report self-test failed.'}
           & $env:PROJECT_PYTHON scripts\audit_v213_bilingual_public_fields.py
           if($LASTEXITCODE -ne 0){throw 'Complete bilingual public-schema audit failed.'}
+          & $env:PROJECT_PYTHON scripts\v213_local_llm_gateway.py --self-test
+          if($LASTEXITCODE -ne 0){throw 'v2.1.3 model-bound gateway health self-test failed.'}
           & $env:PROJECT_PYTHON -m compileall -q scripts
           if($LASTEXITCODE -ne 0){throw 'Python compileall failed.'}
 
@@ -64,7 +66,7 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Vitest failed.'}
           } finally { Pop-Location }
 
-      - name: Parse PowerShell and test isolated Wrangler JSON capture
+      - name: Parse PowerShell and run script self-tests
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -95,8 +97,10 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Windows PowerShell 5.1 parser gate failed.'}
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -SelfTest
           if($LASTEXITCODE -ne 0){throw 'Isolated Wrangler JSON stdout/stderr capture self-test failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge.ps1 -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'StrictMode-safe v2.1.3 bridge health-schema self-test failed.'}
 
-      - name: Audit model selection, live observability and reconciliation contracts
+      - name: Audit model selection, health schema and observability contracts
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -104,6 +108,7 @@ jobs:
           $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
           $bridge=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
           $activation=Get-Content activate-v213-seven-field-schedule.ps1 -Raw -Encoding utf8
+          $gateway=Get-Content scripts\v213_local_llm_gateway.py -Raw -Encoding utf8
           foreach($needle in @(
             'LOG_MODE=LIVE_CHILD_FILE_TAIL',
             'ANONYMOUS_STDOUT_PIPES=FALSE',
@@ -130,7 +135,10 @@ jobs:
           foreach($needle in @(
             'Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2',
             'Resolve-Model','v213-model-selection.json','Test-SelectedModelRoute',
-            'selected_model_verified=true','selected_model_available'
+            'selected_model_verified=true','selected_model_available',
+            'health_schema_version','Resolve-AvailableGatewayPort',
+            'strictmode_missing_property_safe=true','Wait-LocalGatewayHealth',
+            'Test-InvestorGatewayProcess'
           )){
             if(-not $bridge.Contains($needle)){throw "Selected-model bridge contract missing: $needle"}
           }
@@ -141,7 +149,79 @@ jobs:
           )){
             if(-not $activation.Contains($needle)){throw "Activation JSON/model contract missing: $needle"}
           }
-          Write-Host 'V213_MODEL_SELECTION_JSON_CAPTURE_AND_OBSERVABILITY = PASS'
+          foreach($needle in @(
+            'health_schema_version','selected_model_available',
+            'ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)',
+            'V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST'
+          )){
+            if(-not $gateway.Contains($needle)){throw "Gateway health-schema contract missing: $needle"}
+          }
+          Write-Host 'V213_MODEL_SELECTION_JSON_CAPTURE_HEALTH_SCHEMA_AND_OBSERVABILITY = PASS'
+
+      - name: Integration-test exact-model gateway with occupied legacy port
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $model='RVN-Q6_K-multilingual-mtp'
+          function Test-PortFree([int]$Port){
+            $listener=$null
+            try{
+              $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
+              $listener.Start();return $true
+            }catch{return $false}
+            finally{if($listener){try{$listener.Stop()}catch{}}}
+          }
+          $llamaPort=0;$requestedGatewayPort=0
+          for($candidate=28130;$candidate -le 28280;$candidate+=3){
+            if ((Test-PortFree $candidate) -and (Test-PortFree ($candidate+1)) -and (Test-PortFree ($candidate+2))) {
+              $llamaPort=$candidate;$requestedGatewayPort=$candidate+1;break
+            }
+          }
+          if ($llamaPort -eq 0) { throw 'No free CI integration port triplet was found.' }
+          $isolatedLocal=Join-Path $env:RUNNER_TEMP ('ii-v213-localappdata-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path $isolatedLocal|Out-Null
+          $oldLocalAppData=$env:LOCALAPPDATA
+          $fakeLlama=$null;$legacyGateway=$null;$startedGatewayPid=0;$serversReady=$false
+          try{
+            $fakeLlama=Start-Process -FilePath $env:PROJECT_PYTHON -ArgumentList @(
+              'scripts\v213_fake_llama_for_ci.py','--port',[string]$llamaPort,'--model',$model,'--mode','llama'
+            ) -WorkingDirectory $PWD.Path -PassThru -WindowStyle Hidden
+            $legacyGateway=Start-Process -FilePath $env:PROJECT_PYTHON -ArgumentList @(
+              'scripts\v213_fake_llama_for_ci.py','--port',[string]$requestedGatewayPort,'--mode','legacy-gateway'
+            ) -WorkingDirectory $PWD.Path -PassThru -WindowStyle Hidden
+            $deadline=(Get-Date).AddSeconds(15)
+            do{
+              try{
+                $llamaHealth=Invoke-RestMethod -Uri "http://127.0.0.1:$llamaPort/health" -TimeoutSec 2
+                $legacyHealth=Invoke-RestMethod -Uri "http://127.0.0.1:$requestedGatewayPort/health" -TimeoutSec 2
+                if ($llamaHealth.ok -eq $true -and [string]$legacyHealth.service -eq 'v212-local-llm-gateway') { $serversReady=$true; break }
+              }catch{}
+              Start-Sleep -Milliseconds 300
+            }while((Get-Date)-lt$deadline)
+            if (-not $serversReady) { throw 'CI fake llama/legacy gateway startup timed out.' }
+
+            $env:LOCALAPPDATA=$isolatedLocal
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge.ps1 `
+              -ProjectRoot $PWD.Path -LlamaBaseUrl "http://127.0.0.1:$llamaPort" `
+              -GatewayPort $requestedGatewayPort -Model $model -NoTunnel -StopExisting
+            if ($LASTEXITCODE -ne 0) { throw 'Exact-model occupied-port bridge integration failed.' }
+            $statePath=Join-Path $isolatedLocal 'InvestorIntelligence\UserData\config\v213-local-model.json'
+            $state=Get-Content $statePath -Raw -Encoding utf8|ConvertFrom-Json
+            $startedGatewayPid=[int]$state.gateway_pid
+            if ([string]$state.model -ne $model -or $state.selected_model_verified -ne $true) { throw 'Bridge state did not retain the exact selected model.' }
+            if ([int]$state.gateway_port -eq $requestedGatewayPort) { throw 'Bridge reused the occupied legacy gateway port.' }
+            $health=Invoke-RestMethod -Uri (([string]$state.gateway_url).TrimEnd('/')+'/health') -TimeoutSec 10
+            if ([string]$health.service -ne 'v213-local-llm-gateway' -or [int]$health.health_schema_version -lt 2 -or $health.selected_model_available -ne $true -or [string]$health.selected_model -ne $model) {
+              throw 'Started gateway did not expose the v2.1.3 exact-model health schema.'
+            }
+            Write-Host "V213_LOCAL_MODEL_OCCUPIED_PORT_INTEGRATION = PASS; requested=$requestedGatewayPort; actual=$($state.gateway_port); model=$model"
+          }finally{
+            $env:LOCALAPPDATA=$oldLocalAppData
+            if ($startedGatewayPid -gt 0) { Stop-Process -Id $startedGatewayPid -Force -ErrorAction SilentlyContinue }
+            if($legacyGateway){Stop-Process -Id $legacyGateway.Id -Force -ErrorAction SilentlyContinue}
+            if($fakeLlama){Stop-Process -Id $fakeLlama.Id -Force -ErrorAction SilentlyContinue}
+            Remove-Item $isolatedLocal -Recurse -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Compile and stress-test bilingual EXE launcher
         shell: pwsh
@@ -193,7 +273,7 @@ jobs:
           $refsDoc=[ordered]@{
             schema_version=1
             package_version='2.1.3'
-            launcher_revision='ModelSelect-R43'
+            launcher_revision='ModelSelect-R43-HealthSchema2'
             current_commit=$env:GITHUB_SHA.ToLowerInvariant()
             versions=$refs
             launcher='InvestorIntelligence.exe'
@@ -210,6 +290,9 @@ jobs:
               silent_first_model_fallback=$false
               model_route_probe_required=$true
               gateway='scripts/v213_local_llm_gateway.py'
+              health_schema_version=2
+              strictmode_missing_health_fields_fail_closed=$true
+              occupied_or_stale_gateway_port_recovery=$true
               quick_tunnel_retry_attempts=3
               quick_tunnel_protocol='http2'
               formal_activation_requires_healthy_exact_model_bridge=$true
@@ -287,6 +370,10 @@ jobs:
           Invoke-BoundedExeTest $launcher '--model-selection-self-test' 'Packaged EXE model-selection self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'activate-v213-seven-field-schedule.ps1') -SelfTest
           if($LASTEXITCODE -ne 0){throw 'Packaged activation JSON-capture self-test failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'run-v213-local-llm-bridge.ps1') -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'Packaged bridge health-schema self-test failed.'}
+          & $env:PROJECT_PYTHON (Join-Path $check 'scripts\v213_local_llm_gateway.py') --self-test
+          if($LASTEXITCODE -ne 0){throw 'Packaged Python gateway health-schema self-test failed.'}
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
           if($LASTEXITCODE -ne 0){throw 'Stable runtime installation smoke test failed.'}
           $stableLauncher=Join-Path $stable 'InvestorIntelligence.exe'
@@ -295,9 +382,13 @@ jobs:
           Invoke-BoundedExeTest $stableLauncher '--model-selection-self-test' 'Stable runtime model-selection self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'activate-v213-seven-field-schedule.ps1') -SelfTest
           if($LASTEXITCODE -ne 0){throw 'Stable runtime activation JSON-capture self-test failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'run-v213-local-llm-bridge.ps1') -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'Stable runtime bridge health-schema self-test failed.'}
+          & $env:PROJECT_PYTHON (Join-Path $stable 'scripts\v213_local_llm_gateway.py') --self-test
+          if($LASTEXITCODE -ne 0){throw 'Stable runtime Python gateway health-schema self-test failed.'}
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stable -ValidateOnly
           if($LASTEXITCODE -ne 0){throw 'Refresh-task non-mutating validation failed.'}
-          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_MODEL_SELECTION_AND_JSON_CAPTURE = PASS'
+          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_MODEL_SELECTION_HEALTH_SCHEMA_AND_JSON_CAPTURE = PASS'
 
       - name: Upload one-click package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -324,6 +415,8 @@ jobs:
           - anonymous stdout/stderr pipes removed from launcher: PASS
           - inherited-handle bounded child-file capture: PASS
           - explicit persistent local-model selector: PASS
+          - v2.1.3 gateway health schema v2 + StrictMode-safe missing-field handling: PASS
+          - occupied/stale local gateway port recovery integration: PASS
           - preferred model: RVN-Q6_K-multilingual-mtp
           - silent first-model fallback removed: PASS
           - selected model catalog match + minimal route probe + tunnel health binding: PASS
