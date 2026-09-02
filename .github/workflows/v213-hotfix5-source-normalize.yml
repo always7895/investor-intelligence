@@ -56,7 +56,7 @@ jobs:
 
           foreach ($path in @('run-v213-local-source-diverse.ps1','run-v213-local.ps1')) {
             $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
-            $text = $text.Replace("scripts\\build_v213_activation_bundle.py", "scripts\\build_v213_activation_bundle_v2.py")
+            $text = $text.Replace('scripts\build_v213_activation_bundle.py', 'scripts\build_v213_activation_bundle_v2.py')
             Write-IfChanged $path $text
             $verified = Get-Content -LiteralPath $path -Raw -Encoding utf8
             if (-not $verified.Contains('build_v213_activation_bundle_v2.py')) {
@@ -66,22 +66,29 @@ jobs:
 
           $runtimePath = 'install-v213-runtime.ps1'
           $runtime = Get-Content -LiteralPath $runtimePath -Raw -Encoding utf8
-          if (-not $runtime.Contains("'scripts\\build_v213_activation_bundle_v2.py'")) {
+          if (-not $runtime.Contains("'scripts\build_v213_activation_bundle_v2.py'")) {
             $runtime = $runtime.Replace(
-              "    'scripts\\v213_build_v21_public_snapshot.py',",
-              "    'scripts\\v213_build_v21_public_snapshot.py',`r`n    'scripts\\build_v213_activation_bundle_v2.py',`r`n    'sync-v213-activation-bundle.ps1',")
+              "    'scripts\v213_build_v21_public_snapshot.py',",
+              "    'scripts\v213_build_v21_public_snapshot.py',`r`n    'scripts\build_v213_activation_bundle_v2.py',`r`n    'sync-v213-activation-bundle.ps1',")
           }
-          $runtime = $runtime.Replace("'build_v213_activation_bundle.py'", "'build_v213_activation_bundle_v2.py'")
           Write-IfChanged $runtimePath $runtime
+          $runtimeVerified = Get-Content -LiteralPath $runtimePath -Raw -Encoding utf8
+          foreach ($marker in @('scripts\build_v213_activation_bundle_v2.py','sync-v213-activation-bundle.ps1')) {
+            if (-not $runtimeVerified.Contains($marker)) { throw "Stable runtime requirement missing: $marker" }
+          }
 
           $overlayPath = 'install-v213-source-diverse-runtime-v2.ps1'
           $overlay = Get-Content -LiteralPath $overlayPath -Raw -Encoding utf8
-          if (-not $overlay.Contains("'scripts\\build_v213_activation_bundle_v2.py'")) {
+          if (-not $overlay.Contains("'scripts\build_v213_activation_bundle_v2.py'")) {
             $overlay = $overlay.Replace(
-              "    'scripts\\v213_source_independence_gate_v3.py'='scripts\\v213_source_independence_gate_v3.py'",
-              "    'scripts\\v213_source_independence_gate_v3.py'='scripts\\v213_source_independence_gate_v3.py'`r`n    'scripts\\build_v213_activation_bundle_v2.py'='scripts\\build_v213_activation_bundle_v2.py'`r`n    'sync-v213-activation-bundle.ps1'='sync-v213-activation-bundle.ps1'")
+              "    'scripts\v213_source_independence_gate_v3.py'='scripts\v213_source_independence_gate_v3.py'",
+              "    'scripts\v213_source_independence_gate_v3.py'='scripts\v213_source_independence_gate_v3.py'`r`n    'scripts\build_v213_activation_bundle_v2.py'='scripts\build_v213_activation_bundle_v2.py'`r`n    'sync-v213-activation-bundle.ps1'='sync-v213-activation-bundle.ps1'")
           }
           Write-IfChanged $overlayPath $overlay
+          $overlayVerified = Get-Content -LiteralPath $overlayPath -Raw -Encoding utf8
+          foreach ($marker in @('scripts\build_v213_activation_bundle_v2.py','sync-v213-activation-bundle.ps1')) {
+            if (-not $overlayVerified.Contains($marker)) { throw "Source-diverse runtime copy map missing: $marker" }
+          }
 
           foreach ($path in @(
             $corePath,
