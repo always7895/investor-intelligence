@@ -18,26 +18,41 @@ import v213_v21_progress_runner as preselection
 ROOT = SCRIPTS.parent
 LABELS = ROOT / "config" / "v213-source-diversity-field-labels.zh-en.json"
 REQUIRED = {
-    "status", "offline_self_test", "policy_version", "portfolio", "violations",
-    "methodology_notice", "ticker_count", "independent_source_families",
-    "independent_domains", "source_families", "source_domains",
-    "non_yahoo_market_coverage_ratio", "primary_or_official_coverage_ratio",
+    "status", "quality_status", "offline_self_test", "policy_version", "portfolio",
+    "violations", "blocking_violations", "degradations", "methodology_notice",
+    "ticker_count", "independent_source_families", "independent_domains",
+    "source_families", "source_domains", "claim_source_families",
+    "claim_source_domains", "claim_source_family_list", "claim_source_domain_list",
+    "non_yahoo_market_coverage_ratio", "non_yahoo_market_coverage_target_ratio",
+    "market_corroboration_status", "market_corroboration_global_blocker",
+    "blocking_violation_count", "quality_degradation_count",
+    "primary_or_official_coverage_ratio", "claim_primary_coverage_ratio",
     "maximum_single_family_share", "market_conflict_ticker_count",
     "high_confidence_model_inference_eligible_count", "fred_macro_status",
     "evidence_independence_score", "source_metrics", "unique_independent_units",
-    "primary_or_official_sources", "dated_evidence_ratio", "families", "domains",
-    "market_corroboration", "calculation_provider", "calculation_provider_role",
-    "independent_provider_count", "providers", "provider", "family", "observed_at",
-    "cache_age_seconds", "long_term_conflict", "short_term_conflict",
-    "public_logic_state", "missing_or_review",
-    "eligible_for_high_confidence_model_inference", "sensitive_claim_present",
-    "serenity_source_view", "architecture", "dependency_graph",
-    "bottleneck_or_expansion", "company_capture", "valuation_expectations",
-    "thesis_killers", "lifecycle", "model_inference_confidence",
+    "primary_or_official_sources", "claim_relevant_independent_families",
+    "claim_relevant_independent_domains", "claim_relevant_primary_sources",
+    "dated_evidence_ratio", "claim_dated_evidence_ratio", "families", "domains",
+    "claim_families", "claim_domains", "market_corroboration",
+    "calculation_provider", "calculation_provider_role", "independent_provider_count",
+    "providers", "provider", "family", "observed_at", "cache_age_seconds",
+    "long_term_conflict", "short_term_conflict", "public_logic_state",
+    "missing_or_review", "eligible_for_high_confidence_model_inference",
+    "sensitive_claim_present", "serenity_source_view", "architecture",
+    "dependency_graph", "bottleneck_or_expansion", "company_capture",
+    "valuation_expectations", "thesis_killers", "lifecycle",
+    "model_inference_confidence", "market_corroboration_is_company_claim_evidence",
     "system_operationalization_is_official_serenity_score",
     "private_method_reproduction_claimed", "official_serenity_formula",
     "official_serenity_score", "single_source_inference_allowed",
-    "source_diversity_is_not_truth_by_itself", "conflicts_require_review", "primary",
+    "source_diversity_is_not_truth_by_itself", "conflicts_require_review",
+    "market_corroboration_policy",
+    "market_corroboration_unavailable_is_global_blocker",
+    "market_corroboration_required_for_high_confidence_model_inference",
+    "market_corroboration_required_for_uncapped_valuation_factor",
+    "uncorroborated_valuation_factor_max", "provider_failure_must_be_disclosed",
+    "provider_failure_must_not_be_silently_relabelled_as_success",
+    "market_data_is_not_averaged_into_published_returns", "primary",
 }
 
 
@@ -67,14 +82,14 @@ def audit_refresh_entrypoint() -> None:
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=120,
+            timeout=180,
             check=False,
         )
         combined = (result.stdout or "") + "\n" + (result.stderr or "")
         if result.returncode != 0 or "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS" not in combined:
             raise SystemExit(
                 "SOURCE_DIVERSITY_REFRESH_ENTRYPOINT_AUDIT=FAIL; "
-                f"exit={result.returncode}; output={combined[-1000:]}"
+                f"exit={result.returncode}; output={combined[-1600:]}"
             )
 
 
@@ -134,7 +149,8 @@ def main() -> int:
     audit_safe_preselection_wrapper()
     print(
         f"V213_SOURCE_DIVERSITY_BILINGUAL_AUDIT = PASS; fields={len(REQUIRED)}; "
-        "refresh_entrypoint=PASS; safe_preselection_monkeypatch=PASS"
+        "refresh_entrypoint=PASS; safe_preselection_monkeypatch=PASS; "
+        "market_quality_schema=PASS"
     )
     return 0
 
