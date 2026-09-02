@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Recompute and persist strict v2.1.3 live-source federation gates.
 
-This second-pass gate deliberately distinguishes broad global source diversity
-from claim-specific ticker coverage. A ticker counts toward the 80% coverage
-threshold only when it has at least two independent families and at least two
-official issuer/listing identity or filing families. Yahoo can be present as a
-T3 market observation, but it cannot satisfy the official-family requirement.
+A ticker counts toward the 80% coverage threshold only when it has at least two
+independent families and at least two official issuer/listing-identity or filing
+families. Source concentration counts each publisher family at most once per
+ticker, so multiple facts or URLs from one filing host cannot inflate either
+source diversity or concentration.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import tempfile
+from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -45,7 +46,25 @@ def atomic(path: Path, value: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
-def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> dict[str, Any]:
+def family_concentration(ticker_rows: list[Any]) -> dict[str, Any]:
+    counts: Counter[str] = Counter()
+    for raw in ticker_rows:
+        if not isinstance(raw, dict):
+            continue
+        families = {str(value) for value in raw.get("independent_families") or [] if str(value)}
+        for family in families:
+            counts[family] += 1
+    total = sum(counts.values())
+    largest_family, largest_count = counts.most_common(1)[0] if counts else ("", 0)
+    return {
+        "family_counts": dict(sorted(counts.items())),
+        "largest_family": largest_family,
+        "largest_family_share": round(largest_count / total, 4) if total else 1.0,
+        "counting_rule": "one_occurrence_per_ticker_per_publisher_family",
+    }
+
+
+def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     sources = document.get("global_sources")
     sources = sources if isinstance(sources, list) else []
     successful = {
@@ -86,10 +105,11 @@ def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> dict[str
     ratio = meeting / len(ticker_rows) if ticker_rows else 0.0
     conflicts = document.get("unresolved_material_conflicts")
     conflicts = conflicts if isinstance(conflicts, list) else []
-    concentration = document.get("concentration")
-    concentration = concentration if isinstance(concentration, dict) else {}
-    largest_share = float(concentration.get("largest_family_share") or 0.0)
+    concentration = family_concentration(ticker_rows)
+    largest_share = float(concentration["largest_family_share"])
     maximum_share = float(policy["maximum_single_family_evidence_share"])
+    concentration["maximum_single_family_evidence_share"] = maximum_share
+    concentration["pass"] = largest_share <= maximum_share
     missing_required = sorted(required - successful)
     passed = (
         not missing_required
@@ -99,7 +119,7 @@ def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> dict[str
         and largest_share <= maximum_share
         and not conflicts
     )
-    return {
+    gates = {
         "pass": passed,
         "successful_families": sorted(successful),
         "official_successful_families": sorted(official),
@@ -117,7 +137,9 @@ def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> dict[str
         "yahoo_authoritative": False,
         "catalog_source_count_is_not_live_use": True,
         "claim_scope_separation_enforced": True,
+        "publisher_family_deduplication_enforced": True,
     }
+    return gates, concentration
 
 
 def self_test() -> None:
@@ -131,23 +153,27 @@ def self_test() -> None:
     ]
     rows = [{
         "ticker": f"T{i:02d}",
+        "independent_families": ["us_sec", "nasdaq", "yahoo_finance"],
         "independent_family_count": 3,
         "official_identity_or_filing_family_count": 2,
     } for i in range(20)]
     document = {
         "global_sources": sources,
         "ticker_sources": rows,
-        "concentration": {"largest_family_share": 0.34},
         "unresolved_material_conflicts": [],
     }
-    assert evaluate(document, policy)["pass"] is True
+    gates, concentration = evaluate(document, policy)
+    assert gates["pass"] is True
+    assert concentration["largest_family_share"] == 0.3333
     weak = json.loads(json.dumps(document))
     for row in weak["ticker_sources"][:5]:
         row["official_identity_or_filing_family_count"] = 1
-    assert evaluate(weak, policy)["pass"] is False
+    assert evaluate(weak, policy)[0]["pass"] is False
     concentrated = json.loads(json.dumps(document))
-    concentrated["concentration"]["largest_family_share"] = 0.9
-    assert evaluate(concentrated, policy)["pass"] is False
+    for row in concentrated["ticker_sources"]:
+        row["independent_families"] = ["us_sec"]
+        row["independent_family_count"] = 1
+    assert evaluate(concentrated, policy)[0]["concentration_pass"] is False
     print("V213_SOURCE_FEDERATION_GATE_SELF_TEST = PASS")
 
 
@@ -162,8 +188,9 @@ def main() -> int:
         return 0
     policy = load(args.policy)
     document = load(args.federation)
-    gates = evaluate(document, policy)
+    gates, concentration = evaluate(document, policy)
     document["gates"] = gates
+    document["concentration"] = concentration
     atomic(args.federation, document)
     print(
         "V213_SOURCE_FEDERATION_GATE = {status}; official_global={official}; "
