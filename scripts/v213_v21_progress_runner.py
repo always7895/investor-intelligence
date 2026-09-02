@@ -13,7 +13,12 @@ import argparse
 import json
 import math
 import sys
+from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 import requests
 import v21_serenity_top20 as engine
