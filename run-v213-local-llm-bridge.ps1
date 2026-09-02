@@ -14,14 +14,20 @@ Set-StrictMode -Version Latest
 $utf8NoBom=New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding=$utf8NoBom
 $OutputEncoding=$utf8NoBom
+$preferredModel='RVN-Q6_K-multilingual-mtp'
 
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 $GatewayScript = Join-Path $ProjectRoot 'scripts\v213_local_llm_gateway.py'
 if (-not (Test-Path -LiteralPath $GatewayScript -PathType Leaf)) { throw "Missing $GatewayScript" }
+$stateRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
+$logRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\logs\v213-local-model'
+New-Item -ItemType Directory -Force -Path $stateRoot,$logRoot | Out-Null
+$statePath=Join-Path $stateRoot 'v213-local-model.json'
+$selectionPath=Join-Path $stateRoot 'v213-model-selection.json'
 
 function Test-Llama([string]$Base) {
-    foreach ($suffix in @('/v1/models','/health')) {
+    foreach ($suffix in @('/v1/models?reload=1','/v1/models','/health')) {
         try {
             $r = Invoke-WebRequest -UseBasicParsing -Uri ($Base.TrimEnd('/') + $suffix) -TimeoutSec 4
             if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { return $true }
@@ -45,6 +51,14 @@ function Get-RunningLlamaCandidates {
     }catch{}
     return @($result)
 }
+function Read-ModelSelection {
+    if(-not(Test-Path $selectionPath -PathType Leaf)){return $null}
+    try{
+        $selection=Get-Content $selectionPath -Raw -Encoding utf8|ConvertFrom-Json
+        if(-not$selection.model){return $null}
+        return $selection
+    }catch{return $null}
+}
 function Resolve-Llama {
     if ($LlamaBaseUrl) {
         if ($LlamaBaseUrl -notmatch '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$') { throw 'LlamaBaseUrl must be loopback HTTP.' }
@@ -52,10 +66,14 @@ function Resolve-Llama {
         return $LlamaBaseUrl.TrimEnd('/')
     }
     $candidates=New-Object System.Collections.Generic.List[string]
+    $selection=Read-ModelSelection
+    if($selection -and [string]$selection.llama_base_url -match '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$'){
+        $candidates.Add(([string]$selection.llama_base_url).TrimEnd('/'))
+    }
     foreach($candidate in @(
         'http://127.0.0.1:8080','http://127.0.0.1:7905','http://127.0.0.1:14410',
         'http://127.0.0.1:8813','http://127.0.0.1:8081','http://127.0.0.1:8000'
-    )){$candidates.Add($candidate)}
+    )){if(-not$candidates.Contains($candidate)){$candidates.Add($candidate)}}
     foreach($candidate in @(Get-RunningLlamaCandidates)){if(-not$candidates.Contains($candidate)){$candidates.Add($candidate)}}
     foreach ($candidate in $candidates) { if (Test-Llama $candidate) { return $candidate } }
 
@@ -73,15 +91,55 @@ function Resolve-Llama {
     }
     throw 'No healthy llama.cpp OpenAI-compatible loopback endpoint was found. Start llama-server/OpenCode local model and retry.'
 }
-
+function Get-ModelCatalog([string]$Base) {
+    $last=''
+    foreach($suffix in @('/v1/models?reload=1','/models?reload=1','/v1/models')){
+        try{
+            $payload=Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/')+$suffix) -Headers @{'cache-control'='no-cache'} -TimeoutSec 12
+            $ids=@($payload.data|ForEach-Object{[string]$_.id}|Where-Object{$_ -and $_.Trim()}|ForEach-Object{$_.Trim()}|Select-Object -Unique)
+            if($ids.Count -gt 0){return $ids}
+        }catch{$last=$_.Exception.Message}
+    }
+    throw "Unable to read the llama.cpp model catalog from $Base. Last observation: $last"
+}
 function Resolve-Model([string]$Base,[string]$Requested) {
-    if (-not [string]::IsNullOrWhiteSpace($Requested)) { return $Requested.Trim() }
-    try {
-        $models = Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/') + '/v1/models') -TimeoutSec 8
-        $candidate = @($models.data | ForEach-Object { [string]$_.id } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) | Select-Object -First 1
-        if ($candidate) { return [string]$candidate }
-    } catch {}
-    return 'qwen3.8-27b'
+    $catalog=@(Get-ModelCatalog $Base)
+    $selection=Read-ModelSelection
+    $candidate=''
+    if(-not[string]::IsNullOrWhiteSpace($Requested)){$candidate=$Requested.Trim()}
+    elseif($selection -and -not[string]::IsNullOrWhiteSpace([string]$selection.model)){$candidate=([string]$selection.model).Trim()}
+    else{
+        $preferred=@($catalog|Where-Object{$_ -ieq $preferredModel})|Select-Object -First 1
+        if($preferred){$candidate=[string]$preferred}
+        elseif($catalog.Count -eq 1){$candidate=[string]$catalog[0]}
+        else{
+            throw ("Multiple llama.cpp models are available, but no explicit model selection exists. Use the EXE model selector first. Available: "+($catalog -join ', '))
+        }
+    }
+    if($candidate -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$'){
+        throw 'The selected llama.cpp model ID contains unsupported characters.'
+    }
+    $canonical=@($catalog|Where-Object{$_ -ieq $candidate})|Select-Object -First 1
+    if(-not$canonical){
+        throw ("Selected llama.cpp model is not present in the current router catalog: $candidate. Available: "+($catalog -join ', '))
+    }
+    return [pscustomobject]@{model=[string]$canonical;catalog=$catalog}
+}
+function Test-SelectedModelRoute([string]$Base,[string]$SelectedModel) {
+    $body=[ordered]@{
+        model=$SelectedModel
+        messages=@(@{role='user';content='Reply with OK.'})
+        temperature=0
+        max_tokens=4
+        stream=$false
+    }|ConvertTo-Json -Depth 6 -Compress
+    try{
+        $response=Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/')+'/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 300
+        if(-not$response){throw 'empty response'}
+    }catch{
+        throw "Selected llama.cpp model could not complete a minimal routing probe: $SelectedModel. $($_.Exception.Message)"
+    }
+    Write-Host "II_PROGRESS selected model route verified; model=$SelectedModel" -ForegroundColor Green
 }
 function Resolve-Cloudflared {
     $command=Get-Command cloudflared.exe -ErrorAction SilentlyContinue
@@ -126,14 +184,17 @@ function Stop-RecordedBridge([object]$OldState) {
         try{$process=Get-Process -Id $tunnelPid -ErrorAction Stop;if($process.ProcessName -match '(?i)^cloudflared$'){Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue}}catch{}
     }
 }
-function Wait-PublicHealth([string]$Url,[int]$ProcessId,[int]$Seconds=35){
+function Test-HealthModel([object]$Health,[string]$SelectedModel){
+    return ($Health.ok -eq $true -and $Health.llama_reachable -eq $true -and $Health.selected_model_available -eq $true -and [string]$Health.selected_model -ieq $SelectedModel)
+}
+function Wait-PublicHealth([string]$Url,[int]$ProcessId,[string]$SelectedModel,[int]$Seconds=35){
     $deadline=(Get-Date).AddSeconds($Seconds);$last='';$hostName=([uri]$Url).Host
     while((Get-Date)-lt$deadline){
         if(-not(Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)){throw 'cloudflared exited before public health succeeded.'}
         try{
             $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 12
-            if($health.ok -eq $true -and $health.llama_reachable -eq $true){return $health}
-            $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable)"
+            if(Test-HealthModel $health $SelectedModel){return $health}
+            $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable); selected_model=$($health.selected_model); available=$($health.selected_model_available)"
         }catch{
             $last=$_.Exception.Message
             try{
@@ -147,8 +208,8 @@ function Wait-PublicHealth([string]$Url,[int]$ProcessId,[int]$Seconds=35){
                         $curlOutput=@(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '10' '--resolve' $resolveArg ($Url.TrimEnd('/')+'/health') 2>&1)
                         if($LASTEXITCODE -eq 0){
                             $curlHealth=(($curlOutput|ForEach-Object{[string]$_})-join"`n")|ConvertFrom-Json
-                            if($curlHealth.ok -eq $true -and $curlHealth.llama_reachable -eq $true){
-                                Write-Host 'QUICK_TUNNEL_HEALTH = PASS; dns=1.1.1.1' -ForegroundColor Green
+                            if(Test-HealthModel $curlHealth $SelectedModel){
+                                Write-Host 'QUICK_TUNNEL_HEALTH = PASS; dns=1.1.1.1; selected_model_verified=true' -ForegroundColor Green
                                 return $curlHealth
                             }
                         }
@@ -158,9 +219,9 @@ function Wait-PublicHealth([string]$Url,[int]$ProcessId,[int]$Seconds=35){
         }
         Start-Sleep -Seconds 2
     }
-    throw "Quick tunnel public health timed out. Last observation: $last"
+    throw "Quick tunnel public health timed out for selected model $SelectedModel. Last observation: $last"
 }
-function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$LogRoot){
+function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$LogRoot,[string]$SelectedModel){
     $last=''
     for($attempt=1;$attempt -le 3;$attempt++){
         Write-Host "II_PROGRESS quick tunnel attempt $attempt/3" -ForegroundColor Cyan
@@ -179,7 +240,7 @@ function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$L
                 if($match.Success){$publicUrl=$match.Value.TrimEnd('/')}
             }
             if(-not$publicUrl){throw 'Quick tunnel URL was not produced.'}
-            [void](Wait-PublicHealth $publicUrl $process.Id 35)
+            [void](Wait-PublicHealth $publicUrl $process.Id $SelectedModel 35)
             return [pscustomobject]@{process=$process;url=$publicUrl;stdout=$tout;stderr=$terr}
         }catch{
             $last=$_.Exception.Message
@@ -191,16 +252,15 @@ function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$L
     throw "All quick-tunnel attempts failed. Last observation: $last"
 }
 
-$stateRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
-$logRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\logs\v213-local-model'
-New-Item -ItemType Directory -Force -Path $stateRoot,$logRoot | Out-Null
-$statePath=Join-Path $stateRoot 'v213-local-model.json'
 if ($StopExisting -and (Test-Path -LiteralPath $statePath)) {
     try { Stop-RecordedBridge (Get-Content $statePath -Raw -Encoding utf8 | ConvertFrom-Json) } catch {}
 }
 
 $llama=Resolve-Llama
-$Model=Resolve-Model $llama $Model
+$modelResolution=Resolve-Model $llama $Model
+$Model=[string]$modelResolution.model
+$modelCatalog=@($modelResolution.catalog)
+Test-SelectedModelRoute $llama $Model
 $python=Resolve-Python
 $secret=Random-Secret
 $secContact=''
@@ -222,14 +282,14 @@ try {
     $gateway=Start-Process -FilePath $python -ArgumentList @($GatewayScript,'--host','127.0.0.1','--port',[string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     Start-Sleep -Seconds 2
     if(-not(Get-Process -Id $gateway.Id -ErrorAction SilentlyContinue)){throw 'Local gateway exited during startup.'}
-    $health=Invoke-RestMethod -Uri "http://127.0.0.1:$GatewayPort/health" -TimeoutSec 10
-    if ($health.ok -ne $true -or $health.llama_reachable -ne $true) { throw 'v2.1.3 local gateway health failed.' }
-    Write-Host "II_PROGRESS local gateway healthy; llama=$llama; model=$Model" -ForegroundColor Green
+    $health=Invoke-RestMethod -Uri "http://127.0.0.1:$GatewayPort/health" -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
+    if(-not(Test-HealthModel $health $Model)){throw "v2.1.3 local gateway health did not verify selected model $Model."}
+    Write-Host "II_PROGRESS local gateway healthy; llama=$llama; model=$Model; selected_model_verified=true" -ForegroundColor Green
 
     $publicUrl='';$tunnelPid=0
     if (-not $NoTunnel) {
         $cloudflaredPath=Resolve-Cloudflared
-        $healthy=Start-HealthyQuickTunnel $cloudflaredPath $GatewayPort $logRoot
+        $healthy=Start-HealthyQuickTunnel $cloudflaredPath $GatewayPort $logRoot $Model
         $tunnel=$healthy.process
         $publicUrl=[string]$healthy.url
         $tunnelPid=$tunnel.Id
@@ -237,14 +297,20 @@ try {
 
     $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
     [ordered]@{
-        schema_version=1;product_version='2.1.3';model=$Model;llama_base_url=$llama
+        schema_version=2;product_version='2.1.3';model=$Model;llama_base_url=$llama
+        available_models=$modelCatalog;selected_model_verified=$true
         gateway_url="http://127.0.0.1:$GatewayPort";gateway_port=$GatewayPort;python_executable=$python
         public_url=$publicUrl;allowed_host=$(if($publicUrl){([uri]$publicUrl).Host}else{''})
         encrypted_shared_secret=$protected;gateway_pid=$gateway.Id;cloudflared_pid=$tunnelPid
         connected_at=(Get-Date).ToUniversalTime().ToString('o');shared_secret_plaintext_persisted=$false
-    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statePath -Encoding utf8
-    Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort" -ForegroundColor Green
-    if($publicUrl){ Write-Host "V213_LOCAL_MODEL_TUNNEL = PASS; host=$(([uri]$publicUrl).Host)" -ForegroundColor Green }
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8
+    [ordered]@{
+        schema_version=1;product_version='2.1.3';model=$Model;llama_base_url=$llama
+        available_models=$modelCatalog;selected_utc=(Get-Date).ToUniversalTime().ToString('o')
+        source='verified_bridge';preferred_model=$preferredModel
+    }|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $selectionPath -Encoding utf8
+    Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort; selected_model_verified=true" -ForegroundColor Green
+    if($publicUrl){ Write-Host "V213_LOCAL_MODEL_TUNNEL = PASS; host=$(([uri]$publicUrl).Host); model=$Model" -ForegroundColor Green }
 }
 catch{
     if($tunnel){Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue}
