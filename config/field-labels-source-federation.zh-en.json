@@ -71,7 +71,6 @@
     "latest_adjusted_close": {"zh-TW": "最新還原收盤價", "en": "Latest adjusted close"},
     "series": {"zh-TW": "資料序列", "en": "Data series"},
     "value": {"zh-TW": "數值", "en": "Value"},
-    "symbols": {"zh-TW": "股票代號數", "en": "Symbol count"},
     "ticker_observations": {"zh-TW": "股票觀測數", "en": "Ticker observations"},
     "ticker_matches": {"zh-TW": "股票比對數", "en": "Ticker matches"},
     "scoring_methodology": {"zh-TW": "評分方法", "en": "Scoring methodology"},
