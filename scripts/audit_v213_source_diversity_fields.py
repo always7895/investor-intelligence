@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 import v213_v21_progress_runner as preselection
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = SCRIPTS.parent
 LABELS = ROOT / "config" / "v213-source-diversity-field-labels.zh-en.json"
 REQUIRED = {
     "status", "offline_self_test", "policy_version", "portfolio", "violations",
