@@ -19,6 +19,16 @@ def load(path: Path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def contains_all(text: str, *tokens: str) -> bool:
+    folded = text.casefold()
+    return all(token.casefold() in folded for token in tokens)
+
+
+def contains_any(text: str, *tokens: str) -> bool:
+    folded = text.casefold()
+    return any(token.casefold() in folded for token in tokens)
+
+
 def main() -> int:
     standard = load(STANDARD)
     federation = load(FEDERATION)
@@ -111,14 +121,38 @@ def main() -> int:
     ):
         if token not in federator:
             findings.append(f"Source federation implementation missing: {token}")
-    for token in (
+
+    # Audit methodology concepts rather than brittle singular/plural wording.
+    # Every concept below requires the gateway to instruct the model explicitly;
+    # equivalent wording is accepted only when it preserves the same fail-closed
+    # semantic boundary.
+    if not contains_any(
+        gateway,
         "catalog is an inventory",
-        "publisher family",
-        "single market-data family",
-        "severe",
+        "this inventory cannot upgrade a claim",
+        "catalog_source_count_is_not_live_use",
     ):
-        if token.casefold() not in gateway.casefold():
-            findings.append(f"Local-model methodology directive missing: {token}")
+        findings.append("Local-model methodology directive missing: catalog inventory/live-use boundary")
+    if not contains_all(
+        gateway,
+        "count independent publisher families",
+        "same corporate source family",
+        "do not become independent corroboration by repetition",
+    ):
+        findings.append("Local-model methodology directive missing: publisher-family deduplication")
+    if not contains_all(
+        gateway,
+        "Yahoo/yfinance remains a compatibility adjusted-close calculation provider",
+        "Stooq, Nasdaq, and optional Alpha Vantage independently corroborate the market path",
+        "Market data does not prove a bottleneck or company-specific operating fact",
+    ):
+        findings.append("Local-model methodology directive missing: single-market-family limitation")
+    if not contains_all(
+        gateway,
+        "A severe, evidence-bound primary thesis killer may override positive evidence",
+        "asymmetrically",
+    ):
+        findings.append("Local-model methodology directive missing: severe asymmetric thesis-killer rule")
 
     if findings:
         print("V213_METHODOLOGY_AND_SOURCE_AUDIT = FAIL")
