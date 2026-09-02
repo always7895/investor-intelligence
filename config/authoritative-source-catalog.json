@@ -73,6 +73,6 @@
     "config/authoritative-sources/middle-east-africa.json",
     "config/authoritative-sources/v213-runtime-extensions.json"
   ],
-  "catalog_source_count_snapshot": 100,
+  "catalog_source_count_snapshot": 101,
   "catalog_source_count_snapshot_is_not_a_limit": true
 }
