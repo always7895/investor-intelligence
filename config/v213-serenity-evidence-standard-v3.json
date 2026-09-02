@@ -1,0 +1,138 @@
+{
+  "schema_version": 3,
+  "product_version": "2.1.3",
+  "standard_id": "serenity-public-logic-evidence-standard-v3",
+  "methodology_label": "Serenity public-logic high-fidelity reconstruction",
+  "official_formula_claimed": false,
+  "private_process_reproduction_claimed": false,
+  "legacy_machine_keys_preserved_for_compatibility": true,
+  "display_label_for_legacy_score": "System operationalization score",
+  "core_sequence": [
+    "architecture_and_demand_wave",
+    "evidence_bound_supply_chain_graph",
+    "dependency_role",
+    "information_gap",
+    "bottleneck_or_expansion_thesis",
+    "company_capture",
+    "commercial_validation",
+    "financing_and_thesis_killers",
+    "timing_and_source_delta"
+  ],
+  "publisher_independence": {
+    "publishing_or_controlling_entity_defines_family": true,
+    "different_urls_same_publisher_count_once": true,
+    "issuer_ir_and_same_issuer_regulatory_filing_count_once_for_independence": true,
+    "different_issuers_hosted_on_sec_may_be_independent_publishers": true,
+    "counterparty_filing_may_corroborate_focal_issuer": true,
+    "syndicated_or_same_content_hash_counts_once": true,
+    "search_snippets_and_social_reposts_never_form_independent_proof": true
+  },
+  "claim_thresholds": {
+    "architecture": {
+      "minimum_primary_or_corroborating_families": 2,
+      "minimum_primary_families": 1,
+      "dated_evidence_required": true
+    },
+    "dependency_or_bottleneck": {
+      "minimum_primary_or_corroborating_families": 2,
+      "minimum_primary_families": 1,
+      "minimum_family_independent_of_focal_issuer": 1,
+      "graph_edge_touching_focal_company_required": true,
+      "keyword_only_proof_forbidden": true,
+      "gross_margin_only_proof_forbidden": true,
+      "named_customer_only_proof_forbidden": true
+    },
+    "replacement_friction": {
+      "minimum_primary_or_corroborating_families": 2,
+      "qualification_switching_or_unique_process_evidence_required": true,
+      "gross_margin_only_proof_forbidden": true
+    },
+    "company_capture": {
+      "minimum_primary_or_corroborating_families": 2,
+      "counterparty_regulator_or_audited_support_required_for_strong": true,
+      "revenue_growth_only_proof_forbidden": true
+    },
+    "commercial_validation": {
+      "issuer_only_statement_is_provisional": true,
+      "strong_state_requires_counterparty_regulator_or_realized_revenue": true
+    },
+    "information_gap_or_consensus": {
+      "minimum_independent_families_for_consensus": 3,
+      "price_action_is_not_information_gap_proof": true
+    },
+    "severe_thesis_killer": {
+      "one_high_quality_primary_source_may_break_thesis": true,
+      "positive_and_negative_thresholds_are_asymmetric": true
+    },
+    "market_return": {
+      "minimum_independent_market_families_for_high_confidence": 2,
+      "single_provider_is_degraded": true,
+      "conflicting_adjustment_semantics_fail_closed": true
+    }
+  },
+  "factor_mapping": {
+    "demand_wave": [
+      "official_revenue_growth",
+      "official_industry_or_macro_demand_context"
+    ],
+    "chokepoint": [
+      "evidence_bound_dependency_role",
+      "binding_capacity_or_qualification_constraint",
+      "focal_company_graph_edge"
+    ],
+    "pricing_power": [
+      "official_margin_economics",
+      "contract_or_price_evidence"
+    ],
+    "replacement_friction": [
+      "qualification_duration",
+      "switching_cost",
+      "unique_process_or_ip",
+      "validated_supply_concentration"
+    ],
+    "tam_capture": [
+      "realized_revenue_growth",
+      "market_share_or_bom_share_evidence",
+      "evidence_bound_order_visibility"
+    ],
+    "valuation_expectations": [
+      "market_observation_with_provider_confidence_cap"
+    ],
+    "evidence_quality": [
+      "independent_publisher_families",
+      "claim_coverage",
+      "freshness",
+      "conflict_state"
+    ]
+  },
+  "hard_caps": {
+    "keyword_only_chokepoint_points": 0,
+    "gross_margin_only_replacement_friction_points": 0,
+    "revenue_growth_only_tam_capture_fraction": 0.4,
+    "single_market_provider_valuation_fraction": 0.25,
+    "lead_only_evidence_quality_fraction": 0.0
+  },
+  "conflict_policy": {
+    "conflicting_primary_material_values": "CONFLICT_UNRESOLVED",
+    "average_conflicting_primary_values": false,
+    "conflict_may_increase_score": false,
+    "conflict_requires_human_or_new_primary_resolution": true
+  },
+  "freshness_days": {
+    "market_observation": 2,
+    "issuer_financials": 150,
+    "contract_or_order": 180,
+    "architecture_or_roadmap": 365,
+    "legal_entity_identity": 365,
+    "macro_context": 120
+  },
+  "required_output_disclosures": [
+    "not_official_serenity_formula",
+    "source_catalog_is_not_live_use",
+    "live_source_families_used",
+    "market_provider_confidence",
+    "unresolved_conflicts",
+    "missing_evidence_and_unproven_claims",
+    "system_operationalization_separate_from_source_view"
+  ]
+}
