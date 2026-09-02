@@ -61,6 +61,8 @@ def main() -> int:
     }
     if not required_ids.issubset(required_sources):
         findings.append("Live federation does not include all required independent official families")
+    if not {"gleif_lei", "alpha_vantage", "yahoo_finance_public_unofficial"}.issubset(required_sources):
+        findings.append("Optional identity and market-observation families are not declared")
     if federation.get("catalog_source_count_is_not_live_use") is not True:
         findings.append("Catalog/live-use distinction missing")
     if federation.get("yahoo_is_authoritative") is not False:
@@ -69,6 +71,8 @@ def main() -> int:
         findings.append("Live source family minimum must be at least five")
     if federation.get("minimum_per_ticker_independent_families", 0) < 2:
         findings.append("Per-ticker source family minimum must be at least two")
+    if federation.get("maximum_single_family_evidence_share", 1) > 0.65:
+        findings.append("Single-family evidence concentration cap is too weak")
 
     selected = activation.get("selected_sources", {})
     expected = required_ids | {"gleif_lei"}
@@ -77,8 +81,11 @@ def main() -> int:
     yahoo = activation.get("discovery_only_sources", {}).get("yahoo_finance_public_unofficial", {})
     if yahoo.get("authoritative") is not False:
         findings.append("Yahoo discovery source boundary is not explicit")
-    if catalog.get("catalog_source_count_snapshot") != 100:
-        findings.append("Reviewed catalog snapshot must include the Nasdaq identity extension")
+    alpha = activation.get("discovery_only_sources", {}).get("alpha_vantage", {})
+    if alpha.get("authoritative") is not False or alpha.get("runtime_enabled") is not False:
+        findings.append("Alpha Vantage must remain optional, non-authoritative and key-gated")
+    if catalog.get("catalog_source_count_snapshot") != 101:
+        findings.append("Reviewed catalog snapshot must contain 101 sources")
     if "config/authoritative-sources/v213-runtime-extensions.json" not in catalog.get("fragment_paths", []):
         findings.append("v2.1.3 catalog extension fragment missing")
 
@@ -88,6 +95,7 @@ def main() -> int:
         "min(old_valuation, 3.75)",
         "issuer_financial_claim_has_single_primary_family",
         "SCORING_VERSION = \"system-operationalization-v2.1.3-diversified\"",
+        "CATALOG_COUNT = 101",
     )
     for token in required_scorer_tokens:
         if token not in scorer:
@@ -99,6 +107,7 @@ def main() -> int:
         "ecb_sdmx",
         "gleif_lei",
         "SINGLE_PROVIDER_DEGRADED",
+        "catalog_source_count_is_not_live_use",
     ):
         if token not in federator:
             findings.append(f"Source federation implementation missing: {token}")
@@ -116,7 +125,7 @@ def main() -> int:
         for finding in findings:
             print(f"- {finding}")
         return 1
-    print("V213_METHODOLOGY_AND_SOURCE_AUDIT = PASS; catalog=100; required_live_families=5; per_ticker_minimum=2")
+    print("V213_METHODOLOGY_AND_SOURCE_AUDIT = PASS; catalog=101; required_live_families=5; per_ticker_minimum=2")
     return 0
 
 
