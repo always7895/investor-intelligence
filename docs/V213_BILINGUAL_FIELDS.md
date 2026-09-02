@@ -1,8 +1,12 @@
 # Investor Intelligence v2.1.3 Bilingual Fields / 中英雙語欄位
 
-Machine keys remain stable English identifiers for API, KV, signature and historical compatibility. The complete public-schema display-label dictionary is `config/field-labels.zh-en.json`; each listed machine key has both `zh-TW` and `en` labels. The TypeScript source of truth used by the renderer is `cloud/src/v213/field-labels.ts`.
+Machine keys remain stable English identifiers for API, KV, signature and historical compatibility. Current public-schema labels are split into reviewed dictionaries so each machine key has both `zh-TW` and `en` display names:
 
-機器欄位名稱維持既有英文 key，以保留 API、KV、簽章與歷史資料相容性。完整的公開 schema 顯示名稱對照位於 `config/field-labels.zh-en.json`，每個列入的 machine key 都同時提供 `zh-TW` 與 `en`。Formatter 使用的 TypeScript 對照表位於 `cloud/src/v213/field-labels.ts`。
+- `config/field-labels.zh-en.json`: Top20, evidence, snapshot, options and seven-field reports.
+- `config/field-labels-source-federation.zh-en.json`: live source federation, source families, per-ticker coverage, concentration and diversified methodology metadata.
+- `config/field-labels-source-federation-gate.zh-en.json`: gate outcome and publisher-family deduplication fields.
+
+機器欄位名稱維持英文 key，以保留 API、KV、簽章與歷史相容性；公開顯示層透過上述三個字典提供繁中與英文。`scripts/audit_v213_bilingual_public_fields.py` 在 CI 中合併三個字典，只要必要公開欄位缺少 `zh-TW` 或 `en`、字典重複 key，或七欄正式名稱被改動，就會 fail closed。
 
 ## Seven-field LINE contract / LINE 七欄合約
 
@@ -16,10 +20,18 @@ Machine keys remain stable English identifiers for API, KV, signature and histor
 | `current_orders` | 公司現在訂單 | Current orders |
 | `future_orders_estimate` | 未來訂單預估 | Future order outlook |
 
-The renderer supports `zh-TW`, `en`, and `bilingual` header modes. Production defaults to `zh-TW` because that is the H6B2 visually/content-accepted LINE payload; the English and bilingual modes do not rename machine keys.
+The renderer supports `zh-TW`, `en`, and `bilingual` header modes. Production defaults to `zh-TW` because it matches the H6B2 accepted LINE payload; English and bilingual modes never rename machine keys.
 
-Renderer 支援 `zh-TW`、`en`、`bilingual` 三種表頭模式。Production 預設仍為 `zh-TW`，因為這是 H6B2 已完成內容驗收的 LINE payload；英文與雙語模式不會更改 machine key。
+## Methodology and federation labels / 方法與來源聯邦欄位
 
-Legacy keys named `serenity_score`, `serenity_raw_score`, and `serenity_factors` are labelled as **System operationalization** fields in the bilingual dictionary; they are not described as an official Serenity formula or score.
+Legacy keys `serenity_score`, `serenity_raw_score`, and `serenity_factors` are labelled as **System operationalization** fields. They are not described as an official Serenity formula or score.
 
-舊 machine key `serenity_score`、`serenity_raw_score`、`serenity_factors` 在雙語字典中明確標記為 **System operationalization / 系統量化** 欄位，不宣稱為 Serenity 官方公式或官方分數。
+Source-federation fields such as `successful_families`, `ticker_coverage_ratio`, `market_provider_confidence`, `largest_family_share`, `catalog_source_count_is_not_live_use` and `official_serenity_formula_claimed` also have exact Chinese and English labels. This preserves the distinction between:
+
+1. reviewed source-catalog inventory;
+2. source families actually reached in the current run;
+3. claim-specific evidence for each ticker;
+4. the project-authored System operationalization;
+5. model inference.
+
+舊 `serenity_*` machine key 只為相容性保留，顯示名稱明確標成「系統量化」。來源聯邦欄位也全部提供中英對照，避免把 101 項來源目錄誤寫成本輪實際使用 101 個來源，或把 Yahoo 市場觀測誤寫成公司／訂單／瓶頸的權威來源。
