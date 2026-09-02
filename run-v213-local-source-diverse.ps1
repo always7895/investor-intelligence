@@ -152,7 +152,7 @@ try {
         if (-not (Test-Python $selfTestPython)) {
             throw 'Resolved Python failed the source-diverse refresh entrypoint self-test.'
         }
-        & $selfTestPython (Join-Path $ProjectRoot 'scripts\build_v213_activation_bundle.py') '--self-test'
+        & $selfTestPython (Join-Path $ProjectRoot 'scripts\build_v213_activation_bundle_v2.py') '--self-test'
         if ($LASTEXITCODE -ne 0) { throw 'Activation-bundle builder self-test failed.' }
         & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -SelfTest
         if ($LASTEXITCODE -ne 0) { throw 'Activation-bundle sync client self-test failed.' }
@@ -246,7 +246,7 @@ try {
             if ($LASTEXITCODE -ne 0) {
                 throw 'Diversified public snapshot build failed.'
             }
-            & $python 'scripts\build_v213_activation_bundle.py'
+            & $python 'scripts\build_v213_activation_bundle_v2.py'
             if ($LASTEXITCODE -ne 0) {
                 throw 'Atomic v2.1.3 activation-bundle build failed.'
             }

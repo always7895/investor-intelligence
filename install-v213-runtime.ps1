@@ -64,6 +64,8 @@ $required=@(
     'scripts\v213_source_federation_gate.py',
     'scripts\v213_apply_diversified_operationalization.py',
     'scripts\v213_build_v21_public_snapshot.py',
+    'scripts\build_v213_activation_bundle_v2.py',
+    'sync-v213-activation-bundle.ps1',
     'scripts\v213_pipeline_boundary_self_test.py',
     'scripts\v213_methodology_and_source_audit.py',
     'scripts\v213_source_independence_gate.py',
