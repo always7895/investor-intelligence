@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DICTIONARIES = (
     ROOT / "config" / "field-labels.zh-en.json",
     ROOT / "config" / "field-labels-source-federation.zh-en.json",
+    ROOT / "config" / "field-labels-source-federation-gate.zh-en.json",
 )
 
 REQUIRED_FIELDS = {
@@ -79,7 +80,8 @@ REQUIRED_FIELDS = {
     "scoring_methodology", "machine_key_compatibility", "display_label",
     "official_serenity_formula_claimed", "keyword_only_chokepoint_points",
     "gross_margin_only_replacement_friction_points",
-    "single_market_provider_valuation_cap_fraction",
+    "single_market_provider_valuation_cap_fraction", "pass", "counting_rule",
+    "publisher_family_deduplication_enforced", "ticker_coverage", "authoritative",
 }
 
 SEVEN_FIELD_EXPECTED = {
