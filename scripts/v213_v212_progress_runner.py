@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build the v2.1.2 five-field intermediate from an exact provisional Top20.
 
-The provisional shortlist is deliberately not a publishable v2.1 snapshot.  This
+The provisional shortlist is deliberately not a publishable v2.1 snapshot. This
 wrapper grants it the narrowest possible compatibility bridge: it may be read by
 the five-field market/SEC builder so later live-source federation can produce the
-final diversified ranking.  The public snapshot validators remain unchanged and
+final diversified ranking. Public snapshot validators remain unchanged and
 continue to reject provisional rows.
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import build_v212_top20_report as report
+import v213_v21_progress_runner as preselection
 
 PROVISIONAL_SCORING_VERSION = "system-operationalization-v2.1.3-safe-preselection"
 FACTOR_KEYS = {
@@ -66,7 +67,7 @@ def validate_provisional_top20(records: Any) -> list[dict[str, Any]]:
     """Accept only the exact local intermediate boundary required by Stage 4.
 
     This validator is installed temporarily into ``build_v212_top20_report`` and
-    restored immediately after that builder exits.  It cannot make a provisional
+    restored immediately after that builder exits. It cannot make a provisional
     record eligible for a signed snapshot or Worker promotion.
     """
     if not isinstance(records, list) or len(records) != 20:
@@ -161,7 +162,8 @@ def validate_provisional_top20(records: Any) -> list[dict[str, Any]]:
 
 def main() -> int:
     original_market = report._market_observation
-    original_validator = report.snapshot.validate_top20
+    original_snapshot_validator = report.snapshot.validate_top20
+    original_policy_validator = report.base.validate_policy
     counter = {"value": 0}
 
     def progress_market_observation(ticker: str, fallback_industry: str):
@@ -174,11 +176,13 @@ def main() -> int:
 
     report._market_observation = progress_market_observation
     report.snapshot.validate_top20 = validate_provisional_top20
+    report.base.validate_policy = preselection.validate_v213_policy
     try:
         return report.main()
     finally:
         report._market_observation = original_market
-        report.snapshot.validate_top20 = original_validator
+        report.snapshot.validate_top20 = original_snapshot_validator
+        report.base.validate_policy = original_policy_validator
 
 
 if __name__ == "__main__":
