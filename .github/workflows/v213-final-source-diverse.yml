@@ -1,0 +1,238 @@
+name: V2.1.3 Final Source-Diverse Package
+
+on:
+  push:
+    branches: [development/v2.1.3-serenity-public-logic-fidelity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-final-source-diverse
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Verified Python and self-tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-final-source-diverse
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if($LASTEXITCODE-ne0){throw 'Dependency install failed.'}
+          foreach($args in @(
+            @('scripts\reconcile_v213_order_evidence.py','--self-test'),
+            @('scripts\build_v213_scheduled_top20_report.py','--self-test'),
+            @('scripts\v213_source_independence_gate.py','--self-test'),
+            @('scripts\v213_local_llm_gateway.py','--self-test')
+          )){
+            & $env:PROJECT_PYTHON @args
+            if($LASTEXITCODE-ne0){throw "Self-test failed: $($args -join ' ')"}
+          }
+          & $env:PROJECT_PYTHON scripts\audit_v213_bilingual_public_fields.py
+          if($LASTEXITCODE-ne0){throw 'Bilingual field audit failed.'}
+          & $env:PROJECT_PYTHON -m compileall -q scripts
+          if($LASTEXITCODE-ne0){throw 'Python compileall failed.'}
+          Write-Host 'FINAL_SOURCE_DIVERSE_PYTHON = PASS'
+
+      - name: Worker regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          Push-Location cloud
+          try{
+            npm.cmd ci --ignore-scripts --no-audit --no-fund
+            if($LASTEXITCODE-ne0){throw 'npm ci failed.'}
+            npm.cmd run typecheck
+            if($LASTEXITCODE-ne0){throw 'typecheck failed.'}
+            npm.cmd test
+            if($LASTEXITCODE-ne0){throw 'Worker tests failed.'}
+          }finally{Pop-Location}
+
+      - name: PowerShell parser and safe self-tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $paths=@(
+            'run-v213-local.ps1','run-v213-local-llm-bridge.ps1',
+            'scripts\run_v213_local_llm_bridge_core.ps1',
+            'activate-v213-seven-field-schedule.ps1',
+            'install-v213-source-diverse-runtime.ps1',
+            'install-v213-runtime.ps1','register-v213-refresh-tasks.ps1'
+          )
+          foreach($path in $paths){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|Out-String|Write-Host;throw "$path pwsh parse failed."}
+          }
+          $probe=Join-Path $env:RUNNER_TEMP 'final-source-diverse-ps51.ps1'
+          @'
+          param([string[]]$Paths)
+          foreach($path in $Paths){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|Out-String|Write-Host;exit 1}
+          }
+          '@|Set-Content $probe -Encoding utf8
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Paths $paths
+          if($LASTEXITCODE-ne0){throw 'PowerShell 5.1 parse failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if($LASTEXITCODE-ne0){throw 'Bridge health self-test failed.'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -SelfTest
+          if($LASTEXITCODE-ne0){throw 'Activation self-test failed.'}
+          Write-Host 'FINAL_SOURCE_DIVERSE_POWERSHELL = PASS'
+
+      - name: Contract audit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $files=@{
+            refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
+            wrapper=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
+            bridge=Get-Content scripts\run_v213_local_llm_bridge_core.ps1 -Raw -Encoding utf8
+            gateway=Get-Content scripts\v213_local_llm_gateway.py -Raw -Encoding utf8
+            source=Get-Content scripts\v213_source_independence_gate.py -Raw -Encoding utf8
+            activation=Get-Content activate-v213-seven-field-schedule.ps1 -Raw -Encoding utf8
+          }
+          foreach($needle in @('v213_source_independence_gate.py','--enforce','non-Yahoo market corroboration')){if(-not$files.refresh.Contains($needle)){throw "Refresh missing $needle"}}
+          foreach($needle in @('run_v213_local_llm_bridge_core.ps1','@PSBoundParameters')){if(-not$files.wrapper.Contains($needle)){throw "Wrapper missing $needle"}}
+          foreach($needle in @('Get-ObjectPropertyValue','Resolve-GatewayPort','health_schema_version','v213-local-llm-gateway')){if(-not$files.bridge.Contains($needle)){throw "Bridge missing $needle"}}
+          foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_latest.json','cap confidence at LIMITED','Conflicting sources')){if(-not$files.gateway.Contains($needle)){throw "Gateway missing $needle"}}
+          foreach($needle in @('stooq_daily_csv','nasdaq_historical_api','fred_official_macro','evidence_independence_score','source_diversity_is_not_truth_by_itself')){if(-not$files.source.Contains($needle)){throw "Source gate missing $needle"}}
+          foreach($needle in @('V213_SOURCE_INDEPENDENCE_PREFLIGHT','health-schema-v2','install-v213-source-diverse-runtime.ps1')){if(-not$files.activation.Contains($needle)){throw "Activation missing $needle"}}
+          $policy=Get-Content config\v213-serenity-public-logic-policy.json -Raw -Encoding utf8|ConvertFrom-Json
+          if($policy.non_claims.private_method_reproduced-ne$false-or$policy.non_claims.official_serenity_score-ne$false){throw 'Serenity non-claims failed.'}
+          if([double]$policy.minimums.non_yahoo_market_coverage_ratio-lt.75){throw 'Non-Yahoo threshold too low.'}
+          Write-Host 'FINAL_SOURCE_DIVERSE_CONTRACTS = PASS'
+
+      - name: HealthSchema2 integration with occupied legacy port
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $testRoot=Join-Path $env:RUNNER_TEMP ('final-gateway-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path $testRoot|Out-Null
+          $savedLocal=$env:LOCALAPPDATA
+          $env:LOCALAPPDATA=Join-Path $testRoot 'local'
+          $model='RVN-Q6_K-multilingual-mtp';$upstreamPort=19101;$occupiedPort=18834
+          $fakeScript=Join-Path $testRoot 'fake.py'
+          @'
+          import json,sys
+          from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+          model=sys.argv[2]
+          class H(BaseHTTPRequestHandler):
+              def log_message(self,*args): pass
+              def respond(self,obj):
+                  raw=json.dumps(obj).encode('utf-8');self.send_response(200);self.send_header('content-type','application/json');self.send_header('content-length',str(len(raw)));self.end_headers();self.wfile.write(raw)
+              def do_GET(self): self.respond({'data':[{'id':model}]} if 'models' in self.path else {'ok':True})
+              def do_POST(self): self.rfile.read(int(self.headers.get('content-length','0')));self.respond({'choices':[{'message':{'role':'assistant','content':'OK'}}]})
+          ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),H).serve_forever()
+          '@|Set-Content $fakeScript -Encoding utf8
+          $fake=Start-Process -FilePath $env:PROJECT_PYTHON -ArgumentList @($fakeScript,[string]$upstreamPort,$model) -PassThru -WindowStyle Hidden
+          $occupier=Start-Process -FilePath $env:PROJECT_PYTHON -ArgumentList @('-m','http.server',[string]$occupiedPort,'--bind','127.0.0.1') -PassThru -WindowStyle Hidden
+          try{
+            Start-Sleep -Seconds 2
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge.ps1 -ProjectRoot $PWD.Path -LlamaBaseUrl "http://127.0.0.1:$upstreamPort" -GatewayPort $occupiedPort -Model $model -NoTunnel -StopExisting
+            if($LASTEXITCODE-ne0){throw 'Bridge integration failed.'}
+            $statePath=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v213-local-model.json'
+            $state=Get-Content $statePath -Raw -Encoding utf8|ConvertFrom-Json
+            if([int]$state.gateway_port-eq$occupiedPort){throw 'Occupied unknown port was reused.'}
+            if([string]$state.model-ne$model-or[int]$state.health_schema_version-ne2){throw 'State model/schema mismatch.'}
+            $health=Invoke-RestMethod -Uri ([string]$state.gateway_url+'/health') -TimeoutSec 10
+            if([string]$health.service-ne'v213-local-llm-gateway'-or[int]$health.health_schema_version-ne2){throw 'Health schema v2 missing.'}
+            if($health.selected_model_available-ne$true-or[string]$health.selected_model-ne$model){throw 'Exact selected model not healthy.'}
+            if(-not(Get-Process -Id $occupier.Id -ErrorAction SilentlyContinue)){throw 'Unknown port owner was killed.'}
+            Write-Host "FINAL_HEALTH_SCHEMA2_INTEGRATION = PASS; gateway_port=$($state.gateway_port); model=$model"
+          }finally{
+            try{$state=Get-Content (Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v213-local-model.json') -Raw -Encoding utf8|ConvertFrom-Json;Stop-Process -Id ([int]$state.gateway_pid) -Force -ErrorAction SilentlyContinue}catch{}
+            Stop-Process -Id $fake.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $occupier.Id -Force -ErrorAction SilentlyContinue
+            $env:LOCALAPPDATA=$savedLocal
+            Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Compile launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc=@("$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe","$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe")|Where-Object{Test-Path $_}|Select-Object -First 1
+          if(-not$csc){throw 'csc unavailable.'}
+          $exe=Join-Path $env:RUNNER_TEMP 'InvestorIntelligence.exe'
+          & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$exe" launcher\InvestorIntelligenceLauncher.cs
+          if($LASTEXITCODE-ne0){throw 'Launcher compile failed.'}
+          foreach($arg in @('--pipe-hold-self-test','--model-selection-self-test')){
+            $process=Start-Process -FilePath $exe -ArgumentList $arg -PassThru
+            if(-not$process.WaitForExit(20000)){Stop-Process -Id $process.Id -Force;throw "Launcher timeout: $arg"}
+            if($process.ExitCode-ne0){throw "Launcher self-test failed: $arg"}
+          }
+          "FINAL_EXE=$exe"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build final one-click package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP "ii-final-source-$env:GITHUB_RUN_ID";$stage=Join-Path $root 'Investor-Intelligence-v2.1.3-Final-Source-Diverse';$versions=Join-Path $stage 'versions';New-Item -ItemType Directory -Force -Path $stage,$versions|Out-Null
+          $refs=[ordered]@{'2.1.0'='bbc2987e54eccef350685447b48e1841c4e5ba19';'2.1.1'='22593c82743ad97aff91469ba001700d2a384c48';'2.1.2'='1a36935bf8532be074707eeb7f941d8a46be6ca9';'2.1.3'=$env:GITHUB_SHA.ToLowerInvariant()}
+          foreach($entry in $refs.GetEnumerator()){$archive=Join-Path $versions ('Investor-Intelligence-v'+$entry.Key+'-source.zip');git archive --format=zip --output="$archive" $entry.Value;if($LASTEXITCODE-ne0){throw "Archive failed $($entry.Key)"}}
+          Expand-Archive (Join-Path $versions 'Investor-Intelligence-v2.1.3-source.zip') $stage -Force;Copy-Item $env:FINAL_EXE (Join-Path $stage 'InvestorIntelligence.exe')
+          [ordered]@{schema_version=4;package_version='2.1.3';revision='Final-Source-Diverse-HealthSchema2';current_commit=$env:GITHUB_SHA.ToLowerInvariant();versions=$refs;local_model=[ordered]@{explicit_selector=$true;preferred_model='RVN-Q6_K-multilingual-mtp';health_schema_version=2;silent_model_substitution=$false;unknown_port_owner_killed=$false};source_fidelity=[ordered]@{policy='config/v213-serenity-public-logic-policy.json';gate='scripts/v213_source_independence_gate.py';sidecar='data/cache/v213_source_independence_latest.json';calculation_source='yfinance_compatibility_only';independent_sources=@('SEC/issuer primary','Stooq','Nasdaq','optional Alpha Vantage','FRED official macro');minimum_non_yahoo_coverage=.75;duplicate_syndication_counts_once=$true;conflicts_averaged=$false;single_source_high_confidence=$false;official_serenity_formula=$false;private_method_reproduced=$false};production_deployment_performed=$false}|ConvertTo-Json -Depth 10|Set-Content (Join-Path $stage 'VERSION-REFS.json') -Encoding utf8
+          $manifest=@();Get-ChildItem $stage -File -Recurse|ForEach-Object{$manifest+=[ordered]@{path=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}};[ordered]@{schema_version=4;commit=$env:GITHUB_SHA.ToLowerInvariant();generated_utc=(Get-Date).ToUniversalTime().ToString('o');files=$manifest}|ConvertTo-Json -Depth 10|Set-Content (Join-Path $stage 'MANIFEST.json') -Encoding utf8
+          Get-ChildItem $stage -File -Recurse|ForEach-Object{'{0}  {1}'-f(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.FullName.Substring($stage.Length+1).Replace('\','/')}|Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ascii
+          $zip=Join-Path $root 'Investor-Intelligence-v2.1.3-Final-Source-Diverse.zip';Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal;$sha=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant();$shaFile=$zip+'.sha256';Set-Content $shaFile $sha -Encoding ascii
+          "FINAL_ZIP=$zip"|Out-File $env:GITHUB_ENV -Append -Encoding utf8;"FINAL_SHA_FILE=$shaFile"|Out-File $env:GITHUB_ENV -Append -Encoding utf8;"FINAL_SHA=$sha"|Out-File $env:GITHUB_ENV -Append -Encoding utf8;Write-Host "FINAL_SOURCE_DIVERSE_SHA256=$sha"
+
+      - name: Verify package and source-diverse runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop';$check=Join-Path $env:RUNNER_TEMP "ii-final-check-$env:GITHUB_RUN_ID";$stable=Join-Path $env:RUNNER_TEMP "ii-final-stable-$env:GITHUB_RUN_ID";Expand-Archive $env:FINAL_ZIP $check
+          foreach($file in @('InvestorIntelligence.exe','scripts\v213_source_independence_gate.py','scripts\run_v213_local_llm_bridge_core.ps1','config\v213-serenity-public-logic-policy.json','install-v213-source-diverse-runtime.ps1')){if(-not(Test-Path (Join-Path $check $file) -PathType Leaf)){throw "Package missing $file"}}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-source-diverse-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
+          if($LASTEXITCODE-ne0){throw 'Runtime install failed.'}
+          foreach($file in @('scripts\v213_source_independence_gate.py','scripts\run_v213_local_llm_bridge_core.ps1','config\v213-serenity-public-logic-policy.json','V213-SOURCE-DIVERSE-RUNTIME.json')){if(-not(Test-Path (Join-Path $stable $file) -PathType Leaf)){throw "Stable runtime missing $file"}}
+          Write-Host 'FINAL_SOURCE_DIVERSE_PACKAGE_RUNTIME = PASS'
+
+      - name: Upload final package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-Final-Source-Diverse
+          path: |
+            ${{ env.FINAL_ZIP }}
+            ${{ env.FINAL_SHA_FILE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## v2.1.3 Final Source-Diverse
+          - HealthSchema2 exact-model bridge: PASS
+          - Source-independence gate and local-model context: PASS
+          - Yahoo/yfinance restricted to compatibility calculation
+          - Stooq + Nasdaq + optional Alpha Vantage + FRED + primary evidence
+          - Duplicate/syndicated evidence inflation blocked
+          - Conflicts preserved; unsupported claims remain UNPROVEN
+          - Official/private Serenity formula claimed: false
+          - Production deployment performed: false
+          - ZIP SHA-256: ``$env:FINAL_SHA``
+          "@|Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
