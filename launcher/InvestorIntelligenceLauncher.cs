@@ -18,6 +18,7 @@ namespace InvestorIntelligence
         const string Version = "2.1.3";
         const string Revision = "ModelSelect-R43";
         const string PreferredModel = "RVN-Q6_K-multilingual-mtp";
+
         static readonly string[] KnownLlamaBases = {
             "http://127.0.0.1:8080",
             "http://127.0.0.1:7905",
@@ -26,6 +27,7 @@ namespace InvestorIntelligence
             "http://127.0.0.1:8081",
             "http://127.0.0.1:8000"
         };
+
         static string LastPowerShellSummary = "";
         static volatile string LastPowerShellLiveLine = "";
 
@@ -35,7 +37,11 @@ namespace InvestorIntelligence
             public readonly StringBuilder Tail = new StringBuilder();
             public readonly StreamWriter Writer;
             public bool Open = true;
-            public CaptureState(StreamWriter writer) { Writer = writer; }
+
+            public CaptureState(StreamWriter writer)
+            {
+                Writer = writer;
+            }
         }
 
         sealed class ModelSelection
@@ -71,10 +77,10 @@ namespace InvestorIntelligence
             get { return Path.Combine(ConfigRoot, "v213-model-selection.json"); }
         }
 
-        static string Tail(string text, int max)
+        static string Tail(string value, int maximum)
         {
-            if (String.IsNullOrEmpty(text)) return "";
-            return text.Length <= max ? text : text.Substring(text.Length - max);
+            if (String.IsNullOrEmpty(value)) return "";
+            return value.Length <= maximum ? value : value.Substring(value.Length - maximum);
         }
 
         static string UiSafeProgressLine(string line)
@@ -117,13 +123,15 @@ namespace InvestorIntelligence
                 AppendTail(state.Tail, channel, line);
                 safe = UiSafeProgressLine(line);
             }
-            if (!String.IsNullOrEmpty(safe)) LastPowerShellLiveLine = safe;
+            if (!String.IsNullOrEmpty(safe))
+                LastPowerShellLiveLine = safe;
         }
 
         static void DrainAvailableLines(StreamReader reader, CaptureState state)
         {
             string line;
-            while ((line = reader.ReadLine()) != null) RecordCapturedLine(state, "OUT", line);
+            while ((line = reader.ReadLine()) != null)
+                RecordCapturedLine(state, "OUT", line);
         }
 
         static string PowerShellLiteral(string value)
@@ -149,7 +157,8 @@ namespace InvestorIntelligence
             if (uri.Scheme != Uri.UriSchemeHttp || !String.IsNullOrEmpty(uri.UserInfo)) return false;
             if (!(uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
                   uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))) return false;
-            return uri.Port >= 1 && uri.Port <= 65535 && uri.AbsolutePath == "/";
+            return uri.Port >= 1 && uri.Port <= 65535 &&
+                (uri.AbsolutePath == "/" || uri.AbsolutePath == "");
         }
 
         static List<string> ExtractModelIds(string json)
@@ -161,14 +170,17 @@ namespace InvestorIntelligence
             if (dictionary == null || !dictionary.ContainsKey("data")) return result;
             var rows = dictionary["data"] as IEnumerable;
             if (rows == null) return result;
+
             foreach (object raw in rows)
             {
                 var item = raw as Dictionary<string, object>;
                 if (item == null || !item.ContainsKey("id")) continue;
-                string id = Convert.ToString(item["id"]) ?? "";
-                id = id.Trim();
-                if (SafeModelId(id) && !result.Any(x => x.Equals(id, StringComparison.OrdinalIgnoreCase)))
+                string id = (Convert.ToString(item["id"]) ?? "").Trim();
+                if (SafeModelId(id) &&
+                    !result.Any(existing => existing.Equals(id, StringComparison.OrdinalIgnoreCase)))
+                {
                     result.Add(id);
+                }
             }
             return result;
         }
@@ -182,6 +194,7 @@ namespace InvestorIntelligence
             request.Timeout = 4500;
             request.ReadWriteTimeout = 4500;
             request.Headers[HttpRequestHeader.CacheControl] = "no-cache";
+
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8, true))
             {
@@ -195,9 +208,14 @@ namespace InvestorIntelligence
         {
             var catalog = new ModelCatalog();
             var bases = new List<string>();
-            if (previous != null && SafeLoopbackBase(previous.LlamaBaseUrl)) bases.Add(previous.LlamaBaseUrl.TrimEnd('/'));
+
+            if (previous != null && SafeLoopbackBase(previous.LlamaBaseUrl))
+                bases.Add(previous.LlamaBaseUrl.TrimEnd('/'));
             foreach (string item in KnownLlamaBases)
-                if (!bases.Any(x => x.Equals(item, StringComparison.OrdinalIgnoreCase))) bases.Add(item);
+            {
+                if (!bases.Any(existing => existing.Equals(item, StringComparison.OrdinalIgnoreCase)))
+                    bases.Add(item);
+            }
 
             string last = "";
             foreach (string baseUrl in bases)
@@ -209,14 +227,20 @@ namespace InvestorIntelligence
                         List<string> ids = ExtractModelIds(HttpGet(baseUrl + suffix));
                         if (ids.Count == 0) continue;
                         catalog.BaseUrl = baseUrl;
-                        catalog.Models.AddRange(ids.OrderBy(x =>
-                            x.Equals(PreferredModel, StringComparison.OrdinalIgnoreCase) ? "0" + x : "1" + x,
+                        catalog.Models.AddRange(ids.OrderBy(
+                            id => id.Equals(PreferredModel, StringComparison.OrdinalIgnoreCase)
+                                ? "0" + id
+                                : "1" + id,
                             StringComparer.OrdinalIgnoreCase));
                         return catalog;
                     }
-                    catch (Exception ex) { last = baseUrl + suffix + ": " + ex.Message; }
+                    catch (Exception ex)
+                    {
+                        last = baseUrl + suffix + ": " + ex.Message;
+                    }
                 }
             }
+
             catalog.Error = String.IsNullOrWhiteSpace(last)
                 ? "No llama.cpp model catalog was reachable."
                 : last;
@@ -229,20 +253,34 @@ namespace InvestorIntelligence
             {
                 if (!File.Exists(SelectionPath)) return new ModelSelection();
                 var serializer = new JavaScriptSerializer();
-                var root = serializer.DeserializeObject(File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
+                var root = serializer.DeserializeObject(
+                    File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
                 if (root == null) return new ModelSelection();
+
                 return new ModelSelection {
                     Model = root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : "",
-                    LlamaBaseUrl = root.ContainsKey("llama_base_url") ? Convert.ToString(root["llama_base_url"]) ?? "" : ""
+                    LlamaBaseUrl = root.ContainsKey("llama_base_url")
+                        ? Convert.ToString(root["llama_base_url"]) ?? ""
+                        : ""
                 };
             }
-            catch { return new ModelSelection(); }
+            catch
+            {
+                return new ModelSelection();
+            }
         }
 
-        static void SaveSelection(string model, string baseUrl, IEnumerable<string> availableModels, string source)
+        static void SaveSelection(
+            string model,
+            string baseUrl,
+            IEnumerable<string> availableModels,
+            string source)
         {
-            if (!SafeModelId(model)) throw new InvalidOperationException("Invalid model ID / 模型 ID 格式不正確。");
-            if (!SafeLoopbackBase(baseUrl)) throw new InvalidOperationException("Invalid loopback llama.cpp URL / 本機 llama.cpp 網址不正確。");
+            if (!SafeModelId(model))
+                throw new InvalidOperationException("Invalid model ID / 模型 ID 格式不正確。");
+            if (!SafeLoopbackBase(baseUrl))
+                throw new InvalidOperationException("Invalid loopback llama.cpp URL / 本機 llama.cpp 網址不正確。");
+
             Directory.CreateDirectory(ConfigRoot);
             var serializer = new JavaScriptSerializer();
             var value = new Dictionary<string, object> {
@@ -255,19 +293,32 @@ namespace InvestorIntelligence
                 { "source", source },
                 { "preferred_model", PreferredModel }
             };
-            string temp = SelectionPath + ".tmp";
-            File.WriteAllText(temp, serializer.Serialize(value), new UTF8Encoding(false));
-            if (File.Exists(SelectionPath)) File.Replace(temp, SelectionPath, null);
-            else File.Move(temp, SelectionPath);
+
+            string temporary = SelectionPath + ".tmp";
+            File.WriteAllText(temporary, serializer.Serialize(value), new UTF8Encoding(false));
+            if (File.Exists(SelectionPath))
+                File.Replace(temporary, SelectionPath, null);
+            else
+                File.Move(temporary, SelectionPath);
         }
 
-        static async Task<int> RunPowerShellAsync(string script, string arguments, bool showErrorDialog)
+        static async Task<int> RunPowerShellAsync(
+            string script,
+            string arguments,
+            bool showErrorDialog)
         {
             string path = Path.IsPathRooted(script) ? script : Path.Combine(Root, script);
             if (!File.Exists(path))
             {
                 LastPowerShellSummary = "Missing script / 找不到腳本:\r\n" + path;
-                if (showErrorDialog) MessageBox.Show(LastPowerShellSummary, "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (showErrorDialog)
+                {
+                    MessageBox.Show(
+                        LastPowerShellSummary,
+                        "Investor Intelligence",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
                 return 2;
             }
 
@@ -275,10 +326,13 @@ namespace InvestorIntelligence
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "InvestorIntelligence", "logs", "launcher");
             Directory.CreateDirectory(logRoot);
-            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" + Path.GetFileNameWithoutExtension(path);
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                Path.GetFileNameWithoutExtension(path);
             string logPath = Path.Combine(logRoot, stamp + ".log");
             string rawPath = Path.Combine(logRoot, stamp + ".raw.log");
-            string wrapperRoot = Path.Combine(Path.GetTempPath(), "ii-v213-capture-" + Guid.NewGuid().ToString("N"));
+            string wrapperRoot = Path.Combine(
+                Path.GetTempPath(),
+                "ii-v213-capture-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(wrapperRoot);
             string psWrapper = Path.Combine(wrapperRoot, "invoke.ps1");
             string cmdWrapper = Path.Combine(wrapperRoot, "invoke.cmd");
@@ -292,21 +346,29 @@ namespace InvestorIntelligence
                 "if($null -ne $LASTEXITCODE){exit [int]$LASTEXITCODE}\r\n" +
                 "if($?){exit 0}else{exit 1}\r\n";
             File.WriteAllText(psWrapper, psBody, new UTF8Encoding(true));
+
             string cmdBody =
                 "@echo off\r\n" +
                 "chcp 65001 >nul\r\n" +
-                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " + CmdQuoted(psWrapper) +
-                " > " + CmdQuoted(rawPath) + " 2>&1\r\n" +
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " +
+                CmdQuoted(psWrapper) + " > " + CmdQuoted(rawPath) + " 2>&1\r\n" +
                 "exit /b %ERRORLEVEL%\r\n";
             File.WriteAllText(cmdWrapper, cmdBody, Encoding.ASCII);
 
-            LastPowerShellLiveLine = "II_PROGRESS launcher log created / 啟動器即時記錄已建立";
+            LastPowerShellLiveLine =
+                "II_PROGRESS launcher log created / 啟動器即時記錄已建立";
             int exitCode = -1;
-            using (var stream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+
+            using (var stream = new FileStream(
+                logPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.ReadWrite))
             using (var writer = new StreamWriter(stream, new UTF8Encoding(true)))
             {
                 writer.AutoFlush = true;
-                writer.WriteLine("Investor Intelligence v" + Version + " " + Revision + " live launcher log");
+                writer.WriteLine("Investor Intelligence v" + Version + " " +
+                    Revision + " live launcher log");
                 writer.WriteLine("SCRIPT=" + path);
                 writer.WriteLine("STARTED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
                 writer.WriteLine("LOG_MODE=LIVE_CHILD_FILE_TAIL");
@@ -316,20 +378,28 @@ namespace InvestorIntelligence
                 writer.WriteLine("--- LIVE OUTPUT ---");
 
                 var state = new CaptureState(writer);
-                var psi = new ProcessStartInfo {
+                var startInfo = new ProcessStartInfo {
                     FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
                     Arguments = "/d /s /c \"\"" + cmdWrapper + "\"\"",
                     WorkingDirectory = Root,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                var process = new Process { StartInfo = psi };
+                var process = new Process { StartInfo = startInfo };
                 if (!process.Start())
                 {
                     process.Dispose();
-                    LastPowerShellSummary = "PowerShell process could not be started.\r\nLog / 記錄：" + logPath;
+                    LastPowerShellSummary =
+                        "PowerShell process could not be started.\r\nLog / 記錄：" + logPath;
                     writer.WriteLine("PROCESS_START_FAILED");
-                    if (showErrorDialog) MessageBox.Show(LastPowerShellSummary, "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    if (showErrorDialog)
+                    {
+                        MessageBox.Show(
+                            LastPowerShellSummary,
+                            "Investor Intelligence",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }
                     return 3;
                 }
 
@@ -344,14 +414,21 @@ namespace InvestorIntelligence
                             try
                             {
                                 rawReader = new StreamReader(
-                                    new FileStream(rawPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete),
-                                    new UTF8Encoding(false, false), true);
+                                    new FileStream(
+                                        rawPath,
+                                        FileMode.Open,
+                                        FileAccess.Read,
+                                        FileShare.ReadWrite | FileShare.Delete),
+                                    new UTF8Encoding(false, false),
+                                    true);
                             }
                             catch (IOException) { }
                         }
-                        if (rawReader != null) DrainAvailableLines(rawReader, state);
+                        if (rawReader != null)
+                            DrainAvailableLines(rawReader, state);
                         await Task.Delay(200);
                     }
+
                     process.WaitForExit();
                     exitCode = process.ExitCode;
                     lock (state.Sync)
@@ -360,6 +437,7 @@ namespace InvestorIntelligence
                         writer.WriteLine("PARENT_EXIT_CODE=" + exitCode);
                         writer.Flush();
                     }
+
                     long previousLength = -1;
                     int stableChecks = 0;
                     for (int attempt = 0; attempt < 20; attempt++)
@@ -367,12 +445,22 @@ namespace InvestorIntelligence
                         if (rawReader == null && File.Exists(rawPath))
                         {
                             rawReader = new StreamReader(
-                                new FileStream(rawPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete),
-                                new UTF8Encoding(false, false), true);
+                                new FileStream(
+                                    rawPath,
+                                    FileMode.Open,
+                                    FileAccess.Read,
+                                    FileShare.ReadWrite | FileShare.Delete),
+                                new UTF8Encoding(false, false),
+                                true);
                         }
-                        if (rawReader != null) DrainAvailableLines(rawReader, state);
-                        long length = File.Exists(rawPath) ? new FileInfo(rawPath).Length : 0;
-                        if (length == previousLength) stableChecks++; else stableChecks = 0;
+                        if (rawReader != null)
+                            DrainAvailableLines(rawReader, state);
+
+                        long length = File.Exists(rawPath)
+                            ? new FileInfo(rawPath).Length
+                            : 0;
+                        if (length == previousLength) stableChecks++;
+                        else stableChecks = 0;
                         previousLength = length;
                         if (stableChecks >= 3) break;
                         await Task.Delay(100);
@@ -402,38 +490,60 @@ namespace InvestorIntelligence
                 else
                 {
                     string detail;
-                    lock (state.Sync) { detail = Tail(state.Tail.ToString().Trim(), 7000); }
+                    lock (state.Sync)
+                    {
+                        detail = Tail(state.Tail.ToString().Trim(), 7000);
+                    }
                     LastPowerShellSummary =
                         "Exit code / 結束碼: " + exitCode + "\r\n\r\n" +
-                        (String.IsNullOrWhiteSpace(detail) ? "No diagnostic output was returned." : detail) +
+                        (String.IsNullOrWhiteSpace(detail)
+                            ? "No diagnostic output was returned."
+                            : detail) +
                         "\r\n\r\nLog / 完整記錄：\r\n" + logPath +
                         "\r\nRaw output / 原始輸出：\r\n" + rawPath;
-                    LastPowerShellLiveLine = "V213_OPERATION_FAILED; see live log / 請查看即時記錄";
+                    LastPowerShellLiveLine =
+                        "V213_OPERATION_FAILED; see live log / 請查看即時記錄";
                     if (showErrorDialog)
-                        MessageBox.Show(LastPowerShellSummary, "Investor Intelligence - Error / 錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    {
+                        MessageBox.Show(
+                            LastPowerShellSummary,
+                            "Investor Intelligence - Error / 錯誤",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }
                 }
             }
+
             try { Directory.Delete(wrapperRoot, true); } catch { }
             return exitCode;
         }
 
         static int RunPowerShellCli(string script, string arguments)
         {
-            return RunPowerShellAsync(script, arguments, false).GetAwaiter().GetResult();
+            return RunPowerShellAsync(script, arguments, false)
+                .GetAwaiter()
+                .GetResult();
         }
 
         static int PipeHoldSelfTest()
         {
-            string testRoot = Path.Combine(Path.GetTempPath(), "ii-v213-pipe-hold-" + Guid.NewGuid().ToString("N"));
+            string testRoot = Path.Combine(
+                Path.GetTempPath(),
+                "ii-v213-pipe-hold-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(testRoot);
             string script = Path.Combine(testRoot, "parent.ps1");
-            string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
+            string powershell = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                @"WindowsPowerShell\v1.0\powershell.exe");
             string body =
                 "$ErrorActionPreference='Stop'\r\n" +
                 "Start-Process -FilePath " + PowerShellLiteral(powershell) +
-                " -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -NoNewWindow | Out-Null\r\n" +
-                "Write-Output 'II_PROGRESS PIPE_HOLD_PARENT_EXIT_TEST=PASS'\r\nexit 0\r\n";
+                " -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30')" +
+                " -NoNewWindow | Out-Null\r\n" +
+                "Write-Output 'II_PROGRESS PIPE_HOLD_PARENT_EXIT_TEST=PASS'\r\n" +
+                "exit 0\r\n";
             File.WriteAllText(script, body, new UTF8Encoding(true));
+
             var stopwatch = Stopwatch.StartNew();
             int code = RunPowerShellAsync(script, "", false).GetAwaiter().GetResult();
             stopwatch.Stop();
@@ -445,10 +555,14 @@ namespace InvestorIntelligence
 
         static int ModelSelectionSelfTest()
         {
-            string json = "{\"data\":[{\"id\":\"gemma4\"},{\"id\":\"" + PreferredModel + "\"}]}";
+            string json =
+                "{\"data\":[{\"id\":\"gemma4\"},{\"id\":\"" +
+                PreferredModel + "\"}]}";
             List<string> models = ExtractModelIds(json);
             if (models.Count != 2) return 51;
-            if (!models.Any(x => x.Equals(PreferredModel, StringComparison.Ordinal))) return 52;
+            if (!models.Any(id => id.Equals(
+                    PreferredModel,
+                    StringComparison.Ordinal))) return 52;
             if (!SafeModelId(PreferredModel)) return 53;
             if (!SafeLoopbackBase("http://127.0.0.1:8080")) return 54;
             return 0;
@@ -459,19 +573,26 @@ namespace InvestorIntelligence
         {
             if (args.Contains("--version"))
             {
-                Console.WriteLine("Investor Intelligence " + Version + " " + Revision);
+                Console.WriteLine(
+                    "Investor Intelligence " + Version + " " + Revision);
                 return 0;
             }
-            if (args.Contains("--pipe-hold-self-test")) return PipeHoldSelfTest();
-            if (args.Contains("--model-selection-self-test")) return ModelSelectionSelfTest();
+            if (args.Contains("--pipe-hold-self-test"))
+                return PipeHoldSelfTest();
+            if (args.Contains("--model-selection-self-test"))
+                return ModelSelectionSelfTest();
             if (args.Contains("--self-test"))
             {
                 string[] required = {
-                    "run-v213-local.ps1", "run-v213-local-llm-bridge.ps1",
-                    "activate-v213-seven-field-schedule.ps1", "sync-v213-top20-report.ps1",
-                    "install-v213-runtime.ps1", "register-v213-refresh-tasks.ps1",
+                    "run-v213-local.ps1",
+                    "run-v213-local-llm-bridge.ps1",
+                    "activate-v213-seven-field-schedule.ps1",
+                    "sync-v213-top20-report.ps1",
+                    "install-v213-runtime.ps1",
+                    "register-v213-refresh-tasks.ps1",
                     @"scripts\build_v213_scheduled_top20_report.py",
-                    @"scripts\bootstrap_portable_python.ps1", "requirements-ci.txt"
+                    @"scripts\bootstrap_portable_python.ps1",
+                    "requirements-ci.txt"
                 };
                 foreach (string item in required)
                 {
@@ -481,15 +602,28 @@ namespace InvestorIntelligence
                         return 1;
                     }
                 }
-                Console.WriteLine("INVESTOR_INTELLIGENCE_V213_LAUNCHER_SELF_TEST=PASS");
+                Console.WriteLine(
+                    "INVESTOR_INTELLIGENCE_V213_LAUNCHER_SELF_TEST=PASS");
                 return 0;
             }
-            if (args.Contains("--local")) return RunPowerShellCli("run-v213-local.ps1", "-ProjectRoot " + PowerShellLiteral(Root) + " -InstallCloudflared");
+            if (args.Contains("--local"))
+            {
+                return RunPowerShellCli(
+                    "run-v213-local.ps1",
+                    "-ProjectRoot " + PowerShellLiteral(Root) +
+                    " -InstallCloudflared");
+            }
             if (args.Contains("--activate-schedule"))
             {
-                int refresh = RunPowerShellCli("run-v213-local.ps1", "-ProjectRoot " + PowerShellLiteral(Root) + " -InstallCloudflared -NoAutoActivation");
+                int refresh = RunPowerShellCli(
+                    "run-v213-local.ps1",
+                    "-ProjectRoot " + PowerShellLiteral(Root) +
+                    " -InstallCloudflared -NoAutoActivation");
                 if (refresh != 0) return refresh;
-                return RunPowerShellCli("activate-v213-seven-field-schedule.ps1", "-ProjectRoot " + PowerShellLiteral(Root) + " -ConfirmActivation -RequireLocalModel");
+                return RunPowerShellCli(
+                    "activate-v213-seven-field-schedule.ps1",
+                    "-ProjectRoot " + PowerShellLiteral(Root) +
+                    " -ConfirmActivation -RequireLocalModel");
             }
 
             Application.EnableVisualStyles();
@@ -510,10 +644,11 @@ namespace InvestorIntelligence
             readonly Button bridgeButton;
             readonly Button folderButton;
             readonly Timer elapsedTimer;
+            readonly List<string> discoveredModels = new List<string>();
+
             DateTime operationStartedUtc;
             string operationLabel = "";
             string discoveredBaseUrl = "";
-            readonly List<string> discoveredModels = new List<string>();
             bool busy;
 
             public MainForm()
@@ -526,46 +661,98 @@ namespace InvestorIntelligence
                 MaximizeBox = false;
 
                 Controls.Add(new Label {
-                    Left = 24, Top = 18, Width = 650, Height = 48,
-                    Text = "Investor Intelligence v2.1.3 " + Revision + "\n本地模型 + 七欄 LINE / Local Model + Seven-Field LINE",
-                    Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold)
+                    Left = 24,
+                    Top = 18,
+                    Width = 650,
+                    Height = 48,
+                    Text = "Investor Intelligence v2.1.3 " + Revision +
+                        "\n本地模型 + 七欄 LINE / Local Model + Seven-Field LINE",
+                    Font = new System.Drawing.Font(
+                        "Segoe UI",
+                        13F,
+                        System.Drawing.FontStyle.Bold)
                 });
 
                 Controls.Add(new Label {
-                    Left = 24, Top = 76, Width = 190, Height = 22,
+                    Left = 24,
+                    Top = 76,
+                    Width = 190,
+                    Height = 22,
                     Text = "本地模型 / Local model"
                 });
+
                 modelBox = new ComboBox {
-                    Left = 24, Top = 99, Width = 430, Height = 28,
+                    Left = 24,
+                    Top = 99,
+                    Width = 430,
+                    Height = 28,
                     DropDownStyle = ComboBoxStyle.DropDown
                 };
                 ModelSelection saved = LoadSelection();
-                modelBox.Text = SafeModelId(saved.Model) ? saved.Model : PreferredModel;
-                discoveredBaseUrl = SafeLoopbackBase(saved.LlamaBaseUrl) ? saved.LlamaBaseUrl.TrimEnd('/') : "http://127.0.0.1:8080";
+                modelBox.Text = SafeModelId(saved.Model)
+                    ? saved.Model
+                    : PreferredModel;
+                discoveredBaseUrl = SafeLoopbackBase(saved.LlamaBaseUrl)
+                    ? saved.LlamaBaseUrl.TrimEnd('/')
+                    : "http://127.0.0.1:8080";
                 Controls.Add(modelBox);
 
-                scanButton = new Button { Left = 466, Top = 97, Width = 100, Height = 31, Text = "掃描 / Scan" };
-                useModelButton = new Button { Left = 576, Top = 97, Width = 100, Height = 31, Text = "使用 / Use" };
+                scanButton = new Button {
+                    Left = 466,
+                    Top = 97,
+                    Width = 100,
+                    Height = 31,
+                    Text = "掃描 / Scan"
+                };
+                useModelButton = new Button {
+                    Left = 576,
+                    Top = 97,
+                    Width = 100,
+                    Height = 31,
+                    Text = "使用 / Use"
+                };
                 Controls.Add(scanButton);
                 Controls.Add(useModelButton);
+
                 endpointLabel = new Label {
-                    Left = 24, Top = 132, Width = 650, Height = 22,
-                    Text = "llama.cpp: " + discoveredBaseUrl + "  |  Selected: " + modelBox.Text
+                    Left = 24,
+                    Top = 132,
+                    Width = 650,
+                    Height = 22,
+                    Text = "llama.cpp: " + discoveredBaseUrl +
+                        "  |  Selected: " + modelBox.Text
                 };
                 Controls.Add(endpointLabel);
 
-                refreshButton = MakeButton("啟動所選模型並更新資料\nStart selected model + refresh", 24, 166);
-                activateButton = MakeButton("正式啟用 08:00 / 21:00 七欄推送\nActivate scheduled seven-field LINE", 360, 166);
-                bridgeButton = MakeButton("只啟動所選模型橋接\nStart selected-model bridge only", 24, 266);
-                folderButton = MakeButton("開啟程式資料夾\nOpen package folder", 360, 266);
+                refreshButton = MakeButton(
+                    "啟動所選模型並更新資料\nStart selected model + refresh",
+                    24,
+                    166);
+                activateButton = MakeButton(
+                    "正式啟用 08:00 / 21:00 七欄推送\n" +
+                    "Activate scheduled seven-field LINE",
+                    360,
+                    166);
+                bridgeButton = MakeButton(
+                    "只啟動所選模型橋接\nStart selected-model bridge only",
+                    24,
+                    266);
+                folderButton = MakeButton(
+                    "開啟程式資料夾\nOpen package folder",
+                    360,
+                    266);
                 Controls.Add(refreshButton);
                 Controls.Add(activateButton);
                 Controls.Add(bridgeButton);
                 Controls.Add(folderButton);
 
                 status = new Label {
-                    Left = 24, Top = 370, Width = 652, Height = 82,
-                    Text = "Ready / 就緒\r\nPreferred / 預設首選: " + PreferredModel,
+                    Left = 24,
+                    Top = 370,
+                    Width = 652,
+                    Height = 82,
+                    Text = "Ready / 就緒\r\nPreferred / 預設首選: " +
+                        PreferredModel,
                     BorderStyle = BorderStyle.FixedSingle,
                     Padding = new Padding(8)
                 };
@@ -576,26 +763,37 @@ namespace InvestorIntelligence
                     if (!busy) return;
                     TimeSpan elapsed = DateTime.UtcNow - operationStartedUtc;
                     string progress = LastPowerShellLiveLine;
-                    if (String.IsNullOrWhiteSpace(progress)) progress = "請保持視窗開啟；即時 log 正在寫入 / Keep this window open";
-                    status.Text = operationLabel + "  " + elapsed.ToString(@"mm\:ss") + "\r\n" + progress;
+                    if (String.IsNullOrWhiteSpace(progress))
+                    {
+                        progress =
+                            "請保持視窗開啟；即時 log 正在寫入 / Keep this window open";
+                    }
+                    status.Text = operationLabel + "  " +
+                        elapsed.ToString(@"mm\:ss") + "\r\n" + progress;
                 };
 
                 scanButton.Click += async delegate { await RefreshModelsAsync(); };
                 useModelButton.Click += delegate {
-                    string model, baseUrl;
-                    if (!EnsureSelection(out model, out baseUrl)) return;
-                    status.Text = "模型選擇已儲存 / Model selection saved\r\n" + model + " @ " + baseUrl;
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    status.Text =
+                        "模型選擇已儲存 / Model selection saved\r\n" +
+                        selection.Model + " @ " + selection.LlamaBaseUrl;
                 };
 
                 refreshButton.Click += async delegate {
-                    string model, baseUrl;
-                    if (!EnsureSelection(out model, out baseUrl)) return;
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    string model = selection.Model;
+                    string baseUrl = selection.LlamaBaseUrl;
                     await RunBusyAsync(
                         "更新中 / Refreshing...",
                         async delegate {
                             return await RunPowerShellAsync(
                                 "run-v213-local.ps1",
-                                "-ProjectRoot " + PowerShellLiteral(Root) + " -InstallCloudflared -Model " + PowerShellLiteral(model) + " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
+                                "-ProjectRoot " + PowerShellLiteral(Root) +
+                                " -InstallCloudflared -Model " + PowerShellLiteral(model) +
+                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
                                 true);
                         },
                         "更新完成 / Refresh completed\r\nModel: " + model,
@@ -603,56 +801,83 @@ namespace InvestorIntelligence
                 };
 
                 activateButton.Click += async delegate {
-                    string model, baseUrl;
-                    if (!EnsureSelection(out model, out baseUrl)) return;
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    string model = selection.Model;
+                    string baseUrl = selection.LlamaBaseUrl;
                     var answer = MessageBox.Show(
-                        "選定模型：\n" + model + "\n\n將先重新刷新並驗證同一模型；只有 exact-model health gate 通過才部署。\n\n" +
-                        "Selected model:\n" + model + "\n\nA fresh exact-model preflight runs before deployment. Continue?",
-                        "Confirm v2.1.3 activation", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        "選定模型：\n" + model +
+                        "\n\n將先重新刷新並驗證同一模型；只有 exact-model health gate" +
+                        " 通過才部署。\n\nSelected model:\n" + model +
+                        "\n\nA fresh exact-model preflight runs before deployment. Continue?",
+                        "Confirm v2.1.3 activation",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
                     if (answer != DialogResult.Yes) return;
+
                     await RunBusyAsync(
                         "啟用前刷新 / Preflight refresh...",
                         async delegate {
-                        {
                             int refresh = await RunPowerShellAsync(
                                 "run-v213-local.ps1",
-                                "-ProjectRoot " + PowerShellLiteral(Root) + " -InstallCloudflared -NoAutoActivation -Model " + PowerShellLiteral(model) + " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
+                                "-ProjectRoot " + PowerShellLiteral(Root) +
+                                " -InstallCloudflared -NoAutoActivation" +
+                                " -Model " + PowerShellLiteral(model) +
+                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
                                 true);
                             if (refresh != 0) return refresh;
+
                             operationLabel = "正式啟用中 / Activating...";
-                            LastPowerShellLiveLine = "II_PROGRESS exact selected-model preflight complete / 所選模型驗證完成";
+                            LastPowerShellLiveLine =
+                                "II_PROGRESS exact selected-model preflight complete /" +
+                                " 所選模型驗證完成";
                             return await RunPowerShellAsync(
                                 "activate-v213-seven-field-schedule.ps1",
-                                "-ProjectRoot " + PowerShellLiteral(Root) + " -ConfirmActivation -RequireLocalModel -ExpectedModel " + PowerShellLiteral(model),
+                                "-ProjectRoot " + PowerShellLiteral(Root) +
+                                " -ConfirmActivation -RequireLocalModel" +
+                                " -ExpectedModel " + PowerShellLiteral(model),
                                 true);
-                        }},
+                        },
                         "正式啟用完成 / Activation completed\r\nModel: " + model,
-                        "啟用失敗；Production 保留/rollback 狀態請看詳細訊息 / Activation failed");
+                        "啟用失敗；Production 保留/rollback 狀態請看詳細訊息 /" +
+                        " Activation failed");
                 };
 
                 bridgeButton.Click += async delegate {
-                    string model, baseUrl;
-                    if (!EnsureSelection(out model, out baseUrl)) return;
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    string model = selection.Model;
+                    string baseUrl = selection.LlamaBaseUrl;
                     await RunBusyAsync(
                         "所選模型橋接啟動中 / Starting selected-model bridge...",
                         async delegate {
                             return await RunPowerShellAsync(
                                 "run-v213-local-llm-bridge.ps1",
-                                "-ProjectRoot " + PowerShellLiteral(Root) + " -InstallCloudflared -StopExisting -Model " + PowerShellLiteral(model) + " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
+                                "-ProjectRoot " + PowerShellLiteral(Root) +
+                                " -InstallCloudflared -StopExisting" +
+                                " -Model " + PowerShellLiteral(model) +
+                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
                                 true);
                         },
                         "本地模型橋接完成 / Model bridge ready\r\nModel: " + model,
                         "模型橋接失敗；已顯示詳細原因 / Bridge failed");
                 };
 
-                folderButton.Click += delegate { Process.Start("explorer.exe", "\"" + Root + "\""); };
+                folderButton.Click += delegate {
+                    Process.Start("explorer.exe", "\"" + Root + "\"");
+                };
+
                 FormClosing += delegate(object sender, FormClosingEventArgs e) {
                     if (!busy) return;
                     e.Cancel = true;
                     MessageBox.Show(
-                        "目前仍在執行刷新／啟用程序，請等程序結束後再關閉。\n\nAn operation is still running.",
-                        "Investor Intelligence - Running / 執行中", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        "目前仍在執行刷新／啟用程序，請等程序結束後再關閉。" +
+                        "\n\nAn operation is still running.",
+                        "Investor Intelligence - Running / 執行中",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
                 };
+
                 Shown += async delegate { await RefreshModelsAsync(); };
             }
 
@@ -661,68 +886,128 @@ namespace InvestorIntelligence
                 if (busy) return;
                 scanButton.Enabled = false;
                 useModelButton.Enabled = false;
-                status.Text = "正在掃描 llama.cpp 模型 / Scanning llama.cpp models...";
+                status.Text =
+                    "正在掃描 llama.cpp 模型 / Scanning llama.cpp models...";
+
                 ModelSelection previous = LoadSelection();
-                ModelCatalog catalog = await Task.Run(delegate { return DiscoverModels(previous); });
+                ModelCatalog catalog = await Task.Run(
+                    delegate { return DiscoverModels(previous); });
                 discoveredModels.Clear();
                 modelBox.Items.Clear();
+
                 if (catalog.Models.Count > 0)
                 {
                     discoveredBaseUrl = catalog.BaseUrl;
                     discoveredModels.AddRange(catalog.Models);
-                    foreach (string id in catalog.Models) modelBox.Items.Add(id);
+                    foreach (string id in catalog.Models)
+                        modelBox.Items.Add(id);
+
                     string current = modelBox.Text.Trim();
-                    string canonical = catalog.Models.FirstOrDefault(x => x.Equals(current, StringComparison.OrdinalIgnoreCase));
+                    string canonical = catalog.Models.FirstOrDefault(
+                        id => id.Equals(current, StringComparison.OrdinalIgnoreCase));
                     if (canonical == null)
-                        canonical = catalog.Models.FirstOrDefault(x => x.Equals(PreferredModel, StringComparison.OrdinalIgnoreCase));
-                    if (canonical != null) modelBox.SelectedItem = canonical;
-                    endpointLabel.Text = "llama.cpp: " + discoveredBaseUrl + "  |  Models: " + catalog.Models.Count + "  |  Selected: " + modelBox.Text;
-                    status.Text = "模型掃描完成 / Model scan completed\r\n請確認後按「使用 / Use」。";
+                    {
+                        canonical = catalog.Models.FirstOrDefault(
+                            id => id.Equals(
+                                PreferredModel,
+                                StringComparison.OrdinalIgnoreCase));
+                    }
+                    if (canonical != null)
+                        modelBox.SelectedItem = canonical;
+
+                    endpointLabel.Text =
+                        "llama.cpp: " + discoveredBaseUrl +
+                        "  |  Models: " + catalog.Models.Count +
+                        "  |  Selected: " + modelBox.Text;
+                    status.Text =
+                        "模型掃描完成 / Model scan completed\r\n" +
+                        "請確認後按「使用 / Use」。";
                 }
                 else
                 {
-                    endpointLabel.Text = "llama.cpp: not detected / 未偵測  |  Typed model: " + modelBox.Text;
-                    status.Text = "未讀到模型清單；可啟動 llama.cpp 後再掃描。\r\n" + catalog.Error;
+                    endpointLabel.Text =
+                        "llama.cpp: not detected / 未偵測  |  Typed model: " +
+                        modelBox.Text;
+                    status.Text =
+                        "未讀到模型清單；可啟動 llama.cpp 後再掃描。\r\n" +
+                        catalog.Error;
                 }
+
                 scanButton.Enabled = true;
                 useModelButton.Enabled = true;
             }
 
-            bool EnsureSelection(out string model, out string baseUrl)
+            bool TryCommitSelection(out ModelSelection selection)
             {
-                model = modelBox.Text.Trim();
-                baseUrl = discoveredBaseUrl.TrimEnd('/');
-                if (!SafeModelId(model))
+                selection = null;
+                string requestedModel = modelBox.Text.Trim();
+                string requestedBaseUrl = discoveredBaseUrl.TrimEnd('/');
+
+                if (!SafeModelId(requestedModel))
                 {
-                    MessageBox.Show("請選擇有效模型 ID。\nChoose a valid model ID.", "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        "請選擇有效模型 ID。\nChoose a valid model ID.",
+                        "Investor Intelligence",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
                     return false;
                 }
-                if (!SafeLoopbackBase(baseUrl)) baseUrl = "http://127.0.0.1:8080";
+                if (!SafeLoopbackBase(requestedBaseUrl))
+                    requestedBaseUrl = "http://127.0.0.1:8080";
+
                 if (discoveredModels.Count > 0)
                 {
-                    string canonical = discoveredModels.FirstOrDefault(x => x.Equals(model, StringComparison.OrdinalIgnoreCase));
+                    string lookupModel = requestedModel;
+                    string canonical = discoveredModels.FirstOrDefault(
+                        id => id.Equals(
+                            lookupModel,
+                            StringComparison.OrdinalIgnoreCase));
                     if (canonical == null)
                     {
-                        MessageBox.Show("所選模型不在目前 router 清單中。請重新掃描。\nSelected model is not in the current router catalog.", "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        MessageBox.Show(
+                            "所選模型不在目前 router 清單中。請重新掃描。\n" +
+                            "Selected model is not in the current router catalog.",
+                            "Investor Intelligence",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
                         return false;
                     }
-                    model = canonical;
+                    requestedModel = canonical;
                     modelBox.Text = canonical;
                 }
+
                 try
                 {
-                    SaveSelection(model, baseUrl, discoveredModels, "launcher_model_selector");
-                    endpointLabel.Text = "llama.cpp: " + baseUrl + "  |  Selected: " + model;
+                    SaveSelection(
+                        requestedModel,
+                        requestedBaseUrl,
+                        discoveredModels,
+                        "launcher_model_selector");
+                    selection = new ModelSelection {
+                        Model = requestedModel,
+                        LlamaBaseUrl = requestedBaseUrl
+                    };
+                    endpointLabel.Text =
+                        "llama.cpp: " + requestedBaseUrl +
+                        "  |  Selected: " + requestedModel;
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        ex.Message,
+                        "Investor Intelligence",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
                     return false;
                 }
             }
 
-            async Task RunBusyAsync(string label, Func<Task<int>> operation, string successText, string failureText)
+            async Task RunBusyAsync(
+                string label,
+                Func<Task<int>> operation,
+                string successText,
+                string failureText)
             {
                 if (busy) return;
                 SetBusy(true, label);
@@ -736,8 +1021,11 @@ namespace InvestorIntelligence
                 {
                     status.Text = failureText;
                     MessageBox.Show(
-                        "Unexpected launcher error / 啟動器非預期錯誤:\r\n\r\n" + ex.Message,
-                        "Investor Intelligence - Error / 錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        "Unexpected launcher error / 啟動器非預期錯誤:\r\n\r\n" +
+                        ex.Message,
+                        "Investor Intelligence - Error / 錯誤",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
                 }
                 finally
                 {
@@ -757,9 +1045,11 @@ namespace InvestorIntelligence
                 bridgeButton.Enabled = !value;
                 folderButton.Enabled = !value;
                 UseWaitCursor = value;
+
                 if (value)
                 {
-                    LastPowerShellLiveLine = "II_PROGRESS preparing operation / 準備執行";
+                    LastPowerShellLiveLine =
+                        "II_PROGRESS preparing operation / 準備執行";
                     operationStartedUtc = DateTime.UtcNow;
                     operationLabel = label;
                     status.Text = label + "\r\n" + LastPowerShellLiveLine;
@@ -776,8 +1066,12 @@ namespace InvestorIntelligence
             Button MakeButton(string text, int left, int top)
             {
                 return new Button {
-                    Left = left, Top = top, Width = 316, Height = 82,
-                    Text = text, UseVisualStyleBackColor = true
+                    Left = left,
+                    Top = top,
+                    Width = 316,
+                    Height = 82,
+                    Text = text,
+                    UseVisualStyleBackColor = true
                 };
             }
         }
