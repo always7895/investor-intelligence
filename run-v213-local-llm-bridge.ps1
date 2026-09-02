@@ -11,6 +11,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
+$utf8NoBom=New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding=$utf8NoBom
+$OutputEncoding=$utf8NoBom
 
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
@@ -123,19 +126,16 @@ function Stop-RecordedBridge([object]$OldState) {
         try{$process=Get-Process -Id $tunnelPid -ErrorAction Stop;if($process.ProcessName -match '(?i)^cloudflared$'){Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue}}catch{}
     }
 }
-function Wait-PublicHealth([string]$Url,[int]$ProcessId){
-    $deadline=(Get-Date).AddSeconds(90);$last='';$hostName=([uri]$Url).Host
+function Wait-PublicHealth([string]$Url,[int]$ProcessId,[int]$Seconds=35){
+    $deadline=(Get-Date).AddSeconds($Seconds);$last='';$hostName=([uri]$Url).Host
     while((Get-Date)-lt$deadline){
         if(-not(Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)){throw 'cloudflared exited before public health succeeded.'}
         try{
-            $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 15
+            $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 12
             if($health.ok -eq $true -and $health.llama_reachable -eq $true){return $health}
             $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable)"
         }catch{
             $last=$_.Exception.Message
-            # A new trycloudflare host can exist at authoritative DNS before the
-            # Windows resolver sees it. Resolve through Cloudflare DNS and use
-            # curl --resolve so HTTPS SNI/certificate verification are preserved.
             try{
                 $resolver=Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
                 $curl=Get-Command curl.exe -ErrorAction SilentlyContinue
@@ -144,7 +144,7 @@ function Wait-PublicHealth([string]$Url,[int]$ProcessId){
                         Where-Object { $_.Type -eq 'A' -and $_.IPAddress } | Select-Object -First 1
                     if($answer){
                         $resolveArg='{0}:443:{1}' -f $hostName,[string]$answer.IPAddress
-                        $curlOutput=@(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '12' '--resolve' $resolveArg ($Url.TrimEnd('/')+'/health') 2>&1)
+                        $curlOutput=@(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '10' '--resolve' $resolveArg ($Url.TrimEnd('/')+'/health') 2>&1)
                         if($LASTEXITCODE -eq 0){
                             $curlHealth=(($curlOutput|ForEach-Object{[string]$_})-join"`n")|ConvertFrom-Json
                             if($curlHealth.ok -eq $true -and $curlHealth.llama_reachable -eq $true){
@@ -159,6 +159,36 @@ function Wait-PublicHealth([string]$Url,[int]$ProcessId){
         Start-Sleep -Seconds 2
     }
     throw "Quick tunnel public health timed out. Last observation: $last"
+}
+function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$LogRoot){
+    $last=''
+    for($attempt=1;$attempt -le 3;$attempt++){
+        Write-Host "II_PROGRESS quick tunnel attempt $attempt/3" -ForegroundColor Cyan
+        $tout=Join-Path $LogRoot ("cloudflared-attempt-$attempt.stdout.log")
+        $terr=Join-Path $LogRoot ("cloudflared-attempt-$attempt.stderr.log")
+        Remove-Item $tout,$terr -Force -ErrorAction SilentlyContinue
+        $process=Start-Process -FilePath $CloudflaredPath -ArgumentList @('tunnel','--url',"http://127.0.0.1:$Port",'--protocol','http2','--no-autoupdate') -PassThru -WindowStyle Hidden -RedirectStandardOutput $tout -RedirectStandardError $terr
+        try{
+            $publicUrl='';$deadline=(Get-Date).AddSeconds(40)
+            while((Get-Date)-lt$deadline -and -not$publicUrl){
+                if(-not(Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){throw 'cloudflared exited before publishing a quick-tunnel URL.'}
+                Start-Sleep -Milliseconds 600
+                $text=''
+                foreach($path in @($tout,$terr)){if(Test-Path $path){$text+="`n"+(Get-Content $path -Raw -ErrorAction SilentlyContinue)}}
+                $match=[regex]::Match($text,'https://[a-z0-9-]+\.trycloudflare\.com','IgnoreCase')
+                if($match.Success){$publicUrl=$match.Value.TrimEnd('/')}
+            }
+            if(-not$publicUrl){throw 'Quick tunnel URL was not produced.'}
+            [void](Wait-PublicHealth $publicUrl $process.Id 35)
+            return [pscustomobject]@{process=$process;url=$publicUrl;stdout=$tout;stderr=$terr}
+        }catch{
+            $last=$_.Exception.Message
+            Write-Warning ("Quick tunnel attempt $attempt failed: $last")
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    }
+    throw "All quick-tunnel attempts failed. Last observation: $last"
 }
 
 $stateRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
@@ -194,23 +224,15 @@ try {
     if(-not(Get-Process -Id $gateway.Id -ErrorAction SilentlyContinue)){throw 'Local gateway exited during startup.'}
     $health=Invoke-RestMethod -Uri "http://127.0.0.1:$GatewayPort/health" -TimeoutSec 10
     if ($health.ok -ne $true -or $health.llama_reachable -ne $true) { throw 'v2.1.3 local gateway health failed.' }
+    Write-Host "II_PROGRESS local gateway healthy; llama=$llama; model=$Model" -ForegroundColor Green
 
     $publicUrl='';$tunnelPid=0
     if (-not $NoTunnel) {
         $cloudflaredPath=Resolve-Cloudflared
-        $tout=Join-Path $logRoot 'cloudflared.stdout.log';$terr=Join-Path $logRoot 'cloudflared.stderr.log'
-        Remove-Item $tout,$terr -Force -ErrorAction SilentlyContinue
-        $tunnel=Start-Process -FilePath $cloudflaredPath -ArgumentList @('tunnel','--url',"http://127.0.0.1:$GatewayPort",'--no-autoupdate') -PassThru -WindowStyle Hidden -RedirectStandardOutput $tout -RedirectStandardError $terr
+        $healthy=Start-HealthyQuickTunnel $cloudflaredPath $GatewayPort $logRoot
+        $tunnel=$healthy.process
+        $publicUrl=[string]$healthy.url
         $tunnelPid=$tunnel.Id
-        $deadline=(Get-Date).AddSeconds(60)
-        while ((Get-Date) -lt $deadline -and -not $publicUrl) {
-            Start-Sleep -Milliseconds 750;$text=''
-            foreach($p in @($tout,$terr)){ if(Test-Path $p){$text+="`n"+(Get-Content $p -Raw -ErrorAction SilentlyContinue)}}
-            $m=[regex]::Match($text,'https://[a-z0-9-]+\.trycloudflare\.com','IgnoreCase')
-            if($m.Success){$publicUrl=$m.Value.TrimEnd('/')}
-        }
-        if(-not $publicUrl){ throw 'Quick tunnel URL was not produced.' }
-        [void](Wait-PublicHealth $publicUrl $tunnel.Id)
     }
 
     $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
