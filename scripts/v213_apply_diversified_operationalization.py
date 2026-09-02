@@ -37,6 +37,7 @@ PLAN_PATH = ROOT / "data" / "cache" / "source_plan_public_latest.json"
 REPORT_PATH = ROOT / "reports" / "public_briefing_latest.md"
 STANDARD_PATH = ROOT / "config" / "v213-serenity-evidence-standard-v3.json"
 SCORING_VERSION = "system-operationalization-v2.1.3-diversified"
+CATALOG_COUNT = 101
 
 
 class OperationalizationError(RuntimeError):
@@ -89,9 +90,7 @@ def metric(text: Any, label: str) -> float | None:
 
 
 def demand_points(revenue_growth_pct: float | None, macro_healthy: bool) -> float:
-    if revenue_growth_pct is None:
-        base = 0.0
-    elif revenue_growth_pct < 0:
+    if revenue_growth_pct is None or revenue_growth_pct < 0:
         base = 0.0
     elif revenue_growth_pct < 10:
         base = 3.0
@@ -216,6 +215,19 @@ def reorder_report(document: dict[str, Any], order: list[str]) -> dict[str, Any]
     return result
 
 
+def yahoo_evidence(ticker: str, five: Mapping[str, Any], market_families: set[str]) -> list[dict[str, Any]]:
+    if "yahoo_finance" not in market_families:
+        return []
+    return [{
+        "source_id": "yahoo_finance_public_unofficial",
+        "tier": "T3",
+        "claim_type": "public_market_observation",
+        "title": f"Yahoo/yfinance adjusted-close observation for {ticker}",
+        "url": f"https://finance.yahoo.com/quote/{ticker}",
+        "as_of": str(five.get("retrieved_at") or ""),
+    }]
+
+
 def apply(
     top20: list[dict[str, Any]],
     v212: dict[str, Any],
@@ -256,9 +268,7 @@ def apply(
         net = metric(summary, "淨利率")
         order_supported = str(seven.get("orders_confidence") or "") not in {"", "UNAVAILABLE"}
         families = {str(value) for value in fed.get("independent_families") or [] if str(value)}
-        official_families = {
-            str(value) for value in fed.get("official_identity_or_filing_families") or [] if str(value)
-        }
+        official_families = {str(value) for value in fed.get("official_identity_or_filing_families") or [] if str(value)}
         market_families = {str(value) for value in fed.get("market_observation_families") or [] if str(value)}
 
         old_factors = raw.get("serenity_factors") if isinstance(raw.get("serenity_factors"), dict) else {}
@@ -296,12 +306,19 @@ def apply(
         penalty = min(30.0, old_penalty + source_penalty)
         score = max(0.0, min(100.0, raw_score - penalty))
         evidence = normalized_evidence(
-            list(raw.get("evidence") or []) + list(fed.get("evidence_additions") or [])
+            list(raw.get("evidence") or [])
+            + list(fed.get("evidence_additions") or [])
+            + yahoo_evidence(ticker, five, market_families)
         )
         source_ids = {item["source_id"] for item in evidence}
         official_coverage = min(1.0, len(official_families) / 3.0)
         family_coverage = min(1.0, len(families) / 4.0)
-        data_quality = round(0.55 * official_coverage + 0.35 * family_coverage + 0.10 * float(required_sources_healthy), 4)
+        data_quality = round(
+            0.55 * official_coverage
+            + 0.35 * family_coverage
+            + 0.10 * float(required_sources_healthy),
+            4,
+        )
 
         result = copy.deepcopy(raw)
         result.update({
@@ -331,12 +348,12 @@ def apply(
 
 def update_plan(plan: dict[str, Any], federation: Mapping[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(plan)
-    result["catalog_count"] = 100
+    result["catalog_count"] = CATALOG_COUNT
     inventory = result.get("inventory")
     if not isinstance(inventory, dict):
         inventory = {}
         result["inventory"] = inventory
-    inventory["source_count"] = 100
+    inventory["source_count"] = CATALOG_COUNT
     gates = federation["gates"]
     result["live_source_federation"] = {
         "schema_version": 1,
@@ -453,17 +470,14 @@ def self_test() -> None:
                 "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt", "as_of": generated,
             }],
         })
-    v212 = {
-        "product_version": "2.1.2", "records": v212_rows,
-    }
-    v213 = {
-        "product_version": "2.1.3", "records": v213_rows,
-    }
+    v212 = {"product_version": "2.1.2", "records": v212_rows}
+    v213 = {"product_version": "2.1.3", "records": v213_rows}
     federation = {
         "generated_at": generated, "ticker_sources": fed_rows,
         "unresolved_material_conflicts": [],
         "gates": {
-            "pass": True, "successful_families": ["ecb", "nasdaq", "us_bls", "us_sec", "world_bank"],
+            "pass": True,
+            "successful_families": ["ecb", "nasdaq", "us_bls", "us_sec", "world_bank"],
             "official_successful_families": ["ecb", "nasdaq", "us_bls", "us_sec", "world_bank"],
             "missing_required_families": [], "ticker_coverage_ratio": 1.0,
             "unresolved_material_conflict_count": 0,
@@ -476,6 +490,7 @@ def self_test() -> None:
     assert all(row["serenity_factors"]["replacement_friction"] == 0 for row in rows)
     assert all(row["serenity_factors"]["valuation_expectations"] <= 3.75 for row in rows)
     assert all(row["scoring_version"] == SCORING_VERSION for row in rows)
+    assert all("yahoo_finance_public_unofficial" in {e["source_id"] for e in row["evidence"]} for row in rows)
     assert [r["ticker"] for r in reordered_v212["records"]] == [r["ticker"] for r in rows]
     assert [r["ticker"] for r in reordered_v213["records"]] == [r["ticker"] for r in rows]
     print("V213_DIVERSIFIED_OPERATIONALIZATION_SELF_TEST = PASS")
