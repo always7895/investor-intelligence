@@ -5,12 +5,19 @@
       "authoritative": false,
       "purpose": "local_candidate_seed_and_market_observation_only",
       "raw_payload_redistribution": false,
+      "runtime_enabled": true
+    },
+    "alpha_vantage": {
+      "authoritative": false,
+      "credential_env": "ALPHA_VANTAGE_API_KEY",
+      "purpose": "optional_independent_market_observation",
+      "raw_payload_redistribution": false,
       "runtime_enabled": false
     }
   },
   "free_only": true,
   "public_data_only": true,
-  "schema_version": 1,
+  "schema_version": 2,
   "selected_sources": {
     "sec_edgar": {
       "adapter_status": "adapter_reviewed",
@@ -38,6 +45,62 @@
         "schema_reviewed": true
       },
       "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    },
+    "bls_public_data": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    },
+    "ecb_sdmx": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    },
+    "gleif_lei": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access",
+      "runtime_enabled": true
+    },
+    "nasdaq_symbol_directory": {
+      "adapter_status": "adapter_reviewed",
+      "gates": {
+        "adapter_tests_passed": true,
+        "authority_reviewed": true,
+        "free_access_verified": true,
+        "privacy_reviewed": true,
+        "rights_reviewed": true,
+        "runtime_health_required": true,
+        "schema_reviewed": true
+      },
+      "rights_status": "reviewed_public_access_listing_identity_only",
       "runtime_enabled": true
     }
   }
