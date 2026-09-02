@@ -1,0 +1,80 @@
+name: V2.1.3 Hotfix5 Source Normalize
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-hotfix5-source-normalize.yml
+      - activate-v213-seven-field-schedule-core.ps1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: investor-intelligence-v213-hotfix5-source-normalize
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch with write credentials
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Normalize exact PowerShell interpolation boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'activate-v213-seven-field-schedule-core.ps1'
+          $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
+          $fixed = $text.Replace('$name: $($_.Exception.Message)', '${name}: $($_.Exception.Message)')
+          if ($fixed -eq $text -and $text.Contains('$name:')) {
+            throw 'The unsafe $name: interpolation remains but did not match the reviewed replacement.'
+          }
+          if ($fixed -ne $text) {
+            [IO.File]::WriteAllText((Resolve-Path $path), $fixed, [Text.UTF8Encoding]::new($false))
+          }
+          if ((Get-Content -LiteralPath $path -Raw -Encoding utf8).Contains('$name:')) {
+            throw 'Unsafe variable-colon interpolation remains in activation core.'
+          }
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) {
+            $errors | Out-String | Write-Host
+            throw 'Activation core still has PowerShell parser errors.'
+          }
+          Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION = PASS'
+
+      - name: Remove tracked tool probes
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath 'tmp') {
+            Remove-Item -LiteralPath 'tmp' -Recurse -Force
+          }
+
+      - name: Commit normalized source when required
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $changes = git status --porcelain
+          if (-not $changes) {
+            Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION_COMMIT = NO_CHANGES'
+            exit 0
+          }
+          git config user.name 'Investor Intelligence Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'fix: normalize Hotfix5 PowerShell source and remove probes'
+          git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
+          Write-Host 'V213_HOTFIX5_SOURCE_NORMALIZATION_COMMIT = PASS'
