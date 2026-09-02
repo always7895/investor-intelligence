@@ -102,14 +102,17 @@ jobs:
           $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
           $bridge=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
           foreach($needle in @(
-            'LOG_MODE=LIVE_STREAMING_ASYNC_EVENTS',
-            'BeginOutputReadLine',
-            'CancelOutputRead',
-            'PARENT_EXIT_IS_AUTHORITATIVE',
+            'LOG_MODE=LIVE_CHILD_FILE_TAIL',
+            'ANONYMOUS_STDOUT_PIPES=FALSE',
+            'RAW_OUTPUT_FINAL_DRAIN=COMPLETE',
+            'FileShare.ReadWrite | FileShare.Delete',
             'PIPE_HOLD_PARENT_EXIT_TEST=PASS',
             'LastPowerShellLiveLine'
           )){
-            if(-not $launcher.Contains($needle)){throw "Launcher pipe-safe completion contract missing: $needle"}
+            if(-not $launcher.Contains($needle)){throw "Launcher pipe-free completion contract missing: $needle"}
+          }
+          if($launcher.Contains('RedirectStandardOutput = true') -or $launcher.Contains('BeginOutputReadLine')){
+            throw 'Launcher regressed to anonymous redirected stdout pipes.'
           }
           foreach($stage in 1..8){
             if($refresh -notmatch ("Stage\s+"+$stage+"\s+8")){throw "Refresh stage marker missing: $stage/8"}
@@ -120,7 +123,7 @@ jobs:
           foreach($needle in @('Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2')){
             if(-not $bridge.Contains($needle)){throw "Quick-tunnel retry contract missing: $needle"}
           }
-          Write-Host 'V213_LIVE_OBSERVABILITY_RECONCILIATION_AND_PIPE_SAFETY = PASS'
+          Write-Host 'V213_LIVE_OBSERVABILITY_RECONCILIATION_AND_PIPE_FREE_CAPTURE = PASS'
 
       - name: Compile and stress-test bilingual EXE launcher
         shell: pwsh
@@ -137,10 +140,10 @@ jobs:
           $pipeTest=Start-Process -FilePath $exe -ArgumentList '--pipe-hold-self-test' -PassThru
           if(-not $pipeTest.WaitForExit(20000)){
             Stop-Process -Id $pipeTest.Id -Force -ErrorAction SilentlyContinue
-            throw 'Launcher inherited-pipe self-test timed out.'
+            throw 'Launcher inherited-handle self-test timed out.'
           }
-          if($pipeTest.ExitCode -ne 0){throw "Launcher inherited-pipe self-test failed: $($pipeTest.ExitCode)"}
-          Write-Host 'V213_LAUNCHER_INHERITED_PIPE_SELF_TEST = PASS'
+          if($pipeTest.ExitCode -ne 0){throw "Launcher inherited-handle self-test failed: $($pipeTest.ExitCode)"}
+          Write-Host 'V213_LAUNCHER_CHILD_FILE_CAPTURE_SELF_TEST = PASS'
           "V213_EXE=$exe"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build one-click all-version ZIP
@@ -170,7 +173,7 @@ jobs:
           $refDoc=[ordered]@{
             schema_version=1
             package_version='2.1.3'
-            launcher_revision='PipeSafe-R39'
+            launcher_revision='FileCapture-R41'
             current_commit=$env:GITHUB_SHA.ToLowerInvariant()
             versions=$refs
             launcher='InvestorIntelligence.exe'
@@ -251,15 +254,15 @@ jobs:
           Expand-Archive $env:ALL_IN_ONE_ZIP $check
           $launcher=Join-Path $check 'InvestorIntelligence.exe'
           Invoke-BoundedExeTest $launcher '--self-test' 'Packaged EXE self-test'
-          Invoke-BoundedExeTest $launcher '--pipe-hold-self-test' 'Packaged EXE inherited-pipe self-test'
+          Invoke-BoundedExeTest $launcher '--pipe-hold-self-test' 'Packaged EXE inherited-handle self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
           if($LASTEXITCODE -ne 0){throw 'Stable runtime installation smoke test failed.'}
           $stableLauncher=Join-Path $stable 'InvestorIntelligence.exe'
           Invoke-BoundedExeTest $stableLauncher '--self-test' 'Stable runtime EXE self-test'
-          Invoke-BoundedExeTest $stableLauncher '--pipe-hold-self-test' 'Stable runtime inherited-pipe self-test'
+          Invoke-BoundedExeTest $stableLauncher '--pipe-hold-self-test' 'Stable runtime inherited-handle self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stable -ValidateOnly
           if($LASTEXITCODE -ne 0){throw 'Refresh-task non-mutating validation failed.'}
-          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_AND_PIPE_SAFETY = PASS'
+          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_AND_FILE_CAPTURE = PASS'
 
       - name: Upload one-click package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -282,7 +285,8 @@ jobs:
           - complete bilingual current-public-schema audit: PASS
           - pwsh + Windows PowerShell 5.1 parser: PASS
           - live launcher log + eight-stage refresh observability: PASS
-          - inherited stdout/stderr handle reproduction and bounded launcher completion: PASS
+          - anonymous stdout/stderr pipes removed from launcher: PASS
+          - inherited-handle reproduction and bounded child-file capture completion: PASS
           - Top20 membership changes reconcile new tickers through fail-closed SEC order evidence: included
           - EXE launcher / stable-runtime copy: PASS
           - local refresh task action non-mutating validation: PASS
