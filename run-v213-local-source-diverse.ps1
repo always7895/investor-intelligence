@@ -111,7 +111,11 @@ try {
         if (-not (Test-Python $selfTestPython)) {
             throw 'Resolved Python failed the source-diverse refresh entrypoint self-test.'
         }
-        Write-Host "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS; python=$selfTestPython" -ForegroundColor Green
+        & $selfTestPython (Join-Path $ProjectRoot 'scripts\v213_source_independence_gate_v3.py') '--wrapper-self-test'
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Market-quality degradation policy self-test failed.'
+        }
+        Write-Host "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS; python=$selfTestPython; market_quality_policy=v1" -ForegroundColor Green
         return
     }
 
@@ -190,11 +194,11 @@ try {
                 throw 'Diversified System operationalization failed.'
             }
             Write-Host 'II_PROGRESS provisional shortlist replaced by final diversified Top20' -ForegroundColor Green
-            & $python 'scripts\v213_source_independence_gate_v2.py' '--enforce'
+            & $python 'scripts\v213_source_independence_gate_v3.py' '--enforce'
             if ($LASTEXITCODE -ne 0) {
                 throw 'Claim-level source-independence gate failed; report promotion stopped.'
             }
-            Write-Host 'II_PROGRESS source independence PASS: SEC/issuer + regulated identity + Stooq/Nasdaq/optional Alpha Vantage + official macro' -ForegroundColor Green
+            Write-Host 'II_PROGRESS source independence PASS: company/claim diversity is blocking; unavailable free market cross-checks are disclosed and cap confidence' -ForegroundColor Green
 
             Stage 7 'Diversified signed public snapshot build'
             & $python 'scripts\v213_build_v21_public_snapshot.py'
