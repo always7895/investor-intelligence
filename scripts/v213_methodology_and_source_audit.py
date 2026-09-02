@@ -19,14 +19,19 @@ def load(path: Path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def normalize_text(text: str) -> str:
+    """Case-fold and collapse layout whitespace without weakening semantics."""
+    return " ".join(text.casefold().split())
+
+
 def contains_all(text: str, *tokens: str) -> bool:
-    folded = text.casefold()
-    return all(token.casefold() in folded for token in tokens)
+    normalized = normalize_text(text)
+    return all(normalize_text(token) in normalized for token in tokens)
 
 
 def contains_any(text: str, *tokens: str) -> bool:
-    folded = text.casefold()
-    return any(token.casefold() in folded for token in tokens)
+    normalized = normalize_text(text)
+    return any(normalize_text(token) in normalized for token in tokens)
 
 
 def main() -> int:
@@ -123,9 +128,8 @@ def main() -> int:
             findings.append(f"Source federation implementation missing: {token}")
 
     # Audit methodology concepts rather than brittle singular/plural wording.
-    # Every concept below requires the gateway to instruct the model explicitly;
-    # equivalent wording is accepted only when it preserves the same fail-closed
-    # semantic boundary.
+    # Layout whitespace is normalized so source-code wrapping cannot create a
+    # false failure; all substantive clauses must still be present.
     if not contains_any(
         gateway,
         "catalog is an inventory",
