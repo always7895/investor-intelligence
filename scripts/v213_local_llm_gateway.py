@@ -2,15 +2,18 @@
 """v2.1.3 local-model gateway overlay for Serenity public-logic fidelity.
 
 The underlying transport/security/source collectors remain v2.1.2. This wrapper
-adds methodology directives so open-ended stock research does not confuse the
-legacy quantitative overlay with Serenity's public discretionary reasoning.
+adds methodology directives and a model-bound health contract so Production can
+only be wired to the exact llama.cpp model selected by the owner.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -80,9 +83,65 @@ def enrich_messages(messages: list[dict[str, Any]]):
     return enriched, context
 
 
+def _available_model_ids() -> list[str]:
+    base_url = base.llama_base_url()
+    last_error: Exception | None = None
+    for suffix in ("/v1/models?reload=1", "/models?reload=1", "/v1/models"):
+        try:
+            response = requests.get(base_url + suffix, timeout=(2, 8))
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(rows, list):
+                continue
+            result: list[str] = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                model_id = str(row.get("id") or "").strip()
+                if model_id and model_id not in result:
+                    result.append(model_id)
+            if result:
+                return result
+        except Exception as exc:  # health remains fail-closed
+            last_error = exc
+    if last_error:
+        return []
+    return []
+
+
+class V213GatewayHandler(base.GatewayHandler):
+    server_version = "InvestorIntelligenceLocalGateway/2.1.3"
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path.split("?", 1)[0] != "/health":
+            super().do_GET()
+            return
+        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            response = requests.get(base.llama_base_url() + "/health", timeout=(2, 5))
+            upstream_health = response.ok
+        except Exception:
+            upstream_health = False
+        models = _available_model_ids()
+        canonical = next((item for item in models if item.casefold() == selected.casefold()), "")
+        selected_available = bool(selected and canonical)
+        self._json(
+            200,
+            {
+                "ok": True,
+                "service": "v213-local-llm-gateway",
+                "llama_reachable": bool(upstream_health and selected_available),
+                "selected_model": canonical or selected,
+                "selected_model_available": selected_available,
+                "available_model_count": len(models),
+            },
+        )
+
+
 def main() -> int:
     base.enrich_messages = enrich_messages
-    base.GatewayHandler.server_version = "InvestorIntelligenceLocalGateway/2.1.3"
+    base.GatewayHandler = V213GatewayHandler
     return base.main()
 
 
