@@ -15,14 +15,14 @@ $utf8NoBom=New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding=$utf8NoBom
 
 function ConvertTo-NativeArgument([string]$Value){
-    if($null-eq$Value -or $Value.Length-eq0){return '""'}
+    if($null-eq$Value -or $Value.Length-eq0){return '""'.Replace('\','')}
     if($Value -notmatch '[\s"]'){return $Value}
     $builder=New-Object System.Text.StringBuilder
-    [void]$builder.Append('"')
+    [void]$builder.Append('"'.Replace('\',''))
     $slashes=0
     foreach($character in $Value.ToCharArray()){
         if($character -eq '\'){$slashes++;continue}
-        if($character -eq '"'){
+        if($character -eq '"'.Replace('\','')){
             if($slashes -gt 0){[void]$builder.Append(('\' * ($slashes*2)))}
             [void]$builder.Append('\"')
             $slashes=0
@@ -32,7 +32,7 @@ function ConvertTo-NativeArgument([string]$Value){
         [void]$builder.Append($character)
     }
     if($slashes -gt 0){[void]$builder.Append(('\' * ($slashes*2)))}
-    [void]$builder.Append('"')
+    [void]$builder.Append('"'.Replace('\',''))
     return $builder.ToString()
 }
 function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){
@@ -41,7 +41,7 @@ function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]
     $quotedArgs=($Args|ForEach-Object{ConvertTo-NativeArgument ([string]$_)})-join' '
     if($extension -ieq '.cmd' -or $extension -ieq '.bat'){
         $psi.FileName=if($env:ComSpec){$env:ComSpec}else{'cmd.exe'}
-        $psi.Arguments='/d /s /c ""'+$Exe+'" '+$quotedArgs+'"'
+        $psi.Arguments='/d /s /c ""'.Replace('\','')+$Exe+'" '.Replace('\','')+$quotedArgs+'"'.Replace('\','')
     }else{
         $psi.FileName=$Exe
         $psi.Arguments=$quotedArgs
@@ -136,11 +136,23 @@ function Get-HealthyModelState([string]$Path,[string]$RequiredModel){
 
 if($SelfTest){
     $version='12345678-1234-1234-1234-123456789abc'
-    $command="[Console]::Out.Write('{`"versions`":[{`"version_id`":`"$version`",`"percentage`":100}]}');[Console]::Error.Write('search...')"
-    $powershell=(Get-Command powershell.exe -ErrorAction Stop).Source
-    $captured=Invoke-NativeCapture $powershell @('-NoProfile','-Command',$command) (Get-Location).Path
-    if($captured.ExitCode-ne0-or$captured.Stderr-notmatch'search\.\.\.'){throw 'Native stdout/stderr separation self-test failed.'}
-    if((Get-SingleActiveVersion $captured.Stdout)-ne$version){throw 'Wrangler JSON parser self-test failed.'}
+    $testRoot=Join-Path $env:TEMP ('ii-v213-wrangler-json-'+[guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $testRoot|Out-Null
+    $testCmd=Join-Path $testRoot 'emit.cmd'
+    $cmdBody=@"
+@echo off
+echo {"versions":[{"version_id":"$version","percentage":100}]}
+echo search... 1>&2
+exit /b 0
+"@
+    [IO.File]::WriteAllText($testCmd,$cmdBody,[Text.Encoding]::ASCII)
+    try{
+        $captured=Invoke-NativeCapture $testCmd @() $testRoot
+        if($captured.ExitCode-ne0){throw 'Native capture self-test process failed.'}
+        if($captured.Stderr-notmatch'search\.\.\.'){throw 'Native stderr was not captured separately.'}
+        if($captured.Stdout-match'search\.\.\.'){throw 'Native stderr contaminated stdout.'}
+        if((Get-SingleActiveVersion $captured.Stdout)-ne$version){throw 'Wrangler JSON parser self-test failed.'}
+    }finally{Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue}
     Write-Host 'V213_ACTIVATION_JSON_CAPTURE_SELF_TEST = PASS' -ForegroundColor Green
     exit 0
 }
