@@ -5,7 +5,7 @@ import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "./activation";
+} from "./activation-v2";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -24,7 +24,7 @@ function errorCode(error: unknown, fallback: string): string {
 }
 
 function validationStatus(code: string): number {
-  if (/ROLLBACK_STATE_MISSING|FINALIZE_STATE_MISSING|POINTER_MISMATCH/.test(code)) return 409;
+  if (/STATE|POINTER|CONCURRENT|COLLISION|ALREADY|MISMATCH/.test(code)) return 409;
   return 400;
 }
 
@@ -71,9 +71,10 @@ async function handleActivationTransaction(
  * v2.1.3 production entrypoint.
  *
  * Ordinary request behavior remains delegated to the accepted v2.1.2 owner
- * Worker, including local-model QA.  The v2.1.3 activation bundle is committed
- * transactionally: all immutable run objects are written before the public
- * pointer, and the caller receives a short-lived exact-pointer rollback handle.
+ * Worker, including local-model QA. The v2.1.3 activation bundle is committed
+ * transactionally: all immutable run objects are validated and written before
+ * the public pointer. A short-lived exact-pointer rollback handle is retained
+ * until the caller finalizes the Worker/runtime deployment.
  */
 export default {
   async fetch(request: Request, env: V211Env, ctx: ExecutionContext): Promise<Response> {
