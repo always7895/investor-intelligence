@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Progress wrapper and v2.1.3 source-policy bridge for the candidate engine.
+"""Progress wrapper and safe preselection bridge for the candidate engine.
 
-The underlying v2.1.0 engine still provides the deterministic candidate seed and
-SEC extraction. Its proxy-heavy score is never published directly: later
-v2.1.3 stages build a live source federation and replace the score with the
-claim-gated diversified System operationalization.
+The underlying v2.1.0 module remains responsible for deterministic candidate
+seeding and SEC extraction. Its historical keyword/margin proxy score is not
+allowed to choose v2.1.3 membership. This wrapper replaces that score before the
+20-name preselection, and later stages apply the stricter live-source-federated
+System operationalization.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 import requests
 import v21_serenity_top20 as engine
@@ -24,6 +26,7 @@ REQUIRED_LIVE_SOURCES = {
     "gleif_lei",
     "nasdaq_symbol_directory",
 }
+PRESELECTION_VERSION = "system-operationalization-v2.1.3-safe-preselection"
 
 
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -80,6 +83,93 @@ def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
     return policy, activation
 
 
+def _finite(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _revenue_capture_points(revenue_growth: float | None) -> float:
+    if revenue_growth is None or revenue_growth <= 0:
+        return 0.0
+    if revenue_growth < 0.15:
+        return 2.0
+    if revenue_growth < 0.35:
+        return 4.0
+    return 6.0
+
+
+def safe_preselection_score(
+    candidate: Mapping[str, Any],
+    official_metrics: Mapping[str, Any],
+    evidence: Sequence[Any],
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Produce a bounded shortlist score without unsupported thesis factors.
+
+    No keyword, sector, margin, beta or short-interest value can create
+    chokepoint, demand-wave, pricing-power or replacement-friction points.
+    Revenue contributes only to provisional realized-capture preselection.
+    The historical score is called only to retain schema/category/overlay and a
+    low-confidence valuation observation; it is never published.
+    """
+    legacy = engine.score_candidate(candidate, official_metrics, evidence, policy)
+    revenue = _finite(official_metrics.get("revenue_growth"))
+    net_margin = _finite(official_metrics.get("net_margin"))
+    debt_equity = _finite(official_metrics.get("debt_to_equity"))
+    legacy_factors = legacy.get("serenity_factors") if isinstance(legacy.get("serenity_factors"), dict) else {}
+    valuation = min(3.75, max(0.0, float(legacy_factors.get("valuation_expectations") or 0.0)))
+    unique_primary_urls = {
+        str(getattr(item, "url", ""))
+        for item in evidence
+        if str(getattr(item, "source_id", "")) == "sec_edgar" and str(getattr(item, "url", ""))
+    }
+    evidence_quality = 4.0 if unique_primary_urls else 1.0
+    factors = {
+        "demand_wave": 0.0,
+        "chokepoint": 0.0,
+        "pricing_power": 0.0,
+        "replacement_friction": 0.0,
+        "tam_capture": _revenue_capture_points(revenue),
+        "valuation_expectations": valuation,
+        "evidence_quality": evidence_quality,
+    }
+    risks = {
+        "architecture_and_demand_wave_unproven_at_preselection",
+        "bottleneck_unproven_without_evidence_bound_graph",
+        "pricing_power_unproven_without_contract_or_price_evidence",
+        "replacement_friction_unproven_without_switching_or_qualification_evidence",
+        "single_market_provider_degraded",
+    }
+    penalty = 2.0
+    if revenue is not None and revenue < 0:
+        penalty += 4.0
+        risks.add("negative_revenue_growth")
+    if net_margin is not None and net_margin < 0:
+        penalty += 4.0
+        risks.add("negative_net_margin")
+    if debt_equity is not None and debt_equity > 2:
+        penalty += 3.0
+        risks.add("high_debt_to_equity")
+    raw = sum(factors.values())
+    score = max(0.0, min(100.0, raw - penalty))
+    legacy.update({
+        "serenity_score": round(score, 2),
+        "serenity_raw_score": round(raw, 2),
+        "risk_penalty": round(penalty, 2),
+        "data_quality": round(0.25 + min(0.25, len(unique_primary_urls) * 0.05), 4),
+        "rating": "PROVISIONAL",
+        "serenity_factors": factors,
+        "risk_flags": sorted(risks),
+        "scoring_version": PRESELECTION_VERSION,
+    })
+    return legacy
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic", action="store_true")
@@ -87,6 +177,7 @@ def main() -> int:
 
     original_companyfacts = engine.sec_companyfacts
     original_validate = engine.validate_policy
+    original_score = engine.score_candidate
     counter = {"value": 0}
 
     def progress_companyfacts(candidate, policy, http, headers):
@@ -101,10 +192,11 @@ def main() -> int:
 
     engine.sec_companyfacts = progress_companyfacts
     engine.validate_policy = validate_v213_policy
+    engine.score_candidate = safe_preselection_score
     try:
         print("II_PROGRESS Top20 candidate discovery starting; Yahoo is T3 seed only", flush=True)
         result = engine.run(synthetic=args.synthetic)
-        print("II_PROGRESS legacy candidate score produced; diversified postprocessor required", flush=True)
+        print("II_PROGRESS safe preselection complete; proxy-heavy factors excluded; diversified postprocessor required", flush=True)
         print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
         return 0
     except (engine.PipelineError, OSError, ValueError, requests.RequestException) as exc:
@@ -113,6 +205,7 @@ def main() -> int:
     finally:
         engine.sec_companyfacts = original_companyfacts
         engine.validate_policy = original_validate
+        engine.score_candidate = original_score
 
 
 if __name__ == "__main__":
