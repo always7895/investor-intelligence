@@ -208,7 +208,16 @@ jobs:
             $sourceAudit=Get-Content data\cache\v213_source_independence_latest.json -Raw -Encoding utf8|ConvertFrom-Json
             if([string]$sourceAudit.status-ne'PASS'){throw 'Live claim-level source-independence gate did not pass.'}
             $snapshot=Get-Content data\cache\v21_public_snapshot_upload.json -Raw -Encoding utf8|ConvertFrom-Json
-            if(@($snapshot.top20).Count-ne20){throw 'Live diversified signed snapshot does not contain 20 rows.'}
+            if($null-eq$snapshot.payloads-or[string]::IsNullOrWhiteSpace([string]$snapshot.payloads.top20_json)){
+              throw 'Live diversified signed snapshot is missing payloads.top20_json.'
+            }
+            $snapshotTop20=@(ConvertFrom-Json -InputObject ([string]$snapshot.payloads.top20_json))
+            if($snapshotTop20.Count-ne20){throw 'Live diversified signed snapshot does not contain 20 rows.'}
+            for($index=0;$index-lt20;$index++){
+              if([string]$snapshotTop20[$index].ticker-ne[string]$top20[$index].ticker){
+                throw "Live signed snapshot order mismatch at rank $($index+1)."
+              }
+            }
             Write-Host 'R60_HF3_LIVE_NO_MUTATION_END_TO_END = PASS'
           }finally{
             $env:LOCALAPPDATA=$savedLocal
