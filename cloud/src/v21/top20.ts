@@ -187,7 +187,7 @@ export function formatV21Top20(records: V21Top20Record[], title: string): string
     ),
     "Aschenbrenner A/B/C 是獨立 infrastructure overlay，不計入系統量化分。",
     diversified
-      ? "100 個來源是受審查目錄；本輪 live source federation 另外驗證實際使用家族，Yahoo/yfinance 僅為 T3 觀測。"
+      ? "101 個來源是受審查目錄；本輪 live source federation 另外驗證實際使用家族，Yahoo/yfinance 僅為 T3 觀測。"
       : "來源目錄不等於本輪實際取用；未啟用來源不會冒充已取用。",
   ].join("\n");
 }
