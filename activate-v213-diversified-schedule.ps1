@@ -130,7 +130,7 @@ $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $federationPath=Join-Path $ProjectRoot 'data\cache\v213_source_federation_latest.json'
 $top20Path=Join-Path $ProjectRoot 'data\cache\top20_public_latest.json'
 $reportPath=Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
-$inner=Join-Path $ProjectRoot 'activate-v213-seven-field-schedule.ps1'
+$inner=Join-Path $ProjectRoot 'activate-v213-seven-field-schedule-core.ps1'
 foreach($path in @($federationPath,$top20Path,$reportPath,$inner)){
     if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Activation prerequisite is missing: $path"}
 }
