@@ -6,39 +6,53 @@
 
 完整解壓後雙擊 `InvestorIntelligence.exe`。不要直接從 ZIP 壓縮檔內執行。
 
-啟動器提供：
-- 啟動／偵測本地 llama.cpp 模型並更新 Investor Intelligence 公開資料。
-- 啟動 v2.1.3 本地模型 bridge。
+新版啟動器標示為 `ModelSelect-R43`，提供：
+- 掃描目前 llama.cpp router 的全部 model ID。
+- 明確選擇並持久化本地模型；預設首選是 `RVN-Q6_K-multilingual-mtp`。
+- 啟動所選本地模型並更新 Investor Intelligence 公開資料。
+- 只啟動所選模型的 v2.1.3 bridge。
 - 經二次確認後正式啟用每天 08:00 / 21:00 的 v2.1.3 七欄 LINE 推送。
 - 開啟封裝資料夾。
 
 任何 PowerShell 失敗都會顯示實際錯誤尾端，完整記錄保存於 `%LOCALAPPDATA%\InvestorIntelligence\logs\launcher\`；不再只顯示 `Exit code 1`。
 
-## 本地模型
+## 選擇本地模型
 
-v2.1.3 使用 OpenAI-compatible llama.cpp endpoint。除了固定探測 `8080 / 7905 / 14410 / 8813 / 8081 / 8000`，也會檢查正在執行的 llama/localai/kobold 類程序實際 listen port。
+啟動器會讀取目前 router 的 `/v1/models?reload=1`、`/models?reload=1` 或 `/v1/models`，並把實際 `data[].id` 顯示在下拉選單。除了固定探測 `8080 / 7905 / 14410 / 8813 / 8081 / 8000`，PowerShell bridge 也會檢查正在執行的 llama/localai/kobold 類程序實際 listening port。
 
-預設會自動讀取 `/v1/models` 的第一個 model ID；只有無法取得時才回退 `qwen3.8-27b`。如果沒有偵測到服務，會嘗試既有 `D:\LocalAI\Start-LocalAI.cmd` 或 `D:\llama.cpp\Start-LocalAI.cmd`。
+操作順序：
+1. 按「掃描 / Scan」。
+2. 從下拉選單選擇 `RVN-Q6_K-multilingual-mtp`，或選擇你之後要使用的其他現有 model ID。
+3. 按「使用 / Use」。
+4. 再按「啟動所選模型並更新資料」，或「正式啟用」。
 
-本地 model gateway 為 `scripts/v213_local_llm_gateway.py`。Shared secret 只在程序記憶體中使用，持久化時使用 Windows DPAPI 保護。Cloudflare quick tunnel 必須先通過公開 `/health` 且確認 `llama_reachable=true`；若 Windows DNS 尚未看見新 tunnel hostname，會使用 Cloudflare DNS + `curl --resolve` 做保留 HTTPS SNI/憑證驗證的 fallback。
+選擇結果保存在 `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-selection.json`。後續手動刷新、排程刷新、bridge 與正式 activation 都使用同一個選擇；系統不再默默取模型清單第一筆，也不再自動退回 Gemma 或 `qwen3.8-27b`。
+
+正式使用前，bridge 會對選定 model ID 執行最小 `/v1/chat/completions` routing probe，以確認 router 能實際載入並回應該模型。Gateway 的本機與公開 `/health` 也都必須回報同一個 `selected_model` 且 `selected_model_available=true`；任何名稱不一致都在 Production deployment 前 fail closed。
+
+如果沒有偵測到 llama.cpp 服務，會嘗試既有 `D:\LocalAI\Start-LocalAI.cmd` 或 `D:\llama.cpp\Start-LocalAI.cmd`。
+
+本地 model gateway 為 `scripts/v213_local_llm_gateway.py`。Shared secret 只在程序記憶體中使用，持久化時使用 Windows DPAPI 保護。Cloudflare quick tunnel 必須先通過公開 exact-model `/health`；若 Windows DNS 尚未看見新 tunnel hostname，會使用 Cloudflare DNS + `curl --resolve` 做保留 HTTPS SNI／憑證驗證的 fallback。
 
 ## 七欄 scheduled activation
 
 正式 activation 使用 `cloud/src/v213/production-worker.ts`：
-- EXE 會先完成一次 fresh 資料刷新與本地模型 bridge。
-- 「正式啟用」明確要求本地模型公開 bridge health gate 通過；否則 Production 不變。
+- EXE 會先完成一次 fresh 資料刷新與所選模型 bridge。
+- 「正式啟用」要求公開 bridge 的 exact-model health gate 通過；否則 Production 不變。
+- Wrangler `--json` stdout 與狀態文字／spinner stderr 分離，只解析單一 JSON document，不會再把 `search...` 當 JSON。
+- 取得並驗證 deployment 前唯一 100% Worker version 後，才允許 secret／Worker mutation。
 - 一般 fetch / Q&A 行為委派給既有 v2.1.2 owner Worker，因此保留 v2.1.1/v2.1.2 研究與本地模型路徑。
 - 新增 authenticated `/v213/admin/top20-report`。
 - 08:00 / 21:00 scheduled push 改用 v2.1.3 七欄 formatter。
 - 仍要求 owner pairing、freshness、Top20 exact order、single-message、dedupe。
-- activation 失敗時回復部署前精確 Worker version。
+- activation 後續任一關失敗時回復部署前精確 Worker version。
 
 正式啟用成功後，程式會複製到穩定位置 `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`，並把既有本地刷新工作更新為：
-- 07:20：刷新公開資料、本地模型 bridge、v2.1.3 七欄 report。
+- 07:20：刷新公開資料、所選本地模型 bridge、v2.1.3 七欄 report。
 - 20:20：同上。
 - 08:00 / 21:00：Cloudflare Worker 通過 freshness gate 後才推送 LINE。
 
-若未來某次本地模型 bridge 暫時失敗，資料刷新仍會繼續，已啟用的 Worker 不會因為一次 tunnel 失敗就被改成無模型版本；v2.1.3 report 仍會同步，開放式本地模型生成則自然 fail closed，下一次 bridge 成功時再刷新 route。
+若未來某次本地模型 bridge 暫時失敗，資料刷新仍會繼續，已啟用的 Worker 不會因為一次 tunnel 失敗就被改成無模型版本；v2.1.3 report 仍會同步，開放式本地模型生成則 fail closed，下一次同一個所選模型 bridge 成功時再刷新 route。
 
 `activate-v213-seven-field-schedule.ps1` 不會在下載或解壓時自動執行；必須由 EXE 中的「正式啟用」按鈕再次確認。
 
