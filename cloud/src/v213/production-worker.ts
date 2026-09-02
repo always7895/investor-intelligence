@@ -1,6 +1,11 @@
 import v211Worker, { type V211Env } from "../v211/worker";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";
+import {
+  finalizeV213Activation,
+  ingestV213ActivationBundle,
+  rollbackV213Activation,
+} from "./activation";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -14,40 +19,85 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-async function handleV213Admin(request: Request, env: V211Env): Promise<Response> {
+function errorCode(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function validationStatus(code: string): number {
+  if (/ROLLBACK_STATE_MISSING|FINALIZE_STATE_MISSING|POINTER_MISMATCH/.test(code)) return 409;
+  return 400;
+}
+
+async function authenticatedBody(request: Request, env: V211Env): Promise<string | Response> {
   try {
-    const body = await authenticateV21AdminRequest(request, env);
-    return jsonResponse({ status: "accepted", ...(await ingestV213Top20Report(body, env)) });
+    return await authenticateV21AdminRequest(request, env);
   } catch (error) {
-    return jsonResponse(
-      { ok: false, code: error instanceof Error ? error.message : "V213_ADMIN_FAILED" },
-      401,
-    );
+    return jsonResponse({ ok: false, code: errorCode(error, "V213_AUTH_FAILED") }, 401);
+  }
+}
+
+async function handleV213Report(request: Request, env: V211Env): Promise<Response> {
+  const authenticated = await authenticatedBody(request, env);
+  if (authenticated instanceof Response) return authenticated;
+  try {
+    return jsonResponse({ status: "accepted", ...(await ingestV213Top20Report(authenticated, env)) });
+  } catch (error) {
+    const code = errorCode(error, "V213_ADMIN_FAILED");
+    return jsonResponse({ ok: false, code }, validationStatus(code));
+  }
+}
+
+async function handleActivationTransaction(
+  request: Request,
+  env: V211Env,
+  action: "commit" | "rollback" | "finalize",
+): Promise<Response> {
+  const authenticated = await authenticatedBody(request, env);
+  if (authenticated instanceof Response) return authenticated;
+  try {
+    const result = action === "commit"
+      ? await ingestV213ActivationBundle(authenticated, env)
+      : action === "rollback"
+        ? await rollbackV213Activation(authenticated, env)
+        : await finalizeV213Activation(authenticated, env);
+    return jsonResponse(result);
+  } catch (error) {
+    const code = errorCode(error, "V213_ACTIVATION_TRANSACTION_FAILED");
+    return jsonResponse({ ok: false, code, action }, validationStatus(code));
   }
 }
 
 /**
  * v2.1.3 production entrypoint.
  *
- * All ordinary request behavior remains delegated to the accepted v2.1.2 owner
- * Worker, including the local-model QA route. Only the authenticated v2.1.3
- * report-ingest/test routes and scheduled seven-field owner broadcast are added.
+ * Ordinary request behavior remains delegated to the accepted v2.1.2 owner
+ * Worker, including local-model QA.  The v2.1.3 activation bundle is committed
+ * transactionally: all immutable run objects are written before the public
+ * pointer, and the caller receives a short-lived exact-pointer rollback handle.
  */
 export default {
   async fetch(request: Request, env: V211Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/v213/admin/activation-bundle") {
+      return handleActivationTransaction(request, env, "commit");
+    }
+    if (request.method === "POST" && url.pathname === "/v213/admin/activation-rollback") {
+      return handleActivationTransaction(request, env, "rollback");
+    }
+    if (request.method === "POST" && url.pathname === "/v213/admin/activation-finalize") {
+      return handleActivationTransaction(request, env, "finalize");
+    }
     if (request.method === "POST" && url.pathname === "/v213/admin/top20-report") {
-      return handleV213Admin(request, env);
+      return handleV213Report(request, env);
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/test-push") {
+      const authenticated = await authenticatedBody(request, env);
+      if (authenticated instanceof Response) return authenticated;
       try {
-        await authenticateV21AdminRequest(request, env);
         return jsonResponse(await broadcastV213Top20(env, "test"));
       } catch (error) {
-        return jsonResponse(
-          { ok: false, code: error instanceof Error ? error.message : "V213_TEST_PUSH_FAILED" },
-          401,
-        );
+        const code = errorCode(error, "V213_TEST_PUSH_FAILED");
+        return jsonResponse({ ok: false, code }, validationStatus(code));
       }
     }
     return v211Worker.fetch(request, env, ctx);
