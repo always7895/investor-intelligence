@@ -7,267 +7,409 @@ param(
     [switch]$RequireLocalModel,
     [switch]$SelfTest
 )
-$ErrorActionPreference='Stop'
-$ProgressPreference='SilentlyContinue'
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
-$utf8NoBom=New-Object System.Text.UTF8Encoding($false)
-[Console]::OutputEncoding=$utf8NoBom
-$OutputEncoding=$utf8NoBom
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 
-function ConvertTo-NativeArgument([string]$Value){
-    if($null-eq$Value -or $Value.Length-eq0){return '""'.Replace('\','')}
-    if($Value -notmatch '[\s"]'){return $Value}
-    $builder=New-Object System.Text.StringBuilder
+function Get-PropertyValue([object]$Object,[string]$Name,[object]$Default=$null) {
+    if ($null -eq $Object) { return $Default }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $Default }
+    return $property.Value
+}
+
+function ConvertTo-NativeArgument([string]$Value) {
+    if ($null -eq $Value -or $Value.Length -eq 0) { return '""'.Replace('\','') }
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $builder = New-Object System.Text.StringBuilder
     [void]$builder.Append('"'.Replace('\',''))
-    $slashes=0
-    foreach($character in $Value.ToCharArray()){
-        if($character -eq '\'){$slashes++;continue}
-        if($character -eq '"'.Replace('\','')){
-            if($slashes -gt 0){[void]$builder.Append(('\' * ($slashes*2)))}
+    $slashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') { $slashes++; continue }
+        if ($character -eq '"'.Replace('\','')) {
+            if ($slashes -gt 0) { [void]$builder.Append(('\' * ($slashes * 2))) }
             [void]$builder.Append('\"')
-            $slashes=0
+            $slashes = 0
             continue
         }
-        if($slashes -gt 0){[void]$builder.Append(('\' * $slashes));$slashes=0}
+        if ($slashes -gt 0) { [void]$builder.Append(('\' * $slashes)); $slashes = 0 }
         [void]$builder.Append($character)
     }
-    if($slashes -gt 0){[void]$builder.Append(('\' * ($slashes*2)))}
+    if ($slashes -gt 0) { [void]$builder.Append(('\' * ($slashes * 2))) }
     [void]$builder.Append('"'.Replace('\',''))
     return $builder.ToString()
 }
-function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){
-    $psi=New-Object System.Diagnostics.ProcessStartInfo
-    $extension=[IO.Path]::GetExtension($Exe)
-    $quotedArgs=($Args|ForEach-Object{ConvertTo-NativeArgument ([string]$_)})-join' '
-    if($extension -ieq '.cmd' -or $extension -ieq '.bat'){
-        $psi.FileName=if($env:ComSpec){$env:ComSpec}else{'cmd.exe'}
-        $psi.Arguments='/d /s /c ""'.Replace('\','')+$Exe+'" '.Replace('\','')+$quotedArgs+'"'.Replace('\','')
-    }else{
-        $psi.FileName=$Exe
-        $psi.Arguments=$quotedArgs
+
+function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $quotedArgs = ($Args | ForEach-Object { ConvertTo-NativeArgument ([string]$_) }) -join ' '
+    $extension = [IO.Path]::GetExtension($Exe)
+    if ($extension -ieq '.cmd' -or $extension -ieq '.bat') {
+        $psi.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
+        $psi.Arguments = '/d /s /c ""'.Replace('\','') + $Exe + '" '.Replace('\','') + $quotedArgs + '"'.Replace('\','')
     }
-    $psi.WorkingDirectory=$Cwd
-    $psi.UseShellExecute=$false
-    $psi.CreateNoWindow=$true
-    $psi.RedirectStandardOutput=$true
-    $psi.RedirectStandardError=$true
-    $psi.RedirectStandardInput=$true
-    $psi.StandardOutputEncoding=$utf8NoBom
-    $psi.StandardErrorEncoding=$utf8NoBom
-    $psi.EnvironmentVariables['NO_COLOR']='1'
-    $psi.EnvironmentVariables['CI']='true'
-    $psi.EnvironmentVariables['TERM']='dumb'
-    $psi.EnvironmentVariables['WRANGLER_SEND_METRICS']='false'
-    $process=New-Object System.Diagnostics.Process
-    $process.StartInfo=$psi
-    if(-not$process.Start()){throw "Unable to start native command: $Exe"}
-    $stdoutTask=$process.StandardOutput.ReadToEndAsync()
-    $stderrTask=$process.StandardError.ReadToEndAsync()
-    if($InputText){$process.StandardInput.WriteLine($InputText)}
+    else {
+        $psi.FileName = $Exe
+        $psi.Arguments = $quotedArgs
+    }
+    $psi.WorkingDirectory = $Cwd
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.RedirectStandardInput = $true
+    $psi.StandardOutputEncoding = $utf8NoBom
+    $psi.StandardErrorEncoding = $utf8NoBom
+    $psi.EnvironmentVariables['NO_COLOR'] = '1'
+    $psi.EnvironmentVariables['CI'] = 'true'
+    $psi.EnvironmentVariables['TERM'] = 'dumb'
+    $psi.EnvironmentVariables['WRANGLER_SEND_METRICS'] = 'false'
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Unable to start native command: $Exe" }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    if ($InputText) { $process.StandardInput.WriteLine($InputText) }
     $process.StandardInput.Close()
     $process.WaitForExit()
-    $stdout=$stdoutTask.GetAwaiter().GetResult()
-    $stderr=$stderrTask.GetAwaiter().GetResult()
-    $exitCode=$process.ExitCode
+    $result = [pscustomobject]@{
+        ExitCode = $process.ExitCode
+        Stdout = [string]$stdoutTask.GetAwaiter().GetResult()
+        Stderr = [string]$stderrTask.GetAwaiter().GetResult()
+    }
     $process.Dispose()
-    return [pscustomobject]@{ExitCode=$exitCode;Stdout=[string]$stdout;Stderr=[string]$stderr}
-}
-function Capture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){
-    $result=Invoke-NativeCapture $Exe $Args $Cwd $InputText
-    if($result.ExitCode-ne0){
-        $tail=(($result.Stdout+"`n"+$result.Stderr)-split'\r?\n'|Select-Object -Last 30)-join"`n"
-        throw "$Exe failed with exit code $($result.ExitCode)`n$tail"
-    }
-    return [string]$result.Stdout
-}
-function Run([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''){
-    $result=Invoke-NativeCapture $Exe $Args $Cwd $InputText
-    if($result.Stdout){Write-Host $result.Stdout.TrimEnd()}
-    if($result.Stderr){Write-Host $result.Stderr.TrimEnd()}
-    if($result.ExitCode-ne0){
-        $tail=(($result.Stdout+"`n"+$result.Stderr)-split'\r?\n'|Select-Object -Last 30)-join"`n"
-        throw "$Exe failed with exit code $($result.ExitCode)`n$tail"
-    }
-    return [string]$result.Stdout
-}
-function Parse-JsonOutput([string]$Raw){
-    if([string]::IsNullOrWhiteSpace($Raw)){throw 'Wrangler JSON stdout was empty.'}
-    $escape=[regex]::Escape([string][char]27)
-    $value=[regex]::Replace($Raw,$escape+'\[[0-?]*[ -/]*[@-~]','').Trim().TrimStart([char]0xFEFF)
-    try{return($value|ConvertFrom-Json)}catch{throw "Wrangler stdout was not one valid JSON document. $($_.Exception.Message)"}
-}
-function Get-SingleActiveVersion([string]$Raw){
-    $root=Parse-JsonOutput $Raw
-    $versions=@($root.versions)
-    if($versions.Count-eq0){throw 'Wrangler deployment JSON has no versions array.'}
-    $active=@($versions|Where-Object{
-        $percentage=0.0
-        [void][double]::TryParse([string]$_.percentage,[ref]$percentage)
-        ($percentage-ge99.999-and$percentage-le100.001)-or($percentage-ge.99999-and$percentage-le1.00001)
-    })
-    if($active.Count-ne1){throw "Expected exactly one 100% active Worker version; found $($active.Count)."}
-    $version=[string]$active[0].version_id
-    if($version -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$'){throw 'Active Worker version_id is invalid.'}
-    return $version.ToLowerInvariant()
-}
-function Set-Var([string]$Text,[string]$Key,[string]$Value){
-    $Text=[regex]::Replace($Text,"(?m)^\s*$Key\s*=.*(?:\r?\n)?",'')
-    $escaped=$Value.Replace('\','\\').Replace('"','\"')
-    [regex]::Replace($Text,'(?m)^\[vars\]\s*$',"[vars]`r`n$Key = `"$escaped`"",1)
-}
-function Remove-Var([string]$Text,[string]$Key){return[regex]::Replace($Text,"(?m)^\s*$Key\s*=.*(?:\r?\n)?",'')}
-function Get-HealthyModelState([string]$Path,[string]$RequiredModel){
-    if(-not(Test-Path $Path -PathType Leaf)){return $null}
-    try{
-        $modelState=Get-Content $Path -Raw -Encoding utf8|ConvertFrom-Json
-        if(-not$modelState.public_url -or -not$modelState.allowed_host -or -not$modelState.model -or -not$modelState.encrypted_shared_secret){return $null}
-        if($modelState.selected_model_verified -ne $true){return $null}
-        if($RequiredModel -and [string]$modelState.model -ine $RequiredModel){return $null}
-        $connected=[DateTimeOffset]::MinValue
-        if(-not[DateTimeOffset]::TryParse([string]$modelState.connected_at,[ref]$connected)){return $null}
-        $age=([DateTimeOffset]::UtcNow-$connected.ToUniversalTime()).TotalMinutes
-        if($age-lt-5-or$age-gt30){return $null}
-        $health=Invoke-RestMethod -Method Get -Uri (([string]$modelState.public_url).TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
-        if($health.ok-ne$true-or$health.llama_reachable-ne$true-or$health.selected_model_available-ne$true){return $null}
-        if([string]$health.selected_model -ine [string]$modelState.model){return $null}
-        return $modelState
-    }catch{return $null}
+    return $result
 }
 
-if($SelfTest){
-    $version='12345678-1234-1234-1234-123456789abc'
-    $testRoot=Join-Path $env:TEMP ('ii-v213-wrangler-json-'+[guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Force -Path $testRoot|Out-Null
-    $testCmd=Join-Path $testRoot 'emit.cmd'
-    $cmdBody=@"
-@echo off
-echo {"versions":[{"version_id":"$version","percentage":100}]}
-echo search... 1>&2
-exit /b 0
-"@
-    [IO.File]::WriteAllText($testCmd,$cmdBody,[Text.Encoding]::ASCII)
-    try{
-        $captured=Invoke-NativeCapture $testCmd @() $testRoot
-        if($captured.ExitCode-ne0){throw 'Native capture self-test process failed.'}
-        if($captured.Stderr-notmatch'search\.\.\.'){throw 'Native stderr was not captured separately.'}
-        if($captured.Stdout-match'search\.\.\.'){throw 'Native stderr contaminated stdout.'}
-        if((Get-SingleActiveVersion $captured.Stdout)-ne$version){throw 'Wrangler JSON parser self-test failed.'}
-    }finally{Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue}
-    Write-Host 'V213_ACTIVATION_JSON_CAPTURE_SELF_TEST = PASS' -ForegroundColor Green
+function Capture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
+    $result = Invoke-NativeCapture $Exe $Args $Cwd $InputText
+    if ($result.ExitCode -ne 0) {
+        $tail = (($result.Stdout + "`n" + $result.Stderr) -split '\r?\n' | Select-Object -Last 30) -join "`n"
+        throw "$Exe failed with exit code $($result.ExitCode)`n$tail"
+    }
+    return [string]$result.Stdout
+}
+
+function Run([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
+    $result = Invoke-NativeCapture $Exe $Args $Cwd $InputText
+    if ($result.Stdout) { Write-Host $result.Stdout.TrimEnd() }
+    if ($result.Stderr) { Write-Host $result.Stderr.TrimEnd() }
+    if ($result.ExitCode -ne 0) {
+        $tail = (($result.Stdout + "`n" + $result.Stderr) -split '\r?\n' | Select-Object -Last 30) -join "`n"
+        throw "$Exe failed with exit code $($result.ExitCode)`n$tail"
+    }
+    return [string]$result.Stdout
+}
+
+function Parse-JsonOutput([string]$Raw) {
+    if ([string]::IsNullOrWhiteSpace($Raw)) { throw 'Wrangler JSON stdout was empty.' }
+    $escape = [regex]::Escape([string][char]27)
+    $value = [regex]::Replace($Raw, $escape + '\[[0-?]*[ -/]*[@-~]', '').Trim().TrimStart([char]0xFEFF)
+    try { return ($value | ConvertFrom-Json) }
+    catch { throw "Wrangler stdout was not one valid JSON document. $($_.Exception.Message)" }
+}
+
+function Get-SingleActiveVersion([string]$Raw) {
+    $root = Parse-JsonOutput $Raw
+    $versions = @($root.versions)
+    if ($versions.Count -eq 0) { throw 'Wrangler deployment JSON has no versions array.' }
+    $active = @($versions | Where-Object {
+        $percentage = 0.0
+        [void][double]::TryParse([string]$_.percentage, [ref]$percentage)
+        ($percentage -ge 99.999 -and $percentage -le 100.001) -or
+        ($percentage -ge .99999 -and $percentage -le 1.00001)
+    })
+    if ($active.Count -ne 1) { throw "Expected exactly one 100% active Worker version; found $($active.Count)." }
+    $version = [string]$active[0].version_id
+    if ($version -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$') { throw 'Active Worker version_id is invalid.' }
+    return $version.ToLowerInvariant()
+}
+
+function Set-Var([string]$Text,[string]$Key,[string]$Value) {
+    $Text = [regex]::Replace($Text, "(?m)^\s*$Key\s*=.*(?:\r?\n)?", '')
+    $escaped = $Value.Replace('\','\\').Replace('"','\"')
+    return [regex]::Replace($Text, '(?m)^\[vars\]\s*$', "[vars]`r`n$Key = `"$escaped`"", 1)
+}
+
+function Remove-Var([string]$Text,[string]$Key) {
+    return [regex]::Replace($Text, "(?m)^\s*$Key\s*=.*(?:\r?\n)?", '')
+}
+
+function Get-HealthyModelState([string]$Path,[string]$RequiredModel) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try {
+        $modelState = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
+        $publicUrl = [string](Get-PropertyValue $modelState 'public_url' '')
+        $allowedHost = [string](Get-PropertyValue $modelState 'allowed_host' '')
+        $model = [string](Get-PropertyValue $modelState 'model' '')
+        $secret = [string](Get-PropertyValue $modelState 'encrypted_shared_secret' '')
+        if (-not $publicUrl -or -not $allowedHost -or -not $model -or -not $secret) { return $null }
+        if ((Get-PropertyValue $modelState 'selected_model_verified' $false) -ne $true) { return $null }
+        if ($RequiredModel -and $model -ine $RequiredModel) { return $null }
+        $connected = [DateTimeOffset]::MinValue
+        if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $modelState 'connected_at' ''), [ref]$connected)) { return $null }
+        $age = ([DateTimeOffset]::UtcNow - $connected.ToUniversalTime()).TotalMinutes
+        if ($age -lt -5 -or $age -gt 30) { return $null }
+        $health = Invoke-RestMethod -Method Get -Uri ($publicUrl.TrimEnd('/') + '/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 20
+        if ((Get-PropertyValue $health 'ok' $false) -ne $true) { return $null }
+        if ((Get-PropertyValue $health 'llama_reachable' $false) -ne $true) { return $null }
+        if ((Get-PropertyValue $health 'selected_model_available' $false) -ne $true) { return $null }
+        if ([string](Get-PropertyValue $health 'selected_model' '') -ine $model) { return $null }
+        return $modelState
+    }
+    catch { return $null }
+}
+
+function Backup-RefreshTasks {
+    $backup = @{}
+    foreach ($name in @('InvestorIntelligence-v21-MorningRefresh','InvestorIntelligence-v21-EveningRefresh')) {
+        $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+        if ($task) {
+            try { $backup[$name] = Export-ScheduledTask -TaskName $name }
+            catch { $backup[$name] = $null }
+        }
+        else { $backup[$name] = $null }
+    }
+    return $backup
+}
+
+function Restore-RefreshTasks([hashtable]$Backup) {
+    foreach ($name in @('InvestorIntelligence-v21-MorningRefresh','InvestorIntelligence-v21-EveningRefresh')) {
+        try {
+            if ($Backup.ContainsKey($name) -and $Backup[$name]) {
+                Register-ScheduledTask -TaskName $name -Xml ([string]$Backup[$name]) -Force | Out-Null
+            }
+            else {
+                Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+            }
+        }
+        catch { Write-Warning "Unable to restore scheduled task $name: $($_.Exception.Message)" }
+    }
+}
+
+if ($SelfTest) {
+    $version = '12345678-1234-1234-1234-123456789abc'
+    $testRoot = Join-Path $env:TEMP ('ii-v213-wrangler-json-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
+    $testCmd = Join-Path $testRoot 'emit.cmd'
+    $cmdBody = "@echo off`r`necho {`"versions`\:[{`"version_id`\:`"$version`",`"percentage`\:100}]}`r`necho search... 1>&2`r`nexit /b 0`r`n".Replace('\','')
+    [IO.File]::WriteAllText($testCmd, $cmdBody, [Text.Encoding]::ASCII)
+    try {
+        $captured = Invoke-NativeCapture $testCmd @() $testRoot
+        if ($captured.ExitCode -ne 0) { throw 'Native capture self-test process failed.' }
+        if ($captured.Stderr -notmatch 'search\.\.\.') { throw 'Native stderr was not captured separately.' }
+        if ($captured.Stdout -match 'search\.\.\.') { throw 'Native stderr contaminated stdout.' }
+        if ((Get-SingleActiveVersion $captured.Stdout) -ne $version) { throw 'Wrangler JSON parser self-test failed.' }
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -SelfTest
+        if ($LASTEXITCODE -ne 0) { throw 'Activation transaction client self-test failed.' }
+    }
+    finally { Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host 'V213_ACTIVATION_CORE_SELF_TEST = PASS; json_stderr_isolated=true; pointer_transaction=commit_rollback_finalize' -ForegroundColor Green
     exit 0
 }
 
-if(-not$ConfirmActivation){throw 'Formal scheduled activation requires -ConfirmActivation.'}
-if([string]::IsNullOrWhiteSpace($ProjectRoot)){$ProjectRoot=Split-Path -Parent $MyInvocation.MyCommand.Path}
-$ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
-$CloudRoot=Join-Path $ProjectRoot 'cloud'
-$ReportPath=Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
-if(-not(Test-Path $ReportPath -PathType Leaf)){throw 'Build the v2.1.3 seven-field report before activation.'}
-$report=Get-Content $ReportPath -Raw -Encoding utf8|ConvertFrom-Json
-if([string]$report.product_version-ne'2.1.3'-or@($report.records).Count-ne20){throw 'The local v2.1.3 report failed the activation preflight.'}
-$reportTime=[DateTimeOffset]::MinValue
-if(-not[DateTimeOffset]::TryParse([string]$report.generated_at,[ref]$reportTime)){throw 'The v2.1.3 report generated_at value is invalid.'}
-$reportAge=([DateTimeOffset]::UtcNow-$reportTime.ToUniversalTime()).TotalSeconds
-if($reportAge-lt-300-or$reportAge-gt7200){throw "The v2.1.3 report is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($reportAge))). Refresh first."}
+if (-not $ConfirmActivation) { throw 'Formal scheduled activation requires -ConfirmActivation.' }
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
+$CloudRoot = Join-Path $ProjectRoot 'cloud'
+$ReportPath = Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
+$BundlePath = Join-Path $ProjectRoot 'data\cache\v213_activation_bundle_upload.json'
+$SyncClient = Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1'
+$SyncConfig = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
+foreach ($path in @($ReportPath,$BundlePath,$SyncClient,$SyncConfig)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Activation prerequisite is missing: $path" }
+}
+$report = Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8 | ConvertFrom-Json
+$bundle = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8 | ConvertFrom-Json
+$transactionId = [string](Get-PropertyValue $bundle 'transaction_id' '')
+$runId = [string](Get-PropertyValue $bundle 'run_id' '')
+if ([string](Get-PropertyValue $report 'product_version' '') -ne '2.1.3' -or @((Get-PropertyValue $report 'records' @())).Count -ne 20) {
+    throw 'The local v2.1.3 report failed the activation preflight.'
+}
+if ((Get-PropertyValue $bundle 'schema_version' 0) -ne 4 -or [string](Get-PropertyValue $bundle 'product_version' '') -ne '2.1.3' -or $transactionId -notmatch '^[0-9a-f]{32}$' -or $runId -notmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$') {
+    throw 'The atomic v2.1.3 activation bundle failed the activation preflight.'
+}
+$reportTime = [DateTimeOffset]::MinValue
+if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $report 'generated_at' ''), [ref]$reportTime)) { throw 'The v2.1.3 report generated_at value is invalid.' }
+$reportAge = ([DateTimeOffset]::UtcNow - $reportTime.ToUniversalTime()).TotalSeconds
+if ($reportAge -lt -300 -or $reportAge -gt 7200) { throw "The v2.1.3 report is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($reportAge))). Refresh first." }
 
 & (Join-Path $ProjectRoot 'scripts\resolve_node.ps1') -MinimumVersion '22.0.0'
-$npm=if($env:PROJECT_NPM){$env:PROJECT_NPM}else{(Get-Command npm.cmd -ErrorAction Stop).Source}
+$npm = if ($env:PROJECT_NPM) { $env:PROJECT_NPM } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
 Push-Location $CloudRoot
-try{
+try {
     & $npm ci --ignore-scripts --no-audit --no-fund
-    if($LASTEXITCODE-ne0){throw 'Hash-locked cloud npm ci failed.'}
-}finally{Pop-Location}
-$wrangler=Join-Path $CloudRoot 'node_modules\.bin\wrangler.cmd'
-if(-not(Test-Path $wrangler -PathType Leaf)){throw 'Pinned Wrangler executable is unavailable after npm ci.'}
-
-$configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
-$selectionPath=Join-Path $configRoot 'v213-model-selection.json'
-if(-not$ExpectedModel-and(Test-Path $selectionPath -PathType Leaf)){
-    try{$ExpectedModel=[string](Get-Content $selectionPath -Raw -Encoding utf8|ConvertFrom-Json).model}catch{}
+    if ($LASTEXITCODE -ne 0) { throw 'Hash-locked cloud npm ci failed.' }
+    & $npm run typecheck
+    if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed before activation.' }
+    & $npm test
+    if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed before activation.' }
 }
-if($ExpectedModel-and$ExpectedModel-notmatch'^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$'){throw 'ExpectedModel contains unsupported characters.'}
-$productionConfig=@(
+finally { Pop-Location }
+$wrangler = Join-Path $CloudRoot 'node_modules\.bin\wrangler.cmd'
+if (-not (Test-Path -LiteralPath $wrangler -PathType Leaf)) { throw 'Pinned Wrangler executable is unavailable after npm ci.' }
+
+$configRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
+$selectionPath = Join-Path $configRoot 'v213-model-selection.json'
+if (-not $ExpectedModel -and (Test-Path -LiteralPath $selectionPath -PathType Leaf)) {
+    try { $ExpectedModel = [string](Get-PropertyValue (Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8 | ConvertFrom-Json) 'model' '') }
+    catch {}
+}
+if ($ExpectedModel -and $ExpectedModel -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$') { throw 'ExpectedModel contains unsupported characters.' }
+$productionConfig = @(
     (Join-Path $configRoot 'wrangler.v213.production.local.toml'),
     (Join-Path $configRoot 'wrangler.v211.production.local.toml'),
     (Join-Path $configRoot 'wrangler.v21.production.local.toml')
-)|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
-if(-not$productionConfig){throw 'Installed Production Wrangler config was not found.'}
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $productionConfig) { throw 'Installed Production Wrangler config was not found.' }
 
-$modelState=Join-Path $configRoot 'v213-local-model.json'
-$healthyModel=Get-HealthyModelState $modelState $ExpectedModel
-if($RequireLocalModel-and-not$healthyModel){throw "Formal activation requires a fresh healthy bridge for the explicitly selected model '$ExpectedModel'. Production was not changed."}
-if($healthyModel){
-    $ExpectedModel=[string]$healthyModel.model
+$modelState = Join-Path $configRoot 'v213-local-model.json'
+$healthyModel = Get-HealthyModelState $modelState $ExpectedModel
+if ($RequireLocalModel -and -not $healthyModel) { throw "Formal activation requires a fresh healthy bridge for the explicitly selected model '$ExpectedModel'. Production was not changed." }
+if ($healthyModel) {
+    $ExpectedModel = [string](Get-PropertyValue $healthyModel 'model' '')
     Write-Host "V213_SELECTED_MODEL_PREFLIGHT = PASS; model=$ExpectedModel" -ForegroundColor Green
 }
 
-$temp=Join-Path $CloudRoot ('.wrangler.v213.activation.'+[guid]::NewGuid().ToString('N')+'.toml')
-$text=Get-Content $productionConfig -Raw -Encoding utf8
-$text=[regex]::Replace($text,'(?m)^\s*main\s*=.*$','main = "src/v213/production-worker.ts"',1)
-$text=Set-Var $text 'V213_FIELD_LOCALE' $FieldLocale
-if($healthyModel){
-    $text=Set-Var $text 'LOCAL_LLM_BASE_URL' ([string]$healthyModel.public_url)
-    $text=Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string]$healthyModel.allowed_host)
-    $text=Set-Var $text 'LOCAL_LLM_MODEL' ([string]$healthyModel.model)
-    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; host=$($healthyModel.allowed_host); model=$($healthyModel.model)" -ForegroundColor Green
-}else{
-    foreach($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')){$text=Remove-Var $text $key}
-    Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; deterministic/public research can activate but open-ended local-model generation will fail closed.'
+$temp = Join-Path $CloudRoot ('.wrangler.v213.activation.' + [guid]::NewGuid().ToString('N') + '.toml')
+$text = Get-Content -LiteralPath $productionConfig -Raw -Encoding utf8
+$text = [regex]::Replace($text, '(?m)^\s*main\s*=.*$', 'main = "src/v213/production-worker.ts"', 1)
+$text = Set-Var $text 'V213_FIELD_LOCALE' $FieldLocale
+if ($healthyModel) {
+    $text = Set-Var $text 'LOCAL_LLM_BASE_URL' ([string](Get-PropertyValue $healthyModel 'public_url' ''))
+    $text = Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string](Get-PropertyValue $healthyModel 'allowed_host' ''))
+    $text = Set-Var $text 'LOCAL_LLM_MODEL' ([string](Get-PropertyValue $healthyModel 'model' ''))
+    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; host=$([string](Get-PropertyValue $healthyModel 'allowed_host' '')); model=$ExpectedModel" -ForegroundColor Green
 }
-[IO.File]::WriteAllText($temp,$text,[Text.UTF8Encoding]::new($false))
-$prior=''
-$deployed=$false
-try{
-    $prior=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+else {
+    foreach ($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')) { $text = Remove-Var $text $key }
+    Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; open-ended generation remains fail closed.'
+}
+[IO.File]::WriteAllText($temp, $text, [Text.UTF8Encoding]::new($false))
+
+$installedCopy = Join-Path $configRoot 'wrangler.v213.production.local.toml'
+$installedCopyExisted = Test-Path -LiteralPath $installedCopy -PathType Leaf
+$installedCopyBackup = if ($installedCopyExisted) { Get-Content -LiteralPath $installedCopy -Raw -Encoding utf8 } else { '' }
+$taskBackup = Backup-RefreshTasks
+$tasksTouched = $false
+$prior = ''
+$current = ''
+$deployed = $false
+$bundleCommitAttempted = $false
+$bundleCommitted = $false
+$pointerRollbackVerified = $false
+$workerRollbackVerified = $false
+try {
+    $prior = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     Write-Host "V213_ACTIVATION_PRIOR_VERSION = $prior" -ForegroundColor Cyan
-    if($healthyModel){
-        $secure=ConvertTo-SecureString -String ([string]$healthyModel.encrypted_shared_secret)
-        $sp=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-        $shared=''
-        try{
-            $shared=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
+    if ($healthyModel) {
+        $secure = ConvertTo-SecureString -String ([string](Get-PropertyValue $healthyModel 'encrypted_shared_secret' ''))
+        $sp = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        $shared = ''
+        try {
+            $shared = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
             [void](Run $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
-            $deployed=$true
-        }finally{
-            if($sp-ne[IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sp)}
-            $shared=$null
+            $deployed = $true
+        }
+        finally {
+            if ($sp -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sp) }
+            $shared = $null
         }
     }
-    [void](Run $wrangler @('deploy','--config',$temp,'--message','v2.1.3 bilingual seven-field scheduled activation') $CloudRoot)
-    $deployed=$true
-    $current=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
-    if($current-eq$prior){throw 'Deployment did not produce a new active Worker version.'}
+    [void](Run $wrangler @('deploy','--config',$temp,'--message','v2.1.3 atomic source-diverse seven-field activation') $CloudRoot)
+    $deployed = $true
+    $current = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+    if ($current -eq $prior) { throw 'Deployment did not produce a new active Worker version.' }
 
-    & (Join-Path $ProjectRoot 'sync-v213-top20-report.ps1') -ProjectRoot $ProjectRoot
-    & (Join-Path $ProjectRoot 'install-v213-runtime.ps1') -ProjectRoot $ProjectRoot
-    $stableRuntime=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
-    & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
-
-    $installedCopy=Join-Path $configRoot 'wrangler.v213.production.local.toml'
-    Copy-Item $temp $installedCopy -Force
-    [ordered]@{
-        schema_version=2;status='PASS';product_version='2.1.3'
-        activated_utc=(Get-Date).ToUniversalTime().ToString('o')
-        prior_worker_version=$prior;active_worker_version=$current
-        scheduled_times=@('08:00 Asia/Taipei','21:00 Asia/Taipei')
-        local_refresh_times=@('07:20','20:20')
-        scheduled_format='v213_seven_fields';field_locale=$FieldLocale
-        runtime_root=$stableRuntime;selected_model=$ExpectedModel
-        local_model_route=$(if($healthyModel){'HEALTHY_WIRED_EXACT_MODEL'}else{'FAIL_CLOSED_NOT_WIRED'})
-        local_model_required=[bool]$RequireLocalModel
-        wrangler_json_stdout_isolated=$true;rollback_on_failure=$true
-    }|ConvertTo-Json -Depth 6|Set-Content (Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json') -Encoding utf8
-    Write-Host "V2.1.3 SCHEDULED SEVEN-FIELD ACTIVATION = PASS; active_version=$current; model=$ExpectedModel" -ForegroundColor Green
-}catch{
-    $failure=$_.Exception.Message
-    if($deployed-and$prior){
-        Write-Host 'Activation failed; restoring exact prior Worker version...' -ForegroundColor Yellow
-        [void](Run $wrangler @('versions','deploy',($prior+'@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 scheduled activation') $CloudRoot)
-        $restored=Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
-        if($restored-ne$prior){throw "ACTIVATION FAILED AND ROLLBACK COULD NOT BE VERIFIED. Original: $failure"}
-        Write-Host 'V213_ACTIVATION_ROLLBACK = PASS' -ForegroundColor Green
+    $commitResult = Join-Path $env:TEMP ('ii-v213-activation-commit-' + [guid]::NewGuid().ToString('N') + '.json')
+    $bundleCommitAttempted = $true
+    & $SyncClient -Action Commit -ProjectRoot $ProjectRoot -BundlePath $BundlePath -LocalConfigPath $SyncConfig -ResultPath $commitResult
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $commitResult -PathType Leaf)) { throw 'Atomic activation bundle did not return a commit receipt.' }
+    $commit = Get-Content -LiteralPath $commitResult -Raw -Encoding utf8 | ConvertFrom-Json
+    Remove-Item -LiteralPath $commitResult -Force -ErrorAction SilentlyContinue
+    if ([string](Get-PropertyValue $commit 'status' '') -ne 'accepted' -or [string](Get-PropertyValue $commit 'run_id' '') -ne $runId -or [string](Get-PropertyValue $commit 'transaction_id' '') -ne $transactionId) {
+        throw 'Atomic activation bundle receipt does not match the local run.'
     }
-    throw $failure
-}finally{
-    Remove-Item $temp -Force -ErrorAction SilentlyContinue
+    $bundleCommitted = $true
+    Write-Host "V213_ATOMIC_DATA_COMMIT = PASS; run_id=$runId; transaction_id=$transactionId; pointer_written_last=true" -ForegroundColor Green
+
+    & (Join-Path $ProjectRoot 'install-v213-source-diverse-runtime.ps1') -ProjectRoot $ProjectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Stable source-diverse runtime installation failed.' }
+    $stableRuntime = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
+    $tasksTouched = $true
+    & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
+    if ($LASTEXITCODE -ne 0) { throw 'Scheduled refresh task registration failed.' }
+
+    Copy-Item -LiteralPath $temp -Destination $installedCopy -Force
+    [ordered]@{
+        schema_version = 3
+        status = 'PASS'
+        product_version = '2.1.3'
+        activated_utc = (Get-Date).ToUniversalTime().ToString('o')
+        prior_worker_version = $prior
+        active_worker_version = $current
+        activation_transaction_id = $transactionId
+        activation_run_id = $runId
+        pointer_written_last = $true
+        atomic_reports_committed = @('v21_top20','v212_five_field','v213_seven_field','source_federation','source_independence')
+        scheduled_times = @('08:00 Asia/Taipei','21:00 Asia/Taipei')
+        local_refresh_times = @('07:20','20:20')
+        scheduled_format = 'v213_seven_fields'
+        field_locale = $FieldLocale
+        runtime_root = $stableRuntime
+        selected_model = $ExpectedModel
+        local_model_route = $(if ($healthyModel) { 'HEALTHY_WIRED_EXACT_MODEL' } else { 'FAIL_CLOSED_NOT_WIRED' })
+        local_model_required = [bool]$RequireLocalModel
+        wrangler_json_stdout_isolated = $true
+        pointer_rollback_on_failure = $true
+        worker_rollback_on_failure = $true
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $env:USERPROFILE 'Desktop\Investor-Intelligence-v2.1.3-Scheduled-Activation-Receipt.json') -Encoding utf8
+
+    try {
+        & $SyncClient -Action Finalize -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
+        Write-Host 'V213_ATOMIC_DATA_FINALIZE = PASS' -ForegroundColor Green
+    }
+    catch {
+        Write-Warning ("Activation is coherent and complete, but rollback-handle cleanup will rely on its 30-minute TTL. " + $_.Exception.Message)
+    }
+    Write-Host "V2.1.3 SCHEDULED SEVEN-FIELD ACTIVATION = PASS; active_version=$current; run_id=$runId; model=$ExpectedModel" -ForegroundColor Green
+}
+catch {
+    $failure = $_.Exception.Message
+    $rollbackFailures = New-Object System.Collections.Generic.List[string]
+    if ($bundleCommitAttempted) {
+        try {
+            & $SyncClient -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
+            $pointerRollbackVerified = $true
+            Write-Host 'V213_ACTIVATION_POINTER_ROLLBACK = PASS' -ForegroundColor Green
+        }
+        catch { $rollbackFailures.Add('pointer=' + $_.Exception.Message) }
+    }
+    if ($tasksTouched) { Restore-RefreshTasks $taskBackup }
+    try {
+        if ($installedCopyExisted) { [IO.File]::WriteAllText($installedCopy, $installedCopyBackup, [Text.UTF8Encoding]::new($false)) }
+        else { Remove-Item -LiteralPath $installedCopy -Force -ErrorAction SilentlyContinue }
+    }
+    catch { $rollbackFailures.Add('local_config=' + $_.Exception.Message) }
+    if ($deployed -and $prior) {
+        try {
+            Write-Host 'Activation failed; restoring exact prior Worker version...' -ForegroundColor Yellow
+            [void](Run $wrangler @('versions','deploy',($prior + '@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 atomic activation') $CloudRoot)
+            $restored = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+            if ($restored -ne $prior) { throw "Expected $prior, observed $restored" }
+            $workerRollbackVerified = $true
+            Write-Host 'V213_ACTIVATION_WORKER_ROLLBACK = PASS' -ForegroundColor Green
+        }
+        catch { $rollbackFailures.Add('worker=' + $_.Exception.Message) }
+    }
+    if ($rollbackFailures.Count -gt 0) {
+        throw "ACTIVATION FAILED AND COMPLETE ROLLBACK COULD NOT BE VERIFIED. Original: $failure; rollback: $($rollbackFailures -join '; ')"
+    }
+    throw "V213_ATOMIC_ACTIVATION_FAILED; production_restored=true; pointer_rollback=$pointerRollbackVerified; worker_rollback=$workerRollbackVerified; cause=$failure"
+}
+finally {
+    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
 }
