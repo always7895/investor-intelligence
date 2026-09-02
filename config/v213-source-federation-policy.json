@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "policy_id": "v213-live-source-federation-v1",
+  "catalog_source_count_is_not_live_use": true,
+  "automatic_source_activation": false,
+  "public_only": true,
+  "free_only_required": true,
+  "minimum_global_successful_families": 5,
+  "minimum_global_official_families": 4,
+  "minimum_per_ticker_independent_families": 2,
+  "minimum_ticker_coverage_ratio": 0.8,
+  "maximum_single_family_evidence_share": 0.65,
+  "conflicting_primary_material_values_fail_closed": true,
+  "same_publisher_mirrors_count_once": true,
+  "same_content_hash_counts_once": true,
+  "yahoo_is_authoritative": false,
+  "single_market_provider_caps_valuation_factor": true,
+  "single_market_provider_caps_market_confidence": true,
+  "required_live_sources": {
+    "sec_edgar": {
+      "family": "us_sec",
+      "tier": "T0",
+      "role": "issuer_filings_and_financial_facts",
+      "required": true
+    },
+    "nasdaq_symbol_directory": {
+      "family": "nasdaq",
+      "tier": "T2",
+      "role": "regulated_listing_identity",
+      "required": true
+    },
+    "world_bank_indicators": {
+      "family": "world_bank",
+      "tier": "T1",
+      "role": "official_macro_context",
+      "required": true
+    },
+    "bls_public_data": {
+      "family": "us_bls",
+      "tier": "T1",
+      "role": "official_labor_inflation_context",
+      "required": true
+    },
+    "ecb_sdmx": {
+      "family": "ecb",
+      "tier": "T1",
+      "role": "official_fx_and_financial_context",
+      "required": true
+    },
+    "gleif_lei": {
+      "family": "gleif",
+      "tier": "T2",
+      "role": "independent_legal_entity_identity",
+      "required": false
+    },
+    "yahoo_finance_public_unofficial": {
+      "family": "yahoo_finance",
+      "tier": "T3",
+      "role": "candidate_discovery_and_market_observation_only",
+      "required": false
+    },
+    "alpha_vantage": {
+      "family": "alpha_vantage",
+      "tier": "T3",
+      "role": "optional_independent_market_observation",
+      "required": false,
+      "credential_env": "ALPHA_VANTAGE_API_KEY"
+    }
+  },
+  "official_macro_series": {
+    "world_bank": "NY.GDP.MKTP.KD.ZG",
+    "bls": [
+      "CUUR0000SA0",
+      "WPUFD4",
+      "CES0000000001"
+    ],
+    "ecb": "EXR/D.USD.EUR.SP00.A"
+  },
+  "activation_gate": {
+    "federation_snapshot_max_age_seconds": 7200,
+    "all_required_live_sources_must_succeed": true,
+    "unresolved_material_conflicts_allowed": 0,
+    "market_single_provider_is_degraded_not_authoritative": true,
+    "serenity_public_logic_claims_require_claim_specific_evidence": true
+  }
+}
