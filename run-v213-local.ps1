@@ -90,7 +90,7 @@ try{
     Push-Location $ProjectRoot
     try {
         Stage 3 7 'v2.1 Top20 engine / Top20 公開資料引擎 (clean first run may fetch SEC data)'
-        $engine=@('scripts\v21_serenity_top20.py')
+        $engine=@('scripts\v213_v21_progress_runner.py')
         if($Synthetic){$engine+='--synthetic'}
         & $python @engine
         if($LASTEXITCODE -ne 0){throw 'Top20 engine failed.'}
@@ -103,7 +103,7 @@ try{
 
         if(-not $Synthetic){
             Stage 5 7 'Build v2.1.2 five-field report / 五欄資料'
-            & $python 'scripts\build_v212_top20_report.py'
+            & $python 'scripts\v213_v212_progress_runner.py'
             if($LASTEXITCODE -ne 0){throw 'v2.1.2 five-field refresh failed.'}
             Write-Host 'II_PROGRESS v2.1.2 report complete' -ForegroundColor Green
 
