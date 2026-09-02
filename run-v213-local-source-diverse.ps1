@@ -105,13 +105,58 @@ function Load-SecContact {
     catch {}
 }
 
+function Invoke-CurrentWorkerBundleSync(
+    [string]$SyncConfig,
+    [string]$BundlePath
+) {
+    $bundle = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8 | ConvertFrom-Json
+    $transactionId = [string]$bundle.transaction_id
+    $runId = [string]$bundle.run_id
+    $resultRoot = Join-Path $env:TEMP ('ii-v213-bundle-sync-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $resultRoot | Out-Null
+    $commitResult = Join-Path $resultRoot 'commit.json'
+    $commitAttempted = $false
+    try {
+        $commitAttempted = $true
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Commit -ProjectRoot $ProjectRoot -BundlePath $BundlePath -LocalConfigPath $SyncConfig -ResultPath $commitResult
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $commitResult -PathType Leaf)) {
+            throw 'Atomic activation-bundle commit did not return a receipt.'
+        }
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Finalize -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Atomic activation-bundle finalize failed.'
+        }
+        Write-Host "V213_ACTIVE_BUNDLE_REFRESH = PASS; run_id=$runId; transaction_id=$transactionId" -ForegroundColor Green
+    }
+    catch {
+        $failure = $_.Exception.Message
+        if ($commitAttempted) {
+            try {
+                & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
+                Write-Host 'V213_ACTIVE_BUNDLE_REFRESH_ROLLBACK = PASS' -ForegroundColor Green
+            }
+            catch {
+                throw "ACTIVE BUNDLE REFRESH FAILED AND POINTER ROLLBACK WAS NOT VERIFIED. Original: $failure; rollback: $($_.Exception.Message)"
+            }
+        }
+        throw $failure
+    }
+    finally {
+        Remove-Item -LiteralPath $resultRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 try {
     if ($SelfTest) {
         $selfTestPython = Resolve-Python
         if (-not (Test-Python $selfTestPython)) {
             throw 'Resolved Python failed the source-diverse refresh entrypoint self-test.'
         }
-        Write-Host "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS; python=$selfTestPython; market_quality_policy=v1" -ForegroundColor Green
+        & $selfTestPython (Join-Path $ProjectRoot 'scripts\build_v213_activation_bundle.py') '--self-test'
+        if ($LASTEXITCODE -ne 0) { throw 'Activation-bundle builder self-test failed.' }
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -SelfTest
+        if ($LASTEXITCODE -ne 0) { throw 'Activation-bundle sync client self-test failed.' }
+        Write-Host "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS; python=$selfTestPython; activation_bundle=atomic; legacy_pre_activation_sync=false" -ForegroundColor Green
         return
     }
 
@@ -196,55 +241,46 @@ try {
             }
             Write-Host 'II_PROGRESS source independence PASS: company/claim diversity is blocking; unavailable free market cross-checks are disclosed and cap confidence' -ForegroundColor Green
 
-            Stage 7 'Diversified signed public snapshot build'
+            Stage 7 'Diversified signed snapshot and atomic activation bundle build'
             & $python 'scripts\v213_build_v21_public_snapshot.py'
             if ($LASTEXITCODE -ne 0) {
                 throw 'Diversified public snapshot build failed.'
             }
+            & $python 'scripts\build_v213_activation_bundle.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Atomic v2.1.3 activation-bundle build failed.'
+            }
+            Write-Host 'II_PROGRESS atomic activation bundle ready; Top20, five-field, seven-field and source sidecars share one run' -ForegroundColor Green
 
-            Stage 8 'Signed sync and exact-model route refresh'
+            Stage 8 'Atomic remote commit or formal exact-model activation'
             if ($NoSync) {
-                Write-Host 'II_PROGRESS signed sync intentionally skipped (-NoSync)' -ForegroundColor DarkGray
+                Write-Host 'II_PROGRESS remote sync intentionally skipped (-NoSync); local activation bundle retained' -ForegroundColor DarkGray
             }
             else {
                 $configRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
                 $syncConfig = Join-Path $configRoot 'v21-owner-line.local.json'
-                if (Test-Path -LiteralPath $syncConfig -PathType Leaf) {
-                    & .\sync-v21-public-snapshot.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                    if ($LASTEXITCODE -ne 0) {
-                        throw 'Signed public snapshot sync failed.'
-                    }
-                    & .\sync-v212-top20-report.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                    if ($LASTEXITCODE -ne 0) {
-                        throw 'Signed five-field sync failed.'
-                    }
-                }
-                else {
-                    Write-Warning 'Signed-sync configuration is not installed; local outputs were retained.'
-                }
-
                 $activeConfig = Join-Path $configRoot 'wrangler.v213.production.local.toml'
-                if (Test-Path -LiteralPath $activeConfig -PathType Leaf) {
-                    if (-not $NoAutoActivation -and $bridgeReady) {
-                        & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model
-                        if ($LASTEXITCODE -ne 0) {
-                            throw 'Active source-diverse Worker/model route refresh failed.'
-                        }
-                        Write-Host 'V213_SOURCE_DIVERSE_SCHEDULE_AND_MODEL_ROUTE_REFRESH = PASS' -ForegroundColor Green
+                $bundlePath = Join-Path $ProjectRoot 'data\cache\v213_activation_bundle_upload.json'
+
+                if (-not (Test-Path -LiteralPath $activeConfig -PathType Leaf)) {
+                    Write-Host 'V213_ACTIVATION_BUNDLE_READY = PASS; legacy Worker sync intentionally skipped before formal v2.1.3 activation.' -ForegroundColor Green
+                }
+                elseif ($NoAutoActivation) {
+                    Write-Host 'V213_ACTIVATION_BUNDLE_READY = PASS; explicit activation preflight requested; no Production mutation performed.' -ForegroundColor Green
+                }
+                elseif (-not (Test-Path -LiteralPath $syncConfig -PathType Leaf)) {
+                    Write-Warning 'Formal v2.1.3 is installed, but signed-sync configuration is missing; local bundle retained and remote data remains fail-closed.'
+                }
+                elseif ($bridgeReady) {
+                    & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model
+                    if ($LASTEXITCODE -ne 0) {
+                        throw 'Active source-diverse Worker/model route refresh failed.'
                     }
-                    elseif (-not $NoAutoActivation -and (Test-Path -LiteralPath $syncConfig -PathType Leaf)) {
-                        & .\sync-v213-top20-report.ps1 -ProjectRoot $ProjectRoot -LocalConfigPath $syncConfig
-                        if ($LASTEXITCODE -ne 0) {
-                            throw 'Seven-field sync failed.'
-                        }
-                        Write-Host 'V213_REPORT_SYNC = PASS; Worker model route unchanged because bridge is offline.' -ForegroundColor Yellow
-                    }
-                    else {
-                        Write-Host 'V213_REPORT_READY = PASS; explicit activation preflight requested.' -ForegroundColor Green
-                    }
+                    Write-Host 'V213_SOURCE_DIVERSE_SCHEDULE_MODEL_AND_BUNDLE_REFRESH = PASS' -ForegroundColor Green
                 }
                 else {
-                    Write-Host 'V213_REPORT_READY = PASS; formal source-diverse schedule activation has not been performed.' -ForegroundColor Green
+                    Invoke-CurrentWorkerBundleSync $syncConfig $bundlePath
+                    Write-Host 'V213_ACTIVE_DATA_REFRESH = PASS; Worker model route unchanged because exact-model bridge is offline.' -ForegroundColor Yellow
                 }
             }
         }
