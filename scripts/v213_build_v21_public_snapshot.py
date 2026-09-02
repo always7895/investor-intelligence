@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
-import build_v21_public_snapshot as base
+SCRIPT_DIR = Path(__file__).resolve().parent
+BASE_PATH = SCRIPT_DIR / "build_v21_public_snapshot.py"
+_SPEC = importlib.util.spec_from_file_location("ii_build_v21_public_snapshot", BASE_PATH)
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError(f"Unable to load base snapshot builder: {BASE_PATH}")
+base = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = base
+_SPEC.loader.exec_module(base)
 
 SCORING_VERSION = "system-operationalization-v2.1.3-diversified"
 CATALOG_COUNT = 101
@@ -101,6 +110,7 @@ def validate_plan(value: Any) -> dict[str, Any]:
 
 
 def self_test() -> None:
+    assert BASE_PATH.is_file()
     assert SCORING_VERSION.startswith("system-operationalization-")
     assert CATALOG_COUNT == 101
     print("V213_DIVERSIFIED_PUBLIC_SNAPSHOT_SELF_TEST = PASS")
