@@ -2,7 +2,7 @@
 
 This distribution puts the v2.1.0, v2.1.1, v2.1.2 and v2.1.3 source snapshots inside one outer ZIP. Fully extract the ZIP before running `InvestorIntelligence.exe`.
 
-The `ModelSelect-R43` bilingual launcher can scan the current llama.cpp router catalog, persist an explicit model choice, refresh public data through that selected model, start the selected-model bridge, and—after a separate confirmation—activate the accepted seven-field 08:00 / 21:00 LINE schedule. PowerShell failures surface the diagnostic tail and save complete logs under `%LOCALAPPDATA%\InvestorIntelligence\logs\launcher\`.
+The `ModelSelect-R43 HealthSchema2` maintenance build can scan the current llama.cpp router catalog, persist an explicit model choice, refresh public data through that selected model, start the selected-model bridge, and—after a separate confirmation—activate the accepted seven-field 08:00 / 21:00 LINE schedule. PowerShell failures surface the diagnostic tail and save complete logs under `%LOCALAPPDATA%\InvestorIntelligence\logs\launcher\`.
 
 ## Explicit local-model selection
 
@@ -17,6 +17,8 @@ Use the launcher in this order:
 The selection is persisted in `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-selection.json`. Manual refreshes, scheduled refreshes, bridge startup, and formal activation all consume the same selection. The system no longer silently selects the first catalog entry and no longer silently falls back to Gemma or `qwen3.8-27b`.
 
 Before the bridge is accepted, the selected model must pass a minimal `/v1/chat/completions` routing probe. Both loopback and public gateway `/health` responses must identify the same `selected_model` with `selected_model_available=true`; a mismatch fails closed before any Production deployment.
+
+HealthSchema2 also requires `service=v213-local-llm-gateway` and `health_schema_version=2`. If port 8814 is occupied by a legacy v2.1.2 gateway or another process, the bridge safely stops only its own stale gateway or selects the next free loopback port. Missing legacy health properties now fail closed instead of throwing a PowerShell StrictMode exception.
 
 Model discovery covers common loopback ports and the PowerShell bridge also examines listening llama/localai/kobold processes. If no service is detected, it can try the existing `D:\LocalAI\Start-LocalAI.cmd` or `D:\llama.cpp\Start-LocalAI.cmd`. The shared secret is persisted only through Windows DPAPI. Quick-tunnel DNS propagation has an SNI-safe Cloudflare-DNS plus `curl --resolve` fallback.
 
