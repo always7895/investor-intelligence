@@ -8,10 +8,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STANDARD = ROOT / "config" / "v213-serenity-evidence-standard-v3.json"
 FEDERATION = ROOT / "config" / "v213-source-federation-policy.json"
+MARKET_POLICY = ROOT / "config" / "v213-market-corroboration-degradation-policy.json"
 ACTIVATION = ROOT / "config" / "v21-source-activation.json"
 CATALOG = ROOT / "config" / "authoritative-source-catalog.json"
 SCORER = ROOT / "scripts" / "v213_apply_diversified_operationalization.py"
 FEDERATOR = ROOT / "scripts" / "v213_source_federation.py"
+SOURCE_GATE_V3 = ROOT / "scripts" / "v213_source_independence_gate_v3.py"
+SCHEDULE_ACTIVATION = ROOT / "activate-v213-seven-field-schedule.ps1"
 GATEWAY = ROOT / "scripts" / "v213_local_llm_gateway.py"
 
 
@@ -37,10 +40,13 @@ def contains_any(text: str, *tokens: str) -> bool:
 def main() -> int:
     standard = load(STANDARD)
     federation = load(FEDERATION)
+    market_policy = load(MARKET_POLICY)
     activation = load(ACTIVATION)
     catalog = load(CATALOG)
     scorer = SCORER.read_text(encoding="utf-8")
     federator = FEDERATOR.read_text(encoding="utf-8")
+    source_gate_v3 = SOURCE_GATE_V3.read_text(encoding="utf-8")
+    schedule_activation = SCHEDULE_ACTIVATION.read_text(encoding="utf-8")
     gateway = GATEWAY.read_text(encoding="utf-8")
     findings: list[str] = []
 
@@ -89,6 +95,25 @@ def main() -> int:
     if federation.get("maximum_single_family_evidence_share", 1) > 0.65:
         findings.append("Single-family evidence concentration cap is too weak")
 
+    if market_policy.get("schema_version") != 1:
+        findings.append("Market corroboration degradation policy schema must be 1")
+    if market_policy.get("market_corroboration_unavailable_is_global_blocker") is not False:
+        findings.append("Temporary market endpoint unavailability must not erase valid claim evidence")
+    if market_policy.get("market_corroboration_required_for_high_confidence_model_inference") is not True:
+        findings.append("High-confidence inference must require non-Yahoo market corroboration")
+    if market_policy.get("market_corroboration_required_for_uncapped_valuation_factor") is not True:
+        findings.append("Uncapped valuation confidence must require market corroboration")
+    if float(market_policy.get("uncorroborated_valuation_factor_max", 99)) > 3.75:
+        findings.append("Uncorroborated valuation confidence cap is too weak")
+    if market_policy.get("provider_failure_must_not_be_silently_relabelled_as_success") is not True:
+        findings.append("Provider failure must not be silently relabelled as success")
+    if market_policy.get("market_data_never_proves_company_claim") is not True:
+        findings.append("Market data must not prove a company claim")
+    if market_policy.get("market_data_never_proves_dependency_or_bottleneck") is not True:
+        findings.append("Market data must not prove dependency or bottleneck")
+    if market_policy.get("source_conflicts_are_not_averaged") is not True:
+        findings.append("Source conflicts must not be averaged")
+
     selected = activation.get("selected_sources", {})
     expected = required_ids | {"gleif_lei"}
     if set(selected) != expected:
@@ -127,6 +152,31 @@ def main() -> int:
         if token not in federator:
             findings.append(f"Source federation implementation missing: {token}")
 
+    for token in (
+        "apply_market_quality_policy",
+        "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE",
+        "blocking_violations",
+        "degradations",
+        "market_corroboration_global_blocker",
+        "market_corroboration_required_for_high_confidence_model_inference",
+        "uncorroborated_valuation_factor_max",
+        "provider_failure_must_not_be_silently_relabelled_as_success",
+        "market_data_is_not_averaged_into_published_returns",
+    ):
+        if token not in source_gate_v3:
+            findings.append(f"Market-quality-aware source gate missing: {token}")
+    if "if($nonYahoo-lt0.75){throw" in schedule_activation.replace(" ", ""):
+        findings.append("Activation still treats market endpoint availability as an unconditional global blocker")
+    for token in (
+        "V213_MARKET_CORROBORATION_QUALITY = DEGRADED",
+        "market_corroboration_status",
+        "market_quality_degraded",
+        "uncorroborated Top20 row exceeds the valuation-confidence cap",
+        "v213_source_independence_gate_v3.py",
+    ):
+        if token not in schedule_activation:
+            findings.append(f"Activation market-quality contract missing: {token}")
+
     # Audit methodology concepts rather than brittle singular/plural wording.
     # Layout whitespace is normalized so source-code wrapping cannot create a
     # false failure; all substantive clauses must still be present.
@@ -163,7 +213,11 @@ def main() -> int:
         for finding in findings:
             print(f"- {finding}")
         return 1
-    print("V213_METHODOLOGY_AND_SOURCE_AUDIT = PASS; catalog=101; required_live_families=5; per_ticker_minimum=2")
+    print(
+        "V213_METHODOLOGY_AND_SOURCE_AUDIT = PASS; catalog=101; "
+        "required_live_families=5; per_ticker_minimum=2; "
+        "market_endpoint_outage=explicit_quality_degradation"
+    )
     return 0
 
 
