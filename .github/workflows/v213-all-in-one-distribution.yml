@@ -92,6 +92,21 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Paths $paths
           if($LASTEXITCODE -ne 0){throw 'Windows PowerShell 5.1 parser gate failed.'}
 
+      - name: Audit live refresh observability contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $launcher=Get-Content launcher\InvestorIntelligenceLauncher.cs -Raw -Encoding utf8
+          $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
+          foreach($needle in @('LOG_MODE=LIVE_STREAMING','PumpStream(','FileShare.ReadWrite','LastPowerShellLiveLine')){
+            if(-not $launcher.Contains($needle)){throw "Launcher live-log contract missing: $needle"}
+          }
+          foreach($stage in 1..7){
+            if($refresh -notmatch ("Stage\s+"+$stage+"\s+7")){throw "Refresh stage marker missing: $stage/7"}
+          }
+          if(-not $refresh.Contains("PYTHONUNBUFFERED='1'")){throw 'Python unbuffered progress contract missing.'}
+          Write-Host 'V213_LIVE_OBSERVABILITY = PASS'
+
       - name: Compile bilingual EXE launcher
         shell: pwsh
         run: |
@@ -137,6 +152,8 @@ jobs:
             versions=$refs
             launcher='InvestorIntelligence.exe'
             stable_runtime='%LOCALAPPDATA%\InvestorIntelligence\V213Runtime'
+            live_launcher_logs='%LOCALAPPDATA%\InvestorIntelligence\logs\launcher'
+            live_refresh_transcripts='%LOCALAPPDATA%\InvestorIntelligence\logs\v213-refresh'
             local_model=[ordered]@{
               preferred_endpoint='http://127.0.0.1:8080/v1'
               supported_loopback_ports=@(8080,7905,14410,8813,8081,8000)
@@ -223,6 +240,7 @@ jobs:
           - v2.1.3 scheduled report self-test: PASS
           - complete bilingual current-public-schema audit: PASS
           - pwsh + Windows PowerShell 5.1 parser: PASS
+          - live launcher log + seven-stage refresh observability contract: PASS
           - EXE launcher / stable-runtime copy: PASS
           - local refresh task action non-mutating validation: PASS
           - local llama.cpp dynamic port discovery + health-gated tunnel: included
