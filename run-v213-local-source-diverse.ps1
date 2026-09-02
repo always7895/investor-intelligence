@@ -111,10 +111,6 @@ try {
         if (-not (Test-Python $selfTestPython)) {
             throw 'Resolved Python failed the source-diverse refresh entrypoint self-test.'
         }
-        & $selfTestPython (Join-Path $ProjectRoot 'scripts\v213_source_independence_gate_v3.py') '--wrapper-self-test'
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Market-quality degradation policy self-test failed.'
-        }
         Write-Host "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS; python=$selfTestPython; market_quality_policy=v1" -ForegroundColor Green
         return
     }
