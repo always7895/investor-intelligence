@@ -56,23 +56,60 @@ namespace InvestorIntelligence
             object sync,
             StringBuilder tail)
         {
-            string line;
-            while ((line = reader.ReadLine()) != null)
+            try
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lock (sync)
+                    {
+                        writer.Write(DateTime.Now.ToString("HH:mm:ss.fff"));
+                        writer.Write(" [");
+                        writer.Write(channel);
+                        writer.Write("] ");
+                        writer.WriteLine(line);
+                        writer.Flush();
+                        AppendTail(tail, channel, line);
+                    }
+                    string safe = UiSafeProgressLine(line);
+                    if (!String.IsNullOrEmpty(safe))
+                        LastPowerShellLiveLine = safe;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Expected when the parent PowerShell process has exited but a
+                // descendant retained an inherited pipe handle. The launcher
+                // closes the reader after a bounded drain window so the GUI does
+                // not remain permanently busy after the real operation is done.
+            }
+            catch (IOException)
+            {
+                // Same bounded-drain shutdown path as above.
+            }
+        }
+
+        static async Task DrainRedirectedStreamsAfterParentExit(
+            Process process,
+            Task stdoutTask,
+            Task stderrTask,
+            StreamWriter writer,
+            object sync)
+        {
+            Task drainTask = Task.WhenAll(stdoutTask, stderrTask);
+            Task completed = await Task.WhenAny(drainTask, Task.Delay(3000));
+            if (completed != drainTask)
             {
                 lock (sync)
                 {
-                    writer.Write(DateTime.Now.ToString("HH:mm:ss.fff"));
-                    writer.Write(" [");
-                    writer.Write(channel);
-                    writer.Write("] ");
-                    writer.WriteLine(line);
+                    writer.WriteLine("STREAM_DRAIN_TIMEOUT_AFTER_PARENT_EXIT=TRUE");
+                    writer.WriteLine("STREAM_DRAIN_ACTION=close_parent_readers_and_continue");
                     writer.Flush();
-                    AppendTail(tail, channel, line);
                 }
-                string safe = UiSafeProgressLine(line);
-                if (!String.IsNullOrEmpty(safe))
-                    LastPowerShellLiveLine = safe;
+                try { process.StandardOutput.Close(); } catch { }
+                try { process.StandardError.Close(); } catch { }
             }
+            try { await drainTask; } catch { }
         }
 
         static async Task<int> RunPowerShellAsync(string script, string arguments, bool showErrorDialog)
@@ -107,6 +144,8 @@ namespace InvestorIntelligence
                 writer.WriteLine("SCRIPT=" + script);
                 writer.WriteLine("STARTED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
                 writer.WriteLine("LOG_MODE=LIVE_STREAMING");
+                writer.WriteLine("PARENT_EXIT_IS_AUTHORITATIVE=TRUE");
+                writer.WriteLine("STREAM_DRAIN_GRACE_SECONDS=3");
                 writer.WriteLine("--- LIVE OUTPUT ---");
 
                 var psi = new ProcessStartInfo
@@ -141,10 +180,21 @@ namespace InvestorIntelligence
                     Task stderrTask = Task.Run(delegate {
                         PumpStream(process.StandardError, "ERR", writer, sync, tail);
                     });
-                    Task waitTask = Task.Run(delegate { process.WaitForExit(); });
 
-                    await Task.WhenAll(stdoutTask, stderrTask, waitTask);
+                    // The PowerShell parent process is the authoritative lifetime
+                    // of the requested operation. Long-lived gateway/cloudflared
+                    // descendants can keep inherited anonymous pipe handles open,
+                    // so waiting for EOF before observing parent exit can hang the
+                    // GUI forever even after the script has printed PASS and exited.
+                    await Task.Run(delegate { process.WaitForExit(); });
                     exitCode = process.ExitCode;
+                    lock (sync)
+                    {
+                        writer.WriteLine("PARENT_PROCESS_EXITED=TRUE");
+                        writer.WriteLine("PARENT_EXIT_CODE=" + exitCode);
+                        writer.Flush();
+                    }
+                    await DrainRedirectedStreamsAfterParentExit(process, stdoutTask, stderrTask, writer, sync);
                 }
 
                 lock (sync)
