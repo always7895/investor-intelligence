@@ -186,7 +186,7 @@ function Restore-RefreshTasks([hashtable]$Backup) {
                 Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
             }
         }
-        catch { Write-Warning "Unable to restore scheduled task $name: $($_.Exception.Message)" }
+        catch { Write-Warning "Unable to restore scheduled task ${name}: $($_.Exception.Message)" }
     }
 }
 
