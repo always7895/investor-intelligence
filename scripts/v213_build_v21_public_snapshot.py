@@ -11,6 +11,7 @@ from typing import Any
 import build_v21_public_snapshot as base
 
 SCORING_VERSION = "system-operationalization-v2.1.3-diversified"
+CATALOG_COUNT = 101
 
 
 def validate_top20(records: Any) -> list[dict[str, Any]]:
@@ -42,7 +43,11 @@ def validate_top20(records: Any) -> list[dict[str, Any]]:
         if not isinstance(overlay, dict) or overlay.get("included_in_serenity_score") is not False:
             raise base.SnapshotError(f"Top 20 {ticker} overlay boundary is invalid")
         evidence = raw.get("evidence")
-        source_ids = {str(item.get("source_id") or "") for item in evidence if isinstance(item, dict)} if isinstance(evidence, list) else set()
+        source_ids = {
+            str(item.get("source_id") or "")
+            for item in evidence
+            if isinstance(item, dict) and item.get("source_id")
+        } if isinstance(evidence, list) else set()
         if (
             not isinstance(evidence, list) or len(evidence) < 2
             or raw.get("evidence_count") != len(evidence)
@@ -71,13 +76,13 @@ def validate_plan(value: Any) -> dict[str, Any]:
     scoring = value.get("scoring_methodology")
     if (
         value.get("schema_version") != 1
-        or value.get("catalog_count") != 100
+        or value.get("catalog_count") != CATALOG_COUNT
         or value.get("automatic_activation") is not False
         or value.get("owner_watchlist_inherited") is not False
         or value.get("provider_scope") != "public_only"
         or value.get("line_public_eligible") is not True
         or not isinstance(inventory, dict)
-        or inventory.get("source_count") != 100
+        or inventory.get("source_count") != CATALOG_COUNT
         or inventory.get("runtime_enabled_count") != 0
         or not isinstance(federation, dict)
         or len(federation.get("successful_families") or []) < 5
@@ -85,6 +90,7 @@ def validate_plan(value: Any) -> dict[str, Any]:
         or float(federation.get("ticker_coverage_ratio") or 0) < 0.8
         or int(federation.get("unresolved_material_conflict_count") or 0) != 0
         or federation.get("yahoo_authoritative") is not False
+        or federation.get("catalog_source_count_is_not_live_use") is not True
         or not isinstance(scoring, dict)
         or scoring.get("scoring_version") != SCORING_VERSION
         or scoring.get("official_serenity_formula_claimed") is not False
@@ -96,6 +102,7 @@ def validate_plan(value: Any) -> dict[str, Any]:
 
 def self_test() -> None:
     assert SCORING_VERSION.startswith("system-operationalization-")
+    assert CATALOG_COUNT == 101
     print("V213_DIVERSIFIED_PUBLIC_SNAPSHOT_SELF_TEST = PASS")
 
 
@@ -125,7 +132,7 @@ def main() -> int:
         "run_id": envelope["run_id"],
         "output": str(args.output),
         "top20_count": 20,
-        "catalog_count": 100,
+        "catalog_count": CATALOG_COUNT,
         "scoring_version": SCORING_VERSION,
         "provider_scope": "public_only",
     }, ensure_ascii=False, indent=2))
