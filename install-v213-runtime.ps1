@@ -63,6 +63,7 @@ $required=@(
     'scripts\v213_source_federation_gate.py',
     'scripts\v213_apply_diversified_operationalization.py',
     'scripts\v213_build_v21_public_snapshot.py',
+    'scripts\v213_pipeline_boundary_self_test.py',
     'scripts\v213_methodology_and_source_audit.py',
     'scripts\v213_source_independence_gate.py',
     'scripts\v213_source_independence_gate_v2.py',
@@ -77,10 +78,25 @@ foreach($item in $required){
 }
 
 $refresh=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local.ps1') -Raw -Encoding utf8
-$reconcileIndex=$refresh.IndexOf('reconcile_v213_order_evidence.py',[StringComparison]::Ordinal)
-$sourceGateIndex=$refresh.IndexOf('v213_source_independence_gate_v2.py',[StringComparison]::Ordinal)
-if($reconcileIndex-lt0-or$sourceGateIndex-lt0-or$sourceGateIndex-le$reconcileIndex){
-    throw 'The canonical stable refresh entrypoint does not reconcile order evidence before the source-independence gate.'
+$orderedPipeline=@(
+    'v213_v21_progress_runner.py',
+    'v213_v212_progress_runner.py',
+    'reconcile_v213_order_evidence.py',
+    'build_v213_scheduled_top20_report.py',
+    'v213_source_federation.py',
+    'v213_source_federation_gate.py',
+    'v213_apply_diversified_operationalization.py',
+    'v213_source_independence_gate_v2.py',
+    'v213_build_v21_public_snapshot.py'
+)
+$previous=-1
+foreach($token in $orderedPipeline){
+    $position=$refresh.IndexOf($token,[StringComparison]::Ordinal)
+    if($position-le$previous){throw "The canonical stable refresh pipeline order is invalid at: $token"}
+    $previous=$position
+}
+if($refresh.Contains("& `$python 'scripts\build_v21_public_snapshot.py'")){
+    throw 'The canonical stable refresh entrypoint still promotes the provisional shortlist through the legacy snapshot builder.'
 }
 if(-not$refresh.Contains('--enforce')){throw 'The canonical stable refresh entrypoint does not enforce the source-independence gate.'}
 $bridge=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local-llm-bridge.ps1') -Raw -Encoding utf8
@@ -97,13 +113,17 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
 }
 
 [ordered]@{
-    schema_version=3
+    schema_version=4
     product_version='2.1.3'
     runtime_root=$RuntimeRoot
     source_root=$ProjectRoot
     installed_utc=(Get-Date).ToUniversalTime().ToString('o')
-    runtime_profile='source-diverse-exact-model-health-schema2'
+    runtime_profile='source-diverse-exact-model-health-schema2-pipeline-v2'
     scoring_version='system-operationalization-v2.1.3-diversified'
+    provisional_scoring_version='system-operationalization-v2.1.3-safe-preselection'
+    provisional_snapshot_promotion_blocked=$true
+    diversified_operationalization_required_before_snapshot=$true
+    canonical_snapshot_builder='scripts/v213_build_v21_public_snapshot.py'
     serenity_evidence_standard='2.1.3-source-independence-v3'
     source_catalog_count=101
     source_catalog_is_not_live_use=$true
@@ -121,4 +141,4 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     official_serenity_score_claimed=$false
     private_serenity_method_reproduced=$false
 }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
-Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2" -ForegroundColor Green
+Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v2" -ForegroundColor Green
