@@ -6,7 +6,8 @@ param(
     [string]$Model = '',
     [switch]$NoTunnel,
     [switch]$InstallCloudflared,
-    [switch]$StopExisting
+    [switch]$StopExisting,
+    [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -55,7 +56,8 @@ function Read-ModelSelection {
     if(-not(Test-Path $selectionPath -PathType Leaf)){return $null}
     try{
         $selection=Get-Content $selectionPath -Raw -Encoding utf8|ConvertFrom-Json
-        if(-not$selection.model){return $null}
+        $modelProperty=$selection.PSObject.Properties['model']
+        if($null -eq $modelProperty -or [string]::IsNullOrWhiteSpace([string]$modelProperty.Value)){return $null}
         return $selection
     }catch{return $null}
 }
@@ -67,8 +69,12 @@ function Resolve-Llama {
     }
     $candidates=New-Object System.Collections.Generic.List[string]
     $selection=Read-ModelSelection
-    if($selection -and [string]$selection.llama_base_url -match '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$'){
-        $candidates.Add(([string]$selection.llama_base_url).TrimEnd('/'))
+    if($selection){
+        $baseProperty=$selection.PSObject.Properties['llama_base_url']
+        $selectedBase=if($null -ne $baseProperty){[string]$baseProperty.Value}else{''}
+        if($selectedBase -match '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$'){
+            $candidates.Add($selectedBase.TrimEnd('/'))
+        }
     }
     foreach($candidate in @(
         'http://127.0.0.1:8080','http://127.0.0.1:7905','http://127.0.0.1:14410',
@@ -167,25 +173,125 @@ function Random-Secret {
     try { $rng.GetBytes($b) } finally { $rng.Dispose() }
     return [Convert]::ToBase64String($b)
 }
+function Get-ObjectPropertyValue([object]$Object,[string]$Name) {
+    if($null -eq $Object){return $null}
+    $property=$Object.PSObject.Properties[$Name]
+    if($null -eq $property){return $null}
+    return $property.Value
+}
+function Get-ProcessCommandLine([int]$ProcessId) {
+    try{
+        $cim=Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $ProcessId) -ErrorAction Stop
+        return [string](Get-ObjectPropertyValue $cim 'CommandLine')
+    }catch{return ''}
+}
+function Test-InvestorGatewayProcess([int]$ProcessId,[object]$Process) {
+    if($null -eq $Process -or $Process.ProcessName -notmatch '(?i)^python(?:w)?$'){return $false}
+    $commandLine=Get-ProcessCommandLine $ProcessId
+    return ($commandLine -match '(?i)v21[23]_local_llm_gateway\.py')
+}
 function Stop-RecordedBridge([object]$OldState) {
     $gatewayPid=0;$tunnelPid=0;$oldPort=$GatewayPort
-    [void][int]::TryParse([string]$OldState.gateway_pid,[ref]$gatewayPid)
-    [void][int]::TryParse([string]$OldState.cloudflared_pid,[ref]$tunnelPid)
-    if($OldState.gateway_port){[void][int]::TryParse([string]$OldState.gateway_port,[ref]$oldPort)}
+    [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'gateway_pid'),[ref]$gatewayPid)
+    [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'cloudflared_pid'),[ref]$tunnelPid)
+    $oldPortRaw=Get-ObjectPropertyValue $OldState 'gateway_port'
+    if($null -ne $oldPortRaw){[void][int]::TryParse([string]$oldPortRaw,[ref]$oldPort)}
     if($gatewayPid -gt 0){
         try{
             $process=Get-Process -Id $gatewayPid -ErrorAction Stop
             $ownsPort=$false
             try{$ownsPort=@(Get-NetTCPConnection -State Listen -LocalPort $oldPort -OwningProcess $gatewayPid -ErrorAction SilentlyContinue).Count -gt 0}catch{}
-            if($process.ProcessName -match '(?i)^python' -and $ownsPort){Stop-Process -Id $gatewayPid -Force -ErrorAction SilentlyContinue}
+            if($ownsPort -and (Test-InvestorGatewayProcess $gatewayPid $process)){
+                Stop-Process -Id $gatewayPid -Force -ErrorAction SilentlyContinue
+                Write-Host "II_PROGRESS stopped recorded local gateway; pid=$gatewayPid; port=$oldPort" -ForegroundColor DarkGray
+            }
         }catch{}
     }
     if($tunnelPid -gt 0){
-        try{$process=Get-Process -Id $tunnelPid -ErrorAction Stop;if($process.ProcessName -match '(?i)^cloudflared$'){Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue}}catch{}
+        try{
+            $process=Get-Process -Id $tunnelPid -ErrorAction Stop
+            if($process.ProcessName -match '(?i)^cloudflared$'){
+                Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue
+                Write-Host "II_PROGRESS stopped recorded cloudflared; pid=$tunnelPid" -ForegroundColor DarkGray
+            }
+        }catch{}
     }
 }
+function Stop-StaleInvestorGateway([int]$Port) {
+    $pids=@()
+    try{$pids=@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue|ForEach-Object{[int]$_.OwningProcess}|Where-Object{$_ -gt 0}|Select-Object -Unique)}catch{}
+    foreach($processId in $pids){
+        try{
+            $process=Get-Process -Id $processId -ErrorAction Stop
+            if(Test-InvestorGatewayProcess $processId $process){
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+                Write-Host "II_PROGRESS stopped stale Investor Intelligence gateway; pid=$processId; port=$Port" -ForegroundColor Yellow
+            }
+        }catch{}
+    }
+}
+function Test-TcpPortAvailable([int]$Port) {
+    $listener=$null
+    try{
+        $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$Port)
+        $listener.Start()
+        return $true
+    }catch{return $false}
+    finally{if($null -ne $listener){try{$listener.Stop()}catch{}}}
+}
+function Resolve-AvailableGatewayPort([int]$RequestedPort) {
+    if(Test-TcpPortAvailable $RequestedPort){return $RequestedPort}
+    Stop-StaleInvestorGateway $RequestedPort
+    Start-Sleep -Milliseconds 300
+    if(Test-TcpPortAvailable $RequestedPort){return $RequestedPort}
+    for($offset=1;$offset -le 20;$offset++){
+        $candidate=$RequestedPort+$offset
+        if($candidate -gt 65535){break}
+        if(Test-TcpPortAvailable $candidate){
+            Write-Host "II_PROGRESS requested gateway port occupied; using alternate port=$candidate; requested=$RequestedPort" -ForegroundColor Yellow
+            return $candidate
+        }
+    }
+    throw "No free local gateway port was found in the range $RequestedPort-$($RequestedPort+20)."
+}
 function Test-HealthModel([object]$Health,[string]$SelectedModel){
-    return ($Health.ok -eq $true -and $Health.llama_reachable -eq $true -and $Health.selected_model_available -eq $true -and [string]$Health.selected_model -ieq $SelectedModel)
+    $service=[string](Get-ObjectPropertyValue $Health 'service')
+    $schema=0
+    [void][int]::TryParse([string](Get-ObjectPropertyValue $Health 'health_schema_version'),[ref]$schema)
+    $ok=Get-ObjectPropertyValue $Health 'ok'
+    $reachable=Get-ObjectPropertyValue $Health 'llama_reachable'
+    $available=Get-ObjectPropertyValue $Health 'selected_model_available'
+    $reported=[string](Get-ObjectPropertyValue $Health 'selected_model')
+    return ($service -eq 'v213-local-llm-gateway' -and $schema -ge 2 -and $ok -eq $true -and $reachable -eq $true -and $available -eq $true -and $reported -ieq $SelectedModel)
+}
+function Get-HealthObservation([object]$Health) {
+    if($null -eq $Health){return 'health=null'}
+    $names=@('service','health_schema_version','ok','llama_reachable','selected_model','selected_model_available','available_model_count')
+    return (($names|ForEach-Object{
+        $value=Get-ObjectPropertyValue $Health $_
+        if($null -eq $value){$value='<missing>'}
+        "$_=$value"
+    }) -join '; ')
+}
+function Get-TextFileTail([string]$Path,[int]$Lines=30) {
+    if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return ''}
+    try{return ((Get-Content -LiteralPath $Path -Tail $Lines -ErrorAction Stop|ForEach-Object{[string]$_})-join"`n")}catch{return ''}
+}
+function Wait-LocalGatewayHealth([int]$ProcessId,[int]$Port,[string]$SelectedModel,[string]$StderrPath,[int]$Seconds=30) {
+    $deadline=(Get-Date).AddSeconds($Seconds);$last='not_started'
+    while((Get-Date)-lt$deadline){
+        if(-not(Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)){
+            $tail=Get-TextFileTail $StderrPath
+            throw "v2.1.3 local gateway exited during startup. $tail"
+        }
+        try{
+            $health=Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$Port/health" -Headers @{'cache-control'='no-cache'} -TimeoutSec 5
+            if(Test-HealthModel $health $SelectedModel){return $health}
+            $last=Get-HealthObservation $health
+        }catch{$last=$_.Exception.Message}
+        Start-Sleep -Milliseconds 500
+    }
+    throw "v2.1.3 local gateway health did not verify selected model '$SelectedModel'. Last observation: $last"
 }
 function Wait-PublicHealth([string]$Url,[int]$ProcessId,[string]$SelectedModel,[int]$Seconds=35){
     $deadline=(Get-Date).AddSeconds($Seconds);$last='';$hostName=([uri]$Url).Host
@@ -194,7 +300,7 @@ function Wait-PublicHealth([string]$Url,[int]$ProcessId,[string]$SelectedModel,[
         try{
             $health=Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/')+'/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 12
             if(Test-HealthModel $health $SelectedModel){return $health}
-            $last="ok=$($health.ok); llama_reachable=$($health.llama_reachable); selected_model=$($health.selected_model); available=$($health.selected_model_available)"
+            $last=Get-HealthObservation $health
         }catch{
             $last=$_.Exception.Message
             try{
@@ -252,9 +358,23 @@ function Start-HealthyQuickTunnel([string]$CloudflaredPath,[int]$Port,[string]$L
     throw "All quick-tunnel attempts failed. Last observation: $last"
 }
 
+if($SelfTest){
+    $legacy=[pscustomobject]@{ok=$true;service='v212-local-llm-gateway';llama_reachable=$true}
+    if(Test-HealthModel $legacy 'RVN-Q6_K-multilingual-mtp'){throw 'Legacy health unexpectedly passed the v2.1.3 exact-model gate.'}
+    $missing=[pscustomobject]@{ok=$true;service='v213-local-llm-gateway';health_schema_version=2;llama_reachable=$true;selected_model='RVN-Q6_K-multilingual-mtp'}
+    if(Test-HealthModel $missing 'RVN-Q6_K-multilingual-mtp'){throw 'Missing selected_model_available unexpectedly passed.'}
+    $exact=[pscustomobject]@{ok=$true;service='v213-local-llm-gateway';health_schema_version=2;llama_reachable=$true;selected_model='RVN-Q6_K-multilingual-mtp';selected_model_available=$true;available_model_count=2}
+    if(-not(Test-HealthModel $exact 'RVN-Q6_K-multilingual-mtp')){throw 'Exact v2.1.3 model health did not pass.'}
+    $observation=Get-HealthObservation $legacy
+    if($observation -notmatch 'selected_model_available=<missing>'){throw 'Missing-property diagnostic self-test failed.'}
+    Write-Host 'V213_LOCAL_MODEL_BRIDGE_HEALTH_SCHEMA_SELF_TEST = PASS; strictmode_missing_property_safe=true' -ForegroundColor Green
+    exit 0
+}
+
 if ($StopExisting -and (Test-Path -LiteralPath $statePath)) {
     try { Stop-RecordedBridge (Get-Content $statePath -Raw -Encoding utf8 | ConvertFrom-Json) } catch {}
 }
+$GatewayPort=Resolve-AvailableGatewayPort $GatewayPort
 
 $llama=Resolve-Llama
 $modelResolution=Resolve-Model $llama $Model
@@ -279,11 +399,8 @@ try {
     if($secContact){$env:SEC_CONTACT_EMAIL=$secContact}
     $stdout=Join-Path $logRoot 'gateway.stdout.log';$stderr=Join-Path $logRoot 'gateway.stderr.log'
     Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
-    $gateway=Start-Process -FilePath $python -ArgumentList @($GatewayScript,'--host','127.0.0.1','--port',[string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-    Start-Sleep -Seconds 2
-    if(-not(Get-Process -Id $gateway.Id -ErrorAction SilentlyContinue)){throw 'Local gateway exited during startup.'}
-    $health=Invoke-RestMethod -Uri "http://127.0.0.1:$GatewayPort/health" -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
-    if(-not(Test-HealthModel $health $Model)){throw "v2.1.3 local gateway health did not verify selected model $Model."}
+    $gateway=Start-Process -FilePath $python -ArgumentList @('-u',$GatewayScript,'--host','127.0.0.1','--port',[string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $health=Wait-LocalGatewayHealth $gateway.Id $GatewayPort $Model $stderr 30
     Write-Host "II_PROGRESS local gateway healthy; llama=$llama; model=$Model; selected_model_verified=true" -ForegroundColor Green
 
     $publicUrl='';$tunnelPid=0
