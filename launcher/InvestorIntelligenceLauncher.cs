@@ -11,7 +11,7 @@ namespace InvestorIntelligence
     static class Program
     {
         const string Version = "2.1.3";
-        const string Revision = "PipeSafe-R39";
+        const string Revision = "FileCapture-R41";
         static string LastPowerShellSummary = "";
         static volatile string LastPowerShellLiveLine = "";
 
@@ -82,9 +82,21 @@ namespace InvestorIntelligence
                 LastPowerShellLiveLine = safe;
         }
 
+        static void DrainAvailableLines(StreamReader reader, CaptureState state)
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+                RecordCapturedLine(state, "OUT", line);
+        }
+
         static string PowerShellLiteral(string value)
         {
             return "'" + value.Replace("'", "''") + "'";
+        }
+
+        static string CmdQuoted(string value)
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
         }
 
         static async Task<int> RunPowerShellAsync(string script, string arguments, bool showErrorDialog)
@@ -102,9 +114,30 @@ namespace InvestorIntelligence
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "InvestorIntelligence", "logs", "launcher");
             Directory.CreateDirectory(logRoot);
-            string logPath = Path.Combine(
-                logRoot,
-                DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" + Path.GetFileNameWithoutExtension(path) + ".log");
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" + Path.GetFileNameWithoutExtension(path);
+            string logPath = Path.Combine(logRoot, stamp + ".log");
+            string rawPath = Path.Combine(logRoot, stamp + ".raw.log");
+            string wrapperRoot = Path.Combine(Path.GetTempPath(), "ii-v213-capture-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(wrapperRoot);
+            string psWrapper = Path.Combine(wrapperRoot, "invoke.ps1");
+            string cmdWrapper = Path.Combine(wrapperRoot, "invoke.cmd");
+
+            string psBody =
+                "$ErrorActionPreference='Continue'\r\n" +
+                "$utf8=New-Object System.Text.UTF8Encoding($false)\r\n" +
+                "[Console]::OutputEncoding=$utf8\r\n" +
+                "$OutputEncoding=$utf8\r\n" +
+                "& " + PowerShellLiteral(path) + " " + arguments + "\r\n" +
+                "if($null -ne $LASTEXITCODE){exit [int]$LASTEXITCODE}\r\n" +
+                "if($?){exit 0}else{exit 1}\r\n";
+            File.WriteAllText(psWrapper, psBody, new UTF8Encoding(true));
+            string cmdBody =
+                "@echo off\r\n" +
+                "chcp 65001 >nul\r\n" +
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " + CmdQuoted(psWrapper) +
+                " > " + CmdQuoted(rawPath) + " 2>&1\r\n" +
+                "exit /b %ERRORLEVEL%\r\n";
+            File.WriteAllText(cmdWrapper, cmdBody, Encoding.ASCII);
 
             LastPowerShellLiveLine = "II_PROGRESS launcher log created / 啟動器即時記錄已建立";
             int exitCode = -1;
@@ -116,54 +149,26 @@ namespace InvestorIntelligence
                 writer.WriteLine("Investor Intelligence v" + Version + " " + Revision + " live launcher log");
                 writer.WriteLine("SCRIPT=" + path);
                 writer.WriteLine("STARTED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
-                writer.WriteLine("LOG_MODE=LIVE_STREAMING_ASYNC_EVENTS");
+                writer.WriteLine("LOG_MODE=LIVE_CHILD_FILE_TAIL");
                 writer.WriteLine("PARENT_EXIT_IS_AUTHORITATIVE=TRUE");
-                writer.WriteLine("STREAM_DRAIN_GRACE_SECONDS=3");
+                writer.WriteLine("ANONYMOUS_STDOUT_PIPES=FALSE");
+                writer.WriteLine("RAW_OUTPUT_LOG=" + rawPath);
                 writer.WriteLine("--- LIVE OUTPUT ---");
 
                 var state = new CaptureState(writer);
-                var stdoutClosed = new TaskCompletionSource<bool>();
-                var stderrClosed = new TaskCompletionSource<bool>();
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + path + "\" " + arguments,
+                    FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+                    Arguments = "/d /s /c \"\"" + cmdWrapper + "\"\"",
                     WorkingDirectory = Root,
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
+                    CreateNoWindow = true
                 };
 
                 var process = new Process();
                 process.StartInfo = psi;
-                DataReceivedEventHandler stdoutHandler = delegate(object sender, DataReceivedEventArgs e)
-                {
-                    if (e.Data == null)
-                    {
-                        stdoutClosed.TrySetResult(true);
-                        return;
-                    }
-                    RecordCapturedLine(state, "OUT", e.Data);
-                };
-                DataReceivedEventHandler stderrHandler = delegate(object sender, DataReceivedEventArgs e)
-                {
-                    if (e.Data == null)
-                    {
-                        stderrClosed.TrySetResult(true);
-                        return;
-                    }
-                    RecordCapturedLine(state, "ERR", e.Data);
-                };
-                process.OutputDataReceived += stdoutHandler;
-                process.ErrorDataReceived += stderrHandler;
-
                 if (!process.Start())
                 {
-                    process.OutputDataReceived -= stdoutHandler;
-                    process.ErrorDataReceived -= stderrHandler;
                     process.Dispose();
                     LastPowerShellSummary = "PowerShell process could not be started.\r\nLog / 記錄：" + logPath;
                     writer.WriteLine("PROCESS_START_FAILED");
@@ -173,60 +178,68 @@ namespace InvestorIntelligence
                 }
 
                 writer.WriteLine("PROCESS_ID=" + process.Id);
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-
-                // Parent PowerShell exit is authoritative. Persistent gateway and
-                // cloudflared descendants may retain inherited pipe handles, so
-                // EOF cannot be used as the operation-completion signal.
-                await Task.Run(delegate { process.WaitForExit(); });
-                exitCode = process.ExitCode;
-                lock (state.Sync)
+                StreamReader rawReader = null;
+                try
                 {
-                    writer.WriteLine("PARENT_PROCESS_EXITED=TRUE");
-                    writer.WriteLine("PARENT_EXIT_CODE=" + exitCode);
-                    writer.Flush();
+                    while (!process.HasExited)
+                    {
+                        if (rawReader == null && File.Exists(rawPath))
+                        {
+                            try
+                            {
+                                rawReader = new StreamReader(
+                                    new FileStream(rawPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete),
+                                    new UTF8Encoding(false, false),
+                                    true);
+                            }
+                            catch (IOException) { }
+                        }
+                        if (rawReader != null)
+                            DrainAvailableLines(rawReader, state);
+                        await Task.Delay(200);
+                    }
+                    process.WaitForExit();
+                    exitCode = process.ExitCode;
+                    lock (state.Sync)
+                    {
+                        writer.WriteLine("PARENT_PROCESS_EXITED=TRUE");
+                        writer.WriteLine("PARENT_EXIT_CODE=" + exitCode);
+                        writer.Flush();
+                    }
+
+                    // Drain any final parent-process writes without ever waiting for
+                    // the raw file handle to close. Long-lived descendants may keep
+                    // that ordinary file handle open, but cannot block the launcher.
+                    long previousLength = -1;
+                    int stableChecks = 0;
+                    for (int attempt = 0; attempt < 20; attempt++)
+                    {
+                        if (rawReader == null && File.Exists(rawPath))
+                        {
+                            rawReader = new StreamReader(
+                                new FileStream(rawPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete),
+                                new UTF8Encoding(false, false),
+                                true);
+                        }
+                        if (rawReader != null)
+                            DrainAvailableLines(rawReader, state);
+                        long length = File.Exists(rawPath) ? new FileInfo(rawPath).Length : 0;
+                        if (length == previousLength) stableChecks++; else stableChecks = 0;
+                        previousLength = length;
+                        if (stableChecks >= 3) break;
+                        await Task.Delay(100);
+                    }
+                }
+                finally
+                {
+                    if (rawReader != null) rawReader.Dispose();
+                    process.Dispose();
                 }
 
-                Task drainTask = Task.WhenAll(stdoutClosed.Task, stderrClosed.Task);
-                Task completed = await Task.WhenAny(drainTask, Task.Delay(3000));
-                bool drainTimedOut = completed != drainTask;
                 lock (state.Sync)
                 {
-                    if (drainTimedOut)
-                    {
-                        writer.WriteLine("STREAM_DRAIN_TIMEOUT_AFTER_PARENT_EXIT=TRUE");
-                        writer.WriteLine("STREAM_DRAIN_ACTION=cancel_async_reads_and_continue");
-                    }
-                    else
-                    {
-                        writer.WriteLine("STREAM_DRAIN_COMPLETED=TRUE");
-                    }
                     state.Open = false;
-                    writer.Flush();
-                }
-
-                process.OutputDataReceived -= stdoutHandler;
-                process.ErrorDataReceived -= stderrHandler;
-                if (drainTimedOut)
-                {
-                    // Never synchronously Close() a StreamReader that another
-                    // thread is blocked inside. Cancellation/disposal is moved to
-                    // a background cleanup so the UI completion path is bounded.
-                    Task.Run(delegate
-                    {
-                        try { process.CancelOutputRead(); } catch { }
-                        try { process.CancelErrorRead(); } catch { }
-                        try { process.Dispose(); } catch { }
-                    });
-                }
-                else
-                {
-                    try { process.Dispose(); } catch { }
-                }
-
-                lock (state.Sync)
-                {
+                    writer.WriteLine("RAW_OUTPUT_FINAL_DRAIN=COMPLETE");
                     writer.WriteLine("--- END OUTPUT ---");
                     writer.WriteLine("EXIT_CODE=" + exitCode);
                     writer.WriteLine("FINISHED_LOCAL=" + DateTimeOffset.Now.ToString("o"));
@@ -245,12 +258,14 @@ namespace InvestorIntelligence
                     LastPowerShellSummary =
                         "Exit code / 結束碼: " + exitCode + "\r\n\r\n" +
                         (String.IsNullOrWhiteSpace(detail) ? "No diagnostic output was returned." : detail) +
-                        "\r\n\r\nLog / 完整記錄：\r\n" + logPath;
+                        "\r\n\r\nLog / 完整記錄：\r\n" + logPath +
+                        "\r\nRaw output / 原始輸出：\r\n" + rawPath;
                     LastPowerShellLiveLine = "V213_OPERATION_FAILED; see live log / 請查看即時記錄";
                     if (showErrorDialog)
                         MessageBox.Show(LastPowerShellSummary, "Investor Intelligence - Error / 錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
+            try { Directory.Delete(wrapperRoot, true); } catch { }
             return exitCode;
         }
 
