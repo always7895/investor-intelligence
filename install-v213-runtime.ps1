@@ -25,7 +25,7 @@ if(-not$sameRoot){
     Write-Host "V213_RUNTIME_SOURCE = IN_PLACE; path=$RuntimeRoot" -ForegroundColor DarkGray
 }
 
-# Canonicalize the source-diverse entrypoints inside the stable runtime.  This is
+# Canonicalize the source-diverse entrypoints inside the stable runtime. This is
 # executed inside the activation core's rollback scope, so a missing or invalid
 # overlay prevents Production from remaining on an unverified deployment.
 $overlayMap=[ordered]@{
@@ -57,6 +57,7 @@ $required=@(
     'config\v213-source-federation-policy.json',
     'config\v213-serenity-evidence-standard-v3.json',
     'config\v213-serenity-public-logic-policy.json',
+    'config\v213-market-corroboration-degradation-policy.json',
     'config\v213-source-diversity-field-labels.zh-en.json',
     'config\authoritative-sources\v213-runtime-extensions.json',
     'scripts\v213_source_federation.py',
@@ -67,6 +68,7 @@ $required=@(
     'scripts\v213_methodology_and_source_audit.py',
     'scripts\v213_source_independence_gate.py',
     'scripts\v213_source_independence_gate_v2.py',
+    'scripts\v213_source_independence_gate_v3.py',
     'scripts\audit_v213_source_diversity_fields.py',
     'scripts\v213_local_llm_gateway.py',
     'scripts\run_v213_local_llm_bridge_core.ps1',
@@ -86,7 +88,7 @@ $orderedPipeline=@(
     'v213_source_federation.py',
     'v213_source_federation_gate.py',
     'v213_apply_diversified_operationalization.py',
-    'v213_source_independence_gate_v2.py',
+    'v213_source_independence_gate_v3.py',
     'v213_build_v21_public_snapshot.py'
 )
 $previous=-1
@@ -99,12 +101,22 @@ if($refresh.Contains("& `$python 'scripts\build_v21_public_snapshot.py'")){
     throw 'The canonical stable refresh entrypoint still promotes the provisional shortlist through the legacy snapshot builder.'
 }
 if(-not$refresh.Contains('--enforce')){throw 'The canonical stable refresh entrypoint does not enforce the source-independence gate.'}
+if(-not$refresh.Contains('company/claim diversity is blocking; unavailable free market cross-checks are disclosed and cap confidence')){
+    throw 'The canonical stable refresh entrypoint lost the market-quality degradation boundary.'
+}
 $bridge=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local-llm-bridge.ps1') -Raw -Encoding utf8
 if(-not$bridge.Contains('run_v213_local_llm_bridge_core_v2.ps1')){
     throw 'The canonical stable bridge entrypoint does not use the HealthSchema2 dependency-bootstrap core.'
 }
 $activation=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'activate-v213-seven-field-schedule.ps1') -Raw -Encoding utf8
-foreach($needle in @('V213_SOURCE_INDEPENDENCE_PREFLIGHT','health-schema-v2','install-v213-source-diverse-runtime.ps1','rollback')){
+foreach($needle in @(
+    'V213_SOURCE_INDEPENDENCE_PREFLIGHT',
+    'V213_MARKET_CORROBORATION_QUALITY = DEGRADED',
+    'market_corroboration_status',
+    'health-schema-v2',
+    'install-v213-source-diverse-runtime.ps1',
+    'rollback'
+)){
     if(-not$activation.Contains($needle)){throw "The stable activation entrypoint is missing contract: $needle"}
 }
 $gateway=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'scripts\v213_local_llm_gateway.py') -Raw -Encoding utf8
@@ -113,12 +125,12 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
 }
 
 [ordered]@{
-    schema_version=4
+    schema_version=5
     product_version='2.1.3'
     runtime_root=$RuntimeRoot
     source_root=$ProjectRoot
     installed_utc=(Get-Date).ToUniversalTime().ToString('o')
-    runtime_profile='source-diverse-exact-model-health-schema2-pipeline-v2'
+    runtime_profile='source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware'
     scoring_version='system-operationalization-v2.1.3-diversified'
     provisional_scoring_version='system-operationalization-v2.1.3-safe-preselection'
     provisional_snapshot_promotion_blocked=$true
@@ -129,11 +141,17 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     source_catalog_is_not_live_use=$true
     live_source_federation_required=$true
     claim_level_source_independence_required=$true
-    source_independence_gate='scripts/v213_source_independence_gate_v2.py'
+    source_independence_gate='scripts/v213_source_independence_gate_v3.py'
     source_independence_policy='config/v213-serenity-public-logic-policy.json'
+    market_quality_policy='config/v213-market-corroboration-degradation-policy.json'
+    market_endpoint_unavailability_is_global_blocker=$false
+    market_corroboration_required_for_high_confidence_inference=$true
+    uncorroborated_valuation_factor_max=3.75
+    provider_failures_disclosed=$true
+    source_conflicts_averaged=$false
     source_diversity_labels='config/v213-source-diversity-field-labels.zh-en.json'
     market_calculation_source='yfinance_compatibility_only'
-    independent_market_corroboration=@('stooq_daily_csv','nasdaq_historical_api','optional_alpha_vantage_adjusted')
+    independent_market_attempts=@('stooq_daily_csv','nasdaq_historical_api','hfmarketdata_daily_bars','optional_alpha_vantage_adjusted')
     official_macro_context='fred_official_macro'
     preferred_model='RVN-Q6_K-multilingual-mtp'
     health_schema_version=2
@@ -141,4 +159,4 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     official_serenity_score_claimed=$false
     private_serenity_method_reproduced=$false
 }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
-Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v2" -ForegroundColor Green
+Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware" -ForegroundColor Green
