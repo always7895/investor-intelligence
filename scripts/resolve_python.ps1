@@ -47,11 +47,35 @@ if ($env:GITHUB_ACTIONS -eq "true") {
         throw "Portable Python executable is unavailable after bootstrap."
     }
 
+    # Scripts imported by package/integration tests use the same reviewed runtime
+    # dependencies as the actual local refresh. Install only from the committed,
+    # hash-locked requirements file; never resolve an unpinned package here.
+    $projectRoot = Split-Path -Parent $PSScriptRoot
+    $requirements = Join-Path $projectRoot "requirements-ci.txt"
+    if (-not (Test-Path -LiteralPath $requirements -PathType Leaf)) {
+        throw "Hash-locked CI requirements are missing: $requirements"
+    }
+    $requirementsHash = (Get-FileHash -LiteralPath $requirements -Algorithm SHA256).Hash.ToLowerInvariant()
+    $requirementsMarker = Join-Path $destination (".investor-intelligence-requirements-" + $requirementsHash + ".ok")
+    if (-not (Test-Path -LiteralPath $requirementsMarker -PathType Leaf)) {
+        & $pythonExe -m pip install --isolated --disable-pip-version-check `
+            --only-binary=:all: --index-url https://pypi.org/simple `
+            --require-hashes -r $requirements
+        if ($LASTEXITCODE -ne 0) {
+            throw "Hash-locked CI dependency installation failed."
+        }
+        & $pythonExe -m pip check
+        if ($LASTEXITCODE -ne 0) {
+            throw "CI pip check failed."
+        }
+        Set-Content -LiteralPath $requirementsMarker -Value $requirementsHash -Encoding ascii
+    }
+
     $env:PROJECT_PYTHON = $pythonExe
     if ($env:GITHUB_OUTPUT) {
         "python=$pythonExe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
     }
-    Write-Host "PROJECT_PYTHON configured from reviewed portable CPython 3.12.10."
+    Write-Host "PROJECT_PYTHON configured from reviewed portable CPython 3.12.10 with hash-locked dependencies."
     return
 }
 
