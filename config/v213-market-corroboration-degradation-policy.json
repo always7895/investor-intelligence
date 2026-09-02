@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "policy_id": "v213-market-corroboration-graceful-degradation-v1",
+  "description_en": "Non-Yahoo market corroboration is a quality target and a prerequisite for high-confidence model inference and uncapped valuation confidence. Temporary unavailability of free market endpoints does not erase otherwise valid multi-source company evidence and is not, by itself, a global publication blocker.",
+  "description_zh_TW": "非 Yahoo 市場交叉驗證是品質目標，也是高信心模型推論與未受限估值信心的必要條件。免費市場端點暫時不可用，不會抹除其他已成立的多來源公司證據，亦不單獨構成全域發布阻擋。",
+  "target_non_yahoo_market_coverage_ratio": 0.75,
+  "market_corroboration_unavailable_is_global_blocker": false,
+  "market_corroboration_required_for_high_confidence_model_inference": true,
+  "market_corroboration_required_for_uncapped_valuation_factor": true,
+  "uncorroborated_valuation_factor_max": 3.75,
+  "degradation_code": "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE",
+  "provider_failure_must_be_disclosed": true,
+  "provider_failure_must_not_be_silently_relabelled_as_success": true,
+  "market_data_never_proves_company_claim": true,
+  "market_data_never_proves_dependency_or_bottleneck": true,
+  "market_data_is_not_averaged_into_published_returns": true,
+  "source_conflicts_are_not_averaged": true,
+  "blocking_requirements_preserved": [
+    "portfolio_independent_source_families",
+    "portfolio_independent_domains",
+    "portfolio_claim_source_families",
+    "portfolio_claim_source_domains",
+    "portfolio_claim_primary_coverage_ratio",
+    "maximum_single_family_share",
+    "unresolved_material_source_conflicts"
+  ],
+  "degraded_run_requirements": {
+    "source_independence_status": "PASS",
+    "market_corroboration_status": "DEGRADED",
+    "degradation_code_must_be_present": true,
+    "uncorroborated_rows_high_confidence_eligible": false,
+    "uncorroborated_rows_model_inference_confidence": "LIMITED",
+    "uncorroborated_rows_missing_evidence_code": "NON_YAHOO_MARKET_CORROBORATION",
+    "uncorroborated_rows_valuation_factor_max": 3.75
+  },
+  "preferred_public_market_observation_families": [
+    "nasdaq_historical_api",
+    "stooq_daily_csv",
+    "hfmarketdata_daily_bars",
+    "optional_alpha_vantage_adjusted"
+  ],
+  "yahoo_role": "compatibility_calculation_only_not_thesis_evidence"
+}
