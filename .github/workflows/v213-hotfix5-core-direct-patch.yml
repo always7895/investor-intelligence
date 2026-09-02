@@ -1,0 +1,69 @@
+name: V2.1.3 Hotfix5 Core Direct Patch
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-hotfix5-core-direct-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Replace activation-core self-test block by exact boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'activate-v213-seven-field-schedule-core.ps1'
+          $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
+          $start = $text.IndexOf('if ($SelfTest) {',[StringComparison]::Ordinal)
+          $end = $text.IndexOf('if (-not $ConfirmActivation)', $start + 1, [StringComparison]::Ordinal)
+          if ($start -lt 0 -or $end -le $start) {
+            throw 'Activation-core self-test boundaries were not found.'
+          }
+          $block = @'
+if ($SelfTest) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'scripts\test_v213_activation_core.ps1') -ProjectRoot $ProjectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'External activation-core contract self-test failed.' }
+    Write-Host 'V213_ACTIVATION_CORE_SELF_TEST = PASS; external_capture_probe=true; pointer_transaction=commit_rollback_finalize' -ForegroundColor Green
+    exit 0
+}
+
+'@
+          $updated = $text.Substring(0,$start) + $block + $text.Substring($end)
+          [IO.File]::WriteAllText((Resolve-Path $path),$updated,[Text.UTF8Encoding]::new($false))
+          $tokens=$null
+          $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { $errors | Out-String | Write-Host; throw 'Patched activation core has parser errors.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule-core.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Patched activation-core self-test failed.' }
+          Write-Host 'V213_HOTFIX5_CORE_DIRECT_PATCH = PASS'
+
+      - name: Commit source patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.git\AUTO_MERGE.lock' -Force -ErrorAction SilentlyContinue
+          git config user.name 'Investor Intelligence Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add activate-v213-seven-field-schedule-core.ps1
+          git commit -m 'fix: delegate activation-core self-test to robust external probe'
+          git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
+          if ($LASTEXITCODE -ne 0) { throw 'Activation-core patch push failed.' }
+          Write-Host 'V213_HOTFIX5_CORE_DIRECT_PATCH_COMMIT = PASS'
