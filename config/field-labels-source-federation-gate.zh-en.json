@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "description_zh_TW": "v2.1.3 來源聯邦 gate 補充欄位中英對照。",
+  "description_en": "Supplemental bilingual labels for v2.1.3 source-federation gate fields.",
+  "fields": {
+    "pass": {"zh-TW": "是否通過", "en": "Passed"},
+    "counting_rule": {"zh-TW": "計數規則", "en": "Counting rule"},
+    "publisher_family_deduplication_enforced": {"zh-TW": "是否強制來源家族去重", "en": "Publisher-family deduplication enforced"},
+    "ticker_coverage": {"zh-TW": "股票來源覆蓋數", "en": "Ticker source coverage"},
+    "authoritative": {"zh-TW": "是否具權威性", "en": "Authoritative"}
+  }
+}
