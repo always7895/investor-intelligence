@@ -6,7 +6,7 @@
 
 完整解壓後雙擊 `InvestorIntelligence.exe`。不要直接從 ZIP 壓縮檔內執行。
 
-新版啟動器標示為 `ModelSelect-R43`，提供：
+新版維護修正版標示為 `ModelSelect-R43 HealthSchema2`，提供：
 - 掃描目前 llama.cpp router 的全部 model ID。
 - 明確選擇並持久化本地模型；預設首選是 `RVN-Q6_K-multilingual-mtp`。
 - 啟動所選本地模型並更新 Investor Intelligence 公開資料。
@@ -29,6 +29,8 @@
 選擇結果保存在 `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-selection.json`。後續手動刷新、排程刷新、bridge 與正式 activation 都使用同一個選擇；系統不再默默取模型清單第一筆，也不再自動退回 Gemma 或 `qwen3.8-27b`。
 
 正式使用前，bridge 會對選定 model ID 執行最小 `/v1/chat/completions` routing probe，以確認 router 能實際載入並回應該模型。Gateway 的本機與公開 `/health` 也都必須回報同一個 `selected_model` 且 `selected_model_available=true`；任何名稱不一致都在 Production deployment 前 fail closed。
+
+HealthSchema2 另要求 `/health` 回傳 `service=v213-local-llm-gateway` 與 `health_schema_version=2`。若 8814 被舊版 v2.1.2 gateway 或其他程序占用，程式會安全辨識並停止自己的舊 gateway，或改用下一個可用 loopback port；缺少 `selected_model_available` 等舊 schema 欄位只會 fail closed，不會再因 PowerShell StrictMode 直接崩潰。
 
 如果沒有偵測到 llama.cpp 服務，會嘗試既有 `D:\LocalAI\Start-LocalAI.cmd` 或 `D:\llama.cpp\Start-LocalAI.cmd`。
 
