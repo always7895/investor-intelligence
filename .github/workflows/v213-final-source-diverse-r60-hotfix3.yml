@@ -73,7 +73,7 @@ jobs:
             & $env:PROJECT_PYTHON @command
             if($LASTEXITCODE-ne0){throw "Python/audit test failed: $($command -join ' ')"}
           }
-          & $env:PROJECT_PYTHON -m unittest tests.test_v213_v21_progress_runner
+          & $env:PROJECT_PYTHON (Join-Path $PWD.Path 'tests\test_v213_v21_progress_runner.py')
           if($LASTEXITCODE-ne0){throw 'Safe-preselection recursion regression test failed.'}
           & $env:PROJECT_PYTHON -m compileall -q scripts tests
           if($LASTEXITCODE-ne0){throw 'Python compileall failed.'}
