@@ -27,6 +27,10 @@ REQUIRED_LIVE_SOURCES = {
     "nasdaq_symbol_directory",
 }
 PRESELECTION_VERSION = "system-operationalization-v2.1.3-safe-preselection"
+# Capture the unpatched v2.1 scorer once. main() temporarily replaces
+# engine.score_candidate with safe_preselection_score, so resolving the scorer
+# dynamically from engine inside the wrapper would call the wrapper recursively.
+LEGACY_SCORE_CANDIDATE = engine.score_candidate
 
 
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -117,7 +121,7 @@ def safe_preselection_score(
     The historical score is called only to retain schema/category/overlay and a
     low-confidence valuation observation; it is never published.
     """
-    legacy = engine.score_candidate(candidate, official_metrics, evidence, policy)
+    legacy = LEGACY_SCORE_CANDIDATE(candidate, official_metrics, evidence, policy)
     revenue = _finite(official_metrics.get("revenue_growth"))
     net_margin = _finite(official_metrics.get("net_margin"))
     debt_equity = _finite(official_metrics.get("debt_to_equity"))
