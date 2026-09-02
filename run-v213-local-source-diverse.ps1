@@ -139,48 +139,67 @@ try {
 
     Push-Location $ProjectRoot
     try {
-        Stage 3 'Top20 public engine and first-party evidence'
+        Stage 3 'Provisional Top20 candidate engine and first-party evidence'
         $engineArgs = @('scripts\v213_v21_progress_runner.py')
         if ($Synthetic) {
             $engineArgs += '--synthetic'
         }
         & $python @engineArgs
         if ($LASTEXITCODE -ne 0) {
-            throw 'Top20 engine failed.'
+            throw 'Top20 provisional candidate engine failed.'
         }
-
-        Stage 4 'Signed public snapshot build'
-        & $python 'scripts\build_v21_public_snapshot.py'
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Public snapshot build failed.'
-        }
+        Write-Host 'II_PROGRESS provisional shortlist created; not eligible for public snapshot promotion' -ForegroundColor Yellow
 
         if ($Synthetic) {
-            Write-Host 'II_STAGE 5-8/8 | synthetic mode intentionally skips live report/source/sync stages' -ForegroundColor DarkGray
+            Stage 4 'Synthetic provisional-to-diversified boundary contract'
+            & $python 'scripts\v213_pipeline_boundary_self_test.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Synthetic provisional-to-diversified boundary contract failed.'
+            }
+            Write-Host 'II_STAGE 5-8/8 | synthetic mode intentionally skips live market/source/sync stages' -ForegroundColor DarkGray
         }
         else {
-            Stage 5 'Five-field market and SEC report'
+            Stage 4 'Five-field market and SEC report for provisional membership'
             & $python 'scripts\v213_v212_progress_runner.py'
             if ($LASTEXITCODE -ne 0) {
                 throw 'v2.1.2 five-field report failed.'
             }
 
-            Stage 6 'Current-membership order evidence plus source-independence gate'
+            Stage 5 'Current-membership order evidence and seven-field draft'
             & $python 'scripts\reconcile_v213_order_evidence.py'
             if ($LASTEXITCODE -ne 0) {
                 throw 'Order-evidence reconciliation failed.'
             }
             Write-Host 'II_PROGRESS order evidence reconciled before source audit' -ForegroundColor Green
-            & $python 'scripts\v213_source_independence_gate_v2.py' '--enforce'
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Multi-source independence gate failed; report promotion stopped.'
-            }
-            Write-Host 'II_PROGRESS source independence PASS: SEC/issuer + Stooq/Nasdaq/optional Alpha Vantage + FRED' -ForegroundColor Green
-
-            Stage 7 'Seven-field report from reconciled evidence'
             & $python 'scripts\build_v213_scheduled_top20_report.py' '--baseline' 'data\cache\v213_order_evidence_runtime.json'
             if ($LASTEXITCODE -ne 0) {
-                throw 'Seven-field report build failed.'
+                throw 'Seven-field draft build failed.'
+            }
+
+            Stage 6 'Live source federation, diversified operationalization and claim-level independence'
+            & $python 'scripts\v213_source_federation.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Live source federation failed.'
+            }
+            & $python 'scripts\v213_source_federation_gate.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Live source federation fail-closed gate failed.'
+            }
+            & $python 'scripts\v213_apply_diversified_operationalization.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Diversified System operationalization failed.'
+            }
+            Write-Host 'II_PROGRESS provisional shortlist replaced by final diversified Top20' -ForegroundColor Green
+            & $python 'scripts\v213_source_independence_gate_v2.py' '--enforce'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Claim-level source-independence gate failed; report promotion stopped.'
+            }
+            Write-Host 'II_PROGRESS source independence PASS: SEC/issuer + regulated identity + Stooq/Nasdaq/optional Alpha Vantage + official macro' -ForegroundColor Green
+
+            Stage 7 'Diversified signed public snapshot build'
+            & $python 'scripts\v213_build_v21_public_snapshot.py'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Diversified public snapshot build failed.'
             }
 
             Stage 8 'Signed sync and exact-model route refresh'
