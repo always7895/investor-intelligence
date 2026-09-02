@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,6 +39,43 @@ REQUIRED = {
     "official_serenity_score", "single_source_inference_allowed",
     "source_diversity_is_not_truth_by_itself", "conflicts_require_review", "primary",
 }
+
+
+def audit_refresh_entrypoint() -> None:
+    """Reject compacted PowerShell tokens and execute the safe Windows self-test."""
+    entrypoint = ROOT / "run-v213-local-source-diverse.ps1"
+    source = entrypoint.read_text(encoding="utf-8-sig")
+    compacted = sorted(set(re.findall(r"\b(?:return|throw|exit)\$[A-Za-z_(]", source)))
+    if compacted:
+        raise SystemExit(
+            "SOURCE_DIVERSITY_REFRESH_ENTRYPOINT_AUDIT=FAIL; compacted_tokens="
+            + ",".join(compacted)
+        )
+    if os.name == "nt":
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(entrypoint),
+                "-ProjectRoot",
+                str(ROOT),
+                "-SelfTest",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        combined = (result.stdout or "") + "\n" + (result.stderr or "")
+        if result.returncode != 0 or "V213_SOURCE_DIVERSE_REFRESH_ENTRYPOINT_SELF_TEST = PASS" not in combined:
+            raise SystemExit(
+                "SOURCE_DIVERSITY_REFRESH_ENTRYPOINT_AUDIT=FAIL; "
+                f"exit={result.returncode}; output={combined[-1000:]}"
+            )
 
 
 def audit_safe_preselection_wrapper() -> None:
@@ -90,10 +130,11 @@ def main() -> int:
             "SOURCE_DIVERSITY_BILINGUAL_AUDIT=FAIL; missing=" + ",".join(missing) +
             "; invalid=" + ",".join(invalid)
         )
+    audit_refresh_entrypoint()
     audit_safe_preselection_wrapper()
     print(
         f"V213_SOURCE_DIVERSITY_BILINGUAL_AUDIT = PASS; fields={len(REQUIRED)}; "
-        "safe_preselection_monkeypatch=PASS"
+        "refresh_entrypoint=PASS; safe_preselection_monkeypatch=PASS"
     )
     return 0
 
