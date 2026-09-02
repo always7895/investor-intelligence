@@ -1,0 +1,66 @@
+name: V2.1.3 Live Source Federation Smoke
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-live-source-smoke
+  cancel-in-progress: true
+
+jobs:
+  live-source-smoke:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Resolve verified Python and dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-live-source
+          & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+          if($LASTEXITCODE -ne 0){throw 'Hash-locked Python dependency installation failed.'}
+
+      - name: Verify reviewed official live endpoints without mutation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & $env:PROJECT_PYTHON scripts\v213_live_source_smoke.py --live
+          if($LASTEXITCODE -ne 0){throw 'Official live-source smoke gate failed.'}
+          Write-Host 'V213_LIVE_SOURCE_FEDERATION_SMOKE = PASS; production_mutation=false'
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## V2.1.3 live source federation smoke
+          - World Bank official indicator API: PASS
+          - U.S. BLS public API: PASS
+          - ECB SDMX API: PASS
+          - Nasdaq Trader official symbol directory: PASS
+          - GLEIF legal-entity query: observed (optional)
+          - SEC EDGAR: exercised only by the owner pipeline with configured fair-access contact
+          - Yahoo/yfinance authority: FALSE (T3 observation only)
+          - Production mutation: FALSE
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
