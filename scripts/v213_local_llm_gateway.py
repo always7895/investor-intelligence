@@ -7,9 +7,11 @@ only be wired to the exact llama.cpp model selected by the owner.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import sys
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +87,6 @@ def enrich_messages(messages: list[dict[str, Any]]):
 
 def _available_model_ids() -> list[str]:
     base_url = base.llama_base_url()
-    last_error: Exception | None = None
     for suffix in ("/v1/models?reload=1", "/models?reload=1", "/v1/models"):
         try:
             response = requests.get(base_url + suffix, timeout=(2, 8))
@@ -103,11 +104,32 @@ def _available_model_ids() -> list[str]:
                     result.append(model_id)
             if result:
                 return result
-        except Exception as exc:  # health remains fail-closed
-            last_error = exc
-    if last_error:
-        return []
+        except Exception:
+            # Health remains fail-closed; an unavailable catalog is represented
+            # by selected_model_available=false rather than a guessed model.
+            continue
     return []
+
+
+def _build_health_payload(
+    selected: str,
+    models: list[str],
+    upstream_health: bool,
+) -> dict[str, Any]:
+    canonical = next(
+        (item for item in models if item.casefold() == selected.casefold()),
+        "",
+    )
+    selected_available = bool(selected and canonical)
+    return {
+        "ok": True,
+        "service": "v213-local-llm-gateway",
+        "health_schema_version": 2,
+        "llama_reachable": bool(upstream_health and selected_available),
+        "selected_model": canonical or selected,
+        "selected_model_available": selected_available,
+        "available_model_count": len(models),
+    }
 
 
 class V213GatewayHandler(base.GatewayHandler):
@@ -123,26 +145,52 @@ class V213GatewayHandler(base.GatewayHandler):
             upstream_health = response.ok
         except Exception:
             upstream_health = False
-        models = _available_model_ids()
-        canonical = next((item for item in models if item.casefold() == selected.casefold()), "")
-        selected_available = bool(selected and canonical)
         self._json(
             200,
-            {
-                "ok": True,
-                "service": "v213-local-llm-gateway",
-                "llama_reachable": bool(upstream_health and selected_available),
-                "selected_model": canonical or selected,
-                "selected_model_available": selected_available,
-                "available_model_count": len(models),
-            },
+            _build_health_payload(selected, _available_model_ids(), upstream_health),
         )
 
 
+def _self_test() -> None:
+    preferred = "RVN-Q6_K-multilingual-mtp"
+    exact = _build_health_payload(preferred, ["gemma4", preferred], True)
+    assert exact["service"] == "v213-local-llm-gateway"
+    assert exact["health_schema_version"] == 2
+    assert exact["llama_reachable"] is True
+    assert exact["selected_model"] == preferred
+    assert exact["selected_model_available"] is True
+    missing = _build_health_payload(preferred, ["gemma4"], True)
+    assert missing["llama_reachable"] is False
+    assert missing["selected_model_available"] is False
+    print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS")
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default=base.HOST)
+    parser.add_argument("--port", type=int, default=base.PORT)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        _self_test()
+        return 0
+    if args.host not in {"127.0.0.1", "localhost"}:
+        raise SystemExit("Gateway must bind to loopback only")
+    if len(os.getenv("II_LOCAL_LLM_SHARED_SECRET", "")) < 32:
+        raise SystemExit("II_LOCAL_LLM_SHARED_SECRET must be configured")
+
+    # The inherited POST implementation resolves enrich_messages from the base
+    # module's globals, so install the v2.1.3 overlay explicitly. Instantiate the
+    # v2.1.3 handler directly instead of relying on a mutable class alias.
     base.enrich_messages = enrich_messages
-    base.GatewayHandler = V213GatewayHandler
-    return base.main()
+    server = ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)
+    print(
+        f"Investor Intelligence v2.1.3 local gateway listening on "
+        f"http://{args.host}:{args.port}",
+        flush=True,
+    )
+    server.serve_forever()
+    return 0
 
 
 if __name__ == "__main__":
