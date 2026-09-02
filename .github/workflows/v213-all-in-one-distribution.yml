@@ -40,6 +40,8 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           .\scripts\resolve_python.ps1 -VenvPath .venv-v213-package
+          & $env:PROJECT_PYTHON scripts\reconcile_v213_order_evidence.py --self-test
+          if($LASTEXITCODE -ne 0){throw 'v2.1.3 order-evidence reconciliation self-test failed.'}
           & $env:PROJECT_PYTHON scripts\build_v213_scheduled_top20_report.py --self-test
           if($LASTEXITCODE -ne 0){throw 'v2.1.3 scheduled report self-test failed.'}
           & $env:PROJECT_PYTHON scripts\audit_v213_bilingual_public_fields.py
@@ -92,20 +94,26 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Paths $paths
           if($LASTEXITCODE -ne 0){throw 'Windows PowerShell 5.1 parser gate failed.'}
 
-      - name: Audit live refresh observability contract
+      - name: Audit live refresh observability and reconciliation contract
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $launcher=Get-Content launcher\InvestorIntelligenceLauncher.cs -Raw -Encoding utf8
           $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
+          $bridge=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
           foreach($needle in @('LOG_MODE=LIVE_STREAMING','PumpStream(','FileShare.ReadWrite','LastPowerShellLiveLine')){
             if(-not $launcher.Contains($needle)){throw "Launcher live-log contract missing: $needle"}
           }
-          foreach($stage in 1..7){
-            if($refresh -notmatch ("Stage\s+"+$stage+"\s+7")){throw "Refresh stage marker missing: $stage/7"}
+          foreach($stage in 1..8){
+            if($refresh -notmatch ("Stage\s+"+$stage+"\s+8")){throw "Refresh stage marker missing: $stage/8"}
           }
-          if(-not $refresh.Contains("PYTHONUNBUFFERED='1'")){throw 'Python unbuffered progress contract missing.'}
-          Write-Host 'V213_LIVE_OBSERVABILITY = PASS'
+          foreach($needle in @('reconcile_v213_order_evidence.py','v213_order_evidence_runtime.json','PYTHONUNBUFFERED=''1''')){
+            if(-not $refresh.Contains($needle)){throw "Refresh reconciliation/progress contract missing: $needle"}
+          }
+          foreach($needle in @('Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2')){
+            if(-not $bridge.Contains($needle)){throw "Quick-tunnel retry contract missing: $needle"}
+          }
+          Write-Host 'V213_LIVE_OBSERVABILITY_AND_RECONCILIATION = PASS'
 
       - name: Compile bilingual EXE launcher
         shell: pwsh
@@ -160,7 +168,16 @@ jobs:
               dynamic_running_llama_port_discovery=$true
               default_model='auto_from_v1_models'
               gateway='scripts/v213_local_llm_gateway.py'
+              quick_tunnel_retry_attempts=3
+              quick_tunnel_protocol='http2'
               formal_activation_requires_healthy_bridge=$true
+            }
+            order_evidence=[ordered]@{
+              historical_baseline='data/bootstrap/v213-r15r-order-baseline.json'
+              runtime_reconciliation='scripts/reconcile_v213_order_evidence.py'
+              runtime_baseline='data/cache/v213_order_evidence_runtime.json'
+              local_model_used_for_order_totals=$false
+              numeric_total_order_estimate_prohibited=$true
             }
             bilingual_fields='config/field-labels.zh-en.json'
             bilingual_public_schema_audit='scripts/audit_v213_bilingual_public_fields.py'
@@ -237,13 +254,15 @@ jobs:
           @"
           ## Investor Intelligence v2.1.3 All-in-One
           - Worker typecheck/tests: PASS
+          - v2.1.3 order-evidence membership reconciliation self-test: PASS
           - v2.1.3 scheduled report self-test: PASS
           - complete bilingual current-public-schema audit: PASS
           - pwsh + Windows PowerShell 5.1 parser: PASS
-          - live launcher log + seven-stage refresh observability contract: PASS
+          - live launcher log + eight-stage refresh observability: PASS
+          - Top20 membership changes reconcile new tickers through fail-closed SEC order evidence: included
           - EXE launcher / stable-runtime copy: PASS
           - local refresh task action non-mutating validation: PASS
-          - local llama.cpp dynamic port discovery + health-gated tunnel: included
+          - local llama.cpp dynamic port discovery + 3-attempt HTTP/2 quick-tunnel health gate: included
           - formal activation requires a healthy local-model bridge: true
           - v2.1.0 / v2.1.1 / v2.1.2 / v2.1.3 source ZIPs: included
           - one-click outer ZIP SHA-256: ``$env:ALL_IN_ONE_SHA``
