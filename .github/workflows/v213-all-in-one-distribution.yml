@@ -101,8 +101,15 @@ jobs:
           $launcher=Get-Content launcher\InvestorIntelligenceLauncher.cs -Raw -Encoding utf8
           $refresh=Get-Content run-v213-local.ps1 -Raw -Encoding utf8
           $bridge=Get-Content run-v213-local-llm-bridge.ps1 -Raw -Encoding utf8
-          foreach($needle in @('LOG_MODE=LIVE_STREAMING','PumpStream(','FileShare.ReadWrite','LastPowerShellLiveLine')){
-            if(-not $launcher.Contains($needle)){throw "Launcher live-log contract missing: $needle"}
+          foreach($needle in @(
+            'LOG_MODE=LIVE_STREAMING_ASYNC_EVENTS',
+            'BeginOutputReadLine',
+            'CancelOutputRead',
+            'PARENT_EXIT_IS_AUTHORITATIVE',
+            'PIPE_HOLD_PARENT_EXIT_TEST=PASS',
+            'LastPowerShellLiveLine'
+          )){
+            if(-not $launcher.Contains($needle)){throw "Launcher pipe-safe completion contract missing: $needle"}
           }
           foreach($stage in 1..8){
             if($refresh -notmatch ("Stage\s+"+$stage+"\s+8")){throw "Refresh stage marker missing: $stage/8"}
@@ -113,9 +120,9 @@ jobs:
           foreach($needle in @('Start-HealthyQuickTunnel','quick tunnel attempt','--protocol','http2')){
             if(-not $bridge.Contains($needle)){throw "Quick-tunnel retry contract missing: $needle"}
           }
-          Write-Host 'V213_LIVE_OBSERVABILITY_AND_RECONCILIATION = PASS'
+          Write-Host 'V213_LIVE_OBSERVABILITY_RECONCILIATION_AND_PIPE_SAFETY = PASS'
 
-      - name: Compile bilingual EXE launcher
+      - name: Compile and stress-test bilingual EXE launcher
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -127,6 +134,13 @@ jobs:
           $exe=Join-Path $env:RUNNER_TEMP 'InvestorIntelligence.exe'
           & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/out:$exe" launcher\InvestorIntelligenceLauncher.cs
           if($LASTEXITCODE -ne 0){throw 'Launcher compilation failed.'}
+          $pipeTest=Start-Process -FilePath $exe -ArgumentList '--pipe-hold-self-test' -PassThru
+          if(-not $pipeTest.WaitForExit(20000)){
+            Stop-Process -Id $pipeTest.Id -Force -ErrorAction SilentlyContinue
+            throw 'Launcher inherited-pipe self-test timed out.'
+          }
+          if($pipeTest.ExitCode -ne 0){throw "Launcher inherited-pipe self-test failed: $($pipeTest.ExitCode)"}
+          Write-Host 'V213_LAUNCHER_INHERITED_PIPE_SELF_TEST = PASS'
           "V213_EXE=$exe"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build one-click all-version ZIP
@@ -156,6 +170,7 @@ jobs:
           $refDoc=[ordered]@{
             schema_version=1
             package_version='2.1.3'
+            launcher_revision='PipeSafe-R39'
             current_commit=$env:GITHUB_SHA.ToLowerInvariant()
             versions=$refs
             launcher='InvestorIntelligence.exe'
@@ -223,20 +238,28 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          function Invoke-BoundedExeTest([string]$Path,[string]$Argument,[string]$Label){
+            $p=Start-Process -FilePath $Path -ArgumentList $Argument -PassThru
+            if(-not $p.WaitForExit(20000)){
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw "$Label timed out."
+            }
+            if($p.ExitCode -ne 0){throw "$Label failed with exit code $($p.ExitCode)."}
+          }
           $check=Join-Path $env:RUNNER_TEMP "ii-v213-check-$env:GITHUB_RUN_ID"
           $stable=Join-Path $env:RUNNER_TEMP "ii-v213-stable-$env:GITHUB_RUN_ID"
           Expand-Archive $env:ALL_IN_ONE_ZIP $check
           $launcher=Join-Path $check 'InvestorIntelligence.exe'
-          $process=Start-Process -FilePath $launcher -ArgumentList '--self-test' -Wait -PassThru
-          if($process.ExitCode -ne 0){throw "Packaged EXE self-test failed with exit code $($process.ExitCode)."}
+          Invoke-BoundedExeTest $launcher '--self-test' 'Packaged EXE self-test'
+          Invoke-BoundedExeTest $launcher '--pipe-hold-self-test' 'Packaged EXE inherited-pipe self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $check 'install-v213-runtime.ps1') -ProjectRoot $check -RuntimeRoot $stable
           if($LASTEXITCODE -ne 0){throw 'Stable runtime installation smoke test failed.'}
           $stableLauncher=Join-Path $stable 'InvestorIntelligence.exe'
-          $stableProcess=Start-Process -FilePath $stableLauncher -ArgumentList '--self-test' -Wait -PassThru
-          if($stableProcess.ExitCode -ne 0){throw 'Stable runtime EXE self-test failed.'}
+          Invoke-BoundedExeTest $stableLauncher '--self-test' 'Stable runtime EXE self-test'
+          Invoke-BoundedExeTest $stableLauncher '--pipe-hold-self-test' 'Stable runtime inherited-pipe self-test'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stable 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stable -ValidateOnly
           if($LASTEXITCODE -ne 0){throw 'Refresh-task non-mutating validation failed.'}
-          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME = PASS'
+          Write-Host 'INVESTOR_INTELLIGENCE_V213_STABLE_RUNTIME_AND_PIPE_SAFETY = PASS'
 
       - name: Upload one-click package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -259,6 +282,7 @@ jobs:
           - complete bilingual current-public-schema audit: PASS
           - pwsh + Windows PowerShell 5.1 parser: PASS
           - live launcher log + eight-stage refresh observability: PASS
+          - inherited stdout/stderr handle reproduction and bounded launcher completion: PASS
           - Top20 membership changes reconcile new tickers through fail-closed SEC order evidence: included
           - EXE launcher / stable-runtime copy: PASS
           - local refresh task action non-mutating validation: PASS
