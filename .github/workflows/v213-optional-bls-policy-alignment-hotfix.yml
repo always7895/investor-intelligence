@@ -31,9 +31,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $patchPath = '.github/patches/v213-optional-bls-policy-alignment.patch'
-          git apply --check --whitespace=nowarn $patchPath
+          git apply --check --inaccurate-eof --whitespace=nowarn $patchPath
           if ($LASTEXITCODE -ne 0) { throw 'Optional-BLS policy patch no longer applies cleanly.' }
-          git apply --whitespace=nowarn $patchPath
+          git apply --inaccurate-eof --whitespace=nowarn $patchPath
           if ($LASTEXITCODE -ne 0) { throw 'Optional-BLS policy patch failed.' }
           Remove-Item -LiteralPath $patchPath -Force
           Remove-Item -LiteralPath '.github/workflows/v213-optional-bls-policy-alignment-hotfix.yml' -Force
