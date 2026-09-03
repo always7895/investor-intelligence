@@ -1,0 +1,127 @@
+name: V2.1.3 Generated Snapshot Audited Delivery
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-generated-snapshot-audited-delivery.yml
+      - config/v213-serenity-evidence-freshness-policy.json
+      - config/v213-serenity-public-logic-policy.json
+      - config/v213-market-corroboration-degradation-policy.json
+      - scripts/audit_v213_serenity_release_v2.ps1
+      - scripts/audit_v213_generated_snapshot_v2.ps1
+      - scripts/build_v213_activation_bundle.py
+      - scripts/build_v213_activation_bundle_v2.py
+      - scripts/v213_source_independence_gate.py
+      - scripts/v213_source_independence_gate_v2.py
+      - scripts/v213_source_independence_gate_v3.py
+      - scripts/ci_v213_hotfix6_validate.ps1
+      - scripts/ci_v213_hotfix6_package.ps1
+      - activate-v213-seven-field-schedule-core.ps1
+      - cloud/src/v213/activation-v2.ts
+      - cloud/test/v213-activation.test.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-serenity-freshness-audited-delivery
+  cancel-in-progress: true
+
+jobs:
+  audited-delivery:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      SOURCE_DIR: ${{ github.workspace }}\generated-snapshot-audited-${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact source into isolated directory
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          path: generated-snapshot-audited-${{ github.run_id }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Audit static Serenity release contract
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $audit = Join-Path $env:RUNNER_TEMP "Investor-Intelligence-v2.1.3-Serenity-Static-Audit-$env:GITHUB_RUN_ID.json"
+          .\scripts\audit_v213_serenity_release_v2.ps1 -ProjectRoot $PWD.Path -OutputPath $audit
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $audit -PathType Leaf)) {
+            throw 'Static Serenity release audit did not produce a PASS receipt.'
+          }
+          "SERENITY_STATIC_AUDIT=$audit" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run complete Windows no-mutation qualification
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_hotfix6_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Audit exact generated seven-payload snapshot
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $audit = Join-Path $env:RUNNER_TEMP "Investor-Intelligence-v2.1.3-Generated-Snapshot-Audit-$env:GITHUB_RUN_ID.json"
+          .\scripts\audit_v213_generated_snapshot_v2.ps1 -ProjectRoot $PWD.Path -OutputPath $audit
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $audit -PathType Leaf)) {
+            throw 'Generated snapshot audit did not produce a PASS receipt.'
+          }
+          "SERENITY_SNAPSHOT_AUDIT=$audit" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Compile, package and independently verify audited Hotfix6
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_hotfix6_package.ps1 -ProjectRoot $PWD.Path
+
+      - name: Upload generated-snapshot-audited Hotfix6 delivery
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-Hotfix6-Generated-Snapshot-Audited-Delivery
+          path: |
+            ${{ env.HF6_ZIP }}
+            ${{ env.HF6_SHA_FILE }}
+            ${{ env.HF6_VERIFICATION }}
+            ${{ env.HF6_VALIDATION }}
+            ${{ env.SERENITY_STATIC_AUDIT }}
+            ${{ env.SERENITY_SNAPSHOT_AUDIT }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## v2.1.3 Generated Snapshot Audited Delivery
+          - Public-only reconstruction; no private/official Serenity formula claim: PASS
+          - Exact seven payload SHA-256 verification: PASS
+          - Same Top20 membership and order across all payloads: PASS
+          - Every ticker has at least two fresh independent claim-source units/domains: PASS
+          - Every ticker has qualifying primary claim evidence: PASS
+          - Positive Serenity advantages require fresh multi-source support: PASS
+          - Same domain/publisher/syndicated copies never multiply independence: PASS
+          - Stale LIVE/CACHED market observations: 0
+          - Market data/macro context cannot prove company advantages: PASS
+          - Unresolved source conflicts: 0
+          - Uncorroborated valuation factor capped at 3.75: PASS
+          - No high-confidence inference without fresh market corroboration: PASS
+          - Atomic pointer-last commit and exact rollback: PASS
+          - Real Windows no-mutation qualification: PASS
+          - Production mutation by CI: false
+          - ZIP SHA-256: ``$env:HF6_SHA``
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
