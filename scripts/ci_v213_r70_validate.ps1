@@ -62,14 +62,20 @@ try {
         'PreferredModel = "RVN-Q6_K-multilingual-mtp"',
         'RefreshModelsAsync',
         'RunBusyAsync',
-        'refreshButton.Click += async delegate',
-        'bridgeButton.Click += async delegate',
-        'activateButton.Click += async delegate',
+        'RunPowerShellAsync',
         'Shown += async delegate'
     )) {
         if (-not $launcherSource.Contains($marker)) { throw "Launcher responsive model-selector contract is missing: $marker" }
     }
-    Write-Host 'V213_LAUNCHER_SOURCE_UI_CONTRACT = PASS; model_selector=true; async_handlers=true; responsive_ui=true' -ForegroundColor Green
+    $asyncClickCount = [regex]::Matches($launcherSource,'(?m)\b(?:scanButton|refreshButton|activateButton|bridgeButton)\.Click\s*\+=\s*async\s+delegate').Count
+    if ($asyncClickCount -lt 4) { throw "Launcher must keep all long-running/scan UI handlers asynchronous; observed=$asyncClickCount expected>=4" }
+    foreach ($buttonName in @('refreshButton','activateButton','bridgeButton')) {
+        if ($launcherSource -notmatch ([regex]::Escape($buttonName) + '\.Click\s*\+=\s*async\s+delegate[\s\S]{0,1800}?await\s+RunBusyAsync')) {
+            throw "Launcher busy-operation handler is not asynchronous/non-blocking: $buttonName"
+        }
+    }
+    if ($launcherSource -notmatch 'RefreshModelsAsync\(\)[\s\S]{0,1400}?Task\.Run') { throw 'Launcher model scan does not offload discovery from the UI thread.' }
+    Write-Host "V213_LAUNCHER_SOURCE_UI_CONTRACT = PASS; model_selector=true; async_handlers=$asyncClickCount; responsive_ui=true; model_scan_off_ui_thread=true" -ForegroundColor Green
 
     $powerShellPaths = @(
         'run-v213-local-serenity-latest.ps1',
@@ -156,10 +162,8 @@ foreach ($path in $Paths) {
                 if ([int]$freshness.publication_provenance_origin_count -lt 2 -or [int]$freshness.publication_provenance_domain_count -lt 2 -or [int]$freshness.claim_primary_units -lt 1) {
                     throw "Limited research candidate still depends on a single publication origin: $ticker"
                 }
-                if ($bundleRecord.eligible_for_high_confidence_model_inference -ne $false -or [string]$bundleRecord.public_logic_state.validated_company_thesis -ne 'False') {
-                    if ($bundleRecord.eligible_for_high_confidence_model_inference -ne $false -or $bundleRecord.public_logic_state.validated_company_thesis -ne $false) {
-                        throw "Limited research candidate was incorrectly promoted to a validated/high-confidence thesis: $ticker"
-                    }
+                if ($bundleRecord.eligible_for_high_confidence_model_inference -ne $false -or $bundleRecord.public_logic_state.validated_company_thesis -ne $false) {
+                    throw "Limited research candidate was incorrectly promoted to a validated/high-confidence thesis: $ticker"
                 }
                 $factor = $top20[$index].serenity_factors
                 foreach ($sensitive in @('demand_wave','chokepoint','pricing_power','replacement_friction','tam_capture')) {
