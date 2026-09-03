@@ -44,9 +44,8 @@ if ($core -match '(?m)^\s*\$wrangler\s*=\s*Join-Path.*node_modules\\\.bin\\wrang
     throw 'Activation core still launches Wrangler through the Windows batch shim.'
 }
 
-# Load the exact production helper functions, but do not enter any activation
-# mutation path. This exercises the same parser and ProcessStartInfo code used
-# by formal activation.
+# Load exactly the helper functions used by formal Production activation, without
+# entering any mutation path.
 $functionStart = $core.IndexOf('function Get-PropertyValue',[StringComparison]::Ordinal)
 $selfTestStart = $core.IndexOf('if ($SelfTest) {',[StringComparison]::Ordinal)
 if ($functionStart -lt 0 -or $selfTestStart -le $functionStart) {
@@ -67,9 +66,9 @@ New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 $testScript = Join-Path $testRoot 'emit-wrangler-output.js'
 $nodeSource = @(
     "const payload = Buffer.from('$jsonBase64', 'base64').toString('utf8');",
-    "process.stdout.write('wrangler 4.123.0\\n');",
-    "process.stdout.write(payload + '\\n');",
-    "process.stderr.write('search...\\n');",
+    "process.stdout.write('wrangler 4.123.0\n');",
+    "process.stdout.write(payload + '\n');",
+    "process.stderr.write('search...\n');",
     'process.exit(0);'
 ) -join "`r`n"
 [IO.File]::WriteAllText($testScript,$nodeSource,[Text.UTF8Encoding]::new($false))
@@ -78,13 +77,8 @@ try {
     if ($captured.ExitCode -ne 0) {
         throw "Native capture regression process failed; exit=$($captured.ExitCode); stdout=$($captured.Stdout); stderr=$($captured.Stderr)"
     }
-    # The production safety property is that diagnostics written outside the JSON
-    # channel never contaminate the stdout document consumed by Parse-JsonOutput.
-    # Some Windows service-hosted Node builds can suppress inherited stderr text,
-    # so requiring a non-empty stderr payload creates a false negative without
-    # testing any production invariant.
     if ($captured.Stdout -match 'search\.\.\.') { throw 'Native stderr contaminated stdout.' }
-    if ($captured.Stdout -notmatch '(?m)^wrangler 4\.123\.0\s*$') { throw 'Human-readable Wrangler banner was not emitted.' }
+    if ($captured.Stdout -notmatch '(?m)^wrangler 4\.123\.0\s*$') { throw "Human-readable Wrangler banner was not emitted. stdout=$($captured.Stdout)" }
     if ((Get-SingleActiveVersion $captured.Stdout) -ne $version) { throw 'Mixed-stdout deployment JSON extraction failed.' }
 
     $ansiBanner = ([string][char]27) + '[36mwrangler 4.123.0' + ([string][char]27) + '[0m'
