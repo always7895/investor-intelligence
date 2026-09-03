@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "workflow_run_id": "33784382462",
+  "source_commit": "c3aa57f777e57363f575bd057777877b29032ee2",
+  "failed_at": "2026-09-03T17:27:23.9743187Z",
+  "production_mutation_by_hotfix": false,
+  "git_status": [],
+  "changed_files": []
+}
