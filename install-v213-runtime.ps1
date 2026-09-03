@@ -110,29 +110,54 @@ $bridge=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local-llm-bri
 if(-not$bridge.Contains('run_v213_local_llm_bridge_core_v2.ps1')){
     throw 'The canonical stable bridge entrypoint does not use the HealthSchema2 dependency-bootstrap core.'
 }
+
+# Two reviewed activation wrappers are valid at this base-install layer:
+#   1) the source-diverse wrapper used by the base runtime, and
+#   2) the stricter Serenity-latest wrapper that the final package overlays.
+# The latter delegates to the same exact-rollback core and adds the current
+# per-ticker/latest-evidence qualification.  Requiring only legacy strings here
+# incorrectly rejects the stronger final wrapper before its own installer can
+# finish overlaying the stable runtime.
 $activation=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'activate-v213-seven-field-schedule.ps1') -Raw -Encoding utf8
-foreach($needle in @(
+$sourceDiverseMarkers=@(
     'V213_SOURCE_INDEPENDENCE_PREFLIGHT',
     'V213_MARKET_CORROBORATION_QUALITY = DEGRADED',
     'market_corroboration_status',
     'health-schema-v2',
     'install-v213-source-diverse-runtime.ps1',
     'rollback'
-)){
-    if(-not$activation.Contains($needle)){throw "The stable activation entrypoint is missing contract: $needle"}
+)
+$serenityLatestMarkers=@(
+    'V213_SERENITY_LATEST_ACTIVATION_PREFLIGHT',
+    'v213_refresh_serenity_public_sources.py',
+    'v213_serenity_latest_multisource_audit.py',
+    'activate-v213-seven-field-schedule-core.ps1',
+    'RequireLocalModel',
+    'ConfirmActivation'
+)
+$sourceDiverseActivationValid=$true
+foreach($needle in $sourceDiverseMarkers){if(-not$activation.Contains($needle)){$sourceDiverseActivationValid=$false;break}}
+$serenityLatestActivationValid=$true
+foreach($needle in $serenityLatestMarkers){if(-not$activation.Contains($needle)){$serenityLatestActivationValid=$false;break}}
+if(-not$sourceDiverseActivationValid-and-not$serenityLatestActivationValid){
+    throw 'The stable activation entrypoint matches neither the reviewed source-diverse contract nor the stronger Serenity-latest contract.'
 }
+$activationProfile=if($serenityLatestActivationValid){'SERENITY_LATEST'}else{'SOURCE_DIVERSE'}
+Write-Host "V213_RUNTIME_ACTIVATION_CONTRACT = PASS; profile=$activationProfile; exact_core=activate-v213-seven-field-schedule-core.ps1" -ForegroundColor Green
+
 $gateway=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'scripts\v213_local_llm_gateway.py') -Raw -Encoding utf8
 foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_latest.json','cap confidence at LIMITED','Yahoo/yfinance','Conflicting sources')){
     if(-not$gateway.Contains($needle)){throw "The stable local-model gateway is missing source contract: $needle"}
 }
 
 [ordered]@{
-    schema_version=5
+    schema_version=6
     product_version='2.1.3'
     runtime_root=$RuntimeRoot
     source_root=$ProjectRoot
     installed_utc=(Get-Date).ToUniversalTime().ToString('o')
     runtime_profile='source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware'
+    activation_contract_profile=$activationProfile
     scoring_version='system-operationalization-v2.1.3-diversified'
     provisional_scoring_version='system-operationalization-v2.1.3-safe-preselection'
     provisional_snapshot_promotion_blocked=$true
@@ -161,4 +186,4 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     official_serenity_score_claimed=$false
     private_serenity_method_reproduced=$false
 }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
-Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware" -ForegroundColor Green
+Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware; activation=$activationProfile" -ForegroundColor Green
