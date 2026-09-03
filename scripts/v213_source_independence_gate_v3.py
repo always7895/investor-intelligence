@@ -2,12 +2,8 @@
 """Compatibility entrypoint for the final v2.1.3 source-independence gate.
 
 The implementation lives in ``v213_source_independence_gate_v4.py``. This stable
-path is retained because existing launchers, qualification scripts and static
-audits invoke or inspect the v3 filename.
-
-The aliases below intentionally preserve the reviewed public compatibility
-surface instead of duplicating the implementation. Runtime execution, wrapper
-self-tests and imported policy helpers all resolve to the same v4 objects.
+path is retained because existing launchers and qualification scripts invoke the
+v3 filename.
 """
 from __future__ import annotations
 
@@ -28,44 +24,8 @@ v4 = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = v4
 spec.loader.exec_module(v4)
 
-# Stable import surface. These are aliases to the authoritative v4 objects, not
-# copies, so downstream callers and audits cannot drift from runtime behavior.
-gate = v4.gate
-apply_market_quality_policy = v4.apply_market_quality_policy
-MARKET_DEGRADATION_CODE = v4.MARKET_DEGRADATION_CODE
-INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE = v4.MARKET_DEGRADATION_CODE
-
-
-def self_test() -> None:
-    """Execute the authoritative final-gate wrapper regression."""
-    v4.self_test()
-
-
-# Worker-compatible output and methodology fields that the stable entrypoint
-# guarantees through the v4 implementation.
-WORKER_COMPATIBILITY_FIELDS = frozenset(
-    {
-        "blocking_violations",
-        "degradations",
-        "market_corroboration_global_blocker",
-        "market_corroboration_required_for_high_confidence_model_inference",
-        "uncorroborated_valuation_factor_max",
-        "provider_failure_must_not_be_silently_relabelled_as_success",
-        "market_data_is_not_averaged_into_published_returns",
-    }
-)
-
-__all__ = [
-    "gate",
-    "self_test",
-    "apply_market_quality_policy",
-    "MARKET_DEGRADATION_CODE",
-    "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE",
-    "WORKER_COMPATIBILITY_FIELDS",
-]
-
 if __name__ == "__main__":
     if "--wrapper-self-test" in sys.argv:
-        self_test()
+        v4.self_test()
         raise SystemExit(0)
     raise SystemExit(v4.gate.main())
