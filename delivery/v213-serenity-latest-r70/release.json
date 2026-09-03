@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "status": "FAIL",
-  "job_status": "failure",
-  "workflow_run_id": "33739485194",
-  "source_commit": "583f879fb799611db37ee8368df4886476654594",
+  "job_status": "cancelled",
+  "workflow_run_id": "33740319112",
+  "source_commit": "0fc97cb5f515ffe570507409a441770a2444346c",
   "release_tag": "",
   "package": "",
   "zip_sha256": "",
   "desktop_delivery": "",
   "production_mutation_by_ci": false,
-  "completed_at": "2026-09-03T09:37:57.3222230Z"
+  "completed_at": "2026-09-03T09:49:32.6922587Z"
 }
