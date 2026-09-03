@@ -30,8 +30,9 @@ ROOT = SCRIPT_DIR.parent
 V4_PATH = SCRIPT_DIR / "v213_source_independence_gate_v4.py"
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
-SEC_REFERENCE_PATH = ROOT / "data" / "cache" / "sec_company_tickers_exchange.json"
-SEC_COMPANYFACTS_DIR = ROOT / "data" / "cache" / "companyfacts"
+SEC_CACHE_ROOT = ROOT / "data" / "cache" / "v21"
+SEC_REFERENCE_PATH = SEC_CACHE_ROOT / "sec_company_tickers_exchange.json"
+SEC_COMPANYFACTS_DIR = SEC_CACHE_ROOT / "companyfacts"
 SEC_FILING_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "40-F", "6-K", "8-K"}
 
 
