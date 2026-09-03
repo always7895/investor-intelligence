@@ -1,0 +1,98 @@
+{
+  "schema_version": 5,
+  "product_version": "2.1.3",
+  "policy_id": "v213-serenity-latest-multisource-v5",
+  "methodology_label_en": "Serenity public-logic high-fidelity reconstruction",
+  "methodology_label_zh_TW": "Serenity 公開邏輯高保真重建",
+  "official_serenity_formula_claimed": false,
+  "official_serenity_score_claimed": false,
+  "private_method_reproduced": false,
+  "latest_available_evidence_required": true,
+  "retrieval_time_is_not_publication_time": true,
+  "portfolio_minimums": {
+    "independent_source_families": 3,
+    "independent_domains": 3,
+    "claim_source_families": 2,
+    "claim_source_domains": 2,
+    "claim_primary_coverage_ratio": 0.75,
+    "maximum_single_family_share": 0.70,
+    "unresolved_material_conflicts": 0
+  },
+  "per_ticker_minimums": {
+    "claim_relevant_independent_families": 2,
+    "claim_relevant_independent_domains": 2,
+    "claim_relevant_primary_sources": 1,
+    "claim_dated_evidence_ratio": 0.80
+  },
+  "freshness_days": {
+    "snapshot": 0.0833333333,
+    "market_high_confidence": 4,
+    "market_absolute_maximum": 7,
+    "market_provider_max_gap": 3,
+    "company_current_state": 200,
+    "order_visibility": 200,
+    "structural_claim": 550,
+    "official_macro": 45,
+    "serenity_public_source_retrieval": 1
+  },
+  "market_corroboration": {
+    "yahoo_role": "compatibility_calculation_only_not_truth_anchor",
+    "minimum_independent_providers_for_high_confidence": 2,
+    "same_metric_basis_required_for_pairwise_comparison": true,
+    "pairwise_conflict_detection": true,
+    "source_values_must_not_be_averaged": true,
+    "uncorroborated_valuation_factor_max": 3.75,
+    "provider_http_success_does_not_override_stale_as_of": true,
+    "known_metric_basis": {
+      "hfmarketdata_daily_bars": "split_dividend_adjusted_close",
+      "alpha_vantage_adjusted": "split_dividend_adjusted_close",
+      "alpha_vantage": "split_dividend_adjusted_close",
+      "nasdaq_historical_api": "exchange_close_unadjusted_or_unknown",
+      "stooq_daily_csv": "vendor_close_adjustment_unknown",
+      "yfinance_adjusted_close": "split_dividend_adjusted_close"
+    }
+  },
+  "positive_factor_requirements": {
+    "demand_wave": ["claim_specific_state", "fresh_primary", "independent_corroborator"],
+    "chokepoint": ["dependency_graph", "scarcity_or_effective_capacity", "fresh_primary", "independent_corroborator"],
+    "pricing_power": ["company_capture", "contract_or_price_evidence", "fresh_primary", "independent_corroborator"],
+    "replacement_friction": ["qualification_switching_or_integration_evidence", "fresh_primary", "independent_corroborator"],
+    "tam_capture": ["company_capture", "fresh_financial_or_order_evidence"],
+    "valuation_expectations_above_3_75": ["two_fresh_comparable_independent_market_providers", "no_pairwise_conflict"]
+  },
+  "prohibited_shortcuts": [
+    "keyword_or_sector_implies_bottleneck",
+    "revenue_growth_implies_demand_wave_or_tam_capture",
+    "gross_margin_implies_pricing_power_or_replacement_friction",
+    "named_customer_implies_dependency",
+    "market_price_implies_company_fundamental_claim",
+    "official_macro_implies_company_claim",
+    "catalog_count_implies_live_source_use",
+    "multiple_urls_same_publisher_count_as_independent",
+    "syndicated_content_counts_as_independent",
+    "local_model_creates_missing_facts_or_order_totals"
+  ],
+  "severe_thesis_killers": [
+    "THESIS_BROKEN",
+    "architecture_bypass",
+    "dependency_contradicted",
+    "qualified_substitute_capacity_verified",
+    "material_customer_loss",
+    "volume_qualification_failed",
+    "scarcity_resolved",
+    "pricing_collapse",
+    "financing_destroys_equity_capture"
+  ],
+  "related_project_patterns_adopted": [
+    "rank_scarce_layers_before_companies",
+    "evidence_ladder",
+    "twenty_plus_candidate_universe",
+    "three_plus_value_chain_layers",
+    "bull_bear_and_falsifier_review",
+    "provider_normalization",
+    "point_in_time_snapshot",
+    "recency_aware_memory",
+    "regression_driven_research"
+  ],
+  "licensing_boundary": "Conceptual patterns only; no third-party source code is copied by this policy."
+}
