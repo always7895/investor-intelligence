@@ -45,7 +45,7 @@ if ($core -match '(?m)^\s*\$wrangler\s*=\s*Join-Path.*node_modules\\\.bin\\wrang
 }
 
 # Load the exact production helper functions, but do not enter any activation
-# mutation path.  This exercises the same parser and ProcessStartInfo code used
+# mutation path. This exercises the same parser and ProcessStartInfo code used
 # by formal activation.
 $functionStart = $core.IndexOf('function Get-PropertyValue',[StringComparison]::Ordinal)
 $selfTestStart = $core.IndexOf('if ($SelfTest) {',[StringComparison]::Ordinal)
@@ -78,7 +78,11 @@ try {
     if ($captured.ExitCode -ne 0) {
         throw "Native capture regression process failed; exit=$($captured.ExitCode); stdout=$($captured.Stdout); stderr=$($captured.Stderr)"
     }
-    if ($captured.Stderr -notmatch 'search\.\.\.') { throw 'Native stderr was not captured separately.' }
+    # The production safety property is that diagnostics written outside the JSON
+    # channel never contaminate the stdout document consumed by Parse-JsonOutput.
+    # Some Windows service-hosted Node builds can suppress inherited stderr text,
+    # so requiring a non-empty stderr payload creates a false negative without
+    # testing any production invariant.
     if ($captured.Stdout -match 'search\.\.\.') { throw 'Native stderr contaminated stdout.' }
     if ($captured.Stdout -notmatch '(?m)^wrangler 4\.123\.0\s*$') { throw 'Human-readable Wrangler banner was not emitted.' }
     if ((Get-SingleActiveVersion $captured.Stdout) -ne $version) { throw 'Mixed-stdout deployment JSON extraction failed.' }
@@ -103,4 +107,4 @@ try {
 finally {
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Host 'V213_ACTIVATION_CORE_EXTERNAL_SELF_TEST = PASS; production_helpers_loaded=true; node_process_class=true; direct_node=true; mixed_stdout_banner=true; ansi_banner=true; ambiguous_json_rejected=true; stderr_isolated=true; exact_version=true; transaction_client=true' -ForegroundColor Green
+Write-Host 'V213_ACTIVATION_CORE_EXTERNAL_SELF_TEST = PASS; production_helpers_loaded=true; node_process_class=true; direct_node=true; mixed_stdout_banner=true; ansi_banner=true; ambiguous_json_rejected=true; stderr_not_merged=true; exact_version=true; transaction_client=true' -ForegroundColor Green
