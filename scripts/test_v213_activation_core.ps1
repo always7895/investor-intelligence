@@ -44,9 +44,9 @@ if ($core -match '(?m)^\s*\$wrangler\s*=\s*Join-Path.*node_modules\\\.bin\\wrang
     throw 'Activation core still launches Wrangler through the Windows batch shim.'
 }
 
-# Load the exact production helper functions, but do not execute the core script's
-# embedded self-test or any activation mutation path.  This tests the same parser
-# and native-process code that formal activation calls.
+# Load the exact production helper functions, but do not enter any activation
+# mutation path.  This exercises the same parser and ProcessStartInfo code used
+# by formal activation.
 $functionStart = $core.IndexOf('function Get-PropertyValue',[StringComparison]::Ordinal)
 $selfTestStart = $core.IndexOf('if ($SelfTest) {',[StringComparison]::Ordinal)
 if ($functionStart -lt 0 -or $selfTestStart -le $functionStart) {
@@ -55,22 +55,26 @@ if ($functionStart -lt 0 -or $selfTestStart -le $functionStart) {
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 Invoke-Expression $core.Substring($functionStart,$selfTestStart-$functionStart)
 
+$wranglerCommand = Resolve-WranglerCommand (Join-Path $ProjectRoot 'cloud')
+if ([IO.Path]::GetFileName([string]$wranglerCommand.Executable) -ine 'node.exe') { throw 'Wrangler is not resolved through node.exe.' }
+if ([IO.Path]::GetFileName([string]$wranglerCommand.PrefixArguments[0]) -ine 'wrangler.js') { throw 'Wrangler JavaScript entrypoint was not resolved.' }
+
 $version = '12345678-1234-1234-1234-123456789abc'
 $json = '{"versions":[{"version_id":"' + $version + '","percentage":100}],"annotations":{"message":"brace { value } and escaped quote \" preserved"}}'
 $jsonBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
-$emitter = @"
-`$payload = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$jsonBase64'))
-[Console]::Out.WriteLine('wrangler 4.123.0')
-[Console]::Out.WriteLine(`$payload)
-[Console]::Error.WriteLine('search...')
-exit 0
-"@
-$encodedEmitter = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($emitter))
 $testRoot = Join-Path $env:TEMP ('ii-v213-wrangler-json-external-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
+$testScript = Join-Path $testRoot 'emit-wrangler-output.js'
+$nodeSource = @(
+    "const payload = Buffer.from('$jsonBase64', 'base64').toString('utf8');",
+    "process.stdout.write('wrangler 4.123.0\\n');",
+    "process.stdout.write(payload + '\\n');",
+    "process.stderr.write('search...\\n');",
+    'process.exit(0);'
+) -join "`r`n"
+[IO.File]::WriteAllText($testScript,$nodeSource,[Text.UTF8Encoding]::new($false))
 try {
-    $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
-    $captured = Invoke-NativeCapture $powershell @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encodedEmitter) $testRoot
+    $captured = Invoke-NativeCapture ([string]$wranglerCommand.Executable) @($testScript) $testRoot
     if ($captured.ExitCode -ne 0) {
         throw "Native capture regression process failed; exit=$($captured.ExitCode); stdout=$($captured.Stdout); stderr=$($captured.Stderr)"
     }
@@ -92,14 +96,11 @@ try {
     catch { $missingRejected = $_.Exception.Message -match 'did not contain a deployment JSON document' }
     if (-not $missingRejected) { throw 'Missing deployment JSON document was not rejected.' }
 
-    $wranglerCommand = Resolve-WranglerCommand (Join-Path $ProjectRoot 'cloud')
-    if ([IO.Path]::GetFileName([string]$wranglerCommand.Executable) -ine 'node.exe') { throw 'Wrangler is not resolved through node.exe.' }
-    if ([IO.Path]::GetFileName([string]$wranglerCommand.PrefixArguments[0]) -ine 'wrangler.js') { throw 'Wrangler JavaScript entrypoint was not resolved.' }
-
+    $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
     & $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $clientPath -ProjectRoot $ProjectRoot -SelfTest
     if ($LASTEXITCODE -ne 0) { throw 'Activation transaction client self-test failed.' }
 }
 finally {
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Host 'V213_ACTIVATION_CORE_EXTERNAL_SELF_TEST = PASS; production_helpers_loaded=true; direct_node=true; mixed_stdout_banner=true; ansi_banner=true; ambiguous_json_rejected=true; stderr_isolated=true; exact_version=true; transaction_client=true' -ForegroundColor Green
+Write-Host 'V213_ACTIVATION_CORE_EXTERNAL_SELF_TEST = PASS; production_helpers_loaded=true; node_process_class=true; direct_node=true; mixed_stdout_banner=true; ansi_banner=true; ambiguous_json_rejected=true; stderr_isolated=true; exact_version=true; transaction_client=true' -ForegroundColor Green
