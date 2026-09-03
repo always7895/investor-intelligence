@@ -8,10 +8,16 @@ Stooq diagnostic-only when its public CSV no longer yields usable rows, and emit
 no-secret provider diagnostics.
 
 HF Market Data is queried once for the complete Top20 through its documented
-multi-ticker endpoint.  This avoids twenty simultaneous long-running requests and
-keeps the clean-run release gate deterministic.  Market data remains corroboration
+multi-ticker endpoint. This avoids twenty simultaneous long-running requests and
+keeps the clean-run release gate deterministic. Market data remains corroboration
 only: it never proves a company fact, dependency, order, bottleneck, or thesis
 state, and it is never averaged into the published return.
+
+A provider response is not considered current merely because the HTTP request is
+current. Every LIVE/CACHED market observation must also have a recent market
+``as_of`` date. Stale observations are explicitly downgraded to UNAVAILABLE before
+conflict detection so old price paths cannot create false corroboration or false
+conflicts.
 """
 from __future__ import annotations
 
@@ -37,6 +43,8 @@ HF_MARKET_DATA_PROVIDER = "hfmarketdata_daily_bars"
 HF_MARKET_DATA_FAMILY = "hfmarketdata_market"
 HF_MARKET_DATA_TIMEOUT_SECONDS = 90
 HF_MARKET_DATA_MAX_TICKERS = 50
+MARKET_OBSERVATION_MAX_AS_OF_AGE_DAYS = 7
+MARKET_OBSERVATION_MAX_FUTURE_DAYS = 1
 
 
 def load_core() -> ModuleType:
@@ -69,6 +77,49 @@ def _safe_error(value: Any) -> str:
 
 def _normalize_ticker(value: Any) -> str:
     return str(value or "").strip().upper()
+
+
+def _market_as_of_age_days(value: Any) -> int | None:
+    text = str(value or "").strip()[:10]
+    if not text:
+        return None
+    try:
+        observed = dt.date.fromisoformat(text)
+    except ValueError:
+        return None
+    return (dt.datetime.now(dt.timezone.utc).date() - observed).days
+
+
+def _freshness_checked_market_observation(observation: Any) -> Any:
+    """Fail closed when an apparently live market path is stale or future-dated."""
+    status = str(getattr(observation, "status", "")).upper()
+    if status not in {"LIVE", "CACHED"}:
+        return observation
+    as_of = str(getattr(observation, "as_of", "") or "")[:10]
+    age_days = _market_as_of_age_days(as_of)
+    if (
+        age_days is not None
+        and age_days >= -MARKET_OBSERVATION_MAX_FUTURE_DAYS
+        and age_days <= MARKET_OBSERVATION_MAX_AS_OF_AGE_DAYS
+    ):
+        return observation
+    reason = (
+        "market_as_of_missing_or_invalid"
+        if age_days is None
+        else (
+            f"stale_market_data_as_of={as_of}; age_days={age_days}; "
+            f"max_age_days={MARKET_OBSERVATION_MAX_AS_OF_AGE_DAYS}"
+        )
+    )
+    return gate.Observation(
+        str(getattr(observation, "provider", "unknown")),
+        str(getattr(observation, "family", "unknown")),
+        str(getattr(observation, "url", "")),
+        "UNAVAILABLE",
+        gate.iso_now(),
+        as_of=as_of,
+        error=reason,
+    )
 
 
 def _hf_bulk_url(tickers: Iterable[str], response_format: str) -> str:
@@ -124,7 +175,11 @@ def _parse_hf_json(text: str) -> dict[str, list[tuple[dt.date, float]]]:
     rows = payload.get("data") if isinstance(payload, dict) else None
     grouped: dict[str, list[tuple[dt.date, float]]] = {}
     if not isinstance(rows, list):
-        detail = str(payload.get("detail") or payload.get("message") or "") if isinstance(payload, dict) else ""
+        detail = (
+            str(payload.get("detail") or payload.get("message") or "")
+            if isinstance(payload, dict)
+            else ""
+        )
         raise gate.SourceGateError(
             "HF Market Data JSON did not contain a data array"
             + (f"; provider_detail={detail[:120]}" if detail else "")
@@ -138,13 +193,19 @@ def _parse_hf_json(text: str) -> dict[str, list[tuple[dt.date, float]]]:
 def _parse_hf_csv(text: str) -> dict[str, list[tuple[dt.date, float]]]:
     grouped: dict[str, list[tuple[dt.date, float]]] = {}
     reader = csv.DictReader(io.StringIO(text))
-    required = {str(name or "").strip().casefold() for name in (reader.fieldnames or [])}
+    required = {
+        str(name or "").strip().casefold()
+        for name in (reader.fieldnames or [])
+    }
     if not {"ticker", "datetime", "close"}.issubset(required):
         raise gate.SourceGateError(
             "HF Market Data CSV did not contain ticker/datetime/close columns"
         )
     for raw in reader:
-        normalized = {str(key).strip().casefold(): value for key, value in raw.items()}
+        normalized = {
+            str(key).strip().casefold(): value
+            for key, value in raw.items()
+        }
         _append_hf_row(grouped, normalized)
     return grouped
 
@@ -171,6 +232,10 @@ def _build_hf_observations(
                 long_term,
                 short_term,
             )
+            # Convert stale HTTP-success data to UNAVAILABLE before cache
+            # resolution, allowing a genuinely fresher cached observation to
+            # win if one exists.
+            live = _freshness_checked_market_observation(live)
         else:
             live = gate.Observation(
                 HF_MARKET_DATA_PROVIDER,
@@ -178,9 +243,14 @@ def _build_hf_observations(
                 url,
                 "UNAVAILABLE",
                 gate.iso_now(),
-                error=request_error or "no usable adjusted daily bars for requested ticker",
+                error=(
+                    request_error
+                    or "no usable adjusted daily bars for requested ticker"
+                ),
             )
-        observations[ticker] = gate.resolve_observation(live, cache, ticker)
+        resolved = gate.resolve_observation(live, cache, ticker)
+        # Cache freshness is checked independently from cache retrieval age.
+        observations[ticker] = _freshness_checked_market_observation(resolved)
     return observations
 
 
@@ -219,15 +289,21 @@ def _load_hf_bulk(cache: Mapping[str, Any]) -> dict[str, Any]:
             health = json.loads(
                 gate.fetch_text(HF_MARKET_DATA_HEALTH, timeout=15)
             )
-            if not isinstance(health, dict) or str(health.get("status") or "").casefold() != "ok":
+            if (
+                not isinstance(health, dict)
+                or str(health.get("status") or "").casefold() != "ok"
+            ):
                 raise gate.SourceGateError("provider health response is not ok")
         except Exception as exc:
             errors.append("health=" + _safe_error(exc))
 
         # Prefer CSV for the documented two-million-row ceiling and lower
-        # serialization overhead.  JSON is a single fallback, never an extra
+        # serialization overhead. JSON is a single fallback, never an extra
         # evidence family or a duplicate source count.
-        for response_format, parser in (("csv", _parse_hf_csv), ("json", _parse_hf_json)):
+        for response_format, parser in (
+            ("csv", _parse_hf_csv),
+            ("json", _parse_hf_json),
+        ):
             url = _hf_bulk_url(tickers, response_format)
             try:
                 _HF_BULK_REQUEST_COUNT += 1
@@ -237,7 +313,9 @@ def _load_hf_bulk(cache: Mapping[str, Any]) -> dict[str, Any]:
                 )
                 candidate = parser(text)
                 if not candidate:
-                    raise gate.SourceGateError("provider returned no usable ticker rows")
+                    raise gate.SourceGateError(
+                        "provider returned no usable ticker rows"
+                    )
                 grouped = candidate
                 selected_url = url
                 break
@@ -256,7 +334,8 @@ def _load_hf_bulk(cache: Mapping[str, Any]) -> dict[str, Any]:
         live_count = sum(
             1
             for observation in _HF_BULK_OBSERVATIONS.values()
-            if str(getattr(observation, "status", "")) in {"LIVE", "CACHED"}
+            if str(getattr(observation, "status", ""))
+            in {"LIVE", "CACHED"}
         )
         print(
             "II_PROGRESS keyless multi-ticker market request complete; "
@@ -324,7 +403,10 @@ def diversified_collect_observations(
         api_key,
         offline,
     )
-    observations = list(observations)
+    observations = [
+        _freshness_checked_market_observation(observation)
+        for observation in observations
+    ]
     if not offline:
         bulk = _load_hf_bulk(cache)
         observation = bulk.get(_normalize_ticker(resolved_ticker))
@@ -337,7 +419,9 @@ def diversified_collect_observations(
                 gate.iso_now(),
                 error="requested ticker missing from multi-ticker result",
             )
-        observations.append(observation)
+        observations.append(
+            _freshness_checked_market_observation(observation)
+        )
     _diagnose(resolved_ticker, observations)
     return resolved_ticker, observations
 
@@ -367,6 +451,8 @@ def self_test() -> None:
         "https://api.nasdaq.com/api/quote/NVDA/historical"
     ) == "nasdaq.com"
 
+    # Static parser fixtures remain intentionally old because they test only
+    # parsing, grouping and URL encoding.
     csv_text = (
         "ticker,datetime,open,high,low,close,volume\n"
         "AAA,2024-01-02,9,11,8,10,100\n"
@@ -383,9 +469,21 @@ def self_test() -> None:
             {
                 "count": 3,
                 "data": [
-                    {"ticker": "AAA", "datetime": "2024-01-02", "close": 10.0},
-                    {"ticker": "AAA", "datetime": "2025-01-02", "close": 12.0},
-                    {"ticker": "AAA", "datetime": "2026-01-02", "close": 15.0},
+                    {
+                        "ticker": "AAA",
+                        "datetime": "2024-01-02",
+                        "close": 10.0,
+                    },
+                    {
+                        "ticker": "AAA",
+                        "datetime": "2025-01-02",
+                        "close": 12.0,
+                    },
+                    {
+                        "ticker": "AAA",
+                        "datetime": "2026-01-02",
+                        "close": 15.0,
+                    },
                 ],
             }
         )
@@ -397,22 +495,64 @@ def self_test() -> None:
     assert parsed_query["adjustment"] == ["adj_splitdiv"]
     assert parsed_query["limit"] == ["800"]
 
+    today = dt.datetime.now(dt.timezone.utc).date()
+    fresh_grouped = {
+        "AAA": [
+            (today - dt.timedelta(days=730), 10.0),
+            (today - dt.timedelta(days=183), 12.0),
+            (today, 15.0),
+        ],
+        "BBB": [(today, 20.0)],
+    }
     fake_cache: dict[str, Any] = {}
     observations = _build_hf_observations(
         ["AAA", "BBB"],
-        grouped_csv,
+        fresh_grouped,
         url,
         fake_cache,
     )
     assert observations["AAA"].status == "LIVE"
     assert observations["BBB"].status == "UNAVAILABLE"
+
+    stale_grouped = {
+        "STALE": [
+            (today - dt.timedelta(days=800), 8.0),
+            (today - dt.timedelta(days=200), 10.0),
+            (today - dt.timedelta(days=14), 12.0),
+        ]
+    }
+    stale = _build_hf_observations(
+        ["STALE"],
+        stale_grouped,
+        url,
+        {},
+    )["STALE"]
+    assert stale.status == "UNAVAILABLE"
+    assert "stale_market_data_as_of=" in stale.error
+    assert f"max_age_days={MARKET_OBSERVATION_MAX_AS_OF_AGE_DAYS}" in stale.error
+
+    invalid = _freshness_checked_market_observation(
+        gate.Observation(
+            "synthetic",
+            "synthetic_market",
+            "https://example.com",
+            "CACHED",
+            gate.iso_now(),
+            as_of="not-a-date",
+        )
+    )
+    assert invalid.status == "UNAVAILABLE"
+    assert invalid.error == "market_as_of_missing_or_invalid"
+
     assert _safe_error("apikey=secret&x=1") == "apikey=<redacted>&x=1"
     assert _safe_error("token=hunter2") == "token=<redacted>"
     assert not os.getenv("HF_MARKET_DATA_API_KEY")
     print(
         "V213_SOURCE_INDEPENDENCE_V2_SELF_TEST = PASS; "
         "keyless_multi_ticker=true; max_tickers=50; "
-        "market_data_is_not_company_evidence=true"
+        "market_data_is_not_company_evidence=true; "
+        f"market_as_of_max_age_days={MARKET_OBSERVATION_MAX_AS_OF_AGE_DAYS}; "
+        "stale_market_data=UNAVAILABLE"
     )
 
 
