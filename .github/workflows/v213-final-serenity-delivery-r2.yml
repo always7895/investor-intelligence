@@ -6,8 +6,11 @@ on:
       - development/v2.1.3-serenity-public-logic-fidelity
     paths:
       - .github/workflows/v213-final-serenity-delivery-r2.yml
+      - scripts/v213_source_federation_gate.py
       - scripts/v213_source_independence_gate_v3.py
       - scripts/v213_source_independence_gate_v4.py
+      - scripts/v213_build_v21_public_snapshot.py
+      - scripts/build_v213_activation_bundle_v2.py
       - scripts/v213_methodology_and_source_audit.py
       - scripts/audit_v213_serenity_release_v6.ps1
       - scripts/audit_v213_generated_snapshot_v4.ps1
