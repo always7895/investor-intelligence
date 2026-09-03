@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "purpose": "Document public methodology inputs and transferable engineering patterns without claiming an official Serenity formula or copying third-party code.",
+  "reviewed_projects": [
+    {
+      "repository": "yan-labs/serenity-aleabitoreddit",
+      "role": "Frequently refreshed public-post archive and dated thesis context",
+      "reviewed_commit": "16cb9879ee037b573a82805dd37a225206464202",
+      "reviewed_commit_date": "2026-09-02T01:11:06Z",
+      "adopted_patterns": [
+        "refresh_before_use",
+        "date_every_thesis",
+        "separate_new_thesis_from_reaffirmation_watchlist_and_victory_lap",
+        "weight_bottleneck_theses_more_than_event_trades",
+        "track_reversals_and_falsifiers"
+      ],
+      "evidence_role": "author_statement_and_research_lead_only",
+      "company_fact_authority": false
+    },
+    {
+      "repository": "muxuuu/serenity-skill",
+      "role": "Deep-research workflow and evidence ladder",
+      "license": "MIT",
+      "adopted_patterns": [
+        "rank_value_chain_layers_before_companies",
+        "start_with_at_least_twenty_candidates_when_market_is_broad",
+        "cover_at_least_three_value_chain_layers",
+        "aim_for_twenty_five_or_more_sources_in_deep_scans",
+        "require_evidence_and_invalidation_for_each_final_candidate"
+      ],
+      "implementation": "independent_reimplementation_not_code_copy"
+    },
+    {
+      "repository": "quantskills/skill-serenity-research-model",
+      "role": "Signal data contract, forward-signal filtering, evidence axes and review discipline",
+      "license": "GPL-3.0",
+      "adopted_patterns": [
+        "preserve_post_url_created_at_and_retrieved_at",
+        "deweight_quote_only_reply_only_and_retrospective_posts",
+        "separate_supply_chain_role_bottleneck_claim_catalyst_horizon_and_risk",
+        "retain public provenance_without_private_account_metadata"
+      ],
+      "implementation": "conceptual_patterns_only_no_gpl_code_copied"
+    },
+    {
+      "repository": "OpenBB-finance/OpenBB",
+      "role": "Provider-normalized data access pattern",
+      "adopted_patterns": ["provider_identity", "normalized_schema", "provider_failure_visibility"]
+    },
+    {
+      "repository": "AI4Finance-Foundation/FinRobot",
+      "role": "Role-separated financial research workflow",
+      "adopted_patterns": ["evidence_collection_separate_from_thesis_and_review"]
+    },
+    {
+      "repository": "TauricResearch/TradingAgents",
+      "role": "Bull/bear/risk debate pattern",
+      "adopted_patterns": ["independent_disconfirmation", "risk_review_before_publication"]
+    },
+    {
+      "repository": "microsoft/RD-Agent",
+      "role": "Hypothesis-test-feedback iteration",
+      "adopted_patterns": ["turn_each_live_failure_into_regression_test"]
+    },
+    {
+      "repository": "microsoft/qlib",
+      "role": "Point-in-time and leakage-resistant evaluation discipline",
+      "adopted_patterns": ["as_of_data", "point_in_time_snapshot", "no_future_leakage"]
+    }
+  ],
+  "non_claims": {
+    "official_serenity_method": false,
+    "private_serenity_process_reproduced": false,
+    "third_party_endorsement": false,
+    "third_party_code_incorporated_by_this_manifest": false
+  }
+}
