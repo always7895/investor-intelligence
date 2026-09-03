@@ -6,6 +6,14 @@ independent families and at least two official issuer/listing-identity or filing
 families. Source concentration counts each publisher family at most once per
 ticker, so multiple facts or URLs from one filing host cannot inflate either
 source diversity or concentration.
+
+GLEIF has two different dates that must not be conflated. ``last_update`` is the
+registry record's own maintenance date, while a successful live API lookup has a
+current observation time. The gate preserves the registry date separately and
+uses the federation run time as the observation ``as_of`` date. This makes the
+identity provenance auditable without pretending that the underlying legal-
+entity record itself changed during the run. Identity observations remain
+identity-only and must not support a positive Serenity advantage factor.
 """
 from __future__ import annotations
 
@@ -19,6 +27,8 @@ from typing import Any, Mapping
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "v213-source-federation-policy.json"
 FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
+GLEIF_SOURCE_ID = "gleif_lei"
+GLEIF_IDENTITY_CLAIM = "legal_entity_reference"
 
 
 class GateError(RuntimeError):
@@ -44,6 +54,57 @@ def atomic(path: Path, value: Mapping[str, Any]) -> None:
         handle.write("\n")
         temporary = Path(handle.name)
     temporary.replace(path)
+
+
+def normalize_live_identity_observations(document: dict[str, Any]) -> dict[str, Any]:
+    """Separate live lookup time from the legal-entity record update date.
+
+    The source-federation collector performs a real GLEIF request in the current
+    run. Its evidence row historically used the GLEIF record's ``lastUpdateDate``
+    as ``as_of``. That made a current successful lookup look stale and caused the
+    final source-level gate to discard an otherwise valid independent identity
+    observation. We retain that source-record date in
+    ``registry_record_as_of`` and set ``as_of`` to the current federation
+    observation time. No company operating, order, dependency or bottleneck
+    claim is created by this normalization.
+    """
+    generated = str(document.get("generated_at") or "").strip()
+    if not generated:
+        raise GateError("Source federation generated_at is missing")
+    rows = document.get("ticker_sources")
+    if not isinstance(rows, list):
+        raise GateError("Source federation ticker_sources are missing")
+
+    normalized = 0
+    for raw_row in rows:
+        if not isinstance(raw_row, dict):
+            continue
+        additions = raw_row.get("evidence_additions")
+        if not isinstance(additions, list):
+            continue
+        for raw in additions:
+            if not isinstance(raw, dict) or str(raw.get("source_id") or "") != GLEIF_SOURCE_ID:
+                continue
+            registry_date = str(raw.get("as_of") or "").strip()
+            if registry_date:
+                raw["registry_record_as_of"] = registry_date
+            raw["as_of"] = generated
+            raw["claim_type"] = GLEIF_IDENTITY_CLAIM
+            raw["observation_status"] = "LIVE"
+            raw["identity_only"] = True
+            raw["can_prove_company_operating_claim"] = False
+            raw["can_support_positive_serenity_advantage"] = False
+            normalized += 1
+
+    document["identity_observation_normalization"] = {
+        "schema_version": 1,
+        "normalized_gleif_rows": normalized,
+        "observation_as_of": generated,
+        "registry_record_date_preserved": True,
+        "identity_only": True,
+        "can_support_positive_serenity_advantage": False,
+    }
+    return document
 
 
 def family_concentration(ticker_rows: list[Any]) -> dict[str, Any]:
@@ -138,12 +199,34 @@ def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> tuple[di
         "catalog_source_count_is_not_live_use": True,
         "claim_scope_separation_enforced": True,
         "publisher_family_deduplication_enforced": True,
+        "live_identity_observation_date_separated_from_registry_record_date": True,
+        "identity_observation_can_support_positive_serenity_advantage": False,
     }
     return gates, concentration
 
 
 def self_test() -> None:
     policy = load(POLICY_PATH)
+    generated = "2026-09-03T00:00:00Z"
+    identity_document = {
+        "generated_at": generated,
+        "ticker_sources": [{
+            "ticker": "TEST",
+            "evidence_additions": [{
+                "source_id": GLEIF_SOURCE_ID,
+                "claim_type": GLEIF_IDENTITY_CLAIM,
+                "as_of": "2022-01-01T00:00:00Z",
+                "url": "https://api.gleif.org/api/v1/lei-records",
+            }],
+        }],
+    }
+    normalized = normalize_live_identity_observations(identity_document)
+    identity = normalized["ticker_sources"][0]["evidence_additions"][0]
+    assert identity["as_of"] == generated
+    assert identity["registry_record_as_of"] == "2022-01-01T00:00:00Z"
+    assert identity["identity_only"] is True
+    assert identity["can_support_positive_serenity_advantage"] is False
+
     sources = [
         {"family": "us_sec", "status": "HEALTHY", "official": True},
         {"family": "nasdaq", "status": "HEALTHY", "official": True},
@@ -174,7 +257,7 @@ def self_test() -> None:
         row["independent_families"] = ["us_sec"]
         row["independent_family_count"] = 1
     assert evaluate(concentrated, policy)[0]["concentration_pass"] is False
-    print("V213_SOURCE_FEDERATION_GATE_SELF_TEST = PASS")
+    print("V213_SOURCE_FEDERATION_GATE_SELF_TEST = PASS; live_identity_observation_normalized=true; identity_only=true")
 
 
 def main() -> int:
@@ -187,19 +270,21 @@ def main() -> int:
         self_test()
         return 0
     policy = load(args.policy)
-    document = load(args.federation)
+    document = normalize_live_identity_observations(load(args.federation))
     gates, concentration = evaluate(document, policy)
     document["gates"] = gates
     document["concentration"] = concentration
     atomic(args.federation, document)
     print(
         "V213_SOURCE_FEDERATION_GATE = {status}; official_global={official}; "
-        "ticker_coverage={coverage:.1%}; concentration={share:.1%}; conflicts={conflicts}".format(
+        "ticker_coverage={coverage:.1%}; concentration={share:.1%}; conflicts={conflicts}; "
+        "gleif_live_observations={gleif}".format(
             status="PASS" if gates["pass"] else "FAIL",
             official=len(gates["official_successful_families"]),
             coverage=float(gates["ticker_coverage_ratio"]),
             share=float(gates["largest_family_share"]),
             conflicts=gates["unresolved_material_conflict_count"],
+            gleif=int(document["identity_observation_normalization"]["normalized_gleif_rows"]),
         ),
         flush=True,
     )
