@@ -42,7 +42,7 @@ foreach ($marker in @(
     if (-not $core.Contains($marker)) { throw "Activation core contract marker is missing: $marker" }
 }
 if ($core.Contains('$name:')) { throw 'Activation core contains unsafe variable-colon interpolation.' }
-if ($core -match "(?m)^\s*\$wrangler\s*=\s*Join-Path.*node_modules\\\.bin\\wrangler\.cmd") {
+if ($core -match '(?m)^\s*\$wrangler\s*=\s*Join-Path.*node_modules\\\.bin\\wrangler\.cmd') {
     throw 'Activation core still launches Wrangler through the Windows batch shim.'
 }
 
