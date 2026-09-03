@@ -16,6 +16,9 @@ on:
       - tests/test_v213_v21_progress_runner.py
       - scripts/ci_v213_r70_validate.ps1
       - scripts/ci_v213_r70_package.ps1
+      - install-v213-runtime.ps1
+      - install-v213-source-diverse-runtime-v2.ps1
+      - install-v213-serenity-latest-runtime.ps1
       - launcher/InvestorIntelligenceLauncher.cs
   workflow_dispatch:
 
