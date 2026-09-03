@@ -1,0 +1,178 @@
+name: V2.1.3 Activation Mode + Gateway Fix2 Validation R5
+
+on:
+  push:
+    branches:
+      - validation/v213-activation-mode-gateway-fix2
+    paths:
+      - .github/workflows/v213-activation-mode-gateway-fix2-validation-r5.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-activation-mode-gateway-fix2-validation-r5
+  cancel-in-progress: false
+
+jobs:
+  validate-and-commit:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      VALIDATION_BRANCH: validation/v213-activation-mode-gateway-fix2
+    steps:
+      - name: Checkout exact validation commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Apply byte-locked Fix2, fixture correction and bridge parser correction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config core.autocrlf false
+          git checkout-index --force --all
+          $parts=1..6|ForEach-Object{'.github\patches\v213-fix2.part-{0:00}.b64'-f$_}
+          $builder=[Text.StringBuilder]::new()
+          foreach($relative in $parts){
+            $path=Join-Path $PWD.Path $relative
+            if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Missing patch part: $relative"}
+            [void]$builder.Append(([IO.File]::ReadAllText($path)-replace'\s',''))
+          }
+          $base64=$builder.ToString()
+          if($base64.Length-ne26472){throw "Patch Base64 length mismatch: $($base64.Length)"}
+          $asciiSha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($base64))).ToLowerInvariant()
+          if($asciiSha-ne'01fbfd7f66c3261ee63e8298f17abf2b72d2f73b6705d2eb10a6f586a73c0ec6'){throw "Patch Base64 SHA mismatch: $asciiSha"}
+          $gzipPath=Join-Path $env:RUNNER_TEMP 'v213-fix2.patch.gz'
+          [IO.File]::WriteAllBytes($gzipPath,[Convert]::FromBase64String($base64))
+          if((Get-FileHash $gzipPath -Algorithm SHA256).Hash.ToLowerInvariant()-ne'71091c2d6d8631e394fbc93125a374fa6a544e11c9f248da68ff89ed8ffe3786'){throw 'Patch gzip SHA mismatch.'}
+          $patchPath=Join-Path $env:RUNNER_TEMP 'v213-fix2.patch'
+          $source=[IO.File]::OpenRead($gzipPath)
+          try{
+            $gzip=[IO.Compression.GzipStream]::new($source,[IO.Compression.CompressionMode]::Decompress)
+            try{$target=[IO.File]::Create($patchPath);try{$gzip.CopyTo($target)}finally{$target.Dispose()}}finally{$gzip.Dispose()}
+          }finally{$source.Dispose()}
+          if((Get-FileHash $patchPath -Algorithm SHA256).Hash.ToLowerInvariant()-ne'91d8966c1583c7eb676c3c726e538c09367246626d083ffed5075b95338856c0'){throw 'Expanded patch SHA mismatch.'}
+          git apply --check --whitespace=error $patchPath
+          if($LASTEXITCODE-ne0){throw 'Fix2 patch preflight failed.'}
+          git apply --whitespace=error $patchPath
+          if($LASTEXITCODE-ne0){throw 'Fix2 patch application failed.'}
+
+          $bridgePatchB64='LS0tIGEvc2NyaXB0cy9ydW5fdjIxM19sb2NhbF9sbG1fYnJpZGdlX2NvcmUucHMxCisrKyBiL3NjcmlwdHMvcnVuX3YyMTNfbG9jYWxfbGxtX2JyaWRnZV9jb3JlLnBzMQpAQCAtNjMsOCArNjMsOCBAQAogICAgICkKICAgICBpZiAoLW5vdCAoVGVzdC1QYXRoIC1MaXRlcmFsUGF0aCAkUHl0aG9uUGF0aCAtUGF0aFR5cGUgTGVhZikpIHsgdGhyb3cgIlB5dGhvbiBleGVjdXRhYmxlIGlzIG1pc3Npbmc6ICRQeXRob25QYXRoIiB9CiAgICAgaWYgKC1ub3QgKFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJFNjcmlwdFBhdGggLVBhdGhUeXBlIExlYWYpKSB7IHRocm93ICJQeXRob24gc2NyaXB0IGlzIG1pc3Npbmc6ICRTY3JpcHRQYXRoIiB9Ci0gICAgJHRva2Vucz1AKCRTY3JpcHRQYXRoKStAKCRBcmd1bWVudHMpCi0gICAgJGFyZ3VtZW50TGluZT0oQCgkdG9rZW5zfEZvckVhY2gtT2JqZWN0e0NvbnZlcnRUby1OYXRpdmVQcm9jZXNzQXJndW1lbnQgKFtzdHJpbmddJF99KSApLWpvaW4nICcpCisgICAgJHRva2VucyA9IEAoJFNjcmlwdFBhdGgpICsgQCgkQXJndW1lbnRzKQorICAgICRhcmd1bWVudExpbmUgPSAoQCgkdG9rZW5zIHwgRm9yRWFjaC1PYmplY3QgeyBDb252ZXJ0VG8tTmF0aXZlUHJvY2Vzc0FyZ3VtZW50IChbc3RyaW5nXSRfKSB9KSAtam9pbiAnICcpCiAgICAgcmV0dXJuIFN0YXJ0LVByb2Nlc3MgLUZpbGVQYXRoICRQeXRob25QYXRoIC1Bcmd1bWVudExpc3QgJGFyZ3VtZW50TGluZSAtUGFzc1RocnUgLVdpbmRvd1N0eWxlIEhpZGRlbiAtUmVkaXJlY3RTdGFuZGFyZE91dHB1dCAkU3RhbmRhcmRPdXRwdXRQYXRoIC1SZWRpcmVjdFN0YW5kYXJkRXJyb3IgJFN0YW5kYXJkRXJyb3JQYXRoCiB9CiAKQEAgLTgyLDM0ICs4MiwzNCBAQAogICAgIGlmICgtbm90IChUZXN0LUhlYWx0aE1vZGVsICR2YWxpZCAnbW9kZWwtYScpKSB7IHRocm93ICdIZWFsdGggc2NoZW1hIHYyIHBheWxvYWQgd2FzIHJlamVjdGVkLicgfQogCiAgICAgJHRlc3RQeXRob249JycKLSAgICBpZigkZW52OlBST0pFQ1RfUFlUSE9OLWFuZChUZXN0LVBhdGggLUxpdGVyYWxQYXRoICRlbnY6UFJPSkVDVF9QWVRIT04gLVBhdGhUeXBlIExlYWYpKXskdGVzdFB5dGhvbj0kZW52OlBST0pFQ1RfUFlUSE9OfQotICAgIGlmKC1ub3QkdGVzdFB5dGhvbil7CisgICAgaWYgKCRlbnY6UFJPSkVDVF9QWVRIT04gLWFuZCAoVGVzdC1QYXRoIC1MaXRlcmFsUGF0aCAkZW52OlBST0pFQ1RfUFlUSE9OIC1QYXRoVHlwZSBMZWFmKSkgeyAkdGVzdFB5dGhvbiA9ICRlbnY6UFJPSkVDVF9QWVRIT04gfQorICAgIGlmICgtbm90ICR0ZXN0UHl0aG9uKSB7CiAgICAgICAgIGZvcmVhY2goJG5hbWUgaW4gQCgncHl0aG9uLmV4ZScsJ3B5dGhvbjMuZXhlJywncHl0aG9uJywncHkuZXhlJywncHknKSl7CiAgICAgICAgICAgICAkY29tbWFuZD1HZXQtQ29tbWFuZCAkbmFtZSAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZQotICAgICAgICAgICAgaWYoJGNvbW1hbmQpeyR0ZXN0UHl0aG9uPSRjb21tYW5kLlNvdXJjZTticmVha30KLSAgICAgICAgfQotICAgIH0KLSAgICBpZigtbm90JHRlc3RQeXRob24pe3Rocm93ICdQeXRob24gaXMgcmVxdWlyZWQgZm9yIHRoZSBicmlkZ2UgY29tbWFuZC1saW5lIHBhdGggc2VsZi10ZXN0Lid9CisgICAgICAgICAgICBpZiAoJGNvbW1hbmQpIHsgJHRlc3RQeXRob24gPSAkY29tbWFuZC5Tb3VyY2U7IGJyZWFrIH0KKyAgICAgICAgfQorICAgIH0KKyAgICBpZiAoLW5vdCAkdGVzdFB5dGhvbikgeyB0aHJvdyAnUHl0aG9uIGlzIHJlcXVpcmVkIGZvciB0aGUgYnJpZGdlIGNvbW1hbmQtbGluZSBwYXRoIHNlbGYtdGVzdC4nIH0KICAgICAkcHJvYmVSb290PUpvaW4tUGF0aCAkZW52OlRFTVAgKCdJbnZlc3RvciBJbnRlbGxpZ2VuY2UgR2F0ZXdheSBQYXRoIFRlc3QgKDEpICcrW2d1aWRdOjpOZXdHdWlkKCkuVG9TdHJpbmcoJ04nKSkKICAgICBOZXctSXRlbSAtSXRlbVR5cGUgRGlyZWN0b3J5IC1Gb3JjZSAtUGF0aCAkcHJvYmVSb290fE91dC1OdWxsCiAgICAgJHByb2JlU2NyaXB0PUpvaW4tUGF0aCAkcHJvYmVSb290ICdhcmd1bWVudCBwcm9iZSAoMSkucHknCiAgICAgJHByb2JlT3V0cHV0PUpvaW4tUGF0aCAkcHJvYmVSb290ICdhcmd1bWVudCBvdXRwdXQgKDEpLmpzb24nCiAgICAgJHByb2JlU3Rkb3V0PUpvaW4tUGF0aCAkcHJvYmVSb290ICdwcm9iZSBzdGRvdXQgKDEpLmxvZycKICAgICAkcHJvYmVTdGRlcnI9Sm9pbi1QYXRoICRwcm9iZVJvb3QgJ3Byb2JlIHN0ZGVyciAoMSkubG9nJwotICAgIHRyeXsKKyAgICB0cnkgewogICAgICAgICBbSU8uRmlsZV06OldyaXRlQWxsVGV4dCgkcHJvYmVTY3JpcHQsImltcG9ydCBqc29uLHN5c2BuZnJvbSBwYXRobGliIGltcG9ydCBQYXRoYG5hcmdzPXN5cy5hcmd2WzE6XWBub3V0PVBhdGgoYXJnc1thcmdzLmluZGV4KCctLW91dHB1dCcpKzFdKWBub3V0LndyaXRlX3RleHQoanNvbi5kdW1wcyhhcmdzKSxlbmNvZGluZz0ndXRmLTgnKWBuIixbVGV4dC5VVEY4RW5jb2RpbmddOjpuZXcoJGZhbHNlKSkKICAgICAgICAgJHByb2JlPVN0YXJ0LVB5dGhvblNjcmlwdFByb2Nlc3MgLVB5dGhvblBhdGggJHRlc3RQeXRob24gLVNjcmlwdFBhdGggJHByb2JlU2NyaXB0IC1Bcmd1bWVudHMgQCgnLS1vdXRwdXQnLCRwcm9iZU91dHB1dCwnLS1zZW50aW5lbCcsJ3NwYWNlIChvayknKSAtU3RhbmRhcmRPdXRwdXRQYXRoICRwcm9iZVN0ZG91dCAtU3RhbmRhcmRFcnJvclBhdGggJHByb2JlU3RkZXJyCi0gICAgICAgIGlmKC1ub3QkcHJvYmUuV2FpdEZvckV4aXQoMjAwMDApKXtTdG9wLVByb2Nlc3MgLUlkICRwcm9iZS5JZCAtRm9yY2UgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWU7dGhyb3cgJ0JyaWRnZSBwYXRoIHF1b3RpbmcgcHJvYmUgdGltZWQgb3V0Lid9Ci0gICAgICAgIGlmKCRwcm9iZS5FeGl0Q29kZS1uZTAtb3Itbm90KFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJHByb2JlT3V0cHV0IC1QYXRoVHlwZSBMZWFmKSl7Ci0gICAgICAgICAgICAkZGV0YWlsPWlmKFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJHByb2JlU3RkZXJyKXtHZXQtQ29udGVudCAtTGl0ZXJhbFBhdGggJHByb2JlU3RkZXJyIC1SYXcgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWV9ZWxzZXsnJ30KKyAgICAgICAgaWYgKC1ub3QgJHByb2JlLldhaXRGb3JFeGl0KDIwMDAwKSkgeyBTdG9wLVByb2Nlc3MgLUlkICRwcm9iZS5JZCAtRm9yY2UgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWU7IHRocm93ICdCcmlkZ2UgcGF0aCBxdW90aW5nIHByb2JlIHRpbWVkIG91dC4nIH0KKyAgICAgICAgaWYgKCRwcm9iZS5FeGl0Q29kZSAtbmUgMCAtb3IgLW5vdCAoVGVzdC1QYXRoIC1MaXRlcmFsUGF0aCAkcHJvYmVPdXRwdXQgLVBhdGhUeXBlIExlYWYpKSB7CisgICAgICAgICAgICAkZGV0YWlsID0gaWYgKFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJHByb2JlU3RkZXJyKSB7IEdldC1Db250ZW50IC1MaXRlcmFsUGF0aCAkcHJvYmVTdGRlcnIgLVJhdyAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSB9IGVsc2UgeyAnJyB9CiAgICAgICAgICAgICB0aHJvdyAiQnJpZGdlIHBhdGggcXVvdGluZyBwcm9iZSBmYWlsZWQuICRkZXRhaWwiCiAgICAgICAgIH0KLSAgICAgICAgJGFyZ3M9QChHZXQtQ29udGVudCAtTGl0ZXJhbFBhdGggJHByb2JlT3V0cHV0IC1SYXcgLUVuY29kaW5nIHV0Zjh8Q29udmVydEZyb20tSnNvbikKLSAgICAgICAgaWYoJGFyZ3MuQ291bnQtbmU0LW9yJGFyZ3NbMF0tbmUnLS1vdXRwdXQnLW9yJGFyZ3NbMV0tbmUkcHJvYmVPdXRwdXQtb3IkYXJnc1syXS1uZSctLXNlbnRpbmVsJy1vciRhcmdzWzNdLW5lJ3NwYWNlIChvayknKXsKLSAgICAgICAgICAgIHRocm93ICgnQnJpZGdlIHBhdGggcXVvdGluZyBwcm9iZSBhcmd1bWVudCBtaXNtYXRjaDogJysoJGFyZ3Mtam9pbicgfCAnKSkKLSAgICAgICAgfQotICAgIH0KLSAgICBmaW5hbGx5e1JlbW92ZS1JdGVtIC1MaXRlcmFsUGF0aCAkcHJvYmVSb290IC1SZWN1cnNlIC1Gb3JjZSAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZX0KKyAgICAgICAgJHByb2JlQXJncyA9IEAoR2V0LUNvbnRlbnQgLUxpdGVyYWxQYXRoICRwcm9iZU91dHB1dCAtUmF3IC1FbmNvZGluZyB1dGY4IHwgQ29udmVydEZyb20tSnNvbikKKyAgICAgICAgaWYgKCRwcm9iZUFyZ3MuQ291bnQgLW5lIDQgLW9yICRwcm9iZUFyZ3NbMF0gLW5lICctLW91dHB1dCcgLW9yICRwcm9iZUFyZ3NbMV0gLW5lICRwcm9iZU91dHB1dCAtb3IgJHByb2JlQXJnc1syXSAtbmUgJy0tc2VudGluZWwnIC1vciAkcHJvYmVBcmdzWzNdIC1uZSAnc3BhY2UgKG9rKScpIHsKKyAgICAgICAgICAgIHRocm93ICgnQnJpZGdlIHBhdGggcXVvdGluZyBwcm9iZSBhcmd1bWVudCBtaXNtYXRjaDogJyArICgkcHJvYmVBcmdzIC1qb2luICcgfCAnKSkKKyAgICAgICAgfQorICAgIH0KKyAgICBmaW5hbGx5IHsgUmVtb3ZlLUl0ZW0gLUxpdGVyYWxQYXRoICRwcm9iZVJvb3QgLVJlY3Vyc2UgLUZvcmNlIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlIH0KICAgICBXcml0ZS1Ib3N0ICdWMjEzX0JSSURHRV9TVFJJQ1RNT0RFX0hFQUxUSF9TRUxGX1RFU1QgPSBQQVNTOyBoZWFsdGgtc2NoZW1hLXYyPXRydWU7IHNwYWNlZC1wYXJlbnRoZXNpemVkLXNjcmlwdC1wYXRoPXRydWU7IGFyZ3VtZW50LWJvdW5kYXJpZXM9dHJ1ZScgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgIGV4aXQgMAogfQpAQCAtMzYyLDEwICszNjIsMTAgQEAKICAgICB3aGlsZSAoKEdldC1EYXRlKSAtbHQgJGRlYWRsaW5lKSB7CiAgICAgICAgIGlmICgtbm90IChHZXQtUHJvY2VzcyAtSWQgJFByb2Nlc3NJZCAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSkpIHsKICAgICAgICAgICAgICRkZXRhaWw9JycKLSAgICAgICAgICAgIGlmKCRFcnJvckxvZ1BhdGgtYW5kKFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJEVycm9yTG9nUGF0aCAtUGF0aFR5cGUgTGVhZikpewotICAgICAgICAgICAgICAgICRkZXRhaWw9KChHZXQtQ29udGVudCAtTGl0ZXJhbFBhdGggJEVycm9yTG9nUGF0aCAtVGFpbCAyMCAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZXxGb3JFYWNoLU9iamVjdHtbc3RyaW5nXSRffSktam9pbicgfCAnKS5UcmltKCkKKyAgICAgICAgICAgIGlmICgkRXJyb3JMb2dQYXRoIC1hbmQgKFRlc3QtUGF0aCAtTGl0ZXJhbFBhdGggJEVycm9yTG9nUGF0aCAtUGF0aFR5cGUgTGVhZikpIHsKKyAgICAgICAgICAgICAgICAkZGV0YWlsID0gKChHZXQtQ29udGVudCAtTGl0ZXJhbFBhdGggJEVycm9yTG9nUGF0aCAtVGFpbCAyMCAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSB8IEZvckVhY2gtT2JqZWN0IHsgW3N0cmluZ10kXyB9KSAtam9pbiAnIHwgJykuVHJpbSgpCiAgICAgICAgICAgICB9Ci0gICAgICAgICAgICBpZigkZGV0YWlsKXt0aHJvdyAiTG9jYWwgZ2F0ZXdheSBleGl0ZWQgZHVyaW5nIHN0YXJ0dXAuIHN0ZGVycj0kZGV0YWlsIn0KKyAgICAgICAgICAgIGlmICgkZGV0YWlsKSB7IHRocm93ICJMb2NhbCBnYXRld2F5IGV4aXRlZCBkdXJpbmcgc3RhcnR1cC4gc3RkZXJyPSRkZXRhaWwiIH0KICAgICAgICAgICAgIHRocm93ICdMb2NhbCBnYXRld2F5IGV4aXRlZCBkdXJpbmcgc3RhcnR1cC4nCiAgICAgICAgIH0KICAgICAgICAgdHJ5IHsK'
+          $bridgePatchPath=Join-Path $env:RUNNER_TEMP 'v213-fix2-bridge-parser-r5.patch'
+          [IO.File]::WriteAllBytes($bridgePatchPath,[Convert]::FromBase64String($bridgePatchB64))
+          if((Get-FileHash $bridgePatchPath -Algorithm SHA256).Hash.ToLowerInvariant()-ne'5b56ea22e3a47d3a702b0df0012b66fc35650ce1ee160068e92e6d1874ed3baf'){throw 'Bridge parser patch SHA mismatch.'}
+          git apply --check --whitespace=error $bridgePatchPath
+          if($LASTEXITCODE-ne0){throw 'Bridge parser patch preflight failed.'}
+          git apply --whitespace=error $bridgePatchPath
+          if($LASTEXITCODE-ne0){throw 'Bridge parser patch application failed.'}
+
+          $sourceFiles=@(
+            'activate-v213-seven-field-schedule.ps1',
+            'activate-v213-seven-field-schedule-serenity-latest.ps1',
+            'cloud/src/v213/activation-v2.ts',
+            'cloud/test/v213-activation.test.ts',
+            'scripts/ci_v213_r70_package.ps1',
+            'scripts/ci_v213_r70_validate.ps1',
+            'scripts/run_v213_local_llm_bridge_core.ps1',
+            'scripts/v213_optional_bls_alignment_audit.py',
+            'scripts/v213_serenity_latest_static_audit.py'
+          )
+          $changed=@(git diff --name-only --|ForEach-Object{([string]$_).Trim().Replace('\','/')}|Where-Object{$_}|Sort-Object)
+          if(@(Compare-Object ($sourceFiles|Sort-Object) $changed).Count-ne0){throw 'Fix2 patch changed an unexpected source scope.'}
+          $utf8NoBom=[Text.UTF8Encoding]::new($false)
+          foreach($relative in $sourceFiles){
+            $path=Join-Path $PWD.Path $relative
+            [IO.File]::WriteAllText($path,[IO.File]::ReadAllText($path).Replace("`r`n","`n").Replace("`r","`n"),$utf8NoBom)
+          }
+          $testPath=Join-Path $PWD.Path 'cloud\test\v213-activation.test.ts'
+          $testText=[IO.File]::ReadAllText($testPath)
+          $fixtureOld='    const freshnessState = {'+"`n"+'      ticker,'+"`n"+'      status: "PASS",'
+          $fixtureNew='    const freshnessState = {'+"`n"+'      rank: index + 1,'+"`n"+'      ticker,'+"`n"+'      status: "PASS",'
+          if(-not $testText.Contains($fixtureOld)){throw 'Worker freshness fixture correction anchor is missing.'}
+          $testText=$testText.Replace($fixtureOld,$fixtureNew)
+          if(([regex]::Matches($testText,[regex]::Escape($fixtureNew))).Count-ne1){throw 'Worker freshness fixture correction was not unique.'}
+          [IO.File]::WriteAllText($testPath,$testText,$utf8NoBom)
+
+          $hashes=[ordered]@{
+            'activate-v213-seven-field-schedule.ps1'='935561ce912bf1557c4c51c7a2cbc90b94b183f53486400077bb4470a8868de6'
+            'activate-v213-seven-field-schedule-serenity-latest.ps1'='935561ce912bf1557c4c51c7a2cbc90b94b183f53486400077bb4470a8868de6'
+            'cloud/src/v213/activation-v2.ts'='66a2b70e08bb4cf4fe3344f63eb1c47f1b0d20e89d3e34fb016001a06c252f2b'
+            'cloud/test/v213-activation.test.ts'='fdeefd279724b7b633e1f8007bb4a760044b36dfebc8c3fd6ac925a60be0a3a3'
+            'scripts/ci_v213_r70_package.ps1'='93336de2d8d84ed5922284b1c71c20a78069b64f392bcf3f79e837c64084af8b'
+            'scripts/ci_v213_r70_validate.ps1'='4ad3c22a70f03973e7b33a2ec3859f00938e6b2c0ce93274386ebd8698b4ab6f'
+            'scripts/run_v213_local_llm_bridge_core.ps1'='6a89f9a82c0e1ae34bb0d2a38797577e50f9fd2e5d754d8830750ed9d5e039f8'
+            'scripts/v213_optional_bls_alignment_audit.py'='77eda012438ac89fa1a4b0b3339c7e4ac9b77dba40f86928be859aff000a2509'
+            'scripts/v213_serenity_latest_static_audit.py'='789792a1880138b236f752c0abc1da429d1c7e471cc638a65407c44726dafe76'
+          }
+          foreach($entry in $hashes.GetEnumerator()){
+            $actual=(Get-FileHash (Join-Path $PWD.Path $entry.Key)-Algorithm SHA256).Hash.ToLowerInvariant()
+            if($actual-ne$entry.Value){throw "$($entry.Key) SHA mismatch: $actual"}
+          }
+          Write-Host 'V213_FIX2_PATCH_R5 = PASS; changed_files=9; byte_locked=true; fixture_rank_contract=true; bridge_parser=true'
+
+      - name: Run complete Windows no-mutation validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\ci_v213_r70_validate.ps1 -ProjectRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'Complete R70 Fix2 Windows validation failed.'}
+          Write-Host 'V213_FIX2_WINDOWS_VALIDATION = PASS; production_mutation=false'
+
+      - name: Commit validated source-only fix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $temporary=@(
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r2.yml',
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r3.yml',
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r4.yml',
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r5.yml',
+            '.github/patches/v213-fix2.part-01.b64',
+            '.github/patches/v213-fix2.part-02.b64',
+            '.github/patches/v213-fix2.part-03.b64',
+            '.github/patches/v213-fix2.part-04.b64',
+            '.github/patches/v213-fix2.part-05.b64',
+            '.github/patches/v213-fix2.part-06.b64'
+          )
+          foreach($path in $temporary){Remove-Item -LiteralPath $path -Force}
+          $sourceFiles=@(
+            'activate-v213-seven-field-schedule.ps1',
+            'activate-v213-seven-field-schedule-serenity-latest.ps1',
+            'cloud/src/v213/activation-v2.ts',
+            'cloud/test/v213-activation.test.ts',
+            'scripts/ci_v213_r70_package.ps1',
+            'scripts/ci_v213_r70_validate.ps1',
+            'scripts/run_v213_local_llm_bridge_core.ps1',
+            'scripts/v213_optional_bls_alignment_audit.py',
+            'scripts/v213_serenity_latest_static_audit.py'
+          )
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $sourceFiles
+          git add -u -- $temporary
+          git diff --cached --check
+          if($LASTEXITCODE-ne0){throw 'Validated Fix2 source contains whitespace errors.'}
+          $staged=@(git diff --cached --name-only --|ForEach-Object{([string]$_).Trim().Replace('\','/')}|Where-Object{$_}|Sort-Object)
+          $expected=@($sourceFiles+$temporary|Sort-Object)
+          if(@(Compare-Object $expected $staged).Count-ne0){
+            Write-Host ('EXPECTED_STAGED='+($expected-join','))
+            Write-Host ('ACTUAL_STAGED='+($staged-join','))
+            throw 'Validated Fix2 commit scope is unexpected.'
+          }
+          git commit -m 'fix: align activation publication modes and gateway paths'
+          if($LASTEXITCODE-ne0){throw 'Unable to commit validated Fix2 source.'}
+          git push origin HEAD:$env:VALIDATION_BRANCH
+          if($LASTEXITCODE-ne0){throw 'Unable to push validated Fix2 source branch.'}
+          Write-Host 'V213_FIX2_VALIDATED_SOURCE_COMMIT = PASS'
