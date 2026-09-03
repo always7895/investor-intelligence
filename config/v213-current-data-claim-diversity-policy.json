@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "policy_id": "v213-current-data-claim-diversity-v1",
+  "purpose": "Keep every promoted snapshot current, distinguish source availability from claim proof, and prevent single-publisher or stale evidence from receiving high-confidence Serenity-style interpretation.",
+  "artifact_max_age_seconds": 7200,
+  "future_clock_skew_seconds": 300,
+  "freshness_days": {
+    "market_observation_max_calendar_age": 7,
+    "issuer_financials": 150,
+    "contract_or_order": 180,
+    "architecture_or_roadmap": 365,
+    "legal_entity_identity": 365,
+    "macro_context": 120,
+    "default_company_claim": 365
+  },
+  "order_evidence": {
+    "recheck_every_top20_member_every_run": true,
+    "fresh_supported_evidence_replaces_older_evidence": true,
+    "fresh_existing_evidence_may_be_preserved_after_no-newer-result": true,
+    "stale_supported_evidence_must_be_downgraded": true,
+    "pipeline_or_guidance_is_not_booked_order": true,
+    "numeric_total_order_estimate_prohibited": true
+  },
+  "claim_diversity": {
+    "high_confidence_minimum_independent_publisher_families": 2,
+    "high_confidence_minimum_independent_publisher_domains": 2,
+    "high_confidence_minimum_primary_publishers": 1,
+    "identity_market_macro_and_social_are_not_company_claim_proof": true,
+    "same_focal_issuer_ir_and_filing_count_once": true,
+    "different_sec_issuers_may_count_as_independent_publishers": true,
+    "same_publisher_repetition_counts_once_per_claim": true,
+    "single_publisher_rows_must_remain_limited": true,
+    "portfolio_can_publish_limited_rows_when_no_positive_structural_claim_is_promoted": true
+  },
+  "serenity_public_logic": {
+    "architecture_first": true,
+    "layer_ranking_before_company_ranking": true,
+    "relationship_and_scarcity_are_separate_tests": true,
+    "qualified_substitutes_and_effective_substitutes_are_separate": true,
+    "operating_thesis_and_equity_capture_are_separate_axes": true,
+    "source_view_and_system_operationalization_are_separate": true,
+    "structural_claim_requires_explicit_evidence_bound_graph": true,
+    "keyword_named_customer_margin_or_price_action_cannot_prove_bottleneck": true,
+    "severe_primary_thesis_killer_is_asymmetric": true,
+    "falsifiers_required": true
+  },
+  "market_data": {
+    "yahoo_role": "compatibility_calculation_only_not_thesis_evidence",
+    "independent_provider_must_be_fresh_to_count": true,
+    "stale_http_success_must_be_downgraded": true,
+    "source_conflicts_are_not_averaged": true,
+    "market_data_never_proves_company_claim": true,
+    "market_data_never_proves_dependency_or_bottleneck": true
+  },
+  "methodology_sources": {
+    "external_skills_are_methodology_leads_only": true,
+    "external_skills_have_zero_company_fact_weight": true,
+    "forks_and_reposts_do_not_create_independent_factual_corroboration": true,
+    "latest_source_snapshot_required_before_adopting_method_changes": true
+  }
+}
