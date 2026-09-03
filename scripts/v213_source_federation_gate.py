@@ -10,14 +10,20 @@ source diversity or concentration.
 GLEIF has two different dates that must not be conflated. ``last_update`` is the
 registry record's own maintenance date, while a successful live API lookup has a
 current observation time. The gate preserves the registry date separately and
-uses the federation run time as the observation ``as_of`` date. This makes the
-identity provenance auditable without pretending that the underlying legal-
-entity record itself changed during the run. Identity observations remain
-identity-only and must not support a positive Serenity advantage factor.
+uses the federation run time as the observation ``as_of`` date.
+
+Not every listed issuer has a usable GLEIF match. For those rows, the already
+verified Nasdaq symbol-directory observation is also emitted as a dated legal-
+identity provenance record. This does not create a second Nasdaq family, does not
+prove a company operating fact, and cannot support a positive Serenity advantage.
+It only preserves the independently operated SEC + regulated-listing provenance
+boundary used by the final activation bundle after unsupported advantage factors
+have been withheld.
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import tempfile
 from collections import Counter
@@ -29,6 +35,9 @@ POLICY_PATH = ROOT / "config" / "v213-source-federation-policy.json"
 FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
 GLEIF_SOURCE_ID = "gleif_lei"
 GLEIF_IDENTITY_CLAIM = "legal_entity_reference"
+NASDAQ_SOURCE_ID = "nasdaq_symbol_directory"
+NASDAQ_LISTING_CLAIM = "regulated_listing_identity"
+NASDAQ_IDENTITY_PROVENANCE_ID = "nasdaq_symbol_directory_entity_reference"
 
 
 class GateError(RuntimeError):
@@ -56,17 +65,24 @@ def atomic(path: Path, value: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
-def normalize_live_identity_observations(document: dict[str, Any]) -> dict[str, Any]:
-    """Separate live lookup time from the legal-entity record update date.
+def _identity_only(source: dict[str, Any], generated: str) -> dict[str, Any]:
+    source["as_of"] = generated
+    source["observation_status"] = "LIVE"
+    source["identity_only"] = True
+    source["can_prove_company_operating_claim"] = False
+    source["can_support_positive_serenity_advantage"] = False
+    return source
 
-    The source-federation collector performs a real GLEIF request in the current
-    run. Its evidence row historically used the GLEIF record's ``lastUpdateDate``
-    as ``as_of``. That made a current successful lookup look stale and caused the
-    final source-level gate to discard an otherwise valid independent identity
-    observation. We retain that source-record date in
-    ``registry_record_as_of`` and set ``as_of`` to the current federation
-    observation time. No company operating, order, dependency or bottleneck
-    claim is created by this normalization.
+
+def normalize_live_identity_observations(document: dict[str, Any]) -> dict[str, Any]:
+    """Separate live lookup time from registry dates and fill identity provenance.
+
+    GLEIF matches preserve the registry record's own maintenance date in
+    ``registry_record_as_of`` while the current API lookup receives the
+    federation observation time. When no GLEIF row exists, a second semantic view
+    of the current Nasdaq listing observation is added as legal-identity
+    provenance. It remains the same Nasdaq origin and is explicitly barred from
+    supporting operating, order, dependency, bottleneck or valuation claims.
     """
     generated = str(document.get("generated_at") or "").strip()
     if not generated:
@@ -75,32 +91,64 @@ def normalize_live_identity_observations(document: dict[str, Any]) -> dict[str, 
     if not isinstance(rows, list):
         raise GateError("Source federation ticker_sources are missing")
 
-    normalized = 0
+    normalized_gleif = 0
+    nasdaq_fallback = 0
     for raw_row in rows:
         if not isinstance(raw_row, dict):
             continue
         additions = raw_row.get("evidence_additions")
         if not isinstance(additions, list):
             continue
+
+        gleif_present = False
+        nasdaq_listing: dict[str, Any] | None = None
         for raw in additions:
-            if not isinstance(raw, dict) or str(raw.get("source_id") or "") != GLEIF_SOURCE_ID:
+            if not isinstance(raw, dict):
                 continue
-            registry_date = str(raw.get("as_of") or "").strip()
-            if registry_date:
-                raw["registry_record_as_of"] = registry_date
-            raw["as_of"] = generated
-            raw["claim_type"] = GLEIF_IDENTITY_CLAIM
-            raw["observation_status"] = "LIVE"
-            raw["identity_only"] = True
-            raw["can_prove_company_operating_claim"] = False
-            raw["can_support_positive_serenity_advantage"] = False
-            normalized += 1
+            source_id = str(raw.get("source_id") or "")
+            claim_type = str(raw.get("claim_type") or "")
+            if source_id == GLEIF_SOURCE_ID:
+                gleif_present = True
+                registry_date = str(raw.get("as_of") or "").strip()
+                if registry_date:
+                    raw["registry_record_as_of"] = registry_date
+                raw["claim_type"] = GLEIF_IDENTITY_CLAIM
+                _identity_only(raw, generated)
+                normalized_gleif += 1
+            elif source_id == NASDAQ_SOURCE_ID and claim_type == NASDAQ_LISTING_CLAIM:
+                nasdaq_listing = raw
+
+        already_fallback = any(
+            isinstance(raw, dict)
+            and str(raw.get("source_id") or "") == NASDAQ_IDENTITY_PROVENANCE_ID
+            for raw in additions
+        )
+        if not gleif_present and not already_fallback and nasdaq_listing is not None:
+            alias = {
+                "source_id": NASDAQ_IDENTITY_PROVENANCE_ID,
+                "tier": str(nasdaq_listing.get("tier") or "T2"),
+                "claim_type": GLEIF_IDENTITY_CLAIM,
+                "title": (
+                    "Current regulated listing identity reference: "
+                    + str(nasdaq_listing.get("title") or raw_row.get("ticker") or "")
+                )[:240],
+                "url": str(nasdaq_listing.get("url") or ""),
+                "identity_origin": NASDAQ_SOURCE_ID,
+                "same_origin_as_regulated_listing_identity": True,
+                "independent_family_increment": 0,
+            }
+            _identity_only(alias, generated)
+            additions.append(alias)
+            nasdaq_fallback += 1
 
     document["identity_observation_normalization"] = {
-        "schema_version": 1,
-        "normalized_gleif_rows": normalized,
+        "schema_version": 2,
+        "normalized_gleif_rows": normalized_gleif,
+        "nasdaq_identity_provenance_fallback_rows": nasdaq_fallback,
         "observation_as_of": generated,
         "registry_record_date_preserved": True,
+        "fallback_reuses_existing_nasdaq_origin": True,
+        "fallback_independent_family_increment": 0,
         "identity_only": True,
         "can_support_positive_serenity_advantage": False,
     }
@@ -201,6 +249,7 @@ def evaluate(document: Mapping[str, Any], policy: Mapping[str, Any]) -> tuple[di
         "publisher_family_deduplication_enforced": True,
         "live_identity_observation_date_separated_from_registry_record_date": True,
         "identity_observation_can_support_positive_serenity_advantage": False,
+        "nasdaq_identity_fallback_adds_independent_family": False,
     }
     return gates, concentration
 
@@ -210,22 +259,43 @@ def self_test() -> None:
     generated = "2026-09-03T00:00:00Z"
     identity_document = {
         "generated_at": generated,
-        "ticker_sources": [{
-            "ticker": "TEST",
-            "evidence_additions": [{
-                "source_id": GLEIF_SOURCE_ID,
-                "claim_type": GLEIF_IDENTITY_CLAIM,
-                "as_of": "2022-01-01T00:00:00Z",
-                "url": "https://api.gleif.org/api/v1/lei-records",
-            }],
-        }],
+        "ticker_sources": [
+            {
+                "ticker": "GLEIF",
+                "evidence_additions": [{
+                    "source_id": GLEIF_SOURCE_ID,
+                    "claim_type": GLEIF_IDENTITY_CLAIM,
+                    "as_of": "2022-01-01T00:00:00Z",
+                    "url": "https://api.gleif.org/api/v1/lei-records",
+                }],
+            },
+            {
+                "ticker": "NASDAQ",
+                "evidence_additions": [{
+                    "source_id": NASDAQ_SOURCE_ID,
+                    "tier": "T2",
+                    "claim_type": NASDAQ_LISTING_CLAIM,
+                    "title": "Nasdaq listing identity for NASDAQ",
+                    "as_of": generated,
+                    "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+                }],
+            },
+        ],
     }
-    normalized = normalize_live_identity_observations(identity_document)
-    identity = normalized["ticker_sources"][0]["evidence_additions"][0]
-    assert identity["as_of"] == generated
-    assert identity["registry_record_as_of"] == "2022-01-01T00:00:00Z"
-    assert identity["identity_only"] is True
-    assert identity["can_support_positive_serenity_advantage"] is False
+    normalized = normalize_live_identity_observations(copy.deepcopy(identity_document))
+    gleif = normalized["ticker_sources"][0]["evidence_additions"][0]
+    assert gleif["as_of"] == generated
+    assert gleif["registry_record_as_of"] == "2022-01-01T00:00:00Z"
+    assert gleif["identity_only"] is True
+    assert gleif["can_support_positive_serenity_advantage"] is False
+    nasdaq_additions = normalized["ticker_sources"][1]["evidence_additions"]
+    aliases = [row for row in nasdaq_additions if row.get("source_id") == NASDAQ_IDENTITY_PROVENANCE_ID]
+    assert len(aliases) == 1
+    assert aliases[0]["claim_type"] == GLEIF_IDENTITY_CLAIM
+    assert aliases[0]["same_origin_as_regulated_listing_identity"] is True
+    assert aliases[0]["independent_family_increment"] == 0
+    assert aliases[0]["can_support_positive_serenity_advantage"] is False
+    assert normalized["identity_observation_normalization"]["nasdaq_identity_provenance_fallback_rows"] == 1
 
     sources = [
         {"family": "us_sec", "status": "HEALTHY", "official": True},
@@ -257,7 +327,12 @@ def self_test() -> None:
         row["independent_families"] = ["us_sec"]
         row["independent_family_count"] = 1
     assert evaluate(concentrated, policy)[0]["concentration_pass"] is False
-    print("V213_SOURCE_FEDERATION_GATE_SELF_TEST = PASS; live_identity_observation_normalized=true; identity_only=true")
+    print(
+        "V213_SOURCE_FEDERATION_GATE_SELF_TEST = PASS; "
+        "live_identity_observation_normalized=true; "
+        "nasdaq_identity_provenance_fallback=true; "
+        "identity_only=true; advantage_support=false"
+    )
 
 
 def main() -> int:
@@ -275,16 +350,18 @@ def main() -> int:
     document["gates"] = gates
     document["concentration"] = concentration
     atomic(args.federation, document)
+    identity = document["identity_observation_normalization"]
     print(
         "V213_SOURCE_FEDERATION_GATE = {status}; official_global={official}; "
         "ticker_coverage={coverage:.1%}; concentration={share:.1%}; conflicts={conflicts}; "
-        "gleif_live_observations={gleif}".format(
+        "gleif_live_observations={gleif}; nasdaq_identity_fallbacks={fallbacks}".format(
             status="PASS" if gates["pass"] else "FAIL",
             official=len(gates["official_successful_families"]),
             coverage=float(gates["ticker_coverage_ratio"]),
             share=float(gates["largest_family_share"]),
             conflicts=gates["unresolved_material_conflict_count"],
-            gleif=int(document["identity_observation_normalization"]["normalized_gleif_rows"]),
+            gleif=int(identity["normalized_gleif_rows"]),
+            fallbacks=int(identity["nasdaq_identity_provenance_fallback_rows"]),
         ),
         flush=True,
     )
