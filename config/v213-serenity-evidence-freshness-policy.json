@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "product_version": "2.1.3",
-  "policy_id": "v213-serenity-fresh-independent-evidence-v1",
-  "description_en": "A final v2.1.3 candidate must be supported by fresh, dated and independently operated public sources. Market observations are corroboration only. No positive Serenity advantage may be published from a single source family or a single registrable domain.",
-  "description_zh_TW": "v2.1.3 最終候選必須由具日期、仍在有效期間且彼此獨立營運的公開來源支持。市場行情只能交叉驗證，不能證明公司優勢；任何正向 Serenity 優勢都不得由單一來源家族或單一可註冊網域決定。",
+  "policy_id": "v213-serenity-fresh-independent-evidence-v2",
+  "description_en": "Final v2.1.3 candidates require recent dated company evidence and fresh comparable independently operated market corroboration. Retrieval time never substitutes for publication/as-of time; Yahoo remains compatibility calculation only.",
+  "description_zh_TW": "v2.1.3 最終候選必須使用具日期且仍在有效期間的公司證據，以及新鮮、可比較、彼此獨立營運的市場交叉驗證。檢索時間不得取代發布／資料截至時間；Yahoo 僅保留相容性計算角色。",
   "activation_snapshot_max_age_hours": 2,
   "clock_skew_tolerance_minutes": 5,
   "market_observation_max_age_days": 7,
   "macro_observation_max_age_days": 45,
-  "current_state_claim_max_age_days": 210,
+  "current_state_claim_max_age_days": 135,
   "structural_claim_max_age_days": 550,
   "minimum_claim_source_families_per_ticker": 2,
   "minimum_claim_source_domains_per_ticker": 2,
@@ -76,12 +76,22 @@
   "required_release_properties": [
     "fresh_same_run_snapshot",
     "fresh_market_observations_only",
+    "latest_available_publication_or_as_of_selected",
+    "retrieval_time_never_substitutes_for_publication_time",
     "two_claim_source_families_per_ticker",
     "two_claim_source_domains_per_ticker",
     "one_primary_claim_source_per_ticker",
-    "factor_level_multi_source_support_for_positive_advantages",
+    "fresh_non_primary_corroborator_for_positive_advantages",
+    "two_fresh_comparable_market_providers_for_high_confidence",
+    "same_metric_basis_for_return_comparison",
     "source_conflicts_preserved_not_averaged",
-    "stale_and_unavailable_sources_disclosed",
-    "latest_available_evidence_selected_per_claim"
-  ]
+    "stale_and_unavailable_sources_disclosed"
+  ],
+  "market_high_confidence_freshest_max_age_days": 4,
+  "market_comparable_provider_max_lag_days": 3,
+  "minimum_independent_market_providers_for_high_confidence": 2,
+  "fresh_non_primary_corroborator_required_for_positive_advantage": true,
+  "retrieval_timestamp_cannot_substitute_publication_date": true,
+  "latest_available_evidence_must_be_selected": true,
+  "comparable_market_metric_basis_required_for_high_confidence": true
 }
