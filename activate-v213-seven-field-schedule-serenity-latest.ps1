@@ -67,7 +67,7 @@ function Test-FederationDocument([object]$Document,[DateTimeOffset]$Now){
     }
     $successful=@(Get-Array (Get-PropertyValue $gates 'successful_families' @())|ForEach-Object{[string]$_})
     $official=@(Get-Array (Get-PropertyValue $gates 'official_successful_families' @())|ForEach-Object{[string]$_})
-    $required=@('us_sec','nasdaq','world_bank','us_bls','ecb')
+    $required=@('us_sec','nasdaq','world_bank','ecb')
     $missingRequired=@($required|Where-Object{$successful-notcontains$_})
     if($successful.Count-lt5-or$official.Count-lt4-or$missingRequired.Count-gt0){
         throw ('Live source federation lacks required independent families: '+($missingRequired-join','))

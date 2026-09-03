@@ -19,6 +19,7 @@ try {
         @('scripts\v213_serenity_latest_multisource_audit.py','--self-test'),
         @('scripts\v213_tam_capture_claim_guard.py','--self-test'),
         @('scripts\v213_serenity_latest_static_audit.py'),
+        @('scripts\v213_optional_bls_alignment_audit.py'),
         @('scripts\reconcile_v213_order_evidence.py','--self-test'),
         @('scripts\build_v213_scheduled_top20_report.py','--self-test'),
         @('scripts\v213_source_federation.py','--self-test'),
