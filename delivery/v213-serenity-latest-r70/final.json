@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "job_status": "failure",
+  "workflow": "V2.1.3 Final Serenity Latest Multi-Source R73 Delivery",
+  "workflow_run_id": "33740269097",
+  "source_commit": "e814ebb679da60f2503a373395008530cd6ff2bb",
+  "package": "",
+  "zip_sha256": "",
+  "desktop_delivery": "",
+  "artifact_name": "",
+  "production_mutation_by_ci": false,
+  "completed_at": "2026-09-03T09:45:02.7441678Z"
+}
