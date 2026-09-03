@@ -1,0 +1,61 @@
+name: Apply Final Serenity R3 Patch
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/apply-final-serenity-r3.yml
+      - scripts/apply_final_serenity_r3_patch.py
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: investor-intelligence-apply-final-serenity-r3
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 30
+    env:
+      SOURCE_DIR: ${{ github.workspace }}\apply-r3-${{ github.run_id }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          path: apply-r3-${{ github.run_id }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Apply exact Worker, test, runtime and package patch
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $command=Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if(-not$command){$command=Get-Command python -ErrorAction Stop | Select-Object -First 1}
+          $python=$command.Source
+          & $python .\scripts\apply_final_serenity_r3_patch.py
+          if($LASTEXITCODE-ne0){throw 'Final Serenity R3 patch failed.'}
+
+      - name: Dispatch exact final R3 qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep -Seconds 5
+          $headers=@{
+            Authorization="Bearer $env:GITHUB_TOKEN"
+            Accept='application/vnd.github+json'
+            'X-GitHub-Api-Version'='2022-11-28'
+          }
+          $body=@{ref='development/v2.1.3-serenity-public-logic-fidelity'}|ConvertTo-Json
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/v213-final-serenity-delivery-r3.yml/dispatches"
+          Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body $body
+          Write-Host 'FINAL_SERENITY_R3_DISPATCH=PASS'
