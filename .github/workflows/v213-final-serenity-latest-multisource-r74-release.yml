@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/v213-final-serenity-latest-multisource-r74-release.yml
       - config/v213-source-federation-policy.json
+      - run-v213-local-serenity-latest.ps1
+      - scripts/v213_finalize_rank_coupled_order.py
       - scripts/v213_serenity_latest_static_audit.py
       - scripts/v213_serenity_latest_multisource_audit.py
       - scripts/v213_source_independence_gate_v3.py
