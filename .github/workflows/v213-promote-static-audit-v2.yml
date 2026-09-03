@@ -1,0 +1,46 @@
+name: V2.1.3 Promote Corrected Serenity Static Audit
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-promote-static-audit-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: investor-intelligence-v213-promote-static-audit-v2
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Promote corrected audit and push
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Copy-Item -LiteralPath scripts\v213_serenity_latest_static_audit_v2.py -Destination scripts\v213_serenity_latest_static_audit.py -Force
+          git config user.name 'Investor Intelligence CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scripts/v213_serenity_latest_static_audit.py
+          if(git diff --cached --quiet){
+            Write-Host 'Corrected static audit is already canonical.'
+            exit 0
+          }
+          git commit -m 'fix: promote corrected latest multi-source static audit'
+          git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
+          Write-Host 'V213_STATIC_AUDIT_V2_PROMOTION = PASS'
