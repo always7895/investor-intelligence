@@ -6,6 +6,7 @@ on:
       - development/v2.1.3-serenity-public-logic-fidelity
     paths:
       - .github/workflows/v213-final-serenity-latest-multisource-r74-release.yml
+      - config/v213-source-federation-policy.json
       - scripts/v213_serenity_latest_static_audit.py
       - scripts/v213_serenity_latest_multisource_audit.py
       - scripts/v213_source_independence_gate_v3.py
