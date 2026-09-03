@@ -1,0 +1,218 @@
+--- a/activate-v213-seven-field-schedule.ps1
++++ b/activate-v213-seven-field-schedule.ps1
+@@ -67,7 +67,7 @@
+     }
+     $successful=@(Get-Array (Get-PropertyValue $gates 'successful_families' @())|ForEach-Object{[string]$_})
+     $official=@(Get-Array (Get-PropertyValue $gates 'official_successful_families' @())|ForEach-Object{[string]$_})
+-    $required=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $required=@('us_sec','nasdaq','world_bank','ecb')
+     $missingRequired=@($required|Where-Object{$successful-notcontains$_})
+     if($successful.Count-lt5-or$official.Count-lt4-or$missingRequired.Count-gt0){
+         throw ('Live source federation lacks required independent families: '+($missingRequired-join','))
+@@ -309,11 +309,12 @@
+ 
+ if($SelfTest){
+     $now=[DateTimeOffset]::UtcNow
+-    $families=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $families=@('us_sec','nasdaq','world_bank','ecb','gleif','yahoo_finance')
++    $officialFamilies=@('us_sec','nasdaq','world_bank','ecb','gleif')
+     $federation=[pscustomobject]@{
+         schema_version=1;product_version='2.1.3';generated_at=$now.ToString('o')
+         gates=[pscustomobject]@{
+-            pass=$true;successful_families=$families;official_successful_families=$families
++            pass=$true;successful_families=$families;official_successful_families=$officialFamilies
+             missing_required_families=@();ticker_coverage_ratio=1.0
+             unresolved_material_conflict_count=0;concentration_pass=$true
+             largest_family_share=0.34;yahoo_authoritative=$false
+@@ -386,7 +387,7 @@
+     [void](Test-HealthSchema2Payload $health 'model-a')
+     $federation.gates.yahoo_authoritative=$true
+     try{[void](Test-FederationDocument $federation $now);throw 'Yahoo authority self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Yahoo authority self-test did not fail closed.'){throw}}
+-    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; market-quality degradation = PASS; claim blockers = PASS; health-schema-v2 = PASS' -ForegroundColor Green
++    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; optional-BLS degradation = PASS; market-quality degradation = PASS; claim blockers = PASS; health-schema-v2 = PASS' -ForegroundColor Green
+     exit 0
+ }
+ 
+--- a/activate-v213-seven-field-schedule-serenity-latest.ps1
++++ b/activate-v213-seven-field-schedule-serenity-latest.ps1
+@@ -67,7 +67,7 @@
+     }
+     $successful=@(Get-Array (Get-PropertyValue $gates 'successful_families' @())|ForEach-Object{[string]$_})
+     $official=@(Get-Array (Get-PropertyValue $gates 'official_successful_families' @())|ForEach-Object{[string]$_})
+-    $required=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $required=@('us_sec','nasdaq','world_bank','ecb')
+     $missingRequired=@($required|Where-Object{$successful-notcontains$_})
+     if($successful.Count-lt5-or$official.Count-lt4-or$missingRequired.Count-gt0){
+         throw ('Live source federation lacks required independent families: '+($missingRequired-join','))
+@@ -309,11 +309,12 @@
+ 
+ if($SelfTest){
+     $now=[DateTimeOffset]::UtcNow
+-    $families=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $families=@('us_sec','nasdaq','world_bank','ecb','gleif','yahoo_finance')
++    $officialFamilies=@('us_sec','nasdaq','world_bank','ecb','gleif')
+     $federation=[pscustomobject]@{
+         schema_version=1;product_version='2.1.3';generated_at=$now.ToString('o')
+         gates=[pscustomobject]@{
+-            pass=$true;successful_families=$families;official_successful_families=$families
++            pass=$true;successful_families=$families;official_successful_families=$officialFamilies
+             missing_required_families=@();ticker_coverage_ratio=1.0
+             unresolved_material_conflict_count=0;concentration_pass=$true
+             largest_family_share=0.34;yahoo_authoritative=$false
+@@ -386,7 +387,7 @@
+     [void](Test-HealthSchema2Payload $health 'model-a')
+     $federation.gates.yahoo_authoritative=$true
+     try{[void](Test-FederationDocument $federation $now);throw 'Yahoo authority self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Yahoo authority self-test did not fail closed.'){throw}}
+-    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; market-quality degradation = PASS; claim blockers = PASS; health-schema-v2 = PASS' -ForegroundColor Green
++    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; optional-BLS degradation = PASS; market-quality degradation = PASS; claim blockers = PASS; health-schema-v2 = PASS' -ForegroundColor Green
+     exit 0
+ }
+ 
+--- a/activate-v213-diversified-schedule.ps1
++++ b/activate-v213-diversified-schedule.ps1
+@@ -43,7 +43,7 @@
+     }
+     $successful=@(Get-Array $gates.successful_families|ForEach-Object{[string]$_})
+     $official=@(Get-Array $gates.official_successful_families|ForEach-Object{[string]$_})
+-    $required=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $required=@('us_sec','nasdaq','world_bank','ecb')
+     $missingRequired=@($required|Where-Object{$successful -notcontains $_})
+     if($successful.Count-lt5-or$official.Count-lt4-or$missingRequired.Count-gt0){
+         throw ('Live source federation lacks required independent families: '+($missingRequired-join','))
+@@ -105,11 +105,12 @@
+ 
+ if($SelfTest){
+     $now=[DateTimeOffset]::UtcNow
+-    $families=@('us_sec','nasdaq','world_bank','us_bls','ecb')
++    $families=@('us_sec','nasdaq','world_bank','ecb','gleif','yahoo_finance')
++    $officialFamilies=@('us_sec','nasdaq','world_bank','ecb','gleif')
+     $document=[pscustomobject]@{
+         schema_version=1;product_version='2.1.3';generated_at=$now.ToString('o')
+         gates=[pscustomobject]@{
+-            pass=$true;successful_families=$families;official_successful_families=$families
++            pass=$true;successful_families=$families;official_successful_families=$officialFamilies
+             missing_required_families=@();ticker_coverage_ratio=1.0
+             unresolved_material_conflict_count=0;concentration_pass=$true
+             largest_family_share=0.34;yahoo_authoritative=$false
+@@ -117,10 +118,10 @@
+         }
+     }
+     $result=Test-FederationDocument $document $now
+-    if($result.successful_families.Count-ne5){throw 'Federation self-test count failed.'}
++    if($result.successful_families.Count-ne6){throw 'Federation self-test count failed.'}
+     $document.gates.yahoo_authoritative=$true
+     try{[void](Test-FederationDocument $document $now);throw 'Yahoo authority self-test did not fail closed.'}catch{if($_.Exception.Message-eq'Yahoo authority self-test did not fail closed.'){throw}}
+-    Write-Host 'V213_DIVERSIFIED_ACTIVATION_PREFLIGHT_SELF_TEST = PASS' -ForegroundColor Green
++    Write-Host 'V213_DIVERSIFIED_ACTIVATION_PREFLIGHT_SELF_TEST = PASS; optional-BLS degradation = PASS' -ForegroundColor Green
+     exit 0
+ }
+ 
+--- a/scripts/v213_serenity_latest_static_audit.py
++++ b/scripts/v213_serenity_latest_static_audit.py
+@@ -37,6 +37,7 @@
+ def main() -> int:
+     failures: list[str] = []
+     policy = document("config/v213-serenity-latest-multisource-policy-v5.json")
++    federation_policy = document("config/v213-source-federation-policy.json")
+     lineage = document("config/v213-serenity-methodology-lineage-v1.json")
+     if policy.get("schema_version") != 5:
+         failures.append("latest multi-source policy schema is not v5")
+@@ -88,6 +89,31 @@
+     ):
+         failures.append("GPL conceptual-only boundary missing")
+ 
++    required_sources = federation_policy.get("required_live_sources", {})
++    required_families = {
++        str(row.get("family"))
++        for row in required_sources.values()
++        if isinstance(row, dict) and row.get("required") is True
++    }
++    if not {"us_sec", "nasdaq", "world_bank", "ecb"}.issubset(required_families):
++        failures.append("source-federation policy demotes a core required family")
++    bls_policy = required_sources.get("bls_public_data", {})
++    if (
++        not isinstance(bls_policy, dict)
++        or bls_policy.get("family") != "us_bls"
++        or bls_policy.get("required") is not False
++        or bls_policy.get("outage_behavior")
++        != "explicit_quality_degradation_not_company_claim_blocker"
++        or federation_policy.get("temporary_macro_endpoint_unavailability_is_global_blocker")
++        is not False
++    ):
++        failures.append("optional BLS macro-outage policy contract is invalid")
++    if (
++        int(federation_policy.get("minimum_global_successful_families", 0)) < 5
++        or int(federation_policy.get("minimum_global_official_families", 0)) < 4
++    ):
++        failures.append("global source-family diversity floors are too weak")
++
+     require(
+         "scripts/v213_refresh_serenity_public_sources.py",
+         (
+@@ -181,8 +207,27 @@
+         failures.append(
+             "Serenity activation compatibility alias is not byte-equivalent text to the canonical wrapper"
+         )
+-    if "v213_serenity_latest_multisource_audit.py" in text(canonical_activation):
++    canonical_text = text(canonical_activation)
++    if "v213_serenity_latest_multisource_audit.py" in canonical_text:
+         failures.append("canonical activation regressed to the stale strict post-bundle audit path")
++    stale_bls_required_literal = "@('us_sec','nasdaq','world_bank','us_bls','ecb')"
++    if stale_bls_required_literal in canonical_text.replace(" ", ""):
++        failures.append("canonical activation still hard-codes optional BLS as required")
++    core_required_literal = "@('us_sec','nasdaq','world_bank','ecb')"
++    normalized_activation = canonical_text.replace(" ", "")
++    if core_required_literal not in normalized_activation:
++        failures.append("canonical activation does not enforce the four policy-required core families")
++    for marker in (
++        "missing_required_families",
++        "successful.Count-lt5",
++        "official.Count-lt4",
++        "optional-BLS degradation",
++    ):
++        if marker not in canonical_text:
++            failures.append(f"canonical activation lacks BLS-outage policy guard: {marker}")
++    legacy_activation = text("activate-v213-diversified-schedule.ps1")
++    if stale_bls_required_literal in legacy_activation.replace(" ", ""):
++        failures.append("legacy diversified activation still hard-codes optional BLS as required")
+ 
+     require(
+         "install-v213-serenity-latest-runtime.ps1",
+--- a/docs/V213_ALL_IN_ONE.zh-TW.md
++++ b/docs/V213_ALL_IN_ONE.zh-TW.md
+@@ -51,19 +51,21 @@
+ 
+ 受審查 catalog 目前有 101 個來源項目，但 catalog 是 inventory，不代表本輪真的使用 101 個來源。每輪會另外輸出 `data/cache/v213_source_federation_latest.json`，明確記錄本輪真正成功的來源 families、每檔股票來源、濃度、衝突與 gate。
+ 
+-正式 required live families：
++政策必要的 live families：
+ - SEC EDGAR：issuer filings 與公司財務 facts。
+ - Nasdaq Trader Symbol Directory：受監管市場的 listing identity。
+ - World Bank：官方 macro context。
+-- U.S. BLS：官方 inflation／labor context。
+ - ECB SDMX：官方 FX／financial context。
++
++可降級但必須揭露的官方 macro family：
++- U.S. BLS：官方 inflation／labor context。暫時端點故障只會標示品質降級，不得冒充公司 claim evidence，也不會在其他來源門檻均通過時單獨阻斷正式啟用。
+ 
+ 額外來源：
+ - GLEIF：可匹配時提供獨立 legal-entity identity。
+ - Yahoo/yfinance：T3 候選發現與市場觀測，永遠不是 issuer、訂單、供應鏈或 bottleneck authority。
+ - Alpha Vantage：有使用者自己的 API key 時可作 optional 第二個市場觀測 family；不存在時不得把 Yahoo-only observation 升為高信心。
+ 
+-Gate 至少要求：五個 required global families 成功、至少四個 official families、80% Top20 同時具備至少兩個 independent families 與至少兩個 official identity/filing families、單一 family evidence share 不超過 65%、重大 unresolved conflicts 為零。
++Gate 至少要求：所有政策標為 required 的 global families 成功、整體至少五個成功 global families、至少四個 official families、80% Top20 同時具備至少兩個 independent families 與至少兩個 official identity/filing families、單一 family evidence share 不超過 65%、重大 unresolved conflicts 為零。BLS 暫時不可用時必須明確列為 optional quality degradation。
+ 
+ 多來源不代表把不同 claim scope 混成假 corroboration。例如 Nasdaq listing identity 不能證明營收；World Bank macro 不能證明單一公司的訂單；SEC filing 也不能單獨證明市場價格。每個 factor 仍按照 claim-specific evidence threshold 判定。
+ 
+--- a/docs/V213_ALL_IN_ONE.en.md
++++ b/docs/V213_ALL_IN_ONE.en.md
+@@ -22,7 +22,7 @@
+ 
+ The reviewed catalog currently contains 101 source entries, but catalog size is an inventory—not a claim that all 101 were used. Each run writes an auditable live federation snapshot that records actual successful families, per-ticker families, concentration and unresolved conflicts.
+ 
+-Required live families are SEC EDGAR, Nasdaq Trader Symbol Directory, World Bank indicators, U.S. BLS public data and ECB SDMX. GLEIF provides optional independent legal-entity identity. Yahoo/yfinance remains a non-authoritative T3 candidate/market observation. Alpha Vantage is an optional second market-observation family when the owner supplies an API key; without it, Yahoo-only market confidence stays degraded.
++Policy-required live families are SEC EDGAR, Nasdaq Trader Symbol Directory, World Bank indicators and ECB SDMX. U.S. BLS public data is an optional official macro-context family: a temporary endpoint outage must be disclosed as a quality degradation, cannot support company claims, and does not by itself block activation when all other policy gates pass. The portfolio still requires at least five successful global families and four successful official families. GLEIF provides optional independent legal-entity identity. Yahoo/yfinance remains a non-authoritative T3 candidate/market observation. Alpha Vantage is an optional second market-observation family when the owner supplies an API key; without it, Yahoo-only market confidence stays degraded.
+ 
+ The gate requires at least five successful global families, at least four official families, at least 80% of Top20 tickers with two independent families and two official identity/filing families, no unresolved material conflict and no source family above the 65% evidence concentration cap. Claim scopes remain separate: listing identity does not prove revenue, macro data does not prove issuer orders, and a filing does not prove market price.
+ 
