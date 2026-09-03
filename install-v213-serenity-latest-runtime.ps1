@@ -1,0 +1,70 @@
+[CmdletBinding()]
+param(
+    [string]$ProjectRoot = '',
+    [string]$RuntimeRoot = ''
+)
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
+if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) { $RuntimeRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime' }
+$RuntimeRoot = [IO.Path]::GetFullPath($RuntimeRoot)
+$base = Join-Path $ProjectRoot 'install-v213-source-diverse-runtime-v2.ps1'
+if (-not (Test-Path -LiteralPath $base -PathType Leaf)) { throw "Missing source-diverse base runtime installer: $base" }
+& $base -ProjectRoot $ProjectRoot -RuntimeRoot $RuntimeRoot
+if ($LASTEXITCODE -ne 0) { throw 'Source-diverse base runtime installation failed.' }
+
+$copyMap = [ordered]@{
+    'run-v213-local-serenity-latest.ps1' = 'run-v213-local.ps1'
+    'activate-v213-seven-field-schedule-serenity-latest.ps1' = 'activate-v213-seven-field-schedule.ps1'
+    'install-v213-serenity-latest-runtime.ps1' = 'install-v213-source-diverse-runtime.ps1'
+    'scripts\v213_refresh_serenity_public_sources.py' = 'scripts\v213_refresh_serenity_public_sources.py'
+    'scripts\v213_serenity_latest_multisource_audit.py' = 'scripts\v213_serenity_latest_multisource_audit.py'
+    'scripts\v213_tam_capture_claim_guard.py' = 'scripts\v213_tam_capture_claim_guard.py'
+    'config\v213-serenity-latest-multisource-policy-v5.json' = 'config\v213-serenity-latest-multisource-policy-v5.json'
+    'config\v213-serenity-methodology-lineage-v1.json' = 'config\v213-serenity-methodology-lineage-v1.json'
+}
+foreach ($entry in $copyMap.GetEnumerator()) {
+    $source = Join-Path $ProjectRoot $entry.Key
+    $destination = Join-Path $RuntimeRoot $entry.Value
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Latest multi-source runtime source is missing: $($entry.Key)" }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash) {
+        throw "Latest multi-source runtime copy hash mismatch: $($entry.Value)"
+    }
+}
+$refresh = Get-Content -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local.ps1') -Raw -Encoding utf8
+foreach ($marker in @(
+    'v213_refresh_serenity_public_sources.py',
+    'v213_serenity_latest_multisource_audit.py',
+    'v213_tam_capture_claim_guard.py',
+    'build_v213_activation_bundle_v2.py'
+)) { if (-not $refresh.Contains($marker)) { throw "Stable refresh entrypoint lost marker: $marker" } }
+$activation = Get-Content -LiteralPath (Join-Path $RuntimeRoot 'activate-v213-seven-field-schedule.ps1') -Raw -Encoding utf8
+foreach ($marker in @(
+    'V213_SERENITY_LATEST_ACTIVATION_PREFLIGHT',
+    'activate-v213-seven-field-schedule-core.ps1',
+    'v213_serenity_latest_multisource_audit.py'
+)) { if (-not $activation.Contains($marker)) { throw "Stable activation entrypoint lost marker: $marker" } }
+[ordered]@{
+    schema_version = 1
+    product_version = '2.1.3'
+    runtime_profile = 'serenity-latest-per-ticker-multisource-v5'
+    installed_utc = (Get-Date).ToUniversalTime().ToString('o')
+    preferred_model = 'RVN-Q6_K-multilingual-mtp'
+    latest_public_serenity_source_required = $true
+    per_ticker_claim_source_families_minimum = 2
+    per_ticker_claim_source_domains_minimum = 2
+    per_ticker_primary_sources_minimum = 1
+    market_providers_for_high_confidence = 2
+    market_same_metric_basis_required = $true
+    yahoo_truth_anchor = $false
+    source_values_averaged = $false
+    severe_thesis_killers_override_score = $true
+    exact_pointer_rollback = $true
+    exact_worker_rollback = $true
+    official_serenity_formula_claimed = $false
+    private_serenity_method_reproduced = $false
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $RuntimeRoot 'V213-SERENITY-LATEST-RUNTIME.json') -Encoding utf8
+Write-Host "V213_SERENITY_LATEST_RUNTIME = PASS; path=$RuntimeRoot; policy=v5" -ForegroundColor Green
