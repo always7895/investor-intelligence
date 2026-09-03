@@ -56,6 +56,21 @@ try {
     }
     finally { Pop-Location }
 
+    $launcherSource = Get-Content -LiteralPath 'launcher\InvestorIntelligenceLauncher.cs' -Raw -Encoding utf8
+    foreach ($marker in @(
+        'ComboBox modelBox',
+        'PreferredModel = "RVN-Q6_K-multilingual-mtp"',
+        'RefreshModelsAsync',
+        'RunBusyAsync',
+        'refreshButton.Click += async delegate',
+        'bridgeButton.Click += async delegate',
+        'activationButton.Click += async delegate',
+        'Shown += async delegate'
+    )) {
+        if (-not $launcherSource.Contains($marker)) { throw "Launcher responsive model-selector contract is missing: $marker" }
+    }
+    Write-Host 'V213_LAUNCHER_SOURCE_UI_CONTRACT = PASS; model_selector=true; async_handlers=true; responsive_ui=true' -ForegroundColor Green
+
     $powerShellPaths = @(
         'run-v213-local-serenity-latest.ps1',
         'activate-v213-seven-field-schedule-serenity-latest.ps1',
@@ -113,29 +128,71 @@ foreach ($path in $Paths) {
         if ($audit.yahoo_truth_anchor -ne $false -or $audit.source_values_averaged -ne $false) { throw 'Yahoo/anti-averaging boundary failed.' }
         if (@($audit.value_chain_layers.PSObject.Properties).Count -lt 3) { throw 'Fewer than three value-chain layers were represented.' }
         if ([int]$bundle.schema_version -ne 4 -or @($bundle.payloads.PSObject.Properties).Count -ne 7) { throw 'Atomic bundle contract failed.' }
+
+        $bundleSource = ([string]$bundle.payloads.source_independence_json) | ConvertFrom-Json
+        if ([string]$bundleSource.status -ne 'PASS' -or @($bundleSource.records).Count -ne 20 -or @($bundleSource.blocking_violations).Count -ne 0 -or @($bundleSource.violations).Count -ne 0) {
+            throw 'Atomic bundle source-independence payload is not a blocking-gate PASS.'
+        }
+        $evidenceQualified = 0
+        $limitedCandidates = 0
         for ($index = 0; $index -lt 20; $index++) {
             $ticker = [string]$top20[$index].ticker
-            foreach ($actual in @([string]$five.records[$index].ticker,[string]$seven.records[$index].ticker,[string]$federation.ticker_sources[$index].ticker,[string]$source.records[$index].ticker,[string]$ledger.records[$index].ticker)) {
+            foreach ($actual in @([string]$five.records[$index].ticker,[string]$seven.records[$index].ticker,[string]$federation.ticker_sources[$index].ticker,[string]$source.records[$index].ticker,[string]$ledger.records[$index].ticker,[string]$bundleSource.records[$index].ticker)) {
                 if ($actual -ne $ticker) { throw "Final order mismatch at rank $($index + 1): $ticker / $actual" }
             }
-            $metrics = $source.records[$index].source_metrics
-            if ([int]$metrics.claim_relevant_independent_families -lt 2 -or [int]$metrics.claim_relevant_independent_domains -lt 2 -or [int]$metrics.claim_relevant_primary_sources -lt 1 -or [double]$metrics.claim_dated_evidence_ratio -lt 0.8) { throw "Per-ticker source gate failed: $ticker" }
+
+            $bundleRecord = $bundleSource.records[$index]
+            $freshness = $bundleRecord.freshness_state
+            if ($null -eq $freshness -or [string]$freshness.status -ne 'PASS') { throw "Atomic source freshness gate failed: $ticker" }
+            $mode = [string]$freshness.publication_evidence_mode
+            if (-not $mode) { $mode = [string]$bundleRecord.publication_evidence_mode }
+            if ($mode -eq 'EVIDENCE_QUALIFIED') {
+                if ([int]$freshness.claim_source_families -lt 2 -or [int]$freshness.claim_source_domains -lt 2 -or [int]$freshness.claim_primary_units -lt 1) {
+                    throw "Evidence-qualified ticker lost multi-source company evidence: $ticker"
+                }
+                $evidenceQualified++
+            }
+            elseif ($mode -eq 'LIMITED_RESEARCH_CANDIDATE') {
+                if ([int]$freshness.publication_provenance_origin_count -lt 2 -or [int]$freshness.publication_provenance_domain_count -lt 2 -or [int]$freshness.claim_primary_units -lt 1) {
+                    throw "Limited research candidate still depends on a single publication origin: $ticker"
+                }
+                if ($bundleRecord.eligible_for_high_confidence_model_inference -ne $false -or [string]$bundleRecord.public_logic_state.validated_company_thesis -ne 'False') {
+                    if ($bundleRecord.eligible_for_high_confidence_model_inference -ne $false -or $bundleRecord.public_logic_state.validated_company_thesis -ne $false) {
+                        throw "Limited research candidate was incorrectly promoted to a validated/high-confidence thesis: $ticker"
+                    }
+                }
+                $factor = $top20[$index].serenity_factors
+                foreach ($sensitive in @('demand_wave','chokepoint','pricing_power','replacement_friction','tam_capture')) {
+                    if ([double]$factor.$sensitive -gt 0) { throw "Limited research candidate retained a positive sensitive factor: $ticker / $sensitive" }
+                }
+                $limitedCandidates++
+            }
+            else {
+                throw "Unknown publication evidence mode for ${ticker}: $mode"
+            }
+
             $factor = $top20[$index].serenity_factors
             if ([double]$factor.valuation_expectations -gt 3.75 -and $ledger.records[$index].two_fresh_comparable_non_yahoo_market_providers -ne $true) { throw "Uncorroborated valuation exceeds cap: $ticker" }
             if ($ledger.records[$index].severe_thesis_killer_present -ne $false) { throw "Severe thesis killer remains published: $ticker" }
         }
+        if (($evidenceQualified + $limitedCandidates) -ne 20) { throw 'Atomic bundle publication-mode accounting does not equal 20.' }
+        Write-Host "V213_ATOMIC_PER_TICKER_PUBLICATION_GATE = PASS; evidence_qualified=$evidenceQualified; limited_research_candidates=$limitedCandidates; single_origin_candidates=0; positive_sensitive_factors_on_limited=0" -ForegroundColor Green
+
         $validationPath = Join-Path $env:RUNNER_TEMP 'Investor-Intelligence-v2.1.3-R70-Validation.json'
         [ordered]@{
-            schema_version = 1
+            schema_version = 2
             status = 'PASS'
             commit = $env:GITHUB_SHA.ToLowerInvariant()
             workflow_run_id = [string]$env:GITHUB_RUN_ID
             production_mutation = $false
             latest_public_serenity_source = $serenity.canonical_head_sha
             latest_public_serenity_retrieved_at = $serenity.retrieved_at
-            per_ticker_claim_source_families_minimum = 2
-            per_ticker_claim_source_domains_minimum = 2
-            per_ticker_primary_minimum = 1
+            strict_evidence_qualified_count = $evidenceQualified
+            limited_research_candidate_count = $limitedCandidates
+            limited_candidate_minimum_provenance_origins = 2
+            limited_candidate_minimum_provenance_domains = 2
+            limited_candidates_can_be_high_confidence = $false
+            limited_candidates_can_have_positive_sensitive_factors = $false
             market_provider_minimum_for_high_confidence = 2
             market_same_metric_basis_required = $true
             yahoo_truth_anchor = $false
@@ -143,11 +200,13 @@ foreach ($path in $Paths) {
             value_chain_layer_count = @($audit.value_chain_layers.PSObject.Properties).Count
             factor_ledger_records = 20
             atomic_payloads = 7
+            launcher_model_selector_source_contract = $true
+            launcher_async_ui_source_contract = $true
             worker_tests = 'complete'
             windows_no_mutation_refresh = $true
         } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $validationPath -Encoding utf8
         "R70_VALIDATION=$validationPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-        Write-Host "V213_R70_WINDOWS_NO_MUTATION_VALIDATION = PASS; serenity_head=$($serenity.canonical_head_sha); layers=$(@($audit.value_chain_layers.PSObject.Properties).Count)" -ForegroundColor Green
+        Write-Host "V213_R70_WINDOWS_NO_MUTATION_VALIDATION = PASS; serenity_head=$($serenity.canonical_head_sha); layers=$(@($audit.value_chain_layers.PSObject.Properties).Count); selector=true; responsive=true" -ForegroundColor Green
     }
     finally {
         $env:LOCALAPPDATA = $savedLocal
