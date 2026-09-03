@@ -1,0 +1,86 @@
+name: V2.1.3 Hotfix6 Wrangler JSON Delivery
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-hotfix6-wrangler-json-delivery.yml
+      - activate-v213-seven-field-schedule-core.ps1
+      - scripts/test_v213_activation_core.ps1
+      - scripts/ci_v213_hotfix6_validate.ps1
+      - scripts/ci_v213_hotfix6_package.ps1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-hotfix6-wrangler-json-delivery
+  cancel-in-progress: true
+
+jobs:
+  delivery:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      SOURCE_DIR: ${{ github.workspace }}\hf6-delivery-${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact source into isolated directory
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          path: hf6-delivery-${{ github.run_id }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Validate Windows runtime and Wrangler JSON regression
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_hotfix6_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Compile, package and independently verify Hotfix6
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_hotfix6_package.ps1 -ProjectRoot $PWD.Path
+
+      - name: Upload Hotfix6 WranglerJSON delivery
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-SourceDiverse-R60-Hotfix6-WranglerJSON-Delivery
+          path: |
+            ${{ env.HF6_ZIP }}
+            ${{ env.HF6_SHA_FILE }}
+            ${{ env.HF6_VERIFICATION }}
+            ${{ env.HF6_VALIDATION }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## Investor Intelligence v2.1.3 Hotfix6 WranglerJSON Delivery
+          - Reproduced user regression: `Invalid JSON primitive: wrangler`
+          - Wrangler direct-Node invocation: PASS
+          - Mixed stdout and ANSI banner JSON extraction: PASS
+          - Ambiguous deployment documents rejected: PASS
+          - PowerShell 7 and Windows PowerShell 5.1: PASS
+          - Worker transaction tests: PASS
+          - Real Windows no-mutation refresh: PASS
+          - Packaged EXE, stable runtime and manifest: PASS
+          - Production mutation by CI: false
+          - ZIP SHA-256: ``$env:HF6_SHA``
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8

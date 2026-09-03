@@ -104,12 +104,62 @@ function Run([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
     return [string]$result.Stdout
 }
 
+function Get-BalancedJsonDocumentEnd([string]$Text,[int]$Start) {
+    if ($Start -lt 0 -or $Start -ge $Text.Length) { return -1 }
+    $first = $Text[$Start]
+    if ($first -ne [char]'{' -and $first -ne [char]'[') { return -1 }
+    $closers = New-Object 'System.Collections.Generic.List[char]'
+    if ($first -eq [char]'{') { $closers.Add([char]'}') }
+    else { $closers.Add([char]']') }
+    $inString = $false
+    $escaped = $false
+    for ($index = $Start + 1; $index -lt $Text.Length; $index++) {
+        $character = $Text[$index]
+        if ($inString) {
+            if ($escaped) { $escaped = $false; continue }
+            if ($character -eq [char]'\') { $escaped = $true; continue }
+            if ($character -eq [char]'"') { $inString = $false }
+            continue
+        }
+        if ($character -eq [char]'"') { $inString = $true; continue }
+        if ($character -eq [char]'{') { $closers.Add([char]'}'); continue }
+        if ($character -eq [char]'[') { $closers.Add([char]']'); continue }
+        if ($character -eq [char]'}' -or $character -eq [char]']') {
+            if ($closers.Count -eq 0 -or $closers[$closers.Count - 1] -ne $character) { return -1 }
+            $closers.RemoveAt($closers.Count - 1)
+            if ($closers.Count -eq 0) { return $index }
+        }
+    }
+    return -1
+}
+
 function Parse-JsonOutput([string]$Raw) {
     if ([string]::IsNullOrWhiteSpace($Raw)) { throw 'Wrangler JSON stdout was empty.' }
     $escape = [regex]::Escape([string][char]27)
     $value = [regex]::Replace($Raw, $escape + '\[[0-?]*[ -/]*[@-~]', '').Trim().TrimStart([char]0xFEFF)
-    try { return ($value | ConvertFrom-Json) }
-    catch { throw "Wrangler stdout was not one valid JSON document. $($_.Exception.Message)" }
+    $deploymentDocuments = @()
+    for ($start = 0; $start -lt $value.Length; $start++) {
+        if ($value[$start] -ne [char]'{' -and $value[$start] -ne [char]'[') { continue }
+        $end = Get-BalancedJsonDocumentEnd $value $start
+        if ($end -lt $start) { continue }
+        $candidate = $value.Substring($start, $end - $start + 1)
+        $document = $null
+        try { $document = $candidate | ConvertFrom-Json -ErrorAction Stop }
+        catch { continue }
+        if ($null -ne $document -and $null -ne $document.PSObject.Properties['versions']) {
+            $deploymentDocuments += ,$document
+            $start = $end
+        }
+    }
+    if ($deploymentDocuments.Count -eq 0) {
+        $preview = [regex]::Replace($value, '[\x00-\x20]+', ' ').Trim()
+        if ($preview.Length -gt 240) { $preview = $preview.Substring(0,240) + '...' }
+        throw "Wrangler stdout did not contain a deployment JSON document. preview=$preview"
+    }
+    if ($deploymentDocuments.Count -ne 1) {
+        throw "Wrangler stdout contained multiple deployment JSON documents; refusing ambiguous Production state ($($deploymentDocuments.Count))."
+    }
+    return $deploymentDocuments[0]
 }
 
 function Get-SingleActiveVersion([string]$Raw) {
@@ -118,14 +168,49 @@ function Get-SingleActiveVersion([string]$Raw) {
     if ($versions.Count -eq 0) { throw 'Wrangler deployment JSON has no versions array.' }
     $active = @($versions | Where-Object {
         $percentage = 0.0
-        [void][double]::TryParse([string]$_.percentage, [ref]$percentage)
-        ($percentage -ge 99.999 -and $percentage -le 100.001) -or
-        ($percentage -ge .99999 -and $percentage -le 1.00001)
+        $parsed = [double]::TryParse(
+            [string]$_.percentage,
+            [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$percentage)
+        $parsed -and (
+            ($percentage -ge 99.999 -and $percentage -le 100.001) -or
+            ($percentage -ge .99999 -and $percentage -le 1.00001)
+        )
     })
     if ($active.Count -ne 1) { throw "Expected exactly one 100% active Worker version; found $($active.Count)." }
     $version = [string]$active[0].version_id
-    if ($version -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$') { throw 'Active Worker version_id is invalid.' }
+    if ($version -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+        throw 'Active Worker version_id is invalid.'
+    }
     return $version.ToLowerInvariant()
+}
+
+function Resolve-WranglerCommand([string]$CloudRoot) {
+    $wranglerCli = Join-Path $CloudRoot 'node_modules\wrangler\bin\wrangler.js'
+    if (-not (Test-Path -LiteralPath $wranglerCli -PathType Leaf)) {
+        throw 'Pinned Wrangler JavaScript entrypoint is unavailable after npm ci.'
+    }
+    $nodePath = ''
+    if ($env:PROJECT_NODE -and (Test-Path -LiteralPath $env:PROJECT_NODE -PathType Leaf)) {
+        $nodePath = (Resolve-Path -LiteralPath $env:PROJECT_NODE).Path
+    }
+    else {
+        $nodeCommand = Get-Command node.exe -ErrorAction Stop | Select-Object -First 1
+        $nodePath = (Resolve-Path -LiteralPath $nodeCommand.Source).Path
+    }
+    return [pscustomobject]@{
+        Executable = $nodePath
+        PrefixArguments = @((Resolve-Path -LiteralPath $wranglerCli).Path)
+    }
+}
+
+function Invoke-WranglerCapture([object]$Command,[string[]]$Args,[string]$Cwd) {
+    return Capture ([string]$Command.Executable) (@($Command.PrefixArguments) + @($Args)) $Cwd
+}
+
+function Invoke-WranglerRun([object]$Command,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
+    return Run ([string]$Command.Executable) (@($Command.PrefixArguments) + @($Args)) $Cwd $InputText
 }
 
 function Set-Var([string]$Text,[string]$Key,[string]$Value) {
@@ -191,23 +276,43 @@ function Restore-RefreshTasks([hashtable]$Backup) {
 }
 
 if ($SelfTest) {
+    if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
     $version = '12345678-1234-1234-1234-123456789abc'
+    $json = '{"versions":[{"version_id":"' + $version + '","percentage":100}],"annotations":{"message":"brace { value } and escaped quote \" preserved"}}'
     $testRoot = Join-Path $env:TEMP ('ii-v213-wrangler-json-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
-    $testCmd = Join-Path $testRoot 'emit.cmd'
-    $cmdBody = "@echo off`r`necho {`"versions`\:[{`"version_id`\:`"$version`",`"percentage`\:100}]}`r`necho search... 1>&2`r`nexit /b 0`r`n".Replace('\','')
-    [IO.File]::WriteAllText($testCmd, $cmdBody, [Text.Encoding]::ASCII)
+    $testScript = Join-Path $testRoot 'emit.ps1'
+    $escapedJson = $json.Replace("'", "''")
+    $testBody = @(
+        "Write-Output 'wrangler 4.123.0'",
+        "Write-Output '$escapedJson'",
+        "[Console]::Error.WriteLine('search...')",
+        'exit 0'
+    ) -join "`r`n"
+    [IO.File]::WriteAllText($testScript, $testBody, [Text.UTF8Encoding]::new($false))
     try {
-        $captured = Invoke-NativeCapture $testCmd @() $testRoot
+        $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
+        $captured = Invoke-NativeCapture $powershell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$testScript) $testRoot
         if ($captured.ExitCode -ne 0) { throw 'Native capture self-test process failed.' }
         if ($captured.Stderr -notmatch 'search\.\.\.') { throw 'Native stderr was not captured separately.' }
         if ($captured.Stdout -match 'search\.\.\.') { throw 'Native stderr contaminated stdout.' }
-        if ((Get-SingleActiveVersion $captured.Stdout) -ne $version) { throw 'Wrangler JSON parser self-test failed.' }
+        if ((Get-SingleActiveVersion $captured.Stdout) -ne $version) { throw 'Wrangler mixed-stdout JSON parser self-test failed.' }
+        $ansiBanner = ([string][char]27) + '[36mwrangler 4.123.0' + ([string][char]27) + '[0m'
+        if ((Get-SingleActiveVersion ($ansiBanner + "`r`n" + $json)) -ne $version) { throw 'ANSI banner parser self-test failed.' }
+        $ambiguousRejected = $false
+        try { [void](Get-SingleActiveVersion ($json + "`r`n" + $json)) }
+        catch { $ambiguousRejected = $_.Exception.Message -match 'multiple deployment JSON documents' }
+        if (-not $ambiguousRejected) { throw 'Ambiguous Wrangler JSON documents were not rejected.' }
+        $missingRejected = $false
+        try { [void](Get-SingleActiveVersion 'wrangler 4.123.0') }
+        catch { $missingRejected = $_.Exception.Message -match 'did not contain a deployment JSON document' }
+        if (-not $missingRejected) { throw 'Missing Wrangler JSON document was not rejected.' }
         & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -SelfTest
         if ($LASTEXITCODE -ne 0) { throw 'Activation transaction client self-test failed.' }
     }
     finally { Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue }
-    Write-Host 'V213_ACTIVATION_CORE_SELF_TEST = PASS; json_stderr_isolated=true; pointer_transaction=commit_rollback_finalize' -ForegroundColor Green
+    Write-Host 'V213_ACTIVATION_CORE_SELF_TEST = PASS; mixed_stdout_banner=true; ansi_banner=true; ambiguous_json_rejected=true; json_stderr_isolated=true; pointer_transaction=commit_rollback_finalize' -ForegroundColor Green
     exit 0
 }
 
@@ -249,8 +354,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed before activation.' }
 }
 finally { Pop-Location }
-$wrangler = Join-Path $CloudRoot 'node_modules\.bin\wrangler.cmd'
-if (-not (Test-Path -LiteralPath $wrangler -PathType Leaf)) { throw 'Pinned Wrangler executable is unavailable after npm ci.' }
+$wrangler = Resolve-WranglerCommand $CloudRoot
+Write-Host "V213_WRANGLER_INVOCATION = DIRECT_NODE; node=$($wrangler.Executable); cli=$($wrangler.PrefixArguments[0])" -ForegroundColor DarkGray
 
 $configRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
 $selectionPath = Join-Path $configRoot 'v213-model-selection.json'
@@ -303,7 +408,7 @@ $bundleCommitted = $false
 $pointerRollbackVerified = $false
 $workerRollbackVerified = $false
 try {
-    $prior = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+    $prior = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     Write-Host "V213_ACTIVATION_PRIOR_VERSION = $prior" -ForegroundColor Cyan
     if ($healthyModel) {
         $secure = ConvertTo-SecureString -String ([string](Get-PropertyValue $healthyModel 'encrypted_shared_secret' ''))
@@ -311,7 +416,7 @@ try {
         $shared = ''
         try {
             $shared = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($sp)
-            [void](Run $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
+            [void](Invoke-WranglerRun $wrangler @('secret','put','LOCAL_LLM_SHARED_SECRET','--config',$temp) $CloudRoot $shared)
             $deployed = $true
         }
         finally {
@@ -319,9 +424,9 @@ try {
             $shared = $null
         }
     }
-    [void](Run $wrangler @('deploy','--config',$temp,'--message','v2.1.3 atomic source-diverse seven-field activation') $CloudRoot)
+    [void](Invoke-WranglerRun $wrangler @('deploy','--config',$temp,'--message','v2.1.3 atomic source-diverse seven-field activation') $CloudRoot)
     $deployed = $true
-    $current = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+    $current = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     if ($current -eq $prior) { throw 'Deployment did not produce a new active Worker version.' }
 
     $commitResult = Join-Path $env:TEMP ('ii-v213-activation-commit-' + [guid]::NewGuid().ToString('N') + '.json')
@@ -397,8 +502,8 @@ catch {
     if ($deployed -and $prior) {
         try {
             Write-Host 'Activation failed; restoring exact prior Worker version...' -ForegroundColor Yellow
-            [void](Run $wrangler @('versions','deploy',($prior + '@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 atomic activation') $CloudRoot)
-            $restored = Get-SingleActiveVersion (Capture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
+            [void](Invoke-WranglerRun $wrangler @('versions','deploy',($prior + '@100%'),'-y','--config',$temp,'--message','Rollback failed v2.1.3 atomic activation') $CloudRoot)
+            $restored = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
             if ($restored -ne $prior) { throw "Expected $prior, observed $restored" }
             $workerRollbackVerified = $true
             Write-Host 'V213_ACTIVATION_WORKER_ROLLBACK = PASS' -ForegroundColor Green
