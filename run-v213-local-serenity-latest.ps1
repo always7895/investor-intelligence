@@ -104,6 +104,7 @@ try {
             @('scripts\v213_refresh_serenity_public_sources.py','--self-test'),
             @('scripts\v213_serenity_latest_multisource_audit.py','--self-test'),
             @('scripts\v213_tam_capture_claim_guard.py','--self-test'),
+            @('scripts\v213_finalize_rank_coupled_order.py','--self-test'),
             @('scripts\build_v213_activation_bundle_v2.py','--self-test')
         )) {
             & $python @command
@@ -181,6 +182,8 @@ try {
             Stage 7 'Diversified signed snapshot and atomic activation bundle build'
             & $python 'scripts\v213_build_v21_public_snapshot.py'
             if ($LASTEXITCODE -ne 0) { throw 'Diversified public snapshot build failed.' }
+            & $python 'scripts\v213_finalize_rank_coupled_order.py'
+            if ($LASTEXITCODE -ne 0) { throw 'Final rank-coupled document alignment failed.' }
             & $python 'scripts\build_v213_activation_bundle_v2.py'
             if ($LASTEXITCODE -ne 0) { throw 'Atomic activation-bundle build failed.' }
             Write-Host 'II_PROGRESS atomic activation bundle ready after latest multi-source Serenity audit' -ForegroundColor Green
