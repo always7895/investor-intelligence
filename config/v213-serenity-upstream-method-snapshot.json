@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "observed_at": "2026-09-03T04:19:31Z",
+  "snapshot_id": "serenity-upstream-method-review-2026-09-03",
+  "boundary": {
+    "methodology_only": true,
+    "company_fact_weight": 0,
+    "order_fact_weight": 0,
+    "market_fact_weight": 0,
+    "fork_or_repost_counts_as_independent_corroboration": false,
+    "official_serenity_formula_claimed": false,
+    "private_process_reproduction_claimed": false
+  },
+  "repositories": [
+    {
+      "repository": "yan-labs/serenity-aleabitoreddit",
+      "head_sha": "16cb9879ee037b573a82805dd37a225206464202",
+      "pushed_at": "2026-09-02T01:11:25Z",
+      "status": "CURRENT_METHODOLOGY_AND_SOURCE_VIEW_LEAD",
+      "company_fact_weight": 0,
+      "adopted_method_advantages": [
+        "refresh_before_use_and_disclose_cache_staleness",
+        "separate_new_bottleneck_reaffirmation_supplier_map_and_victory_lap",
+        "track_stance_reversals_and_thesis_decay",
+        "distinguish_research_signal_from_copy_trade_timing",
+        "keep_self_reported_track_record_unverified"
+      ],
+      "caveats": [
+        "repository_sync_state_metadata_may_lag_commits",
+        "tweet_archive_or_distillation_is_not_company_fact_corroboration"
+      ]
+    },
+    {
+      "repository": "muxuuu/serenity-skill",
+      "head_sha": "c2fe93deedfd0d1bd9fe7ef0601ea1b9c20ea24a",
+      "pushed_at": "2026-05-05T03:23:53Z",
+      "status": "METHODOLOGY_REFERENCE_NOT_CURRENT_SIGNAL_FEED",
+      "company_fact_weight": 0,
+      "adopted_method_advantages": [
+        "rank_value_chain_layers_before_companies",
+        "cover_at_least_three_value_chain_layers",
+        "start_from_a_broad_candidate_universe",
+        "use_an_explicit_evidence_ladder",
+        "state_missing_proof_falsifiers_and_downgraded_popular_areas"
+      ]
+    },
+    {
+      "repository": "quantskills/skill-serenity-research-model",
+      "head_sha": "97896616e3704e374ae4f0dbda7a93cc349b11cb",
+      "pushed_at": "2026-07-16T09:38:55Z",
+      "status": "METHODOLOGY_REFERENCE_NOT_CURRENT_SIGNAL_FEED",
+      "company_fact_weight": 0,
+      "adopted_method_advantages": [
+        "preserve_post_url_created_at_retrieved_at_reply_and_quote_lineage",
+        "deweight_baskets_incomplete_dd_and_low_conviction_comments",
+        "exclude_quote_only_reply_only_retrospective_and_post_event_rows_from_forward_signal",
+        "require_mechanism_evidence_catalyst_horizon_and_invalidation"
+      ]
+    },
+    {
+      "repository": "WOOK98/serenity-aleabitoreddit",
+      "head_sha": null,
+      "pushed_at": "2026-07-22T16:05:24Z",
+      "status": "DUPLICATE_ARCHIVE_LINEAGE_ZERO_INDEPENDENT_WEIGHT",
+      "company_fact_weight": 0,
+      "adopted_method_advantages": []
+    },
+    {
+      "repository": "toysoldiers000/serenity-skill",
+      "head_sha": null,
+      "pushed_at": "2026-06-09T14:49:42Z",
+      "status": "METHODOLOGY_ONLY_ZERO_INDEPENDENT_WEIGHT",
+      "company_fact_weight": 0,
+      "adopted_method_advantages": []
+    }
+  ],
+  "adopted_runtime_contracts": [
+    "latest_company_data_must_come_from_current_primary_or_independently_corroborating_sources",
+    "methodology_archives_can_form_questions_but_cannot_prove_company_facts",
+    "single_publisher_rows_cannot_receive_high_confidence_model_inference",
+    "structural_bottleneck_claims_require_evidence_bound_relationship_and_scarcity",
+    "forward_signal_filters_must_remove_retrospective_victory_laps_and_quote_only_rows"
+  ]
+}
