@@ -64,7 +64,7 @@ try {
         'RunBusyAsync',
         'refreshButton.Click += async delegate',
         'bridgeButton.Click += async delegate',
-        'activationButton.Click += async delegate',
+        'activateButton.Click += async delegate',
         'Shown += async delegate'
     )) {
         if (-not $launcherSource.Contains($marker)) { throw "Launcher responsive model-selector contract is missing: $marker" }
