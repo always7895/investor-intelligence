@@ -43,9 +43,9 @@ function ConvertTo-NativeArgument([string]$Value) {
     return $builder.ToString()
 }
 
-function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
+function Invoke-NativeCapture([string]$Exe,[string[]]$ArgumentList,[string]$Cwd,[string]$InputText='') {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $quotedArgs = ($Args | ForEach-Object { ConvertTo-NativeArgument ([string]$_) }) -join ' '
+    $quotedArgs = ($ArgumentList | ForEach-Object { ConvertTo-NativeArgument ([string]$_) }) -join ' '
     $extension = [IO.Path]::GetExtension($Exe)
     if ($extension -ieq '.cmd' -or $extension -ieq '.bat') {
         $psi.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
@@ -84,8 +84,8 @@ function Invoke-NativeCapture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]
     return $result
 }
 
-function Capture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
-    $result = Invoke-NativeCapture $Exe $Args $Cwd $InputText
+function Capture([string]$Exe,[string[]]$ArgumentList,[string]$Cwd,[string]$InputText='') {
+    $result = Invoke-NativeCapture $Exe $ArgumentList $Cwd $InputText
     if ($result.ExitCode -ne 0) {
         $tail = (($result.Stdout + "`n" + $result.Stderr) -split '\r?\n' | Select-Object -Last 30) -join "`n"
         throw "$Exe failed with exit code $($result.ExitCode)`n$tail"
@@ -93,8 +93,8 @@ function Capture([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText=''
     return [string]$result.Stdout
 }
 
-function Run([string]$Exe,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
-    $result = Invoke-NativeCapture $Exe $Args $Cwd $InputText
+function Run([string]$Exe,[string[]]$ArgumentList,[string]$Cwd,[string]$InputText='') {
+    $result = Invoke-NativeCapture $Exe $ArgumentList $Cwd $InputText
     if ($result.Stdout) { Write-Host $result.Stdout.TrimEnd() }
     if ($result.Stderr) { Write-Host $result.Stderr.TrimEnd() }
     if ($result.ExitCode -ne 0) {
@@ -205,12 +205,12 @@ function Resolve-WranglerCommand([string]$CloudRoot) {
     }
 }
 
-function Invoke-WranglerCapture([object]$Command,[string[]]$Args,[string]$Cwd) {
-    return Capture ([string]$Command.Executable) (@($Command.PrefixArguments) + @($Args)) $Cwd
+function Invoke-WranglerCapture([object]$Command,[string[]]$ArgumentList,[string]$Cwd) {
+    return Capture ([string]$Command.Executable) (@($Command.PrefixArguments) + @($ArgumentList)) $Cwd
 }
 
-function Invoke-WranglerRun([object]$Command,[string[]]$Args,[string]$Cwd,[string]$InputText='') {
-    return Run ([string]$Command.Executable) (@($Command.PrefixArguments) + @($Args)) $Cwd $InputText
+function Invoke-WranglerRun([object]$Command,[string[]]$ArgumentList,[string]$Cwd,[string]$InputText='') {
+    return Run ([string]$Command.Executable) (@($Command.PrefixArguments) + @($ArgumentList)) $Cwd $InputText
 }
 
 function Set-Var([string]$Text,[string]$Key,[string]$Value) {
