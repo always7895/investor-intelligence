@@ -31,10 +31,15 @@ spec.loader.exec_module(v4)
 # Stable import surface. These are aliases to the authoritative v4 objects, not
 # copies, so downstream callers and audits cannot drift from runtime behavior.
 gate = v4.gate
-self_test = v4.self_test
 apply_market_quality_policy = v4.apply_market_quality_policy
 MARKET_DEGRADATION_CODE = v4.MARKET_DEGRADATION_CODE
 INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE = v4.MARKET_DEGRADATION_CODE
+
+
+def self_test() -> None:
+    """Execute the authoritative final-gate wrapper regression."""
+    v4.self_test()
+
 
 # Worker-compatible output and methodology fields that the stable entrypoint
 # guarantees through the v4 implementation.
@@ -63,4 +68,4 @@ if __name__ == "__main__":
     if "--wrapper-self-test" in sys.argv:
         self_test()
         raise SystemExit(0)
-    raise SystemExit(gate.main())
+    raise SystemExit(v4.gate.main())
