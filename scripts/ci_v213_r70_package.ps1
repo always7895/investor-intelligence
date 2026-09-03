@@ -25,7 +25,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'R70 launcher compilation failed.' }
 
     # The temporary EXE is intentionally not beside the package scripts yet.
-    # Only standalone launcher tests are valid before hydration.  The complete
+    # Only standalone launcher tests are valid before hydration. The complete
     # --self-test is executed again below after the EXE is inside the expanded
     # package root, where it can resolve run-v213-local.ps1 and the bridge.
     foreach ($argument in @('--pipe-hold-self-test','--model-selection-self-test')) {
@@ -190,31 +190,46 @@ try {
         model_selector_verified = $true
         responsive_async_ui_verified = $true
         production_mutation_by_ci = $false
+        artifact_delivery_is_authoritative = $true
+        desktop_delivery_is_best_effort = $true
         next_stage = 'user_local_formal_activation'
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receipt -Encoding utf8
 
-    $desktopCandidates = @(
-        [Environment]::GetFolderPath('Desktop'),
-        (Join-Path $env:USERPROFILE 'Desktop'),
-        'C:\Users\moon9\Desktop'
-    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } | Select-Object -Unique
+    # A self-hosted Runner service may run as NetworkService and legitimately
+    # have no access to the interactive user's Desktop. Desktop copying is a
+    # convenience only and must never invalidate an otherwise verified release.
+    # The GitHub Actions artifact, its SHA-256 and its receipts are authoritative.
     $desktopDeliveries = @()
-    foreach ($desktop in $desktopCandidates) {
-        $destination = Join-Path $desktop 'Investor-Intelligence-v2.1.3-Final-Delivery'
-        New-Item -ItemType Directory -Force -Path $destination | Out-Null
-        foreach ($file in @($zip,$shaFile,$verification,$receipt,$env:R70_VALIDATION)) { Copy-Item -LiteralPath $file -Destination $destination -Force }
-        $copied = Join-Path $destination ([IO.Path]::GetFileName($zip))
-        if ((Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { throw "Desktop delivery hash mismatch: $copied" }
-        $desktopDeliveries += $destination
+    $rawDesktopCandidates = @(
+        [Environment]::GetFolderPath('Desktop'),
+        $(if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'Desktop' } else { '' })
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique
+    foreach ($desktop in $rawDesktopCandidates) {
+        try {
+            if (-not (Test-Path -LiteralPath $desktop -PathType Container -ErrorAction Stop)) { continue }
+            $destination = Join-Path $desktop 'Investor-Intelligence-v2.1.3-Final-Delivery'
+            New-Item -ItemType Directory -Force -Path $destination -ErrorAction Stop | Out-Null
+            foreach ($file in @($zip,$shaFile,$verification,$receipt,$env:R70_VALIDATION)) {
+                Copy-Item -LiteralPath $file -Destination $destination -Force -ErrorAction Stop
+            }
+            $copied = Join-Path $destination ([IO.Path]::GetFileName($zip))
+            if ((Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) {
+                throw "Desktop delivery hash mismatch: $copied"
+            }
+            $desktopDeliveries += $destination
+        }
+        catch {
+            Write-Warning ("Optional Desktop delivery unavailable for current Runner identity; GitHub artifact remains authoritative. path=$desktop; reason=" + $_.Exception.Message)
+        }
     }
-    if ($desktopDeliveries.Count -eq 0) { throw 'No user Desktop directory was available for direct delivery.' }
+    $desktopSummary = if ($desktopDeliveries.Count -gt 0) { [string]$desktopDeliveries[0] } else { 'UNAVAILABLE_FROM_RUNNER_SERVICE' }
 
     "R70_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
     "R70_SHA_FILE=$shaFile" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
     "R70_VERIFICATION=$verification" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
     "R70_RECEIPT=$receipt" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
     "R70_SHA=$sha" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-    "R70_DESKTOP=$($desktopDeliveries[0])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-    Write-Host "V213_R70_PACKAGE_AND_DESKTOP_DELIVERY = PASS; sha256=$sha; desktop=$($desktopDeliveries -join ';')" -ForegroundColor Green
+    "R70_DESKTOP=$desktopSummary" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    Write-Host "V213_R70_PACKAGE_DELIVERY = PASS; sha256=$sha; artifact_delivery=AUTHORITATIVE; desktop=$desktopSummary" -ForegroundColor Green
 }
 finally { Pop-Location }
