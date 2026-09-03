@@ -11,8 +11,29 @@ if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) { $RuntimeRoot = Join-Path $env:
 $RuntimeRoot = [IO.Path]::GetFullPath($RuntimeRoot)
 $base = Join-Path $ProjectRoot 'install-v213-source-diverse-runtime-v2.ps1'
 if (-not (Test-Path -LiteralPath $base -PathType Leaf)) { throw "Missing source-diverse base runtime installer: $base" }
+
+# A PowerShell script invocation does not own the process-level $LASTEXITCODE.
+# The base installer intentionally invokes robocopy, whose successful "files
+# copied" result is exit code 1.  That value can remain in $LASTEXITCODE even
+# after the PowerShell installer itself completed successfully.  Errors in the
+# child script already terminate through ErrorActionPreference=Stop, so success
+# is established by exception-free completion plus exact runtime artifacts, not
+# by a stale native-process exit code.
 & $base -ProjectRoot $ProjectRoot -RuntimeRoot $RuntimeRoot
-if ($LASTEXITCODE -ne 0) { throw 'Source-diverse base runtime installation failed.' }
+foreach ($requiredBase in @(
+    'run-v213-local.ps1',
+    'activate-v213-seven-field-schedule.ps1',
+    'V213-SOURCE-DIVERSE-RUNTIME.json'
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $RuntimeRoot $requiredBase) -PathType Leaf)) {
+        throw "Source-diverse base runtime installation did not produce: $requiredBase"
+    }
+}
+$baseReceipt = Get-Content -LiteralPath (Join-Path $RuntimeRoot 'V213-SOURCE-DIVERSE-RUNTIME.json') -Raw -Encoding utf8 | ConvertFrom-Json
+if ([string]$baseReceipt.product_version -ne '2.1.3' -or [string]$baseReceipt.source_independence_gate -ne 'scripts/v213_source_independence_gate_v3.py') {
+    throw 'Source-diverse base runtime receipt is invalid.'
+}
+Write-Host 'V213_SERENITY_BASE_RUNTIME_HANDOFF = PASS; powershell_exception_free=true; stale_native_exit_code_ignored=true' -ForegroundColor Green
 
 $copyMap = [ordered]@{
     'run-v213-local-serenity-latest.ps1' = 'run-v213-local.ps1'
@@ -48,10 +69,12 @@ foreach ($marker in @(
     'v213_serenity_latest_multisource_audit.py'
 )) { if (-not $activation.Contains($marker)) { throw "Stable activation entrypoint lost marker: $marker" } }
 [ordered]@{
-    schema_version = 1
+    schema_version = 2
     product_version = '2.1.3'
     runtime_profile = 'serenity-latest-per-ticker-multisource-v5'
     installed_utc = (Get-Date).ToUniversalTime().ToString('o')
+    base_runtime_handoff = 'exception-free-plus-receipt-verified'
+    stale_native_exit_code_is_success_authority = $false
     preferred_model = 'RVN-Q6_K-multilingual-mtp'
     latest_public_serenity_source_required = $true
     per_ticker_claim_source_families_minimum = 2
