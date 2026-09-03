@@ -52,7 +52,11 @@ try {
     }
     Expand-Archive (Join-Path $versions 'Investor-Intelligence-v2.1.3-source.zip') $stage -Force
     Copy-Item (Join-Path $stage 'run-v213-local-serenity-latest.ps1') (Join-Path $stage 'run-v213-local.ps1') -Force
-    Copy-Item (Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1') (Join-Path $stage 'activate-v213-seven-field-schedule.ps1') -Force
+    $canonicalActivation = Join-Path $stage 'activate-v213-seven-field-schedule.ps1'
+    $compatActivationAlias = Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1'
+    if ((Get-FileHash -LiteralPath $canonicalActivation -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $compatActivationAlias -Algorithm SHA256).Hash) {
+        throw 'Source activation compatibility alias differs from the canonical source-independence-aware wrapper.'
+    }
     Copy-Item (Join-Path $stage 'install-v213-serenity-latest-runtime.ps1') (Join-Path $stage 'install-v213-source-diverse-runtime.ps1') -Force
     Copy-Item $launcherExe (Join-Path $stage 'InvestorIntelligence.exe') -Force
     if ((Get-FileHash -LiteralPath $launcherExe -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $stage 'InvestorIntelligence.exe') -Algorithm SHA256).Hash) {

@@ -37,7 +37,7 @@ Write-Host 'V213_SERENITY_BASE_RUNTIME_HANDOFF = PASS; powershell_exception_free
 
 $copyMap = [ordered]@{
     'run-v213-local-serenity-latest.ps1' = 'run-v213-local.ps1'
-    'activate-v213-seven-field-schedule-serenity-latest.ps1' = 'activate-v213-seven-field-schedule.ps1'
+    'activate-v213-seven-field-schedule.ps1' = 'activate-v213-seven-field-schedule.ps1'
     'install-v213-serenity-latest-runtime.ps1' = 'install-v213-source-diverse-runtime.ps1'
     'scripts\v213_refresh_serenity_public_sources.py' = 'scripts\v213_refresh_serenity_public_sources.py'
     'scripts\v213_serenity_latest_multisource_audit.py' = 'scripts\v213_serenity_latest_multisource_audit.py'
