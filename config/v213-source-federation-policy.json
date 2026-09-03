@@ -17,6 +17,8 @@
   "yahoo_is_authoritative": false,
   "single_market_provider_caps_valuation_factor": true,
   "single_market_provider_caps_market_confidence": true,
+  "temporary_macro_endpoint_unavailability_is_global_blocker": false,
+  "macro_context_is_company_claim_evidence": false,
   "required_live_sources": {
     "sec_edgar": {
       "family": "us_sec",
@@ -40,7 +42,9 @@
       "family": "us_bls",
       "tier": "T1",
       "role": "official_labor_inflation_context",
-      "required": true
+      "required": false,
+      "outage_behavior": "explicit_quality_degradation_not_company_claim_blocker",
+      "company_claim_evidence": false
     },
     "ecb_sdmx": {
       "family": "ecb",
@@ -80,6 +84,8 @@
   "activation_gate": {
     "federation_snapshot_max_age_seconds": 7200,
     "all_required_live_sources_must_succeed": true,
+    "minimum_successful_official_families": 4,
+    "temporary_macro_context_outage_is_quality_degradation": true,
     "unresolved_material_conflicts_allowed": 0,
     "market_single_provider_is_degraded_not_authoritative": true,
     "serenity_public_logic_claims_require_claim_specific_evidence": true
