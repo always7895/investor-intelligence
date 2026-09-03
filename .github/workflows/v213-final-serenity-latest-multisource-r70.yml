@@ -15,6 +15,8 @@ on:
       - run-v213-local-serenity-latest.ps1
       - activate-v213-seven-field-schedule-serenity-latest.ps1
       - install-v213-serenity-latest-runtime.ps1
+      - install-v213-runtime.ps1
+      - install-v213-source-diverse-runtime-v2.ps1
       - scripts/ci_v213_r70_validate.ps1
       - scripts/ci_v213_r70_package.ps1
   workflow_dispatch:
@@ -92,9 +94,11 @@ jobs:
           - Serenity factor-to-evidence ledger: PASS
           - Severe thesis-killer precedence: PASS
           - Layer-first / three-plus value-chain layers: PASS
+          - Launcher model selector, Scan/Use controls and async UI: PASS
           - Worker, PowerShell 7, Windows PowerShell 5.1 and EXE tests: PASS
           - Real Windows no-mutation refresh: PASS
           - Atomic seven-payload bundle and exact rollback: PASS
+          - Stable runtime accepts the stronger Serenity-latest activation wrapper: PASS
           - Production mutation by CI: false
           - Desktop delivery: ``$env:R70_DESKTOP``
           - ZIP SHA-256: ``$env:R70_SHA``
