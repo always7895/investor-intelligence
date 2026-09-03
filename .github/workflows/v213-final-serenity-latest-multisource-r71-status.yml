@@ -1,0 +1,129 @@
+name: V2.1.3 Final Serenity Latest Multi-Source R71 Status Delivery
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-final-serenity-latest-multisource-r71-status.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: investor-intelligence-v213-serenity-latest-r71
+  cancel-in-progress: true
+
+jobs:
+  delivery:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_DIR: ${{ github.workspace }}\r71-${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact source into isolated directory
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          path: r71-${{ github.run_id }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      - name: Validate latest Serenity, per-ticker sources and Windows runtime
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_r70_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Compile, package, verify and copy to user Desktop
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          .\scripts\ci_v213_r70_package.ps1 -ProjectRoot $PWD.Path
+
+      - name: Upload final one-click package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70
+          path: |
+            ${{ env.R70_ZIP }}
+            ${{ env.R70_SHA_FILE }}
+            ${{ env.R70_VERIFICATION }}
+            ${{ env.R70_RECEIPT }}
+            ${{ env.R70_VALIDATION }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish deterministic delivery status
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $success = '${{ job.status }}' -eq 'success' -and $env:R70_SHA -match '^[0-9a-f]{64}$'
+          $status = if($success){'PASS'}else{'FAIL'}
+          $document = [ordered]@{
+            schema_version = 1
+            status = $status
+            job_status = '${{ job.status }}'
+            workflow = 'V2.1.3 Final Serenity Latest Multi-Source R71 Status Delivery'
+            workflow_run_id = '${{ github.run_id }}'
+            source_commit = '${{ github.sha }}'
+            branch = '${{ github.ref_name }}'
+            package = $(if($success){'Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70.zip'}else{''})
+            zip_sha256 = $(if($success){$env:R70_SHA}else{''})
+            desktop_delivery = $(if($success){$env:R70_DESKTOP}else{''})
+            artifact_name = $(if($success){'Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70'}else{''})
+            production_mutation_by_ci = $false
+            completed_at = (Get-Date).ToUniversalTime().ToString('o')
+          }
+          $json = $document | ConvertTo-Json -Depth 8
+          $content = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($json + "`n"))
+          $owner='always7895'; $repo='investor-intelligence'; $path='delivery/v213-serenity-latest-r70/latest.json'
+          $headers=@{
+            Authorization="Bearer $env:GITHUB_TOKEN"
+            Accept='application/vnd.github+json'
+            'X-GitHub-Api-Version'='2022-11-28'
+            'User-Agent'='Investor-Intelligence-R71-delivery-status'
+          }
+          $api="https://api.github.com/repos/$owner/$repo/contents/$path"
+          $existingSha=''
+          try{
+            $existing=Invoke-RestMethod -Method Get -Uri ($api+'?ref=${{ github.ref_name }}') -Headers $headers -TimeoutSec 30
+            $existingSha=[string]$existing.sha
+          }catch{
+            if([int]$_.Exception.Response.StatusCode-ne404){throw}
+          }
+          $body=[ordered]@{
+            message="delivery: publish R70 status for run ${{ github.run_id }}"
+            content=$content
+            branch='${{ github.ref_name }}'
+          }
+          if($existingSha){$body.sha=$existingSha}
+          Invoke-RestMethod -Method Put -Uri $api -Headers $headers -ContentType 'application/json' -Body ($body|ConvertTo-Json -Depth 5) -TimeoutSec 60 | Out-Null
+          Write-Host "V213_R71_STATUS_PUBLISHED = PASS; delivery_status=$status; path=$path"
+
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          @"
+          ## Investor Intelligence v2.1.3 Final Delivery
+          - Job status: `${{ job.status }}`
+          - Production mutation by CI: false
+          - Package SHA-256: ``$env:R70_SHA``
+          - Desktop delivery: ``$env:R70_DESKTOP``
+          - Deterministic status: `delivery/v213-serenity-latest-r70/latest.json`
+          "@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
