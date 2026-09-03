@@ -10,8 +10,8 @@ including primary evidence. Unsupported positives are withheld, scores are
 recomputed, and every rank-coupled document is atomically reordered.
 
 This is a fail-closed evidence guard, not a source-discovery shortcut. It never
-creates a positive factor and never treats market, macro, listing-identity or
-Yahoo observations as company-claim evidence.
+creates a positive factor and never treats market, macro, listing identity,
+legal-entity identity or Yahoo observations as company-advantage evidence.
 """
 from __future__ import annotations
 
@@ -59,6 +59,9 @@ NON_CLAIM_TYPES = {
     "independent_market_corroboration",
     "macro_context",
     "regulated_listing_identity",
+    "legal_entity_reference",
+    "live_legal_entity_registry_observation",
+    "independent_legal_entity_identity",
 }
 NON_CLAIM_FAMILIES = {
     "official_macro",
@@ -162,11 +165,12 @@ def _fresh_claim_support(
         if source.get("primary") is True
         or str(source.get("family") or "").strip().lower() in CLAIM_PRIMARY_FAMILIES
     ]
+    usable_domains = {value for value in domains if value and value != "unknown"}
     return {
         "unit_count": len(values),
-        "domain_count": len({value for value in domains if value and value != "unknown"}),
+        "domain_count": len(usable_domains),
         "primary_count": len(primary),
-        "supported": len(values) >= 2 and len({value for value in domains if value and value != "unknown"}) >= 2 and bool(primary),
+        "supported": len(values) >= 2 and len(usable_domains) >= 2 and bool(primary),
     }
 
 
@@ -441,7 +445,56 @@ def self_test() -> None:
     assert row["serenity_factors"]["tam_capture"] == 0.0
     assert row["serenity_score"] == 4.0
     assert "positive_advantage_withheld_until_fresh_multisource_support" in row["risk_flags"]
-    print("V213_DIVERSIFIED_PUBLIC_SNAPSHOT_SELF_TEST = PASS; unsupported_positive_factors=withheld")
+
+    identity_row = {
+        "ticker": "IDENTITY",
+        "serenity_score": 10.0,
+        "serenity_raw_score": 12.0,
+        "risk_penalty": 2.0,
+        "rating": "D",
+        "risk_flags": [],
+        "serenity_factors": {
+            "demand_wave": 0.0,
+            "chokepoint": 0.0,
+            "pricing_power": 0.0,
+            "replacement_friction": 0.0,
+            "tam_capture": 6.0,
+            "valuation_expectations": 3.0,
+            "evidence_quality": 3.0,
+        },
+    }
+    identity_audit = {
+        "sources": [
+            {
+                "family": "regulator_filing",
+                "domain": "sec.gov",
+                "claim_type": "xbrl_fact",
+                "url": "https://www.sec.gov/identity",
+                "as_of": stamp,
+                "primary": True,
+            },
+            {
+                "family": "secondary_or_other",
+                "domain": "gleif.org",
+                "claim_type": "legal_entity_reference",
+                "url": "https://api.gleif.org/api/v1/lei-records",
+                "as_of": stamp,
+                "primary": False,
+            },
+        ]
+    }
+    identity_removed = _guard_row(
+        identity_row,
+        identity_audit,
+        {
+            "current_state_claim_max_age_days": 135,
+            "sensitive_advantage_factors": list(DEFAULT_SENSITIVE_FACTORS),
+        },
+        now,
+    )
+    assert identity_removed == ["tam_capture"]
+    assert identity_row["serenity_factors"]["tam_capture"] == 0.0
+    print("V213_DIVERSIFIED_PUBLIC_SNAPSHOT_SELF_TEST = PASS; unsupported_positive_factors=withheld; legal_identity_not_advantage=true")
 
 
 def main() -> int:
