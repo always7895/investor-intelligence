@@ -1,0 +1,168 @@
+name: V2.1.3 Activation Mode + Gateway Fix2 Validation R4
+
+on:
+  push:
+    branches:
+      - validation/v213-activation-mode-gateway-fix2
+    paths:
+      - .github/workflows/v213-activation-mode-gateway-fix2-validation-r4.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-activation-mode-gateway-fix2-validation-r4
+  cancel-in-progress: false
+
+jobs:
+  validate-and-commit:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      VALIDATION_BRANCH: validation/v213-activation-mode-gateway-fix2
+    steps:
+      - name: Checkout exact validation commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Apply byte-locked Fix2 and exact-order fixture correction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config core.autocrlf false
+          git checkout-index --force --all
+          $parts=1..6|ForEach-Object{'.github\patches\v213-fix2.part-{0:00}.b64'-f$_}
+          $builder=[Text.StringBuilder]::new()
+          foreach($relative in $parts){
+            $path=Join-Path $PWD.Path $relative
+            if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Missing patch part: $relative"}
+            [void]$builder.Append(([IO.File]::ReadAllText($path)-replace'\s',''))
+          }
+          $base64=$builder.ToString()
+          if($base64.Length-ne26472){throw "Patch Base64 length mismatch: $($base64.Length)"}
+          $asciiSha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($base64))).ToLowerInvariant()
+          if($asciiSha-ne'01fbfd7f66c3261ee63e8298f17abf2b72d2f73b6705d2eb10a6f586a73c0ec6'){throw "Patch Base64 SHA mismatch: $asciiSha"}
+          $gzipPath=Join-Path $env:RUNNER_TEMP 'v213-fix2.patch.gz'
+          [IO.File]::WriteAllBytes($gzipPath,[Convert]::FromBase64String($base64))
+          if((Get-FileHash $gzipPath -Algorithm SHA256).Hash.ToLowerInvariant()-ne'71091c2d6d8631e394fbc93125a374fa6a544e11c9f248da68ff89ed8ffe3786'){throw 'Patch gzip SHA mismatch.'}
+          $patchPath=Join-Path $env:RUNNER_TEMP 'v213-fix2.patch'
+          $source=[IO.File]::OpenRead($gzipPath)
+          try{
+            $gzip=[IO.Compression.GzipStream]::new($source,[IO.Compression.CompressionMode]::Decompress)
+            try{$target=[IO.File]::Create($patchPath);try{$gzip.CopyTo($target)}finally{$target.Dispose()}}finally{$gzip.Dispose()}
+          }finally{$source.Dispose()}
+          if((Get-FileHash $patchPath -Algorithm SHA256).Hash.ToLowerInvariant()-ne'91d8966c1583c7eb676c3c726e538c09367246626d083ffed5075b95338856c0'){throw 'Expanded patch SHA mismatch.'}
+          git apply --check --whitespace=error $patchPath
+          if($LASTEXITCODE-ne0){throw 'Fix2 patch preflight failed.'}
+          git apply --whitespace=error $patchPath
+          if($LASTEXITCODE-ne0){throw 'Fix2 patch application failed.'}
+
+          $sourceFiles=@(
+            'activate-v213-seven-field-schedule.ps1',
+            'activate-v213-seven-field-schedule-serenity-latest.ps1',
+            'cloud/src/v213/activation-v2.ts',
+            'cloud/test/v213-activation.test.ts',
+            'scripts/ci_v213_r70_package.ps1',
+            'scripts/ci_v213_r70_validate.ps1',
+            'scripts/run_v213_local_llm_bridge_core.ps1',
+            'scripts/v213_optional_bls_alignment_audit.py',
+            'scripts/v213_serenity_latest_static_audit.py'
+          )
+          $changed=@(git diff --name-only --|ForEach-Object{([string]$_).Trim().Replace('\','/')}|Where-Object{$_}|Sort-Object)
+          if(@(Compare-Object ($sourceFiles|Sort-Object) $changed).Count-ne0){throw 'Fix2 patch changed an unexpected source scope.'}
+          $utf8NoBom=[Text.UTF8Encoding]::new($false)
+          foreach($relative in $sourceFiles){
+            $path=Join-Path $PWD.Path $relative
+            [IO.File]::WriteAllText($path,[IO.File]::ReadAllText($path).Replace("`r`n","`n").Replace("`r","`n"),$utf8NoBom)
+          }
+          $testPath=Join-Path $PWD.Path 'cloud\test\v213-activation.test.ts'
+          $testText=[IO.File]::ReadAllText($testPath)
+          $fixtureOld='    const freshnessState = {'+"`n"+'      ticker,'+"`n"+'      status: "PASS",'
+          $fixtureNew='    const freshnessState = {'+"`n"+'      rank: index + 1,'+"`n"+'      ticker,'+"`n"+'      status: "PASS",'
+          if(-not $testText.Contains($fixtureOld)){throw 'Worker freshness fixture correction anchor is missing.'}
+          $testText=$testText.Replace($fixtureOld,$fixtureNew)
+          if(([regex]::Matches($testText,[regex]::Escape($fixtureNew))).Count-ne1){throw 'Worker freshness fixture correction was not unique.'}
+          [IO.File]::WriteAllText($testPath,$testText,$utf8NoBom)
+
+          $hashes=[ordered]@{
+            'activate-v213-seven-field-schedule.ps1'='935561ce912bf1557c4c51c7a2cbc90b94b183f53486400077bb4470a8868de6'
+            'activate-v213-seven-field-schedule-serenity-latest.ps1'='935561ce912bf1557c4c51c7a2cbc90b94b183f53486400077bb4470a8868de6'
+            'cloud/src/v213/activation-v2.ts'='66a2b70e08bb4cf4fe3344f63eb1c47f1b0d20e89d3e34fb016001a06c252f2b'
+            'cloud/test/v213-activation.test.ts'='fdeefd279724b7b633e1f8007bb4a760044b36dfebc8c3fd6ac925a60be0a3a3'
+            'scripts/ci_v213_r70_package.ps1'='93336de2d8d84ed5922284b1c71c20a78069b64f392bcf3f79e837c64084af8b'
+            'scripts/ci_v213_r70_validate.ps1'='4ad3c22a70f03973e7b33a2ec3859f00938e6b2c0ce93274386ebd8698b4ab6f'
+            'scripts/run_v213_local_llm_bridge_core.ps1'='00c5b3d189c39cec6913b43109d897eb21d4f31a2f5c0454481deec3f6aa1583'
+            'scripts/v213_optional_bls_alignment_audit.py'='77eda012438ac89fa1a4b0b3339c7e4ac9b77dba40f86928be859aff000a2509'
+            'scripts/v213_serenity_latest_static_audit.py'='789792a1880138b236f752c0abc1da429d1c7e471cc638a65407c44726dafe76'
+          }
+          foreach($entry in $hashes.GetEnumerator()){
+            $actual=(Get-FileHash (Join-Path $PWD.Path $entry.Key)-Algorithm SHA256).Hash.ToLowerInvariant()
+            if($actual-ne$entry.Value){throw "$($entry.Key) SHA mismatch: $actual"}
+          }
+          Write-Host 'V213_FIX2_PATCH_R4 = PASS; changed_files=9; byte_locked=true; fixture_rank_contract=true'
+
+      - name: Run complete Windows no-mutation validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\ci_v213_r70_validate.ps1 -ProjectRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'Complete R70 Fix2 Windows validation failed.'}
+          Write-Host 'V213_FIX2_WINDOWS_VALIDATION = PASS; production_mutation=false'
+
+      - name: Commit validated source-only fix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $temporary=@(
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r2.yml',
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r3.yml',
+            '.github/workflows/v213-activation-mode-gateway-fix2-validation-r4.yml',
+            '.github/patches/v213-fix2.part-01.b64',
+            '.github/patches/v213-fix2.part-02.b64',
+            '.github/patches/v213-fix2.part-03.b64',
+            '.github/patches/v213-fix2.part-04.b64',
+            '.github/patches/v213-fix2.part-05.b64',
+            '.github/patches/v213-fix2.part-06.b64'
+          )
+          foreach($path in $temporary){Remove-Item -LiteralPath $path -Force}
+          $sourceFiles=@(
+            'activate-v213-seven-field-schedule.ps1',
+            'activate-v213-seven-field-schedule-serenity-latest.ps1',
+            'cloud/src/v213/activation-v2.ts',
+            'cloud/test/v213-activation.test.ts',
+            'scripts/ci_v213_r70_package.ps1',
+            'scripts/ci_v213_r70_validate.ps1',
+            'scripts/run_v213_local_llm_bridge_core.ps1',
+            'scripts/v213_optional_bls_alignment_audit.py',
+            'scripts/v213_serenity_latest_static_audit.py'
+          )
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $sourceFiles
+          git add -u -- $temporary
+          git diff --cached --check
+          if($LASTEXITCODE-ne0){throw 'Validated Fix2 source contains whitespace errors.'}
+          $staged=@(git diff --cached --name-only --|ForEach-Object{([string]$_).Trim().Replace('\','/')}|Where-Object{$_}|Sort-Object)
+          $expected=@($sourceFiles+$temporary|Sort-Object)
+          if(@(Compare-Object $expected $staged).Count-ne0){
+            Write-Host ('EXPECTED_STAGED='+($expected-join','))
+            Write-Host ('ACTUAL_STAGED='+($staged-join','))
+            throw 'Validated Fix2 commit scope is unexpected.'
+          }
+          git commit -m 'fix: align activation publication modes and gateway paths'
+          if($LASTEXITCODE-ne0){throw 'Unable to commit validated Fix2 source.'}
+          git push origin HEAD:$env:VALIDATION_BRANCH
+          if($LASTEXITCODE-ne0){throw 'Unable to push validated Fix2 source branch.'}
+          Write-Host 'V213_FIX2_VALIDATED_SOURCE_COMMIT = PASS'
