@@ -1,4 +1,5 @@
 name: V2.1.3 Final Serenity Latest Multi-Source R74 Release Delivery
+# Release trigger for the Windows-validated optional-BLS activation alignment.
 
 on:
   push:
