@@ -1,0 +1,134 @@
+name: V2.1.3 R70 Activation Wrapper Hotfix
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-activation-wrapper-hotfix.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: investor-intelligence-v213-r70-activation-wrapper-hotfix
+  cancel-in-progress: true
+
+jobs:
+  repair-and-dispatch:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout exact branch source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Preserve canonical activation wrapper everywhere
+        id: repair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $canonical = 'activate-v213-seven-field-schedule.ps1'
+          $alias = 'activate-v213-seven-field-schedule-serenity-latest.ps1'
+          $installer = 'install-v213-serenity-latest-runtime.ps1'
+          $packager = 'scripts/ci_v213_r70_package.ps1'
+
+          foreach ($path in @($canonical,$alias,$installer,$packager)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required repair input is missing: $path" }
+          }
+
+          $canonicalText = [IO.File]::ReadAllText((Resolve-Path $canonical))
+          foreach ($marker in @(
+            'Test-SourceIndependenceDocument',
+            'V213_DIVERSIFIED_SOURCE_PREFLIGHT',
+            'V213_SOURCE_INDEPENDENCE_PREFLIGHT',
+            'activate-v213-seven-field-schedule-core.ps1'
+          )) {
+            if (-not $canonicalText.Contains($marker)) { throw "Canonical activation entrypoint is missing marker: $marker" }
+          }
+          if ($canonicalText.Contains('v213_serenity_latest_multisource_audit.py')) {
+            throw 'Canonical activation entrypoint unexpectedly contains the stale strict post-bundle audit path.'
+          }
+
+          Copy-Item -LiteralPath $canonical -Destination $alias -Force
+          if ((Get-FileHash -LiteralPath $canonical -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $alias -Algorithm SHA256).Hash) {
+            throw 'Compatibility activation entrypoint is not byte-identical to the canonical wrapper.'
+          }
+
+          $installerText = [IO.File]::ReadAllText((Resolve-Path $installer))
+          $oldInstaller = "    'activate-v213-seven-field-schedule-serenity-latest.ps1' = 'activate-v213-seven-field-schedule.ps1'"
+          $newInstaller = "    'activate-v213-seven-field-schedule.ps1' = 'activate-v213-seven-field-schedule.ps1'"
+          if ($installerText.Contains($oldInstaller)) {
+            $installerText = $installerText.Replace($oldInstaller,$newInstaller)
+          }
+          elseif (-not $installerText.Contains($newInstaller)) {
+            throw 'Stable-runtime activation mapping was not recognized.'
+          }
+          [IO.File]::WriteAllText((Resolve-Path $installer),$installerText,[Text.UTF8Encoding]::new($false))
+
+          $packageText = [IO.File]::ReadAllText((Resolve-Path $packager))
+          $oldPackage = "    Copy-Item (Join-Path `$stage 'activate-v213-seven-field-schedule-serenity-latest.ps1') (Join-Path `$stage 'activate-v213-seven-field-schedule.ps1') -Force"
+          $newPackage = @'
+              $canonicalActivation = Join-Path $stage 'activate-v213-seven-field-schedule.ps1'
+              $compatActivationAlias = Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1'
+              if ((Get-FileHash -LiteralPath $canonicalActivation -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $compatActivationAlias -Algorithm SHA256).Hash) {
+                  throw 'Source activation compatibility alias differs from the canonical source-independence-aware wrapper.'
+              }
+          '@.TrimEnd()
+          if ($packageText.Contains($oldPackage)) {
+            $packageText = $packageText.Replace($oldPackage,$newPackage)
+          }
+          elseif (-not $packageText.Contains('Source activation compatibility alias differs from the canonical source-independence-aware wrapper.')) {
+            throw 'R70 package activation overwrite line was not recognized.'
+          }
+          [IO.File]::WriteAllText((Resolve-Path $packager),$packageText,[Text.UTF8Encoding]::new($false))
+
+          foreach ($path in @($canonical,$alias,$installer,$packager)) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if ($errors.Count -gt 0) {
+              throw ("PowerShell parser failed for {0}: {1}" -f $path,(($errors | ForEach-Object Message) -join ' | '))
+            }
+          }
+
+          if ((Get-FileHash -LiteralPath $canonical -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $alias -Algorithm SHA256).Hash) {
+            throw 'Post-repair canonical/alias hash equality failed.'
+          }
+          if (([IO.File]::ReadAllText((Resolve-Path $packager))).Contains($oldPackage)) {
+            throw 'The stale alias-overwrites-canonical package operation remains.'
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $alias $installer $packager
+          git diff --cached --check
+          if (git diff --cached --quiet) {
+            $commit = git rev-parse HEAD
+            Write-Host "Activation wrapper repair was already present at $commit"
+          }
+          else {
+            git commit -m 'fix: preserve canonical activation wrapper in R70 delivery'
+            git push origin "HEAD:$env:GITHUB_REF_NAME"
+            $commit = git rev-parse HEAD
+          }
+          "commit=$commit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "V213_R70_ACTIVATION_WRAPPER_REPAIR = PASS; commit=$commit"
+
+      - name: Dispatch authoritative R74 release validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh workflow run v213-final-serenity-latest-multisource-r74-release.yml --repo always7895/investor-intelligence --ref "$env:GITHUB_REF_NAME"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to dispatch the authoritative R74 release workflow.' }
+          Write-Host "V213_R74_RELEASE_DISPATCH = PASS; source_commit=${{ steps.repair.outputs.commit }}"
