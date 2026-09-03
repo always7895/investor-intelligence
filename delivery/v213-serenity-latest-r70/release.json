@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "FAIL",
   "job_status": "cancelled",
-  "workflow_run_id": "33748322099",
-  "source_commit": "509aad4c9a9f09bdfaf03fce86c3d8817168df66",
+  "workflow_run_id": "33749300808",
+  "source_commit": "66a0bdc90e714fe3dc60d5c46ddcf9ad6997e00d",
   "release_tag": "",
   "package": "",
   "zip_sha256": "",
   "desktop_delivery": "",
   "production_mutation_by_ci": false,
-  "completed_at": "2026-09-03T11:13:42.0543250Z"
+  "completed_at": "2026-09-03T11:32:00.0521649Z"
 }
