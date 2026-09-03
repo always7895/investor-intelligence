@@ -23,11 +23,17 @@ try {
     [IO.File]::WriteAllText($temporarySource,$launcherSource,[Text.UTF8Encoding]::new($false))
     & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$launcherExe" $temporarySource
     if ($LASTEXITCODE -ne 0) { throw 'R70 launcher compilation failed.' }
-    foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {
+
+    # The temporary EXE is intentionally not beside the package scripts yet.
+    # Only standalone launcher tests are valid before hydration.  The complete
+    # --self-test is executed again below after the EXE is inside the expanded
+    # package root, where it can resolve run-v213-local.ps1 and the bridge.
+    foreach ($argument in @('--pipe-hold-self-test','--model-selection-self-test')) {
         $process = Start-Process $launcherExe -ArgumentList $argument -PassThru
-        if (-not $process.WaitForExit(25000)) { Stop-Process $process.Id -Force -ErrorAction SilentlyContinue; throw "Launcher self-test timed out: $argument" }
-        if ($process.ExitCode -ne 0) { throw "Launcher self-test failed: $argument / $($process.ExitCode)" }
+        if (-not $process.WaitForExit(25000)) { Stop-Process $process.Id -Force -ErrorAction SilentlyContinue; throw "Standalone launcher self-test timed out: $argument" }
+        if ($process.ExitCode -ne 0) { throw "Standalone launcher self-test failed: $argument / $($process.ExitCode)" }
     }
+    Write-Host 'V213_R70_LAUNCHER_PREPACKAGE = PASS; model_selector=true; pipe_nonblocking=true; full_self_test_deferred_until_hydrated=true' -ForegroundColor Green
 
     $root = Join-Path $env:RUNNER_TEMP "ii-v213-r70-delivery-$env:GITHUB_RUN_ID"
     $stage = Join-Path $root 'Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70'
@@ -49,20 +55,24 @@ try {
     Copy-Item (Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1') (Join-Path $stage 'activate-v213-seven-field-schedule.ps1') -Force
     Copy-Item (Join-Path $stage 'install-v213-serenity-latest-runtime.ps1') (Join-Path $stage 'install-v213-source-diverse-runtime.ps1') -Force
     Copy-Item $launcherExe (Join-Path $stage 'InvestorIntelligence.exe') -Force
+    if ((Get-FileHash -LiteralPath $launcherExe -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $stage 'InvestorIntelligence.exe') -Algorithm SHA256).Hash) {
+        throw 'Staged launcher does not exactly match the newly compiled model-selector launcher.'
+    }
     Remove-Item (Join-Path $stage 'tmp') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $stage '.venv-v213-r70-validation') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $stage 'cloud\node_modules') -Recurse -Force -ErrorAction SilentlyContinue
 
     [ordered]@{
-        schema_version = 10
+        schema_version = 11
         package_version = '2.1.3'
         launcher_revision = 'Serenity-Latest-MultiSource-R70'
+        launcher_ui = [ordered]@{model_selector=$true;scan_button=$true;use_button=$true;async_long_running_handlers=$true;model_scan_off_ui_thread=$true}
         current_commit = $env:GITHUB_SHA.ToLowerInvariant()
         versions = $refs
         local_model = [ordered]@{explicit_selector=$true;preferred_model='RVN-Q6_K-multilingual-mtp';silent_model_substitution=$false;health_schema_version=2}
         serenity_public_logic = [ordered]@{label='high-fidelity public-logic reconstruction';official_formula=$false;official_score=$false;private_method_reproduced=$false;latest_public_source_required=$true;public_posts_are_company_fact_authority=$false}
         source_policy = [ordered]@{policy='v213-serenity-latest-multisource-v5';per_ticker_claim_families=2;per_ticker_claim_domains=2;per_ticker_primary=1;claim_dated_ratio=0.8;portfolio_source_families=3;portfolio_domains=3;maximum_single_family_share=0.70;source_values_averaged=$false}
-        freshness_days = [ordered]@{snapshot_hours=2;market_high_confidence=4;market_absolute_maximum=7;market_provider_gap=3;company_current_state=200;structural_claim=550;official_macro=45;serenity_metadata_retrieval_hours=24}
+        freshness_days = [ordered]@{snapshot_hours=2;market_high_confidence=4;market_absolute_maximum=7;market_provider_gap=3;company_current_state=135;structural_claim=550;official_macro=45;serenity_metadata_retrieval_hours=24}
         market = [ordered]@{yahoo_role='compatibility_calculation_only_not_truth_anchor';high_confidence_independent_providers=2;same_metric_basis_required=$true;pairwise_conflict_detection=$true;uncorroborated_valuation_factor_max=3.75}
         factor_logic = [ordered]@{factor_ledger='data/cache/v213_serenity_factor_ledger_latest.json';severe_thesis_killers_override_score=$true;tam_capture_requires_current_revenue_or_order_evidence=$true;keyword_sector_margin_shortcuts_prohibited=$true}
         methodology_lineage = 'config/v213-serenity-methodology-lineage-v1.json'
@@ -81,7 +91,7 @@ try {
             sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         }
     }
-    [ordered]@{schema_version=10;commit=$env:GITHUB_SHA.ToLowerInvariant();generated_utc=(Get-Date).ToUniversalTime().ToString('o');files=$manifest} | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $stage 'MANIFEST.json') -Encoding utf8
+    [ordered]@{schema_version=11;commit=$env:GITHUB_SHA.ToLowerInvariant();generated_utc=(Get-Date).ToUniversalTime().ToString('o');files=$manifest} | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $stage 'MANIFEST.json') -Encoding utf8
     Get-ChildItem $stage -File -Recurse | ForEach-Object {
         '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.FullName.Substring($stage.Length + 1).Replace('\','/')
     } | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ascii
@@ -107,11 +117,21 @@ try {
         'versions\Investor-Intelligence-v2.1.2-source.zip','versions\Investor-Intelligence-v2.1.3-source.zip'
     )) { if (-not (Test-Path -LiteralPath (Join-Path $check $file) -PathType Leaf)) { throw "Final package missing: $file" } }
     if (Test-Path -LiteralPath (Join-Path $check 'tmp')) { throw 'Temporary data leaked into final package.' }
+
+    $packageRefs = Get-Content -LiteralPath (Join-Path $check 'VERSION-REFS.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    if ([string]$packageRefs.launcher_revision -ne 'Serenity-Latest-MultiSource-R70' -or $packageRefs.launcher_ui.model_selector -ne $true -or $packageRefs.launcher_ui.scan_button -ne $true -or $packageRefs.launcher_ui.use_button -ne $true -or $packageRefs.launcher_ui.async_long_running_handlers -ne $true -or $packageRefs.local_model.explicit_selector -ne $true -or [string]$packageRefs.local_model.preferred_model -ne 'RVN-Q6_K-multilingual-mtp') {
+        throw 'Packaged launcher/model-selector metadata contract is invalid.'
+    }
+    if ((Get-FileHash -LiteralPath (Join-Path $check 'InvestorIntelligence.exe') -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $launcherExe -Algorithm SHA256).Hash) {
+        throw 'Expanded package contains a stale or different launcher EXE.'
+    }
     foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {
         $process = Start-Process (Join-Path $check 'InvestorIntelligence.exe') -ArgumentList $argument -PassThru
         if (-not $process.WaitForExit(25000)) { Stop-Process $process.Id -Force -ErrorAction SilentlyContinue; throw "Packaged EXE self-test timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed: $argument / $($process.ExitCode)" }
     }
+    Write-Host 'V213_R70_PACKAGED_LAUNCHER = PASS; model_selector=true; scan=true; use=true; async_ui=true; stale_exe=false; full_self_test=true' -ForegroundColor Green
+
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $check 'run-v213-local.ps1') -ProjectRoot $check -SelfTest
     if ($LASTEXITCODE -ne 0) { throw 'Packaged final refresh self-test failed.' }
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $check 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $check -SelfTest
@@ -131,7 +151,7 @@ try {
 
     $verification = Join-Path $root 'Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70-Verification.json'
     [ordered]@{
-        schema_version = 1
+        schema_version = 2
         status = 'PASS'
         commit = $env:GITHUB_SHA.ToLowerInvariant()
         workflow_run_id = [string]$env:GITHUB_RUN_ID
@@ -146,6 +166,11 @@ try {
         factor_ledger = $true
         severe_thesis_killer_precedence = $true
         atomic_payloads = 7
+        launcher_model_selector = $true
+        launcher_scan_button = $true
+        launcher_use_button = $true
+        launcher_async_long_running_handlers = $true
+        launcher_stale_exe_rejected = $true
         packaged_exe_tests = $true
         stable_runtime_test = $true
         manifest_verified = $true
@@ -154,13 +179,16 @@ try {
 
     $receipt = Join-Path $root 'Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70-Delivery-Receipt.json'
     [ordered]@{
-        schema_version = 1
+        schema_version = 2
         status = 'PASS'
         package = [IO.Path]::GetFileName($zip)
         zip_sha256 = $sha
         bytes = (Get-Item -LiteralPath $zip).Length
         commit = $env:GITHUB_SHA.ToLowerInvariant()
         workflow_run_id = [string]$env:GITHUB_RUN_ID
+        launcher_revision = 'Serenity-Latest-MultiSource-R70'
+        model_selector_verified = $true
+        responsive_async_ui_verified = $true
         production_mutation_by_ci = $false
         next_stage = 'user_local_formal_activation'
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receipt -Encoding utf8
