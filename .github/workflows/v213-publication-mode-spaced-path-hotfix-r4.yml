@@ -1,0 +1,287 @@
+name: V2.1.3 Publication-Mode and Spaced-Path Hotfix R4
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-serenity-public-logic-fidelity
+    paths:
+      - .github/workflows/v213-publication-mode-spaced-path-hotfix-r4.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-publication-mode-spaced-path-hotfix-r1
+  cancel-in-progress: true
+
+jobs:
+  patch-validate-commit:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 300
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+    steps:
+      - name: Checkout exact branch source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-serenity-public-logic-fidelity
+          fetch-depth: 0
+
+      - name: Resolve verified Python
+        id: python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $python=''
+          foreach($candidate in @($env:PROJECT_PYTHON,'C:\Users\moon9\AppData\Local\Programs\Python\Python313\python.exe','C:\Users\moon9\AppData\Local\Programs\Python\Python312\python.exe','C:\Program Files\Python313\python.exe','C:\Program Files\Python312\python.exe','python.exe','python3.exe','python')){
+            if(-not$candidate){continue}
+            $path=$candidate
+            if(-not(Test-Path -LiteralPath $path -PathType Leaf)){$command=Get-Command $candidate -ErrorAction SilentlyContinue;if($command){$path=$command.Source}}
+            if($path-and(Test-Path -LiteralPath $path -PathType Leaf)){& $path -c "import sys; assert sys.version_info >= (3,10)" 2>$null;if($LASTEXITCODE-eq0){$python=$path;break}}
+          }
+          if(-not$python){throw 'No verified Python runtime was found on the Windows runner.'}
+          "python=$python"|Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "PROJECT_PYTHON = $python"
+
+      - name: Apply compatibility-safe source patch
+        shell: pwsh
+        env:
+          PATCH_PYTHON: ${{ steps.python.outputs.python }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $patcher=Join-Path $env:RUNNER_TEMP 'apply-v213-publication-mode-spaced-path-r4.py'
+          @'
+          from __future__ import annotations
+
+          import base64
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if new in text:
+                  return text
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: replacement count={count}')
+              return text.replace(old, new, 1)
+
+          global_gate = r'''$declaredStrict=Get-IntProperty $portfolio 'evidence_qualified_candidate_count' -1
+              $declaredLimited=Get-IntProperty $portfolio 'limited_research_candidate_count' -1
+              $hasFinalPublicationModes=$declaredStrict-ge0-and$declaredLimited-ge0
+              if($hasFinalPublicationModes){
+                  if(($declaredStrict+$declaredLimited)-ne20){throw 'Final publication-mode candidate counts do not total 20.'}
+                  $freshnessAudit=Get-PropertyValue $Document 'freshness_audit' $null
+                  if($null-eq$freshnessAudit-or[string](Get-PropertyValue $freshnessAudit 'status' '')-ne'PASS'){throw 'The final publication freshness audit is not PASS.'}
+                  if((Get-IntProperty $freshnessAudit 'evidence_qualified_candidate_count' -1)-ne$declaredStrict-or(Get-IntProperty $freshnessAudit 'limited_research_candidate_count' -1)-ne$declaredLimited){throw 'Publication-mode counts disagree with the freshness audit.'}
+                  if(-not(Get-BooleanProperty $portfolio 'all_rows_publication_provenance_multi_source')){throw 'At least one final row lacks multi-source publication provenance.'}
+                  if((Get-IntProperty $portfolio 'limited_rows_high_confidence_eligible_count')-ne0){throw 'A LIMITED candidate is incorrectly HIGH eligible.'}
+                  if(-not(Get-BooleanProperty $freshnessAudit 'all_tickers_publication_provenance_multi_source')){throw 'The freshness audit does not prove independent publication provenance for all rows.'}
+                  if(-not(Get-BooleanProperty $freshnessAudit 'all_positive_advantages_fresh_multi_source')){throw 'The freshness audit does not prove fresh multi-source support for positive advantages.'}
+                  if($declaredLimited-gt0){
+                      if($claimFamilies-lt1-or$claimDomains-lt1){throw 'A LIMITED publication lacks primary company-claim provenance.'}
+                      foreach($record in $records){
+                          $mode=[string](Get-PropertyValue $record 'publication_evidence_mode' '')
+                          $logic=Get-PropertyValue $record 'public_logic_state' $null
+                          if(-not$mode-and$null-ne$logic){$mode=[string](Get-PropertyValue $logic 'publication_evidence_mode' '')}
+                          if($mode-eq'LIMITED_RESEARCH_CANDIDATE'){
+                              if(Get-BooleanProperty $record 'eligible_for_high_confidence_model_inference'){throw 'A LIMITED candidate is incorrectly HIGH eligible.'}
+                              if($null-eq$logic-or[string](Get-PropertyValue $logic 'model_inference_confidence' '')-ne'LIMITED'){throw 'A LIMITED candidate does not cap model inference at LIMITED.'}
+                              if(Get-BooleanProperty $logic 'validated_company_thesis' $true){throw 'A LIMITED candidate is incorrectly marked as a validated thesis.'}
+                              $missing=@(Get-Array (Get-PropertyValue $record 'missing_or_review' @())|ForEach-Object{[string]$_})
+                              if($missing-notcontains'LIMITED_RESEARCH_CANDIDATE'-or$missing-notcontains'INDEPENDENT_CLAIM_CORROBORATION'){throw 'A LIMITED candidate does not disclose missing independent claim corroboration.'}
+                          }
+                      }
+                  }
+                  elseif($claimFamilies-lt2-or$claimDomains-lt2){throw 'An all-evidence-qualified publication has claim-relevant source independence below 2.'}
+              }
+              elseif($claimFamilies-lt2-or$claimDomains-lt2){throw 'Claim-relevant source-family/domain independence is below 2.'}'''
+
+          preflight_block = r'''if($PreflightOnly){
+              Write-Host 'V213_ACTIVATION_PREFLIGHT_ONLY = PASS; publication_mode_aware=true; production_mutation=false' -ForegroundColor Green
+              exit 0
+          }
+          '''
+
+          for relative in ('activate-v213-seven-field-schedule.ps1','activate-v213-diversified-schedule.ps1'):
+              path=ROOT/relative
+              text=path.read_text(encoding='utf-8-sig').replace('\r\n','\n')
+              if '[switch]$PreflightOnly' not in text:
+                  text=replace_once(text,'    [switch]$SelfTest\n)','    [switch]$SelfTest,\n    [switch]$PreflightOnly\n)',relative+' parameter')
+              if "if(-not$ConfirmActivation){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation.'}" in text:
+                  text=text.replace("if(-not$ConfirmActivation){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation.'}","if(-not$ConfirmActivation-and-not$PreflightOnly){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation or -PreflightOnly.'}",1)
+              if '$hasFinalPublicationModes=' not in text:
+                  text=replace_once(text,"if($claimFamilies-lt2-or$claimDomains-lt2){throw 'Claim-relevant source-family/domain independence is below 2.'}",global_gate,relative+' publication gate')
+              if 'V213_ACTIVATION_PREFLIGHT_ONLY = PASS' not in text:
+                  anchor="\n$configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\\UserData\\config'"
+                  text=replace_once(text,anchor,'\n'+preflight_block+anchor,relative+' PreflightOnly')
+              path.write_text(text,encoding='utf-8',newline='\n')
+
+          canonical=ROOT/'activate-v213-seven-field-schedule.ps1'
+          alias=ROOT/'activate-v213-seven-field-schedule-serenity-latest.ps1'
+          alias.write_bytes(canonical.read_bytes())
+
+          bridge_path=ROOT/'scripts'/'run_v213_local_llm_bridge_core.ps1'
+          bridge=bridge_path.read_text(encoding='utf-8-sig').replace('\r\n','\n')
+          helper=r'''function New-GatewayArgumentLine {
+              param([string]$GatewayScriptPath,[int]$Port)
+              if([string]::IsNullOrWhiteSpace($GatewayScriptPath)-or$GatewayScriptPath.Contains('"')){throw 'Gateway script path is empty or contains an unsupported quote character.'}
+              return ('"{0}" --host 127.0.0.1 --port {1}'-f$GatewayScriptPath,$Port)
+          }
+          function Get-BridgeLogTail {
+              param([string]$Path)
+              if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return '<missing>'}
+              $lines=@(Get-Content -LiteralPath $Path -Tail 20 -ErrorAction SilentlyContinue|ForEach-Object{([string]$_).Trim()}|Where-Object{$_})
+              if($lines.Count-eq0){return '<empty>'}
+              return ($lines-join' | ')
+          }
+          '''
+          if 'function New-GatewayArgumentLine' not in bridge:
+              bridge=replace_once(bridge,'function Test-HealthModel {',helper+'\nfunction Test-HealthModel {','bridge helper')
+          probe="from pathlib import Path\nimport sys\nimport time\nPath(__file__).with_suffix('.args.txt').write_text('\\n'.join(sys.argv[1:]),encoding='utf-8')\ntime.sleep(1)\n"
+          probe_b64=base64.b64encode(probe.encode()).decode()
+          if 'V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST' not in bridge:
+              marker="Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS' -ForegroundColor Green"
+              test=r'''$testPython=''
+              foreach($candidate in @($env:PROJECT_PYTHON,'C:\Users\moon9\AppData\Local\Programs\Python\Python313\python.exe','C:\Users\moon9\AppData\Local\Programs\Python\Python312\python.exe','python.exe','python3.exe','python')){
+                  if(-not$candidate){continue};$path=$candidate
+                  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){$command=Get-Command $candidate -ErrorAction SilentlyContinue;if($command){$path=$command.Source}}
+                  if($path-and(Test-Path -LiteralPath $path -PathType Leaf)){$testPython=$path;break}
+              }
+              if(-not$testPython){throw 'Bridge spaced-path process self-test requires Python.'}
+              $testRoot=Join-Path $env:TEMP ('Investor Intelligence Bridge Path (1)-'+[guid]::NewGuid().ToString('N'))
+              New-Item -ItemType Directory -Force -Path $testRoot|Out-Null
+              $testScript=Join-Path $testRoot 'gateway launch probe.py';$resultPath=[IO.Path]::ChangeExtension($testScript,'.args.txt')
+              $testStdout=Join-Path $testRoot 'probe.stdout.log';$testStderr=Join-Path $testRoot 'probe.stderr.log'
+              [IO.File]::WriteAllBytes($testScript,[Convert]::FromBase64String('__PROBE_B64__'))
+              $argumentLine=New-GatewayArgumentLine $testScript 18814;$probeProcess=$null
+              try{
+                  $probeProcess=Start-Process -FilePath $testPython -ArgumentList $argumentLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $testStdout -RedirectStandardError $testStderr
+                  $deadline=(Get-Date).AddSeconds(15)
+                  while((Get-Date)-lt$deadline-and-not(Test-Path -LiteralPath $resultPath -PathType Leaf)){Start-Sleep -Milliseconds 200}
+                  if(-not(Test-Path -LiteralPath $resultPath -PathType Leaf)){throw "Spaced-path Python probe did not start. stderr=$(Get-BridgeLogTail $testStderr)"}
+                  if((@(Get-Content -LiteralPath $resultPath -Encoding utf8)-join'|')-ne'--host|127.0.0.1|--port|18814'){throw 'Spaced-path Python probe received corrupted arguments.'}
+              }finally{if($probeProcess-and(Get-Process -Id $probeProcess.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $probeProcess.Id -Force -ErrorAction SilentlyContinue};Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue}
+              Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST = PASS' -ForegroundColor Green'''.replace('__PROBE_B64__',probe_b64)
+              bridge=replace_once(bridge,marker,test,'bridge spaced-path SelfTest')
+          old_start="$gateway = Start-Process -FilePath $python -ArgumentList @($GatewayScript, '--host', '127.0.0.1', '--port', [string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr"
+          new_start="$gatewayArguments = New-GatewayArgumentLine $GatewayScript $GatewayPort\n$gateway = Start-Process -FilePath $python -ArgumentList $gatewayArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr"
+          if '$gatewayArguments = New-GatewayArgumentLine' not in bridge:
+              bridge=replace_once(bridge,old_start,new_start,'bridge quoted Start-Process')
+          if 'stderr_tail=$stderrTail' not in bridge:
+              bridge=replace_once(bridge,'    [void](Wait-LocalGatewayHealth $GatewayPort $gateway.Id $Model)','''    try{[void](Wait-LocalGatewayHealth $GatewayPort $gateway.Id $Model)}catch{$stderrTail=Get-BridgeLogTail $stderr;$stdoutTail=Get-BridgeLogTail $stdout;throw "Local gateway startup failed. $($_.Exception.Message) stderr_tail=$stderrTail; stdout_tail=$stdoutTail"}''','bridge startup diagnostics')
+          bridge_path.write_text(bridge,encoding='utf-8',newline='\n')
+
+          audit_path=ROOT/'scripts'/'v213_serenity_latest_static_audit.py'
+          audit=audit_path.read_text(encoding='utf-8-sig').replace('\r\n','\n')
+          marker='# PUBLICATION_MODE_ACTIVATION_AND_SPACED_PATH_ALIGNMENT_V3'
+          if marker not in audit:
+              block=r'''    # PUBLICATION_MODE_ACTIVATION_AND_SPACED_PATH_ALIGNMENT_V3
+              require(canonical_activation,("LIMITED_RESEARCH_CANDIDATE","V213_ACTIVATION_PREFLIGHT_ONLY","all_rows_publication_provenance_multi_source","all_positive_advantages_fresh_multi_source","production_mutation=false"),failures)
+              require("scripts/run_v213_local_llm_bridge_core.ps1",("New-GatewayArgumentLine","V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST","stderr_tail=$stderrTail"),failures)
+          '''
+              needle='\n    if failures:\n';index=audit.rfind(needle)
+              if index<0:raise RuntimeError('static audit final failure anchor missing')
+              audit=audit[:index]+'\n'+block.rstrip()+audit[index:]
+              audit_path.write_text(audit,encoding='utf-8',newline='\n')
+
+          release_path=ROOT/'.github'/'workflows'/'v213-final-serenity-latest-multisource-r74-release.yml'
+          release=release_path.read_text(encoding='utf-8-sig').replace('\r\n','\n')
+          if '      - activate-v213-seven-field-schedule.ps1' not in release:
+              anchor='      - launcher/InvestorIntelligenceLauncher.cs'
+              release=replace_once(release,anchor,anchor+'\n      - activate-v213-seven-field-schedule.ps1\n      - activate-v213-seven-field-schedule-serenity-latest.ps1\n      - activate-v213-diversified-schedule.ps1\n      - scripts/run_v213_local_llm_bridge_core.ps1','R74 path filters')
+          if 'Validate actual publication-mode preflight and spaced-path process launch' not in release:
+              anchor='      - name: Build, verify and copy final package to Desktop'
+              step=r'''      - name: Validate actual publication-mode preflight and spaced-path process launch
+                shell: pwsh
+                working-directory: ${{ env.SOURCE_DIR }}
+                run: |
+                  $ErrorActionPreference='Stop'
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $PWD.Path -PreflightOnly
+                  if($LASTEXITCODE-ne0){throw 'Actual all-LIMITED activation preflight failed.'}
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\run_v213_local_llm_bridge_core.ps1 -ProjectRoot $PWD.Path -SelfTest
+                  if($LASTEXITCODE-ne0){throw 'Bridge spaced-path process self-test failed.'}
+                  $spaceRoot=Join-Path $env:RUNNER_TEMP ('Investor Intelligence R70 Validation Path (1)-${{ github.run_id }}')
+                  Remove-Item -LiteralPath $spaceRoot -Recurse -Force -ErrorAction SilentlyContinue;New-Item -ItemType Directory -Force -Path $spaceRoot|Out-Null
+                  & robocopy.exe $PWD.Path $spaceRoot /MIR /XD .git node_modules /NFL /NDL /NJH /NJS /NP | Out-Null
+                  if($LASTEXITCODE-gt7){throw "Spaced-path validation copy failed with robocopy exit $LASTEXITCODE."}
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $spaceRoot -SelfTest
+                  if($LASTEXITCODE-ne0){throw 'Spaced-path activation SelfTest failed.'}
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $spaceRoot -PreflightOnly
+                  if($LASTEXITCODE-ne0){throw 'Spaced-path actual activation preflight failed.'}
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'scripts\run_v213_local_llm_bridge_core.ps1') -ProjectRoot $spaceRoot -SelfTest
+                  if($LASTEXITCODE-ne0){throw 'Spaced-path bridge process launch failed.'}
+                  Remove-Item -LiteralPath $spaceRoot -Recurse -Force -ErrorAction SilentlyContinue
+                  Write-Host 'V213_R70_ACTUAL_PUBLICATION_MODE_PREFLIGHT = PASS; all_limited=true; spaced_path=true; production_mutation=false'
+          '''
+              release=replace_once(release,anchor,step.rstrip()+'\n\n'+anchor,'R74 actual preflight step')
+          release_path.write_text(release,encoding='utf-8',newline='\n')
+
+          canonical_text=canonical.read_text(encoding='utf-8');bridge_text=bridge_path.read_text(encoding='utf-8')
+          for required in ('$hasFinalPublicationModes=','V213_ACTIVATION_PREFLIGHT_ONLY = PASS','LIMITED_RESEARCH_CANDIDATE'):
+              if required not in canonical_text:raise RuntimeError('canonical activation missing '+required)
+          for required in ('New-GatewayArgumentLine','V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST','stderr_tail=$stderrTail'):
+              if required not in bridge_text:raise RuntimeError('bridge missing '+required)
+          if canonical.read_bytes()!=alias.read_bytes():raise RuntimeError('canonical/alias mismatch')
+          print('V213_PUBLICATION_MODE_SPACED_PATH_SOURCE_PATCH_R4 = PASS',flush=True)
+          '@ | Set-Content -LiteralPath $patcher -Encoding utf8
+          & $env:PATCH_PYTHON -m py_compile $patcher
+          if($LASTEXITCODE-ne0){throw 'R4 patcher syntax validation failed.'}
+          & $env:PATCH_PYTHON $patcher
+          if($LASTEXITCODE-ne0){throw 'R4 deterministic source patch failed.'}
+
+      - name: Run complete Windows validation and actual no-mutation preflight
+        shell: pwsh
+        env:
+          PROJECT_PYTHON: ${{ steps.python.outputs.python }}
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\ci_v213_r70_validate.ps1 -ProjectRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'Complete R70 Windows validation failed.'}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $PWD.Path -PreflightOnly
+          if($LASTEXITCODE-ne0){throw 'Actual all-LIMITED activation preflight failed.'}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\run_v213_local_llm_bridge_core.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if($LASTEXITCODE-ne0){throw 'Bridge spaced-path process self-test failed.'}
+          $spaceRoot=Join-Path $env:RUNNER_TEMP ('Investor Intelligence Hotfix Validation Path (1)-${{ github.run_id }}')
+          Remove-Item -LiteralPath $spaceRoot -Recurse -Force -ErrorAction SilentlyContinue;New-Item -ItemType Directory -Force -Path $spaceRoot|Out-Null
+          & robocopy.exe $PWD.Path $spaceRoot /MIR /XD .git node_modules /NFL /NDL /NJH /NJS /NP | Out-Null
+          if($LASTEXITCODE-gt7){throw "Spaced-path validation copy failed with robocopy exit $LASTEXITCODE."}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $spaceRoot -SelfTest
+          if($LASTEXITCODE-ne0){throw 'Spaced-path activation SelfTest failed.'}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $spaceRoot -PreflightOnly
+          if($LASTEXITCODE-ne0){throw 'Spaced-path actual activation preflight failed.'}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $spaceRoot 'scripts\run_v213_local_llm_bridge_core.ps1') -ProjectRoot $spaceRoot -SelfTest
+          if($LASTEXITCODE-ne0){throw 'Spaced-path bridge process launch failed.'}
+          Remove-Item -LiteralPath $spaceRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'V213_PUBLICATION_MODE_SPACED_PATH_WINDOWS_VALIDATION_R4 = PASS; actual_bundle=true; all_limited=true; spaced_path=true; production_mutation=false'
+
+      - name: Commit validated source fix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($path in @('.github/workflows/v213-publication-mode-spaced-path-hotfix-r1.yml','.github/workflows/v213-publication-mode-spaced-path-hotfix-r2.yml','.github/workflows/v213-publication-mode-spaced-path-hotfix-r3.yml','.github/workflows/v213-publication-mode-spaced-path-hotfix-r4.yml')){Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A;git diff --cached --check
+          if($LASTEXITCODE-ne0){throw 'Validated source fix contains whitespace errors.'}
+          git commit -m 'fix: align activation preflight with final publication modes'
+          if($LASTEXITCODE-ne0){throw 'Unable to commit publication-mode source fix.'}
+          git pull --rebase origin development/v2.1.3-serenity-public-logic-fidelity
+          if($LASTEXITCODE-ne0){throw 'Unable to rebase publication-mode source fix.'}
+          git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
+          if($LASTEXITCODE-ne0){throw 'Unable to push publication-mode source fix.'}
+
+      - name: Publish failure diagnostic
+        if: failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $path='delivery/v213-serenity-latest-r70/publication-mode-hotfix-r4-failure.json';New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path)|Out-Null
+          [ordered]@{schema_version=1;status='FAIL';workflow_run_id='${{ github.run_id }}';source_commit='${{ github.sha }}';failed_at=(Get-Date).ToUniversalTime().ToString('o');production_mutation_by_hotfix=$false;git_status=@(git status --short);changed_files=@(git diff --name-only)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $path -Encoding utf8
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add $path;git commit -m "diagnostic: publication-mode hotfix R4 failed in run ${{ github.run_id }}";git pull --rebase origin development/v2.1.3-serenity-public-logic-fidelity;git push origin HEAD:development/v2.1.3-serenity-public-logic-fidelity
