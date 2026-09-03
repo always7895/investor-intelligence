@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "status": "FAIL",
-  "job_status": "cancelled",
-  "workflow_run_id": "33750187707",
-  "source_commit": "3421c842a809a9e91f00d018839b204479664399",
-  "release_tag": "",
-  "package": "",
-  "zip_sha256": "",
-  "desktop_delivery": "",
+  "status": "PASS",
+  "job_status": "success",
+  "workflow_run_id": "33751244528",
+  "source_commit": "f7aa1a1604076fdb2533a08ea21bdb9ae8422a44",
+  "release_tag": "v2.1.3-serenity-latest-r70-final",
+  "package": "Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70.zip",
+  "zip_sha256": "0d49a6d4e6374abb63e3ac079d726e2526688016aa2a690b90a962a94bd40499",
+  "desktop_delivery": "C:\\WINDOWS\\ServiceProfiles\\NetworkService\\Desktop\\Investor-Intelligence-v2.1.3-Final-Delivery",
   "production_mutation_by_ci": false,
-  "completed_at": "2026-09-03T11:37:10.2898856Z"
+  "completed_at": "2026-09-03T11:50:51.1646852Z"
 }
