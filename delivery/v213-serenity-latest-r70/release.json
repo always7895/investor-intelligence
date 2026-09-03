@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "FAIL",
   "job_status": "failure",
-  "workflow_run_id": "33742677688",
-  "source_commit": "69847a3b7d7da3c2de8231d67d17b26a955067aa",
+  "workflow_run_id": "33743693203",
+  "source_commit": "f595333c4d5b7312bc4a56ddf7cb82bf85e7a06c",
   "release_tag": "",
   "package": "",
   "zip_sha256": "",
   "desktop_delivery": "",
   "production_mutation_by_ci": false,
-  "completed_at": "2026-09-03T10:12:59.9220926Z"
+  "completed_at": "2026-09-03T10:23:00.0897347Z"
 }
