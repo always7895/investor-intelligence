@@ -166,26 +166,52 @@ def main() -> int:
         ),
         failures,
     )
-    require(
-        "activate-v213-seven-field-schedule-serenity-latest.ps1",
-        (
-            "V213_SERENITY_LATEST_ACTIVATION_PREFLIGHT",
-            "v213_refresh_serenity_public_sources.py",
-            "v213_serenity_latest_multisource_audit.py",
-            "activate-v213-seven-field-schedule-core.ps1",
-        ),
-        failures,
+    canonical_activation = "activate-v213-seven-field-schedule.ps1"
+    compatibility_activation = "activate-v213-seven-field-schedule-serenity-latest.ps1"
+    canonical_markers = (
+        "Test-SourceIndependenceDocument",
+        "V213_DIVERSIFIED_SOURCE_PREFLIGHT",
+        "V213_SOURCE_INDEPENDENCE_PREFLIGHT",
+        "activate-v213-seven-field-schedule-core.ps1",
+        "market-quality degradation",
     )
+    require(canonical_activation, canonical_markers, failures)
+    require(compatibility_activation, canonical_markers, failures)
+    if text(canonical_activation) != text(compatibility_activation):
+        failures.append(
+            "Serenity activation compatibility alias is not byte-equivalent text to the canonical wrapper"
+        )
+    if "v213_serenity_latest_multisource_audit.py" in text(canonical_activation):
+        failures.append("canonical activation regressed to the stale strict post-bundle audit path")
+
     require(
         "install-v213-serenity-latest-runtime.ps1",
         (
             "run-v213-local-serenity-latest.ps1",
-            "activate-v213-seven-field-schedule-serenity-latest.ps1",
+            "'activate-v213-seven-field-schedule.ps1' = 'activate-v213-seven-field-schedule.ps1'",
             "per_ticker_claim_source_families_minimum = 2",
             "market_providers_for_high_confidence = 2",
         ),
         failures,
     )
+    installer_text = text("install-v213-serenity-latest-runtime.ps1")
+    if (
+        "'activate-v213-seven-field-schedule-serenity-latest.ps1' = "
+        "'activate-v213-seven-field-schedule.ps1'"
+    ) in installer_text:
+        failures.append("stable runtime installer still replaces canonical activation with the alias")
+
+    package_text = text("scripts/ci_v213_r70_package.ps1")
+    if (
+        "Copy-Item (Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1') "
+        "(Join-Path $stage 'activate-v213-seven-field-schedule.ps1') -Force"
+    ) in package_text:
+        failures.append("R70 packager still overwrites canonical activation with the compatibility alias")
+    if (
+        "Source activation compatibility alias differs from the canonical "
+        "source-independence-aware wrapper."
+    ) not in package_text:
+        failures.append("R70 packager lacks canonical/alias equality enforcement")
 
     operationalization = text("scripts/v213_apply_diversified_operationalization.py")
     for marker in (
