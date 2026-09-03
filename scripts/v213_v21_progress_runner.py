@@ -6,13 +6,21 @@ seeding and SEC extraction. Its historical keyword/margin proxy score is not
 allowed to choose v2.1.3 membership. This wrapper replaces that score before the
 20-name preselection, and later stages apply the stricter live-source-federated
 System operationalization.
+
+SEC evidence freshness is based on the filing/publication date, not the XBRL
+period end and never the retrieval timestamp.  The period end is preserved
+separately so a newly filed document cannot make an old comparative period look
+like current company-state evidence.
 """
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import math
+import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -32,10 +40,105 @@ REQUIRED_LIVE_SOURCES = {
     "nasdaq_symbol_directory",
 }
 PRESELECTION_VERSION = "system-operationalization-v2.1.3-safe-preselection"
-# Capture the unpatched v2.1 scorer once. main() temporarily replaces
-# engine.score_candidate with safe_preselection_score, so resolving the scorer
-# dynamically from engine inside the wrapper would call the wrapper recursively.
+SEC_EVIDENCE_TITLE_RE = re.compile(
+    r"^SEC XBRL (?P<tag>.+) \((?P<form>[^,]+), (?P<period_end>\d{4}-\d{2}-\d{2})\)$"
+)
+# Capture unpatched implementations once. main() temporarily replaces engine
+# globals, so resolving them dynamically from engine inside a wrapper would
+# recurse into the wrapper.
 LEGACY_SCORE_CANDIDATE = engine.score_candidate
+LEGACY_METRICS = engine.metrics
+
+
+@dataclass(frozen=True)
+class PublicationAwareEvidence:
+    """Evidence with distinct filing/publication and financial-period dates."""
+
+    source_id: str
+    tier: str
+    claim_type: str
+    title: str
+    url: str
+    as_of: str
+    publication_date: str = ""
+    period_end: str = ""
+
+
+def _date_text(value: Any) -> str:
+    text = str(value or "").strip()[:10]
+    if not text:
+        return ""
+    try:
+        return dt.date.fromisoformat(text).isoformat()
+    except ValueError:
+        return ""
+
+
+def publication_aware_metrics(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, float | None], list[PublicationAwareEvidence]]:
+    """Run the reviewed metric extractor and correct SEC evidence chronology.
+
+    ``v21_serenity_top20.metrics`` historically emitted an XBRL fact's period
+    end as ``as_of``.  That date describes the financial measurement period, not
+    when the primary document became public.  This wrapper maps each emitted SEC
+    fact back to its Company Facts record and uses the SEC ``filed`` date as the
+    evidence publication date.  It never substitutes ``retrieved_at`` or the
+    current run time.  When a filing date cannot be matched, the historical
+    period-end date is retained so the downstream gate fails closed.
+    """
+
+    official_metrics, legacy_evidence = LEGACY_METRICS(records)
+    filed_by_exact_key: dict[tuple[str, str, str], str] = {}
+    filed_by_fact_key: dict[tuple[str, str], str] = {}
+
+    for raw in records:
+        if (
+            not isinstance(raw, Mapping)
+            or raw.get("record_type") != "company_fact"
+            or raw.get("taxonomy") != "us-gaap"
+        ):
+            continue
+        tag = str(raw.get("tag") or "").strip()
+        period_end = _date_text(raw.get("end"))
+        filed = _date_text(raw.get("filed"))
+        url = str(raw.get("record_url") or "").strip()
+        if not tag or not period_end or not filed:
+            continue
+        exact_key = (url, tag, period_end)
+        fact_key = (tag, period_end)
+        if filed > filed_by_exact_key.get(exact_key, ""):
+            filed_by_exact_key[exact_key] = filed
+        if filed > filed_by_fact_key.get(fact_key, ""):
+            filed_by_fact_key[fact_key] = filed
+
+    normalized: list[PublicationAwareEvidence] = []
+    for item in legacy_evidence:
+        source_id = str(getattr(item, "source_id", ""))
+        title = str(getattr(item, "title", ""))
+        url = str(getattr(item, "url", ""))
+        legacy_as_of = _date_text(getattr(item, "as_of", ""))
+        match = SEC_EVIDENCE_TITLE_RE.fullmatch(title)
+        tag = match.group("tag").strip() if match else ""
+        period_end = _date_text(match.group("period_end")) if match else legacy_as_of
+        filed = ""
+        if source_id == "sec_edgar" and tag and period_end:
+            filed = filed_by_exact_key.get((url, tag, period_end), "")
+            if not filed:
+                filed = filed_by_fact_key.get((tag, period_end), "")
+        normalized.append(
+            PublicationAwareEvidence(
+                source_id=source_id,
+                tier=str(getattr(item, "tier", "")),
+                claim_type=str(getattr(item, "claim_type", "")),
+                title=title,
+                url=url,
+                as_of=filed or legacy_as_of,
+                publication_date=filed,
+                period_end=period_end,
+            )
+        )
+    return official_metrics, normalized
 
 
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -187,6 +290,7 @@ def main() -> int:
     original_companyfacts = engine.sec_companyfacts
     original_validate = engine.validate_policy
     original_score = engine.score_candidate
+    original_metrics = engine.metrics
     counter = {"value": 0}
 
     def progress_companyfacts(candidate, policy, http, headers):
@@ -201,10 +305,12 @@ def main() -> int:
 
     engine.sec_companyfacts = progress_companyfacts
     engine.validate_policy = validate_v213_policy
+    engine.metrics = publication_aware_metrics
     engine.score_candidate = safe_preselection_score
     try:
         print("II_PROGRESS Top20 candidate discovery starting; Yahoo is T3 seed only", flush=True)
         result = engine.run(synthetic=args.synthetic)
+        print("II_PROGRESS SEC evidence chronology normalized: filing_date!=period_end; retrieval_time_not_used", flush=True)
         print("II_PROGRESS safe preselection complete; proxy-heavy factors excluded; diversified postprocessor required", flush=True)
         print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
         return 0
@@ -214,6 +320,7 @@ def main() -> int:
     finally:
         engine.sec_companyfacts = original_companyfacts
         engine.validate_policy = original_validate
+        engine.metrics = original_metrics
         engine.score_candidate = original_score
 
 
