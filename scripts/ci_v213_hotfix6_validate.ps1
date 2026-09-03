@@ -100,12 +100,15 @@ foreach ($path in $Paths) {
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ps51Probe -Paths $powerShellPaths
     if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 parser gate failed.' }
 
+    # The external regression imports the exact helper functions from the production
+    # core without entering any mutation path.  This avoids depending on the older
+    # embedded harness while still exercising native capture, banner extraction,
+    # strict single-version selection, direct-Node Wrangler resolution, and the
+    # atomic transaction client under Windows PowerShell 5.1.
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\test_v213_activation_core.ps1 -ProjectRoot $ProjectRoot
     if ($LASTEXITCODE -ne 0) { throw 'Wrangler mixed-stdout activation-core regression failed.' }
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\run-v213-local-llm-bridge-source-diverse.ps1 -ProjectRoot $ProjectRoot -SelfTest
     if ($LASTEXITCODE -ne 0) { throw 'HealthSchema2 bridge self-test failed.' }
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -SelfTest
-    if ($LASTEXITCODE -ne 0) { throw 'Activation wrapper self-test failed.' }
 
     $wranglerCli = Join-Path $ProjectRoot 'cloud\node_modules\wrangler\bin\wrangler.js'
     if (-not (Test-Path -LiteralPath $wranglerCli -PathType Leaf)) { throw 'Pinned Wrangler JavaScript entrypoint is missing.' }
