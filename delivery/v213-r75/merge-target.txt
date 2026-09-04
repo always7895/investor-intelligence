@@ -1,0 +1,4 @@
+base=development/v2.1.3-serenity-public-logic-fidelity
+head=development/v2.1.3-r75-hardening
+release_decision=PASS_WITH_RESIDUAL_OPERATIONAL_RISKS
+production_mutation_by_ci=false
