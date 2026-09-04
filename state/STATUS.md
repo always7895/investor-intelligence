@@ -262,3 +262,19 @@ Commit and push the implementation candidate, run the consolidated no-mutation W
 ### Next action
 
 Stop. Real Worker deployment, route publication, Quick Tunnel startup, LINE delivery, and Task Scheduler registration remain operator-controlled Production actions and were not executed in this session.
+
+## Final delivery gate — PASS (2026-09-05)
+
+- Gate ran on a clean working tree at branch `pi/r75-free-workers-relay`, HEAD `e460a172cabdb79ea6e5f785e11d622673b112eb`; `git status --short` empty, `git diff --check` clean.
+- Artifact cross-check re-run without regeneration: `ARTIFACT_CROSSCHECK=PASS`; outer SHA-256 `4797b0afe18a5599c540dfd9b1a5e52ce7b354a3c34ff72929595f8eaec9e139`; 384 MANIFEST files; publication-contract SHA-256 `ed57b880bba3b29e41831201dc12bc8100101448f491f687c0bec67e9403f920` consistent across ZIP entry, HOTFIX-REFS, and current tree; all three receipts identity-bound to `b99f371`/run `33877850106` with `production_mutation_by_ci=false`.
+- Full no-mutation re-verification: Python 550 passed/2 skipped; Worker typecheck + 19 files/110 tests; PowerShell 5.1.26100.9168 and 7.6.5 FREE_RELAY host tests, Named Tunnel regression, activation preflight/wrapper self-tests, heartbeat self-test, task validation, bridge strict-mode, operation lock, security check; artifact verifier re-run on the downloaded ZIP PASS; launcher three self-tests PASS.
+- Three failures encountered during the gate were probe/self-test invocation errors (over-strict marker requirement, Git range syntax, launcher temp EXE path), not product defects; each was corrected and re-verified PASS.
+- Protected R75 boundary versus `536644d22ef3534be1c4b8a9e1ff969df4d580fa` remains empty; certified `cloud/src/qa.ts` blob byte-identical; Serenity scoring, federation thresholds, publication contract/semantics, sealed bundles, and release evidence rules unchanged.
+- TypeScript/Python/PowerShell contract alignment PASS; `workers_dev = true` retained, no custom routes, `custom_domain_required=false`, exact model `qwen38-q6`.
+- `production_mutation_by_ci=false` throughout; no Worker deploy, Production KV/DO write, Cloudflare route change, LINE send, or task registration occurred.
+- FINAL DELIVERY REPORT written to `state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md` and sealed by this checkpoint commit (`[skip ci]`).
+- Open defect counts: P0 **0**, P1 **0**, P2 **0**.
+
+### Next action
+
+Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment, Quick Tunnel startup, signed route publication, Task Scheduler registration, and LINE delivery remain operator-controlled Production actions requiring separate authorization.
