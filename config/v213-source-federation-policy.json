@@ -6,7 +6,7 @@
   "automatic_source_activation": false,
   "public_only": true,
   "free_only_required": true,
-  "minimum_global_successful_families": 5,
+  "minimum_global_successful_families": 4,
   "minimum_global_official_families": 4,
   "minimum_per_ticker_independent_families": 2,
   "minimum_ticker_coverage_ratio": 0.8,

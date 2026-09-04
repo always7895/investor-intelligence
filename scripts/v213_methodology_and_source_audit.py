@@ -27,6 +27,7 @@ SOURCE_GATE_V4 = ROOT / "scripts" / "v213_source_independence_gate_v4.py"
 SNAPSHOT_BUILDER = ROOT / "scripts" / "v213_build_v21_public_snapshot.py"
 SCHEDULE_ACTIVATION = ROOT / "activate-v213-seven-field-schedule.ps1"
 GATEWAY = ROOT / "scripts" / "v213_local_llm_gateway.py"
+R75_PREFLIGHT = ROOT / "scripts" / "v213_r75_activation_preflight.py"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -71,6 +72,7 @@ def main() -> int:
     snapshot_builder = SNAPSHOT_BUILDER.read_text(encoding="utf-8")
     schedule_activation = SCHEDULE_ACTIVATION.read_text(encoding="utf-8")
     gateway = GATEWAY.read_text(encoding="utf-8")
+    r75_preflight = R75_PREFLIGHT.read_text(encoding="utf-8")
     findings: list[str] = []
 
     if standard.get("schema_version") != 3:
@@ -111,8 +113,8 @@ def main() -> int:
         findings.append("Catalog/live-use distinction missing")
     if federation.get("yahoo_is_authoritative") is not False:
         findings.append("Yahoo must not be authoritative")
-    if int(federation.get("minimum_global_successful_families") or 0) < 5:
-        findings.append("Live source family minimum must be at least five")
+    if int(federation.get("minimum_global_successful_families") or 0) < 4:
+        findings.append("Live source family minimum must include all four required non-BLS families")
     if int(federation.get("minimum_per_ticker_independent_families") or 0) < 2:
         findings.append("Per-ticker source family minimum must be at least two")
     if float(federation.get("maximum_single_family_evidence_share") or 1) > 0.65:
@@ -247,12 +249,20 @@ def main() -> int:
 
     if "if($nonYahoo-lt0.75){throw" in schedule_activation.replace(" ", ""):
         findings.append("Activation still treats market endpoint availability as an unconditional blocker")
-    require_tokens(findings, "Activation market-quality contract", schedule_activation, (
+    require_tokens(findings, "Activation shared-preflight integration", schedule_activation, (
         "V213_MARKET_CORROBORATION_QUALITY = DEGRADED",
-        "market_corroboration_status",
         "market_quality_degraded",
-        "uncorroborated Top20 row exceeds the valuation-confidence cap",
-        "v213_source_independence_gate_v3.py",
+        "v213_r75_activation_preflight.py",
+        "v213-r75-publication-mode-v1.json",
+        "Test-SourceIndependenceDocument",
+    ))
+    require_tokens(findings, "Shared R75 activation market-quality contract", r75_preflight, (
+        "market_corroboration_status",
+        "market_corroboration_global_blocker",
+        "market_corroboration_required_for_high_confidence_model_inference",
+        "SENSITIVE_FACTORS",
+        "LIMITED candidate is HIGH eligible",
+        "positive_limited_rejected=true",
     ))
 
     if not contains_any(
@@ -290,7 +300,7 @@ def main() -> int:
         return 1
     print(
         "V213_METHODOLOGY_AND_SOURCE_AUDIT = PASS; catalog=101; "
-        "required_live_families=5; per_ticker_claim_families=2; "
+        "required_live_families=4; optional_bls=true; per_ticker_claim_families=2; "
         "v3_entrypoint=v4_authoritative; high_confidence_market_providers=2; "
         "legal_identity=provenance_only; latest_data=fail_closed"
     )

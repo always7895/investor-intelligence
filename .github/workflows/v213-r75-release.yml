@@ -71,6 +71,10 @@ jobs:
           - Production mutation by CI: false
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+      - name: Build and independently verify immutable R75 package
+        shell: pwsh
+        run: ./scripts/ci_v213_r75_package.ps1
+
       - name: Remove ephemeral dependency and generated state
         if: always()
         shell: pwsh
@@ -78,3 +82,16 @@ jobs:
           Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath data\cache -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath reports -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload immutable R75 release and evidence
+        if: success()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # final release evidence
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ env.R75_PACKAGE_ROOT }}/*.zip
+            ${{ env.R75_PACKAGE_ROOT }}/*.sha256
+            ${{ env.R75_PACKAGE_ROOT }}/*.json
+            ${{ env.R75_PACKAGE_ROOT }}/*.txt
+          if-no-files-found: error
+          retention-days: 1

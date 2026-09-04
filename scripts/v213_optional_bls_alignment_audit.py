@@ -7,17 +7,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "v213-source-federation-policy.json"
+CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v1.json"
 WRAPPERS = (
     ROOT / "activate-v213-seven-field-schedule.ps1",
     ROOT / "activate-v213-seven-field-schedule-serenity-latest.ps1",
     ROOT / "activate-v213-diversified-schedule.ps1",
 )
 STALE_REQUIRED = "$required=@('us_sec','nasdaq','world_bank','us_bls','ecb')"
-CURRENT_REQUIRED = "$required=@('us_sec','nasdaq','world_bank','ecb')"
-THRESHOLDS = (
-    "$successful.count-lt5",
-    "$official.count-lt4",
-    "$missingrequired.count-gt0",
+SHARED_PREFLIGHT_MARKERS = (
+    "v213_r75_activation_preflight.py",
+    "v213-r75-publication-mode-v1.json",
+    "test-sourceindependencedocument",
 )
 
 
@@ -59,6 +59,20 @@ def main() -> int:
     ):
         fail("temporary macro outage is not explicitly a quality degradation")
 
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8-sig"))
+    required_policy = {
+        row["family"] for row in live_sources.values()
+        if isinstance(row, dict) and row.get("required") is True
+    }
+    required_contract = set(contract.get("required_federation_families", []))
+    if required_contract != required_policy or "us_bls" in required_contract:
+        fail("shared R75 contract does not match the policy-required non-BLS families")
+    thresholds = contract.get("thresholds", {})
+    if int(thresholds.get("min_successful_families", 0)) != int(policy.get("minimum_global_successful_families", 0)):
+        fail("shared R75 successful-family threshold differs from source policy")
+    if int(thresholds.get("min_official_successful_families", 0)) != int(policy.get("minimum_global_official_families", 0)):
+        fail("shared R75 official-family threshold differs from source policy")
+
     texts = []
     for wrapper in WRAPPERS:
         text = wrapper.read_text(encoding="utf-8-sig")
@@ -66,11 +80,9 @@ def main() -> int:
         compact = "".join(text.split()).casefold()
         if STALE_REQUIRED.casefold() in compact:
             fail(f"{wrapper.name} still hard-requires optional BLS")
-        if CURRENT_REQUIRED.casefold() not in compact:
-            fail(f"{wrapper.name} lacks the policy-aligned core required families")
-        for threshold in THRESHOLDS:
-            if threshold not in compact:
-                fail(f"{wrapper.name} lost activation threshold: {threshold}")
+        for marker in SHARED_PREFLIGHT_MARKERS:
+            if marker.casefold() not in compact:
+                fail(f"{wrapper.name} does not delegate to the shared R75 contract/preflight: {marker}")
 
     if texts[0] != texts[1]:
         fail("canonical activation and Serenity compatibility alias are not identical")
@@ -78,7 +90,7 @@ def main() -> int:
     print(
         "V213_OPTIONAL_BLS_ALIGNMENT = PASS; "
         "bls_required=false; "
-        "minimum_total_families=5; "
+        "minimum_total_families=4; "
         "minimum_official_families=4; "
         "canonical_alias_equal=true"
     )
