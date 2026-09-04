@@ -177,6 +177,12 @@ Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 
 - P1: **0** for this deployment-integration scope.
 - P2: **0** for this deployment-integration scope.
 
+### CI iteration
+
+- Windows run `33872737618` at `3033cf79e4f2214617d9abd1535868a76c0f0758` passed Python (550/2 skipped), Worker (18/101), and initial PowerShell gates, then failed closed because the Windows service account had no `python` command on PATH in the bridge child self-test.
+- Fix commit `cd1b294` makes the child self-test honor the already verified repository-pinned `PROJECT_PYTHON`; both PowerShell hosts pass with that explicit path.
+- Failed run caused no external or Production mutation and produced no artifact.
+
 ### Next action
 
-Commit status, push the work branch, inspect the no-mutation Windows workflow, download its immutable Named Tunnel deployment-hotfix artifact, and independently verify it before stopping.
+Commit status, push the corrected work branch, inspect the no-mutation Windows workflow, download its immutable Named Tunnel deployment-hotfix artifact, and independently verify it before stopping.
