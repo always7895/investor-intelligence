@@ -18,6 +18,44 @@ import {
 
 type V213ProductionEnv = V211Env & FreeRelayEnv;
 
+type RuntimeFetch = typeof fetch;
+
+function requestUrl(input: RequestInfo | URL): URL | null {
+  try {
+    if (input instanceof Request) return new URL(input.url);
+    return new URL(String(input));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cloudflare's production runtime rejects redirect: "error" before issuing a
+ * request.  The certified Q&A module intentionally remains byte-for-byte
+ * unchanged, so emulate that standard Fetch behavior only for its HTTPS local
+ * model completion call: observe redirects with "manual", then reject 3xx.
+ */
+export async function v213RuntimeCompatibleFetch(
+  nativeFetch: RuntimeFetch,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const url = requestUrl(input);
+  const method = String(init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  const adapt = init?.redirect === "error" && method === "POST" && url?.protocol === "https:" &&
+    url.pathname === "/v1/chat/completions";
+  if (!adapt) return nativeFetch(input, init);
+  const response = await nativeFetch(input, { ...init, redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) {
+    throw new TypeError("V213_LOCAL_MODEL_REDIRECT_REJECTED");
+  }
+  return response;
+}
+
+const nativeRuntimeFetch = globalThis.fetch.bind(globalThis) as RuntimeFetch;
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+  v213RuntimeCompatibleFetch(nativeRuntimeFetch, input, init)) as RuntimeFetch;
+
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import productionWorker, { freeRelayRequestEnv } from "../src/v213/production-worker";
+import productionWorker, { freeRelayRequestEnv, v213RuntimeCompatibleFetch } from "../src/v213/production-worker";
 import { parseQuery } from "../src/core";
 import { generalAnswer } from "../src/qa";
 import {
@@ -219,6 +219,27 @@ describe("R75 FREE_RELAY route lease", () => {
     await expect(verifyFreeRelayPublicHealth(route("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"))).rejects.toThrow("FREE_RELAY_PUBLIC_HEALTH_MISMATCH");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
+  });
+
+  it("adapts the certified Q&A redirect policy for production and still rejects 3xx", async () => {
+    const successFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.redirect).toBe("manual");
+      return Response.json({ ok: true });
+    });
+    const input = "https://ephemeral.trycloudflare.com/v1/chat/completions";
+    expect((await v213RuntimeCompatibleFetch(successFetch as typeof fetch, input, {
+      method: "POST",
+      redirect: "error",
+    })).status).toBe(200);
+
+    const redirectFetch = vi.fn(async () => new Response(null, {
+      status: 307,
+      headers: { location: "https://redirected.example/v1/chat/completions" },
+    }));
+    await expect(v213RuntimeCompatibleFetch(redirectFetch as typeof fetch, input, {
+      method: "POST",
+      redirect: "error",
+    })).rejects.toThrow("V213_LOCAL_MODEL_REDIRECT_REJECTED");
   });
 
   it("routes Q&A through the current lease with exact model and per-generation authentication", async () => {
