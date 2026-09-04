@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "contract_id": "v213-r75-publication-mode-v1",
+  "product_version": "2.1.3",
+  "bundle_schema_version": 4,
+  "payload_names": [
+    "top20_json",
+    "source_plan_json",
+    "report_text",
+    "v212_top20_report_json",
+    "v213_top20_report_json",
+    "source_federation_json",
+    "source_independence_json"
+  ],
+  "modes": {
+    "evidence_qualified": "EVIDENCE_QUALIFIED",
+    "limited": "LIMITED_RESEARCH_CANDIDATE"
+  },
+  "limited_missing_codes": [
+    "LIMITED_RESEARCH_CANDIDATE",
+    "INDEPENDENT_CLAIM_CORROBORATION"
+  ],
+  "sensitive_factors": [
+    "demand_wave",
+    "chokepoint",
+    "pricing_power",
+    "replacement_friction",
+    "tam_capture"
+  ],
+  "required_federation_families": [
+    "us_sec",
+    "nasdaq",
+    "world_bank",
+    "ecb"
+  ],
+  "optional_federation_families": [
+    "us_bls"
+  ],
+  "report_markers": [
+    "<!-- line-public-eligible: true -->",
+    "<!-- provider-scope: public_only -->",
+    "<!-- owner-watchlist-inherited: false -->",
+    "<!-- scoring-version: system-operationalization-v2.1.3-diversified -->",
+    "<!-- official-serenity-formula-claimed: false -->"
+  ],
+  "thresholds": {
+    "ticker_count": 20,
+    "max_bundle_age_seconds": 7200,
+    "clock_skew_seconds": 300,
+    "min_successful_families": 4,
+    "min_official_successful_families": 4,
+    "min_ticker_coverage_ratio": 0.8,
+    "min_independent_source_families": 3,
+    "min_independent_domains": 3,
+    "min_claim_primary_coverage_ratio": 0.75,
+    "min_portfolio_claim_source_families": 1,
+    "min_portfolio_claim_source_domains": 1,
+    "max_single_family_share": 0.7,
+    "min_evidence_claim_families": 2,
+    "min_evidence_claim_domains": 2,
+    "min_evidence_primary_sources": 1,
+    "min_claim_dated_evidence_ratio": 0.8,
+    "min_limited_claim_primary_units": 1,
+    "min_publication_provenance_origins": 2,
+    "min_publication_provenance_domains": 2,
+    "max_uncorroborated_valuation_factor": 3.75
+  },
+  "scoring_version": "system-operationalization-v2.1.3-diversified",
+  "fixture_files": [
+    "tests/fixtures/v213-r75-publication-mode/all-limited.json",
+    "tests/fixtures/v213-r75-publication-mode/mixed.json"
+  ]
+}

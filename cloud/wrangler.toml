@@ -62,3 +62,11 @@ JOB_RESULT_TTL_SECONDS = "3600"
 #
 # There is no private-sync route, portfolio tool, IBKR/broker connection,
 # Workers AI binding, scheduled push or paid fallback in this Worker.
+
+[[durable_objects.bindings]]
+name = "V213_BROADCAST_DEDUPE"
+class_name = "V213BroadcastDedupe"
+
+[[migrations]]
+tag = "v213-r75-broadcast-dedupe-v1"
+new_sqlite_classes = ["V213BroadcastDedupe"]

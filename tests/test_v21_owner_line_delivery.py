@@ -38,7 +38,7 @@ class V21OwnerLineDeliveryTests(unittest.TestCase):
             ["0 0 * * *", "0 13 * * *"],
         )
         self.assertEqual(policy["research"]["top_count"], 20)
-        self.assertEqual(policy["research"]["reviewed_source_catalog_count"], 99)
+        self.assertEqual(policy["research"]["reviewed_source_catalog_count"], 101)
         self.assertFalse(policy["research"]["all_catalog_sources_claimed_active"])
         self.assertFalse(policy["research"]["automatic_source_activation"])
         self.assertFalse(policy["scheduled_delivery"]["paid_fallback"])
@@ -49,13 +49,13 @@ class V21OwnerLineDeliveryTests(unittest.TestCase):
         builder = load("scripts/build_v21_public_snapshot.py", "v21_public_snapshot_builder_topic")
         plan = {
             "schema_version": 1,
-            "catalog_count": 99,
+            "catalog_count": 101,
             "automatic_activation": False,
             "owner_watchlist_inherited": False,
             "provider_scope": "public_only",
             "line_public_eligible": True,
             "inventory": {
-                "source_count": 99,
+                "source_count": 101,
                 "runtime_enabled_count": 0,
                 "topic_counts": {"positions": 1},
             },

@@ -82,13 +82,11 @@ async function currentSnapshotRunId(env: StorageEnv): Promise<string | null> {
 
 async function candidateKeys(env: StorageEnv, logicalKeys: string[]): Promise<string[]> {
   const runId = await currentSnapshotRunId(env);
-  const result: string[] = [];
-  for (const key of logicalKeys) {
-    if (runId) result.push(`snapshot:${runId}:${key}`);
-    // Direct public keys remain a migration fallback only inside PUBLIC_CACHE.
-    result.push(key);
-  }
-  return result;
+  if (runId) return logicalKeys.map((key) => `snapshot:${runId}:${key}`);
+  // Direct public keys are used only before a snapshot pointer exists. Once a
+  // pointer is promoted, missing run objects fail closed instead of silently
+  // falling back to stale direct keys.
+  return [...logicalKeys];
 }
 
 export async function publicJson<T>(env: StorageEnv, logicalKeys: string[]): Promise<T | null> {

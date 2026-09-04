@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "policy_id": "v213-limited-research-candidate-publication-v1",
+  "description_en": "Rows without independently corroborated company claims may remain only as explicit limited research candidates after every sensitive positive advantage has been withheld. They require a latest-available primary company source and a separate fresh regulated identity provenance origin. They are not validated theses and cannot be high-confidence model inputs.",
+  "description_zh_TW": "缺乏獨立公司主張佐證的股票，只能在所有敏感正向優勢均被撤除後，以明確標示的「有限研究候選」保留。每檔仍須具備最新可取得的第一手公司來源，以及另一個新鮮、獨立營運的受監管身分來源；不得視為已驗證投資論點，也不得進入高信心模型推論。",
+  "limited_research_candidate_policy": {
+    "limited_research_candidate_publication_allowed": true,
+    "limited_research_candidate_requires_all_sensitive_advantage_factors_zero": true,
+    "limited_research_candidate_requires_latest_available_primary_source": true,
+    "minimum_limited_candidate_primary_claim_sources": 1,
+    "minimum_limited_candidate_provenance_origins": 2,
+    "minimum_limited_candidate_provenance_domains": 2,
+    "limited_candidate_primary_claim_max_age_days": 550,
+    "identity_provenance_max_age_days": 7,
+    "identity_provenance_can_support_positive_advantage": false,
+    "limited_research_candidate_is_validated_thesis": false,
+    "limited_research_candidate_high_confidence_allowed": false,
+    "limited_candidate_model_inference_confidence": "LIMITED",
+    "limited_candidate_missing_evidence_code": "INDEPENDENT_CLAIM_CORROBORATION",
+    "limited_candidate_mode_code": "LIMITED_RESEARCH_CANDIDATE",
+    "positive_advantage_requires_fresh_primary_and_independent_non_primary": true,
+    "market_or_macro_can_satisfy_limited_company_primary_requirement": false,
+    "same_origin_identity_alias_counts_twice": false
+  },
+  "publication_modes": {
+    "EVIDENCE_QUALIFIED": {
+      "minimum_claim_families": 2,
+      "minimum_claim_domains": 2,
+      "minimum_primary_claim_sources": 1,
+      "positive_advantage_allowed_when_freshly_corroborated": true
+    },
+    "LIMITED_RESEARCH_CANDIDATE": {
+      "positive_advantage_allowed": false,
+      "validated_company_thesis": false,
+      "high_confidence_allowed": false,
+      "required_display_confidence": "LIMITED"
+    }
+  }
+}

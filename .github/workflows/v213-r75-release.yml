@@ -1,0 +1,175 @@
+name: V2.1.3 R75 Authoritative Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'pi/**'
+      - development/v2.1.3-serenity-public-logic-fidelity
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investor-intelligence-v213-r75-authoritative-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 360
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      DELIVERY_ENABLED: 'false'
+      LINE_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      LINE_ACCESS_MODE: 'disabled'
+      PUBLIC_KV_SYNC_ENABLED: 'false'
+      ACTIVE_SCAN_APPLY_CHANGES: 'false'
+      CLOUD_INFERENCE_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      PRODUCTION_MUTATION_BY_CI: 'false'
+
+    steps:
+      - name: Check out exact immutable candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate exact source identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($actual -ne '${{ github.sha }}'.ToLowerInvariant()) { throw "Checkout mismatch: $actual" }
+          if (@(git status --porcelain).Count -ne 0) { throw 'Authoritative checkout is not clean.' }
+          "R75_SOURCE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run full no-mutation Windows validation
+        if: github.ref_name != 'pi/r75-named-tunnel-deployment-hotfix' && github.ref_name != 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: .\scripts\ci_v213_r75_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Run R75 Named Tunnel deployment-hotfix validation
+        if: github.ref_name == 'pi/r75-named-tunnel-deployment-hotfix'
+        shell: pwsh
+        run: .\scripts\ci_v213_r75_named_tunnel_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Run R75 FREE_RELAY hotfix validation
+        if: github.ref_name == 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: .\scripts\ci_v213_r75_free_relay_validate.ps1 -ProjectRoot $PWD.Path
+
+      - name: Record M6 validation summary
+        if: github.ref_name != 'pi/r75-named-tunnel-deployment-hotfix' && github.ref_name != 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: |
+          @"
+          ## R75 authoritative Windows validation
+          - Source commit: ``$env:R75_SOURCE_COMMIT``
+          - Windows PowerShell 5.1 and PowerShell 7: PASS
+          - Python complete suite: PASS
+          - Worker typecheck and full Vitest: PASS
+          - Actual all-LIMITED sealed-bundle preflight: PASS
+          - Isolated KV-compatible pointer-last/readback/replay/rollback/finalize: PASS
+          - Production mutation by CI: false
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Record Named Tunnel hotfix summary
+        if: github.ref_name == 'pi/r75-named-tunnel-deployment-hotfix'
+        shell: pwsh
+        run: |
+          @"
+          ## R75 Named Tunnel deployment hotfix
+          - Source commit: ``$env:R75_SOURCE_COMMIT``
+          - Windows PowerShell 5.1 and PowerShell 7: PASS
+          - cloudflared authentication/credential/DNS-route synthetic gates: PASS
+          - Exact model + health schema v2 + three consecutive public health policy: PASS
+          - Special-path and negative tests: PASS
+          - Worker/KV/DO/LINE/schedule/Cloudflare Production mutation: false
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Record FREE_RELAY hotfix summary
+        if: github.ref_name == 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: |
+          @"
+          ## R75 zero-cost FREE_RELAY hotfix
+          - Stable public entrypoint: existing workers.dev Worker
+          - Custom domain required: false
+          - Ephemeral TryCloudflare hostname is not claimed stable
+          - Windows PowerShell 5.1 and PowerShell 7: PASS
+          - Signed route, TTL, heartbeat, stale/replay/concurrency/reconnect/rollback gates: PASS
+          - Exact qwen38-q6 + health schema v2 + three public health checks: PASS
+          - Production mutation by CI: false
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Build and independently verify immutable R75 package
+        if: github.ref_name != 'pi/r75-named-tunnel-deployment-hotfix' && github.ref_name != 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: ./scripts/ci_v213_r75_package.ps1
+
+      - name: Build and independently verify immutable Named Tunnel deployment hotfix
+        if: github.ref_name == 'pi/r75-named-tunnel-deployment-hotfix'
+        shell: pwsh
+        run: ./scripts/ci_v213_r75_named_tunnel_package.ps1
+
+      - name: Build and independently verify immutable FREE_RELAY hotfix
+        if: github.ref_name == 'pi/r75-free-workers-relay'
+        shell: pwsh
+        run: ./scripts/ci_v213_r75_free_relay_package.ps1
+
+      - name: Remove ephemeral dependency and generated state
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath cloud\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath data\cache -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath reports -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload immutable R75 release and evidence
+        if: success() && github.ref_name != 'pi/r75-named-tunnel-deployment-hotfix' && github.ref_name != 'pi/r75-free-workers-relay'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # final release evidence
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ env.R75_PACKAGE_ROOT }}/*.zip
+            ${{ env.R75_PACKAGE_ROOT }}/*.sha256
+            ${{ env.R75_PACKAGE_ROOT }}/*.json
+            ${{ env.R75_PACKAGE_ROOT }}/*.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload immutable R75 Named Tunnel hotfix and receipts
+        if: success() && github.ref_name == 'pi/r75-named-tunnel-deployment-hotfix'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # final release evidence
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-Named-Tunnel-Hotfix-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ env.R75_NAMED_TUNNEL_PACKAGE_ROOT }}/*.zip
+            ${{ env.R75_NAMED_TUNNEL_PACKAGE_ROOT }}/*.sha256
+            ${{ env.R75_NAMED_TUNNEL_PACKAGE_ROOT }}/*.json
+            ${{ env.R75_NAMED_TUNNEL_PACKAGE_ROOT }}/*.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload immutable R75 FREE_RELAY hotfix and receipts
+        if: success() && github.ref_name == 'pi/r75-free-workers-relay'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # final release evidence
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ env.R75_FREE_RELAY_PACKAGE_ROOT }}/*.zip
+            ${{ env.R75_FREE_RELAY_PACKAGE_ROOT }}/*.sha256
+            ${{ env.R75_FREE_RELAY_PACKAGE_ROOT }}/*.json
+            ${{ env.R75_FREE_RELAY_PACKAGE_ROOT }}/*.txt
+          if-no-files-found: error
+          retention-days: 1

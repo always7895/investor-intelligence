@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "purpose": "Prevent identity/corpus duplication and distinguish public source views from methodology/archive references.",
+  "target_identity": {
+    "handle": "@aleabitoreddit",
+    "canonical_name": "Serenity"
+  },
+  "families": [
+    {
+      "id": "direct_public_x_aleabitoreddit",
+      "kind": "direct_public_source_view",
+      "identity": "@aleabitoreddit",
+      "authority": "primary_for_authors_public_view_only",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["source_view", "stance_evolution", "methodology_observation"]
+    },
+    {
+      "id": "yan_labs_serenity_aleabitoreddit",
+      "kind": "archive_and_methodology_reference",
+      "url": "https://github.com/yan-labs/serenity-aleabitoreddit",
+      "identity": "@aleabitoreddit",
+      "corpus_lineage": "yan_labs_public_tweet_archive",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["discover_original_x_ids", "thesis_history_lead", "methodology_cross_check"],
+      "verification_rule": "archive statements require original-source or independent company evidence before becoming factual proof"
+    },
+    {
+      "id": "wook98_serenity_aleabitoreddit",
+      "kind": "derived_archive_skill",
+      "url": "https://github.com/WOOK98/serenity-aleabitoreddit",
+      "identity": "@aleabitoreddit",
+      "corpus_lineage": "yan_labs_public_tweet_archive",
+      "duplicate_lineage_of": "yan_labs_serenity_aleabitoreddit",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["methodology_cross_check"]
+    },
+    {
+      "id": "muxuuu_serenity_skill",
+      "kind": "independent_methodology_distillation",
+      "url": "https://github.com/muxuuu/serenity-skill",
+      "identity": "@aleabitoreddit",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["methodology_cross_check", "research_workflow_reference"],
+      "notable_controls": ["rank_layers_before_tickers", "qualification_and_capacity_scarcity", "primary_evidence_first", "explicit_falsifiers"]
+    },
+    {
+      "id": "quantskills_serenity_research_model",
+      "kind": "public_corpus_semantic_review_method",
+      "url": "https://github.com/quantskills/skill-serenity-research-model",
+      "identity": "@aleabitoreddit",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["source_view_semantic_review", "quote_reply_sarcasm_filter", "signal_evolution_reference"],
+      "notable_controls": ["quote_separation", "manual_review_queue", "survivorship_bias_control", "forward_return_metadata_not_proof"]
+    },
+    {
+      "id": "toysoldiers_serenity_skill",
+      "kind": "secondary_methodology_distillation",
+      "url": "https://github.com/toysoldiers000/serenity-skill",
+      "identity": "@aleabitoreddit",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["methodology_cross_check", "dated_decision_pattern_lead"]
+    },
+    {
+      "id": "yijiashu_stockgodserenity",
+      "kind": "quarantined_wrong_identity",
+      "url": "https://github.com/yijiashu/serenity-skill",
+      "identity": "@stockgodserenity",
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": [],
+      "quarantine_reason": "different public account/corpus; must never be merged into @aleabitoreddit source history or methodology"
+    },
+    {
+      "id": "project_authoritative_source_federation",
+      "kind": "project_source_governance",
+      "url": "docs/GLOBAL_SOURCE_FEDERATION.md",
+      "identity": null,
+      "can_prove_company_fact": false,
+      "can_prove_dependency": false,
+      "independent_corroboration_weight": 0,
+      "usage": ["source_admission", "provenance", "independence_and_conflict_rules"]
+    }
+  ],
+  "independence_rules": {
+    "same_original_post_is_one_source_family": true,
+    "forks_or_copied_archives_do_not_add_corroboration": true,
+    "social_or_skill_reference_never_proves_company_fact": true,
+    "original_x_view_never_proves_dependency": true,
+    "company_dependency_requires_independent_admitted_evidence": true,
+    "wrong_identity_is_fail_closed": true
+  }
+}

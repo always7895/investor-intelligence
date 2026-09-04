@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LEGACY_GIT_BLOBS = {
     "cloud/src/worker.ts": "4e0f78af402bcb6103812a3c1e06160cd838bdba",
     "cloud/src/line.ts": "618610bb277eb2949af0657609569ec5c490a1bb",
-    "cloud/src/storage.ts": "3f4df4e1ce4d1dba81add2363fb28e5b9bc020b4",
+    "cloud/src/storage.ts": "ac4d67ed800e95bf4003c072f2c4def21603b013",
     "cloud/src/qa.ts": "94184bc8937b413eb327b3d773926db00e22b3b9",
     "cloud/src/manual-options.ts": "798839536229943e6a5c2cbb19be7a8f1f198cd8",
 }
@@ -107,7 +107,7 @@ def audit_repository() -> list[str]:
         ("scheduled_delivery", "dedupe_required"): True,
         ("scheduled_delivery", "paid_fallback"): False,
         ("research", "top_count"): 20,
-        ("research", "reviewed_source_catalog_count"): 99,
+        ("research", "reviewed_source_catalog_count"): 101,
         ("research", "all_catalog_sources_claimed_active"): False,
         ("research", "automatic_source_activation"): False,
         ("research", "owner_watchlist_inherited"): False,
@@ -192,7 +192,7 @@ def audit_repository() -> list[str]:
         "V21_SYNC_REPLAY",
         "V21_PUBLIC_SNAPSHOT_PRIVATE_FIELD",
         "parseV21Top20",
-        'plan.catalog_count !== 99',
+        'plan.catalog_count !== 101',
         'plan.automatic_activation !== false',
         'inventory.runtime_enabled_count !== 0',
         '"snapshot:current"',
@@ -231,7 +231,7 @@ def audit_repository() -> list[str]:
         findings.append("scripts/build_v21_public_snapshot.py: syntax error")
     for marker in (
         "Top 20 must contain exactly 20 records",
-        'value.get("catalog_count") != 99',
+        'value.get("catalog_count") != 101',
         'value.get("automatic_activation") is not False',
         '"top20_json"',
         '"source_plan_json"',
@@ -269,7 +269,7 @@ def audit_repository() -> list[str]:
         "08:00",
         "21:00",
         "Serenity-first",
-        "99 個",
+        "101 個",
         "Aschenbrenner",
         "PUBLIC_CACHE",
         "TENANT_PRIVATE_CACHE",
@@ -295,7 +295,7 @@ def main() -> int:
     print(
         "V21 OWNER LINE DELIVERY GATE PASSED: retained v2.0 shared worker bytes, "
         "separate owner-only entrypoint, exact 08:00/21:00 schedule, encrypted pairing, "
-        "signed public snapshot, Serenity-first Top20, 99-source truth boundary, no broker, "
+        "signed public snapshot, Serenity-first Top20, 101-source truth boundary, no broker, "
         "portfolio, automatic trading, paid fallback, deployment or secret operation"
     )
     return 0

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "machine_keys_remain_stable_english": true,
+  "display_languages": ["zh-TW", "en"],
+  "dictionaries": [
+    "config/field-labels.zh-en.json",
+    "config/field-labels-source-federation.zh-en.json",
+    "config/field-labels-source-federation-gate.zh-en.json"
+  ],
+  "audit": "scripts/audit_v213_bilingual_public_fields.py"
+}

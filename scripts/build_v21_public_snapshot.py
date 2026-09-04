@@ -158,16 +158,16 @@ def validate_plan(value: Any) -> dict[str, Any]:
     inventory = value.get("inventory")
     if (
         value.get("schema_version") != 1
-        or value.get("catalog_count") != 99
+        or value.get("catalog_count") != 101
         or value.get("automatic_activation") is not False
         or value.get("owner_watchlist_inherited") is not False
         or value.get("provider_scope") != "public_only"
         or value.get("line_public_eligible") is not True
         or not isinstance(inventory, dict)
-        or inventory.get("source_count") != 99
+        or inventory.get("source_count") != 101
         or inventory.get("runtime_enabled_count") != 0
     ):
-        raise SnapshotError("Source plan does not preserve the reviewed 99-source fail-closed boundary")
+        raise SnapshotError("Source plan does not preserve the reviewed 101-source fail-closed boundary")
     reject_private_keys(value)
     return value
 
@@ -291,13 +291,13 @@ def self_test() -> None:
         top = [synthetic_record(index, generated) for index in range(20)]
         plan = {
             "schema_version": 1,
-            "catalog_count": 99,
+            "catalog_count": 101,
             "automatic_activation": False,
             "owner_watchlist_inherited": False,
             "provider_scope": "public_only",
             "line_public_eligible": True,
             "inventory": {
-                "source_count": 99,
+                "source_count": 101,
                 "runtime_enabled_count": 0,
                 "topic_counts": {"positions": 1},
             },
@@ -354,7 +354,7 @@ def main() -> int:
         "run_id": envelope["run_id"],
         "output": str(args.output),
         "top20_count": 20,
-        "catalog_count": 99,
+        "catalog_count": 101,
         "provider_scope": "public_only",
     }, ensure_ascii=False, indent=2))
     return 0

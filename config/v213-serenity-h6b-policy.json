@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "stage": "H6B1_FULL_TOP20_ORDER_OUTLOOK_SHADOW",
+  "canonical_serenity_skill": "skills/serenity-public-research/SKILL.md",
+  "legacy_serenity_skill": "skills/serenity-bottleneck.md",
+  "legacy_serenity_skill_status": "compatibility_only_canonical_skill_wins_on_conflict",
+  "legacy_fidelity_confidence_status": "deprecated_do_not_use_for_downstream_decisions",
+  "confidence_axes": [
+    "factual_evidence_confidence",
+    "dependency_confidence",
+    "company_capture_confidence",
+    "source_view_freshness",
+    "timing_confidence",
+    "identity_confidence"
+  ],
+  "operating_thesis_states": [
+    "DISCOVERY",
+    "EARLY_VALIDATION",
+    "COMMERCIAL_VALIDATION",
+    "INSTITUTIONAL_VALIDATION",
+    "CONSENSUS",
+    "THESIS_WEAKENING",
+    "BROKEN",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "order_fields": {
+    "current_orders": "公司現在訂單",
+    "future_orders_estimate": "未來訂單預估",
+    "current_fallback": "未揭露（無可靠公開訂單數字）",
+    "future_fallback": "無可靠公開預估",
+    "numeric_total_order_estimate_prohibited": true
+  },
+  "current_order_accepted_evidence": [
+    "backlog",
+    "remaining_performance_obligations",
+    "order_book",
+    "production_order",
+    "customer_purchase_commitment",
+    "customer_capacity_reservation",
+    "customer_prepayment",
+    "fixed_quantity_or_minimum_take"
+  ],
+  "future_order_rules": {
+    "allowed": [
+      "signed_future_commitment_window",
+      "official_company_order_outlook",
+      "official_customer_ramp_or_expected_order_window"
+    ],
+    "must_be_labeled_inference_unless_contractually_committed": true,
+    "pipeline_is_not_booked_order": true,
+    "guidance_is_not_backlog": true
+  },
+  "source_rules": {
+    "company_fact_requires_primary_or_independent_corroborating": true,
+    "social_or_archive_cannot_prove_company_fact": true,
+    "serenity_source_view_cannot_prove_company_fact": true
+  },
+  "dependency_fail_closed": {
+    "relationship_does_not_prove_scarcity": true,
+    "qualified_substitute_does_not_equal_effective_current_capacity": true,
+    "hard_dependency_requires_independent_scarcity_or_effective_capacity_evidence": true
+  },
+  "h6a_source_history_checkpoint": {
+    "entries": 4,
+    "latest_hash": "3b1e34fdd385ec3816a4f60a9f803cd1a3f64d2899cdc81c49e4cf5f36ed8102"
+  }
+}

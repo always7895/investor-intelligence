@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.1",
+  "base_scoring_version": "serenity-first-v2.1.0",
+  "candidate_seed_limit": 240,
+  "general_seed_limit": 120,
+  "thematic_seed_reserve": 120,
+  "sec_candidate_limit": 80,
+  "sec_thematic_reserve": 40,
+  "thematic_search_count": 20,
+  "public_option_symbol_limit": 80,
+  "thematic_search_terms": [
+    "optical networking semiconductor",
+    "optical transceiver data center",
+    "photonics semiconductor",
+    "silicon photonics",
+    "data center interconnect optical",
+    "AI networking semiconductor",
+    "ethernet switching semiconductor",
+    "semiconductor laser data center",
+    "fiber optic data center",
+    "AI accelerator ASIC",
+    "HBM memory semiconductor",
+    "advanced semiconductor packaging",
+    "semiconductor foundry AI",
+    "data center power transformer",
+    "data center switchgear",
+    "data center cooling infrastructure",
+    "power grid AI data center",
+    "neocloud AI infrastructure"
+  ]
+}

@@ -241,14 +241,14 @@ export async function ingestV21PublicSnapshot(
   const inventory = plan.inventory as Record<string, unknown> | undefined;
   if (
     plan.schema_version !== 1 ||
-    plan.catalog_count !== 99 ||
+    plan.catalog_count !== 101 ||
     plan.automatic_activation !== false ||
     plan.owner_watchlist_inherited !== false ||
     plan.provider_scope !== "public_only" ||
     plan.line_public_eligible !== true ||
     !inventory ||
     inventory.runtime_enabled_count !== 0 ||
-    inventory.source_count !== 99
+    inventory.source_count !== 101
   ) {
     throw new Error("V21_SOURCE_PLAN_INVALID");
   }

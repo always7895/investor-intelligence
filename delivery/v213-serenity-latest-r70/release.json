@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "job_status": "success",
+  "workflow_run_id": "33768814502",
+  "source_commit": "611a3596cafbcf0a80845275e482abf95b37b30e",
+  "release_tag": "v2.1.3-serenity-latest-r70-final",
+  "package": "Investor-Intelligence-v2.1.3-Serenity-Latest-MultiSource-R70.zip",
+  "zip_sha256": "0c53ead30c9e5872e37ffc1e5531e254e96a44b0f7855c5ce0a969a2d28ade9c",
+  "desktop_delivery": "C:\\WINDOWS\\ServiceProfiles\\NetworkService\\Desktop\\Investor-Intelligence-v2.1.3-Final-Delivery",
+  "production_mutation_by_ci": false,
+  "completed_at": "2026-09-03T15:00:46.9479350Z"
+}

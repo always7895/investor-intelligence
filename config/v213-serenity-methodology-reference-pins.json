@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "generated_at": "2026-09-03T00:00:00Z",
+  "latest_public_feed_pin_max_age_days": 7,
+  "references_are_company_evidence": false,
+  "references_define_official_serenity_formula": false,
+  "private_method_reproduced": false,
+  "repositories": [
+    {
+      "repository": "yan-labs/serenity-aleabitoreddit",
+      "commit_sha": "16cb9879ee037b573a82805dd37a225206464202",
+      "observed_at": "2026-09-02T01:11:06Z",
+      "role": "latest_public_feed_distillation",
+      "url": "https://github.com/yan-labs/serenity-aleabitoreddit",
+      "adopted_patterns": [
+        "refresh-before-use",
+        "multi-hop upstream supply-chain mapping",
+        "customer-concentration and financing-quality overlays",
+        "dated thesis evolution",
+        "victory-lap versus fresh-signal separation"
+      ],
+      "not_adopted_as_fact": [
+        "self-reported returns",
+        "private positions",
+        "private process",
+        "unverified customer-path inference"
+      ]
+    },
+    {
+      "repository": "muxuuu/serenity-skill",
+      "commit_sha": "c2fe93deedfd0d1bd9fe7ef0601ea1b9c20ea24a",
+      "observed_at": "2026-05-05T03:23:47Z",
+      "role": "independent_methodology_implementation",
+      "url": "https://github.com/muxuuu/serenity-skill",
+      "adopted_patterns": [
+        "rank scarce layers before companies",
+        "broad candidate universe before ranking",
+        "evidence ladder",
+        "explicit falsifiers",
+        "popular-theme downgrade explanation"
+      ]
+    },
+    {
+      "repository": "quantskills/skill-serenity-research-model",
+      "commit_sha": "97896616e3704e374ae4f0dbda7a93cc349b11cb",
+      "observed_at": "2026-07-16T09:13:51Z",
+      "role": "independent_signal_and_data_contract",
+      "url": "https://github.com/quantskills/skill-serenity-research-model",
+      "adopted_patterns": [
+        "separate forward-looking thesis from retrospective recap",
+        "preserve source URLs and retrieval dates",
+        "deweight broad baskets and incomplete DD",
+        "explicit risk and invalidation fields"
+      ]
+    }
+  ],
+  "implementation_boundary": {
+    "code_copied": false,
+    "license_combination": false,
+    "methodology_patterns_only": true,
+    "methodology_references_do_not_count_toward_company_source_diversity": true,
+    "current_company_and_market_evidence_is_refreshed_independently": true
+  }
+}

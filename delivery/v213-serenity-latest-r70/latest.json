@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "job_status": "failure",
+  "workflow": "V2.1.3 Final Serenity Latest Multi-Source R71 Status Delivery",
+  "workflow_run_id": "33738430827",
+  "source_commit": "010b72ca3eda5c93058b6ffd5aa4256f48a0e292",
+  "branch": "development/v2.1.3-serenity-public-logic-fidelity",
+  "package": "",
+  "zip_sha256": "",
+  "desktop_delivery": "",
+  "artifact_name": "",
+  "production_mutation_by_ci": false,
+  "completed_at": "2026-09-03T09:22:37.7641057Z"
+}
