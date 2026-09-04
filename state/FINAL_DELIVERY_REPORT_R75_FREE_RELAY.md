@@ -81,3 +81,19 @@
 ## 9. 交付結論
 
 **可以正式交付。** Immutable artifact、SHA-256、MANIFEST、SHA256SUMS、三份 receipt、independent post-download verification、三端 contract、R75/Serenity 保護邊界與 no-mutation 證據全部齊備且相互一致。Production 部署與實際 route 發布留待授權操作者執行。
+
+## 10. 操作者授權後的正式上線附錄（2026-09-05）
+
+本節記錄後續同一 Pi 工作階段中，使用者明確授權後執行的 Production 動作；它不改寫前述 CI no-mutation 證據。
+
+- 正式來源 commit：`92c97f97694e6e39c7a16986630d248c9ee744fe`；權威 Windows CI run `33896931576` PASS。
+- 發現並修正 Cloudflare 正式 Workers Runtime 對 `redirect: "error"` 的即時 TypeError；route health 改為 `manual` 並拒絕 3xx。經認證 `cloud/src/qa.ts` blob hash 仍為 `94184bc8937b413eb327b3d773926db00e22b3b9`，與 R75 基準相同。
+- v2.1.3 wrapper 對 HTTPS `POST /v1/chat/completions` 安裝精準相容層，並保留 redirect fail-closed；新增 HMAC 簽章、固定提示詞、無 KV 寫入的 smoke gate。
+- 本機完整 no-mutation 驗證 PASS：Python 550 passed/2 skipped；Worker 19 files/113 tests；PowerShell 5.1/7 及全部回歸／安全 gate PASS。
+- 正式 Worker 目前 100% active version：`27121388-1e6e-445a-b45e-104a867ca70d`；部署前回滾基準：`eb52ece1-8749-4526-a464-3356ec2dbc65`。
+- 真實 FREE_RELAY signed route、Gateway、Quick Tunnel、heartbeat 均 PASS；穩定 `workers.dev → route lease → Gateway → qwen38-q6` 固定標記 smoke 回應 PASS。短效 TryCloudflare hostname 未記錄為穩定入口。
+- `InvestorIntelligence-v213-FreeRelay` at-logon 工作已啟用（`StartWhenAvailable=true`、`MultipleInstances=IgnoreNew`）；舊 `InvestorIntelligence-v212-LocalModelBridge` 已停用，8814 舊 bridge/tunnel 孤兒已清除。早晚資料刷新工作保留。
+- 新不可變 artifact：`Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip`；SHA-256 `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec`；下載後獨立驗證 PASS。
+- GitHub Immutable Releases 已啟用；不可變正式 Release（`isImmutable=true`）為 `v2.1.3-R75-free-relay-final-92c97f9-33896931576`，`gh release verify` PASS，10 個 assets 全部具有 GitHub attestation。
+- CI 仍為 `production_mutation_by_ci=false`；上述 Worker deploy、真實 tunnel/route 與 Task Scheduler 註冊均是本次明確授權的操作者動作。未執行臨時 LINE 手動推送；既有 08:00/21:00 TST crons 保留。
+- 最終缺陷數：P0 **0**、P1 **0**、P2 **0**。
