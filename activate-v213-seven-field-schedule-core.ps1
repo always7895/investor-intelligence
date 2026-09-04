@@ -320,27 +320,36 @@ if (-not $ConfirmActivation) { throw 'Formal scheduled activation requires -Conf
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 $CloudRoot = Join-Path $ProjectRoot 'cloud'
-$ReportPath = Join-Path $ProjectRoot 'data\cache\v213_top20_report_public_latest.json'
 $BundlePath = Join-Path $ProjectRoot 'data\cache\v213_activation_bundle_upload.json'
 $SyncClient = Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1'
 $SyncConfig = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
-foreach ($path in @($ReportPath,$BundlePath,$SyncClient,$SyncConfig)) {
+foreach ($path in @($BundlePath,$SyncClient,$SyncConfig)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Activation prerequisite is missing: $path" }
 }
-$report = Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8 | ConvertFrom-Json
-$bundle = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8 | ConvertFrom-Json
+$expectedBundleSha = [string]$env:V213_R75_SEALED_BUNDLE_SHA256
+if ($expectedBundleSha -notmatch '^[0-9a-fA-F]{64}$') { throw 'The validated sealed R75 bundle SHA-256 is missing.' }
+$actualBundleSha = (Get-FileHash -LiteralPath $BundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualBundleSha -ne $expectedBundleSha.ToLowerInvariant()) { throw 'The sealed R75 bundle changed after preflight.' }
+$bundleText = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8
+$bundle = $bundleText | ConvertFrom-Json
 $transactionId = [string](Get-PropertyValue $bundle 'transaction_id' '')
 $runId = [string](Get-PropertyValue $bundle 'run_id' '')
-if ([string](Get-PropertyValue $report 'product_version' '') -ne '2.1.3' -or @((Get-PropertyValue $report 'records' @())).Count -ne 20) {
-    throw 'The local v2.1.3 report failed the activation preflight.'
-}
 if ((Get-PropertyValue $bundle 'schema_version' 0) -ne 4 -or [string](Get-PropertyValue $bundle 'product_version' '') -ne '2.1.3' -or $transactionId -notmatch '^[0-9a-f]{32}$' -or $runId -notmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$') {
     throw 'The atomic v2.1.3 activation bundle failed the activation preflight.'
 }
+$payloads = Get-PropertyValue $bundle 'payloads' $null
+if ($null -eq $payloads) { throw 'The sealed activation payload object is missing.' }
+$reportPayload = [string](Get-PropertyValue $payloads 'v213_top20_report_json' '')
+if ([string]::IsNullOrWhiteSpace($reportPayload)) { throw 'The sealed v2.1.3 report payload is missing.' }
+$report = $reportPayload | ConvertFrom-Json
+if ([string](Get-PropertyValue $report 'product_version' '') -ne '2.1.3' -or @((Get-PropertyValue $report 'records' @())).Count -ne 20) {
+    throw 'The sealed v2.1.3 report failed the activation preflight.'
+}
 $reportTime = [DateTimeOffset]::MinValue
-if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $report 'generated_at' ''), [ref]$reportTime)) { throw 'The v2.1.3 report generated_at value is invalid.' }
+if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $report 'generated_at' ''), [ref]$reportTime)) { throw 'The sealed v2.1.3 report generated_at value is invalid.' }
 $reportAge = ([DateTimeOffset]::UtcNow - $reportTime.ToUniversalTime()).TotalSeconds
-if ($reportAge -lt -300 -or $reportAge -gt 7200) { throw "The v2.1.3 report is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($reportAge))). Refresh first." }
+if ($reportAge -lt -300 -or $reportAge -gt 7200) { throw "The sealed v2.1.3 report is outside the 2-hour activation freshness gate (age_seconds=$([Math]::Round($reportAge))). Refresh first." }
+Write-Host "V213_R75_SEALED_BUNDLE_TOCTOU = PASS; sha256=$actualBundleSha" -ForegroundColor Green
 
 & (Join-Path $ProjectRoot 'scripts\resolve_node.ps1') -MinimumVersion '22.0.0'
 $npm = if ($env:PROJECT_NPM) { $env:PROJECT_NPM } else { (Get-Command npm.cmd -ErrorAction Stop).Source }

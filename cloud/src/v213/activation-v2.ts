@@ -2,30 +2,18 @@ import type { V21AdminEnv } from "../v21/admin";
 import { parseV21Top20, type V21Evidence, type V21Top20Record } from "../v21/top20";
 import { parseV212Top20Report } from "../v212/top20-report";
 import { parseV213Top20Report } from "./top20-report";
+import contract from "../../../config/v213-r75-publication-mode-v1.json";
+import { r75PublicationModeContractHash, validateR75PublicationModes } from "./publication-mode";
 
 const ENCODER = new TextEncoder();
 const RUN_ID_RE = /^\d{8}T\d{6}Z-[0-9a-f]{12}$/;
 const TRANSACTION_ID_RE = /^[0-9a-f]{32}$/;
 const HEX_64_RE = /^[0-9a-f]{64}$/;
-const SCORING_VERSION = "system-operationalization-v2.1.3-diversified";
+const SCORING_VERSION = contract.scoring_version;
 const MARKET_DEGRADATION = "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE";
 const MARKET_MISSING = "NON_YAHOO_MARKET_CORROBORATION";
-const PAYLOAD_NAMES = [
-  "top20_json",
-  "source_plan_json",
-  "report_text",
-  "v212_top20_report_json",
-  "v213_top20_report_json",
-  "source_federation_json",
-  "source_independence_json",
-] as const;
-const REQUIRED_REPORT_MARKERS = [
-  "<!-- line-public-eligible: true -->",
-  "<!-- provider-scope: public_only -->",
-  "<!-- owner-watchlist-inherited: false -->",
-  `<!-- scoring-version: ${SCORING_VERSION} -->`,
-  "<!-- official-serenity-formula-claimed: false -->",
-];
+const PAYLOAD_NAMES = contract.payload_names;
+const REQUIRED_REPORT_MARKERS = contract.report_markers;
 const FORBIDDEN_PUBLIC_KEYS = new Set([
   "account", "account_id", "portfolio", "position", "positions", "holding", "holdings",
   "cost_basis", "pnl", "line_user_id", "raw_user_id", "tenant_id", "conversation",
@@ -150,14 +138,16 @@ function validateSourcePlan(raw: unknown): Record<string, unknown> {
   const inventory = object(plan.inventory, "V213_ACTIVATION_SOURCE_PLAN_INVALID");
   const federation = object(plan.live_source_federation, "V213_ACTIVATION_SOURCE_PLAN_INVALID");
   const scoring = object(plan.scoring_methodology, "V213_ACTIVATION_SOURCE_PLAN_INVALID");
+  const successfulFamilies = Array.isArray(federation.successful_families) ? federation.successful_families.map(String) : [];
+  const officialFamilies = Array.isArray(federation.official_successful_families) ? federation.official_successful_families.map(String) : [];
   if (
     plan.schema_version !== 1 || plan.catalog_count !== 101 ||
     plan.automatic_activation !== false || plan.owner_watchlist_inherited !== false ||
     plan.provider_scope !== "public_only" || plan.line_public_eligible !== true ||
     inventory.source_count !== 101 || inventory.runtime_enabled_count !== 0 ||
-    !Array.isArray(federation.successful_families) || federation.successful_families.length < 5 ||
-    !Array.isArray(federation.official_successful_families) || federation.official_successful_families.length < 4 ||
-    !finite(federation.ticker_coverage_ratio) || federation.ticker_coverage_ratio < 0.8 ||
+    successfulFamilies.length < contract.thresholds.min_successful_families || contract.required_federation_families.some((family) => !successfulFamilies.includes(family)) ||
+    officialFamilies.length < contract.thresholds.min_official_successful_families || contract.required_federation_families.some((family) => !officialFamilies.includes(family)) ||
+    !finite(federation.ticker_coverage_ratio) || federation.ticker_coverage_ratio < contract.thresholds.min_ticker_coverage_ratio ||
     federation.unresolved_material_conflict_count !== 0 ||
     federation.yahoo_authoritative !== false ||
     federation.catalog_source_count_is_not_live_use !== true ||
@@ -173,12 +163,12 @@ function validateFederation(raw: unknown, order: string[]): Record<string, unkno
   const gates = object(doc.gates, "V213_ACTIVATION_FEDERATION_INVALID");
   const successful = array(gates.successful_families, "V213_ACTIVATION_FEDERATION_INVALID").map(String);
   const official = array(gates.official_successful_families, "V213_ACTIVATION_FEDERATION_INVALID").map(String);
-  const required = ["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"];
+  const required = contract.required_federation_families;
   if (
     doc.schema_version !== 1 || doc.product_version !== "2.1.3" ||
     parsedTime(doc.generated_at) === null || gates.pass !== true ||
-    successful.length < 5 || official.length < 4 || required.some((family) => !successful.includes(family)) ||
-    !finite(gates.ticker_coverage_ratio) || gates.ticker_coverage_ratio < 0.8 ||
+    successful.length < contract.thresholds.min_successful_families || official.length < contract.thresholds.min_official_successful_families || required.some((family) => !successful.includes(family) || !official.includes(family)) ||
+    !finite(gates.ticker_coverage_ratio) || gates.ticker_coverage_ratio < contract.thresholds.min_ticker_coverage_ratio ||
     gates.unresolved_material_conflict_count !== 0 || gates.concentration_pass !== true ||
     gates.yahoo_authoritative !== false || gates.catalog_source_count_is_not_live_use !== true
   ) throw new Error("V213_ACTIVATION_FEDERATION_INVALID");
@@ -208,13 +198,13 @@ function validateSourceAudit(
   if (
     !finite(doc.schema_version) || doc.schema_version < 3 || doc.product_version !== "2.1.3" ||
     doc.status !== "PASS" || parsedTime(doc.generated_at) === null ||
-    violations.length !== 0 || blockers.length !== 0 || records.length !== 20 ||
-    !finite(portfolio.independent_source_families) || portfolio.independent_source_families < 3 ||
-    !finite(portfolio.independent_domains) || portfolio.independent_domains < 3 ||
-    !finite(portfolio.claim_primary_coverage_ratio) || portfolio.claim_primary_coverage_ratio < 0.75 ||
-    !finite(portfolio.claim_source_families) || portfolio.claim_source_families < 2 ||
-    !finite(portfolio.claim_source_domains) || portfolio.claim_source_domains < 2 ||
-    !finite(portfolio.maximum_single_family_share) || portfolio.maximum_single_family_share > 0.70 ||
+    violations.length !== 0 || blockers.length !== 0 || records.length !== contract.thresholds.ticker_count ||
+    !finite(portfolio.independent_source_families) || portfolio.independent_source_families < contract.thresholds.min_independent_source_families ||
+    !finite(portfolio.independent_domains) || portfolio.independent_domains < contract.thresholds.min_independent_domains ||
+    !finite(portfolio.claim_primary_coverage_ratio) || portfolio.claim_primary_coverage_ratio < contract.thresholds.min_claim_primary_coverage_ratio ||
+    !finite(portfolio.claim_source_families) || portfolio.claim_source_families < contract.thresholds.min_portfolio_claim_source_families ||
+    !finite(portfolio.claim_source_domains) || portfolio.claim_source_domains < contract.thresholds.min_portfolio_claim_source_domains ||
+    !finite(portfolio.maximum_single_family_share) || portfolio.maximum_single_family_share > contract.thresholds.max_single_family_share ||
     portfolio.market_conflict_ticker_count !== 0 ||
     !Number.isFinite(coverage) || coverage < 0 || coverage > 1 ||
     !Number.isFinite(target) || target <= 0 || target > 1 ||
@@ -231,7 +221,7 @@ function validateSourceAudit(
     notice.provider_failure_must_not_be_silently_relabelled_as_success !== true ||
     notice.market_data_is_not_averaged_into_published_returns !== true ||
     !finite(notice.uncorroborated_valuation_factor_max) ||
-    notice.uncorroborated_valuation_factor_max > 3.75
+    notice.uncorroborated_valuation_factor_max > contract.thresholds.max_uncorroborated_valuation_factor
   ) throw new Error("V213_ACTIVATION_SOURCE_AUDIT_INVALID");
   sameOrder(
     tickerOrder(records, "V213_ACTIVATION_SOURCE_AUDIT_ORDER_INVALID"),
@@ -268,7 +258,7 @@ function validateSourceAudit(
       if (
         eligible || logic.model_inference_confidence !== "LIMITED" ||
         !missing.includes(MARKET_MISSING) ||
-        Number(top20[index]?.serenity_factors.valuation_expectations ?? 99) > 3.75
+        Number(top20[index]?.serenity_factors.valuation_expectations ?? 99) > contract.thresholds.max_uncorroborated_valuation_factor
       ) throw new Error("V213_ACTIVATION_UNCORROBORATED_CONFIDENCE_INVALID");
     } else if (eligible && (
       market.status !== "CORROBORATED" ||
@@ -454,6 +444,8 @@ export async function ingestV213ActivationBundle(
     order,
     top20,
   );
+  const publicationMode = validateR75PublicationModes(sourceAudit, top20 as unknown as Array<Record<string, unknown>>);
+  const publicationModeContractHash = await r75PublicationModeContractHash();
 
   const previousPointer = await env.PUBLIC_CACHE.get("snapshot:current", "text");
   const previousRunId = currentRunId(previousPointer);
@@ -473,6 +465,9 @@ export async function ingestV213ActivationBundle(
         pointer_written_last: true,
         rollback_available: true,
         idempotent_replay: true,
+        publication_mode: publicationMode,
+        publication_mode_contract_id: contract.contract_id,
+        publication_mode_contract_sha256: publicationModeContractHash,
       };
     }
     if (previousPointer !== state.previous_pointer) {
@@ -561,6 +556,9 @@ export async function ingestV213ActivationBundle(
     pointer_written_last: true,
     rollback_available: true,
     idempotent_replay: false,
+    publication_mode: publicationMode,
+    publication_mode_contract_id: contract.contract_id,
+    publication_mode_contract_sha256: publicationModeContractHash,
   };
 }
 

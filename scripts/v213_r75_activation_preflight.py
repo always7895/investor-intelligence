@@ -26,42 +26,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-PRODUCT_VERSION = "2.1.3"
-SCHEMA_VERSION = 4
-PAYLOAD_NAMES = {
-    "top20_json",
-    "source_plan_json",
-    "report_text",
-    "v212_top20_report_json",
-    "v213_top20_report_json",
-    "source_federation_json",
-    "source_independence_json",
-}
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v1.json"
+try:
+    CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8-sig"))
+except (OSError, json.JSONDecodeError) as exc:
+    raise RuntimeError(f"unable to load R75 publication contract: {CONTRACT_PATH}") from exc
+
+PRODUCT_VERSION = str(CONTRACT["product_version"])
+SCHEMA_VERSION = int(CONTRACT["bundle_schema_version"])
+PAYLOAD_NAMES = set(CONTRACT["payload_names"])
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
 TRANSACTION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
-EVIDENCE_QUALIFIED = "EVIDENCE_QUALIFIED"
-LIMITED = "LIMITED_RESEARCH_CANDIDATE"
-LIMITED_MISSING_CODES = {
-    "LIMITED_RESEARCH_CANDIDATE",
-    "INDEPENDENT_CLAIM_CORROBORATION",
-}
-SENSITIVE_FACTORS = (
-    "demand_wave",
-    "chokepoint",
-    "pricing_power",
-    "replacement_friction",
-    "tam_capture",
-)
-REQUIRED_FEDERATION_FAMILIES = {
-    "us_sec",
-    "nasdaq",
-    "world_bank",
-    "ecb",
-}
+EVIDENCE_QUALIFIED = str(CONTRACT["modes"]["evidence_qualified"])
+LIMITED = str(CONTRACT["modes"]["limited"])
+LIMITED_MISSING_CODES = set(CONTRACT["limited_missing_codes"])
+SENSITIVE_FACTORS = tuple(CONTRACT["sensitive_factors"])
+REQUIRED_FEDERATION_FAMILIES = set(CONTRACT["required_federation_families"])
+THRESHOLDS = CONTRACT["thresholds"]
 MARKET_DEGRADATION = "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE"
-MAX_BUNDLE_AGE_SECONDS = 7200
-CLOCK_SKEW_SECONDS = 300
+MAX_BUNDLE_AGE_SECONDS = int(THRESHOLDS["max_bundle_age_seconds"])
+CLOCK_SKEW_SECONDS = int(THRESHOLDS["clock_skew_seconds"])
 
 
 class PreflightError(RuntimeError):
@@ -116,6 +102,14 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def contract_sha256() -> str:
+    return sha256_text(canonical_json(CONTRACT))
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -135,8 +129,8 @@ def parse_json_text(value: Any, label: str) -> Any:
 
 def ticker_order(rows: Any, label: str) -> list[str]:
     values = array(rows, label)
-    if len(values) != 20:
-        raise PreflightError(f"{label} must contain exactly 20 rows")
+    if len(values) != int(THRESHOLDS["ticker_count"]):
+        raise PreflightError(f"{label} must contain exactly {int(THRESHOLDS["ticker_count"])} rows")
     result: list[str] = []
     for index, raw in enumerate(values, 1):
         row = object_(raw, f"{label}[{index}]")
@@ -176,28 +170,43 @@ def validate_freshness(root: Mapping[str, Any], now: datetime) -> dict[str, floa
                 f"max={MAX_BUNDLE_AGE_SECONDS}"
             )
         ages[label] = round(max(0.0, age), 3)
-    if parsed["bundle.public_data_as_of"] > (
-        parsed["bundle.generated_at"].timestamp() + CLOCK_SKEW_SECONDS
-    ):
+    if (
+        parsed["bundle.public_data_as_of"]
+        - parsed["bundle.generated_at"]
+    ).total_seconds() > CLOCK_SKEW_SECONDS:
         raise PreflightError("public_data_as_of is later than generated_at")
     return ages
 
 
 def validate_source_plan(raw: Any) -> None:
     plan = object_(raw, "source plan")
-    if integer(plan.get("catalog_count")) != 101:
-        raise PreflightError("source plan catalog_count is not 101")
-    if str(plan.get("provider_scope") or "") != "public_only":
-        raise PreflightError("source plan provider_scope is not public_only")
-    if plan.get("owner_watchlist_inherited") is not False:
-        raise PreflightError("source plan inherited a private watchlist")
-    if plan.get("line_public_eligible") is not True:
-        raise PreflightError("source plan is not LINE-public eligible")
+    inventory = object_(plan.get("inventory"), "source plan inventory")
+    federation = object_(plan.get("live_source_federation"), "source plan federation")
     scoring = object_(plan.get("scoring_methodology"), "source plan scoring")
-    if scoring.get("official_serenity_formula_claimed") is not False:
-        raise PreflightError("source plan claims an official Serenity formula")
-    if scoring.get("private_process_reproduction_claimed") is not False:
-        raise PreflightError("source plan claims private-process reproduction")
+    successful = {str(item) for item in array(federation.get("successful_families"), "source plan successful families")}
+    official = {str(item) for item in array(federation.get("official_successful_families"), "source plan official families")}
+    if (
+        integer(plan.get("schema_version")) != 1
+        or integer(plan.get("catalog_count")) != 101
+        or plan.get("automatic_activation") is not False
+        or str(plan.get("provider_scope") or "") != "public_only"
+        or plan.get("owner_watchlist_inherited") is not False
+        or plan.get("line_public_eligible") is not True
+        or integer(inventory.get("source_count")) != 101
+        or integer(inventory.get("runtime_enabled_count"), -1) != 0
+        or len(successful) < int(THRESHOLDS["min_successful_families"])
+        or len(official) < int(THRESHOLDS["min_official_successful_families"])
+        or not REQUIRED_FEDERATION_FAMILIES.issubset(successful)
+        or not REQUIRED_FEDERATION_FAMILIES.issubset(official)
+        or number(federation.get("ticker_coverage_ratio")) < number(THRESHOLDS["min_ticker_coverage_ratio"])
+        or integer(federation.get("unresolved_material_conflict_count")) != 0
+        or federation.get("yahoo_authoritative") is not False
+        or federation.get("catalog_source_count_is_not_live_use") is not True
+        or str(scoring.get("scoring_version") or "") != str(CONTRACT["scoring_version"])
+        or scoring.get("official_serenity_formula_claimed") is not False
+        or scoring.get("private_process_reproduction_claimed") is not False
+    ):
+        raise PreflightError("source plan violates the publication contract")
 
 
 def validate_federation(raw: Any, order: Sequence[str]) -> dict[str, Any]:
@@ -221,14 +230,15 @@ def validate_federation(raw: Any, order: Sequence[str]) -> dict[str, Any]:
         )
     }
     missing = REQUIRED_FEDERATION_FAMILIES - successful
-    if missing:
+    missing_official = REQUIRED_FEDERATION_FAMILIES - official
+    if missing or missing_official:
         raise PreflightError(
             "source federation lacks required core families: "
-            + ",".join(sorted(missing))
+            + ",".join(sorted(missing | missing_official))
         )
-    if len(successful) < 5:
-        raise PreflightError("source federation has fewer than five successful families")
-    if len(official) < 4:
+    if len(successful) < int(THRESHOLDS["min_successful_families"]):
+        raise PreflightError("source federation has fewer than the required successful families")
+    if len(official) < int(THRESHOLDS["min_official_successful_families"]):
         raise PreflightError("source federation has fewer than four official families")
     reported_missing = array(
         gates.get("missing_required_families"),
@@ -236,7 +246,7 @@ def validate_federation(raw: Any, order: Sequence[str]) -> dict[str, Any]:
     )
     if reported_missing:
         raise PreflightError("source federation reports missing required families")
-    if number(gates.get("ticker_coverage_ratio")) < 0.8:
+    if number(gates.get("ticker_coverage_ratio")) < number(THRESHOLDS["min_ticker_coverage_ratio"]):
         raise PreflightError("source federation Top20 coverage is below 80%")
     if integer(gates.get("unresolved_material_conflict_count")) != 0:
         raise PreflightError("source federation has unresolved material conflicts")
@@ -299,20 +309,20 @@ def validate_source_audit(
     timestamp(document.get("generated_at"), "source-independence generated_at")
     if violations or blockers:
         raise PreflightError("source-independence audit contains blocking violations")
-    if len(records) != 20:
+    if len(records) != int(THRESHOLDS["ticker_count"]):
         raise PreflightError("source-independence audit does not contain 20 records")
     require_same_order(order, records, "source-independence audit")
-    if integer(portfolio.get("independent_source_families")) < 3:
+    if integer(portfolio.get("independent_source_families")) < int(THRESHOLDS["min_independent_source_families"]):
         raise PreflightError("portfolio has fewer than three independent source families")
-    if integer(portfolio.get("independent_domains")) < 3:
+    if integer(portfolio.get("independent_domains")) < int(THRESHOLDS["min_independent_domains"]):
         raise PreflightError("portfolio has fewer than three independent domains")
-    if number(portfolio.get("claim_primary_coverage_ratio")) < 0.75:
+    if number(portfolio.get("claim_primary_coverage_ratio")) < number(THRESHOLDS["min_claim_primary_coverage_ratio"]):
         raise PreflightError("claim-primary coverage is below 75%")
-    if integer(portfolio.get("claim_source_families")) < 1:
+    if integer(portfolio.get("claim_source_families")) < int(THRESHOLDS["min_portfolio_claim_source_families"]):
         raise PreflightError("portfolio has no company-claim family")
-    if integer(portfolio.get("claim_source_domains")) < 1:
+    if integer(portfolio.get("claim_source_domains")) < int(THRESHOLDS["min_portfolio_claim_source_domains"]):
         raise PreflightError("portfolio has no company-claim domain")
-    if number(portfolio.get("maximum_single_family_share"), 1.0) > 0.70:
+    if number(portfolio.get("maximum_single_family_share"), 1.0) > number(THRESHOLDS["max_single_family_share"]):
         raise PreflightError("one source family exceeds the 70% concentration cap")
     if integer(portfolio.get("market_conflict_ticker_count")) != 0:
         raise PreflightError("market-source conflicts remain unresolved")
@@ -361,7 +371,7 @@ def validate_source_audit(
     limited_declared = integer(portfolio.get("limited_research_candidate_count"), -1)
     if strict_declared < 0 or limited_declared < 0:
         raise PreflightError("publication-mode counts are missing")
-    if strict_declared + limited_declared != 20:
+    if strict_declared + limited_declared != int(THRESHOLDS["ticker_count"]):
         raise PreflightError("publication-mode counts do not total 20")
     if portfolio.get("all_rows_publication_provenance_multi_source") is not True:
         raise PreflightError("not every row has independent publication provenance")
@@ -371,7 +381,7 @@ def validate_source_audit(
     freshness = object_(document.get("freshness_audit"), "freshness audit")
     if str(freshness.get("status") or "") != "PASS":
         raise PreflightError("freshness audit is not PASS")
-    if integer(freshness.get("ticker_count")) != 20:
+    if integer(freshness.get("ticker_count")) != int(THRESHOLDS["ticker_count"]):
         raise PreflightError("freshness audit ticker count is not 20")
     if integer(freshness.get("evidence_qualified_candidate_count"), -1) != strict_declared:
         raise PreflightError("strict publication count disagrees with freshness audit")
@@ -402,21 +412,21 @@ def validate_source_audit(
 
         if mode == EVIDENCE_QUALIFIED:
             strict_count += 1
-            if integer(metrics.get("claim_relevant_independent_families")) < 2:
+            if integer(metrics.get("claim_relevant_independent_families")) < int(THRESHOLDS["min_evidence_claim_families"]):
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED has fewer than two claim families")
-            if integer(metrics.get("claim_relevant_independent_domains")) < 2:
+            if integer(metrics.get("claim_relevant_independent_domains")) < int(THRESHOLDS["min_evidence_claim_domains"]):
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED has fewer than two claim domains")
-            if integer(metrics.get("claim_relevant_primary_sources")) < 1:
+            if integer(metrics.get("claim_relevant_primary_sources")) < int(THRESHOLDS["min_evidence_primary_sources"]):
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED has no primary claim source")
-            if number(metrics.get("claim_dated_evidence_ratio")) < 0.8:
+            if number(metrics.get("claim_dated_evidence_ratio")) < number(THRESHOLDS["min_claim_dated_evidence_ratio"]):
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED dated-evidence ratio is below 80%")
         elif mode == LIMITED:
             limited_count += 1
-            if integer(state.get("claim_primary_units")) < 1:
+            if integer(state.get("claim_primary_units")) < int(THRESHOLDS["min_limited_claim_primary_units"]):
                 raise PreflightError(f"{ticker}: LIMITED candidate lacks primary company evidence")
-            if integer(state.get("publication_provenance_origin_count")) < 2:
+            if integer(state.get("publication_provenance_origin_count")) < int(THRESHOLDS["min_publication_provenance_origins"]):
                 raise PreflightError(f"{ticker}: LIMITED candidate has one publication origin")
-            if integer(state.get("publication_provenance_domain_count")) < 2:
+            if integer(state.get("publication_provenance_domain_count")) < int(THRESHOLDS["min_publication_provenance_domains"]):
                 raise PreflightError(f"{ticker}: LIMITED candidate has one publication domain")
             if record.get("eligible_for_high_confidence_model_inference") is not False:
                 raise PreflightError(f"{ticker}: LIMITED candidate is HIGH eligible")
@@ -509,19 +519,14 @@ def validate_bundle(bundle_path: Path, now: datetime | None = None) -> dict[str,
     order = ticker_order(top20_list, "Top20")
     top20 = [object_(row, "Top20 row") for row in top20_list]
     for row in top20:
-        if str(row.get("scoring_version") or "") != "system-operationalization-v2.1.3-diversified":
+        if str(row.get("scoring_version") or "") != str(CONTRACT["scoring_version"]):
             raise PreflightError("Top20 contains a provisional or legacy scoring row")
 
     validate_source_plan(parse_json_text(payloads["source_plan_json"], "source plan"))
     report = payloads["report_text"]
     if len(report) < 200 or len(report) > 200_000:
         raise PreflightError("report_text length is outside the publication contract")
-    for marker in (
-        "line-public-eligible: true",
-        "provider-scope: public_only",
-        "owner-watchlist-inherited: false",
-        "official-serenity-formula-claimed: false",
-    ):
+    for marker in CONTRACT["report_markers"]:
         if marker not in report:
             raise PreflightError(f"report_text lacks attestation marker: {marker}")
 
@@ -548,13 +553,15 @@ def validate_bundle(bundle_path: Path, now: datetime | None = None) -> dict[str,
         "status": "PASS",
         "product_version": PRODUCT_VERSION,
         "policy": "r75-sealed-publication-mode-preflight-v1",
+        "publication_mode_contract_id": str(CONTRACT["contract_id"]),
+        "publication_mode_contract_sha256": contract_sha256(),
         "bundle_path": str(bundle_path.resolve()),
         "bundle_sha256": sha256_file(bundle_path),
         "transaction_id": transaction_id,
         "run_id": run_id,
         "evaluated_at": evaluated_at.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "input_age_seconds": ages,
-        "ticker_count": 20,
+        "ticker_count": int(THRESHOLDS["ticker_count"]),
         **federation_result,
         **source_result,
         "production_mutation": False,
@@ -589,7 +596,7 @@ def synthetic_bundle(now: datetime | None = None) -> dict[str, Any]:
             {
                 "rank": rank,
                 "ticker": ticker,
-                "scoring_version": "system-operationalization-v2.1.3-diversified",
+                "scoring_version": str(CONTRACT["scoring_version"]),
                 "serenity_factors": {
                     "demand_wave": 0,
                     "chokepoint": 0,
@@ -636,11 +643,23 @@ def synthetic_bundle(now: datetime | None = None) -> dict[str, Any]:
         for rank, ticker in enumerate(order, 1)
     ]
     plan = {
+        "schema_version": 1,
         "catalog_count": 101,
+        "automatic_activation": False,
         "provider_scope": "public_only",
         "owner_watchlist_inherited": False,
         "line_public_eligible": True,
+        "inventory": {"source_count": 101, "runtime_enabled_count": 0},
+        "live_source_federation": {
+            "successful_families": ["us_sec", "nasdaq", "world_bank", "ecb"],
+            "official_successful_families": ["us_sec", "nasdaq", "world_bank", "ecb"],
+            "ticker_coverage_ratio": 1.0,
+            "unresolved_material_conflict_count": 0,
+            "yahoo_authoritative": False,
+            "catalog_source_count_is_not_live_use": True,
+        },
         "scoring_methodology": {
+            "scoring_version": CONTRACT["scoring_version"],
             "official_serenity_formula_claimed": False,
             "private_process_reproduction_claimed": False,
         },
@@ -704,7 +723,7 @@ def synthetic_bundle(now: datetime | None = None) -> dict[str, Any]:
         },
         "freshness_audit": {
             "status": "PASS",
-            "ticker_count": 20,
+            "ticker_count": int(THRESHOLDS["ticker_count"]),
             "evidence_qualified_candidate_count": 0,
             "limited_research_candidate_count": 20,
             "all_tickers_publication_provenance_multi_source": True,
@@ -720,6 +739,7 @@ def synthetic_bundle(now: datetime | None = None) -> dict[str, Any]:
                 "<!-- line-public-eligible: true -->",
                 "<!-- provider-scope: public_only -->",
                 "<!-- owner-watchlist-inherited: false -->",
+                f"<!-- scoring-version: {CONTRACT['scoring_version']} -->",
                 "<!-- official-serenity-formula-claimed: false -->",
                 "# Synthetic R75 report",
                 "Evidence-bound LIMITED research candidate report. " * 10,
@@ -746,6 +766,31 @@ def synthetic_bundle(now: datetime | None = None) -> dict[str, Any]:
         "payloads": payloads,
         "sha256": {name: sha256_text(body) for name, body in payloads.items()},
     }
+
+
+def validate_fixture(path: Path) -> dict[str, Any]:
+    fixture = object_(json.loads(path.read_text(encoding="utf-8-sig")), "fixture")
+    if fixture.get("schema_version") != 1 or fixture.get("contract_id") != CONTRACT["contract_id"]:
+        raise PreflightError("fixture contract identity is invalid")
+    if fixture.get("contract_sha256") != contract_sha256():
+        raise PreflightError("fixture contract hash is invalid")
+    evaluated_at = timestamp(fixture.get("evaluated_at"), "fixture evaluated_at")
+    bundle = object_(fixture.get("bundle"), "fixture bundle")
+    expected = object_(fixture.get("expected"), "fixture expected")
+    with tempfile.TemporaryDirectory(prefix="v213-r75-fixture-") as directory:
+        bundle_path = Path(directory) / "bundle.json"
+        bundle_path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+        receipt = validate_bundle(bundle_path, evaluated_at)
+    observed = {
+        "status": receipt["status"],
+        "evidence_qualified": receipt["evidence_qualified_candidate_count"],
+        "limited": receipt["limited_research_candidate_count"],
+        "high_eligible": receipt["high_confidence_eligible_count"],
+        "bls_present": receipt["bls_present"],
+    }
+    if observed != dict(expected):
+        raise PreflightError(f"fixture result mismatch: {path.name}")
+    return {**observed, "fixture": str(path), "contract_sha256": contract_sha256()}
 
 
 def self_test() -> None:
@@ -804,6 +849,9 @@ def self_test() -> None:
         else:
             raise AssertionError("single-origin LIMITED candidate was not rejected")
 
+    for relative in CONTRACT["fixture_files"]:
+        validate_fixture(ROOT / relative)
+
     print(
         "V213_R75_ACTIVATION_PREFLIGHT_SELF_TEST = PASS; "
         "all_limited=true; optional_bls=true; positive_limited_rejected=true; "
@@ -821,7 +869,16 @@ def main() -> int:
     )
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--fixture", type=Path)
+    parser.add_argument("--print-contract-hash", action="store_true")
     args = parser.parse_args()
+    if args.print_contract_hash:
+        print(contract_sha256())
+        return 0
+    if args.fixture:
+        result = validate_fixture(args.fixture)
+        print("V213_R75_PUBLICATION_FIXTURE = PASS; " + json.dumps(result, sort_keys=True))
+        return 0
     if args.self_test:
         self_test()
         return 0

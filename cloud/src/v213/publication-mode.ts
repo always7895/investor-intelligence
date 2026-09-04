@@ -1,16 +1,26 @@
-const EVIDENCE_QUALIFIED = "EVIDENCE_QUALIFIED";
-const LIMITED = "LIMITED_RESEARCH_CANDIDATE";
-const LIMITED_CODES = [
-  "LIMITED_RESEARCH_CANDIDATE",
-  "INDEPENDENT_CLAIM_CORROBORATION",
-] as const;
-const SENSITIVE_FACTORS = [
-  "demand_wave",
-  "chokepoint",
-  "pricing_power",
-  "replacement_friction",
-  "tam_capture",
-] as const;
+import contract from "../../../config/v213-r75-publication-mode-v1.json";
+
+const EVIDENCE_QUALIFIED = contract.modes.evidence_qualified;
+const LIMITED = contract.modes.limited;
+const LIMITED_CODES = contract.limited_missing_codes;
+const SENSITIVE_FACTORS = contract.sensitive_factors;
+const THRESHOLDS = contract.thresholds;
+
+export const R75_PUBLICATION_MODE_CONTRACT_ID = contract.contract_id;
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const item = value as Record<string, unknown>;
+    return `{${Object.keys(item).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(item[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export async function r75PublicationModeContractHash(): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(contract)));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 function record(value: unknown, code: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
@@ -68,18 +78,18 @@ export function validateR75PublicationModes(
   const portfolio = record(sourceAudit.portfolio, "V213_ACTIVATION_PUBLICATION_MODE_INVALID");
   const freshnessAudit = record(sourceAudit.freshness_audit, "V213_ACTIVATION_PUBLICATION_MODE_INVALID");
   const sourceRows = rows(sourceAudit.records, "V213_ACTIVATION_PUBLICATION_MODE_INVALID");
-  if (sourceRows.length !== 20 || top20.length !== 20) {
+  if (sourceRows.length !== THRESHOLDS.ticker_count || top20.length !== THRESHOLDS.ticker_count) {
     throw new Error("V213_ACTIVATION_PUBLICATION_MODE_COUNT_INVALID");
   }
 
   const declaredStrict = finiteNumber(portfolio.evidence_qualified_candidate_count);
   const declaredLimited = finiteNumber(portfolio.limited_research_candidate_count);
-  if (!Number.isInteger(declaredStrict) || !Number.isInteger(declaredLimited) || declaredStrict < 0 || declaredLimited < 0 || declaredStrict + declaredLimited !== 20) {
+  if (!Number.isInteger(declaredStrict) || !Number.isInteger(declaredLimited) || declaredStrict < 0 || declaredLimited < 0 || declaredStrict + declaredLimited !== THRESHOLDS.ticker_count) {
     throw new Error("V213_ACTIVATION_PUBLICATION_MODE_COUNT_INVALID");
   }
   if (
     freshnessAudit.status !== "PASS" ||
-    finiteNumber(freshnessAudit.ticker_count) !== 20 ||
+    finiteNumber(freshnessAudit.ticker_count) !== THRESHOLDS.ticker_count ||
     finiteNumber(freshnessAudit.evidence_qualified_candidate_count) !== declaredStrict ||
     finiteNumber(freshnessAudit.limited_research_candidate_count) !== declaredLimited ||
     freshnessAudit.all_tickers_publication_provenance_multi_source !== true ||
@@ -111,10 +121,10 @@ export function validateR75PublicationModes(
     if (mode === EVIDENCE_QUALIFIED) {
       evidenceQualified += 1;
       if (
-        finiteNumber(metrics.claim_relevant_independent_families) < 2 ||
-        finiteNumber(metrics.claim_relevant_independent_domains) < 2 ||
-        finiteNumber(metrics.claim_relevant_primary_sources) < 1 ||
-        finiteNumber(metrics.claim_dated_evidence_ratio) < 0.8
+        finiteNumber(metrics.claim_relevant_independent_families) < THRESHOLDS.min_evidence_claim_families ||
+        finiteNumber(metrics.claim_relevant_independent_domains) < THRESHOLDS.min_evidence_claim_domains ||
+        finiteNumber(metrics.claim_relevant_primary_sources) < THRESHOLDS.min_evidence_primary_sources ||
+        finiteNumber(metrics.claim_dated_evidence_ratio) < THRESHOLDS.min_claim_dated_evidence_ratio
       ) {
         throw new Error("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
       }
@@ -124,9 +134,9 @@ export function validateR75PublicationModes(
     if (mode !== LIMITED) throw new Error("V213_ACTIVATION_PUBLICATION_MODE_INVALID");
     limited += 1;
     if (
-      finiteNumber(state.claim_primary_units) < 1 ||
-      finiteNumber(state.publication_provenance_origin_count) < 2 ||
-      finiteNumber(state.publication_provenance_domain_count) < 2 ||
+      finiteNumber(state.claim_primary_units) < THRESHOLDS.min_limited_claim_primary_units ||
+      finiteNumber(state.publication_provenance_origin_count) < THRESHOLDS.min_publication_provenance_origins ||
+      finiteNumber(state.publication_provenance_domain_count) < THRESHOLDS.min_publication_provenance_domains ||
       eligible ||
       logic.model_inference_confidence !== "LIMITED" ||
       logic.validated_company_thesis !== false ||
