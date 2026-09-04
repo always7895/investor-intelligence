@@ -133,13 +133,13 @@ async function envelope() {
   const top20Json = JSON.stringify(rows);
   const sourcePlanJson = JSON.stringify({
     schema_version: 1,
-    catalog_count: 99,
+    catalog_count: 101,
     automatic_activation: false,
     owner_watchlist_inherited: false,
     provider_scope: "public_only",
     line_public_eligible: true,
     inventory: {
-      source_count: 99,
+      source_count: 101,
       runtime_enabled_count: 0,
       topic_counts: { positions: 1 },
     },

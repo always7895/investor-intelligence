@@ -80,7 +80,7 @@ function lineHelpText(): string {
     "• 通知狀態 / 取消配對",
     "• 每天 08:00 與 21:00（Asia/Taipei）推送通過 freshness gate 的公開 Top 20",
     "",
-    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。99 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
+    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。101 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
   ].join("\n");
 }
 
@@ -384,7 +384,7 @@ function health(): Response {
     direct_chat_only: true,
     scheduled_times: ["08:00 Asia/Taipei", "21:00 Asia/Taipei"],
     serenity_first: true,
-    source_catalog_count: 99,
+    source_catalog_count: 101,
     source_activation_claim: "reviewed_catalog_not_all_runtime_enabled",
     owner_watchlist_inherited: false,
     manual_option_calculator: "ephemeral_user_supplied_only",

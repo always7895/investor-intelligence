@@ -544,7 +544,7 @@ def self_test() -> None:
     assert invalid.status == "UNAVAILABLE"
     assert invalid.error == "market_as_of_missing_or_invalid"
 
-    assert _safe_error("apikey=secret&x=1") == "apikey=<redacted>&x=1"
+    assert _safe_error("apikey=abc&x=1") == "apikey=<redacted>&x=1"
     assert _safe_error("token=hunter2") == "token=<redacted>"
     assert not os.getenv("HF_MARKET_DATA_API_KEY")
     print(

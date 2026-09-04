@@ -44,11 +44,11 @@ class AuthoritativeSourceCatalogTests(unittest.TestCase):
 
     def test_catalog_is_large_diverse_unbounded_and_disabled(self) -> None:
         values = inventory(self.sources)
-        self.assertEqual(values["source_count"], 99)
+        self.assertEqual(values["source_count"], 101)
         self.assertEqual(values["runtime_enabled_count"], 0)
         self.assertTrue(self.manifest["catalog_policy"]["no_fixed_source_count_limit"])
         self.assertTrue(self.manifest["catalog_source_count_snapshot_is_not_a_limit"])
-        self.assertEqual(self.manifest["catalog_source_count_snapshot"], 99)
+        self.assertEqual(self.manifest["catalog_source_count_snapshot"], 101)
         self.assertEqual(self.warnings, [])
         self.assertGreaterEqual(values["region_counts"]["ASIA_PACIFIC"], 30)
         self.assertGreaterEqual(values["region_counts"]["AMERICAS"], 25)

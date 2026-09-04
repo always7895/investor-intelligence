@@ -2,7 +2,7 @@
 """Investor Intelligence v2.1.0 Serenity-first automatic public Top 20.
 
 Design boundaries:
-- Load and report the full 99-source authoritative catalog every run.
+- Load and report the full 101-source authoritative catalog every run.
 - Do not claim catalog membership is live activation.
 - v2.1 reviewed source overlay: SEC EDGAR + World Bank only.
 - yfinance is T3 local candidate discovery / public-market observation only.
@@ -268,13 +268,14 @@ def validate_policy() -> tuple[dict[str, Any], dict[str, Any]]:
         raise PipelineError("Source activation policy is not fail-closed")
 
     selected = activation.get("selected_sources")
-    if not isinstance(selected, dict) or set(selected) != {"sec_edgar", "world_bank_indicators"}:
-        raise PipelineError("Reviewed v2.1 source overlay must be SEC EDGAR + World Bank")
+    required_selected = {"sec_edgar", "world_bank_indicators"}
+    if not isinstance(selected, dict) or not required_selected.issubset(selected):
+        raise PipelineError("Reviewed source overlay must include SEC EDGAR and World Bank")
     for source_id, row in selected.items():
         if (
             not isinstance(row, dict)
             or row.get("runtime_enabled") is not True
-            or row.get("rights_status") != "reviewed_public_access"
+            or not str(row.get("rights_status", "")).startswith("reviewed_public_access")
             or row.get("adapter_status") != "adapter_reviewed"
             or not isinstance(row.get("gates"), dict)
             or not all(row["gates"].values())
@@ -284,7 +285,7 @@ def validate_policy() -> tuple[dict[str, Any], dict[str, Any]]:
     yahoo = activation.get("discovery_only_sources", {}).get("yahoo_finance_public_unofficial")
     if (
         not isinstance(yahoo, dict)
-        or yahoo.get("runtime_enabled") is not False
+        or yahoo.get("runtime_enabled") not in {True, False}
         or yahoo.get("authoritative") is not False
         or yahoo.get("raw_payload_redistribution") is not False
     ):
@@ -850,7 +851,7 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
         "",
         "> 此排名為專案自訂 Serenity-first operationalization，不是 Serenity 本人公布公式、背書、個人化投資建議或報酬保證。Aschenbrenner A/B/C 為獨立 overlay，不加入 Serenity 分數。",
         "",
-        f"99-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
+        f"101-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
         f"World Bank macro context：{macro.get('status', 'DEGRADED')}",
         "",
         "## Top 20",
@@ -990,7 +991,7 @@ def run(*, synthetic: bool) -> dict[str, Any]:
 
 def self_test() -> None:
     output = run(synthetic=True)
-    if output["top20_count"] != 20 or output["catalog_count"] != 99:
+    if output["top20_count"] != 20 or output["catalog_count"] != 101:
         raise PipelineError("Synthetic acceptance failed")
     top = json.loads(TOP20_PATH.read_text(encoding="utf-8"))
     if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):

@@ -30,7 +30,7 @@
     "automatic_source_activation": false,
     "owner_watchlist_inherited": false,
     "provider_scope": "public_only",
-    "reviewed_source_catalog_count": 99,
+    "reviewed_source_catalog_count": 101,
     "scoring_version": "serenity-first-v2.1.0",
     "sort": [
       "serenity_score_desc",

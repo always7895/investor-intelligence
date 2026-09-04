@@ -60,7 +60,7 @@ class SerenityPublicLogicV213Tests(unittest.TestCase):
         return row
 
     def test_policy_is_fail_closed_and_severe_signals_are_usable(self) -> None:
-        self.assertEqual(self.policy["schema_version"], 2)
+        self.assertEqual(self.policy["schema_version"], 3)
         self.assertEqual(self.policy["legacy_quantitative_overlay_label"], "System operationalization score")
         self.assertIn("Serenity score", self.policy["forbid_labels"])
         self.assertTrue(all(self.policy["fail_closed"].values()))

@@ -4,7 +4,7 @@
 
 v2.1.0 以 **Serenity-first** 七因子框架產生公開研究 Top 20，依序以 Serenity 分數、資料品質與股票代號排序。Aschenbrenner A/B/C 只作獨立基礎設施 overlay，不加入 Serenity 主分數。
 
-系統保留 99 個已審查來源的目錄與啟用計畫；這不代表每次執行都已擷取 99 個來源。只有通過合法性、存取條件、解析器、資料品質與執行邊界的來源才會被當作本輪證據。yfinance 僅作公開市場候選發現與觀察，不能取代 SEC 等 authoritative evidence。
+系統保留 101 個已審查來源的目錄與啟用計畫；這不代表每次執行都已擷取 101 個來源。只有通過合法性、存取條件、解析器、資料品質與執行邊界的來源才會被當作本輪證據。yfinance 僅作公開市場候選發現與觀察，不能取代 SEC 等 authoritative evidence。
 
 ## LINE 功能
 
@@ -48,7 +48,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\sync-v21-public-snapsh
 同步封包只包含：
 
 - exact Top 20；
-- 99-source plan 的公開摘要；
+- 101-source plan 的公開摘要；
 - 公開研究報告；
 - 每個 payload 的 SHA-256；
 - HMAC timestamp、nonce 與 signature。

@@ -78,7 +78,7 @@ function lineHelpText(): string {
     "",
     "通知：每天 08:00 與 21:00（Asia/Taipei）只在 freshness gate 通過後推送公開 Top 20。",
     "Top 20 固定只顯示：股票／長期投資報酬率／短期投資報酬率／行業別／獲利簡述。",
-    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。99 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
+    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。101 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
   ].join("\n");
 }
 
@@ -422,7 +422,7 @@ function health(): Response {
     research_universe_qa: "signed_public_snapshot_plus_local_multi_source_fallback",
     top20_presentation: "five_fields_only",
     public_options: "scored_universe_yfinance_public_only",
-    source_catalog_count: 99,
+    source_catalog_count: 101,
     source_activation_claim: "reviewed_catalog_not_all_runtime_enabled",
     owner_watchlist_inherited: false,
     manual_option_calculator: "ephemeral_user_supplied_only",

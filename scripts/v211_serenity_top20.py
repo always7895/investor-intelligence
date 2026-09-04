@@ -429,7 +429,7 @@ def run(*, synthetic: bool) -> dict[str, Any]:
 
 def self_test() -> None:
     output = run(synthetic=True)
-    if output["top20_count"] != 20 or output["catalog_count"] != 99:
+    if output["top20_count"] != 20 or output["catalog_count"] != 101:
         raise base.PipelineError("v2.1.1 synthetic acceptance failed")
     if output["research_universe_count"] < 20:
         raise base.PipelineError("v2.1.1 synthetic universe is incomplete")

@@ -58,7 +58,7 @@ class H6B1R11Tests(unittest.TestCase):
             self.assertIn("Archives/edgar/data/123/", url)
             return filing_text
 
-        result = r11.r4.generic_sec_outlook_semantic(
+        result = r11.generic_sec_outlook_semantic_v6(
             "TEST",
             {"TEST": "123"},
             raw_fetcher=raw_fetcher,

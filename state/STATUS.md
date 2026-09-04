@@ -123,3 +123,27 @@ M5: snapshot readback/replay/rollback journal, operation locking, scheduler hard
 ### Next action
 
 M6 authoritative Windows no-mutation matrix and isolated transaction packaging tests, followed by M7 immutable artifact workflow and independent download verification.
+
+## Milestone M6 — authoritative Windows validation implementation (2026-09-04)
+
+- Input HEAD: `d28a96e`.
+- Consolidated the superseded v2.1.3 delivery/hotfix workflows into one read-only, no-mutation R75 Windows workflow: `.github/workflows/v213-r75-release.yml`.
+- The workflow bootstraps the repository-pinned CPython 3.12.10 runtime, installs the hash-locked wheel set, runs the complete Python and Worker suites, executes Windows PowerShell 5.1 and PowerShell 7 gates, and performs a real public-data refresh before requiring an actual 20/20 all-LIMITED sealed-bundle preflight.
+- Isolated KV-compatible transaction gates cover object readback, pointer-last promotion, corrupt replay rejection, rollback, and finalize under both PowerShell hosts.
+- Reconciled the reviewed source inventory from stale 99-source consumers to the current 101-source catalog and repaired import-order-dependent semantic-guard recursion exposed by complete test discovery.
+- `pwsh -File scripts/ci_v213_r75_validate.ps1 -SkipLiveRefresh` — PASS locally using repository-pinned CPython 3.12.10.
+- Complete Python suite — PASS (546 tests, 2 skipped).
+- Worker typecheck and full Vitest — PASS (18 files, 101 tests).
+- Workflow supply-chain, Actions storage, security, and canonical candidate gates — PASS.
+- Windows PowerShell 5.1 and PowerShell 7 activation transaction/wrapper/operation-lock tests — PASS.
+- External/Production mutation: **none**; the local acceptance intentionally skipped only the authoritative real-network refresh, which remains mandatory (not optional) in CI.
+
+### Open defect counts
+
+- P0: **1** (`P0-06`: successful current-HEAD self-hosted Windows run and downloadable release artifact evidence).
+- P1: **1** (`P1-01`: long-running public-source availability remains fail-closed).
+- P2: **2** (independent downloaded-artifact verification and final evidence reconciliation).
+
+### Next action
+
+Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 immutable R75 packaging, artifact download, and independent verification.

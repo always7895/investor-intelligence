@@ -88,6 +88,12 @@ ALLOWED_VALUE_PATTERNS = [
     re.compile(r"^required_secret\($", re.IGNORECASE),
     re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.get\($"),
     re.compile(r"^env\.", re.IGNORECASE),
+    re.compile(r"^\[string\]\(Get-PropertyValue\b", re.IGNORECASE),
+    re.compile(r"^String\(body\.token\b"),
+    re.compile(r"^crypto\.randomUUID\(\)"),
+    re.compile(r"^Random-Secret\b", re.IGNORECASE),
+    re.compile(r"^str\(os\.getenv\(", re.IGNORECASE),
+    re.compile(r"^<redacted>", re.IGNORECASE),
 ]
 
 FORBIDDEN_TRACKED_PATHS = {

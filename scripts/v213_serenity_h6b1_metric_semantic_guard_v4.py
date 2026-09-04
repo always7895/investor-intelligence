@@ -160,9 +160,21 @@ def _future_from_context_v4(metric: Mapping[str, Any]) -> tuple[str, str]:
             "INFERENCE",
         )
 
-    # Retain the older safe qualitative fallback only when an explicit next-12
-    # month recognition statement exists.
-    return r4._future_from_context(metric)
+    # Retain the older safe qualitative fallback without calling the mutable
+    # r4 dispatch slot. Later compatibility wrappers patch that slot at import
+    # time, and a dynamic call here otherwise becomes order-dependent recursion.
+    if re.search(
+        r"expect(?:s|ed)?\s+to\s+recognize[^.]{0,140}?"
+        r"(?:next|subsequent)\s+(?:twelve|12)\s+months",
+        context,
+        re.I | re.S,
+    ):
+        return (
+            "公司明示該RPO預計於未來12個月認列，但未在同一證據段落提供"
+            "可安全量化的比例；非新增訂單預測",
+            "INFERENCE",
+        )
+    return base.FUTURE_FALLBACK, "UNAVAILABLE"
 
 
 # Patch the functions referenced dynamically by the existing generic adapter.

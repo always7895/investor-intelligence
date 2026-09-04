@@ -2,6 +2,8 @@
 
 > Primary public source: Serenity (`@aleabitoreddit`) on X.
 >
+> It is a **public-logic high-fidelity reconstruction**, not a verbatim Serenity framework.
+>
 > Fidelity boundary: this file models only reasoning patterns that can be supported by identifiable public posts. It is **not** a claim to reproduce Serenity's private research process, portfolio, hidden data sources, or discretionary judgment. Serenity has not endorsed this project.
 
 ## 1. What the public record supports

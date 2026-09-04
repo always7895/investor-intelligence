@@ -84,12 +84,12 @@ describe("v2.1.1 public snapshot ingestion", () => {
     const options = universe.map((item) => option(item.ticker));
     const plan = {
       schema_version: 1,
-      catalog_count: 99,
+      catalog_count: 101,
       automatic_activation: false,
       owner_watchlist_inherited: false,
       provider_scope: "public_only",
       line_public_eligible: true,
-      inventory: { source_count: 99, runtime_enabled_count: 0, topic_counts: {} },
+      inventory: { source_count: 101, runtime_enabled_count: 0, topic_counts: {} },
       v211_discovery: {
         product_version: "2.1.1",
         scoring_formula_changed: false,

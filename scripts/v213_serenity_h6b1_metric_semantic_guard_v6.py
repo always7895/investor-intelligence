@@ -31,8 +31,50 @@ import v213_serenity_h6b1_metric_semantic_guard_v3 as r8
 
 r4 = r8.r4
 base = r4.base
-_PRE_R11_FUTURE = r4._future_from_context
 CANONICAL_DISCLAIMER = "非新增訂單預測"
+
+
+def _stable_pre_r11_future(metric: Mapping[str, Any]) -> tuple[str, str]:
+    """R6 fallback copied into an immutable local dispatch slot.
+
+    Earlier wrappers mutate ``r4._future_from_context`` at import time, so
+    capturing that module attribute is order-dependent under full discovery.
+    """
+    if str(metric.get("metric_type")) != "RPO":
+        return base.FUTURE_FALLBACK, "UNAVAILABLE"
+    context = str(metric.get("context") or "")
+    for kind, pattern in r4.NEXT12_PATTERNS:
+        match = pattern.search(context)
+        if not match:
+            continue
+        if kind == "pct":
+            pct = match.group("pct")
+            return (
+                f"公司預期約{pct}%的該RPO於未來12個月認列；"
+                "這是既有合約履約節奏，不等於新增訂單預測",
+                "INFERENCE",
+            )
+        next_amount = _normalize_amount_v6(match.group("next_amount"))
+        return (
+            f"公司預期未來12個月認列約{next_amount}的該RPO；"
+            "這是既有合約履約節奏，不等於新增訂單預測",
+            "INFERENCE",
+        )
+    if re.search(
+        r"expect(?:s|ed)?\s+to\s+recognize[^.]{0,140}?"
+        r"(?:next|subsequent)\s+(?:twelve|12)\s+months",
+        context,
+        re.I | re.S,
+    ):
+        return (
+            "公司明示該RPO預計於未來12個月認列，但未在同一證據段落提供"
+            "可安全量化的比例；非新增訂單預測",
+            "INFERENCE",
+        )
+    return base.FUTURE_FALLBACK, "UNAVAILABLE"
+
+
+_PRE_R11_FUTURE = _stable_pre_r11_future
 
 
 def _normalize_amount_v6(value: str) -> str:
@@ -172,6 +214,9 @@ def _future_from_context_v6(metric: Mapping[str, Any]) -> tuple[str, str]:
     # mutable r4._future_from_context slot from inside this fallback path.
     future, classification = _PRE_R11_FUTURE(metric)
     return _canonicalize_result(future, classification)
+
+
+generic_sec_outlook_semantic_v6 = r4.generic_sec_outlook_semantic
 
 
 # Generic SEC adapter looks this up dynamically.  The implementation above never

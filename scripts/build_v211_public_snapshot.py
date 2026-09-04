@@ -238,12 +238,12 @@ def self_test() -> None:
         top20 = universe[:20]
         plan = {
             "schema_version": 1,
-            "catalog_count": 99,
+            "catalog_count": 101,
             "automatic_activation": False,
             "owner_watchlist_inherited": False,
             "provider_scope": "public_only",
             "line_public_eligible": True,
-            "inventory": {"source_count": 99, "runtime_enabled_count": 0, "topic_counts": {}},
+            "inventory": {"source_count": 101, "runtime_enabled_count": 0, "topic_counts": {}},
             "v211_discovery": {
                 "product_version": "2.1.1",
                 "scoring_formula_changed": False,

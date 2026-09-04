@@ -98,10 +98,10 @@ class FinalDistributionScriptTests(unittest.TestCase):
 
     def test_launcher_source_is_local_powershell_bridge_only(self) -> None:
         text = self._read("launcher/InvestorIntelligenceLauncher.cs")
-        self.assertIn("run-local.ps1", text)
+        self.assertIn("run-v213-local.ps1", text)
         self.assertIn("--self-test", text)
-        self.assertIn("--synthetic", text)
-        self.assertIn("--no-sync", text)
+        self.assertIn("--model-selection-self-test", text)
+        self.assertIn("--pipe-hold-self-test", text)
         self.assertIn("powershell.exe", text)
         for forbidden in (
             "LINE_CHANNEL_ACCESS_TOKEN",

@@ -42,7 +42,7 @@ def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
         raise FidelityError(f"Invalid fidelity policy: {path}") from exc
     if not isinstance(value, dict):
         raise FidelityError("Fidelity policy must be an object")
-    if value.get("schema_version") != 2 or value.get("product_version") != "2.1.3":
+    if value.get("schema_version") not in {2, 3} or value.get("product_version") != "2.1.3":
         raise FidelityError("Unexpected fidelity policy schema/product version")
     if value.get("methodology") != "serenity-public-logic-high-fidelity-reconstruction":
         raise FidelityError("Unexpected fidelity methodology")
