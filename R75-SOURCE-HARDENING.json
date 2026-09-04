@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "product_version": "2.1.3",
+  "runtime_profile": "R75",
+  "status": "SOURCE_CONTRACT",
+  "sealed_activation_bundle_preflight": true,
+  "publication_modes": [
+    "EVIDENCE_QUALIFIED",
+    "LIMITED_RESEARCH_CANDIDATE"
+  ],
+  "limited_candidate_requires_primary_company_evidence": true,
+  "limited_candidate_minimum_publication_origins": 2,
+  "limited_candidate_minimum_publication_domains": 2,
+  "limited_candidate_high_confidence_allowed": false,
+  "limited_candidate_validated_thesis_allowed": false,
+  "limited_candidate_positive_sensitive_factors_allowed": false,
+  "bls_required_for_activation": false,
+  "minimum_successful_source_families": 5,
+  "minimum_successful_official_families": 4,
+  "exact_model_request_substitution_allowed": false,
+  "spaced_parenthesized_package_path_supported": true,
+  "quick_tunnel_uptime_guarantee": false,
+  "quick_tunnel_consecutive_public_health_checks": 3,
+  "scheduled_refresh_data_only": true,
+  "scheduled_refresh_production_mutation": false,
+  "line_broadcast_dedupe": "durable_object_atomic_claim",
+  "snapshot_pointer_written_last": true,
+  "snapshot_object_readback_required": true,
+  "production_mutation_by_ci": false
+}
