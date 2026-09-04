@@ -9,7 +9,14 @@ import {
   rollbackV213Activation,
 } from "./activation-v2";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
-import { updateFreeRelayRoute } from "./free-relay";
+import {
+  freeRelayEnabled,
+  freeRelayRuntimeOverrides,
+  updateFreeRelayRoute,
+  type FreeRelayEnv,
+} from "./free-relay";
+
+type V213ProductionEnv = V211Env & FreeRelayEnv;
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -29,6 +36,19 @@ function errorCode(error: unknown, fallback: string): string {
 function validationStatus(code: string): number {
   if (/STATE|POINTER|CONCURRENT|COLLISION|ALREADY|MISMATCH|REPLAY|STALE|EXPIRED/.test(code)) return 409;
   return 400;
+}
+
+export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213ProductionEnv> {
+  if (!freeRelayEnabled(env)) return env;
+  const overrides = await freeRelayRuntimeOverrides(env);
+  return {
+    ...env,
+    LOCAL_LLM_BASE_URL: overrides?.LOCAL_LLM_BASE_URL ?? "",
+    LOCAL_LLM_ALLOWED_HOSTS: overrides?.LOCAL_LLM_ALLOWED_HOSTS ?? "",
+    LOCAL_LLM_MODEL: overrides?.LOCAL_LLM_MODEL ?? "qwen38-q6",
+    LOCAL_LLM_SHARED_SECRET: overrides?.LOCAL_LLM_SHARED_SECRET ?? "",
+    LOCAL_LLM_API_KEY: "",
+  };
 }
 
 async function authenticatedBody(request: Request, env: V211Env): Promise<string | Response> {
@@ -80,7 +100,7 @@ async function handleActivationTransaction(
  * until the caller finalizes the Worker/runtime deployment.
  */
 export default {
-  async fetch(request: Request, env: V211Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: V213ProductionEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/v213/admin/activation-bundle") {
       return handleActivationTransaction(request, env, "commit");
@@ -114,12 +134,12 @@ export default {
         return jsonResponse({ ok: false, code }, validationStatus(code));
       }
     }
-    return v211Worker.fetch(request, env, ctx);
+    return v211Worker.fetch(request, await freeRelayRequestEnv(env), ctx);
   },
 
   async scheduled(
     controller: ScheduledController,
-    env: V211Env,
+    env: V213ProductionEnv,
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(
@@ -130,4 +150,4 @@ export default {
       }),
     );
   },
-} satisfies ExportedHandler<V211Env>;
+} satisfies ExportedHandler<V213ProductionEnv>;

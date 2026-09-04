@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import productionWorker from "../src/v213/production-worker";
+import productionWorker, { freeRelayRequestEnv } from "../src/v213/production-worker";
 import { parseQuery } from "../src/core";
 import { generalAnswer } from "../src/qa";
 import {
@@ -8,6 +8,7 @@ import {
   freeRelayGatewaySecret,
   parseFreeRelayRoute,
   verifyFreeRelayPublicHealth,
+  type FreeRelayEnv,
   type FreeRelayRouteRecord,
 } from "../src/v213/free-relay";
 import { MemoryKv, asKv } from "./fake-kv";
@@ -63,7 +64,7 @@ function namespace(object: V213FreeRelayRoute): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
-function env(object: V213FreeRelayRoute): V211Env {
+function env(object: V213FreeRelayRoute): V211Env & FreeRelayEnv {
   const kv = new MemoryKv();
   return {
     PUBLIC_CACHE: asKv(kv),
@@ -75,7 +76,7 @@ function env(object: V213FreeRelayRoute): V211Env {
     FREE_RELAY_ENABLED: "true",
     FREE_RELAY_MAX_TTL_SECONDS: "300",
     LOCAL_LLM_MODEL: MODEL,
-  } as V211Env;
+  } as unknown as V211Env & FreeRelayEnv;
 }
 
 function context(): ExecutionContext {
@@ -220,7 +221,7 @@ describe("R75 FREE_RELAY route lease", () => {
       return Response.json({ choices: [{ message: { content: "relay answer" } }] });
     }));
     const runtime = env(relay.object);
-    const answer = await generalAnswer(runtime, parseQuery("explain photonics"), { tenantId: "synthetic", chatType: "user" });
+    const answer = await generalAnswer(await freeRelayRequestEnv(runtime), parseQuery("explain photonics"), { tenantId: "synthetic", chatType: "user" });
     expect(answer).toBe("relay answer");
     expect(target).toBe(`${current.public_url}/v1/chat/completions`);
     expect(JSON.parse(String(sent?.body))).toMatchObject({ model: MODEL });

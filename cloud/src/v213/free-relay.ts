@@ -252,6 +252,28 @@ function toHex(value: ArrayBuffer): string {
   return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+export interface FreeRelayRuntimeOverrides {
+  LOCAL_LLM_BASE_URL: string;
+  LOCAL_LLM_ALLOWED_HOSTS: string;
+  LOCAL_LLM_MODEL: string;
+  LOCAL_LLM_SHARED_SECRET: string;
+  LOCAL_LLM_API_KEY: string;
+}
+
+export async function freeRelayRuntimeOverrides(env: FreeRelayEnv): Promise<FreeRelayRuntimeOverrides | null> {
+  const route = await currentFreeRelayRoute(env);
+  if (!route) return null;
+  const gatewayMaterial = await freeRelayGatewaySecret(env, route.route_generation);
+  if (!gatewayMaterial) return null;
+  return {
+    LOCAL_LLM_BASE_URL: route.public_url,
+    LOCAL_LLM_ALLOWED_HOSTS: new URL(route.public_url).hostname,
+    LOCAL_LLM_MODEL: route.model,
+    LOCAL_LLM_SHARED_SECRET: gatewayMaterial,
+    LOCAL_LLM_API_KEY: "",
+  };
+}
+
 export async function freeRelayGatewaySecret(env: FreeRelayEnv, generation: string): Promise<string | null> {
   const material = (env.V21_SYNC_HMAC_SECRET ?? "").trim();
   if (material.length < 32 || !GENERATION_RE.test(generation)) return null;
