@@ -147,3 +147,36 @@ M6 authoritative Windows no-mutation matrix and isolated transaction packaging t
 ### Next action
 
 Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 immutable R75 packaging, artifact download, and independent verification.
+
+## Deployment hotfix H1 — automated Production Named Tunnel path (2026-09-05)
+
+- Verified release base: `536644d22ef3534be1c4b8a9e1ff969df4d580fa` (`v2.1.3-R75`).
+- Branch: `pi/r75-named-tunnel-deployment-hotfix`.
+- Implementation commit: `809cf7c`.
+- Added a launcher one-time Named Tunnel setup entry requiring explicit name, hostname, and config.
+- Setup validates cloudflared authentication, credential JSON/tunnel identity, ingress, named tunnel existence, and an exact DNS route ensure without printing or copying credentials.
+- Launcher refresh/bridge/activation paths now pass `-TunnelMode Named`, `-NamedTunnelName`, `-NamedTunnelHostname`, and `-NamedTunnelConfig`; the normal path does not use `AllowTestTunnelException`.
+- Named startup rewrites only a temporary runtime ingress config to the new blue/green gateway port, validates it, requires three consecutive public health-schema-v2 checks for the exact selected model, and retains the recorded bridge on failure.
+- Added immutable deployment-hotfix packaging, receipts, independent ZIP verification, and conditional integration into the existing consolidated R75 workflow.
+- Protected Serenity scoring, federation thresholds, publication contract, publication semantics, sealed bundle, and base R75 release evidence/package verifier files are unchanged from the verified release commit.
+
+### Validation
+
+- Windows PowerShell 5.1 `scripts/test_v213_named_tunnel.ps1` — PASS.
+- PowerShell 7.6.5 same test — PASS.
+- Special path with spaces, Unicode, and parentheses — PASS.
+- Missing inputs, missing credential reference, and mismatched credential/tunnel identity fail closed.
+- Gateway exact-pin/process regression — PASS (6 tests).
+- Full no-mutation local matrix `scripts/ci_v213_r75_validate.ps1 -SkipLiveRefresh` — PASS: Python 550 tests (2 skipped), Worker typecheck PASS, Worker 18 files/101 tests PASS, both PowerShell hosts PASS.
+- Launcher compile and packaged-root self-test — PASS.
+- External/Production mutation: **none**. No Cloudflare route was changed, Worker deployed, Production KV/DO written, LINE sent, or schedule registered.
+
+### Open defect counts
+
+- P0: **1** (successful current-HEAD Windows workflow, immutable hotfix artifact download, and independent post-download receipt remain).
+- P1: **0** for this deployment-integration scope.
+- P2: **0** for this deployment-integration scope.
+
+### Next action
+
+Commit status, push the work branch, inspect the no-mutation Windows workflow, download its immutable Named Tunnel deployment-hotfix artifact, and independently verify it before stopping.
