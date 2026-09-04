@@ -1,0 +1,168 @@
+name: V2.1.3 R75 Hardened Release R2
+
+on:
+  push:
+    branches: [r75-hardening]
+    paths: [.github/workflows/v213-r75-hardened-release-r2.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-r75-hardened-release-r2
+  cancel-in-progress: false
+
+jobs:
+  validate-package:
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 360
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      V213_CANDIDATE_SEED_REUSE_SECONDS: '900'
+    steps:
+      - name: Checkout isolated R75 branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: r75-hardening
+          fetch-depth: 0
+          clean: true
+
+      - name: Resolve repository-managed Python
+        id: python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-r75-release
+          if(-not$env:PROJECT_PYTHON-or-not(Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)){throw 'Repository-managed Python resolution failed.'}
+          & $env:PROJECT_PYTHON -c "import sys; assert sys.version_info >= (3,10); print(sys.executable)"
+          if($LASTEXITCODE-ne0){throw 'Resolved Python execution failed.'}
+          "PROJECT_PYTHON=$env:PROJECT_PYTHON"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Apply deterministic R75 cross-layer patch
+        id: patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & $env:PROJECT_PYTHON scripts\apply_v213_r75_cross_layer_patch_v2.py
+          if($LASTEXITCODE-ne0){throw 'R75 cross-layer patch v2 failed.'}
+          & $env:PROJECT_PYTHON scripts\v213_r75_cross_layer_audit.py
+          if($LASTEXITCODE-ne0){throw 'R75 cross-layer source audit failed.'}
+          git diff --check
+          if($LASTEXITCODE-ne0){throw 'R75 source patch contains whitespace errors.'}
+
+      - name: Run complete Windows no-mutation R75 validation
+        id: validate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\ci_v213_r75_validate_v2.ps1 -ProjectRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'Complete R75 Windows validation failed.'}
+          if(-not$env:R75_VALIDATION-or-not(Test-Path -LiteralPath $env:R75_VALIDATION -PathType Leaf)){throw 'R75 validation receipt is missing.'}
+
+      - name: Commit validated R75 source
+        id: source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if($LASTEXITCODE-ne0){throw 'Validated R75 source contains whitespace errors.'}
+          git diff --cached --quiet
+          if($LASTEXITCODE-ne0){
+            git commit -m 'feat: complete v2.1.3 R75 cross-layer hardening [skip ci]'
+            if($LASTEXITCODE-ne0){throw 'Unable to commit validated R75 source.'}
+            git pull --rebase origin r75-hardening
+            if($LASTEXITCODE-ne0){throw 'Unable to rebase validated R75 source.'}
+            git push origin HEAD:r75-hardening
+            if($LASTEXITCODE-ne0){throw 'Unable to push validated R75 source.'}
+          }
+          $sha=(git rev-parse HEAD).Trim()
+          "sha=$sha"|Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "R75_SOURCE_COMMIT=$sha"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build and independently verify R75 package
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          .\scripts\ci_v213_r75_package.ps1 -ProjectRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'R75 package build failed.'}
+          foreach($name in @('R75_ZIP','R75_SHA_FILE','R75_VERIFICATION','R75_RECEIPT','R75_VALIDATION')){
+            $value=[Environment]::GetEnvironmentVariable($name)
+            if(-not$value-or-not(Test-Path -LiteralPath $value -PathType Leaf)){throw "R75 package output is missing: $name / $value"}
+          }
+          $actual=(Get-FileHash -LiteralPath $env:R75_ZIP -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($env:R75_SHA-and$actual-ne$env:R75_SHA.ToLowerInvariant()){throw 'R75 package SHA-256 does not match packager output.'}
+          "R75_FINAL_SHA=$actual"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload final R75 artifact
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-Hardened-Final
+          path: |
+            ${{ env.R75_ZIP }}
+            ${{ env.R75_SHA_FILE }}
+            ${{ env.R75_VERIFICATION }}
+            ${{ env.R75_RECEIPT }}
+            ${{ env.R75_VALIDATION }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish immutable R75 delivery receipt
+        id: receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $path='delivery/v213-r75/release.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path)|Out-Null
+          [ordered]@{
+            schema_version=1;status='PASS';product_version='2.1.3';runtime_profile='R75'
+            workflow_run_id='${{ github.run_id }}';workflow_attempt='${{ github.run_attempt }}'
+            source_commit=$env:R75_SOURCE_COMMIT
+            artifact_id='${{ steps.upload.outputs.artifact-id }}'
+            artifact_digest='${{ steps.upload.outputs.artifact-digest }}'
+            artifact_name='Investor-Intelligence-v2.1.3-R75-Hardened-Final'
+            package=[IO.Path]::GetFileName($env:R75_ZIP);zip_sha256=$env:R75_FINAL_SHA
+            windows_validation='PASS';actual_all_limited_preflight=$true
+            worker_publication_mode_alignment=$true;spaced_parenthesized_path_validation=$true
+            exact_model_pin=$true;atomic_line_dedupe=$true;snapshot_readback=$true
+            scheduled_refresh_data_only=$true;production_mutation_by_ci=$false
+            completed_at=(Get-Date).ToUniversalTime().ToString('o')
+          }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $path -Encoding utf8
+          git add $path
+          git commit -m 'delivery: publish R75 hardened artifact receipt [skip ci]'
+          git pull --rebase origin r75-hardening
+          git push origin HEAD:r75-hardening
+          Write-Host "V213_R75_DELIVERY = PASS; artifact_id=${{ steps.upload.outputs.artifact-id }}; sha256=$env:R75_FINAL_SHA"
+
+      - name: Publish R75 failure diagnostic
+        if: failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $path='delivery/v213-r75/latest-failure.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path)|Out-Null
+          [ordered]@{
+            schema_version=1;status='FAIL';workflow_run_id='${{ github.run_id }}';workflow_attempt='${{ github.run_attempt }}'
+            source_commit='${{ github.sha }}'
+            python_outcome='${{ steps.python.outcome }}';patch_outcome='${{ steps.patch.outcome }}'
+            validation_outcome='${{ steps.validate.outcome }}';source_commit_outcome='${{ steps.source.outcome }}'
+            package_outcome='${{ steps.package.outcome }}';upload_outcome='${{ steps.upload.outcome }}';receipt_outcome='${{ steps.receipt.outcome }}'
+            production_mutation_by_ci=$false;failed_at=(Get-Date).ToUniversalTime().ToString('o')
+            git_status=@(git status --short);changed_files=@(git diff --name-only)
+          }|ConvertTo-Json -Depth 7|Set-Content -LiteralPath $path -Encoding utf8
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git commit -m "diagnostic: R75 release R2 failed in run ${{ github.run_id }} [skip ci]"
+          git pull --rebase origin r75-hardening
+          git push origin HEAD:r75-hardening
