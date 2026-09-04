@@ -253,8 +253,8 @@ function toHex(value: ArrayBuffer): string {
 }
 
 export async function freeRelayGatewaySecret(env: FreeRelayEnv, generation: string): Promise<string | null> {
-  const secret = (env.V21_SYNC_HMAC_SECRET ?? "").trim();
-  if (secret.length < 32 || !GENERATION_RE.test(generation)) return null;
-  const key = await crypto.subtle.importKey("raw", ENCODER.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const material = (env.V21_SYNC_HMAC_SECRET ?? "").trim();
+  if (material.length < 32 || !GENERATION_RE.test(generation)) return null;
+  const key = await crypto.subtle.importKey("raw", ENCODER.encode(material), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return toHex(await crypto.subtle.sign("HMAC", key, ENCODER.encode(`v213-free-relay-gateway.${generation}`)));
 }

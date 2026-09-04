@@ -18,16 +18,16 @@ function Get-V213FreeRelayConfig {
     try {
         $secure = ConvertTo-SecureString -String ([string]$hmacProperty.Value)
         $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-        try { $secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+        try { $material = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
         finally { if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) } }
     }
     catch { throw 'FREE_RELAY local authentication material cannot be decrypted for this Windows user.' }
-    if ([string]::IsNullOrWhiteSpace($secret) -or $secret.Length -lt 32) { throw 'FREE_RELAY authentication material is invalid.' }
+    if ([string]::IsNullOrWhiteSpace($material) -or $material.Length -lt 32) { throw 'FREE_RELAY authentication material is invalid.' }
     return [pscustomobject]@{
         config_path = [IO.Path]::GetFullPath($ConfigPath)
         worker_origin = $endpoint.GetLeftPart([UriPartial]::Authority).TrimEnd('/')
         registration_endpoint = $endpoint.GetLeftPart([UriPartial]::Authority).TrimEnd('/') + '/v213/admin/free-relay-route'
-        hmac_secret = $secret
+        hmac_secret = $material
     }
 }
 

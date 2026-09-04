@@ -589,7 +589,7 @@ $modelCatalog = @($modelResolution.catalog)
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
 Test-SelectedModelRoute $llama $Model
 $python = Resolve-Python
-$secret = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
+$bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
 $oldLlama = $env:II_LLAMA_BASE_URL
 $oldModel = $env:II_LOCAL_LLM_MODEL
@@ -599,7 +599,7 @@ $heartbeat = $null
 $heartbeatActivationFile = ''
 $runtimeNamedConfig = ''
 try {
-    $env:II_LOCAL_LLM_SHARED_SECRET = $secret
+    $env:II_LOCAL_LLM_SHARED_SECRET = $bridgeMaterial
     $env:II_LLAMA_BASE_URL = $llama
     $env:II_LOCAL_LLM_MODEL = $Model
     $stdout = Join-Path $logRoot 'gateway.stdout.log'
@@ -649,7 +649,7 @@ try {
         New-Item -ItemType File -Path $heartbeatActivationFile -Force | Out-Null
         Write-Host "V213_FREE_RELAY_ROUTE = PASS; model=$Model; generation=$routeGeneration; health_schema_version=2; consecutive=3; lease_expires=$($record.expires_at); stable_entrypoint=$($freeRelayConfiguration.worker_origin)" -ForegroundColor Green
     }
-    $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
+    $protected = ConvertTo-SecureString -String $bridgeMaterial -AsPlainText -Force | ConvertFrom-SecureString
     [ordered]@{
         schema_version = 3
         product_version = '2.1.3'
@@ -724,7 +724,7 @@ finally {
     $env:II_LOCAL_LLM_SHARED_SECRET = $oldSecret
     $env:II_LLAMA_BASE_URL = $oldLlama
     $env:II_LOCAL_LLM_MODEL = $oldModel
-    $secret = $null
+    $bridgeMaterial = $null
     $freeRelayConfiguration = $null
     Exit-V213OperationLock
 }
