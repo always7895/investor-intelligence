@@ -210,6 +210,17 @@ describe("R75 FREE_RELAY route lease", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the production-runtime-supported manual redirect mode and rejects redirects", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(null, {
+      status: 302,
+      headers: { location: "https://redirected.example/health" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(verifyFreeRelayPublicHealth(route("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"))).rejects.toThrow("FREE_RELAY_PUBLIC_HEALTH_MISMATCH");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
+  });
+
   it("routes Q&A through the current lease with exact model and per-generation authentication", async () => {
     const relay = relayObject();
     const current = route("dddddddddddddddddddddddddddddddd", -1_000);

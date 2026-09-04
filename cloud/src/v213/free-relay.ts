@@ -135,7 +135,11 @@ export async function verifyFreeRelayPublicHealth(route: FreeRelayRouteRecord): 
       response = await fetch(`${route.public_url}/health`, {
         method: "GET",
         headers: { "cache-control": "no-store", pragma: "no-cache" },
-        redirect: "error",
+        // Cloudflare's production Workers runtime supports "follow" and
+        // "manual", but intentionally rejects redirect: "error".  Keep the
+        // request fail-closed by observing redirects and rejecting every
+        // non-2xx response below instead of following it.
+        redirect: "manual",
         signal: AbortSignal.timeout(8_000),
       });
     } catch {
