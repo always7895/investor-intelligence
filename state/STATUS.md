@@ -185,6 +185,19 @@ Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 
 - Corrected Windows run `33872912456` at `dc6608d5aea31d69410f7ee80394022f2404447a` passed the complete hotfix validation (Python 550/2 skipped, Worker 18/101, PowerShell 5.1/7 named-tunnel gates) and then failed closed before packaging because the verified Python path was not exported between Actions steps.
 - Fix commit `706884a` exports the already pinned Python path through `GITHUB_ENV` and retains a deterministic runner-temp fallback. No test, package, or Production mutation occurred after the packaging precondition failure.
 
+## Deployment hotfix H2 — immutable artifact complete (2026-09-05)
+
+- Artifact source commit: `87dde63a800d19f077a41826606f91bf21966873`.
+- Authoritative self-hosted Windows workflow run: `33873094537` — **PASS**.
+- Windows PowerShell 5.1 and PowerShell 7 named-tunnel gates — PASS.
+- Python complete suite — PASS (550 tests, 2 skipped); Worker typecheck and full Vitest — PASS (18 files, 101 tests).
+- Immutable artifact: `Investor-Intelligence-v2.1.3-R75-Named-Tunnel-Hotfix-87dde63a800d19f077a41826606f91bf21966873-33873094537.zip`.
+- Downloaded artifact SHA-256: `7a222cb2eeebf03049804ba1118037b175d809a92df019df054bd7af530fe0a6`.
+- Independent post-download verification — PASS: ZIP CRC, path safety, duplicates, symlinks, PE marker, MANIFEST, SHA256SUMS, publication-contract binding, immutable identity, and three receipts.
+- Downloaded files and post-download receipt are stored outside Git at `artifacts/r75-named-tunnel-hotfix-33873094537/`.
+- `production_mutation_by_ci=false`; no Cloudflare Production route change, Worker deploy, Production KV/DO write, LINE send, or schedule registration occurred.
+- Known deployment-hotfix P0/P1/P2 counts: **0/0/0**.
+
 ### Next action
 
-Commit status, push the corrected work branch, inspect the no-mutation Windows workflow, download its immutable Named Tunnel deployment-hotfix artifact, and independently verify it before stopping.
+Stop. Production deployment and real Named Tunnel/DNS setup remain operator-controlled and were not executed in this session.
