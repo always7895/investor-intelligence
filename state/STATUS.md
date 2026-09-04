@@ -182,6 +182,8 @@ Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 
 - Windows run `33872737618` at `3033cf79e4f2214617d9abd1535868a76c0f0758` passed Python (550/2 skipped), Worker (18/101), and initial PowerShell gates, then failed closed because the Windows service account had no `python` command on PATH in the bridge child self-test.
 - Fix commit `cd1b294` makes the child self-test honor the already verified repository-pinned `PROJECT_PYTHON`; both PowerShell hosts pass with that explicit path.
 - Failed run caused no external or Production mutation and produced no artifact.
+- Corrected Windows run `33872912456` at `dc6608d5aea31d69410f7ee80394022f2404447a` passed the complete hotfix validation (Python 550/2 skipped, Worker 18/101, PowerShell 5.1/7 named-tunnel gates) and then failed closed before packaging because the verified Python path was not exported between Actions steps.
+- Fix commit `706884a` exports the already pinned Python path through `GITHUB_ENV` and retains a deterministic runner-temp fallback. No test, package, or Production mutation occurred after the packaging precondition failure.
 
 ### Next action
 
