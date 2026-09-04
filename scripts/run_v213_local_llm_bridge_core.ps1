@@ -7,6 +7,11 @@ param(
     [switch]$NoTunnel,
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
+    [switch]$FinalizeCutover,
+    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [string]$NamedTunnelName = '',
+    [string]$NamedTunnelHostname = '',
+    [string]$NamedTunnelConfig = '',
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
@@ -30,17 +35,42 @@ function Join-NativeArgumentLine([string[]]$Values) {
     return ($rendered -join ' ')
 }
 
-function Start-GatewayNativeProcess {
+function Start-NativeRedirectedProcess {
     param(
-        [string]$PythonPath,
-        [string]$ScriptPath,
+        [string]$ExecutablePath,
+        [string]$FirstArgument,
         [string[]]$Arguments,
         [string]$StdoutPath,
         [string]$StderrPath
     )
-    $allArguments = @($ScriptPath) + @($Arguments)
+    $allArguments = @($FirstArgument) + @($Arguments)
     $argumentLine = Join-NativeArgumentLine $allArguments
-    return Start-Process -FilePath $PythonPath -ArgumentList $argumentLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+    return Start-Process -FilePath $ExecutablePath -ArgumentList $argumentLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+}
+
+function Start-GatewayNativeProcess {
+    param([string]$PythonPath,[string]$ScriptPath,[string[]]$Arguments,[string]$StdoutPath,[string]$StderrPath)
+    return Start-NativeRedirectedProcess $PythonPath $ScriptPath $Arguments $StdoutPath $StderrPath
+}
+
+function Resolve-TunnelPolicy([string]$Mode,[bool]$NoTunnelRequested,[string]$Name,[string]$Hostname,[string]$ConfigPath) {
+    if ($NoTunnelRequested) { $Mode = 'None' }
+    if ($Mode -eq 'Named') {
+        if ($Name -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$') { throw 'Named tunnel name is invalid.' }
+        if ($Hostname -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]{1,251})[A-Za-z0-9]$') { throw 'Named tunnel hostname is invalid.' }
+        if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw 'Named tunnel config is missing.' }
+    }
+    return [pscustomobject]@{
+        mode = $Mode
+        test_only = $Mode -eq 'QuickTest'
+        production_eligible = $Mode -eq 'Named'
+    }
+}
+
+function Get-BlueGreenDecision([bool]$NewHealthy,[bool]$Finalize) {
+    if (-not $NewHealthy) { return 'ROLLBACK_NEW_RETAIN_OLD' }
+    if ($Finalize) { return 'PROMOTE_NEW_STOP_OLD' }
+    return 'PROMOTE_NEW_RETAIN_OLD_UNTIL_FINALIZE'
 }
 
 function Get-RedactedLogTail([string]$Path) {
@@ -116,7 +146,13 @@ if ($SelfTest) {
         }
     }
     finally { Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue }
-    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true' -ForegroundColor Green
+    $quickPolicy = Resolve-TunnelPolicy 'QuickTest' $false '' '' ''
+    if (-not $quickPolicy.test_only -or $quickPolicy.production_eligible) { throw 'Quick Tunnel policy self-test failed.' }
+    if ((Get-BlueGreenDecision $false $true) -ne 'ROLLBACK_NEW_RETAIN_OLD') { throw 'Blue/green rollback self-test failed.' }
+    if ((Get-BlueGreenDecision $true $false) -ne 'PROMOTE_NEW_RETAIN_OLD_UNTIL_FINALIZE') { throw 'Blue/green staged cutover self-test failed.' }
+    if ((Get-BlueGreenDecision $true $true) -ne 'PROMOTE_NEW_STOP_OLD') { throw 'Blue/green finalize self-test failed.' }
+    try { [void](Resolve-TunnelPolicy 'Named' $false '' '' ''); throw 'Invalid named tunnel policy was accepted.' } catch { if ($_.Exception.Message -eq 'Invalid named tunnel policy was accepted.') { throw } }
+    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true; quick_tunnel_test_only=true; named_tunnel_policy=true; blue_green_rollback=true' -ForegroundColor Green
     exit 0
 }
 
@@ -380,40 +416,31 @@ function Wait-LocalGatewayHealth {
     throw "v2.1.3 local gateway health did not verify selected model $SelectedModel. Last observation: $last"
 }
 
-function Wait-PublicHealth {
-    param([string]$Url, [int]$ProcessId, [string]$SelectedModel, [int]$Seconds = 40)
-    $deadline = (Get-Date).AddSeconds($Seconds)
+function Wait-PublicHealthStable {
+    param([string]$Url,[int]$ProcessId,[string]$SelectedModel,[int]$RequiredConsecutive=3)
+    $consecutive = 0
+    $failures = 0
+    $attempts = 0
     $last = ''
-    $hostName = ([uri]$Url).Host
-    while ((Get-Date) -lt $deadline) {
-        if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { throw 'cloudflared exited before public health succeeded.' }
+    while ($attempts -lt 15 -and $consecutive -lt $RequiredConsecutive) {
+        $attempts++
+        if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { throw 'Tunnel exited before stable public health.' }
         try {
             $health = Invoke-RestMethod -Method Get -Uri ($Url.TrimEnd('/') + '/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 12
-            if (Test-HealthModel $health $SelectedModel) { return $health }
-            $last = "service=$([string](Get-ObjectPropertyValue $health 'service' '<missing>')); schema=$([string](Get-ObjectPropertyValue $health 'health_schema_version' '<missing>')); selected=$([string](Get-ObjectPropertyValue $health 'selected_model' '<missing>')); available=$([string](Get-ObjectPropertyValue $health 'selected_model_available' '<missing>'))"
+            if (Test-HealthModel $health $SelectedModel) { $consecutive++; Start-Sleep -Seconds 1; continue }
+            $last = 'public health payload did not match exact model'
         }
-        catch {
-            $last = $_.Exception.Message
-            try {
-                $resolver = Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
-                $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-                if ($resolver -and $curl) {
-                    $answer = Resolve-DnsName -Name $hostName -Type A -Server 1.1.1.1 -DnsOnly -ErrorAction Stop | Where-Object { $_.Type -eq 'A' -and $_.IPAddress } | Select-Object -First 1
-                    if ($answer) {
-                        $resolveArg = '{0}:443:{1}' -f $hostName, [string]$answer.IPAddress
-                        $curlOutput = @(& $curl.Source '--silent' '--show-error' '--fail' '--max-time' '10' '--resolve' $resolveArg ($Url.TrimEnd('/') + '/health') 2>&1)
-                        if ($LASTEXITCODE -eq 0) {
-                            $curlHealth = (($curlOutput | ForEach-Object { [string]$_ }) -join "`n") | ConvertFrom-Json
-                            if (Test-HealthModel $curlHealth $SelectedModel) { return $curlHealth }
-                        }
-                    }
-                }
-            }
-            catch { }
-        }
+        catch { $last = $_.Exception.Message }
+        $failures++
+        $consecutive = 0
         Start-Sleep -Seconds 2
     }
-    throw "Quick tunnel public health timed out for selected model $SelectedModel. Last observation: $last"
+    if ($consecutive -lt $RequiredConsecutive) { throw "Tunnel public health was not stable for $RequiredConsecutive consecutive checks. failures=$failures; last=$last" }
+    return [pscustomobject]@{
+        consecutive = $consecutive
+        transient_failure_count = $failures
+        status = $(if ($failures -gt 0) { 'PASS_WITH_TRANSIENT_DNS_FAILURES' } else { 'PASS' })
+    }
 }
 
 function Start-HealthyQuickTunnel {
@@ -439,8 +466,8 @@ function Start-HealthyQuickTunnel {
                 if ($match.Success) { $publicUrl = $match.Value.TrimEnd('/') }
             }
             if (-not $publicUrl) { throw 'Quick tunnel URL was not produced.' }
-            [void](Wait-PublicHealth $publicUrl $process.Id $SelectedModel 40)
-            return [pscustomobject]@{ process = $process; url = $publicUrl }
+            $stability = Wait-PublicHealthStable $publicUrl $process.Id $SelectedModel 3
+            return [pscustomobject]@{ process = $process; url = $publicUrl; stability = $stability }
         }
         catch {
             $last = $_.Exception.Message
@@ -451,11 +478,29 @@ function Start-HealthyQuickTunnel {
     throw "All quick-tunnel attempts failed. Last observation: $last"
 }
 
+function Start-HealthyNamedTunnel {
+    param([string]$CloudflaredPath,[string]$ConfigPath,[string]$Name,[string]$Hostname,[string]$SelectedModel)
+    $stdout = Join-Path $logRoot 'cloudflared-named.stdout.log'
+    $stderr = Join-Path $logRoot 'cloudflared-named.stderr.log'
+    Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
+    $process = Start-NativeRedirectedProcess $CloudflaredPath 'tunnel' @('--config',$ConfigPath,'run',$Name) $stdout $stderr
+    try {
+        $url = 'https://' + $Hostname
+        $stability = Wait-PublicHealthStable $url $process.Id $SelectedModel 3
+        return [pscustomobject]@{ process=$process; url=$url; stability=$stability }
+    }
+    catch {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        throw "Named tunnel failed health validation. stderr_tail=$(Get-RedactedLogTail $stderr); stdout_tail=$(Get-RedactedLogTail $stdout); cause=$($_.Exception.Message)"
+    }
+}
+
 $oldState = $null
 if (Test-Path -LiteralPath $statePath -PathType Leaf) {
     try { $oldState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json } catch { }
 }
-if ($StopExisting) { Stop-RecordedBridge $oldState }
+if ($StopExisting) { $FinalizeCutover = $true }
+$tunnelPolicy = Resolve-TunnelPolicy $TunnelMode $NoTunnel.IsPresent $NamedTunnelName $NamedTunnelHostname $NamedTunnelConfig
 $GatewayPort = Resolve-GatewayPort $GatewayPort
 $llama = Resolve-Llama
 $modelResolution = Resolve-Model $llama $Model
@@ -481,11 +526,20 @@ try {
     Write-Host "II_PROGRESS local gateway healthy; port=$GatewayPort; model=$Model; health_schema_version=2" -ForegroundColor Green
     $publicUrl = ''
     $tunnelPid = 0
-    if (-not $NoTunnel) {
+    $tunnelStability = [pscustomobject]@{ consecutive=0; transient_failure_count=0; status='NOT_APPLICABLE' }
+    if ($tunnelPolicy.mode -eq 'QuickTest') {
         $healthyTunnel = Start-HealthyQuickTunnel (Resolve-Cloudflared) $GatewayPort $Model
         $tunnel = $healthyTunnel.process
         $publicUrl = [string]$healthyTunnel.url
         $tunnelPid = $tunnel.Id
+        $tunnelStability = $healthyTunnel.stability
+    }
+    elseif ($tunnelPolicy.mode -eq 'Named') {
+        $healthyTunnel = Start-HealthyNamedTunnel (Resolve-Cloudflared) $NamedTunnelConfig $NamedTunnelName $NamedTunnelHostname $Model
+        $tunnel = $healthyTunnel.process
+        $publicUrl = [string]$healthyTunnel.url
+        $tunnelPid = $tunnel.Id
+        $tunnelStability = $healthyTunnel.stability
     }
     $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
     [ordered]@{
@@ -504,6 +558,15 @@ try {
         encrypted_shared_secret = $protected
         gateway_pid = $gateway.Id
         cloudflared_pid = $tunnelPid
+        tunnel_mode = $tunnelPolicy.mode.ToLowerInvariant().Replace('quicktest','quick_test')
+        tunnel_test_only = [bool]$tunnelPolicy.test_only
+        tunnel_production_eligible = [bool]$tunnelPolicy.production_eligible
+        tunnel_health_status = [string]$tunnelStability.status
+        tunnel_transient_failure_count = [int]$tunnelStability.transient_failure_count
+        tunnel_consecutive_health_checks = [int]$tunnelStability.consecutive
+        blue_green_decision = Get-BlueGreenDecision $true $FinalizeCutover.IsPresent
+        previous_gateway_pid = [int](Get-ObjectPropertyValue $oldState 'gateway_pid' 0)
+        previous_cloudflared_pid = [int](Get-ObjectPropertyValue $oldState 'cloudflared_pid' 0)
         connected_at = (Get-Date).ToUniversalTime().ToString('o')
         shared_secret_plaintext_persisted = $false
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
@@ -517,8 +580,12 @@ try {
         source = 'verified_bridge'
         preferred_model = $preferredModel
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $selectionPath -Encoding utf8
-    Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort; selected_model_verified=true; health_schema_version=2" -ForegroundColor Green
-    if ($publicUrl) { Write-Host "V213_LOCAL_MODEL_TUNNEL = PASS; host=$(([uri]$publicUrl).Host); model=$Model" -ForegroundColor Green }
+    if ($FinalizeCutover -and $null -ne $oldState) { Stop-RecordedBridge $oldState }
+    Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort; selected_model_verified=true; health_schema_version=2; blue_green=$(Get-BlueGreenDecision $true $FinalizeCutover.IsPresent)" -ForegroundColor Green
+    if ($publicUrl) {
+        $label = if ($tunnelStability.status -eq 'PASS') { 'PASS' } else { [string]$tunnelStability.status }
+        Write-Host "V213_LOCAL_MODEL_TUNNEL = $label; host=$(([uri]$publicUrl).Host); model=$Model; mode=$($tunnelPolicy.mode); test_only=$($tunnelPolicy.test_only); transient_failures=$($tunnelStability.transient_failure_count); consecutive=$($tunnelStability.consecutive)" -ForegroundColor Green
+    }
 }
 catch {
     if ($tunnel) { Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue }

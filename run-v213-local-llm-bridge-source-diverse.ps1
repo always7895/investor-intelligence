@@ -7,6 +7,11 @@ param(
     [switch]$NoTunnel,
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
+    [switch]$FinalizeCutover,
+    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [string]$NamedTunnelName = '',
+    [string]$NamedTunnelHostname = '',
+    [string]$NamedTunnelConfig = '',
     [switch]$SelfTest
 )
 $ErrorActionPreference='Stop'

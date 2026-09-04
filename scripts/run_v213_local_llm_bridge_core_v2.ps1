@@ -7,6 +7,11 @@ param(
     [switch]$NoTunnel,
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
+    [switch]$FinalizeCutover,
+    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [string]$NamedTunnelName = '',
+    [string]$NamedTunnelHostname = '',
+    [string]$NamedTunnelConfig = '',
     [switch]$SelfTest
 )
 $ErrorActionPreference='Stop'
@@ -59,7 +64,7 @@ if(-not(Test-GatewayPython $python)){throw 'No verified Python runtime with requ
 $oldProjectPython=$env:PROJECT_PYTHON
 try{
     $env:PROJECT_PYTHON=$python
-    & $core -ProjectRoot $ProjectRoot -LlamaBaseUrl $LlamaBaseUrl -GatewayPort $GatewayPort -Model $Model -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting:$StopExisting
+    & $core -ProjectRoot $ProjectRoot -LlamaBaseUrl $LlamaBaseUrl -GatewayPort $GatewayPort -Model $Model -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting:$StopExisting -FinalizeCutover:$FinalizeCutover -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig
     if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
 }finally{
     $env:PROJECT_PYTHON=$oldProjectPython

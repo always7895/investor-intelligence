@@ -6,7 +6,8 @@ param(
     [switch]$ConfirmActivation,
     [switch]$RequireLocalModel,
     [switch]$SelfTest,
-    [switch]$PreflightOnly
+    [switch]$PreflightOnly,
+    [switch]$AllowTestTunnelException
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -160,8 +161,12 @@ try{
     if($RequireLocalModel){
         if(-not$ExpectedModel){throw 'Formal exact-model activation requires an explicitly selected model.'}
         $modelResult=Get-HealthyModelState (Join-Path $configRoot 'v213-local-model.json') $ExpectedModel
-        Write-Host "V213_SELECTED_MODEL_HEALTH_SCHEMA2_PREFLIGHT = PASS; model=$($modelResult.model); tunnel_mode=$($modelResult.tunnel_mode)" -ForegroundColor Green
-        if($modelResult.tunnel_mode-eq'quick_ephemeral'){Write-Warning 'The local model uses an ephemeral Quick Tunnel without an uptime guarantee; deterministic seven-field broadcasts remain independent of model availability.'}
+        $mode=[string]$modelResult.tunnel_mode
+        if($mode-ne'named'){
+            if(-not$AllowTestTunnelException){throw "Production local-model activation requires tunnel_mode=named; observed=$mode. Use -AllowTestTunnelException only for an explicitly approved test exception."}
+            Write-Warning "Explicit test-tunnel activation exception accepted; tunnel_mode=$mode; no uptime guarantee."
+        }
+        Write-Host "V213_SELECTED_MODEL_HEALTH_SCHEMA2_PREFLIGHT = PASS; model=$($modelResult.model); tunnel_mode=$mode; test_tunnel_exception=$($AllowTestTunnelException.IsPresent)" -ForegroundColor Green
     }
 
     $oldBundleSha=$env:V213_R75_SEALED_BUNDLE_SHA256

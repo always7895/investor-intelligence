@@ -75,3 +75,25 @@ M3: implement a direct Windows-safe Gateway launch contract, exact model pin, bo
 ### Next action
 
 M4: enforce test-only Quick Tunnels, named-tunnel Production policy, truthful transient-DNS status, and blue/green cutover/rollback lifecycle tests.
+
+## Milestone M4 — tunnel and bridge lifecycle (2026-09-04)
+
+- Input HEAD: `9171405`.
+- Quick Tunnel is explicitly `QuickTest`, marked test-only/non-Production, and requires three consecutive public health checks.
+- Transient public health/DNS failures produce `PASS_WITH_TRANSIENT_DNS_FAILURES`, with counts persisted in bridge state; they cannot be reported as a plain PASS.
+- Named tunnels require validated name, hostname, and config; Production activation rejects non-named tunnel state unless the operator supplies the explicit test-tunnel exception switch.
+- Blue/green behavior starts and validates the new Gateway+tunnel before any old bridge is stopped; failure stops only the new bridge, staged promotion retains old until finalize, and finalize then stops old.
+- Root and source-diverse launch aliases route through the same managed core and expose named-tunnel/finalize parameters.
+- Windows PowerShell 5.1 and PowerShell 7 bridge lifecycle `-SelfTest` — PASS.
+- Activation wrapper aliases remain byte-identical and both shell self-tests PASS.
+- External/Production mutation: **none**; no tunnel was created or changed during tests.
+
+### Open defect counts
+
+- P0: **1** (`P0-06`: authoritative Windows Runner Python/release pipeline evidence).
+- P1: **7** (`P1-06` completed).
+- P2: **6** (`P2-04` completed).
+
+### Next action
+
+M5: snapshot readback/replay/rollback journal, operation locking, scheduler hardening, and atomic LINE dedupe.
