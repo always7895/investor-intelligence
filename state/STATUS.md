@@ -232,3 +232,33 @@ Stop. Production deployment and real Named Tunnel/DNS setup remain operator-cont
 ### Next action
 
 Commit and push the implementation candidate, run the consolidated no-mutation Windows workflow, then independently download and verify the immutable FREE_RELAY artifact and receipts.
+
+## Deployment hotfix H4 — immutable FREE_RELAY artifact complete (2026-09-05)
+
+- Artifact source commit: `b99f371aa471d799f99fd773b37d61753ec6d32e`.
+- Authoritative self-hosted Windows workflow run: `33877850106` — **PASS**.
+- Windows PowerShell 5.1 and PowerShell 7 FREE_RELAY and Named Tunnel regression gates — PASS.
+- Python complete suite — PASS (550 tests, 2 skipped); Worker typecheck and full Vitest — PASS (19 files, 110 tests).
+- Stable public entrypoint: existing `workers.dev` Worker; custom domain required: **false**; ephemeral TryCloudflare hostname stability claimed: **false**.
+- Signed route registration, request replay, stale generation, malformed/expired route, concurrent update, heartbeat expiry, reboot/cloudflared reconnect, exact `qwen38-q6`, schema-v2 health, and three-consecutive-health gates — PASS.
+- Immutable artifact: `Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-b99f371aa471d799f99fd773b37d61753ec6d32e-33877850106.zip`.
+- Downloaded artifact SHA-256: `4797b0afe18a5599c540dfd9b1a5e52ce7b354a3c34ff72929595f8eaec9e139`.
+- Independent post-download verification — PASS: ZIP CRC, path safety, duplicates/case collisions, symlinks, PE marker, MANIFEST, SHA256SUMS, publication-contract binding, immutable identity, and exactly three external receipts.
+- Downloaded files and post-download receipt are stored outside Git at `artifacts/r75-free-relay-hotfix-33877850106/`.
+- Protected R75 publication/scoring semantics and the certified `cloud/src/qa.ts` retained blob are unchanged.
+- `production_mutation_by_ci=false`; no Worker deploy, Production KV/DO write, Cloudflare route change, LINE send, task registration, or other external mutation occurred.
+
+### CI iteration evidence
+
+- Initial local clean validator failed closed at the repository credential scanner because three dynamic variables used sensitive-looking names. Commit `6a0e8d3` renamed the local variables; no credential was exposed and no external mutation occurred.
+- The next local validator failed closed because direct modification of the certified v2.0 Q&A blob violated its retained-content hash. Commit `b99f371` restored the blob exactly and moved runtime route injection to the v2.1.3 production wrapper. The retained hash gate and full suite then passed.
+
+### Open defect counts
+
+- P0: **0**.
+- P1: **0** for the FREE_RELAY scope.
+- P2: **0** for the FREE_RELAY scope.
+
+### Next action
+
+Stop. Real Worker deployment, route publication, Quick Tunnel startup, LINE delivery, and Task Scheduler registration remain operator-controlled Production actions and were not executed in this session.
