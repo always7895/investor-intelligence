@@ -15,7 +15,7 @@ Push-Location $ProjectRoot
 try {
     $sha = (git rev-parse HEAD).Trim().ToLowerInvariant()
     if ($env:GITHUB_SHA -and $sha -ne $env:GITHUB_SHA.ToLowerInvariant()) { throw 'Package source SHA mismatch.' }
-    if ((git status --porcelain).Count -ne 0) { throw 'R75 package requires a clean exact checkout.' }
+    if (@(git status --porcelain).Count -ne 0) { throw 'R75 package requires a clean exact checkout.' }
     $runId = [string]$env:GITHUB_RUN_ID
     $attempt = [string]$env:GITHUB_RUN_ATTEMPT
     if ($runId -notmatch '^\d+$' -or $attempt -notmatch '^\d+$') { throw 'Immutable package requires numeric workflow run identity.' }

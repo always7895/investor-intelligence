@@ -50,7 +50,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
           if ($actual -ne '${{ github.sha }}'.ToLowerInvariant()) { throw "Checkout mismatch: $actual" }
-          if ((git status --porcelain).Count -ne 0) { throw 'Authoritative checkout is not clean.' }
+          if (@(git status --porcelain).Count -ne 0) { throw 'Authoritative checkout is not clean.' }
           "R75_SOURCE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run full no-mutation Windows validation
