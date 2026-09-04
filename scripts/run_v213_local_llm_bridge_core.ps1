@@ -126,8 +126,13 @@ if ($SelfTest) {
         selected_model = 'model-a'
     }
     if (-not (Test-HealthModel $valid 'model-a')) { throw 'Health schema v2 payload was rejected.' }
-    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
+    $pythonPath = ''
+    if ($env:PROJECT_PYTHON -and (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) { $pythonPath = [IO.Path]::GetFullPath($env:PROJECT_PYTHON) }
+    if (-not $pythonPath) {
+        $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
+        $pythonPath = $pythonCommand.Source
+    }
     $probeRoot = Join-Path $env:TEMP ('Investor Intelligence 測試 Path (1)-' + [guid]::NewGuid().ToString('N'))
     $probeScripts = Join-Path $probeRoot 'scripts'
     New-Item -ItemType Directory -Force -Path $probeScripts | Out-Null
@@ -136,7 +141,7 @@ if ($SelfTest) {
     try {
         Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v212_local_llm_gateway.py') -Destination $probeScripts
         Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v213_local_llm_gateway.py') -Destination $probeScripts
-        $probe = Start-GatewayNativeProcess $pythonCommand.Source (Join-Path $probeScripts 'v213_local_llm_gateway.py') @('--self-test') $probeStdout $probeStderr
+        $probe = Start-GatewayNativeProcess $pythonPath (Join-Path $probeScripts 'v213_local_llm_gateway.py') @('--self-test') $probeStdout $probeStderr
         $finished = $probe.WaitForExit(30000)
         if ($finished) { $probe.WaitForExit(); $probe.Refresh() }
         $probeOutput = if (Test-Path -LiteralPath $probeStdout) { Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue } else { '' }
