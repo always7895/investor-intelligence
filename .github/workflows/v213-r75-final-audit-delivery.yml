@@ -1,0 +1,162 @@
+name: V2.1.3 R75 Final Audit Delivery
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-r75-hardening
+    paths:
+      - .github/workflows/v213-r75-final-audit-delivery.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: investor-intelligence-v213-r75-final-audit-delivery
+  cancel-in-progress: false
+
+jobs:
+  final-audit-delivery:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 480
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+      SOURCE_DIR: ${{ github.workspace }}\r75-final-${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact R75 branch head
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-r75-hardening
+          path: r75-final-${{ github.run_id }}
+          fetch-depth: 0
+          clean: true
+
+      - name: Confirm R75 hardening source contract exists
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('scripts\ci_v213_r75_validate.ps1','scripts\ci_v213_r75_package.ps1')) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing R75 source file: $path" }
+          }
+          $activation = Get-Content -LiteralPath 'activate-v213-seven-field-schedule.ps1' -Raw -Encoding utf8
+          $worker = Get-Content -LiteralPath 'cloud\src\v213\activation-v2.ts' -Raw -Encoding utf8
+          $bridge = Get-Content -LiteralPath 'scripts\run_v213_local_llm_bridge_core.ps1' -Raw -Encoding utf8
+          $gateway = Get-Content -LiteralPath 'scripts\v212_local_llm_gateway.py' -Raw -Encoding utf8
+          foreach ($marker in @('V213_ACTIVATION_PREFLIGHT_ONLY','LIMITED_RESEARCH_CANDIDATE','v213_activation_bundle_upload.json')) {
+            if (-not $activation.Contains($marker)) { throw "Activation hardening marker missing: $marker" }
+          }
+          foreach ($marker in @('V213_ACTIVATION_LIMITED_CANDIDATE_INVALID','verifySnapshotObjects','snapshot_readback_verified')) {
+            if (-not $worker.Contains($marker)) { throw "Worker hardening marker missing: $marker" }
+          }
+          foreach ($marker in @('New-GatewayArgumentLine','V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST','public_health_consecutive_successes')) {
+            if (-not $bridge.Contains($marker)) { throw "Bridge hardening marker missing: $marker" }
+          }
+          foreach ($marker in @('MODEL_PIN_MISMATCH','resolve_pinned_model')) {
+            if (-not $gateway.Contains($marker)) { throw "Gateway hardening marker missing: $marker" }
+          }
+          Write-Host 'V213_R75_SOURCE_CONTRACT = PASS'
+
+      - name: Complete Windows no-mutation validation
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\ci_v213_r75_validate.ps1 -ProjectRoot $PWD.Path
+          if ($LASTEXITCODE -ne 0) { throw 'Complete R75 validation failed.' }
+
+      - name: Build and independently verify R75 package
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\ci_v213_r75_package.ps1 -ProjectRoot $PWD.Path
+          if ($LASTEXITCODE -ne 0) { throw 'R75 package build failed.' }
+          foreach ($path in @($env:R75_ZIP,$env:R75_SHA_FILE,$env:R75_VERIFICATION,$env:R75_RECEIPT,$env:R75_VALIDATION)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing packaged R75 artifact: $path" }
+          }
+          $actual = (Get-FileHash -LiteralPath $env:R75_ZIP -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:R75_SHA) { throw "R75 package SHA mismatch: $actual / $env:R75_SHA" }
+          Write-Host "V213_R75_PACKAGE_RECHECK = PASS; sha256=$actual"
+
+      - name: Copy final verified delivery to Desktop
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          if ([string]::IsNullOrWhiteSpace($desktop)) { $desktop = Join-Path $env:USERPROFILE 'Desktop' }
+          New-Item -ItemType Directory -Force -Path $desktop | Out-Null
+          $finalZip = Join-Path $desktop 'Investor-Intelligence-v2.1.3-R75-FINAL-VERIFIED.zip'
+          Copy-Item -LiteralPath $env:R75_ZIP -Destination $finalZip -Force
+          Copy-Item -LiteralPath $env:R75_SHA_FILE -Destination ($finalZip + '.sha256') -Force
+          Copy-Item -LiteralPath $env:R75_VERIFICATION -Destination $desktop -Force
+          Copy-Item -LiteralPath $env:R75_RECEIPT -Destination $desktop -Force
+          Copy-Item -LiteralPath $env:R75_VALIDATION -Destination $desktop -Force
+          [ordered]@{
+            schema_version = 1
+            status = 'PASS'
+            source_commit = '${{ github.sha }}'
+            workflow_run_id = '${{ github.run_id }}'
+            package = [IO.Path]::GetFileName($finalZip)
+            sha256 = $env:R75_SHA
+            validation = 'complete-windows-no-mutation'
+            production_mutation_by_ci = $false
+            completed_at = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $desktop 'Investor-Intelligence-v2.1.3-R75-FINAL-VERIFIED.json') -Encoding utf8
+          "R75_FINAL_DESKTOP_ZIP=$finalZip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "V213_R75_FINAL_DESKTOP_DELIVERY = PASS; path=$finalZip; production_mutation=false"
+
+      - name: Upload final R75 artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Investor-Intelligence-v2.1.3-R75-FINAL-VERIFIED
+          path: |
+            ${{ env.R75_ZIP }}
+            ${{ env.R75_SHA_FILE }}
+            ${{ env.R75_VERIFICATION }}
+            ${{ env.R75_RECEIPT }}
+            ${{ env.R75_VALIDATION }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish final audit status to branch
+        if: always()
+        shell: pwsh
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $success = '${{ job.status }}' -eq 'success' -and $env:R75_SHA -match '^[0-9a-f]{64}$'
+          $status = if ($success) { 'PASS' } else { 'FAIL' }
+          $path = 'delivery/v213-r75/final-audit-status.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+          [ordered]@{
+            schema_version = 1
+            status = $status
+            job_status = '${{ job.status }}'
+            workflow_run_id = '${{ github.run_id }}'
+            trigger_commit = '${{ github.sha }}'
+            validated_commit = (git rev-parse HEAD).Trim()
+            package = $(if ($success) { [IO.Path]::GetFileName($env:R75_ZIP) } else { '' })
+            zip_sha256 = $(if ($success) { $env:R75_SHA } else { '' })
+            desktop_delivery = $(if ($success) { $env:R75_FINAL_DESKTOP_ZIP } else { '' })
+            production_mutation_by_ci = $false
+            completed_at = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git commit -m "delivery: publish R75 final audit status for run ${{ github.run_id }}"
+          if ($LASTEXITCODE -eq 0) {
+            git pull --rebase origin development/v2.1.3-r75-hardening
+            if ($LASTEXITCODE -eq 0) { git push origin HEAD:development/v2.1.3-r75-hardening }
+          }
+          Write-Host "V213_R75_FINAL_STATUS = $status"
