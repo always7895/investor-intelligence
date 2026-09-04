@@ -26,6 +26,7 @@ try {
     if (-not $env:PROJECT_PYTHON -or -not (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) {
         throw 'Repository-managed Python resolution failed.'
     }
+    if ($env:GITHUB_ENV) { "PROJECT_PYTHON=$($env:PROJECT_PYTHON)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
     & $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
     if ($LASTEXITCODE -ne 0) { throw 'Hash-locked Python dependency installation failed.' }
     & $env:PROJECT_PYTHON -m pip check

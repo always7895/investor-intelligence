@@ -21,9 +21,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Protected R75 release source changed: $protected" }
     }
     if (-not $env:PROJECT_PYTHON -or -not (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) {
-        $python = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $python) { $python = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
-        $env:PROJECT_PYTHON = $python.Source
+        $verifiedCandidate = if ($env:RUNNER_TEMP) { Join-Path $env:RUNNER_TEMP 'ii-r75-python-3.12.10\python.exe' } else { '' }
+        if ($verifiedCandidate -and (Test-Path -LiteralPath $verifiedCandidate -PathType Leaf)) { $env:PROJECT_PYTHON = $verifiedCandidate }
+        else {
+            $python = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $python) { $python = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
+            $env:PROJECT_PYTHON = $python.Source
+        }
     }
     if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $env:RUNNER_TEMP "ii-v213-r75-named-tunnel-$sha-$runId-$attempt" }
     $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
