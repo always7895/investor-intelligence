@@ -147,3 +147,40 @@ M6 authoritative Windows no-mutation matrix and isolated transaction packaging t
 ### Next action
 
 Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 immutable R75 packaging, artifact download, and independent verification.
+
+## Milestone M6 — authoritative Windows validation complete (2026-09-04)
+
+- Release source commit: `536644d22ef3534be1c4b8a9e1ff969df4d580fa`.
+- Authoritative self-hosted Windows run: `33853776628` — PASS (`https://github.com/always7895/investor-intelligence/actions/runs/33853776628`).
+- Real public-network refresh completed with seven successful source families and six official families; non-Yahoo market corroboration remained unavailable and was explicitly degraded rather than promoted.
+- Actual generated sealed bundle: 20 rows, `evidence_qualified=0`, `limited_research_candidates=20`; unsupported sensitive positive factors remained withheld.
+- The actual bundle passed the shared R75 preflight under Windows PowerShell 5.1 and PowerShell 7.
+- Complete Python suite — PASS (550 tests, 2 skipped locally after adding artifact-verifier tests).
+- Worker TypeScript and Vitest — PASS (18 files, 101 tests).
+- Isolated KV-compatible pointer-last promotion, object readback, corrupt replay rejection, rollback, and finalize — PASS under both PowerShell hosts.
+- Two fail-closed candidate runs exposed and repaired stale optional-BLS audit assumptions and native-output pollution in the PowerShell preflight wrapper before the successful run.
+- Production mutation, LINE send, and schedule registration: **none**.
+
+## Milestone M7 — immutable durable R75 release complete (2026-09-04)
+
+- Release tag: `v2.1.3-R75`, targeting exact commit `536644d22ef3534be1c4b8a9e1ff969df4d580fa`.
+- Durable release page: `https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75`.
+- Immutable ZIP: `Investor-Intelligence-v2.1.3-R75-536644d22ef3534be1c4b8a9e1ff969df4d580fa-33853776628.zip`.
+- ZIP size: 1,174,869 bytes.
+- ZIP SHA256: `de038dfc47375fca6ef17122d31e226dc1945db282e4f1e79010d0610cd4896c`.
+- Published separate external evidence: ZIP SHA256, MANIFEST, SHA256SUMS, SPDX 2.3 SBOM, Windows receipt, Worker receipt, delivery receipt, CI independent-verification receipt, and post-download verification receipt.
+- Independent Actions-artifact download verification — PASS.
+- Independent durable GitHub Release download verification — PASS, including outer SHA256, ZIP CRC, path safety, duplicate/case collision rejection, symlink rejection, complete file-set/digest manifest, SHA256SUMS, PE marker and launcher self-test, exact R75/commit/run markers, publication-contract hash, SPDX identity, public/internal separation, and no-mutation receipts.
+- Publication contract SHA256: `ed57b880bba3b29e41831201dc12bc8100101448f491f687c0bec67e9403f920`.
+- The public package excludes CI, tests, internal status/skills, and prior-delivery evidence; those remain reviewable at the immutable Git commit. No R70 package was overwritten.
+- Production mutation, LINE send, and schedule registration: **none**.
+
+### Final defect counts
+
+- P0: **0**. `P0-06` is closed by successful run `33853776628`, artifact `9929456694`, durable release `v2.1.3-R75`, and two independent downloads.
+- P1: **1**. Public-provider availability remains an operational degradation handled fail-closed; it did not create unsupported HIGH confidence or positive factors.
+- P2: **0**. Download, evidence reconciliation, and durable release publication are complete.
+
+### Production boundary
+
+R75 engineering and release gates are complete. Any real Worker deployment, Production KV/D1/R2/DO/Queue/schedule write, real LINE send, or schedule registration still requires explicit authorization in the active session.
