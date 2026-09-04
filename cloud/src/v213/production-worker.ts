@@ -1,3 +1,4 @@
+export { V213BroadcastDedupe } from "./broadcast-dedupe";
 import v211Worker, { type V211Env } from "../v211/worker";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";

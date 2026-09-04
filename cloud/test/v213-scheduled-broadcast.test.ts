@@ -5,6 +5,7 @@ import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { broadcastV213Top20 } from "../src/v213/broadcast";
 import { ingestV213Top20Report } from "../src/v213/admin";
 import { formatV213Top20Report, parseV213Top20Report } from "../src/v213/top20-report";
+import { V213BroadcastDedupe } from "../src/v213/broadcast-dedupe";
 
 const HASH_KEY = "SYNTHETIC_V213_HASH_KEY_NOT_REAL";
 const DATA_KEY = "SYNTHETIC_V213_DATA_KEY_NOT_REAL";
@@ -97,6 +98,31 @@ function report() {
   };
 }
 
+function fakeDedupeNamespace(): DurableObjectNamespace {
+  const values = new Map<string, unknown>();
+  let chain = Promise.resolve();
+  const state = {
+    storage: {
+      get: async (key: string) => values.get(key),
+      put: async (key: string, value: unknown) => { values.set(key, value); },
+      delete: async (key: string) => values.delete(key),
+    },
+  } as unknown as DurableObjectState;
+  const instance = new V213BroadcastDedupe(state);
+  const stub = {
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const result = chain.then(() => instance.fetch(request));
+      chain = result.then(() => undefined, () => undefined);
+      return result;
+    },
+  };
+  return {
+    idFromName: (name: string) => name,
+    get: () => stub,
+  } as unknown as DurableObjectNamespace;
+}
+
 function runtime() {
   const publicKv = new MemoryKv();
   const privateKv = new MemoryKv();
@@ -110,6 +136,7 @@ function runtime() {
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_ACCESS_NOT_REAL",
     V21_SCHEDULED_PUSH_ENABLED: "true",
     V21_TOP20_MAX_AGE_SECONDS: "7200",
+    V213_BROADCAST_DEDUPE: fakeDedupeNamespace(),
   };
   return { publicKv, privateKv, securityKv, env };
 }
@@ -166,6 +193,29 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(text).toContain("公司現在訂單");
     expect(text).toContain("未來訂單預估");
     expect(text).not.toContain("Serenity");
+  });
+
+  it("atomically sends exactly once under concurrent scheduled delivery", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const runId = "20260901T122248Z-fccfd14d3c79";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    let sends = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      sends += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return new Response("{}", { status: 200 });
+    }));
+    const results = await Promise.all([
+      broadcastV213Top20(env, "morning"),
+      broadcastV213Top20(env, "morning"),
+    ]);
+    expect(results.map((item) => item.status).sort()).toEqual(["in_progress", "sent"]);
+    expect(sends).toBe(1);
   });
 
   it("fails closed when live Top20 order drifts", async () => {

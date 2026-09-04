@@ -1,3 +1,4 @@
+import { runV213BroadcastOnce } from "./broadcast-dedupe";
 import { splitLineText } from "../core";
 import { publicJson, publicText, type StorageEnv } from "../storage";
 import { getOwnerPushTarget } from "../v21/owner-storage";
@@ -7,6 +8,7 @@ import { formatV213Top20Report, parseV213Top20Report } from "./top20-report";
 import type { FieldLocale } from "./field-labels";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
+  V213_BROADCAST_DEDUPE?: DurableObjectNamespace;
   V21_SCHEDULED_PUSH_ENABLED?: string;
   V21_TOP20_MAX_AGE_SECONDS?: string;
   V213_FIELD_LOCALE?: string;
@@ -85,13 +87,16 @@ export async function broadcastV213Top20(
   const runId = String(pointer?.run_id ?? "unknown");
   const date = taipeiDate(now);
   const dedupeKey = `v213:broadcast:${date}:${slot}:${runId}`;
-  if (slot !== "test" && (await env.EPHEMERAL_SECURITY_CACHE.get(dedupeKey))) {
-    return { status: "duplicate" };
-  }
-
-  await pushText(env, owner.lineUserId, message);
-  if (slot !== "test") {
-    await env.EPHEMERAL_SECURITY_CACHE.put(dedupeKey, "sent", { expirationTtl: 259200 });
+  if (slot === "test") {
+    await pushText(env, owner.lineUserId, message);
+  } else {
+    if (!env.V213_BROADCAST_DEDUPE) return { status: "dedupe_unavailable" };
+    const delivery = await runV213BroadcastOnce(
+      env.V213_BROADCAST_DEDUPE,
+      dedupeKey,
+      () => pushText(env, owner.lineUserId, message),
+    );
+    if (delivery.status !== "sent") return { status: delivery.status };
   }
   return {
     status: "sent",

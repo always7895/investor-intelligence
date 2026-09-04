@@ -495,6 +495,10 @@ function Start-HealthyNamedTunnel {
     }
 }
 
+$operationLockScript = Join-Path $ProjectRoot 'scripts\v213_operation_lock.ps1'
+if (-not (Test-Path -LiteralPath $operationLockScript -PathType Leaf)) { throw 'R75 operation-lock module is missing.' }
+. $operationLockScript
+[void](Enter-V213OperationLock -Owner 'model-bridge' -TimeoutSeconds 0)
 $oldState = $null
 if (Test-Path -LiteralPath $statePath -PathType Leaf) {
     try { $oldState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json } catch { }
@@ -600,4 +604,5 @@ finally {
     $env:II_LLAMA_BASE_URL = $oldLlama
     $env:II_LOCAL_LLM_MODEL = $oldModel
     $secret = $null
+    Exit-V213OperationLock
 }

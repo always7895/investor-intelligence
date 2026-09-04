@@ -97,3 +97,29 @@ M4: enforce test-only Quick Tunnels, named-tunnel Production policy, truthful tr
 ### Next action
 
 M5: snapshot readback/replay/rollback journal, operation locking, scheduler hardening, and atomic LINE dedupe.
+
+## Milestone M5 — transaction, operation, schedule, and LINE safety (2026-09-04)
+
+- Input HEAD: `fca4751`.
+- Activation writes immutable objects without short TTL, reads every expected object back before pointer promotion, verifies again after promotion, and rejects missing/corrupt replay.
+- Rollback journal moved from short-lived ephemeral KV to durable private operational storage; prepared-journal restart resumes safely, pointer-last remains enforced, rollback restores exact prior text, and finalize removes the journal.
+- Public reads fail closed on dangling promoted pointers instead of silently using stale direct-key fallback.
+- One cross-process/reentrant named mutex serializes activation, bridge, and scheduled refresh operations; contention fails closed.
+- Scheduled refresh is data-only and records no-mutation receipts; Task Scheduler policy includes WakeToRun, network requirement, StartWhenAvailable missed-slot recovery, three retries, 100-minute timeout, and StopExisting timeout recovery.
+- Scheduled LINE sends use a Durable Object pending/sent lease; concurrent test sends exactly once and reports the contender as in-progress.
+- `cloud: npm run typecheck` — PASS.
+- `cloud: npm test` — PASS (18 files, 101 tests).
+- Activation core self-tests on Windows PowerShell 5.1 and PowerShell 7 — PASS.
+- Operation-lock cross-process tests on both shells — PASS.
+- Scheduler ValidateOnly and data-only fake-runtime execution on both shells — PASS.
+- External/Production mutation: **none**; no scheduled task was registered and no LINE request was sent outside synthetic mocks.
+
+### Open defect counts
+
+- P0: **1** (`P0-06`).
+- P1: **1** (`P1-01`: long-running cloud QA remains an availability limitation; no unsafe fallback).
+- P2: **6**.
+
+### Next action
+
+M6 authoritative Windows no-mutation matrix and isolated transaction packaging tests, followed by M7 immutable artifact workflow and independent download verification.

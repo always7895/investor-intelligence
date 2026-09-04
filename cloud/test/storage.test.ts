@@ -173,4 +173,13 @@ describe("physically separated public and tenant storage", () => {
     });
     expect([...securityKv.values.values()].join("\n")).not.toContain("new-generation result");
   });
+
+  it("fails closed on a dangling snapshot pointer instead of using direct fallback", async () => {
+    const publicKv = new MemoryKv();
+    const privateKv = new MemoryKv();
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "MISSING" }));
+    publicKv.values.set("scores:latest", JSON.stringify([{ ticker: "STALE" }]));
+    await expect(publicJson(env(publicKv, privateKv), ["scores:latest"])).resolves.toBeNull();
+  });
+
 });

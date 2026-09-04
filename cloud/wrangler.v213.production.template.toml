@@ -36,3 +36,11 @@ crons = ["0 0 * * *", "0 13 * * *"]
 
 [observability]
 enabled = false
+
+[[durable_objects.bindings]]
+name = "V213_BROADCAST_DEDUPE"
+class_name = "V213BroadcastDedupe"
+
+[[migrations]]
+tag = "v213-r75-broadcast-dedupe-v1"
+new_sqlite_classes = ["V213BroadcastDedupe"]

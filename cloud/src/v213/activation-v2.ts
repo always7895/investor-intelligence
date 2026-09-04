@@ -381,6 +381,20 @@ function sameDigests(left: Record<string, string>, right: Record<string, unknown
   return PAYLOAD_NAMES.every((name) => left[name] === String(right[name] ?? ""));
 }
 
+async function verifySnapshotObjects(
+  env: V21AdminEnv,
+  prefix: string,
+  objects: Array<[string, string]>,
+  replay = false,
+): Promise<void> {
+  for (const [key, expected] of objects) {
+    const observed = await env.PUBLIC_CACHE.get(`${prefix}${key}`, "text");
+    if (observed !== expected) {
+      throw new Error(replay ? "V213_ACTIVATION_REPLAY_CORRUPT" : "V213_ACTIVATION_SNAPSHOT_READBACK_FAILED");
+    }
+  }
+}
+
 export async function ingestV213ActivationBundle(
   body: string,
   env: V21AdminEnv,
@@ -450,27 +464,15 @@ export async function ingestV213ActivationBundle(
   const previousPointer = await env.PUBLIC_CACHE.get("snapshot:current", "text");
   const previousRunId = currentRunId(previousPointer);
   const rollbackStateKey = rollbackKey(transactionId);
-  const existingStateText = await env.EPHEMERAL_SECURITY_CACHE.get(rollbackStateKey, "text");
+  const existingStateText = await env.TENANT_PRIVATE_CACHE.get(rollbackStateKey, "text");
   let state: RollbackState;
+  let idempotentReplay = false;
+  let journalRecovered = false;
   if (existingStateText) {
     state = parseRollbackState(existingStateText, transactionId, runId);
-    if (previousRunId === runId) {
-      return {
-        status: "accepted",
-        product_version: "2.1.3",
-        transaction_id: transactionId,
-        run_id: runId,
-        previous_run_id: state.previous_run_id,
-        object_count: 0,
-        pointer_written_last: true,
-        rollback_available: true,
-        idempotent_replay: true,
-        publication_mode: publicationMode,
-        publication_mode_contract_id: contract.contract_id,
-        publication_mode_contract_sha256: publicationModeContractHash,
-      };
-    }
-    if (previousPointer !== state.previous_pointer) {
+    idempotentReplay = previousRunId === runId;
+    journalRecovered = !idempotentReplay;
+    if (!idempotentReplay && previousPointer !== state.previous_pointer) {
       throw new Error("V213_ACTIVATION_CONCURRENT_POINTER_CHANGE");
     }
   } else {
@@ -484,6 +486,7 @@ export async function ingestV213ActivationBundle(
     };
   }
 
+  await env.TENANT_PRIVATE_CACHE.put(rollbackStateKey, JSON.stringify(state));
   const runClaimKey = claimKey(runId);
   const existingClaimText = await env.PUBLIC_CACHE.get(runClaimKey, "text");
   if (existingClaimText) {
@@ -499,7 +502,7 @@ export async function ingestV213ActivationBundle(
       payload_digests: Object.fromEntries(PAYLOAD_NAMES.map((name) => [name, String(digests[name])])),
       claimed_at: new Date().toISOString(),
     };
-    await env.PUBLIC_CACHE.put(runClaimKey, JSON.stringify(claim), { expirationTtl: 259200 });
+    await env.PUBLIC_CACHE.put(runClaimKey, JSON.stringify(claim));
     const confirmedText = await env.PUBLIC_CACHE.get(runClaimKey, "text");
     if (!confirmedText) throw new Error("V213_ACTIVATION_RUN_CLAIM_WRITE_FAILED");
     const confirmed = parseRunClaim(confirmedText);
@@ -530,10 +533,29 @@ export async function ingestV213ActivationBundle(
       if (value !== null) objects.push([key, value]);
     }
   }
-  for (const [key, value] of objects) {
-    await env.PUBLIC_CACHE.put(`${prefix}${key}`, value, { expirationTtl: 259200 });
+  if (idempotentReplay) {
+    await verifySnapshotObjects(env, prefix, objects, true);
+    return {
+      status: "accepted",
+      product_version: "2.1.3",
+      transaction_id: transactionId,
+      run_id: runId,
+      previous_run_id: state.previous_run_id,
+      object_count: 0,
+      objects_read_back: objects.length,
+      pointer_written_last: true,
+      rollback_available: true,
+      recovery_status: "PROMOTED_JOURNAL_RECOVERED",
+      idempotent_replay: true,
+      publication_mode: publicationMode,
+      publication_mode_contract_id: contract.contract_id,
+      publication_mode_contract_sha256: publicationModeContractHash,
+    };
   }
-  await env.EPHEMERAL_SECURITY_CACHE.put(rollbackStateKey, JSON.stringify(state), { expirationTtl: 1800 });
+  for (const [key, value] of objects) {
+    await env.PUBLIC_CACHE.put(`${prefix}${key}`, value);
+  }
+  await verifySnapshotObjects(env, prefix, objects);
   await env.PUBLIC_CACHE.put("snapshot:current", JSON.stringify({
     schema_version: 1,
     run_id: runId,
@@ -546,6 +568,7 @@ export async function ingestV213ActivationBundle(
   if (currentRunId(confirmedPointer) !== runId) {
     throw new Error("V213_ACTIVATION_POINTER_WRITE_NOT_VERIFIED");
   }
+  await verifySnapshotObjects(env, prefix, objects);
   return {
     status: "accepted",
     product_version: "2.1.3",
@@ -553,8 +576,10 @@ export async function ingestV213ActivationBundle(
     run_id: runId,
     previous_run_id: state.previous_run_id,
     object_count: objects.length,
+    objects_read_back: objects.length,
     pointer_written_last: true,
     rollback_available: true,
+    recovery_status: journalRecovered ? "PREPARED_JOURNAL_RESUMED" : "JOURNAL_DURABLE",
     idempotent_replay: false,
     publication_mode: publicationMode,
     publication_mode_contract_id: contract.contract_id,
@@ -568,7 +593,7 @@ export async function rollbackV213Activation(
 ): Promise<Record<string, unknown>> {
   const control = parseControl(body);
   const key = rollbackKey(control.transaction_id);
-  const stateText = await env.EPHEMERAL_SECURITY_CACHE.get(key, "text");
+  const stateText = await env.TENANT_PRIVATE_CACHE.get(key, "text");
   const currentText = await env.PUBLIC_CACHE.get("snapshot:current", "text");
   const observedRunId = currentRunId(currentText);
   if (!stateText) {
@@ -585,7 +610,7 @@ export async function rollbackV213Activation(
   if (restoredText !== state.previous_pointer) {
     throw new Error("V213_ACTIVATION_ROLLBACK_NOT_VERIFIED");
   }
-  await env.EPHEMERAL_SECURITY_CACHE.delete(key);
+  await env.TENANT_PRIVATE_CACHE.delete(key);
   return {
     status: "rolled_back",
     transaction_id: control.transaction_id,
@@ -601,14 +626,14 @@ export async function finalizeV213Activation(
 ): Promise<Record<string, unknown>> {
   const control = parseControl(body);
   const key = rollbackKey(control.transaction_id);
-  const stateText = await env.EPHEMERAL_SECURITY_CACHE.get(key, "text");
+  const stateText = await env.TENANT_PRIVATE_CACHE.get(key, "text");
   if (!stateText) throw new Error("V213_ACTIVATION_FINALIZE_STATE_MISSING");
   parseRollbackState(stateText, control.transaction_id, control.run_id);
   const currentText = await env.PUBLIC_CACHE.get("snapshot:current", "text");
   if (currentRunId(currentText) !== control.run_id) {
     throw new Error("V213_ACTIVATION_FINALIZE_POINTER_MISMATCH");
   }
-  await env.EPHEMERAL_SECURITY_CACHE.delete(key);
+  await env.TENANT_PRIVATE_CACHE.delete(key);
   return {
     status: "finalized",
     transaction_id: control.transaction_id,

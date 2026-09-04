@@ -388,6 +388,11 @@ if ($healthyModel) {
     Write-Host "V213_SELECTED_MODEL_PREFLIGHT = PASS; model=$ExpectedModel" -ForegroundColor Green
 }
 
+$operationLockScript = Join-Path $ProjectRoot 'scripts\v213_operation_lock.ps1'
+if (-not (Test-Path -LiteralPath $operationLockScript -PathType Leaf)) { throw 'R75 operation-lock module is missing.' }
+. $operationLockScript
+[void](Enter-V213OperationLock -Owner 'activation' -TimeoutSeconds 0)
+Write-Host 'V213_OPERATION_LOCK = ACQUIRED; owner=activation' -ForegroundColor Green
 $temp = Join-Path $CloudRoot ('.wrangler.v213.activation.' + [guid]::NewGuid().ToString('N') + '.toml')
 $text = Get-Content -LiteralPath $productionConfig -Raw -Encoding utf8
 $text = [regex]::Replace($text, '(?m)^\s*main\s*=.*$', 'main = "src/v213/production-worker.ts"', 1)
@@ -401,6 +406,12 @@ if ($healthyModel) {
 else {
     foreach ($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')) { $text = Remove-Var $text $key }
     Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; open-ended generation remains fail closed.'
+}
+if ($text -notmatch '(?m)^\s*name\s*=\s*"V213_BROADCAST_DEDUPE"\s*$') {
+    $text += "`r`n[[durable_objects.bindings]]`r`nname = `"V213_BROADCAST_DEDUPE`"`r`nclass_name = `"V213BroadcastDedupe`"`r`n"
+}
+if ($text -notmatch '(?m)^\s*tag\s*=\s*"v213-r75-broadcast-dedupe-v1"\s*$') {
+    $text += "`r`n[[migrations]]`r`ntag = `"v213-r75-broadcast-dedupe-v1`"`r`nnew_sqlite_classes = [`"V213BroadcastDedupe`"]`r`n"
 }
 [IO.File]::WriteAllText($temp, $text, [Text.UTF8Encoding]::new($false))
 
@@ -526,4 +537,6 @@ catch {
 }
 finally {
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    Exit-V213OperationLock
+    Write-Host 'V213_OPERATION_LOCK = RELEASED; owner=activation' -ForegroundColor DarkGray
 }

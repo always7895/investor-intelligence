@@ -367,7 +367,7 @@ function control(transactionId = TRANSACTION_ID) {
 
 describe("v2.1.3 atomic activation transaction", () => {
   it("writes all immutable objects before switching the pointer and rolls back exact text", async () => {
-    const { publicKv, securityKv, env } = runtime();
+    const { publicKv, privateKv, env } = runtime();
     const oldPointer = JSON.stringify({ schema_version: 1, run_id: "20260901T000000Z-aaaaaaaaaaaa", marker: "exact" });
     publicKv.values.set("snapshot:current", oldPointer);
     publicKv.values.set("snapshot:20260901T000000Z-aaaaaaaaaaaa:v211:universe:latest", "old-universe");
@@ -386,7 +386,7 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:source-independence:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe("old-universe");
     expect(publicKv.values.get(`snapshot:${RUN_ID}:options:latest`)).toBe("old-options");
-    expect(securityKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
 
     const replay = await ingestV213ActivationBundle(JSON.stringify(value), env);
     expect(replay.idempotent_replay).toBe(true);
@@ -396,16 +396,16 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(rolledBack.status).toBe("rolled_back");
     expect(rolledBack.exact_pointer_restored).toBe(true);
     expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
-    expect(securityKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
   });
 
   it("finalizes only the matching current pointer and removes the rollback handle", async () => {
-    const { publicKv, securityKv, env } = runtime();
+    const { publicKv, privateKv, env } = runtime();
     await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
     const finalized = await finalizeV213Activation(control(), env);
     expect(finalized.status).toBe("finalized");
     expect(finalized.rollback_handle_deleted).toBe(true);
-    expect(securityKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
     await expect(rollbackV213Activation(control(), env)).rejects.toThrow("V213_ACTIVATION_ROLLBACK_STATE_MISSING");
     expect(JSON.parse(publicKv.values.get("snapshot:current")!).run_id).toBe(RUN_ID);
   });
@@ -426,6 +426,37 @@ describe("v2.1.3 atomic activation transaction", () => {
     await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_DIGEST_MISMATCH_TOP20_JSON");
     expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
     expect(securityKv.values.size).toBe(0);
+  });
+
+  it("does not promote the pointer when object readback differs", async () => {
+    const { publicKv, privateKv, env } = runtime();
+    const oldPointer = JSON.stringify({ run_id: "20260901T000000Z-aaaaaaaaaaaa" });
+    publicKv.values.set("snapshot:current", oldPointer);
+    const value = await bundle();
+    const originalGet = publicKv.get.bind(publicKv);
+    publicKv.get = (async (key: string, type?: "text" | "json") => {
+      if (key === `snapshot:${RUN_ID}:v213:source-independence:latest` && publicKv.values.has(key)) return "corrupt";
+      return originalGet(key, type);
+    }) as typeof publicKv.get;
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_SNAPSHOT_READBACK_FAILED");
+    expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
+    publicKv.get = originalGet as typeof publicKv.get;
+    const recovered = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    expect(recovered.recovery_status).toBe("PREPARED_JOURNAL_RESUMED");
+    expect(JSON.parse(publicKv.values.get("snapshot:current")!).run_id).toBe(RUN_ID);
+  });
+
+  it("rejects corrupt or missing snapshot objects during idempotent replay", async () => {
+    for (const corrupt of [false, true]) {
+      const { publicKv, env } = runtime();
+      const value = await bundle();
+      await ingestV213ActivationBundle(JSON.stringify(value), env);
+      const key = `snapshot:${RUN_ID}:v213:source-independence:latest`;
+      if (corrupt) publicKv.values.set(key, "corrupt");
+      else publicKv.values.delete(key);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPLAY_CORRUPT");
+    }
   });
 
   it("rejects different content that collides with an already-claimed run ID", async () => {
