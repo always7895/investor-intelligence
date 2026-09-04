@@ -1,0 +1,126 @@
+name: V2.1.3 R75 Apply Integrity Hardening V2
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-r75-hardening
+    paths:
+      - .github/workflows/v213-r75-apply-integrity-hardening-v2.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-r75-integrity-v2
+  cancel-in-progress: false
+
+jobs:
+  patch-validate-commit:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 420
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+
+    steps:
+      - name: Checkout current R75 source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-r75-hardening
+          fetch-depth: 0
+          clean: true
+
+      - name: Resolve repository-managed Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-r75-integrity-v2
+          if (-not $env:PROJECT_PYTHON -or -not (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) { throw 'Repository-managed Python was not configured.' }
+
+      - name: Apply staged integrity patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON scripts\_apply_r75_integrity_once.py
+          if ($LASTEXITCODE -ne 0) { throw 'Staged R75 integrity patch failed.' }
+
+      - name: Run targeted integrity tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compileall failed.' }
+          & $env:PROJECT_PYTHON scripts\v213_serenity_latest_static_audit.py
+          if ($LASTEXITCODE -ne 0) { throw 'Static audit failed.' }
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\run_v213_local_llm_bridge_core.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Bridge self-test failed.' }
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          $npm = if ($env:PROJECT_NPM -and (Test-Path -LiteralPath $env:PROJECT_NPM -PathType Leaf)) { $env:PROJECT_NPM } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
+          Push-Location cloud
+          try {
+            & $npm ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+            & $npm run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
+            & $npm test
+            if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed.' }
+          }
+          finally { Pop-Location }
+
+      - name: Run complete Windows R75 validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\ci_v213_r75_validate.ps1 -ProjectRoot $PWD.Path
+          if ($LASTEXITCODE -ne 0) { throw 'Complete R75 Windows validation failed.' }
+
+      - name: Commit validated integrity hardening
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.github/workflows/v213-r75-apply-integrity-hardening-v2.yml' -Force
+          Remove-Item -LiteralPath '.github/workflows/v213-r75-apply-integrity-hardening.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath 'scripts/_apply_r75_integrity_once.py' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'R75 integrity source contains whitespace errors.' }
+          git commit -m 'fix: harden R75 snapshot integrity, candidate stability and tunnel health'
+          if ($LASTEXITCODE -ne 0) { throw 'R75 integrity commit failed.' }
+          git pull --rebase origin development/v2.1.3-r75-hardening
+          if ($LASTEXITCODE -ne 0) { throw 'R75 integrity rebase failed.' }
+          git push origin HEAD:development/v2.1.3-r75-hardening
+          if ($LASTEXITCODE -ne 0) { throw 'R75 integrity push failed.' }
+
+      - name: Publish failure diagnostic
+        if: failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $path = 'delivery/v213-r75/integrity-v2-failure.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+          [ordered]@{
+            schema_version = 1
+            status = 'FAIL'
+            workflow_run_id = '${{ github.run_id }}'
+            source_commit = '${{ github.sha }}'
+            git_status = @(git status --short)
+            changed_files = @(git diff --name-only)
+            production_mutation_by_ci = $false
+            failed_at = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git commit -m "diagnostic: R75 integrity V2 failed in run ${{ github.run_id }}"
+          if ($LASTEXITCODE -eq 0) {
+            git pull --rebase origin development/v2.1.3-r75-hardening
+            if ($LASTEXITCODE -eq 0) { git push origin HEAD:development/v2.1.3-r75-hardening }
+          }
