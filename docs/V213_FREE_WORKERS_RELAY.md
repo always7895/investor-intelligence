@@ -32,6 +32,12 @@ The request uses the existing DPAPI-protected v2.1 owner-Worker HMAC configurati
 
 The Worker independently performs three schema/model health checks before submitting the route to a single Durable Object. The Durable Object atomically applies a newer generation or a monotonic heartbeat. It rejects malformed, expired, stale, model-mismatched, duplicated, and replayed records. Q&A requests resolve the current lease internally and derive the same per-generation Gateway secret. Expired leases resolve to unavailable rather than a stale tunnel.
 
+## Production Workers runtime compatibility
+
+Cloudflare's production Workers runtime accepts `redirect: "follow"` and `redirect: "manual"`, but rejects `redirect: "error"` before making a request. The v2.1.3 production wrapper therefore preserves the certified `cloud/src/qa.ts` blob and installs a narrowly scoped compatibility adapter only for HTTPS `POST /v1/chat/completions` calls. It observes redirects with `manual` and throws on every 3xx response, preserving fail-closed behavior without changing Q&A semantics.
+
+An HMAC-authenticated `POST /v213/admin/free-relay-smoke` operation provides a fixed-prompt, no-KV-write end-to-end gate. It does not accept an arbitrary prompt and succeeds only when the current lease routes through the exact model and the expected fixed marker is returned.
+
 ## Reconnect and rollback
 
 - A heartbeat extends the current lease only while both Gateway and cloudflared processes remain alive and the Worker can revalidate the route.

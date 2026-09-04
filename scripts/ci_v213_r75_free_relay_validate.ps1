@@ -29,12 +29,12 @@ try {
         'scripts/run_v213_local_llm_bridge_core_v2.ps1','scripts/test_v213_free_relay.ps1',
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',
         'scripts/v213_free_relay_heartbeat.ps1','scripts/verify_v213_r75_free_relay_hotfix.py',
-        'state/STATUS.md'
+        'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md'
     )
     foreach ($path in $changed) { if ($allowed -notcontains $path) { throw "FREE_RELAY changed a non-deployment path: $path" } }
     foreach ($protected in @(
         'config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py',
-        'cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts',
+        'cloud/src/qa.ts','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts',
         'scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py'
     )) {
         git diff --quiet $r75Commit -- $protected
@@ -55,9 +55,9 @@ try {
     [ordered]@{
         schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';base_named_tunnel_commit=$baseCommit;source_commit=$sha
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
-        worker_typecheck='PASS';worker_test_files=19;worker_tests=110;workers_dev_stable_entrypoint=$true;custom_domain_required=$false
+        worker_typecheck='PASS';worker_test_files=19;worker_tests=113;workers_dev_stable_entrypoint=$true;custom_domain_required=$false
         quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
-        signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
+        worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false
         worker_deployed=$false;production_kv_or_do_written=$false;line_message_sent=$false;schedules_registered=$false;completed_utc=(Get-Date).ToUniversalTime().ToString('o')
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receipt -Encoding utf8
