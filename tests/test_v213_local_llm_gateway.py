@@ -38,42 +38,42 @@ class V213LocalGatewayFidelityTests(unittest.TestCase):
     def test_stock_question_injects_public_logic_fidelity(self) -> None:
         enriched, context = MODULE.enrich_messages([{"role": "user", "content": "AXTI 怎麼看"}])
         system = enriched[0]["content"]
-        self.assertIn("SERENITY PUBLIC-LOGIC FIDELITY", system)
-        self.assertIn("System operationalization score", system)
-        self.assertIn("evidence-bound supply-chain dependency graph", system)
+        self.assertIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", system)
+        self.assertIn("legacy deterministic score", system)
+        self.assertIn("Evidence-bound dependency graph", system)
         self.assertIn("company capture", system)
-        self.assertIn("thesis-killer signal must be tied", system)
-        self.assertIn("public-logic high-fidelity reconstruction", system)
-        self.assertEqual(context["serenity_public_logic_fidelity"], "v2.1.3")
+        self.assertIn("thesis killers", system)
+        self.assertIn("public-logic reconstruction", system)
+        self.assertEqual(context["serenity_public_logic_fidelity"], "2.1.3-source-independence-v3")
         self.assertFalse(context["private_process_reproduction_claimed"])
-        self.assertFalse(context["cross_run_source_delta_append_only_verified"])
+        self.assertFalse(context["official_serenity_formula_claimed"])
+        self.assertEqual(context["model_confidence_cap"], "LIMITED")
 
     def test_methodology_question_injects_fidelity_even_without_ticker(self) -> None:
         enriched, context = MODULE.enrich_messages([{"role": "user", "content": "Serenity 的投資邏輯是什麼"}])
-        self.assertIn("SERENITY PUBLIC-LOGIC FIDELITY", enriched[0]["content"])
+        self.assertIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", enriched[0]["content"])
         self.assertEqual(context["legacy_quantitative_overlay_label"], "System operationalization score")
 
     def test_supply_chain_question_injects_fidelity_even_without_ticker(self) -> None:
         enriched, _ = MODULE.enrich_messages([{"role": "user", "content": "這個供應鏈瓶頸怎麼判斷"}])
-        self.assertIn("SERENITY PUBLIC-LOGIC FIDELITY", enriched[0]["content"])
+        self.assertIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", enriched[0]["content"])
 
     def test_non_stock_general_question_does_not_force_serenity_method(self) -> None:
         enriched, context = MODULE.enrich_messages([{"role": "user", "content": "你好"}])
-        self.assertNotIn("SERENITY PUBLIC-LOGIC FIDELITY", enriched[0]["content"])
+        self.assertNotIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", enriched[0]["content"])
         self.assertNotIn("serenity_public_logic_fidelity", context)
 
     def test_directive_forbids_false_official_score_and_unbound_signals(self) -> None:
         directive = MODULE.PUBLIC_LOGIC_DIRECTIVE
-        self.assertIn("Never call it an official Serenity score", directive)
-        self.assertIn("named customer dependency alone", directive)
-        self.assertIn("BENEFICIARY label", directive)
-        self.assertIn("Every dependency", directive)
-        self.assertIn("UNPROVEN cannot jump", directive)
-        self.assertIn("valid publication date", directive)
-        self.assertIn("company capture", directive)
-        self.assertIn("company-capture label alone cannot break", directive)
-        self.assertIn("cross-run append-only", directive)
-        self.assertIn("foreign listing", directive)
+        self.assertIn("never as a Serenity score", directive)
+        self.assertIn("named customer alone", directive)
+        self.assertIn("evidence-bound graph edge", directive)
+        self.assertIn("UNPROVEN/INSUFFICIENT_EVIDENCE", directive)
+        self.assertIn("claim-relevant primary source", directive)
+        self.assertIn("Company capture", directive)
+        self.assertIn("independent corroboration", directive)
+        self.assertIn("Conflicting sources", directive)
+        self.assertIn("FRED is official macro context only", directive)
 
 
 if __name__ == "__main__":

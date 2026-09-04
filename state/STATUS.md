@@ -52,3 +52,26 @@ Complete M2 fail-closed fixture matrix and full Worker suite, then M3 gateway pr
 ### Next action
 
 M3: implement a direct Windows-safe Gateway launch contract, exact model pin, bounded generation admission, non-blocking health, and redacted bounded startup diagnostics.
+
+## Milestone M3 — Windows-safe Gateway and exact-model admission (2026-09-04)
+
+- Input HEAD: `0824532`.
+- Gateway rejects request model substitution with HTTP 409 and always sends the environment-pinned exact model upstream.
+- A bounded global generation semaphore rejects excess work with HTTP 429 and `Retry-After`; `/health` does not acquire a generation slot.
+- PowerShell 5.1-compatible native argument quoting launches the real Gateway script from a path containing spaces, Unicode, and `(1)`.
+- Startup failures include only bounded, secret-redacted stdout/stderr tails.
+- Real HTTP process test verifies special-path startup, exact pinning, upstream model identity, concurrent backpressure, and health responsiveness.
+- `python -m unittest tests.test_v213_local_llm_gateway tests.test_v213_r75_gateway_process -v` — PASS (6 tests).
+- Gateway `--self-test` — PASS.
+- Windows PowerShell 5.1 and PowerShell 7 bridge `-SelfTest` — PASS.
+- External/Production mutation: **none**; existing llama.cpp Router configuration was not altered.
+
+### Open defect counts
+
+- P0: **2** (`P0-06`, `P0-07`).
+- P1: **8** (`P1-02` and `P1-03` completed).
+- P2: **7**.
+
+### Next action
+
+M4: enforce test-only Quick Tunnels, named-tunnel Production policy, truthful transient-DNS status, and blue/green cutover/rollback lifecycle tests.

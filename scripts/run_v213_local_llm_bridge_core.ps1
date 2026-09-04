@@ -17,6 +17,46 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = $utf8NoBom
 $preferredModel = 'RVN-Q6_K-multilingual-mtp'
 
+function ConvertTo-WindowsCommandLineArgument([string]$Value) {
+    if ($null -eq $Value -or $Value.Length -eq 0) { return '""' }
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
+function Join-NativeArgumentLine([string[]]$Values) {
+    $rendered = @($Values | ForEach-Object { ConvertTo-WindowsCommandLineArgument -Value ([string]$_) })
+    return ($rendered -join ' ')
+}
+
+function Start-GatewayNativeProcess {
+    param(
+        [string]$PythonPath,
+        [string]$ScriptPath,
+        [string[]]$Arguments,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+    $allArguments = @($ScriptPath) + @($Arguments)
+    $argumentLine = Join-NativeArgumentLine $allArguments
+    return Start-Process -FilePath $PythonPath -ArgumentList $argumentLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+}
+
+function Get-RedactedLogTail([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return '<missing>' }
+    $lines = @(Get-Content -LiteralPath $Path -Tail 20 -ErrorAction SilentlyContinue)
+    $safe = foreach ($line in $lines) {
+        $value = [string]$line
+        $value = [regex]::Replace($value, '(?i)bearer\s+[A-Za-z0-9._~+/=-]+', 'Bearer <redacted>')
+        $value = [regex]::Replace($value, '(?i)(authorization|token|secret|api[_-]?key|password)\s*[:=]\s*[^\s;,]+', '$1=<redacted>')
+        if ($value.Length -gt 500) { $value = $value.Substring(0, 500) + '<truncated>' }
+        $value
+    }
+    if (@($safe).Count -eq 0) { return '<empty>' }
+    return ($safe -join ' | ')
+}
+
 function Get-ObjectPropertyValue {
     param([object]$Object, [string]$Name, [object]$Default = $null)
     if ($null -eq $Object) { return $Default }
@@ -56,7 +96,27 @@ if ($SelfTest) {
         selected_model = 'model-a'
     }
     if (-not (Test-HealthModel $valid 'model-a')) { throw 'Health schema v2 payload was rejected.' }
-    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS' -ForegroundColor Green
+    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
+    $probeRoot = Join-Path $env:TEMP ('Investor Intelligence 測試 Path (1)-' + [guid]::NewGuid().ToString('N'))
+    $probeScripts = Join-Path $probeRoot 'scripts'
+    New-Item -ItemType Directory -Force -Path $probeScripts | Out-Null
+    $probeStdout = Join-Path $probeRoot 'gateway.stdout.log'
+    $probeStderr = Join-Path $probeRoot 'gateway.stderr.log'
+    try {
+        Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v212_local_llm_gateway.py') -Destination $probeScripts
+        Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v213_local_llm_gateway.py') -Destination $probeScripts
+        $probe = Start-GatewayNativeProcess $pythonCommand.Source (Join-Path $probeScripts 'v213_local_llm_gateway.py') @('--self-test') $probeStdout $probeStderr
+        $finished = $probe.WaitForExit(30000)
+        if ($finished) { $probe.WaitForExit(); $probe.Refresh() }
+        $probeOutput = if (Test-Path -LiteralPath $probeStdout) { Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue } else { '' }
+        if (-not $finished -or $probeOutput -notmatch 'V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS') {
+            try { $probe.Kill() } catch {}
+            throw "Gateway process-path self-test failed. stderr_tail=$(Get-RedactedLogTail $probeStderr); stdout_tail=$(Get-RedactedLogTail $probeStdout)"
+        }
+    }
+    finally { Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true' -ForegroundColor Green
     exit 0
 }
 
@@ -416,7 +476,7 @@ try {
     $stdout = Join-Path $logRoot 'gateway.stdout.log'
     $stderr = Join-Path $logRoot 'gateway.stderr.log'
     Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
-    $gateway = Start-Process -FilePath $python -ArgumentList @($GatewayScript, '--host', '127.0.0.1', '--port', [string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $gateway = Start-GatewayNativeProcess $python $GatewayScript @('--host', '127.0.0.1', '--port', [string]$GatewayPort) $stdout $stderr
     [void](Wait-LocalGatewayHealth $GatewayPort $gateway.Id $Model)
     Write-Host "II_PROGRESS local gateway healthy; port=$GatewayPort; model=$Model; health_schema_version=2" -ForegroundColor Green
     $publicUrl = ''
@@ -463,7 +523,10 @@ try {
 catch {
     if ($tunnel) { Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue }
     if ($gateway) { Stop-Process -Id $gateway.Id -Force -ErrorAction SilentlyContinue }
-    throw
+    $failure = $_.Exception.Message
+    $stderrTail = Get-RedactedLogTail (Join-Path $logRoot 'gateway.stderr.log')
+    $stdoutTail = Get-RedactedLogTail (Join-Path $logRoot 'gateway.stdout.log')
+    throw "V213_LOCAL_MODEL_BRIDGE_FAILED; cause=$failure; stderr_tail=$stderrTail; stdout_tail=$stdoutTail"
 }
 finally {
     $env:II_LOCAL_LLM_SHARED_SECRET = $oldSecret

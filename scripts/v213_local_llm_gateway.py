@@ -13,6 +13,8 @@ import json
 import os
 import re
 import sys
+import hmac
+import threading
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +33,9 @@ ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
 FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
 SOURCE_AUDIT_MAX_AGE_SECONDS = 7200
+MAX_CONCURRENT_GENERATIONS = max(1, min(8, int(os.getenv("II_GATEWAY_MAX_CONCURRENT_GENERATIONS", "1"))))
+GENERATION_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_GENERATIONS)
+RETRY_AFTER_SECONDS = max(1, min(60, int(os.getenv("II_GATEWAY_RETRY_AFTER_SECONDS", "2"))))
 METHODOLOGY_RE = re.compile(
     r"(?:serenity|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
     r"supply\s*chain|source|來源|来源|evidence|證據|证据|thesis|投資邏輯)",
@@ -422,7 +427,19 @@ def _build_health_payload(
 
 
 class V213GatewayHandler(base.GatewayHandler):
-    server_version = "InvestorIntelligenceLocalGateway/2.1.3"
+    server_version = "InvestorIntelligenceLocalGateway/2.1.3-R75"
+
+    def _json_with_headers(self, status: int, value: Any, headers: Mapping[str, str]) -> None:
+        payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("content-type", "application/json; charset=utf-8")
+        self.send_header("cache-control", "no-store")
+        self.send_header("x-content-type-options", "nosniff")
+        self.send_header("content-length", str(len(payload)))
+        for name, header_value in headers.items():
+            self.send_header(name, header_value)
+        self.end_headers()
+        self.wfile.write(payload)
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] != "/health":
@@ -448,6 +465,83 @@ class V213GatewayHandler(base.GatewayHandler):
         )
 
 
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path.split("?", 1)[0] != "/v1/chat/completions":
+            self._json(404, {"error": "NOT_FOUND"})
+            return
+        expected = os.getenv("II_LOCAL_LLM_SHARED_SECRET", "")
+        provided = self.headers.get("x-investor-shared-secret", "")
+        if len(expected) < 32 or not hmac.compare_digest(expected, provided):
+            self._json(401, {"error": "UNAUTHORIZED"})
+            return
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            length = 0
+        if length <= 0 or length > base.MAX_BODY:
+            self._json(413, {"error": "BODY_SIZE_INVALID"})
+            return
+        try:
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception:
+            self._json(400, {"error": "JSON_INVALID"})
+            return
+        if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
+            self._json(400, {"error": "MESSAGES_REQUIRED"})
+            return
+        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        requested = str(body.get("model") or "").strip()
+        if not selected:
+            self._json(503, {"error": "SELECTED_MODEL_NOT_CONFIGURED"})
+            return
+        if requested and requested.casefold() != selected.casefold():
+            self._json(409, {"error": "MODEL_PIN_MISMATCH", "selected_model": selected})
+            return
+        if not GENERATION_SLOTS.acquire(blocking=False):
+            self._json_with_headers(
+                429,
+                {"error": "GENERATION_CAPACITY_EXHAUSTED", "max_concurrent": MAX_CONCURRENT_GENERATIONS},
+                {"Retry-After": str(RETRY_AFTER_SECONDS)},
+            )
+            return
+        try:
+            if os.getenv("II_GATEWAY_DISABLE_PUBLIC_ENRICHMENT_FOR_TEST") == "1":
+                enriched, context = body["messages"], {}
+            else:
+                enriched, context = enrich_messages(body["messages"])
+            temperature = base.safe_float(body.get("temperature"))
+            upstream = {
+                "model": selected,
+                "messages": enriched,
+                "temperature": min(0.4, max(0.0, temperature if temperature is not None else 0.2)),
+                "max_tokens": min(1800, max(256, int(body.get("max_tokens") or 1400))),
+                "stream": False,
+            }
+            response = requests.post(
+                base.llama_url(), json=upstream,
+                headers={"content-type": "application/json"}, timeout=(5, 180),
+            )
+            if not response.ok:
+                self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
+                return
+            result = response.json()
+            if isinstance(result, dict):
+                result["ii_exact_model_pin"] = {
+                    "selected_model": selected,
+                    "request_model_substitution_allowed": False,
+                }
+                result["ii_source_ensemble"] = {
+                    "successful_source_families": context.get("successful_source_families", []) if isinstance(context, dict) else [],
+                    "source_diversity_status": context.get("source_diversity_status", "UNKNOWN") if isinstance(context, dict) else "UNKNOWN",
+                    "model_confidence_cap": context.get("model_confidence_cap", "LIMITED") if isinstance(context, dict) else "LIMITED",
+                }
+            self._json(200, result)
+        except Exception as exc:
+            self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
+        finally:
+            GENERATION_SLOTS.release()
+
+
 def _self_test() -> None:
     preferred = "RVN-Q6_K-multilingual-mtp"
     exact = _build_health_payload(
@@ -466,6 +560,9 @@ def _self_test() -> None:
     missing_model = _build_health_payload(preferred, ["gemma4"], True)
     assert missing_model["llama_reachable"] is False
     assert missing_model["selected_model_available"] is False
+    assert MAX_CONCURRENT_GENERATIONS >= 1
+    assert GENERATION_SLOTS.acquire(blocking=False)
+    GENERATION_SLOTS.release()
 
     sample = {
         "status": "PASS",
@@ -523,7 +620,7 @@ def _self_test() -> None:
     assert "Yahoo/yfinance" in PUBLIC_LOGIC_DIRECTIVE
     assert "Conflicting sources" in PUBLIC_LOGIC_DIRECTIVE
     assert "FRED is official macro context only" in PUBLIC_LOGIC_DIRECTIVE
-    print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS")
+    print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS; exact_model_pin=true; bounded_generation=true; health_slot_independent=true")
 
 
 def main() -> int:
@@ -539,6 +636,8 @@ def main() -> int:
         raise SystemExit("Gateway must bind to loopback only")
     if len(os.getenv("II_LOCAL_LLM_SHARED_SECRET", "")) < 32:
         raise SystemExit("II_LOCAL_LLM_SHARED_SECRET must be configured")
+    if not os.getenv("II_LOCAL_LLM_MODEL", "").strip():
+        raise SystemExit("II_LOCAL_LLM_MODEL must be configured")
     base.enrich_messages = enrich_messages
     server = ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)
     print(

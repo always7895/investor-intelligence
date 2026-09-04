@@ -541,4 +541,3 @@ describe("v2.1.3 atomic activation transaction", () => {
   });
 
 });
-
