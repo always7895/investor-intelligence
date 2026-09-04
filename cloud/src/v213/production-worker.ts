@@ -1,6 +1,8 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
 import v211Worker, { type V211Env } from "../v211/worker";
+import { parseQuery } from "../core";
+import { generalAnswer } from "../qa";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";
 import {
@@ -10,6 +12,7 @@ import {
 } from "./activation-v2";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
 import {
+  currentFreeRelayRoute,
   freeRelayEnabled,
   freeRelayRuntimeOverrides,
   updateFreeRelayRoute,
@@ -108,6 +111,38 @@ async function handleV213Report(request: Request, env: V211Env): Promise<Respons
   }
 }
 
+async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): Promise<Response> {
+  const authenticated = await authenticatedBody(request, env);
+  if (authenticated instanceof Response) return authenticated;
+  try {
+    const value = JSON.parse(authenticated) as Record<string, unknown>;
+    if (!value || Array.isArray(value) || Object.keys(value).length !== 1 || value.schema_version !== 1) {
+      throw new Error("FREE_RELAY_SMOKE_REQUEST_INVALID");
+    }
+    const route = await currentFreeRelayRoute(env);
+    if (!route) throw new Error("FREE_RELAY_UNAVAILABLE");
+    const expectedMarker = "R75_FREE_RELAY_E2E_OK";
+    const answer = await generalAnswer(
+      await freeRelayRequestEnv(env),
+      parseQuery(`請只回覆以下字串，不要加入其他內容：${expectedMarker}`),
+      { tenantId: "v213-free-relay-smoke", chatType: "group" },
+    );
+    if (!answer.includes(expectedMarker)) throw new Error("FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID");
+    return jsonResponse({
+      ok: true,
+      status: "PASS",
+      model: route.model,
+      route_generation: route.route_generation,
+      health_schema_version: route.health_schema_version,
+      stable_entrypoint: "workers_dev",
+      expected_token_observed: true,
+    });
+  } catch (error) {
+    const code = errorCode(error, "FREE_RELAY_SMOKE_FAILED");
+    return jsonResponse({ ok: false, code }, validationStatus(code));
+  }
+}
+
 async function handleActivationTransaction(
   request: Request,
   env: V211Env,
@@ -151,6 +186,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/top20-report") {
       return handleV213Report(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-smoke") {
+      return handleFreeRelaySmoke(request, env);
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-route") {
       const authenticated = await authenticatedBody(request, env);

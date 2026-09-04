@@ -87,12 +87,12 @@ function hex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function signedRequest(record: FreeRelayRouteRecord, nonce = "1234567890abcdef1234567890abcdef"): Promise<Request> {
-  const body = JSON.stringify(record);
+async function signedAdminRequest(path: string, value: unknown, nonce: string): Promise<Request> {
+  const body = JSON.stringify(value);
   const timestamp = String(Math.floor(Date.now() / 1000));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(HMAC_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${nonce}.${body}`)));
-  return new Request("https://stable-worker.workers.dev/v213/admin/free-relay-route", {
+  return new Request(`https://stable-worker.workers.dev${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -102,6 +102,10 @@ async function signedRequest(record: FreeRelayRouteRecord, nonce = "1234567890ab
     },
     body,
   });
+}
+
+async function signedRequest(record: FreeRelayRouteRecord, nonce = "1234567890abcdef1234567890abcdef"): Promise<Request> {
+  return signedAdminRequest("/v213/admin/free-relay-route", record, nonce);
 }
 
 function healthy(model = MODEL): Response {
@@ -260,6 +264,34 @@ describe("R75 FREE_RELAY route lease", () => {
     const expectedSecret = await freeRelayGatewaySecret(runtime, current.route_generation);
     expect(sent?.headers).toMatchObject({ "x-investor-shared-secret": expectedSecret });
     expect(target).not.toContain("workers.dev");
+  });
+
+  it("provides a signed, fixed-prompt, no-write end-to-end smoke check", async () => {
+    const relay = relayObject();
+    const current = route("efefefefefefefefefefefefefefefef", -1_000);
+    await relay.object.fetch(new Request("https://free-relay.internal/update", {
+      method: "POST",
+      body: JSON.stringify(current),
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(`${current.public_url}/v1/chat/completions`);
+      return Response.json({ choices: [{ message: { content: "R75_FREE_RELAY_E2E_OK" } }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await productionWorker.fetch(
+      await signedAdminRequest("/v213/admin/free-relay-smoke", { schema_version: 1 }, "fedcba0987654321fedcba0987654321"),
+      env(relay.object),
+      context(),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      status: "PASS",
+      model: MODEL,
+      expected_token_observed: true,
+      stable_entrypoint: "workers_dev",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("derives the same non-persisted per-generation gateway secret deterministically", async () => {
