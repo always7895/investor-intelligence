@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "workflow_run_id": "33834801990",
+  "workflow_attempt": "1",
+  "source_commit": "c2f4e1a6e4ccd8819e9db147f85cae9d886551ff",
+  "python_outcome": "success",
+  "patch_outcome": "failure",
+  "validation_outcome": "skipped",
+  "source_commit_outcome": "skipped",
+  "package_outcome": "skipped",
+  "upload_outcome": "skipped",
+  "receipt_outcome": "skipped",
+  "production_mutation_by_ci": false,
+  "failed_at": "2026-09-04T03:53:35.1831660Z",
+  "git_status": [],
+  "changed_files": []
+}
