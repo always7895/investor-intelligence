@@ -92,7 +92,8 @@
 - 本機完整 no-mutation 驗證 PASS：Python 550 passed/2 skipped；Worker 19 files/113 tests；PowerShell 5.1/7 及全部回歸／安全 gate PASS。
 - 正式 Worker 目前 100% active version：`27121388-1e6e-445a-b45e-104a867ca70d`；部署前回滾基準：`eb52ece1-8749-4526-a464-3356ec2dbc65`。
 - 真實 FREE_RELAY signed route、Gateway、Quick Tunnel、heartbeat 均 PASS；穩定 `workers.dev → route lease → Gateway → qwen38-q6` 固定標記 smoke 回應 PASS。短效 TryCloudflare hostname 未記錄為穩定入口。
-- `InvestorIntelligence-v213-FreeRelay` at-logon 工作已啟用（`StartWhenAvailable=true`、`MultipleInstances=IgnoreNew`）；舊 `InvestorIntelligence-v212-LocalModelBridge` 已停用，8814 舊 bridge/tunnel 孤兒已清除。早晚資料刷新工作保留。
+- `InvestorIntelligence-v213-FreeRelay` at-logon 工作已啟用（`StartWhenAvailable=true`、`MultipleInstances=IgnoreNew`）；Task Scheduler 實際觸發 result=0、新 generation 與一個完整 heartbeat 週期後 smoke PASS。舊 `InvestorIntelligence-v212-LocalModelBridge` 已停用，其 bridge/tunnel 孤兒已清除；早晚資料刷新工作保留。
+- 現有 Router 一度由外部以空參數重啟而無模型；首次 Task 失敗時舊 route 完整保留。之後先停舊 Router，再用同一 executable／同一 8080 串行重啟，專案專用 preset 設 `models-max=1`；最終只有 `qwen38-q6` loaded，`qwen38` 保持 unloaded，未同時啟動第二 llama-server。
 - 新不可變 artifact：`Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip`；SHA-256 `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec`；下載後獨立驗證 PASS。
 - GitHub Immutable Releases 已啟用；不可變正式 Release（`isImmutable=true`）為 `v2.1.3-R75-free-relay-final-92c97f9-33896931576`，`gh release verify` PASS，10 個 assets 全部具有 GitHub attestation。
 - CI 仍為 `production_mutation_by_ci=false`；上述 Worker deploy、真實 tunnel/route 與 Task Scheduler 註冊均是本次明確授權的操作者動作。未執行臨時 LINE 手動推送；既有 08:00/21:00 TST crons 保留。

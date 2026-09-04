@@ -286,7 +286,8 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - 正式來源 HEAD `92c97f97694e6e39c7a16986630d248c9ee744fe`；權威 Windows run `33896931576` success；本機完整 gate：Python 550/2 skipped、Worker 19 files/113 tests、PS 5.1/7、security、Named Tunnel regression、activation、heartbeat/task/lock 全 PASS。
 - Production Worker 100% active version `27121388-1e6e-445a-b45e-104a867ca70d`；rollback baseline `eb52ece1-8749-4526-a464-3356ec2dbc65`；既有 08:00/21:00 TST crons 保留。
 - 真實 route registration、三次 schema-v2 health、exact `qwen38-q6`、heartbeat 與穩定 `workers.dev` 入口端到端 smoke 全 PASS；未把 ephemeral TryCloudflare hostname 當成穩定入口。
-- `InvestorIntelligence-v213-FreeRelay` at-logon task 已啟用（StartWhenAvailable、IgnoreNew）；舊 v2.1.2 bridge task 已停用；8814 舊 bridge/tunnel 孤兒已清除；v2.1.3 Gateway/tunnel/heartbeat 持續存活。
+- `InvestorIntelligence-v213-FreeRelay` at-logon task 已啟用（StartWhenAvailable、IgnoreNew）；實際 `Start-ScheduledTask` 測試 result=0、新 generation 成功、舊 8816 三程序全停止、新 8814 Gateway/tunnel/heartbeat 全存活；舊 v2.1.2 bridge task 已停用，其孤兒已清除。
+- 現有 llama.cpp Router 曾由外部空參數重啟而變成零模型，Task 首次觸發因此 result=1 並完整保留舊 route。之後以同一 executable／同一 8080 串行重啟（先停舊程序，未並行第二 server），專案專用 preset 設 `models-max=1`；`qwen38-q6=loaded`、`qwen38=unloaded`。再測 Task 與完整 heartbeat 週期後 smoke PASS。
 - 新 artifact `Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip`，SHA-256 `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec`；3 CI receipts + post-download verification PASS。
 - GitHub Immutable Releases 已啟用；正式 tag `v2.1.3-R75-free-relay-final-92c97f9-33896931576`，`isImmutable=true`，10 assets，`gh release verify` PASS。Release 標題／說明、repository description/homepage 皆已加入繁體中文；topics 使用 GitHub 僅允許的 ASCII 格式。
 - CI Production mutation 維持 `false`；實際 mutation 僅限本次明確授權的操作者動作。未手動發送 LINE。
