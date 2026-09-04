@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "job_status": "failure",
+  "workflow_run_id": "33834090975",
+  "trigger_commit": "0d925d240fb10fa81fffacdeec810fe3be92df24",
+  "validated_commit": "0d925d240fb10fa81fffacdeec810fe3be92df24",
+  "package": "",
+  "zip_sha256": "",
+  "desktop_delivery": "",
+  "production_mutation_by_ci": false,
+  "completed_at": "2026-09-04T03:42:08.1233325Z"
+}
