@@ -102,8 +102,10 @@ function Get-HealthyModelState([string]$Path,[string]$RequiredModel){
 }
 
 function Test-SourceIndependenceDocument([string]$Python,[string]$Preflight,[string]$Bundle,[string]$Receipt){
-    & $Python $Preflight '--bundle' $Bundle '--receipt' $Receipt
-    if($LASTEXITCODE-ne0-or-not(Test-Path -LiteralPath $Receipt -PathType Leaf)){
+    $nativeOutput=@(& $Python $Preflight '--bundle' $Bundle '--receipt' $Receipt)
+    $nativeExitCode=$LASTEXITCODE
+    foreach($line in $nativeOutput){Write-Host ([string]$line)}
+    if($nativeExitCode-ne0-or-not(Test-Path -LiteralPath $Receipt -PathType Leaf)){
         throw 'The sealed R75 publication-mode activation preflight failed.'
     }
     $result=Get-Content -LiteralPath $Receipt -Raw -Encoding utf8|ConvertFrom-Json
