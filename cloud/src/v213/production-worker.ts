@@ -1,4 +1,5 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
+export { V213FreeRelayRoute } from "./free-relay";
 import v211Worker, { type V211Env } from "../v211/worker";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";
@@ -8,6 +9,7 @@ import {
   rollbackV213Activation,
 } from "./activation-v2";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
+import { updateFreeRelayRoute } from "./free-relay";
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -25,7 +27,7 @@ function errorCode(error: unknown, fallback: string): string {
 }
 
 function validationStatus(code: string): number {
-  if (/STATE|POINTER|CONCURRENT|COLLISION|ALREADY|MISMATCH/.test(code)) return 409;
+  if (/STATE|POINTER|CONCURRENT|COLLISION|ALREADY|MISMATCH|REPLAY|STALE|EXPIRED/.test(code)) return 409;
   return 400;
 }
 
@@ -91,6 +93,16 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/top20-report") {
       return handleV213Report(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-route") {
+      const authenticated = await authenticatedBody(request, env);
+      if (authenticated instanceof Response) return authenticated;
+      try {
+        return jsonResponse({ status: "accepted", ...(await updateFreeRelayRoute(authenticated, env)) });
+      } catch (error) {
+        const code = errorCode(error, "FREE_RELAY_UPDATE_FAILED");
+        return jsonResponse({ ok: false, code }, validationStatus(code));
+      }
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/test-push") {
       const authenticated = await authenticatedBody(request, env);

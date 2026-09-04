@@ -201,3 +201,34 @@ Checkpoint and push M6, inspect the authoritative Windows run, then complete M7 
 ### Next action
 
 Stop. Production deployment and real Named Tunnel/DNS setup remain operator-controlled and were not executed in this session.
+
+## Deployment hotfix H3 — zero-cost FREE_RELAY implementation candidate (2026-09-05)
+
+- Base Named Tunnel hotfix commit: `43f3be048cedf228cfe9e8e31f7b9901895838be`.
+- Branch: `pi/r75-free-workers-relay`.
+- Keeps the existing `workers.dev` Worker as the stable public entrypoint; requires no custom domain and makes no stability claim for ephemeral `trycloudflare.com` hostnames.
+- Added an authenticated route-registration endpoint and single Durable Object lease for exact model `qwen38-q6`, strict schema/URL/TTL/generation validation, three Worker-side public health-schema-v2 checks, serialized updates, replay/stale rejection, heartbeat expiry, and unavailable-on-expiry behavior.
+- Worker Q&A dynamically resolves the current route and derives the same per-generation Gateway authentication secret without storing the plaintext secret in the route record.
+- Added Windows PowerShell 5.1/7 FREE_RELAY bridge, heartbeat/reconnect monitor, optional at-logon task, blue/green pre-publication monitor gate, launcher defaults, activation preflight, no-mutation tests, immutable packaging, and independent verification.
+- Named Tunnel remains supported as an optional future stable path. `AllowTestTunnelException` is not used by FREE_RELAY.
+- Protected Serenity scoring, federation thresholds, publication contract/semantics, sealed bundles, and R75 release evidence rules remain unchanged from `536644d22ef3534be1c4b8a9e1ff969df4d580fa`.
+
+### Local validation to this checkpoint
+
+- Worker typecheck — PASS.
+- Worker full suite before the final replay test — PASS (19 files, 109 tests); final full rerun pending checkpoint commit.
+- FREE_RELAY host integration — PASS under Windows PowerShell 5.1.26100.9168 and PowerShell 7.6.5.
+- Named Tunnel regression — PASS under both PowerShell hosts.
+- Activation self-test — PASS under both PowerShell hosts.
+- Launcher compile/self-test — PASS.
+- External/Production mutation: **none**. No Worker deploy, Production KV/DO write, Cloudflare route change, LINE send, or task registration occurred.
+
+### Open defect counts
+
+- P0: **1** (authoritative Windows workflow, immutable artifact download, and independent post-download verification remain).
+- P1: **0** for the FREE_RELAY scope.
+- P2: **0** for the FREE_RELAY scope.
+
+### Next action
+
+Commit and push the implementation candidate, run the consolidated no-mutation Windows workflow, then independently download and verify the immutable FREE_RELAY artifact and receipts.

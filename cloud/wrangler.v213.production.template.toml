@@ -18,6 +18,11 @@ V21_TOP20_MAX_AGE_SECONDS = "7200"
 V21_OWNER_PAIRING_ENABLED = "true"
 V21_SCHEDULED_PUSH_ENABLED = "true"
 V213_FIELD_LOCALE = "zh-TW"
+# FREE relay keeps workers.dev as the stable entrypoint and leases only a
+# validated ephemeral TryCloudflare route. No custom domain is required.
+FREE_RELAY_ENABLED = "true"
+FREE_RELAY_MAX_TTL_SECONDS = "300"
+LOCAL_LLM_MODEL = "qwen38-q6"
 
 [[kv_namespaces]]
 binding = "PUBLIC_CACHE"
@@ -41,6 +46,14 @@ enabled = false
 name = "V213_BROADCAST_DEDUPE"
 class_name = "V213BroadcastDedupe"
 
+[[durable_objects.bindings]]
+name = "V213_FREE_RELAY_ROUTE"
+class_name = "V213FreeRelayRoute"
+
 [[migrations]]
 tag = "v213-r75-broadcast-dedupe-v1"
 new_sqlite_classes = ["V213BroadcastDedupe"]
+
+[[migrations]]
+tag = "v213-r75-free-relay-route-v1"
+new_sqlite_classes = ["V213FreeRelayRoute"]

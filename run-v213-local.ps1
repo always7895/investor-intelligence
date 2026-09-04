@@ -5,10 +5,12 @@ param(
     [string]$LlamaBaseUrl = '',
     [switch]$NoModelBridge,
     [switch]$NoTunnel,
-    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [ValidateSet('None','QuickTest','FreeRelay','Named')][string]$TunnelMode = 'FreeRelay',
     [string]$NamedTunnelName = '',
     [string]$NamedTunnelHostname = '',
     [string]$NamedTunnelConfig = '',
+    [string]$FreeRelayConfigPath = '',
+    [int]$FreeRelayLeaseTtlSeconds = 180,
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
@@ -174,7 +176,7 @@ try {
     $bridgeReady = $false
     if (-not $NoModelBridge) {
         try {
-            & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge-source-diverse.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig
+            & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge-source-diverse.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig -FreeRelayConfigPath $FreeRelayConfigPath -FreeRelayLeaseTtlSeconds $FreeRelayLeaseTtlSeconds
             if ($LASTEXITCODE -ne 0) {
                 throw 'Source-diverse bridge returned nonzero.'
             }

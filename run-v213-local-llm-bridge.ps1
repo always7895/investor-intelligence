@@ -8,10 +8,12 @@ param(
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
     [switch]$FinalizeCutover,
-    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [ValidateSet('None','QuickTest','FreeRelay','Named')][string]$TunnelMode = 'FreeRelay',
     [string]$NamedTunnelName = '',
     [string]$NamedTunnelHostname = '',
     [string]$NamedTunnelConfig = '',
+    [string]$FreeRelayConfigPath = '',
+    [int]$FreeRelayLeaseTtlSeconds = 180,
     [switch]$SelfTest
 )
 $ErrorActionPreference='Stop'

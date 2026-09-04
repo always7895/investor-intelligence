@@ -8,10 +8,12 @@ param(
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
     [switch]$FinalizeCutover,
-    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [ValidateSet('None','QuickTest','FreeRelay','Named')][string]$TunnelMode = 'FreeRelay',
     [string]$NamedTunnelName = '',
     [string]$NamedTunnelHostname = '',
     [string]$NamedTunnelConfig = '',
+    [string]$FreeRelayConfigPath = '',
+    [int]$FreeRelayLeaseTtlSeconds = 180,
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
@@ -21,8 +23,12 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8NoBom
 $OutputEncoding = $utf8NoBom
 $preferredModel = 'RVN-Q6_K-multilingual-mtp'
-$namedTunnelHelpers = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v213_named_tunnel_helpers.ps1'
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$namedTunnelHelpers = Join-Path $scriptRoot 'v213_named_tunnel_helpers.ps1'
 if (Test-Path -LiteralPath $namedTunnelHelpers -PathType Leaf) { . $namedTunnelHelpers }
+$freeRelayHelpers = Join-Path $scriptRoot 'v213_free_relay.ps1'
+if (-not (Test-Path -LiteralPath $freeRelayHelpers -PathType Leaf)) { throw 'FREE_RELAY helper is missing.' }
+. $freeRelayHelpers
 
 function ConvertTo-WindowsCommandLineArgument([string]$Value) {
     if ($null -eq $Value -or $Value.Length -eq 0) { return '""' }
@@ -63,7 +69,8 @@ function Resolve-TunnelPolicy([string]$Mode,[bool]$NoTunnelRequested,[string]$Na
     return [pscustomobject]@{
         mode = $Mode
         test_only = $Mode -eq 'QuickTest'
-        production_eligible = $Mode -eq 'Named'
+        production_eligible = $Mode -in @('FreeRelay','Named')
+        free_relay = $Mode -eq 'FreeRelay'
     }
 }
 
@@ -153,6 +160,14 @@ if ($SelfTest) {
     finally { Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue }
     $quickPolicy = Resolve-TunnelPolicy 'QuickTest' $false '' '' ''
     if (-not $quickPolicy.test_only -or $quickPolicy.production_eligible) { throw 'Quick Tunnel policy self-test failed.' }
+    $freePolicy = Resolve-TunnelPolicy 'FreeRelay' $false '' '' ''
+    if (-not $freePolicy.free_relay -or -not $freePolicy.production_eligible -or $freePolicy.test_only) { throw 'FREE_RELAY policy self-test failed.' }
+    $testHmac = 'EXAMPLE_FREE_RELAY_HMAC_SECRET_NOT_REAL_123456789'
+    $testGeneration = '0123456789abcdef0123456789abcdef'
+    $derived = Get-V213FreeRelayGatewaySecret -HmacSecret $testHmac -Generation $testGeneration
+    if ($derived -notmatch '^[0-9a-f]{64}$') { throw 'FREE_RELAY gateway secret derivation failed.' }
+    $testRecord = New-V213FreeRelayRouteRecord -PublicUrl 'https://ephemeral-test.trycloudflare.com' -Model 'qwen38-q6' -Generation $testGeneration -ConnectedAt ([datetime]::UtcNow.ToString('o'))
+    if ([string]$testRecord.tunnel_mode -ne 'quick_free_relay' -or [int]$testRecord.consecutive_health_checks -ne 3) { throw 'FREE_RELAY record contract failed.' }
     if ((Get-BlueGreenDecision $false $true) -ne 'ROLLBACK_NEW_RETAIN_OLD') { throw 'Blue/green rollback self-test failed.' }
     if ((Get-BlueGreenDecision $true $false) -ne 'PROMOTE_NEW_RETAIN_OLD_UNTIL_FINALIZE') { throw 'Blue/green staged cutover self-test failed.' }
     if ((Get-BlueGreenDecision $true $true) -ne 'PROMOTE_NEW_STOP_OLD') { throw 'Blue/green finalize self-test failed.' }
@@ -172,7 +187,7 @@ if ($SelfTest) {
         if ((Get-Content -LiteralPath $runtimeConfig -Raw -Encoding utf8) -notmatch 'http://127\.0\.0\.1:8815') { throw 'Blue/green runtime config did not target the new gateway port.' }
     }
     finally { Remove-Item -LiteralPath $namedRoot -Recurse -Force -ErrorAction SilentlyContinue }
-    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true; quick_tunnel_test_only=true; named_tunnel_policy=true; named_tunnel_config_port=true; blue_green_rollback=true' -ForegroundColor Green
+    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true; quick_tunnel_test_only=true; free_relay_default=true; free_relay_signed_lease=true; named_tunnel_policy=true; named_tunnel_config_port=true; blue_green_rollback=true' -ForegroundColor Green
     exit 0
 }
 
@@ -382,14 +397,23 @@ function Stop-RecordedBridge {
     if ($null -eq $OldState) { return }
     $gatewayPid = 0
     $tunnelPid = 0
+    $heartbeatPid = 0
     $oldPort = 0
     [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'gateway_pid' '0'), [ref]$gatewayPid)
     [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'cloudflared_pid' '0'), [ref]$tunnelPid)
+    [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'free_relay_heartbeat_pid' '0'), [ref]$heartbeatPid)
     [void][int]::TryParse([string](Get-ObjectPropertyValue $OldState 'gateway_port' '0'), [ref]$oldPort)
     if ($gatewayPid -gt 0 -and $oldPort -gt 0 -and (Get-PortOwnerPid $oldPort) -eq $gatewayPid) {
         try {
             $process = Get-Process -Id $gatewayPid -ErrorAction Stop
             if ($process.ProcessName -match '(?i)^python') { Stop-Process -Id $gatewayPid -Force -ErrorAction SilentlyContinue }
+        }
+        catch { }
+    }
+    if ($heartbeatPid -gt 0) {
+        try {
+            $process = Get-Process -Id $heartbeatPid -ErrorAction Stop
+            if ($process.ProcessName -match '(?i)^powershell$') { Stop-Process -Id $heartbeatPid -Force -ErrorAction SilentlyContinue }
         }
         catch { }
     }
@@ -498,6 +522,28 @@ function Start-HealthyQuickTunnel {
     throw "All quick-tunnel attempts failed. Last observation: $last"
 }
 
+function Start-FreeRelayHeartbeat {
+    param(
+        [string]$ConfigPath,[string]$PublicUrl,[string]$Generation,[string]$SelectedModel,
+        [string]$ConnectedAt,[int]$GatewayProcessId,[int]$TunnelProcessId,[string]$BaseUrl,
+        [int]$Port,[int]$LeaseTtl,[string]$ActivationFile
+    )
+    $heartbeatScript = Join-Path $ProjectRoot 'scripts\v213_free_relay_heartbeat.ps1'
+    if (-not (Test-Path -LiteralPath $heartbeatScript -PathType Leaf)) { throw 'FREE_RELAY heartbeat script is missing.' }
+    $hostCommand = Get-Command powershell.exe -ErrorAction Stop | Select-Object -First 1
+    $stdout = Join-Path $logRoot 'free-relay-heartbeat.stdout.log'
+    $stderr = Join-Path $logRoot 'free-relay-heartbeat.stderr.log'
+    Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
+    return Start-NativeRedirectedProcess $hostCommand.Source '-NoProfile' @(
+        '-ExecutionPolicy','Bypass','-File',$heartbeatScript,
+        '-ProjectRoot',$ProjectRoot,'-FreeRelayConfigPath',$ConfigPath,
+        '-PublicUrl',$PublicUrl,'-RouteGeneration',$Generation,'-Model',$SelectedModel,
+        '-ConnectedAt',$ConnectedAt,'-GatewayProcessId',[string]$GatewayProcessId,
+        '-TunnelProcessId',[string]$TunnelProcessId,'-LlamaBaseUrl',$BaseUrl,
+        '-GatewayPort',[string]$Port,'-LeaseTtlSeconds',[string]$LeaseTtl,'-ActivationFile',$ActivationFile
+    ) $stdout $stderr
+}
+
 function Start-HealthyNamedTunnel {
     param([string]$CloudflaredPath,[string]$ConfigPath,[string]$Name,[string]$Hostname,[string]$SelectedModel)
     $stdout = Join-Path $logRoot 'cloudflared-named.stdout.log'
@@ -525,19 +571,32 @@ if (Test-Path -LiteralPath $statePath -PathType Leaf) {
 }
 if ($StopExisting) { $FinalizeCutover = $true }
 $tunnelPolicy = Resolve-TunnelPolicy $TunnelMode $NoTunnel.IsPresent $NamedTunnelName $NamedTunnelHostname $NamedTunnelConfig
+$freeRelayConfiguration = $null
+$routeGeneration = ''
+$routeConnectedAt = ''
+if ($tunnelPolicy.mode -eq 'FreeRelay') {
+    $freeRelayConfiguration = Get-V213FreeRelayConfig -ConfigPath $FreeRelayConfigPath
+    $FreeRelayConfigPath = [string]$freeRelayConfiguration.config_path
+    $routeGeneration = New-V213FreeRelayGeneration
+    $routeConnectedAt = (Get-Date).ToUniversalTime().ToString('o')
+}
 $GatewayPort = Resolve-GatewayPort $GatewayPort
 $llama = Resolve-Llama
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
 Test-SelectedModelRoute $llama $Model
 $python = Resolve-Python
-$secret = Random-Secret
+$secret = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
 $oldLlama = $env:II_LLAMA_BASE_URL
 $oldModel = $env:II_LOCAL_LLM_MODEL
 $gateway = $null
 $tunnel = $null
+$heartbeat = $null
+$heartbeatActivationFile = ''
 $runtimeNamedConfig = ''
 try {
     $env:II_LOCAL_LLM_SHARED_SECRET = $secret
@@ -562,7 +621,7 @@ try {
         [void](New-V213RuntimeNamedTunnelConfig -SourceConfigPath $NamedTunnelConfig -GatewayPort $GatewayPort -DestinationPath $runtimeNamedConfig)
         Assert-V213CloudflaredSuccess (Invoke-V213CloudflaredCommand -CloudflaredPath $cloudflaredPath -Arguments @('tunnel','--config',$runtimeNamedConfig,'ingress','validate') -TimeoutSeconds 45) 'runtime ingress validation'
     }
-    if ($tunnelPolicy.mode -eq 'QuickTest') {
+    if ($tunnelPolicy.mode -in @('QuickTest','FreeRelay')) {
         $healthyTunnel = Start-HealthyQuickTunnel (Resolve-Cloudflared) $GatewayPort $Model
         $tunnel = $healthyTunnel.process
         $publicUrl = [string]$healthyTunnel.url
@@ -577,6 +636,18 @@ try {
         $publicUrl = [string]$healthyTunnel.url
         $tunnelPid = $tunnel.Id
         $tunnelStability = $healthyTunnel.stability
+    }
+    $freeRelayRegistration = $null
+    if ($tunnelPolicy.mode -eq 'FreeRelay') {
+        $record = New-V213FreeRelayRouteRecord -PublicUrl $publicUrl -Model $Model -Generation $routeGeneration -ConnectedAt $routeConnectedAt -LeaseTtlSeconds $FreeRelayLeaseTtlSeconds
+        $heartbeatActivationFile = Join-Path $logRoot ("free-relay-heartbeat-$routeGeneration.activate")
+        Remove-Item -LiteralPath $heartbeatActivationFile -Force -ErrorAction SilentlyContinue
+        $heartbeat = Start-FreeRelayHeartbeat $FreeRelayConfigPath $publicUrl $routeGeneration $Model $routeConnectedAt $gateway.Id $tunnelPid $llama $GatewayPort $FreeRelayLeaseTtlSeconds $heartbeatActivationFile
+        Start-Sleep -Milliseconds 500
+        if (-not (Get-Process -Id $heartbeat.Id -ErrorAction SilentlyContinue)) { throw 'FREE_RELAY heartbeat monitor failed before route publication.' }
+        $freeRelayRegistration = Publish-V213FreeRelayRoute -Configuration $freeRelayConfiguration -Record $record
+        New-Item -ItemType File -Path $heartbeatActivationFile -Force | Out-Null
+        Write-Host "V213_FREE_RELAY_ROUTE = PASS; model=$Model; generation=$routeGeneration; health_schema_version=2; consecutive=3; lease_expires=$($record.expires_at); stable_entrypoint=$($freeRelayConfiguration.worker_origin)" -ForegroundColor Green
     }
     $protected = ConvertTo-SecureString -String $secret -AsPlainText -Force | ConvertFrom-SecureString
     [ordered]@{
@@ -595,12 +666,19 @@ try {
         encrypted_shared_secret = $protected
         gateway_pid = $gateway.Id
         cloudflared_pid = $tunnelPid
-        tunnel_mode = $tunnelPolicy.mode.ToLowerInvariant().Replace('quicktest','quick_test')
+        free_relay_heartbeat_pid = $(if ($heartbeat) { $heartbeat.Id } else { 0 })
+        tunnel_mode = $(if ($tunnelPolicy.mode -eq 'FreeRelay') { 'quick_free_relay' } else { $tunnelPolicy.mode.ToLowerInvariant().Replace('quicktest','quick_test') })
         tunnel_test_only = [bool]$tunnelPolicy.test_only
         tunnel_production_eligible = [bool]$tunnelPolicy.production_eligible
         tunnel_health_status = [string]$tunnelStability.status
         tunnel_transient_failure_count = [int]$tunnelStability.transient_failure_count
         tunnel_consecutive_health_checks = [int]$tunnelStability.consecutive
+        free_relay_worker_origin = $(if ($freeRelayConfiguration) { [string]$freeRelayConfiguration.worker_origin } else { '' })
+        free_relay_route_generation = $routeGeneration
+        free_relay_connected_at = $routeConnectedAt
+        free_relay_lease_expires_at = $(if ($freeRelayRegistration) { [string]$freeRelayRegistration.expires_at } else { '' })
+        free_relay_config_path = $(if ($freeRelayConfiguration) { [string]$freeRelayConfiguration.config_path } else { '' })
+        free_relay_hmac_plaintext_persisted = $false
         named_tunnel_name = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_name } else { '' })
         named_tunnel_hostname = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_hostname } else { '' })
         named_tunnel_config_sha256 = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_config_sha256 } else { '' })
@@ -632,6 +710,8 @@ try {
     }
 }
 catch {
+    if ($heartbeat) { Stop-Process -Id $heartbeat.Id -Force -ErrorAction SilentlyContinue }
+    if ($heartbeatActivationFile) { Remove-Item -LiteralPath $heartbeatActivationFile -Force -ErrorAction SilentlyContinue }
     if ($tunnel) { Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue }
     if ($gateway) { Stop-Process -Id $gateway.Id -Force -ErrorAction SilentlyContinue }
     $failure = $_.Exception.Message
@@ -645,5 +725,6 @@ finally {
     $env:II_LLAMA_BASE_URL = $oldLlama
     $env:II_LOCAL_LLM_MODEL = $oldModel
     $secret = $null
+    $freeRelayConfiguration = $null
     Exit-V213OperationLock
 }

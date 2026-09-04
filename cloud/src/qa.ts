@@ -5,6 +5,12 @@ import {
   type ParsedQuery,
 } from "./core";
 import {
+  currentFreeRelayRoute,
+  freeRelayEnabled,
+  freeRelayGatewaySecret,
+  type FreeRelayEnv,
+} from "./v213/free-relay";
+import {
   clearConversation,
   conversation,
   deleteTenantData,
@@ -18,7 +24,7 @@ import {
   type StorageEnv,
 } from "./storage";
 
-export interface QaEnv extends StorageEnv {
+export interface QaEnv extends StorageEnv, FreeRelayEnv {
   GENERAL_QA_ENABLED?: string;
   CURRENT_PUBLIC_DATA_ENABLED?: string;
   PUBLIC_DATA_MAX_AGE_SECONDS?: string;
@@ -255,26 +261,53 @@ function localModelEndpoint(env: QaEnv): URL | null {
   return new URL("/v1/chat/completions", `${base.origin}/`);
 }
 
+interface LocalModelTarget {
+  endpoint: URL;
+  model: string;
+  sharedSecret?: string;
+  apiKey?: string;
+}
+
+async function localModelTarget(env: QaEnv): Promise<LocalModelTarget | null> {
+  if (freeRelayEnabled(env)) {
+    const route = await currentFreeRelayRoute(env);
+    if (!route) return null;
+    const sharedSecret = await freeRelayGatewaySecret(env, route.route_generation);
+    if (!sharedSecret) return null;
+    return {
+      endpoint: new URL("/v1/chat/completions", `${route.public_url}/`),
+      model: route.model,
+      sharedSecret,
+    };
+  }
+  const endpoint = localModelEndpoint(env);
+  if (!endpoint) return null;
+  return {
+    endpoint,
+    model: env.LOCAL_LLM_MODEL ?? "qwen3.8-27b",
+    sharedSecret: env.LOCAL_LLM_SHARED_SECRET,
+    apiKey: env.LOCAL_LLM_API_KEY,
+  };
+}
+
 async function localAnswer(
   env: QaEnv,
   messages: Array<{ role: string; content: string }>,
 ): Promise<string | null> {
-  const endpoint = localModelEndpoint(env);
-  if (!endpoint) return null;
+  const target = await localModelTarget(env);
+  if (!target) return null;
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "cache-control": "no-store",
   };
-  if (env.LOCAL_LLM_API_KEY) headers.authorization = `Bearer ${env.LOCAL_LLM_API_KEY}`;
-  if (env.LOCAL_LLM_SHARED_SECRET) {
-    headers["x-investor-shared-secret"] = env.LOCAL_LLM_SHARED_SECRET;
-  }
-  const response = await fetch(endpoint.toString(), {
+  if (target.apiKey) headers.authorization = `Bearer ${target.apiKey}`;
+  if (target.sharedSecret) headers["x-investor-shared-secret"] = target.sharedSecret;
+  const response = await fetch(target.endpoint.toString(), {
     method: "POST",
     headers,
     redirect: "error",
     body: JSON.stringify({
-      model: env.LOCAL_LLM_MODEL ?? "qwen3.8-27b",
+      model: target.model,
       messages,
       temperature: 0.2,
       max_tokens: 1400,
@@ -388,7 +421,7 @@ export async function deterministicAnswer(
         `最後成功公開資料：${timestamp ?? "未知"}`,
         `即時資料 Gate：${fresh.usable ? "FRESH" : fresh.reason}`,
         `租戶記憶：${context.chatType === "user" && (await memoryEnabled(env, context.tenantId)) ? "ON" : "OFF"}`,
-        `本機 Qwen：${localModelEndpoint(env) ? "CONFIGURED" : "NOT_CONFIGURED"}`,
+        `本機 Qwen：${freeRelayEnabled(env) ? ((await currentFreeRelayRoute(env)) ? "FREE_RELAY_AVAILABLE" : "FREE_RELAY_UNAVAILABLE") : (localModelEndpoint(env) ? "CONFIGURED" : "NOT_CONFIGURED")}`,
         "LINE 期權資料：PUBLIC_SNAPSHOT_ONLY",
         "IBKR／券商／持倉資料：NOT_CONNECTED",
         "雲端生成模型：DISABLED",
@@ -432,7 +465,7 @@ export async function generalAnswer(
     answer = null;
   }
   if (!answer) {
-    return localModelEndpoint(env)
+    return freeRelayEnabled(env) || localModelEndpoint(env)
       ? "LOCAL_MODEL_OFFLINE"
       : "LOCAL_MODEL_NOT_CONFIGURED";
   }

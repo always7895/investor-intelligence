@@ -72,12 +72,16 @@ try {
         'activate-v213-seven-field-schedule-core.ps1',
         'run-v213-local-llm-bridge.ps1',
         'run-v213-local.ps1',
+        'register-v213-free-relay-task.ps1',
         'register-v213-refresh-tasks.ps1',
         'run-v213-scheduled-refresh.ps1',
         'scripts\v213_operation_lock.ps1',
         'scripts\v213_named_tunnel_helpers.ps1',
+        'scripts\v213_free_relay.ps1',
+        'scripts\v213_free_relay_heartbeat.ps1',
         'scripts\setup_v213_named_tunnel.ps1',
         'scripts\test_v213_named_tunnel.ps1',
+        'scripts\test_v213_free_relay.ps1',
         'scripts\test_v213_activation_core.ps1',
         'scripts\ci_v213_r75_validate.ps1'
     )
@@ -112,6 +116,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Operation-lock test failed under $hostExe" }
         & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\test_v213_named_tunnel.ps1 -ProjectRoot $ProjectRoot
         if ($LASTEXITCODE -ne 0) { throw "Named-tunnel deployment integration failed under $hostExe" }
+        & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\test_v213_free_relay.ps1 -ProjectRoot $ProjectRoot
+        if ($LASTEXITCODE -ne 0) { throw "FREE_RELAY deployment integration failed under $hostExe" }
     }
 
     if (-not $SkipLiveRefresh) {

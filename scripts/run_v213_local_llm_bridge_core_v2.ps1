@@ -8,10 +8,12 @@ param(
     [switch]$InstallCloudflared,
     [switch]$StopExisting,
     [switch]$FinalizeCutover,
-    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [ValidateSet('None','QuickTest','FreeRelay','Named')][string]$TunnelMode = 'FreeRelay',
     [string]$NamedTunnelName = '',
     [string]$NamedTunnelHostname = '',
     [string]$NamedTunnelConfig = '',
+    [string]$FreeRelayConfigPath = '',
+    [int]$FreeRelayLeaseTtlSeconds = 180,
     [switch]$SelfTest
 )
 $ErrorActionPreference='Stop'
@@ -64,7 +66,7 @@ if(-not(Test-GatewayPython $python)){throw 'No verified Python runtime with requ
 $oldProjectPython=$env:PROJECT_PYTHON
 try{
     $env:PROJECT_PYTHON=$python
-    & $core -ProjectRoot $ProjectRoot -LlamaBaseUrl $LlamaBaseUrl -GatewayPort $GatewayPort -Model $Model -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting:$StopExisting -FinalizeCutover:$FinalizeCutover -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig
+    & $core -ProjectRoot $ProjectRoot -LlamaBaseUrl $LlamaBaseUrl -GatewayPort $GatewayPort -Model $Model -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting:$StopExisting -FinalizeCutover:$FinalizeCutover -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig -FreeRelayConfigPath $FreeRelayConfigPath -FreeRelayLeaseTtlSeconds $FreeRelayLeaseTtlSeconds
     if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
 }finally{
     $env:PROJECT_PYTHON=$oldProjectPython

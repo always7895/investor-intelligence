@@ -39,10 +39,10 @@ foreach ($marker in $requiredBridge) {
 foreach ($marker in @("@('tunnel','list')", "@('tunnel','info',`$Name)", "@('tunnel','route','dns','--overwrite-dns',`$Name,`$Hostname)", 'credentials-file', 'TunnelSecret')) {
     if ($helperSource.IndexOf($marker, [StringComparison]::Ordinal) -lt 0) { throw "Named setup fail-closed marker missing: $marker" }
 }
-foreach ($marker in @('One-time Named Tunnel setup','NamedTunnelPowerShellArguments(tunnel)','-TunnelMode Named')) {
+foreach ($marker in @('Optional future stable path','NamedTunnelPowerShellArguments(','-TunnelMode Named')) {
     if ($launcherSource.IndexOf($marker, [StringComparison]::Ordinal) -lt 0) { throw "Launcher named-tunnel marker missing: $marker" }
 }
-foreach ($marker in @("[ValidateSet('None','QuickTest','Named')]", '-NamedTunnelName $NamedTunnelName', '-NamedTunnelHostname $NamedTunnelHostname', '-NamedTunnelConfig $NamedTunnelConfig')) {
+foreach ($marker in @("[ValidateSet('None','QuickTest','FreeRelay','Named')]", '-NamedTunnelName $NamedTunnelName', '-NamedTunnelHostname $NamedTunnelHostname', '-NamedTunnelConfig $NamedTunnelConfig')) {
     if ($refreshSource.IndexOf($marker, [StringComparison]::Ordinal) -lt 0) { throw "Refresh named-tunnel marker missing: $marker" }
 }
 if ($launcherSource -match 'AllowTestTunnelException') { throw 'Launcher normal Production path must not use AllowTestTunnelException.' }

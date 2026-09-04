@@ -17,7 +17,7 @@ namespace InvestorIntelligence
     {
         const string Version = "2.1.3";
         const string Revision = "ModelSelect-R43";
-        const string PreferredModel = "RVN-Q6_K-multilingual-mtp";
+        const string PreferredModel = "qwen38-q6";
 
         static readonly string[] KnownLlamaBases = {
             "http://127.0.0.1:8080",
@@ -649,6 +649,9 @@ namespace InvestorIntelligence
                     @"scripts\bootstrap_portable_python.ps1",
                     @"scripts\setup_v213_named_tunnel.ps1",
                     @"scripts\v213_named_tunnel_helpers.ps1",
+                    @"scripts\v213_free_relay.ps1",
+                    @"scripts\v213_free_relay_heartbeat.ps1",
+                    "register-v213-free-relay-task.ps1",
                     "requirements-ci.txt"
                 };
                 foreach (string item in required)
@@ -672,17 +675,10 @@ namespace InvestorIntelligence
             }
             if (args.Contains("--activate-schedule"))
             {
-                NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
-                if (tunnel == null)
-                {
-                    Console.Error.WriteLine("NAMED_TUNNEL_CONFIGURATION_REQUIRED");
-                    return 4;
-                }
                 int refresh = RunPowerShellCli(
                     "run-v213-local.ps1",
                     "-ProjectRoot " + PowerShellLiteral(Root) +
-                    " -InstallCloudflared -NoAutoActivation" +
-                    NamedTunnelPowerShellArguments(tunnel));
+                    " -InstallCloudflared -NoAutoActivation -TunnelMode FreeRelay");
                 if (refresh != 0) return refresh;
                 return RunPowerShellCli(
                     "activate-v213-seven-field-schedule.ps1",
@@ -762,6 +758,7 @@ namespace InvestorIntelligence
             readonly Button bridgeButton;
             readonly Button folderButton;
             readonly Button namedTunnelButton;
+            readonly Button freeRelayButton;
             readonly Timer elapsedTimer;
             readonly List<string> discoveredModels = new List<string>();
 
@@ -860,18 +857,27 @@ namespace InvestorIntelligence
                     "開啟程式資料夾\nOpen package folder",
                     360,
                     266);
-                namedTunnelButton = new Button {
+                freeRelayButton = new Button {
                     Left = 24,
                     Top = 360,
-                    Width = 652,
+                    Width = 316,
                     Height = 62,
-                    Text = "一次性 Production Named Tunnel 設定 / One-time Named Tunnel setup",
+                    Text = "免費 Relay 自動重連\nEnable FREE_RELAY reconnect",
+                    UseVisualStyleBackColor = true
+                };
+                namedTunnelButton = new Button {
+                    Left = 360,
+                    Top = 360,
+                    Width = 316,
+                    Height = 62,
+                    Text = "選用 Named Tunnel\nOptional future stable path",
                     UseVisualStyleBackColor = true
                 };
                 Controls.Add(refreshButton);
                 Controls.Add(activateButton);
                 Controls.Add(bridgeButton);
                 Controls.Add(folderButton);
+                Controls.Add(freeRelayButton);
                 Controls.Add(namedTunnelButton);
 
                 status = new Label {
@@ -907,6 +913,25 @@ namespace InvestorIntelligence
                     status.Text =
                         "模型選擇已儲存 / Model selection saved\r\n" +
                         selection.Model + " @ " + selection.LlamaBaseUrl;
+                };
+
+                freeRelayButton.Click += async delegate {
+                    var answer = MessageBox.Show(
+                        "啟用登入時 FREE_RELAY 自動重連？此模式使用免費、非固定的 TryCloudflare URL，workers.dev 仍是固定入口。\n\nEnable automatic FREE_RELAY reconnect at logon?",
+                        "Enable FREE_RELAY reconnect",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+                    if (answer != DialogResult.Yes) return;
+                    await RunBusyAsync(
+                        "設定 FREE_RELAY 自動重連 / Enabling reconnect...",
+                        async delegate {
+                            return await RunPowerShellAsync(
+                                "register-v213-free-relay-task.ps1",
+                                "-ProjectRoot " + PowerShellLiteral(Root) + " -Enable",
+                                true);
+                        },
+                        "FREE_RELAY 自動重連已啟用 / Reconnect enabled",
+                        "FREE_RELAY 自動重連設定失敗 / Setup failed");
                 };
 
                 namedTunnelButton.Click += async delegate {
@@ -957,16 +982,6 @@ namespace InvestorIntelligence
                     if (!TryCommitSelection(out selection)) return;
                     string model = selection.Model;
                     string baseUrl = selection.LlamaBaseUrl;
-                    NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
-                    if (tunnel == null)
-                    {
-                        MessageBox.Show(
-                            "請先完成一次性 Production Named Tunnel 設定。\n\nConfigure the Production Named Tunnel first.",
-                            "Named Tunnel required",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
-                        return;
-                    }
                     var answer = MessageBox.Show(
                         "選定模型：\n" + model +
                         "\n\n將先重新刷新並驗證同一模型；只有 exact-model health gate" +
@@ -986,7 +1001,7 @@ namespace InvestorIntelligence
                                 " -InstallCloudflared -NoAutoActivation" +
                                 " -Model " + PowerShellLiteral(model) +
                                 " -LlamaBaseUrl " + PowerShellLiteral(baseUrl) +
-                                NamedTunnelPowerShellArguments(tunnel),
+                                " -TunnelMode FreeRelay",
                                 true);
                             if (refresh != 0) return refresh;
 
@@ -1011,18 +1026,8 @@ namespace InvestorIntelligence
                     if (!TryCommitSelection(out selection)) return;
                     string model = selection.Model;
                     string baseUrl = selection.LlamaBaseUrl;
-                    NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
-                    if (tunnel == null)
-                    {
-                        MessageBox.Show(
-                            "請先完成一次性 Production Named Tunnel 設定。\n\nConfigure the Production Named Tunnel first.",
-                            "Named Tunnel required",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
-                        return;
-                    }
                     await RunBusyAsync(
-                        "Production Named Tunnel 橋接啟動中 / Starting named bridge...",
+                        "免費 workers.dev Relay 橋接啟動中 / Starting FREE_RELAY...",
                         async delegate {
                             return await RunPowerShellAsync(
                                 "run-v213-local-llm-bridge.ps1",
@@ -1030,7 +1035,7 @@ namespace InvestorIntelligence
                                 " -InstallCloudflared -StopExisting" +
                                 " -Model " + PowerShellLiteral(model) +
                                 " -LlamaBaseUrl " + PowerShellLiteral(baseUrl) +
-                                NamedTunnelPowerShellArguments(tunnel),
+                                " -TunnelMode FreeRelay",
                                 true);
                         },
                         "本地模型橋接完成 / Model bridge ready\r\nModel: " + model,
@@ -1219,6 +1224,7 @@ namespace InvestorIntelligence
                 bridgeButton.Enabled = !value;
                 folderButton.Enabled = !value;
                 namedTunnelButton.Enabled = !value;
+                freeRelayButton.Enabled = !value;
                 UseWaitCursor = value;
 
                 if (value)

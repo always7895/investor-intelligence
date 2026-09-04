@@ -164,8 +164,11 @@ try{
         if(-not$ExpectedModel){throw 'Formal exact-model activation requires an explicitly selected model.'}
         $modelResult=Get-HealthyModelState (Join-Path $configRoot 'v213-local-model.json') $ExpectedModel
         $mode=[string]$modelResult.tunnel_mode
-        if($mode-ne'named'){
-            if(-not$AllowTestTunnelException){throw "Production local-model activation requires tunnel_mode=named; observed=$mode. Use -AllowTestTunnelException only for an explicitly approved test exception."}
+        if($mode-eq'quick_free_relay'){
+            if([string]$modelResult.model-cne'qwen38-q6'){throw "FREE_RELAY requires exact model qwen38-q6; observed=$($modelResult.model)."}
+            Write-Host 'V213_FREE_RELAY_ACTIVATION_PREFLIGHT = PASS; stable_entrypoint=workers_dev; custom_domain_required=false; test_tunnel_exception=false' -ForegroundColor Green
+        }elseif($mode-ne'named'){
+            if(-not$AllowTestTunnelException){throw "Production local-model activation requires tunnel_mode=quick_free_relay or named; observed=$mode. AllowTestTunnelException is test-only."}
             Write-Warning "Explicit test-tunnel activation exception accepted; tunnel_mode=$mode; no uptime guarantee."
         }
         Write-Host "V213_SELECTED_MODEL_HEALTH_SCHEMA2_PREFLIGHT = PASS; model=$($modelResult.model); tunnel_mode=$mode; test_tunnel_exception=$($AllowTestTunnelException.IsPresent)" -ForegroundColor Green

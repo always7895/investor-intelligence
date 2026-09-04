@@ -233,13 +233,25 @@ function Get-HealthyModelState([string]$Path,[string]$RequiredModel) {
         $secret = [string](Get-PropertyValue $modelState 'encrypted_shared_secret' '')
         if (-not $publicUrl -or -not $allowedHost -or -not $model -or -not $secret) { return $null }
         if ((Get-PropertyValue $modelState 'selected_model_verified' $false) -ne $true) { return $null }
+        if ((Get-PropertyValue $modelState 'tunnel_test_only' $true) -eq $true -or (Get-PropertyValue $modelState 'tunnel_production_eligible' $false) -ne $true) { return $null }
         if ($RequiredModel -and $model -ine $RequiredModel) { return $null }
+        $tunnelMode = [string](Get-PropertyValue $modelState 'tunnel_mode' '')
+        if ($tunnelMode -eq 'quick_free_relay') {
+            if ($model -cne 'qwen38-q6' -or $publicUrl -notmatch '^https://[a-z0-9-]+\.trycloudflare\.com/?$') { return $null }
+            if ([string](Get-PropertyValue $modelState 'free_relay_worker_origin' '') -notmatch '^https://[a-z0-9-]+(?:\.[a-z0-9-]+)*\.workers\.dev$') { return $null }
+            if ([string](Get-PropertyValue $modelState 'free_relay_route_generation' '') -notmatch '^[0-9a-f]{32}$') { return $null }
+            $leaseExpiry = [DateTimeOffset]::MinValue
+            if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $modelState 'free_relay_lease_expires_at' ''), [ref]$leaseExpiry)) { return $null }
+            if ($leaseExpiry.ToUniversalTime() -le [DateTimeOffset]::UtcNow.AddSeconds(15)) { return $null }
+        }
         $connected = [DateTimeOffset]::MinValue
         if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $modelState 'connected_at' ''), [ref]$connected)) { return $null }
         $age = ([DateTimeOffset]::UtcNow - $connected.ToUniversalTime()).TotalMinutes
         if ($age -lt -5 -or $age -gt 30) { return $null }
         $health = Invoke-RestMethod -Method Get -Uri ($publicUrl.TrimEnd('/') + '/health') -Headers @{'cache-control'='no-cache';'pragma'='no-cache'} -TimeoutSec 20
         if ((Get-PropertyValue $health 'ok' $false) -ne $true) { return $null }
+        if ([string](Get-PropertyValue $health 'service' '') -ne 'v213-local-llm-gateway') { return $null }
+        if ([int](Get-PropertyValue $health 'health_schema_version' 0) -ne 2) { return $null }
         if ((Get-PropertyValue $health 'llama_reachable' $false) -ne $true) { return $null }
         if ((Get-PropertyValue $health 'selected_model_available' $false) -ne $true) { return $null }
         if ([string](Get-PropertyValue $health 'selected_model' '') -ine $model) { return $null }
@@ -397,14 +409,24 @@ $temp = Join-Path $CloudRoot ('.wrangler.v213.activation.' + [guid]::NewGuid().T
 $text = Get-Content -LiteralPath $productionConfig -Raw -Encoding utf8
 $text = [regex]::Replace($text, '(?m)^\s*main\s*=.*$', 'main = "src/v213/production-worker.ts"', 1)
 $text = Set-Var $text 'V213_FIELD_LOCALE' $FieldLocale
-if ($healthyModel) {
+$healthyTunnelMode = if ($healthyModel) { [string](Get-PropertyValue $healthyModel 'tunnel_mode' '') } else { '' }
+if ($healthyModel -and $healthyTunnelMode -eq 'quick_free_relay') {
+    foreach ($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_API_KEY','LOCAL_LLM_SHARED_SECRET')) { $text = Remove-Var $text $key }
+    $text = Set-Var $text 'LOCAL_LLM_MODEL' ([string](Get-PropertyValue $healthyModel 'model' ''))
+    $text = Set-Var $text 'FREE_RELAY_ENABLED' 'true'
+    $text = Set-Var $text 'FREE_RELAY_MAX_TTL_SECONDS' '300'
+    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; mode=quick_free_relay; stable_entrypoint=workers_dev; model=$ExpectedModel; custom_domain_required=false" -ForegroundColor Green
+}
+elseif ($healthyModel) {
+    $text = Set-Var $text 'FREE_RELAY_ENABLED' 'false'
     $text = Set-Var $text 'LOCAL_LLM_BASE_URL' ([string](Get-PropertyValue $healthyModel 'public_url' ''))
     $text = Set-Var $text 'LOCAL_LLM_ALLOWED_HOSTS' ([string](Get-PropertyValue $healthyModel 'allowed_host' ''))
     $text = Set-Var $text 'LOCAL_LLM_MODEL' ([string](Get-PropertyValue $healthyModel 'model' ''))
-    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; host=$([string](Get-PropertyValue $healthyModel 'allowed_host' '')); model=$ExpectedModel" -ForegroundColor Green
+    Write-Host "V213_LOCAL_MODEL_ROUTE_PREFLIGHT = PASS; mode=named; host=$([string](Get-PropertyValue $healthyModel 'allowed_host' '')); model=$ExpectedModel" -ForegroundColor Green
 }
 else {
     foreach ($key in @('LOCAL_LLM_BASE_URL','LOCAL_LLM_ALLOWED_HOSTS','LOCAL_LLM_MODEL')) { $text = Remove-Var $text $key }
+    $text = Set-Var $text 'FREE_RELAY_ENABLED' 'true'
     Write-Warning 'No fresh healthy v2.1.3 local-model tunnel is available; open-ended generation remains fail closed.'
 }
 if ($text -notmatch '(?m)^\s*name\s*=\s*"V213_BROADCAST_DEDUPE"\s*$') {
@@ -412,6 +434,12 @@ if ($text -notmatch '(?m)^\s*name\s*=\s*"V213_BROADCAST_DEDUPE"\s*$') {
 }
 if ($text -notmatch '(?m)^\s*tag\s*=\s*"v213-r75-broadcast-dedupe-v1"\s*$') {
     $text += "`r`n[[migrations]]`r`ntag = `"v213-r75-broadcast-dedupe-v1`"`r`nnew_sqlite_classes = [`"V213BroadcastDedupe`"]`r`n"
+}
+if ($text -notmatch '(?m)^\s*name\s*=\s*"V213_FREE_RELAY_ROUTE"\s*$') {
+    $text += "`r`n[[durable_objects.bindings]]`r`nname = `"V213_FREE_RELAY_ROUTE`"`r`nclass_name = `"V213FreeRelayRoute`"`r`n"
+}
+if ($text -notmatch '(?m)^\s*tag\s*=\s*"v213-r75-free-relay-route-v1"\s*$') {
+    $text += "`r`n[[migrations]]`r`ntag = `"v213-r75-free-relay-route-v1`"`r`nnew_sqlite_classes = [`"V213FreeRelayRoute`"]`r`n"
 }
 [IO.File]::WriteAllText($temp, $text, [Text.UTF8Encoding]::new($false))
 
@@ -430,7 +458,7 @@ $workerRollbackVerified = $false
 try {
     $prior = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     Write-Host "V213_ACTIVATION_PRIOR_VERSION = $prior" -ForegroundColor Cyan
-    if ($healthyModel) {
+    if ($healthyModel -and $healthyTunnelMode -ne 'quick_free_relay') {
         $secure = ConvertTo-SecureString -String ([string](Get-PropertyValue $healthyModel 'encrypted_shared_secret' ''))
         $sp = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
         $shared = ''
