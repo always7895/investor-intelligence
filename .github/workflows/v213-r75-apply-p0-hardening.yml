@@ -1,0 +1,711 @@
+name: V2.1.3 R75 Apply P0 Hardening
+
+on:
+  push:
+    branches:
+      - development/v2.1.3-r75-hardening
+    paths:
+      - .github/workflows/v213-r75-apply-p0-hardening.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: investor-intelligence-v213-r75-apply-p0-hardening
+  cancel-in-progress: false
+
+jobs:
+  patch-validate-commit:
+    if: github.repository == 'always7895/investor-intelligence'
+    runs-on: [self-hosted, Windows, X64, investor-intelligence]
+    timeout-minutes: 420
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      FREE_ONLY_MODE: 'true'
+      PAID_FALLBACK_ENABLED: 'false'
+      LINE_PUSH_ENABLED: 'false'
+      IBKR_READONLY_ENABLED: 'false'
+
+    steps:
+      - name: Checkout R75 hardening branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: development/v2.1.3-r75-hardening
+          fetch-depth: 0
+          clean: true
+
+      - name: Resolve repository-managed Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_python.ps1 -VenvPath .venv-v213-r75-apply
+          if (-not $env:PROJECT_PYTHON -or -not (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) {
+            throw 'Repository-managed Python was not configured.'
+          }
+          Write-Host "PROJECT_PYTHON = $env:PROJECT_PYTHON"
+
+      - name: Apply publication-mode, Worker and gateway fixes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $patcher = Join-Path $env:RUNNER_TEMP 'apply-r75-p0-hardening.py'
+          @'
+          from __future__ import annotations
+
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+
+
+          def read(path: str) -> str:
+              return (ROOT / path).read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+
+
+          def write(path: str, value: str) -> None:
+              (ROOT / path).write_text(value, encoding="utf-8", newline="\n")
+
+
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              if new in value:
+                  return value
+              count = value.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected one anchor, observed {count}")
+              return value.replace(old, new, 1)
+
+
+          def insert_before_last(value: str, needle: str, block: str, label: str) -> str:
+              if block.strip() in value:
+                  return value
+              index = value.rfind(needle)
+              if index < 0:
+                  raise RuntimeError(f"{label}: anchor not found")
+              return value[:index] + block + value[index:]
+
+
+          # ------------------------------------------------------------------
+          # PowerShell activation: sealed-bundle authority + publication modes.
+          # ------------------------------------------------------------------
+          publication_gate = r'''$declaredStrict=Get-IntProperty $portfolio 'evidence_qualified_candidate_count' -1
+              $declaredLimited=Get-IntProperty $portfolio 'limited_research_candidate_count' -1
+              $hasFinalPublicationModes=$declaredStrict-ge0-and$declaredLimited-ge0
+              if($hasFinalPublicationModes){
+                  if(($declaredStrict+$declaredLimited)-ne20){throw 'Final publication-mode candidate counts do not total 20.'}
+                  $freshnessAudit=Get-PropertyValue $Document 'freshness_audit' $null
+                  if($null-eq$freshnessAudit-or[string](Get-PropertyValue $freshnessAudit 'status' '')-ne'PASS'){throw 'The final publication freshness audit is not PASS.'}
+                  if((Get-IntProperty $freshnessAudit 'evidence_qualified_candidate_count' -1)-ne$declaredStrict-or(Get-IntProperty $freshnessAudit 'limited_research_candidate_count' -1)-ne$declaredLimited){throw 'Publication-mode counts disagree with the freshness audit.'}
+                  if(-not(Get-BooleanProperty $portfolio 'all_rows_publication_provenance_multi_source')){throw 'At least one final row lacks multi-source publication provenance.'}
+                  if((Get-IntProperty $portfolio 'limited_rows_high_confidence_eligible_count')-ne0){throw 'A LIMITED candidate is incorrectly HIGH eligible.'}
+                  if(-not(Get-BooleanProperty $freshnessAudit 'all_tickers_publication_provenance_multi_source')){throw 'The freshness audit does not prove independent publication provenance for all rows.'}
+                  if(-not(Get-BooleanProperty $freshnessAudit 'all_positive_advantages_fresh_multi_source')){throw 'The freshness audit does not prove fresh multi-source support for positive advantages.'}
+                  $observedStrict=0
+                  $observedLimited=0
+                  for($recordIndex=0;$recordIndex-lt$records.Count;$recordIndex++){
+                      $record=$records[$recordIndex]
+                      $logic=Get-PropertyValue $record 'public_logic_state' $null
+                      $metrics=Get-PropertyValue $record 'source_metrics' $null
+                      $freshnessState=Get-PropertyValue $record 'freshness_state' $null
+                      if($null-eq$logic-or$null-eq$metrics-or$null-eq$freshnessState){throw 'A final source record lacks publication-mode controls.'}
+                      if([string](Get-PropertyValue $freshnessState 'status' '')-ne'PASS'){throw 'A final source record freshness state is not PASS.'}
+                      $mode=[string](Get-PropertyValue $record 'publication_evidence_mode' '')
+                      if(-not$mode){$mode=[string](Get-PropertyValue $logic 'publication_evidence_mode' '')}
+                      if($mode-eq'EVIDENCE_QUALIFIED'){
+                          $observedStrict++
+                          if((Get-IntProperty $metrics 'claim_relevant_independent_families')-lt2-or(Get-IntProperty $metrics 'claim_relevant_independent_domains')-lt2-or(Get-IntProperty $metrics 'claim_relevant_primary_sources')-lt1-or(Get-DoubleProperty $metrics 'claim_dated_evidence_ratio')-lt0.8){throw 'An EVIDENCE_QUALIFIED record lacks strict claim evidence.'}
+                      }
+                      elseif($mode-eq'LIMITED_RESEARCH_CANDIDATE'){
+                          $observedLimited++
+                          if((Get-IntProperty $freshnessState 'publication_provenance_origin_count')-lt2-or(Get-IntProperty $freshnessState 'publication_provenance_domain_count')-lt2-or(Get-IntProperty $freshnessState 'claim_primary_units')-lt1){throw 'A LIMITED candidate lacks primary evidence plus independent publication provenance.'}
+                          if(Get-BooleanProperty $record 'eligible_for_high_confidence_model_inference'){throw 'A LIMITED candidate is incorrectly HIGH eligible.'}
+                          if([string](Get-PropertyValue $logic 'model_inference_confidence' '')-ne'LIMITED'){throw 'A LIMITED candidate does not cap model inference at LIMITED.'}
+                          if(Get-BooleanProperty $logic 'validated_company_thesis' $true){throw 'A LIMITED candidate is incorrectly marked as a validated thesis.'}
+                          $missing=@(Get-Array (Get-PropertyValue $record 'missing_or_review' @())|ForEach-Object{[string]$_})
+                          if($missing-notcontains'LIMITED_RESEARCH_CANDIDATE'-or$missing-notcontains'INDEPENDENT_CLAIM_CORROBORATION'){throw 'A LIMITED candidate does not disclose missing independent claim corroboration.'}
+                          $factors=Get-PropertyValue $Top20[$recordIndex] 'serenity_factors' $null
+                          if($null-eq$factors){throw 'A LIMITED candidate lacks Serenity factor controls.'}
+                          foreach($sensitive in @('demand_wave','chokepoint','pricing_power','replacement_friction','tam_capture')){
+                              if((Get-DoubleProperty $factors $sensitive)-gt0){throw "A LIMITED candidate retained a positive sensitive factor: $sensitive"}
+                          }
+                      }
+                      else{throw "Unknown publication evidence mode: $mode"}
+                  }
+                  if($observedStrict-ne$declaredStrict-or$observedLimited-ne$declaredLimited){throw 'Observed publication-mode counts disagree with the portfolio.'}
+                  if($declaredLimited-gt0){
+                      if($claimFamilies-lt1-or$claimDomains-lt1){throw 'A LIMITED publication lacks primary company-claim provenance.'}
+                  }
+                  elseif($claimFamilies-lt2-or$claimDomains-lt2){throw 'An all-evidence-qualified publication has claim-relevant source independence below 2.'}
+              }
+              elseif($claimFamilies-lt2-or$claimDomains-lt2){throw 'Claim-relevant source-family/domain independence is below 2.'}'''
+
+          string_hash = r'''function Get-StringSha256([string]$Value){
+              $algorithm=[Security.Cryptography.SHA256]::Create()
+              try{
+                  $bytes=[Text.UTF8Encoding]::new($false).GetBytes($Value)
+                  return ([BitConverter]::ToString($algorithm.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
+              }finally{$algorithm.Dispose()}
+          }
+          '''
+
+          self_test_block = r'''
+              # Publication-mode regression: an all-LIMITED sealed result is safe
+              # only with primary evidence, two provenance origins/domains, no
+              # positive sensitive factors, no validated thesis and no HIGH flag.
+              $sourceAudit.portfolio.claim_source_families=1
+              $sourceAudit.portfolio.claim_source_domains=1
+              $sourceAudit.portfolio|Add-Member -NotePropertyName evidence_qualified_candidate_count -NotePropertyValue 0 -Force
+              $sourceAudit.portfolio|Add-Member -NotePropertyName limited_research_candidate_count -NotePropertyValue 20 -Force
+              $sourceAudit.portfolio|Add-Member -NotePropertyName all_rows_publication_provenance_multi_source -NotePropertyValue $true -Force
+              $sourceAudit.portfolio|Add-Member -NotePropertyName limited_rows_high_confidence_eligible_count -NotePropertyValue 0 -Force
+              foreach($record in $sourceRecords){
+                  $record.source_metrics.claim_relevant_independent_families=1
+                  $record.source_metrics.claim_relevant_independent_domains=1
+                  $record|Add-Member -NotePropertyName publication_evidence_mode -NotePropertyValue 'LIMITED_RESEARCH_CANDIDATE' -Force
+                  $record|Add-Member -NotePropertyName freshness_state -NotePropertyValue ([pscustomobject]@{status='PASS';publication_evidence_mode='LIMITED_RESEARCH_CANDIDATE';publication_provenance_origin_count=2;publication_provenance_domain_count=2;claim_primary_units=1}) -Force
+                  $record.public_logic_state|Add-Member -NotePropertyName publication_evidence_mode -NotePropertyValue 'LIMITED_RESEARCH_CANDIDATE' -Force
+                  $record.public_logic_state|Add-Member -NotePropertyName validated_company_thesis -NotePropertyValue $false -Force
+                  $record.missing_or_review=@($MarketMissingCode,'LIMITED_RESEARCH_CANDIDATE','INDEPENDENT_CLAIM_CORROBORATION')
+              }
+              $sourceAudit|Add-Member -NotePropertyName freshness_audit -NotePropertyValue ([pscustomobject]@{status='PASS';evidence_qualified_candidate_count=0;limited_research_candidate_count=20;all_tickers_publication_provenance_multi_source=$true;all_positive_advantages_fresh_multi_source=$true}) -Force
+              $limitedResult=Test-SourceIndependenceDocument $sourceAudit $now $top20
+              if($limitedResult.high_confidence_eligible_count-ne0){throw 'All-LIMITED publication-mode self-test failed.'}
+              $top20[0].serenity_factors|Add-Member -NotePropertyName demand_wave -NotePropertyValue 1.0 -Force
+              try{[void](Test-SourceIndependenceDocument $sourceAudit $now $top20);throw 'LIMITED positive-factor self-test did not fail closed.'}catch{if($_.Exception.Message-eq'LIMITED positive-factor self-test did not fail closed.'){throw}}
+              $top20[0].serenity_factors.demand_wave=0.0
+          '''
+
+          for relative in (
+              "activate-v213-seven-field-schedule.ps1",
+              "activate-v213-diversified-schedule.ps1",
+          ):
+              value = read(relative)
+              value = replace_once(
+                  value,
+                  "    [switch]$SelfTest\n)",
+                  "    [switch]$SelfTest,\n    [switch]$PreflightOnly\n)",
+                  relative + " PreflightOnly parameter",
+              )
+              if "function Get-StringSha256" not in value:
+                  value = replace_once(
+                      value,
+                      "function Get-FreshTimestamp",
+                      string_hash + "\nfunction Get-FreshTimestamp",
+                      relative + " string hash helper",
+                  )
+              value = replace_once(
+                  value,
+                  "if($claimFamilies-lt2-or$claimDomains-lt2){throw 'Claim-relevant source-family/domain independence is below 2.'}",
+                  publication_gate,
+                  relative + " publication-mode gate",
+              )
+              value = replace_once(
+                  value,
+                  "    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; market-quality degradation = PASS; claim blockers = PASS; health-schema-v2 = PASS' -ForegroundColor Green",
+                  self_test_block + "\n    Write-Host 'V213_SOURCE_INDEPENDENCE_PREFLIGHT_SELF_TEST = PASS; market-quality degradation = PASS; claim blockers = PASS; publication_modes = PASS; health-schema-v2 = PASS' -ForegroundColor Green",
+                  relative + " publication-mode self-test",
+              )
+              value = replace_once(
+                  value,
+                  "if(-not$ConfirmActivation){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation.'}",
+                  "if(-not$ConfirmActivation-and-not$PreflightOnly){throw 'Formal source-diverse scheduled activation requires -ConfirmActivation or -PreflightOnly.'}",
+                  relative + " preflight confirmation",
+              )
+              value = replace_once(
+                  value,
+                  "$sourcePath=Join-Path $ProjectRoot 'data\\cache\\v213_source_independence_latest.json'\n$top20Path=Join-Path $ProjectRoot 'data\\cache\\top20_public_latest.json'",
+                  "$sourcePath=Join-Path $ProjectRoot 'data\\cache\\v213_source_independence_latest.json'\n$bundlePath=Join-Path $ProjectRoot 'data\\cache\\v213_activation_bundle_upload.json'\n$top20Path=Join-Path $ProjectRoot 'data\\cache\\top20_public_latest.json'",
+                  relative + " bundle path",
+              )
+              value = replace_once(
+                  value,
+                  "foreach($path in @($federationPath,$sourcePath,$top20Path,$reportPath,$inner,$sourceDiverseInstaller))",
+                  "foreach($path in @($federationPath,$sourcePath,$bundlePath,$top20Path,$reportPath,$inner,$sourceDiverseInstaller))",
+                  relative + " bundle prerequisite",
+              )
+              value = replace_once(
+                  value,
+                  "$federation=Get-Content -LiteralPath $federationPath -Raw -Encoding utf8|ConvertFrom-Json\n$sourceAudit=Get-Content -LiteralPath $sourcePath -Raw -Encoding utf8|ConvertFrom-Json",
+                  "$federation=Get-Content -LiteralPath $federationPath -Raw -Encoding utf8|ConvertFrom-Json\n$bundleFileSha=(Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()\n$bundle=Get-Content -LiteralPath $bundlePath -Raw -Encoding utf8|ConvertFrom-Json\nif((Get-IntProperty $bundle 'schema_version')-ne4-or[string](Get-PropertyValue $bundle 'product_version' '')-ne'2.1.3'){throw 'The sealed activation bundle schema/product version is invalid.'}\n$bundlePayloads=Get-PropertyValue $bundle 'payloads' $null\n$bundleDigests=Get-PropertyValue $bundle 'sha256' $null\nif($null-eq$bundlePayloads-or$null-eq$bundleDigests){throw 'The sealed activation bundle payload/digest objects are missing.'}\n$sealedSourceText=[string](Get-PropertyValue $bundlePayloads 'source_independence_json' '')\n$sealedSourceDigest=[string](Get-PropertyValue $bundleDigests 'source_independence_json' '')\nif(-not$sealedSourceText-or$sealedSourceDigest-notmatch'^[0-9a-fA-F]{64}$'-or(Get-StringSha256 $sealedSourceText)-ne$sealedSourceDigest.ToLowerInvariant()){throw 'The sealed source-independence payload digest is invalid.'}\n$sourceAudit=$sealedSourceText|ConvertFrom-Json",
+                  relative + " sealed source payload",
+              )
+              value = replace_once(
+                  value,
+                  "$sourceSha=(Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()",
+                  "$sourceSha=$sealedSourceDigest.ToLowerInvariant()",
+                  relative + " sealed source SHA",
+              )
+              preflight = r'''if((Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()-ne$bundleFileSha){throw 'The sealed activation bundle changed during preflight.'}
+              if($PreflightOnly){
+                  Write-Host ("V213_ACTIVATION_PREFLIGHT_ONLY = PASS; publication_mode_aware=true; evidence_qualified={0}; limited={1}; sealed_bundle_sha256={2}; production_mutation=false"-f(Get-IntProperty (Get-PropertyValue $sourceAudit 'portfolio' $null) 'evidence_qualified_candidate_count' -1),(Get-IntProperty (Get-PropertyValue $sourceAudit 'portfolio' $null) 'limited_research_candidate_count' -1),$bundleFileSha) -ForegroundColor Green
+                  exit 0
+              }
+              '''
+              if "V213_ACTIVATION_PREFLIGHT_ONLY = PASS" not in value:
+                  value = replace_once(
+                      value,
+                      "\n$configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\\UserData\\config'",
+                      "\n" + preflight + "\n$configRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\\UserData\\config'",
+                      relative + " preflight-only exit",
+                  )
+              value = replace_once(
+                  value,
+                  "& $inner @arguments",
+                  "if((Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()-ne$bundleFileSha){throw 'The sealed activation bundle changed before Production activation.'}\n& $inner @arguments",
+                  relative + " bundle TOCTOU check",
+              )
+              write(relative, value)
+
+          # The Serenity alias is a byte-identical compatibility name.
+          (ROOT / "activate-v213-seven-field-schedule-serenity-latest.ps1").write_bytes(
+              (ROOT / "activate-v213-seven-field-schedule.ps1").read_bytes()
+          )
+
+          # -------------------------------------------------------------
+          # Worker: optional BLS + publication-mode contract + fail closed.
+          # -------------------------------------------------------------
+          worker_path = "cloud/src/v213/activation-v2.ts"
+          worker = read(worker_path)
+          worker = worker.replace(
+              '["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"]',
+              '["us_sec", "nasdaq", "world_bank", "ecb"]',
+          )
+          worker = replace_once(
+              worker,
+              "    !finite(portfolio.claim_source_families) || portfolio.claim_source_families < 2 ||\n    !finite(portfolio.claim_source_domains) || portfolio.claim_source_domains < 2 ||",
+              "    !finite(portfolio.claim_source_families) || portfolio.claim_source_families < 1 ||\n    !finite(portfolio.claim_source_domains) || portfolio.claim_source_domains < 1 ||",
+              "Worker portfolio minima",
+          )
+          mode_vars = r'''  const strictCount = Number(portfolio.evidence_qualified_candidate_count ?? -1);
+            const limitedCount = Number(portfolio.limited_research_candidate_count ?? -1);
+            const hasPublicationModes = Number.isInteger(strictCount) && strictCount >= 0 &&
+              Number.isInteger(limitedCount) && limitedCount >= 0;
+            const freshnessAudit = hasPublicationModes
+              ? object(doc.freshness_audit, "V213_ACTIVATION_PUBLICATION_FRESHNESS_INVALID")
+              : null;
+          '''
+          worker = replace_once(
+              worker,
+              "  const degraded = coverage < target;\n",
+              "  const degraded = coverage < target;\n" + mode_vars,
+              "Worker publication-mode variables",
+          )
+          global_mode = r'''
+            if (hasPublicationModes) {
+              const freshness = freshnessAudit as Record<string, unknown>;
+              if (
+                strictCount + limitedCount !== 20 ||
+                freshness.status !== "PASS" ||
+                Number(freshness.evidence_qualified_candidate_count ?? -1) !== strictCount ||
+                Number(freshness.limited_research_candidate_count ?? -1) !== limitedCount ||
+                portfolio.all_rows_publication_provenance_multi_source !== true ||
+                Number(portfolio.limited_rows_high_confidence_eligible_count ?? -1) !== 0 ||
+                freshness.all_tickers_publication_provenance_multi_source !== true ||
+                freshness.all_positive_advantages_fresh_multi_source !== true
+              ) throw new Error("V213_ACTIVATION_PUBLICATION_MODE_INVALID");
+              if (limitedCount === 0 && (
+                Number(portfolio.claim_source_families ?? 0) < 2 ||
+                Number(portfolio.claim_source_domains ?? 0) < 2
+              )) throw new Error("V213_ACTIVATION_SOURCE_AUDIT_INVALID");
+            } else if (
+              Number(portfolio.claim_source_families ?? 0) < 2 ||
+              Number(portfolio.claim_source_domains ?? 0) < 2
+            ) {
+              throw new Error("V213_ACTIVATION_SOURCE_AUDIT_INVALID");
+            }
+          '''
+          same_order_anchor = '''  sameOrder(
+              tickerOrder(records, "V213_ACTIVATION_SOURCE_AUDIT_ORDER_INVALID"),
+              order,
+              "V213_ACTIVATION_SOURCE_AUDIT_ORDER_INVALID",
+            );
+          '''
+          worker = replace_once(
+              worker,
+              same_order_anchor,
+              same_order_anchor + global_mode,
+              "Worker global publication-mode gate",
+          )
+          worker = replace_once(
+              worker,
+              "  let eligibleCount = 0;\n",
+              "  let eligibleCount = 0;\n  let observedStrict = 0;\n  let observedLimited = 0;\n",
+              "Worker observed publication counts",
+          )
+          record_mode = r'''    if (hasPublicationModes) {
+                const state = object(record.freshness_state, "V213_ACTIVATION_PUBLICATION_RECORD_INVALID");
+                const mode = String(record.publication_evidence_mode ?? logic.publication_evidence_mode ?? "");
+                if (state.status !== "PASS" || String(state.publication_evidence_mode ?? mode) !== mode) {
+                  throw new Error("V213_ACTIVATION_PUBLICATION_RECORD_INVALID");
+                }
+                if (mode === "EVIDENCE_QUALIFIED") {
+                  observedStrict += 1;
+                  if (
+                    Number(metrics.claim_relevant_independent_families ?? 0) < 2 ||
+                    Number(metrics.claim_relevant_independent_domains ?? 0) < 2 ||
+                    Number(metrics.claim_relevant_primary_sources ?? 0) < 1 ||
+                    Number(metrics.claim_dated_evidence_ratio ?? 0) < 0.8
+                  ) throw new Error("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
+                } else if (mode === "LIMITED_RESEARCH_CANDIDATE") {
+                  observedLimited += 1;
+                  const factors = object(top20[index]?.serenity_factors, "V213_ACTIVATION_LIMITED_FACTOR_INVALID");
+                  if (
+                    Number(state.publication_provenance_origin_count ?? 0) < 2 ||
+                    Number(state.publication_provenance_domain_count ?? 0) < 2 ||
+                    Number(state.claim_primary_units ?? 0) < 1 ||
+                    eligible || logic.model_inference_confidence !== "LIMITED" ||
+                    logic.validated_company_thesis !== false ||
+                    !missing.includes("LIMITED_RESEARCH_CANDIDATE") ||
+                    !missing.includes("INDEPENDENT_CLAIM_CORROBORATION") ||
+                    ["demand_wave", "chokepoint", "pricing_power", "replacement_friction", "tam_capture"]
+                      .some((name) => Number(factors[name] ?? 0) > 0)
+                  ) throw new Error("V213_ACTIVATION_LIMITED_CANDIDATE_INVALID");
+                } else {
+                  throw new Error("V213_ACTIVATION_PUBLICATION_MODE_UNKNOWN");
+                }
+              }
+          '''
+          worker = replace_once(
+              worker,
+              "    const providerCount = Number(market.independent_provider_count ?? 0);\n    const eligible = record.eligible_for_high_confidence_model_inference === true;",
+              "    const providerCount = Number(market.independent_provider_count ?? 0);\n    const eligible = record.eligible_for_high_confidence_model_inference === true;\n" + record_mode,
+              "Worker record publication-mode gate",
+          )
+          worker = replace_once(
+              worker,
+              "  if (eligibleCount !== Number(portfolio.high_confidence_model_inference_eligible_count ?? -1)) {",
+              "  if (hasPublicationModes && (observedStrict !== strictCount || observedLimited !== limitedCount)) {\n    throw new Error(\"V213_ACTIVATION_PUBLICATION_MODE_COUNT_INVALID\");\n  }\n  if (eligibleCount !== Number(portfolio.high_confidence_model_inference_eligible_count ?? -1)) {",
+              "Worker publication count readback",
+          )
+          write(worker_path, worker)
+
+          # -------------------------------------------------------------
+          # Worker tests: baseline is a real all-LIMITED, BLS-optional bundle.
+          # -------------------------------------------------------------
+          test_path = "cloud/test/v213-activation.test.ts"
+          tests = read(test_path)
+          tests = tests.replace("      tam_capture: 6,", "      tam_capture: 0,")
+          tests = tests.replace(
+              '["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"]',
+              '["us_sec", "nasdaq", "world_bank", "ecb", "gleif"]',
+          )
+          tests = tests.replace(
+              'official_successful_families: ["us_sec", "nasdaq", "world_bank", "ecb", "gleif"]',
+              'official_successful_families: ["us_sec", "nasdaq", "world_bank", "ecb"]',
+          )
+          tests = replace_once(
+              tests,
+              "      claim_source_families: 2,\n      claim_source_domains: 3,",
+              "      claim_source_families: 1,\n      claim_source_domains: 1,",
+              "Worker test portfolio claim minima",
+          )
+          tests = replace_once(
+              tests,
+              "      high_confidence_model_inference_eligible_count: 0,\n    },\n    methodology_notice:",
+              "      high_confidence_model_inference_eligible_count: 0,\n      evidence_qualified_candidate_count: 0,\n      limited_research_candidate_count: 20,\n      all_rows_publication_provenance_multi_source: true,\n      limited_rows_high_confidence_eligible_count: 0,\n    },\n    freshness_audit: {\n      status: \"PASS\",\n      evidence_qualified_candidate_count: 0,\n      limited_research_candidate_count: 20,\n      all_tickers_publication_provenance_multi_source: true,\n      all_positive_advantages_fresh_multi_source: true,\n    },\n    methodology_notice:",
+              "Worker test publication portfolio",
+          )
+          tests = tests.replace(
+              "        claim_relevant_independent_families: 2,\n        claim_relevant_independent_domains: 3,",
+              "        claim_relevant_independent_families: 1,\n        claim_relevant_independent_domains: 1,",
+          )
+          tests = replace_once(
+              tests,
+              "      public_logic_state: { model_inference_confidence: \"LIMITED\" },\n      missing_or_review: [MARKET_MISSING],",
+              "      publication_evidence_mode: \"LIMITED_RESEARCH_CANDIDATE\",\n      freshness_state: {\n        status: \"PASS\",\n        publication_evidence_mode: \"LIMITED_RESEARCH_CANDIDATE\",\n        publication_provenance_origin_count: 2,\n        publication_provenance_domain_count: 2,\n        claim_primary_units: 1,\n      },\n      public_logic_state: {\n        model_inference_confidence: \"LIMITED\",\n        publication_evidence_mode: \"LIMITED_RESEARCH_CANDIDATE\",\n        validated_company_thesis: false,\n      },\n      missing_or_review: [MARKET_MISSING, \"LIMITED_RESEARCH_CANDIDATE\", \"INDEPENDENT_CLAIM_CORROBORATION\"],",
+              "Worker test limited rows",
+          )
+          appended_tests = r'''
+
+          describe("v2.1.3 R75 publication-mode contract", () => {
+            it("accepts an all-LIMITED bundle when BLS is unavailable but core federation thresholds pass", async () => {
+              const rt = runtime();
+              const value = await bundle();
+              const result = await ingestV213ActivationBundle(JSON.stringify(value), rt.env);
+              expect(result.status).toBe("accepted");
+            });
+
+            it("rejects a LIMITED candidate that retains a positive sensitive factor", async () => {
+              const rt = runtime();
+              const value = await bundle();
+              const rows = JSON.parse(value.payloads.top20_json) as Array<Record<string, any>>;
+              rows[0].serenity_factors.tam_capture = 1;
+              value.payloads.top20_json = JSON.stringify(rows);
+              value.sha256.top20_json = await digest(value.payloads.top20_json);
+              await expect(ingestV213ActivationBundle(JSON.stringify(value), rt.env))
+                .rejects.toThrow("V213_ACTIVATION_LIMITED_CANDIDATE_INVALID");
+            });
+
+            it("rejects a LIMITED candidate promoted to HIGH or validated thesis", async () => {
+              const rt = runtime();
+              const value = await bundle();
+              const audit = JSON.parse(value.payloads.source_independence_json) as Record<string, any>;
+              audit.records[0].eligible_for_high_confidence_model_inference = true;
+              audit.records[0].public_logic_state.model_inference_confidence = "HIGH_ELIGIBLE";
+              audit.records[0].public_logic_state.validated_company_thesis = true;
+              audit.portfolio.limited_rows_high_confidence_eligible_count = 1;
+              value.payloads.source_independence_json = JSON.stringify(audit);
+              value.sha256.source_independence_json = await digest(value.payloads.source_independence_json);
+              await expect(ingestV213ActivationBundle(JSON.stringify(value), rt.env))
+                .rejects.toThrow(/V213_ACTIVATION_(PUBLICATION_MODE|LIMITED_CANDIDATE)_INVALID/);
+            });
+
+            it("still rejects a missing core federation family", async () => {
+              const rt = runtime();
+              const value = await bundle();
+              const fed = JSON.parse(value.payloads.source_federation_json) as Record<string, any>;
+              fed.gates.successful_families = ["us_sec", "nasdaq", "world_bank", "gleif", "another_optional"];
+              fed.gates.official_successful_families = ["us_sec", "nasdaq", "world_bank", "another_official"];
+              value.payloads.source_federation_json = JSON.stringify(fed);
+              value.sha256.source_federation_json = await digest(value.payloads.source_federation_json);
+              await expect(ingestV213ActivationBundle(JSON.stringify(value), rt.env))
+                .rejects.toThrow("V213_ACTIVATION_FEDERATION_INVALID");
+            });
+          });
+          '''
+          if 'describe("v2.1.3 R75 publication-mode contract"' not in tests:
+              tests += appended_tests
+          write(test_path, tests)
+
+          # -------------------------------------------------------------
+          # Gateway: exact model pinning and reliable spaced-path launch.
+          # -------------------------------------------------------------
+          base_gateway_path = "scripts/v212_local_llm_gateway.py"
+          base_gateway = read(base_gateway_path)
+          model_helper = r'''
+
+          class ModelPinMismatch(RuntimeError):
+              pass
+
+
+          def resolve_pinned_model(requested: Any) -> str:
+              locked = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+              candidate = str(requested or "").strip()
+              if not locked:
+                  raise RuntimeError("II_LOCAL_LLM_MODEL_NOT_CONFIGURED")
+              if candidate and candidate.casefold() != locked.casefold():
+                  raise ModelPinMismatch("MODEL_PIN_MISMATCH")
+              return locked
+          '''
+          if "def resolve_pinned_model" not in base_gateway:
+              base_gateway = replace_once(
+                  base_gateway,
+                  "\n\nclass GatewayHandler(BaseHTTPRequestHandler):",
+                  model_helper + "\n\nclass GatewayHandler(BaseHTTPRequestHandler):",
+                  "Gateway model pin helper",
+              )
+          base_gateway = replace_once(
+              base_gateway,
+              "        messages = body.get(\"messages\") if isinstance(body, dict) else None\n        if not isinstance(messages, list):\n            self._json(400, {\"error\": \"MESSAGES_REQUIRED\"})\n            return\n        try:\n            enriched, context = enrich_messages(messages)",
+              "        messages = body.get(\"messages\") if isinstance(body, dict) else None\n        if not isinstance(messages, list):\n            self._json(400, {\"error\": \"MESSAGES_REQUIRED\"})\n            return\n        try:\n            pinned_model = resolve_pinned_model(body.get(\"model\") if isinstance(body, dict) else None)\n        except ModelPinMismatch:\n            self._json(409, {\"error\": \"MODEL_PIN_MISMATCH\", \"selected_model\": os.getenv(\"II_LOCAL_LLM_MODEL\", \"\")})\n            return\n        except RuntimeError:\n            self._json(503, {\"error\": \"MODEL_PIN_UNAVAILABLE\"})\n            return\n        try:\n            enriched, context = enrich_messages(messages)",
+              "Gateway request model pin",
+          )
+          base_gateway = replace_once(
+              base_gateway,
+              '                "model": body.get("model") or os.getenv("II_LOCAL_LLM_MODEL", "qwen3.8-27b"),',
+              '                "model": pinned_model,',
+              "Gateway upstream exact model",
+          )
+          base_gateway = replace_once(
+              base_gateway,
+              "        os.environ[\"II_LLAMA_BASE_URL\"] = \"http://127.0.0.1:8813\"",
+              "        os.environ[\"II_LOCAL_LLM_MODEL\"] = \"model-a\"\n        assert resolve_pinned_model(None) == \"model-a\"\n        assert resolve_pinned_model(\"MODEL-A\") == \"model-a\"\n        try:\n            resolve_pinned_model(\"model-b\")\n        except ModelPinMismatch:\n            pass\n        else:\n            raise AssertionError(\"Mismatched request model was accepted\")\n        os.environ[\"II_LLAMA_BASE_URL\"] = \"http://127.0.0.1:8813\"",
+              "Gateway model pin self-test",
+          )
+          base_gateway = replace_once(
+              base_gateway,
+              "    if len(os.getenv(\"II_LOCAL_LLM_SHARED_SECRET\", \"\")) < 32:\n        raise SystemExit(\"II_LOCAL_LLM_SHARED_SECRET must be configured\")",
+              "    if len(os.getenv(\"II_LOCAL_LLM_SHARED_SECRET\", \"\")) < 32:\n        raise SystemExit(\"II_LOCAL_LLM_SHARED_SECRET must be configured\")\n    if not os.getenv(\"II_LOCAL_LLM_MODEL\", \"\").strip():\n        raise SystemExit(\"II_LOCAL_LLM_MODEL must be configured\")",
+              "Gateway runtime model requirement",
+          )
+          write(base_gateway_path, base_gateway)
+
+          bridge_path = "scripts/run_v213_local_llm_bridge_core.ps1"
+          bridge = read(bridge_path)
+          bridge_helper = r'''function New-GatewayArgumentLine {
+              param([string]$GatewayScriptPath,[int]$Port)
+              if([string]::IsNullOrWhiteSpace($GatewayScriptPath)-or$GatewayScriptPath.Contains('"')){throw 'Gateway script path is empty or contains an unsupported quote character.'}
+              return ('"{0}" --host 127.0.0.1 --port {1}'-f$GatewayScriptPath,$Port)
+          }
+          function Get-BridgeLogTail {
+              param([string]$Path)
+              if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return '<missing>'}
+              $lines=@(Get-Content -LiteralPath $Path -Tail 20 -ErrorAction SilentlyContinue|ForEach-Object{([string]$_).Trim()}|Where-Object{$_})
+              if($lines.Count-eq0){return '<empty>'}
+              return ($lines-join' | ')
+          }
+          '''
+          if "function New-GatewayArgumentLine" not in bridge:
+              bridge = replace_once(
+                  bridge,
+                  "function Test-HealthModel {",
+                  bridge_helper + "\nfunction Test-HealthModel {",
+                  "Bridge argument helper",
+              )
+          bridge_self_test = r'''    $testPython=''
+              foreach($candidate in @($env:PROJECT_PYTHON,'python.exe','python3.exe','python')){
+                  if(-not$candidate){continue}
+                  $command=Get-Command $candidate -ErrorAction SilentlyContinue
+                  $path=if($command){$command.Source}else{$candidate}
+                  try{if($path-and(Test-Path -LiteralPath $path -PathType Leaf)){$testPython=$path;break}}catch{}
+              }
+              if(-not$testPython){throw 'Bridge spaced-path process self-test requires repository-managed Python.'}
+              $testRoot=Join-Path $env:TEMP ('Investor Intelligence Bridge Path (1)-'+[guid]::NewGuid().ToString('N'))
+              New-Item -ItemType Directory -Force -Path $testRoot|Out-Null
+              $testScript=Join-Path $testRoot 'gateway launch probe.py'
+              $resultPath=[IO.Path]::ChangeExtension($testScript,'.args.txt')
+              $testStdout=Join-Path $testRoot 'probe.stdout.log'
+              $testStderr=Join-Path $testRoot 'probe.stderr.log'
+              [IO.File]::WriteAllText($testScript,"from pathlib import Path`nimport sys,time`nPath(__file__).with_suffix('.args.txt').write_text('\\n'.join(sys.argv[1:]),encoding='utf-8')`ntime.sleep(1)`n",[Text.UTF8Encoding]::new($false))
+              $probeProcess=$null
+              try{
+                  $probeProcess=Start-Process -FilePath $testPython -ArgumentList (New-GatewayArgumentLine $testScript 18814) -PassThru -WindowStyle Hidden -RedirectStandardOutput $testStdout -RedirectStandardError $testStderr
+                  $deadline=(Get-Date).AddSeconds(15)
+                  while((Get-Date)-lt$deadline-and-not(Test-Path -LiteralPath $resultPath -PathType Leaf)){Start-Sleep -Milliseconds 200}
+                  if(-not(Test-Path -LiteralPath $resultPath -PathType Leaf)){throw "Spaced-path Python probe did not start. stderr=$(Get-BridgeLogTail $testStderr)"}
+                  if((@(Get-Content -LiteralPath $resultPath -Encoding utf8)-join'|')-ne'--host|127.0.0.1|--port|18814'){throw 'Spaced-path Python probe received corrupted arguments.'}
+              }finally{
+                  if($probeProcess-and(Get-Process -Id $probeProcess.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $probeProcess.Id -Force -ErrorAction SilentlyContinue}
+                  Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+              }
+              Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST = PASS' -ForegroundColor Green'''
+          bridge = replace_once(
+              bridge,
+              "    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS' -ForegroundColor Green",
+              bridge_self_test,
+              "Bridge spaced-path self-test",
+          )
+          bridge = replace_once(
+              bridge,
+              "$gateway = Start-Process -FilePath $python -ArgumentList @($GatewayScript, '--host', '127.0.0.1', '--port', [string]$GatewayPort) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr",
+              "$gatewayArguments = New-GatewayArgumentLine $GatewayScript $GatewayPort\n    $gateway = Start-Process -FilePath $python -ArgumentList $gatewayArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr",
+              "Bridge quoted Start-Process",
+          )
+          bridge = replace_once(
+              bridge,
+              "    [void](Wait-LocalGatewayHealth $GatewayPort $gateway.Id $Model)",
+              "    try{[void](Wait-LocalGatewayHealth $GatewayPort $gateway.Id $Model)}catch{$stderrTail=Get-BridgeLogTail $stderr;$stdoutTail=Get-BridgeLogTail $stdout;throw \"Local gateway startup failed. $($_.Exception.Message) stderr_tail=$stderrTail; stdout_tail=$stdoutTail\"}",
+              "Bridge startup diagnostics",
+          )
+          write(bridge_path, bridge)
+
+          # -------------------------------------------------------------
+          # CI: clone R70 validation/package into R75 and add real preflight.
+          # -------------------------------------------------------------
+          validate = read("scripts/ci_v213_r70_validate.ps1")
+          validate = validate.replace("R70", "R75").replace("r70", "r75")
+          preflight_call = r'''
+                  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -PreflightOnly
+                  if ($LASTEXITCODE -ne 0) { throw 'Actual sealed-bundle publication-mode activation preflight failed.' }
+                  Write-Host 'V213_R75_ACTUAL_ACTIVATION_PREFLIGHT = PASS; production_mutation=false' -ForegroundColor Green
+          '''
+          if "V213_R75_ACTUAL_ACTIVATION_PREFLIGHT" not in validate:
+              validate = replace_once(
+                  validate,
+                  "        $bundle = Get-Content data\\cache\\v213_activation_bundle_upload.json -Raw -Encoding utf8 | ConvertFrom-Json\n",
+                  "        $bundle = Get-Content data\\cache\\v213_activation_bundle_upload.json -Raw -Encoding utf8 | ConvertFrom-Json\n" + preflight_call,
+                  "R75 actual preflight",
+              )
+          write("scripts/ci_v213_r75_validate.ps1", validate)
+
+          package = read("scripts/ci_v213_r70_package.ps1")
+          package = package.replace("R70", "R75").replace("r70", "r75")
+          write("scripts/ci_v213_r75_package.ps1", package)
+
+          launcher_path = "launcher/InvestorIntelligenceLauncher.cs"
+          launcher = read(launcher_path).replace("Serenity-Latest-MultiSource-R70", "Serenity-Latest-MultiSource-R75")
+          write(launcher_path, launcher)
+
+          # Windows scheduled refresh resilience without changing user identity.
+          task_path = "register-v213-refresh-tasks.ps1"
+          tasks = read(task_path)
+          tasks = replace_once(
+              tasks,
+              "$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)",
+              "$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -RunOnlyIfNetworkAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)",
+              "Scheduled task resilience",
+          )
+          write(task_path, tasks)
+
+          # Static audit markers so future packaging cannot regress silently.
+          audit_path = "scripts/v213_serenity_latest_static_audit.py"
+          audit = read(audit_path)
+          audit_block = r'''    # R75_ACTIVATION_WORKER_GATEWAY_ALIGNMENT_V1
+              require(canonical_activation,("LIMITED_RESEARCH_CANDIDATE","V213_ACTIVATION_PREFLIGHT_ONLY","v213_activation_bundle_upload.json","all_rows_publication_provenance_multi_source","all_positive_advantages_fresh_multi_source"),failures)
+              require("scripts/run_v213_local_llm_bridge_core.ps1",("New-GatewayArgumentLine","V213_BRIDGE_SPACED_PATH_PROCESS_SELF_TEST","stderr_tail=$stderrTail"),failures)
+              require("scripts/v212_local_llm_gateway.py",("MODEL_PIN_MISMATCH","resolve_pinned_model","II_LOCAL_LLM_MODEL must be configured"),failures)
+              require("cloud/src/v213/activation-v2.ts",("LIMITED_RESEARCH_CANDIDATE","V213_ACTIVATION_LIMITED_CANDIDATE_INVALID","all_tickers_publication_provenance_multi_source"),failures)
+          '''
+          if "R75_ACTIVATION_WORKER_GATEWAY_ALIGNMENT_V1" not in audit:
+              audit = insert_before_last(
+                  audit,
+                  "\n    if failures:\n",
+                  "\n" + audit_block,
+                  "R75 static audit",
+              )
+          write(audit_path, audit)
+
+          print("R75_P0_SOURCE_PATCH = PASS")
+          '@ | Set-Content -LiteralPath $patcher -Encoding utf8
+          & $env:PROJECT_PYTHON $patcher
+          if ($LASTEXITCODE -ne 0) { throw 'R75 P0 source patch failed.' }
+
+      - name: Run targeted parser and contract checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:PROJECT_PYTHON -m compileall -q scripts tests
+          if ($LASTEXITCODE -ne 0) { throw 'Python compileall failed.' }
+          & $env:PROJECT_PYTHON scripts\v212_local_llm_gateway.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned-model gateway self-test failed.' }
+          & $env:PROJECT_PYTHON scripts\v213_local_llm_gateway.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1.3 gateway self-test failed.' }
+          & $env:PROJECT_PYTHON scripts\build_v213_activation_bundle_v2.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Activation bundle self-test failed.' }
+          & $env:PROJECT_PYTHON scripts\v213_serenity_latest_static_audit.py
+          if ($LASTEXITCODE -ne 0) { throw 'R75 static audit failed.' }
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Publication-mode PowerShell self-test failed.' }
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\run_v213_local_llm_bridge_core.ps1 -ProjectRoot $PWD.Path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Spaced-path bridge process self-test failed.' }
+
+      - name: Run Worker typecheck and complete tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\resolve_node.ps1 -MinimumVersion 22.0.0
+          $npm = if ($env:PROJECT_NPM -and (Test-Path -LiteralPath $env:PROJECT_NPM -PathType Leaf)) { $env:PROJECT_NPM } else { (Get-Command npm.cmd -ErrorAction Stop).Source }
+          Push-Location cloud
+          try {
+            & $npm ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+            & $npm run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
+            & $npm test
+            if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed.' }
+          }
+          finally { Pop-Location }
+
+      - name: Run complete Windows R75 no-mutation validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\ci_v213_r75_validate.ps1 -ProjectRoot $PWD.Path
+          if ($LASTEXITCODE -ne 0) { throw 'Complete R75 Windows validation failed.' }
+
+      - name: Commit validated R75 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.github/workflows/v213-r75-apply-p0-hardening.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'R75 source contains whitespace errors.' }
+          git commit -m 'fix: align R75 activation, Worker and exact-model gateway contracts'
+          if ($LASTEXITCODE -ne 0) { throw 'R75 source commit failed.' }
+          git pull --rebase origin development/v2.1.3-r75-hardening
+          if ($LASTEXITCODE -ne 0) { throw 'R75 source rebase failed.' }
+          git push origin HEAD:development/v2.1.3-r75-hardening
+          if ($LASTEXITCODE -ne 0) { throw 'R75 source push failed.' }
