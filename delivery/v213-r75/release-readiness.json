@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "PASS_WITH_RESIDUAL_OPERATIONAL_RISKS",
+  "release_line": "v2.1.3-r75-hardening",
+  "p0_integrity_blockers_open": 0,
+  "production_mutation_by_ci": false,
+  "verified_contracts": [
+    "sealed_bundle_publication_mode_preflight",
+    "optional_bls_policy_alignment",
+    "worker_publication_mode_alignment",
+    "exact_model_pinning",
+    "spaced_parenthesized_gateway_path",
+    "snapshot_readback_and_idempotent_repair",
+    "durable_object_atomic_line_dedupe",
+    "refresh_and_activation_operation_locks",
+    "candidate_seed_stability",
+    "scheduled_task_retry_network_wake_controls"
+  ],
+  "residual_non_blockers": [
+    "free_non_yahoo_market_coverage_can_still_degrade_to_all_limited",
+    "quick_accountless_tunnel_is_less_reliable_than_managed_named_tunnel",
+    "long_local_model_inference_is_still_synchronous",
+    "interactive_windows_task_principal_requires_local_logon-state_validation"
+  ]
+}
