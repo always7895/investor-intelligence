@@ -25,10 +25,25 @@ try {
     foreach ($path in $forbidden) {
         if ($changed -contains $path) { throw "Deployment hotfix changed protected R75 source: $path" }
     }
+    $allowed = @(
+        '.github/workflows/v213-r75-release.yml',
+        'docs/V213_NAMED_TUNNEL_DEPLOYMENT_HOTFIX.md',
+        'launcher/InvestorIntelligenceLauncher.cs',
+        'run-v213-local.ps1',
+        'run-v213-local-source-diverse.ps1',
+        'run-v213-local-serenity-latest.ps1',
+        'scripts/ci_v213_r75_validate.ps1',
+        'scripts/ci_v213_r75_named_tunnel_validate.ps1',
+        'scripts/ci_v213_r75_named_tunnel_package.ps1',
+        'scripts/run_v213_local_llm_bridge_core.ps1',
+        'scripts/setup_v213_named_tunnel.ps1',
+        'scripts/test_v213_named_tunnel.ps1',
+        'scripts/v213_named_tunnel_helpers.ps1',
+        'scripts/verify_v213_r75_named_tunnel_hotfix.py',
+        'state/STATUS.md'
+    )
     foreach ($path in $changed) {
-        if ($path -match '(?i)(serenity|scoring|publication-mode|activation_bundle|sealed)' -and $path -notmatch '^docs/V213_NAMED_TUNNEL') {
-            throw "Deployment hotfix changed a protected semantic/sealed path: $path"
-        }
+        if ($allowed -notcontains $path) { throw "Deployment hotfix changed a non-deployment path: $path" }
     }
     foreach ($required in @(
         'scripts/setup_v213_named_tunnel.ps1',
