@@ -57,6 +57,13 @@ namespace InvestorIntelligence
             public string Error = "";
         }
 
+        sealed class NamedTunnelSettings
+        {
+            public string Name = "";
+            public string Hostname = "";
+            public string ConfigPath = "";
+        }
+
         static string Root
         {
             get { return AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar); }
@@ -75,6 +82,11 @@ namespace InvestorIntelligence
         static string SelectionPath
         {
             get { return Path.Combine(ConfigRoot, "v213-model-selection.json"); }
+        }
+
+        static string NamedTunnelPath
+        {
+            get { return Path.Combine(ConfigRoot, "v213-named-tunnel.json"); }
         }
 
         static string Tail(string value, int maximum)
@@ -268,6 +280,49 @@ namespace InvestorIntelligence
             {
                 return new ModelSelection();
             }
+        }
+
+        static NamedTunnelSettings LoadNamedTunnelSettings()
+        {
+            try
+            {
+                if (!File.Exists(NamedTunnelPath)) return null;
+                var serializer = new JavaScriptSerializer();
+                var root = serializer.DeserializeObject(
+                    File.ReadAllText(NamedTunnelPath, Encoding.UTF8)) as Dictionary<string, object>;
+                if (root == null) return null;
+                var settings = new NamedTunnelSettings {
+                    Name = root.ContainsKey("named_tunnel_name")
+                        ? Convert.ToString(root["named_tunnel_name"]) ?? "" : "",
+                    Hostname = root.ContainsKey("named_tunnel_hostname")
+                        ? Convert.ToString(root["named_tunnel_hostname"]) ?? "" : "",
+                    ConfigPath = root.ContainsKey("named_tunnel_config_path")
+                        ? Convert.ToString(root["named_tunnel_config_path"]) ?? "" : ""
+                };
+                if (!Regex.IsMatch(settings.Name, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$") ||
+                    !Regex.IsMatch(settings.Hostname, @"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])$") ||
+                    settings.Hostname.EndsWith(".trycloudflare.com", StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(settings.ConfigPath))
+                {
+                    return null;
+                }
+                return settings;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static string NamedTunnelPowerShellArguments(NamedTunnelSettings settings)
+        {
+            if (settings == null)
+                throw new InvalidOperationException(
+                    "Production Named Tunnel is not configured. Use the one-time Named Tunnel setup first.");
+            return " -TunnelMode Named" +
+                " -NamedTunnelName " + PowerShellLiteral(settings.Name) +
+                " -NamedTunnelHostname " + PowerShellLiteral(settings.Hostname) +
+                " -NamedTunnelConfig " + PowerShellLiteral(settings.ConfigPath);
         }
 
         static void SaveSelection(
@@ -592,6 +647,8 @@ namespace InvestorIntelligence
                     "register-v213-refresh-tasks.ps1",
                     @"scripts\build_v213_scheduled_top20_report.py",
                     @"scripts\bootstrap_portable_python.ps1",
+                    @"scripts\setup_v213_named_tunnel.ps1",
+                    @"scripts\v213_named_tunnel_helpers.ps1",
                     "requirements-ci.txt"
                 };
                 foreach (string item in required)
@@ -615,10 +672,17 @@ namespace InvestorIntelligence
             }
             if (args.Contains("--activate-schedule"))
             {
+                NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
+                if (tunnel == null)
+                {
+                    Console.Error.WriteLine("NAMED_TUNNEL_CONFIGURATION_REQUIRED");
+                    return 4;
+                }
                 int refresh = RunPowerShellCli(
                     "run-v213-local.ps1",
                     "-ProjectRoot " + PowerShellLiteral(Root) +
-                    " -InstallCloudflared -NoAutoActivation");
+                    " -InstallCloudflared -NoAutoActivation" +
+                    NamedTunnelPowerShellArguments(tunnel));
                 if (refresh != 0) return refresh;
                 return RunPowerShellCli(
                     "activate-v213-seven-field-schedule.ps1",
@@ -632,6 +696,60 @@ namespace InvestorIntelligence
             return 0;
         }
 
+        sealed class NamedTunnelDialog : Form
+        {
+            readonly TextBox nameBox;
+            readonly TextBox hostnameBox;
+            readonly TextBox configBox;
+            public string TunnelName { get { return nameBox.Text.Trim(); } }
+            public string TunnelHostname { get { return hostnameBox.Text.Trim(); } }
+            public string TunnelConfig { get { return configBox.Text.Trim(); } }
+
+            public NamedTunnelDialog(NamedTunnelSettings previous)
+            {
+                Text = "Production Named Tunnel setup / 命名通道設定";
+                Width = 650;
+                Height = 330;
+                StartPosition = FormStartPosition.CenterParent;
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                MaximizeBox = false;
+                MinimizeBox = false;
+
+                Controls.Add(new Label { Left = 20, Top = 18, Width = 590, Height = 36,
+                    Text = "One-time Cloudflare Named Tunnel verification + DNS route setup.\nCredentials are validated but never printed or copied." });
+                Controls.Add(new Label { Left = 20, Top = 65, Width = 180, Text = "NamedTunnelName" });
+                nameBox = new TextBox { Left = 20, Top = 87, Width = 590,
+                    Text = previous == null ? "" : previous.Name };
+                Controls.Add(nameBox);
+                Controls.Add(new Label { Left = 20, Top = 120, Width = 180, Text = "NamedTunnelHostname" });
+                hostnameBox = new TextBox { Left = 20, Top = 142, Width = 590,
+                    Text = previous == null ? "" : previous.Hostname };
+                Controls.Add(hostnameBox);
+                Controls.Add(new Label { Left = 20, Top = 175, Width = 180, Text = "NamedTunnelConfig" });
+                configBox = new TextBox { Left = 20, Top = 197, Width = 490,
+                    Text = previous == null ? "" : previous.ConfigPath };
+                Controls.Add(configBox);
+                var browse = new Button { Left = 520, Top = 195, Width = 90, Height = 27, Text = "Browse..." };
+                browse.Click += delegate {
+                    using (var picker = new OpenFileDialog())
+                    {
+                        picker.Filter = "YAML config (*.yml;*.yaml)|*.yml;*.yaml|All files (*.*)|*.*";
+                        picker.CheckFileExists = true;
+                        if (picker.ShowDialog(this) == DialogResult.OK) configBox.Text = picker.FileName;
+                    }
+                };
+                Controls.Add(browse);
+                var ok = new Button { Left = 410, Top = 240, Width = 95, Height = 30,
+                    Text = "Verify / 驗證", DialogResult = DialogResult.OK };
+                var cancel = new Button { Left = 515, Top = 240, Width = 95, Height = 30,
+                    Text = "Cancel", DialogResult = DialogResult.Cancel };
+                Controls.Add(ok);
+                Controls.Add(cancel);
+                AcceptButton = ok;
+                CancelButton = cancel;
+            }
+        }
+
         sealed class MainForm : Form
         {
             readonly Label status;
@@ -643,6 +761,7 @@ namespace InvestorIntelligence
             readonly Button activateButton;
             readonly Button bridgeButton;
             readonly Button folderButton;
+            readonly Button namedTunnelButton;
             readonly Timer elapsedTimer;
             readonly List<string> discoveredModels = new List<string>();
 
@@ -655,7 +774,7 @@ namespace InvestorIntelligence
             {
                 Text = "Investor Intelligence v" + Version + " " + Revision;
                 Width = 720;
-                Height = 540;
+                Height = 650;
                 StartPosition = FormStartPosition.CenterScreen;
                 FormBorderStyle = FormBorderStyle.FixedDialog;
                 MaximizeBox = false;
@@ -741,16 +860,25 @@ namespace InvestorIntelligence
                     "開啟程式資料夾\nOpen package folder",
                     360,
                     266);
+                namedTunnelButton = new Button {
+                    Left = 24,
+                    Top = 360,
+                    Width = 652,
+                    Height = 62,
+                    Text = "一次性 Production Named Tunnel 設定 / One-time Named Tunnel setup",
+                    UseVisualStyleBackColor = true
+                };
                 Controls.Add(refreshButton);
                 Controls.Add(activateButton);
                 Controls.Add(bridgeButton);
                 Controls.Add(folderButton);
+                Controls.Add(namedTunnelButton);
 
                 status = new Label {
                     Left = 24,
-                    Top = 370,
+                    Top = 445,
                     Width = 652,
-                    Height = 82,
+                    Height = 105,
                     Text = "Ready / 就緒\r\nPreferred / 預設首選: " +
                         PreferredModel,
                     BorderStyle = BorderStyle.FixedSingle,
@@ -781,6 +909,30 @@ namespace InvestorIntelligence
                         selection.Model + " @ " + selection.LlamaBaseUrl;
                 };
 
+                namedTunnelButton.Click += async delegate {
+                    NamedTunnelSettings previous = LoadNamedTunnelSettings();
+                    using (var dialog = new NamedTunnelDialog(previous))
+                    {
+                        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                        string name = dialog.TunnelName;
+                        string hostname = dialog.TunnelHostname;
+                        string config = dialog.TunnelConfig;
+                        await RunBusyAsync(
+                            "Named Tunnel 驗證與 DNS 路由設定中 / Verifying Named Tunnel...",
+                            async delegate {
+                                return await RunPowerShellAsync(
+                                    @"scripts\setup_v213_named_tunnel.ps1",
+                                    "-ProjectRoot " + PowerShellLiteral(Root) +
+                                    " -NamedTunnelName " + PowerShellLiteral(name) +
+                                    " -NamedTunnelHostname " + PowerShellLiteral(hostname) +
+                                    " -NamedTunnelConfig " + PowerShellLiteral(config),
+                                    true);
+                            },
+                            "Named Tunnel 設定完成 / Named Tunnel ready\r\n" + hostname,
+                            "Named Tunnel 設定失敗；未變更 bridge / Setup failed");
+                    }
+                };
+
                 refreshButton.Click += async delegate {
                     ModelSelection selection;
                     if (!TryCommitSelection(out selection)) return;
@@ -805,6 +957,16 @@ namespace InvestorIntelligence
                     if (!TryCommitSelection(out selection)) return;
                     string model = selection.Model;
                     string baseUrl = selection.LlamaBaseUrl;
+                    NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
+                    if (tunnel == null)
+                    {
+                        MessageBox.Show(
+                            "請先完成一次性 Production Named Tunnel 設定。\n\nConfigure the Production Named Tunnel first.",
+                            "Named Tunnel required",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
                     var answer = MessageBox.Show(
                         "選定模型：\n" + model +
                         "\n\n將先重新刷新並驗證同一模型；只有 exact-model health gate" +
@@ -823,7 +985,8 @@ namespace InvestorIntelligence
                                 "-ProjectRoot " + PowerShellLiteral(Root) +
                                 " -InstallCloudflared -NoAutoActivation" +
                                 " -Model " + PowerShellLiteral(model) +
-                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
+                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl) +
+                                NamedTunnelPowerShellArguments(tunnel),
                                 true);
                             if (refresh != 0) return refresh;
 
@@ -848,15 +1011,26 @@ namespace InvestorIntelligence
                     if (!TryCommitSelection(out selection)) return;
                     string model = selection.Model;
                     string baseUrl = selection.LlamaBaseUrl;
+                    NamedTunnelSettings tunnel = LoadNamedTunnelSettings();
+                    if (tunnel == null)
+                    {
+                        MessageBox.Show(
+                            "請先完成一次性 Production Named Tunnel 設定。\n\nConfigure the Production Named Tunnel first.",
+                            "Named Tunnel required",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
                     await RunBusyAsync(
-                        "所選模型橋接啟動中 / Starting selected-model bridge...",
+                        "Production Named Tunnel 橋接啟動中 / Starting named bridge...",
                         async delegate {
                             return await RunPowerShellAsync(
                                 "run-v213-local-llm-bridge.ps1",
                                 "-ProjectRoot " + PowerShellLiteral(Root) +
                                 " -InstallCloudflared -StopExisting" +
                                 " -Model " + PowerShellLiteral(model) +
-                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
+                                " -LlamaBaseUrl " + PowerShellLiteral(baseUrl) +
+                                NamedTunnelPowerShellArguments(tunnel),
                                 true);
                         },
                         "本地模型橋接完成 / Model bridge ready\r\nModel: " + model,
@@ -1044,6 +1218,7 @@ namespace InvestorIntelligence
                 activateButton.Enabled = !value;
                 bridgeButton.Enabled = !value;
                 folderButton.Enabled = !value;
+                namedTunnelButton.Enabled = !value;
                 UseWaitCursor = value;
 
                 if (value)

@@ -21,6 +21,8 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8NoBom
 $OutputEncoding = $utf8NoBom
 $preferredModel = 'RVN-Q6_K-multilingual-mtp'
+$namedTunnelHelpers = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'v213_named_tunnel_helpers.ps1'
+if (Test-Path -LiteralPath $namedTunnelHelpers -PathType Leaf) { . $namedTunnelHelpers }
 
 function ConvertTo-WindowsCommandLineArgument([string]$Value) {
     if ($null -eq $Value -or $Value.Length -eq 0) { return '""' }
@@ -56,9 +58,7 @@ function Start-GatewayNativeProcess {
 function Resolve-TunnelPolicy([string]$Mode,[bool]$NoTunnelRequested,[string]$Name,[string]$Hostname,[string]$ConfigPath) {
     if ($NoTunnelRequested) { $Mode = 'None' }
     if ($Mode -eq 'Named') {
-        if ($Name -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$') { throw 'Named tunnel name is invalid.' }
-        if ($Hostname -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]{1,251})[A-Za-z0-9]$') { throw 'Named tunnel hostname is invalid.' }
-        if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw 'Named tunnel config is missing.' }
+        Assert-V213NamedTunnelInputs -Name $Name -Hostname $Hostname -ConfigPath $ConfigPath
     }
     return [pscustomobject]@{
         mode = $Mode
@@ -151,8 +151,23 @@ if ($SelfTest) {
     if ((Get-BlueGreenDecision $false $true) -ne 'ROLLBACK_NEW_RETAIN_OLD') { throw 'Blue/green rollback self-test failed.' }
     if ((Get-BlueGreenDecision $true $false) -ne 'PROMOTE_NEW_RETAIN_OLD_UNTIL_FINALIZE') { throw 'Blue/green staged cutover self-test failed.' }
     if ((Get-BlueGreenDecision $true $true) -ne 'PROMOTE_NEW_STOP_OLD') { throw 'Blue/green finalize self-test failed.' }
-    try { [void](Resolve-TunnelPolicy 'Named' $false '' '' ''); throw 'Invalid named tunnel policy was accepted.' } catch { if ($_.Exception.Message -eq 'Invalid named tunnel policy was accepted.') { throw } }
-    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true; quick_tunnel_test_only=true; named_tunnel_policy=true; blue_green_rollback=true' -ForegroundColor Green
+    $namedRoot = Join-Path $env:TEMP ('Investor Intelligence named tunnel bridge policy 測試 (1)-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $namedRoot | Out-Null
+    try {
+        $credential = Join-Path $namedRoot '12345678-1234-1234-1234-123456789abc.json'
+        [IO.File]::WriteAllText($credential, '{"AccountTag":"account-self-test","TunnelID":"12345678-1234-1234-1234-123456789abc","TunnelSecret":"self-test-secret-not-real"}', [Text.UTF8Encoding]::new($false))
+        $config = Join-Path $namedRoot 'named config (測試).yml'
+        [IO.File]::WriteAllText($config, "tunnel: qwen38-q6-prod`ncredentials-file: $credential`ningress:`n - service: http://127.0.0.1:8814`n", [Text.UTF8Encoding]::new($false))
+        try { [void](Resolve-TunnelPolicy 'Named' $false '' '' ''); throw 'Invalid named tunnel policy was accepted.' } catch { if ($_.Exception.Message -eq 'Invalid named tunnel policy was accepted.') { throw } }
+        [void](Resolve-TunnelPolicy 'Named' $false 'qwen38-q6-prod' 'qwen38.example.com' $config)
+        [void](Get-V213NamedTunnelConfigMetadata -ConfigPath $config -ExpectedLocalPort 8814 -ExpectedTunnelName 'qwen38-q6-prod')
+        try { [void](Get-V213NamedTunnelConfigMetadata -ConfigPath $config -ExpectedLocalPort 8815); throw 'Wrong named tunnel local port was accepted.' } catch { if ($_.Exception.Message -eq 'Wrong named tunnel local port was accepted.') { throw } }
+        $runtimeConfig = Join-Path $namedRoot 'runtime config (測試).yml'
+        [void](New-V213RuntimeNamedTunnelConfig -SourceConfigPath $config -GatewayPort 8815 -DestinationPath $runtimeConfig)
+        if ((Get-Content -LiteralPath $runtimeConfig -Raw -Encoding utf8) -notmatch 'http://127\.0\.0\.1:8815') { throw 'Blue/green runtime config did not target the new gateway port.' }
+    }
+    finally { Remove-Item -LiteralPath $namedRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host 'V213_BRIDGE_STRICTMODE_HEALTH_SELF_TEST = PASS; gateway_process_spaces_unicode_parentheses=true; native_argument_quoting=true; quick_tunnel_test_only=true; named_tunnel_policy=true; named_tunnel_config_port=true; blue_green_rollback=true' -ForegroundColor Green
     exit 0
 }
 
@@ -518,6 +533,7 @@ $oldLlama = $env:II_LLAMA_BASE_URL
 $oldModel = $env:II_LOCAL_LLM_MODEL
 $gateway = $null
 $tunnel = $null
+$runtimeNamedConfig = ''
 try {
     $env:II_LOCAL_LLM_SHARED_SECRET = $secret
     $env:II_LLAMA_BASE_URL = $llama
@@ -531,6 +547,16 @@ try {
     $publicUrl = ''
     $tunnelPid = 0
     $tunnelStability = [pscustomobject]@{ consecutive=0; transient_failure_count=0; status='NOT_APPLICABLE' }
+    $namedTunnelMetadata = $null
+    $namedDnsRouteStatus = ''
+    if ($tunnelPolicy.mode -eq 'Named') {
+        $cloudflaredPath = Resolve-Cloudflared
+        $namedTunnelMetadata = Test-V213NamedTunnelPrerequisites -CloudflaredPath $cloudflaredPath -Name $NamedTunnelName -Hostname $NamedTunnelHostname -ConfigPath $NamedTunnelConfig
+        $namedDnsRouteStatus = Invoke-V213NamedTunnelDnsRoute -CloudflaredPath $cloudflaredPath -Name $NamedTunnelName -Hostname $NamedTunnelHostname
+        $runtimeNamedConfig = Join-Path $env:TEMP ('ii-v213-named-runtime-' + [guid]::NewGuid().ToString('N') + '.yml')
+        [void](New-V213RuntimeNamedTunnelConfig -SourceConfigPath $NamedTunnelConfig -GatewayPort $GatewayPort -DestinationPath $runtimeNamedConfig)
+        Assert-V213CloudflaredSuccess (Invoke-V213CloudflaredCommand -CloudflaredPath $cloudflaredPath -Arguments @('tunnel','--config',$runtimeNamedConfig,'ingress','validate') -TimeoutSeconds 45) 'runtime ingress validation'
+    }
     if ($tunnelPolicy.mode -eq 'QuickTest') {
         $healthyTunnel = Start-HealthyQuickTunnel (Resolve-Cloudflared) $GatewayPort $Model
         $tunnel = $healthyTunnel.process
@@ -539,8 +565,10 @@ try {
         $tunnelStability = $healthyTunnel.stability
     }
     elseif ($tunnelPolicy.mode -eq 'Named') {
-        $healthyTunnel = Start-HealthyNamedTunnel (Resolve-Cloudflared) $NamedTunnelConfig $NamedTunnelName $NamedTunnelHostname $Model
+        $healthyTunnel = Start-HealthyNamedTunnel $cloudflaredPath $runtimeNamedConfig $NamedTunnelName $NamedTunnelHostname $Model
         $tunnel = $healthyTunnel.process
+        Remove-Item -LiteralPath $runtimeNamedConfig -Force -ErrorAction SilentlyContinue
+        $runtimeNamedConfig = ''
         $publicUrl = [string]$healthyTunnel.url
         $tunnelPid = $tunnel.Id
         $tunnelStability = $healthyTunnel.stability
@@ -568,6 +596,13 @@ try {
         tunnel_health_status = [string]$tunnelStability.status
         tunnel_transient_failure_count = [int]$tunnelStability.transient_failure_count
         tunnel_consecutive_health_checks = [int]$tunnelStability.consecutive
+        named_tunnel_name = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_name } else { '' })
+        named_tunnel_hostname = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_hostname } else { '' })
+        named_tunnel_config_sha256 = $(if ($namedTunnelMetadata) { [string]$namedTunnelMetadata.named_tunnel_config_sha256 } else { '' })
+        named_tunnel_dns_route_status = $namedDnsRouteStatus
+        named_tunnel_credentials_file_present = $(if ($namedTunnelMetadata) { [bool]$namedTunnelMetadata.credentials_file_present } else { $false })
+        named_tunnel_config_path_persisted = $false
+        named_tunnel_credential_file_path_persisted = $false
         blue_green_decision = Get-BlueGreenDecision $true $FinalizeCutover.IsPresent
         previous_gateway_pid = [int](Get-ObjectPropertyValue $oldState 'gateway_pid' 0)
         previous_cloudflared_pid = [int](Get-ObjectPropertyValue $oldState 'cloudflared_pid' 0)
@@ -600,6 +635,7 @@ catch {
     throw "V213_LOCAL_MODEL_BRIDGE_FAILED; cause=$failure; stderr_tail=$stderrTail; stdout_tail=$stdoutTail"
 }
 finally {
+    if ($runtimeNamedConfig) { Remove-Item -LiteralPath $runtimeNamedConfig -Force -ErrorAction SilentlyContinue }
     $env:II_LOCAL_LLM_SHARED_SECRET = $oldSecret
     $env:II_LLAMA_BASE_URL = $oldLlama
     $env:II_LOCAL_LLM_MODEL = $oldModel

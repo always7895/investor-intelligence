@@ -5,6 +5,10 @@ param(
     [string]$LlamaBaseUrl = '',
     [switch]$NoModelBridge,
     [switch]$NoTunnel,
+    [ValidateSet('None','QuickTest','Named')][string]$TunnelMode = 'QuickTest',
+    [string]$NamedTunnelName = '',
+    [string]$NamedTunnelHostname = '',
+    [string]$NamedTunnelConfig = '',
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
@@ -128,7 +132,7 @@ try {
     $bridgeReady = $false
     if (-not $NoModelBridge) {
         try {
-            & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge-source-diverse.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting
+            & (Join-Path $ProjectRoot 'run-v213-local-llm-bridge-source-diverse.ps1') -ProjectRoot $ProjectRoot -Model $Model -LlamaBaseUrl $LlamaBaseUrl -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig
             if ($LASTEXITCODE -ne 0) { throw 'Source-diverse bridge returned nonzero.' }
             $bridgeReady = $true
             Write-Host 'II_PROGRESS exact selected-model bridge ready' -ForegroundColor Green
