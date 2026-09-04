@@ -30,3 +30,25 @@
 ### Next action
 
 Complete M2 fail-closed fixture matrix and full Worker suite, then M3 gateway process/concurrency work.
+
+## Milestone M2 — Worker and fail-closed fixture matrix (2026-09-04)
+
+- Input HEAD: `3880309`.
+- Worker all-LIMITED and mixed (10/10) modes PASS with BLS absent; strict HIGH eligibility is accepted only with qualifying evidence/market state.
+- Fail-closed coverage now includes LIMITED positive factor, HIGH eligibility, validated thesis, one provenance origin/domain, all four strict evidence metrics, count, order/rank, freshness, stale bundle, and digest defects.
+- Negative LIMITED factor remains accepted (positive-only withholding semantics).
+- `python scripts/v213_r75_activation_preflight.py --self-test` — PASS for the complete matrix.
+- Windows PowerShell 5.1 and PowerShell 7 wrapper `-SelfTest` — PASS and execute the same Python/common-fixture matrix.
+- `cloud: npm run typecheck` — PASS.
+- `cloud: npm test` — PASS (18 files, 97 tests).
+- External/Production mutation: **none**.
+
+### Open defect counts
+
+- P0: **3** (`P0-05`, `P0-06`, `P0-07`).
+- P1: **10**.
+- P2: **7**.
+
+### Next action
+
+M3: implement a direct Windows-safe Gateway launch contract, exact model pin, bounded generation admission, non-blocking health, and redacted bounded startup diagnostics.

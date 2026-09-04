@@ -167,8 +167,8 @@ function sourcePlan(generated: string) {
     live_source_federation: {
       schema_version: 1,
       generated_at: generated,
-      successful_families: ["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"],
-      official_successful_families: ["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"],
+      successful_families: ["us_sec", "nasdaq", "world_bank", "ecb"],
+      official_successful_families: ["us_sec", "nasdaq", "world_bank", "ecb"],
       ticker_coverage_ratio: 1,
       largest_family_share: 0.4,
       unresolved_material_conflict_count: 0,
@@ -197,8 +197,8 @@ function federation(generated: string) {
     })),
     gates: {
       pass: true,
-      successful_families: ["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"],
-      official_successful_families: ["us_sec", "nasdaq", "world_bank", "us_bls", "ecb"],
+      successful_families: ["us_sec", "nasdaq", "world_bank", "ecb"],
+      official_successful_families: ["us_sec", "nasdaq", "world_bank", "ecb"],
       ticker_coverage_ratio: 1,
       unresolved_material_conflict_count: 0,
       concentration_pass: true,
@@ -333,6 +333,34 @@ async function bundle(
   };
 }
 
+async function replacePayload(value: any, name: string, document: unknown): Promise<void> {
+  const text = JSON.stringify(document);
+  value.payloads[name] = text;
+  value.sha256[name] = await digest(text);
+}
+
+async function makeMixed(value: any, highEligible = true): Promise<void> {
+  const source = JSON.parse(value.payloads.source_independence_json);
+  for (let index = 0; index < 10; index += 1) {
+    const row = source.records[index];
+    row.publication_evidence_mode = "EVIDENCE_QUALIFIED";
+    row.public_logic_state.publication_evidence_mode = "EVIDENCE_QUALIFIED";
+    row.freshness_state.publication_evidence_mode = "EVIDENCE_QUALIFIED";
+    row.missing_or_review = [MARKET_MISSING];
+  }
+  if (highEligible) {
+    source.records[0].eligible_for_high_confidence_model_inference = true;
+    source.records[0].market_corroboration = { status: "CORROBORATED", independent_provider_count: 1 };
+    source.records[0].missing_or_review = [];
+  }
+  source.portfolio.evidence_qualified_candidate_count = 10;
+  source.portfolio.limited_research_candidate_count = 10;
+  source.portfolio.high_confidence_model_inference_eligible_count = highEligible ? 1 : 0;
+  source.freshness_audit.evidence_qualified_candidate_count = 10;
+  source.freshness_audit.limited_research_candidate_count = 10;
+  await replacePayload(value, "source_independence_json", source);
+}
+
 function control(transactionId = TRANSACTION_ID) {
   return JSON.stringify({ schema_version: 1, transaction_id: transactionId, run_id: RUN_ID });
 }
@@ -350,6 +378,8 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(accepted.status).toBe("accepted");
     expect(accepted.pointer_written_last).toBe(true);
     expect(accepted.rollback_available).toBe(true);
+    expect(accepted.publication_mode).toEqual({ evidenceQualified: 0, limited: 20, highEligible: 0 });
+    expect(accepted.publication_mode_contract_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.parse(publicKv.values.get("snapshot:current")!).run_id).toBe(RUN_ID);
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:top20-report:latest`)).toBeTruthy();
@@ -416,4 +446,99 @@ describe("v2.1.3 atomic activation transaction", () => {
     value.sha256.source_independence_json = await digest(value.payloads.source_independence_json);
     await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_PRIVATE_FIELD");
   });
+
+  it("accepts mixed publication modes and strict HIGH eligibility", async () => {
+    const { env } = runtime();
+    const value: any = await bundle("3".repeat(32));
+    await makeMixed(value, true);
+    const accepted = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    expect(accepted.publication_mode).toEqual({ evidenceQualified: 10, limited: 10, highEligible: 1 });
+  });
+
+  it("accepts a negative LIMITED factor while rejecting every unsafe LIMITED invariant", async () => {
+    const negativeRuntime = runtime();
+    const negative: any = await bundle("4".repeat(32));
+    const negativeTop = JSON.parse(negative.payloads.top20_json);
+    negativeTop[0].serenity_factors.demand_wave = -1;
+    await replacePayload(negative, "top20_json", negativeTop);
+    await expect(ingestV213ActivationBundle(JSON.stringify(negative), negativeRuntime.env)).resolves.toMatchObject({ status: "accepted" });
+
+    const mutations: Array<[string, (value: any) => Promise<void>, string]> = [
+      ["positive factor", async (value) => {
+        const rows = JSON.parse(value.payloads.top20_json);
+        rows[0].serenity_factors.demand_wave = 1;
+        await replacePayload(value, "top20_json", rows);
+      }, "V213_ACTIVATION_LIMITED_PUBLICATION_INVALID"],
+      ["HIGH eligibility", async (value) => {
+        const source = JSON.parse(value.payloads.source_independence_json);
+        source.records[0].eligible_for_high_confidence_model_inference = true;
+        source.portfolio.high_confidence_model_inference_eligible_count = 1;
+        source.portfolio.limited_rows_high_confidence_eligible_count = 1;
+        await replacePayload(value, "source_independence_json", source);
+      }, "V213_ACTIVATION_UNCORROBORATED_CONFIDENCE_INVALID"],
+      ["validated thesis", async (value) => {
+        const source = JSON.parse(value.payloads.source_independence_json);
+        source.records[0].public_logic_state.validated_company_thesis = true;
+        await replacePayload(value, "source_independence_json", source);
+      }, "V213_ACTIVATION_LIMITED_PUBLICATION_INVALID"],
+      ["single provenance origin", async (value) => {
+        const source = JSON.parse(value.payloads.source_independence_json);
+        source.records[0].freshness_state.publication_provenance_origin_count = 1;
+        await replacePayload(value, "source_independence_json", source);
+      }, "V213_ACTIVATION_LIMITED_PUBLICATION_INVALID"],
+      ["single provenance domain", async (value) => {
+        const source = JSON.parse(value.payloads.source_independence_json);
+        source.records[0].freshness_state.publication_provenance_domain_count = 1;
+        await replacePayload(value, "source_independence_json", source);
+      }, "V213_ACTIVATION_LIMITED_PUBLICATION_INVALID"],
+    ];
+    for (const [name, mutate, code] of mutations) {
+      const value: any = await bundle();
+      await mutate(value);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), runtime().env), name).rejects.toThrow(code);
+    }
+  });
+
+  it("rejects each insufficient EVIDENCE_QUALIFIED metric", async () => {
+    const fields: Array<[string, number]> = [
+      ["claim_relevant_independent_families", 1],
+      ["claim_relevant_independent_domains", 1],
+      ["claim_relevant_primary_sources", 0],
+      ["claim_dated_evidence_ratio", 0.79],
+    ];
+    for (const [field, invalid] of fields) {
+      const value: any = await bundle();
+      await makeMixed(value, false);
+      const source = JSON.parse(value.payloads.source_independence_json);
+      source.records[0].source_metrics[field] = invalid;
+      await replacePayload(value, "source_independence_json", source);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), runtime().env), field).rejects.toThrow("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
+    }
+  });
+
+  it("rejects publication count, order, freshness, and digest defects", async () => {
+    const count: any = await bundle();
+    const countSource = JSON.parse(count.payloads.source_independence_json);
+    countSource.portfolio.limited_research_candidate_count = 19;
+    await replacePayload(count, "source_independence_json", countSource);
+    await expect(ingestV213ActivationBundle(JSON.stringify(count), runtime().env)).rejects.toThrow("V213_ACTIVATION_PUBLICATION_MODE_COUNT_INVALID");
+
+    const order: any = await bundle();
+    const orderSource = JSON.parse(order.payloads.source_independence_json);
+    [orderSource.records[0], orderSource.records[1]] = [orderSource.records[1], orderSource.records[0]];
+    await replacePayload(order, "source_independence_json", orderSource);
+    await expect(ingestV213ActivationBundle(JSON.stringify(order), runtime().env)).rejects.toThrow("V213_ACTIVATION_SOURCE_AUDIT_ORDER_INVALID");
+
+    const freshness: any = await bundle();
+    const freshnessSource = JSON.parse(freshness.payloads.source_independence_json);
+    freshnessSource.records[0].freshness_state.status = "STALE";
+    await replacePayload(freshness, "source_independence_json", freshnessSource);
+    await expect(ingestV213ActivationBundle(JSON.stringify(freshness), runtime().env)).rejects.toThrow("V213_ACTIVATION_PUBLICATION_FRESHNESS_INVALID");
+
+    const stale: any = await bundle();
+    stale.generated_at = new Date(Date.now() - 7_201_000).toISOString();
+    await expect(ingestV213ActivationBundle(JSON.stringify(stale), runtime().env)).rejects.toThrow("V213_ACTIVATION_BUNDLE_STALE");
+  });
+
 });
+

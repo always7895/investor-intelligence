@@ -849,6 +849,87 @@ def self_test() -> None:
         else:
             raise AssertionError("single-origin LIMITED candidate was not rejected")
 
+        def rewrite_payload(candidate: dict[str, Any], name: str, document: Any) -> None:
+            body = json.dumps(document, ensure_ascii=False, separators=(",", ":"))
+            candidate["payloads"][name] = body
+            candidate["sha256"][name] = sha256_text(body)
+
+        def rejected(candidate: dict[str, Any], expected: str) -> None:
+            path.write_text(json.dumps(candidate), encoding="utf-8")
+            try:
+                validate_bundle(path, now)
+            except PreflightError as exc:
+                if expected not in str(exc):
+                    raise AssertionError(f"expected {expected!r}, observed {exc!r}") from exc
+            else:
+                raise AssertionError(f"unsafe invariant was accepted: {expected}")
+
+        negative_factor = copy.deepcopy(value)
+        rows = json.loads(negative_factor["payloads"]["top20_json"])
+        rows[0]["serenity_factors"]["demand_wave"] = -1
+        rewrite_payload(negative_factor, "top20_json", rows)
+        path.write_text(json.dumps(negative_factor), encoding="utf-8")
+        assert validate_bundle(path, now)["status"] == "PASS"
+
+        thesis = copy.deepcopy(value)
+        source = json.loads(thesis["payloads"]["source_independence_json"])
+        source["records"][0]["public_logic_state"]["validated_company_thesis"] = True
+        rewrite_payload(thesis, "source_independence_json", source)
+        rejected(thesis, "validated thesis")
+
+        provenance_domain = copy.deepcopy(value)
+        source = json.loads(provenance_domain["payloads"]["source_independence_json"])
+        source["records"][0]["freshness_state"]["publication_provenance_domain_count"] = 1
+        rewrite_payload(provenance_domain, "source_independence_json", source)
+        rejected(provenance_domain, "publication domain")
+
+        count = copy.deepcopy(value)
+        source = json.loads(count["payloads"]["source_independence_json"])
+        source["portfolio"]["limited_research_candidate_count"] = 19
+        rewrite_payload(count, "source_independence_json", source)
+        rejected(count, "do not total")
+
+        ordering = copy.deepcopy(value)
+        source = json.loads(ordering["payloads"]["source_independence_json"])
+        source["records"][0], source["records"][1] = source["records"][1], source["records"][0]
+        rewrite_payload(ordering, "source_independence_json", source)
+        rejected(ordering, "rank")
+
+        freshness = copy.deepcopy(value)
+        source = json.loads(freshness["payloads"]["source_independence_json"])
+        source["records"][0]["freshness_state"]["status"] = "STALE"
+        rewrite_payload(freshness, "source_independence_json", source)
+        rejected(freshness, "freshness state")
+
+        bad_digest = copy.deepcopy(value)
+        bad_digest["sha256"]["top20_json"] = "0" * 64
+        rejected(bad_digest, "digest mismatch")
+
+        stale = copy.deepcopy(value)
+        stale["generated_at"] = "2020-01-01T00:00:00Z"
+        rejected(stale, "stale")
+
+        mixed_fixture = json.loads((ROOT / CONTRACT["fixture_files"][1]).read_text(encoding="utf-8"))
+        mixed_bundle = mixed_fixture["bundle"]
+        mixed_now = timestamp(mixed_fixture["evaluated_at"], "mixed evaluated_at")
+        for field, invalid in (
+            ("claim_relevant_independent_families", 1),
+            ("claim_relevant_independent_domains", 1),
+            ("claim_relevant_primary_sources", 0),
+            ("claim_dated_evidence_ratio", 0.79),
+        ):
+            strict = copy.deepcopy(mixed_bundle)
+            source = json.loads(strict["payloads"]["source_independence_json"])
+            source["records"][1]["source_metrics"][field] = invalid
+            rewrite_payload(strict, "source_independence_json", source)
+            path.write_text(json.dumps(strict), encoding="utf-8")
+            try:
+                validate_bundle(path, mixed_now)
+            except PreflightError as exc:
+                assert "EVIDENCE_QUALIFIED" in str(exc)
+            else:
+                raise AssertionError(f"strict metric was accepted: {field}")
+
     for relative in CONTRACT["fixture_files"]:
         validate_fixture(ROOT / relative)
 
@@ -856,6 +937,8 @@ def self_test() -> None:
         "V213_R75_ACTIVATION_PREFLIGHT_SELF_TEST = PASS; "
         "all_limited=true; optional_bls=true; positive_limited_rejected=true; "
         "limited_high_rejected=true; single_origin_rejected=true; "
+        "validated_thesis_rejected=true; strict_metrics_rejected=true; "
+        "count_order_freshness_digest_rejected=true; negative_factor_pass=true; "
         "production_mutation=false"
     )
 
@@ -905,3 +988,4 @@ if __name__ == "__main__":
     except (PreflightError, OSError, ValueError) as exc:
         print(f"V213_R75_ACTIVATION_PREFLIGHT = FAIL; {exc}", flush=True)
         raise SystemExit(1)
+
