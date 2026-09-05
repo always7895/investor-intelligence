@@ -1,5 +1,11 @@
 # R75 takeover status
 
+## Windows scope-gate reconciliation — 2026-09-06 Asia/Taipei
+
+- Actual HEAD `5cf31c4062e2f02557ffe6225228cc02d4e34901`, pushed. Windows self-hosted run33977344672 failed before regression because the newly reviewed CROSS_VALIDATION.md reference was absent from the exact hotfix file allowlist. No runtime failure was inferred from this metadata rejection.
+- Added only that reviewed reference path to the allowlist, with a wiring regression assertion. No wildcard expansion or protected-runtime exception; source-bound model receipt remains unchanged. Full Windows acceptance still pending; prior failed run remains FAIL.
+- Installed P0/P1/P2 remains1/3/2. Production unchanged; GitHub PR34 has bilingual scoped evidence, not a formal completion claim.
+
 ## Q6 alias / live qualification checkpoint — 2026-09-06 Asia/Taipei
 
 - Fetched baseline HEAD `a43f42063221bfd17b5d100cfe25ca29028cdf9e`. Current-session user explicitly authorized autonomous development, qualified formal delivery, GitHub updates and local Q6/LINE setup, including final Production/task/publication work after gates. This audit note is not transferable authorization for another session. No extra real LINE tests or paid activation.

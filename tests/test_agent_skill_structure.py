@@ -34,6 +34,8 @@ class AgentSkillStructureTests(unittest.TestCase):
 
     def test_cross_validation_extension_preserves_scope_and_independence(self):
         self.assertIn('CROSS_VALIDATION.md', SKILL.read_text(encoding='utf-8'))
+        validator = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8')
+        self.assertIn("'skills/serenity-public-research/references/CROSS_VALIDATION.md'", validator)
         text = (SKILL.parent / 'references/CROSS_VALIDATION.md').read_text(encoding='utf-8')
         for marker in ('Existing scoring weights', 'same disclosure lineage', 'Macro coverage cannot satisfy',
                        'PRIMARY_ONLY', 'NOT_COMPARABLE', 'UNAVAILABLE', 'point-in-time',
