@@ -21,6 +21,8 @@ class SealedRefreshTests(unittest.TestCase):
                 ('preflight', 'NOT_ATTEMPTED', []),
                 ('readback', 'ROLLED_BACK', ['Commit', 'Rollback']),
                 ('boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
+                ('identity_boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
+                ('status_boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
                 ('finalize', 'ROLLED_BACK', ['Commit', 'Finalize', 'Rollback']),
                 ('rollback', 'UNKNOWN', ['Commit', 'Finalize', 'Rollback']),
             ):
@@ -40,6 +42,8 @@ if($Action-eq'Commit'){
  $r=@{transaction_id=$b.transaction_id;run_id=$b.run_id;status='accepted';pointer_written_last=$true;object_count=7;objects_read_back=7;rollback_available=$true}
  if($env:FIXTURE_CASE-eq'readback'){$r.objects_read_back=6}
  if($env:FIXTURE_CASE-eq'boolean'){$r.pointer_written_last='True'}
+ if($env:FIXTURE_CASE-eq'identity_boolean'){$r.transaction_id=$true;$r.run_id=$true}
+ if($env:FIXTURE_CASE-eq'status_boolean'){$r.status=$true}
 }elseif($Action-eq'Finalize'){
  if($env:FIXTURE_CASE-in@('finalize','rollback')){exit 8}
  $r=@{transaction_id=$TransactionId;run_id=$RunId;status='finalized';rollback_handle_deleted=$true}
@@ -55,6 +59,14 @@ exit 0
                     runner.write_text("""$ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 . 'HELPER'
+$preference=Join-Path $PSScriptRoot 'preference.json'
+if(Get-V213SealedPublicationPreference -Path $preference){throw 'missing preference enabled publication'}
+foreach($flag in @($false,$true)){
+ @{sealed_publication_enabled=$flag}|ConvertTo-Json|Set-Content -LiteralPath $preference
+ if((Get-V213SealedPublicationPreference -Path $preference)-ne$flag){throw 'preference not preserved'}
+}
+@{sealed_publication_enabled='false'}|ConvertTo-Json|Set-Content -LiteralPath $preference
+try{$null=Get-V213SealedPublicationPreference -Path $preference;throw 'string preference accepted'}catch{if($_.Exception.Message-eq'string preference accepted'){throw}}
 try {$null=Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only'}catch{}
 if($env:FIXTURE_CASE-eq'rollback'){
  try{$null=Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only';throw 'unresolved journal accepted'}catch{if($_.Exception.Message-eq'unresolved journal accepted'){throw}}

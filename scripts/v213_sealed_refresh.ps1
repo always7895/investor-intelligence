@@ -3,12 +3,24 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'v213_windows_security.ps1')
 . (Join-Path $PSScriptRoot 'v213_operation_lock.ps1')
 
+function Get-V213SealedPublicationPreference {
+    param([string]$Path=(Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/v213-refresh-tasks.json'))
+    if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return $false}
+    try{$state=Get-Content -LiteralPath $Path -Raw -Encoding utf8|ConvertFrom-Json}catch{throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    if($state-isnot[pscustomobject]){throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    $property=$state.PSObject.Properties['sealed_publication_enabled']
+    if($null-eq$property){return $false}
+    if($property.Value-isnot[bool]){throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    return $property.Value
+}
+
 function Save-V213RefreshJournal($Record,[string]$Path) {
     $Record|ConvertTo-Json -Depth 8|Set-Content -LiteralPath ($Path+'.tmp') -Encoding utf8
     Move-Item -LiteralPath ($Path+'.tmp') -Destination $Path -Force
 }
 function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
-    if($Ack.transaction_id-cne$Record.transaction_id-or$Ack.run_id-cne$Record.run_id){throw 'V213_REFRESH_ACK_IDENTITY_MISMATCH'}
+    if($Ack.transaction_id-isnot[string]-or$Ack.run_id-isnot[string]-or$Ack.status-isnot[string]-or
+       $Ack.transaction_id-cne$Record.transaction_id-or$Ack.run_id-cne$Record.run_id){throw 'V213_REFRESH_ACK_IDENTITY_MISMATCH'}
     switch($Action){
         'Commit' {
             if($Ack.status-cne'accepted'-or$Ack.pointer_written_last-isnot[bool]-or$Ack.pointer_written_last-ne$true-or
@@ -37,6 +49,9 @@ function Invoke-V213SealedRefresh {
         [void](Enter-V213OperationLock -Owner 'sealed-refresh' -TimeoutSeconds 0);$held=$true
         foreach($previous in Get-ChildItem -LiteralPath $journalRoot -File -Filter '*.json'){
             $old=Get-Content -LiteralPath $previous.FullName -Raw -Encoding utf8|ConvertFrom-Json
+            if($old.remote_sync_attempted-isnot[bool]-or$old.publication_state-isnot[string]-or
+               $old.publication_state-notin@('NOT_ATTEMPTED','UNKNOWN','COMMITTED','FINALIZED','ROLLED_BACK','NOT_COMMITTED')-or
+               (-not$old.remote_sync_attempted-and$old.publication_state-cne'NOT_ATTEMPTED')){throw 'V213_REFRESH_JOURNAL_INVALID'}
             if($old.remote_sync_attempted-and$old.publication_state-notin@('FINALIZED','ROLLED_BACK','NOT_COMMITTED')){throw 'V213_REFRESH_UNRESOLVED_JOURNAL'}
         }
         $document=Get-Content -LiteralPath $bundle -Raw -Encoding utf8|ConvertFrom-Json

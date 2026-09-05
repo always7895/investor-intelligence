@@ -11,6 +11,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WindowsSecurityHostTests(unittest.TestCase):
+    def test_sync_rejects_changed_bytes_before_readiness_or_credentials(self):
+        shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
+        if not all(shells):
+            self.skipTest('Both Windows PowerShell hosts required')
+        for shell in shells:
+            with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temp:
+                folder = Path(temp)
+                bundle = folder / 'bundle.json'
+                bundle.write_text(json.dumps({'run_id':'20260905T180113Z-4a4132a50a46','transaction_id':'a'*32}), encoding='utf-8')
+                config = folder / 'config.json'
+                config.write_text(json.dumps({'public_snapshot_endpoint':'https://example.invalid/v213/admin/activation-bundle','encrypted_hmac':'SYNTHETIC_NOT_READ'}), encoding='utf-8')
+                result = subprocess.run([shell,'-NoProfile','-NonInteractive','-File',str(ROOT/'sync-v213-activation-bundle.ps1'),'-ProjectRoot',str(folder),'-BundlePath',str(bundle),'-LocalConfigPath',str(config),'-ExpectedBundleSha256','0'*64], env=dict(os.environ,LOCALAPPDATA=str(folder)), capture_output=True, encoding='utf-8', errors='replace', timeout=30)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('V213_ACTIVATION_BUNDLE_CHANGED_AFTER_PREFLIGHT', result.stdout + result.stderr)
+                self.assertNotIn('SYNTHETIC_NOT_READ', result.stdout + result.stderr)
+
     def test_both_hosts_load_own_module_and_keep_contact_private(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
         if not all(shells):
