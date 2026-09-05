@@ -1,573 +1,389 @@
-# Investor Intelligence v2.0.0 繁體中文完整使用說明
+# Investor Intelligence v2.1.3 R75 FREE_RELAY 繁體中文完整說明
 
-[English README](README.md)｜[v2.0.0 私人 Release](https://github.com/always7895/investor-intelligence/releases/tag/v2.0.0)
+[主 README](README.md)｜[最新不可變正式版](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-free-relay-final-92c97f9-33896931576)
 
-> 本專案是隱私優先、免費模式優先的市場研究軟體。它不是個人化投資建議，不保證報酬，也不能取代使用者對原始資料與正式公告的自行查證。
+> **用途聲明：**本專案是市場研究與資料驗證軟體，不是個人化投資建議，不保證報酬，也不能取代使用者對 SEC、公司公告、交易所資料與其他原始來源的自行查證。
 
-本文件說明已正式交付的 Investor Intelligence v2.0.0。繁體中文文件可以在正式 Release 之後更新，但正式程式內容仍以 `v2.0.0` tag、下列 commit 與 SHA-256 為準。
+本文件說明目前正式上線的 **Investor Intelligence v2.1.3 R75 FREE_RELAY**。v2.0.0、v2.1.0、R70 與早期 Named Tunnel 文件屬於歷史紀錄，不再是目前安裝、啟用或 Production 判定依據。
 
-## 1. 正式版本識別
-
-```text
-版本：2.0.0
-正式 source commit：4aebf8e828666424bdd2bc0411478c9ef621ddbd
-正式 source tree：7054e640fdc3887fe72c449c155577c5689cfe45
-Application ZIP SHA-256：82b526e72f71d870c5d4d371ae5f79437230a47e77df3534882e69c1efe30ee4
-Outer delivery ZIP SHA-256：0dbe29cb3258c1074df2490b5473e69a1c45665af0a061420a09981793f7268e
-```
-
-正式外層交付檔名：
+## 1. 最新正式版本識別
 
 ```text
-Investor-Intelligence-v2.0.0-Final-Private-Delivery.zip
+正式版本：v2.1.3 R75 FREE_RELAY
+不可變 Release tag：v2.1.3-R75-free-relay-final-92c97f9-33896931576
+正式程式來源 commit：92c97f97694e6e39c7a16986630d248c9ee744fe
+權威 Windows CI run：33896931576
+正式 ZIP SHA-256：8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
+Production Worker version：27121388-1e6e-445a-b45e-104a867ca70d
+部署前回滾基準：eb52ece1-8749-4526-a464-3356ec2dbc65
+穩定公開入口：https://investor-intelligence-v21-owner-line.moon951753.workers.dev
+精確本機模型：qwen38-q6
+自訂網域：不需要
+最終缺陷：P0=0、P1=0、P2=0
 ```
 
-其獨立校驗檔：
+GitHub 已啟用 Immutable Releases。最新正式 Release 為非草稿、非 prerelease、不可變，並包含 10 個具有 GitHub attestation 的資產。
+
+## 2. 目前正式架構
 
 ```text
-Investor-Intelligence-v2.0.0-Final-Private-Delivery.sha256
+LINE／外部請求
+  ↓
+固定 workers.dev Worker
+  ↓
+HMAC 驗證的 Durable Object route lease
+  ↓
+短效且可撤換的 TryCloudflare Quick Tunnel
+  ↓
+本機 v2.1.3 Gateway
+  ↓
+127.0.0.1:8080 llama.cpp Router
+  ↓
+精確模型 qwen38-q6
 ```
 
-正式 Release 位於 private repository，因此只有獲授權並登入 GitHub 的帳戶才能看見或下載。
+### 2.1 為什麼不用付費網域
 
-## 2. 可以放在別的資料夾或磁碟嗎？
-
-可以，但要區分「下載／保存位置」與「實際安裝位置」。
-
-### 2.1 正式交付 ZIP 的保存位置
-
-正式外層 ZIP 與 `.sha256` 可以放在任何一般、可讀取的本機資料夾，例如：
+目前唯一穩定公開入口是既有的：
 
 ```text
-D:\Investor-Intelligence-Downloads
-E:\Software\InvestorIntelligence
-C:\Users\<你的帳戶>\Downloads
+https://investor-intelligence-v21-owner-line.moon951753.workers.dev
 ```
 
-建議把外層 ZIP 與其 `.sha256` 放在同一資料夾，不要改名，也不要只保留其中一個。
+`*.trycloudflare.com` 只作為本機後端的短效路由，不會被宣稱為固定網址。每次電腦、Gateway 或 cloudflared 重啟後，系統會先驗證新通道，再以新的 route generation 原子替換舊 lease。
 
-### 2.2 實際安裝位置
+因此目前不需要：
 
-預設安裝位置是：
+- 購買 `.com`、`.tw` 或其他自訂網域；
+- 將網域加入 Cloudflare；
+- 使用付費 Cloudflare 方案；
+- 依賴付費模型 API 或付費資料源。
+
+Named Tunnel 功能仍保留為未來選配，但不是目前 FREE_RELAY 正式路徑的必要條件。
+
+## 3. FREE_RELAY 安全機制
+
+新的 route 只有在以下條件全部成立時才會發布：
+
+1. Gateway 本機健康。
+2. llama.cpp Router 可達。
+3. 精確模型必須是 `qwen38-q6`。
+4. Health Schema 必須為版本 2。
+5. 公開 `/health` 必須連續成功三次。
+6. route record 必須使用 HMAC 管理員簽章。
+7. route generation 必須唯一且不可倒退。
+8. `connected_at`、`expires_at` 與 TTL 必須有效。
+9. Worker 端再次驗證公開健康狀態。
+10. Durable Object 才能原子切換 current route。
+
+Worker 會拒絕：
+
+- 過期 lease；
+- 舊 generation；
+- replay nonce；
+- model mismatch；
+- schema mismatch；
+- 非 HTTPS 或非 TryCloudflare URL；
+- 缺少簽章或簽章不正確；
+- 公開健康檢查失敗；
+- malformed route record。
+
+若 heartbeat 無法續租，lease 會過期並 fail closed，不會繼續使用已失效的舊通道。
+
+## 4. Serenity 與 publication contract
+
+R75 將「研究評分」與「是否具備足夠證據公開成高信心結論」分離：
 
 ```text
-%LOCALAPPDATA%\InvestorIntelligence
+公開來源證據
+  ↓
+Serenity-compatible diversified operationalization
+  ↓
+Publication contract
+  ├─ EVIDENCE_QUALIFIED
+  └─ LIMITED_RESEARCH_CANDIDATE
+  ↓
+信心、發布與 LINE 閘門
 ```
 
-也可以用 `-BaseInstallRoot` 指定另一個本機資料夾或磁碟，例如：
+### 4.1 不可破壞的保護邊界
+
+FREE_RELAY 只修改部署與傳輸整合，不修改以下核心：
+
+- Serenity scoring 邏輯；
+- source federation 門檻；
+- publication-mode contract；
+- `EVIDENCE_QUALIFIED`／`LIMITED_RESEARCH_CANDIDATE` 語意；
+- sealed activation bundle；
+- release evidence rules；
+- 經認證的 `cloud/src/qa.ts` 內容。
+
+### 4.2 LIMITED 的安全行為
+
+當免費非 Yahoo 市場交叉來源不足時，系統不會捏造證據，也不會把 LIMITED 標的升級成高信心：
+
+- 不得標為 validated thesis；
+- 不得標為 HIGH eligible；
+- 未受支持的正向敏感因子必須歸零；
+- 缺少的交叉驗證必須明確披露；
+- market-quality degraded 會限制信心，而不是讓流程靜默通過。
+
+BLS 屬於 optional macro context；真正必要的 source-family、domain 與 claim-level independence 門檻仍維持 fail closed。
+
+## 5. Cloudflare Workers Runtime 相容修正
+
+Cloudflare 正式 Workers Runtime 不接受：
+
+```text
+redirect: "error"
+```
+
+它會在實際發送 request 前直接丟出 TypeError。R75 的修正方式不是放寬 redirect，而是：
+
+1. 只針對 HTTPS `POST /v1/chat/completions` 使用 `redirect: "manual"`；
+2. 自行檢查 response；
+3. 所有 3xx 仍直接拒絕；
+4. 保持 fail-closed；
+5. 不修改經認證的 Q&A 與 Serenity 邏輯。
+
+另有一個 HMAC 驗證、固定 prompt、無 KV 寫入的：
+
+```text
+POST /v213/admin/free-relay-smoke
+```
+
+用來驗證完整路徑：
+
+```text
+workers.dev → route lease → Quick Tunnel → Gateway → qwen38-q6
+```
+
+正式 smoke 已取得 HTTP 200，並確認 exact model、Health Schema v2 與固定 marker。
+
+## 6. 驗證結果
+
+權威 release gate：
+
+```text
+Python：550 passed / 2 skipped
+Worker：19 files / 113 tests PASS
+TypeScript typecheck：PASS
+Windows PowerShell 5.1：PASS
+PowerShell 7：PASS
+Security／credential scan：PASS
+FREE_RELAY stale/replay/expiry/concurrency：PASS
+Heartbeat／reconnect／rollback：PASS
+Named Tunnel regression：PASS
+Activation preflight／wrapper：PASS
+Task Scheduler 實際觸發：result=0
+下載後 artifact 獨立驗證：PASS
+P0／P1／P2：0／0／0
+```
+
+CI 全程維持：
+
+```text
+production_mutation_by_ci=false
+```
+
+正式 Worker deploy、真實 FREE_RELAY route 與 Windows Task Scheduler 註冊，是使用者明確授權後由操作者執行，不是 CI 偷做的 Production mutation。
+
+## 7. 正式下載與 SHA-256 驗證
+
+從最新不可變 Release 下載：
+
+```text
+Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-
+92c97f97694e6e39c7a16986630d248c9ee744fe-
+33896931576.zip
+```
+
+同時下載 `.zip.sha256`。
+
+PowerShell 驗證：
 
 ```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 `
-  -BaseInstallRoot $InstallRoot
+$Zip = '.\Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip'
+$Actual = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
+$Actual
 ```
 
-第一次安裝建議使用專用且可寫入的資料夾。不要安裝在 GitHub Actions Runner 工作目錄，例如包含下列片段的路徑：
+正確值：
 
 ```text
-\_work\
-\_diag\
-\actions-runner
-\runner\_work\
+8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
 ```
 
-### 2.3 程式、Python runtime、設定與報告能否完全分開？
+若不一致，不要執行，重新從不可變 Release 下載。
 
-v2.0.0 可以把整個 `BaseInstallRoot` 搬到另一個磁碟，但目前沒有獨立的 `DataRoot`、`ConfigRoot` 或 `ReportsRoot` 安裝參數。因此正式支援的是「整套根目錄改到其他位置」，不是把設定、報告與程式拆散到不同磁碟。
+## 8. 解壓與啟動
 
-不建議安裝完成後直接用檔案總管拖曳已安裝資料夾，因為 `install-state.json`、排程與啟動命令會記錄絕對路徑。要換位置，請在新位置重新安裝。
+1. 將 ZIP 完整解壓到獨立資料夾。
+2. 不要直接覆蓋仍在執行中的舊資料夾。
+3. 執行根目錄的：
 
-### 2.4 自訂安裝路徑的桌面捷徑注意事項
-
-v2.0.0 內建的 `-CreateDesktopShortcut` 捷徑只適用預設安裝根目錄。自訂 `BaseInstallRoot` 時，請不要依賴該自動捷徑；改用含有 `-BaseInstallRoot` 的啟動命令。
-
-例如將下列內容存成桌面的 `啟動 Investor Intelligence.cmd`：
-
-```bat
-@echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\InvestorIntelligence\App\2.0.0\run-local.ps1" -BaseInstallRoot "D:\InvestorIntelligence" -OpenReports
+```text
+InvestorIntelligence.exe
 ```
 
-若安裝到其他位置，請把兩個 `D:\InvestorIntelligence` 一起改成實際路徑。
+4. llama.cpp Router 應位於：
 
-## 3. 系統需求
+```text
+http://127.0.0.1:8080
+```
 
-- 64 位元 Windows。
-- 能寫入選定的安裝資料夾。
-- 第一次安裝需要網路，用來取得已驗證的 portable CPython 3.12.10 與 hash-locked Python dependencies。
-- 執行市場研究時需要網路，資料供應商暫時無回應或限流時，部分資料可能無法取得。
-- 一般使用不需要自行預裝 Python；正式 installer 會管理獨立 runtime。
-- 安裝不需要 LINE token、Cloudflare credential、IBKR 帳戶資料、持股資料或其他秘密值。
+5. 正式模型必須是：
 
-預設安裝到 `%LOCALAPPDATA%` 通常不需要系統管理員權限。若選擇受 Windows 保護的目錄，可能因寫入權限而失敗，建議改用自己的資料磁碟專用資料夾。
+```text
+qwen38-q6
+```
 
-## 4. 下載後先驗證外層 ZIP
+6. 不要另開第二個 llama-server。正式驗證狀態採：
 
-在外層 ZIP 與 `.sha256` 所在資料夾開啟 PowerShell：
+```text
+models-max=1
+qwen38-q6=loaded
+其他大型模型=unloaded
+```
+
+## 9. Windows 自動重連
+
+正式工作名稱：
+
+```text
+InvestorIntelligence-v213-FreeRelay
+```
+
+設定：
+
+```text
+Trigger：使用者登入
+StartWhenAvailable=true
+MultipleInstances=IgnoreNew
+```
+
+它已做過真實 `Start-ScheduledTask` 測試：
+
+- `LastTaskResult=0`；
+- 建立新 route generation；
+- 舊 Gateway／cloudflared／heartbeat 三個程序停止；
+- 新 Gateway／cloudflared／heartbeat 存活；
+- 完整 heartbeat 週期後 smoke PASS。
+
+舊工作：
+
+```text
+InvestorIntelligence-v212-LocalModelBridge
+```
+
+已停用，舊 bridge/tunnel 孤兒程序已清除。
+
+## 10. 日常健康檢查
+
+### 10.1 Router 模型狀態
 
 ```powershell
-$Zip = '.\Investor-Intelligence-v2.0.0-Final-Private-Delivery.zip'
-$Checksum = '.\Investor-Intelligence-v2.0.0-Final-Private-Delivery.sha256'
-
-(Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
-Get-Content -LiteralPath $Checksum
+Invoke-RestMethod http://127.0.0.1:8080/models
 ```
 
-兩邊都應顯示：
+應只看到 `qwen38-q6` 為 loaded。
 
-```text
-0dbe29cb3258c1074df2490b5473e69a1c45665af0a061420a09981793f7268e
-```
-
-若不一致，不要安裝，重新從 private Release 下載正式檔案。
-
-## 5. 最簡單的預設安裝
-
-1. 解壓縮外層 ZIP。
-2. 確認下列檔案位於同一資料夾：
-
-```text
-install-final.cmd
-install-final.ps1
-investor-intelligence-2.0.0.zip
-investor-intelligence-2.0.0.sha256
-```
-
-3. 雙擊：
-
-```text
-install-final.cmd
-```
-
-`install-final.cmd` 會呼叫正式 PowerShell installer、驗證內層 application ZIP、安裝 portable Python、安裝固定 hash dependencies、執行 `pip check` 與 distribution-safe offline tests，並建立預設桌面捷徑。
-
-預設安裝完成後的主要位置：
-
-```text
-程式：%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0
-Python：%LOCALAPPDATA%\InvestorIntelligence\Runtime\Python-3.12.10
-本機設定：%LOCALAPPDATA%\InvestorIntelligence\UserData\config
-安裝狀態：%LOCALAPPDATA%\InvestorIntelligence\install-state.json
-報告：%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0\reports
-快取／歷史：%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0\data
-執行記錄：%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0\daily_briefing.log
-```
-
-## 6. 安裝到其他磁碟的完整做法
-
-外層 ZIP 解壓後，在該資料夾開啟 PowerShell：
+### 10.2 FREE_RELAY 工作
 
 ```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 `
-  -BaseInstallRoot $InstallRoot
+Get-ScheduledTask -TaskName 'InvestorIntelligence-v213-FreeRelay'
+Get-ScheduledTaskInfo -TaskName 'InvestorIntelligence-v213-FreeRelay'
 ```
 
-安裝後請用：
+### 10.3 固定 Worker 健康
 
 ```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  "$InstallRoot\App\2.0.0\run-local.ps1" `
-  -BaseInstallRoot $InstallRoot `
-  -OpenReports
+Invoke-RestMethod https://investor-intelligence-v21-owner-line.moon951753.workers.dev/health
 ```
 
-自訂根目錄下的結構會是：
+### 10.4 本機 route 狀態
+
+本機狀態檔位於：
 
 ```text
-D:\InvestorIntelligence\
-├─ App\2.0.0\
-├─ Runtime\Python-3.12.10\
-├─ UserData\config\
-└─ install-state.json
+%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-local-model.json
 ```
 
-## 7. 第一次啟動：設定研究股票
+可以檢查 model、tunnel mode、PID、health schema 與 generation，但不要把 secret、完整 HMAC 設定或任何 credential 貼到 GitHub Issue、聊天室或截圖。
 
-第一次執行時，若 `research-universe.local.json` 仍含有 `EXAMPLE`，程式會開啟記事本並停止。這是刻意的首次設定流程，不是錯誤。
+## 11. 08:00／21:00 LINE 排程
 
-預設設定檔：
+既有 Cloudflare Worker crons 保留：
 
 ```text
-%LOCALAPPDATA%\InvestorIntelligence\UserData\config\research-universe.local.json
+08:00 Asia/Taipei
+21:00 Asia/Taipei
 ```
 
-自訂安裝例：
+正式發布驗證期間沒有額外手動發送 LINE，以避免重複訊息。日常驗收重點：
+
+- 每個時段只收到一則；
+- LIMITED 狀態必須明確顯示；
+- 不得出現 unsupported HIGH confidence；
+- snapshot run ID、順序與 sealed bundle 必須一致；
+- dedupe 與 stale-data gate 必須有效。
+
+## 12. 隱私、安全與投資邊界
 
 ```text
-D:\InvestorIntelligence\UserData\config\research-universe.local.json
+LINE_DATA_SCOPE=PUBLIC_ONLY
+LINE_IBKR_BRIDGE=FORBIDDEN
+LINE_PORTFOLIO_TOOLS=FORBIDDEN
+LINE_PRIVATE_SYNC=FORBIDDEN
+LINE_OWNER_DATA=FORBIDDEN
+FREE_ONLY_MODE=FAIL_CLOSED
+AUTOMATIC_TRADING=FORBIDDEN
 ```
 
-可將內容替換成下列公開股票範例：
+- LINE 與 Worker 不得讀取 IBKR、持股、數量、成本、損益、保證金、購買力、owner watchlist 或本機私人報告。
+- Public、tenant-private 與 ephemeral-security state 使用分離的 binding。
+- Secret 不得 commit，不得出現在 release、log、Issue 或 screenshot。
+- 本系統沒有自動下單或 brokerage write 路徑。
+- 本機 IBKR 若未來啟用，只能 loopback-only、read-only，且與 LINE／Worker／public KV 分離。
 
-```json
-{
-  "schema_version": 1,
-  "privacy_class": "local_user_configuration",
-  "stocks": [
-    {
-      "ticker": "AAPL",
-      "name": "Apple",
-      "category": "Technology",
-      "source": "local-user-defined",
-      "primary_evidence": [],
-      "corroborating_evidence": [],
-      "disconfirmation_conditions": []
-    },
-    {
-      "ticker": "MSFT",
-      "name": "Microsoft",
-      "category": "Technology",
-      "source": "local-user-defined",
-      "primary_evidence": [],
-      "corroborating_evidence": [],
-      "disconfirmation_conditions": []
-    }
-  ]
-}
-```
+## 13. 回滾
 
-儲存後關閉記事本，再啟動一次。
-
-### 7.1 Ticker 規則
-
-- 至少一個 ticker。
-- 建議使用大寫。
-- 不可重複。
-- 只接受英數字、`.` 與 `-` 的安全格式。
-- 不可包含 `..`。
-- 不可用 `.` 或 `-` 結尾。
-- 不要在這個檔案填入持股數量、成本、損益、帳號、LINE ID、broker credential 或 token。
-
-頂層支援的欄位是：
+正式 Worker 回滾基準：
 
 ```text
-schema_version
-privacy_class
-updated（可省略）
-stocks
+eb52ece1-8749-4526-a464-3356ec2dbc65
 ```
 
-未知頂層欄位會 fail closed，而不是被靜默忽略。
+若新路由建立失敗，系統會在可能的情況下保留前一個仍健康的 generation；若前一個也過期，服務應顯示 unavailable，而不是使用 stale route。
 
-## 8. 本機偏好設定
+不要以降低 source gate、停用 signature、延長無限 TTL、接受 model mismatch 或永久使用 `AllowTestTunnelException` 的方式處理故障。
 
-另一個本機檔案是：
+## 14. GitHub 正式狀態
+
+- Repository description 已更新為繁體中文最新版。
+- Homepage 指向最新不可變 Release。
+- 最新 Release 標題與完整說明為繁體中文。
+- PR #24 為 R75 FREE_RELAY 正式發布整合，已合併。
+- PR #25 為登入工作與單模型重連實測補充，已合併。
+- `main` 已包含正式程式與後續實機證據文件。
+- 舊 v2.1.0 tracker、臨時 Issue 與舊未合併 PR 應標示為已完成或由 R75 取代，不再作為目前權威狀態。
+
+## 15. 文件索引
+
+- [主 README](README.md)
+- [R75 FREE_RELAY 架構](docs/V213_FREE_WORKERS_RELAY.md)
+- [最新正式發布真相](docs/FINAL_RELEASE.md)
+- [目前實作狀態](IMPLEMENTATION_STATUS.md)
+- [文件索引](docs/README.md)
+- [最終交付與 Production 證據](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
+- [詳細狀態](state/STATUS.md)
+
+## 16. 歷史文件處理原則
+
+v2.0.0、v2.1.0、R70 與舊 release-candidate 文件保留作為歷史稽核證據，但會加上「已由 R75 FREE_RELAY 取代」的醒目說明。它們不應再提供目前安裝指令、Production 狀態或 release authority。
+
+目前唯一正式權威是：
 
 ```text
-UserData\config\user-preferences.local.json
+v2.1.3-R75-free-relay-final-92c97f9-33896931576
 ```
-
-它包含可選的長期研究 overlay。預設：
-
-```text
-long_term_overlay.enabled = false
-minimum_holding_years = 2
-```
-
-這個 overlay 是本機使用者偏好層，不會改寫原始來源，也不會被當成公開證據或傳給 shared LINE／public KV。
-
-## 9. 日常執行方式
-
-### 9.1 預設安裝
-
-可雙擊桌面上的 `Investor Intelligence` 捷徑，或執行：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\run-local.ps1" `
-  -OpenReports
-```
-
-### 9.2 自訂安裝
-
-```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  "$InstallRoot\App\2.0.0\run-local.ps1" `
-  -BaseInstallRoot $InstallRoot `
-  -OpenReports
-```
-
-`-OpenReports` 會在成功完成後開啟報告資料夾。省略此參數仍會執行，只是不自動開啟檔案總管。
-
-### 9.3 本機研究流程會做什麼
-
-本機 pipeline 依序執行：
-
-1. 取得主要市場指數與公開市場資料。
-2. 依 `research-universe.local.json` 取得股票資料。
-3. 產生本機 options observations；IBKR read-only 預設關閉時使用已標示的 yfinance fallback。
-4. 執行 scoring／ranking。
-5. 執行 active scan；預設不套用自動變更。
-6. 掃描 movers。
-7. 產生本機報告。
-
-資料供應商、網路或 ticker 本身缺少欄位時，報告可能顯示資料不足。這不代表系統可自行補造資料。
-
-## 10. 查看報告與除錯記錄
-
-預設報告資料夾：
-
-```text
-%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0\reports
-```
-
-預設 log：
-
-```text
-%LOCALAPPDATA%\InvestorIntelligence\App\2.0.0\daily_briefing.log
-```
-
-自訂安裝時，把 `%LOCALAPPDATA%\InvestorIntelligence` 換成自訂 `BaseInstallRoot`。
-
-執行失敗時，先查看 `daily_briefing.log` 最後一段。常見原因包括網路中斷、供應商限流、ticker 不存在、JSON 格式錯誤或自訂路徑沒有寫入權限。
-
-## 11. 排程：預設關閉，必須明確啟用
-
-安裝不會自動建立排程。請先完成研究股票設定，並至少手動成功執行一次，再啟用排程。
-
-### 11.1 預設時間
-
-星期一到星期五：
-
-```text
-早上 07:30
-晚上 20:30
-```
-
-### 11.2 啟用預設排程
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\register-task.ps1" -Enable
-```
-
-### 11.3 自訂時間
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\register-task.ps1" `
-  -Enable `
-  -MorningTime '08:00' `
-  -EveningTime '21:00'
-```
-
-### 11.4 自訂安裝根目錄的排程
-
-```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-& "$InstallRoot\App\2.0.0\register-task.ps1" `
-  -BaseInstallRoot $InstallRoot `
-  -Enable `
-  -MorningTime '07:30' `
-  -EveningTime '20:30'
-```
-
-### 11.5 查看排程狀態
-
-預設安裝：
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\register-task.ps1"
-```
-
-自訂安裝：
-
-```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-& "$InstallRoot\App\2.0.0\register-task.ps1" -BaseInstallRoot $InstallRoot
-```
-
-### 11.6 停用排程
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\register-task.ps1" -Disable
-```
-
-排程使用目前登入的 Windows 使用者、Limited 權限、`StartWhenAvailable`，並防止同一任務重複並行。由於使用 Interactive logon，使用者未登入時不應假設一定會執行。
-
-## 12. 重新安裝與更新同一版本
-
-同一位置已存在 v2.0.0 時，若只是重新驗證 runtime，直接再次執行 installer 即可。若要明確重裝程式檔案，使用 `-Force`：
-
-預設位置：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 `
-  -CreateDesktopShortcut `
-  -Force
-```
-
-自訂位置：
-
-```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-final.ps1 `
-  -BaseInstallRoot $InstallRoot `
-  -Force
-```
-
-正式 `-Force` reinstall 會保留既有 `data`、`reports`、`daily_briefing.log`，而 `UserData` 位於 application 目錄之外，也不會被一般程式替換刪除。仍建議在重要操作前自行備份 `UserData` 與報告。
-
-## 13. 從舊位置移到新位置
-
-不建議直接剪下貼上整個已安裝資料夾。建議流程：
-
-1. 停用舊位置排程。
-2. 在新 `BaseInstallRoot` 重新安裝。
-3. 關閉程式後，視需要複製舊位置的 `UserData`、`reports`、`data` 與 `daily_briefing.log`。
-4. 用新位置命令手動執行並確認成功。
-5. 確認新位置正常後，再卸載舊位置。
-
-跨根目錄搬移使用者資料目前不是 installer 的自動交易，因此複製前請自行保留備份。
-
-## 14. 卸載
-
-### 14.1 一般卸載，保留本機設定與報告
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\uninstall.ps1"
-```
-
-一般卸載會先停用兩個排程，並把本機設定與可用的報告／資料／log 移到：
-
-```text
-%LOCALAPPDATA%\InvestorIntelligence\Preserved-<UTC時間>
-```
-
-### 14.2 自訂安裝位置卸載
-
-```powershell
-$InstallRoot = 'D:\InvestorIntelligence'
-
-& "$InstallRoot\App\2.0.0\uninstall.ps1" `
-  -BaseInstallRoot $InstallRoot
-```
-
-### 14.3 永久刪除全部本機資料
-
-只有在確定不要保留設定、報告、資料與 log 時才使用：
-
-```powershell
-& "$env:LOCALAPPDATA\InvestorIntelligence\App\2.0.0\uninstall.ps1" `
-  -RemoveLocalData
-```
-
-`-RemoveLocalData` 是不可逆的本機資料刪除選項。
-
-## 15. 常見問題
-
-### 問題：第一次執行只開啟記事本
-
-原因：研究 universe 還有 `EXAMPLE`。替換成一個以上有效 ticker，儲存後再執行。
-
-### 問題：顯示 `Investor Intelligence is not installed at ...`
-
-原因：啟動命令使用錯誤的根目錄。自訂安裝必須在 `run-local.ps1`、`register-task.ps1` 與 `uninstall.ps1` 一致傳入同一個 `-BaseInstallRoot`。
-
-### 問題：顯示 checksum 或 SHA-256 不符
-
-不要略過。確認 application ZIP 與 `.sha256` 是同一份正式 Release，檔名沒有變更，且下載完整。
-
-### 問題：顯示 destination already exists
-
-該位置已有其他內容或另一份安裝。只有在確定是同一套正式安裝且要替換時才使用 `-Force`。
-
-### 問題：portable Python 或 dependencies 遺失
-
-重新從正式交付資料夾執行：
-
-```powershell
-.\install-final.ps1 -Force
-```
-
-自訂根目錄要加上相同的 `-BaseInstallRoot`。
-
-### 問題：排程沒有產生報告
-
-依序確認：
-
-1. `research-universe.local.json` 已移除 `EXAMPLE`。
-2. 手動執行成功。
-3. 目前 Windows 使用者已登入。
-4. `register-task.ps1` 顯示兩個 task 已註冊。
-5. 查看 `daily_briefing.log`。
-6. 自訂安裝路徑的排程有傳入正確 `-BaseInstallRoot`。
-
-### 問題：市場資料缺欄位或暫時失敗
-
-本機 runtime 使用公開資料來源，供應商可用性、ticker 支援與網路狀況會影響結果。系統會保留錯誤／資料不足狀態，不應把缺失資料當成已驗證事實。
-
-## 16. 隱私與功能邊界
-
-正式安裝預設狀態：
-
-```text
-LINE_ENABLED = false
-LINE_PUSH_ENABLED = false
-PUBLIC_KV_SYNC_ENABLED = false
-CURRENT_PUBLIC_DATA_ENABLED = false
-CLOUD_INFERENCE_ENABLED = false
-MEMORY_FEATURE_AVAILABLE = false
-IBKR_READONLY_ENABLED = false
-FREE_ONLY_MODE = true
-PAID_FALLBACK_ENABLED = false
-SCHEDULES_ENABLED = false
-```
-
-重要邊界：
-
-- 沒有自動下單路徑。
-- 本機 report 不會自動送到 LINE、Worker 或 public KV。
-- Shared LINE 不得取得 IBKR、券商帳戶、持股、數量、成本、損益或本機 watchlist／報告。
-- 本機設定與報告不包含在正式 Release package，也不應提交到 Git。
-- 本機 options service 在 IBKR read-only 未啟用時可使用標示來源的 yfinance fallback；它不會要求或推測券商持股。
-- 啟用 LINE、Cloudflare、IBKR、memory、public KV 或外部使用者都是之後的獨立審查／部署交易，不是本文件的安裝步驟。
-
-## 17. 正式驗證狀態
-
-v2.0.0 已完成：
-
-- GitHub Support sensitive-history purge。
-- 最終 Git history／all-object privacy confirmation。
-- Trusted Windows full-stack validation。
-- 完整 Python regression。
-- Worker TypeScript 與 tests。
-- Formal package build、checksum、manifest、SPDX SBOM。
-- Distinct clean-install acceptance。
-- Windows PowerShell 5.1 真實 installer acceptance。
-- Final acceptance receipt。
-- 兩次 byte-identical outer delivery build。
-- Private Release inner／outer ZIP 回下載 SHA-256 驗證。
-
-GitHub Actions 的 formal workflow 曾因帳戶 artifact-storage quota 在 upload-artifact 步驟失敗；package、clean-install、PS5.1 installer 與 receipt 本身已通過，正式檔案已改由 private Release assets 交付並完成回下載驗證。
-
-## 18. 需要保存哪些檔案
-
-建議長期保存：
-
-```text
-Investor-Intelligence-v2.0.0-Final-Private-Delivery.zip
-Investor-Intelligence-v2.0.0-Final-Private-Delivery.sha256
-```
-
-外層 ZIP 內另含：
-
-```text
-investor-intelligence-2.0.0.zip
-investor-intelligence-2.0.0.sha256
-investor-intelligence-2.0.0.manifest.json
-investor-intelligence-2.0.0.sbom.spdx.json
-final-acceptance-receipt.json
-PRIVATE-DISTRIBUTION-NOTICE.md
-install-final.ps1
-install-final.cmd
-```
-
-不要把本機 `UserData`、reports、logs、券商資料、LINE ID、tokens 或 credentials 上傳到 GitHub Issue、PR、Release 或公開位置。

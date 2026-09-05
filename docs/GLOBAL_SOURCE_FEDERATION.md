@@ -1,68 +1,88 @@
-# Global Authoritative Source Federation
+# Investor Intelligence R75 全球權威來源聯邦｜Global Source Federation
 
-## Design objective
+_Last reconciled / 最後核對：2026-09-05 Asia/Taipei_
 
-Investor Intelligence does **not** impose a fixed source count such as eight, twenty or one hundred. The registry is directory-based and may grow to any number of admitted sources without changing application code.
+[文件索引](README.md)｜[權威來源目錄](AUTHORITATIVE_SOURCE_CATALOG.md)｜[最新正式發布](FINAL_RELEASE.md)
 
-The absence of a count limit does not mean indiscriminate scraping. Every source must pass authority, identity, legal-access, zero-cost, provenance, freshness, parser and health gates before it can influence a report or score.
+## 設計目標｜Design objective
+
+Investor Intelligence 不設定八個、二十個、九十九個或一百個來源的固定上限。R75 source-planning inventory 目前為 101，但 runtime activation 仍以 authority、identity、合法免費存取、provenance、freshness、schema、adapter 與 health gate 為準。
 
 ```text
 NO_ARTIFICIAL_SOURCE_COUNT_LIMIT
 + STRICT_SOURCE_ADMISSION
 + BOUNDED_PER-HOST_CONCURRENCY
 + PRIMARY-EVIDENCE-FIRST
++ CLAIM-LEVEL-INDEPENDENCE
 + FAIL-CLOSED_CORRECTNESS
 ```
 
+沒有數量上限不等於無限制 scraping。每次 run 受到 request、response-byte、wall-time、retry、per-host concurrency、quota 與 cache freshness 預算約束。
+
+## 最新已驗證實機狀態｜Latest verified runtime state
+
+```text
+catalog_count = 101
+global source families = 7
+official source families = 6
+ticker coverage = 100.0%
+missing required families = none
+conflicts = 0
+claim families = 2
+claim domains = 3
+claim primary coverage = 100.0%
+non-Yahoo market corroboration = 0.0%
+```
+
+免費 non-Yahoo market data 在該 run 中不可用，因此全部 20 個候選維持 `LIMITED_RESEARCH_CANDIDATE`。這不是 source-federation failure：公司／claim diversity 與 primary coverage 通過，而缺少 market corroboration 被披露並限制信心；unsupported positive factors 在 snapshot 前歸零。
+
 ## Eligible source families
 
-The federation may include any lawful, free and publicly accessible source belonging to one or more of these families:
+可納入規劃與審查的來源包括：
 
-- securities regulators and statutory filing systems;
-- regulated stock exchanges and official announcement systems;
-- central banks, finance ministries and treasuries;
-- national statistics offices and government open-data portals;
-- international organizations and multilateral institutions;
-- public court, patent, procurement, customs, trade and sanctions databases;
-- official company investor-relations sites, filings and press releases;
-- licensed or regulated brokers providing data already available to the authenticated user without a new paid subscription;
-- public academic, standards, patent and scientific repositories;
-- reputable global newswires, public-service broadcasters and financial publications when public access and terms permit;
-- industry regulators, energy agencies, geological surveys, grid operators and other authoritative sector bodies;
-- public supply-chain, shipping, aviation, spectrum, telecommunications and environmental datasets;
-- additional authoritative sources discovered later and approved through the same admission process.
+- securities regulators、statutory filing systems；
+- regulated exchanges、official announcement systems；
+- central banks、finance ministries、treasuries；
+- national statistics offices、government open-data portals；
+- international organizations、multilateral institutions；
+- court、patent、procurement、customs、trade、sanctions databases；
+- official company IR sites、filings、press releases；
+- regulated market infrastructure 與合法免費 market observations；
+- academic、standards、scientific repositories；
+- reputable newswire/publication 作獨立 corroboration 或 discovery lead；
+- sector regulators、energy/grid/telecom/environmental authorities；
+- 經相同 admission lifecycle 通過的新來源。
 
-A source is not admitted merely because it is popular, has a government-like domain, appears in search results or is quoted by another website.
+Popular、政府風格網域、搜尋排名或他站轉述本身都不構成 admission。
 
 ## Trust tiers
 
-### T1 — Primary official authority
+### Primary official authority
 
-The organization is the legal owner or statutory publisher of the fact: regulator filing, exchange announcement, central-bank release, government statistic, court record, patent office record, issuer filing or official corporate release.
+法定 publisher／資料所有者，如 regulator filing、exchange announcement、central-bank release、government statistic、court/patent record、issuer filing、official company release。
 
-A T1 source may support a direct factual claim within its authority. It does not automatically support an investment conclusion or causal inference.
+Primary source 可以支持其權限範圍內的直接事實，但不自動支持 investment conclusion 或 causal inference。
 
-### T2 — Regulated or institutionally authoritative corroboration
+### Institutional corroboration
 
-Examples include a regulated exchange data service, recognized intergovernmental institution, licensed broker data available to the user, established academic repository, standards body or reputable newswire with transparent attribution.
+受監管 market infrastructure、intergovernmental institution、standards body、academic repository 或透明 attribution 的 institutional source，可支持獨立 corroboration。
 
-A T2 source normally corroborates a T1 fact or supports a claim when at least two independent organizations agree.
+### Secondary lead／public observation
 
-### T3 — Reputable secondary lead
+Reputable publication、aggregator 或 public market convenience 可作 discovery／context；不能取代 material company claim 的 primary evidence。
 
-Established financial publications, aggregators, research summaries and public market-data conveniences may be used as discovery leads or secondary context. They cannot replace missing primary evidence for material company facts.
+Yahoo/yfinance 是 T3 seed／public observation，不能被當成 official、broker-grade 或唯一 methodology。
 
-### T4 — Unverified or low-authority source
+### Quarantined
 
-Forums, anonymous posts, copied content, SEO farms, unsourced social posts and unverifiable datasets are quarantined. They cannot affect scoring, recommendations or factual report sections.
+Forums、anonymous posts、copied/unsourced content、SEO farms、schema unstable、payment required、terms incompatible 或 identity unverified 的來源不得影響 scoring、recommendation 或 factual report。
 
 ## Source admission lifecycle
-
-Every new source follows this lifecycle:
 
 ```text
 DISCOVERED
   -> IDENTITY_VERIFIED
+  -> AUTHORITY_SCOPE_REVIEWED
   -> LEGAL_AND_FREE_ACCESS_APPROVED
   -> ADAPTER_CONTRACT_VALIDATED
   -> PROVENANCE_VALIDATED
@@ -71,7 +91,7 @@ DISCOVERED
   -> RUNTIME_ENABLED
 ```
 
-Failure at any gate produces one of:
+失敗狀態包括：
 
 ```text
 QUARANTINED
@@ -83,34 +103,26 @@ DISABLED_HEALTH_FAILURE
 DISABLED_FREE_ONLY_POLICY
 ```
 
-Discovery never auto-enables a source.
+Discovery 永遠不會 auto-enable source。
 
 ## Registry architecture
 
-The loader recursively reads every JSON document under:
+來源由目錄式 registry 與 strict schema 管理，總數可成長；runtime 以 operational controls 限制：
 
-```text
-config/sources/**/*.json
-```
+- per-host concurrency；
+- request rate；
+- bounded retry/backoff；
+- circuit breaker；
+- free-quota budget；
+- priority queue；
+- cache TTL／freshness；
+- source-specific terms/access controls。
 
-There is no `maximum_sources` field. Additional jurisdictions, sectors and source families are added by placing another validated registry file in that directory.
+超出預算時 defer，不增加 request storm，也不自動進入付費方案。
 
-Runtime work is bounded by operational controls rather than by total source count:
+## Provenance contract
 
-- per-host concurrency;
-- per-host request rate;
-- bounded retry and exponential backoff;
-- circuit breakers;
-- daily free-quota budgets;
-- priority queues;
-- crawl windows and cache TTLs;
-- source-specific terms and robots/access controls.
-
-This allows the catalog to grow without creating an uncontrolled request storm.
-
-## Provenance record
-
-Every accepted observation carries at least:
+每筆 accepted observation 至少應具有：
 
 ```text
 source_id
@@ -132,94 +144,95 @@ source_health
 correction_status
 ```
 
-A model-generated summary is never treated as source evidence.
+Model-generated text 不能成為 source evidence。
 
 ## Claim verification policy
 
 ### Direct official facts
 
-A current T1 record can establish a fact within the publisher's authority, such as a filed revenue value, policy rate, official employment figure or exchange announcement.
+Current primary record 可支持 publisher 權限內的 filed revenue、policy rate、employment figure 或 exchange announcement。
 
-### Secondary or interpretive claims
+### Secondary／interpretive claims
 
-Material interpretations require either:
+Material interpretation 需要：
 
-- one relevant T1 source plus independent corroboration; or
-- at least two independent T2 organizations whose evidence can be traced to original material.
+- 一個 claim-relevant primary source加獨立 corroboration；或
+- 至少兩個可追溯 original material 的獨立 institutional sources。
 
-### Conflicting evidence
+### Conflicts
 
-The system does not average contradictory facts. It records the conflict and applies this order:
+系統不平均矛盾 facts，優先順序：
 
-1. corrected/restated primary source;
-2. current primary source within its legal authority;
-3. official exchange/regulator mirror;
-4. independent institutional corroboration;
-5. reputable secondary coverage.
+1. corrected/restated primary source；
+2. current primary source within legal authority；
+3. official exchange/regulator mirror；
+4. independent institutional corroboration；
+5. reputable secondary coverage。
 
-If the conflict remains unresolved, the report says so and the disputed field cannot drive an automatic score change.
+仍無法解決時，必須披露 conflict，且 disputed field 不得驅動自動 score change。
 
-## Stability and correctness controls
+## Publication-mode integration
 
-- Store the last known good normalized record separately from raw retrieval attempts.
-- Use content hashes and immutable retrieval timestamps.
-- Reject impossible future publication times and malformed chronology.
-- Detect parser/schema drift with canary fixtures and field-completeness checks.
-- Quarantine sudden outliers until confirmed by primary evidence.
-- Preserve corrections, restatements and superseded versions instead of silently overwriting them.
-- Label delayed, stale, preliminary, revised and final data explicitly.
-- Never convert a source outage into a zero value.
-- Never substitute a lower-trust source without changing the evidence label.
-- Keep public source cache separate from every tenant-private namespace.
-- Treat retrieved HTML, PDF, feed and document text as untrusted data for prompt-injection purposes.
+```text
+EVIDENCE_QUALIFIED
+LIMITED_RESEARCH_CANDIDATE
+```
 
-## Coverage strategy
+- Evidence-qualified row 需要 strict claim evidence、independence、freshness 與 primary support。
+- LIMITED row 需要 primary evidence 與 independent publication provenance，但 inference confidence 必須限制為 LIMITED。
+- LIMITED 不得 HIGH eligible、不得 validated thesis、不得保留 unsupported positive sensitive factors。
+- BLS 為 optional macro context；required family/count 與 claim independence gate 仍 fail closed。
 
-Coverage is measured by gaps, not by a target source count. The coverage ledger tracks:
+## Stability and correctness
 
-- jurisdiction;
-- asset class;
-- company/issuer;
-- macroeconomic series;
-- sector and supply-chain layer;
-- claim type;
-- language;
-- primary-source availability;
-- independent corroboration availability;
-- freshness and health.
-
-A new source is prioritized when it closes a real evidence gap or improves resilience, not simply to increase a number.
+- last-known-good normalized record 與 raw attempt 分離；
+- content hash 與 retrieval timestamp 不可混用；
+- reject impossible future publication time／malformed chronology；
+- parser/schema drift 使用 canary fixture；
+- sudden outlier 先 quarantine；
+- correction/restatement/superseded version 不靜默覆寫；
+- delayed/stale/preliminary/revised/final 明確標示；
+- source outage 不轉成零值；
+- lower-trust substitute 必須改變 evidence label；
+- public source cache 與 tenant-private state 分離；
+- retrieved content 視為 untrusted data，防 prompt injection。
 
 ## Zero-cost boundary
 
-A required source must not require:
+Required source 不得要求：
 
-- a paid API key;
-- a premium subscription;
-- a credit card that can roll into paid billing;
-- bypassing a paywall, login, CAPTCHA or access control;
-- prohibited scraping;
-- a paid market-data package.
+- paid API key；
+- premium subscription；
+- credit card auto-rollover；
+- paywall/login/CAPTCHA/access-control bypass；
+- prohibited scraping；
+- paid market-data package。
 
-A licensed broker source may be used only when the authenticated user already has lawful access and no new purchase is required. It remains tenant-private and cannot become a global public feed.
+Licensed broker source 若使用者本來合法擁有且無新費用，也只能是 tenant/private path，不能成為 global public feed。
 
 ## Release gates
 
-Before a source can be enabled in production:
+Production enable 前至少要求：
 
-1. registry schema validation passes;
-2. official ownership/domain is verified;
-3. access terms and zero-cost status are reviewed;
-4. adapter returns deterministic normalized output;
-5. provenance fields are complete;
-6. stale/revision/correction handling is tested;
-7. rate limit and circuit breaker are tested;
-8. malformed and hostile content tests pass;
-9. source outage preserves the last known good state;
-10. no private tenant data is transmitted to the source;
-11. no paid fallback is reachable;
-12. the source is represented in the coverage ledger.
+1. registry schema validation；
+2. authority/domain identity；
+3. legal/free-access review；
+4. deterministic normalized adapter；
+5. complete provenance；
+6. stale/revision/correction tests；
+7. rate-limit/circuit-breaker tests；
+8. hostile/malformed-content tests；
+9. outage preserves last-known-good；
+10. no tenant-private transmission；
+11. no paid fallback；
+12. coverage-ledger entry；
+13. exact-head CI；
+14. publication contract and negative fail-closed tests。
 
 ## Non-goal
 
-The system does not promise that every public website on Earth is continuously scraped. It promises that there is no artificial source-count ceiling and that every admitted source remains traceable, lawful, free, independently governed and safe to use.
+系統不承諾持續抓取全世界每個公開網站。它承諾沒有人工 source-count ceiling，且每個 admitted source 都可追溯、合法、免費、獨立治理、受預算限制並 fail closed。
+
+## English summary
+
+R75 currently plans from a 101-record catalog without a fixed ceiling. The latest verified run used seven source families and six official families with 100% ticker coverage. Free non-Yahoo market corroboration was unavailable, so confidence remained LIMITED and unsupported positive factors were withheld. Every source remains subject to strict admission, provenance, bounded-runtime and publication-mode gates.
