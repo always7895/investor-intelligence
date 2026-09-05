@@ -334,3 +334,5 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - 下一步：完整 Windows CI、不可變新 ZIP、下載後重跑這份實際 bundle（僅記憶體 KV），再交付新版。
 - Read-only Wrangler 查詢確認 Production 目前確為 `27121388-1e6e-445a-b45e-104a867ca70d` @100%，與回復日誌一致。
 - CI `33933468254` 在舊 lock SHA pin 拒絕新的 test-only Node 型別依賴；Python 556/2 skipped 已 PASS。檢視 diff 僅增加 `@types/node@24.3.0`、`undici-types@7.10.0`，無 runtime version／integrity 改動；更新 authoritative validator 的精確 SHA pin，保留 fail-closed hash gate。
+- `5a0941d` / Windows CI `33933592274` PASS，ZIP 下載完整性 PASS。但下載後用原始 bundle 執行真正 core 時，PS5.1 exact gate PASS、PS7 在 freshness gate 誤判 age=29869s。根因為 ConvertFrom-Json 將 UTC 字串轉為 DateTime，而舊字串 cast 遺失 offset；本輪不發布此中間版。
+- core 與 wrapper accessor 改用 DateTime/DateTimeOffset invariant roundtrip 字串，新增 PS5.1/7 UTC fixture SelfTest。PS7 修後實際 sealed bundle core gate PASS，刻意在隔離環境缺少 Production config 處停止，確認未取得 operation lock／未部署。仍待最後新 CI 與 ZIP 驗證。

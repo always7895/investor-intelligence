@@ -18,6 +18,11 @@ function Get-PropertyValue([object]$Object,[string]$Name,[object]$Default=$null)
     if ($null -eq $Object) { return $Default }
     $property = $Object.PSObject.Properties[$Name]
     if ($null -eq $property) { return $Default }
+    # PS7 auto-parses JSON dates; preserve the offset instead of culture-casting
+    # UTC midnight into an unzoned string (an eight-hour shift on zh-TW Windows).
+    if ($property.Value -is [DateTime] -or $property.Value -is [DateTimeOffset]) {
+        return $property.Value.ToString('o',[Globalization.CultureInfo]::InvariantCulture)
+    }
     return $property.Value
 }
 
@@ -288,6 +293,13 @@ function Restore-RefreshTasks([hashtable]$Backup) {
 }
 
 if ($SelfTest) {
+    $dateDocument = '{"generated_at":"2026-09-05T00:23:12Z"}' | ConvertFrom-Json
+    $dateRoundtrip = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $dateDocument 'generated_at' ''),[ref]$dateRoundtrip) -or
+        $dateRoundtrip.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') -ne '2026-09-05T00:23:12Z') {
+        throw 'JSON UTC timestamp lost its offset across PowerShell versions.'
+    }
+    Write-Host 'V213_JSON_TIMESTAMP_ROUNDTRIP = PASS; timezone_preserved=true'
     if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
     $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
     $version = '12345678-1234-1234-1234-123456789abc'
