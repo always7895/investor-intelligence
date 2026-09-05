@@ -49,7 +49,11 @@ import { v212Top20ReportAnswer } from "../v212/top20-report";
 import { ingestV211PublicSnapshot } from "./admin";
 import { humanizeFallback, v211HelpText, v211ResearchAnswer } from "./research";
 
+// Internal dependency injection only; a config string cannot install a handler.
+export const V211_GENERAL_QA = Symbol("v213.request-scoped-general-qa");
+
 export interface V211Env extends QaEnv, LineEnv, V21AdminEnv, V21BroadcastEnv {
+  [V211_GENERAL_QA]?: typeof generalAnswer;
   V21_OWNER_PAIRING_ENABLED?: string;
   V21_OWNER_PAIRING_CODE_HASH?: string;
   V21_MAX_WEBHOOK_BODY_BYTES?: string;
@@ -145,7 +149,7 @@ async function processPairing(
   return true;
 }
 
-async function processAuthorizedLineEvent(
+export async function processAuthorizedLineEvent(
   env: V211Env,
   ctx: ExecutionContext,
   event: LineEvent,
@@ -231,7 +235,7 @@ async function processAuthorizedLineEvent(
   }
 
   const operationEpoch = await tenantWriteEpoch(env, tenantId);
-  const answerPromise = generalAnswer(env, query, requestContext);
+  const answerPromise = (env[V211_GENERAL_QA] ?? generalAnswer)(env, query, requestContext);
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 7000));
   const quick = await Promise.race([answerPromise, timeout]);
   if (quick !== null) {

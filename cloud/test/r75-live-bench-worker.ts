@@ -1,0 +1,59 @@
+// Isolated test entrypoint only. NEVER referenced by production wrangler config.
+// No schedules, broadcast binding, real LINE credentials or activation endpoint.
+import production, { freeRelayRequestEnv } from "../src/v213/production-worker";
+import { compactGeneralAnswer } from "../src/v213/compact-qa";
+import { parseQuery } from "../src/core";
+import { processAuthorizedLineEvent, V211_GENERAL_QA } from "../src/v211/worker";
+import { getJob } from "../src/storage";
+export { V213FreeRelayRoute } from "../src/v213/free-relay";
+
+const realFetch = globalThis.fetch;
+const replies: string[] = [];
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = input instanceof Request ? input.url : String(input);
+  if (url.startsWith("https://api.line.me/")) {
+    if (url !== "https://api.line.me/v2/bot/message/reply") throw new Error("TEST_LINE_PUSH_FORBIDDEN");
+    replies.push(JSON.parse(String(init?.body)).messages[0].text);
+    return Promise.resolve(new Response("{}")); // no request ever leaves this isolate
+  }
+  return realFetch(input, init);
+}) as typeof fetch;
+const questions: Record<string, string> = {
+  general: "什麼是自由現金流？它與淨利有何差異？",
+  ticker: "NVDA有哪些需要驗證的公司風險？",
+  methodology: "Serenity 的瓶頸與公司價值捕捉有何差別？",
+  evidence: "如何判斷來源證據能否支持公司定價權？",
+};
+export default {
+  async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/v213/readiness") return production.fetch(request, env, ctx);
+    if (url.pathname === "/v213/admin/free-relay-route" || url.pathname === "/v213/admin/free-relay-smoke") return production.fetch(request, env, ctx);
+    if (request.headers.get("authorization") !== `Bearer ${env.V21_SYNC_HMAC_SECRET}`) return new Response("Unauthorized", { status: 401 });
+    if (url.pathname === "/setup" && request.method === "POST") {
+      await env.PUBLIC_CACHE.put("last_successful_pipeline_timestamp", new Date().toISOString());
+      await env.PUBLIC_CACHE.put("v21:top20:latest", JSON.stringify([{ ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }] }]));
+      await env.PUBLIC_CACHE.put("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{ ticker: "NVDA", publication_evidence_mode: "LIMITED_RESEARCH_CANDIDATE", eligible_for_high_confidence_model_inference: false, public_logic_state: { validated_company_thesis: false }, market_corroboration: { status: "UNAVAILABLE" }, missing_or_review: ["INDEPENDENT_CLAIM_CORROBORATION"] }] }));
+      return Response.json({ synthetic_fixture: true });
+    }
+    if (url.pathname === "/qa") {
+      const question = questions[url.searchParams.get("case") ?? ""];
+      if (!question) return new Response("Fixed cases only", { status: 400 });
+      const started = Date.now();
+      const answer = await compactGeneralAnswer(await freeRelayRequestEnv(env), parseQuery(question), { tenantId: "synthetic-bench", chatType: "group" });
+      return Response.json({ answer, elapsed_ms: Date.now() - started, synthetic_fixture: true }, { headers: { "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/reference-start") {
+      const scoped = await freeRelayRequestEnv(env);
+      scoped[V211_GENERAL_QA] = async (e, q, c) => {
+        const [answer] = await Promise.all([compactGeneralAnswer(e, q, c), new Promise(r => setTimeout(r, 8000))]);
+        return answer; // test-only 8s floor forces the actual 7s/waitUntil branch
+      };
+      replies.length = 0;
+      await processAuthorizedLineEvent(scoped, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: questions.general! }, timestamp: Date.now() }, "synthetic-bench");
+      return Response.json({ reply: replies[0], test_only_floor_ms: 8000, real_line_sent: false });
+    }
+    if (url.pathname === "/reference-result") return Response.json(await getJob(env, "synthetic-bench", url.searchParams.get("id") ?? ""));
+    return new Response("Test endpoint not allowed", { status: 404 });
+  },
+};

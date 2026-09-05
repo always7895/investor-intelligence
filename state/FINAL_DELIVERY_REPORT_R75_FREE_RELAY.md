@@ -1,139 +1,62 @@
-# FINAL DELIVERY REPORT — R75 Free Relay Hotfix (2026-09-05)
+# R75 Q&A latency / readiness hotfix — verified delivery 2026-09-05
 
-## 1. 最終判定
+This report supersedes older blanket completion narratives. Its scope is the two specified Q&A/readiness defects; it does not assert current market-data freshness or real-user LINE delivery.
 
-**FINAL DELIVERY GATE = PASS**（本節點 commit 封存此報告；artifact 身份綁定 source commit + CI run，不因節點 commit 改變）。
+## Identity
 
-## 2. 身份識別
+- Executable commit: `2cf585d317a4ba3ca784641b1515bfa862fb38bd`
+- Authoritative self-hosted Windows CI: `33960014393` — SUCCESS
+- Immutable release: [v2.1.3-R75-qa-readiness-2cf585d-33960014393](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-qa-readiness-2cf585d-33960014393)
+- ZIP SHA256: `da39073a3a0e8367ba7eb06b019a27e0e81bc133acac1fbfc57fcd91fa813e65`
+- Active Production Worker: `c3cb4024-48f0-403d-9dd2-714d544af024`,100%; previous `80f6565b-3ab6-45f6-8d25-21a3a54a1bca`.
+- Installed/started: `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`; desktop shortcut **Investor Intelligence R75**. Launcher window confirms the source/run revision.
 
-| 項目 | 值 |
-|---|---|
-| Branch | `pi/r75-free-workers-relay` |
-| Artifact source commit | `b99f371aa471d799f99fd773b37d61753ec6d32e` |
-| Gate 時 branch HEAD | `e460a172cabdb79ea6e5f785e11d622673b112eb` |
-| 最終 checkpoint commit | 本節點 commit（新增本報告 + STATUS 門禁章節，`[skip ci]`） |
-| Base Named Tunnel hotfix commit | `43f3be048cedf228cfe9e8e8e31f7b9901895838be`（typo-guard: 實際 `43f3be048cedf228cfe9e8e31f7b9901895838be`） |
-| Verified R75 base | `536644d22ef3534be1c4b8a9e1ff969df4d580fa` |
-| Authoritative Windows CI run | `33877850106`（self-hosted Windows Runner，conclusion=success） |
-| Artifact 路徑（repo 外） | `artifacts/r75-free-relay-hotfix-33877850106/Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-b99f371aa471d799f99fd773b37d61753ec6d32e-33877850106.zip` |
-| Artifact SHA-256 | `4797b0afe18a5599c540dfd9b1a5e52ce7b354a3c34ff72929595f8eaec9e139` |
-| Publication contract SHA-256 | `ed57b880bba3b29e41831201dc12bc8100101448f491f687c0bec67e9403f920`（ZIP 內、HOTFIX-REFS、目前樹三者一致） |
+## What changed / simplified
 
-## 3. Serenity 核心邏輯狀態
+Query-aware compact public context and an authenticated, request-only non-thinking profile replace long context for v213 general Q&A. Ticker context is selected, methodology fixed and ranking remains deterministic. Smoke has a fixed minimal input and requires a completed exact-model marker response. User preset is unchanged.
 
-**未被 hotfix 破壞。** 證據：
+There is one readiness owner (sync client), not repeated core/client waiting. Product and isolated live test use the same PowerShell gate. The obsolete standalone benchmark was removed. Current documentation references one authoritative release table rather than duplicating stale metadata.
 
-- 受保護 R75 路徑（publication-mode config、activation preflight、publication-mode.ts、activation-v2.ts、base packaging/verification）對 `536644d22ef3534be1c4b8a9e1ff969df4d580fa` 的 diff 為空。
-- `cloud/src/qa.ts` 與 certified base blob 逐位元組一致（`git hash-object` 相等）。
-- Python 全量 550 tests（含全部 Serenity H1–H6B、source-family/domain independence、claim coverage、market-quality degraded、seven-field contract 套件）PASS，2 skipped。
-- `V213_R75_ACTIVATION_PREFLIGHT_SELF_TEST = PASS`：all_limited=true、optional_bls=true（BLS optional semantics 保留）、positive_limited_rejected、limited_high_rejected、single_origin_rejected、count_order_freshness_digest_rejected、negative_factor_pass。
+qa.ts remains `94184bc8937b413eb327b3d773926db00e22b3b9`; scoring/weights, source thresholds, claim independence, publication modes, optional BLS, freshness, LINE privacy and IBKR separation remain unchanged.
 
-## 4. R75 framework 狀態
+## Actual model evidence
 
-**完整。** 證據：
+Real isolated workers.dev -> route DO -> short-lived tunnel -> Gateway -> existing qwen38-q6. Public fixtures are synthetic. Cold means prompt cache disabled, not model reload. All answers finish with `stop`.
 
-- Publication contract 雜湊三點一致（ZIP 內 `config/v213-r75-publication-mode-v1.json` = HOTFIX-REFS = 目前樹）。
-- Base R75 packaging/verification 腳本未修改；FREE_RELAY 使用獨立 `ci_v213_r75_free_relay_*` 與 `verify_v213_r75_free_relay_hotfix.py`。
-- Immutable identity：artifact 名稱含 source commit + run id，MANIFEST `artifact_kind=R75_FREE_WORKERS_RELAY_HOTFIX`、384 files、`production_mutation_by_ci=false`。
-- Post-download independent verification：ZIP CRC、path safety、duplicates/case collisions、symlinks、PE marker、MANIFEST、SHA256SUMS、contract binding、immutable identity、三份 receipt 全 PASS。
+| Case | Cold/warm seconds | Prompt tokens | Generated cold/warm |
+|---|---|---|---|
+| Fixed smoke | 2.660/2.127 | 24 | 11/11 |
+| General | 5.733/4.627 | 242 | 39/37 |
+| Ticker | 3.737/2.985 | 316 | 26/23 |
+| Methodology | 4.362/4.115 | 254 | 29/32 |
+| Evidence | 4.999/4.273 | 303 | 36/34 |
 
-## 5. 三端 contract alignment（TypeScript / Python / PowerShell）
+The real isolated seven-second reference/waitUntil branch completed and its result was retrieved. It used an explicit test-only8s floor to force the reference branch and mocked LINE transport. Temporary Workers/KV/DO/tunnels were deleted. Source-bound QA-Live-Receipt contains prefill/generation timings and runtime hashes.
 
-**PASS。**
+The previously failed inherited-high-reasoning measurements remain historical evidence; they were not reclassified as PASS. User explicitly authorized request-level `enable_thinking=false`; original preset SHA remains `b3815956d3fc47bc81db3ec51c71c5460f8aa8e2817b2a12e9815aeac89ae459`. Router models-max1 and only qwen38-q6 loaded.
 
-- TypeScript（`cloud/src/v213/free-relay.ts` + production wrapper）：`quick_free_relay`、`qwen38-q6`、`health_schema_version`、`consecutive_health_checks`、`route_generation`、`expires_at` 全部存在；19 files / 110 tests PASS。
-- PowerShell（bridge core、`v213_free_relay.ps1`、heartbeat、host tests）：相同 markers 存在；PowerShell 5.1.26100.9168 與 7.6.5 兩 host 的 FREE_RELAY host test、Named Tunnel regression、activation self-test、heartbeat self-test、task validation 全 PASS。
-- Python（activation preflight、security check、verifier py_compile）：PASS。
-- Wrangler template：`workers_dev = true`、無 custom `routes`、`FREE_RELAY_ENABLED="true"`、`LOCAL_LLM_MODEL="qwen38-q6"`。
+## Regression / artifact gates
 
-## 6. Production mutation 與 entrypoint
+- Python565 tests,2 skipped; Worker22 files/131 tests; TypeScript, security, PS5.1/7: PASS.
+- Stale lease, replay, exact-model mismatch, old parser/version, readiness timeout/arbitrary-error fail-closed tests: PASS.
+- Final extracted ZIP Worker tests and isolated runtime installer: PASS in CI.
+- Independent downloaded ZIP CRC, MANIFEST, SHA256SUMS, path safety, duplicates, symlinks, PE/release markers, contract and receipts: PASS.
+- Downloaded artifact's complete Worker suite: PASS.
+- Original bundle SHA `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`: unchanged historical-clock offline commit/readback/replay/corruption rejection/rollback/finalize PASS; present-time STALE rejection retained. Historical receipt cannot satisfy the live activation preflight gate.
+- GitHub immutable-release attestation: `gh release verify` PASS.
 
-- `production_mutation_by_ci = false`（MANIFEST、三份 receipt、post-download verification、independent verification 全一致）。
-- 穩定公共 entrypoint 維持既有 `workers.dev` Worker，未被改掉；`custom_domain_required=false`；`trycloudflare.com` 僅為 ephemeral relay，不宣稱穩定。
-- 本 session 無 Worker deploy、Production KV/DO 寫入、Cloudflare route 變更、LINE 發送、schedule 註冊、Task Scheduler 註冊。
+## Authorized Production/local cutover
 
-## 7. 本輪 FINAL DELIVERY GATE 執行記錄
+After acceptance, the operator installed the downloaded package, created a healthy new bridge before stopping the old bridge, deployed code only, verified exact100% active/uploaded version and three no-write parser/contract/policy readiness proofs, then performed two Production fixed-marker smokes: **2.902/2.647s PASS**.
 
-1. `git status --short` — 空（clean）；HEAD=`e460a172cabdb79ea6e5f785e11d622673b112eb`。
-2. 未處理 R75 修改 — 無；`git diff --check` clean。
-3. Artifact/MANIFEST/SHA256SUMS/receipts/contract 一致性 — `ARTIFACT_CROSSCHECK=PASS`（outer SHA、384 manifest files、contract 三點一致、三 receipt 身份與 mutation 旗標一致）。
-4. Targeted tests — 完整 no-mutation matrix PASS：Python 550/2 skipped；Worker typecheck + 19 files/110 tests；PS 5.1/7 全部 host tests；activation preflight/wrapper self-test；heartbeat；task validation；bridge strict-mode；operation lock；security check；artifact verifier 對已下載 ZIP 重跑 PASS；launcher 三項 self-test PASS。
-5. 失敗處理 — 本輪 3 個失敗均為驗證指令自身問題（marker 過度要求、git range 語法、launcher EXE 暫存路徑），非產品缺陷；修正後重驗全 PASS。
-6. Serenity/R75 核心、source-family/domain independence、claim coverage、market-quality degraded、BLS optional — 未破壞（見 §3）。
-7. 三端 contract alignment — PASS（見 §5）。
-8. `production_mutation_by_ci=false` — 維持。
-9. `workers.dev` entrypoint — 未改。
-10. Checkpoint commit — 本 commit。
-11. 本報告。
+- `production_mutation_by_ci=false`.
+- Separately authorized operator mutations: Worker code, relay lease/bridge and its at-logon reconnect-task path.
+- No sealed-bundle submission, snapshot write, LINE send,08:00/21:00 task change or Worker cron change.
+- Production pointer was compared before/after and unchanged; readback digest `c1ebf710b7939b2029bd275d8ac8d2c1a6a07aa262bf01c3ec035479f34c6a65`.
+- Existing activation remains run `20260905T002320Z-6f420ca8d4e8`, transaction `5f2dea606be8095a688e06605f241531`. This hotfix did not repeat activation or promote any LIMITED row.
 
-## 8. Remaining blockers
+## Final scope and files
 
-**技術性 blocker：無（P0=0, P1=0, P2=0）。**
+Q&A/readiness P0/P1/P2=**0/0/0** on the attached evidence. Further Production deployment for this hotfix: **not required; completed**. Actual-user LINE delivery, fresh Production data activation and all possible future edge/availability scenarios are not claimed tested.
 
-剩餘為**設計上由操作者控制的 Production 動作**（非 blocker，須另行授權執行）：
-
-- 實際 Worker 部署至 Production。
-- 真實 Quick Tunnel 啟動與 signed route 發布（需 RTX 機器上 `qwen38-q6` Gateway 在線）。
-- Task Scheduler（at-logon）實際註冊。
-- 首次真實 LINE 交付。
-- （可選未來路徑）Named Tunnel 穩定化部署。
-
-## 9. 交付結論
-
-**可以正式交付。** Immutable artifact、SHA-256、MANIFEST、SHA256SUMS、三份 receipt、independent post-download verification、三端 contract、R75/Serenity 保護邊界與 no-mutation 證據全部齊備且相互一致。Production 部署與實際 route 發布留待授權操作者執行。
-
-## 10. 操作者授權後的正式上線附錄（2026-09-05）
-
-本節記錄後續同一 Pi 工作階段中，使用者明確授權後執行的 Production 動作；它不改寫前述 CI no-mutation 證據。
-
-- 正式來源 commit：`92c97f97694e6e39c7a16986630d248c9ee744fe`；權威 Windows CI run `33896931576` PASS。
-- 發現並修正 Cloudflare 正式 Workers Runtime 對 `redirect: "error"` 的即時 TypeError；route health 改為 `manual` 並拒絕 3xx。經認證 `cloud/src/qa.ts` blob hash 仍為 `94184bc8937b413eb327b3d773926db00e22b3b9`，與 R75 基準相同。
-- v2.1.3 wrapper 對 HTTPS `POST /v1/chat/completions` 安裝精準相容層，並保留 redirect fail-closed；新增 HMAC 簽章、固定提示詞、無 KV 寫入的 smoke gate。
-- 本機完整 no-mutation 驗證 PASS：Python 550 passed/2 skipped；Worker 19 files/113 tests；PowerShell 5.1/7 及全部回歸／安全 gate PASS。
-- 正式 Worker 目前 100% active version：`27121388-1e6e-445a-b45e-104a867ca70d`；部署前回滾基準：`eb52ece1-8749-4526-a464-3356ec2dbc65`。
-- 真實 FREE_RELAY signed route、Gateway、Quick Tunnel、heartbeat 均 PASS；穩定 `workers.dev → route lease → Gateway → qwen38-q6` 固定標記 smoke 回應 PASS。短效 TryCloudflare hostname 未記錄為穩定入口。
-- `InvestorIntelligence-v213-FreeRelay` at-logon 工作已啟用（`StartWhenAvailable=true`、`MultipleInstances=IgnoreNew`）；Task Scheduler 實際觸發 result=0、新 generation 與一個完整 heartbeat 週期後 smoke PASS。舊 `InvestorIntelligence-v212-LocalModelBridge` 已停用，其 bridge/tunnel 孤兒已清除；早晚資料刷新工作保留。
-- 現有 Router 一度由外部以空參數重啟而無模型；首次 Task 失敗時舊 route 完整保留。之後先停舊 Router，再用同一 executable／同一 8080 串行重啟，專案專用 preset 設 `models-max=1`；最終只有 `qwen38-q6` loaded，`qwen38` 保持 unloaded，未同時啟動第二 llama-server。
-- 新不可變 artifact：`Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip`；SHA-256 `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec`；下載後獨立驗證 PASS。
-- GitHub Immutable Releases 已啟用；不可變正式 Release（`isImmutable=true`）為 `v2.1.3-R75-free-relay-final-92c97f9-33896931576`，`gh release verify` PASS，10 個 assets 全部具有 GitHub attestation。
-- CI 仍為 `production_mutation_by_ci=false`；上述 Worker deploy、真實 tunnel/route 與 Task Scheduler 註冊均是本次明確授權的操作者動作。未執行臨時 LINE 手動推送；既有 08:00/21:00 TST crons 保留。
-- 當時所列缺陷數：P0 **0**、P1 **0**、P2 **0**；後續使用者解壓啟用發現漏測，以下修正記錄取代全面完成的解讀。
-
-## 11. 使用者實際啟用失敗與修正版（2026-09-05）
-
-`20260905-075659-054-run-v213-local.log` 顯示在正式 activation 前 `npm test` 找不到測試檔。原 ZIP 排除 `cloud/test/` 及共用 fixtures；此外 runtime installer 未接受 HOTFIX-REFS/R75 wrapper，且誤判 robocopy 成功退出碼。因此先前對完整發布可用性的結論過度延伸，正式 activation 並未由當時 smoke 證明。
-
-修正版來源 `1ca12437f9608bb971863a6caf69426d75f6ccf9`，Windows CI `33931959307` PASS：Python 556（2 skipped）、Worker 19 files/113 tests、PS 5.1/7、final ZIP 解壓 typecheck/test 及隔離 runtime installer PASS。下載到使用者 Downloads 後，再次獨立執行相同 Worker gate 與隔離 installer 均 PASS。
-
-新不可變 Release：`v2.1.3-R75-package-fix-1ca1243-33931959307`；ZIP SHA-256：`fc374886b50cc1e71c98d464bf3b7c554859651bb38770917c285dcbf2074272`；GitHub attestation、ZIP inventory／MANIFEST／receipts／CRC 驗證 PASS。舊 Release 已標示缺陷且不覆寫資產。
-
-本輪僅修正打包與安裝 gate，未重新執行 Production activation、部署、資料提交或 LINE 發送。**解壓與安裝缺陷已修復；正式 sealed-bundle activation 仍需實際交易成功回執，不宣稱整個產品所有路徑無問題。**
-
-## 12. 真實 sealed bundle／Worker schema 整合修正（2026-09-05）
-
-使用者 08:23 再次正式啟用，113 tests 通過後 Worker 回覆 `V213_ACTIVATION_TOP20_INVALID`。日誌顯示未提交資料且回復原 Worker；本輪唯讀查詢確認 `27121388-1e6e-445a-b45e-104a867ca70d` @100%。根因是 Python 已輸出 15-key SEC filing provenance，而舊 Worker evidence 只接受六欄。
-
-來源 `998335dcdd86100633aa32cefbb09147f7a91cc5` 修正 closed provenance schema，保留 non-positive/provenance-only 邊界，並在部署前對原始 sealed bundle 執行真正 Worker ingestion 記憶體 KV 交易、讀回、replay／corrupt replay rejection、rollback、finalize，強制 SHA receipt。下載實測另修正 PS7 JSON DateTime 字串轉換遺失 UTC offset 的問題。
-
-Windows CI `33933857026` PASS；Python 556/2 skipped，Worker 19 files/116 tests、PS5.1/7、ZIP 解壓與隔離安裝 PASS。使用者原始 bundle SHA256 `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad` 未修改，在最終下載版產品 core 的 PS5.1/7 exact-bundle gate 均 PASS。測試刻意在缺少 Production config 的隔離邊界停止，沒有執行正式遠端交易。
-
-新不可變 Release `v2.1.3-R75-provenance-fix-998335d-33933857026`；ZIP SHA256 `ed53301f5157386da2a99cb0e6f163b171e141befdd6ba69483948ed45d833c0`；GitHub attestation 與獨立完整性檢查 PASS。附 `Local-Exact-Bundle-Verification.json`，不發布使用者原始 bundle／credentials。
-
-**已修正此實際拒收與 PS7 時區缺陷；本輪未重新部署 Production 或提交 sealed bundle。正式 activation 仍須真實交易回執，不能以本次隔離驗證取代。**
-
-## 13. 使用者明確授權後的 Production activation（2026-09-05）
-
-使用者本輪明確授權「部署 Production Worker 並提交 sealed bundle」。以不可變來源 `998335dcdd86100633aa32cefbb09147f7a91cc5` 執行完成：
-
-- Active Worker：`80f6565b-3ab6-45f6-8d25-21a3a54a1bca` @100%。部署前基準：`27121388-1e6e-445a-b45e-104a867ca70d`。
-- Run：`20260905T002320Z-6f420ca8d4e8`；Transaction：`5f2dea606be8095a688e06605f241531`。
-- 原始 sealed bundle SHA256：`f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`，提交時未過兩小時期限，位元組未變。
-- Commit accepted：15 objects read back，pointer-last；Replay idempotent並驗證15物件；獨立 Wrangler remote KV 指標／20 rows／LIMITED20、EVIDENCE_QUALIFIED0 一致；Finalize finalized、rollback handle deleted。
-- 最後獨立查詢時間 `2026-09-05T01:07:38Z`，Worker版本與指標仍一致。**Production deploy／sealed-bundle submission已完成。**
-- 未變更 cron expressions／Windows scheduled tasks，未發送 LINE。CI remains no-mutation；以上為當次明確授權 operator mutation。
-
-過程保留兩輪 rollback 證據：第一輪是操作腳本在 PS5.1 計算陣列筆數的錯誤（已修正）；第二輪為部署後立即出現 TOP20_INVALID（疑似 edge 尚未收斂，非已確證根因）。兩輪均回復基準；最終輪部署後等待15s並第一次提交成功。
-
-成功證據存於 `artifacts/r75-production-998335d-20260905-retry2/`，含 baseline、Python／exact Worker preflight、Commit／Replay／Remote-Readback／Finalize、Final-Independent-Status 與 SHA256SUMS。主操作回執 SHA256：`3182e6655d4004fcc7507d73cb7fb3eb738ae0d324a30a812c93b9cbee806794`。
-
-**剩餘問題不能掩蓋：** 額外 live model smoke 未通過，回覆 `FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID`。Router 實測大型公開 context prompt eval約67秒，超過 Worker既有20秒 timeout；Gateway healthy與Q6 loaded不代表即時Q&A可用。目前P0/P1/P2＝0/1/1（模型逾時、部署收斂待確認）。未變更模型 presets 或受保護 qa.ts。部署／資料提交成功不等於模型問答及所有排程投遞均已驗證。
+Evidence is attached to the immutable release and stored locally under `artifacts/r75-qa-hotfix-33960014393/` (outside the repository): Windows/QA-Live/Deployment/Delivery/Independent-Verification receipts, Post-Download-Verification, Downloaded-Historical-Exact-Bundle, Downloaded-Worker-Tests, Authorized-Code-Only-Cutover and Local-Installation-Receipt.

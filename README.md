@@ -1,178 +1,70 @@
 # Investor Intelligence v2.1.3 R75 FREE_RELAY
 
-[繁體中文完整說明](README.zh-TW.md)｜[Latest immutable release](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-free-relay-final-92c97f9-33896931576)
+[繁體中文](README.zh-TW.md) · [Immutable release](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-qa-readiness-2cf585d-33960014393) · [Delivery evidence](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
 
-> **研究軟體／Research software only.** 本專案不提供個人化投資建議、不保證報酬，也不能取代使用者對 SEC、公司公告、交易所資料與其他原始來源的自行查證。
+Privacy-first, zero-cost public-market research. Research software only—not personalized investment advice, trading instructions or guaranteed returns.
 
-Investor Intelligence is a privacy-first, zero-cost public-market research system. The current production architecture combines a stable Cloudflare `workers.dev` entrypoint with an authenticated, short-lived FREE_RELAY lease to a local llama.cpp model. The exact production model is `qwen38-q6`; no custom domain is required.
+## Current verified release — 2026-09-05
 
-## 最新正式版本｜Current production release
-
-| 欄位 / Field | 正式值 / Authoritative value |
+| Field | Verified value |
 |---|---|
-| 版本 / Version | `v2.1.3 R75 FREE_RELAY` |
-| 不可變 Release / Immutable release | `v2.1.3-R75-free-relay-final-92c97f9-33896931576` |
-| 正式程式來源 / Release source commit | `92c97f97694e6e39c7a16986630d248c9ee744fe` |
-| 權威 Windows CI / Authoritative Windows CI | `33896931576` — PASS |
-| 正式 ZIP SHA-256 | `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec` |
-| Production Worker version | `27121388-1e6e-445a-b45e-104a867ca70d` — 100% active |
-| Rollback baseline | `eb52ece1-8749-4526-a464-3356ec2dbc65` |
-| 穩定公開入口 / Stable public entrypoint | `https://investor-intelligence-v21-owner-line.moon951753.workers.dev` |
-| 本機模型 / Exact local model | `qwen38-q6` |
-| 自訂網域 / Custom domain | **不需要 / Not required** |
-| 最終缺陷 / Final defects | `P0=0, P1=0, P2=0` |
+| Executable source | `2cf585d317a4ba3ca784641b1515bfa862fb38bd` |
+| Windows self-hosted CI | `33960014393` — PASS |
+| Immutable tag | `v2.1.3-R75-qa-readiness-2cf585d-33960014393` |
+| ZIP SHA256 | `da39073a3a0e8367ba7eb06b019a27e0e81bc133acac1fbfc57fcd91fa813e65` |
+| Production Worker | `c3cb4024-48f0-403d-9dd2-714d544af024` — 100% |
+| Exact model | `qwen38-q6`, existing Router `127.0.0.1:8080`, `models-max=1` |
+| Scoped Q&A/readiness defects | P0/P1/P2 = **0/0/0**, supported by this release's evidence |
 
-The release is protected by GitHub Immutable Releases, contains 10 attested assets, and passed post-download verification of ZIP CRC, path safety, MANIFEST, SHA256SUMS, SBOM, receipts, immutable identity and publication-contract binding.
+Earlier release/status documents are historical and do not override this table. The preceding provenance-fix release remains available; no old asset or tag was overwritten.
 
-## 目前運作狀態｜Operational status
-
-- FREE_RELAY uses the existing `workers.dev` Worker as the only stable public entrypoint.
-- The ephemeral `*.trycloudflare.com` hostname is never represented as stable.
-- The local route is published only after three consecutive Health Schema v2 checks pass for exact model `qwen38-q6`.
-- Route registration is HMAC-authenticated and generation-bound; stale, expired, malformed, replayed or model-mismatched leases fail closed.
-- `InvestorIntelligence-v213-FreeRelay` is enabled as an at-logon Windows task with `StartWhenAvailable` and `MultipleInstances=IgnoreNew`.
-- The task was actually triggered and returned result `0`; it created a new route generation, stopped the previous bridge generation and passed a complete heartbeat cycle plus end-to-end smoke test.
-- The old `InvestorIntelligence-v212-LocalModelBridge` task is disabled and its obsolete port-8814 bridge/tunnel processes were removed before the final v2.1.3 generation was validated.
-- The llama.cpp Router is constrained to `models-max=1`; only `qwen38-q6` is loaded during the verified production state.
-- Existing 08:00 and 21:00 Asia/Taipei Worker schedules are retained. No manual LINE test message was sent during release verification.
-
-## 零成本架構｜Zero-cost architecture
+## Small, free architecture
 
 ```text
-LINE / external request
-  -> stable Cloudflare workers.dev Worker
-  -> authenticated current-route Durable Object lease
-  -> ephemeral TryCloudflare Quick Tunnel
-  -> local v2.1.3 Gateway
-  -> llama.cpp Router on 127.0.0.1:8080
-  -> exact model qwen38-q6
+LINE -> privacy/admission gates -> deterministic ranking/report tools
+                              -> bounded query-aware public Q&A
+workers.dev -> signed short-lived route lease -> TryCloudflare -> Gateway
+            -> existing llama.cpp -> exact qwen38-q6
 ```
 
-No paid domain, paid data source, paid model API or automatic paid fallback is required. Named Tunnel support remains an optional future path, not a requirement for the current FREE_RELAY deployment.
+- No custom domain, paid API, second model or paid fallback.
+- Ticker prompts contain only the selected ticker's public evidence. Generic prompts are concise; methodology uses fixed context. Ranking stays deterministic.
+- Only authenticated compact Q&A/smoke requests set `enable_thinking=false`. The user's Router preset is unchanged. Legacy model requests do not inherit this override.
+- Fixed-marker smoke never loads the full Top20 context. Healthy Gateway/model inventory alone is not a Q&A PASS.
+- One shared readiness gate verifies exact active/uploaded version, 100% traffic, parser/schema, publication contract and compact policy. Three consecutive no-write proofs are required. Unknown schema/validation errors fail immediately; no TOP20_INVALID retry or fixed propagation sleep.
 
-## Serenity 與證據邏輯｜Serenity and evidence logic
+## Measured latency
 
-The R75 architecture separates scoring from publication eligibility:
+Real isolated workers.dev/Gateway/Q6, **synthetic public fixtures**, complete answers:
 
-```text
-public-source evidence
-  -> diversified Serenity-compatible operationalization
-  -> publication contract
-       ├─ EVIDENCE_QUALIFIED
-       └─ LIMITED_RESEARCH_CANDIDATE
-  -> confidence and delivery gates
-```
+| Case | Cache cold / warm | Prompt tokens | Output cold / warm |
+|---|---|---|---|
+| Smoke | 2.660 / 2.127s | 24 | 11 / 11 |
+| General | 5.733 / 4.627s | 242 | 39 / 37 |
+| Ticker | 3.737 / 2.985s | 316 | 26 / 23 |
+| Methodology | 4.362 / 4.115s | 254 | 29 / 32 |
+| Evidence | 4.999 / 4.273s | 303 | 36 / 34 |
 
-Key invariants:
+Cold means prompt cache disabled, not a model reload. Production fixed-marker smoke independently passed at **2.902 / 2.647s**. Real isolated seven-second reference/waitUntil completion passed with synthetic LINE transport; no real-user LINE message was sent.
 
-- Serenity scoring, source-federation thresholds, the publication-mode contract, sealed activation bundles and release-evidence rules are protected release boundaries.
-- `cloud/src/qa.ts` remained byte-identical to the certified R75 baseline during FREE_RELAY work.
-- LIMITED rows cannot be promoted to HIGH confidence, cannot be marked as validated theses and cannot retain unsupported positive sensitive factors.
-- Missing free non-Yahoo market corroboration is disclosed and caps confidence instead of being silently fabricated.
-- BLS is optional macro context, while required family/count and claim-level independence gates remain fail closed.
-- Public reports, LINE and Worker state remain separated from brokerage accounts, holdings, cost basis, P&L and private owner data.
+## Verification and unchanged boundaries
 
-## Cloudflare Workers runtime compatibility
+- Python **565 tests, 2 skipped**; Worker **22 files / 131 tests**; typecheck, security, PS5.1/7: PASS.
+- Final-ZIP extraction, isolated runtime installation, independent download/CRC/MANIFEST/SHA256SUMS/path/duplicate/symlink/PE/receipt verification: PASS.
+- Original sealed bundle passed historical-clock offline transaction tests and still fails current-time freshness when stale. Its bytes and Production pointer were not changed.
+- Serenity scores/weights, publication contract, LIMITED/EVIDENCE_QUALIFIED/HIGH rules, optional BLS, claim-level independence, LINE privacy and IBKR separation remain unchanged.
+- `qa.ts` blob remains `94184bc8937b413eb327b3d773926db00e22b3b9`.
+- `production_mutation_by_ci=false`. Separately authorized operator actions deployed code, replaced the relay bridge and repointed its at-logon task. **No activation resubmission, snapshot change, 08:00/21:00 schedule change or LINE send.** This release does not assert freshness of the retained Production snapshot.
 
-Cloudflare Workers production runtime rejects `redirect: "error"`. R75 preserves fail-closed behavior by adapting only HTTPS `POST /v1/chat/completions` calls to `redirect: "manual"` and explicitly rejecting every 3xx response. This transport compatibility layer does not change the certified Q&A or Serenity semantics.
+## Install / run
 
-An HMAC-authenticated, fixed-prompt `POST /v213/admin/free-relay-smoke` endpoint verifies the complete path:
-
-```text
-workers.dev -> route lease -> Quick Tunnel -> Gateway -> qwen38-q6
-```
-
-The verified smoke response returned HTTP 200 with the exact model, Health Schema v2 and the expected fixed marker.
-
-## 驗證結果｜Validation evidence
-
-The authoritative release gate passed:
-
-- Python: **550 passed, 2 skipped**
-- Worker: **19 files, 113 tests passed**
-- TypeScript typecheck: **PASS**
-- Windows PowerShell 5.1: **PASS**
-- PowerShell 7: **PASS**
-- Security/credential scan: **PASS**
-- FREE_RELAY route, stale/replay/expiry/concurrency/heartbeat/reconnect/rollback tests: **PASS**
-- Named Tunnel regression tests: **PASS**
-- Activation preflight and wrapper self-tests: **PASS**
-- Task Scheduler real trigger: **result 0**
-- Post-download artifact verification: **PASS**
-
-CI itself retained `production_mutation_by_ci=false`. The actual Worker deployment, real FREE_RELAY route and Windows task registration were separate explicitly authorized operator actions and are documented in the production evidence files.
-
-## 下載與啟動｜Download and run
-
-1. Open the [latest immutable release](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-free-relay-final-92c97f9-33896931576).
-2. Download the versioned ZIP and its `.zip.sha256` file.
-3. Verify SHA-256:
+Download the ZIP and checksum from the release above, verify SHA256, extract, then run:
 
 ```powershell
-$Zip = '.\Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip'
-(Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-v213-source-diverse-runtime.ps1
+& "$env:LOCALAPPDATA\InvestorIntelligence\V213Runtime\InvestorIntelligence.exe"
 ```
 
-Expected value:
+On the verified user machine it is already installed and launched, with desktop shortcut **Investor Intelligence R75**. The existing at-logon FREE_RELAY task reconnects from this stable runtime. The 08:00/21:00 tasks and Worker cron expressions are unchanged.
 
-```text
-8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
-```
-
-4. Extract to a dedicated folder and run `InvestorIntelligence.exe`.
-5. Keep the existing llama.cpp Router at `http://127.0.0.1:8080` with exact model `qwen38-q6` available. Do not start a second Router instance.
-6. FREE_RELAY reconnect is maintained by the registered Windows task and heartbeat. If the PC or tunnel restarts, the route expires closed until a new validated generation is published.
-
-## 快速健康檢查｜Quick health checks
-
-```powershell
-# Router model inventory
-Invoke-RestMethod http://127.0.0.1:8080/models
-
-# FREE_RELAY task
-Get-ScheduledTask -TaskName 'InvestorIntelligence-v213-FreeRelay'
-Get-ScheduledTaskInfo -TaskName 'InvestorIntelligence-v213-FreeRelay'
-
-# Stable Worker health
-Invoke-RestMethod https://investor-intelligence-v21-owner-line.moon951753.workers.dev/health
-```
-
-Never paste Cloudflare, LINE, HMAC, Gateway or brokerage secrets into issues, logs, screenshots or chat.
-
-## 隱私與安全邊界｜Privacy and safety boundaries
-
-```text
-LINE_DATA_SCOPE=PUBLIC_ONLY
-LINE_IBKR_BRIDGE=FORBIDDEN
-LINE_PORTFOLIO_TOOLS=FORBIDDEN
-LINE_PRIVATE_SYNC=FORBIDDEN
-LINE_OWNER_DATA=FORBIDDEN
-FREE_ONLY_MODE=FAIL_CLOSED
-AUTOMATIC_TRADING=FORBIDDEN
-```
-
-- Shared LINE cannot access IBKR, brokerage accounts, holdings, quantities, costs, P&L, owner watchlists or local private reports.
-- Public, tenant-private and ephemeral-security state use separated bindings.
-- Secrets remain outside tracked source and are not included in releases.
-- Route expiry, model mismatch, failed heartbeat or failed health verification makes the local model unavailable instead of serving stale routing state.
-- The system does not place orders and has no brokerage-write path.
-
-## 文件｜Documentation
-
-- [繁體中文完整使用說明](README.zh-TW.md)
-- [R75 FREE_RELAY architecture](docs/V213_FREE_WORKERS_RELAY.md)
-- [Current release truth](docs/FINAL_RELEASE.md)
-- [Current implementation status](IMPLEMENTATION_STATUS.md)
-- [Documentation index](docs/README.md)
-- [Final delivery and production evidence](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
-- [Detailed project status](state/STATUS.md)
-
-## 歷史版本｜Historical releases
-
-Older v2.0.0, v2.1.0 and R70 documents/releases remain historical records. They are not the current installation or production authority. The authoritative current release is the immutable R75 FREE_RELAY tag shown above.
-
----
-
-## English summary
-
-Investor Intelligence v2.1.3 R75 FREE_RELAY is the current verified production release. It uses the existing `workers.dev` endpoint as a stable front door and an authenticated expiring lease to an ephemeral TryCloudflare tunnel. The exact local model is `qwen38-q6`; no custom domain or paid service is required. The authoritative Windows CI run, post-download verification, real Worker deployment, real task-trigger test, complete heartbeat cycle and end-to-end model smoke test all passed. Serenity/publication semantics remain protected and unchanged by the transport integration.
+Keep the existing Router running. Never paste LINE/Cloudflare/Gateway credentials, private financial data or `.env` contents into issues or logs. See [FREE_RELAY operations](docs/V213_FREE_WORKERS_RELAY.md).

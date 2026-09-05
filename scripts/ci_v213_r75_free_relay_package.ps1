@@ -17,6 +17,10 @@ try {
     if (-not $env:R75_FREE_RELAY_WINDOWS_RECEIPT -or -not (Test-Path -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -PathType Leaf)) { throw 'FREE_RELAY Windows receipt is missing.' }
     $windows = Get-Content -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -Raw -Encoding utf8 | ConvertFrom-Json
     if ([string]$windows.status -ne 'PASS' -or [string]$windows.source_commit -ne $sha -or [string]$windows.workflow_run_id -ne $runId -or $windows.production_mutation_by_ci -ne $false -or $windows.custom_domain_required -ne $false) { throw 'FREE_RELAY Windows receipt identity, cost, or no-mutation gate failed.' }
+    . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
+    Assert-V213QaReleaseQualification $windows
+    $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
+    if ((Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $windows.qa_live_receipt_sha256) { throw 'Live Q&A receipt digest mismatch.' }
     foreach ($protected in @('config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts','scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py')) {
         git diff --quiet $r75Commit -- $protected
         if ($LASTEXITCODE -ne 0) { throw "Protected R75 release source changed: $protected" }
@@ -153,6 +157,7 @@ try {
     Copy-Item $manifestPath (Join-Path $OutputRoot "$stem.MANIFEST.json")
     Copy-Item $sumsPath (Join-Path $OutputRoot "$stem.SHA256SUMS.txt")
     Copy-Item (Join-Path $stage 'SBOM.spdx.json') (Join-Path $OutputRoot "$stem.SBOM.spdx.json")
+    Copy-Item $liveProof (Join-Path $OutputRoot "$stem.QA-Live-Receipt.json")
     $windowsReceipt = Join-Path $OutputRoot "$stem.Windows-Receipt.json"; Copy-Item $env:R75_FREE_RELAY_WINDOWS_RECEIPT $windowsReceipt
     $deploymentReceipt = Join-Path $OutputRoot "$stem.Deployment-Receipt.json"
     $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}

@@ -3,9 +3,14 @@ main = "src/v213/production-worker.ts"
 compatibility_date = "2026-08-29"
 workers_dev = true
 
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 [vars]
 MEMORY_FEATURE_AVAILABLE = "false"
 GENERAL_QA_ENABLED = "true"
+# Request-only non-thinking mode; the user's Router preset remains unchanged.
+V213_COMPACT_QA_ENABLED = "true"
 CURRENT_PUBLIC_DATA_ENABLED = "true"
 PUBLIC_DATA_MAX_AGE_SECONDS = "7200"
 OPTION_DATA_MAX_AGE_SECONDS = "1800"

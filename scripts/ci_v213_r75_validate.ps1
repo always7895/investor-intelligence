@@ -64,8 +64,16 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
         & $env:PROJECT_NPM run typecheck
         if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed.' }
-        & $env:PROJECT_NPM test
-        if ($LASTEXITCODE -ne 0) { throw 'Worker regression failed.' }
+        $workerReport = Join-Path ([IO.Path]::GetTempPath()) ('v213-worker-tests-'+[guid]::NewGuid().ToString('N')+'.json')
+        $env:V213_READINESS_FIXTURE_OUT = $workerReport + '.readiness.json'
+        $env:V213_QA_CASES_OUT = $workerReport + '.qa-cases.json'
+        try {
+            & $env:PROJECT_NPM test -- --reporter=default --reporter=json "--outputFile=$workerReport"
+            if ($LASTEXITCODE -ne 0) { throw 'Worker regression failed.' }
+        } finally { Remove-Item Env:V213_READINESS_FIXTURE_OUT,Env:V213_QA_CASES_OUT -ErrorAction SilentlyContinue }
+        $env:R75_WORKER_TEST_REPORT = $workerReport
+        $env:R75_READINESS_FIXTURE = $workerReport + '.readiness.json'
+        $env:R75_QA_BENCHMARK_CASES = $workerReport + '.qa-cases.json'
     }
     finally { Pop-Location }
 
@@ -84,6 +92,7 @@ try {
         'scripts\setup_v213_named_tunnel.ps1',
         'scripts\test_v213_named_tunnel.ps1',
         'scripts\test_v213_free_relay.ps1',
+        'scripts\v213_edge_readiness.ps1','scripts\test_v213_edge_readiness.ps1',
         'scripts\test_v213_activation_core.ps1',
         'scripts\ci_v213_r75_validate.ps1'
     )
@@ -120,6 +129,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Named-tunnel deployment integration failed under $hostExe" }
         & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\test_v213_free_relay.ps1 -ProjectRoot $ProjectRoot
         if ($LASTEXITCODE -ne 0) { throw "FREE_RELAY deployment integration failed under $hostExe" }
+        & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\test_v213_edge_readiness.ps1 -ProjectRoot $ProjectRoot -WorkerFixture $env:R75_READINESS_FIXTURE
+        if ($LASTEXITCODE -ne 0) { throw "Read-only edge readiness integration failed under $hostExe" }
     }
 
     if (-not $SkipLiveRefresh) {

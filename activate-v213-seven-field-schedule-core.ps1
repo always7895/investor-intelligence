@@ -478,6 +478,9 @@ if ($text -notmatch '(?m)^\s*name\s*=\s*"V213_FREE_RELAY_ROUTE"\s*$') {
 if ($text -notmatch '(?m)^\s*tag\s*=\s*"v213-r75-free-relay-route-v1"\s*$') {
     $text += "`r`n[[migrations]]`r`ntag = `"v213-r75-free-relay-route-v1`"`r`nnew_sqlite_classes = [`"V213FreeRelayRoute`"]`r`n"
 }
+if ($text -notmatch '(?m)^\[version_metadata\]') {
+    $text += "`r`n[version_metadata]`r`nbinding = `"CF_VERSION_METADATA`"`r`n"
+}
 [IO.File]::WriteAllText($temp, $text, [Text.UTF8Encoding]::new($false))
 
 $installedCopy = Join-Path $configRoot 'wrangler.v213.production.local.toml'
@@ -509,14 +512,18 @@ try {
             $shared = $null
         }
     }
-    [void](Invoke-WranglerRun $wrangler @('deploy','--config',$temp,'--message','v2.1.3 atomic source-diverse seven-field activation') $CloudRoot)
+    $deployOutput = Invoke-WranglerRun $wrangler @('deploy','--config',$temp,'--message','v2.1.3 atomic source-diverse seven-field activation') $CloudRoot
     $deployed = $true
+    . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
+    $uploadedVersion = Get-V213DeployedVersion $deployOutput
     $current = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
-    if ($current -eq $prior) { throw 'Deployment did not produce a new active Worker version.' }
+    if ($current -eq $prior -or $current -cne $uploadedVersion) { throw 'Deployment did not produce the exact expected active Worker version.' }
+    # The sync client owns the single readiness gate (control plane before/after,
+    # three same-version parser proofs). Do not run an identical gate twice.
 
     $commitResult = Join-Path $env:TEMP ('ii-v213-activation-commit-' + [guid]::NewGuid().ToString('N') + '.json')
     $bundleCommitAttempted = $true
-    & $SyncClient -Action Commit -ProjectRoot $ProjectRoot -BundlePath $BundlePath -LocalConfigPath $SyncConfig -ResultPath $commitResult
+    & $SyncClient -Action Commit -ProjectRoot $ProjectRoot -BundlePath $BundlePath -LocalConfigPath $SyncConfig -ResultPath $commitResult -ExpectedWorkerVersion $current
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $commitResult -PathType Leaf)) { throw 'Atomic activation bundle did not return a commit receipt.' }
     $commit = Get-Content -LiteralPath $commitResult -Raw -Encoding utf8 | ConvertFrom-Json
     Remove-Item -LiteralPath $commitResult -Force -ErrorAction SilentlyContinue

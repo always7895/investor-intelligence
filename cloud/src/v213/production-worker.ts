@@ -1,8 +1,7 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
-import v211Worker, { type V211Env } from "../v211/worker";
-import { parseQuery } from "../core";
-import { generalAnswer } from "../qa";
+import v211Worker, { V211_GENERAL_QA, type V211Env } from "../v211/worker";
+import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";
 import {
@@ -19,7 +18,9 @@ import {
   type FreeRelayEnv,
 } from "./free-relay";
 
-type V213ProductionEnv = V211Env & FreeRelayEnv;
+import { edgeReadiness, servingVersion, type VersionEnv } from "./readiness";
+
+type V213ProductionEnv = V211Env & FreeRelayEnv & VersionEnv & { V213_COMPACT_QA_ENABLED?: string };
 
 type RuntimeFetch = typeof fetch;
 
@@ -48,7 +49,14 @@ export async function v213RuntimeCompatibleFetch(
   const adapt = init?.redirect === "error" && method === "POST" && url?.protocol === "https:" &&
     url.pathname === "/v1/chat/completions";
   if (!adapt) return nativeFetch(input, init);
-  const response = await nativeFetch(input, { ...init, redirect: "manual" });
+  let body = init?.body;
+  if (typeof body === "string") {
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { parsed = null; }
+    const compact = compactCompletionBody(parsed);
+    if (compact) body = JSON.stringify(compact);
+  }
+  const response = await nativeFetch(input, { ...init, body, redirect: "manual" });
   if (response.status >= 300 && response.status < 400) {
     throw new TypeError("V213_LOCAL_MODEL_REDIRECT_REJECTED");
   }
@@ -80,10 +88,14 @@ function validationStatus(code: string): number {
 }
 
 export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213ProductionEnv> {
-  if (!freeRelayEnabled(env)) return env;
+  // v213 uses one compact path. Explicit false is an operational rollback,
+  // not a second model or paid fallback. Legacy qa.ts safety checks still run.
+  const handler = env.V213_COMPACT_QA_ENABLED !== "false" ? compactGeneralAnswer : undefined;
+  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler };
   const overrides = await freeRelayRuntimeOverrides(env);
   return {
     ...env,
+    [V211_GENERAL_QA]: handler,
     LOCAL_LLM_BASE_URL: overrides?.LOCAL_LLM_BASE_URL ?? "",
     LOCAL_LLM_ALLOWED_HOSTS: overrides?.LOCAL_LLM_ALLOWED_HOSTS ?? "",
     LOCAL_LLM_MODEL: overrides?.LOCAL_LLM_MODEL ?? "qwen38-q6",
@@ -121,13 +133,7 @@ async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): P
     }
     const route = await currentFreeRelayRoute(env);
     if (!route) throw new Error("FREE_RELAY_UNAVAILABLE");
-    const expectedMarker = "R75_FREE_RELAY_E2E_OK";
-    const answer = await generalAnswer(
-      await freeRelayRequestEnv(env),
-      parseQuery(`請只回覆以下字串，不要加入其他內容：${expectedMarker}`),
-      { tenantId: "v213-free-relay-smoke", chatType: "group" },
-    );
-    if (!answer.includes(expectedMarker)) throw new Error("FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID");
+    if (!(await minimalModelSmoke(await freeRelayRequestEnv(env)))) throw new Error("FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID");
     return jsonResponse({
       ok: true,
       status: "PASS",
@@ -145,7 +151,7 @@ async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): P
 
 async function handleActivationTransaction(
   request: Request,
-  env: V211Env,
+  env: V211Env & VersionEnv,
   action: "commit" | "rollback" | "finalize",
 ): Promise<Response> {
   const authenticated = await authenticatedBody(request, env);
@@ -156,7 +162,7 @@ async function handleActivationTransaction(
       : action === "rollback"
         ? await rollbackV213Activation(authenticated, env)
         : await finalizeV213Activation(authenticated, env);
-    return jsonResponse(result);
+    return jsonResponse({ ...result, worker_version: servingVersion(env) });
   } catch (error) {
     const code = errorCode(error, "V213_ACTIVATION_TRANSACTION_FAILED");
     return jsonResponse({ ok: false, code, action }, validationStatus(code));
@@ -175,7 +181,13 @@ async function handleActivationTransaction(
 export default {
   async fetch(request: Request, env: V213ProductionEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/v213/readiness") return edgeReadiness(request, env);
     if (request.method === "POST" && url.pathname === "/v213/admin/activation-bundle") {
+      // Before authentication's nonce write: stale serving code cannot commit.
+      const version = servingVersion(env);
+      if (!version || request.headers.get("x-ii-expected-worker-version") !== version) {
+        return jsonResponse({ ok: false, code: "V213_ACTIVATION_SERVING_VERSION_MISMATCH", worker_version: version }, 409);
+      }
       return handleActivationTransaction(request, env, "commit");
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/activation-rollback") {

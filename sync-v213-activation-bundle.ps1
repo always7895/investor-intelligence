@@ -7,6 +7,7 @@ param(
     [string]$TransactionId = '',
     [string]$RunId = '',
     [string]$ResultPath = '',
+    [string]$ExpectedWorkerVersion = '',
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
@@ -47,7 +48,8 @@ function Read-ResponseBody([System.Net.WebResponse]$Response) {
 function Invoke-SignedJsonPost(
     [uri]$Endpoint,
     [string]$Body,
-    [string]$Secret
+    [string]$Secret,
+    [string]$ServingVersion = ''
 ) {
     $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString()
     $nonce = [guid]::NewGuid().ToString('N')
@@ -63,6 +65,7 @@ function Invoke-SignedJsonPost(
     $request.Headers.Add('x-ii-v21-timestamp', $timestamp)
     $request.Headers.Add('x-ii-v21-nonce', $nonce)
     $request.Headers.Add('x-ii-v21-signature', $signature)
+    if ($ServingVersion) { $request.Headers.Add('x-ii-expected-worker-version', $ServingVersion) }
     $requestStream = $request.GetRequestStream()
     try { $requestStream.Write($bytes, 0, $bytes.Length) }
     finally { $requestStream.Dispose() }
@@ -167,6 +170,14 @@ $path = switch ($Action) {
     'Finalize' { '/v213/admin/activation-finalize' }
 }
 $endpoint = [uri]($baseEndpoint.GetLeftPart([UriPartial]::Authority) + $path)
+if ($Action -eq 'Commit') {
+    . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
+    $activeVersion = Get-V213ReadOnlyActiveVersion $ProjectRoot
+    if ($ExpectedWorkerVersion -and $activeVersion -cne $ExpectedWorkerVersion) { throw 'V213_READINESS_CONTROL_PLANE_VERSION_MISMATCH' }
+    $ExpectedWorkerVersion = $activeVersion
+    $ready = Wait-V213EdgeReadiness -Origin $baseEndpoint.GetLeftPart([UriPartial]::Authority) -ExpectedVersion $ExpectedWorkerVersion -ProjectRoot $ProjectRoot
+    if ((Get-V213ReadOnlyActiveVersion $ProjectRoot) -cne $ExpectedWorkerVersion) { throw 'V213_READINESS_ACTIVE_VERSION_CHANGED' }
+}
 $protected = ConvertTo-SecureString -String ([string](Get-PropertyValue $config 'encrypted_hmac' ''))
 $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($protected)
 $keyMaterial = ''
@@ -175,7 +186,10 @@ try {
     if ([string]::IsNullOrWhiteSpace($keyMaterial) -or $keyMaterial.Length -lt 32) {
         throw 'The signed-sync key could not be recovered.'
     }
-    $result = Invoke-SignedJsonPost $endpoint $body $keyMaterial
+    $result = Invoke-SignedJsonPost $endpoint $body $keyMaterial $(if($Action -eq 'Commit'){$ExpectedWorkerVersion}else{''})
+    if ($Action -eq 'Commit' -and [string](Get-PropertyValue $result 'worker_version' '') -cne $ExpectedWorkerVersion) {
+        throw 'V213_ACTIVATION_ACK_VERSION_MISMATCH; success_not_proven=true'
+    }
     if (-not [string]::IsNullOrWhiteSpace($ResultPath)) {
         $parent = Split-Path -Parent $ResultPath
         if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
