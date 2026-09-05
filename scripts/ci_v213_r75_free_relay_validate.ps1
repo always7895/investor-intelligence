@@ -20,7 +20,7 @@ try {
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
-        'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs',
+        'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
         'register-v213-free-relay-task.ps1','run-v213-local-llm-bridge-source-diverse.ps1',
         'run-v213-local-llm-bridge.ps1','run-v213-local-serenity-latest.ps1',
         'run-v213-local-source-diverse.ps1','run-v213-local.ps1',
@@ -29,7 +29,8 @@ try {
         'scripts/run_v213_local_llm_bridge_core_v2.ps1','scripts/test_v213_free_relay.ps1',
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',
         'scripts/v213_free_relay_heartbeat.ps1','scripts/verify_v213_r75_free_relay_hotfix.py',
-        'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md'
+        'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md',
+        'tests/test_v213_free_relay_package_payload.py'
     )
     foreach ($path in $changed) { if ($allowed -notcontains $path) { throw "FREE_RELAY changed a non-deployment path: $path" } }
     foreach ($protected in @(

@@ -296,3 +296,27 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 ### 下一步
 
 正式發布完成。持續由 heartbeat 維護短效 lease；若 Gateway/cloudflared 失效則 fail closed，登入工作會建立新 generation。
+
+## 2026-09-05 08:02 TST — 使用者解壓版啟用失敗，重新開啟發布 gate
+
+- Fetched HEAD: `7011676f6b98112182eee0f291c2ff3c75817615`；使用者 launcher log `20260905-075659-054-run-v213-local.log` 在第 8 階段出現 `No test files found, exiting with code 1`。
+- 原 ZIP `92c97f9`/`33896931576` 實際 `cloud/test/*=0`、共用 publication fixtures=0；packager 明確刪除這兩項，而 activation 必須執行 `npm test`。這是產品打包缺陷，不是使用者操作錯誤。
+- Bridge、20-row all-LIMITED bundle 與 sealed preflight 通過；行情 corroboration 0/20 正確降級，非本次退出原因。此次日誌未進入 activation commit。
+- 更正先前全面完成的結論：先前驗證只涵蓋 source checkout 與 ZIP 完整性，未涵蓋解壓後 activation 測試依賴。
+- 修正範圍：FREE_RELAY packager 保留 Worker tests 和兩個 synthetic fixtures；final ZIP 解壓至特殊路徑後執行 npm ci/typecheck/full tests；verifier 強制 inventory 與 extracted-ZIP receipt；新增缺檔負向測試。不修改受保護 R75 contract、scoring 或跳過 activation 測試。
+- 本里程碑 P0/P1/P2 = **0/1/0**（發布阻塞：解壓後 Worker gate）；外部 mutation：無。
+- 下一步：執行回歸、Windows CI、下載修正版與獨立解壓實測，產生新的 immutable release；舊 ZIP 不覆寫。
+- 延伸測試另發現 runtime installer 僅接受舊 VERSION-REFS、未識別 R75 sealed wrapper，且把 robocopy 成功碼 1 當失敗。僅修正套件識別、加入完整 R75 marker 組與成功後退出碼正規化；未放寬 publication validator。
+- 隔離 LOCALAPPDATA 的 installer 實測從錯誤重現到 `INSTALL_PROBE_EXIT=0`；已加入每個 final ZIP 的必跑 gate。第一輪 `bae5c53`/`33931793055` Windows CI success，但不發布此中間版本，等待包含 installer 修正的新完整 CI。
+
+## 2026-09-05 — 解壓啟用與 runtime 安裝修正版已驗證
+
+- Artifact source HEAD: `1ca12437f9608bb971863a6caf69426d75f6ccf9`；Windows self-hosted run `33931959307` success。
+- CI：Python 556 tests（2 skipped）、Node typecheck、19 Worker files/113 tests、PS 5.1/7 regression、ZIP 重新解壓測試、隔離 runtime 安裝全部 PASS。
+- 使用者機器 Downloads 新版 `...1ca12437...-33931959307` 解壓後重跑 npm ci/typecheck/test：19 files/113 tests PASS；PS 5.1 隔離 installer exit=0，R75_SEALED contract PASS。
+- ZIP SHA-256 `fc374886b50cc1e71c98d464bf3b7c554859651bb38770917c285dcbf2074272`；CRC／path safety／MANIFEST／SHA256SUMS／3 receipts／test dependency inventory／extracted gates 獨立驗證 PASS。
+- 不可變 Release `v2.1.3-R75-package-fix-1ca1243-33931959307`，`isImmutable=true`，`gh release verify` PASS。舊版 release 標註已知啟用缺陷並連結修正版；未覆寫舊資產。
+- 修正版檔案已下載及解壓到使用者 Downloads；原資料夾及 sealed bundle 未修改。打包／安裝範圍已知 P0/P1/P2 = **0/0/0**。
+- **驗證界線：本輪未重新執行正式 activation transaction，未部署 Worker／寫入 Production KV/DO／改真實排程／發送 LINE。不得將本輪通過解壓測試表述成正式 sealed-bundle activation 已完成。**
+- CI `production_mutation_by_ci=false`；本輪外部 mutation 僅 Git push/GitHub Release metadata 與資產發布。
+- 下一步：從修正版 launcher 執行新鮮資料啟用，依實際交易 receipt 判定正式 activation，不沿用舊版全面完成結論。

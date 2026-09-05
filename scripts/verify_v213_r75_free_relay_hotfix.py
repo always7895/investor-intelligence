@@ -51,6 +51,29 @@ def verify_receipt(path: Path, commit: str, run_id: str) -> dict:
     return value
 
 
+def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) -> None:
+    """Activation must remain executable after extracting the delivered ZIP."""
+    required = {
+        "cloud/test/fake-kv.ts", "cloud/test/qa.test.ts",
+        "cloud/test/v213-activation.test.ts", "cloud/test/v213-free-relay.test.ts",
+        "cloud/test/v213-publication-mode.test.ts",
+        "tests/fixtures/v213-r75-publication-mode/all-limited.json",
+        "tests/fixtures/v213-r75-publication-mode/mixed.json",
+    }
+    inventory = refs.get("worker_test_payload")
+    if not isinstance(inventory, list) or not all(isinstance(p, str) for p in inventory):
+        raise VerificationError("activation test inventory missing")
+    expected = {safe_name(p).casefold() for p in inventory}
+    actual = {p for p in files if p.startswith(("cloud/test/", "tests/"))}
+    if len(expected) != len(inventory) or expected != actual or not required.issubset(actual):
+        raise VerificationError("activation test payload missing or inconsistent")
+    if any(p.startswith("tests/") and p not in required for p in actual):
+        raise VerificationError("non-runtime Python test content leaked")
+    count = refs.get("packaged_worker_test_count")
+    if type(count) is not int or count <= 0:
+        raise VerificationError("packaged Worker test count invalid")
+
+
 def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path]) -> dict:
     commit = commit.lower()
     if not HEX40.fullmatch(commit) or not run_id.isdigit():
@@ -95,7 +118,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         raise VerificationError("required payload missing")
     if files["investorintelligence.exe"][1][:2] != b"MZ":
         raise VerificationError("launcher is not PE")
-    if any(name.startswith((".github/", "cloud/test/", "delivery/", "state/", "tests/", "skills/")) for name in files):
+    if any(name.startswith((".github/", "delivery/", "state/", "skills/")) for name in files):
         raise VerificationError("internal content leaked")
 
     refs = load_json(files["hotfix-refs.json"][1], "HOTFIX-REFS.json")
@@ -107,6 +130,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("normal_production_tunnel_mode") != "quick_free_relay" or
             refs.get("workers_dev_stable_entrypoint") is not True or refs.get("custom_domain_required") is not False):
         raise VerificationError("hotfix refs mismatch")
+    verify_worker_test_payload(files, refs)
     contract_sha = sha(files["config/v213-r75-publication-mode-v1.json"][1])
     if refs.get("publication_contract_sha256") != contract_sha:
         raise VerificationError("publication contract binding mismatch")
@@ -143,6 +167,11 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         raise VerificationError("SHA256SUMS digest mismatch")
 
     verified = [verify_receipt(path, commit, run_id) for path in receipts]
+    deployment = [r for r in verified if r.get("extracted_zip_worker_gate") == "PASS"]
+    if (len(deployment) != 1 or deployment[0].get("packaged_worker_typecheck") != "PASS" or
+            deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"] or
+            deployment[0].get("extracted_zip_runtime_install") != "PASS"):
+        raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
     return {
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
         "archive": archive.name, "archive_sha256": actual, "source_commit": commit,
@@ -150,6 +179,9 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "path_safety": "PASS", "duplicates": "PASS", "symlinks": "PASS",
         "manifest": "PASS", "sha256sums": "PASS", "pe_marker": "PASS",
         "publication_contract_sha256": contract_sha, "receipt_count": len(verified),
+        "activation_test_payload": "PASS", "extracted_zip_worker_gate": "PASS",
+        "extracted_zip_runtime_install": "PASS",
+        "packaged_worker_tests": refs["packaged_worker_test_count"],
         "production_mutation_by_ci": False, "protected_release_semantics_unchanged": True,
     }
 

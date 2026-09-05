@@ -39,7 +39,20 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Unable to archive exact hotfix source.' }
     Expand-Archive -LiteralPath $sourceArchive -DestinationPath $stage -Force
     Remove-Item -LiteralPath $sourceArchive -Force
-    foreach ($internal in @('.github','.gitignore','delivery','IMPLEMENTATION_STATUS.md','skills','state','tests','cloud\test')) { Remove-Item -LiteralPath (Join-Path $stage $internal) -Recurse -Force -ErrorAction SilentlyContinue }
+    foreach ($internal in @('.github','.gitignore','delivery','IMPLEMENTATION_STATUS.md','skills','state','tests')) { Remove-Item -LiteralPath (Join-Path $stage $internal) -Recurse -Force -ErrorAction SilentlyContinue }
+    # Activation runs npm test on the installed package. These are runtime gate
+    # dependencies, not removable internal content. Copy only synthetic fixtures.
+    $fixtureRoot = Join-Path $stage 'tests\fixtures\v213-r75-publication-mode'
+    New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
+    Copy-Item -LiteralPath 'tests\fixtures\v213-r75-publication-mode\all-limited.json','tests\fixtures\v213-r75-publication-mode\mixed.json' -Destination $fixtureRoot
+    $workerTestPayload = @(git ls-files cloud/test tests/fixtures/v213-r75-publication-mode)
+    if ($LASTEXITCODE -ne 0 -or $workerTestPayload.Count -lt 3) { throw 'Worker test dependency inventory is missing.' }
+    foreach ($relative in $workerTestPayload) {
+        $packaged = Join-Path $stage $relative
+        if (-not (Test-Path -LiteralPath $packaged -PathType Leaf) -or (Get-FileHash $packaged).Hash -ne (Get-FileHash $relative).Hash) {
+            throw "Packaged activation test dependency missing or changed: $relative"
+        }
+    }
 
     $csc = @("$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe","$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe") | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
     if (-not $csc) { throw 'Windows C# compiler is unavailable.' }
@@ -63,6 +76,7 @@ try {
         schema_version = 1; artifact_kind = 'R75_FREE_WORKERS_RELAY_HOTFIX'; package_version = '2.1.3'
         base_named_tunnel_commit = $baseCommit; source_commit = $sha; workflow_run_id = $runId; workflow_run_attempt = $attempt
         launcher_revision = $revision; publication_contract_sha256 = $contractSha
+        worker_test_payload = $workerTestPayload; packaged_worker_test_count = [int]$windows.worker_tests
         normal_production_tunnel_mode = 'quick_free_relay'; workers_dev_stable_entrypoint = $true; custom_domain_required = $false
         trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = 'qwen38-q6'; health_schema_version = 2
         signed_route_registration = $true; route_generation_required = $true; heartbeat_lease_required = $true; stale_and_replay_rejected = $true
@@ -91,6 +105,48 @@ try {
     $zip = Join-Path $OutputRoot "$stem.zip"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip,[IO.Compression.CompressionLevel]::Optimal,$false)
+    # Test the final ZIP, not the source checkout or pre-packaging staging tree.
+    # No production configuration/credentials are copied into this extraction.
+    $zipProbe = Join-Path $OutputRoot 'ZIP gate 測試 (1)'
+    $zipTestResult = Join-Path $OutputRoot 'packaged-worker-vitest.json'
+    $packagedWorkerTests = 0
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $zipProbe)
+        Push-Location (Join-Path $zipProbe 'cloud')
+        try {
+            & $env:PROJECT_NPM ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Extracted ZIP npm ci failed.' }
+            & $env:PROJECT_NPM run typecheck
+            if ($LASTEXITCODE -ne 0) { throw 'Extracted ZIP Worker typecheck failed.' }
+            & $env:PROJECT_NPM test -- --reporter=json "--outputFile=$zipTestResult"
+            if ($LASTEXITCODE -ne 0) { throw 'Extracted ZIP Worker tests failed.' }
+            $result = Get-Content -LiteralPath $zipTestResult -Raw -Encoding utf8 | ConvertFrom-Json
+            $packagedWorkerTests = [int]$result.numPassedTests
+            if ($result.success -ne $true -or [int]$result.numTotalTests -le 0 -or
+                [int]$result.numTotalTests -ne [int]$windows.worker_tests -or
+                $packagedWorkerTests -ne [int]$result.numTotalTests -or [int]$result.numFailedTests -ne 0) {
+                throw 'Extracted ZIP test count/result differs from the validated source.'
+            }
+        } finally { Pop-Location }
+        Write-Host "V213_PACKAGED_WORKER_GATE = PASS; tests=$packagedWorkerTests; extracted_zip=true; special_path=true; production_mutation=false"
+        $savedLocalAppData = $env:LOCALAPPDATA
+        $installProbe = Join-Path $OutputRoot 'isolated-install'
+        try {
+            $env:LOCALAPPDATA = Join-Path $installProbe 'local'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $zipProbe 'install-v213-source-diverse-runtime.ps1') -ProjectRoot $zipProbe -RuntimeRoot (Join-Path $installProbe 'runtime')
+            if ($LASTEXITCODE -ne 0) { throw 'Extracted ZIP stable runtime installation failed.' }
+            foreach ($relative in $workerTestPayload) {
+                $installed = Join-Path (Join-Path $installProbe 'runtime') $relative
+                if (-not (Test-Path -LiteralPath $installed -PathType Leaf) -or (Get-FileHash $installed).Hash -ne (Get-FileHash (Join-Path $zipProbe $relative)).Hash) {
+                    throw "Installed runtime test dependency missing or changed: $relative"
+                }
+            }
+            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; production_mutation=false'
+        } finally {
+            $env:LOCALAPPDATA = $savedLocalAppData
+            Remove-Item -LiteralPath $installProbe -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } finally { Remove-Item -LiteralPath $zipProbe -Recurse -Force -ErrorAction SilentlyContinue }
     $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     $shaPath = Join-Path $OutputRoot "$stem.zip.sha256"
     [IO.File]::WriteAllText($shaPath,"$zipSha  $stem.zip`n",[Text.Encoding]::ASCII)
@@ -99,7 +155,7 @@ try {
     Copy-Item (Join-Path $stage 'SBOM.spdx.json') (Join-Path $OutputRoot "$stem.SBOM.spdx.json")
     $windowsReceipt = Join-Path $OutputRoot "$stem.Windows-Receipt.json"; Copy-Item $env:R75_FREE_RELAY_WINDOWS_RECEIPT $windowsReceipt
     $deploymentReceipt = Join-Path $OutputRoot "$stem.Deployment-Receipt.json"
-    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
+    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deploymentReceipt,(($deployment|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $deliveryReceipt = Join-Path $OutputRoot "$stem.Delivery-Receipt.json"
     $delivery = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;package="$stem.zip";zip_sha256=$zipSha;bytes=(Get-Item $zip).Length;immutable_identity="$sha-$runId";zero_cost=$true;custom_domain_required=$false;production_mutation_by_ci=$false;external_mutation=$false}
