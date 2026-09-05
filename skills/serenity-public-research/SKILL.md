@@ -31,4 +31,4 @@ Ticker／股票 · Long-term return／長期報酬 · Short-term return／短期
 
 The exact schema, order and locale labels are defined by [top20-report.ts](../../cloud/src/v213/top20-report.ts). Missing current orders remain `未揭露（無可靠公開訂單數字）`; missing outlook remains `無可靠公開預估`.
 
-This skill defines research behavior, **not proof that a LINE route is deployed or functioning**. Engineering/release status lives in [state/STATUS.md](../../state/STATUS.md); publication eligibility remains governed by the versioned contract and validators.
+This skill defines research behavior, **not proof that a LINE route is deployed or functioning**. Engineering/release evidence is separate: see [current bilingual status](../../docs/CURRENT_STATUS_BILINGUAL.md) and artifact receipts. Publication eligibility remains governed by the versioned contract and validators.

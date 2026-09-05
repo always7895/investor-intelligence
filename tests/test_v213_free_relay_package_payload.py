@@ -22,6 +22,19 @@ class PackagedWorkerPayloadTests(unittest.TestCase):
                 "packaged_worker_test_count": 113}
         return files, refs
 
+    def test_only_reviewed_public_skill_and_all_its_references_are_packaged(self):
+        paths = ['skills/serenity-public-research/SKILL.md',
+                 'skills/serenity-public-research/references/RESEARCH_METHOD.md',
+                 'skills/serenity-public-research/references/CROSS_VALIDATION.md',
+                 'cloud/src/v213/top20-report.ts', 'docs/CURRENT_STATUS_BILINGUAL.md']
+        files = {p.casefold(): (p, (ROOT / p).read_bytes()) for p in paths}
+        VERIFIER.verify_public_research_payload(files)
+        for path in files:
+            with self.subTest(missing=path), self.assertRaises(VERIFIER.VerificationError):
+                VERIFIER.verify_public_research_payload({k:v for k,v in files.items() if k != path})
+        with self.assertRaises(VERIFIER.VerificationError):
+            VERIFIER.verify_public_research_payload({**files, 'skills/unreviewed.md': ('skills/unreviewed.md', b'synthetic')})
+
     def test_complete_runtime_payload_passes(self):
         files, refs = self.payload()
         VERIFIER.verify_worker_test_payload(files, refs)

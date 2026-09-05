@@ -1,4 +1,5 @@
-import { helpText, parseQuery } from "../core";
+import { helpText, parseQuery, type ParsedQuery } from "../core";
+import { replyMessages, type LineOutboundMessage } from "../line-messages";
 import {
   claimEvent,
   completeEvent,
@@ -55,7 +56,7 @@ export const V211_TOP20_REPORT = Symbol("v213.request-scoped-top20-report");
 
 export interface V211Env extends QaEnv, LineEnv, V21AdminEnv, V21BroadcastEnv {
   [V211_GENERAL_QA]?: typeof generalAnswer;
-  [V211_TOP20_REPORT]?: typeof v212Top20ReportAnswer;
+  [V211_TOP20_REPORT]?: (env: V211Env, query: ParsedQuery) => Promise<string | LineOutboundMessage[] | null>;
   V21_OWNER_PAIRING_ENABLED?: string;
   V21_OWNER_PAIRING_CODE_HASH?: string;
   V21_MAX_WEBHOOK_BODY_BYTES?: string;
@@ -208,7 +209,8 @@ export async function processAuthorizedLineEvent(
   // v213's published report must win over all legacy five-field routes.
   const currentReport = await env[V211_TOP20_REPORT]?.(env, query);
   if (currentReport != null) {
-    await replyText(env, event.replyToken, currentReport);
+    if (typeof currentReport === "string") await replyText(env, event.replyToken, currentReport);
+    else await replyMessages(env, event.replyToken, currentReport);
     return;
   }
 

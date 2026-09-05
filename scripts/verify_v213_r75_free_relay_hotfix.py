@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import re
 import stat
 import zipfile
@@ -49,6 +50,23 @@ def verify_receipt(path: Path, commit: str, run_id: str) -> dict:
     if value.get("production_mutation_by_ci") is not False or value.get("external_mutation", False) is not False:
         raise VerificationError(f"receipt mutation attestation failed: {path.name}")
     return value
+
+
+def verify_public_research_payload(files: dict[str, tuple[str, bytes]]) -> None:
+    expected = {
+        'skills/serenity-public-research/skill.md',
+        'skills/serenity-public-research/references/research_method.md',
+        'skills/serenity-public-research/references/cross_validation.md',
+    }
+    if {p for p in files if p.startswith('skills/')} != expected:
+        raise VerificationError('public research payload missing or unreviewed skill included')
+    skill = files['skills/serenity-public-research/skill.md'][1].decode('utf-8-sig')
+    for target in re.findall(r'\]\(([^)]+)\)', skill):
+        if target.startswith('https://'):
+            continue
+        path = posixpath.normpath('skills/serenity-public-research/' + target).casefold()
+        if path.startswith('../') or path not in files:
+            raise VerificationError('packaged research reference is missing or unsafe')
 
 
 def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) -> None:
@@ -107,8 +125,9 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
 
     required = {
         "investorintelligence.exe", "hotfix-refs.json", "manifest.json", "sha256sums.txt",
-        "scripts/v213_free_relay.ps1", "scripts/v213_free_relay_heartbeat.ps1",
+        "scripts/v213_free_relay.ps1", "scripts/v213_free_relay_heartbeat.ps1", "scripts/v213_windows_security.ps1",
         "scripts/run_v213_local_llm_bridge_core.ps1", "register-v213-free-relay-task.ps1",
+        "scripts/v213_sealed_refresh.ps1", "run-v213-scheduled-refresh.ps1", "register-v213-refresh-tasks.ps1",
         "cloud/src/v213/free-relay.ts", "cloud/src/v213/production-worker.ts",
         "cloud/wrangler.v213.production.template.toml", "run-v213-local.ps1",
         "config/v213-r75-publication-mode-v1.json", "scripts/v213_r75_activation_preflight.py",
@@ -118,8 +137,9 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         raise VerificationError("required payload missing")
     if files["investorintelligence.exe"][1][:2] != b"MZ":
         raise VerificationError("launcher is not PE")
-    if any(name.startswith((".github/", "delivery/", "state/", "skills/")) for name in files):
+    if any(name.startswith((".github/", "delivery/", "state/")) for name in files):
         raise VerificationError("internal content leaked")
+    verify_public_research_payload(files)
 
     refs = load_json(files["hotfix-refs.json"][1], "HOTFIX-REFS.json")
     if (refs.get("artifact_kind") != "R75_FREE_WORKERS_RELAY_HOTFIX" or
@@ -179,7 +199,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "path_safety": "PASS", "duplicates": "PASS", "symlinks": "PASS",
         "manifest": "PASS", "sha256sums": "PASS", "pe_marker": "PASS",
         "publication_contract_sha256": contract_sha, "receipt_count": len(verified),
-        "activation_test_payload": "PASS", "extracted_zip_worker_gate": "PASS",
+        "activation_test_payload": "PASS", "public_research_payload": "PASS", "extracted_zip_worker_gate": "PASS",
         "extracted_zip_runtime_install": "PASS",
         "packaged_worker_tests": refs["packaged_worker_test_count"],
         "production_mutation_by_ci": False, "protected_release_semantics_unchanged": True,

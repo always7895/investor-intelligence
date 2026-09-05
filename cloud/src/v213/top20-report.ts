@@ -7,10 +7,12 @@ export function v213FieldLocale(value?: string): FieldLocale {
   return ["en", "english"].includes(locale) ? "en" : ["zh-tw", "zh"].includes(locale) ? "zh-TW" : "bilingual";
 }
 
-export async function v213Top20ReportAnswer(
-  env: StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string },
+export type V213Top20Env = StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string };
+
+export async function loadV213FreshTop20Report(
+  env: V213Top20Env,
   query: ParsedQuery,
-): Promise<string | null> {
+): Promise<V213Top20Report | string | null> {
   if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) return null;
   const report = parseV213Top20Report(await publicJson(env, ["v213:top20-report:latest"]));
   if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
@@ -20,7 +22,12 @@ export async function v213Top20ReportAnswer(
     const age = (Date.now() - Date.parse(value ?? "")) / 1000;
     return !Number.isFinite(age) || age < -300 || age > limit;
   })) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
-  return formatV213Top20Report(report, v213FieldLocale(env.V213_FIELD_LOCALE));
+  return report;
+}
+
+export async function v213Top20ReportAnswer(env: V213Top20Env, query: ParsedQuery): Promise<string | null> {
+  const result = await loadV213FreshTop20Report(env, query);
+  return result && typeof result !== "string" ? formatV213Top20Report(result, v213FieldLocale(env.V213_FIELD_LOCALE)) : result;
 }
 
 export interface V213Top20ReportRecord {
@@ -206,10 +213,15 @@ function percent(value: number | null): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function header(locale: FieldLocale): readonly string[] {
+export function v213Top20DisplayHeader(locale: FieldLocale): readonly string[] {
   if (locale === "en") return V213_TOP20_DISPLAY_COLUMNS_EN;
   if (locale === "bilingual") return V213_TOP20_DISPLAY_COLUMNS_BILINGUAL;
   return V213_TOP20_DISPLAY_COLUMNS;
+}
+
+export function v213Top20DisplayValues(item: V213Top20ReportRecord): string[] {
+  return [item.ticker, percent(item.long_term_return_pct), percent(item.short_term_return_pct),
+    item.industry, item.profit_summary, item.current_orders, item.future_orders_estimate];
 }
 
 /**
@@ -222,15 +234,7 @@ export function formatV213Top20Report(
   locale: FieldLocale = "zh-TW",
 ): string {
   return [
-    header(locale).join("｜"),
-    ...report.records.map((item) => [
-      item.ticker,
-      percent(item.long_term_return_pct),
-      percent(item.short_term_return_pct),
-      item.industry,
-      item.profit_summary,
-      item.current_orders,
-      item.future_orders_estimate,
-    ].join("｜")),
+    v213Top20DisplayHeader(locale).join("｜"),
+    ...report.records.map((item) => v213Top20DisplayValues(item).join("｜")),
   ].join("\n");
 }

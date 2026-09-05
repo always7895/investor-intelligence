@@ -1,4 +1,5 @@
 import { splitLineText } from "../core";
+import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 
 export interface V21LinePushEnv {
   LINE_CHANNEL_ACCESS_TOKEN: string;
@@ -14,8 +15,13 @@ export async function pushText(
   lineUserId: string,
   text: string,
 ): Promise<void> {
-  if (!LINE_USER_ID_RE.test(lineUserId)) throw new Error("V21_LINE_PUSH_TARGET_INVALID");
   const chunks = splitLineText(text, MAX_LINE_TEXT, MAX_LINE_MESSAGES);
+  await pushMessages(env, lineUserId, chunks.map(chunk => ({ type: "text", text: chunk })));
+}
+
+export async function pushMessages(env: V21LinePushEnv, lineUserId: string, messages: readonly LineOutboundMessage[]): Promise<void> {
+  if (!LINE_USER_ID_RE.test(lineUserId)) throw new Error("V21_LINE_PUSH_TARGET_INVALID");
+  assertLineMessages(messages);
   const response = await fetch(PUSH_URL, {
     method: "POST",
     headers: {
@@ -24,7 +30,7 @@ export async function pushText(
     },
     body: JSON.stringify({
       to: lineUserId,
-      messages: chunks.map((chunk) => ({ type: "text", text: chunk })),
+      messages,
       notificationDisabled: false,
     }),
   });

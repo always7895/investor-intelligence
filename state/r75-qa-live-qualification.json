@@ -4,6 +4,7 @@
   "scope": "FULL_LIVE",
   "source_manifest": {
     "cloud/src/core.ts": "f6bb189a08f472ef27c2faa00bccc57ec1d0cff68c8531137864b66ff281f71a",
+    "cloud/src/line-messages.ts": "c66f047f4a8501a84b8134fb09d3fe37d5a3b4fcd4f47ff8c3a9d8d7241b71da",
     "cloud/src/line.ts": "f5dfb889ab4d4f19ea6b8ad91118192f4da4335b420ae7a3d279f9c928f2bceb",
     "cloud/src/manual-options.ts": "acad00328bf87b7b046f041a6727c1ef57ee182a138620bcdf609762d1c8fb48",
     "cloud/src/qa.ts": "0107aca61f8a881192d1747a6cc31e87aeadf3c00cf19e8bbc10d9ba3f681eb2",
@@ -11,31 +12,33 @@
     "cloud/src/storage.ts": "f778b5986fae11f572f9f96bf93d47023f6f8d2eb6fe8c78b09b14947dc478a6",
     "cloud/src/v21/admin.ts": "fca5973bab632dc71e1757f6bb755afe3d611ddd608272268eeac8517224ec3b",
     "cloud/src/v21/broadcast.ts": "2675416e9b73db09189cb03ba6f430453ccb8f6805c35c3609ce78cca46bf797",
-    "cloud/src/v21/line-push.ts": "2d86318a9170a8c8bf56df9e18672231ed4a4205f6276d1f7f96fa1a541ffbd7",
+    "cloud/src/v21/line-push.ts": "8a5167a1202d34ea37a2d8ad589c58360f3fd32d6cecd15533afe103024fa20c",
     "cloud/src/v21/owner-storage.ts": "420d100730c2f4ace5899dbc25e2202a14e7694bd070b68b8c772f8500a4c3a0",
     "cloud/src/v21/top20.ts": "9fdb7a0a05b221f2c13e7c17c109a0a66fb0854458a5613ab83818e79aeae97b",
     "cloud/src/v21/worker.ts": "a177b5d769f526e77b80e1de569f3c0986ad2061b0d1127253c9c38614a5efd6",
     "cloud/src/v211/admin.ts": "35b276435b54b6804cb335c201a6549bbe05ba3f4918cfff7971383e4e49ff63",
     "cloud/src/v211/research.ts": "92a73fbed6cd9144444d1d733474a946ef8b77dd6535ae2b58dff1b26dc45487",
-    "cloud/src/v211/worker.ts": "6e09de39241d63484e8e6c5019d2a9d537bcd3f00f24c0c74f80b23a5e584ed8",
+    "cloud/src/v211/worker.ts": "996139f4b8de106574671dad9cb18a9bcb89527f51ab1fc46a6e0c2b412f6d4c",
     "cloud/src/v212/admin.ts": "79dd80dcbd9f652331d582e4a656ec357ad341d1cee05c16b53a56bd01f3a527",
     "cloud/src/v212/top20-report.ts": "0046969c06f6dfebe025eb2eb211cd9d6608f82bbe96796538a64abf18d7f451",
     "cloud/src/v213/activation-v2.ts": "588d80a7bfeccf1e110ebd065632ff40b0106e6b5559ff366b23a02d99014922",
     "cloud/src/v213/activation.ts": "d0c8e1bfab9208601898eab2772887517d366ec8a037d09154c00844854d1eb8",
     "cloud/src/v213/admin.ts": "7b416406b62bf08ddd7c522bcc36c532ee89a1a9e723649c3035792b2c4e6db9",
     "cloud/src/v213/broadcast-dedupe.ts": "85216d0124c0db519a4ddd1a5e7d048d31601acb52ab6685b1e5bfd9ddf5958a",
-    "cloud/src/v213/broadcast.ts": "b86d33ee691f8f69e03ed1c869def0b51437a0a7548fe66357a528fe629d1ae4",
+    "cloud/src/v213/broadcast.ts": "9d62cba641dfc1bdbfbca22b1fd0e40e06019f68fa41ee46b27b37e80439e677",
     "cloud/src/v213/compact-qa.ts": "decaced1cd5416ba0d42d35372d43a859f12b842e2606b01914dbcf1d3a36468",
     "cloud/src/v213/field-labels.ts": "a09c0e33d5c396cacb4e9b63953c01289b0cb67881f0ef5fc9af8841060edee6",
     "cloud/src/v213/free-relay.ts": "ab5083f98949f336c1179304bdf9db32bfd9f5c055cbbcf47731855ff9f8cf7b",
     "cloud/src/v213/h6b2-line-test-push.ts": "146dce83c29304b3242b6a0e969aa92f0704f64d8b82234c5fdc7011175801eb",
     "cloud/src/v213/h6b2-worker.ts": "13c2f1c07dbdc4ca17a49821e4d010dd701d07c19e6bc7ab1bdaf1651e550a5f",
-    "cloud/src/v213/production-worker.ts": "34892d25025b1f846421ccdada299f06733647c367f47b07e0836fb3461a915b",
+    "cloud/src/v213/production-worker.ts": "76aaa2d3bc42f0dccd1353a70448ff8e82d5cfed3fef8bf3bf1d578a249a1f0a",
     "cloud/src/v213/publication-mode.ts": "1ed54a266c72bc85d32e2424507f0c2ab3d31c8228f552357ebdba578e114dcb",
     "cloud/src/v213/readiness.ts": "90f1a1e9fc24e4caf6debbd0ac89fbf8e30877b5ae3a0417581ab627288fdba2",
-    "cloud/src/v213/top20-report.ts": "3dc156d0e0651d2600e77c674fa40277dd8b91dc533b75da3fafbe559a770a5c",
+    "cloud/src/v213/top20-presentation.ts": "a771ae22755b70844b6c98f91ab949315a1d1466dba484d3ede16354e6714aa9",
+    "cloud/src/v213/top20-report.ts": "c904acc6c246d20b89cc71d063c2a6b42361f7e82a910c908d88e20f96fe16a0",
     "cloud/src/worker.ts": "96ba0a34b5b6de7c40ac42e7d6cdfcdb6a6b917df505773a93da72a163033b62",
-    "cloud/test/r75-live-bench-worker.ts": "2c25684abbdb09a84128860c7a40736d4f21e09022432cf0d40c196400ec107a",
+    "cloud/test/r75-line-presentation-proof.ts": "61145e759b3407829f5b6a61bb207827ada7654a5eebe722493e2afe0b97bb9f",
+    "cloud/test/r75-live-bench-worker.ts": "a3fced15c90a4cd0eba69ca58da37dfd09d3fddbc6c42e98dee62b6f49c1efe2",
     "config/actions-storage-policy.json": "521b89f1d1734efeb2e6300008699890acbc37e09d1d6e9e99db1ebfa7f01a71",
     "config/authoritative-adapter-routes.json": "3119cc188f64e9ab531fdc0741f104cf49bdaeaf63af0f4ba43eb631aca0b807",
     "config/authoritative-source-catalog.json": "12e29cd4f62ff2be0a5de23f9a3ccea74acc200e9d81494cb5c78a3b6a3a5eb9",
@@ -105,7 +108,7 @@
     "scripts/v213_apply_diversified_operationalization.py": "c930c778184b40dbf77325ad4279a545effecc316358bf37c5a1228b139a223e",
     "scripts/v213_apply_evidence_standard_v3.py": "fe8ee12075f6e784544e8c05e4163ed429f1959e0f4394359ae5319eeaf79c32",
     "scripts/v213_build_v21_public_snapshot.py": "fd72cd56de22054d887843439b26d10c9068eaf6a5d7c5cbdeac357e024a666d",
-    "scripts/v213_compact_qa_gateway.py": "418eac885b67c418a2d45b0838b48ab98aaf67a74e30621cc114a835ead194b9",
+    "scripts/v213_compact_qa_gateway.py": "0540d6ca9fe2a28fc14d44c8597fda04b135287668394282dd0143f105b8c4f8",
     "scripts/v213_edge_readiness.ps1": "e3f5bc18caf83a635b86ff32a8d0826c03989ef5583150ec5f447266ddd36b97",
     "scripts/v213_fake_llama_for_ci.py": "564070b679bd38193351d4966fcf1a2148871538543c6e93b6c9e745479d3ea3",
     "scripts/v213_finalize_rank_coupled_order.py": "0cbbb5a79ef717472709d68b18b58db2d8ad8eb364f6ceb0f6aba21dbd97cb54",
@@ -116,7 +119,7 @@
     "scripts/v213_multi_source_fidelity.py": "9e06afde9901985dd134fdae6b0080436ccfdef11dc084d0c57e12b8cb7b6d0f",
     "scripts/v213_optional_bls_alignment_audit.py": "da37f09fdf8735487437b8cae9a9bfd0702bdb03077247dadad82cffc522de9e",
     "scripts/v213_pipeline_boundary_self_test.py": "a3d7a090002203fc6d5ffa1010ff6928176e71d54eff8a135da9f8dad3e6072e",
-    "scripts/v213_qa_live_gate.py": "43654f8e72bc8941714f84f72b3e9630703589d18738b2a61d3cca29c418967d",
+    "scripts/v213_qa_live_gate.py": "00bce08e8d6ffe095443e19ff373ac291b063a75f5257177e2d2c991b63cb800",
     "scripts/v213_r75_activation_preflight.py": "ac5c1f39c6ca226c8a91807d626f85182b4a9dce4112fc5ffa359dea6bfab089",
     "scripts/v213_refresh_serenity_public_sources.py": "3e4cf068b7158dd446cc2f0470d550e412965ce7602407ed4dfaa7942053eb7e",
     "scripts/v213_serenity_evidence_rich_shadow.py": "12c81e45a557b212c056c244a83fb31a8f4c8b5127c50ad73acc30725d29fa49",
@@ -189,7 +192,7 @@
     {
       "case": "smoke",
       "phase": "cold",
-      "total_ms": 1481.19,
+      "total_ms": 1425.23,
       "pass": true,
       "http_status": 200,
       "usage": {
@@ -203,15 +206,15 @@
       "timings": {
         "cache_n": 0,
         "prompt_n": 24,
-        "prompt_ms": 265.084,
-        "prompt_per_token_ms": 11.045166666666667,
-        "prompt_per_second": 90.53733910760363,
+        "prompt_ms": 228.859,
+        "prompt_per_token_ms": 9.535791666666666,
+        "prompt_per_second": 104.86806286840368,
         "predicted_n": 11,
-        "predicted_ms": 191.451,
-        "predicted_per_token_ms": 19.1451,
-        "predicted_per_second": 52.232686170351684
+        "predicted_ms": 187.194,
+        "predicted_per_token_ms": 18.7194,
+        "predicted_per_second": 53.420515614816715
       },
-      "upstream_ms": 460.37,
+      "upstream_ms": 578.38,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
       "answer": ""
@@ -219,7 +222,7 @@
     {
       "case": "smoke",
       "phase": "warm",
-      "total_ms": 1399.7,
+      "total_ms": 989.38,
       "pass": true,
       "http_status": 200,
       "usage": {
@@ -233,15 +236,15 @@
       "timings": {
         "cache_n": 20,
         "prompt_n": 4,
-        "prompt_ms": 59.814,
-        "prompt_per_token_ms": 14.9535,
-        "prompt_per_second": 66.87397599224262,
+        "prompt_ms": 61.812,
+        "prompt_per_token_ms": 15.453,
+        "prompt_per_second": 64.7123535883,
         "predicted_n": 11,
-        "predicted_ms": 184.88,
-        "predicted_per_token_ms": 18.488,
-        "predicted_per_second": 54.089138900908694
+        "predicted_ms": 192.067,
+        "predicted_per_token_ms": 19.2067,
+        "predicted_per_second": 52.06516476021388
       },
-      "upstream_ms": 262.36,
+      "upstream_ms": 271.43,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
       "answer": ""
@@ -249,13 +252,13 @@
     {
       "case": "general",
       "phase": "cold",
-      "total_ms": 1309.22,
+      "total_ms": 1193.05,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 37,
+        "completion_tokens": 40,
         "prompt_tokens": 242,
-        "total_tokens": 279,
+        "total_tokens": 282,
         "prompt_tokens_details": {
           "cached_tokens": 0
         }
@@ -263,29 +266,29 @@
       "timings": {
         "cache_n": 0,
         "prompt_n": 242,
-        "prompt_ms": 166.668,
-        "prompt_per_token_ms": 0.6887107438016529,
-        "prompt_per_second": 1451.9883840929272,
-        "predicted_n": 37,
-        "predicted_ms": 658.338,
-        "predicted_per_token_ms": 18.287166666666664,
-        "predicted_per_second": 54.68315667635774
+        "prompt_ms": 173.878,
+        "prompt_per_token_ms": 0.7185041322314049,
+        "prompt_per_second": 1391.7804437594177,
+        "predicted_n": 40,
+        "predicted_ms": 717.6,
+        "predicted_per_token_ms": 18.400000000000002,
+        "predicted_per_second": 54.347826086956516
       },
-      "upstream_ms": 942.16,
+      "upstream_ms": 990.69,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "自由現金流是扣除資本支出後的現金剩餘，反映實際可支配現金。淨利僅為會計利潤，未反映資本支出與現金收付時差。"
+      "answer": "自由現金流是扣除資本支出後的現金剩餘，反映實際可支配現金。淨利僅為會計獲利，未扣除資本支出，兩者差異在於現金與應計基礎。"
     },
     {
       "case": "general",
       "phase": "warm",
-      "total_ms": 1140.73,
+      "total_ms": 1097.8,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 39,
+        "completion_tokens": 47,
         "prompt_tokens": 242,
-        "total_tokens": 281,
+        "total_tokens": 289,
         "prompt_tokens_details": {
           "cached_tokens": 238
         }
@@ -293,29 +296,29 @@
       "timings": {
         "cache_n": 238,
         "prompt_n": 4,
-        "prompt_ms": 70.195,
-        "prompt_per_token_ms": 17.54875,
-        "prompt_per_second": 56.98411567775483,
-        "predicted_n": 39,
-        "predicted_ms": 714.855,
-        "predicted_per_token_ms": 18.81197368421053,
-        "predicted_per_second": 53.15763336620713
+        "prompt_ms": 62.237,
+        "prompt_per_token_ms": 15.55925,
+        "prompt_per_second": 64.2704500538265,
+        "predicted_n": 47,
+        "predicted_ms": 839.53,
+        "predicted_per_token_ms": 18.250652173913043,
+        "predicted_per_second": 54.79256250521125
       },
-      "upstream_ms": 817.58,
+      "upstream_ms": 919.52,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "自由現金流是扣除資本支出後的現金剩餘，反映實際可支配現金。淨利是會計獲利，未扣除資本支出，兩者差異在於現金與應計基礎。"
+      "answer": "自由現金流是扣除資本支出後的現金剩餘，比淨利更真實反映現金生成能力。淨利含應計項目，易受會計政策影響，兩者差異在於現金實際進出與時間點。"
     },
     {
       "case": "ticker",
       "phase": "cold",
-      "total_ms": 1077.5,
+      "total_ms": 828.29,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 23,
+        "completion_tokens": 24,
         "prompt_tokens": 316,
-        "total_tokens": 339,
+        "total_tokens": 340,
         "prompt_tokens_details": {
           "cached_tokens": 0
         }
@@ -323,29 +326,29 @@
       "timings": {
         "cache_n": 0,
         "prompt_n": 316,
-        "prompt_ms": 206.209,
-        "prompt_per_token_ms": 0.6525601265822785,
-        "prompt_per_second": 1532.4258398033064,
-        "predicted_n": 23,
-        "predicted_ms": 396.986,
-        "predicted_per_token_ms": 18.044818181818183,
-        "predicted_per_second": 55.41757140050279
+        "prompt_ms": 202.796,
+        "prompt_per_token_ms": 0.641759493670886,
+        "prompt_per_second": 1558.2161383853725,
+        "predicted_n": 24,
+        "predicted_ms": 412.592,
+        "predicted_per_token_ms": 17.93878260869565,
+        "predicted_per_second": 55.74514290146198
       },
-      "upstream_ms": 622.21,
+      "upstream_ms": 633.33,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "目前缺乏獨立佐證，無法確認具體風險。僅有SEC檔案來源，不構成優勢證明。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
+      "answer": "目前缺乏獨立佐證，無法確認具體公司風險。僅有SEC檔案來源，不構成風險驗證。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
     },
     {
       "case": "ticker",
       "phase": "warm",
-      "total_ms": 1155.18,
+      "total_ms": 674.16,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 25,
+        "completion_tokens": 23,
         "prompt_tokens": 316,
-        "total_tokens": 341,
+        "total_tokens": 339,
         "prompt_tokens_details": {
           "cached_tokens": 312
         }
@@ -353,29 +356,29 @@
       "timings": {
         "cache_n": 312,
         "prompt_n": 4,
-        "prompt_ms": 74.175,
-        "prompt_per_token_ms": 18.54375,
-        "prompt_per_second": 53.926525109538254,
-        "predicted_n": 25,
-        "predicted_ms": 430.749,
-        "predicted_per_token_ms": 17.947875,
-        "predicted_per_second": 55.71690241881002
+        "prompt_ms": 65.522,
+        "prompt_per_token_ms": 16.3805,
+        "prompt_per_second": 61.04819755196727,
+        "predicted_n": 23,
+        "predicted_ms": 395.935,
+        "predicted_per_token_ms": 17.997045454545454,
+        "predicted_per_second": 55.564676020053795
       },
-      "upstream_ms": 539.6,
+      "upstream_ms": 489.32,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "目前缺乏獨立佐證，無法確認具體公司風險。僅有SEC檔案來源，不構成風險優勢證明。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
+      "answer": "目前缺乏獨立佐證，無法確認具體風險。僅有SEC檔案來源，不構成風險結論。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
     },
     {
       "case": "methodology",
       "phase": "cold",
-      "total_ms": 1133.98,
+      "total_ms": 1119.72,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 25,
+        "completion_tokens": 37,
         "prompt_tokens": 254,
-        "total_tokens": 279,
+        "total_tokens": 291,
         "prompt_tokens_details": {
           "cached_tokens": 0
         }
@@ -383,29 +386,29 @@
       "timings": {
         "cache_n": 0,
         "prompt_n": 254,
-        "prompt_ms": 188.084,
-        "prompt_per_token_ms": 0.7404881889763779,
-        "prompt_per_second": 1350.4604325726802,
-        "predicted_n": 25,
-        "predicted_ms": 447.569,
-        "predicted_per_token_ms": 18.648708333333335,
-        "predicted_per_second": 53.62301678623854
+        "prompt_ms": 180.943,
+        "prompt_per_token_ms": 0.7123740157480315,
+        "prompt_per_second": 1403.7569842436567,
+        "predicted_n": 37,
+        "predicted_ms": 671.987,
+        "predicted_per_token_ms": 18.666305555555553,
+        "predicted_per_second": 53.572464943518256
       },
-      "upstream_ms": 716.1,
+      "upstream_ms": 929.03,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "瓶頸指產業稀缺環節，價值捕捉指公司實際獲利能力。兩者不等價，需獨立證據驗證。"
+      "answer": "瓶頸指產業稀缺環節，價值捕捉指公司實際獲利能力。僅有瓶頸不等於定價權，需獨立證據證明其能轉化為可持續利潤。"
     },
     {
       "case": "methodology",
       "phase": "warm",
-      "total_ms": 1089.27,
+      "total_ms": 723.2,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 30,
+        "completion_tokens": 25,
         "prompt_tokens": 254,
-        "total_tokens": 284,
+        "total_tokens": 279,
         "prompt_tokens_details": {
           "cached_tokens": 250
         }
@@ -413,29 +416,29 @@
       "timings": {
         "cache_n": 250,
         "prompt_n": 4,
-        "prompt_ms": 77.619,
-        "prompt_per_token_ms": 19.40475,
-        "prompt_per_second": 51.533773947100585,
-        "predicted_n": 30,
-        "predicted_ms": 545.469,
-        "predicted_per_token_ms": 18.80927586206897,
-        "predicted_per_second": 53.16525778733529
+        "prompt_ms": 62.629,
+        "prompt_per_token_ms": 15.65725,
+        "prompt_per_second": 63.86817608456147,
+        "predicted_n": 25,
+        "predicted_ms": 453.406,
+        "predicted_per_token_ms": 18.891916666666667,
+        "predicted_per_second": 52.93269167148207
       },
-      "upstream_ms": 643.11,
+      "upstream_ms": 550.85,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "瓶頸指產業稀缺環節，價值捕捉指公司實際獲利能力。兩者不等價，需獨立證據證明定價權與持續優勢。"
+      "answer": "瓶頸指產業稀缺資源，非公司獲利能力。需獨立證據證明定價權與利潤，不可混淆。"
     },
     {
       "case": "evidence",
       "phase": "cold",
-      "total_ms": 1132.06,
+      "total_ms": 861.95,
       "pass": true,
       "http_status": 200,
       "usage": {
-        "completion_tokens": 27,
+        "completion_tokens": 28,
         "prompt_tokens": 303,
-        "total_tokens": 330,
+        "total_tokens": 331,
         "prompt_tokens_details": {
           "cached_tokens": 0
         }
@@ -443,23 +446,23 @@
       "timings": {
         "cache_n": 0,
         "prompt_n": 303,
-        "prompt_ms": 198.924,
-        "prompt_per_token_ms": 0.6565148514851485,
-        "prompt_per_second": 1523.1947879592205,
-        "predicted_n": 27,
-        "predicted_ms": 471.246,
-        "predicted_per_token_ms": 18.124846153846153,
-        "predicted_per_second": 55.172882104039076
+        "prompt_ms": 189.663,
+        "prompt_per_token_ms": 0.625950495049505,
+        "prompt_per_second": 1597.5704275478083,
+        "predicted_n": 28,
+        "predicted_ms": 491.678,
+        "predicted_per_token_ms": 18.210296296296296,
+        "predicted_per_second": 54.913988423317704
       },
-      "upstream_ms": 704.29,
+      "upstream_ms": 685.62,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "需查獨立第三方數據驗證價格彈性與市佔率，僅靠SEC檔案或公司自述無法證明定價權。"
+      "answer": "需獨立驗證價格變動與銷量數據，確認無成本轉嫁。僅靠檔案來源或名稱無法證明定價優勢。"
     },
     {
       "case": "evidence",
       "phase": "warm",
-      "total_ms": 1299.67,
+      "total_ms": 887.46,
       "pass": true,
       "http_status": 200,
       "usage": {
@@ -473,34 +476,35 @@
       "timings": {
         "cache_n": 299,
         "prompt_n": 4,
-        "prompt_ms": 74.572,
-        "prompt_per_token_ms": 18.643,
-        "prompt_per_second": 53.639435713136294,
+        "prompt_ms": 61.061,
+        "prompt_per_token_ms": 15.26525,
+        "prompt_per_second": 65.5082622295737,
         "predicted_n": 37,
-        "predicted_ms": 644.592,
-        "predicted_per_token_ms": 17.90533333333333,
-        "predicted_per_second": 55.84928140591258
+        "predicted_ms": 643.187,
+        "predicted_per_token_ms": 17.866305555555556,
+        "predicted_per_second": 55.971280514065114
       },
-      "upstream_ms": 753.26,
+      "upstream_ms": 720.38,
       "model": "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf",
       "finish_reason": "stop",
-      "answer": "需查獨立第三方數據驗證價格彈性與市佔率，SEC檔案僅證身份非優勢。缺乏佐證時結論維持有限，不可推斷為高信心。"
+      "answer": "需查獨立第三方數據驗證價格彈性與市佔率，SEC檔案僅證身份非優勢。缺乏佐證時結論為不可用，不可推斷定價權。"
     }
   ],
-  "worker_name": "ii-r75-qa-bench-f4c59a4571",
+  "worker_name": "ii-r75-qa-bench-a81f00c47d",
+  "cloudflare_auth_preflight": "PASS_READ_ONLY_WHOAMI",
   "initial_origin_provisioning": {
     "status": "PASS_TEST_HOST_PROVISIONING",
-    "attempts": 2,
-    "initial_empty_worker_404_count": 1
+    "attempts": 1,
+    "initial_empty_worker_404_count": 0
   },
-  "worker_version": "3f36cf7f-0e8d-4582-b4e7-67ef5bcaaf84",
+  "worker_version": "70e20885-8319-4c63-83be-9bf2bc3871b1",
   "active_percentage": 100,
   "readiness": [
     {
       "schema_version": 1,
       "ready": true,
-      "worker_version": "3f36cf7f-0e8d-4582-b4e7-67ef5bcaaf84",
-      "challenge": "c55aab5c2ae84496a61e17363aaf9d75",
+      "worker_version": "70e20885-8319-4c63-83be-9bf2bc3871b1",
+      "challenge": "02a79fad64c6405da2a3e1f7a57a2710",
       "parser_schema": "v213-r75-sec-filing-provenance-v1",
       "publication_contract_id": "v213-r75-publication-mode-v1",
       "publication_contract_sha256": "9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd",
@@ -515,6 +519,11 @@
   "bilingual_field_count": 7,
   "top20_rows": 20,
   "production_health_presentation": "seven_fields",
+  "line_presentation": "flex_carousel",
+  "line_message_count": 4,
+  "line_values_match": true,
+  "text_fallback_values_match": true,
+  "text_message_count": 2,
   "reference_job": "PASS_REAL_WAITUNTIL_SYNTHETIC_LINE",
   "test_only_reference_floor_ms": 8000,
   "stale_lease": "PASS",

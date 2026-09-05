@@ -61,46 +61,13 @@ function Resolve-Python {
     return $python
 }
 function Load-SecContact {
-    if ($env:SEC_CONTACT_EMAIL -match '^[^@\s]+@[^@\s]+\.[^@\s]+$') { return }
-    $path = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\sec-contact.local.txt'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
-    try {
-        $secure = ConvertTo-SecureString -String ((Get-Content -LiteralPath $path -Raw -Encoding utf8).Trim())
-        $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-        try { $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
-        finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
-        if ($plain -match '^[^@\s]+@[^@\s]+\.[^@\s]+$') { $env:SEC_CONTACT_EMAIL = $plain }
-    }
-    catch {}
+    . (Join-Path $ProjectRoot 'scripts/v213_windows_security.ps1')
+    return (Initialize-V213SecContact)
 }
 function Invoke-CurrentWorkerBundleSync([string]$SyncConfig,[string]$BundlePath) {
-    $bundle = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8 | ConvertFrom-Json
-    $transactionId = [string]$bundle.transaction_id
-    $runId = [string]$bundle.run_id
-    $resultRoot = Join-Path $env:TEMP ('ii-v213-bundle-sync-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Force -Path $resultRoot | Out-Null
-    $commitResult = Join-Path $resultRoot 'commit.json'
-    $commitAttempted = $false
-    try {
-        $commitAttempted = $true
-        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Commit -ProjectRoot $ProjectRoot -BundlePath $BundlePath -LocalConfigPath $SyncConfig -ResultPath $commitResult
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $commitResult -PathType Leaf)) { throw 'Atomic activation-bundle commit did not return a receipt.' }
-        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Finalize -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
-        if ($LASTEXITCODE -ne 0) { throw 'Atomic activation-bundle finalize failed.' }
-        Write-Host "V213_ACTIVE_BUNDLE_REFRESH = PASS; run_id=$runId; transaction_id=$transactionId" -ForegroundColor Green
-    }
-    catch {
-        $failure = $_.Exception.Message
-        if ($commitAttempted) {
-            try {
-                & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -TransactionId $transactionId -RunId $runId
-                Write-Host 'V213_ACTIVE_BUNDLE_REFRESH_ROLLBACK = PASS' -ForegroundColor Green
-            }
-            catch { throw "ACTIVE BUNDLE REFRESH FAILED AND POINTER ROLLBACK WAS NOT VERIFIED. Original: $failure; rollback: $($_.Exception.Message)" }
-        }
-        throw $failure
-    }
-    finally { Remove-Item -LiteralPath $resultRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    . (Join-Path $ProjectRoot 'scripts/v213_sealed_refresh.ps1')
+    $result=Invoke-V213SealedRefresh -ProjectRoot $ProjectRoot -LocalConfigPath $SyncConfig -BundlePath $BundlePath
+    Write-Host "V213_ACTIVE_BUNDLE_REFRESH = PASS; run_id=$($result.run_id); transaction_id=$($result.transaction_id); durable_journal=true" -ForegroundColor Green
 }
 
 try {
@@ -125,7 +92,8 @@ try {
     Stage 1 'Verified Python and latest public Serenity source metadata'
     $python = Resolve-Python
     $env:PROJECT_PYTHON = $python
-    Load-SecContact
+    $secContactReady=Load-SecContact
+    if(-not$Synthetic-and-not$secContactReady){throw 'SEC_CONTACT_NOT_CONFIGURED_OR_UNREADABLE'}
     Write-Host "PROJECT_PYTHON = $python" -ForegroundColor Green
     & $python (Join-Path $ProjectRoot 'scripts\v213_refresh_serenity_public_sources.py') '--enforce'
     if ($LASTEXITCODE -ne 0) { throw 'Latest public Serenity source verification failed.' }

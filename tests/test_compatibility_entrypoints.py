@@ -23,6 +23,14 @@ def parameters(path):
     return text[:text.index('\n)\n')+3]
 
 class CompatibilityEntrypointTests(unittest.TestCase):
+    def test_installers_never_overlay_a_forwarder_onto_its_canonical_target(self):
+        for name in ('install-v213-runtime.ps1', 'install-v213-source-diverse-runtime-v2.ps1'):
+            text = (ROOT / name).read_text(encoding='utf-8-sig')
+            self.assertNotRegex(text, r"'run-v213-local-source-diverse\.ps1'\s*=\s*'run-v213-local\.ps1'")
+        installer = (ROOT / 'install-v213-runtime.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('The canonical stable refresh pipeline order is invalid', installer)
+        self.assertIn('source-independence gate', installer)
+
     def test_parameter_contracts_are_identical(self):
         for alias, canonical, *_ in PAIRS:
             self.assertEqual(parameters(ROOT/alias), parameters(ROOT/canonical))

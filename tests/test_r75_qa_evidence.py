@@ -54,7 +54,8 @@ class LiveQaQualificationTests(unittest.TestCase):
         canonical = 'Qwen3.8-27B-UD-Q6_K_XL-844843d973bf'
         # In-memory synthetic verifier fixture only; never rewrite the live receipt.
         data.update(seven_field_line_reply='PASS_REAL_WORKER_MOCK_LINE', bilingual_field_count=7,
-                    top20_rows=20, production_health_presentation='seven_fields')
+                    top20_rows=20, production_health_presentation='seven_fields', line_presentation='flex_carousel',
+                    line_message_count=4, line_values_match=True, text_fallback_values_match=True, text_message_count=2)
         data['canonical_model'] = canonical
         data['model_catalog'] = [{'id': canonical, 'aliases': ['qwen38-q6']}]
         for row in data['results']: row['model'] = canonical
@@ -73,7 +74,7 @@ class LiveQaQualificationTests(unittest.TestCase):
         self.assertTrue(verify(self.proof)['release_ready'])
 
     def test_missing_partial_incomplete_or_synthetic_only_is_rejected(self):
-        for field, value in [('status','PASS_SYNTHETIC'),('production_mutation',True),('real_line_sent',True),('preset_unchanged',False),('isolated_resources_deleted',False),('source_manifest',{}),('exact_model','qwen38'),('reference_job','PASS_SYNTHETIC'),('results',[])]:
+        for field, value in [('status','PASS_SYNTHETIC'),('production_mutation',True),('real_line_sent',True),('preset_unchanged',False),('isolated_resources_deleted',False),('source_manifest',{}),('exact_model','qwen38'),('reference_job','PASS_SYNTHETIC'),('results',[]),('line_values_match',False),('text_fallback_values_match',False),('line_message_count',6),('text_message_count',6)]:
             data=copy.deepcopy(self.proof);data[field]=value
             with self.subTest(field=field),self.assertRaises(ValueError):verify(data,self.manifest)
 

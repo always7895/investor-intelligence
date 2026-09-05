@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'v213_windows_security.ps1')
 
 function Get-V213FreeRelayConfig {
     param([string]$ConfigPath = '')

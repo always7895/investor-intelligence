@@ -46,7 +46,7 @@ def router_limits():
 
 
 def source_manifest():
-    paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "cloud/src", "scripts/v21*.py", "config/*.json", "cloud/test/r75-live-bench-worker.ts", "scripts/v213_edge_readiness.ps1"], cwd=ROOT, text=True).splitlines()
+    paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "cloud/src", "scripts/v21*.py", "config/*.json", "cloud/test/r75-live-bench-worker.ts", "cloud/test/r75-line-presentation-proof.ts", "scripts/v213_edge_readiness.ps1"], cwd=ROOT, text=True).splitlines()
     return {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sorted(set(paths))}
 
 def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep):
@@ -139,6 +139,10 @@ def main():
         with tempfile.TemporaryDirectory(prefix="ii-r75-isolated-qa-", ignore_cleanup_errors=True) as temp:
             tmp = Path(temp)
             cfg = tmp / "wrangler.toml"
+            # Resolve/refresh CLI authentication with a read-only operation
+            # before provisioning. Never retry failed writes or log identity.
+            wr("whoami")
+            evidence["cloudflare_auth_preflight"] = "PASS_READ_ONLY_WHOAMI"
             namespace_output = wr("kv", "namespace", "create", name)
             found = re.search(r'(?:"id"\s*:|\bid\s*=)\s*"([0-9a-f]{32})"', namespace_output)
             if not found: raise RuntimeError("ISOLATED_KV_ID_UNAVAILABLE")
@@ -215,12 +219,12 @@ def main():
                 auth = {"authorization": "Bearer " + synthetic_auth}
                 session.post(origin+"/setup", headers=auth, timeout=15).raise_for_status()
                 top20 = session.get(origin+"/top20-check", headers=auth, timeout=20).json()
-                if top20.get("rows") != 20 or top20.get("fields") != [7]*21 or "Current orders" not in top20.get("header", "") or "Future order outlook" not in top20.get("header", "") or top20.get("real_line_sent") is not False:
+                if top20.get("rows") != 20 or top20.get("fields") != [7]*21 or "Current orders" not in top20.get("header", "") or "Future order outlook" not in top20.get("header", "") or top20.get("real_line_sent") is not False or top20.get("presentation") != "flex_carousel" or top20.get("message_count") != 4 or top20.get("values_match") is not True or top20.get("text_fallback_values_match") is not True or type(top20.get("text_message_count")) is not int or not 1 <= top20["text_message_count"] <= 5:
                     raise RuntimeError("SEVEN_FIELD_LINE_REPLY_FAILED")
                 health = session.get(origin+"/health", timeout=10).json()
                 if health.get("product_version") != "2.1.3" or health.get("top20_presentation") != "seven_fields":
                     raise RuntimeError("PRODUCTION_HEALTH_PRESENTATION_FAILED")
-                evidence.update(seven_field_line_reply="PASS_REAL_WORKER_MOCK_LINE", bilingual_field_count=7, top20_rows=20, production_health_presentation="seven_fields")
+                evidence.update(seven_field_line_reply="PASS_REAL_WORKER_MOCK_LINE", bilingual_field_count=7, top20_rows=20, production_health_presentation="seven_fields", line_presentation="flex_carousel", line_message_count=4, line_values_match=True, text_fallback_values_match=True, text_message_count=top20["text_message_count"])
                 for case in ("smoke", "general", "ticker", "methodology", "evidence"):
                     for phase in ("cold", "warm"):
                         before = len(metrics); started = time.monotonic()

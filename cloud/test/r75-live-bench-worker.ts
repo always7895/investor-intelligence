@@ -5,16 +5,20 @@ import { compactGeneralAnswer } from "../src/v213/compact-qa";
 import { parseQuery } from "../src/core";
 import { processAuthorizedLineEvent, V211_GENERAL_QA } from "../src/v211/worker";
 import { getJob } from "../src/storage";
-import { V213_TOP20_DISPLAY_COLUMNS, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
+import { V213_TOP20_DISPLAY_COLUMNS, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE, parseV213Top20Report, v213Top20DisplayHeader, v213Top20DisplayValues } from "../src/v213/top20-report";
+import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 export { V213FreeRelayRoute } from "../src/v213/free-relay";
 
 const realFetch = globalThis.fetch;
 const replies: string[] = [];
+const linePayloads: any[] = [];
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (url.startsWith("https://api.line.me/")) {
     if (url !== "https://api.line.me/v2/bot/message/reply") throw new Error("TEST_LINE_PUSH_FORBIDDEN");
-    replies.push(JSON.parse(String(init?.body)).messages[0].text);
+    const messages = JSON.parse(String(init?.body)).messages;
+    linePayloads.push(...messages);
+    replies.push(...messages.filter((m: any) => m.type === "text").map((m: any) => m.text));
     return Promise.resolve(new Response("{}")); // no request ever leaves this isolate
   }
   return realFetch(input, init);
@@ -52,9 +56,23 @@ export default {
     }
     if (url.pathname === "/top20-check") {
       replies.length = 0;
+      linePayloads.length = 0;
       await processAuthorizedLineEvent(await freeRelayRequestEnv(env), ctx, {type:"message",replyToken:"SYNTHETIC_REPLY",source:{type:"user",userId:"SYNTHETIC_USER"},message:{type:"text",text:"Top20"},timestamp:Date.now()}, "synthetic-top20-tenant");
-      const lines = replies.join("\n").split("\n");
-      return Response.json({ rows: lines.length - 1, fields: lines.map(line=>line.split("｜").length), header: lines[0], real_line_sent:false });
+      const expected = parseV213Top20Report(await env.PUBLIC_CACHE.get("v213:top20-report:latest", "json"));
+      if (!expected) throw new Error("SYNTHETIC_REPORT_INVALID");
+      const proof = inspectSevenFieldFlex(linePayloads, expected);
+      linePayloads.length = 0;
+      await processAuthorizedLineEvent(await freeRelayRequestEnv(env), ctx, {type:"message",replyToken:"SYNTHETIC_TEXT_REPLY",source:{type:"user",userId:"SYNTHETIC_USER"},message:{type:"text",text:"Top20 文字"},timestamp:Date.now()}, "synthetic-top20-tenant");
+      const labels = v213Top20DisplayHeader("bilingual");
+      const fullText = linePayloads.map(m => m.text ?? "").join("\n");
+      let previous = -1;
+      const complete = linePayloads.length > 0 && linePayloads.length <= 5 && linePayloads.every(m => m.type === "text") && expected.records.every(row => {
+        const fragment = `── ${row.rank}/20 ──\n` + v213Top20DisplayValues(row).map((value, i) => `${labels[i]}：${value}`).join("\n");
+        const index = fullText.indexOf(fragment);
+        const ordered = index > previous; previous = index;
+        return ordered;
+      });
+      return Response.json({ ...proof, text_fallback_values_match: complete, text_message_count: linePayloads.length, real_line_sent:false });
     }
     if (url.pathname === "/reference-start") {
       const scoped = await freeRelayRequestEnv(env);

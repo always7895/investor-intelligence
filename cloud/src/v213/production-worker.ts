@@ -2,7 +2,8 @@ export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
 import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "../v211/worker";
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
-import { v213Top20ReportAnswer, v213FieldLocale } from "./top20-report";
+import { v213FieldLocale } from "./top20-report";
+import { v213Top20LineAnswer } from "./top20-presentation";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import {
   finalizeV213Activation,
@@ -91,12 +92,12 @@ export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213P
   // v213 uses one compact path. Explicit false is an operational rollback,
   // not a second model or paid fallback. Legacy qa.ts safety checks still run.
   const handler = env.V213_COMPACT_QA_ENABLED !== "false" ? compactGeneralAnswer : undefined;
-  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler, [V211_TOP20_REPORT]: v213Top20ReportAnswer };
+  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler, [V211_TOP20_REPORT]: v213Top20LineAnswer };
   const overrides = await freeRelayRuntimeOverrides(env);
   return {
     ...env,
     [V211_GENERAL_QA]: handler,
-    [V211_TOP20_REPORT]: v213Top20ReportAnswer,
+    [V211_TOP20_REPORT]: v213Top20LineAnswer,
     LOCAL_LLM_BASE_URL: overrides?.LOCAL_LLM_BASE_URL ?? "",
     LOCAL_LLM_ALLOWED_HOSTS: overrides?.LOCAL_LLM_ALLOWED_HOSTS ?? "",
     LOCAL_LLM_MODEL: overrides?.LOCAL_LLM_MODEL ?? "qwen38-q6",

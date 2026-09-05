@@ -22,7 +22,8 @@ def verify(data, manifest=None):
     require(data.get("request_enable_thinking") is False and data.get("exact_model") == "qwen38-q6", "MODEL_PROFILE_MISMATCH")
     # The original receipt retains the exact test-driver hash for provenance.
     # A driver-only refactor is not an executable Worker/Gateway change. Bind
-    # every deployed/runtime file, not the later verifier/operator tooling.
+    # the Worker/Gateway runtime exercised here, not later verifier tooling.
+    # Windows/package receipts separately bind launcher, installer and refresh code.
     runtime_only = lambda files: {p:h for p,h in files.items() if p != 'scripts/v213_qa_live_gate.py'}
     recorded = data.get("source_manifest")
     require(isinstance(recorded, dict), "LIVE_SOURCE_MANIFEST_MISSING")
@@ -50,6 +51,8 @@ def verify(data, manifest=None):
         require(type(usage.get("completion_tokens")) is int and 0 < usage["completion_tokens"] <= POLICY["max_output_tokens"], "OUTPUT_TOKEN_PROOF_INVALID")
         if row["case"] != "smoke": require(isinstance(row.get("answer"),str) and len(row["answer"]) >= 25 and not row["answer"].startswith("LOCAL_MODEL_"), "EMPTY_OR_ERROR_ANSWER")
     require(data.get("seven_field_line_reply") == "PASS_REAL_WORKER_MOCK_LINE" and data.get("bilingual_field_count") == 7 and data.get("top20_rows") == 20 and data.get("production_health_presentation") == "seven_fields", "SEVEN_FIELD_LINE_REPLY_UNPROVEN")
+    require(data.get("line_presentation") == "flex_carousel" and data.get("line_message_count") == 4 and data.get("line_values_match") is True, "LINE_FLEX_UI_UNPROVEN")
+    require(data.get("text_fallback_values_match") is True and type(data.get("text_message_count")) is int and 1 <= data["text_message_count"] <= 5, "LINE_TEXT_FALLBACK_UNPROVEN")
     require(data.get("reference_job") == "PASS_REAL_WAITUNTIL_SYNTHETIC_LINE", "REFERENCE_JOB_UNPROVEN")
     for field in ("stale_lease", "replay", "exact_model_mismatch"): require(data.get(field) == "PASS", "NEGATIVE_GATE_UNPROVEN:"+field)
     return {"status":"PASS", "live_qa":"PASS", "live_free_relay_smoke":"PASS", "release_ready":True, "max_latency_ms":max(r["total_ms"] for r in rows), "production_mutation_by_ci":False}
