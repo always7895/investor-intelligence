@@ -29,7 +29,8 @@ try {
         'scripts/run_v213_local_llm_bridge_core_v2.ps1','scripts/test_v213_free_relay.ps1',
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',
         'scripts/v213_free_relay_heartbeat.ps1','scripts/verify_v213_r75_free_relay_hotfix.py',
-        'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md'
+        'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md',
+        'tests/test_v213_free_relay_package_payload.py'
     )
     foreach ($path in $changed) { if ($allowed -notcontains $path) { throw "FREE_RELAY changed a non-deployment path: $path" } }
     foreach ($protected in @(

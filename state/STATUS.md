@@ -296,3 +296,13 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 ### 下一步
 
 正式發布完成。持續由 heartbeat 維護短效 lease；若 Gateway/cloudflared 失效則 fail closed，登入工作會建立新 generation。
+
+## 2026-09-05 08:02 TST — 使用者解壓版啟用失敗，重新開啟發布 gate
+
+- Fetched HEAD: `7011676f6b98112182eee0f291c2ff3c75817615`；使用者 launcher log `20260905-075659-054-run-v213-local.log` 在第 8 階段出現 `No test files found, exiting with code 1`。
+- 原 ZIP `92c97f9`/`33896931576` 實際 `cloud/test/*=0`、共用 publication fixtures=0；packager 明確刪除這兩項，而 activation 必須執行 `npm test`。這是產品打包缺陷，不是使用者操作錯誤。
+- Bridge、20-row all-LIMITED bundle 與 sealed preflight 通過；行情 corroboration 0/20 正確降級，非本次退出原因。此次日誌未進入 activation commit。
+- 更正先前全面完成的結論：先前驗證只涵蓋 source checkout 與 ZIP 完整性，未涵蓋解壓後 activation 測試依賴。
+- 修正範圍：FREE_RELAY packager 保留 Worker tests 和兩個 synthetic fixtures；final ZIP 解壓至特殊路徑後執行 npm ci/typecheck/full tests；verifier 強制 inventory 與 extracted-ZIP receipt；新增缺檔負向測試。不修改受保護 R75 contract、scoring 或跳過 activation 測試。
+- 本里程碑 P0/P1/P2 = **0/1/0**（發布阻塞：解壓後 Worker gate）；外部 mutation：無。
+- 下一步：執行回歸、Windows CI、下載修正版與獨立解壓實測，產生新的 immutable release；舊 ZIP 不覆寫。
