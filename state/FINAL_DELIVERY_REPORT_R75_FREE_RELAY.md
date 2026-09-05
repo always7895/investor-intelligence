@@ -97,4 +97,14 @@
 - 新不可變 artifact：`Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-92c97f97694e6e39c7a16986630d248c9ee744fe-33896931576.zip`；SHA-256 `8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec`；下載後獨立驗證 PASS。
 - GitHub Immutable Releases 已啟用；不可變正式 Release（`isImmutable=true`）為 `v2.1.3-R75-free-relay-final-92c97f9-33896931576`，`gh release verify` PASS，10 個 assets 全部具有 GitHub attestation。
 - CI 仍為 `production_mutation_by_ci=false`；上述 Worker deploy、真實 tunnel/route 與 Task Scheduler 註冊均是本次明確授權的操作者動作。未執行臨時 LINE 手動推送；既有 08:00/21:00 TST crons 保留。
-- 最終缺陷數：P0 **0**、P1 **0**、P2 **0**。
+- 當時所列缺陷數：P0 **0**、P1 **0**、P2 **0**；後續使用者解壓啟用發現漏測，以下修正記錄取代全面完成的解讀。
+
+## 11. 使用者實際啟用失敗與修正版（2026-09-05）
+
+`20260905-075659-054-run-v213-local.log` 顯示在正式 activation 前 `npm test` 找不到測試檔。原 ZIP 排除 `cloud/test/` 及共用 fixtures；此外 runtime installer 未接受 HOTFIX-REFS/R75 wrapper，且誤判 robocopy 成功退出碼。因此先前對完整發布可用性的結論過度延伸，正式 activation 並未由當時 smoke 證明。
+
+修正版來源 `1ca12437f9608bb971863a6caf69426d75f6ccf9`，Windows CI `33931959307` PASS：Python 556（2 skipped）、Worker 19 files/113 tests、PS 5.1/7、final ZIP 解壓 typecheck/test 及隔離 runtime installer PASS。下載到使用者 Downloads 後，再次獨立執行相同 Worker gate 與隔離 installer 均 PASS。
+
+新不可變 Release：`v2.1.3-R75-package-fix-1ca1243-33931959307`；ZIP SHA-256：`fc374886b50cc1e71c98d464bf3b7c554859651bb38770917c285dcbf2074272`；GitHub attestation、ZIP inventory／MANIFEST／receipts／CRC 驗證 PASS。舊 Release 已標示缺陷且不覆寫資產。
+
+本輪僅修正打包與安裝 gate，未重新執行 Production activation、部署、資料提交或 LINE 發送。**解壓與安裝缺陷已修復；正式 sealed-bundle activation 仍需實際交易成功回執，不宣稱整個產品所有路徑無問題。**
