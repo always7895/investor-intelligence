@@ -1,4 +1,6 @@
-# Documentation index
+# 文件索引 / Documentation index
+
+[目前狀態與七欄定義 / Current status and seven fields](CURRENT_STATUS_BILINGUAL.md) — 中英對照 / Traditional Chinese and English. 歷史文件不代表新問題已修復 / Historical documents do not certify newly discovered fixes.
 
 ## Current authority
 

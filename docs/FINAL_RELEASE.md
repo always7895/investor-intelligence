@@ -1,4 +1,6 @@
-# Current release and installation
+# 正式修正版與安裝 / Published hotfix and installation
+
+**範圍提醒 / Scope:** 已發布版仍有五／七欄入口不一致；新修正尚未交付。 / The published ZIP still has five/seven-field routing inconsistency; its fix is not yet delivered. [中英狀態 / Bilingual status](CURRENT_STATUS_BILINGUAL.md).
 
 Use the [current verified identity, checksum and measurements](../README.md) and [latest immutable GitHub release](https://github.com/always7895/investor-intelligence/releases/latest). Do not use an older dated release document as the current installer source.
 

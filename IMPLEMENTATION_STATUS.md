@@ -1,4 +1,6 @@
-# Current implementation status
+# 實作狀態 / Implementation status
+
+**最新補充 / Latest update:** [七欄入口與驗收阻擋 / Seven-field routing and blocked qualification](docs/CURRENT_STATUS_BILINGUAL.md). 下列完成項目僅限已交付的 Q&A/readiness，非全產品零缺陷。 / The completed items below cover the delivered Q&A/readiness hotfix, not zero defects across the product.
 
 Release/version/checksum authority: [README](README.md). Full receipts and verification limits: [delivery report](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md).
 
