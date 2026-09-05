@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import productionWorker, { freeRelayRequestEnv, v213RuntimeCompatibleFetch } from "../src/v213/production-worker";
 import { parseQuery } from "../src/core";
+import * as sevenFieldBroadcast from "../src/v213/broadcast";
 import { generalAnswer } from "../src/qa";
 import {
   V213FreeRelayRoute,
@@ -125,6 +126,19 @@ afterEach(() => {
 });
 
 describe("R75 FREE_RELAY route lease", () => {
+  it("keeps legacy test-push authenticated but routes it to the seven-field broadcaster", async () => {
+    const e = env(relayObject().object);
+    const spy = vi.spyOn(sevenFieldBroadcast, "broadcastV213Top20").mockResolvedValue({status:"synthetic_no_send",format:"v213_seven_fields"});
+    try {
+      const denied = await productionWorker.fetch(new Request("https://synthetic.workers.dev/v21/admin/test-push", {method:"POST",body:"{}"}), e, context());
+      expect(denied.status).toBe(401); expect(spy).not.toHaveBeenCalled();
+      const signed = await signedAdminRequest("/v21/admin/test-push", {}, "abcdef0123456789abcdef0123456789");
+      const response = await productionWorker.fetch(signed, e, context());
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({format:"v213_seven_fields"});
+      expect(spy).toHaveBeenCalledWith(e, "test");
+    } finally { spy.mockRestore(); }
+  });
   it("requires exactly three public schema-v2 health checks before atomic publication", async () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

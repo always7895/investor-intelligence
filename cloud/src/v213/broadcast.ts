@@ -4,8 +4,7 @@ import { publicJson, publicText, type StorageEnv } from "../storage";
 import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushText, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { formatV213Top20Report, parseV213Top20Report } from "./top20-report";
-import type { FieldLocale } from "./field-labels";
+import { formatV213Top20Report, parseV213Top20Report, v213FieldLocale } from "./top20-report";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
   V213_BROADCAST_DEDUPE?: DurableObjectNamespace;
@@ -18,13 +17,6 @@ export type V213BroadcastSlot = "morning" | "evening" | "test";
 
 function enabled(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
-}
-
-function locale(value: string | undefined): FieldLocale {
-  const normalized = (value ?? "zh-TW").trim().toLowerCase();
-  if (normalized === "en" || normalized === "english") return "en";
-  if (normalized === "bilingual" || normalized === "zh-en" || normalized === "zh+en") return "bilingual";
-  return "zh-TW";
 }
 
 function taipeiDate(now: number): string {
@@ -77,7 +69,7 @@ export async function broadcastV213Top20(
     return { status: "stale" };
   }
 
-  const message = formatV213Top20Report(report, locale(env.V213_FIELD_LOCALE));
+  const message = formatV213Top20Report(report, v213FieldLocale(env.V213_FIELD_LOCALE));
   const chunks = splitLineText(message, 4900, 5);
   if (chunks.length !== 1 || chunks[0] !== message) {
     return { status: "seven_field_message_not_single_chunk" };
@@ -104,7 +96,7 @@ export async function broadcastV213Top20(
     run_id: runId,
     count: 20,
     format: "v213_seven_fields",
-    field_locale: locale(env.V213_FIELD_LOCALE),
+    field_locale: v213FieldLocale(env.V213_FIELD_LOCALE),
   };
 }
 

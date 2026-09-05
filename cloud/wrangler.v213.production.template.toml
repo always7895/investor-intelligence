@@ -22,7 +22,7 @@ V21_MAX_SYNC_AGE_SECONDS = "300"
 V21_TOP20_MAX_AGE_SECONDS = "7200"
 V21_OWNER_PAIRING_ENABLED = "true"
 V21_SCHEDULED_PUSH_ENABLED = "true"
-V213_FIELD_LOCALE = "zh-TW"
+V213_FIELD_LOCALE = "bilingual"
 # FREE relay keeps workers.dev as the stable entrypoint and leases only a
 # validated ephemeral TryCloudflare route. No custom domain is required.
 FREE_RELAY_ENABLED = "true"

@@ -20,6 +20,7 @@ try {
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/src/v211/worker.ts','cloud/src/v213/compact-qa.ts','cloud/src/v213/readiness.ts',
+        'cloud/src/v213/top20-report.ts','cloud/src/v213/broadcast.ts','cloud/test/v213-top20-report.test.ts',
         'cloud/test/v213-compact-qa.test.ts','cloud/test/v213-qa-reference-job.test.ts','cloud/test/v213-readiness.test.ts',
         'config/v213-compact-qa-v1.json','sync-v213-activation-bundle.ps1',
         'scripts/benchmark_v213_qa_latency.py','scripts/v213_compact_qa_gateway.py','scripts/v213_local_llm_gateway.py',

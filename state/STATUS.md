@@ -1,5 +1,18 @@
 # R75 takeover status
 
+## CURRENT FOLLOW-UP — 2026-09-05: 七欄一致性 / Seven-field consistency NOT DELIVERED
+
+- Starting fetched main `b5ca5a2` (full SHA recorded by Git); installed immutable executable remains `2cf585d317a4ba3ca784641b1515bfa862fb38bd`, not this candidate. Previous completion applies only to Q&A/readiness.
+- Confirmed interactive Top20 used v212 five-field formatter; legacy v21 test-push also used five fields. v213 scheduled broadcast already uses seven. Actual read-only Production health reported v2.1.2/five_fields_only. User's specific message timestamp/path is not yet confirmed.
+- Candidate: v213 report DI before legacy routing; missing/stale/future report fails closed, never falls back to five fields; shared locale default bilingual; legacy test-push retains HMAC authentication but routes to v213; health identifies v213/seven fields. No scoring/qa.ts/publication contract changes. Source-bound release verifier now requires real isolated seven-field mock-LINE evidence.
+- Tests: security PASS; typecheck PASS; Worker22 files/**134 tests PASS**, including actual authorized LINE reply seven-column/bilingual assertions, no fallback, no-storage health and authenticated legacy push alias. Replaced obsolete expect(true) inactive-stage placeholder.
+- Full Python565 tests/2 skipped: **1 error remains: LIVE_SOURCE_MANIFEST_MISMATCH**. This correctly blocks reusing the old live receipt for changed runtime. A separate documentation boundary failure introduced by prior document simplification was fixed by restoring all seven normative markers; gate PASS, merged in documentation PR32.
+- Isolated gate attempts1–5: first hit Windows cp950 subprocess decoding/CLI failure; explicit UTF-8 now used. Subsequent new workers.dev routes returned HTTP404 HTML at readiness, before any model qualification. Diagnostic records only status/type, never auth. One atomic deploy with synthetic secrets replaces deploy+secret-upload. No readiness bypass/retry relaxation. All five cleanup receipts true; independent exact-name KV inventory found0 orphan namespaces.
+- No new ZIP, installation, Production deploy, snapshot/cron/task change or real LINE send. Preset unchanged. External mutations: isolated test resources created/deleted; GitHub About/release title/summary bilingual, documentation PR31/32 merged and issue33 created. Immutable tags/assets untouched; production_mutation_by_ci=false.
+- Current follow-up P0/P1/P2=**0/1/1**: seven-field delivery P1 outstanding; isolated edge readiness P2 blocks qualification. Next: diagnose isolated workers.dev404 (not more blind redeploys), obtain fresh source-bound proof, full Windows CI/new immutable artifact, then separately qualified delivery. Need user's distinction between interactive reply and08:00/21:00 push. Do not claim all product features finished.
+- Evidence: outer artifacts/r75-seven-field; GitHub issue33; bilingual current status at docs/CURRENT_STATUS_BILINGUAL.md. Historical milestones below do not override this checkpoint.
+
+
 ## Milestone M1 — shared publication contract (2026-09-04)
 
 - Baseline HEAD: `80c45c4b242dba99560ba99151785812520a09dd`

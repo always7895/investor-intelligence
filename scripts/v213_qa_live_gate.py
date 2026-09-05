@@ -63,8 +63,10 @@ def main():
                 "production_mutation": False, "real_line_sent": False, "results": [], "worker_name": name}
     wrangler = str(ROOT / "cloud/node_modules/.bin/wrangler.cmd")
     def wr(*argv, stdin=None):
-        result = subprocess.run([wrangler, *argv], cwd=ROOT / "cloud", input=stdin, text=True, capture_output=True, timeout=120)
-        if result.returncode: raise RuntimeError("ISOLATED_WRANGLER_FAILED:" + argv[0])
+        result = subprocess.run([wrangler, *argv], cwd=ROOT / "cloud", input=stdin, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120)
+        if result.returncode:
+            codes = re.findall(r'\[code:\s*(\d+)\]', (result.stdout or "") + (result.stderr or ""))
+            raise RuntimeError("ISOLATED_WRANGLER_FAILED:" + argv[0] + ":codes=" + ",".join(codes))
         return result.stdout
     def signed(origin, path, body):
         text = json.dumps(body, separators=(",", ":"))
@@ -97,12 +99,13 @@ def main():
             if not found: raise RuntimeError("ISOLATED_KV_ID_UNAVAILABLE")
             namespace = found[1]
             cfg.write_text(f'name = "{name}"\nmain = {json.dumps(str(ROOT / "cloud/test/r75-live-bench-worker.ts"))}\ncompatibility_date = "2026-01-01"\nworkers_dev = true\n[version_metadata]\nbinding = "CF_VERSION_METADATA"\n[vars]\nFREE_RELAY_ENABLED = "true"\nFREE_RELAY_MAX_TTL_SECONDS = "600"\nLOCAL_LLM_MODEL = "qwen38-q6"\nGENERAL_QA_ENABLED = "true"\nCURRENT_PUBLIC_DATA_ENABLED = "true"\nPUBLIC_DATA_MAX_AGE_SECONDS = "7200"\nMEMORY_FEATURE_AVAILABLE = "false"\nLINE_CHANNEL_ACCESS_TOKEN = "SYNTHETIC_TEST_ONLY"\n' + ''.join(f'\n[[kv_namespaces]]\nbinding = "{b}"\nid = "{namespace}"\n' for b in ("PUBLIC_CACHE", "TENANT_PRIVATE_CACHE", "EPHEMERAL_SECURITY_CACHE")) + '\n[[durable_objects.bindings]]\nname = "V213_FREE_RELAY_ROUTE"\nclass_name = "V213FreeRelayRoute"\n[[migrations]]\ntag = "isolated-bench-v1"\nnew_sqlite_classes = ["V213FreeRelayRoute"]\n', encoding="utf-8")
-            output = wr("deploy", "--config", str(cfg))
+            synthetic_secrets = tmp / "synthetic-auth.json"
+            synthetic_secrets.write_text(json.dumps({"V21_SYNC_HMAC_SECRET": synthetic_auth, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}), encoding="utf-8")
+            output = wr("deploy", "--config", str(cfg), "--secrets-file", str(synthetic_secrets))
             deployed = True
             origin_match = re.search(r'https://'+re.escape(name)+r'\.[a-z0-9-]+\.workers\.dev', output)
             if not origin_match: raise RuntimeError("ISOLATED_WORKER_ORIGIN_UNAVAILABLE")
             origin = origin_match[0]
-            wr("secret", "bulk", "--config", str(cfg), stdin=json.dumps({"V21_SYNC_HMAC_SECRET": synthetic_auth, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}))
             deployments = json.loads(wr("deployments", "list", "--json", "--config", str(cfg)))
             versions = sorted(deployments, key=lambda d: d["created_on"])[-1]["versions"]
             if len(versions) != 1 or versions[0]["percentage"] != 100: raise RuntimeError("ISOLATED_ACTIVE_VERSION_INVALID")
@@ -111,10 +114,16 @@ def main():
             # Exercise the SAME bounded readiness gate used by the product;
             # do not maintain another deploy/sleep/retry implementation here.
             command = f". '{ROOT / 'scripts/v213_edge_readiness.ps1'}'; $proof=Wait-V213EdgeReadiness -Origin '{origin}' -ExpectedVersion '{version}' -ProjectRoot '{ROOT}'; $proof|ConvertTo-Json -Compress"
-            check = subprocess.run(["pwsh", "-NoProfile", "-Command", command], text=True, capture_output=True, timeout=120)
+            check = subprocess.run(["pwsh", "-NoProfile", "-Command", command], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120)
             if check.returncode:
                 codes = sorted(set(re.findall(r'V213_[A-Z_]+', check.stderr)))
                 evidence["readiness_error_codes"] = codes
+                try:
+                    diagnostic = session.get(origin+"/v213/readiness", params={"expected_version":version,"challenge":secrets.token_hex(16)}, timeout=15)
+                    evidence["readiness_diagnostic_http_status"] = diagnostic.status_code
+                    evidence["readiness_diagnostic_body_kind"] = "worker_not_found" if diagnostic.text.strip() == "Not found" else "html" if "<html" in diagnostic.text.lower() else "other"
+                except requests.RequestException as error:
+                    evidence["readiness_diagnostic_network_error"] = type(error).__name__
                 raise RuntimeError("ISOLATED_READINESS_GATE_FAILED:" + ",".join(codes))
             proof = json.loads(check.stdout[check.stdout.index('{'):])
             proofs = [proof]
@@ -154,6 +163,13 @@ def main():
                 if signed(origin, "/v213/admin/free-relay-route", route).ok: raise RuntimeError("REPLAY_ROUTE_ACCEPTED")
                 auth = {"authorization": "Bearer " + synthetic_auth}
                 session.post(origin+"/setup", headers=auth, timeout=15).raise_for_status()
+                top20 = session.get(origin+"/top20-check", headers=auth, timeout=20).json()
+                if top20.get("rows") != 20 or top20.get("fields") != [7]*21 or "Current orders" not in top20.get("header", "") or "Future order outlook" not in top20.get("header", "") or top20.get("real_line_sent") is not False:
+                    raise RuntimeError("SEVEN_FIELD_LINE_REPLY_FAILED")
+                health = session.get(origin+"/health", timeout=10).json()
+                if health.get("product_version") != "2.1.3" or health.get("top20_presentation") != "seven_fields":
+                    raise RuntimeError("PRODUCTION_HEALTH_PRESENTATION_FAILED")
+                evidence.update(seven_field_line_reply="PASS_REAL_WORKER_MOCK_LINE", bilingual_field_count=7, top20_rows=20, production_health_presentation="seven_fields")
                 for case in ("smoke", "general", "ticker", "methodology", "evidence"):
                     for phase in ("cold", "warm"):
                         before = len(metrics); started = time.monotonic()

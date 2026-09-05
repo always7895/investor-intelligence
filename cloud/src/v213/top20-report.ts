@@ -1,4 +1,27 @@
 import { fieldLabel, type FieldLocale } from "./field-labels";
+import { publicJson, publicText, type StorageEnv } from "../storage";
+import type { ParsedQuery } from "../core";
+
+export function v213FieldLocale(value?: string): FieldLocale {
+  const locale = (value ?? "bilingual").trim().toLowerCase();
+  return ["en", "english"].includes(locale) ? "en" : ["zh-tw", "zh"].includes(locale) ? "zh-TW" : "bilingual";
+}
+
+export async function v213Top20ReportAnswer(
+  env: StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string },
+  query: ParsedQuery,
+): Promise<string | null> {
+  if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) return null;
+  const report = parseV213Top20Report(await publicJson(env, ["v213:top20-report:latest"]));
+  if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
+  const stamp = await publicText(env, ["last_successful_pipeline_timestamp"]);
+  const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
+  if ([stamp, report.generated_at].some(value => {
+    const age = (Date.now() - Date.parse(value ?? "")) / 1000;
+    return !Number.isFinite(age) || age < -300 || age > limit;
+  })) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+  return formatV213Top20Report(report, v213FieldLocale(env.V213_FIELD_LOCALE));
+}
 
 export interface V213Top20ReportRecord {
   schema_version: 2;

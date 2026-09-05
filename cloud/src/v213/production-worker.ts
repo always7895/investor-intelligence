@@ -1,7 +1,8 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
-import v211Worker, { V211_GENERAL_QA, type V211Env } from "../v211/worker";
+import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "../v211/worker";
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
+import { v213Top20ReportAnswer, v213FieldLocale } from "./top20-report";
 import { authenticateV21AdminRequest } from "../v21/admin";
 import { ingestV213Top20Report } from "./admin";
 import {
@@ -20,7 +21,7 @@ import {
 
 import { edgeReadiness, servingVersion, type VersionEnv } from "./readiness";
 
-type V213ProductionEnv = V211Env & FreeRelayEnv & VersionEnv & { V213_COMPACT_QA_ENABLED?: string };
+type V213ProductionEnv = V211Env & FreeRelayEnv & VersionEnv & { V213_COMPACT_QA_ENABLED?: string; V213_FIELD_LOCALE?: string };
 
 type RuntimeFetch = typeof fetch;
 
@@ -91,11 +92,12 @@ export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213P
   // v213 uses one compact path. Explicit false is an operational rollback,
   // not a second model or paid fallback. Legacy qa.ts safety checks still run.
   const handler = env.V213_COMPACT_QA_ENABLED !== "false" ? compactGeneralAnswer : undefined;
-  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler };
+  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler, [V211_TOP20_REPORT]: v213Top20ReportAnswer };
   const overrides = await freeRelayRuntimeOverrides(env);
   return {
     ...env,
     [V211_GENERAL_QA]: handler,
+    [V211_TOP20_REPORT]: v213Top20ReportAnswer,
     LOCAL_LLM_BASE_URL: overrides?.LOCAL_LLM_BASE_URL ?? "",
     LOCAL_LLM_ALLOWED_HOSTS: overrides?.LOCAL_LLM_ALLOWED_HOSTS ?? "",
     LOCAL_LLM_MODEL: overrides?.LOCAL_LLM_MODEL ?? "qwen38-q6",
@@ -182,6 +184,10 @@ export default {
   async fetch(request: Request, env: V213ProductionEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/v213/readiness") return edgeReadiness(request, env);
+    if (url.pathname === "/health" && request.method === "GET") {
+      const base = await v211Worker.fetch(request, env, ctx);
+      return jsonResponse({ ...await base.json<Record<string, unknown>>(), service: "investor-intelligence-v213-owner-line", product_version: "2.1.3", top20_presentation: "seven_fields", top20_field_locale: v213FieldLocale(env.V213_FIELD_LOCALE) });
+    }
     if (request.method === "POST" && url.pathname === "/v213/admin/activation-bundle") {
       // Before authentication's nonce write: stale serving code cannot commit.
       const version = servingVersion(env);
@@ -212,7 +218,7 @@ export default {
         return jsonResponse({ ok: false, code }, validationStatus(code));
       }
     }
-    if (request.method === "POST" && url.pathname === "/v213/admin/test-push") {
+    if (request.method === "POST" && ["/v213/admin/test-push", "/v21/admin/test-push"].includes(url.pathname)) {
       const authenticated = await authenticatedBody(request, env);
       if (authenticated instanceof Response) return authenticated;
       try {

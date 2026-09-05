@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import worker, { freeRelayRequestEnv } from "../src/v213/production-worker";
+import { processAuthorizedLineEvent } from "../src/v211/worker";
+import { v213Top20ReportAnswer } from "../src/v213/top20-report";
+import { parseQuery } from "../src/core";
+import { asKv, MemoryKv } from "./fake-kv";
 import {
   formatV213Top20Report,
   parseV213Top20Report,
@@ -45,7 +50,8 @@ function report() {
   };
 }
 
-describe("v2.1.3 inactive seven-field Top 20 contract", () => {
+afterEach(() => vi.unstubAllGlobals());
+describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it("accepts exactly 20 closed-schema seven-field rows", () => {
     expect(parseV213Top20Report(report())).not.toBeNull();
     const bad = report() as Record<string, unknown>;
@@ -72,9 +78,39 @@ describe("v2.1.3 inactive seven-field Top 20 contract", () => {
     expect(parseV213Top20Report(bad)).toBeNull();
   });
 
-  it("is not wired to Production in this stage", () => {
-    // This test file imports only the new inactive formatter. Production's v2.1.2
-    // Worker/Top20 module is intentionally untouched until full coverage + LINE acceptance.
-    expect(true).toBe(true);
+  it("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five", async () => {
+    const kv = new MemoryKv();
+    const data = report(); data.generated_at = new Date().toISOString();
+    kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
+    const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+    const messages: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      expect(String(url)).toBe("https://api.line.me/v2/bot/message/reply");
+      messages.push(...JSON.parse(String(init.body)).messages.map((m: any) => m.text));
+      return new Response("{}");
+    }));
+    await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: "Top20" }, timestamp: Date.now() }, "synthetic-report-tenant");
+    const text = messages.join("\n");
+    expect(text).toContain("公司現在訂單 / Current orders");
+    expect(text).toContain("未來訂單預估 / Future order outlook");
+    expect(text.split("\n")).toHaveLength(21);
+    for (const line of text.split("\n")) expect(line.split("｜")).toHaveLength(7);
+  });
+
+  it("does not fall back to five fields when the seven-field report is missing or stale", async () => {
+    const kv = new MemoryKv(); const env = { PUBLIC_CACHE: asKv(kv) } as any;
+    expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("no five-field fallback");
+    kv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    kv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("stale");
+    expect(await v213Top20ReportAnswer(env, parseQuery("什麼是自由現金流？"))).toBeNull();
+  });
+
+  it("production health truthfully advertises v213 and seven bilingual fields without reading storage", async () => {
+    const env = new Proxy({}, { get(_target, key) { if (key === "V213_FIELD_LOCALE") return undefined; throw new Error("UNEXPECTED_HEALTH_STORAGE"); } });
+    const response = await worker.fetch(new Request("https://synthetic.workers.dev/health"), env as any, {} as ExecutionContext);
+    expect(await response.json()).toMatchObject({ product_version: "2.1.3", top20_presentation: "seven_fields", top20_field_locale: "bilingual" });
   });
 });

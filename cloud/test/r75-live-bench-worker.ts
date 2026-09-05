@@ -5,6 +5,7 @@ import { compactGeneralAnswer } from "../src/v213/compact-qa";
 import { parseQuery } from "../src/core";
 import { processAuthorizedLineEvent, V211_GENERAL_QA } from "../src/v211/worker";
 import { getJob } from "../src/storage";
+import { V213_TOP20_DISPLAY_COLUMNS, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
 export { V213FreeRelayRoute } from "../src/v213/free-relay";
 
 const realFetch = globalThis.fetch;
@@ -27,13 +28,19 @@ const questions: Record<string, string> = {
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/v213/readiness") return production.fetch(request, env, ctx);
+    if (url.pathname === "/v213/readiness" || url.pathname === "/health") return production.fetch(request, env, ctx);
     if (url.pathname === "/v213/admin/free-relay-route" || url.pathname === "/v213/admin/free-relay-smoke") return production.fetch(request, env, ctx);
     if (request.headers.get("authorization") !== `Bearer ${env.V21_SYNC_HMAC_SECRET}`) return new Response("Unauthorized", { status: 401 });
     if (url.pathname === "/setup" && request.method === "POST") {
       await env.PUBLIC_CACHE.put("last_successful_pipeline_timestamp", new Date().toISOString());
       await env.PUBLIC_CACHE.put("v21:top20:latest", JSON.stringify([{ ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }] }]));
       await env.PUBLIC_CACHE.put("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{ ticker: "NVDA", publication_evidence_mode: "LIMITED_RESEARCH_CANDIDATE", eligible_for_high_confidence_model_inference: false, public_logic_state: { validated_company_thesis: false }, market_corroboration: { status: "UNAVAILABLE" }, missing_or_review: ["INDEPENDENT_CLAIM_CORROBORATION"] }] }));
+      const stamp = new Date().toISOString();
+      await env.PUBLIC_CACHE.put("v213:top20-report:latest", JSON.stringify({
+        schema_version: 2, product_version: "2.1.3", generated_at: stamp, display_columns: V213_TOP20_DISPLAY_COLUMNS,
+        long_term_definition: "trailing_2y_adjusted_close_cagr", short_term_definition: "trailing_6m_adjusted_close_price_return", provider_scope: "public_only", owner_watchlist_inherited: false,
+        records: Array.from({length:20},(_,i)=>({schema_version:2,rank:i+1,ticker:`T${String(i).padStart(2,"0")}`,long_term_return_pct:null,short_term_return_pct:null,industry:"合成測試",profit_summary:"未提供測試數值",current_orders:V213_NO_CURRENT_ORDERS,future_orders_estimate:V213_NO_FUTURE_ORDER_ESTIMATE,long_term_window:"2y_cagr",short_term_window:"6m_price_return",market_source:"yfinance",profit_source:"sec_edgar",orders_as_of:stamp,orders_confidence:"UNAVAILABLE",current_order_source_urls:[],future_order_source_urls:[],numeric_total_order_estimate_prohibited:true,retrieved_at:stamp,provider_scope:"public_only",owner_watchlist_inherited:false}))
+      }));
       return Response.json({ synthetic_fixture: true });
     }
     if (url.pathname === "/qa") {
@@ -42,6 +49,12 @@ export default {
       const started = Date.now();
       const answer = await compactGeneralAnswer(await freeRelayRequestEnv(env), parseQuery(question), { tenantId: "synthetic-bench", chatType: "group" });
       return Response.json({ answer, elapsed_ms: Date.now() - started, synthetic_fixture: true }, { headers: { "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/top20-check") {
+      replies.length = 0;
+      await processAuthorizedLineEvent(await freeRelayRequestEnv(env), ctx, {type:"message",replyToken:"SYNTHETIC_REPLY",source:{type:"user",userId:"SYNTHETIC_USER"},message:{type:"text",text:"Top20"},timestamp:Date.now()}, "synthetic-top20-tenant");
+      const lines = replies.join("\n").split("\n");
+      return Response.json({ rows: lines.length - 1, fields: lines.map(line=>line.split("｜").length), header: lines[0], real_line_sent:false });
     }
     if (url.pathname === "/reference-start") {
       const scoped = await freeRelayRequestEnv(env);

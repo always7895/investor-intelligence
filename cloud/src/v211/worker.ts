@@ -51,9 +51,11 @@ import { humanizeFallback, v211HelpText, v211ResearchAnswer } from "./research";
 
 // Internal dependency injection only; a config string cannot install a handler.
 export const V211_GENERAL_QA = Symbol("v213.request-scoped-general-qa");
+export const V211_TOP20_REPORT = Symbol("v213.request-scoped-top20-report");
 
 export interface V211Env extends QaEnv, LineEnv, V21AdminEnv, V21BroadcastEnv {
   [V211_GENERAL_QA]?: typeof generalAnswer;
+  [V211_TOP20_REPORT]?: typeof v212Top20ReportAnswer;
   V21_OWNER_PAIRING_ENABLED?: string;
   V21_OWNER_PAIRING_CODE_HASH?: string;
   V21_MAX_WEBHOOK_BODY_BYTES?: string;
@@ -200,6 +202,13 @@ export async function processAuthorizedLineEvent(
       event.replyToken,
       `你的 tenant-scoped 對話／工作與通知配對資料已刪除（${deleted} 個項目）。重新啟用通知需要本機產生新的單次配對碼。`,
     );
+    return;
+  }
+
+  // v213's published report must win over all legacy five-field routes.
+  const currentReport = await env[V211_TOP20_REPORT]?.(env, query);
+  if (currentReport != null) {
+    await replyText(env, event.replyToken, currentReport);
     return;
   }
 
