@@ -28,6 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v212_local_llm_gateway as base
+from v213_compact_qa_gateway import compact_upstream, complete_compact_response
 
 ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
@@ -505,26 +506,37 @@ class V213GatewayHandler(base.GatewayHandler):
             )
             return
         try:
-            if os.getenv("II_GATEWAY_DISABLE_PUBLIC_ENRICHMENT_FOR_TEST") == "1":
-                enriched, context = body["messages"], {}
-            else:
-                enriched, context = enrich_messages(body["messages"])
-            temperature = base.safe_float(body.get("temperature"))
-            upstream = {
-                "model": selected,
-                "messages": enriched,
-                "temperature": min(0.4, max(0.0, temperature if temperature is not None else 0.2)),
-                "max_tokens": min(1800, max(256, int(body.get("max_tokens") or 1400))),
-                "stream": False,
-            }
+            try:
+                upstream = compact_upstream(body, selected)
+            except (ValueError, TypeError, KeyError):
+                self._json(400, {"error": "COMPACT_REQUEST_INVALID"})
+                return
+            context = {}
+            is_compact = upstream is not None
+            if upstream is None:
+                if os.getenv("II_GATEWAY_DISABLE_PUBLIC_ENRICHMENT_FOR_TEST") == "1":
+                    enriched, context = body["messages"], {}
+                else:
+                    enriched, context = enrich_messages(body["messages"])
+                temperature = base.safe_float(body.get("temperature"))
+                upstream = {
+                    "model": selected,
+                    "messages": enriched,
+                    "temperature": min(0.4, max(0.0, temperature if temperature is not None else 0.2)),
+                    "max_tokens": min(1800, max(256, int(body.get("max_tokens") or 1400))),
+                    "stream": False,
+                }
             response = requests.post(
                 base.llama_url(), json=upstream,
-                headers={"content-type": "application/json"}, timeout=(5, 180),
+                headers={"content-type": "application/json"}, timeout=(2, 18) if is_compact else (5, 180),
             )
             if not response.ok:
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
+            if is_compact and not complete_compact_response(result, selected):
+                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH"})
+                return
             if isinstance(result, dict):
                 result["ii_exact_model_pin"] = {
                     "selected_model": selected,

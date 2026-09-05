@@ -19,6 +19,12 @@ try {
         'activate-v213-diversified-schedule.ps1','activate-v213-seven-field-schedule-core.ps1',
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
+        'cloud/src/v211/worker.ts','cloud/src/v213/compact-qa.ts','cloud/src/v213/readiness.ts',
+        'cloud/test/v213-compact-qa.test.ts','cloud/test/v213-qa-reference-job.test.ts','cloud/test/v213-readiness.test.ts',
+        'config/v213-compact-qa-v1.json','sync-v213-activation-bundle.ps1',
+        'scripts/benchmark_v213_qa_latency.py','scripts/v213_compact_qa_gateway.py','scripts/v213_local_llm_gateway.py',
+        'scripts/test_v213_edge_readiness.ps1','scripts/v213_edge_readiness.ps1','tests/test_v213_compact_qa_gateway.py',
+        'tests/test_v213_r75_gateway_process.py',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
         'cloud/src/v21/top20.ts','cloud/test/v213-activation.test.ts','cloud/package.json','cloud/package-lock.json',
         'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
@@ -50,6 +56,12 @@ try {
     $template = Get-Content -LiteralPath 'cloud\wrangler.v213.production.template.toml' -Raw -Encoding utf8
     if ($template -notmatch 'workers_dev\s*=\s*true' -or $template -notmatch 'FREE_RELAY_ENABLED\s*=\s*"true"' -or $template -match '(?im)^\s*routes?\s*=') { throw 'FREE_RELAY template does not preserve zero-cost workers.dev architecture.' }
 
+    $workerResults = Get-Content -LiteralPath $env:R75_WORKER_TEST_REPORT -Raw -Encoding utf8 | ConvertFrom-Json
+    if (-not $workerResults.success -or $workerResults.numFailedTests -ne 0) { throw 'Worker evidence is not successful.' }
+    # Full regression is not live Q&A qualification. Never package a release from
+    # synthetic transport tests while the inherited high-reasoning gate fails.
+    $env:R75_QA_RELEASE_READY = 'false'
+    if ($env:GITHUB_ENV) { 'R75_QA_RELEASE_READY=false' | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
     $receiptRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
     $runId = if ($env:GITHUB_RUN_ID) { [string]$env:GITHUB_RUN_ID } else { '0' }
     $attempt = if ($env:GITHUB_RUN_ATTEMPT) { [string]$env:GITHUB_RUN_ATTEMPT } else { '1' }
@@ -57,7 +69,9 @@ try {
     [ordered]@{
         schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';base_named_tunnel_commit=$baseCommit;source_commit=$sha
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
-        worker_typecheck='PASS';worker_test_files=19;worker_tests=116;exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
+        worker_typecheck='PASS';worker_test_files=@($workerResults.testResults).Count;worker_tests=[int]$workerResults.numTotalTests;
+        compact_context='PASS_SYNTHETIC';deployment_readiness='PASS_SYNTHETIC';live_qa='BLOCKED_INHERITED_HIGH_REASONING';live_free_relay_smoke='NOT_RUN_PRODUCTION_WRITE_FORBIDDEN';release_ready=$false;
+        exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
         quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false

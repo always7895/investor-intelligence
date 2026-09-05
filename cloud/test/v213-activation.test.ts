@@ -385,7 +385,9 @@ describe("v2.1.3 atomic activation transaction", () => {
   it("preflights the exact supplied sealed bundle through Worker commit/readback/replay/rollback/finalize without network", async () => {
     const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OFFLINE_PREFLIGHT_NETWORK_FORBIDDEN"));
     try {
-      const supplied = process.env.V213_WORKER_PREFLIGHT_BUNDLE;
+      const archived = process.env.V213_WORKER_ARCHIVED_BUNDLE;
+      if (archived && process.env.V213_WORKER_PREFLIGHT_BUNDLE) throw new Error("AMBIGUOUS_PREFLIGHT_MODE");
+      const supplied = archived ?? process.env.V213_WORKER_PREFLIGHT_BUNDLE;
       const candidate = await bundle();
       await replacePayload(candidate, "top20_json", withFilingProvenance(top20(candidate.generated_at)));
       const original = supplied ? readFileSync(supplied) : Buffer.from(JSON.stringify(candidate));
@@ -395,6 +397,14 @@ describe("v2.1.3 atomic activation transaction", () => {
       const { publicKv, env } = runtime();
       const prior = JSON.stringify({ run_id: "20260901T000000Z-aaaaaaaaaaaa", marker: "exact rollback" });
       publicKv.values.set("snapshot:current", prior);
+      if (archived) {
+        // Regression replay only: real-time freshness rejection remains mandatory.
+        // This receipt can NEVER satisfy the product's status=PASS predeploy gate.
+        await expect(ingestV213ActivationBundle(body, env)).rejects.toThrow("V213_ACTIVATION_BUNDLE_STALE");
+        expect(publicKv.values.get("snapshot:current")).toBe(prior);
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(Date.parse(identity.generated_at) + 60_000);
+      }
       const accepted = await ingestV213ActivationBundle(body, env);
       expect(accepted.status).toBe("accepted");
       expect(accepted.pointer_written_last).toBe(true);
@@ -413,12 +423,13 @@ describe("v2.1.3 atomic activation transaction", () => {
       if (supplied) {
         const receiptPath = process.env.V213_WORKER_PREFLIGHT_RECEIPT;
         if (receiptPath) writeFileSync(receiptPath, JSON.stringify({
-          status: "PASS", bundle_sha256: createHash("sha256").update(original).digest("hex"),
+          status: archived ? "PASS_HISTORICAL_SCHEMA_ONLY" : "PASS", bundle_sha256: createHash("sha256").update(original).digest("hex"),
+          historical_clock: Boolean(archived), current_time_freshness: archived ? "REJECTED_STALE" : "PASS",
           commit_readback_replay_rollback_finalize: "PASS", network: false, production_mutation: false,
         }));
-        console.log("V213_EXACT_BUNDLE_WORKER_PREFLIGHT = PASS; commit_readback_replay_rollback_finalize=PASS; network=false; production_mutation=false");
+        console.log(`V213_EXACT_BUNDLE_WORKER_PREFLIGHT = ${archived ? "PASS_HISTORICAL_SCHEMA_ONLY; current_time=REJECTED_STALE" : "PASS"}; commit_readback_replay_rollback_finalize=PASS; network=false; production_mutation=false`);
       }
-    } finally { network.mockRestore(); }
+    } finally { network.mockRestore(); vi.useRealTimers(); }
   });
 
   it("retains the closed SEC filing provenance schema without treating it as positive-factor support", () => {

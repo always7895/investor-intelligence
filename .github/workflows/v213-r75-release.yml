@@ -110,6 +110,8 @@ jobs:
           - Signed route, TTL, heartbeat, stale/replay/concurrency/reconnect/rollback gates: PASS
           - Exact qwen38-q6 + health schema v2 + three public health checks: PASS
           - Production mutation by CI: false
+          - Live Q&A: BLOCKED under inherited high reasoning; synthetic PASS is not live PASS
+          - Immutable release packaging: withheld until live qualification
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Build and independently verify immutable R75 package
@@ -123,7 +125,7 @@ jobs:
         run: ./scripts/ci_v213_r75_named_tunnel_package.ps1
 
       - name: Build and independently verify immutable FREE_RELAY hotfix
-        if: github.ref_name == 'pi/r75-free-workers-relay'
+        if: github.ref_name == 'pi/r75-free-workers-relay' && env.R75_QA_RELEASE_READY == 'true'
         shell: pwsh
         run: ./scripts/ci_v213_r75_free_relay_package.ps1
 
@@ -161,8 +163,17 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Upload validation evidence only when live Q&A is not qualified
+        if: success() && github.ref_name == 'pi/r75-free-workers-relay' && env.R75_QA_RELEASE_READY != 'true'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # not a release artifact
+        with:
+          name: R75-validation-only-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ env.R75_FREE_RELAY_WINDOWS_RECEIPT }}
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload immutable R75 FREE_RELAY hotfix and receipts
-        if: success() && github.ref_name == 'pi/r75-free-workers-relay'
+        if: success() && github.ref_name == 'pi/r75-free-workers-relay' && env.R75_QA_RELEASE_READY == 'true'
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # final release evidence
         with:
           name: Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-${{ github.sha }}-${{ github.run_id }}

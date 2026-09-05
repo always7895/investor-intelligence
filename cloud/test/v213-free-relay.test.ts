@@ -266,7 +266,7 @@ describe("R75 FREE_RELAY route lease", () => {
     expect(target).not.toContain("workers.dev");
   });
 
-  it("provides a signed, fixed-prompt, no-write end-to-end smoke check", async () => {
+  it("provides a signed, fixed-prompt smoke without snapshot writes (auth nonce is written)", async () => {
     const relay = relayObject();
     const current = route("efefefefefefefefefefefefefefefef", -1_000);
     await relay.object.fetch(new Request("https://free-relay.internal/update", {
@@ -275,7 +275,7 @@ describe("R75 FREE_RELAY route lease", () => {
     }));
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe(`${current.public_url}/v1/chat/completions`);
-      return Response.json({ choices: [{ message: { content: "R75_FREE_RELAY_E2E_OK" } }] });
+      return Response.json({ choices: [{ finish_reason: "stop", message: { content: "R75_FREE_RELAY_E2E_OK" } }], ii_exact_model_pin: { selected_model: "qwen38-q6", request_model_substitution_allowed: false } });
     });
     vi.stubGlobal("fetch", fetchMock);
     const response = await productionWorker.fetch(
