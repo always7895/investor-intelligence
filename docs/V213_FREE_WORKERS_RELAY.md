@@ -1,58 +1,37 @@
-# v2.1.3 R75 FREE_RELAY deployment mode
+# R75 FREE_RELAY — current operations
 
-## Zero-cost architecture
+[Current release identity and evidence](../README.md) · [繁體中文](../README.zh-TW.md)
 
 ```text
-LINE / external clients
-  -> existing stable *.workers.dev Worker
-  -> authenticated current-local-route lease
-  -> ephemeral free *.trycloudflare.com Quick Tunnel
-  -> local v2.1.3 Gateway
-  -> llama.cpp exact model qwen38-q6
+workers.dev -> authenticated route lease -> ephemeral TryCloudflare
+            -> Gateway -> existing llama.cpp -> exact qwen38-q6
 ```
 
-FREE_RELAY does not require, purchase, or configure a custom domain. The `workers.dev` Worker remains the only stable public entrypoint. A TryCloudflare hostname is explicitly ephemeral and is never presented as stable.
+No custom domain or paid fallback. Only workers.dev is stable. The Router remains models-max1; only authenticated compact Q&A/smoke requests use the authorized request-level non-thinking mode. The user's preset is not edited.
 
-Named Tunnel support remains available as an optional future stable path, but it is not the default and is not required by FREE_RELAY.
+## Query routing
 
-## Route lease contract
+- Ranking/report tools remain deterministic.
+- Ticker context contains only the selected public row's evidence; generic context is bounded; methodology uses fixed context.
+- qa.ts privacy, freshness and tenant-memory checks are preserved. The compact wrapper is not a scoring/publication validator and cannot upgrade LIMITED.
+- Fixed marker smoke uses no snapshot context. Gateway health alone is not model completion.
 
-After the local bridge validates three consecutive public `/health` responses with health schema v2 and exact model `qwen38-q6`, it signs and sends a route record to the existing Worker:
+## Lease lifecycle
 
-- `tunnel_mode = quick_free_relay`
-- exact model
-- ephemeral public URL
-- `connected_at`
-- `expires_at`
-- health schema version
-- unique route generation
-- consecutive health count
+Local bridge and Worker each require three exact-model/health-schema-v2 public checks. Signed route records carry schema, model, URL, connected/expiry times, generation and health count. The DO atomically accepts a newer generation or monotonic heartbeat; expired, stale, replayed and mismatched routes fail closed.
 
-The request uses the existing DPAPI-protected v2.1 owner-Worker HMAC configuration. Authentication material and the derived per-generation Gateway secret are never included in the route record or logs.
+Secrets are derived from the existing DPAPI-protected HMAC configuration, never included in route records or receipts. A new healthy bridge replaces the old bridge; an at-logon reconnect task points to `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`. This hotfix did not modify the08:00/21:00 tasks or Worker crons.
 
-The Worker independently performs three schema/model health checks before submitting the route to a single Durable Object. The Durable Object atomically applies a newer generation or a monotonic heartbeat. It rejects malformed, expired, stale, model-mismatched, duplicated, and replayed records. Q&A requests resolve the current lease internally and derive the same per-generation Gateway secret. Expired leases resolve to unavailable rather than a stale tunnel.
+## One deployment readiness gate
 
-## Production Workers runtime compatibility
+`GET /v213/readiness` is genuinely no-write: no HMAC nonce, KV, DO, model or LINE access. It echoes a fresh challenge and verifies serving-version metadata, actual SEC provenance parser compatibility, publication-contract hash and compact-policy hash.
 
-Cloudflare's production Workers runtime accepts `redirect: "follow"` and `redirect: "manual"`, but rejects `redirect: "error"` before making a request. The v2.1.3 production wrapper therefore preserves the certified `cloud/src/qa.ts` blob and installs a narrowly scoped compatibility adapter only for HTTPS `POST /v1/chat/completions` calls. It observes redirects with `manual` and throws on every 3xx response, preserving fail-closed behavior without changing Q&A semantics.
+The activation sync client is the single gate owner: exact100% control plane -> three consecutive matching readiness proofs -> control-plane recheck -> version-pinned commit. The core also checks the uploaded version matches the active version. Only an explicit version mismatch consumes the bounded convergence budget; unknown/old schema, timeout and arbitrary validation errors fail closed. There is no TOP20_INVALID retry or fixed15s propagation sleep.
 
-An HMAC-authenticated `POST /v213/admin/free-relay-smoke` operation provides a fixed-prompt, no-KV-write end-to-end gate. It does not accept an arbitrary prompt and succeeds only when the current lease routes through the exact model and the expected fixed marker is returned.
+The authenticated POST smoke endpoint **does write an anti-replay authentication nonce**; it does not write the snapshot. Production smoke therefore requires authorization, unlike the readiness GET.
 
-## Reconnect and rollback
+## Testing and evidence
 
-- A heartbeat extends the current lease only while both Gateway and cloudflared processes remain alive and the Worker can revalidate the route.
-- If either process exits, the monitor launches a complete new FREE_RELAY generation.
-- The old Worker route remains current until the new Quick Tunnel passes local and Worker-side health validation and the Durable Object atomically replaces it.
-- Failed startup or failed registration stops the new bridge and leaves the previous route untouched where it remains healthy.
-- At logon, `register-v213-free-relay-task.ps1 -Enable` can configure automatic reconnect. `-ValidateOnly` performs no Task Scheduler mutation.
+One opt-in operator driver, `scripts/v213_qa_live_gate.py --live-isolated --output <new-file>`, creates only uniquely named test resources and deletes them afterward. It tests the actual shared readiness gate, lease, fixed smoke, five cold/warm model cases and real waitUntil completion with synthetic LINE transport. Public benchmark fixtures are synthetic—not a claim about current market facts.
 
-The launcher defaults refresh, bridge, and activation preflight to FREE_RELAY. Its reconnect button is an explicit operator action. `AllowTestTunnelException` is not used by this architecture.
-
-## No-mutation validation
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_v213_free_relay.ps1
-pwsh -NoProfile -File scripts\test_v213_free_relay.ps1
-```
-
-CI uses synthetic endpoints, credentials, Durable Object state, and health responses. It does not deploy the Worker, register a real task, update Production storage, send LINE, or create a real tunnel.
+CI never runs that external driver. It verifies the source-bound live receipt offline, runs the complete regression and final-ZIP/installer gates, then packages an immutable source-SHA/run-ID ZIP. See [delivery report](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md). Old dated documents and releases remain historical evidence, not current authority.

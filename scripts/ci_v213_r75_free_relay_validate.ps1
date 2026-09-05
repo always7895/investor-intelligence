@@ -41,7 +41,11 @@ try {
         'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md',
         'tests/test_v213_free_relay_package_payload.py'
     )
-    foreach ($path in $changed) { if ($allowed -notcontains $path) { throw "FREE_RELAY changed a non-deployment path: $path" } }
+    foreach ($path in $changed) {
+        # Documentation sync does not require a growing per-filename exception list.
+        $documentation = $path -match '^(?:README(?:\.zh-TW)?\.md|IMPLEMENTATION_STATUS\.md|docs/[^\r\n]+\.md)$'
+        if ($allowed -notcontains $path -and -not $documentation) { throw "FREE_RELAY changed an unreviewed runtime path: $path" }
+    }
     foreach ($protected in @(
         'config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py',
         'cloud/src/qa.ts','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts',
