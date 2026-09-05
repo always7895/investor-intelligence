@@ -20,6 +20,7 @@ try {
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
+        'cloud/src/v21/top20.ts','cloud/test/v213-activation.test.ts','cloud/package.json','cloud/package-lock.json',
         'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
         'register-v213-free-relay-task.ps1','run-v213-local-llm-bridge-source-diverse.ps1',
         'run-v213-local-llm-bridge.ps1','run-v213-local-serenity-latest.ps1',
@@ -56,7 +57,7 @@ try {
     [ordered]@{
         schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';base_named_tunnel_commit=$baseCommit;source_commit=$sha
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
-        worker_typecheck='PASS';worker_test_files=19;worker_tests=113;workers_dev_stable_entrypoint=$true;custom_domain_required=$false
+        worker_typecheck='PASS';worker_test_files=19;worker_tests=116;exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
         quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false

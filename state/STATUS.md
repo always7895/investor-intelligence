@@ -320,3 +320,15 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - **驗證界線：本輪未重新執行正式 activation transaction，未部署 Worker／寫入 Production KV/DO／改真實排程／發送 LINE。不得將本輪通過解壓測試表述成正式 sealed-bundle activation 已完成。**
 - CI `production_mutation_by_ci=false`；本輪外部 mutation 僅 Git push/GitHub Release metadata 與資產發布。
 - 下一步：從修正版 launcher 執行新鮮資料啟用，依實際交易 receipt 判定正式 activation，不沿用舊版全面完成結論。
+
+## 2026-09-05 08:34 TST — Worker TOP20_INVALID 根因與 exact-bundle gate
+
+- Fetched HEAD `58cd22f32fd1cb2604b9166e004e1e748e2b35a0`；使用者 `082321-126` activation raw log SHA256 `a5f8497fe7fda763f51b12f464d3b445ffed93feb733338b137d0558266be758`。
+- 113 Worker tests PASS 後，真實 Commit HTTP400 `V213_ACTIVATION_TOP20_INVALID`。日誌記錄 not_committed、exact pointer rollback PASS、Worker 回復 `27121388-1e6e-445a-b45e-104a867ca70d`；本輪尚未獨立查詢即時 Production 狀態。
+- 原始 bundle SHA256 `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`。本機隔離 Worker 原碼重現同一錯誤；原因為 Python 產生 15-key SEC filing provenance，舊 `v21/top20.ts` 只接受六欄 evidence。
+- 修正 closed evidence union，完整保留申報日期／period_end／accession 與 provenance-only / non-positive-factor flags；限制 SEC HTTPS accession URL、真實日曆日期與不可未來日期，未知欄位／矛盾標記一律拒絕。沒有刪除 provenance、變動排序／分數或降低 publication 門檻。
+- 新增 exact sealed-bundle 離線 gate：套用實際 Worker ingestion 到記憶體 KV；commit、readback、idempotent replay、corrupt replay rejection、exact rollback、finalize；禁止 fetch。activation core 在 deploy 前強制 gate receipt 與 sealed SHA 相符，缺 receipt 拒絕。
+- 本機 typecheck、Worker 19 files/116 tests、PS5.1/7 core SelfTest、security scanner PASS。原始 bundle 不改位元組即通過新 Worker 全交易隔離驗證。Q6 read-only review 呼叫 150s timeout，未取得審查結果，不列 PASS；未更換／另開 Router。
+- 變更：`cloud/src/v21/top20.ts`、`cloud/test/v213-activation.test.ts`、Node test-only 型別依賴 lock、activation core、FREE_RELAY validator allowlist/receipt。保護 R75 validator/contract/qa.ts 不變。
+- 本里程碑 P0/P1/P2 = **0/1/0**（修正版等待 CI／下載實測）；本輪 Production mutation：無。使用者自行啟用／回復已記錄於其日誌，不視為本輪 CI mutation。
+- 下一步：完整 Windows CI、不可變新 ZIP、下載後重跑這份實際 bundle（僅記憶體 KV），再交付新版。
