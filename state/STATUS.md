@@ -1,5 +1,15 @@
 # R75 takeover status
 
+## Architecture consolidation checkpoint — 2026-09-05
+
+- Actual starting HEAD0a3061b23c0d79cd7db1b3b6d9361e09733e314c. Dedicated cleanup commit retired three duplicate main-PR audit triggers while preserving historical manual/legacy-branch audits; workflow supply-chain and dedup tests PASS.
+- Added standalone repository AGENTS.md. Outer takeover AGENTS preserves safety/release requirements but moves outdated initial observations to historical evidence. Five small read-only reviewer definitions were retained rather than merging away role permissions.
+- Skill entrypoint reduced209→34 lines; complete research-method body preserved verbatim in references/RESEARCH_METHOD.md. Relative links, canonical policy path and mandatory evidence distinctions have tests. This is documentation organization, not a measured inference-speed improvement.
+- Removed two duplicate PowerShell implementations while preserving their filenames and exact parameter contracts as forwarding aliases. PS5.1/7 synthetic-target tests verify switches, spaces/Unicode/parentheses and exit-code propagation; no real activation or model launch. The two already-small bridge wrappers remain intentional compatibility entries sharing one core.
+- Inventory: state/architecture-inventory.json. New structure/alias tests PASS; security/documentation/workflow gates PASS. Full Python571 tests,2 skipped,1 error LIVE_SOURCE_MANIFEST_MISMATCH. The old source-bound live receipt correctly cannot qualify changed runtime; release remains blocked, not PASS.
+- Known installed follow-up P0/P1/P2 remains1/2/2 as detailed below. No Production deploy/storage/task/LINE mutation, no new release or install. Next: fresh isolated qualification and seven-field/refresh publication gates; do not bypass the receipt mismatch or claim whole-project completion.
+
+
 ## 2026-09-05 follow-up — actual scheduled entrypoint / refresh-chain / sealed-write audit
 
 - Fetched baseline HEAD5aca64ec4776cc80757bf17408fce57a0ade91d3. User dated automatic screenshot September4 at21:00 (before hotfix); current interactive five-field defect remains confirmed.

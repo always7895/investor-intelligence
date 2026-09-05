@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "baseline_head": "0a3061b23c0d79cd7db1b3b6d9361e09733e314c",
+  "scope": "tracked working tree including staged changes; excludes inventory itself",
+  "tracked_file_count": 565,
+  "extensions": {
+    ".b64": 1,
+    ".cmd": 1,
+    ".cs": 1,
+    ".example": 2,
+    ".in": 1,
+    ".json": 75,
+    ".md": 81,
+    ".part00": 1,
+    ".part01": 1,
+    ".part02": 1,
+    ".ps1": 75,
+    ".py": 239,
+    ".toml": 4,
+    ".ts": 56,
+    ".txt": 1,
+    ".yml": 24,
+    "[none]": 1
+  },
+  "workflows": [
+    ".github/workflows/canonical-release-candidate-audit-v2.yml",
+    ".github/workflows/final-history-confirmation.yml",
+    ".github/workflows/final-release-candidate-v3-pre-rewrite-audit.yml",
+    ".github/workflows/formal-private-release.yml",
+    ".github/workflows/full-history-clean-release-gate.yml",
+    ".github/workflows/full-history-privacy-inventory.yml",
+    ".github/workflows/line-kv-isolation-audit.yml",
+    ".github/workflows/phase-audit.yml",
+    ".github/workflows/phase3-authoritative-adapters-audit.yml",
+    ".github/workflows/phase3-authoritative-catalog-audit.yml",
+    ".github/workflows/phase3-source-diversity-audit.yml",
+    ".github/workflows/phase3-staged-gleif-ecb-audit.yml",
+    ".github/workflows/phase4-public-briefing-audit.yml",
+    ".github/workflows/phase5-line-bot-audit.yml",
+    ".github/workflows/phase7-schedule-recovery-audit.yml",
+    ".github/workflows/phase8-fault-injection-audit.yml",
+    ".github/workflows/public-options-provider-candidates-audit.yml",
+    ".github/workflows/release-candidate-truth-audit.yml",
+    ".github/workflows/security-audit.yml",
+    ".github/workflows/v21-final-distribution.yml",
+    ".github/workflows/v21-owner-line-delivery.yml",
+    ".github/workflows/v21-serenity-engine.yml",
+    ".github/workflows/v213-r75-release.yml",
+    ".github/workflows/windows-local-validation.yml"
+  ],
+  "entrypoints": {
+    "root_powershell": 33,
+    "python_scripts": 139
+  },
+  "research_method_preserved_verbatim": true,
+  "research_method_sha256": "ad128461919d643a71a88bab5be080aba301c1e9b83a45c7d5790f381ce21bb7",
+  "skill_entry_lines_before": 209,
+  "skill_entry_lines_after": 34,
+  "production_mutation": false,
+  "duplicates_are_candidates_not_deletion_authority": true,
+  "identical_files_before_refactor": [
+    {
+      "sha256": "c7622e7c7fee621cf04412fc39f20a7518a2a30fd13a9335536d9becfa50fb56",
+      "paths": [
+        "activate-v213-diversified-schedule.ps1",
+        "activate-v213-seven-field-schedule-serenity-latest.ps1"
+      ]
+    },
+    {
+      "sha256": "c35c427573af913861604e524f5bcb944fdebc3d39a4edc2c0a1cc3a773acba6",
+      "paths": [
+        "run-v213-local-llm-bridge-source-diverse.ps1",
+        "run-v213-local-llm-bridge.ps1"
+      ]
+    },
+    {
+      "sha256": "3656dcbf0fe1f468b3e8c5f3d3da9e91041d3d67d2e25f84c2f7e029f47e9836",
+      "paths": [
+        "run-v213-local-source-diverse.ps1",
+        "run-v213-local.ps1"
+      ]
+    }
+  ],
+  "identical_files_after_refactor": [
+    {
+      "sha256": "c35c427573af913861604e524f5bcb944fdebc3d39a4edc2c0a1cc3a773acba6",
+      "paths": [
+        "run-v213-local-llm-bridge-source-diverse.ps1",
+        "run-v213-local-llm-bridge.ps1"
+      ]
+    }
+  ],
+  "compatibility_implementations_removed": [
+    "run-v213-local-source-diverse.ps1",
+    "activate-v213-seven-field-schedule-serenity-latest.ps1"
+  ],
+  "compatibility_paths_preserved": true,
+  "validation": {
+    "alias_ps51_ps7": "PASS_SYNTHETIC_TARGETS_ONLY",
+    "skill_structure": "PASS",
+    "full_python": {
+      "tests": 571,
+      "errors": 1,
+      "skipped": 2,
+      "remaining_error": "LIVE_SOURCE_MANIFEST_MISMATCH"
+    },
+    "release_ready": false
+  }
+}
