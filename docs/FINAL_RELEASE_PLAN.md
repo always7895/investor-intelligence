@@ -1,6 +1,20 @@
 # Release maintenance rules
 
-Current identity/status: [README](../README.md). Avoid duplicated version tables.
+Current identity/status / 最新版本與狀態：[README](../README.md) · [中英狀態 / Bilingual status](CURRENT_STATUS_BILINGUAL.md). Avoid duplicated version tables / 不重複維護版本表。
+
+## 不可放寬的安全邊界 / Mandatory safety boundaries
+
+LINE 僅使用公開資料，不接 IBKR、持倉工具、私有同步或擁有者私人資料；群組／room 拒絕；免費模式失敗即關閉，不轉付費。／LINE uses public data only: no IBKR bridge, portfolio tools, private synchronization or private owner data. Groups/rooms are rejected; free-only mode fails closed.
+
+```text
+LINE_DATA_SCOPE=PUBLIC_ONLY
+LINE_IBKR_BRIDGE=FORBIDDEN
+LINE_PORTFOLIO_TOOLS=FORBIDDEN
+LINE_PRIVATE_SYNC=FORBIDDEN
+LINE_GROUP_ROOM=REJECTED
+LINE_OWNER_DATA=FORBIDDEN
+FREE_ONLY_MODE=FAIL_CLOSED
+```
 
 1. Fetch source and inspect current CI and actual machine evidence; do not inherit a blanket completion claim.
 2. Preserve scoring, publication/claim-independence, freshness, privacy and exact-model boundaries.
