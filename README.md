@@ -2,7 +2,13 @@
 
 [繁體中文](README.zh-TW.md) · [Immutable release](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-qa-readiness-2cf585d-33960014393) · [Delivery evidence](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
 
-Privacy-first, zero-cost public-market research. Research software only—not personalized investment advice, trading instructions or guaranteed returns.
+Privacy-first, zero-cost public-market research. / 隱私優先、零付費公開市場研究。 Research software only—not personalized investment advice, trading instructions or guaranteed returns.
+
+## Known issue / 已知問題 — seven-field LINE consistency
+
+The published release below qualifies **Q&A/readiness only**, not every product feature. Interactive `Top20` and legacy `/v21/admin/test-push` still use five columns in that ZIP; v213 scheduled broadcast uses seven. The seven-field route fix has passed local TypeScript and 133 Worker tests, but its isolated workers.dev qualification is blocked by HTTP404. It is **not released, installed or deployed**. No actual-user LINE seven-field acceptance is claimed.
+
+下列正式修正版只驗收 Q&A／readiness。互動 Top20 與舊 test-push 仍是五欄；排程已有七欄。新修正尚未發布／安裝／部署。七欄定義與中英狀態：[bilingual status](docs/CURRENT_STATUS_BILINGUAL.md)。
 
 ## Current verified release — 2026-09-05
 
