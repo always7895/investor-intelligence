@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+/// <reference types="node" />
+import { describe, expect, it, vi } from "vitest";
+import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { parseV21Top20 } from "../src/v21/top20";
 import { asKv, MemoryKv } from "./fake-kv";
 import {
   finalizeV213Activation,
@@ -365,7 +369,82 @@ function control(transactionId = TRANSACTION_ID) {
   return JSON.stringify({ schema_version: 1, transaction_id: transactionId, run_id: RUN_ID });
 }
 
+function withFilingProvenance(rows: ReturnType<typeof top20>) {
+  const filing = new Date().toISOString().slice(0, 10);
+  return rows.map((row) => ({ ...row, evidence: row.evidence.map((evidence, index) => index ? evidence : {
+    ...evidence, family: "regulator_filing", claim_type: "filing_publication_provenance",
+    url: "https://www.sec.gov/Archives/edgar/data/1000000/000100000026000001/",
+    as_of: filing, publication_date: filing, period_end: "2026-06-30",
+    accession_number: "0001000000-26-000001", primary: true, claim_primary: true,
+    provenance_only: true, can_prove_positive_serenity_factor: false,
+    retrieval_timestamp_used_as_publication_date: false,
+  }) }));
+}
+
 describe("v2.1.3 atomic activation transaction", () => {
+  it("preflights the exact supplied sealed bundle through Worker commit/readback/replay/rollback/finalize without network", async () => {
+    const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OFFLINE_PREFLIGHT_NETWORK_FORBIDDEN"));
+    try {
+      const supplied = process.env.V213_WORKER_PREFLIGHT_BUNDLE;
+      const candidate = await bundle();
+      await replacePayload(candidate, "top20_json", withFilingProvenance(top20(candidate.generated_at)));
+      const original = supplied ? readFileSync(supplied) : Buffer.from(JSON.stringify(candidate));
+      const body = original.toString("utf8").replace(/^\uFEFF/, "");
+      const identity = JSON.parse(body);
+      const request = JSON.stringify({ schema_version: 1, transaction_id: identity.transaction_id, run_id: identity.run_id });
+      const { publicKv, env } = runtime();
+      const prior = JSON.stringify({ run_id: "20260901T000000Z-aaaaaaaaaaaa", marker: "exact rollback" });
+      publicKv.values.set("snapshot:current", prior);
+      const accepted = await ingestV213ActivationBundle(body, env);
+      expect(accepted.status).toBe("accepted");
+      expect(accepted.pointer_written_last).toBe(true);
+      const objectKey = `snapshot:${identity.run_id}:v21:top20:latest`;
+      const stored = publicKv.values.get(objectKey)!;
+      expect(JSON.stringify(JSON.parse(stored)) === JSON.stringify(JSON.parse(identity.payloads.top20_json))).toBe(true);
+      expect((await ingestV213ActivationBundle(body, env)).idempotent_replay).toBe(true);
+      publicKv.values.set(objectKey, "corrupt synthetic readback");
+      await expect(ingestV213ActivationBundle(body, env)).rejects.toThrow("V213_ACTIVATION_REPLAY_CORRUPT");
+      publicKv.values.set(objectKey, stored);
+      expect((await rollbackV213Activation(request, env)).exact_pointer_restored).toBe(true);
+      expect(publicKv.values.get("snapshot:current")).toBe(prior);
+      expect((await ingestV213ActivationBundle(body, env)).status).toBe("accepted");
+      expect((await finalizeV213Activation(request, env)).status).toBe("finalized");
+      expect(network).not.toHaveBeenCalled();
+      if (supplied) {
+        const receiptPath = process.env.V213_WORKER_PREFLIGHT_RECEIPT;
+        if (receiptPath) writeFileSync(receiptPath, JSON.stringify({
+          status: "PASS", bundle_sha256: createHash("sha256").update(original).digest("hex"),
+          commit_readback_replay_rollback_finalize: "PASS", network: false, production_mutation: false,
+        }));
+        console.log("V213_EXACT_BUNDLE_WORKER_PREFLIGHT = PASS; commit_readback_replay_rollback_finalize=PASS; network=false; production_mutation=false");
+      }
+    } finally { network.mockRestore(); }
+  });
+
+  it("retains the closed SEC filing provenance schema without treating it as positive-factor support", () => {
+    const rows = withFilingProvenance(top20(new Date().toISOString()));
+    expect(parseV21Top20(rows)).toEqual(rows);
+  });
+
+  it("rejects unknown evidence fields, false provenance assertions, wrong dates and accession URLs", () => {
+    const rows = withFilingProvenance(top20(new Date().toISOString()));
+    for (const change of [
+      { extra: true }, { can_prove_positive_serenity_factor: true },
+      { retrieval_timestamp_used_as_publication_date: true }, { provenance_only: false },
+      { claim_primary: false }, { primary: false }, { family: "issuer_primary" },
+      { publication_date: "2026-02-30" }, { publication_date: "2099-01-01", as_of: "2099-01-01" },
+      { period_end: "2099-01-01" }, { accession_number: "incorrect" },
+      { url: "https://example.com/Archives/edgar/data/1000000/000100000026000001/" },
+      { url: "https://www.sec.gov/Archives/edgar/data/1000000/000100000026000002/" },
+    ]) {
+      const invalid = structuredClone(rows);
+      Object.assign(invalid[0]!.evidence[0]!, change);
+      expect(parseV21Top20(invalid)).toBeNull();
+    }
+    const missing = structuredClone(rows) as any[];
+    delete missing[0].evidence[0].period_end;
+    expect(parseV21Top20(missing)).toBeNull();
+  });
   it("writes all immutable objects before switching the pointer and rolls back exact text", async () => {
     const { publicKv, privateKv, env } = runtime();
     const oldPointer = JSON.stringify({ schema_version: 1, run_id: "20260901T000000Z-aaaaaaaaaaaa", marker: "exact" });

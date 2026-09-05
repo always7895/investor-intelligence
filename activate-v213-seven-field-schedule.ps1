@@ -29,6 +29,10 @@ function Get-PropertyValue {
     if($null-eq$Object){return $Default}
     $property=$Object.PSObject.Properties[$Name]
     if($null-eq$property){return $Default}
+    # ConvertFrom-Json in PS7 can return DateTime; never lose its UTC offset.
+    if($property.Value-is[DateTime]-or$property.Value-is[DateTimeOffset]){
+        return $property.Value.ToString('o',[Globalization.CultureInfo]::InvariantCulture)
+    }
     return $property.Value
 }
 

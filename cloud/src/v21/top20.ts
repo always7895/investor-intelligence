@@ -60,6 +60,14 @@ const EVIDENCE_KEYS = new Set([
   "source_id", "tier", "claim_type", "title", "url", "as_of",
 ]);
 
+// Closed extension emitted by v213_source_independence_gate_v3.py. Keep the
+// provenance flags intact: filing chronology is NOT positive-factor evidence.
+const FILING_EVIDENCE_KEYS = new Set([
+  ...EVIDENCE_KEYS, "family", "publication_date", "period_end", "accession_number",
+  "primary", "claim_primary", "provenance_only", "can_prove_positive_serenity_factor",
+  "retrieval_timestamp_used_as_publication_date",
+]);
+
 const OVERLAY_KEYS = new Set([
   "domain", "fit_score", "included_in_serenity_score", "attribution",
 ]);
@@ -82,10 +90,39 @@ function validTimestamp(value: unknown): value is string {
   return typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
 }
 
+function validDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+function validFilingProvenance(item: Record<string, unknown>): boolean {
+  if (!exactKeys(item, FILING_EVIDENCE_KEYS) ||
+      item.source_id !== "sec_edgar" || item.family !== "regulator_filing" || item.tier !== "T0" ||
+      item.claim_type !== "filing_publication_provenance" ||
+      item.primary !== true || item.claim_primary !== true || item.provenance_only !== true ||
+      item.can_prove_positive_serenity_factor !== false ||
+      item.retrieval_timestamp_used_as_publication_date !== false ||
+      !validDate(item.publication_date) || item.as_of !== item.publication_date ||
+      !(item.period_end === "" || validDate(item.period_end)) ||
+      (item.period_end !== "" && String(item.period_end) > item.publication_date) ||
+      Date.parse(item.publication_date) > Date.now() + 300_000 ||
+      typeof item.accession_number !== "string" || !/^\d{10}-\d{2}-\d{6}$/.test(item.accession_number)
+  ) return false;
+  try {
+    const url = new URL(String(item.url));
+    const match = /^\/Archives\/edgar\/data\/\d+\/(\d{18})\/$/.exec(url.pathname);
+    return url.protocol === "https:" && url.hostname === "www.sec.gov" && !url.port &&
+      !url.username && !url.password && !url.search && !url.hash &&
+      match?.[1] === item.accession_number.replaceAll("-", "");
+  } catch { return false; }
+}
+
 function validEvidence(value: unknown): value is V21Evidence {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
-  if (!exactKeys(item, EVIDENCE_KEYS)) return false;
+  if (item.claim_type === "filing_publication_provenance") {
+    if (!validFilingProvenance(item)) return false;
+  } else if (!exactKeys(item, EVIDENCE_KEYS)) return false;
   if (
     typeof item.source_id !== "string" || !item.source_id ||
     typeof item.tier !== "string" ||

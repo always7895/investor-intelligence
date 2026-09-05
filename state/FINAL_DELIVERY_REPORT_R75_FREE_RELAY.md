@@ -108,3 +108,15 @@
 新不可變 Release：`v2.1.3-R75-package-fix-1ca1243-33931959307`；ZIP SHA-256：`fc374886b50cc1e71c98d464bf3b7c554859651bb38770917c285dcbf2074272`；GitHub attestation、ZIP inventory／MANIFEST／receipts／CRC 驗證 PASS。舊 Release 已標示缺陷且不覆寫資產。
 
 本輪僅修正打包與安裝 gate，未重新執行 Production activation、部署、資料提交或 LINE 發送。**解壓與安裝缺陷已修復；正式 sealed-bundle activation 仍需實際交易成功回執，不宣稱整個產品所有路徑無問題。**
+
+## 12. 真實 sealed bundle／Worker schema 整合修正（2026-09-05）
+
+使用者 08:23 再次正式啟用，113 tests 通過後 Worker 回覆 `V213_ACTIVATION_TOP20_INVALID`。日誌顯示未提交資料且回復原 Worker；本輪唯讀查詢確認 `27121388-1e6e-445a-b45e-104a867ca70d` @100%。根因是 Python 已輸出 15-key SEC filing provenance，而舊 Worker evidence 只接受六欄。
+
+來源 `998335dcdd86100633aa32cefbb09147f7a91cc5` 修正 closed provenance schema，保留 non-positive/provenance-only 邊界，並在部署前對原始 sealed bundle 執行真正 Worker ingestion 記憶體 KV 交易、讀回、replay／corrupt replay rejection、rollback、finalize，強制 SHA receipt。下載實測另修正 PS7 JSON DateTime 字串轉換遺失 UTC offset 的問題。
+
+Windows CI `33933857026` PASS；Python 556/2 skipped，Worker 19 files/116 tests、PS5.1/7、ZIP 解壓與隔離安裝 PASS。使用者原始 bundle SHA256 `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad` 未修改，在最終下載版產品 core 的 PS5.1/7 exact-bundle gate 均 PASS。測試刻意在缺少 Production config 的隔離邊界停止，沒有執行正式遠端交易。
+
+新不可變 Release `v2.1.3-R75-provenance-fix-998335d-33933857026`；ZIP SHA256 `ed53301f5157386da2a99cb0e6f163b171e141befdd6ba69483948ed45d833c0`；GitHub attestation 與獨立完整性檢查 PASS。附 `Local-Exact-Bundle-Verification.json`，不發布使用者原始 bundle／credentials。
+
+**已修正此實際拒收與 PS7 時區缺陷；本輪未重新部署 Production 或提交 sealed bundle。正式 activation 仍須真實交易回執，不能以本次隔離驗證取代。**

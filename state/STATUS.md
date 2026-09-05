@@ -320,3 +320,32 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - **驗證界線：本輪未重新執行正式 activation transaction，未部署 Worker／寫入 Production KV/DO／改真實排程／發送 LINE。不得將本輪通過解壓測試表述成正式 sealed-bundle activation 已完成。**
 - CI `production_mutation_by_ci=false`；本輪外部 mutation 僅 Git push/GitHub Release metadata 與資產發布。
 - 下一步：從修正版 launcher 執行新鮮資料啟用，依實際交易 receipt 判定正式 activation，不沿用舊版全面完成結論。
+
+## 2026-09-05 08:34 TST — Worker TOP20_INVALID 根因與 exact-bundle gate
+
+- Fetched HEAD `58cd22f32fd1cb2604b9166e004e1e748e2b35a0`；使用者 `082321-126` activation raw log SHA256 `a5f8497fe7fda763f51b12f464d3b445ffed93feb733338b137d0558266be758`。
+- 113 Worker tests PASS 後，真實 Commit HTTP400 `V213_ACTIVATION_TOP20_INVALID`。日誌記錄 not_committed、exact pointer rollback PASS、Worker 回復 `27121388-1e6e-445a-b45e-104a867ca70d`；本輪尚未獨立查詢即時 Production 狀態。
+- 原始 bundle SHA256 `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`。本機隔離 Worker 原碼重現同一錯誤；原因為 Python 產生 15-key SEC filing provenance，舊 `v21/top20.ts` 只接受六欄 evidence。
+- 修正 closed evidence union，完整保留申報日期／period_end／accession 與 provenance-only / non-positive-factor flags；限制 SEC HTTPS accession URL、真實日曆日期與不可未來日期，未知欄位／矛盾標記一律拒絕。沒有刪除 provenance、變動排序／分數或降低 publication 門檻。
+- 新增 exact sealed-bundle 離線 gate：套用實際 Worker ingestion 到記憶體 KV；commit、readback、idempotent replay、corrupt replay rejection、exact rollback、finalize；禁止 fetch。activation core 在 deploy 前強制 gate receipt 與 sealed SHA 相符，缺 receipt 拒絕。
+- 本機 typecheck、Worker 19 files/116 tests、PS5.1/7 core SelfTest、security scanner PASS。原始 bundle 不改位元組即通過新 Worker 全交易隔離驗證。Q6 read-only review 呼叫 150s timeout，未取得審查結果，不列 PASS；未更換／另開 Router。
+- 變更：`cloud/src/v21/top20.ts`、`cloud/test/v213-activation.test.ts`、Node test-only 型別依賴 lock、activation core、FREE_RELAY validator allowlist/receipt。保護 R75 validator/contract/qa.ts 不變。
+- 本里程碑 P0/P1/P2 = **0/1/0**（修正版等待 CI／下載實測）；本輪 Production mutation：無。使用者自行啟用／回復已記錄於其日誌，不視為本輪 CI mutation。
+- 下一步：完整 Windows CI、不可變新 ZIP、下載後重跑這份實際 bundle（僅記憶體 KV），再交付新版。
+- Read-only Wrangler 查詢確認 Production 目前確為 `27121388-1e6e-445a-b45e-104a867ca70d` @100%，與回復日誌一致。
+- CI `33933468254` 在舊 lock SHA pin 拒絕新的 test-only Node 型別依賴；Python 556/2 skipped 已 PASS。檢視 diff 僅增加 `@types/node@24.3.0`、`undici-types@7.10.0`，無 runtime version／integrity 改動；更新 authoritative validator 的精確 SHA pin，保留 fail-closed hash gate。
+- `5a0941d` / Windows CI `33933592274` PASS，ZIP 下載完整性 PASS。但下載後用原始 bundle 執行真正 core 時，PS5.1 exact gate PASS、PS7 在 freshness gate 誤判 age=29869s。根因為 ConvertFrom-Json 將 UTC 字串轉為 DateTime，而舊字串 cast 遺失 offset；本輪不發布此中間版。
+- core 與 wrapper accessor 改用 DateTime/DateTimeOffset invariant roundtrip 字串，新增 PS5.1/7 UTC fixture SelfTest。PS7 修後實際 sealed bundle core gate PASS，刻意在隔離環境缺少 Production config 處停止，確認未取得 operation lock／未部署。仍待最後新 CI 與 ZIP 驗證。
+
+## 2026-09-05 — SEC provenance／exact-bundle 修正版交付
+
+- Final executable source HEAD `998335dcdd86100633aa32cefbb09147f7a91cc5`；Windows self-hosted CI `33933857026` success。Python 556/2 skipped、Worker 19 files/116 tests、typecheck、PS5.1/7、extracted ZIP gate／isolated installer PASS。
+- ZIP SHA256 `ed53301f5157386da2a99cb0e6f163b171e141befdd6ba69483948ed45d833c0`；下載後 CRC／MANIFEST／SHA256SUMS／path safety／3 receipts／contract hash PASS。
+- 使用者 Downloads 最終解壓目錄 `...998335dc...-33933857026`，複製其原始 sealed bundle（SHA `f51a99ac...6500bad`）不修改任何位元組，以 **PS5.1 與 PS7 真正執行產品 core**，兩者 full 116 tests／exact Worker ingestion／SHA receipt verification 均 PASS。
+- 隔離 LOCALAPPDATA 僅放空 dummy sync config，不複製憑證、不放 Production config；測試刻意以 exit1 停在「Installed Production Wrangler config was not found」，且尚未取得 operation lock。這是預期隔離邊界，不是正式 activation 成功。隔離 runtime installer 另 exit0 PASS。
+- 本機驗證回執 `Local-Exact-Bundle-Verification.json`，不含 bundle 本文／憑證／bindings；連同不可變 ZIP 和其他證據發布。
+- Final Release `v2.1.3-R75-provenance-fix-998335d-33933857026`；`isImmutable=true`、`gh release verify` PASS。新檔已下載／解壓到使用者 Downloads；舊版不覆寫。
+- Q6 第二次 read-only review HTTP200，500-token 回覆中的 ISO 字串比較／URL 型別意見經人工核對：前置 validDate 與後續 validEvidence typeof 檢查已覆蓋；回覆遭 token 上限截斷，未宣稱完整獨立 security approval。未更動 Router presets／另開 Router。
+- 本輪已確認的 TOP20_INVALID／PS7 時區缺陷範圍 P0/P1/P2 = **0/0/0**。**正式遠端 activation 仍未重新執行，需當次授權與真實交易回執；不宣稱所有產品路徑已無問題。**
+- 外部 mutation：Git push、GitHub Release／metadata；Production 僅唯讀版本查詢，無部署、KV/DO 寫入、排程變更或 LINE 推播。CI `production_mutation_by_ci=false`。
+- 下一步：使用最終新目錄重建新鮮資料後正式啟用；若由 agent 操作，需明確授權 Production 部署與 sealed-bundle 提交。

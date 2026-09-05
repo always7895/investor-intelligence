@@ -18,6 +18,11 @@ function Get-PropertyValue([object]$Object,[string]$Name,[object]$Default=$null)
     if ($null -eq $Object) { return $Default }
     $property = $Object.PSObject.Properties[$Name]
     if ($null -eq $property) { return $Default }
+    # PS7 auto-parses JSON dates; preserve the offset instead of culture-casting
+    # UTC midnight into an unzoned string (an eight-hour shift on zh-TW Windows).
+    if ($property.Value -is [DateTime] -or $property.Value -is [DateTimeOffset]) {
+        return $property.Value.ToString('o',[Globalization.CultureInfo]::InvariantCulture)
+    }
     return $property.Value
 }
 
@@ -288,6 +293,13 @@ function Restore-RefreshTasks([hashtable]$Backup) {
 }
 
 if ($SelfTest) {
+    $dateDocument = '{"generated_at":"2026-09-05T00:23:12Z"}' | ConvertFrom-Json
+    $dateRoundtrip = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse([string](Get-PropertyValue $dateDocument 'generated_at' ''),[ref]$dateRoundtrip) -or
+        $dateRoundtrip.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') -ne '2026-09-05T00:23:12Z') {
+        throw 'JSON UTC timestamp lost its offset across PowerShell versions.'
+    }
+    Write-Host 'V213_JSON_TIMESTAMP_ROUNDTRIP = PASS; timezone_preserved=true'
     if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
     $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
     $version = '12345678-1234-1234-1234-123456789abc'
@@ -371,8 +383,33 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Hash-locked cloud npm ci failed.' }
     & $npm run typecheck
     if ($LASTEXITCODE -ne 0) { throw 'Worker typecheck failed before activation.' }
-    & $npm test
-    if ($LASTEXITCODE -ne 0) { throw 'Worker tests failed before activation.' }
+    # Test the exact sealed bytes with the real Worker ingestion code in memory
+    # before any deployment or remote write. Synthetic suite PASS is not enough.
+    $savedWorkerBundle = $env:V213_WORKER_PREFLIGHT_BUNDLE
+    $savedWorkerReceipt = $env:V213_WORKER_PREFLIGHT_RECEIPT
+    $workerReceiptPath = Join-Path $env:TEMP ('ii-v213-worker-preflight-' + [guid]::NewGuid().ToString('N') + '.json')
+    try {
+        $env:V213_WORKER_PREFLIGHT_BUNDLE = $BundlePath
+        $env:V213_WORKER_PREFLIGHT_RECEIPT = $workerReceiptPath
+        & $npm test
+        if ($LASTEXITCODE -ne 0) { throw 'Worker tests or exact sealed-bundle ingestion failed before activation; Production not touched.' }
+        if (-not (Test-Path -LiteralPath $workerReceiptPath -PathType Leaf)) { throw 'Exact Worker bundle preflight receipt is missing; refusing deployment.' }
+        $workerReceipt = Get-Content -LiteralPath $workerReceiptPath -Raw -Encoding utf8 | ConvertFrom-Json
+        if ((Get-PropertyValue $workerReceipt 'status' '') -ne 'PASS' -or
+            (Get-PropertyValue $workerReceipt 'bundle_sha256' '') -ne $expectedBundleSha.ToLowerInvariant() -or
+            (Get-PropertyValue $workerReceipt 'commit_readback_replay_rollback_finalize' '') -ne 'PASS' -or
+            (Get-PropertyValue $workerReceipt 'network' $true) -ne $false -or
+            (Get-PropertyValue $workerReceipt 'production_mutation' $true) -ne $false -or
+            (Get-FileHash -LiteralPath $BundlePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedBundleSha.ToLowerInvariant()) {
+            throw 'Exact Worker bundle preflight receipt or sealed bytes mismatch; refusing deployment.'
+        }
+        Write-Host 'V213_PREDEPLOY_EXACT_WORKER_CONTRACT = PASS; isolated_memory_kv=true; sealed_digest_matched=true; production_mutation=false' -ForegroundColor Green
+    }
+    finally {
+        $env:V213_WORKER_PREFLIGHT_BUNDLE = $savedWorkerBundle
+        $env:V213_WORKER_PREFLIGHT_RECEIPT = $savedWorkerReceipt
+        Remove-Item -LiteralPath $workerReceiptPath -Force -ErrorAction SilentlyContinue
+    }
 }
 finally { Pop-Location }
 $wrangler = Resolve-WranglerCommand $CloudRoot
