@@ -74,13 +74,17 @@ function Test-V213EdgeReadinessResponse($Response,[string]$ExpectedVersion,[stri
 function Invoke-V213ReadinessGet([uri]$Uri){
     try{return Invoke-RestMethod -Method Get -Uri $Uri -Headers @{'cache-control'='no-store';'pragma'='no-cache'} -TimeoutSec 10 -MaximumRedirection 0}
     catch{
+        $failureType=$_.Exception.GetType().Name
+        $response=Get-V213ReadyField $_.Exception 'Response' $null
+        $status=[int](Get-V213ReadyField $response 'StatusCode' 0)
+        $failure="V213_READINESS_HTTP_FAILED; http_status=$status; exception_type=$failureType"
         $body=''
         if($_.ErrorDetails){$body=[string]$_.ErrorDetails.Message}
         if(-not$body-and$_.Exception.Response){
             try{$reader=New-Object IO.StreamReader($_.Exception.Response.GetResponseStream());try{$body=$reader.ReadToEnd()}finally{$reader.Dispose()}}catch{}
         }
-        try{$parsed=$body|ConvertFrom-Json}catch{throw 'V213_READINESS_HTTP_FAILED'}
-        if(-not$parsed){throw 'V213_READINESS_HTTP_FAILED'}
+        try{$parsed=$body|ConvertFrom-Json}catch{throw $failure}
+        if(-not$parsed){throw $failure}
         return $parsed
     }
 }

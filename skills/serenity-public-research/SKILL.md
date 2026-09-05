@@ -14,7 +14,7 @@ description: Public-only Serenity/@aleabitoreddit research for supply chains, bo
 
 ## 使用方式 / Workflow
 
-For substantive research, **read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) completely before producing conclusions**. It preserves the detailed methodology and output requirements; this entrypoint is not a replacement for its evidence rules.
+For substantive research, **read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) completely before producing conclusions**, then read [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md) for economic bridges, independent source capabilities, reconciliation and evaluation bias. The original methodology remains intact; this entrypoint is not a replacement for its evidence rules.
 
 1. System change → constrained layer → companies, not ticker-first promotion.
 2. Separate relationship evidence from scarcity and hard dependency.

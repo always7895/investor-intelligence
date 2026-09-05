@@ -32,6 +32,14 @@ class AgentSkillStructureTests(unittest.TestCase):
                        'UNSUPPORTED', '未揭露（無可靠公開訂單數字）', '無可靠公開預估'):
             self.assertIn(marker, method)
 
+    def test_cross_validation_extension_preserves_scope_and_independence(self):
+        self.assertIn('CROSS_VALIDATION.md', SKILL.read_text(encoding='utf-8'))
+        text = (SKILL.parent / 'references/CROSS_VALIDATION.md').read_text(encoding='utf-8')
+        for marker in ('Existing scoring weights', 'same disclosure lineage', 'Macro coverage cannot satisfy',
+                       'PRIMARY_ONLY', 'NOT_COMPARABLE', 'UNAVAILABLE', 'point-in-time',
+                       'No third-party executable code installed or copied', 'HTTP 403'):
+            self.assertIn(marker, text)
+
     def test_standalone_repository_has_safety_and_evidence_instructions(self):
         text = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
         for marker in ('explicit current-session authorization', 'no-Production-mutation',

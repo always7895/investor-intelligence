@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # embedded CPython ._pth
 from v213_qa_live_gate import source_manifest
-from v213_compact_qa_gateway import POLICY
+from v213_compact_qa_gateway import POLICY, resolve_model_id
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,6 +15,7 @@ def verify(data, manifest=None):
     def require(ok, code):
         if not ok: raise ValueError(code)
     require(data.get("schema_version") == 1 and data.get("status") == "PASS", "LIVE_GATE_NOT_PASS")
+    require(data.get("scope") in (None, "FULL_LIVE"), "READINESS_ONLY_NOT_RELEASE_QUALIFICATION")
     for field in ("isolated_resources_deleted", "preset_unchanged", "source_unchanged_during_benchmark", "synthetic_public_fixture"):
         require(data.get(field) is True, "LIVE_PROOF_MISSING:"+field)
     require(data.get("production_mutation") is False and data.get("real_line_sent") is False, "PRODUCTION_BOUNDARY")
@@ -26,7 +27,11 @@ def verify(data, manifest=None):
     recorded = data.get("source_manifest")
     require(isinstance(recorded, dict), "LIVE_SOURCE_MANIFEST_MISSING")
     require(runtime_only(recorded) == runtime_only(source_manifest() if manifest is None else manifest), "LIVE_SOURCE_MANIFEST_MISMATCH")
-    require(data.get("router", {}).get("models_max") == 1, "ROUTER_CAPACITY_MISMATCH")
+    capacity = data.get("router", {}).get("models_max")
+    require(type(capacity) is int and capacity == 1, "ROUTER_CAPACITY_MISMATCH")
+    canonical = data.get("canonical_model", "qwen38-q6")
+    if "model_catalog" in data or canonical != "qwen38-q6":
+        require(isinstance(canonical, str) and bool(canonical) and resolve_model_id("qwen38-q6", data.get("model_catalog")) == canonical, "MODEL_CATALOG_PROOF_INVALID")
     policy_hash = hashlib.sha256(json.dumps(POLICY, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     require(data.get("compact_policy_sha256") == policy_hash, "LIVE_POLICY_MISMATCH")
     require(data.get("active_percentage") == 100 and data.get("convergence") == "PASS_REAL_ISOLATED", "READINESS_NOT_PROVEN")
@@ -38,7 +43,7 @@ def verify(data, manifest=None):
     rows = data.get("results", [])
     require(len(rows) == len(expected) and {(r.get("case"),r.get("phase")) for r in rows} == expected, "LIVE_CASE_MATRIX_INCOMPLETE")
     for row in rows:
-        require(row.get("pass") is True and row.get("finish_reason") == "stop" and row.get("model") == "qwen38-q6" and row.get("http_status") == 200, "LIVE_RESPONSE_INVALID")
+        require(row.get("pass") is True and row.get("finish_reason") == "stop" and row.get("model") == canonical and row.get("http_status") == 200, "LIVE_RESPONSE_INVALID")
         require(type(row.get("total_ms")) in (int,float) and 0 < row["total_ms"] <= POLICY["absolute_budget_ms"], "LIVE_LATENCY_FAILED")
         usage = row.get("usage", {})
         require(type(usage.get("prompt_tokens")) is int and 0 < usage["prompt_tokens"] <= 1500, "PROMPT_TOKEN_PROOF_INVALID")

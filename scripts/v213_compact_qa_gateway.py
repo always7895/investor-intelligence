@@ -11,8 +11,39 @@ from pathlib import Path
 POLICY = json.loads((Path(__file__).resolve().parents[1] / "config/v213-compact-qa-v1.json").read_text(encoding="utf-8-sig"))
 
 
-def complete_compact_response(result: object, selected: str) -> bool:
-    if not isinstance(result, dict) or result.get("model") != selected:
+def resolve_model_id(selected: str, catalog: object) -> str | None:
+    """Resolve only a unique catalog identity; never infer aliases from names.
+
+    A collision anywhere in the catalog fails closed. String rows support the
+    legacy direct-ID health interface, not an inferred alias mapping.
+    """
+    if not isinstance(selected, str) or not selected or not isinstance(catalog, list) or not catalog:
+        return None
+    identities: dict[str, str] = {}
+    ids: set[str] = set()
+    for entry in catalog:
+        row = {"id": entry} if isinstance(entry, str) else entry
+        if not isinstance(row, dict):
+            return None
+        model_id, aliases = row.get("id"), row.get("aliases", [])
+        if not isinstance(model_id, str) or not isinstance(aliases, list):
+            return None
+        if model_id.casefold() in ids:
+            return None
+        ids.add(model_id.casefold())
+        for label in [model_id, *aliases]:
+            if not isinstance(label, str) or not label or label != label.strip() or len(label) > 256 or any(ord(c) < 32 for c in label):
+                return None
+            key = label.casefold()
+            if key in identities and identities[key] != model_id:
+                return None
+            identities[key] = model_id
+    return identities.get(selected.casefold())
+
+
+def complete_compact_response(result: object, selected: str, catalog: object = None) -> bool:
+    canonical = resolve_model_id(selected, [selected] if catalog is None else catalog)
+    if not canonical or not isinstance(result, dict) or result.get("model") != canonical:
         return False
     choices = result.get("choices")
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):

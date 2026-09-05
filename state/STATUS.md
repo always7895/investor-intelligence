@@ -1,5 +1,18 @@
 # R75 takeover status
 
+## Q6 alias / live qualification checkpoint — 2026-09-06 Asia/Taipei
+
+- Fetched baseline HEAD `a43f42063221bfd17b5d100cfe25ca29028cdf9e`. Current-session user explicitly authorized autonomous development, qualified formal delivery, GitHub updates and local Q6/LINE setup, including final Production/task/publication work after gates. This audit note is not transferable authorization for another session. No extra real LINE tests or paid activation.
+- Existing Router PID23884, effective `/props` role=router/max_instances=1 and single listener ownership verified. Exact authorized GGUF path and size25299061664 checked against manager-generated mapping before load. Q6 loaded successfully; NVFP4 remains unloaded; no second Router or preset/sampling change.
+- Shared fail-closed catalog resolver now distinguishes configured `qwen38-q6` from canonical `Qwen3.8-27B-UD-Q6_K_XL-844843d973bf`. Health retains the selected alias and exposes canonical identity; completions preserve the real upstream model ID. Collisions, malformed catalogs and wrong response IDs fail closed. Real subprocess test covers alias mapping, Unicode/spaces/parentheses and backpressure.
+- Fresh source-bound isolated receipt at `state/r75-qa-live-qualification.json`: all ten cold/warm model cases PASS, complete stop,1077.50–1481.19ms end-to-end; cold prompt-cache counts0. Actual isolated Worker seven-field reply, bilingual20 rows and reference/waitUntil PASS with synthetic LINE transport. Resources deleted; preset/source unchanged. Offline verifier PASS. Earlier auth10000 and readiness-HTTP failed attempts remain FAIL; a readiness-only success was not relabelled as model qualification.
+- Regression: Python577 tests/2 skipped PASS; TypeScript PASS; full Worker22 files/139 tests PASS; PS5.1 and7 readiness self-tests PASS; security and workflow-supply-chain gates PASS. Q6 read-only review v1 truncated and remains incomplete; bounded v2 completed stop with no concrete bug, reviewed by parent. This is not independent release acceptance by itself.
+- Research skill now requires `references/CROSS_VALIDATION.md`: economic conversion, financing/per-share capture, counterparty commitments, scenarios/falsifiers, point-in-time evaluation and claim-level comparability. Reviewed SEC API documentation and two unaffiliated public research projects; original X candidate403 remains UNVERIFIED. No third-party code installed/copied; no new feed claimed live; scoring and publication contract unchanged.
+- Installed defects remain open: P0/P1/P2=1/3/2 (unsealed write surface; seven-field delivery, refresh/publication and alias compatibility; intermittent isolated provisioning/readiness and separate legacy daily task). Candidate fixes are not yet installed/deployed. Certified qa.ts blob remains `94184bc8937b413eb327b3d773926db00e22b3b9`.
+- Next: authoritative Windows CI on this candidate; mobile seven-field LINE presentation with complete text backup; actual source/refresh coverage and sealed publication; immutable final artifact, independent verification, qualified install/cutover. No whole-project completion claim.
+- External mutations: authorized local Q6 load; isolated disposable Cloudflare resources created/deleted. Production Worker/storage/tasks/crons and real LINE unchanged; `production_mutation_by_ci=false`.
+
+
 ## Architecture consolidation checkpoint — 2026-09-05
 
 - Actual starting HEAD0a3061b23c0d79cd7db1b3b6d9361e09733e314c. Dedicated cleanup commit retired three duplicate main-PR audit triggers while preserving historical manual/legacy-branch audits; workflow supply-chain and dedup tests PASS.
