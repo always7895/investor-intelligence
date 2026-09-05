@@ -336,3 +336,16 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - CI `33933468254` 在舊 lock SHA pin 拒絕新的 test-only Node 型別依賴；Python 556/2 skipped 已 PASS。檢視 diff 僅增加 `@types/node@24.3.0`、`undici-types@7.10.0`，無 runtime version／integrity 改動；更新 authoritative validator 的精確 SHA pin，保留 fail-closed hash gate。
 - `5a0941d` / Windows CI `33933592274` PASS，ZIP 下載完整性 PASS。但下載後用原始 bundle 執行真正 core 時，PS5.1 exact gate PASS、PS7 在 freshness gate 誤判 age=29869s。根因為 ConvertFrom-Json 將 UTC 字串轉為 DateTime，而舊字串 cast 遺失 offset；本輪不發布此中間版。
 - core 與 wrapper accessor 改用 DateTime/DateTimeOffset invariant roundtrip 字串，新增 PS5.1/7 UTC fixture SelfTest。PS7 修後實際 sealed bundle core gate PASS，刻意在隔離環境缺少 Production config 處停止，確認未取得 operation lock／未部署。仍待最後新 CI 與 ZIP 驗證。
+
+## 2026-09-05 — SEC provenance／exact-bundle 修正版交付
+
+- Final executable source HEAD `998335dcdd86100633aa32cefbb09147f7a91cc5`；Windows self-hosted CI `33933857026` success。Python 556/2 skipped、Worker 19 files/116 tests、typecheck、PS5.1/7、extracted ZIP gate／isolated installer PASS。
+- ZIP SHA256 `ed53301f5157386da2a99cb0e6f163b171e141befdd6ba69483948ed45d833c0`；下載後 CRC／MANIFEST／SHA256SUMS／path safety／3 receipts／contract hash PASS。
+- 使用者 Downloads 最終解壓目錄 `...998335dc...-33933857026`，複製其原始 sealed bundle（SHA `f51a99ac...6500bad`）不修改任何位元組，以 **PS5.1 與 PS7 真正執行產品 core**，兩者 full 116 tests／exact Worker ingestion／SHA receipt verification 均 PASS。
+- 隔離 LOCALAPPDATA 僅放空 dummy sync config，不複製憑證、不放 Production config；測試刻意以 exit1 停在「Installed Production Wrangler config was not found」，且尚未取得 operation lock。這是預期隔離邊界，不是正式 activation 成功。隔離 runtime installer 另 exit0 PASS。
+- 本機驗證回執 `Local-Exact-Bundle-Verification.json`，不含 bundle 本文／憑證／bindings；連同不可變 ZIP 和其他證據發布。
+- Final Release `v2.1.3-R75-provenance-fix-998335d-33933857026`；`isImmutable=true`、`gh release verify` PASS。新檔已下載／解壓到使用者 Downloads；舊版不覆寫。
+- Q6 第二次 read-only review HTTP200，500-token 回覆中的 ISO 字串比較／URL 型別意見經人工核對：前置 validDate 與後續 validEvidence typeof 檢查已覆蓋；回覆遭 token 上限截斷，未宣稱完整獨立 security approval。未更動 Router presets／另開 Router。
+- 本輪已確認的 TOP20_INVALID／PS7 時區缺陷範圍 P0/P1/P2 = **0/0/0**。**正式遠端 activation 仍未重新執行，需當次授權與真實交易回執；不宣稱所有產品路徑已無問題。**
+- 外部 mutation：Git push、GitHub Release／metadata；Production 僅唯讀版本查詢，無部署、KV/DO 寫入、排程變更或 LINE 推播。CI `production_mutation_by_ci=false`。
+- 下一步：使用最終新目錄重建新鮮資料後正式啟用；若由 agent 操作，需明確授權 Production 部署與 sealed-bundle 提交。
