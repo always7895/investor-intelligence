@@ -16,6 +16,8 @@ try {
     $changed = @(git diff --name-only "$baseCommit..$sha")
     $allowed = @(
         '.github/workflows/v213-r75-release.yml',
+        '.github/workflows/phase-audit.yml','.github/workflows/phase5-line-bot-audit.yml',
+        '.github/workflows/canonical-release-candidate-audit-v2.yml','tests/test_pull_request_workflow_dedup.py',
         'activate-v213-diversified-schedule.ps1','activate-v213-seven-field-schedule-core.ps1',
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',

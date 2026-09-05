@@ -39,17 +39,28 @@ class PullRequestWorkflowDedupTests(unittest.TestCase):
                 )
                 self.assertNotIn("\n  push:\n", header)
 
-    def test_canonical_workflow_is_the_only_feature_branch_push_acceptance(self) -> None:
+    def test_historical_canonical_workflow_retains_legacy_branch_only(self) -> None:
         header = trigger_header(CANONICAL_WORKFLOW)
         self.assertIn("\n  workflow_dispatch:\n", header)
         self.assertIn("\n  push:\n", header)
         self.assertIn("      - hardening/line-kv-isolation-v1", header)
-        self.assertIn("\n  pull_request:\n", header)
-        self.assertIn("      - main", header)
+        self.assertNotIn("\n  pull_request:\n", header)
         self.assertNotIn(
             "      - reconcile/phase3-authoritative-sources-v1",
             header,
         )
+
+    def test_obsolete_main_pr_audits_do_not_duplicate_r75_acceptance(self) -> None:
+        for name in ("phase-audit.yml", "phase5-line-bot-audit.yml", "canonical-release-candidate-audit-v2.yml"):
+            with self.subTest(workflow=name):
+                header = trigger_header(ROOT / ".github/workflows" / name)
+                self.assertIn("\n  workflow_dispatch:\n", header)
+                self.assertNotIn("\n  pull_request:\n", header)
+                self.assertNotIn("\n  workflow_run:\n", header)
+        current = (ROOT / ".github/workflows/v213-r75-release.yml").read_text(encoding="utf-8")
+        self.assertIn("'pi/**'", trigger_header(ROOT / ".github/workflows/v213-r75-release.yml"))
+        self.assertIn("runs-on: [self-hosted, Windows, X64, investor-intelligence]", current)
+        self.assertIn("LINE_PUSH_ENABLED: 'false'", current)
 
 
 if __name__ == "__main__":

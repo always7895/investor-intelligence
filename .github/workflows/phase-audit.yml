@@ -5,10 +5,7 @@ on:
   push:
     branches:
       - audit/phase-1-2-privacy-free-v3
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened, ready_for_review]
+  # Historical audit: manual/legacy-branch only. R75 owns current acceptance.
 
 permissions:
   contents: read
