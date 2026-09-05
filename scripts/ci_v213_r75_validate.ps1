@@ -53,7 +53,9 @@ try {
         $env:PROJECT_NPM = (Get-Command npm.cmd -ErrorAction Stop).Source
     }
     $lock = (Get-FileHash cloud\package-lock.json -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($lock -ne '365ca38feb288fbed62bb5723303186e5e591c44b7d60b242e530db357535a57') {
+    # Reviewed dev-only addition: @types/node 24.3.0 + undici-types 7.10.0.
+    # Runtime dependency versions and their integrity entries are unchanged.
+    if ($lock -ne '640d639b2494cbcaba517b894259d38f157d3cd885a9881fd8ea25af02ff0904') {
         throw "Worker lock hash mismatch: $lock"
     }
     Push-Location cloud

@@ -332,3 +332,5 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - 變更：`cloud/src/v21/top20.ts`、`cloud/test/v213-activation.test.ts`、Node test-only 型別依賴 lock、activation core、FREE_RELAY validator allowlist/receipt。保護 R75 validator/contract/qa.ts 不變。
 - 本里程碑 P0/P1/P2 = **0/1/0**（修正版等待 CI／下載實測）；本輪 Production mutation：無。使用者自行啟用／回復已記錄於其日誌，不視為本輪 CI mutation。
 - 下一步：完整 Windows CI、不可變新 ZIP、下載後重跑這份實際 bundle（僅記憶體 KV），再交付新版。
+- Read-only Wrangler 查詢確認 Production 目前確為 `27121388-1e6e-445a-b45e-104a867ca70d` @100%，與回復日誌一致。
+- CI `33933468254` 在舊 lock SHA pin 拒絕新的 test-only Node 型別依賴；Python 556/2 skipped 已 PASS。檢視 diff 僅增加 `@types/node@24.3.0`、`undici-types@7.10.0`，無 runtime version／integrity 改動；更新 authoritative validator 的精確 SHA pin，保留 fail-closed hash gate。
