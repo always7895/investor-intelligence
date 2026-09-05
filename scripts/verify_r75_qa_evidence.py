@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # embedded CPython ._pth
 from v213_qa_live_gate import source_manifest
 from v213_compact_qa_gateway import POLICY
 

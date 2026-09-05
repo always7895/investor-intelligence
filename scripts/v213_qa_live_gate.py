@@ -19,6 +19,8 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 import requests
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from v213_compact_qa_gateway import POLICY
 
 ROOT = Path(__file__).resolve().parents[1]
