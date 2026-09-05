@@ -4,6 +4,12 @@
 
 研究軟體，非個人化投資建議。舊文件中的 v2.0.0、92c97f9 與舊全面完成敘述屬歷史記錄；目前以本頁連結的實際 release／receipts 為準。
 
+## 已知問題／Known issue：LINE 七欄入口不一致
+
+**不能宣稱整個產品已全部完成。** 下列正式修正版完成的是 Q&A／readiness；其互動 Top20 與舊 `/v21/admin/test-push` 仍走五欄，v213 排程則已有七欄。新修正已通過本機 TypeScript 與 133 個 Worker tests，但隔離 workers.dev 驗收遇 HTTP404，**尚未發布、安裝或部署**，也未宣稱真實使用者 LINE 七欄驗收完成。
+
+The published hotfix qualifies Q&A/readiness, not every feature. Seven-field route unification is not yet released. [七欄定義與完整中英狀態／Bilingual status](docs/CURRENT_STATUS_BILINGUAL.md)。
+
 ## 最新驗證狀態（2026-09-05）
 
 - Executable source：`2cf585d317a4ba3ca784641b1515bfa862fb38bd`
