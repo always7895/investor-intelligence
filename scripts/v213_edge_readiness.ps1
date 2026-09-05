@@ -1,4 +1,12 @@
 Set-StrictMode -Version Latest
+function Assert-V213QaReleaseQualification($Receipt) {
+    $qualified = Get-V213ReadyField $Receipt 'release_ready' $false
+    if ($qualified -isnot [bool] -or -not $qualified -or
+        (Get-V213ReadyField $Receipt 'live_qa' '') -cne 'PASS' -or
+        (Get-V213ReadyField $Receipt 'live_free_relay_smoke' '') -cne 'PASS') {
+        throw 'R75_QA_RELEASE_NOT_QUALIFIED; immutable_package_forbidden=true'
+    }
+}
 function Get-V213DeployedVersion([string]$Output) {
     $plain = [regex]::Replace($Output, ([regex]::Escape([string][char]27) + '\[[0-?]*[ -/]*[@-~]'), '')
     $ids = [regex]::Matches($plain, '(?m)^\s*Current Version ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$')

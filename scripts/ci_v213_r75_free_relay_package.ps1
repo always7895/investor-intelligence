@@ -17,6 +17,8 @@ try {
     if (-not $env:R75_FREE_RELAY_WINDOWS_RECEIPT -or -not (Test-Path -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -PathType Leaf)) { throw 'FREE_RELAY Windows receipt is missing.' }
     $windows = Get-Content -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -Raw -Encoding utf8 | ConvertFrom-Json
     if ([string]$windows.status -ne 'PASS' -or [string]$windows.source_commit -ne $sha -or [string]$windows.workflow_run_id -ne $runId -or $windows.production_mutation_by_ci -ne $false -or $windows.custom_domain_required -ne $false) { throw 'FREE_RELAY Windows receipt identity, cost, or no-mutation gate failed.' }
+    . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
+    Assert-V213QaReleaseQualification $windows
     foreach ($protected in @('config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts','scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py')) {
         git diff --quiet $r75Commit -- $protected
         if ($LASTEXITCODE -ne 0) { throw "Protected R75 release source changed: $protected" }

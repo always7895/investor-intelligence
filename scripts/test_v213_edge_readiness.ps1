@@ -7,6 +7,10 @@ $version='12345678-1234-1234-1234-123456789abc'
 $policy=Get-V213CompactPolicyHash $ProjectRoot
 function Proof([string]$nonce){return [pscustomobject]@{schema_version=1;ready=$true;worker_version=$version;challenge=$nonce;parser_schema='v213-r75-sec-filing-provenance-v1';compatibility='PASS';no_write=$true;publication_contract_id='v213-r75-publication-mode-v1';publication_contract_sha256='9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd';compact_policy_sha256=$policy}}
 function Must-Fail([scriptblock]$Action,[string]$Name){$failed=$false;try{& $Action|Out-Null}catch{$failed=$true};if(-not$failed){throw "Negative invariant accepted: $Name"}}
+foreach ($receipt in @([pscustomobject]@{}, [pscustomobject]@{release_ready=$false}, [pscustomobject]@{release_ready='true';live_qa='PASS';live_free_relay_smoke='PASS'}, [pscustomobject]@{release_ready=$true;live_qa='PASS_SYNTHETIC';live_free_relay_smoke='PASS'})) {
+    Must-Fail {Assert-V213QaReleaseQualification $receipt} 'unqualified release forbidden'
+}
+Assert-V213QaReleaseQualification ([pscustomobject]@{release_ready=$true;live_qa='PASS';live_free_relay_smoke='PASS'})
 if($WorkerFixture){
     $fixture=Get-Content -LiteralPath $WorkerFixture -Raw -Encoding utf8|ConvertFrom-Json
     if(-not(Test-V213EdgeReadinessResponse $fixture $version $fixture.challenge $policy)){throw 'Cross-language Worker proof failed'}
