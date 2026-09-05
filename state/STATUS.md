@@ -1,5 +1,15 @@
 # R75 takeover status
 
+## Immutable final delivery / 最終不可變交付 — 2026-09-06
+
+- Source/installed executable b5baae936dd3d422583decf9268910ed5783e4d5; Windows self-hosted33992169731 SUCCESS. Python585/2 skipped, Worker142/22 files, typecheck, PS5.1/7, independent downloaded and installed gates PASS. Resident dependencies now survive actual code reinstall; launcher40916 responds with exact b5baae936dd3/33992169731 title. Functional Worker bytes remain identical to deployed54442104-0e1f-419c-84a9-b7c4ca63ee3f.
+- Public immutable release: https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-seven-field-b5baae9-33992169731 . ZIP SHA320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69.16 assets, no prior asset/tag overwritten. Published ZIP downloaded/independently verified again. GitHub rejected adding a later receipt with422 because the release is immutable; that post-publication receipt remains local and is not falsely claimed as an uploaded asset.
+- `gh release verify-asset` cryptographic immutable-release asset attestation PASS. Separate `gh attestation verify` SLSA build predicate returned404; no build-provenance claim. Pre-publication receipts remain unchanged; release notes explicitly distinguish these evidence types.
+- PR34 merged; main924e7b23b8006e3c6072d4e84e20d26d24d078a9 is the starting HEAD for this final metadata-only clarification. About/homepage/release title and notes bilingual. Issue35 tracks separate legacy missing-target task; issue33 remains open only for ordinary scheduled-delivery/device observation.
+- Current tracked P0/P1/P2=0/0/1. Existing Router23884 still max_instances1, exact Q6 loaded, selected alias available, preset unchanged. Actual full installed sealed refresh/readback and07:20/20:20 opted-in tasks remain qualified;08:00/21:00 cron unchanged. No extra real LINE test. CI production_mutation_by_ci=false; authorized operator changes are explicitly recorded below.
+- Next action: natural scheduled-delivery observation without injecting test LINE, and ownership review before changing the unrelated legacy task. Do not rerun activation to satisfy historical checklists.
+
+
 ## Qualified seven-field / sealed-refresh migration — 2026-09-06 Asia/Taipei
 
 - Fetched/pushed functional baseline bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879; Windows33989794415 SUCCESS, independently downloaded ZIP SHA256 d26ab7d685cd3c99ec4745c51d9a024f0158834eaaf250e794d1956d57820775, installed and independently exercised. Current documentation and dependency-cache preservation follow-up are pending their own CI; never relabel the baseline ZIP as a later build.
