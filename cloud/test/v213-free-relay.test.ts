@@ -126,6 +126,15 @@ afterEach(() => {
 });
 
 describe("R75 FREE_RELAY route lease", () => {
+  it.each(["/v21/admin/public-snapshot", "/v212/admin/top20-report", "/v213/admin/top20-report"])("retires %s before any nonce, storage or model access, including signed legacy clients", async path => {
+    const blockedEnv = new Proxy({}, {get() {throw new Error("UNEXPECTED_RETIRED_ROUTE_ACCESS");}});
+    const requests = [new Request("https://synthetic.workers.dev"+path, {method:"POST",body:"{}"}), await signedAdminRequest(path, {}, "1234abcd5678ef901234abcd5678ef90")];
+    for (const request of requests) {
+      const response = await productionWorker.fetch(request, blockedEnv as any, context());
+      expect(response.status).toBe(410);
+      expect(await response.json()).toEqual({ok:false,code:"V213_SEALED_PUBLICATION_REQUIRED"});
+    }
+  });
   it("keeps legacy test-push authenticated but routes it to the seven-field broadcaster", async () => {
     const e = env(relayObject().object);
     const spy = vi.spyOn(sevenFieldBroadcast, "broadcastV213Top20").mockResolvedValue({status:"synthetic_no_send",format:"v213_seven_fields"});

@@ -21,6 +21,7 @@ try {
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/src/v211/worker.ts','cloud/src/v213/compact-qa.ts','cloud/src/v213/readiness.ts',
         'cloud/src/v213/top20-report.ts','cloud/src/v213/broadcast.ts','cloud/test/v213-top20-report.test.ts',
+        'cloud/test/v213-scheduled-broadcast.test.ts','scripts/audit_v213_refresh_tasks.ps1',
         'cloud/test/v213-compact-qa.test.ts','cloud/test/v213-qa-reference-job.test.ts','cloud/test/v213-readiness.test.ts',
         'config/v213-compact-qa-v1.json','sync-v213-activation-bundle.ps1',
         'scripts/benchmark_v213_qa_latency.py','scripts/v213_compact_qa_gateway.py','scripts/v213_local_llm_gateway.py',
@@ -57,6 +58,10 @@ try {
     }
     foreach ($required in @('cloud/src/v213/free-relay.ts','cloud/test/v213-free-relay.test.ts','scripts/v213_free_relay.ps1','scripts/v213_free_relay_heartbeat.ps1','scripts/test_v213_free_relay.ps1','register-v213-free-relay-task.ps1')) {
         if ($changed -notcontains $required) { throw "FREE_RELAY required integration file missing: $required" }
+    }
+    foreach ($shell in @('powershell.exe','pwsh')) {
+        & $shell -NoProfile -File scripts/audit_v213_refresh_tasks.ps1 -SelfTest
+        if ($LASTEXITCODE -ne 0) { throw "Read-only refresh audit self-test failed: $shell" }
     }
     & .\scripts\ci_v213_r75_validate.ps1 -ProjectRoot $ProjectRoot -SkipLiveRefresh
     if ($LASTEXITCODE -ne 0) { throw 'R75 no-mutation regression validation failed.' }

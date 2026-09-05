@@ -4,7 +4,6 @@ import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "..
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
 import { v213Top20ReportAnswer, v213FieldLocale } from "./top20-report";
 import { authenticateV21AdminRequest } from "../v21/admin";
-import { ingestV213Top20Report } from "./admin";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
@@ -114,17 +113,6 @@ async function authenticatedBody(request: Request, env: V211Env): Promise<string
   }
 }
 
-async function handleV213Report(request: Request, env: V211Env): Promise<Response> {
-  const authenticated = await authenticatedBody(request, env);
-  if (authenticated instanceof Response) return authenticated;
-  try {
-    return jsonResponse({ status: "accepted", ...(await ingestV213Top20Report(authenticated, env)) });
-  } catch (error) {
-    const code = errorCode(error, "V213_ADMIN_FAILED");
-    return jsonResponse({ ok: false, code }, validationStatus(code));
-  }
-}
-
 async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): Promise<Response> {
   const authenticated = await authenticatedBody(request, env);
   if (authenticated instanceof Response) return authenticated;
@@ -183,6 +171,11 @@ async function handleActivationTransaction(
 export default {
   async fetch(request: Request, env: V213ProductionEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    // Legacy single-object writes can replace sealed pointers or mutate hashed
+    // run objects. Retire them before authentication/nonce or storage access.
+    if (["/v21/admin/public-snapshot", "/v212/admin/top20-report", "/v213/admin/top20-report"].includes(url.pathname)) {
+      return jsonResponse({ ok: false, code: "V213_SEALED_PUBLICATION_REQUIRED" }, 410);
+    }
     if (url.pathname === "/v213/readiness") return edgeReadiness(request, env);
     if (url.pathname === "/health" && request.method === "GET") {
       const base = await v211Worker.fetch(request, env, ctx);
@@ -201,9 +194,6 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/activation-finalize") {
       return handleActivationTransaction(request, env, "finalize");
-    }
-    if (request.method === "POST" && url.pathname === "/v213/admin/top20-report") {
-      return handleV213Report(request, env);
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-smoke") {
       return handleFreeRelaySmoke(request, env);

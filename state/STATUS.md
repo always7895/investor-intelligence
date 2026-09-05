@@ -1,5 +1,17 @@
 # R75 takeover status
 
+## 2026-09-05 follow-up — actual scheduled entrypoint / refresh-chain / sealed-write audit
+
+- Fetched baseline HEAD5aca64ec4776cc80757bf17408fce57a0ade91d3. User dated automatic screenshot September4 at21:00 (before hotfix); current interactive five-field defect remains confirmed.
+- Added actual Production scheduled-entrypoint tests for both crons, awaited waitUntil,20 seven-field bilingual rows and duplicate suppression; only mocked LINE transport. TypeScript and22 files/**139 tests PASS** after all changes.
+- Added read-only scripts/audit_v213_refresh_tasks.ps1; PS5.1/7 self-tests PASS, including legacy/missing/failed-run/time mismatch and serialization. Actual audit: both actions remain v212, times07:20/20:20 correct, morning last result1. Paths exist; exact morning exception unknown. Candidate R75 wrapper is LOCAL_ONLY_NO_PUBLISH because NoSync/NoAutoActivation. No task was executed or changed.
+- Newly identified sealed-integrity bypass: legacy v21 snapshot/v212 report/v213 single-report HTTP routes remain callable in released Worker without full sealed publication. Candidate now returns410 before nonce/storage/model access; signed-client and no-side-effect tests PASS. No destructive Production probe was performed. Protected qa.ts, activation-v2 and publication contract remain unchanged.
+- Known installed follow-up defects P0/P1/P2=**1/2/2**: P0 legacy unsealed write surface (candidate closure not deployed); P1 interactive seven-field delivery and incomplete refresh/publication chain; P2 isolated workers.dev404 and separate failed legacy08:00 InvestorDailyBriefing task. Prior zero counts applied only to prior scoped evidence, not these findings.
+- Production Worker/snapshot/LINE/cron/tasks unchanged. New immutable artifact and live proof remain blocked; do not call the candidate delivered. Full Python/Windows source-bound receipt mismatch from prior run remains unresolved, not reclassified PASS.
+- Next: isolated Worker404 diagnosis, fresh live qualification/new artifact; explicit Production cutover/task-action/publication authorization before real changes. Automatic sealed publication is not yet implemented/qualified; merely repointing tasks to NoSync wrapper is insufficient.
+- Migration scope and safety requirements: docs/R75_SEVEN_FIELD_MIGRATION.md (bilingual). Actual safe task receipt: outer artifacts/r75-seven-field/Refresh-Task-Audit.json.
+
+
 ## CURRENT FOLLOW-UP — 2026-09-05: 七欄一致性 / Seven-field consistency NOT DELIVERED
 
 - Starting fetched main `b5ca5a2` (full SHA recorded by Git); installed immutable executable remains `2cf585d317a4ba3ca784641b1515bfa862fb38bd`, not this candidate. Previous completion applies only to Q&A/readiness.
