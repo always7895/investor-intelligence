@@ -129,6 +129,23 @@ try {
             }
         } finally { Pop-Location }
         Write-Host "V213_PACKAGED_WORKER_GATE = PASS; tests=$packagedWorkerTests; extracted_zip=true; special_path=true; production_mutation=false"
+        $savedLocalAppData = $env:LOCALAPPDATA
+        $installProbe = Join-Path $OutputRoot 'isolated-install'
+        try {
+            $env:LOCALAPPDATA = Join-Path $installProbe 'local'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $zipProbe 'install-v213-source-diverse-runtime.ps1') -ProjectRoot $zipProbe -RuntimeRoot (Join-Path $installProbe 'runtime')
+            if ($LASTEXITCODE -ne 0) { throw 'Extracted ZIP stable runtime installation failed.' }
+            foreach ($relative in $workerTestPayload) {
+                $installed = Join-Path (Join-Path $installProbe 'runtime') $relative
+                if (-not (Test-Path -LiteralPath $installed -PathType Leaf) -or (Get-FileHash $installed).Hash -ne (Get-FileHash (Join-Path $zipProbe $relative)).Hash) {
+                    throw "Installed runtime test dependency missing or changed: $relative"
+                }
+            }
+            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; production_mutation=false'
+        } finally {
+            $env:LOCALAPPDATA = $savedLocalAppData
+            Remove-Item -LiteralPath $installProbe -Recurse -Force -ErrorAction SilentlyContinue
+        }
     } finally { Remove-Item -LiteralPath $zipProbe -Recurse -Force -ErrorAction SilentlyContinue }
     $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     $shaPath = Join-Path $OutputRoot "$stem.zip.sha256"
@@ -138,7 +155,7 @@ try {
     Copy-Item (Join-Path $stage 'SBOM.spdx.json') (Join-Path $OutputRoot "$stem.SBOM.spdx.json")
     $windowsReceipt = Join-Path $OutputRoot "$stem.Windows-Receipt.json"; Copy-Item $env:R75_FREE_RELAY_WINDOWS_RECEIPT $windowsReceipt
     $deploymentReceipt = Join-Path $OutputRoot "$stem.Deployment-Receipt.json"
-    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
+    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deploymentReceipt,(($deployment|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $deliveryReceipt = Join-Path $OutputRoot "$stem.Delivery-Receipt.json"
     $delivery = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;package="$stem.zip";zip_sha256=$zipSha;bytes=(Get-Item $zip).Length;immutable_identity="$sha-$runId";zero_cost=$true;custom_domain_required=$false;production_mutation_by_ci=$false;external_mutation=$false}

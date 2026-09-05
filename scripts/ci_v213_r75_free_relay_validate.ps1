@@ -20,7 +20,7 @@ try {
         'activate-v213-seven-field-schedule-serenity-latest.ps1','activate-v213-seven-field-schedule.ps1',
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
-        'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs',
+        'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
         'register-v213-free-relay-task.ps1','run-v213-local-llm-bridge-source-diverse.ps1',
         'run-v213-local-llm-bridge.ps1','run-v213-local-serenity-latest.ps1',
         'run-v213-local-source-diverse.ps1','run-v213-local.ps1',

@@ -168,7 +168,9 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
 
     verified = [verify_receipt(path, commit, run_id) for path in receipts]
     deployment = [r for r in verified if r.get("extracted_zip_worker_gate") == "PASS"]
-    if len(deployment) != 1 or deployment[0].get("packaged_worker_typecheck") != "PASS" or deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"]:
+    if (len(deployment) != 1 or deployment[0].get("packaged_worker_typecheck") != "PASS" or
+            deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"] or
+            deployment[0].get("extracted_zip_runtime_install") != "PASS"):
         raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
     return {
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
@@ -178,6 +180,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "manifest": "PASS", "sha256sums": "PASS", "pe_marker": "PASS",
         "publication_contract_sha256": contract_sha, "receipt_count": len(verified),
         "activation_test_payload": "PASS", "extracted_zip_worker_gate": "PASS",
+        "extracted_zip_runtime_install": "PASS",
         "packaged_worker_tests": refs["packaged_worker_test_count"],
         "production_mutation_by_ci": False, "protected_release_semantics_unchanged": True,
     }

@@ -12,7 +12,14 @@ $baseRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence'
 if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $baseRoot 'V213Runtime'}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $refs=Join-Path $ProjectRoot 'VERSION-REFS.json'
-if(-not(Test-Path -LiteralPath $refs -PathType Leaf)){throw 'This is not an Investor Intelligence v2.1.3 All-in-One package (VERSION-REFS.json missing).'}
+if(-not(Test-Path -LiteralPath $refs -PathType Leaf)){
+    $hotfixRefs=Join-Path $ProjectRoot 'HOTFIX-REFS.json'
+    if(-not(Test-Path -LiteralPath $hotfixRefs -PathType Leaf)){throw 'Package identity is missing (VERSION-REFS.json or HOTFIX-REFS.json required).'}
+    $identity=Get-Content -LiteralPath $hotfixRefs -Raw -Encoding utf8|ConvertFrom-Json
+    if($identity.artifact_kind-ne'R75_FREE_WORKERS_RELAY_HOTFIX'-or $identity.package_version-ne'2.1.3'-or
+       $identity.source_commit-notmatch'^[0-9a-f]{40}$'-or [string]$identity.workflow_run_id-notmatch'^\d+$'-or
+       $identity.production_mutation_by_ci-ne$false){throw 'R75 FREE_RELAY package identity is invalid.'}
+}
 New-Item -ItemType Directory -Force -Path $baseRoot,$RuntimeRoot|Out-Null
 
 $sameRoot=$ProjectRoot.TrimEnd('\')-eq$RuntimeRoot.TrimEnd('\')
@@ -139,10 +146,20 @@ $sourceDiverseActivationValid=$true
 foreach($needle in $sourceDiverseMarkers){if(-not$activation.Contains($needle)){$sourceDiverseActivationValid=$false;break}}
 $serenityLatestActivationValid=$true
 foreach($needle in $serenityLatestMarkers){if(-not$activation.Contains($needle)){$serenityLatestActivationValid=$false;break}}
-if(-not$sourceDiverseActivationValid-and-not$serenityLatestActivationValid){
-    throw 'The stable activation entrypoint matches neither the reviewed source-diverse contract nor the stronger Serenity-latest contract.'
+$r75ActivationMarkers=@(
+    'v213_r75_activation_preflight.py',
+    'V213_R75_ACTIVATION_WRAPPER_SELF_TEST',
+    'V213_R75_SEALED_BUNDLE_SHA256',
+    'activate-v213-seven-field-schedule-core.ps1',
+    'ConfirmActivation',
+    'RequireLocalModel'
+)
+$r75ActivationValid=$true
+foreach($needle in $r75ActivationMarkers){if(-not$activation.Contains($needle)){$r75ActivationValid=$false;break}}
+if(-not$sourceDiverseActivationValid-and-not$serenityLatestActivationValid-and-not$r75ActivationValid){
+    throw 'The stable activation entrypoint matches no reviewed source-diverse, Serenity-latest, or R75 sealed contract.'
 }
-$activationProfile=if($serenityLatestActivationValid){'SERENITY_LATEST'}else{'SOURCE_DIVERSE'}
+$activationProfile=if($r75ActivationValid){'R75_SEALED'}elseif($serenityLatestActivationValid){'SERENITY_LATEST'}else{'SOURCE_DIVERSE'}
 Write-Host "V213_RUNTIME_ACTIVATION_CONTRACT = PASS; profile=$activationProfile; exact_core=activate-v213-seven-field-schedule-core.ps1" -ForegroundColor Green
 
 $gateway=Get-Content -LiteralPath (Join-Path $RuntimeRoot 'scripts\v213_local_llm_gateway.py') -Raw -Encoding utf8
@@ -186,4 +203,7 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     official_serenity_score_claimed=$false
     private_serenity_method_reproduced=$false
 }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $baseRoot 'v213-runtime-state.json') -Encoding utf8
+# Robocopy 0..7 indicate success; do not leak its successful nonzero status
+# into the caller's native-exit gate after all installation checks passed.
+$global:LASTEXITCODE=0
 Write-Host "V213_RUNTIME = PASS; path=$RuntimeRoot; profile=source-diverse-exact-model-health-schema2-pipeline-v3-market-quality-aware; activation=$activationProfile" -ForegroundColor Green

@@ -306,3 +306,5 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - 修正範圍：FREE_RELAY packager 保留 Worker tests 和兩個 synthetic fixtures；final ZIP 解壓至特殊路徑後執行 npm ci/typecheck/full tests；verifier 強制 inventory 與 extracted-ZIP receipt；新增缺檔負向測試。不修改受保護 R75 contract、scoring 或跳過 activation 測試。
 - 本里程碑 P0/P1/P2 = **0/1/0**（發布阻塞：解壓後 Worker gate）；外部 mutation：無。
 - 下一步：執行回歸、Windows CI、下載修正版與獨立解壓實測，產生新的 immutable release；舊 ZIP 不覆寫。
+- 延伸測試另發現 runtime installer 僅接受舊 VERSION-REFS、未識別 R75 sealed wrapper，且把 robocopy 成功碼 1 當失敗。僅修正套件識別、加入完整 R75 marker 組與成功後退出碼正規化；未放寬 publication validator。
+- 隔離 LOCALAPPDATA 的 installer 實測從錯誤重現到 `INSTALL_PROBE_EXIT=0`；已加入每個 final ZIP 的必跑 gate。第一輪 `bae5c53`/`33931793055` Windows CI success，但不發布此中間版本，等待包含 installer 修正的新完整 CI。
