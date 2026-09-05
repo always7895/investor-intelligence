@@ -1,38 +1,60 @@
-# Formal Private Final Release Delivery
+# 歷史文件：Formal Private Release v2.0.0
 
-Investor Intelligence v2.0.0 is delivered as a reproducible, no-Git-history final package while the development repository remains private.
+> **此文件只保留 v2.0.0 私人交付的歷史稽核內容，已由 v2.1.3 R75 FREE_RELAY 不可變正式版取代。**
+>
+> 目前正式文件：[主 README](../README.md)｜[繁體中文完整說明](../README.zh-TW.md)｜[R75 最終正式發布](FINAL_RELEASE.md)
 
-## Distribution boundary
+## 目前正式權威
 
-The final package:
+```text
+Current version：v2.1.3 R75 FREE_RELAY
+Immutable tag：v2.1.3-R75-free-relay-final-92c97f9-33896931576
+Release source：92c97f97694e6e39c7a16986630d248c9ee744fe
+Windows CI：33896931576 / PASS
+ZIP SHA-256：8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
+Production Worker：27121388-1e6e-445a-b45e-104a867ca70d / 100%
+Stable entrypoint：https://investor-intelligence-v21-owner-line.moon951753.workers.dev
+Exact model：qwen38-q6
+Custom domain required：false
+P0/P1/P2：0/0/0
+```
 
-- is built only from an exact `main` commit accepted by both final workflows;
-- is released only after GitHub Support removed the affected pull-request internal references and unreferenced commits;
-- contains tracked release files only and no inherited `.git` history;
-- excludes owner watchlists, owner preferences, portfolios, tenant data, messages, logs, caches, reports, runner state and credentials;
-- includes an application ZIP, application SHA-256, release manifest, SPDX SBOM and exact-head final acceptance receipt;
-- is labelled `private_direct_delivery` and is a final application release, not a development RC;
-- does not deploy Worker, LINE, KV, IBKR, models or scheduled tasks;
-- does not enable billing, paid data, paid APIs or external users.
+## v2.0.0 歷史交付邊界
 
-Repository visibility is independent from application-release readiness.
+v2.0.0 當時採 reproducible、無 Git history 的私人直接交付，並強調：
 
-## Installer boundary
+- exact `main` commit 與正式 workflow 綁定；
+- package 不包含 `.git` history；
+- 排除 owner watchlist、portfolio、tenant data、messages、logs、cache、reports、runner state 與 credentials；
+- 包含 application ZIP、SHA-256、manifest、SPDX SBOM 與 acceptance receipt；
+- 當時不部署 Worker、LINE、KV、IBKR、模型或排程；
+- 不啟用 billing、paid data、paid API 或 external users。
 
-The direct-delivery bundle includes `install-final.cmd` and `install-final.ps1`. The CMD wrapper provides a double-click path; the PowerShell installer verifies the application ZIP against its SHA-256 before extraction and delegates to package-contained `bootstrap.ps1`.
+這些內容只描述 v2.0.0 的交付狀態。R75 FREE_RELAY 現在已完成 separate operator-authorized Production Worker deploy、真實 route、heartbeat、Task Scheduler 與端到端 smoke，但仍保留 public-only、secret exclusion、free-only 與 no-broker-write 邊界。
 
-The bootstrap refuses runner workspaces, installs under `%LOCALAPPDATA%`, uses verified portable CPython 3.12.10, installs only binary official-index hash-locked dependencies, runs `pip check` and distribution-safe tests, preserves generated local output during explicit reinstall, and keeps every external integration disabled.
+## 目前與歷史版本的主要差異
 
-## Option-data boundary
+| 項目 | v2.0.0 歷史狀態 | v2.1.3 R75 目前狀態 |
+|---|---|---|
+| Production Worker | 未部署 | `27121388-1e6e-445a-b45e-104a867ca70d` 100% active |
+| Local model route | 無正式 route | FREE_RELAY + exact `qwen38-q6` |
+| Stable entrypoint | 無正式 Production authority | 既有 `workers.dev` |
+| Custom domain | 不適用 | 不需要 |
+| Reconnect | 無 | at-logon task + heartbeat |
+| CI tests | v2.0 gates | Python 550/2、Worker 19/113、PS 5.1/7 |
+| Release protection | 私人直接交付 | GitHub Immutable Release + attested assets |
+| Defects | 當時狀態 | P0/P1/P2 = 0/0/0 |
 
-The shared LINE design remains public-research-only. Live shared BID/ASK lookup stays unavailable until a separately reviewed source satisfies lawful automated access, sustainable free availability and display/redistribution rights. The deterministic manual option calculator labels all supplied figures unverified.
+## 歷史 installer 注意事項
 
-## Exact evidence
+本文件過去提到的 `install-final.cmd`、`install-final.ps1`、`App\2.0.0` 與 v2.0.0 SHA 不得再用於 R75。最新版請從目前不可變 Release 下載 R75 FREE_RELAY ZIP，核對：
 
-The one-day GitHub Actions formal evidence artifact contains the exact application ZIP, application SHA-256, manifest, SPDX SBOM, final acceptance receipt and private-distribution notice. The separate history workflow proves the Support purge and all-object clean state on the same source SHA.
+```text
+8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
+```
 
-For direct delivery, the accepted application evidence is combined with `install-final.ps1`, `install-final.cmd` and a final notice by the tested deterministic outer-bundle builder. The outer bundle is built twice, byte-compared and bound to a separate SHA-256 before delivery. Actions dependency caches remain forbidden.
+並依 [繁體中文完整說明](../README.zh-TW.md) 操作。
 
-## Cleanup
+## Current English notice
 
-A valid final receipt authorizes only allowlisted transient cleanup. The newest verified rollback bundle and at least one verified backup remain protected through the configured cooling-off period. Cleanup never removes delivered release files, checksum, manifest, SBOM or final receipt.
+This document is retained only as a historical record of the v2.0.0 private-delivery boundary. It is not the current installation, deployment or release authority. The current immutable production release is v2.1.3 R75 FREE_RELAY.
