@@ -66,7 +66,7 @@ $receipt=[ordered]@{
     error=$errorMessage
     operation_lock='Local\InvestorIntelligence_V213_R75_OPERATION'
     missed_slot_policy='StartWhenAvailable'
-    timeout_recovery='TaskScheduler_StopExisting_100m'
+    timeout_recovery='TaskScheduler_IgnoreNew_hard_timeout_100m'
 }
 $latest=Join-Path $statusRoot ('v213-r75-scheduled-refresh-'+$Slot+'-latest.json')
 $temp=$latest+'.tmp'

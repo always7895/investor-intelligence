@@ -11,6 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WindowsSecurityHostTests(unittest.TestCase):
+    def test_real_task_settings_construct_without_registering_tasks(self):
+        shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
+        if not all(shells):
+            self.skipTest('Both Windows PowerShell hosts required')
+        for shell in shells:
+            with self.subTest(shell=shell):
+                result = subprocess.run([shell,'-NoProfile','-NonInteractive','-File',str(ROOT/'register-v213-refresh-tasks.ps1'),'-RuntimeRoot',str(ROOT),'-ValidateOnly','-EnableSealedPublication'], capture_output=True, encoding='utf-8', errors='replace', timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('V213_R75_REFRESH_TASKS_VALIDATE = PASS', result.stdout)
+                self.assertIn('production_mutation=false', result.stdout)
+
     def test_sync_rejects_changed_bytes_before_readiness_or_credentials(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
         if not all(shells):

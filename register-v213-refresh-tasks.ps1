@@ -23,6 +23,11 @@ function Get-ActionArguments([string]$Slot){
     if($EnableSealedPublication){$arguments+=' -PublishSealedBundle'}
     return $arguments
 }
+# Construct the real native settings even in validation-only mode. Creating a
+# CIM definition does not register a task. StopExisting is not accepted by the
+# Windows ScheduledTasks cmdlet enum; IgnoreNew plus the hard timeout bounds
+# concurrency without cancelling an in-flight sealed transaction.
+$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -MultipleInstances IgnoreNew -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 100) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 10)
 if($ValidateOnly){
     foreach($definition in $definitions){
         [void][DateTime]::ParseExact($definition.Time,'HH:mm',$null)
@@ -37,7 +42,6 @@ foreach($name in $taskNames){
     $existing=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     if($existing){$backup[$name]=Export-ScheduledTask -TaskName $name -ErrorAction Stop;if(-not$backup[$name]){throw 'V213_TASK_BACKUP_UNAVAILABLE'}}else{$backup[$name]=$null}
 }
-$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -MultipleInstances StopExisting -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 100) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 10)
 # DPAPI credentials require the owner's logged-in session; do not request/store
 # a Windows password. A locked desktop is supported; a logged-out owner is not.
 $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
@@ -56,7 +60,7 @@ try{
         }
         if([string]$task.Principal.LogonType-ne'Interactive'){throw 'V213_TASK_DPAPI_LOGON_MODE_INVALID'}
         $settingsObserved=$task.Settings
-        if(-not$settingsObserved.StartWhenAvailable-or-not$settingsObserved.WakeToRun-or-not$settingsObserved.RunOnlyIfNetworkAvailable-or[int]$settingsObserved.RestartCount-lt3-or[string]$settingsObserved.MultipleInstances-ne'StopExisting'){throw "Scheduled task reliability settings failed: $($definition.Name)"}
+        if(-not$settingsObserved.StartWhenAvailable-or-not$settingsObserved.WakeToRun-or-not$settingsObserved.RunOnlyIfNetworkAvailable-or[int]$settingsObserved.RestartCount-lt3-or[string]$settingsObserved.MultipleInstances-ne'IgnoreNew'){throw "Scheduled task reliability settings failed: $($definition.Name)"}
     }
 }catch{
     $failure=$_.Exception.Message
@@ -86,9 +90,9 @@ try{
     logon_type='Interactive'
     owner_logged_in_required=$true
     network_required=$true
-    multiple_instances='StopExisting'
+    multiple_instances='IgnoreNew'
     missed_slot_policy='StartWhenAvailable'
-    timeout_recovery='StopExisting_after_100_minutes_then_retry'
+    timeout_recovery='Hard_timeout_100_minutes_then_retry_ignore_overlapping_triggers'
     updated_utc=(Get-Date).ToUniversalTime().ToString('o')
 }|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\v213-refresh-tasks.json') -Encoding utf8
 Write-Host "V213_R75_REFRESH_TASKS = PASS; $MorningRefreshTime / $EveningRefreshTime; wake_to_run=true; restart_count=3; sealed_publication_enabled=$([bool]$EnableSealedPublication)" -ForegroundColor Green
