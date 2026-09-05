@@ -120,3 +120,20 @@ Windows CI `33933857026` PASS；Python 556/2 skipped，Worker 19 files/116 tests
 新不可變 Release `v2.1.3-R75-provenance-fix-998335d-33933857026`；ZIP SHA256 `ed53301f5157386da2a99cb0e6f163b171e141befdd6ba69483948ed45d833c0`；GitHub attestation 與獨立完整性檢查 PASS。附 `Local-Exact-Bundle-Verification.json`，不發布使用者原始 bundle／credentials。
 
 **已修正此實際拒收與 PS7 時區缺陷；本輪未重新部署 Production 或提交 sealed bundle。正式 activation 仍須真實交易回執，不能以本次隔離驗證取代。**
+
+## 13. 使用者明確授權後的 Production activation（2026-09-05）
+
+使用者本輪明確授權「部署 Production Worker 並提交 sealed bundle」。以不可變來源 `998335dcdd86100633aa32cefbb09147f7a91cc5` 執行完成：
+
+- Active Worker：`80f6565b-3ab6-45f6-8d25-21a3a54a1bca` @100%。部署前基準：`27121388-1e6e-445a-b45e-104a867ca70d`。
+- Run：`20260905T002320Z-6f420ca8d4e8`；Transaction：`5f2dea606be8095a688e06605f241531`。
+- 原始 sealed bundle SHA256：`f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`，提交時未過兩小時期限，位元組未變。
+- Commit accepted：15 objects read back，pointer-last；Replay idempotent並驗證15物件；獨立 Wrangler remote KV 指標／20 rows／LIMITED20、EVIDENCE_QUALIFIED0 一致；Finalize finalized、rollback handle deleted。
+- 最後獨立查詢時間 `2026-09-05T01:07:38Z`，Worker版本與指標仍一致。**Production deploy／sealed-bundle submission已完成。**
+- 未變更 cron expressions／Windows scheduled tasks，未發送 LINE。CI remains no-mutation；以上為當次明確授權 operator mutation。
+
+過程保留兩輪 rollback 證據：第一輪是操作腳本在 PS5.1 計算陣列筆數的錯誤（已修正）；第二輪為部署後立即出現 TOP20_INVALID（疑似 edge 尚未收斂，非已確證根因）。兩輪均回復基準；最終輪部署後等待15s並第一次提交成功。
+
+成功證據存於 `artifacts/r75-production-998335d-20260905-retry2/`，含 baseline、Python／exact Worker preflight、Commit／Replay／Remote-Readback／Finalize、Final-Independent-Status 與 SHA256SUMS。主操作回執 SHA256：`3182e6655d4004fcc7507d73cb7fb3eb738ae0d324a30a812c93b9cbee806794`。
+
+**剩餘問題不能掩蓋：** 額外 live model smoke 未通過，回覆 `FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID`。Router 實測大型公開 context prompt eval約67秒，超過 Worker既有20秒 timeout；Gateway healthy與Q6 loaded不代表即時Q&A可用。目前P0/P1/P2＝0/1/1（模型逾時、部署收斂待確認）。未變更模型 presets 或受保護 qa.ts。部署／資料提交成功不等於模型問答及所有排程投遞均已驗證。
