@@ -15,7 +15,6 @@ if(-not(Test-Path -LiteralPath $base -PathType Leaf)){throw "Missing base runtim
 if(-not(Test-Path -LiteralPath (Join-Path $RuntimeRoot 'run-v213-local.ps1') -PathType Leaf)){throw 'Base runtime install did not produce run-v213-local.ps1.'}
 
 $copyMap=[ordered]@{
-    'run-v213-local-source-diverse.ps1'='run-v213-local.ps1'
     'run-v213-local-llm-bridge-source-diverse.ps1'='run-v213-local-llm-bridge.ps1'
     'scripts\run_v213_local_llm_bridge_core.ps1'='scripts\run_v213_local_llm_bridge_core.ps1'
     'scripts\run_v213_local_llm_bridge_core_v2.ps1'='scripts\run_v213_local_llm_bridge_core_v2.ps1'

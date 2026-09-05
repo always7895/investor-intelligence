@@ -1,30 +1,23 @@
 import { runV213BroadcastOnce } from "./broadcast-dedupe";
-import { splitLineText } from "../core";
 import { publicJson, publicText, type StorageEnv } from "../storage";
 import { getOwnerPushTarget } from "../v21/owner-storage";
-import { pushText, type V21LinePushEnv } from "../v21/line-push";
+import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { formatV213Top20Report, parseV213Top20Report } from "./top20-report";
-import type { FieldLocale } from "./field-labels";
+import { parseV213Top20Report, v213FieldLocale } from "./top20-report";
+import { buildV213Top20Messages } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
   V213_BROADCAST_DEDUPE?: DurableObjectNamespace;
   V21_SCHEDULED_PUSH_ENABLED?: string;
   V21_TOP20_MAX_AGE_SECONDS?: string;
   V213_FIELD_LOCALE?: string;
+  V213_LINE_PRESENTATION?: string;
 }
 
 export type V213BroadcastSlot = "morning" | "evening" | "test";
 
 function enabled(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
-}
-
-function locale(value: string | undefined): FieldLocale {
-  const normalized = (value ?? "zh-TW").trim().toLowerCase();
-  if (normalized === "en" || normalized === "english") return "en";
-  if (normalized === "bilingual" || normalized === "zh-en" || normalized === "zh+en") return "bilingual";
-  return "zh-TW";
 }
 
 function taipeiDate(now: number): string {
@@ -77,24 +70,20 @@ export async function broadcastV213Top20(
     return { status: "stale" };
   }
 
-  const message = formatV213Top20Report(report, locale(env.V213_FIELD_LOCALE));
-  const chunks = splitLineText(message, 4900, 5);
-  if (chunks.length !== 1 || chunks[0] !== message) {
-    return { status: "seven_field_message_not_single_chunk" };
-  }
+  const messages = buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex");
 
   const pointer = (await env.PUBLIC_CACHE.get("snapshot:current", "json")) as Record<string, unknown> | null;
   const runId = String(pointer?.run_id ?? "unknown");
   const date = taipeiDate(now);
   const dedupeKey = `v213:broadcast:${date}:${slot}:${runId}`;
   if (slot === "test") {
-    await pushText(env, owner.lineUserId, message);
+    await pushMessages(env, owner.lineUserId, messages);
   } else {
     if (!env.V213_BROADCAST_DEDUPE) return { status: "dedupe_unavailable" };
     const delivery = await runV213BroadcastOnce(
       env.V213_BROADCAST_DEDUPE,
       dedupeKey,
-      () => pushText(env, owner.lineUserId, message),
+      () => pushMessages(env, owner.lineUserId, messages),
     );
     if (delivery.status !== "sent") return { status: delivery.status };
   }
@@ -104,7 +93,7 @@ export async function broadcastV213Top20(
     run_id: runId,
     count: 20,
     format: "v213_seven_fields",
-    field_locale: locale(env.V213_FIELD_LOCALE),
+    field_locale: v213FieldLocale(env.V213_FIELD_LOCALE),
   };
 }
 

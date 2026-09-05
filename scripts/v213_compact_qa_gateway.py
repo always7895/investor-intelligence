@@ -11,8 +11,39 @@ from pathlib import Path
 POLICY = json.loads((Path(__file__).resolve().parents[1] / "config/v213-compact-qa-v1.json").read_text(encoding="utf-8-sig"))
 
 
-def complete_compact_response(result: object, selected: str) -> bool:
-    if not isinstance(result, dict) or result.get("model") != selected:
+def resolve_model_id(selected: str, catalog: object) -> str | None:
+    """Resolve only a unique catalog identity; never infer aliases from names.
+
+    A collision anywhere in the catalog fails closed. String rows support the
+    legacy direct-ID health interface, not an inferred alias mapping.
+    """
+    if not isinstance(selected, str) or not selected or not isinstance(catalog, list) or not catalog:
+        return None
+    identities: dict[str, str] = {}
+    ids: set[str] = set()
+    for entry in catalog:
+        row = {"id": entry} if isinstance(entry, str) else entry
+        if not isinstance(row, dict):
+            return None
+        model_id, aliases = row.get("id"), row.get("aliases", [])
+        if not isinstance(model_id, str) or not isinstance(aliases, list):
+            return None
+        if model_id.casefold() in ids:
+            return None
+        ids.add(model_id.casefold())
+        for label in [model_id, *aliases]:
+            if not isinstance(label, str) or not label or label != label.strip() or len(label) > 256 or any(ord(c) < 32 for c in label):
+                return None
+            key = label.casefold()
+            if key in identities and identities[key] != model_id:
+                return None
+            identities[key] = model_id
+    return identities.get(selected.casefold())
+
+
+def complete_compact_response(result: object, selected: str, catalog: object = None) -> bool:
+    canonical = resolve_model_id(selected, [selected] if catalog is None else catalog)
+    if not canonical or not isinstance(result, dict) or result.get("model") != canonical:
         return False
     choices = result.get("choices")
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
@@ -64,3 +95,30 @@ def compact_upstream(body: dict, selected: str) -> dict | None:
             "max_tokens": count, "stream": False, "cache_prompt": body.get("cache_prompt", True),
             # User-authorized request-only short-answer mode. Router preset is untouched.
             "chat_template_kwargs": {"enable_thinking": POLICY["compact_request_enable_thinking"]}}
+
+
+if __name__ == "__main__":
+    # PowerShell bridge uses the same resolver/checker via UTF-8 stdin, rather
+    # than maintaining a second alias algorithm or exposing raw model output.
+    import sys
+    try:
+        if sys.argv[1:] != ["--identity-stdin"]:
+            raise ValueError("IDENTITY_MODE_REQUIRED")
+        raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ValueError("MODEL_IDENTITY_INPUT_TOO_LARGE")
+        request = json.loads(raw.decode("utf-8-sig"))
+        selected, catalog = request["selected"], request["catalog"]
+        canonical = resolve_model_id(selected, catalog)
+        if canonical is None:
+            raise ValueError("MODEL_CATALOG_IDENTITY_INVALID")
+        if "response" in request:
+            result = request["response"]
+            if not complete_compact_response(result, selected, catalog):
+                raise ValueError("MODEL_RESPONSE_IDENTITY_INVALID")
+            if result["choices"][0]["message"]["content"].strip() != POLICY["smoke_prompt"].removeprefix("Reply exactly "):
+                raise ValueError("MODEL_SMOKE_MARKER_MISSING")
+        print(json.dumps({"selected_model": selected, "canonical_model": canonical}))
+    except Exception:
+        print('{"error":"MODEL_IDENTITY_PROOF_FAILED"}')
+        raise SystemExit(1)

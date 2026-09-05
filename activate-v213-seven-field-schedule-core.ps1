@@ -10,6 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'scripts/v213_windows_security.ps1')
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8NoBom
 $OutputEncoding = $utf8NoBom
@@ -437,6 +438,9 @@ if ($healthyModel) {
     Write-Host "V213_SELECTED_MODEL_PREFLIGHT = PASS; model=$ExpectedModel" -ForegroundColor Green
 }
 
+. (Join-Path $ProjectRoot 'scripts/v213_sealed_refresh.ps1')
+$preserveSealedPublication=Get-V213SealedPublicationPreference
+
 $operationLockScript = Join-Path $ProjectRoot 'scripts\v213_operation_lock.ps1'
 if (-not (Test-Path -LiteralPath $operationLockScript -PathType Leaf)) { throw 'R75 operation-lock module is missing.' }
 . $operationLockScript
@@ -537,7 +541,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Stable source-diverse runtime installation failed.' }
     $stableRuntime = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'
     $tasksTouched = $true
-    & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime
+    & (Join-Path $ProjectRoot 'register-v213-refresh-tasks.ps1') -RuntimeRoot $stableRuntime -EnableSealedPublication:$preserveSealedPublication
     if ($LASTEXITCODE -ne 0) { throw 'Scheduled refresh task registration failed.' }
 
     Copy-Item -LiteralPath $temp -Destination $installedCopy -Force

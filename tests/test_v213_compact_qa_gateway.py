@@ -54,6 +54,24 @@ class CompactGatewayTests(unittest.TestCase):
         for result in invalid:
             self.assertFalse(compact.complete_compact_response(result, "qwen38-q6"))
 
+    def test_alias_requires_unique_catalog_and_preserves_canonical_response(self):
+        canonical = "Qwen3.8-27B-UD-Q6_K_XL-844843d973bf"
+        catalog = [{"id": canonical, "aliases": ["qwen38-q6"]}]
+        good = {"model": canonical, "choices": [{"finish_reason": "stop", "message": {"content": "完整回答"}}]}
+        self.assertEqual(compact.resolve_model_id("qwen38-q6", catalog), canonical)
+        self.assertFalse(compact.complete_compact_response(good, "qwen38-q6"))
+        self.assertTrue(compact.complete_compact_response(good, "qwen38-q6", catalog))
+        self.assertEqual(good["model"], canonical)
+        self.assertFalse(compact.complete_compact_response({**good, "model": "qwen38-q6"}, "qwen38-q6", catalog))
+        invalid = [None, [], [{"id": canonical}], [{"id": canonical, "aliases": "qwen38-q6"}],
+                   catalog + [{"id": "wrong", "aliases": ["QWEN38-Q6"]}],
+                   catalog + [{"id": "qwen38-q6"}], catalog + catalog,
+                   [{"id": canonical, "aliases": [None]}], [{"id": canonical, "aliases": [" qwen38-q6"]}]]
+        for rows in invalid:
+            with self.subTest(catalog=rows):
+                self.assertIsNone(compact.resolve_model_id("qwen38-q6", rows))
+                self.assertFalse(compact.complete_compact_response(good, "qwen38-q6", rows))
+
     def test_smoke_is_fixed_not_an_arbitrary_prompt_bypass(self):
         body = {"model": "qwen38-q6", "ii_context_mode": "transport_smoke_v1", "max_tokens": 32,
                 "messages": [{"role": "user", "content": compact.POLICY["smoke_prompt"]}]}

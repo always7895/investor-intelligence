@@ -4,11 +4,12 @@
 
 ## Current authority
 
-Release identifiers and live status have **one home**: [main README](../README.md). Do not copy old commit/version/count tables into other current documents.
+Current delivery authority / 目前交付依據：[main README](../README.md) and [latest release with its own refs/receipts](https://github.com/always7895/investor-intelligence/releases/latest). Dated baseline tables are historical evidence, not a later ZIP's identity.
 
 - [繁體中文使用說明](../README.zh-TW.md)
-- [Delivery evidence and verification boundaries](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
-- [Detailed milestone history](../state/STATUS.md)
+- [Delivery evidence / 交付證據](https://github.com/always7895/investor-intelligence/blob/main/state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
+- [Milestone history / 里程碑](https://github.com/always7895/investor-intelligence/blob/main/state/STATUS.md)
+- [Mobile seven-field UI / 行動七欄](LINE_TOP20_UI.md)
 - [FREE_RELAY / compact Q&A / readiness operations](V213_FREE_WORKERS_RELAY.md)
 - [Release/install entrypoint](FINAL_RELEASE.md)
 - [Implementation status](../IMPLEMENTATION_STATUS.md)

@@ -1,11 +1,15 @@
-# 正式修正版與安裝 / Published hotfix and installation
+# 正式交付與安裝／Release and installation
 
-**範圍提醒 / Scope:** 已發布版仍有五／七欄入口不一致；新修正尚未交付。 / The published ZIP still has five/seven-field routing inconsistency; its fix is not yet delivered. [中英狀態 / Bilingual status](CURRENT_STATUS_BILINGUAL.md).
+[最新不可變 Release／Latest immutable release](https://github.com/always7895/investor-intelligence/releases/latest) · [中英狀態／Bilingual status](CURRENT_STATUS_BILINGUAL.md)
 
-Use the [current verified identity, checksum and measurements](../README.md) and [latest immutable GitHub release](https://github.com/always7895/investor-intelligence/releases/latest). Do not use an older dated release document as the current installer source.
+Use the ZIP's own HOTFIX-REFS, external SHA256 and adjacent Windows/Worker/delivery receipts. Dated documentation describes its recorded baseline, not automatically every later package. Never overwrite an older ZIP/tag or borrow its qualification.
 
-Download the ZIP plus checksum, verify SHA256, extract, then execute `install-v213-source-diverse-runtime.ps1`. The stable runtime is `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`; launch `InvestorIntelligence.exe` there.
+請先驗證 ZIP 的外部 SHA256，再解壓與執行 `install-v213-source-diverse-runtime.ps1`。固定 runtime 為 `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`，入口 `InvestorIntelligence.exe`。必要時在該 runtime 的 `cloud` 目錄執行 `npm ci --ignore-scripts --no-audit --no-fund`；依賴不隨 ZIP 分發，更新時既有 node_modules 應保留，lock 改變時需重新準備。
 
-Installation is separate from data activation. This Q&A/readiness hotfix was installed and its Worker code/relay cut over under current-session authorization; it did not resubmit the sealed bundle or change the existing snapshot,08:00/21:00 jobs or LINE recipients. CI remains no-Production-mutation.
+Code installation is distinct from authorization to deploy, publish or register Production jobs. The qualified user-machine cutover separately updated the runtime/relay/Worker, generated and finalized fresh all-LIMITED snapshots, and migrated07:20/20:20 refresh tasks to explicit sealed publication. Worker08:00/21:00 cron remains unchanged.
 
-Evidence includes Windows, live-Q&A, deployment, delivery, independent download, historical exact-bundle and local-install receipts. See [final delivery report](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md). Historical release documentation is retained in Git and the older immutable releases.
+已完成 PS5.1/7、Python、full Worker/typecheck、實際新鮮 all-LIMITED preflight、隔離交易負向測試、ZIP獨立驗證、安裝與遠端讀回。CI未變更Production；另有當前使用者授權的正式操作。沒有額外真實LINE測試；正常排程送達／真機顯示仍待自然觀察。
+
+Current limitations: owner must remain logged in with PC/network available; no logged-out guarantee. This workflow does not produce GitHub artifact attestation. Separate legacy `InvestorDailyBriefing` ownership remains unresolved. These limits are not hidden by the release's scoped PASS.
+
+[操作文件／Operations](V213_FREE_WORKERS_RELAY.md) · [交付歷史／Delivery history](https://github.com/always7895/investor-intelligence/blob/main/state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)

@@ -28,7 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v212_local_llm_gateway as base
-from v213_compact_qa_gateway import compact_upstream, complete_compact_response
+from v213_compact_qa_gateway import compact_upstream, complete_compact_response, resolve_model_id
 
 ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
@@ -360,27 +360,20 @@ def enrich_messages(messages: list[dict[str, Any]]):
     return enriched, context
 
 
-def _available_model_ids() -> list[str]:
-    base_url = base.llama_base_url()
-    for suffix in ("/v1/models?reload=1", "/models?reload=1", "/v1/models"):
+def _available_model_catalog() -> list[dict[str, Any]]:
+    # Router /models carries aliases; OpenAI /v1/models may omit them. Never
+    # turn an invalid catalog into a permissive direct-ID fallback.
+    for suffix in ("/models", "/v1/models"):
         try:
-            response = requests.get(base_url + suffix, timeout=(2, 8))
+            response = requests.get(base.llama_base_url() + suffix, timeout=(2, 8), allow_redirects=False)
+            if response.status_code == 404:
+                continue
             response.raise_for_status()
             payload = response.json()
             rows = payload.get("data") if isinstance(payload, dict) else None
-            if not isinstance(rows, list):
-                continue
-            result: list[str] = []
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                model_id = str(row.get("id") or "").strip()
-                if model_id and model_id not in result:
-                    result.append(model_id)
-            if result:
-                return result
+            return rows if isinstance(rows, list) else []
         except Exception:
-            continue
+            return []
     return []
 
 
@@ -405,21 +398,19 @@ def _source_audit_health() -> dict[str, Any]:
 
 def _build_health_payload(
     selected: str,
-    models: list[str],
+    models: list[str] | list[dict[str, Any]],
     upstream_health: bool,
     audit_health: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    canonical = next(
-        (item for item in models if item.casefold() == selected.casefold()),
-        "",
-    )
+    canonical = resolve_model_id(selected, models)
     selected_available = bool(selected and canonical)
     payload: dict[str, Any] = {
         "ok": True,
         "service": "v213-local-llm-gateway",
         "health_schema_version": 2,
         "llama_reachable": bool(upstream_health and selected_available),
-        "selected_model": canonical or selected,
+        "selected_model": selected,
+        "canonical_model": canonical,
         "selected_model_available": selected_available,
         "available_model_count": len(models),
     }
@@ -459,7 +450,7 @@ class V213GatewayHandler(base.GatewayHandler):
             200,
             _build_health_payload(
                 selected,
-                _available_model_ids(),
+                _available_model_catalog(),
                 upstream_health,
                 _source_audit_health(),
             ),
@@ -526,6 +517,11 @@ class V213GatewayHandler(base.GatewayHandler):
                     "max_tokens": min(1800, max(256, int(body.get("max_tokens") or 1400))),
                     "stream": False,
                 }
+            catalog = _available_model_catalog()
+            canonical = resolve_model_id(selected, catalog)
+            if canonical is None:
+                self._json(503, {"error": "MODEL_CATALOG_IDENTITY_UNAVAILABLE"})
+                return
             response = requests.post(
                 base.llama_url(), json=upstream,
                 headers={"content-type": "application/json"}, timeout=(2, 18) if is_compact else (5, 180),
@@ -534,12 +530,14 @@ class V213GatewayHandler(base.GatewayHandler):
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
-            if is_compact and not complete_compact_response(result, selected):
+            if not isinstance(result, dict) or result.get("model") != canonical or (is_compact and not complete_compact_response(result, selected, catalog)):
                 self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH"})
                 return
             if isinstance(result, dict):
                 result["ii_exact_model_pin"] = {
                     "selected_model": selected,
+                    "canonical_model": canonical,
+                    "identity_proof": "unique_router_catalog",
                     "request_model_substitution_allowed": False,
                 }
                 result["ii_source_ensemble"] = {

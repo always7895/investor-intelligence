@@ -1,0 +1,106 @@
+# Publication only: no Worker deployment, schedule registration or LINE send.
+Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'v213_windows_security.ps1')
+. (Join-Path $PSScriptRoot 'v213_operation_lock.ps1')
+
+function Get-V213SealedPublicationPreference {
+    param([string]$Path=(Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/v213-refresh-tasks.json'))
+    if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return $false}
+    try{$state=Get-Content -LiteralPath $Path -Raw -Encoding utf8|ConvertFrom-Json}catch{throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    if($state-isnot[pscustomobject]){throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    $property=$state.PSObject.Properties['sealed_publication_enabled']
+    if($null-eq$property){return $false}
+    if($property.Value-isnot[bool]){throw 'V213_REFRESH_PREFERENCE_INVALID'}
+    return $property.Value
+}
+
+function Save-V213RefreshJournal($Record,[string]$Path) {
+    $Record|ConvertTo-Json -Depth 8|Set-Content -LiteralPath ($Path+'.tmp') -Encoding utf8
+    Move-Item -LiteralPath ($Path+'.tmp') -Destination $Path -Force
+}
+function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
+    if($Ack.transaction_id-isnot[string]-or$Ack.run_id-isnot[string]-or$Ack.status-isnot[string]-or
+       $Ack.transaction_id-cne$Record.transaction_id-or$Ack.run_id-cne$Record.run_id){throw 'V213_REFRESH_ACK_IDENTITY_MISMATCH'}
+    switch($Action){
+        'Commit' {
+            if($Ack.status-cne'accepted'-or$Ack.pointer_written_last-isnot[bool]-or$Ack.pointer_written_last-ne$true-or
+               -not($Ack.object_count-is[int]-or$Ack.object_count-is[long])-or$Ack.object_count-le0-or
+               -not($Ack.objects_read_back-is[int]-or$Ack.objects_read_back-is[long])-or
+               $Ack.objects_read_back-ne$Ack.object_count-or$Ack.rollback_available-isnot[bool]-or$Ack.rollback_available-ne$true){throw 'V213_REFRESH_READBACK_UNPROVEN'}
+        }
+        'Finalize' {if($Ack.status-cne'finalized'-or$Ack.rollback_handle_deleted-isnot[bool]-or$Ack.rollback_handle_deleted-ne$true){throw 'V213_REFRESH_FINALIZE_UNPROVEN'}}
+        'Rollback' {if($Ack.status-cne'not_committed'-and($Ack.status-cne'rolled_back'-or$Ack.exact_pointer_restored-isnot[bool]-or$Ack.exact_pointer_restored-ne$true)){throw 'V213_REFRESH_ROLLBACK_UNPROVEN'}}
+    }
+}
+function Invoke-V213SealedRefresh {
+    param([string]$ProjectRoot,[string]$LocalConfigPath,[string]$ResultPath='',[string]$BundlePath='')
+    $bundle=Join-Path $ProjectRoot 'data/cache/v213_activation_bundle_upload.json'
+    if($BundlePath-and[IO.Path]::GetFullPath($BundlePath)-ine[IO.Path]::GetFullPath($bundle)){throw 'V213_REFRESH_CANONICAL_BUNDLE_REQUIRED'}
+    $journalRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/status/sealed-publication'
+    New-Item -ItemType Directory -Force $journalRoot|Out-Null
+    if(-not$ResultPath){$ResultPath=Join-Path $journalRoot ([guid]::NewGuid().ToString('N')+'.json')}
+    if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ResultPath))-ine[IO.Path]::GetFullPath($journalRoot)-or[IO.Path]::GetExtension($ResultPath)-ine'.json'){throw 'V213_REFRESH_JOURNAL_SCOPE_INVALID'}
+    if(Test-Path -LiteralPath $ResultPath){throw 'V213_REFRESH_JOURNAL_ALREADY_EXISTS'}
+    $details=$ResultPath+'.details'
+    New-Item -ItemType Directory $details -ErrorAction Stop|Out-Null
+    $record=[ordered]@{schema_version=1;status='FAIL';publication_state='NOT_ATTEMPTED';remote_sync_attempted=$false;production_mutation=$false;real_line_sent=$false;worker_deployed=$false;run_id='';transaction_id='';bundle_sha256='';error_type='';recorded_utc=[DateTimeOffset]::UtcNow.ToString('o')}
+    $held=$false; $committed=$false
+    try {
+        [void](Enter-V213OperationLock -Owner 'sealed-refresh' -TimeoutSeconds 0);$held=$true
+        foreach($previous in Get-ChildItem -LiteralPath $journalRoot -File -Filter '*.json'){
+            $old=Get-Content -LiteralPath $previous.FullName -Raw -Encoding utf8|ConvertFrom-Json
+            if($old.remote_sync_attempted-isnot[bool]-or$old.publication_state-isnot[string]-or
+               $old.publication_state-notin@('NOT_ATTEMPTED','UNKNOWN','COMMITTED','FINALIZED','ROLLED_BACK','NOT_COMMITTED')-or
+               (-not$old.remote_sync_attempted-and$old.publication_state-cne'NOT_ATTEMPTED')){throw 'V213_REFRESH_JOURNAL_INVALID'}
+            if($old.remote_sync_attempted-and$old.publication_state-notin@('FINALIZED','ROLLED_BACK','NOT_COMMITTED')){throw 'V213_REFRESH_UNRESOLVED_JOURNAL'}
+        }
+        $document=Get-Content -LiteralPath $bundle -Raw -Encoding utf8|ConvertFrom-Json
+        $record.run_id=[string]$document.run_id;$record.transaction_id=[string]$document.transaction_id
+        if($record.run_id-cnotmatch'^\d{8}T\d{6}Z-[0-9a-f]{12}$'-or$record.transaction_id-cnotmatch'^[0-9a-f]{32}$'){throw 'V213_REFRESH_BUNDLE_IDENTITY_INVALID'}
+        $sealed=Join-Path $details 'sealed-bundle.json'
+        $record.bundle_sha256=(Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+        & (Join-Path $ProjectRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $ProjectRoot -PreflightOnly -FieldLocale bilingual
+        if($LASTEXITCODE-ne0){throw 'V213_REFRESH_PREFLIGHT_FAILED'}
+        if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()-cne$record.bundle_sha256){throw 'V213_REFRESH_BUNDLE_CHANGED_AFTER_PREFLIGHT'}
+        Copy-Item -LiteralPath $bundle -Destination $sealed
+        if((Get-FileHash -LiteralPath $sealed -Algorithm SHA256).Hash.ToLowerInvariant()-cne$record.bundle_sha256){throw 'V213_REFRESH_SEALED_COPY_MISMATCH'}
+        $wrangler=Join-Path $ProjectRoot 'cloud/node_modules/.bin/wrangler.cmd'
+        $auth=(& $wrangler whoami 2>$null|Out-String)
+        if($LASTEXITCODE-ne0){throw 'V213_REFRESH_READ_ONLY_AUTH_FAILED'}
+        $auth=$null
+        $sync=Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1'
+        $record.remote_sync_attempted=$true;$record.production_mutation=$null;$record.publication_state='UNKNOWN'
+        Save-V213RefreshJournal $record $ResultPath
+        $ackPath=Join-Path $details 'commit.json'
+        & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath
+        if($LASTEXITCODE-ne0){throw 'V213_REFRESH_COMMIT_FAILED'}
+        $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
+        Test-V213RefreshAck $ack $record 'Commit'
+        $committed=$true;$record.production_mutation=$true;$record.publication_state='COMMITTED'
+        Save-V213RefreshJournal $record $ResultPath
+        $ackPath=Join-Path $details 'finalize.json'
+        & $sync -Action Finalize -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath
+        if($LASTEXITCODE-ne0){throw 'V213_REFRESH_FINALIZE_FAILED'}
+        $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
+        Test-V213RefreshAck $ack $record 'Finalize'
+        $record.publication_state='FINALIZED';$record.status='PASS'
+    } catch {
+        $record.error_type=$_.Exception.GetType().Name
+        if($record.remote_sync_attempted){
+            try {
+                $ackPath=Join-Path $details 'rollback.json'
+                & $sync -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath
+                if($LASTEXITCODE-ne0){throw 'V213_REFRESH_ROLLBACK_FAILED'}
+                $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
+                Test-V213RefreshAck $ack $record 'Rollback'
+                $record.publication_state=([string]$ack.status).ToUpperInvariant()
+                if($ack.status-ceq'rolled_back'){$record.production_mutation=$true}
+                # not_committed proves no active pointer for this run, not zero KV writes.
+            } catch {$record.publication_state='UNKNOWN';$record.production_mutation=$(if($committed){$true}else{$null})}
+        }
+        throw 'V213_SEALED_REFRESH_FAILED; inspect_local_publication_journal=true'
+    } finally {
+        try {Save-V213RefreshJournal $record $ResultPath} finally {if($held){Exit-V213OperationLock}}
+    }
+    return [pscustomobject]$record
+}

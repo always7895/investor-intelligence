@@ -44,6 +44,14 @@ try {
     Expand-Archive -LiteralPath $sourceArchive -DestinationPath $stage -Force
     Remove-Item -LiteralPath $sourceArchive -Force
     foreach ($internal in @('.github','.gitignore','delivery','IMPLEMENTATION_STATUS.md','skills','state','tests')) { Remove-Item -LiteralPath (Join-Path $stage $internal) -Recurse -Force -ErrorAction SilentlyContinue }
+    # Ship only the reviewed public methodology, not unrelated skills/archives.
+    $researchPayload=@('skills/serenity-public-research/SKILL.md','skills/serenity-public-research/references/RESEARCH_METHOD.md','skills/serenity-public-research/references/CROSS_VALIDATION.md')
+    foreach($relative in $researchPayload){
+        $destination=Join-Path $stage $relative
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination)|Out-Null
+        Copy-Item -LiteralPath (Join-Path $ProjectRoot $relative) -Destination $destination
+        if((Get-FileHash $destination).Hash-ne(Get-FileHash (Join-Path $ProjectRoot $relative)).Hash){throw 'Public research payload digest mismatch.'}
+    }
     # Activation runs npm test on the installed package. These are runtime gate
     # dependencies, not removable internal content. Copy only synthetic fixtures.
     $fixtureRoot = Join-Path $stage 'tests\fixtures\v213-r75-publication-mode'

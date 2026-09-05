@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTED = "exact-model-測試"
+CANONICAL = "canonical-model-測試"
 
 
 class FakeLlamaHandler(BaseHTTPRequestHandler):
@@ -36,7 +37,7 @@ class FakeLlamaHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/v1/models") or self.path.startswith("/models"):
-            self._send({"data": [{"id": SELECTED}]})
+            self._send({"data": [{"id": CANONICAL, "aliases": [SELECTED]}]})
         else:
             self._send({"ok": True})
 
@@ -44,7 +45,7 @@ class FakeLlamaHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("content-length", "0"))))
         self.observed_models.append(str(body.get("model")))
         time.sleep(self.delay_seconds)
-        self._send({"choices": [{"message": {"role": "assistant", "content": "OK"}}]})
+        self._send({"model": CANONICAL, "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "OK"}}]})
 
 
 def free_port() -> int:
@@ -142,6 +143,8 @@ class R75GatewayProcessTests(unittest.TestCase):
                 self.assertEqual(first[0][0], 200)
                 self.assertEqual(FakeLlamaHandler.observed_models[-1], SELECTED)
                 self.assertFalse(first[0][1]["ii_exact_model_pin"]["request_model_substitution_allowed"])
+                self.assertEqual(first[0][1]["model"], CANONICAL)
+                self.assertEqual(first[0][1]["ii_exact_model_pin"]["canonical_model"], CANONICAL)
             finally:
                 process.terminate()
                 try:

@@ -8,10 +8,12 @@ param(
     [string]$RunId = '',
     [string]$ResultPath = '',
     [string]$ExpectedWorkerVersion = '',
+    [string]$ExpectedBundleSha256 = '',
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'scripts/v213_windows_security.ps1')
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8
 $OutputEncoding = $utf8
@@ -62,6 +64,7 @@ function Invoke-SignedJsonPost(
     $request.Timeout = 90000
     $request.ReadWriteTimeout = 90000
     $request.KeepAlive = $false
+    $request.AllowAutoRedirect = $false
     $request.Headers.Add('x-ii-v21-timestamp', $timestamp)
     $request.Headers.Add('x-ii-v21-nonce', $nonce)
     $request.Headers.Add('x-ii-v21-signature', $signature)
@@ -145,7 +148,15 @@ if ($Action -eq 'Commit') {
     if (-not (Test-Path -LiteralPath $BundlePath -PathType Leaf)) {
         throw 'The v2.1.3 activation bundle does not exist.'
     }
-    $body = Get-Content -LiteralPath $BundlePath -Raw -Encoding utf8
+    # Hash and decode one read: never verify one file then transmit a later read.
+    $bundleBytes=[IO.File]::ReadAllBytes($BundlePath)
+    if($ExpectedBundleSha256){
+        if($ExpectedBundleSha256-cnotmatch'^[0-9a-f]{64}$'){throw 'V213_ACTIVATION_EXPECTED_DIGEST_INVALID'}
+        $digest=[Security.Cryptography.SHA256]::Create()
+        try{$actual=([BitConverter]::ToString($digest.ComputeHash($bundleBytes))).Replace('-','').ToLowerInvariant()}finally{$digest.Dispose()}
+        if($actual-cne$ExpectedBundleSha256){throw 'V213_ACTIVATION_BUNDLE_CHANGED_AFTER_PREFLIGHT'}
+    }
+    $body=([Text.UTF8Encoding]::new($false,$true)).GetString($bundleBytes).TrimStart([char]0xfeff)
     $bundle = $body | ConvertFrom-Json
     $TransactionId = [string](Get-PropertyValue $bundle 'transaction_id' '')
     $RunId = [string](Get-PropertyValue $bundle 'run_id' '')

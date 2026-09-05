@@ -296,24 +296,33 @@ function Resolve-Llama {
 
 function Get-ModelCatalog {
     param([string]$Base)
-    $last = ''
-    foreach ($suffix in @('/v1/models?reload=1', '/models?reload=1', '/v1/models')) {
-        try {
-            $payload = Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/') + $suffix) -Headers @{'cache-control'='no-cache'} -TimeoutSec 15
-            $data = Get-ObjectPropertyValue $payload 'data' @()
-            $ids = @($data | ForEach-Object {
-                [string](Get-ObjectPropertyValue $_ 'id' '')
-            } | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() } | Select-Object -Unique)
-            if ($ids.Count -gt 0) { return $ids }
-        }
-        catch { $last = $_.Exception.Message }
+    try {
+        $payload = Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/') + '/models') -Headers @{'cache-control'='no-cache'} -TimeoutSec 15 -MaximumRedirection 0
+        $data = @(Get-ObjectPropertyValue $payload 'data' @())
+        if ($data.Count -eq 0) { throw 'EMPTY_CATALOG' }
+        return $data
     }
-    throw "Unable to read llama.cpp model catalog from $Base. Last observation: $last"
+    catch { throw 'MODEL_CATALOG_UNAVAILABLE; no_model_substitution=true' }
+}
+
+function Invoke-SharedModelIdentity {
+    param([string]$Selected, [object[]]$Catalog, $Response = $null, [switch]$VerifyResponse)
+    $request = @{ selected=$Selected; catalog=@($Catalog) }
+    if ($VerifyResponse) { $request['response']=$Response }
+    # ASCII JSON escapes avoid PS5.1 native-pipe codepage loss without changing
+    # the user's console encoding. ASCII is also valid UTF-8 for the shared CLI.
+    $payload=$request | ConvertTo-Json -Depth 24 -Compress
+    $payload=[regex]::Replace($payload,'[^\x00-\x7F]',{param($m) '\u'+([int][char]$m.Value).ToString('x4')})
+    $raw=$payload | & $python (Join-Path $ProjectRoot 'scripts/v213_compact_qa_gateway.py') --identity-stdin
+    if ($LASTEXITCODE -ne 0) { throw 'MODEL_IDENTITY_PROOF_FAILED' }
+    return $raw | ConvertFrom-Json
 }
 
 function Resolve-Model {
     param([string]$Base, [string]$Requested)
     $catalog = @(Get-ModelCatalog $Base)
+    $ids = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' '') })
+    $names = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' ''); @(Get-ObjectPropertyValue $_ 'aliases' @()) })
     $selection = Read-ModelSelection
     $candidate = ''
     if (-not [string]::IsNullOrWhiteSpace($Requested)) {
@@ -324,39 +333,34 @@ function Resolve-Model {
         if (-not [string]::IsNullOrWhiteSpace($saved)) { $candidate = $saved.Trim() }
     }
     if (-not $candidate) {
-        $preferred = @($catalog | Where-Object { $_ -ieq $preferredModel }) | Select-Object -First 1
+        $preferred = @($names | Where-Object { $_ -ieq $preferredModel }) | Select-Object -First 1
         if ($preferred) { $candidate = [string]$preferred }
-        elseif ($catalog.Count -eq 1) { $candidate = [string]$catalog[0] }
-        else {
-            throw ("Multiple llama.cpp models are available. Select one explicitly in the EXE. Available: " + ($catalog -join ', '))
-        }
+        elseif ($catalog.Count -eq 1) { $candidate = [string]$ids[0] }
+        else { throw 'Multiple llama.cpp models are available; explicit selection required.' }
     }
     if ($candidate -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$') {
         throw 'Selected llama.cpp model ID contains unsupported characters.'
     }
-    $canonical = @($catalog | Where-Object { $_ -ieq $candidate }) | Select-Object -First 1
-    if (-not $canonical) {
-        throw ("Selected model is not present in the current router catalog: $candidate. Available: " + ($catalog -join ', '))
-    }
-    return [pscustomobject]@{ model = [string]$canonical; catalog = $catalog }
+    $proof = Invoke-SharedModelIdentity -Selected $candidate -Catalog $catalog
+    return [pscustomobject]@{ model=$candidate; canonical_model=$proof.canonical_model; catalog=$ids; identity_catalog=$catalog }
 }
 
 function Test-SelectedModelRoute {
-    param([string]$Base, [string]$SelectedModel)
+    param([string]$Base, [string]$SelectedModel, [object[]]$Catalog)
+    $policy=Get-Content -LiteralPath (Join-Path $ProjectRoot 'config/v213-compact-qa-v1.json') -Raw -Encoding utf8 | ConvertFrom-Json
     $body = [ordered]@{
         model = $SelectedModel
-        messages = @(@{ role = 'user'; content = 'Reply with OK.' })
+        messages = @(@{ role = 'user'; content = $policy.smoke_prompt })
         temperature = 0
-        max_tokens = 4
+        max_tokens = $policy.smoke_output_tokens
         stream = $false
+        chat_template_kwargs = @{ enable_thinking=$policy.compact_request_enable_thinking }
     } | ConvertTo-Json -Depth 6 -Compress
     try {
         $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 300
-        if (-not $response) { throw 'empty response' }
+        $null=Invoke-SharedModelIdentity -Selected $SelectedModel -Catalog $Catalog -Response $response -VerifyResponse
     }
-    catch {
-        throw "Selected model could not complete a minimal routing probe: $SelectedModel. $($_.Exception.Message)"
-    }
+    catch { throw 'MODEL_ROUTING_PROBE_FAILED; complete_exact_identity_and_marker_required=true' }
     Write-Host "II_PROGRESS selected model route verified; model=$SelectedModel" -ForegroundColor Green
 }
 
@@ -581,14 +585,15 @@ if ($tunnelPolicy.mode -eq 'FreeRelay') {
     $routeConnectedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
 $GatewayPort = Resolve-GatewayPort $GatewayPort
+$python = Resolve-Python
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
 $llama = Resolve-Llama
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
-Test-SelectedModelRoute $llama $Model
-$python = Resolve-Python
+Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
 $oldLlama = $env:II_LLAMA_BASE_URL

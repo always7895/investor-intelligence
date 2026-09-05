@@ -6,6 +6,8 @@ import { broadcastV213Top20 } from "../src/v213/broadcast";
 import { ingestV213Top20Report } from "../src/v213/admin";
 import { formatV213Top20Report, parseV213Top20Report } from "../src/v213/top20-report";
 import { V213BroadcastDedupe } from "../src/v213/broadcast-dedupe";
+import productionWorker from "../src/v213/production-worker";
+import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 
 const HASH_KEY = "SYNTHETIC_V213_HASH_KEY_NOT_REAL";
 const DATA_KEY = "SYNTHETIC_V213_DATA_KEY_NOT_REAL";
@@ -147,6 +149,30 @@ afterEach(() => {
 });
 
 describe("v2.1.3 scheduled seven-field owner broadcast", () => {
+  it.each(["0 0 * * *", "0 13 * * *"])("runs the actual Production scheduled entrypoint for %s with seven bilingual fields and dedupe", async cron => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({type:"user",userId:LINE_TARGET}, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const calls: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      expect(String(url)).toBe("https://api.line.me/v2/bot/message/push");
+      calls.push(JSON.parse(String(init.body)));
+      return new Response("{}");
+    }));
+    const pending: Promise<unknown>[] = [];
+    const ctx = {waitUntil(p: Promise<unknown>) {pending.push(p);}} as unknown as ExecutionContext;
+    const controller = {cron, scheduledTime:Date.now()} as ScheduledController;
+    await productionWorker.scheduled(controller, env as any, ctx);
+    await Promise.all(pending);
+    await productionWorker.scheduled(controller, env as any, ctx);
+    await Promise.all(pending);
+    expect(calls).toHaveLength(1);
+    const proof = inspectSevenFieldFlex(calls[0].messages, parseV213Top20Report(report())!);
+    expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
+  });
   it("parses seven fields and exposes Chinese, English and bilingual labels", () => {
     const parsed = parseV213Top20Report(report());
     expect(parsed).not.toBeNull();
@@ -165,7 +191,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(publicKv.values.has(`snapshot:${runId}:v213:top20-report:latest`)).toBe(true);
   });
 
-  it("sends one seven-field message and deduplicates a scheduled slot", async () => {
+  it("sends all twenty seven-field cards in one request and deduplicates a scheduled slot", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
@@ -187,12 +213,9 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect((await broadcastV213Top20(env, "morning")).status).toBe("duplicate");
     expect(calls).toHaveLength(1);
     const messages = calls[0]?.messages as Array<Record<string, unknown>>;
-    expect(messages).toHaveLength(1);
-    const text = String(messages[0]?.text ?? "");
-    expect(text.split("\n")).toHaveLength(21);
-    expect(text).toContain("公司現在訂單");
-    expect(text).toContain("未來訂單預估");
-    expect(text).not.toContain("Serenity");
+    const proof = inspectSevenFieldFlex(messages, parseV213Top20Report(rep)!);
+    expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
+    expect(JSON.stringify(messages)).not.toContain("Serenity");
   });
 
   it("atomically sends exactly once under concurrent scheduled delivery", async () => {

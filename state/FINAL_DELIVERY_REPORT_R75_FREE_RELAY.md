@@ -1,4 +1,17 @@
-# R75 Q&A latency / readiness hotfix — verified delivery 2026-09-05
+# R75 delivery evidence / 交付證據
+
+## 2026-09-06 — seven-field / sealed-refresh cutover
+
+Current downloadable identity: [latest release and its own refs/receipts](https://github.com/always7895/investor-intelligence/releases/latest). [Bilingual scope](../docs/CURRENT_STATUS_BILINGUAL.md).
+
+- Functional baseline bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879 / Windows33989794415 PASS; downloaded ZIP independently verified and installed. Subsequent packaging-only identity belongs to its own receipts.
+- Authorized Worker54442104-0e1f-419c-84a9-b7c4ca63ee3f at100%; Q6 exact alias/canonical mapping, preset unchanged, fixed-marker2231/2097ms PASS. No extra real LINE send.
+- Actual installed full sealed refresh PASS, run20260905T205013Z-749cc4fbd2cd / transaction124ed6f6603d68ea05f81e82517ae320; FINALIZED,20 LIMITED/0 qualified. Independent remote readback found13 required objects and the actual report locally produced4 Flex messages/20 cards/2 complete texts.
+- 07:20/20:20 canonical refresh tasks with explicit publication independently read back; Interactive owner/IgnoreNew/100-minute limit/retries.08:00/21:00 Worker cron unchanged. 歸屬未明的舊 InvestorDailyBriefing 保留，已追蹤 P0/P1/P2=0/0/1。
+- CI production_mutation_by_ci=false; separate currently authorized operator DID change local runtime, relay, Worker, fresh snapshots and refresh definitions. Normal scheduled LINE delivery/device rendering remains unobserved. Artifact attestation is absent; broad Q6 text review remains incomplete.
+- 初次 native task StopExisting 失敗、operator LASTEXITCODE 失敗、依賴尚未準備時的 Node 失敗皆保留；最終 native readback 與重新準備依賴後的 full Worker gates PASS，不將失敗改寫為成功。
+
+## Historical Q&A/readiness delivery — 2026-09-05
 
 This report supersedes older blanket completion narratives. Its scope is the two specified Q&A/readiness defects; it does not assert current market-data freshness or real-user LINE delivery.
 

@@ -183,15 +183,34 @@ namespace InvestorIntelligence
             var rows = dictionary["data"] as IEnumerable;
             if (rows == null) return result;
 
+            // UI choices only. The shared Python resolver revalidates the full
+            // catalog and actual completion before the bridge can be used.
+            var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (object raw in rows)
             {
                 var item = raw as Dictionary<string, object>;
-                if (item == null || !item.ContainsKey("id")) continue;
-                string id = (Convert.ToString(item["id"]) ?? "").Trim();
-                if (SafeModelId(id) &&
-                    !result.Any(existing => existing.Equals(id, StringComparison.OrdinalIgnoreCase)))
+                if (item == null || !item.ContainsKey("id")) throw new InvalidOperationException("Invalid model catalog.");
+                string id = item["id"] as string;
+                if (!SafeModelId(id)) throw new InvalidOperationException("Invalid model identity.");
+                var names = new List<string> { id };
+                if (item.ContainsKey("aliases"))
                 {
-                    result.Add(id);
+                    var aliases = item["aliases"] as object[];
+                    if (aliases == null) throw new InvalidOperationException("Invalid model aliases.");
+                    foreach (object alias in aliases)
+                    {
+                        string name = alias as string;
+                        if (!SafeModelId(name)) throw new InvalidOperationException("Invalid model alias.");
+                        names.Add(name);
+                    }
+                }
+                foreach (string name in names)
+                {
+                    string owner;
+                    if (owners.TryGetValue(name, out owner) && !owner.Equals(id, StringComparison.Ordinal))
+                        throw new InvalidOperationException("Ambiguous model catalog alias.");
+                    owners[name] = id;
+                    if (!result.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase))) result.Add(name);
                 }
             }
             return result;
@@ -232,7 +251,7 @@ namespace InvestorIntelligence
             string last = "";
             foreach (string baseUrl in bases)
             {
-                foreach (string suffix in new[] { "/v1/models?reload=1", "/models?reload=1", "/v1/models" })
+                foreach (string suffix in new[] { "/models", "/v1/models" })
                 {
                     try
                     {
@@ -615,6 +634,12 @@ namespace InvestorIntelligence
                 PreferredModel + "\"}]}";
             List<string> models = ExtractModelIds(json);
             if (models.Count != 2) return 51;
+            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]}]}");
+            if (!aliases.Contains(PreferredModel)) return 56;
+            try {
+                ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]},{\"id\":\"wrong\",\"aliases\":[\"qwen38-q6\"]}]}");
+                return 57;
+            } catch (InvalidOperationException) { }
             if (!models.Any(id => id.Equals(
                     PreferredModel,
                     StringComparison.Ordinal))) return 52;

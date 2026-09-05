@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Force -Path $baseRoot,$RuntimeRoot|Out-Null
 $sameRoot=$ProjectRoot.TrimEnd('\')-eq$RuntimeRoot.TrimEnd('\')
 if(-not$sameRoot){
     $robocopy=(Get-Command robocopy.exe -ErrorAction Stop).Source
-    & $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD '.git' 'versions' 'cloud\node_modules' '.venv-v213-local' '.npm-cache'
+    & $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD '.git' 'versions' 'node_modules' '.venv-v213-local' '.npm-cache'
     $code=$LASTEXITCODE
     if($code-gt7){throw "Runtime copy failed with robocopy exit code $code."}
 }else{
@@ -36,7 +36,6 @@ if(-not$sameRoot){
 # executed inside the activation core's rollback scope, so a missing or invalid
 # overlay prevents Production from remaining on an unverified deployment.
 $overlayMap=[ordered]@{
-    'run-v213-local-source-diverse.ps1'='run-v213-local.ps1'
     'run-v213-local-llm-bridge-source-diverse.ps1'='run-v213-local-llm-bridge.ps1'
     'install-v213-source-diverse-runtime-v2.ps1'='install-v213-source-diverse-runtime.ps1'
 }

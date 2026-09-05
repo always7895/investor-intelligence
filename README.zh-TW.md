@@ -1,62 +1,38 @@
-# Investor Intelligence v2.1.3 R75 FREE_RELAY
+# Investor Intelligence v2.1.3 R75
 
-[English／完整驗證表](README.md)｜[最新不可變 Release](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-qa-readiness-2cf585d-33960014393)｜[交付證據](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
+[English／完整證據](README.md)｜[最新不可變 Release](https://github.com/always7895/investor-intelligence/releases/latest)｜[共同中英狀態](docs/CURRENT_STATUS_BILINGUAL.md)
 
-研究軟體，非個人化投資建議。舊文件中的 v2.0.0、92c97f9 與舊全面完成敘述屬歷史記錄；目前以本頁連結的實際 release／receipts 為準。
+隱私優先、零付費公開市場研究。不是個人化投資建議、交易指令或報酬保證。
 
-## 已知問題／Known issue：LINE 七欄入口不一致
+## 已完成／Delivered
 
-**不能宣稱整個產品已全部完成。** 下列正式修正版完成的是 Q&A／readiness；其互動 Top20 與舊 `/v21/admin/test-push` 仍走五欄，v213 排程則已有七欄。新修正已通過本機 TypeScript 與 133 個 Worker tests，但隔離 workers.dev 驗收遇 HTTP404，**尚未發布、安裝或部署**，也未宣稱真實使用者 LINE 七欄驗收完成。
+- 互動與排程 Top20 共用 **20 檔完整七欄雙語卡片**：四組 carousel，每組五家公司。輸入 `Top20 文字` 可取得完整、依公司分組的文字版，不再橫向擠表格或省略尾端股票。
+- 七欄：股票、近2年歷史年化報酬、近6個月歷史報酬、行業別、獲利簡述、目前訂單、未來訂單展望。沒有可靠證據就顯示未揭露／無可靠預估，不編造訂單總額、不把 LIMITED 升 HIGH。
+- 指定 `qwen38-q6`，保留真實 canonical model ID、拒絕別名衝突／錯誤模型。既有 `127.0.0.1:8080` Router，單一模型；不另啟 llama-server、不改使用者 preset／持久推論參數。
+- 封存發布：digest-bound bytes、pointer-last、物件讀回、損毀 replay 拒絕、持久失敗 journal、rollback／finalize。三個舊未封存寫入入口已 HTTP410。
+- Windows **07:20／20:20 台北時間**產生並發布新封存資料；Worker **08:00／21:00**推送時間不變。排程採 Interactive owner、IgnoreNew、100分鐘上限與重試。請保持電腦／網路可用及使用者登入；鎖定桌面可執行，登出後不保證。
 
-The published hotfix qualifies Q&A/readiness, not every feature. Seven-field route unification is not yet released. [七欄定義與完整中英狀態／Bilingual status](docs/CURRENT_STATUS_BILINGUAL.md)。
+## 實際驗證與界線／Evidence and limits
 
-## 最新驗證狀態（2026-09-05）
+2026-09-06 功能切換基線：`bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`，Windows CI [33989794415](https://github.com/always7895/investor-intelligence/actions/runs/33989794415)。每一份 ZIP 的真正 source／workflow run，以該檔案內 `HOTFIX-REFS.json`、外部 SHA 與相鄰 receipts 為準；不要把較早文件表格套用到後續封裝。
 
-- Executable source：`2cf585d317a4ba3ca784641b1515bfa862fb38bd`
-- Windows self-hosted CI：`33960014393` PASS
-- ZIP SHA256：`da39073a3a0e8367ba7eb06b019a27e0e81bc133acac1fbfc57fcd91fa813e65`
-- Production Worker：`c3cb4024-48f0-403d-9dd2-714d544af024`，100%
-- 本次 Q&A latency／readiness 修復範圍 P0/P1/P2：**0/0/0**。這不是宣稱所有未測情境、實際使用者 LINE 傳送或市場資料完整性皆已驗證。
+- PS5.1／7、Python、Node typecheck、Worker22檔／142 tests PASS；精確 Python 數量與來源雜湊見各次 CI receipt。
+- ZIP 下載後 CRC／MANIFEST／SHA256SUMS／安全路徑／重複／symlink／PE／release marker／receipts、安裝後驗證 PASS。
+- 真實隔離 Q6 的10個完整 cold／warm cases，最大1425.23ms；公開資料 fixture 與 LINE transport 為合成。Production 固定 marker smoke2231／2097ms。Cold 指 prompt cache，不是重新載入模型。
+- Worker `54442104-0e1f-419c-84a9-b7c4ca63ee3f`，100%；後續 Windows 修正未改其 Worker source bytes。
+- 已安裝的完整更新＋封存發布流程 PASS：run `20260905T205013Z-749cc4fbd2cd`，20 LIMITED／0 evidence-qualified。獨立遠端讀回13個必要物件；真實儲存報表在本機 renderer 產生四組 Flex／20卡、兩則完整文字。這不是真機 LINE 顯示或送達認證。
+- 已追蹤 P0／P1／P2＝**0／0／1**：另一個 `InvestorDailyBriefing` 舊任務目標遺失，歸屬尚未證實，未擅自停用。切換後正常08:00／21:00送達仍待自然觀察，不能推定 PASS。
+- `production_mutation_by_ci=false`。本次另有當前使用者授權的本機／relay／Worker／新 snapshot／更新排程變更；沒有額外真實 LINE 測試、付費來源或計費啟用。
+- 此封裝 workflow 尚不產生 GitHub artifact attestation；不能借用舊版 attestation。廣泛 Q6 文字審查仍 INCOMPLETE，只有窄範圍 ACK 型別審查完成，不能混同測試驗收。
 
-## 簡化後的行為
+## 安全與安裝／Safety and installation
 
-只有一條免費模型路徑：workers.dev → 簽章短期 lease → TryCloudflare → Gateway → 既有 llama.cpp → `qwen38-q6`。
+唯一免費路徑：workers.dev → 簽章短期 lease → TryCloudflare → Gateway → 既有 llama.cpp。只有 compact Q&A／固定 smoke 的單次 request 使用 `enable_thinking=false`；不放寬 stale／future／provenance／digest／privacy／IBKR 邊界。
 
-- ticker 問題只取該 ticker 的公開證據；一般問題使用限長摘要；方法論使用固定 context；排名維持 deterministic renderer。
-- 經本次明確授權，只有 compact Q&A／固定 smoke request 設定 `enable_thinking=false`。不修改使用者 preset、不切換模型、不啟動第二台 llama-server。
-- 刪除重複 readiness 等待與舊獨立 benchmark；正式提交客戶端與隔離實測共用同一 readiness gate。
-- 版本／parser／publication contract／policy 不符會 fail closed；不以 TOP20_INVALID 當成可重試的 propagation signal。
-- smoke 只確認固定 marker 與 exact model，不載入整份 Top20，也不把 health PASS 當成回答 PASS。
+Serenity 為公開研究重建，不是官方／私人公式，也不是已查證的最新本人立場。巨觀或身分來源不能當成公司訂單證據；不得用網站／鏡像數量灌高獨立佐證。
 
-## 實測與限制
+先驗證下載 ZIP 的外部 SHA256，再執行 `install-v213-source-diverse-runtime.ps1`。固定路徑 `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`；必要時在其 `cloud` 目錄以 `npm ci --ignore-scripts --no-audit --no-fund` 準備鎖定依賴。安裝程式碼不等於授權 Production 部署／發布。
 
-真實隔離 workers.dev／Q6、合成公開資料 fixture：一般問題 cache cold／warm **5.733／4.627 秒**；ticker **3.737／2.985 秒**；方法論 **4.362／4.115 秒**；證據 **4.999／4.273 秒**。詳細 prompt／generation tokens 見英文首頁及 QA-Live-Receipt。
+驗證過的使用者主機已安裝，桌面入口 **Investor Intelligence R75**。請勿把 LINE／Cloudflare／Gateway credentials、`.env` 或私人財務資料貼到 issue／log。
 
-Production fixed smoke **2.902／2.647 秒 PASS**。7 秒 reference／waitUntil 在隔離 Worker 真實完成，LINE transport 為 mock，未發實際 LINE。Cache cold 指停用 prompt cache，不是重新載入模型。
-
-Python565 tests／2 skipped、Worker22 files／131 tests、typecheck、security、PS5.1／7、final ZIP 解壓與隔離安裝、下載後獨立驗證全部 PASS。
-
-**Production 原 snapshot／sealed bundle 未改、未重新 activation。** 舊 bundle 的歷史時鐘離線交易 PASS；在當前時間過期時仍拒絕，沒有放寬 freshness。LIMITED 不升 HIGH；分數、權重、claim independence、optional BLS、privacy／IBKR 分離均不變。08:00／21:00 任務與 cron 不變。
-
-CI 一律 `production_mutation_by_ci=false`。Worker 程式更新、FREE_RELAY 橋接與 at-logon task 路徑更新，是本次授權後的獨立 operator 動作，不是 CI 部署。
-
-## 本機安裝與啟動
-
-本次已安裝並啟動於：
-
-```text
-%LOCALAPPDATA%\InvestorIntelligence\V213Runtime
-```
-
-桌面捷徑：**Investor Intelligence R75**。舊 Downloads／UserData／原 snapshot 保留。
-
-其他機器請先下載 Release ZIP 與 `.zip.sha256`、比對 SHA256，再解壓並執行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-v213-source-diverse-runtime.ps1
-& "$env:LOCALAPPDATA\InvestorIntelligence\V213Runtime\InvestorIntelligence.exe"
-```
-
-保留既有 `127.0.0.1:8080` Router、`models-max=1`、exact `qwen38-q6`。不需購買 domain、API 或付費模型。FREE_RELAY lease 過期時拒絕使用舊 tunnel；既有 at-logon task 會從穩定 runtime 重建橋接。
-
-不要將 LINE ID、HMAC／Cloudflare／Gateway secrets、券商資料或 `.env` 放入 Git、issue、日誌或模型提示。
+[操作文件](docs/V213_FREE_WORKERS_RELAY.md)｜[行動七欄 UI](docs/LINE_TOP20_UI.md)｜[完整狀態](docs/CURRENT_STATUS_BILINGUAL.md)
