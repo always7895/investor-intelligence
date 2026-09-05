@@ -1,5 +1,13 @@
 # R75 delivery evidence / 交付證據
 
+## Final immutable delivery / 最終不可變交付
+
+[Release b5baae9 /33992169731](https://github.com/always7895/investor-intelligence/releases/tag/v2.1.3-R75-seven-field-b5baae9-33992169731) is published and installed. Source b5baae936dd3d422583decf9268910ed5783e4d5; ZIP SHA320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69. Windows CI, Python585/2 skipped,142 Worker tests, PS5.1/7, actual dependency-preserving reinstall and published download verification PASS.
+
+發布後 `gh release verify-asset` 密碼學 release-asset attestation PASS；SLSA workflow build attestation 仍404，兩者不混用。16個發布資產已鎖定；後續 receipt 上傳被422拒絕，保留本機，未聲稱已上傳。Release notes explain post-publication evidence without altering immutable bytes or pre-publication receipts.
+
+PR34 merged; bilingual About/homepage/docs/release synchronized. P0/P1/P2=0/0/1; issue35 covers the unowned missing-target legacy task, issue33 retains normal-delivery/device observation. No extra real LINE test or subsequent activation replay.
+
 ## 2026-09-06 — seven-field / sealed-refresh cutover
 
 Current downloadable identity: [latest release and its own refs/receipts](https://github.com/always7895/investor-intelligence/releases/latest). [Bilingual scope](../docs/CURRENT_STATUS_BILINGUAL.md).

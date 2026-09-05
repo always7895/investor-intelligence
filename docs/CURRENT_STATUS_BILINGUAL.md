@@ -24,6 +24,8 @@ Interactive and scheduled handlers share20 complete records, four five-card caro
 
 ## 實證／Evidence
 
+最新正式 source／CI／SHA 見 [README](../README.md)；已發布並安裝 b5baae9 /33992169731，發布後再次下載驗證與 `gh release verify-asset` PASS。Later documentation-only commits do not change that executable identity.
+
 - 功能切換基線／Functional baseline: `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, Windows CI33989794415 PASS. PS5.1/7、Python、typecheck、Worker22 files/142 tests、下載獨立驗證與安裝 PASS；後續 Windows-only／封裝修正以其新 CI 為準。
 - 既有 Router／Existing Router: `127.0.0.1:8080`, max_instances=1; selected `qwen38-q6`, canonical `Qwen3.8-27B-UD-Q6_K_XL-844843d973bf`. Preset unchanged; no second model/server. 十個完整隔離 Q6 cases 最大1425.23ms；Production固定smoke2231/2097ms。
 - Worker `54442104-0e1f-419c-84a9-b7c4ca63ee3f` at100%; subsequent Windows-only corrections leave Worker bytes identical. 三個舊未封存入口已無認證唯讀式空請求確認 HTTP410。
@@ -35,7 +37,7 @@ Interactive and scheduled handlers share20 complete records, four five-card caro
 
 - 已追蹤／Tracked P0/P1/P2 = **0/0/1**. Separate `InvestorDailyBriefing` has a missing target/unproven ownership and was not modified. Its historical error is not relabelled fixed.
 - 正常切換後08:00/21:00送達、LINE真機排版仍待自然觀察。No extra real LINE test; mocked transport or local rendering is not device certification.
-- GitHub artifact attestation is not produced by this workflow. Independent ZIP checks PASS, but no attested claim. 廣泛 Q6文字審查仍 INCOMPLETE；窄範圍 ACK型別審查完成，不替代整體測試。
+- SLSA workflow build attestation remains unavailable (HTTP404). The separate cryptographic GitHub immutable-release asset attestation passed after publication; independent published-ZIP checks also PASS. These are distinct evidence types. 廣泛 Q6文字審查仍 INCOMPLETE；窄範圍 ACK型別審查完成，不替代整體測試。
 - 直接 X 原始候選仍403／UNVERIFIED；公開 Serenity 重建不是官方／私人公式，不宣稱最新本人立場。Mirrors are not independent evidence; macro/identity facts do not prove company operations.
 - Freshness, provenance, digest, ordering, negative factors, optional BLS, privacy/IBKR boundaries remain enforced. Missing/stale data fails closed; no five-field fallback or fabricated data.
 

@@ -10,6 +10,6 @@ Code installation is distinct from authorization to deploy, publish or register 
 
 已完成 PS5.1/7、Python、full Worker/typecheck、實際新鮮 all-LIMITED preflight、隔離交易負向測試、ZIP獨立驗證、安裝與遠端讀回。CI未變更Production；另有當前使用者授權的正式操作。沒有額外真實LINE測試；正常排程送達／真機顯示仍待自然觀察。
 
-Current limitations: owner must remain logged in with PC/network available; no logged-out guarantee. This workflow does not produce GitHub artifact attestation. Separate legacy `InvestorDailyBriefing` ownership remains unresolved. These limits are not hidden by the release's scoped PASS.
+Current limitations: owner must remain logged in with PC/network available; no logged-out guarantee. SLSA workflow build attestation is unavailable; the published ZIP's separate GitHub release-asset attestation passed `gh release verify-asset`. / 已驗證 release-asset 簽章，不混稱 build provenance。 Separate legacy `InvestorDailyBriefing` ownership remains unresolved. These limits are not hidden by the release's scoped PASS.
 
 [操作文件／Operations](V213_FREE_WORKERS_RELAY.md) · [交付歷史／Delivery history](https://github.com/always7895/investor-intelligence/blob/main/state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)

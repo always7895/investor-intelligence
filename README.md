@@ -14,6 +14,8 @@ Privacy-first, zero-cost public-market research. / 隱私優先、零付費公�
 
 ## Evidence and scope — 2026-09-06 Asia/Taipei
 
+Published/installed executable: `b5baae936dd3d422583decf9268910ed5783e4d5`; Windows CI **33992169731** PASS; Python **585 /2 skipped**. ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`. The immutable release was downloaded and independently verified after publication, including **`gh release verify-asset` cryptographic release-asset attestation PASS**.
+
 The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, Windows CI [33989794415](https://github.com/always7895/investor-intelligence/actions/runs/33989794415). **For any particular ZIP, its own `HOTFIX-REFS.json`, external checksum and adjacent receipts—not an older documentation table—identify the executable source and build run.** Current downloadable identity is on the release linked above.
 
 - PS5.1/7, Python regression, Node typecheck and full Worker **22 files /142 tests** PASS. Exact Python counts and source hashes are in the corresponding CI evidence.
@@ -23,7 +25,7 @@ The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, 
 - Actual installed end-to-end sealed refresh PASS: run `20260905T205013Z-749cc4fbd2cd`,20 LIMITED/0 evidence-qualified. Independent remote readback found all13 required objects; the real stored report rendered locally into four Flex messages/20 cards and two complete text messages. This is **not** LINE device/delivery certification.
 - Known tracked findings: **P0/P1/P2 = 0/0/1**. The remaining separate `InvestorDailyBriefing` task has a missing target and unproven ownership; it was not disabled or repurposed. Normal post-cutover08:00/21:00 delivery is still an observation boundary, not an inferred PASS.
 - `production_mutation_by_ci=false`. Separately authorized operator actions changed the local runtime, relay, Worker, fresh snapshots and refresh task definitions. No extra real LINE test was sent; no billing or paid provider was enabled.
-- This packaging workflow does not produce GitHub artifact attestation. Do not label its ZIP attested or borrow the older release's attestation. Broad Q6 text reviews remain incomplete; a narrow ACK-type review completed, separately from runtime tests.
+- The workflow does not produce SLSA build attestation (HTTP404). GitHub's separate immutable-release asset attestation was verified after publication; it is not a claim of workflow build provenance. Pre-publication receipts retain their earlier workflow-attestation status. Broad Q6 text reviews remain incomplete; a narrow ACK-type review completed, separately from runtime tests.
 
 ## Small, free architecture
 

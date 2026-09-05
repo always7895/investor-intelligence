@@ -14,6 +14,8 @@
 
 ## 實際驗證與界線／Evidence and limits
 
+目前已發布／安裝 source `b5baae936dd3d422583decf9268910ed5783e4d5`，Windows33992169731、Python585／2 skipped PASS。ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`。發布後重新下載獨立驗證，`gh release verify-asset` 密碼學 release-asset attestation **PASS**。
+
 2026-09-06 功能切換基線：`bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`，Windows CI [33989794415](https://github.com/always7895/investor-intelligence/actions/runs/33989794415)。每一份 ZIP 的真正 source／workflow run，以該檔案內 `HOTFIX-REFS.json`、外部 SHA 與相鄰 receipts 為準；不要把較早文件表格套用到後續封裝。
 
 - PS5.1／7、Python、Node typecheck、Worker22檔／142 tests PASS；精確 Python 數量與來源雜湊見各次 CI receipt。
@@ -23,7 +25,7 @@
 - 已安裝的完整更新＋封存發布流程 PASS：run `20260905T205013Z-749cc4fbd2cd`，20 LIMITED／0 evidence-qualified。獨立遠端讀回13個必要物件；真實儲存報表在本機 renderer 產生四組 Flex／20卡、兩則完整文字。這不是真機 LINE 顯示或送達認證。
 - 已追蹤 P0／P1／P2＝**0／0／1**：另一個 `InvestorDailyBriefing` 舊任務目標遺失，歸屬尚未證實，未擅自停用。切換後正常08:00／21:00送達仍待自然觀察，不能推定 PASS。
 - `production_mutation_by_ci=false`。本次另有當前使用者授權的本機／relay／Worker／新 snapshot／更新排程變更；沒有額外真實 LINE 測試、付費來源或計費啟用。
-- 此封裝 workflow 尚不產生 GitHub artifact attestation；不能借用舊版 attestation。廣泛 Q6 文字審查仍 INCOMPLETE，只有窄範圍 ACK 型別審查完成，不能混同測試驗收。
+- 此 workflow 不產生 SLSA build attestation（HTTP404）；發布後已驗證 GitHub 另一種 immutable-release asset attestation，不能混稱 workflow build provenance。發布前 receipts 保留其原有狀態。廣泛 Q6 文字審查仍 INCOMPLETE，只有窄範圍 ACK 型別審查完成，不能混同測試驗收。
 
 ## 安全與安裝／Safety and installation
 
