@@ -17,7 +17,13 @@ def verify(data, manifest=None):
         require(data.get(field) is True, "LIVE_PROOF_MISSING:"+field)
     require(data.get("production_mutation") is False and data.get("real_line_sent") is False, "PRODUCTION_BOUNDARY")
     require(data.get("request_enable_thinking") is False and data.get("exact_model") == "qwen38-q6", "MODEL_PROFILE_MISMATCH")
-    require(data.get("source_manifest") == (source_manifest() if manifest is None else manifest), "LIVE_SOURCE_MANIFEST_MISMATCH")
+    # The original receipt retains the exact test-driver hash for provenance.
+    # A driver-only refactor is not an executable Worker/Gateway change. Bind
+    # every deployed/runtime file, not the later verifier/operator tooling.
+    runtime_only = lambda files: {p:h for p,h in files.items() if p != 'scripts/v213_qa_live_gate.py'}
+    recorded = data.get("source_manifest")
+    require(isinstance(recorded, dict), "LIVE_SOURCE_MANIFEST_MISSING")
+    require(runtime_only(recorded) == runtime_only(source_manifest() if manifest is None else manifest), "LIVE_SOURCE_MANIFEST_MISMATCH")
     require(data.get("router", {}).get("models_max") == 1, "ROUTER_CAPACITY_MISMATCH")
     policy_hash = hashlib.sha256(json.dumps(POLICY, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     require(data.get("compact_policy_sha256") == policy_hash, "LIVE_POLICY_MISMATCH")

@@ -52,8 +52,9 @@ def main():
     manifest = source_manifest()
     name = "ii-r75-qa-bench-" + secrets.token_hex(5)
     generation = secrets.token_hex(16)
-    secret = secrets.token_hex(32)
-    gateway_secret = hmac.new(secret.encode(), ("v213-free-relay-gateway." + generation).encode(), hashlib.sha256).hexdigest()
+    synthetic_auth = secrets.token_hex(32)
+    gateway_domain = "v213-free-relay-gateway." + generation
+    gateway_secret = hmac.new(synthetic_auth.encode(), gateway_domain.encode(), hashlib.sha256).hexdigest()
     session = requests.Session()
     evidence = {"schema_version": 1, "status": "FAIL", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
                 "exact_model": "qwen38-q6", "request_enable_thinking": False, "synthetic_public_fixture": True,
@@ -66,7 +67,7 @@ def main():
     def signed(origin, path, body):
         text = json.dumps(body, separators=(",", ":"))
         stamp, nonce = str(int(time.time())), secrets.token_hex(16)
-        sig = hmac.new(secret.encode(), f"{stamp}.{nonce}.{text}".encode(), hashlib.sha256).hexdigest()
+        sig = hmac.new(synthetic_auth.encode(), f"{stamp}.{nonce}.{text}".encode(), hashlib.sha256).hexdigest()
         return session.post(origin + path, data=text.encode(), headers={"content-type": "application/json", "x-ii-v21-timestamp": stamp, "x-ii-v21-nonce": nonce, "x-ii-v21-signature": sig}, timeout=35)
     gateway = tunnel = None
     namespace = None
@@ -99,7 +100,7 @@ def main():
             origin_match = re.search(r'https://'+re.escape(name)+r'\.[a-z0-9-]+\.workers\.dev', output)
             if not origin_match: raise RuntimeError("ISOLATED_WORKER_ORIGIN_UNAVAILABLE")
             origin = origin_match[0]
-            wr("secret", "bulk", "--config", str(cfg), stdin=json.dumps({"V21_SYNC_HMAC_SECRET": secret, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}))
+            wr("secret", "bulk", "--config", str(cfg), stdin=json.dumps({"V21_SYNC_HMAC_SECRET": synthetic_auth, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}))
             deployments = json.loads(wr("deployments", "list", "--json", "--config", str(cfg)))
             versions = sorted(deployments, key=lambda d: d["created_on"])[-1]["versions"]
             if len(versions) != 1 or versions[0]["percentage"] != 100: raise RuntimeError("ISOLATED_ACTIVE_VERSION_INVALID")
@@ -149,7 +150,7 @@ def main():
                     bad = signed(origin, "/v213/admin/free-relay-route", {**route, key: value})
                     if bad.ok: raise RuntimeError("NEGATIVE_ROUTE_ACCEPTED")
                 if signed(origin, "/v213/admin/free-relay-route", route).ok: raise RuntimeError("REPLAY_ROUTE_ACCEPTED")
-                auth = {"authorization": "Bearer " + secret}
+                auth = {"authorization": "Bearer " + synthetic_auth}
                 session.post(origin+"/setup", headers=auth, timeout=15).raise_for_status()
                 for case in ("smoke", "general", "ticker", "methodology", "evidence"):
                     for phase in ("cold", "warm"):
