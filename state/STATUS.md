@@ -1,5 +1,16 @@
 # R75 takeover status
 
+## Qualified seven-field / sealed-refresh migration — 2026-09-06 Asia/Taipei
+
+- Fetched/pushed functional baseline bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879; Windows33989794415 SUCCESS, independently downloaded ZIP SHA256 d26ab7d685cd3c99ec4745c51d9a024f0158834eaaf250e794d1956d57820775, installed and independently exercised. Current documentation and dependency-cache preservation follow-up are pending their own CI; never relabel the baseline ZIP as a later build.
+- Authorized Worker54442104-0e1f-419c-84a9-b7c4ca63ee3f at100%, three readiness proofs and Q6 fixed-marker2231/2097ms PASS. Existing Router PID23884, one model, unchanged preset; Gateway47136/8817. All three retired unsealed routes returned410 without credentials. qa.ts94184bc8937b413eb327b3d773926db00e22b3b9 and LINE transport618610bb277eb2949af0657609569ec5c490a1bb retained.
+- Actual installed full wrapper with explicit publication PASS: run20260905T205013Z-749cc4fbd2cd, transaction124ed6f6603d68ea05f81e82517ae320, FINALIZED;20 LIMITED/0 qualified. Bundle SHAe870c27ab21273900aaf1c2588a2d48823dc7d95f60ca4703c174f747b467610. Independent remote readback verified13 required objects and real report rendering4 Flex/20 cards/2 text messages, without LINE transport.
+- 07:20/20:20 canonical task actions independently read back with PublishSealedBundle, Interactive owner, IgnoreNew and100-minute timeout/retries;08:00/21:00 cron unchanged. Native StopExisting enum failure and subsequent operator-only uninitialized LASTEXITCODE failure are preserved; final registration/readback PASS. Dependencies were explicitly prepared with npm ci --ignore-scripts after installation; missing-dependency failure remains historical. Follow-up fixes the actual robocopy exclusion so resident node_modules survives later code copies, with native PS5.1/7 regression.
+- Known tracked P0/P1/P2=0/0/1: separate InvestorDailyBriefing missing target and unproven ownership, not modified. Isolated readiness/auth issues now have completed source-bound proof. Scheduled normal delivery/device rendering remains unobserved; not an inferred PASS. Broad Q6 text review incomplete; narrow ACK-type guard review complete.
+- production_mutation_by_ci=false. Authorized operator DID modify local runtime, relay, Worker, fresh snapshots and refresh tasks. No extra real LINE test or paid activation. Artifact attestation unavailable; do not borrow historical attestation.
+- Next: qualify the documentation/cache-preservation final artifact, immutable durable Release, independent installed identity check and GitHub synchronization. Detailed prior milestones below retain only their original scope.
+
+
 ## Windows scope-gate reconciliation — 2026-09-06 Asia/Taipei
 
 - Actual HEAD `5cf31c4062e2f02557ffe6225228cc02d4e34901`, pushed. Windows self-hosted run33977344672 failed before regression because the newly reviewed CROSS_VALIDATION.md reference was absent from the exact hotfix file allowlist. No runtime failure was inferred from this metadata rejection.

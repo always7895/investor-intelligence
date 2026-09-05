@@ -1,10 +1,12 @@
 # LINE Top20 UI / 七欄卡片
 
-## Candidate scope / 候選版本範圍
+## Qualified implementation / 已驗證實作
 
-The candidate uses the same renderer for authenticated interactive Top20 and the two scheduled broadcasts. Twenty stocks appear as four Flex carousels, five complete seven-field cards each, in one outbound request. `Top20 文字` returns complete text grouped by company; it does not silently drop later stocks.
+See [current evidence and delivery boundaries](CURRENT_STATUS_BILINGUAL.md). 已完成正式程式切換與真實遠端報表的本機呈現驗證；未宣稱 LINE 真機送達認證。
 
-候選版的互動 Top20 與兩個排程廣播共用呈現器：20 檔分成四組 Flex carousel，每組五張完整七欄卡片，同一請求送出。輸入 `Top20 文字` 可取得按公司分組的完整文字，不會悄悄刪除後面的股票。
+The implementation uses the same renderer for authenticated interactive Top20 and the two scheduled broadcasts. Twenty stocks appear as four Flex carousels, five complete seven-field cards each, in one outbound request. `Top20 文字` returns complete text grouped by company; it does not silently drop later stocks.
+
+目前的互動 Top20 與兩個排程廣播共用呈現器：20 檔分成四組 Flex carousel，每組五張完整七欄卡片，同一請求送出。輸入 `Top20 文字` 可取得按公司分組的完整文字，不會悄悄刪除後面的股票。
 
 - Prominent rank/ticker, bilingual labels, separated historical returns, industry, profitability, current orders and future outlook.
 - 清楚標示排名／代碼、雙語欄名，分區呈現歷史報酬、產業、獲利、目前訂單與未來展望。

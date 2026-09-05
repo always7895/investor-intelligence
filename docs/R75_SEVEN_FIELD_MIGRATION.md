@@ -1,6 +1,14 @@
 # 七欄修正與更新鏈遷移 / Seven-field repair and refresh migration
 
-## 已核實 / Verified
+## 2026-09-06 migration checkpoint / 遷移現況
+
+七欄／Q6／封存發布已正式切換；07:20/20:20 更新任務已驗證讀回，08:00/21:00 Worker cron 不變。實際已安裝 wrapper 的資料產生＋Commit＋Finalize PASS，20 LIMITED／0 qualified；尚未額外發送真實 LINE。完整當前範圍：[中英狀態](CURRENT_STATUS_BILINGUAL.md)。
+
+Code/relay, fresh sealed publication and canonical opted-in refresh tasks are qualified. The actual installed end-to-end wrapper passed; ordinary scheduled delivery remains unobserved. Native StopExisting enum failure was corrected to IgnoreNew with a100-minute limit; subsequent operator-only LASTEXITCODE handling was fixed before successful task readback. Failures remain evidence, not relabelled PASS.
+
+The sections below are the historical diagnosis and pre-cutover plan, not today's installed status. / 下列保留最初診斷與切換前計畫，不代表目前狀態。
+
+## Historical verified observations / 歷史核實事項
 
 使用者截圖：9月4日21:00舊版自動推播、9月5日19:24互動 Top20 都是五欄。舊自動訊息不能證明新 Worker 的 scheduled 入口正在輸出五欄。
 

@@ -11,6 +11,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WindowsSecurityHostTests(unittest.TestCase):
+    def test_native_runtime_copy_preserves_installed_dependencies(self):
+        shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
+        if not all(shells):
+            self.skipTest('Both Windows PowerShell hosts required')
+        command = next(line.strip() for line in (ROOT/'install-v213-runtime.ps1').read_text(encoding='utf-8-sig').splitlines() if line.strip().startswith('& $robocopy '))
+        for shell in shells:
+            with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temp:
+                folder=Path(temp); source=folder/'source (1)'; runtime=folder/'runtime (2)'
+                for base in (source,runtime):
+                    (base/'cloud/node_modules').mkdir(parents=True)
+                (source/'cloud/node_modules/untrusted-source.txt').write_text('not copied')
+                (runtime/'cloud/node_modules/resident.txt').write_text('preserved')
+                (source/'fresh.txt').write_text('new')
+                script=folder/'copy.ps1'
+                script.write_text("$ProjectRoot='"+str(source).replace("'","''")+"'\n$RuntimeRoot='"+str(runtime).replace("'","''")+"'\n$robocopy=(Get-Command robocopy.exe).Source\n"+command+"\nif($LASTEXITCODE-gt7){exit 1}\nexit 0\n",encoding='utf-8-sig')
+                result=subprocess.run([shell,'-NoProfile','-NonInteractive','-File',str(script)],capture_output=True,encoding='utf-8',errors='replace',timeout=30)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertTrue((runtime/'fresh.txt').is_file())
+                self.assertEqual((runtime/'cloud/node_modules/resident.txt').read_text(),'preserved')
+                self.assertFalse((runtime/'cloud/node_modules/untrusted-source.txt').exists())
+
     def test_real_task_settings_construct_without_registering_tasks(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
         if not all(shells):

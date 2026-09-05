@@ -1,15 +1,12 @@
-# 實作狀態 / Implementation status
+# 實作狀態／Implementation status — 2026-09-06
 
-**最新補充 / Latest update:** [七欄入口與驗收阻擋 / Seven-field routing and blocked qualification](docs/CURRENT_STATUS_BILINGUAL.md). 下列完成項目僅限已交付的 Q&A/readiness，非全產品零缺陷。 / The completed items below cover the delivered Q&A/readiness hotfix, not zero defects across the product.
+Authority: [latest release](https://github.com/always7895/investor-intelligence/releases/latest), its own refs/receipts, and [bilingual current status](docs/CURRENT_STATUS_BILINGUAL.md). Historical evidence is not transferable qualification or authorization.
 
-Release/version/checksum authority: [README](README.md). Full receipts and verification limits: [delivery report](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md).
+- 完整20檔雙語七欄／Complete20-record bilingual seven-field interactive and scheduled presentation: implemented and qualified; four carousels plus complete text fallback.
+- Exact Q6 alias/canonical identity, bounded compact Q&A and shared readiness: real isolated/Production PASS; preset unchanged.
+- 封存更新／Sealed refresh: digest-bound bytes, strict ACK types, durable journals, pointer-last/readback, corrupt replay rejection, rollback/finalize. Actual installed full refresh and independent remote readback PASS.
+- Windows task registration: real native settings validated on PS5.1/7; IgnoreNew,100-minute timeout/retries, Interactive owner.07:20/20:20 task definitions independently read back; explicit publication preference preserved.08:00/21:00 Worker cron unchanged.
+- ZIP independent download/verification and installed runtime gates PASS. Exact executable identity and current CI counts come from each artifact's own receipts.
+- Known tracked P0/P1/P2=0/0/1: separate missing-target legacy task with unproven ownership. Normal new-code scheduled LINE delivery/device rendering remains unobserved, not an inferred PASS.
 
-- Compact public Q&A and fixed transport/model smoke: complete answers measured over real isolated workers.dev/Q6.
-- Readiness: one shared no-write version/parser/contract gate, simulated negative coverage and actual isolated/Production PASS.
-- Full Windows regression, immutable packaging, independent download/extraction and local installation: PASS.
-- Authorized code-only Production cutover and fixed-marker smoke: PASS. Existing snapshot/08:00/21:00 schedules retained; no additional LINE message.
-- Scoped Q&A/readiness defects: P0/P1/P2=0/0/0, supported by current receipts rather than older blanket claims.
-
-The public model fixtures were synthetic; the retained Production snapshot is not claimed fresh by this hotfix. LIMITED remains LIMITED. Historical bundle testing uses a clearly marked historical clock and still verifies present-time STALE rejection. No scoring, publication-mode or privacy threshold was relaxed.
-
-Earlier implementation narratives are historical evidence preserved in Git. They must not replace current CI, hashes, receipts or machine measurements.
+`production_mutation_by_ci=false`. Current-session authorized operator work did change runtime, relay, Worker, fresh snapshot and refresh definitions. No extra real LINE test, paid activation or scoring/privacy relaxation. Current dataset20 LIMITED/0 qualified; no invented total orders. Artifact attestation absent; broad Q6 text review incomplete. Older all-zero or no-snapshot-change statements retain only their historical scope.
