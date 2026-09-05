@@ -349,3 +349,21 @@ Stop. Delivery complete at the artifact/receipt boundary. Real Worker deployment
 - 本輪已確認的 TOP20_INVALID／PS7 時區缺陷範圍 P0/P1/P2 = **0/0/0**。**正式遠端 activation 仍未重新執行，需當次授權與真實交易回執；不宣稱所有產品路徑已無問題。**
 - 外部 mutation：Git push、GitHub Release／metadata；Production 僅唯讀版本查詢，無部署、KV/DO 寫入、排程變更或 LINE 推播。CI `production_mutation_by_ci=false`。
 - 下一步：使用最終新目錄重建新鮮資料後正式啟用；若由 agent 操作，需明確授權 Production 部署與 sealed-bundle 提交。
+
+## 2026-09-05 09:08 TST — 明確授權 Production 部署與 sealed bundle 提交
+
+- 本輪使用者明確授權：**「部署 Production Worker 並提交 sealed bundle」**。Fetched HEAD `c825b803e2c32fbb5f14e357699d1ebf2be2b48a`；執行來源仍是不可變 `998335dcdd86100633aa32cefbb09147f7a91cc5` / CI `33933857026`。解壓來源 337 檔與原 ZIP 逐位元組比對 PASS。
+- 初始 Production `27121388-1e6e-445a-b45e-104a867ca70d` @100%。8080 Router 在本輪開始前已停止，Gateway 回報 unavailable、lease fail closed；確認無 llama-server 後，以既有 executable／preset 恢復同一 8080、models-max=1，未改 preset。Q6 loaded、NVFP4 unloaded；Router PID34168。
+- 恢復產品 FREE_RELAY blue/green bridge，最終 generation `5021872daad649e3a33724c842065381`、Gateway8815。重啟／route 續租是本輪操作前置，不屬於 CI mutation。
+- 原始 bundle SHA `f51a99ac709da3cf3fce6c2af0b4f40a967443d5bae41ba3b963a0d716500bad`，run `20260905T002320Z-6f420ca8d4e8`，transaction `5f2dea606be8095a688e06605f241531`；提交時仍在兩小時新鮮度內，未更改 bundle。Python preflight、typecheck、116 tests／exact Worker preflight PASS。
+- 採限縮 operator 流程（operation lock、部署、提交、重送讀回、獨立 remote KV readback、finalize），**未呼叫 scheduled-task registrar、未修改現有 cron expressions、未送 LINE**。
+- 第一輪 candidate `a956ad97-180f-4cbf-8d6b-e65b04be221e`：Commit／Replay 都 accepted，15 objects read back；operator PS5.1 `@($json|ConvertFrom-Json)` 將 JSON array 包成單一元素，額外 count gate 誤判。資料與 Worker 均 verified rollback，證據保留 `artifacts/r75-production-998335d-20260905/`。
+- 第二輪 candidate `2e67981b-cfa0-45ef-bc49-c52e00180aab`：部署後立即 Commit 收到 pre-write `TOP20_INVALID`，not_committed／Worker rollback PASS。來源與 bundle 不變，疑似 rollback 後 edge deployment 尚未收斂；未宣稱已確證根因。證據保留 `...-retry1/`。
+- 最終加入部署後 15s settlement，僅允許對相同 bytes 的 pre-write TOP20_INVALID 做有界重試（此最終輪第一次即成功），不重試／放行其他 invariant。
+- **最終 active Worker `80f6565b-3ab6-45f6-8d25-21a3a54a1bca` @100%**。Commit accepted；15 objects written/read back、pointer-last；Replay idempotent=true 且15 objects verified；獨立 Wrangler remote KV readback 指標一致、20 rows、LIMITED20／EVIDENCE_QUALIFIED0；Finalize finalized、rollback handle deleted。
+- 最後 2026-09-05T01:07:38Z 獨立版本／pointer 再查均符合上述結果。**Production 部署與資料提交 scope PASS**。
+- 額外 live model smoke 三次 HTTP400 `FREE_RELAY_SMOKE_MODEL_RESPONSE_INVALID`，不列 PASS。Router 實際記錄 6554-token prompt eval 67052ms／generation9509ms，而 certified Worker localAnswer timeout為20000ms；大型公開 context 冷啟推論超出等待上限，後續請求可能遇到 capacity backpressure。Gateway健康／Q6載入正常不等於問答已可用，未修改使用者 preset／qa.ts 掩蓋問題。
+- 目前已知 P0/P1/P2 = **0/1/1**：P1＝即時模型 Q&A timeout；P2＝部署後短暫舊格式拒收／edge收斂待確認。正式資料提交已完成，不將這些剩餘風險寫為零。
+- 成功證據：`artifacts/r75-production-998335d-20260905-retry2/`。`Authorized-Production-Activation.json` SHA256 `3182e6655d4004fcc7507d73cb7fb3eb738ae0d324a30a812c93b9cbee806794`；Commit `e67063113dfbe59eecf5fc5725b4202d9a0774914591f9bd673bb1e74fda03a5`；Replay `8060b34f4a59fbb523896bdbebdf2965479393b923e1f14d63a13304fb745253`；Finalize `2869cc155815613cb42b270fe94dd5d4afa9fb6d8aa9469b96ddb559fc064fd3`。
+- 外部 mutation＝本輪明確授權的 Worker deploy／rollback、Production snapshot／journal／pointer／finalize、FREE_RELAY lease 更新；CI仍 `production_mutation_by_ci=false`。無 secrets 輸出／Git持久化、無 LINE、無排程變更；原 Release assets不覆寫。
+- 下一步：另行修復並實測模型長 context latency／timeout 與部署收斂，保護 scoring、publication mode、qa.ts 與用戶模型 presets；不把本次完成 deployment/data activation 等同所有功能已完成。
