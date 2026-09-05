@@ -16,7 +16,8 @@
   "scoring_changes": false,
   "publication_threshold_changes": false,
   "preset_changes": false,
-  "inference_overrides": false,
+  "inference_overrides": true,
+  "compact_request_enable_thinking": false,
   "methodology_context": "System interpretation, not an official Serenity formula: distinguish an industry bottleneck from company value capture. A theme or scarce input alone is not proof of pricing power, durable margins or competitive advantage. Require claim-specific independent evidence; keep original attribution separate. No score or factor weight is changed by Q&A.",
   "evidence_context": "Evidence is claim-specific. SEC filing publication and listing identity are provenance only, not positive Serenity-factor evidence. Missing independent corroboration must stay missing; LIMITED cannot be promoted to HIGH or a validated company thesis. Explain how to verify a claim, not an invented conclusion."
 }

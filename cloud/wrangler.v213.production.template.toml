@@ -9,8 +9,8 @@ binding = "CF_VERSION_METADATA"
 [vars]
 MEMORY_FEATURE_AVAILABLE = "false"
 GENERAL_QA_ENABLED = "true"
-# Candidate compact path is NOT live-qualified under inherited high reasoning.
-V213_COMPACT_QA_ENABLED = "false"
+# Request-only non-thinking mode; the user's Router preset remains unchanged.
+V213_COMPACT_QA_ENABLED = "true"
 CURRENT_PUBLIC_DATA_ENABLED = "true"
 PUBLIC_DATA_MAX_AGE_SECONDS = "7200"
 OPTION_DATA_MAX_AGE_SECONDS = "1800"

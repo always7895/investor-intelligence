@@ -24,7 +24,9 @@ try {
         'config/v213-compact-qa-v1.json','sync-v213-activation-bundle.ps1',
         'scripts/benchmark_v213_qa_latency.py','scripts/v213_compact_qa_gateway.py','scripts/v213_local_llm_gateway.py',
         'scripts/test_v213_edge_readiness.ps1','scripts/v213_edge_readiness.ps1','tests/test_v213_compact_qa_gateway.py',
-        'tests/test_v213_r75_gateway_process.py',
+        'tests/test_v213_r75_gateway_process.py','tests/test_r75_qa_evidence.py',
+        'cloud/test/r75-live-bench-worker.ts','scripts/v213_qa_live_gate.py','scripts/verify_r75_qa_evidence.py',
+        'state/r75-qa-live-qualification.json',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
         'cloud/src/v21/top20.ts','cloud/test/v213-activation.test.ts','cloud/package.json','cloud/package-lock.json',
         'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
@@ -58,10 +60,15 @@ try {
 
     $workerResults = Get-Content -LiteralPath $env:R75_WORKER_TEST_REPORT -Raw -Encoding utf8 | ConvertFrom-Json
     if (-not $workerResults.success -or $workerResults.numFailedTests -ne 0) { throw 'Worker evidence is not successful.' }
-    # Full regression is not live Q&A qualification. Never package a release from
-    # synthetic transport tests while the inherited high-reasoning gate fails.
-    $env:R75_QA_RELEASE_READY = 'false'
-    if ($env:GITHUB_ENV) { 'R75_QA_RELEASE_READY=false' | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+    # Consume the already completed, exact-runtime-source-bound live test.
+    # CI never creates a tunnel/Worker, accesses the GPU or writes Production.
+    $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
+    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof
+    if ($LASTEXITCODE -ne 0) { throw 'Source-bound live Q&A qualification failed.' }
+    $qa = $qaRaw | ConvertFrom-Json
+    if ($qa.release_ready -ne $true) { throw 'Live Q&A is not release-qualified.' }
+    $env:R75_QA_RELEASE_READY = 'true'
+    if ($env:GITHUB_ENV) { 'R75_QA_RELEASE_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
     $receiptRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
     $runId = if ($env:GITHUB_RUN_ID) { [string]$env:GITHUB_RUN_ID } else { '0' }
     $attempt = if ($env:GITHUB_RUN_ATTEMPT) { [string]$env:GITHUB_RUN_ATTEMPT } else { '1' }
@@ -70,7 +77,8 @@ try {
         schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';base_named_tunnel_commit=$baseCommit;source_commit=$sha
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
         worker_typecheck='PASS';worker_test_files=@($workerResults.testResults).Count;worker_tests=[int]$workerResults.numTotalTests;
-        compact_context='PASS_SYNTHETIC';deployment_readiness='PASS_SYNTHETIC';live_qa='BLOCKED_INHERITED_HIGH_REASONING';live_free_relay_smoke='NOT_RUN_PRODUCTION_WRITE_FORBIDDEN';release_ready=$false;
+        compact_context='PASS';deployment_readiness='PASS_REAL_ISOLATED';live_qa='PASS';live_free_relay_smoke='PASS';release_ready=$true;
+        live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
         exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
         quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'

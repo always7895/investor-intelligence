@@ -110,8 +110,9 @@ jobs:
           - Signed route, TTL, heartbeat, stale/replay/concurrency/reconnect/rollback gates: PASS
           - Exact qwen38-q6 + health schema v2 + three public health checks: PASS
           - Production mutation by CI: false
-          - Live Q&A: BLOCKED under inherited high reasoning; synthetic PASS is not live PASS
-          - Immutable release packaging: withheld until live qualification
+          - Live Q&A: source-bound isolated workers.dev receipt verified; request-only non-thinking
+          - Real 7-second reference/waitUntil path: PASS with synthetic LINE transport
+          - Immutable release packaging: permitted only after full regression + live receipt verification
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Build and independently verify immutable R75 package

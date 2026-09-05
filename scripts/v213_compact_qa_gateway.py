@@ -61,4 +61,6 @@ def compact_upstream(body: dict, selected: str) -> dict | None:
     if type(count) is not int or not 1 <= count <= maximum or type(body.get("cache_prompt", True)) is not bool:
         raise ValueError("COMPACT_GENERATION_BOUNDS_INVALID")
     return {"model": selected, "messages": messages, "temperature": 0.2,
-            "max_tokens": count, "stream": False, "cache_prompt": body.get("cache_prompt", True)}
+            "max_tokens": count, "stream": False, "cache_prompt": body.get("cache_prompt", True),
+            # User-authorized request-only short-answer mode. Router preset is untouched.
+            "chat_template_kwargs": {"enable_thinking": POLICY["compact_request_enable_thinking"]}}

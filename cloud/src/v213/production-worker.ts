@@ -88,9 +88,9 @@ function validationStatus(code: string): number {
 }
 
 export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213ProductionEnv> {
-  // Candidate compact inference has not yet met the inherited high-reasoning
-  // live gate. Opt-in only; do not silently change the production QA profile.
-  const handler = env.V213_COMPACT_QA_ENABLED === "true" ? compactGeneralAnswer : undefined;
+  // v213 uses one compact path. Explicit false is an operational rollback,
+  // not a second model or paid fallback. Legacy qa.ts safety checks still run.
+  const handler = env.V213_COMPACT_QA_ENABLED !== "false" ? compactGeneralAnswer : undefined;
   if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler };
   const overrides = await freeRelayRuntimeOverrides(env);
   return {

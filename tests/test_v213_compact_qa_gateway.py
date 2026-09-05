@@ -20,7 +20,7 @@ class CompactGatewayTests(unittest.TestCase):
         result = compact.compact_upstream(self.body(), "qwen38-q6")
         self.assertEqual(result["max_tokens"], 160)
         self.assertEqual(result["messages"], self.body()["messages"])
-        self.assertNotIn("chat_template_kwargs", result)
+        self.assertEqual(result["chat_template_kwargs"], {"enable_thinking": False})
         self.assertNotIn("reasoning_effort", result)
         self.assertNotIn("ii_context_mode", result)
         self.assertIsNone(compact.compact_upstream({"model": "qwen38-q6"}, "qwen38-q6"))

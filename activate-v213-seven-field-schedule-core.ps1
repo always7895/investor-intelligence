@@ -518,13 +518,8 @@ try {
     $uploadedVersion = Get-V213DeployedVersion $deployOutput
     $current = Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)
     if ($current -eq $prior -or $current -cne $uploadedVersion) { throw 'Deployment did not produce the exact expected active Worker version.' }
-    $syncSettings = Get-Content -LiteralPath $SyncConfig -Raw -Encoding utf8 | ConvertFrom-Json
-    $origin = ([uri]([string](Get-PropertyValue $syncSettings 'public_snapshot_endpoint' ''))).GetLeftPart([UriPartial]::Authority)
-    $ready = Wait-V213EdgeReadiness -Origin $origin -ExpectedVersion $current -ProjectRoot $ProjectRoot
-    if ($ready.worker_version -ne $current -or
-        (Get-SingleActiveVersion (Invoke-WranglerCapture $wrangler @('deployments','status','--json','--config',$temp) $CloudRoot)) -ne $current) {
-        throw 'V213_ACTIVATION_EDGE_VERSION_CHANGED; commit_forbidden=true'
-    }
+    # The sync client owns the single readiness gate (control plane before/after,
+    # three same-version parser proofs). Do not run an identical gate twice.
 
     $commitResult = Join-Path $env:TEMP ('ii-v213-activation-commit-' + [guid]::NewGuid().ToString('N') + '.json')
     $bundleCommitAttempted = $true
