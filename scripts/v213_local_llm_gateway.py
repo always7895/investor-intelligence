@@ -415,6 +415,13 @@ def _build_health_payload(
         "available_model_count": len(models),
     }
     payload.update(dict(audit_health or {}))
+    backend = os.getenv("II_LOCAL_LLM_BACKEND", "llama").strip()
+    payload["inference_backend"] = backend
+    if backend == "pi":
+        payload.update({"production_ready": False, "pi_protocol": "pi_public_v1",
+                        "thinking_requested": "xhigh", "thinking_verified_by_health": False})
+    elif backend != "llama":
+        payload.update({"ok": False, "llama_reachable": False})
     return payload
 
 
@@ -497,6 +504,34 @@ class V213GatewayHandler(base.GatewayHandler):
             )
             return
         try:
+            backend = os.getenv("II_LOCAL_LLM_BACKEND", "llama").strip()
+            if backend == "pi":
+                # Explicit candidate protocol: never fall back to direct llama HTTP.
+                # Import lazily so legacy installed packages retain their old dependency surface.
+                from v213_pi_transport import complete as pi_complete, validate_body as pi_validate, PiTransportError
+                try:
+                    pi_validate(body, selected)
+                except PiTransportError as exc:
+                    self._json(400, {"error": str(exc)})
+                    return
+                canonical = resolve_model_id(selected, _available_model_catalog())
+                if canonical != selected:
+                    self._json(503, {"error": "PI_CANONICAL_CATALOG_REQUIRED"})
+                    return
+                try:
+                    result = pi_complete(body, selected)
+                except PiTransportError as exc:
+                    code = str(exc)
+                    status = 429 if code == "PI_CAPACITY_EXHAUSTED" else 504 if code == "PI_CHILD_TIMEOUT" else 503 if code == "PI_RUNTIME_NOT_CONFIGURED" else 502
+                    self._json(status, {"error": code})
+                    return
+                result["ii_exact_model_pin"] = {"selected_model": selected, "canonical_model": canonical,
+                    "identity_proof": "unique_router_catalog", "request_model_substitution_allowed": False}
+                self._json(200, result)
+                return
+            if backend != "llama":
+                self._json(503, {"error": "INFERENCE_BACKEND_INVALID"})
+                return
             try:
                 upstream = compact_upstream(body, selected)
             except (ValueError, TypeError, KeyError):

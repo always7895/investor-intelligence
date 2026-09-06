@@ -42,6 +42,14 @@ class AgentSkillStructureTests(unittest.TestCase):
                        'No third-party executable code installed or copied', 'HTTP 403'):
             self.assertIn(marker, text)
 
+    def test_source_views_are_not_generic_candidates_or_execution_proof(self):
+        text = SKILL.read_text(encoding='utf-8')
+        for marker in ('ATTRIBUTED_SOURCE_VIEWS', 'SYSTEM_RESEARCH_CANDIDATES', 'COMPARISON',
+                       'not proof that Pi discovered/read/executed it',
+                       'not a generic replacement Top20', 'exclusion stage',
+                       'Do not hard-code her tickers'):
+            self.assertIn(marker, text)
+
     def test_standalone_repository_has_safety_and_evidence_instructions(self):
         text = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
         for marker in ('explicit current-session authorization', 'no-Production-mutation',
