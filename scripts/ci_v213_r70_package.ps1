@@ -54,8 +54,22 @@ try {
     Copy-Item (Join-Path $stage 'run-v213-local-serenity-latest.ps1') (Join-Path $stage 'run-v213-local.ps1') -Force
     $canonicalActivation = Join-Path $stage 'activate-v213-seven-field-schedule.ps1'
     $compatActivationAlias = Join-Path $stage 'activate-v213-seven-field-schedule-serenity-latest.ps1'
-    if ((Get-FileHash -LiteralPath $canonicalActivation -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $compatActivationAlias -Algorithm SHA256).Hash) {
-        throw 'Source activation compatibility alias differs from the canonical source-independence-aware wrapper.'
+    $forwardTargetActivation = Join-Path $stage 'activate-v213-diversified-schedule.ps1'
+    $aliasText = Get-Content -LiteralPath $compatActivationAlias -Raw -Encoding utf8
+    $targetText = Get-Content -LiteralPath $forwardTargetActivation -Raw -Encoding utf8
+    if ($aliasText -notmatch 'activate-v213-diversified-schedule\.ps1' -or $aliasText -notmatch '@PSBoundParameters' -or $aliasText -notmatch 'exit \$LASTEXITCODE') {
+        throw 'Source activation compatibility alias no longer forwards to the source-independence-aware implementation.'
+    }
+    $aliasBlock = $aliasText.Substring(0, $aliasText.IndexOf("`n)`n", $aliasText.IndexOf('param(')) + 3)
+    $targetBlock = $targetText.Substring(0, $targetText.IndexOf("`n)`n", $targetText.IndexOf('param(')) + 3)
+    if ($aliasBlock -ne $targetBlock) {
+        throw 'Source activation compatibility alias parameter contract drifted from its forward target.'
+    }
+    $canonicalText = Get-Content -LiteralPath $canonicalActivation -Raw -Encoding utf8
+    foreach ($activationMarker in @('Test-SourceIndependenceDocument','V213_DIVERSIFIED_SOURCE_PREFLIGHT','V213_SOURCE_INDEPENDENCE_PREFLIGHT','activate-v213-seven-field-schedule-core.ps1','market-quality degradation',"ToString('o',[Globalization.CultureInfo]::InvariantCulture)")) {
+        # .Contains is literal; the wildcard operator would read the [Globalization...] brackets as a character class.
+        if (-not $targetText.Contains($activationMarker)) { throw "Staged activation forward target lost required marker: $activationMarker" }
+        if (-not $canonicalText.Contains($activationMarker)) { throw "Staged canonical activation lost required marker: $activationMarker" }
     }
     Copy-Item (Join-Path $stage 'install-v213-serenity-latest-runtime.ps1') (Join-Path $stage 'install-v213-source-diverse-runtime.ps1') -Force
     Copy-Item $launcherExe (Join-Path $stage 'InvestorIntelligence.exe') -Force

@@ -34,6 +34,14 @@ def require(source: str, markers: tuple[str, ...], failures: list[str]) -> None:
             failures.append(f"{source} missing: {marker}")
 
 
+def parameter_block(source: str) -> str:
+    """Return the leading [CmdletBinding()]/param(...) block for drift checks."""
+    if "param(" not in source:
+        return "<missing param block>"
+    end = source.index("\n)\n", source.index("param(")) + 3
+    return source[:end]
+
+
 def main() -> int:
     failures: list[str] = []
     policy = document("config/v213-serenity-latest-multisource-policy-v5.json")
@@ -167,7 +175,8 @@ def main() -> int:
         failures,
     )
     canonical_activation = "activate-v213-seven-field-schedule.ps1"
-    compatibility_activation = "activate-v213-seven-field-schedule-serenity-latest.ps1"
+    compatibility_alias = "activate-v213-seven-field-schedule-serenity-latest.ps1"
+    forward_target = "activate-v213-diversified-schedule.ps1"
     canonical_markers = (
         "Test-SourceIndependenceDocument",
         "V213_DIVERSIFIED_SOURCE_PREFLIGHT",
@@ -175,14 +184,35 @@ def main() -> int:
         "activate-v213-seven-field-schedule-core.ps1",
         "market-quality degradation",
     )
+    # The consolidated compatibility alias is a thin forwarder (see
+    # tests/test_compatibility_entrypoints.py); its effective behavior must
+    # remain the source-independence-aware implementation, so the markers and
+    # timestamp guard are enforced on the forward target, and the alias is
+    # pinned to that target with an identical parameter contract.
     require(canonical_activation, canonical_markers, failures)
-    require(compatibility_activation, canonical_markers, failures)
-    if text(canonical_activation) != text(compatibility_activation):
+    require(forward_target, canonical_markers, failures)
+    alias_text = text(compatibility_alias)
+    if forward_target not in alias_text:
+        failures.append(f"{compatibility_alias} no longer forwards to {forward_target}")
+    if "@PSBoundParameters" not in alias_text or "exit $LASTEXITCODE" not in alias_text:
         failures.append(
-            "Serenity activation compatibility alias is not byte-equivalent text to the canonical wrapper"
+            f"{compatibility_alias} no longer forwards all bound parameters and exit codes"
         )
-    if "v213_serenity_latest_multisource_audit.py" in text(canonical_activation):
-        failures.append("canonical activation regressed to the stale strict post-bundle audit path")
+    if len(alias_text.splitlines()) >= 30:
+        failures.append(f"{compatibility_alias} is no longer a thin forwarder")
+    if parameter_block(alias_text) != parameter_block(text(forward_target)):
+        failures.append(
+            f"{compatibility_alias} parameter contract drifted from {forward_target}"
+        )
+    for path in (canonical_activation, forward_target):
+        if "v213_serenity_latest_multisource_audit.py" in text(path):
+            failures.append(f"{path} regressed to the stale strict post-bundle audit path")
+    # ConvertFrom-Json in PS7 can return DateTime/DateTimeOffset; every
+    # activation path must preserve the UTC offset (998335d guard).
+    timestamp_guard = "ToString('o',[Globalization.CultureInfo]::InvariantCulture)"
+    for path in (canonical_activation, forward_target):
+        if timestamp_guard not in text(path):
+            failures.append(f"{path} lost the JSON UTC-offset preservation guard")
 
     require(
         "install-v213-serenity-latest-runtime.ps1",
@@ -208,10 +238,10 @@ def main() -> int:
     ) in package_text:
         failures.append("R70 packager still overwrites canonical activation with the compatibility alias")
     if (
-        "Source activation compatibility alias differs from the canonical "
-        "source-independence-aware wrapper."
+        "Source activation compatibility alias no longer forwards to the "
+        "source-independence-aware implementation."
     ) not in package_text:
-        failures.append("R70 packager lacks canonical/alias equality enforcement")
+        failures.append("R70 packager lacks alias forward-target enforcement")
 
     operationalization = text("scripts/v213_apply_diversified_operationalization.py")
     for marker in (
@@ -269,7 +299,8 @@ def main() -> int:
         "V213_SERENITY_LATEST_STATIC_AUDIT = PASS; "
         "latest_available=true; per_ticker_sources=2; market_providers=2; "
         "same_basis=true; yahoo_truth_anchor=false; "
-        "v3_entrypoint=v4_authoritative; live_pipeline_order=true"
+        "v3_entrypoint=v4_authoritative; live_pipeline_order=true; "
+        "alias_forwarding=true"
     )
     return 0
 
