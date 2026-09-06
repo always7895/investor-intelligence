@@ -49,7 +49,9 @@ class PiLiveEvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError): verify(failed, manifest={'fixture': 'synthetic'}, require_pi=True)
 
     def test_old_direct_receipt_cannot_satisfy_pi_requirement(self):
-        data = json.loads((ROOT / 'state/r75-qa-live-qualification.json').read_text(encoding='utf-8'))
+        # The archived pre-Pi (direct llama.cpp) historical receipt must never
+        # satisfy the Pi requirement; only a schema-2 Pi receipt can.
+        data = json.loads((ROOT / 'state/r75-qa-live-qualification-q6-historical.json').read_text(encoding='utf-8'))
         with self.assertRaisesRegex(ValueError, 'PI_LIVE_QUALIFICATION_REQUIRED'):
             verify(data, require_pi=True)
 

@@ -51,16 +51,13 @@ class LiveQaQualificationTests(unittest.TestCase):
 
     def test_canonical_model_receipt_requires_unique_catalog(self):
         data = copy.deepcopy(self.proof)
-        canonical = 'Qwen3.8-27B-UD-Q6_K_XL-844843d973bf'
+        canonical = 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'
         # In-memory synthetic verifier fixture only; never rewrite the live receipt.
-        data.update(seven_field_line_reply='PASS_REAL_WORKER_MOCK_LINE', bilingual_field_count=7,
-                    top20_rows=20, production_health_presentation='seven_fields', line_presentation='flex_carousel',
-                    line_message_count=4, line_values_match=True, text_fallback_values_match=True, text_message_count=2)
         data['canonical_model'] = canonical
-        data['model_catalog'] = [{'id': canonical, 'aliases': ['qwen38-q6']}]
+        data['model_catalog'] = [{'id': canonical, 'aliases': ['qwen38-q5']}]
         for row in data['results']: row['model'] = canonical
         self.assertTrue(verify(data, self.manifest)['release_ready'])
-        for catalog in (None, [], [{'id': canonical}], data['model_catalog'] + [{'id':'other','aliases':['qwen38-q6']}]):
+        for catalog in (None, [], [{'id': 'other-model'}], data['model_catalog'] + [{'id': 'other', 'aliases': ['qwen38-q5']}]):
             with self.subTest(catalog=catalog), self.assertRaisesRegex(ValueError, 'CATALOG_PROOF_INVALID'):
                 verify({**data, 'model_catalog': catalog}, self.manifest)
 
@@ -79,7 +76,7 @@ class LiveQaQualificationTests(unittest.TestCase):
             with self.subTest(field=field),self.assertRaises(ValueError):verify(data,self.manifest)
 
     def test_latency_truncation_tokens_or_model_errors_fail_closed(self):
-        for field,value in [('total_ms',28001),('total_ms',True),('finish_reason','length'),('pass',False),('model','qwen38'),('usage',{}),('http_status',502)]:
+        for field,value in [('total_ms',28001),('total_ms',True),('finish_reason','length'),('pass',False),('model','qwen38'),('pi_usage',{}),('http_status',502)]:
             data=copy.deepcopy(self.proof);data['results'][0][field]=value
             with self.subTest(field=field),self.assertRaises(ValueError):verify(data,self.manifest)
 
