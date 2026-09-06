@@ -60,7 +60,11 @@ try {
     $launcherSource = Get-Content -LiteralPath 'launcher\InvestorIntelligenceLauncher.cs' -Raw -Encoding utf8
     foreach ($marker in @(
         'ComboBox modelBox',
-        'PreferredModel = "RVN-Q6_K-multilingual-mtp"',
+        # The launcher pins the Router alias (1d6c6f1 free-relay cutover). The
+        # coordinated Q5 alias cutover ships with the standalone delivery and
+        # must update this expectation in the same commit (drift-guard test in
+        # tests/test_final_distribution_scripts.py).
+        'PreferredModel = "qwen38-q6"',
         'RefreshModelsAsync',
         'RunBusyAsync',
         'RunPowerShellAsync',

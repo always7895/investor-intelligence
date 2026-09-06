@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -95,6 +96,19 @@ class FinalDistributionScriptTests(unittest.TestCase):
         self.assertIn("08:00 Asia/Taipei", text)
         self.assertIn("21:00 Asia/Taipei", text)
         self.assertNotIn("LINE_CHANNEL_ACCESS_TOKEN", text)
+
+    def test_r70_validator_model_expectation_matches_launcher_constant(self) -> None:
+        # The R70 validator hard-pins the launcher's explicit model to prevent
+        # silent substitution. That pin moved with the 1d6c6f1 free-relay
+        # cutover; keep the two in lockstep so a model cutover can never break
+        # Windows CI silently again.
+        launcher = self._read("launcher/InvestorIntelligenceLauncher.cs")
+        match = re.search(r'const string PreferredModel = "([^"]+)"', launcher)
+        self.assertIsNotNone(match, "launcher PreferredModel constant not found")
+        validator = self._read("scripts/ci_v213_r70_validate.ps1")
+        self.assertIn(
+            'PreferredModel = "' + match.group(1) + '"', validator
+        )
 
     def test_launcher_source_is_local_powershell_bridge_only(self) -> None:
         text = self._read("launcher/InvestorIntelligenceLauncher.cs")
