@@ -16,6 +16,12 @@ export type BotIntent =
   | "job_result"
   | "general_qa";
 
+export function isNamedMethodologyQuestion(text: string): boolean {
+  return /(serenity|aschenbrenner|leopold)/i.test(text)
+    && /(方法|框架|分析|瓶頸|瓶颈|價值捕捉|价值捕捉|method|framework|bottleneck|capture)/i.test(text)
+    && /[?？]|如何|為何|为何|怎麼|怎么|what|how|why/i.test(text);
+}
+
 export type OptionPeriod = "weekly" | "monthly" | null;
 
 export interface ParsedQuery {
@@ -180,6 +186,10 @@ export function parseQuery(text: string): ParsedQuery {
     intent = "portfolio";
   } else if (/(排名|評分|评分|score|ranking|top\s*\d*)/i.test(lowered)) {
     intent = "ranking";
+  } else if (isNamedMethodologyQuestion(lowered)) {
+    // Methodology questions must reach public Q&A, not the cached source-view command.
+    // Plain names and explicit original-view commands retain their existing route.
+    intent = "general_qa";
   } else if (/(serenity|aschenbrenner|leopold|來源觀點|来源观点|原始觀點|原始观点)/i.test(lowered)) {
     intent = "source_views";
   } else if (/^(健康|狀態|状态|health|status|系統狀態|系统状态)$/i.test(normalized)) {

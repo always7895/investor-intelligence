@@ -1,0 +1,20 @@
+{
+  "now": "2026-09-06T00:00:00Z",
+  "cases": [
+    {"name":"unavailable", "valid":true, "context":{"v":1,"freshness":"UNAVAILABLE"}},
+    {"name":"limited", "valid":true, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800,"as_of":"2026-09-05T23:59:00Z","mode":"LIMITED_RESEARCH_CANDIDATE","high_eligible":false,"validated_thesis":false}},
+    {"name":"qualified", "valid":true, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800,"as_of":"2026-09-05T23:59:00Z","mode":"EVIDENCE_QUALIFIED","high_eligible":true,"validated_thesis":true}},
+    {"name":"preserve-worker-two-hour-window", "valid":true, "context":{"v":1,"freshness":"FRESH","max_age_seconds":7200,"as_of":"2026-09-05T23:00:00Z"}},
+    {"name":"private-key", "valid":false, "context":{"v":1,"freshness":"UNAVAILABLE","portfolio":"synthetic private fixture"}},
+    {"name":"limited-upgrade", "valid":false, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800,"as_of":"2026-09-05T23:59:00Z","mode":"LIMITED_RESEARCH_CANDIDATE","high_eligible":true}},
+    {"name":"stale-upgrade", "valid":false, "context":{"v":1,"freshness":"STALE","mode":"EVIDENCE_QUALIFIED","high_eligible":true}},
+    {"name":"boolean-string", "valid":false, "context":{"v":1,"freshness":"UNAVAILABLE","high_eligible":"false"}},
+    {"name":"expired", "valid":false, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800,"as_of":"2026-09-05T22:00:00Z"}},
+    {"name":"future", "valid":false, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800,"as_of":"2026-09-06T01:00:00Z"}},
+    {"name":"missing-date", "valid":false, "context":{"v":1,"freshness":"FRESH","max_age_seconds":1800}},
+    {"name":"missing-worker-window", "valid":false, "context":{"v":1,"freshness":"FRESH","as_of":"2026-09-05T23:59:00Z"}},
+    {"name":"unbounded-window", "valid":false, "context":{"v":1,"freshness":"FRESH","max_age_seconds":999999,"as_of":"2026-09-05T23:59:00Z"}},
+    {"name":"boolean-schema", "valid":false, "context":{"v":true,"freshness":"UNAVAILABLE"}},
+    {"name":"invalid-sources", "valid":false, "context":{"v":1,"freshness":"UNAVAILABLE","sources":[{"url":"file:///private"}]}}
+  ]
+}

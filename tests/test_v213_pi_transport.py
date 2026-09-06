@@ -1,12 +1,13 @@
 """Actual HTTP handler and real bounded child tests; no real LINE/model calls."""
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from http.server import ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,32 @@ class PiTransportTests(unittest.TestCase):
             b = body(); b[field] = value
             with self.assertRaises(pi.PiTransportError): pi.validate_body(b, pi.PROFILE['model_id'])
         b = body(); b['messages'].insert(0, {'role': 'system', 'content': 'private context'})
+        with self.assertRaises(pi.PiTransportError): pi.validate_body(b, pi.PROFILE['model_id'])
+
+    def test_smoke_never_accepts_arbitrary_query_or_context(self):
+        b = {'model': pi.PROFILE['model_id'], 'ii_context_mode': pi.SMOKE_MODE,
+             'messages': [{'role': 'user', 'content': pi.SMOKE_PROMPT}]}
+        self.assertEqual(pi.validate_body(b, pi.PROFILE['model_id']), {'query': pi.SMOKE_PROMPT, 'smoke': True})
+        b['public_context'] = {}
+        with self.assertRaises(pi.PiTransportError): pi.validate_body(b, pi.PROFILE['model_id'])
+        del b['public_context']; b['messages'][0]['content'] = 'not the marker'
+        with self.assertRaises(pi.PiTransportError): pi.validate_body(b, pi.PROFILE['model_id'])
+
+    def test_shared_context_fixtures_and_history(self):
+        fixtures = json.loads((ROOT / 'tests/fixtures/v213-pi-context-v1.json').read_text(encoding='utf-8'))
+        now = datetime.fromisoformat(fixtures['now'].replace('Z', '+00:00'))
+        for case in fixtures['cases']:
+            with self.subTest(case=case['name']):
+                if case['valid']:
+                    pi.validate_context(case['context'], now)
+                else:
+                    with self.assertRaises(pi.PiTransportError): pi.validate_context(case['context'], now)
+        b = body(); b['public_context'] = {'v': 1, 'freshness': 'UNAVAILABLE', 'methodology': 'public methodology'}
+        b['history'] = [{'role': 'assistant', 'content': 'bounded tenant history'}]
+        result = pi.validate_body(b, pi.PROFILE['model_id'])
+        self.assertEqual(result['context'], b['public_context'])
+        self.assertEqual(result['history'], b['history'])
+        b['history'][0]['role'] = 'system'
         with self.assertRaises(pi.PiTransportError): pi.validate_body(b, pi.PROFILE['model_id'])
 
     def test_child_proof_types_and_allowlisted_output(self):
@@ -80,8 +107,8 @@ class PiTransportTests(unittest.TestCase):
                 pi.SLOTS.release()
 
     def test_actual_authenticated_gateway_routes_pi_and_never_direct_fallback(self):
-        secret = 'synthetic-gateway-fixture-' * 2
-        with patch.dict(os.environ, {'II_LOCAL_LLM_BACKEND': 'pi', 'II_LOCAL_LLM_MODEL': pi.PROFILE['model_id'], 'II_LOCAL_LLM_SHARED_SECRET': secret}), \
+        synthetic_gateway_auth = 'SYNTHETIC_GATEWAY_FIXTURE_' * 2
+        with patch.dict(os.environ, {'II_LOCAL_LLM_BACKEND': 'pi', 'II_LOCAL_LLM_MODEL': pi.PROFILE['model_id'], 'II_LOCAL_LLM_SHARED_SECRET': synthetic_gateway_auth}), \
              patch.object(gateway, '_available_model_catalog', return_value=[{'id': pi.PROFILE['model_id']}]), \
              patch.object(gateway.requests, 'post') as direct, \
              patch.object(pi, 'complete', return_value=pi.validate_result(result())) as invoke:
@@ -91,17 +118,27 @@ class PiTransportTests(unittest.TestCase):
             try:
                 status, _, _ = request(url, body=body())
                 self.assertEqual(status, 401); invoke.assert_not_called()
-                status, answer, _ = request(url, body=body(), secret=secret)
+                status, answer, _ = request(url, body=body(), secret=synthetic_gateway_auth)
                 self.assertEqual(status, 200)
                 self.assertEqual(answer['ii_pi']['thinking_level'], 'xhigh')
                 self.assertEqual(answer['ii_exact_model_pin']['selected_model'], pi.PROFILE['model_id'])
                 invoke.side_effect = pi.PiTransportError('PI_CHILD_TIMEOUT')
-                self.assertEqual(request(url, body=body(), secret=secret)[0], 504)
+                self.assertEqual(request(url, body=body(), secret=synthetic_gateway_auth)[0], 504)
                 invoke.side_effect = pi.PiTransportError('PI_CAPACITY_EXHAUSTED')
-                self.assertEqual(request(url, body=body(), secret=secret)[0], 429)
+                self.assertEqual(request(url, body=body(), secret=synthetic_gateway_auth)[0], 429)
                 direct.assert_not_called()
             finally:
                 server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    def test_disconnected_client_does_not_trigger_recursive_error_response(self):
+        handler = object.__new__(gateway.V213GatewayHandler)
+        handler.send_response = Mock(); handler.send_header = Mock(); handler.end_headers = Mock()
+        handler.wfile = Mock(); handler.wfile.write.side_effect = ConnectionAbortedError('synthetic disconnect')
+        handler.log_message = Mock()
+        handler._json(504, {'error': 'PI_CHILD_TIMEOUT'})
+        self.assertTrue(handler.close_connection)
+        self.assertEqual(handler.wfile.write.call_count, 1)
+        handler.log_message.assert_called_once_with('CLIENT_DISCONNECTED')
 
     def test_pi_health_cannot_certify_generation(self):
         with patch.dict(os.environ, {'II_LOCAL_LLM_BACKEND': 'pi'}):

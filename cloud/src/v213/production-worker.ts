@@ -1,7 +1,7 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
 import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "../v211/worker";
-import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
+import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke, validatePiCompletion } from "./compact-qa";
 import { v213FieldLocale } from "./top20-report";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { authenticateV21AdminRequest } from "../v21/admin";
@@ -51,15 +51,41 @@ export async function v213RuntimeCompatibleFetch(
     url.pathname === "/v1/chat/completions";
   if (!adapt) return nativeFetch(input, init);
   let body = init?.body;
+  let piRequest = false;
   if (typeof body === "string") {
     let parsed: unknown;
     try { parsed = JSON.parse(body); } catch { parsed = null; }
     const compact = compactCompletionBody(parsed);
-    if (compact) body = JSON.stringify(compact);
+    if (compact) {
+      piRequest = compact.ii_context_mode === "pi_public_v1";
+      body = JSON.stringify(compact);
+    }
   }
   const response = await nativeFetch(input, { ...init, body, redirect: "manual" });
   if (response.status >= 300 && response.status < 400) {
     throw new TypeError("V213_LOCAL_MODEL_REDIRECT_REJECTED");
+  }
+  if (piRequest && response.ok) {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("V213_PI_RESPONSE_EMPTY");
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const item = await reader.read();
+        if (item.done) break;
+        size += item.value.byteLength;
+        if (size > 32768) throw new Error("V213_PI_RESPONSE_TOO_LARGE");
+        chunks.push(item.value);
+      }
+    } finally { await reader.cancel(); reader.releaseLock(); }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    validatePiCompletion(value);
+    return new Response(JSON.stringify(value), {status: response.status,
+      headers: {"content-type": "application/json", "cache-control": "no-store"}});
   }
   return response;
 }

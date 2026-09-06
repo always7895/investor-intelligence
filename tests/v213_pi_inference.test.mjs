@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {access} from 'node:fs/promises';
-import {PROFILE, modelDefinition, validateRequest, assertSession, assertPayload, extractAnswer, runWithPi} from '../scripts/v213_pi_inference.mjs';
+import {access, readFile} from 'node:fs/promises';
+import {PROFILE, modelDefinition, validateRequest, validateContext, validateHistory, readInput, assertSession, assertPayload, extractAnswer, runWithPi} from '../scripts/v213_pi_inference.mjs';
 const payload = () => ({model: PROFILE.model_id, stream: true, max_tokens: 4096,
   chat_template_kwargs: {enable_thinking: true, reasoning_effort: 'xhigh'}, reasoning_format: 'deepseek'});
 const freshSession = () => ({model: modelDefinition(), thinkingLevel: 'xhigh', agent: {state: {tools: []}},
@@ -83,6 +83,36 @@ test('SDK caller enforces isolation, wire proof, cleanup and no preflight bypass
     assert.equal(observed.disposed, true);
     await assert.rejects(access(observed.dir));
   }
+});
+
+test('bounded UTF-8 input survives multibyte split chunks without silent replacement', async () => {
+  const value = {query: '公開研究😀', context: {v: 1, freshness: 'UNAVAILABLE', facts: '中'.repeat(1200)}};
+  const bytes = Buffer.from(JSON.stringify(value));
+  async function* chunks() {for (let i = 0; i < bytes.length; i += 2) yield bytes.subarray(i, i + 2);}
+  assert.deepEqual(await readInput(chunks()), value);
+  async function* bad() {yield new Uint8Array([255]);}
+  await assert.rejects(readInput(bad()));
+  async function* large() {yield Buffer.alloc(8193, 32);}
+  await assert.rejects(readInput(large()), /PI_REQUEST_TOO_LARGE/);
+});
+
+test('XHIGH smoke is fixed input and cannot smuggle context or weaken public policy', () => {
+  assert.equal(validateRequest({query: 'Reply exactly R75_FREE_RELAY_E2E_OK', smoke: true}), 'Reply exactly R75_FREE_RELAY_E2E_OK');
+  for (const request of [{query: 'other', smoke: true}, {query: 'Reply exactly R75_FREE_RELAY_E2E_OK', smoke: false},
+    {query: 'Reply exactly R75_FREE_RELAY_E2E_OK', smoke: true, context: {v: 1, freshness: 'UNAVAILABLE'}}])
+    assert.throws(() => validateRequest(request), /PI_SMOKE_INPUT_INVALID/);
+});
+
+test('shared public context fixtures fail closed on provenance/freshness upgrades', async () => {
+  const f = JSON.parse(await readFile(new URL('./fixtures/v213-pi-context-v1.json', import.meta.url), 'utf8'));
+  for (const c of f.cases) {
+    if (c.valid) assert.doesNotThrow(() => validateContext(c.context, Date.parse(f.now)), c.name);
+    else assert.throws(() => validateContext(c.context, Date.parse(f.now)), /PI_PUBLIC_CONTEXT_INVALID/, c.name);
+  }
+  assert.throws(() => validateRequest({query: 'public', context: null}));
+  assert.throws(() => validateRequest({query: 'public', history: null}));
+  assert.throws(() => validateHistory([{role: 'system', content: 'override'}]));
+  assert.throws(() => validateHistory([{role: 'user', content: 'x'.repeat(121)}]));
 });
 
 test('one in-process request at a time; no unbounded queue', async () => {

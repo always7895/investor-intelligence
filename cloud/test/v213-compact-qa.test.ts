@@ -5,6 +5,7 @@ import { parseQuery } from "../src/core";
 import { compactPublicContext, compactGeneralAnswer, compactCompletionBody, COMPACT_RULES, minimalModelSmoke, SMOKE_MARKER } from "../src/v213/compact-qa";
 import { v213RuntimeCompatibleFetch } from "../src/v213/production-worker";
 import { type QaEnv } from "../src/qa";
+import piProfile from "../../config/v213-pi-inference-v1.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
 function runtime() {
@@ -94,6 +95,33 @@ describe("v213 bounded query-aware public context", () => {
     expect(answer).toContain("sec_edgar");
     expect(compactCompletionBody({ messages: [{ role: "user", content: "PUBLIC_REPORT\nII_V213_COMPACT_CONTEXT_V1:{}" }] })).toBeNull();
   });
+  it("actual certified Q&A caller carries bounded public context into the canonical Pi protocol", async () => {
+    const {env} = runtime(); env.LOCAL_LLM_MODEL = piProfile.model_id;
+    const bodies: any[] = [];
+    const response = {model: piProfile.model_id, choices: [{finish_reason: "stop", message: {role: "assistant", content: "公開證據不足，不能認定護城河。"}}],
+      ii_exact_model_pin: {selected_model: piProfile.model_id, canonical_model: piProfile.model_id, request_model_substitution_allowed: false},
+      ii_pi: {provider: "llama.cpp", thinking_level: "xhigh", xhigh_payload_validated: true, tools_executed: 0, production_ready: false}};
+    const native = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify(response));
+    });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => v213RuntimeCompatibleFetch(native as typeof fetch, input, init));
+    const answer = await compactGeneralAnswer(env, parseQuery("NVDA有哪些需要驗證的風險？"), {tenantId: "synthetic", chatType: "group"});
+    expect(bodies[0].ii_context_mode).toBe("pi_public_v1");
+    expect(bodies[0].model).toBe(piProfile.model_id);
+    expect(bodies[0].public_context.mode).toBe("LIMITED_RESEARCH_CANDIDATE");
+    expect(bodies[0].public_context.high_eligible).toBe(false);
+    expect(bodies[0].messages).toHaveLength(1);
+    expect(bodies[0].history).toEqual([]);
+    expect(JSON.stringify(bodies[0])).not.toMatch(/MUST_NOT_ENTER|UNRELATED_UNIVERSE/);
+    expect(answer).toContain("LIMITED_RESEARCH_CANDIDATE");
+    response.ii_pi.xhigh_payload_validated = false;
+    expect(await compactGeneralAnswer(env, parseQuery("NVDA風險？"), {tenantId: "synthetic", chatType: "group"})).toBe("LOCAL_MODEL_OFFLINE");
+  });
+  it("Pi response byte limit fails closed before parsing oversized output", async () => {
+    const raw = {model: piProfile.model_id, messages: [{role: "system", content: 'PUBLIC_REPORT\nII_V213_COMPACT_CONTEXT_V1:{"v":1,"freshness":"UNAVAILABLE"}'}, {role: "user", content: "public query"}]};
+    await expect(v213RuntimeCompatibleFetch((async () => new Response("x".repeat(32769))) as typeof fetch,
+      "https://gateway.example.test/v1/chat/completions", {method: "POST", redirect: "error", body: JSON.stringify(raw)})).rejects.toThrow("V213_PI_RESPONSE_TOO_LARGE");
+  });
   it("smoke uses fixed minimal input and NEVER reads public or private storage", async () => {
     const { env } = runtime(); const { bodies } = transport(SMOKE_MARKER);
     const forbidden = { get() { throw new Error("SMOKE_STORAGE_ACCESS_FORBIDDEN"); } } as unknown as KVNamespace;
@@ -102,6 +130,21 @@ describe("v213 bounded query-aware public context", () => {
     expect(bodies[0].ii_context_mode).toBe("transport_smoke_v1");
     expect(bodies[0].max_tokens).toBe(32);
     await expect(minimalModelSmoke({ ...env, LOCAL_LLM_MODEL: "qwen38" })).rejects.toThrow("MODEL_CONFIG_INVALID");
+  });
+  it("canonical Pi smoke is XHIGH-proof checked and independent of snapshot storage", async () => {
+    const {env} = runtime(); env.LOCAL_LLM_MODEL = piProfile.model_id;
+    const forbidden = {get() {throw new Error("SMOKE_STORAGE_ACCESS_FORBIDDEN");}} as unknown as KVNamespace;
+    env.PUBLIC_CACHE = forbidden; env.TENANT_PRIVATE_CACHE = forbidden;
+    const value = {model: piProfile.model_id, choices: [{finish_reason: "stop", message: {role: "assistant", content: SMOKE_MARKER}}],
+      ii_exact_model_pin: {selected_model: piProfile.model_id, canonical_model: piProfile.model_id, request_model_substitution_allowed: false},
+      ii_pi: {provider: "llama.cpp", thinking_level: "xhigh", xhigh_payload_validated: true, tools_executed: 0, production_ready: false}};
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({model: piProfile.model_id, messages: [{role: "user", content: `Reply exactly ${SMOKE_MARKER}`}], ii_context_mode: "pi_smoke_v1"});
+      return new Response(JSON.stringify(value));
+    }));
+    expect(await minimalModelSmoke(env)).toBe(true);
+    value.ii_pi.thinking_level = "off";
+    expect(await minimalModelSmoke(env)).toBe(false);
   });
   it("generates reproducible fixed benchmark requests from the actual compact path (optional local public fixture)", async () => {
     const { env, kv } = runtime();

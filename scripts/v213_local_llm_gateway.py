@@ -428,17 +428,26 @@ def _build_health_payload(
 class V213GatewayHandler(base.GatewayHandler):
     server_version = "InvestorIntelligenceLocalGateway/2.1.3-R75"
 
+    def _json(self, status: int, value: Any) -> None:
+        self._json_with_headers(status, value, {})
+
     def _json_with_headers(self, status: int, value: Any, headers: Mapping[str, str]) -> None:
         payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("content-type", "application/json; charset=utf-8")
-        self.send_header("cache-control", "no-store")
-        self.send_header("x-content-type-options", "nosniff")
-        self.send_header("content-length", str(len(payload)))
-        for name, header_value in headers.items():
-            self.send_header(name, header_value)
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.send_response(status)
+            self.send_header("content-type", "application/json; charset=utf-8")
+            self.send_header("cache-control", "no-store")
+            self.send_header("x-content-type-options", "nosniff")
+            self.send_header("content-length", str(len(payload)))
+            for name, header_value in headers.items():
+                self.send_header(name, header_value)
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # The edge may have already cancelled. Do not attempt a second error
+            # response or leak an unhandled traceback; finally releases capacity.
+            self.close_connection = True
+            self.log_message('CLIENT_DISCONNECTED')
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] != "/health":

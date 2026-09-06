@@ -9,6 +9,13 @@ import {
 } from "../src/core";
 
 describe("LINE bot public-only core", () => {
+  it("routes named methodology questions to Q&A without replacing original-view commands", () => {
+    expect(parseQuery("Serenity 的瓶頸與價值捕捉有何差異？").intent).toBe("general_qa");
+    expect(parseQuery("How does Serenity assess bottleneck capture?").intent).toBe("general_qa");
+    expect(parseQuery("Serenity 原始觀點").intent).toBe("source_views");
+    expect(parseQuery("Aschenbrenner 原始觀點").intent).toBe("source_views");
+    expect(parseQuery("Serenity").intent).toBe("source_views");
+  });
   it("parses a synthetic weekly BID ASK query", () => {
     const value = parseQuery("ALPHA 每週期權 BID ASK");
     expect(value.intent).toBe("options");

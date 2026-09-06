@@ -1,4 +1,4 @@
-import type { ParsedQuery } from "../core";
+import { isNamedMethodologyQuestion, type ParsedQuery } from "../core";
 import { publicJson, type StorageEnv } from "../storage";
 import type { V21Top20Record } from "../v21/top20";
 
@@ -153,6 +153,9 @@ function asksResearch(text: string): boolean {
 export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): Promise<string | null> {
   if (isGreeting(query.normalized)) return v211HelpText();
   if (query.intent === "options") return null;
+  // Timeless methodology and original-view commands do not require the scored universe.
+  if (!query.ticker && (query.intent === "source_views"
+      || (query.intent === "general_qa" && isNamedMethodologyQuestion(query.normalized)))) return null;
   const raw = await publicJson<unknown>(env, ["v211:universe:latest"]);
   const universe = parseV211ResearchUniverse(raw);
   if (!universe) {

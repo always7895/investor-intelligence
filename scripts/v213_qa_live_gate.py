@@ -46,7 +46,7 @@ def router_limits():
 
 
 def source_manifest():
-    paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "cloud/src", "scripts/v21*.py", "config/*.json", "cloud/test/r75-live-bench-worker.ts", "cloud/test/r75-line-presentation-proof.ts", "scripts/v213_edge_readiness.ps1"], cwd=ROOT, text=True).splitlines()
+    paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "cloud/src", "scripts/v21*.py", "scripts/v213_pi*.mjs", "runtime/pi/package*.json", "skills/serenity-public-research", "config/*.json", "cloud/test/r75-live-bench-worker.ts", "cloud/test/r75-line-presentation-proof.ts", "scripts/v213_edge_readiness.ps1"], cwd=ROOT, text=True).splitlines()
     return {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sorted(set(paths))}
 
 def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep):
@@ -74,12 +74,31 @@ def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep
     raise RuntimeError("ISOLATED_ORIGIN_PROVISIONING_TIMEOUT")
 
 
+def router_process_fingerprint():
+    # No command lines, paths, credentials or owner identities are returned.
+    command = "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process -Filter \"Name = 'llama-server.exe'\" | Sort-Object ProcessId | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId; parent_pid=$_.ParentProcessId; started_utc=$_.CreationDate.ToUniversalTime().ToString('o'); binary_sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.ExecutablePath).Hash.ToLowerInvariant()} }) | ConvertTo-Json -Compress -AsArray"
+    result = subprocess.run(['pwsh', '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', timeout=20)
+    if result.returncode: raise RuntimeError('ROUTER_PROCESS_IDENTITY_UNAVAILABLE')
+    value = json.loads(result.stdout)
+    if len(value) != 2 or not any(p['parent_pid'] == q['pid'] for p in value for q in value if p != q):
+        raise RuntimeError('ROUTER_PROCESS_TOPOLOGY_INVALID')
+    return value
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--live-isolated", action="store_true")
     p.add_argument("--readiness-only", action="store_true", help="Isolated edge diagnosis only; never qualifies a release or invokes a model")
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--pi-sdk-entry", type=Path, help="Explicit project-local Pi SDK; generates v2 Pi-only qualification")
     args = p.parse_args()
+    if args.output.exists(): p.error('NEW_RECEIPT_PATH_REQUIRED')
+    pi_backend = args.pi_sdk_entry is not None
+    pi_profile = json.loads((ROOT / 'config/v213-pi-inference-v1.json').read_text(encoding='utf-8'))
+    selected_model = pi_profile['model_id'] if pi_backend else 'qwen38-q6'
+    if pi_backend and (not args.pi_sdk_entry.is_absolute() or not args.pi_sdk_entry.is_file()
+                       or '/.pi/npm/node_modules/' not in args.pi_sdk_entry.resolve().as_posix().lower()):
+        p.error('existing absolute project-local SDK entry required')
     if not args.live_isolated or args.output.exists():
         p.error("explicit opt-in and new evidence output required")
     router, canonical, catalog = None, None, None
@@ -88,10 +107,10 @@ def main():
         response = requests.get("http://127.0.0.1:8080/models", timeout=10, allow_redirects=False)
         if response.status_code != 200: raise RuntimeError("ROUTER_CATALOG_UNAVAILABLE")
         catalog = response.json().get("data")
-        canonical = resolve_model_id("qwen38-q6", catalog)
+        canonical = resolve_model_id(selected_model, catalog)
         if canonical is None: raise RuntimeError("ROUTER_ALIAS_IDENTITY_INVALID")
         loaded = [m["id"] for m in catalog if m.get("status", {}).get("value") == "loaded"]
-        if loaded != [canonical]: raise RuntimeError("Only catalog-proven qwen38-q6 may be loaded")
+        if loaded != [canonical]: raise RuntimeError("Only the exact catalog-proven selected model may be loaded")
     preset = Path(os.environ["LOCALAPPDATA"]) / "InvestorIntelligence/UserData/config/v213-llama-router.preset.ini"
     preset_sha = hashlib.sha256(preset.read_bytes()).hexdigest()
     manifest = source_manifest()
@@ -101,10 +120,10 @@ def main():
     gateway_domain = "v213-free-relay-gateway." + generation
     gateway_secret = hmac.new(synthetic_auth.encode(), gateway_domain.encode(), hashlib.sha256).hexdigest()
     session = requests.Session()
-    evidence = {"schema_version": 1, "status": "FAIL", "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
-                "exact_model": "qwen38-q6", "canonical_model": canonical,
+    evidence = {"schema_version": 2 if pi_backend else 1, "inference_backend": "pi" if pi_backend else "llama_direct_legacy", "status": "FAIL", "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
+                "exact_model": selected_model, "canonical_model": canonical,
                 "model_catalog": [{"id": m["id"], "aliases": m.get("aliases", [])} for m in catalog] if catalog else None,
-                "request_enable_thinking": False, "synthetic_public_fixture": True,
+                "request_enable_thinking": pi_backend, "thinking_level": "xhigh" if pi_backend else "off", "synthetic_public_fixture": True,
                 "production_mutation": False, "real_line_sent": False, "results": [], "worker_name": name}
     wrangler = str(ROOT / "cloud/node_modules/.bin/wrangler.cmd")
     def wr(*argv, stdin=None):
@@ -121,9 +140,11 @@ def main():
     gateway = tunnel = None
     namespace = None
     deployed = False
+    if pi_backend: evidence['router_processes'] = router_process_fingerprint()
     metrics = []
     phase = "cold"
-    old_env = {k: os.environ.get(k) for k in ("II_LLAMA_BASE_URL", "II_LOCAL_LLM_MODEL", "II_LOCAL_LLM_SHARED_SECRET")}
+    old_env = {k: os.environ.get(k) for k in ("II_LLAMA_BASE_URL", "II_LOCAL_LLM_MODEL", "II_LOCAL_LLM_SHARED_SECRET", "II_LOCAL_LLM_BACKEND", "II_PI_SDK_ENTRY")}
+    original_pi_complete = None
     original_post = requests.post
     def measured_post(url, **kwargs):
         if str(url).startswith("http://127.0.0.1:8080/"):
@@ -147,7 +168,7 @@ def main():
             found = re.search(r'(?:"id"\s*:|\bid\s*=)\s*"([0-9a-f]{32})"', namespace_output)
             if not found: raise RuntimeError("ISOLATED_KV_ID_UNAVAILABLE")
             namespace = found[1]
-            cfg.write_text(f'name = "{name}"\nmain = {json.dumps(str(ROOT / "cloud/test/r75-live-bench-worker.ts"))}\ncompatibility_date = "2026-01-01"\nworkers_dev = true\n[version_metadata]\nbinding = "CF_VERSION_METADATA"\n[vars]\nFREE_RELAY_ENABLED = "true"\nFREE_RELAY_MAX_TTL_SECONDS = "600"\nLOCAL_LLM_MODEL = "qwen38-q6"\nGENERAL_QA_ENABLED = "true"\nCURRENT_PUBLIC_DATA_ENABLED = "true"\nPUBLIC_DATA_MAX_AGE_SECONDS = "7200"\nMEMORY_FEATURE_AVAILABLE = "false"\nLINE_CHANNEL_ACCESS_TOKEN = "SYNTHETIC_TEST_ONLY"\n' + ''.join(f'\n[[kv_namespaces]]\nbinding = "{b}"\nid = "{namespace}"\n' for b in ("PUBLIC_CACHE", "TENANT_PRIVATE_CACHE", "EPHEMERAL_SECURITY_CACHE")) + '\n[[durable_objects.bindings]]\nname = "V213_FREE_RELAY_ROUTE"\nclass_name = "V213FreeRelayRoute"\n[[migrations]]\ntag = "isolated-bench-v1"\nnew_sqlite_classes = ["V213FreeRelayRoute"]\n', encoding="utf-8")
+            cfg.write_text(f'name = "{name}"\nmain = {json.dumps(str(ROOT / "cloud/test/r75-live-bench-worker.ts"))}\ncompatibility_date = "2026-01-01"\nworkers_dev = true\n[version_metadata]\nbinding = "CF_VERSION_METADATA"\n[vars]\nFREE_RELAY_ENABLED = "true"\nFREE_RELAY_MAX_TTL_SECONDS = "600"\nLOCAL_LLM_MODEL = "{selected_model}"\nGENERAL_QA_ENABLED = "true"\nCURRENT_PUBLIC_DATA_ENABLED = "true"\nPUBLIC_DATA_MAX_AGE_SECONDS = "7200"\nMEMORY_FEATURE_AVAILABLE = "false"\nLINE_CHANNEL_ACCESS_TOKEN = "SYNTHETIC_TEST_ONLY"\n' + ''.join(f'\n[[kv_namespaces]]\nbinding = "{b}"\nid = "{namespace}"\n' for b in ("PUBLIC_CACHE", "TENANT_PRIVATE_CACHE", "EPHEMERAL_SECURITY_CACHE")) + '\n[[durable_objects.bindings]]\nname = "V213_FREE_RELAY_ROUTE"\nclass_name = "V213FreeRelayRoute"\n[[migrations]]\ntag = "isolated-bench-v1"\nnew_sqlite_classes = ["V213FreeRelayRoute"]\n', encoding="utf-8")
             synthetic_secrets = tmp / "synthetic-auth.json"
             synthetic_secrets.write_text(json.dumps({"V21_SYNC_HMAC_SECRET": synthetic_auth, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}), encoding="utf-8")
             output = wr("deploy", "--config", str(cfg), "--secrets-file", str(synthetic_secrets))
@@ -187,9 +208,23 @@ def main():
             if args.readiness_only:
                 evidence.update(status="PASS_READINESS_ONLY", live_qa="NOT_RUN", release_ready=False)
                 return
-            os.environ.update(II_LLAMA_BASE_URL="http://127.0.0.1:8080", II_LOCAL_LLM_MODEL="qwen38-q6", II_LOCAL_LLM_SHARED_SECRET=gateway_secret)
+            os.environ.update(II_LLAMA_BASE_URL="http://127.0.0.1:8080", II_LOCAL_LLM_MODEL=selected_model, II_LOCAL_LLM_SHARED_SECRET=gateway_secret,
+                              II_LOCAL_LLM_BACKEND='pi' if pi_backend else 'llama')
             import v213_local_llm_gateway as gateway_module
-            requests.post = measured_post
+            if pi_backend:
+                os.environ['II_PI_SDK_ENTRY'] = str(args.pi_sdk_entry)
+                import v213_pi_transport
+                original_pi_complete = v213_pi_transport.complete
+                def measured_pi_complete(body, selected):
+                    started = time.monotonic()
+                    result = original_pi_complete(body, selected, qualification_cache_prompt=phase == 'warm')
+                    metrics.append({'pi_usage': result['ii_pi'].get('usage', {}), 'pi_proof': result['ii_pi'],
+                                    'pi_transport_ms': round(1000*(time.monotonic()-started), 2),
+                                    'model': result['model'], 'finish_reason': result['choices'][0]['finish_reason']})
+                    return result
+                v213_pi_transport.complete = measured_pi_complete
+            else:
+                requests.post = measured_post
             gateway = ThreadingHTTPServer(("127.0.0.1", 0), gateway_module.V213GatewayHandler)
             threading.Thread(target=gateway.serve_forever, daemon=True).start()
             cloudflared = shutil.which("cloudflared") or r"C:\Program Files (x86)\cloudflared\cloudflared.exe"
@@ -203,13 +238,13 @@ def main():
                         public = urls[0]
                         try:
                             h = session.get(public+"/health", timeout=5)
-                            if h.ok and h.json().get("selected_model") == "qwen38-q6": break
+                            if h.ok and h.json().get("selected_model") == selected_model: break
                         except requests.RequestException: pass
                     time.sleep(1)
                 else: raise RuntimeError("ISOLATED_TUNNEL_NOT_READY")
                 now = time.time()
                 iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
-                route = {"schema_version": 1, "tunnel_mode": "quick_free_relay", "model": "qwen38-q6", "public_url": public, "connected_at": iso(now), "expires_at": iso(now+550), "health_schema_version": 2, "route_generation": generation, "consecutive_health_checks": 3}
+                route = {"schema_version": 1, "tunnel_mode": "quick_free_relay", "model": selected_model, "public_url": public, "connected_at": iso(now), "expires_at": iso(now+550), "health_schema_version": 2, "route_generation": generation, "consecutive_health_checks": 3}
                 r = signed(origin, "/v213/admin/free-relay-route", route)
                 if not r.ok: raise RuntimeError("ISOLATED_ROUTE_FAILED:"+str(r.json().get("code")))
                 for key, value in [("model", "qwen38"), ("expires_at", iso(now-60))]:
@@ -254,6 +289,8 @@ def main():
         raise
     finally:
         requests.post = original_post
+        if original_pi_complete is not None:
+            v213_pi_transport.complete = original_pi_complete
         if tunnel:
             tunnel.terminate(); tunnel.wait(timeout=15)
         if gateway: gateway.shutdown(); gateway.server_close()
@@ -269,6 +306,10 @@ def main():
         evidence["isolated_resources_deleted"] = cleanup
         evidence["preset_unchanged"] = hashlib.sha256(preset.read_bytes()).hexdigest() == preset_sha
         evidence["source_unchanged_during_benchmark"] = source_manifest() == manifest
+        if pi_backend:
+            try: evidence['router_processes_unchanged'] = router_process_fingerprint() == evidence['router_processes']
+            except Exception: evidence['router_processes_unchanged'] = False
+            if not evidence['router_processes_unchanged']: evidence['status'] = 'FAIL'
         if not cleanup or not evidence["preset_unchanged"] or not evidence["source_unchanged_during_benchmark"]: evidence["status"] = "FAIL"
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")

@@ -1,4 +1,5 @@
 import policy from "../../../config/v213-compact-qa-v1.json";
+import piProfile from "../../../config/v213-pi-inference-v1.json";
 import { generalAnswer, type QaEnv, type RequestContext } from "../qa";
 import { type ParsedQuery } from "../core";
 
@@ -42,7 +43,8 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now =
   const limit = Number(env.PUBLIC_DATA_MAX_AGE_SECONDS ?? "1800");
   const fresh = ["true", "1", "yes", "on"].includes(String(env.CURRENT_PUBLIC_DATA_ENABLED ?? "false").toLowerCase()) &&
     Number.isFinite(age) && age >= -300 && age <= Math.max(60, Number.isFinite(limit) ? limit : 1800);
-  const base: Obj = { v: 1, kind, freshness: fresh ? "FRESH" : Number.isFinite(age) ? "STALE" : "UNAVAILABLE", as_of: age < -300 ? null : stamp ?? null };
+  const base: Obj = { v: 1, kind, freshness: fresh ? "FRESH" : Number.isFinite(age) ? "STALE" : "UNAVAILABLE", as_of: age < -300 ? null : stamp ?? null,
+    max_age_seconds: Math.max(60, Number.isFinite(limit) ? limit : 1800) };
   if (kind === "evidence") base.evidence_principles = policy.evidence_context;
   if (!fresh) return { ...base, ticker: query.ticker, facts: "No current facts available. Explain concepts only; do not assert current company conditions." };
   const audit = obj(await env.PUBLIC_CACHE.get(prefix + "v213:source-independence:latest", "json"));
@@ -99,7 +101,8 @@ export function compactCompletionBody(raw: unknown): Obj | null {
   const marker = `PUBLIC_REPORT\n${COMPACT_CONTEXT_MARKER}`;
   const index = system.indexOf(marker);
   if (messages[0]?.role !== "system" || index < 0) return null;
-  if (body.model !== "qwen38-q6") throw new Error("V213_COMPACT_MODEL_MISMATCH");
+  const usePi = body.model === piProfile.model_id;
+  if (!usePi && body.model !== policy.model) throw new Error("V213_COMPACT_MODEL_MISMATCH");
   let data: Obj;
   try { data = obj(JSON.parse(system.slice(index + marker.length))); } catch { throw new Error("V213_COMPACT_CONTEXT_INVALID"); }
   if (data.v !== 1 || JSON.stringify(data).length > MAX_COMPACT_CONTEXT_CHARS) throw new Error("V213_COMPACT_CONTEXT_INVALID");
@@ -108,25 +111,45 @@ export function compactCompletionBody(raw: unknown): Obj | null {
   // Bounded opt-in history remains tenant-isolated; never concatenate all turns.
   const history = messages.slice(1, -1).filter((m) => ["user", "assistant"].includes(String(m.role)))
     .slice(-2).map((m) => ({ role: m.role, content: text(m.content, 120) }));
+  if (usePi) return { model: piProfile.model_id, messages: [{ role: "user", content: last.content }],
+    public_context: data, history, ii_context_mode: "pi_public_v1" };
   return { model: "qwen38-q6", messages: [{ role: "system", content: COMPACT_RULES + "\nDATA=" + JSON.stringify(data) }, ...history, last],
     temperature: 0.2, max_tokens: MAX_MODEL_OUTPUT_TOKENS, stream: false, cache_prompt: true, ii_context_mode: COMPACT_MODE };
 }
 
+/** Validate Pi's explicit per-response contract; a health endpoint is not proof. */
+export function validatePiCompletion(raw: unknown): void {
+  const value = obj(raw), proof = obj(value.ii_pi), pin = obj(value.ii_exact_model_pin);
+  const choices = list(value.choices), message = obj(choices[0]?.message);
+  if (value.model !== piProfile.model_id || pin.selected_model !== piProfile.model_id
+      || pin.canonical_model !== piProfile.model_id || pin.request_model_substitution_allowed !== false
+      || proof.provider !== piProfile.provider || proof.thinking_level !== piProfile.thinking_level
+      || proof.xhigh_payload_validated !== true || proof.tools_executed !== 0
+      || proof.production_ready !== piProfile.production_ready
+      || choices.length !== 1 || choices[0]?.finish_reason !== "stop"
+      || message.role !== "assistant" || typeof message.content !== "string" || !message.content.trim()
+      || message.content.length > piProfile.max_answer_chars || /<\/?think(?:ing)?\b/i.test(message.content))
+    throw new Error("V213_PI_RESPONSE_PROOF_INVALID");
+}
+
 /** Minimal transport probe, independent of snapshot size and research context. */
 export async function minimalModelSmoke(env: QaEnv): Promise<boolean> {
-  if (env.LOCAL_LLM_MODEL !== "qwen38-q6" || !env.LOCAL_LLM_BASE_URL || !env.LOCAL_LLM_SHARED_SECRET) throw new Error("FREE_RELAY_SMOKE_MODEL_CONFIG_INVALID");
+  const usePi = env.LOCAL_LLM_MODEL === piProfile.model_id;
+  if ((!usePi && env.LOCAL_LLM_MODEL !== policy.model) || !env.LOCAL_LLM_BASE_URL || !env.LOCAL_LLM_SHARED_SECRET) throw new Error("FREE_RELAY_SMOKE_MODEL_CONFIG_INVALID");
   const endpoint = new URL("/v1/chat/completions", env.LOCAL_LLM_BASE_URL);
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.port ||
       !String(env.LOCAL_LLM_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim()).includes(endpoint.hostname)) throw new Error("FREE_RELAY_SMOKE_HOST_INVALID");
   const response = await fetch(endpoint, { method: "POST", redirect: "manual",
     headers: { "content-type": "application/json", "cache-control": "no-store", "x-investor-shared-secret": env.LOCAL_LLM_SHARED_SECRET },
-    body: JSON.stringify({ model: "qwen38-q6", messages: SMOKE_MESSAGES, ii_context_mode: SMOKE_MODE, max_tokens: 32, cache_prompt: true, stream: false }),
+    body: JSON.stringify(usePi ? {model: piProfile.model_id, messages: SMOKE_MESSAGES, ii_context_mode: "pi_smoke_v1"}
+      : { model: "qwen38-q6", messages: SMOKE_MESSAGES, ii_context_mode: SMOKE_MODE, max_tokens: 32, cache_prompt: true, stream: false }),
     signal: AbortSignal.timeout(20000) });
   if (!response.ok) return false;
   const result = obj(await response.json());
+  if (usePi) { try { validatePiCompletion(result); } catch { return false; } }
   const pin = obj(result.ii_exact_model_pin);
   const choice = list(result.choices)[0];
   const message = obj(choice?.message);
-  return choice?.finish_reason === "stop" && pin.selected_model === "qwen38-q6" && pin.request_model_substitution_allowed === false &&
+  return choice?.finish_reason === "stop" && pin.selected_model === env.LOCAL_LLM_MODEL && pin.request_model_substitution_allowed === false &&
     typeof message.content === "string" && message.content.trim() === SMOKE_MARKER;
 }
