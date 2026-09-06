@@ -121,9 +121,8 @@
     "scripts/v213_local_llm_gateway.py": "f628fac1f48b168ef1986ca61b8cf4c8240d6cd79d4045365bec4fc10274d330",
     "scripts/v213_methodology_and_source_audit.py": "42180ddbc8942bedea8e8246351abad1031a7b38e6edb5c672f9cb4625679669",
     "scripts/v213_multi_source_fidelity.py": "9e06afde9901985dd134fdae6b0080436ccfdef11dc084d0c57e12b8cb7b6d0f",
-    "scripts/v213_optional_bls_alignment_audit.py": "e6e8ee961ab38819a7c7aa46663dc358b34b8f213429136ffd1ce1248b98651f",
+    "scripts/v213_optional_bls_alignment_audit.py": "da37f09fdf8735487437b8cae9a9bfd0702bdb03077247dadad82cffc522de9e",
     "scripts/v213_pi_inference.mjs": "35a973c28fdfc0e21e73ee77d720ba26f4152db0fcbeeb9007c66420ce6d9be5",
-    "scripts/v213_pi_sdk_byte_verify.py": "79c8abd689089ae49d9e286c1d0eca2aaf4ba802f6ab70a7d01bb1625da01121",
     "scripts/v213_pi_sdk_lock.py": "ded01bd3b5673d93fe36133e0c790f321117226c0f91df3576f8821fb4611eef",
     "scripts/v213_pi_transport.py": "aeb61f87d30228933904cb0f9928bdc25c9a47fde33ac0bca08a9e12f00d66f9",
     "scripts/v213_pipeline_boundary_self_test.py": "a3d7a090002203fc6d5ffa1010ff6928176e71d54eff8a135da9f8dad3e6072e",
@@ -154,7 +153,7 @@
     "scripts/v213_serenity_h6b1_zero_safe.py": "aeefacbd408903f0d11ff3fe2c7dfb5bc56c4c2358fa64d871428f63111512f6",
     "scripts/v213_serenity_h6b_full_top20.py": "144fffe19d77a6597eb8b44e5f361521ca12e38eb552e6de8c778c19a6ac715e",
     "scripts/v213_serenity_latest_multisource_audit.py": "babb188893c40bb5276ed1d29ef13fac4fab7adbd0b470ae1693649a2a8f9f02",
-    "scripts/v213_serenity_latest_static_audit.py": "1eef4bc9d915147f45327cdb009fe78932a14cc2d3ed77737daf141351e3c462",
+    "scripts/v213_serenity_latest_static_audit.py": "3f9c0a1f105ce885e819f97aa58f2621878731d93f361d5827e8ec15dc63c8fe",
     "scripts/v213_serenity_latest_static_audit_v2.py": "60e904d75cdc77b5c8dffa0d62525345147045a6759bc1b13cfbbbcb5a2aa8ff",
     "scripts/v213_serenity_public_logic.py": "2bf3cde22d77a12c41ada56c91625fe3d2629aefcc9763f7482e0f3370388c2d",
     "scripts/v213_serenity_shadow_adapters.py": "a25faa4fa5bb3246664278f67514b078c9a88608d1f775a33fe4c2bc8f1e026b",
@@ -200,14 +199,14 @@
     {
       "case": "smoke",
       "phase": "cold",
-      "total_ms": 3521.75,
+      "total_ms": 10466.94,
       "pass": true,
       "http_status": 200,
       "path": "admin_smoke",
       "inference": "pi",
       "pi_usage": {
         "input_tokens": 116,
-        "output_tokens": 41,
+        "output_tokens": 55,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -216,15 +215,15 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 99,
+        "thinking_chars": 175,
         "usage": {
           "input_tokens": 116,
-          "output_tokens": 41,
+          "output_tokens": 55,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": false
       },
-      "pi_transport_ms": 2766.38,
+      "pi_transport_ms": 9493.27,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
       "answer": ""
@@ -232,14 +231,14 @@
     {
       "case": "smoke",
       "phase": "warm",
-      "total_ms": 2141.16,
+      "total_ms": 2844.86,
       "pass": true,
       "http_status": 200,
       "path": "admin_smoke",
       "inference": "pi",
       "pi_usage": {
-        "input_tokens": 116,
-        "output_tokens": 41,
+        "input_tokens": 115,
+        "output_tokens": 34,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -248,15 +247,15 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 99,
+        "thinking_chars": 63,
         "usage": {
-          "input_tokens": 116,
-          "output_tokens": 41,
+          "input_tokens": 115,
+          "output_tokens": 34,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": true
       },
-      "pi_transport_ms": 1393.62,
+      "pi_transport_ms": 1647.38,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
       "answer": ""
@@ -264,14 +263,14 @@
     {
       "case": "general",
       "phase": "cold",
-      "total_ms": 9310.45,
+      "total_ms": 14505.39,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
         "input_tokens": 367,
-        "output_tokens": 358,
+        "output_tokens": 332,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -280,30 +279,30 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 741,
+        "thinking_chars": 582,
         "usage": {
           "input_tokens": 367,
-          "output_tokens": 358,
+          "output_tokens": 332,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": false
       },
-      "pi_transport_ms": 6398.35,
+      "pi_transport_ms": 12524.72,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "自由現金流是扣除資本支出後可分配給股東與債權人的現金；淨利是會計損益，未反映現金收付與投資支出。"
+      "answer": "自由現金流是營運產生、扣除資本支出後可自由支配的現金。淨利是會計盈餘，未反映現金收付與再投資。"
     },
     {
       "case": "general",
       "phase": "warm",
-      "total_ms": 10066.77,
+      "total_ms": 11730.9,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
-        "input_tokens": 368,
-        "output_tokens": 481,
+        "input_tokens": 367,
+        "output_tokens": 428,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -312,62 +311,30 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 763,
+        "thinking_chars": 805,
         "usage": {
-          "input_tokens": 368,
-          "output_tokens": 481,
+          "input_tokens": 367,
+          "output_tokens": 428,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": true
       },
-      "pi_transport_ms": 8060.56,
+      "pi_transport_ms": 9897.31,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "自由現金流是扣除資本支出後可自由支配的現金。淨利是會計損益，未反映現金收付與資本支出。"
+      "answer": "自由現金流是企業營運產生、扣除資本支出後可自由支配的現金。\n淨利是會計盈餘，含非現金項目，未必等同實際現金。"
     },
     {
       "case": "ticker",
       "phase": "cold",
-      "total_ms": 15434.68,
-      "pass": true,
-      "http_status": 200,
-      "path": "line_reference",
-      "inference": "pi",
-      "pi_usage": {
-        "input_tokens": 440,
-        "output_tokens": 886,
-        "cache_read_tokens": 0
-      },
-      "pi_proof": {
-        "provider": "llama.cpp",
-        "thinking_level": "xhigh",
-        "xhigh_payload_validated": true,
-        "tools_executed": 0,
-        "production_ready": false,
-        "thinking_chars": 2251,
-        "usage": {
-          "input_tokens": 440,
-          "output_tokens": 886,
-          "cache_read_tokens": 0
-        },
-        "qualification_cache_prompt": false
-      },
-      "pi_transport_ms": 14390.67,
-      "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
-      "finish_reason": "stop",
-      "answer": "目前缺獨立佐證，市場資料不可用。需驗證財務、競爭與營運風險。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
-    },
-    {
-      "case": "ticker",
-      "phase": "warm",
-      "total_ms": 12494.21,
+      "total_ms": 12823.48,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
         "input_tokens": 441,
-        "output_tokens": 677,
+        "output_tokens": 562,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -376,30 +343,62 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 1571,
+        "thinking_chars": 1580,
         "usage": {
           "input_tokens": 441,
-          "output_tokens": 677,
+          "output_tokens": 562,
+          "cache_read_tokens": 0
+        },
+        "qualification_cache_prompt": false
+      },
+      "pi_transport_ms": 10139.51,
+      "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
+      "finish_reason": "stop",
+      "answer": "目前僅有公開文件來源，未獨立佐證。需驗證市場、財務與供應鏈風險。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
+    },
+    {
+      "case": "ticker",
+      "phase": "warm",
+      "total_ms": 12970.45,
+      "pass": true,
+      "http_status": 200,
+      "path": "line_reference",
+      "inference": "pi",
+      "pi_usage": {
+        "input_tokens": 442,
+        "output_tokens": 675,
+        "cache_read_tokens": 0
+      },
+      "pi_proof": {
+        "provider": "llama.cpp",
+        "thinking_level": "xhigh",
+        "xhigh_payload_validated": true,
+        "tools_executed": 0,
+        "production_ready": false,
+        "thinking_chars": 1492,
+        "usage": {
+          "input_tokens": 442,
+          "output_tokens": 675,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": true
       },
-      "pi_transport_ms": 10366.66,
+      "pi_transport_ms": 10921.78,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "目前僅有公開文件來源，未驗證公司風險。市場與獨立佐證不可用，需查最新財報與SEC文件。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
+      "answer": "目前僅有公開文件來源，未獨立佐證公司風險；市場與驗證論點皆不可用。需查最新財報與監管文件。\n證據模式：LIMITED_RESEARCH_CANDIDATE；資料：FRESH\n來源：sec_edgar 2026-08-01 https://www.sec.gov/Archives/edgar/data/1000000/"
     },
     {
       "case": "methodology",
       "phase": "cold",
-      "total_ms": 16723.64,
+      "total_ms": 17129.39,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
         "input_tokens": 371,
-        "output_tokens": 1009,
+        "output_tokens": 906,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -408,30 +407,30 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 2493,
+        "thinking_chars": 2082,
         "usage": {
           "input_tokens": 371,
-          "output_tokens": 1009,
+          "output_tokens": 906,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": false
       },
-      "pi_transport_ms": 14075.97,
+      "pi_transport_ms": 14837.63,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "Serenity 的瓶頸指產業稀缺限制。公司價值捕捉需證明定價權與可持續利潤。"
+      "answer": "就Serenity而言，瓶頸是產業稀缺限制；價值捕捉是公司能否轉化為定價權與利潤。此為系統解讀，非官方公式。"
     },
     {
       "case": "methodology",
       "phase": "warm",
-      "total_ms": 16506.74,
+      "total_ms": 20403.13,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
         "input_tokens": 370,
-        "output_tokens": 937,
+        "output_tokens": 1262,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -440,30 +439,30 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 2347,
+        "thinking_chars": 2852,
         "usage": {
           "input_tokens": 370,
-          "output_tokens": 937,
+          "output_tokens": 1262,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": true
       },
-      "pi_transport_ms": 14553.68,
+      "pi_transport_ms": 18537.23,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "Serenity 的瓶頸指產業限制。公司價值捕捉需獨立證據證明定價權與利潤。"
+      "answer": "Serenity 未定義官方公式。系統解讀：瓶頸是產業稀缺限制，價值捕捉是公司能否轉化為定價與利潤。"
     },
     {
       "case": "evidence",
       "phase": "cold",
-      "total_ms": 13692.09,
+      "total_ms": 13306.94,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
-        "input_tokens": 428,
-        "output_tokens": 710,
+        "input_tokens": 429,
+        "output_tokens": 577,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -472,30 +471,30 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 1209,
+        "thinking_chars": 1220,
         "usage": {
-          "input_tokens": 428,
-          "output_tokens": 710,
+          "input_tokens": 429,
+          "output_tokens": 577,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": false
       },
-      "pi_transport_ms": 11173.02,
+      "pi_transport_ms": 9895.4,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "看證據是否直接顯示提價後需求未流失、毛利率或市佔率改善，且可追溯至財報、公告或獨立數據。若只有身份、掛牌或單一來源，不能證明定價權。"
+      "answer": "看證據是否直接顯示提價、客戶接受、毛利或市佔維持，而非僅檔案或身份。需獨立來源交叉驗證，缺證只標有限。"
     },
     {
       "case": "evidence",
       "phase": "warm",
-      "total_ms": 10037.76,
+      "total_ms": 12059.07,
       "pass": true,
       "http_status": 200,
       "path": "line_reference",
       "inference": "pi",
       "pi_usage": {
-        "input_tokens": 428,
-        "output_tokens": 547,
+        "input_tokens": 429,
+        "output_tokens": 519,
         "cache_read_tokens": 0
       },
       "pi_proof": {
@@ -504,21 +503,21 @@
         "xhigh_payload_validated": true,
         "tools_executed": 0,
         "production_ready": false,
-        "thinking_chars": 1038,
+        "thinking_chars": 993,
         "usage": {
-          "input_tokens": 428,
-          "output_tokens": 547,
+          "input_tokens": 429,
+          "output_tokens": 519,
           "cache_read_tokens": 0
         },
         "qualification_cache_prompt": true
       },
-      "pi_transport_ms": 8535.85,
+      "pi_transport_ms": 8728.2,
       "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
       "finish_reason": "stop",
-      "answer": "看證據是否直接顯示提價後需求、毛利或市佔未流失，且可獨立驗證。僅有檔案或身份來源不足。"
+      "answer": "看證據是否直接顯示提價後需求、毛利或市佔維持，且可獨立驗證。僅有檔案或身分來源不足。"
     }
   ],
-  "worker_name": "ii-r75-qa-bench-950aacb9b5",
+  "worker_name": "ii-r75-qa-bench-bf2544ae21",
   "router_processes": {
     "processes": [
       {
@@ -543,19 +542,19 @@
   "cloudflare_auth_preflight": "PASS_READ_ONLY_WHOAMI",
   "initial_origin_provisioning": {
     "status": "PASS_TEST_HOST_PROVISIONING",
-    "attempts": 1,
-    "initial_empty_worker_404_count": 0
+    "attempts": 4,
+    "initial_empty_worker_404_count": 3
   },
   "readiness_wrapper_attempts": 1,
   "readiness_transient_404_retries": 0,
-  "worker_version": "a15f4ad6-fa93-4bce-a2bf-4d5a696f7e22",
+  "worker_version": "863835e5-7fb5-4263-9a87-e6a260f934c2",
   "active_percentage": 100,
   "readiness": [
     {
       "schema_version": 1,
       "ready": true,
-      "worker_version": "a15f4ad6-fa93-4bce-a2bf-4d5a696f7e22",
-      "challenge": "329942b221a3487ea791a50111d340d4",
+      "worker_version": "863835e5-7fb5-4263-9a87-e6a260f934c2",
+      "challenge": "6437be44ddfe4f9d8f5cef8aff6cf77f",
       "parser_schema": "v213-r75-sec-filing-provenance-v1",
       "publication_contract_id": "v213-r75-publication-mode-v1",
       "publication_contract_sha256": "9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd",
