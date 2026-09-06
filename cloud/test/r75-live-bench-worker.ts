@@ -40,6 +40,38 @@ export default {
       await env.PUBLIC_CACHE.put("v21:top20:latest", JSON.stringify([{ ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }] }]));
       await env.PUBLIC_CACHE.put("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{ ticker: "NVDA", publication_evidence_mode: "LIMITED_RESEARCH_CANDIDATE", eligible_for_high_confidence_model_inference: false, public_logic_state: { validated_company_thesis: false }, market_corroboration: { status: "UNAVAILABLE" }, missing_or_review: ["INDEPENDENT_CLAIM_CORROBORATION"] }] }));
       const stamp = new Date().toISOString();
+      // Signed-universe-shaped fixture WITHOUT NVDA: a structurally valid
+      // descending-score universe so the deterministic ticker lane does not
+      // short-circuit, letting ticker/evidence questions fall through to the
+      // local model lane (the Pi path) for qualification. No signature is
+      // verified at read time; only structure/scoring_version is.
+      const universe = Array.from({ length: 20 }, (_, n) => {
+        const i = n + 1;
+        return {
+          ticker: `BENCH${String(i).padStart(2, "0")}`,
+          name: `Synthetic Bench ${i}`,
+          serenity_score: 90 - i,
+          serenity_raw_score: 95 - i,
+          risk_penalty: 5,
+          data_quality: 0.9,
+          rating: "A",
+          category: "Synthetic",
+          serenity_factors: { demand_wave: 1, chokepoint: 1, pricing_power: 1, replacement_friction: 1, tam_capture: 1, valuation_expectations: 1, evidence_quality: 1 },
+          risk_flags: [],
+          aschenbrenner_overlay: { included_in_serenity_score: false, fit_score: 50 },
+          evidence: [{ title: "Synthetic filing", url: "https://www.sec.gov/Archives/edgar/data/1000000/" }],
+          evidence_count: 1,
+          source_count: 1,
+          scoring_version: "serenity-first-v2.1.0",
+          line_public_eligible: true,
+          provider_scope: "public_only",
+          owner_watchlist_inherited: false,
+          rank: i,
+          generated_at: stamp,
+          as_of: stamp,
+        };
+      });
+      await env.PUBLIC_CACHE.put("v211:universe:latest", JSON.stringify(universe), { expirationTtl: 259200 });
       await env.PUBLIC_CACHE.put("v213:top20-report:latest", JSON.stringify({
         schema_version: 2, product_version: "2.1.3", generated_at: stamp, display_columns: V213_TOP20_DISPLAY_COLUMNS,
         long_term_definition: "trailing_2y_adjusted_close_cagr", short_term_definition: "trailing_6m_adjusted_close_price_return", provider_scope: "public_only", owner_watchlist_inherited: false,
@@ -75,14 +107,29 @@ export default {
       return Response.json({ ...proof, text_fallback_values_match: complete, text_message_count: linePayloads.length, real_line_sent:false });
     }
     if (url.pathname === "/reference-start") {
+      // Drive the REAL production LINE path (processAuthorizedLineEvent) for a
+      // fixed case. `floor` (test-only) delays the QA promise so the 7s race
+      // deterministically takes the reference-number/waitUntil branch; the real
+      // inference runs in parallel via Promise.all, so total = max(floor, infer).
+      const caseName = url.searchParams.get("case") ?? "general";
+      const question = questions[caseName];
+      if (!question) return new Response("Fixed cases only", { status: 400 });
+      const floor = Number(url.searchParams.get("floor") ?? 0);
+      if (!Number.isInteger(floor) || floor < 0 || floor > 30000) return new Response("floor out of range", { status: 400 });
       const scoped = await freeRelayRequestEnv(env);
-      scoped[V211_GENERAL_QA] = async (e, q, c) => {
-        const [answer] = await Promise.all([compactGeneralAnswer(e, q, c), new Promise(r => setTimeout(r, 8000))]);
-        return answer; // test-only 8s floor forces the actual 7s/waitUntil branch
-      };
+      if (floor > 0) {
+        const real = scoped[V211_GENERAL_QA];
+        if (!real) throw new Error("BENCH_GENERAL_QA_UNAVAILABLE");
+        scoped[V211_GENERAL_QA] = async (e, q, c) => {
+          const [answer] = await Promise.all([real(e, q, c), new Promise(r => setTimeout(r, floor))]);
+          return answer; // test-only floor forces the actual 7s/waitUntil branch
+        };
+      }
       replies.length = 0;
-      await processAuthorizedLineEvent(scoped, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: questions.general! }, timestamp: Date.now() }, "synthetic-bench");
-      return Response.json({ reply: replies[0], test_only_floor_ms: 8000, real_line_sent: false });
+      await processAuthorizedLineEvent(scoped, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: question }, timestamp: Date.now() }, "synthetic-bench");
+      const reply = replies[0] ?? "";
+      const referenceId = (reply.match(/參考編號 ([A-Z0-9]+)/) || [])[1] as string | undefined;
+      return Response.json({ reply, referenceId, case: caseName, test_only_floor_ms: floor, real_line_sent: false });
     }
     if (url.pathname === "/reference-result") return Response.json(await getJob(env, "synthetic-bench", url.searchParams.get("id") ?? ""));
     return new Response("Test endpoint not allowed", { status: 404 });

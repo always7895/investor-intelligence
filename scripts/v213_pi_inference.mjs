@@ -83,7 +83,10 @@ export function modelDefinition(cachePrompt) {
       chatTemplateKwargs: {enable_thinking: {'$var': 'thinking.enabled'}, reasoning_effort: {'$var': 'thinking.effort'}},
     },
     // Request-local output parsing; never edit the Router preset.
-    samplingParams: {reasoning_format: 'deepseek', ...(cachePrompt === undefined ? {} : {cache_prompt: cachePrompt})},
+    // temperature matches the certified compact contract (0.2) so XHIGH
+    // thinking stays bounded; the GGUF default is 1.0, which has a long tail.
+    samplingParams: {reasoning_format: 'deepseek', temperature: PROFILE.temperature,
+      ...(cachePrompt === undefined ? {} : {cache_prompt: cachePrompt})},
   };
 }
 export function assertPayload(payload) {
@@ -91,6 +94,7 @@ export function assertPayload(payload) {
       || payload.chat_template_kwargs?.enable_thinking !== true
       || payload.chat_template_kwargs?.reasoning_effort !== 'xhigh'
       || payload.reasoning_format !== 'deepseek'
+      || payload.temperature !== PROFILE.temperature
       || !Number.isInteger(payload.max_tokens) || payload.max_tokens < 1
       || payload.max_tokens > PROFILE.max_output_tokens
       || (payload.tools !== undefined && (!Array.isArray(payload.tools) || payload.tools.length)))

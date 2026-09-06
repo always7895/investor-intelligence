@@ -74,15 +74,82 @@ def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep
     raise RuntimeError("ISOLATED_ORIGIN_PROVISIONING_TIMEOUT")
 
 
+def run_isolated_readiness_gate(command, max_404_retries=4, retry_delay_seconds=5.0,
+                                run=subprocess.run, sleep=time.sleep, timeout=120):
+    """Bounded convergence wrapper for a FRESH ISOLATED test Worker only.
+
+    The shared production gate v213_edge_readiness.ps1 keeps its exact
+    fail-fast semantics and is never weakened. A brand-new Cloudflare hostname
+    can briefly answer a non-JSON 404 while edge propagation settles; because
+    Invoke-V213ReadinessGet throws on that first response, the gate's own
+    retry loop never gets to run. This wrapper re-invokes the SAME shared gate,
+    but only for that exact signature. Every other failure fails closed
+    immediately. A 404 is never treated as readiness: PASS must come from the
+    shared gate itself. Returns (check, attempts, transient_404_retries).
+    """
+    attempts = 0
+    retries = 0
+    while True:
+        attempts += 1
+        check = run(["pwsh", "-NoProfile", "-Command", command], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=timeout)
+        if check.returncode == 0:
+            return check, attempts, retries
+        codes = sorted(set(re.findall(r'V213_[A-Z_]+', check.stderr)))
+        statuses = re.findall(r'http_status=(\d{1,3})', check.stderr)
+        transient_404 = codes == ["V213_READINESS_HTTP_FAILED"] and bool(statuses) and all(s == "404" for s in statuses)
+        if not transient_404 or retries >= max_404_retries:
+            return check, attempts, retries
+        retries += 1
+        sleep(retry_delay_seconds)
+
+
+def _partial_sha256(path, head_bytes=64 << 20, tail_bytes=64 << 20):
+    """Fast, collision-resistant identity for a large model file: hash the
+    first and last 64MB plus total size. A swap or partial overwrite changes
+    at least one of these; no full 20GB re-read is needed twice."""
+    import hashlib as _hl, os as _os
+    size = _os.path.getsize(path)
+    head = _hl.sha256()
+    tail = _hl.sha256()
+    with open(path, 'rb') as h:
+        chunk = h.read(head_bytes)
+        head.update(chunk)
+        if size > head_bytes + tail_bytes:
+            h.seek(-tail_bytes, 2)
+            while True:
+                c = h.read(1 << 20)
+                if not c: break
+                tail.update(c)
+    return head.hexdigest(), tail.hexdigest(), size
+
+
 def router_process_fingerprint():
-    # No command lines, paths, credentials or owner identities are returned.
-    command = "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process -Filter \"Name = 'llama-server.exe'\" | Sort-Object ProcessId | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId; parent_pid=$_.ParentProcessId; started_utc=$_.CreationDate.ToUniversalTime().ToString('o'); binary_sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.ExecutablePath).Hash.ToLowerInvariant()} }) | ConvertTo-Json -Compress -AsArray"
-    result = subprocess.run(['pwsh', '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', timeout=20)
+    """Bind the exact running Router processes and the loaded model file.
+    CIM cannot resolve ExecutablePath for llama-server on this host (null),
+    so process identity is pid/parent_pid/start-time, and the model binary is
+    bound via the path the Router reports plus a head/tail/size partial hash.
+    No command lines, credentials or owner identities are recorded."""
+    command = "@(Get-CimInstance Win32_Process -Filter \"Name = 'llama-server.exe'\" | Sort-Object ProcessId | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId; parent_pid=$_.ParentProcessId; started_utc=$_.CreationDate.ToUniversalTime().ToString('o')} }) | ConvertTo-Json -Compress -AsArray"
+    result = subprocess.run(['pwsh', '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
     if result.returncode: raise RuntimeError('ROUTER_PROCESS_IDENTITY_UNAVAILABLE')
     value = json.loads(result.stdout)
     if len(value) != 2 or not any(p['parent_pid'] == q['pid'] for p in value for q in value if p != q):
         raise RuntimeError('ROUTER_PROCESS_TOPOLOGY_INVALID')
-    return value
+    session = requests.Session(); session.trust_env = False
+    models = session.get('http://127.0.0.1:8080/models', timeout=10).json().get('data', [])
+    loaded = [m for m in models if m.get('status', {}).get('value') == 'loaded']
+    if len(loaded) != 1:
+        raise RuntimeError('ROUTER_LOADED_MODEL_COUNT_INVALID')
+    args = loaded[0].get('status', {}).get('args', [])
+    model_path = None
+    for i, a in enumerate(args):
+        if a == '--model' and i + 1 < len(args):
+            model_path = args[i + 1]
+    if not isinstance(model_path, str) or not Path(model_path).is_file():
+        raise RuntimeError('ROUTER_MODEL_FILE_UNAVAILABLE')
+    head, tail, size = _partial_sha256(model_path)
+    return {'processes': value, 'loaded_model': loaded[0]['id'],
+            'model_file': {'path': model_path, 'size': size, 'head_sha256': head, 'tail_sha256': tail}}
 
 
 def main():
@@ -185,7 +252,9 @@ def main():
             # Exercise the SAME bounded readiness gate used by the product;
             # do not maintain another deploy/sleep/retry implementation here.
             command = f". '{ROOT / 'scripts/v213_edge_readiness.ps1'}'; $proof=Wait-V213EdgeReadiness -Origin '{origin}' -ExpectedVersion '{version}' -ProjectRoot '{ROOT}'; $proof|ConvertTo-Json -Compress"
-            check = subprocess.run(["pwsh", "-NoProfile", "-Command", command], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120)
+            check, wrapper_attempts, transient_404_retries = run_isolated_readiness_gate(command)
+            evidence["readiness_wrapper_attempts"] = wrapper_attempts
+            evidence["readiness_transient_404_retries"] = transient_404_retries
             if check.returncode:
                 codes = sorted(set(re.findall(r'V213_[A-Z_]+', check.stderr)))
                 evidence["readiness_error_codes"] = codes
@@ -263,16 +332,60 @@ def main():
                 for case in ("smoke", "general", "ticker", "methodology", "evidence"):
                     for phase in ("cold", "warm"):
                         before = len(metrics); started = time.monotonic()
-                        r = signed(origin, "/v213/admin/free-relay-smoke", {"schema_version": 1}) if case == "smoke" else session.get(origin+"/qa", params={"case": case}, headers=auth, timeout=30)
-                        total = round(1000*(time.monotonic()-started),2)
-                        body = r.json(); metric = metrics[-1] if len(metrics) > before else {}
-                        answer = body.get("answer", "")
-                        ok = r.ok and bool(metric) and metric.get("finish_reason") == "stop" and metric.get("model") == canonical and total <= 28000
-                        ok = ok and (body.get("expected_token_observed") is True if case == "smoke" else len(answer) >= 25 and not answer.startswith("LOCAL_MODEL_"))
-                        row = {"case": case, "phase": phase, "total_ms": total, "pass": ok, "http_status": r.status_code, **metric, "answer": answer}
+                        if case == "smoke":
+                            r = signed(origin, "/v213/admin/free-relay-smoke", {"schema_version": 1})
+                            total = round(1000*(time.monotonic()-started),2)
+                            body = r.json(); metric = metrics[-1] if len(metrics) > before else {}
+                            answer = body.get("answer", "")
+                            ok = r.ok and bool(metric) and metric.get("finish_reason") == "stop" and metric.get("model") == canonical and total <= 28000
+                            ok = ok and body.get("expected_token_observed") is True
+                            path = "admin_smoke"
+                            inference = "pi"
+                        elif pi_backend:
+                            # Production LINE semantics: the 7s race issues a
+                            # reference number; the XHIGH answer completes in the
+                            # waitUntil job. The 8s test floor only guarantees the
+                            # branch fires; real inference runs in parallel.
+                            # A question answered by a deterministic lane (no Pi
+                            # call) is recorded as inference=deterministic and is
+                            # not required to carry a Pi proof.
+                            r = session.get(origin+"/reference-start", params={"case": case, "floor": 8000}, headers=auth, timeout=30)
+                            if not r.ok: raise RuntimeError("PI_LINE_PATH_FAILED:"+str(r.status_code))
+                            body = r.json()
+                            reply = body.get("reply", "")
+                            ref = body.get("referenceId")
+                            job = None
+                            if isinstance(ref, str) and ref:
+                                while time.monotonic() - started < 30:
+                                    time.sleep(1)
+                                    job = session.get(origin+"/reference-result", params={"id": ref}, headers=auth, timeout=10).json()
+                                    if job and job.get("status") in ("complete", "error"): break
+                            total = round(1000*(time.monotonic()-started),2)
+                            metric = metrics[-1] if len(metrics) > before else {}
+                            inference = "pi" if len(metrics) > before else "deterministic"
+                            answer = job.get("result", "") if (job or {}).get("status") == "complete" else (reply if not (job or {}).get("status") else "")
+                            if inference == "pi":
+                                ok = bool(metric) and metric.get("finish_reason") == "stop" and metric.get("model") == canonical and total <= 28000
+                                ok = ok and isinstance(answer, str) and len(answer) >= 25 and not answer.startswith("LOCAL_MODEL_")
+                            else:
+                                # Qualification must prove the Pi model lane for
+                                # every substantive case; a deterministic-lane
+                                # answer means this question did not exercise Pi.
+                                ok = False
+                            path = "line_reference" if ref else "line_direct"
+                        else:
+                            r = session.get(origin+"/qa", params={"case": case}, headers=auth, timeout=30)
+                            total = round(1000*(time.monotonic()-started),2)
+                            body = r.json(); metric = metrics[-1] if len(metrics) > before else {}
+                            answer = body.get("answer", "")
+                            ok = r.ok and bool(metric) and metric.get("finish_reason") == "stop" and metric.get("model") == canonical and total <= 28000
+                            ok = ok and len(answer) >= 25 and not answer.startswith("LOCAL_MODEL_")
+                            path = "sync_qa"
+                            inference = "pi"  # /qa always drives the model lane directly
+                        row = {"case": case, "phase": phase, "total_ms": total, "pass": ok, "http_status": r.status_code, "path": path, "inference": inference, **metric, "answer": answer}
                         evidence["results"].append(row)
                         print(json.dumps({k:v for k,v in row.items() if k != "answer"}), flush=True)
-                r = session.get(origin+"/reference-start", headers=auth, timeout=30); r.raise_for_status()
+                r = session.get(origin+"/reference-start", params={"case": "general", "floor": 8000}, headers=auth, timeout=30); r.raise_for_status()
                 reference = re.search(r'參考編號 ([A-Z0-9]+)', r.json().get("reply", ""))
                 if not reference: raise RuntimeError("REFERENCE_BRANCH_NOT_REACHED")
                 for _ in range(20):

@@ -26,11 +26,18 @@ def verify(data, manifest=None, require_pi=False):
     require(data.get('exact_model') == selected and data.get('request_enable_thinking') is pi_backend, 'MODEL_PROFILE_MISMATCH')
     if pi_backend:
         require(data.get('inference_backend') == 'pi' and data.get('thinking_level') == 'xhigh', 'PI_XHIGH_PROFILE_REQUIRED')
-        processes = data.get('router_processes', [])
-        require(data.get('router_processes_unchanged') is True and isinstance(processes, list) and len(processes) == 2, 'PI_ROUTER_PROCESS_PROOF_INVALID')
-        require(all(isinstance(p, dict) and type(p.get('pid')) is int and p['pid'] > 0 and isinstance(p.get('started_utc'), str)
-                    and isinstance(p.get('binary_sha256'), str) and len(p['binary_sha256']) == 64 for p in processes)
-                and any(p.get('parent_pid') == q['pid'] for p in processes for q in processes if p != q), 'PI_ROUTER_PROCESS_IDENTITY_INVALID')
+        proof = data.get('router_processes')
+        require(data.get('router_processes_unchanged') is True and isinstance(proof, dict) and proof.get('loaded_model') == selected, 'PI_ROUTER_PROCESS_PROOF_INVALID')
+        processes = proof.get('processes')
+        require(isinstance(processes, list) and len(processes) == 2
+                and all(isinstance(p, dict) and type(p.get('pid')) is int and p['pid'] > 0
+                        and type(p.get('parent_pid')) is int and isinstance(p.get('started_utc'), str) for p in processes)
+                and any(p['parent_pid'] == q['pid'] for p in processes for q in processes if p != q), 'PI_ROUTER_PROCESS_IDENTITY_INVALID')
+        model_file = proof.get('model_file')
+        require(isinstance(model_file, dict) and isinstance(model_file.get('path'), str)
+                and type(model_file.get('size')) is int and model_file['size'] > 0
+                and isinstance(model_file.get('head_sha256'), str) and len(model_file['head_sha256']) == 64
+                and isinstance(model_file.get('tail_sha256'), str) and len(model_file['tail_sha256']) == 64, 'PI_ROUTER_MODEL_FILE_PROOF_INVALID')
     # The original receipt retains the exact test-driver hash for provenance.
     # A driver-only refactor is not an executable Worker/Gateway change. Bind
     # the Worker/Gateway runtime exercised here, not later verifier tooling.
@@ -56,9 +63,12 @@ def verify(data, manifest=None, require_pi=False):
     rows = data.get("results", [])
     require(len(rows) == len(expected) and {(r.get("case"),r.get("phase")) for r in rows} == expected, "LIVE_CASE_MATRIX_INCOMPLETE")
     for row in rows:
-        require(row.get("pass") is True and row.get("finish_reason") == "stop" and row.get("model") == canonical and row.get("http_status") == 200, "LIVE_RESPONSE_INVALID")
         require(type(row.get("total_ms")) in (int,float) and 0 < row["total_ms"] <= POLICY["absolute_budget_ms"], "LIVE_LATENCY_FAILED")
         if pi_backend:
+            # Every row (smoke + all substantive cases) must have exercised the
+            # Pi model lane; a deterministic-lane answer cannot prove Pi.
+            require(row.get("inference") == "pi", "PI_MODEL_LANE_NOT_EXERCISED")
+            require(row.get("pass") is True and row.get("finish_reason") == "stop" and row.get("model") == canonical and row.get("http_status") == 200, "LIVE_RESPONSE_INVALID")
             proof = row.get('pi_proof', {})
             require(proof.get('provider') == pi_profile['provider'] and proof.get('thinking_level') == 'xhigh'
                     and proof.get('xhigh_payload_validated') is True and type(proof.get('tools_executed')) is int
@@ -71,6 +81,7 @@ def verify(data, manifest=None, require_pi=False):
             require(0 < usage['output_tokens'] <= pi_profile['max_output_tokens'], 'OUTPUT_TOKEN_PROOF_INVALID')
             if row['phase'] == 'cold': require(usage['cache_read_tokens'] == 0, 'PI_COLD_CACHE_PROOF_INVALID')
         else:
+            require(row.get("pass") is True and row.get("finish_reason") == "stop" and row.get("model") == canonical and row.get("http_status") == 200, "LIVE_RESPONSE_INVALID")
             usage = row.get("usage", {})
             require(type(usage.get("prompt_tokens")) is int and 0 < usage["prompt_tokens"] <= 1500, "PROMPT_TOKEN_PROOF_INVALID")
             require(type(usage.get("completion_tokens")) is int and 0 < usage["completion_tokens"] <= POLICY["max_output_tokens"], "OUTPUT_TOKEN_PROOF_INVALID")

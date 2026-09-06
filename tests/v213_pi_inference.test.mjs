@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {access, readFile} from 'node:fs/promises';
 import {PROFILE, modelDefinition, validateRequest, validateContext, validateHistory, readInput, assertSession, assertPayload, extractAnswer, runWithPi} from '../scripts/v213_pi_inference.mjs';
-const payload = () => ({model: PROFILE.model_id, stream: true, max_tokens: 4096,
+const payload = () => ({model: PROFILE.model_id, stream: true, max_tokens: 4096, temperature: PROFILE.temperature,
   chat_template_kwargs: {enable_thinking: true, reasoning_effort: 'xhigh'}, reasoning_format: 'deepseek'});
 const freshSession = () => ({model: modelDefinition(), thinkingLevel: 'xhigh', agent: {state: {tools: []}},
   messages: [{role: 'assistant', model: PROFILE.model_id, provider: PROFILE.provider, stopReason: 'stop', content: [{type: 'text', text: 'public answer'}]}]});
@@ -12,6 +12,7 @@ test('exact physical-model identity and explicit XHIGH request mapping', () => {
   assert.equal(m.thinkingLevelMap.xhigh, 'xhigh');
   assert.equal(m.reasoning, true);
   assert.equal(m.thinkingLevelMap.off, null);
+  assert.equal(m.samplingParams.temperature, 0.2);
   assert.equal(m.baseUrl, 'http://127.0.0.1:8080/v1');
   assert.equal(PROFILE.production_ready, false);
   assert.equal(PROFILE.direct_http_fallback, false);
@@ -35,7 +36,7 @@ test('verify actual payload fields, not just UI thinking setting', () => {
   for (const change of [p => p.model = 'qwen38-q6', p => p.stream = false,
     p => p.chat_template_kwargs.enable_thinking = false, p => p.chat_template_kwargs.reasoning_effort = 'high',
     p => p.max_tokens = 4097, p => p.max_tokens = true, p => p.tools = [{name: 'bash'}],
-    p => p.reasoning_format = 'none']) {
+    p => p.reasoning_format = 'none', p => p.temperature = 1.0, p => delete p.temperature]) {
     const p = payload(); change(p); assert.throws(() => assertPayload(p), /PI_XHIGH_PAYLOAD_INVALID/);
   }
 });
