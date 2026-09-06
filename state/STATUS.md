@@ -1,5 +1,9 @@
 # R75 takeover status
 
+## Latest CI result / 最新 CI 結果
+
+- Runtime milestone committed/pushed as59c8433f3fe90c2b22586f5d0de2189a79a0aa4d. Separate Windows run34011893092 SUCCESS at CI-repair-only sourcef854c9a99052da86bd5275942361e7bf7212654a; this closes the stale lock-pin CI finding but does NOT qualify later Pi runtime changes. Current follow-up P0/P1/P2=0/2/1. No further external mutation beyond GitHub source/CI; Production unchanged.
+
 ## CURRENT GATEWAY MILESTONE — development only
 
 - Actual HEAD before runtime commit: f854c9a99052da86bd5275942361e7bf7212654a, dedicated CI lock-pin repair pushed to pi/r75-native-pi-serenity-source-views. Windows no-mutation run34011893092 is IN_PROGRESS at this checkpoint and tests only that CI-repair commit, not the pending Pi runtime changes.
