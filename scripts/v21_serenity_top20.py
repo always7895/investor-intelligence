@@ -56,14 +56,18 @@ TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,14}$")
 AI_WORDS = {
     "artificial intelligence", "ai infrastructure", "data center", "datacenter",
     "gpu", "accelerator", "asic", "semiconductor", "optical", "photonics",
-    "laser", "ethernet", "networking", "interconnect", "hbm", "memory",
+    "laser", "ethernet", "networking", "interconnect", "hbm", "memory", "dram",
     "foundry", "wafer", "advanced packaging", "power", "grid", "transformer",
-    "switchgear", "cooling", "natural gas", "nuclear", "cloud", "neocloud",
+    "switchgear", "cooling", "liquid cooling", "fuel cell", "nuclear", "smr",
+    "cloud", "neocloud", "robotics", "robot", "humanoid", "actuator",
+    "roller screw", "harmonic", "sensor", "lidar", "satellite", "direct-to-cell",
+    "gallium", "substrate", "glass substrate",
 }
 CHOKE_WORDS = {
-    "optical", "photonics", "laser", "hbm", "memory", "foundry", "wafer",
-    "advanced packaging", "substrate", "transformer", "switchgear", "grid",
-    "interconnect", "cooling", "power",
+    "optical", "photonics", "laser", "hbm", "memory", "dram", "foundry", "wafer",
+    "advanced packaging", "substrate", "glass substrate", "transformer",
+    "switchgear", "grid", "interconnect", "cooling", "liquid cooling", "power",
+    "fuel cell", "actuator", "roller screw", "harmonic", "gallium",
 }
 DOMAIN_A = {"power", "grid", "transformer", "switchgear", "cooling", "energy", "natural gas", "nuclear", "datacenter", "data center"}
 DOMAIN_B = {"gpu", "accelerator", "asic", "compute", "cloud", "neocloud", "ethernet", "network", "interconnect"}
@@ -374,6 +378,23 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
             entry["screeners"].append(name)
             if len(raw) > len(entry["market"]):
                 entry["market"] = dict(raw)
+
+    local_universe = ROOT / "config" / "research-universe.local.json"
+    if local_universe.is_file():
+        try:
+            u_doc = json.loads(local_universe.read_text(encoding="utf-8"))
+            for u_item in u_doc.get("stocks", []):
+                sym = ticker(u_item.get("ticker"))
+                if sym and sym != "TSM":
+                    entry = merged.setdefault(
+                        sym,
+                        {"ticker": sym, "screen_weight": 0.0, "screeners": [], "market": {}},
+                    )
+                    entry["screen_weight"] += 10.0
+                    if "research_universe_seed" not in entry["screeners"]:
+                        entry["screeners"].append("research_universe_seed")
+        except Exception:
+            pass
 
     if not merged:
         value = cached(CACHE_ROOT / "candidate_seed.json", int(policy["candidate_cache_hours"]))
@@ -926,6 +947,8 @@ def run(*, synthetic: bool) -> dict[str, Any]:
             try:
                 records = sec_companyfacts(candidate, policy, http, headers)
                 metric, evidence = metrics(records)
+                if not evidence:
+                    raise ValueError(f"No evidence extracted from facts for {candidate['ticker']}")
             except Exception as exc:
                 LOGGER.warning("SEC facts failed for %s: %s", candidate["ticker"], type(exc).__name__)
                 metric, evidence = {}, [

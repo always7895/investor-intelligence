@@ -240,7 +240,11 @@ def safe_preselection_score(
         for item in evidence
         if str(getattr(item, "source_id", "")) == "sec_edgar" and str(getattr(item, "url", ""))
     }
-    evidence_quality = 4.0 if unique_primary_urls else 1.0
+    is_seed = "research_universe_seed" in candidate.get("screeners", [])
+    market = candidate.get("market") if isinstance(candidate.get("market"), dict) else {}
+    text = engine.keywords(market)
+    has_tech = is_seed or engine.contains(text, engine.AI_WORDS) or engine.contains(text, engine.CHOKE_WORDS)
+    evidence_quality = 5.0 if is_seed else 4.0 if unique_primary_urls else 1.0
     factors = {
         "demand_wave": 0.0,
         "chokepoint": 0.0,
@@ -257,16 +261,20 @@ def safe_preselection_score(
         "replacement_friction_unproven_without_switching_or_qualification_evidence",
         "single_market_provider_degraded",
     }
-    penalty = 2.0
-    if revenue is not None and revenue < 0:
-        penalty += 4.0
-        risks.add("negative_revenue_growth")
-    if net_margin is not None and net_margin < 0:
-        penalty += 4.0
-        risks.add("negative_net_margin")
-    if debt_equity is not None and debt_equity > 2:
-        penalty += 3.0
-        risks.add("high_debt_to_equity")
+    penalty = 1.0 if is_seed else 2.0
+    if not has_tech:
+        penalty += 15.0
+        risks.add("outside_ai_infrastructure_thematic_scope")
+    elif not is_seed:
+        if revenue is not None and revenue < 0:
+            penalty += 4.0
+            risks.add("negative_revenue_growth")
+        if net_margin is not None and net_margin < 0:
+            penalty += 4.0
+            risks.add("negative_net_margin")
+        if debt_equity is not None and debt_equity > 2:
+            penalty += 3.0
+            risks.add("high_debt_to_equity")
     raw = sum(factors.values())
     score = max(0.0, min(100.0, raw - penalty))
     legacy.update({

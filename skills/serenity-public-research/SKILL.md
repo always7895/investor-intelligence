@@ -25,7 +25,7 @@ Methodology resemblance does not guarantee identical selections. An unverified a
 
 ## 使用方式 / Workflow
 
-For substantive research, **read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) completely before producing conclusions**, then read [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md) for economic bridges, independent source capabilities, reconciliation and evaluation bias. The original methodology remains intact; this entrypoint is not a replacement for its evidence rules.
+For substantive research, **read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) completely before producing conclusions**, read [SERENITY_TIMELESS_SELECTION_METHODOLOGY.md](../../docs/SERENITY_TIMELESS_SELECTION_METHODOLOGY.md) for dynamic cross-cycle value-chain rotation, then read [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md) for economic bridges, independent source capabilities, reconciliation and evaluation bias. The original methodology remains intact; this entrypoint is not a replacement for its evidence rules.
 
 1. System change → constrained layer → companies, not ticker-first promotion.
 2. Separate relationship evidence from scarcity and hard dependency.

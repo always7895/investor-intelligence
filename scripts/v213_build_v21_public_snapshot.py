@@ -165,12 +165,21 @@ def _fresh_claim_support(
         if source.get("primary") is True
         or str(source.get("family") or "").strip().lower() in CLAIM_PRIMARY_FAMILIES
     ]
+    non_primary = [
+        source
+        for source in values
+        if not (
+            source.get("primary") is True
+            or str(source.get("family") or "").strip().lower() in CLAIM_PRIMARY_FAMILIES
+        )
+    ]
     usable_domains = {value for value in domains if value and value != "unknown"}
     return {
         "unit_count": len(values),
         "domain_count": len(usable_domains),
         "primary_count": len(primary),
-        "supported": len(values) >= 2 and len(usable_domains) >= 2 and bool(primary),
+        "non_primary_count": len(non_primary),
+        "supported": len(values) >= 2 and len(usable_domains) >= 2 and bool(primary) and bool(non_primary),
     }
 
 

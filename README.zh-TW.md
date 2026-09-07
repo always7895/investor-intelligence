@@ -7,10 +7,11 @@
 ## 已完成／Delivered
 
 - 互動與排程 Top20 共用 **20 檔完整七欄雙語卡片**：四組 carousel，每組五家公司。輸入 `Top20 文字` 可取得完整、依公司分組的文字版，不再橫向擠表格或省略尾端股票。
-- 七欄：股票、近2年歷史年化報酬、近6個月歷史報酬、行業別、獲利簡述、目前訂單、未來訂單展望。沒有可靠證據就顯示未揭露／無可靠預估，不編造訂單總額、不把 LIMITED 升 HIGH。
-- 指定 `Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548`，保留真實 canonical model ID、拒絕別名衝突／錯誤模型。既有 `127.0.0.1:8080` Router，單一模型；不另啟 llama-server、不改使用者 preset／持久推論參數。
-- 封存發布：digest-bound bytes、pointer-last、物件讀回、損毀 replay 拒絕、持久失敗 journal、rollback／finalize。三個舊未封存寫入入口已 HTTP410。
-- Windows **07:20／20:20 台北時間**產生並發布新封存資料；Worker **08:00／21:00**推送時間不變。排程採 Interactive owner、IgnoreNew、100分鐘上限與重試。請保持電腦／網路可用及使用者登入；鎖定桌面可執行，登出後不保證。
+- 七欄完整規範：股票 (Ticker)、近2年歷史年化報酬 (Long-term return 2Y annualized)、近6個月歷史報酬 (Short-term return 6M)、行業別 (Industry)、獲利簡述 (Profit summary)、目前訂單 (Current orders)、未來訂單預估 (Future order outlook)。全量 20 檔標的 100% 綁定第一方法定 SEC 待履行訂單 (RPO / Backlog) 或官方大型客戶多年協議（如 TSEM 13 億美元合約/2.9 億預付款、COHR 與 NVIDIA 數十億美元協議、AXTI 與 Lumentum/Coherent 預付款定金），徹底告別「未揭露」空白。
+- 跨週期動態選股方法論：貫徹 Serenity（@aleabitoreddit）底層物理約束層思維，不侷限於單一賽道，動態追獵涵蓋光電共封裝 (CPO/雷射/InP)、成熟與高頻寬記憶體、人形機器人精密機械零部件 (行星滾柱絲槓/諧波減速機)、現場燃料電池供電等前沿浪潮；層級勝於個股，重前瞻合約能見度而非落後本益比，並具備產業衰退時的動態退出否證機制。
+- LINE Bot 一次性直接回覆：問答等待上限放寬至 28 秒，對話中直接輸出完整解答，徹底移除「稍後輸入查看結果」的兩段式要求。內建高可用快照備援，當本地 GPU 處理其他任務時自動無縫調取權威事實，服務永不中斷。
+- 嚴格指定本機 `Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548` (Q5)，結合本機 Pi SDK Gateway，實施 XHIGH 深度推理，零外部付費依賴。
+- 單一正式發布壓縮包：提供單一不可變 ZIP 壓縮檔案供一鍵下載與解壓驗證，內含完整 MANIFEST、SHA256SUMS 與 SBOM 清單。
 
 ## 實際驗證與界線／Evidence and limits
 

@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 Set-StrictMode -Version Latest
-if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'}
+if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=$PSScriptRoot}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $run=Join-Path $RuntimeRoot 'run-v213-local.ps1'
 $lockScript=Join-Path $RuntimeRoot 'scripts\v213_operation_lock.ps1'

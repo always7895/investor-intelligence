@@ -109,7 +109,7 @@ async function processAuthorizedLineEvent(
   // every late completion from this operation unreachable and non-persistable.
   const operationEpoch = await tenantWriteEpoch(env, tenantId);
   const answerPromise = generalAnswer(env, query, requestContext);
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 7000));
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 28000));
   const quick = await Promise.race([answerPromise, timeout]);
   if (quick !== null) {
     await replyText(env, event.replyToken, quick);

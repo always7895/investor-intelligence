@@ -65,7 +65,11 @@ function Invoke-V213SealedRefresh {
         Copy-Item -LiteralPath $bundle -Destination $sealed
         if((Get-FileHash -LiteralPath $sealed -Algorithm SHA256).Hash.ToLowerInvariant()-cne$record.bundle_sha256){throw 'V213_REFRESH_SEALED_COPY_MISMATCH'}
         $wrangler=Join-Path $ProjectRoot 'cloud/node_modules/.bin/wrangler.cmd'
-        $auth=(& $wrangler whoami 2>$null|Out-String)
+        if(Test-Path -LiteralPath $wrangler -PathType Leaf){
+            $auth=(& $wrangler whoami 2>$null|Out-String)
+        } else {
+            $auth=(& npx --yes wrangler whoami 2>$null|Out-String)
+        }
         if($LASTEXITCODE-ne0){throw 'V213_REFRESH_READ_ONLY_AUTH_FAILED'}
         $auth=$null
         $sync=Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1'

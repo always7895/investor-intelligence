@@ -88,7 +88,7 @@ export function normalizeText(text: string): string {
 
 function normalizedTickerCandidate(raw: string | undefined): string | null {
   const candidate = String(raw ?? "").replace(/^\$/, "").toUpperCase();
-  if (!candidate || /^\d+$/.test(candidate) || IGNORED_TICKER_TOKENS.has(candidate)) {
+  if (!candidate || /^\d+$/.test(candidate) || /^TOP\d+$/.test(candidate) || IGNORED_TICKER_TOKENS.has(candidate)) {
     return null;
   }
   if (!new RegExp(`^${EXPLICIT_TICKER_TOKEN}$`, "i").test(candidate)) return null;

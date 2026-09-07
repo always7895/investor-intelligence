@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'}
+if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=$PSScriptRoot}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $runScript=Join-Path $RuntimeRoot 'run-v213-scheduled-refresh.ps1'
 if(-not(Test-Path -LiteralPath $runScript -PathType Leaf)){throw "Stable R75 scheduled-refresh wrapper is missing: $runScript"}

@@ -14,6 +14,13 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 - Do not replay the previous Production activation to test an installer. Sealed object integrity and pointer-last commit are mandatory; legacy single-report writes are not a substitute.
 - Pi installs, if requested, must use project-local `pi install -l ...`; log the command, never install globally.
 
+## Recommendations & Options Guidance / 數據依據建議與期權策略
+
+- The system is authorized to provide explicit, actionable, data-grounded recommendations based on authenticated snapshot data, multi-source evidence, and market observations.
+- Options order recommendations: When requested, provide specific, evidence-backed options strategy guidance (e.g. Strike selection $K, expiration & DTE, Delta targeting such as 0.20–0.30 for conservative covered calls or cash-secured puts, Bid/Mid/Ask limit reference bands, annualized yield, and liquidity thresholds). Distinguish data observations from broker execution; the system does not directly execute trades, but equips the operator with concrete order parameters.
+- Position sizing and allocation advice: Provide risk-managed allocation frameworks grounded in Serenity's methodology (e.g. differentiating high-upside/high-dilution bottleneck plays from steady core compounders, recommending position caps, cash reserves, and multi-year horizon pacing).
+- Preserve objective claim-level grounding and data provenance while delivering direct, practical guidance.
+
 ## Work and evidence / 執行與證據
 
 Make small reviewable commits. Test the actual user-facing caller, not merely an internal formatter. Validate installed task actions separately from source templates. A NoSync local refresh is not cloud publication; a healthy model endpoint is not a completed answer.

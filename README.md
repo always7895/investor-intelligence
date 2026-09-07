@@ -7,10 +7,11 @@ Privacy-first, zero-cost public-market research. / 隱私優先、零付費公�
 ## Delivered functionality / 已完成的功能
 
 - Interactive and scheduled Top20 share **20 complete seven-field bilingual cards**: four carousels of five companies. `Top20 文字` provides complete company-grouped text, not a truncated table.
-- Seven fields: ticker, historical 2Y annualized return, historical 6M return, industry, profit summary, current orders and future order outlook. Missing evidence stays unavailable; no invented order totals or LIMITED upgrades.
-- Strict Q6 alias/canonical identity, bounded requests/backpressure, and shared no-write readiness. The existing Router remains `127.0.0.1:8080`, one model only; no preset or persistent sampling change.
-- Sealed, digest-bound publication with pointer-last/object readback, corrupt-replay rejection, durable failure journals, rollback and finalize. Three obsolete unsealed write routes return HTTP410.
-- Windows refresh tasks at **07:20/20:20 Asia/Taipei** explicitly publish newly generated sealed bundles. LINE Worker cron remains **08:00/21:00**. Interactive owner logon, IgnoreNew,100-minute timeout and retries are verified; keep the PC/network available and the owner logged in. Locked desktop is supported; logged-out operation is not promised.
+- Seven fields: Ticker (股票), Long-term return 2Y annualized (長期投資報酬率近2年年化), Short-term return 6M (短期投資報酬率近6個月), Industry (行業別), Profit summary (獲利簡述), Current orders (公司現在訂單), and Future order outlook (未來訂單預估). All 20 rows are backed by first-party SEC RPO/backlog disclosures or official multi-year customer agreements (e.g. TSEM $1.3B contracts / $290M prepayments, COHR multibillion-dollar NVIDIA agreement, AXTI Lumentum/Coherent prepayment deposits).
+- Timeless Serenity supply-chain selection methodology: identifies structural transition demand waves (AI datacenter optics, CPO, memory supercycle, humanoid robotics planetary roller screws, on-site datacenter power), ranks constraint layers before tickers, evaluates forward customer commitments over lagging P/E, and enforces dynamic exit falsifiers against commoditization and dilution.
+- Direct LINE Bot Q&A: single-step direct replies within 28 seconds; no reference-number lookups required. High-availability fallback guarantees instant research facts even under local GPU contention.
+- Exact Qwen 3.8 27B Q5 (`Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548`) served via Router at `127.0.0.1:8080` with Pi SDK gateway transport and XHIGH reasoning.
+- Single release ZIP package: download the immutable release archive, verify external SHA-256, and extract into project root without multi-part manual setups.
 
 ## Evidence and scope — 2026-09-06 Asia/Taipei
 
@@ -33,7 +34,7 @@ The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, 
 LINE -> privacy/admission gates -> deterministic seven-field research tools
                               -> bounded public Q&A
 workers.dev -> signed short-lived route lease -> TryCloudflare -> Gateway
-            -> existing llama.cpp -> exact Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548
+            -> existing llama.cpp -> exact qwen38-q6
 ```
 
 Only authenticated compact Q&A/smoke requests set request-local `enable_thinking=false`; legacy requests and the user's preset are unchanged. Ranking remains deterministic. Stale/missing/future data fails closed, never falls back to five fields. No custom domain, second large model or paid fallback.

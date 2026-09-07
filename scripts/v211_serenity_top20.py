@@ -156,6 +156,19 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
             if len(normalized) > len(entry["market"]):
                 entry["market"] = normalized
 
+    local_universe = ROOT / "config" / "research-universe.local.json"
+    if local_universe.is_file():
+        try:
+            u_doc = json.loads(local_universe.read_text(encoding="utf-8"))
+            for u_item in u_doc.get("stocks", []):
+                sym = base.ticker(u_item.get("ticker"))
+                if sym:
+                    entry = _entry(merged, sym)
+                    entry["theme_hits"] = int(entry["theme_hits"]) + 5
+                    _append_unique(entry["theme_terms"], "research_universe_seed")
+        except Exception:
+            pass
+
     if not merged:
         value = base.cached(CANDIDATE_CACHE_PATH, int(policy["candidate_cache_hours"]))
         if isinstance(value, list) and value:

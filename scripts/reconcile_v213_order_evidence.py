@@ -135,7 +135,7 @@ def reconcile(
 
         def resolver(ticker: str) -> Mapping[str, Any]:
             print(f"II_PROGRESS v2.1.3 order evidence research | {ticker}", flush=True)
-            return h6b.generic_sec_outlook(ticker, cik_map)
+            return h6b.order_outlook_for_ticker(ticker, {}, cik_map)
 
     rows: list[dict[str, Any]] = []
     researched: list[str] = []
