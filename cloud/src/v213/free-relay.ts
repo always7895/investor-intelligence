@@ -52,8 +52,10 @@ function maxTtlSeconds(env: FreeRelayEnv): number {
   return Math.max(60, Math.min(600, Number.isFinite(configured) ? configured : 300));
 }
 
-function expectedModel(env: FreeRelayEnv): string {
-  return (env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
+function expectedModel(env: FreeRelayEnv): string | null {
+  const configured = (env.LOCAL_LLM_MODEL ?? "").trim();
+  if (!configured || configured.toLowerCase() === "auto") return null;
+  return configured;
 }
 
 function routeUrl(value: string): URL | null {
@@ -99,7 +101,7 @@ export function parseFreeRelayRoute(
   if (
     route.schema_version !== 1 || route.tunnel_mode !== "quick_free_relay" ||
     route.health_schema_version !== 2 || route.consecutive_health_checks !== 3 ||
-    typeof route.model !== "string" || !MODEL_RE.test(route.model) || route.model !== expectedModel(env) ||
+    typeof route.model !== "string" || !MODEL_RE.test(route.model) || (expectedModel(env) !== null && route.model !== expectedModel(env)) ||
     typeof route.route_generation !== "string" || !GENERATION_RE.test(route.route_generation) ||
     !url || !Number.isFinite(connected) || !Number.isFinite(expires) ||
     connected > nowMs + 30_000 || expires <= nowMs + 15_000 ||
@@ -248,7 +250,8 @@ export async function currentFreeRelayRoute(env: FreeRelayEnv): Promise<FreeRela
   const response = await stub.fetch("https://free-relay.internal/current", { method: "GET" });
   if (!response.ok) return null;
   const route = await response.json<StoredRoute>().catch(() => null);
-  if (!route || Date.parse(route.expires_at) <= Date.now() || route.model !== expectedModel(env) || !routeUrl(route.public_url)) return null;
+  const expected = expectedModel(env);
+  if (!route || Date.parse(route.expires_at) <= Date.now() || (expected !== null && route.model !== expected) || !routeUrl(route.public_url)) return null;
   return route;
 }
 

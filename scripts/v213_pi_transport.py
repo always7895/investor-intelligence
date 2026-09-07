@@ -26,7 +26,7 @@ class PiTransportError(RuntimeError):
 
 
 def validate_body(body: dict, selected: str) -> dict:
-    if selected != PROFILE['model_id'] or body.get('model') != selected:
+    if not selected or (body.get('model') and str(body.get('model')).casefold() != selected.casefold()):
         raise PiTransportError('PI_CANONICAL_MODEL_REQUIRED')
     if body.get('ii_context_mode') == SMOKE_MODE:
         if (set(body) != {'model', 'messages', 'ii_context_mode'}
@@ -100,10 +100,11 @@ def validate_context(context: object, now: datetime | None = None) -> None:
             if url.scheme != 'https' or not url.hostname or url.username or url.password: fail()
 
 
-def validate_result(raw: object) -> dict:
+def validate_result(raw: object, selected: str = '') -> dict:
     if not isinstance(raw, dict):
         raise PiTransportError('PI_RESULT_INVALID')
-    if (raw.get('model') != PROFILE['model_id'] or raw.get('provider') != PROFILE['provider']
+    expected_model = (selected or PROFILE['model_id']).casefold()
+    if (str(raw.get('model') or '').casefold() != expected_model or raw.get('provider') != PROFILE['provider']
             or raw.get('thinking_level') != 'xhigh' or raw.get('finish_reason') != 'stop'
             or raw.get('xhigh_payload_validated') is not True
             or type(raw.get('tools_executed')) is not int or raw['tools_executed'] != 0
@@ -212,7 +213,7 @@ def complete(body: dict, selected: str, *, qualification_cache_prompt: bool | No
             result = json.loads(data.decode('utf-8'))
         except (ValueError, UnicodeError):
             raise PiTransportError('PI_CHILD_JSON_INVALID') from None
-        result = validate_result(result)
+        result = validate_result(result, selected)
         if qualification_cache_prompt is not None and result['ii_pi'].get('qualification_cache_prompt') is not qualification_cache_prompt:
             raise PiTransportError('PI_CACHE_PROOF_MISSING')
         return result

@@ -588,11 +588,19 @@ $GatewayPort = Resolve-GatewayPort $GatewayPort
 $python = Resolve-Python
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
 $llama = Resolve-Llama
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' }
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) {
+    try {
+        $activeModels = (Invoke-RestMethod -Uri "$llama/v1/models" -TimeoutSec 5).data
+        if ($activeModels -and $activeModels.Count -gt 0) {
+            $Model = $activeModels[0].id
+        }
+    } catch {}
+    if ([string]::IsNullOrWhiteSpace($Model)) { $Model = 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' }
+}
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548') { throw "FREE_RELAY requires exact model Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548; observed=$Model" }
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { throw "FREE_RELAY requires an active model from Router or explicit -Model parameter." }
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
