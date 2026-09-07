@@ -74,7 +74,7 @@ DOMAIN_B = {"gpu", "accelerator", "asic", "compute", "cloud", "neocloud", "ether
 DOMAIN_C = {"hbm", "memory", "optical", "photonics", "laser", "fiber", "foundry", "wafer", "packaging", "substrate"}
 
 LOGGER = logging.getLogger("v21-serenity")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stdout)
 
 CONTACT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

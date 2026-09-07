@@ -273,11 +273,15 @@ function optionCandidateLines(
   currency: string,
 ): string[] {
   const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
+  const dist = num(candidate.distance_from_spot_pct);
+  const distText = dist !== null ? `價外 ${dist.toFixed(1)}%` : "";
+  const effPrice = candidate.effective_sale_price as Record<string, unknown> | undefined;
+  const breakEven = candidate.put_break_even as Record<string, unknown> | undefined;
+  const effText = effPrice?.mid != null ? `有效賣價 ${money(effPrice.mid, currency)}` : breakEven?.mid != null ? `損益平衡 ${money(breakEven.mid, currency)}` : "";
   return [
-    `• K ${money(candidate.strike, currency)}｜Bid ${money(candidate.bid, currency)}｜Ask ${money(candidate.ask, currency)}｜Mid ${money(candidate.midpoint, currency)}`,
-    `  參考限價 ${limitObservation(candidate, currency)}｜Spread ${percent(candidate.spread_pct_of_mid, true)}｜OI ${String(candidate.open_interest ?? 0)}｜Vol ${String(candidate.volume ?? 0)}`,
-    `  IV ${percent(candidate.implied_volatility_pct, true)}｜Delta ${candidate.delta ?? "N/A"}｜Bid/Mid/Ask 年化觀察 ${percent(yields.bid, true)} / ${percent(yields.mid, true)} / ${percent(yields.ask, true)}`,
-    `  資料 ${String(candidate.quote_source ?? "unknown")}｜${String(candidate.quote_delay_status ?? "unknown")}｜擷取 ${timestamp(candidate.retrieved_at)}｜流動性 ${candidate.liquidity_pass ? "PASS" : "FAIL"}`,
+    `• 履約價 K ${money(candidate.strike, currency)}${distText ? ` (${distText})` : ""}｜Bid ${money(candidate.bid, currency)}｜Ask ${money(candidate.ask, currency)}｜Mid ${money(candidate.midpoint, currency)}`,
+    `  推薦限價區間 ${limitObservation(candidate, currency)}${effText ? `｜${effText}` : ""}｜Spread ${percent(candidate.spread_pct_of_mid, true)}`,
+    `  IV ${percent(candidate.implied_volatility_pct, true)}｜Delta ${candidate.delta ?? "N/A"}｜Mid 年化收益 ${percent(yields.mid, true)} (Bid ${percent(yields.bid, true)})｜流動性 ${candidate.liquidity_pass ? "PASS" : "觀察"}`,
   ];
 }
 
@@ -323,27 +327,34 @@ export function formatOptionsAnswer(
         `\n${periodName === "weekly" ? "每週" : "每月"}｜${status}｜到期 ${String(periodRecord.expiration ?? "N/A")}｜DTE ${String(periodRecord.actual_dte ?? "N/A")}`,
       );
       if (status !== "OK") continue;
-      for (const [key, label] of [
-        ["call_observations", "買權報價"],
-        ["put_observations", "賣權報價"],
+      for (const [keys, label] of [
+        [["covered_call", "call_observations"], "買權報價 (Call / 賣買權)"],
+        [["cash_secured_put", "put_observations"], "賣權報價 (Put / 賣賣權)"],
       ] as const) {
-        const strategyRaw = periodRecord[key];
+        let strategyRaw: unknown = null;
+        for (const k of keys) {
+          if (periodRecord[k] && typeof periodRecord[k] === "object") {
+            strategyRaw = periodRecord[k];
+            break;
+          }
+        }
         if (!strategyRaw || typeof strategyRaw !== "object") continue;
         const strategy = strategyRaw as Record<string, unknown>;
-        const candidates = Array.isArray(strategy.recommended_candidates)
+        const rawCandidates = Array.isArray(strategy.recommended_candidates) && strategy.recommended_candidates.length > 0
           ? strategy.recommended_candidates
+          : Array.isArray(strategy.all_window_observations)
+          ? strategy.all_window_observations
           : [];
-        lines.push(`${label}｜${String(strategy.status ?? "UNKNOWN")}`);
+        const candidates = rawCandidates.filter((c): c is Record<string, unknown> => !!c && typeof c === "object");
+        lines.push(`${label}｜${String(strategy.status ?? "OK")}`);
         if (candidates.length === 0) {
           lines.push("• 無符合公開資料與流動性條件的候選報價");
           continue;
         }
         for (const candidate of candidates.slice(0, 3)) {
-          if (!candidate || typeof candidate !== "object") continue;
-          const value = candidate as Record<string, unknown>;
-          const currency = String(value.currency ?? record.currency ?? "USD");
-          if (!value.retrieved_at && record.retrieved_at) value.retrieved_at = record.retrieved_at;
-          lines.push(...optionCandidateLines(value, currency));
+          const currency = String(candidate.currency ?? record.currency ?? "USD");
+          if (!candidate.retrieved_at && record.retrieved_at) candidate.retrieved_at = record.retrieved_at;
+          lines.push(...optionCandidateLines(candidate, currency));
         }
       }
     }

@@ -29,8 +29,22 @@ function taipeiDate(now: number): string {
   }).format(new Date(now));
 }
 
+function dailyHumorousReminderText(report: V213Top20Report): string {
+  const topNames = report.records.slice(0, 3).map((r) => r.ticker).join("、");
+  return [
+    "🔔【韭菜守護者・每日早報巡邏】🌱🛡️",
+    "報告各位道友！大盤已開，華爾街大鐮刀又在磨刀霍霍了！",
+    "",
+    "今日最新【TOP 20 物理瓶頸榜單】已新鮮出爐！",
+    `當前焦點瓶頸領跑：${topNames} 等 20 檔核心標的～`,
+    "誰在手握實體訂單真放量、誰在裸泳炒作割韭菜，後台數據全幫你照妖完畢。",
+    "",
+    "👇 趕緊點擊下方圖文選單【每日 TOP 20】免費開箱查看完整 20 檔七欄卡片，別讓主力又把你割了！👇",
+  ].join("\n");
+}
+
 export async function broadcastV213Top20(
-  env: V213BroadcastEnv,
+  env: V213BroadcastEnv & { V213_TEST_PUSH_FULL_CARDS?: string; V213_EVENING_PUSH_ENABLED?: string },
   slot: V213BroadcastSlot,
   now = Date.now(),
 ): Promise<Record<string, unknown>> {
@@ -70,7 +84,13 @@ export async function broadcastV213Top20(
     return { status: "stale" };
   }
 
-  const messages = buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex");
+  const reminderMessage: LineOutboundMessage = {
+    type: "text",
+    text: dailyHumorousReminderText(report),
+  };
+  const messages = (slot === "test" && env.V213_TEST_PUSH_FULL_CARDS === "true")
+    ? buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex")
+    : [reminderMessage];
 
   const pointer = (await env.PUBLIC_CACHE.get("snapshot:current", "json")) as Record<string, unknown> | null;
   const runId = String(pointer?.run_id ?? "unknown");
@@ -98,11 +118,14 @@ export async function broadcastV213Top20(
 }
 
 export async function scheduledV213Broadcast(
-  env: V213BroadcastEnv,
+  env: V213BroadcastEnv & { V213_EVENING_PUSH_ENABLED?: string },
   cron: string,
   now: number,
 ): Promise<Record<string, unknown>> {
   if (cron === "0 0 * * *") return broadcastV213Top20(env, "morning", now);
-  if (cron === "0 13 * * *") return broadcastV213Top20(env, "evening", now);
+  if (cron === "0 13 * * *") {
+    if (env.V213_EVENING_PUSH_ENABLED === "true") return broadcastV213Top20(env, "evening", now);
+    return { status: "evening_push_disabled_to_save_quota" };
+  }
   return { status: "unsupported_cron" };
 }
