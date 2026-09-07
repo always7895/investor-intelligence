@@ -29,13 +29,26 @@ function taipeiDate(now: number): string {
   }).format(new Date(now));
 }
 
-function dailyHumorousReminderText(report: V213Top20Report): string {
+function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): string {
   const topNames = report.records.slice(0, 3).map((r) => r.ticker).join("、");
+  const taipeiHourStr = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    hour: "numeric",
+    hour12: false,
+  }).format(new Date(now));
+  const hour = Number(taipeiHourStr) || 0;
+  const isMorning = hour >= 5 && hour < 12;
+  const header = isMorning ? "🔔【韭菜守護者・早盤巡邏】🌱🛡️" : "🔔【韭菜守護者・晚間美股夜戰巡邏】🌱🛡️";
+  const salutation = isMorning
+    ? "早安各位道友！台美股開盤在即，華爾街大鐮刀又在磨刀霍霍了！"
+    : "晚安各位道友！美股夜戰開打，華爾街主力大鐮刀又在四處收割了！";
+  const timing = isMorning ? "今日早盤最新" : "今晚最新";
+
   return [
-    "🔔【韭菜守護者・每日早報巡邏】🌱🛡️",
-    "報告各位道友！大盤已開，華爾街大鐮刀又在磨刀霍霍了！",
+    header,
+    salutation,
     "",
-    "今日最新【TOP 20 物理瓶頸榜單】已新鮮出爐！",
+    `${timing}【TOP 20 物理瓶頸榜單】已新鮮同步！`,
     `當前焦點瓶頸領跑：${topNames} 等 20 檔核心標的～`,
     "誰在手握實體訂單真放量、誰在裸泳炒作割韭菜，後台數據全幫你照妖完畢。",
     "",
@@ -86,7 +99,7 @@ export async function broadcastV213Top20(
 
   const reminderMessage: LineOutboundMessage = {
     type: "text",
-    text: dailyHumorousReminderText(report),
+    text: dailyHumorousReminderText(report, now),
   };
   const messages = (slot === "test" && env.V213_TEST_PUSH_FULL_CARDS === "true")
     ? buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex")
