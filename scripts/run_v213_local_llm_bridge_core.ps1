@@ -166,7 +166,7 @@ if ($SelfTest) {
     $testGeneration = '0123456789abcdef0123456789abcdef'
     $derived = Get-V213FreeRelayGatewaySecret -HmacSecret $testHmac -Generation $testGeneration
     if ($derived -notmatch '^[0-9a-f]{64}$') { throw 'FREE_RELAY gateway secret derivation failed.' }
-    $testRecord = New-V213FreeRelayRouteRecord -PublicUrl 'https://ephemeral-test.trycloudflare.com' -Model 'qwen38-q6' -Generation $testGeneration -ConnectedAt ([datetime]::UtcNow.ToString('o'))
+    $testRecord = New-V213FreeRelayRouteRecord -PublicUrl 'https://ephemeral-test.trycloudflare.com' -Model 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -Generation $testGeneration -ConnectedAt ([datetime]::UtcNow.ToString('o'))
     if ([string]$testRecord.tunnel_mode -ne 'quick_free_relay' -or [int]$testRecord.consecutive_health_checks -ne 3) { throw 'FREE_RELAY record contract failed.' }
     if ((Get-BlueGreenDecision $false $true) -ne 'ROLLBACK_NEW_RETAIN_OLD') { throw 'Blue/green rollback self-test failed.' }
     if ((Get-BlueGreenDecision $true $false) -ne 'PROMOTE_NEW_RETAIN_OLD_UNTIL_FINALIZE') { throw 'Blue/green staged cutover self-test failed.' }
@@ -588,11 +588,11 @@ $GatewayPort = Resolve-GatewayPort $GatewayPort
 $python = Resolve-Python
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
 $llama = Resolve-Llama
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' }
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548') { throw "FREE_RELAY requires exact model Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548; observed=$Model" }
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET

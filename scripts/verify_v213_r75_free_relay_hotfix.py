@@ -146,7 +146,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("base_named_tunnel_commit") != BASE or refs.get("source_commit") != commit or
             str(refs.get("workflow_run_id")) != run_id or refs.get("production_mutation_by_ci") is not False or
             refs.get("protected_release_semantics_unchanged") is not True or refs.get("consecutive_public_health_required") != 3 or
-            refs.get("health_schema_version") != 2 or refs.get("exact_model") != "qwen38-q6" or
+            refs.get("health_schema_version") != 2 or refs.get("exact_model") != "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548" or
             refs.get("normal_production_tunnel_mode") != "quick_free_relay" or
             refs.get("workers_dev_stable_entrypoint") is not True or refs.get("custom_domain_required") is not False):
         raise VerificationError("hotfix refs mismatch")

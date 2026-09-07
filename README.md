@@ -33,7 +33,7 @@ The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, 
 LINE -> privacy/admission gates -> deterministic seven-field research tools
                               -> bounded public Q&A
 workers.dev -> signed short-lived route lease -> TryCloudflare -> Gateway
-            -> existing llama.cpp -> exact qwen38-q6
+            -> existing llama.cpp -> exact Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548
 ```
 
 Only authenticated compact Q&A/smoke requests set request-local `enable_thinking=false`; legacy requests and the user's preset are unchanged. Ranking remains deterministic. Stale/missing/future data fails closed, never falls back to five fields. No custom domain, second large model or paid fallback.

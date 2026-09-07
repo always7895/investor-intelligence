@@ -8,7 +8,7 @@
 
 - 互動與排程 Top20 共用 **20 檔完整七欄雙語卡片**：四組 carousel，每組五家公司。輸入 `Top20 文字` 可取得完整、依公司分組的文字版，不再橫向擠表格或省略尾端股票。
 - 七欄：股票、近2年歷史年化報酬、近6個月歷史報酬、行業別、獲利簡述、目前訂單、未來訂單展望。沒有可靠證據就顯示未揭露／無可靠預估，不編造訂單總額、不把 LIMITED 升 HIGH。
-- 指定 `qwen38-q6`，保留真實 canonical model ID、拒絕別名衝突／錯誤模型。既有 `127.0.0.1:8080` Router，單一模型；不另啟 llama-server、不改使用者 preset／持久推論參數。
+- 指定 `Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548`，保留真實 canonical model ID、拒絕別名衝突／錯誤模型。既有 `127.0.0.1:8080` Router，單一模型；不另啟 llama-server、不改使用者 preset／持久推論參數。
 - 封存發布：digest-bound bytes、pointer-last、物件讀回、損毀 replay 拒絕、持久失敗 journal、rollback／finalize。三個舊未封存寫入入口已 HTTP410。
 - Windows **07:20／20:20 台北時間**產生並發布新封存資料；Worker **08:00／21:00**推送時間不變。排程採 Interactive owner、IgnoreNew、100分鐘上限與重試。請保持電腦／網路可用及使用者登入；鎖定桌面可執行，登出後不保證。
 

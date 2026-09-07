@@ -17,7 +17,7 @@ namespace InvestorIntelligence
     {
         const string Version = "2.1.3";
         const string Revision = "ModelSelect-R43";
-        const string PreferredModel = "qwen38-q6";
+        const string PreferredModel = "qwen38-q5";
 
         static readonly string[] KnownLlamaBases = {
             "http://127.0.0.1:8080",
@@ -634,10 +634,10 @@ namespace InvestorIntelligence
                 PreferredModel + "\"}]}";
             List<string> models = ExtractModelIds(json);
             if (models.Count != 2) return 51;
-            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]}]}");
+            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q5\"]}]}");
             if (!aliases.Contains(PreferredModel)) return 56;
             try {
-                ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]},{\"id\":\"wrong\",\"aliases\":[\"qwen38-q6\"]}]}");
+                ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q5\"]},{\"id\":\"wrong\",\"aliases\":[\"qwen38-q5\"]}]}");
                 return 57;
             } catch (InvalidOperationException) { }
             if (!models.Any(id => id.Equals(

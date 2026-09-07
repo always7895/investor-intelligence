@@ -90,7 +90,7 @@ try {
         launcher_revision = $revision; publication_contract_sha256 = $contractSha
         worker_test_payload = $workerTestPayload; packaged_worker_test_count = [int]$windows.worker_tests
         normal_production_tunnel_mode = 'quick_free_relay'; workers_dev_stable_entrypoint = $true; custom_domain_required = $false
-        trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = 'qwen38-q6'; health_schema_version = 2
+        trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'; health_schema_version = 2
         signed_route_registration = $true; route_generation_required = $true; heartbeat_lease_required = $true; stale_and_replay_rejected = $true
         blue_green_startup = $true; verified_rollback = $true; allow_test_tunnel_exception_used = $false; named_tunnel_optional = $true
         protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $false
@@ -168,7 +168,7 @@ try {
     Copy-Item $liveProof (Join-Path $OutputRoot "$stem.QA-Live-Receipt.json")
     $windowsReceipt = Join-Path $OutputRoot "$stem.Windows-Receipt.json"; Copy-Item $env:R75_FREE_RELAY_WINDOWS_RECEIPT $windowsReceipt
     $deploymentReceipt = Join-Path $OutputRoot "$stem.Deployment-Receipt.json"
-    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
+    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deploymentReceipt,(($deployment|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $deliveryReceipt = Join-Path $OutputRoot "$stem.Delivery-Receipt.json"
     $delivery = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;package="$stem.zip";zip_sha256=$zipSha;bytes=(Get-Item $zip).Length;immutable_identity="$sha-$runId";zero_cost=$true;custom_domain_required=$false;production_mutation_by_ci=$false;external_mutation=$false}

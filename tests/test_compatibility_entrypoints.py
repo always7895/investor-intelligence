@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAIRS = (
     ('run-v213-local-source-diverse.ps1', 'run-v213-local.ps1',
-     ['-ProjectRoot', 'synthetic root (1)', '-Model', 'qwen38-q6', '-NoSync', '-NoAutoActivation'],
+     ['-ProjectRoot', 'synthetic root (1)', '-Model', 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548', '-NoSync', '-NoAutoActivation'],
      '@{root=$ProjectRoot; model=$Model; no_sync=[bool]$NoSync; no_activation=[bool]$NoAutoActivation}',
-     {'root':'synthetic root (1)', 'model':'qwen38-q6', 'no_sync':True, 'no_activation':True}),
+     {'root':'synthetic root (1)', 'model':'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548', 'no_sync':True, 'no_activation':True}),
     ('activate-v213-seven-field-schedule-serenity-latest.ps1', 'activate-v213-diversified-schedule.ps1',
      ['-FieldLocale','bilingual','-PreflightOnly'],
      '@{locale=$FieldLocale; preflight=[bool]$PreflightOnly; confirm=[bool]$ConfirmActivation}',

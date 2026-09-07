@@ -102,7 +102,7 @@ try {
         compact_context='PASS';deployment_readiness='PASS_REAL_ISOLATED';live_qa='PASS';live_free_relay_smoke='PASS';release_ready=$true;
         live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
         exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
-        quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
+        quick_tunnel_ephemeral=$true;exact_model='Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548';health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false
         worker_deployed=$false;production_kv_or_do_written=$false;line_message_sent=$false;schedules_registered=$false;completed_utc=(Get-Date).ToUniversalTime().ToString('o')

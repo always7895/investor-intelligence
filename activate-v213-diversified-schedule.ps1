@@ -169,7 +169,7 @@ try{
         $modelResult=Get-HealthyModelState (Join-Path $configRoot 'v213-local-model.json') $ExpectedModel
         $mode=[string]$modelResult.tunnel_mode
         if($mode-eq'quick_free_relay'){
-            if([string]$modelResult.model-cne'qwen38-q6'){throw "FREE_RELAY requires exact model qwen38-q6; observed=$($modelResult.model)."}
+            if([string]$modelResult.model-cne'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'){throw "FREE_RELAY requires exact model Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548; observed=$($modelResult.model)."}
             Write-Host 'V213_FREE_RELAY_ACTIVATION_PREFLIGHT = PASS; stable_entrypoint=workers_dev; custom_domain_required=false; test_tunnel_exception=false' -ForegroundColor Green
         }elseif($mode-ne'named'){
             if(-not$AllowTestTunnelException){throw "Production local-model activation requires tunnel_mode=quick_free_relay or named; observed=$mode. AllowTestTunnelException is test-only."}

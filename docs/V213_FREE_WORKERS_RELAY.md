@@ -4,7 +4,7 @@
 
 ```text
 workers.dev -> authenticated route lease -> ephemeral TryCloudflare
-            -> Gateway -> existing llama.cpp -> exact qwen38-q6
+            -> Gateway -> existing llama.cpp -> exact Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548
 ```
 
 No custom domain or paid fallback. Only workers.dev is stable. The Router remains models-max1; only authenticated compact Q&A/smoke requests use the authorized request-level non-thinking mode. The user's preset is not edited.

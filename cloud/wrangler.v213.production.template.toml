@@ -27,7 +27,7 @@ V213_FIELD_LOCALE = "bilingual"
 # validated ephemeral TryCloudflare route. No custom domain is required.
 FREE_RELAY_ENABLED = "true"
 FREE_RELAY_MAX_TTL_SECONDS = "300"
-LOCAL_LLM_MODEL = "qwen38-q6"
+LOCAL_LLM_MODEL = "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548"
 
 [[kv_namespaces]]
 binding = "PUBLIC_CACHE"

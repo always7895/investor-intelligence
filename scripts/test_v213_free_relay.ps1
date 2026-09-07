@@ -27,7 +27,7 @@ try {
     if ([string]$config.worker_origin -ne 'https://stable-existing-worker.workers.dev') { throw 'Stable workers.dev origin was not retained.' }
     $generation = '0123456789abcdef0123456789abcdef'
     $connected = [datetime]::UtcNow.ToString('o')
-    $record = New-V213FreeRelayRouteRecord -PublicUrl 'https://ephemeral-free.trycloudflare.com' -Model 'qwen38-q6' -Generation $generation -ConnectedAt $connected -LeaseTtlSeconds 180
+    $record = New-V213FreeRelayRouteRecord -PublicUrl 'https://ephemeral-free.trycloudflare.com' -Model 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -Generation $generation -ConnectedAt $connected -LeaseTtlSeconds 180
     $capturedBody = ''; $capturedHeaders = $null
     $transport = {
         param($Endpoint,$Headers,$Body)
@@ -41,14 +41,14 @@ try {
     if ($expected -cne [string]$capturedHeaders['x-ii-v21-signature']) { throw 'FREE_RELAY HMAC signature mismatch.' }
     if ($capturedBody -match [regex]::Escape($hmac) -or $capturedBody -match 'encrypted_hmac') { throw 'FREE_RELAY route body leaked authentication material.' }
     $parsed = $capturedBody | ConvertFrom-Json
-    if ([string]$parsed.tunnel_mode -ne 'quick_free_relay' -or [string]$parsed.model -ne 'qwen38-q6' -or [int]$parsed.health_schema_version -ne 2 -or [int]$parsed.consecutive_health_checks -ne 3) { throw 'FREE_RELAY route record contract mismatch.' }
+    if ([string]$parsed.tunnel_mode -ne 'quick_free_relay' -or [string]$parsed.model -ne 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -or [int]$parsed.health_schema_version -ne 2 -or [int]$parsed.consecutive_health_checks -ne 3) { throw 'FREE_RELAY route record contract mismatch.' }
     $gatewaySecret = Get-V213FreeRelayGatewaySecret -HmacSecret $hmac -Generation $generation
     if ($gatewaySecret -notmatch '^[0-9a-f]{64}$' -or $capturedBody -match $gatewaySecret) { throw 'Derived gateway secret handling failed.' }
     foreach ($invalidUrl in @('https://stable.example.com','http://bad.trycloudflare.com','https://evil.trycloudflare.com/path')) {
-        try { [void](New-V213FreeRelayRouteRecord -PublicUrl $invalidUrl -Model 'qwen38-q6' -Generation $generation -ConnectedAt $connected); throw 'Invalid FREE_RELAY URL was accepted.' }
+        try { [void](New-V213FreeRelayRouteRecord -PublicUrl $invalidUrl -Model 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -Generation $generation -ConnectedAt $connected); throw 'Invalid FREE_RELAY URL was accepted.' }
         catch { if ($_.Exception.Message -eq 'Invalid FREE_RELAY URL was accepted.') { throw } }
     }
-    try { [void](New-V213FreeRelayRouteRecord -PublicUrl 'https://ok.trycloudflare.com' -Model 'qwen38-q6' -Generation 'replayed-invalid-generation' -ConnectedAt $connected); throw 'Malformed route generation was accepted.' }
+    try { [void](New-V213FreeRelayRouteRecord -PublicUrl 'https://ok.trycloudflare.com' -Model 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -Generation 'replayed-invalid-generation' -ConnectedAt $connected); throw 'Malformed route generation was accepted.' }
     catch { if ($_.Exception.Message -eq 'Malformed route generation was accepted.') { throw } }
 
     $hostPath = (Get-Process -Id $PID).Path
@@ -62,7 +62,7 @@ try {
     $bridgeSource = Get-Content -LiteralPath $bridge -Raw -Encoding utf8
     $heartbeatSource = Get-Content -LiteralPath $heartbeat -Raw -Encoding utf8
     $activationSource = Get-Content -LiteralPath $activation -Raw -Encoding utf8
-    foreach ($marker in @("Model -cne 'qwen38-q6'", "mode -eq 'FreeRelay'", 'Start-HealthyQuickTunnel', 'Publish-V213FreeRelayRoute', 'Start-FreeRelayHeartbeat', 'heartbeatActivationFile')) {
+    foreach ($marker in @("Model -cne 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'", "mode -eq 'FreeRelay'", 'Start-HealthyQuickTunnel', 'Publish-V213FreeRelayRoute', 'Start-FreeRelayHeartbeat', 'heartbeatActivationFile')) {
         if ($bridgeSource.IndexOf($marker,[StringComparison]::Ordinal) -lt 0) { throw "FREE_RELAY bridge marker missing: $marker" }
     }
     if ($bridgeSource.IndexOf('$heartbeat = Start-FreeRelayHeartbeat',[StringComparison]::Ordinal) -gt $bridgeSource.IndexOf('$freeRelayRegistration = Publish-V213FreeRelayRoute',[StringComparison]::Ordinal)) { throw 'Heartbeat startup must precede atomic Worker route publication.' }
@@ -71,7 +71,7 @@ try {
     foreach ($marker in @('free_relay_lease_expires_at','free_relay_route_generation','health_schema_version','v213-local-llm-gateway','stable_entrypoint=workers_dev')) {
         if ($activationSource.IndexOf($marker,[StringComparison]::Ordinal) -lt 0) { throw "FREE_RELAY activation fail-closed marker missing: $marker" }
     }
-    Write-Host "V213_FREE_RELAY_HOST_TEST = PASS; powershell=$($PSVersionTable.PSVersion); workers_dev_stable=true; custom_domain=false; hmac=true; secret_redaction=true; exact_model=qwen38-q6; health_schema_v2=true; consecutive_health=3; reboot_reconnect=true; rollback=true; production_mutation=false" -ForegroundColor Green
+    Write-Host "V213_FREE_RELAY_HOST_TEST = PASS; powershell=$($PSVersionTable.PSVersion); workers_dev_stable=true; custom_domain=false; hmac=true; secret_redaction=true; exact_model=Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548; health_schema_v2=true; consecutive_health=3; reboot_reconnect=true; rollback=true; production_mutation=false" -ForegroundColor Green
 }
 finally {
     $config = $null; $hmac = $null; $encrypted = $null; $gatewaySecret = $null

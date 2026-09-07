@@ -33,16 +33,16 @@ function Invoke-RestMethod {
  param($Method,$Uri,$ContentType,$Body,$TimeoutSec)
  if($Uri-cne'http://127.0.0.1:1/v1/chat/completions'){throw 'UNEXPECTED_ENDPOINT'}
  $request=[Text.Encoding]::UTF8.GetString([byte[]]$Body)|ConvertFrom-Json
- if($request.model-cne'qwen38-q6'-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
+ if($request.model-cne'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
  return $script:Response
 }
-$preferredModel='qwen38-q6'
+$preferredModel='Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'
 $canonical='canonical-q6-測試'
-$script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
-$resolved=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'
-if($resolved.model-cne'qwen38-q6'-or$resolved.canonical_model-cne$canonical){throw ('ALIAS_IDENTITY_MISMATCH; synthetic_actual='+($resolved|ConvertTo-Json -Compress))}
+$script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548')})
+$resolved=Resolve-Model 'http://127.0.0.1:1' 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'
+if($resolved.model-cne'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'-or$resolved.canonical_model-cne$canonical){throw ('ALIAS_IDENTITY_MISMATCH; synthetic_actual='+($resolved|ConvertTo-Json -Compress))}
 $script:Response=@{model=$canonical;choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
-Test-SelectedModelRoute 'http://127.0.0.1:1' 'qwen38-q6' $script:Catalog
+Test-SelectedModelRoute 'http://127.0.0.1:1' 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' $script:Catalog
 foreach($bad in @(
  @{model='wrong';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})},
  @{model=$canonical;choices=@(@{finish_reason='length';message=@{content='R75_FREE_RELAY_E2E_OK'}})},
@@ -50,12 +50,12 @@ foreach($bad in @(
  @{model=$canonical;choices=@(@{finish_reason='stop';message=@{content='wrong marker'}})}
 )){
  $script:Response=$bad; $failed=$false
- try{Test-SelectedModelRoute 'http://127.0.0.1:1' 'qwen38-q6' $script:Catalog}catch{$failed=$true}
+ try{Test-SelectedModelRoute 'http://127.0.0.1:1' 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' $script:Catalog}catch{$failed=$true}
  if(-not$failed){throw 'INVALID_COMPLETION_ACCEPTED'}
 }
-$script:Catalog+=@([pscustomobject]@{id='other';aliases=@('QWEN38-Q6')})
+$script:Catalog+=@([pscustomobject]@{id='other';aliases=@('QWEN3.8-27B-UD-Q5_K_XL-7A1459E88548')})
 $failed=$false
-try{$null=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'}catch{$failed=$true}
+try{$null=Resolve-Model 'http://127.0.0.1:1' 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548'}catch{$failed=$true}
 if(-not$failed){throw 'AMBIGUOUS_ALIAS_ACCEPTED'}
 Write-Output 'BRIDGE_SHARED_IDENTITY=PASS; no_network=true; no_mutation=true'
 '''.replace('ROOT_VALUE', quote(ROOT)).replace('PYTHON_VALUE', quote(sys.executable))

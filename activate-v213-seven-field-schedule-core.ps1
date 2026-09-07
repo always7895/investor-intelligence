@@ -243,7 +243,7 @@ function Get-HealthyModelState([string]$Path,[string]$RequiredModel) {
         if ($RequiredModel -and $model -ine $RequiredModel) { return $null }
         $tunnelMode = [string](Get-PropertyValue $modelState 'tunnel_mode' '')
         if ($tunnelMode -eq 'quick_free_relay') {
-            if ($model -cne 'qwen38-q6' -or $publicUrl -notmatch '^https://[a-z0-9-]+\.trycloudflare\.com/?$') { return $null }
+            if ($model -cne 'Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548' -or $publicUrl -notmatch '^https://[a-z0-9-]+\.trycloudflare\.com/?$') { return $null }
             if ([string](Get-PropertyValue $modelState 'free_relay_worker_origin' '') -notmatch '^https://[a-z0-9-]+(?:\.[a-z0-9-]+)*\.workers\.dev$') { return $null }
             if ([string](Get-PropertyValue $modelState 'free_relay_route_generation' '') -notmatch '^[0-9a-f]{32}$') { return $null }
             $leaseExpiry = [DateTimeOffset]::MinValue
