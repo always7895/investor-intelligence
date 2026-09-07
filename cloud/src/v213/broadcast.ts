@@ -29,31 +29,56 @@ function taipeiDate(now: number): string {
   }).format(new Date(now));
 }
 
-function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): string {
-  const topNames = report.records.slice(0, 3).map((r) => r.ticker).join("、");
-  const taipeiHourStr = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Taipei",
-    hour: "numeric",
-    hour12: false,
-  }).format(new Date(now));
-  const hour = Number(taipeiHourStr) || 0;
-  const isMorning = hour >= 5 && hour < 12;
-  const header = isMorning ? "🔔【韭菜守護者・早盤巡邏】🌱🛡️" : "🔔【韭菜守護者・晚間美股夜戰巡邏】🌱🛡️";
-  const salutation = isMorning
-    ? "早安各位道友！台美股開盤在即，華爾街大鐮刀又在磨刀霍霍了！"
-    : "晚安各位道友！美股夜戰開打，華爾街主力大鐮刀又在四處收割了！";
-  const timing = isMorning ? "今日早盤最新" : "今晚最新";
+function taipeiDetails(now = Date.now()): { dayIndex: number; dateStr: string } {
+  const d = new Date(now);
+  const weekdayStr = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", weekday: "short" }).format(d);
+  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayStr);
+  const dateStr = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", month: "numeric", day: "numeric" }).format(d);
+  return { dayIndex: dayIndex >= 0 ? dayIndex : 1, dateStr };
+}
 
-  return [
-    header,
-    salutation,
+function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): string {
+  const { dayIndex, dateStr } = taipeiDetails(now);
+
+  const weekdayGreetings = [
+    "【週末沉澱日】不用盯盤的假日時光，最適合靜下心來盤點物理瓶頸，別讓主力的假新聞擾亂節奏！",
+    "【週一開工開局】華爾街大鐮刀週末充完電又在磨刀霍霍了！新的一週多空交戰，先看清底層實體訂單！",
+    "【週二盤中觀察】主力洗盤甩轎是常態，浮躁追高最容易被收割，數據幫你穩住心態！",
+    "【週三週中巡邏】行情走到一週中場，誰在靠故事裸泳、誰在手握真訂單放量，數據全幫你照妖完畢！",
+    "【週四夜戰前瞻】重要數據與美股夜戰前夕，市場情緒緊繃，唯有不可替代的物理瓶頸才是定海神針！",
+    "【週五結算警戒】每週選擇權今天大結算！主力劇烈洗盤容易引發震盪，抱緊核心護城河！",
+    "【週六復盤巡航】週末美股收盤，回顧一週籌碼與訂單變化，為下一波趨勢提前做好準備！",
+  ];
+
+  const top3 = report.records.slice(0, 3).map((r) => r.ticker).join("、");
+  const sortedByReturn = [...report.records].sort((a, b) => (Number(b.short_term_return_pct) || 0) - (Number(a.short_term_return_pct) || 0));
+  const gainer = sortedByReturn[0];
+
+  const dayOfYear = Math.floor(now / 86_400_000);
+  const featuredIndex = (dayOfYear + dayIndex) % Math.max(1, report.records.length);
+  const featured = report.records[featuredIndex];
+
+  const lines = [
+    `🔔【韭菜守護者・每日早報巡邏】🌱🛡️（${dateStr}）`,
+    weekdayGreetings[dayIndex] || weekdayGreetings[1],
     "",
-    `${timing}【TOP 20 物理瓶頸榜單】已新鮮同步！`,
-    `當前焦點瓶頸領跑：${topNames} 等 20 檔核心標的～`,
-    "誰在手握實體訂單真放量、誰在裸泳炒作割韭菜，後台數據全幫你照妖完畢。",
+    "📊 今日最新【TOP 20 物理瓶頸榜】已完成校準！",
+    `當前焦點領跑：${top3} 等 20 檔核心標的～`,
+  ];
+
+  if (gainer && Number(gainer.short_term_return_pct) > 0) {
+    lines.push(`🔥 近期動能指標：【${gainer.ticker}】近6月累積回報 +${Number(gainer.short_term_return_pct).toFixed(1)}%`);
+  }
+
+  if (featured && featured.current_orders && !featured.current_orders.includes("未揭露")) {
+    lines.push("", `🔍 今日亮點照妖鏡【${featured.ticker}】：`, `• 訂單合約：${featured.current_orders.slice(0, 75)}`);
+  }
+
+  lines.push(
     "",
-    "👇 趕緊點擊下方圖文選單【每日 TOP 20】免費開箱查看完整 20 檔七欄卡片，別讓主力又把你割了！👇",
-  ].join("\n");
+    "👇 點擊下方圖文選單【每日 TOP 20】免費查看完整 20 檔雙語卡片，別讓主力又把你割了！👇",
+  );
+  return lines.join("\n");
 }
 
 export async function broadcastV213Top20(
