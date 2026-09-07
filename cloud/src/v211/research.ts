@@ -206,7 +206,36 @@ const SERENITY_CANDIDATE_SUMMARY: Record<string, string> = {
   "IQE.L": "IQE 為量子點雷射磊晶龍頭，與 Quintessent 簽署採購協議進入客戶送樣；留意 2028 年前商業化進度與現金流融資需求。\n來源：IQE plc Official Announcement (LSE: IQE) https://www.iqep.com",
 };
 
+function formatReportTraditionalChinese(raw: string): string {
+  let cleaned = raw.replace(/<!--[\s\S]*?-->/g, "").trim();
+  cleaned = cleaned.replace(/^#\s+Investor Intelligence[^\n]*/m, "📊【韭菜守護者・最新 TOP 20 供應鏈研究報告】");
+  cleaned = cleaned.replace(/>\s*System operationalization score[^\n]*/g, "> 系統量化評分；非 Serenity 官方公式，非投資建議或保證。");
+  cleaned = cleaned.replace(/>\s*Serenity public-logic[^\n]*/g, "> 公開邏輯高保真研析：保持來源觀點、量化評分與模型推論獨立。");
+  cleaned = cleaned.replace(/Evidence standard:\s*([^\n]+)/g, "• 審查標準：$1（杜絕概念炒作）");
+  cleaned = cleaned.replace(/Live source families used:\s*([^\n]+)/g, "• 已調用來源家族：$1");
+  cleaned = cleaned.replace(/Official source families used:\s*([^\n]+)/g, "• 官方權威來源：$1");
+  cleaned = cleaned.replace(/Ticker multi-source boundary coverage:\s*([^\n]+)/g, "• 標的多來源覆蓋率：$1");
+  cleaned = cleaned.replace(/Largest publisher-family share:\s*([^\n]+)/g, "• 最大單一來源佔比：$1");
+  cleaned = cleaned.replace(/Yahoo\/yfinance is T3 observation only[^\n]*/g, "• Yahoo/yfinance 僅作 T3 輔助觀測，不作為公司瓶頸之獨立證明。");
+  cleaned = cleaned.replace(/\|\s*Rank\s*\|\s*Ticker\s*\|\s*System score\s*\|\s*Data quality\s*\|\s*Rating\s*\|/g, "| 排名 | 標的代號 | 系統評分 | 資料品質 | 評級 |");
+  cleaned = cleaned.replace(/##\s*Evidence Standard v3 guardrails/g, "## 🛡️ 核心審查與風控原則");
+  cleaned = cleaned.replace(/- Endpoint availability and macro context[^\n]*/g, "- 宏觀背景與 API 連線不構成公司加分。");
+  cleaned = cleaned.replace(/- Listing\/legal identity improves provenance[^\n]*/g, "- 上市身分僅證明合法存在，不代表具備定價權或護城河。");
+  cleaned = cleaned.replace(/- Keyword membership, sector, margin[^\n]*/g, "- 僅具關鍵字或名義客戶不能構成實體瓶頸。");
+  cleaned = cleaned.replace(/- Margin alone cannot create pricing-power[^\n]*/g, "- 毛利率單一指標不能代表替代門檻。");
+  cleaned = cleaned.replace(/- Revenue growth alone contributes[^\n]*/g, "- 營收成長至多佔市場捕捉能力之 40%。");
+  cleaned = cleaned.replace(/- A single market-data family caps[^\n]*/g, "- 單一市場來源會限制估值信心上限。");
+  cleaned = cleaned.replace(/- Conflicting material primary values[^\n]*/g, "- 關鍵數據衝突時系統一律 Fail-closed 不予採納。");
+  cleaned = cleaned.replace(/- The reviewed 101-source catalog[^\n]*/g, "- 審查目錄為總庫，僅上述實體來源於本次運行生效。");
+  return cleaned;
+}
+
 export function humanizeFallback(answer: string, query: ParsedQuery): string {
+  if (query.intent === "latest_report" || query.intent === "morning_report" || query.intent === "evening_report") {
+    if (typeof answer === "string" && (answer.includes("# Investor Intelligence") || answer.includes("<!-- line-public-eligible"))) {
+      return formatReportTraditionalChinese(answer);
+    }
+  }
   if (answer === "LOCAL_MODEL_NOT_CONFIGURED") {
     return [
       "本機模型橋接尚未啟用，所以這個開放式問題目前無法自由生成回答。",
