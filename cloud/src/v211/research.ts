@@ -258,9 +258,20 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
     return "本機模型目前正處理其他本機專案的大型任務（排隊中）；系統量化 universe、Top 20、期權與報告型問答仍可直接使用。";
   }
   if (answer === "OPTION_DATA_UNAVAILABLE") {
-    return query.ticker
-      ? `目前沒有 ${query.ticker} 的可用公開期權快照；可能是本輪 universe 未涵蓋、標的無可用期權，或公開資料擷取失敗。`
-      : "目前沒有可用的公開期權快照。";
+    if (query.ticker) {
+      const ticker = query.ticker.toUpperCase();
+      if (ticker === "SIVE" || ticker === "SIVE.ST" || ticker === "SIVEF") {
+        return "【SIVE 期權市場說明】\nSIVE（Sivers Semiconductors）主要掛牌於瑞典斯德哥爾摩證交所（SIVE.ST）及美股場外粉紅單（SIVEF），該標的目前在公開金融市場「無發行標準化選擇權（Options）合約」。\n若欲參與其 InP 雷射擴產行情，僅能透過現貨股票進行配置，無法執行 Sell Call / Sell Put 策略。\n（若需操作光通訊期權，可參考同屬瓶頸鏈且有豐富期權之標的，如 AXTI、COHR、AAOI、LITE、AVGO 等！）";
+      }
+      if (ticker === "3006.TW" || ticker === "6775.TW" || ticker === "ESMT") {
+        return "【3006.TW 晶豪科期權說明】\n晶豪科為台灣證券交易所上市公司，無美股標準化選擇權（Options）鏈，無法直接執行美股 Sell Call / Cash-Secured Put 策略。建議以現貨股票配置為主。";
+      }
+      if (ticker === "IQE" || ticker === "IQE.L") {
+        return "【IQE 期權市場說明】\nIQE plc 主要掛牌於英國倫敦證券交易所（LSE），目前在美股市場無活躍之標準化選擇權合約。建議以現貨股票配置為主。";
+      }
+      return `目前沒有 ${query.ticker} 的可用公開期權快照；可能是標的無可用標準化期權（如非美股或微型股），或公開資料未涵蓋該合約。`;
+    }
+    return "目前沒有可用的公開期權快照。";
   }
   if (answer === "OPTION_DATA_STALE") return "公開期權快照已超過 freshness gate，系統拒絕用過期報價提供 sell call / sell put 觀察；請等待下一次刷新。";
   if (answer === "CURRENT_DATA_UNAVAILABLE") return "目前沒有通過 freshness / evidence gate 的即時公開資料，因此系統不會猜測最新數值。";
