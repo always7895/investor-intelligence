@@ -607,6 +607,9 @@ try {
     $env:II_LOCAL_LLM_SHARED_SECRET = $bridgeMaterial
     $env:II_LLAMA_BASE_URL = $llama
     $env:II_LOCAL_LLM_MODEL = $Model
+    # FreeRelay pins the exact Pi canonical model; the Worker's usePi path
+    # requires the gateway's ii_pi proof, so the gateway must run the Pi backend.
+    $env:II_LOCAL_LLM_BACKEND = 'pi'
     $stdout = Join-Path $logRoot 'gateway.stdout.log'
     $stderr = Join-Path $logRoot 'gateway.stderr.log'
     Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
