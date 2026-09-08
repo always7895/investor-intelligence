@@ -136,6 +136,85 @@
 
 ---
 
+## 🔍 動態標的捕捉機制：不在名單上的高速成長股如何進入 Top 20？
+
+若市場上出現原本不在預設名單中的黑馬標的，突然呈現**爆發性高速成長**，系統能否自動捕捉並納入 Top 20？
+
+**答案是：完全可以！系統內建「雙軌動態捕捉機制」：**
+
+### 1. 軌道一：全自動動態市場掃描與主題爬蟲（Autonomous Discovery）
+在每日兩次的自動刷新管線中（`v211_serenity_top20.py`），系統**絕非僅查閱靜態名單**，而是透過動態引擎持續監測全市場：
+* **動態市場動能掃描器（Dynamic Market Screeners）**：
+  * 調用即時市場動能、成交量突破與高成長科技股篩選器（`yf.screen`），動態捕捉單日暴量、強勢突破 2 年新高或動能噴發的潛力黑馬。
+* **關鍵實體約束主題檢索（Thematic Search Crawlers）**：
+  * 針對光通訊（Optical Transceivers）、CPO 矽光子（Silicon Photonics）、高頻寬記憶體（HBM/CoWoS）、伺服器高速銅互連（AEC/Copper）、資料中心現場電力（SOFC/Power）等 7 大實體瓶頸賽道持續發動動態全網檢索（`yf.Search`），自動過濾出符合條件的上市股票代號。
+* **自動量化評分與淘汰晉升**：
+  * 所有動態掃描到的新候選標的，會立即被送入量化分析池：系統自動拉取歷史行情計算其 **2Y CAGR 年化報酬** 與 **6M 價格動能**，並連線美國 SEC EDGAR 檢索其最新 10-Q/10-K 合約訂單與履行義務（RPO）。
+  * 只要該標的的長期複利爆發力、合約確信度與物理約束地位高於既有標的，**在下一次定時管線刷新後，系統將自動將其淘汰晉升進入 TOP 20 榜單**！
+
+### 2. 軌道二：手動指定種子擴充（Manual Seed Insertion）
+若您在日常研究中提前發現了某檔處於極早期、尚未被廣泛報導的供應鏈隱形冠軍，您也可以手動將其加入種子清單，確保系統 100% 納入優先計算：
+1. 開啟專案配置檔案：`config/research-universe.local.json`
+2. 在 `"stocks"` 陣列中新增該股票代號，例如：
+   ```json
+   {
+     "ticker": "NEW_TICKER",
+     "name": "公司名稱",
+     "industry": "所屬實體約束產業",
+     "priority": "HIGH"
+   }
+   ```
+3. 下一次早晨 07:20 或晚間 20:20 定時刷新時，系統便會自動將其納入最高優先級評估，抓取 2Y 年化、期權鏈與最新合約，若達標即自動榮登 Top 20！
+
+---
+
+## 🤖 本地大模型更換指引（GUI EXE 圖形軟體與 CLI 腳本更換）
+
+專案在架構上採用**完全解耦設計**：雲端 Worker 與本地 FreeRelay 穿透通道的模型比對參數已設定為 `"auto"`（自動透傳模式），不再硬編碼任何特定的模型檔案名稱。  
+**只要本機服務相容 OpenAI API 規範（監聽於 `http://127.0.0.1:8080/v1`），您可以隨時熱插拔更換任何本地 LLM 模型！**
+
+### 方式 1：使用圖形化介面 EXE 更換（極致推薦：LM Studio / Ollama）
+如果您平常習慣使用帶有視窗操作的 EXE 軟體，這是最簡單直覺的更換方式：
+
+1. **開啟您的模型管理器 EXE**（例如 **LM Studio** 或 **Ollama**）：
+   * 在軟體內建的搜尋器中，下載您想要嘗試的任何 GGUF 模型權重（例如：`Qwen 2.5 32B`、`DeepSeek-R1 蒸餾版`、`Llama 3.3 70B`、`Mistral-Small` 等）。
+2. **啟動本機伺服器**：
+   * 在 LM Studio 的 **「Local Server」**（本機伺服器）分頁中：
+     * 選擇您剛才下載的新模型；
+     * 將 **Port** 埠號設為 **`8080`**；
+     * 點擊 **「Start Server」** 開啟服務。
+3. **完成切換**：
+   * **完全不需要修改專案程式碼，也完全不需要重新部署 Cloudflare Worker**！
+   * 專案的 FreeRelay 背景通道會自動連上新模型，您在 LINE 發送的自然語言問答即刻由新模型提供推理回覆！
+
+### 方式 2：使用 `llama-server.exe` 或單行 PowerShell 指令更換
+若您偏好命令列或使用純 `llama-server.exe`：
+1. 將下載好的新模型 GGUF 檔案放在任意磁碟路徑（例如 `D:\Models\MyNewModel-Q5_K_M.gguf`）。
+2. 開啟 PowerShell，執行一鍵切換指令：
+   ```powershell
+   Set-Location "D:\Investor-Intelligence-LINE-Pi"
+   .\run-v213-local-llm-bridge.ps1 -ModelPath "D:\Models\MyNewModel-Q5_K_M.gguf"
+   ```
+3. 腳本會自動重啟後台隧道與轉發網關，將新模型即時掛載至系統中。
+
+---
+
+## ⏰ 24/7 全自動無人值守運轉機制 (Autonomous Pipeline)
+
+若您平時完全不手動執行任何更新，專案依舊具備**全自動定時維護與無人值守運轉能力**：
+
+1. **每日雙時段全自動計算與雲端發布（Windows 排程器）**：
+   * **`InvestorIntelligence-v21-MorningRefresh`**：每日 **07:20 Asia/Taipei** 自動啟動。
+   * **`InvestorIntelligence-v21-EveningRefresh`**：每日 **20:20 Asia/Taipei** 自動啟動。
+   * 內建 `-PublishSealedBundle` 參數，自動完成資料清洗、2Y CAGR 計算、SEC EDGAR 訂單審查、防篡改密封驗證，並推送到 Cloudflare KV 雲端資料庫。
+   * 支援 `StartWhenAvailable`（若排程時電腦未開機，會在下次開機時自動補跑，確保數據持續新鮮）。
+2. **每日定時推播提醒（Cloudflare Cron Trigger）**：
+   * 每日早晨 **08:00 Asia/Taipei**，雲端 Worker 自動為擁有者（您本人）發送當日動態巡檢提醒卡片，嚴格守護每月 200 則免費推播配額。
+3. **好友 24 小時免費用戶查詢（Reply API）**：
+   * 任何人隨時在 LINE 發送 `TOP20`、`宏觀產業分析`、`期權` 或股票代號，雲端 Worker 立即從具備每日 10 萬次免費讀取額度的資料庫調出最新數據並秒回，全年無休！
+
+---
+
 ## 🛠️ 如果使用 Pi（Coding Agent）要安裝哪些外掛與配置？
 
 如果您使用 [Pi 程式碼代理（Pi Coding Agent）](https://github.com/earendil-works/pi-coding-agent) 來協同維護、研發或擴充本系統，請遵循下列標準配置（遵守本專案 `AGENTS.md` 規範，**一律使用專案本地安裝 `pi install -l`，絕不進行全域安裝**）：

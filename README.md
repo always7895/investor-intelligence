@@ -151,6 +151,79 @@ pi install -l npm:pi-llama-cpp npm:pi-web-access npm:pi-mcp-adapter npm:@injanei
 
 ---
 
+## 🔍 Dynamic Candidate Discovery: Capturing Emerging Hypergrowth Stocks
+
+If an emerging company that is not currently on the seed list experiences sudden, explosive growth, will the Top 20 ranking engine capture it?
+
+**Yes, completely! The system features an autonomous dual-track discovery architecture:**
+
+### 1. Track 1: Autonomous Dynamic Market Screeners & Thematic Crawlers
+During each daily refresh pipeline (`scripts/v211_serenity_top20.py`), the system dynamically scans the broader market:
+* **Market Momentum & Volume Screeners**: Queries real-time market breakout feeds (`yf.screen`) for volume anomalies, 2-year high breakouts, and aggressive top technology momentum gainers.
+* **Thematic Physical Bottleneck Crawlers**: Continuously searches across 7 critical physical bottleneck themes (`yf.Search`)—including optical transceivers, co-packaged optics (CPO), high-bandwidth memory (HBM), advanced packaging (CoWoS/SoIC), active electrical cables (AEC), and data center power generation.
+* **Quantitative Scoring & Promotion**: Newly discovered candidates are immediately evaluated: their 2Y CAGR and 6M momentum returns are calculated, and their latest SEC EDGAR 10-Q/10-K filings are analyzed for firm purchase commitments and remaining performance obligations (RPO). If an emerging stock's compounded returns, order confidence, and bottleneck criticality surpass existing constituents, **it will automatically displace lower-ranked stocks and enter the Top 20 on the next scheduled refresh**!
+
+### 2. Track 2: Manual Seed Insertion
+If you identify an emerging hidden champion early in its lifecycle, you can also manually register it for immediate priority tracking:
+1. Open `config/research-universe.local.json`.
+2. Add the ticker to the `"stocks"` array:
+   ```json
+   {
+     "ticker": "NEW_TICKER",
+     "name": "Company Name",
+     "industry": "Physical Bottleneck Sector",
+     "priority": "HIGH"
+   }
+   ```
+3. On the next scheduled refresh at 07:20 or 20:20 Asia/Taipei, the pipeline will prioritize this ticker, evaluate its 2Y CAGR and option chains, and promote it to Top 20 if it meets the criteria.
+
+---
+
+## 🤖 Local LLM Model Switching Guide (GUI EXE & CLI)
+
+The system is designed with a **fully decoupled architecture**: Cloudflare Worker and local FreeRelay tunnel model validation parameters are unlocked to `"auto"` mode.
+**As long as your local model endpoint is OpenAI API-compatible (listening at `http://127.0.0.1:8080/v1`), you can hot-swap any local LLM without redeploying the Worker!**
+
+### Method 1: Using a Desktop GUI Application (e.g. LM Studio / Ollama)
+This is the simplest and most visual way to switch models:
+1. **Open your model manager application** (such as **LM Studio** or **Ollama**).
+2. **Download your desired GGUF weights** (e.g., `Qwen 2.5 32B`, `DeepSeek-R1 Distill`, `Llama 3.3 70B`, etc.).
+3. **Start the local server**:
+   * Navigate to the **Local Server** tab in LM Studio.
+   * Select your downloaded model.
+   * Set the port to **`8080`**.
+   * Click **Start Server**.
+4. **Instant cutover**:
+   * **No code changes or Worker redeployment required**!
+   * The background FreeRelay tunnel automatically forwards complex macro and thematic Q&A queries from LINE to your newly loaded model.
+
+### Method 2: Using `llama-server.exe` or PowerShell CLI
+If you prefer running standalone `llama-server.exe`:
+1. Place your new GGUF file on disk (e.g., `D:\Models\MyModel-Q5_K_M.gguf`).
+2. Run the switch command in PowerShell:
+   ```powershell
+   Set-Location "D:\Investor-Intelligence-LINE-Pi"
+   .\run-v213-local-llm-bridge.ps1 -ModelPath "D:\Models\MyModel-Q5_K_M.gguf"
+   ```
+3. The script will automatically restart the tunnel and mount the new model.
+
+---
+
+## ⏰ 24/7 Autonomous Maintenance & Pipeline
+
+Even if you never manually trigger an update, the project operates autonomously:
+1. **Twice-Daily Scheduled Computation & Sealed Publication (Windows Task Scheduler)**:
+   * `InvestorIntelligence-v21-MorningRefresh` (07:20 Asia/Taipei)
+   * `InvestorIntelligence-v21-EveningRefresh` (20:20 Asia/Taipei)
+   * Configured with `-PublishSealedBundle` to autonomously compute 2Y CAGR, verify SEC EDGAR filings, and seal-publish to Cloudflare KV.
+   * Includes `StartWhenAvailable` to catch up automatically if the PC was powered off during the scheduled slot.
+2. **Daily 08:00 Push Notification (Cloudflare Cron Trigger)**:
+   * Sends the owner a single quota-saving daily reminder at 08:00 Asia/Taipei (~30 pushes/month, conserving 85% of LINE free push quota).
+3. **Multi-Tenant Instant Responses (LINE Free Reply API)**:
+   * All friends receive instant, rich Flex replies 24/7 from Cloudflare KV (backed by 100,000 free reads/day), requiring zero manual intervention.
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
