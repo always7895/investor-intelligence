@@ -50,7 +50,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     let chunk = prefix;
     for (const record of report.records) {
       const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
-      const nameText = stockInfo ? `\n公司全稱：【${stockInfo.chineseName}】${stockInfo.originalName}` : "";
+      const nameText = stockInfo ? `\n公司全稱：${stockInfo.chineseName} ${stockInfo.originalName}` : "";
       const sens = TOP20_SENSITIVITY[record.ticker];
       const sensText = sens ? `\n• 樂觀實現未來訂單／股價成長預估：${sens.bull}\n• 訂單未實現或推遲／股價下行風險：${sens.bear}` : "";
       const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n") + nameText + sensText;
@@ -77,7 +77,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }) : null;
     const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
     const nameLine = stockInfo
-      ? text(`【${stockInfo.chineseName}】${stockInfo.originalName}`, "xs", "#93C5FD", { weight: "bold" })
+      ? text(`${stockInfo.chineseName} ${stockInfo.originalName}`, "xs", "#93C5FD", { weight: "bold" })
       : null;
     return {
       type: "bubble", size: "mega",
@@ -1049,7 +1049,7 @@ interface StockResearchFact {
 const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   AAOI: {
     chineseName: "祥茂光電",
-    originalName: "Applied Optoelectronics, Inc.",
+    originalName: "Applied Optoelectronics",
     industry: "光電通訊（800G/1.6T 高速光收發模組與矽光子光引擎）",
     return2Y: "+118.5%",
     return6M: "+92.6%",
@@ -1058,7 +1058,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q 申報：德州工廠加速產能調度以承接 800G 規模放量；已獲大型雲端客戶採購承諾，正鎖定上游雷射供應鏈；需留意營運現金流與擴產資本開支。",
   },
   AXTI: {
-    chineseName: "AXT (北京通美)",
+    chineseName: "北京通美",
     originalName: "AXT Inc.",
     industry: "半導體材料（InP 磷化銦與 GaAs 化合物半導體基板晶圓）",
     return2Y: "+88.2%",
@@ -1068,8 +1068,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 8-K/10-Q：獲 Lumentum 4,350 萬美元產能預留定金，及 Coherent 2,229 萬美元 3 年預付款協議；需提防中國關鍵金屬（鎵/鍺）出口限制及原料風險。",
   },
   COHR: {
-    chineseName: "高意 (Coherent)",
-    originalName: "Coherent Corp.",
+    chineseName: "高意",
+    originalName: "Coherent",
     industry: "光電通訊（800G/1.6T 光收發模組與 InP/GaAs 光學雷射）",
     return2Y: "+95.4%",
     return6M: "+11.0%",
@@ -1079,7 +1079,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   TSEM: {
     chineseName: "高塔半導體",
-    originalName: "Tower Semiconductor Ltd.",
+    originalName: "Tower Semiconductor",
     industry: "半導體代工（矽光子晶圓製造與片上雷射耦合代工）",
     return2Y: "+132.9%",
     return6M: "+84.5%",
@@ -1089,7 +1089,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   SIVE: {
     chineseName: "思維斯半導體",
-    originalName: "Sivers Semiconductors AB",
+    originalName: "Sivers Semiconductors",
     industry: "InP 光學連續波（CW）雷射與 CPO 核心組件",
     return2Y: "+35.0%",
     return6M: "+18.5%",
@@ -1099,7 +1099,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   NVDA: {
     chineseName: "輝達",
-    originalName: "NVIDIA Corporation",
+    originalName: "NVIDIA",
     industry: "半導體晶片（AI 算力加速晶片與 NVLink 叢集網路）",
     return2Y: "+47.4%",
     return6M: "+25.8%",
@@ -1109,7 +1109,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   TSM: {
     chineseName: "台積電",
-    originalName: "Taiwan Semiconductor Manufacturing Co., Ltd.",
+    originalName: "TSMC",
     industry: "全球先進半導體晶圓製造與 CoWoS/SoIC 先進封裝絕對壟斷",
     return2Y: "+58.2%",
     return6M: "+36.5%",
@@ -1119,7 +1119,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   AMD: {
     chineseName: "超微半導體",
-    originalName: "Advanced Micro Devices, Inc.",
+    originalName: "AMD",
     industry: "半導體晶片（AI 算力 GPU 加速卡與資料中心處理器）",
     return2Y: "+84.2%",
     return6M: "+139.4%",
@@ -1129,7 +1129,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   AVGO: {
     chineseName: "博通",
-    originalName: "Broadcom Inc.",
+    originalName: "Broadcom",
     industry: "半導體設計（AI 乙太網交換晶片與客製化 ASIC）",
     return2Y: "+53.9%",
     return6M: "+8.0%",
@@ -1139,7 +1139,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   MU: {
     chineseName: "美光科技",
-    originalName: "Micron Technology, Inc.",
+    originalName: "Micron",
     industry: "半導體記憶體（HBM3e/HBM4 高頻寬記憶體與高階 DRAM）",
     return2Y: "+238.8%",
     return6M: "+156.2%",
@@ -1148,8 +1148,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q 揭露 RPO 達 50 億美元；日本經銷通路報告指出全球高階記憶體缺口達 40-60%，產品單價與毛利迎來超級週期。",
   },
   BE: {
-    chineseName: "布魯姆能源 (Bloom Energy)",
-    originalName: "Bloom Energy Corporation",
+    chineseName: "布魯姆能源",
+    originalName: "Bloom Energy",
     industry: "能源基礎設施（AI 資料中心固態氧化物燃料電池 SOFC 現場發電）",
     return2Y: "+376.3%",
     return6M: "+58.1%",
@@ -1158,8 +1158,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q：獲美光與頂級 AI 資料中心巨額現場發電訂單，享有 15 年超長服務長約；需注意天然氣原料成本與資本開支周轉。",
   },
   ALAB: {
-    chineseName: "阿斯特拉 (Astera Labs)",
-    originalName: "Astera Labs, Inc.",
+    chineseName: "阿斯特拉",
+    originalName: "Astera Labs",
     industry: "電子零組件（PCIe Gen 5/6 與 CXL 智慧高速 Retimer 晶片）",
     return2Y: "+173.1%",
     return6M: "+158.7%",
@@ -1168,8 +1168,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q 揭露：毛利率超過 75%，獲一線伺服器 ODM 全面導入；需留意新進競品低價競爭。",
   },
   LITE: {
-    chineseName: "Lumentum (朗美通)",
-    originalName: "Lumentum Holdings Inc.",
+    chineseName: "朗美通",
+    originalName: "Lumentum",
     industry: "光電通訊（EML 電吸收調製雷射與連續波 CW 雷射晶片）",
     return2Y: "+56.8%",
     return6M: "+32.4%",
@@ -1179,7 +1179,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   MRVL: {
     chineseName: "邁威爾科技",
-    originalName: "Marvell Technology, Inc.",
+    originalName: "Marvell",
     industry: "半導體設計（光通訊 PAM4 DSP 晶片與客製化 AI ASIC）",
     return2Y: "+78.2%",
     return6M: "+195.6%",
@@ -1189,7 +1189,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   WDC: {
     chineseName: "威騰電子",
-    originalName: "Western Digital Corporation",
+    originalName: "Western Digital",
     industry: "電腦週邊儲存（企業級 Enterprise SSD 與大容量近線 HDD）",
     return2Y: "+214.4%",
     return6M: "+80.5%",
@@ -1199,7 +1199,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   SMCI: {
     chineseName: "美超微電腦",
-    originalName: "Super Micro Computer, Inc.",
+    originalName: "Supermicro",
     industry: "伺服器系統（AI 伺服器機櫃與直接水冷 DLC 散熱系統）",
     return2Y: "-3.3%",
     return6M: "+22.8%",
@@ -1209,7 +1209,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   APH: {
     chineseName: "安費諾",
-    originalName: "Amphenol Corporation",
+    originalName: "Amphenol",
     industry: "電子零組件（AI 伺服器高頻銅互連纜線與高速背板連接器）",
     return2Y: "+65.7%",
     return6M: "+21.9%",
@@ -1219,7 +1219,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   CIEN: {
     chineseName: "席安娜",
-    originalName: "Ciena Corporation",
+    originalName: "Ciena",
     industry: "光通訊傳輸（資料中心互聯 DCI 與長途相干光傳輸系統）",
     return2Y: "+141.9%",
     return6M: "+7.3%",
@@ -1229,7 +1229,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   CRDO: {
     chineseName: "默升科技",
-    originalName: "Credo Technology Group Holding Ltd",
+    originalName: "Credo",
     industry: "電子零組件（伺服器主動式電纜 AEC 與低功耗高速 SerDes）",
     return2Y: "+133.6%",
     return6M: "+48.7%",
@@ -1238,8 +1238,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q 申報待履行訂單約 3,190 萬美元；正擴展微軟等超大規模客戶，需關注與光纖之成本博弈。",
   },
   MTSI: {
-    chineseName: "MACOM (邁康半導體)",
-    originalName: "MACOM Technology Solutions Holdings, Inc.",
+    chineseName: "邁康半導體",
+    originalName: "MACOM",
     industry: "半導體設計（800G/1.6T 高速類比驅動 IC 與連續波 CW 雷射）",
     return2Y: "+64.0%",
     return6M: "+17.5%",
@@ -1248,8 +1248,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-Q：營運利潤率穩步攀升，產能利用率滿載；需持續追蹤擴產設備調試進度。",
   },
   JBL: {
-    chineseName: "捷普 (Jabil)",
-    originalName: "Jabil Inc.",
+    chineseName: "捷普",
+    originalName: "Jabil",
     industry: "電子代工服務（光電精密製造、系統級封裝與光學代工組裝）",
     return2Y: "+42.1%",
     return6M: "+18.3%",
@@ -1258,8 +1258,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 10-K：與 Sivers 蘇格蘭晶圓廠深化封測代工合作；需留意代工產業低毛利特性。",
   },
   APLD: {
-    chineseName: "應用數位 (Applied Digital)",
-    originalName: "Applied Digital Corporation",
+    chineseName: "應用數位",
+    originalName: "Applied Digital",
     industry: "資料中心基礎設施（AI HPC 超大規模高效能運算算力中心園區）",
     return2Y: "+162.0%",
     return6M: "+115.3%",
@@ -1268,7 +1268,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 8-K：簽署長達 15 年期之超大規模長期租賃合約；需留意高槓桿專案融資利率與償債進度。",
   },
   IQE: {
-    chineseName: "愛奎 (IQE)",
+    chineseName: "愛奎",
     originalName: "IQE plc",
     industry: "量子點雷射（Quantum Dot）與先進化合物半導體磊晶",
     return2Y: "+22.4%",
@@ -1378,8 +1378,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "電源與散熱解決方案雙引擎驅動營運創新高；需關注原物料價格與傳統工業自動化週期。",
   },
   ARM: {
-    chineseName: "安謀控股",
-    originalName: "Arm Holdings plc",
+    chineseName: "安謀",
+    originalName: "ARM",
     industry: "英國劍橋・全球微處理器指令集架構與節能算力 IP 壟斷",
     return2Y: "+92.4%",
     return6M: "+35.2%",
@@ -1389,7 +1389,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   ASML: {
     chineseName: "艾司摩爾",
-    originalName: "ASML Holding N.V.",
+    originalName: "ASML",
     industry: "荷蘭・極紫外光（EUV / High-NA EUV）微影曝光機全球唯一壟斷",
     return2Y: "+38.5%",
     return6M: "+18.2%",
@@ -1399,7 +1399,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   VRT: {
     chineseName: "維諦技術",
-    originalName: "Vertiv Holdings Co",
+    originalName: "Vertiv",
     industry: "美國紐交所・AI 資料中心液冷散熱歧管（CDU）與精密電力架構",
     return2Y: "+185.6%",
     return6M: "+74.3%",
@@ -1409,7 +1409,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   ATCO: {
     chineseName: "阿特拉斯·科普柯",
-    originalName: "Atlas Copco AB",
+    originalName: "Atlas Copco",
     industry: "瑞典斯德哥爾摩・全球半導體超高真空乾式泵浦（Dry Vacuum Pumps）絕對霸主",
     return2Y: "+28.6%",
     return6M: "+12.5%",
@@ -1418,8 +1418,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "官方財報顯示半導體真空事業群（Vacuum Technique）營業利益率維持 25% 以上；需關注全球晶圓廠產能利用率週期。",
   },
   MYCR: {
-    chineseName: "邁克羅尼克 (Mycronic)",
-    originalName: "Mycronic AB",
+    chineseName: "邁克羅尼克",
+    originalName: "Mycronic",
     industry: "瑞典斯德哥爾摩・半導體與顯示器光罩無光罩雷射光學繪圖機絕對壟斷",
     return2Y: "+48.2%",
     return6M: "+24.0%",
@@ -1429,7 +1429,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   HEXA: {
     chineseName: "海克斯康",
-    originalName: "Hexagon AB",
+    originalName: "Hexagon",
     industry: "瑞典斯德哥爾摩・全球精密量測感測器與數位孿生工業軟體巨頭",
     return2Y: "+15.2%",
     return6M: "+8.4%",
@@ -1439,7 +1439,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   REN: {
     chineseName: "雷尼紹",
-    originalName: "Renishaw plc",
+    originalName: "Renishaw",
     industry: "英國倫敦・高精度雷射光學編碼器、晶圓測頭與機器人位置感測器龍頭",
     return2Y: "+18.5%",
     return6M: "+9.2%",
@@ -1449,7 +1449,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   PLTR: {
     chineseName: "帕蘭提爾",
-    originalName: "Palantir Technologies Inc.",
+    originalName: "Palantir",
     industry: "美國紐交所・國防主權 AI 與企業本體論（AIP Ontology）數據決策中樞",
     return2Y: "+112.0%",
     return6M: "+88.4%",
@@ -1459,7 +1459,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   POET: {
     chineseName: "POET 科技",
-    originalName: "POET Technologies Inc.",
+    originalName: "POET Technologies",
     industry: "加拿大/納斯達克・光電中介層（Optical Interposer）晶圓級光引擎平台",
     return2Y: "+65.0%",
     return6M: "+42.0%",
@@ -1468,8 +1468,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC Form 20-F：已與立訊精密、中際旭創等光模組大廠展開送樣合作；需高度關注量產商業化進度與現金流融資需求。",
   },
   CAMT: {
-    chineseName: "康特半導體",
-    originalName: "Camtek Ltd.",
+    chineseName: "康特科技",
+    originalName: "Camtek",
     industry: "納斯達克・先進封裝 CoWoS 與 3D 堆疊光學檢測與量測設備雙寡頭",
     return2Y: "+138.4%",
     return6M: "+72.0%",
@@ -1478,8 +1478,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "SEC 申報：受惠先進封裝擴產，檢測設備訂單創歷史新高；需留意晶圓代工廠機台資本支出認列進度。",
   },
   ONTO: {
-    chineseName: "安拓半導體 (Onto Innovation)",
-    originalName: "Onto Innovation Inc.",
+    chineseName: "安拓半導體",
+    originalName: "Onto Innovation",
     industry: "美國紐交所・先進封裝與半導體製程控制／計量光學設備龍頭",
     return2Y: "+98.6%",
     return6M: "+45.5%",
@@ -1489,7 +1489,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   SNPS: {
     chineseName: "新思科技",
-    originalName: "Synopsys, Inc.",
+    originalName: "Synopsys",
     industry: "納斯達克・全球晶片電子設計自動化（EDA）軟體與半導體 IP 龍頭",
     return2Y: "+42.8%",
     return6M: "+19.5%",
@@ -1619,7 +1619,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   BESI: {
     chineseName: "貝思半導體",
-    originalName: "BE Semiconductor Industries N.V.",
+    originalName: "Besi",
     industry: "荷蘭阿姆斯特丹・全球超精密混合鍵合（Hybrid Bonding）先進封裝設備絕對霸主",
     return2Y: "+76.5%",
     return6M: "+38.0%",
@@ -1819,7 +1819,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   IFX: {
     chineseName: "英飛凌",
-    originalName: "Infineon Technologies AG",
+    originalName: "Infineon",
     industry: "德國法蘭克福・全球功率半導體（SiC / GaN）與 AI 伺服器電源架構霸主",
     return2Y: "+28.0%",
     return6M: "+14.5%",
@@ -1829,7 +1829,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   STM: {
     chineseName: "意法半導體",
-    originalName: "STMicroelectronics N.V.",
+    originalName: "STMicroelectronics",
     industry: "歐洲泛歐・碳化矽（SiC）功率晶片與高階微控制器 MCU 巨頭",
     return2Y: "+15.0%",
     return6M: "+8.2%",
@@ -1839,7 +1839,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   AIXA: {
     chineseName: "愛思強",
-    originalName: "AIXTRON SE",
+    originalName: "Aixtron",
     industry: "德國法蘭克福・全球化合物半導體（GaN / SiC）MOCVD 薄膜沉積設備龍頭",
     return2Y: "+38.0%",
     return6M: "+16.5%",
@@ -1848,8 +1848,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "在手設備訂單飽滿；需留意終端化合物晶圓廠建廠時程。",
   },
   SOITEC: {
-    chineseName: "索特克半導體 (Soitec)",
-    originalName: "Soitec SA",
+    chineseName: "索特克半導體",
+    originalName: "Soitec",
     industry: "法國泛歐・全球 SOI（絕緣層上覆矽）與化合物特種工程基板 Smart Cut 絕對壟斷",
     return2Y: "+22.0%",
     return6M: "+12.0%",
@@ -1899,7 +1899,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   KLAC: {
     chineseName: "科磊",
-    originalName: "KLA Corporation",
+    originalName: "KLA",
     industry: "納斯達克・全球半導體晶圓製程良率控制與光學缺陷檢測 60%+ 絕對壟斷",
     return2Y: "+82.5%",
     return6M: "+38.4%",
@@ -1909,7 +1909,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   LRCX: {
     chineseName: "科林研發",
-    originalName: "Lam Research Corporation",
+    originalName: "Lam Research",
     industry: "納斯達克・全球半導體高深寬比電漿蝕刻與乾式薄膜沉積設備霸主",
     return2Y: "+65.0%",
     return6M: "+28.2%",
@@ -1919,7 +1919,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   AMAT: {
     chineseName: "應用材料",
-    originalName: "Applied Materials, Inc.",
+    originalName: "Applied Materials",
     industry: "納斯達克・全球最大半導體材料工程與薄膜沉積（CMP/PVD/CVD）裝備航母",
     return2Y: "+58.4%",
     return6M: "+26.0%",
@@ -1928,8 +1928,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "自由現金流極度豐沛，在手服務合約規模破百億美元；需關注國際出口審查。",
   },
   ANET: {
-    chineseName: "Arista 網路 (安銳捷)",
-    originalName: "Arista Networks, Inc.",
+    chineseName: "安銳捷",
+    originalName: "Arista Networks",
     industry: "紐約證交所・AI 資料中心超高速交換機硬體與 EOS 雲端網路作業系統霸主",
     return2Y: "+135.0%",
     return6M: "+55.0%",
@@ -1939,7 +1939,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   CEG: {
     chineseName: "星座能源",
-    originalName: "Constellation Energy Corporation",
+    originalName: "Constellation Energy",
     industry: "納斯達克・美國最大核能電廠運營商（微軟 20 年 PPA 綠色核電簽約方）",
     return2Y: "+260.0%",
     return6M: "+95.0%",
@@ -1948,8 +1948,8 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
     synthesis: "長期合約鎖定確定性極高之現金流，避開現貨電價波動；需留意核監管審批時程。",
   },
   ETN: {
-    chineseName: "伊頓公司",
-    originalName: "Eaton Corporation plc",
+    chineseName: "伊頓",
+    originalName: "Eaton",
     industry: "紐約證交所・AI 資料中心智慧配電架構、高壓開關與不斷電系統 UPS 龍頭",
     return2Y: "+96.0%",
     return6M: "+38.0%",
@@ -1959,7 +1959,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   TXN: {
     chineseName: "德州儀器",
-    originalName: "Texas Instruments Incorporated",
+    originalName: "Texas Instruments",
     industry: "納斯達克・全球最大類比晶片與嵌入式訊號處理龍頭（AI 電源管理核心）",
     return2Y: "+26.5%",
     return6M: "+12.0%",
@@ -1969,7 +1969,7 @@ const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
   },
   QCOM: {
     chineseName: "高通",
-    originalName: "QUALCOMM Incorporated",
+    originalName: "Qualcomm",
     industry: "納斯達克・邊緣端 AI PC（Snapdragon X Elite）與智慧型手機 NPU 算力霸主",
     return2Y: "+48.0%",
     return6M: "+24.5%",
