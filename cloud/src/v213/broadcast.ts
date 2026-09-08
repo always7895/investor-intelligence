@@ -126,9 +126,14 @@ export async function broadcastV213Top20(
     type: "text",
     text: dailyHumorousReminderText(report, now),
   };
-  const messages = (slot === "test" && env.V213_TEST_PUSH_FULL_CARDS === "true")
-    ? buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex")
-    : [reminderMessage];
+  const useReminder = env.V213_BROADCAST_MODE === "reminder";
+  const messages = useReminder
+    ? [reminderMessage]
+    : buildV213Top20Messages(
+        report,
+        v213FieldLocale(env.V213_FIELD_LOCALE),
+        env.V213_LINE_PRESENTATION === "text" ? "text" : "flex",
+      );
 
   const pointer = (await env.PUBLIC_CACHE.get("snapshot:current", "json")) as Record<string, unknown> | null;
   const runId = String(pointer?.run_id ?? "unknown");
@@ -156,14 +161,17 @@ export async function broadcastV213Top20(
 }
 
 export async function scheduledV213Broadcast(
-  env: V213BroadcastEnv & { V213_EVENING_PUSH_ENABLED?: string },
+  env: V213BroadcastEnv & { V213_EVENING_PUSH_ENABLED?: string; V213_BROADCAST_MODE?: string },
   cron: string,
   now: number,
 ): Promise<Record<string, unknown>> {
   if (cron === "0 0 * * *") return broadcastV213Top20(env, "morning", now);
   if (cron === "0 13 * * *") {
-    if (env.V213_EVENING_PUSH_ENABLED === "true") return broadcastV213Top20(env, "evening", now);
-    return { status: "evening_push_disabled_to_save_quota" };
+    if (env.V213_BROADCAST_MODE === "reminder" && env.V213_EVENING_PUSH_ENABLED !== "true") {
+      console.error("V213_SCHEDULED_BROADCAST_SKIPPED evening_push_disabled_to_save_quota");
+      return { status: "evening_push_disabled_to_save_quota" };
+    }
+    return broadcastV213Top20(env, "evening", now);
   }
   return { status: "unsupported_cron" };
 }

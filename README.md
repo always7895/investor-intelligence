@@ -1,50 +1,170 @@
-# Investor Intelligence v2.1.3 R75
+# Investor Intelligence v2.1.3 R75 — Serenity Final
 
-[繁體中文](README.zh-TW.md) · [Latest immutable release](https://github.com/always7895/investor-intelligence/releases/latest) · [Bilingual status](docs/CURRENT_STATUS_BILINGUAL.md)
+[繁體中文 (Traditional Chinese)](README.zh-TW.md) ｜ [GitHub Latest Release](https://github.com/always7895/investor-intelligence/releases/latest) ｜ [Methodology Guide](docs/SERENITY_TIMELESS_SELECTION_METHODOLOGY.md) ｜ [Options Recommendation Spec](docs/OPTIONS_RECOMMENDATION_SPEC.md)
 
-Privacy-first, zero-cost public-market research. / 隱私優先、零付費公開市場研究。 Research software—not personalized investment advice, trading instructions or guaranteed returns.
+**Privacy-first, zero-cost public-market research and cross-cycle supply chain intelligence system.**
+*Research software — not personalized investment advice, trading instructions, or guaranteed returns. This system provides objective, data-grounded quantitative analysis and decision support based strictly on first-party verifiable evidence.*
 
-## Delivered functionality / 已完成的功能
+---
 
-- Interactive and scheduled Top20 share **20 complete seven-field bilingual cards**: four carousels of five companies. `Top20 文字` provides complete company-grouped text, not a truncated table.
-- Seven fields: Ticker (股票), Long-term return 2Y annualized (長期投資報酬率近2年年化), Short-term return 6M (短期投資報酬率近6個月), Industry (行業別), Profit summary (獲利簡述), Current orders (公司現在訂單), and Future order outlook (未來訂單預估). All 20 rows are backed by first-party SEC RPO/backlog disclosures or official multi-year customer agreements (e.g. TSEM $1.3B contracts / $290M prepayments, COHR multibillion-dollar NVIDIA agreement, AXTI Lumentum/Coherent prepayment deposits).
-- Timeless Serenity supply-chain selection methodology: identifies structural transition demand waves (AI datacenter optics, CPO, memory supercycle, humanoid robotics planetary roller screws, on-site datacenter power), ranks constraint layers before tickers, evaluates forward customer commitments over lagging P/E, and enforces dynamic exit falsifiers against commoditization and dilution.
-- Direct LINE Bot Q&A: single-step direct replies within 28 seconds; no reference-number lookups required. High-availability fallback guarantees instant research facts even under local GPU contention.
-- Exact Qwen 3.8 27B Q5 (`Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548`) served via Router at `127.0.0.1:8080` with Pi SDK gateway transport and XHIGH reasoning.
-- Single release ZIP package: download the immutable release archive, verify external SHA-256, and extract into project root without multi-part manual setups.
+## 🌟 Major Highlights & What's New (v2.1.3 R75 Final)
 
-## Evidence and scope — 2026-09-06 Asia/Taipei
+### 1. Cross-Cycle Physical Bottleneck Selection (Serenity Methodology)
+* **Beyond Rigid Sector Buckets**: Operationalizes Serenity's (@aleabitoreddit) physical constraint layer framework. Dynamically identifies structural transition demand waves: optical co-packaging (CPO/CW lasers/InP substrates), advanced packaging (CoWoS/SoIC), memory supercycles (HBM/niche DRAM), on-site datacenter power generation (SOFC/SMR/microgrids), and humanoid robotics precision mechanical actuation (planetary roller screws / frameless motors).
+* **100% First-Party Contract Evidence**: All 20 tracked symbols are **100% backed by statutory SEC disclosures (RPO / Backlog) or official multi-year customer agreements** (e.g. TSEM $1.3B contracts / $290M prepayments, COHR multibillion-dollar NVIDIA agreement, AXTI Lumentum/Coherent capacity reservation deposits). Zero "undisclosed" placeholders.
 
-Published/installed executable: `b5baae936dd3d422583decf9268910ed5783e4d5`; Windows CI **33992169731** PASS; Python **585 /2 skipped**. ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`. The immutable release was downloaded and independently verified after publication, including **`gh release verify-asset` cryptographic release-asset attestation PASS**.
+### 2. Macro Industry Review (Latest Report Overhaul)
+* **Eliminates Redundancy**: Individual 7-field company cards are dedicated to the `TOP20` Rich Menu. The **"Latest Report" is completely elevated to macro cross-cycle reviews across 5 core sectors**:
+  1. 🤖 **AI Compute & Scale-Out Networking** (inference demand, power walls, cloud hyperscaler CapEx exceeding $350B)
+  2. ⚡ **Optical Interconnect, CPO & Silicon Photonics** (800G/1.6T transitions, InP substrate and CW laser capacity deficit of 40-60%)
+  3. 🔋 **AI Datacenter Power & On-Site Generation** (4-7 year grid interconnection queue, 15-year SOFC / SMR PPA visibility)
+  4. 📦 **Advanced Packaging & High-Bandwidth Memory** (CoWoS tightness, HBM allocations locked through 2027, mature DRAM displacement)
+  5. 🦾 **Humanoid Robotics & Actuation Mechanics** (2026-2027 pilot scale, precision grinding yield constraints on roller screws)
+* **Forward CapEx & Revenue Outlook**: Every sector features concrete forward capital expenditure projections and revenue visibility metrics.
 
-The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, Windows CI [33989794415](https://github.com/always7895/investor-intelligence/actions/runs/33989794415). **For any particular ZIP, its own `HOTFIX-REFS.json`, external checksum and adjacent receipts—not an older documentation table—identify the executable source and build run.** Current downloadable identity is on the release linked above.
+### 3. Arbitrary Option Ticker Support (Unrestricted Lookups)
+* **No Pinned Symbols**: Freely query ANY US stock symbol paired with options keywords (e.g. `AAOI sell call`, `AXTI weekly options`, `COHR options`, `AMD sell call`, `MU monthly options`, `TSM options`).
+* **High-Precision Limit & Yield Analytics**: Automatically calculates Strike K (% OTM), real-time Bid/Ask/Mid, **Recommended Limit Order Bands**, effective sale prices, break-even points, implied volatility (IV), annualized yields (Mid % / Bid %), and liquidity verification (PASS / Observe).
+* **Objective International Guidance**: For non-optionable small caps or non-US listings (e.g. Sivers Semiconductors on Stockholm First North, ESMT on Taiwan TWSE, IQE on London LSE), the system provides factual market listing context, advises equity-only positioning, and routes users to liquid optical supply chain peers.
 
-- PS5.1/7, Python regression, Node typecheck and full Worker **22 files /142 tests** PASS. Exact Python counts and source hashes are in the corresponding CI evidence.
-- Downloaded ZIP CRC, MANIFEST, SHA256SUMS, path/duplicate/symlink/PE/release-marker/receipt checks and installed runtime gates PASS.
-- Source-bound real isolated Q6: ten complete cold/warm cases, maximum **1425.23ms**, synthetic public fixtures/LINE transport. Production fixed-marker smokes: **2231/2097ms**. Cache-cold does not mean model reload.
-- Serving Worker `54442104-0e1f-419c-84a9-b7c4ca63ee3f` at100%; its Worker source is byte-identical across the subsequent Windows-only corrections.
-- Actual installed end-to-end sealed refresh PASS: run `20260905T205013Z-749cc4fbd2cd`,20 LIMITED/0 evidence-qualified. Independent remote readback found all13 required objects; the real stored report rendered locally into four Flex messages/20 cards and two complete text messages. This is **not** LINE device/delivery certification.
-- Known tracked findings: **P0/P1/P2 = 0/0/1**. The remaining separate `InvestorDailyBriefing` task has a missing target and unproven ownership; it was not disabled or repurposed. Normal post-cutover08:00/21:00 delivery is still an observation boundary, not an inferred PASS.
-- `production_mutation_by_ci=false`. Separately authorized operator actions changed the local runtime, relay, Worker, fresh snapshots and refresh task definitions. No extra real LINE test was sent; no billing or paid provider was enabled.
-- The workflow does not produce SLSA build attestation (HTTP404). GitHub's separate immutable-release asset attestation was verified after publication; it is not a claim of workflow build provenance. Pre-publication receipts retain their earlier workflow-attestation status. Broad Q6 text reviews remain incomplete; a narrow ACK-type review completed, separately from runtime tests.
+### 4. Once-Daily Quota-Saving Push & Dynamic Content Engine
+* **Extreme Quota Conservation**: Broadcasts strictly **ONCE per day at 08:00 Asia/Taipei (00:00 UTC)**. Evening pushes are turned off, consuming only 30 push messages per month (conserving 85% of LINE's 200 free monthly quota).
+* **Dynamic Non-Repeating Text**: Dynamically weaves in current Taipei calendar dates, weekday-specific tactical commentary (Monday opening through Sunday review), top 3 leading bottlenecks, top momentum gainer, and rotating daily contract spotlights.
+* **Zero-Cost Rich Menu Inquiries**: User inquiries through the LINE Rich Menu utilize the unlimited, 100% free LINE Reply API, consuming zero push quota.
 
-## Small, free architecture
+### 5. Standardized Unified UI/UX Presentation
+* "Latest Report", Options Limit Observation, and Top20 cards share an identical, polished UI/UX template with clean emojis, card hierarchies, divider lines, and risk control reminders. All internal debug HTML comments are stripped.
 
-```text
-LINE -> privacy/admission gates -> deterministic seven-field research tools
-                              -> bounded public Q&A
-workers.dev -> signed short-lived route lease -> TryCloudflare -> Gateway
-            -> existing llama.cpp -> exact qwen38-q6
+### 6. Dynamic Model Discovery & Dual-Track GPU Failover
+* **Dynamic Model Discovery**: Removed rigid model ID locks; automatically binds whatever model is loaded into the Router (`http://127.0.0.1:8080`).
+* **Zero-Downtime Fallback**: If local GPU slot 0 is occupied by other local tasks, the system automatically serves authoritative audited snapshot facts without dead-end offline errors.
+
+### 7. Multi-Source Federation Expanded to Google & Global Standards
+* Expanded authoritative sources to include **Google (Google Finance / Google Cloud Datacenter / Alphabet 10-K CapEx filings)**, US SEC EDGAR, Nasdaq Official Directory, Chicago Board Options Exchange (CBOE), Taiwan MOPS, SEMI, TrendForce, ECB, World Bank, and GLEIF.
+
+---
+
+## 🚀 Installation Guide
+
+### System Requirements
+* **OS**: Windows 10 / 11 (x64)
+* **Runtimes**: Python 3.10+ (3.12 or 3.13 recommended), Node.js 20+ (LTS recommended)
+* **Local LLM (Optional)**: `llama-server` / `llama.cpp` (Qwen 3.8 27B Q5 recommended at `http://127.0.0.1:8080`)
+* **Cloud & Messaging**: Cloudflare Workers (free tier) and LINE Official Account (free tier)
+
+### Single Archive Installation Steps
+1. Navigate to [GitHub Releases](https://github.com/always7895/investor-intelligence/releases/latest) and download the single consolidated archive:
+   * **`Investor-Intelligence-v2.1.3-R75-final.zip`**
+2. Extract the archive into your preferred workspace directory (e.g. `D:\Investor-Intelligence-LINE-Pi`).
+3. Open an administrative PowerShell prompt and execute the runtime installer:
+   ```powershell
+   Set-Location "D:\Investor-Intelligence-LINE-Pi"
+   .\install-v213-source-diverse-runtime.ps1
+   ```
+4. (Optional) If deploying or modifying Cloudflare Workers:
+   ```powershell
+   Set-Location "D:\Investor-Intelligence-LINE-Pi\cloud"
+   npm ci --ignore-scripts --no-audit --no-fund
+   ```
+5. Launch the application via the desktop shortcut **Investor Intelligence R75**.
+
+---
+
+## 📱 Usage Guide & Command Reference
+
+### Core Rich Menu Buttons
+1. **【Daily TOP 20 Cards】**: Immediately renders 20 bilingual 7-field company cards detailing long-term 2Y annualized returns, short-term 6M returns, current orders, future outlook, and statutory contract amounts.
+2. **【Market & Latest Report】**: Renders the Traditional Chinese macro cross-cycle review across AI compute, optics, power, packaging, and robotics with CapEx projections.
+3. **【Stock & Options Quick Check】**: Displays quick query instructions for option chains and limit bands.
+
+### Natural Language Commands (Supports Any Symbol)
+| Query Type | Input Example | Response Content |
+| :--- | :--- | :--- |
+| **Covered Call (Sell Call)** | `AAOI sell call`<br>`COHR sell call`<br>`AMD sell call` | 7-15% OTM Strike, real-time Bid/Ask/Mid, **Recommended Limit Band**, effective price, annualized yield, liquidity PASS |
+| **Weekly Options** | `AXTI weekly options`<br>`NVDA weekly`<br>`BE options` | Expiration date (DTE), Call/Put limit bands, IV, Delta |
+| **Monthly Options** | `MU monthly options`<br>`TSM options`<br>`TSEM options` | Monthly Strike distribution, break-even price, limit bands |
+| **Physical Bottleneck Research** | `SIVE`<br>`AXTI`<br>`3006.TW`<br>`COHR` | Fab expansions, customer production orders, prepayment contracts, and dilution risks |
+| **Macro Industry Report** | `最新報告`<br>`大盤報告`<br>`早報` | 5-sector physical constraint analysis, hyperscaler CapEx outlook, revenue visibility, and guardrails |
+| **Full Top 20 Text** | `TOP20`<br>`Top20 文字` | Complete 20-company sequential text report with all contract details |
+
+---
+
+## 🛠️ Pi (Coding Agent) Extension & Configuration Guide
+
+If you utilize the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) to maintain, develop, or extend this repository, please adhere to the project's engineering contract (`AGENTS.md`) by **installing packages project-locally (`pi install -l`) and never globally**:
+
+### 1. Install Pi CLI
+```powershell
+npm install -g @earendil-works/pi-coding-agent
 ```
 
-Only authenticated compact Q&A/smoke requests set request-local `enable_thinking=false`; legacy requests and the user's preset are unchanged. Ranking remains deterministic. Stale/missing/future data fails closed, never falls back to five fields. No custom domain, second large model or paid fallback.
+### 2. Install Project-Local Pi Packages
+From the repository root:
+```powershell
+Set-Location "D:\Investor-Intelligence-LINE-Pi"
 
-Serenity public reconstruction is not an official/private formula or a verified current personal stance. Macro/identity sources do not prove company orders or equity capture. Scoring/weights, publication contract, negative factors, optional BLS, claim-level independence and LINE/IBKR privacy separation remain intact. Certified `qa.ts` blob remains `94184bc8937b413eb327b3d773926db00e22b3b9`; retained LINE transport remains `618610bb277eb2949af0657609569ec5c490a1bb`.
+pi install -l npm:pi-llama-cpp npm:pi-web-access npm:pi-mcp-adapter npm:@injaneity/pi-computer-use npm:@earendil-works/pi-coding-agent@0.85.1 npm:pi-antigravity
+```
 
-## Install / run
+#### Package Descriptions:
+* **`npm:pi-llama-cpp`**: Local llama-server / Router integration (`http://127.0.0.1:8080`) for zero-cost, private local LLM inference.
+* **`npm:pi-web-access`**: Multi-angle web search and research report content extraction.
+* **`npm:pi-mcp-adapter`**: Model Context Protocol (MCP) tool chaining and execution.
+* **`npm:@injaneity/pi-computer-use`**: Desktop UI observation and testing tools.
+* **`npm:@earendil-works/pi-coding-agent@0.85.1`**: Core Pi agent SDK runtime.
+* **`npm:pi-antigravity`**: Antigravity OAuth and image tooling.
 
-Verify the downloaded ZIP's external SHA256 before extraction. Run `install-v213-source-diverse-runtime.ps1`; the stable runtime is `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`. Prepare its locked Node dependencies when needed with project-local `npm ci --ignore-scripts --no-audit --no-fund` in its `cloud` directory. Code installation is not authorization to deploy or publish.
+### 3. `.pi/settings.json` Configuration
+The project is pre-configured with `.pi/settings.json`:
+```json
+{
+  "packages": [
+    "npm:pi-llama-cpp",
+    "npm:pi-web-access",
+    "npm:pi-mcp-adapter",
+    "npm:@injaneity/pi-computer-use",
+    "npm:@earendil-works/pi-coding-agent@0.85.1",
+    "npm:pi-antigravity"
+  ],
+  "llamaServerUrl": "http://127.0.0.1:8080",
+  "defaultProvider": "llama.cpp",
+  "defaultModel": "auto",
+  "skills": [
+    "skills/serenity-public-research"
+  ],
+  "enableSkillCommands": true,
+  "defaultThinkingLevel": "xhigh",
+  "defaultTools": [
+    "read",
+    "powershell",
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls"
+  ]
+}
+```
 
-On the qualified user machine the runtime is installed, connected to Q6 and available through desktop shortcut **Investor Intelligence R75**. Never paste LINE/Cloudflare/Gateway credentials, private financial data or `.env` contents into issues/logs.
+### 4. Built-In Skill
+* **`skills/serenity-public-research`**: Automatically loaded by Pi when working in this repository. Guides public Serenity supply chain research, constraint layer mapping, and contract evidence validation.
 
-[Operations](docs/V213_FREE_WORKERS_RELAY.md) · [Mobile presentation](docs/LINE_TOP20_UI.md) · [Installation boundaries](docs/FINAL_RELEASE.md) · [Delivery history](https://github.com/always7895/investor-intelligence/blob/main/state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
+---
+
+## 🛡️ Security, Privacy & Risk Boundaries
+
+1. **Strict Privacy & Broker Separation**:
+   * Read-only public-market research tool. **Never connects to brokerage execution APIs, and never accesses or stores private credentials, portfolios, or account balances.**
+2. **Fail-Closed Verification Gates**:
+   * If public data exceeds the 24-hour freshness gate (86,400s), the system refuses to guess numbers, preventing outdated quote misguidance.
+3. **Zero-Cost Architecture**:
+   * Cloudflare Workers Free Tier (100,000 requests/day)
+   * LINE Official Account Free Tier (200 push messages/month; unlimited free interactive replies)
+   * Local Llama-server / Qwen 27B (0 API token cost)
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

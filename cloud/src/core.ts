@@ -38,9 +38,41 @@ const TICKER_ALIASES: Record<string, string> = {};
 const EXPLICIT_TICKER_TOKEN = "[A-Za-z0-9]{1,8}(?:[.-][A-Za-z0-9]{1,4})?";
 const CONTEXTUAL_TICKER_TOKEN = "[A-Za-z][A-Za-z0-9]{0,5}(?:[.-][A-Za-z0-9]{1,4})?";
 const CHINESE_TICKER_CONTEXT =
-  "(?:每週|每周|週選|周選|每月|月選|選擇權|选择权|期權|期权|評分|评分|股票|股價|股价|新聞|新闻|消息)";
-const ENGLISH_TICKER_CONTEXT = "(?:weekly|monthly|options?|bid|ask|ranking|score|news)";
+  "(?:(?:的|之)?\\s*(?:每週|每周|週選|周選|每月|月選|選擇權|选择权|期權|期权|評分|评分|股票|股價|股价|新聞|新闻|消息|sell\\s*call|sell\\s*put|covered\\s*call|cash\\s*secured\\s*put|options?|call|put))";
+const ENGLISH_TICKER_CONTEXT =
+  "(?:weekly|monthly|options?|bid|ask|ranking|score|news|sell\\s*call|sell\\s*put|covered\\s*call|cash\\s*secured\\s*put|call|put)";
 const IGNORED_TICKER_TOKENS = new Set([
+  "FOR",
+  "OF",
+  "THE",
+  "AND",
+  "TO",
+  "IN",
+  "ON",
+  "AT",
+  "BY",
+  "WITH",
+  "FROM",
+  "IS",
+  "ARE",
+  "WAS",
+  "WERE",
+  "WHAT",
+  "HOW",
+  "WHO",
+  "WHERE",
+  "WHEN",
+  "WHY",
+  "DO",
+  "DOES",
+  "DID",
+  "HAVE",
+  "HAS",
+  "HAD",
+  "GET",
+  "GIVE",
+  "TAKE",
+  "MAKE",
   "BID",
   "ASK",
   "IV",
@@ -113,7 +145,11 @@ export function extractTicker(text: string): string | null {
       "gi",
     ),
     new RegExp(
-      `${CHINESE_TICKER_CONTEXT}\\s*[:：]?\\s*\\$?(${CONTEXTUAL_TICKER_TOKEN})(?=$|[^A-Za-z0-9])`,
+      `(?:^|[^A-Za-z0-9])(${CONTEXTUAL_TICKER_TOKEN})\\s+(?=${ENGLISH_TICKER_CONTEXT})`,
+      "gi",
+    ),
+    new RegExp(
+      `${CHINESE_TICKER_CONTEXT}\\s*(?:for|of|[:：])?\\s*\\$?(${CONTEXTUAL_TICKER_TOKEN})(?=$|[^A-Za-z0-9])`,
       "gi",
     ),
     new RegExp(
@@ -279,9 +315,9 @@ function optionCandidateLines(
   const breakEven = candidate.put_break_even as Record<string, unknown> | undefined;
   const effText = effPrice?.mid != null ? `有效賣價 ${money(effPrice.mid, currency)}` : breakEven?.mid != null ? `損益平衡 ${money(breakEven.mid, currency)}` : "";
   return [
-    `• 履約價 K ${money(candidate.strike, currency)}${distText ? ` (${distText})` : ""}｜Bid ${money(candidate.bid, currency)}｜Ask ${money(candidate.ask, currency)}｜Mid ${money(candidate.midpoint, currency)}`,
-    `  推薦限價區間 ${limitObservation(candidate, currency)}${effText ? `｜${effText}` : ""}｜Spread ${percent(candidate.spread_pct_of_mid, true)}`,
-    `  IV ${percent(candidate.implied_volatility_pct, true)}｜Delta ${candidate.delta ?? "N/A"}｜Mid 年化收益 ${percent(yields.mid, true)} (Bid ${percent(yields.bid, true)})｜流動性 ${candidate.liquidity_pass ? "PASS" : "觀察"}`,
+    `  ▫️ 履約價 K ${money(candidate.strike, currency)}${distText ? ` (${distText})` : ""} ｜ Bid ${money(candidate.bid, currency)} ｜ Ask ${money(candidate.ask, currency)} ｜ Mid ${money(candidate.midpoint, currency)}`,
+    `    💡 推薦限價區間：${limitObservation(candidate, currency)}${effText ? ` ｜ ${effText}` : ""} ｜ Spread ${percent(candidate.spread_pct_of_mid, true)}`,
+    `    📊 IV ${percent(candidate.implied_volatility_pct, true)} ｜ Delta ${candidate.delta ?? "N/A"} ｜ Mid 年化收益 ${percent(yields.mid, true)} (Bid ${percent(yields.bid, true)}) ｜ 流動性 ${candidate.liquidity_pass ? "PASS ✅" : "觀察 ⚠️"}`,
   ];
 }
 
@@ -292,44 +328,64 @@ export function formatOptionsAnswer(
 ): string {
   if (!Array.isArray(raw)) return "目前沒有可讀取的公開期權資料。";
   const normalizedTicker = ticker?.toUpperCase() ?? null;
+
+  if (!normalizedTicker) {
+    return [
+      "📈【韭菜守護者・期權即時觀測快查】",
+      "您可自由輸入「任意美股代號 + 期權」獲取精準的履約價、Bid/Ask、推薦限價區間與年化收益率！",
+      "",
+      "👉 常用查詢範例（支援任意標的）：",
+      "• 【AAOI sell call】（800G 光模組，價外 7-13% 賣買權收租）",
+      "• 【AXTI 每週期權】（磷化銦基板瓶頸，最新每週期權鏈）",
+      "• 【COHR sell call】（NVIDIA 光通訊戰略合作大廠）",
+      "• 【AMD 每週期權】或【MU 每月期權】",
+      "• 【TSM 選擇權】或【AVGO 每週期權】",
+      "• 【TSEM 期權】或【BE sell put】",
+      "",
+      "💡 韭菜守護者提示：",
+      "• 掛單務必採用「限價單（Limit Order）」在推薦限價區間內成交，避免被做市商吃滑點！",
+      "• 請直接輸入股票代號（例如：AAOI sell call），守護者立即為您測算！",
+    ].join("\n");
+  }
+
   const records = raw.filter(
     (item): item is Record<string, unknown> =>
       !!item &&
       typeof item === "object" &&
-      (!normalizedTicker || String((item as Record<string, unknown>).ticker ?? "").toUpperCase() === normalizedTicker),
+      String((item as Record<string, unknown>).ticker ?? "").toUpperCase() === normalizedTicker,
   );
   if (records.length === 0) {
-    return normalizedTicker
-      ? `目前沒有 ${normalizedTicker} 的公開期權資料。資料來源可能未涵蓋該市場。`
-      : "目前沒有可顯示的公開期權資料。";
+    return `目前沒有 ${normalizedTicker} 的公開期權資料。資料來源可能未涵蓋該市場或標的無公開標準化期權。`;
   }
 
-  const lines = [
-    "公開期權 BID / ASK 報價觀察（唯讀、不下單）",
-    "只使用獨立公共資料快照；不含持倉、帳戶、覆蓋口數或 IBKR 資料。Bid/Ask、Mid 與限價區間不保證成交。",
-  ];
+  const lines: string[] = [];
   for (const record of records) {
     const symbol = String(record.ticker ?? "N/A");
     lines.push(
-      "",
-      `【${symbol}】狀態 ${String(record.status ?? "UNKNOWN")}｜來源 ${String(record.quote_source ?? "unknown")}｜資料時間 ${timestamp(record.retrieved_at)}`,
+      `📈【韭菜守護者・${symbol} 期權限價與流動性觀測】`,
+      `🎯 標的：【${symbol}】｜狀態：${String(record.status ?? "OK")}｜資料時間：${timestamp(record.retrieved_at)}`,
+      "公開期權 BID / ASK 報價觀察（唯讀、不下單）",
+      "──────────────────────────────",
+      "🛡️ 只使用獨立公共資料快照；不含持倉、帳戶、覆蓋口數或 IBKR 資料。限價單請在推薦區間內掛單，切勿追打市價單！",
     );
     const periods = (record.periods ?? {}) as Record<string, unknown>;
     for (const periodName of period ? [period] : ["weekly", "monthly"]) {
       const periodRaw = periods[periodName];
       if (!periodRaw || typeof periodRaw !== "object") {
-        lines.push(`${periodName === "weekly" ? "每週" : "每月"}：無資料`);
+        lines.push(`\n${periodName === "weekly" ? "每週" : "每月"}：無可用合約資料`);
         continue;
       }
       const periodRecord = periodRaw as Record<string, unknown>;
       const status = String(periodRecord.status ?? "UNKNOWN");
+      const expPart = periodRecord.expiration ? `｜到期 ${String(periodRecord.expiration)}` : "";
+      const dtePart = periodRecord.actual_dte != null ? `｜DTE ${String(periodRecord.actual_dte)}` : "";
       lines.push(
-        `\n${periodName === "weekly" ? "每週" : "每月"}｜${status}｜到期 ${String(periodRecord.expiration ?? "N/A")}｜DTE ${String(periodRecord.actual_dte ?? "N/A")}`,
+        `\n📅 【${periodName === "weekly" ? "每週期權 (Weekly)" : "每月期權 (Monthly)"}】${periodName === "weekly" ? "每週" : "每月"}｜${status}${expPart}${dtePart}`,
       );
       if (status !== "OK") continue;
-      for (const [keys, label] of [
-        [["covered_call", "call_observations"], "買權報價 (Call / 賣買權)"],
-        [["cash_secured_put", "put_observations"], "賣權報價 (Put / 賣賣權)"],
+      for (const [keys, label, emoji] of [
+        [["covered_call", "call_observations"], "買權報價", "🟢"],
+        [["cash_secured_put", "put_observations"], "賣權報價", "🟡"],
       ] as const) {
         let strategyRaw: unknown = null;
         for (const k of keys) {
@@ -346,9 +402,9 @@ export function formatOptionsAnswer(
           ? strategy.all_window_observations
           : [];
         const candidates = rawCandidates.filter((c): c is Record<string, unknown> => !!c && typeof c === "object");
-        lines.push(`${label}｜${String(strategy.status ?? "OK")}`);
+        lines.push(`\n${emoji} ${label}｜${String(strategy.status ?? "OK")}${label === "買權報價" ? " (Covered Call / 賣買權收租防守)" : " (Cash-Secured Put / 賣賣權折價低接)"}`);
         if (candidates.length === 0) {
-          lines.push("• 無符合公開資料與流動性條件的候選報價");
+          lines.push("  ▫️ 無符合公開資料與流動性條件的候選報價");
           continue;
         }
         for (const candidate of candidates.slice(0, 3)) {
@@ -359,10 +415,15 @@ export function formatOptionsAnswer(
       }
     }
   }
+
   lines.push(
     "",
-    "所有結果都只是公共報價觀察。LINE Bot 不連接券商、不讀取任何人的持倉，也不建立、送出或修改委託。",
+    "──────────────────────────────",
+    "💡 韭菜守護者交易心法：",
+    "• 賣買權（Covered Call）：建議選擇價外 7%～15% 且 Delta 約 0.20～0.30 之履約價，兼顧權利金收入與正股上漲空間。",
+    "• 賣賣權（Cash-Secured Put）：建議選擇自願以折價接盤之支撐價位，預留 100% 現金保證金，杜絕槓桿穿倉！",
   );
+
   return lines.join("\n");
 }
 
