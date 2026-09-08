@@ -142,6 +142,14 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       "布魯姆能源 sell call",
       "宏觀產業分析",
       "期權",
+      "NVDA sell call",
+      "AMD sell call",
+      "COHR sell call",
+      "MU sell call",
+      "ALAB sell call",
+      "LITE sell call",
+      "3017.TW sell call",
+      "000660.KS sell call",
     ]) {
       const calls: any[] = [];
       vi.stubGlobal("fetch", vi.fn(async (_url, init) => { calls.push(JSON.parse(String(init.body))); return new Response("{}"); }));

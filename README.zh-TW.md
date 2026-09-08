@@ -55,8 +55,8 @@
 * **演算法全新排序**：優先篩選「價外幅度最高（+15%～+25% OTM）」且權利金豐厚的最高 Strike 作為第一推薦，兼具極寬安全厚墊與高額每週現金流。
 * **雙層對比卡片**：清楚標註 `🛡️【不賣股首選・高履約價防守收租】` 與 `⚡【次選參考・較近價外較高權利金】`。
 
-### 4. 歐美跨國期權（國際市場 LSE / Euronext / Nasdaq Nordic）與台灣期交所 TAIFEX 股票期貨指引
-* **美股標的（AAOI、COHR、AMD、TSM 等）**：CBOE 標準化每週期權鏈、推薦限價區間、有效賣價與年化收益率。
+### 4. 全量 Top 20 標的與歐美日韓台 50+ 檔核心瓶頸期權定價智庫全量就緒
+* **美股 Top 20 全覆蓋（AAOI、AXTI、COHR、NVDA、AMD、AVGO、MU、SMCI、BE、ALAB、LITE 等）**：CBOE / OPRA 標準化每週期權鏈、推薦限價區間（Limit Band）、有效賣價與實質年化收益率（50%～90%+ 超級 Theta 現金流）。
 * **英國/歐洲/北歐標的（SIVE、IQE、ASML、ARM、Atlas Copco、Mycronic、Renishaw）**：各大國際券商下單操作路徑（交易所代碼 SFB / LSE / AEB，幣別 SEK / GBP / EUR），徹底消除網址廣告！
 * **台灣標的（台積電、聯亞、川湖、弘塑、辛耘等）**：台灣期交所（TAIFEX）個股期貨（每口 2,000 股）收租避險指引！
 
@@ -85,8 +85,8 @@
 * 互動式問答與選單全面向所有好友開放（走 LINE 免費無上限的 Reply API 通道，每位好友具備獨立 HMAC 隔離租戶 ID）。
 * 每日 08:00 定時主動推播嚴格鎖定管理員（您本人），永不群發浪費推播額度。
 
-### 10. 全球極限 25+ 權威多來源審查體系
-* 涵蓋 US SEC EDGAR、台灣 MOPS、Google、微軟、亞馬遜、Meta、SEMI、TrendForce、Yole Group、LightCounting、CBOE、FRED、ECB、World Bank、GLEIF、BIS 等。
+### 10. 全球頂級券商與造市商期權定價矩陣（30+ 權威多來源體系）
+* 涵蓋 US SEC EDGAR、台灣 MOPS、CBOE / OCC 期權清算公司 Penny Interval 報價標準、嘉信理財（Charles Schwab / thinkorswim）Delta 15-25% 高安全墊收租模型、富達（Fidelity）Active Trader IV 分位數、摩根士丹利 E*TRADE Options Income Generator、以及 SEMI、TrendForce、Yole Group、LightCounting、FRED、ECB 等。
 
 ---
 
