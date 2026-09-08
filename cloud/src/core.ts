@@ -462,7 +462,7 @@ export function parseQuery(text: string): ParsedQuery {
   } else if (/(晚報|晚报|evening report|evening briefing|盤前報告|盘前报告)/i.test(lowered)) {
     intent = "evening_report";
   } else if (
-    /(宏觀產業分析|宏觀產業|宏觀分析|產業分析|大盤報告|大盤分析)/i.test(
+    /(宏觀產業分析|宏觀產業|宏觀分析|產業分析|大盤報告|大盤分析|最新報告|最新报告)/i.test(
       lowered,
     )
   ) {
