@@ -146,19 +146,25 @@ def cached_request(
     if path.exists() and time.time() - path.stat().st_mtime <= cache_hours * 3600:
         envelope = json.loads(path.read_text(encoding="utf-8"))
         return bytes.fromhex(str(envelope["body_hex"])), str(envelope["url"]), True
-    response = session.request(
-        method,
-        url,
-        json=json_body,
-        params=params,
-        headers=dict(headers or {}),
-        timeout=timeout,
-    )
-    response.raise_for_status()
-    body = response.content
-    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-    atomic_json(path, {"url": response.url, "body_hex": body.hex(), "retrieved_at": utc_now()})
-    return body, response.url, False
+    try:
+        response = session.request(
+            method,
+            url,
+            json=json_body,
+            params=params,
+            headers=dict(headers or {}),
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        body = response.content
+        CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+        atomic_json(path, {"url": response.url, "body_hex": body.hex(), "retrieved_at": utc_now()})
+        return body, response.url, False
+    except requests.exceptions.RequestException:
+        if path.exists():
+            envelope = json.loads(path.read_text(encoding="utf-8"))
+            return bytes.fromhex(str(envelope["body_hex"])), str(envelope["url"]), True
+        raise
 
 
 def observation(
