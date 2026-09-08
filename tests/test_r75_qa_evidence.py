@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import unittest
@@ -15,6 +16,10 @@ class LiveQaQualificationTests(unittest.TestCase):
     def setUp(self):
         self.proof = json.loads((ROOT / 'state/r75-qa-live-qualification.json').read_text(encoding='utf-8-sig'))
         self.manifest = copy.deepcopy(self.proof['source_manifest'])
+        # In-memory synthetic verifier fixture, never a regenerated live receipt.
+        self.now = datetime.now(timezone.utc)
+        self.proof['started_at'] = (self.now - timedelta(minutes=1)).isoformat()
+        self.proof['completed_at'] = self.now.isoformat()
 
     def test_only_new_test_host_empty_cloudflare_page_can_wait(self):
         pending=SimpleNamespace(status_code=404, headers={'server':'cloudflare'}, text='There is nothing here yet')
@@ -70,8 +75,32 @@ class LiveQaQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'READINESS_ONLY_NOT_RELEASE_QUALIFICATION'):
             verify(data,self.manifest)
 
-    def test_exact_runtime_source_and_complete_live_matrix(self):
+    def test_synthetic_complete_matrix_still_binds_exact_runtime_source(self):
         self.assertTrue(verify(self.proof)['release_ready'])
+
+    def test_historical_untimestamped_receipt_cannot_qualify_release(self):
+        original = json.loads((ROOT / 'state/r75-qa-live-qualification.json').read_text(encoding='utf-8-sig'))
+        original.pop('started_at', None)
+        original.pop('completed_at', None)
+        with self.assertRaisesRegex(ValueError, 'LIVE_TIMESTAMP_MISSING'):
+            verify(original, self.manifest, now=self.now)
+
+    def test_missing_naive_future_stale_and_reversed_timestamps_fail_closed(self):
+        cases = [
+            ('started_at', None, 'LIVE_TIMESTAMP_MISSING'),
+            ('completed_at', 'not-a-date', 'LIVE_TIMESTAMP_INVALID'),
+            ('completed_at', self.now.replace(tzinfo=None).isoformat(), 'TIMEZONE_REQUIRED'),
+            ('started_at', (self.now - timedelta(hours=25)).isoformat(), 'LIVE_PROOF_STALE'),
+            ('completed_at', (self.now + timedelta(minutes=6)).isoformat(), 'LIVE_TIMESTAMP_FUTURE'),
+            ('started_at', (self.now + timedelta(seconds=1)).isoformat(), 'TIMESTAMP_ORDER_INVALID'),
+        ]
+        for field, value, code in cases:
+            data = copy.deepcopy(self.proof)
+            data[field] = value
+            with self.subTest(field=field, code=code), self.assertRaisesRegex(ValueError, code):
+                verify(data, self.manifest, now=self.now)
+        with self.assertRaisesRegex(ValueError, 'LIVE_CLOCK_INVALID'):
+            verify(self.proof, self.manifest, now=self.now.replace(tzinfo=None))
 
     def test_missing_partial_incomplete_or_synthetic_only_is_rejected(self):
         for field, value in [('status','PASS_SYNTHETIC'),('production_mutation',True),('real_line_sent',True),('preset_unchanged',False),('isolated_resources_deleted',False),('source_manifest',{}),('exact_model','qwen38'),('reference_job','PASS_SYNTHETIC'),('results',[]),('line_values_match',False),('text_fallback_values_match',False),('line_message_count',6),('text_message_count',6)]:

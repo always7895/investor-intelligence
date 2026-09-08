@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # embedded CPython ._pth
@@ -11,10 +12,30 @@ from v213_compact_qa_gateway import POLICY, resolve_model_id
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def verify(data, manifest=None):
+MAX_LIVE_PROOF_AGE_SECONDS = 24 * 60 * 60
+FUTURE_TOLERANCE_SECONDS = 300
+
+
+def verify(data, manifest=None, *, now=None):
     def require(ok, code):
         if not ok: raise ValueError(code)
     require(data.get("schema_version") == 1 and data.get("status") == "PASS", "LIVE_GATE_NOT_PASS")
+    clock = now or datetime.now(timezone.utc)
+    require(isinstance(clock, datetime) and clock.tzinfo is not None, "LIVE_CLOCK_INVALID")
+    timestamps = []
+    for field in ("started_at", "completed_at"):
+        value = data.get(field)
+        require(isinstance(value, str) and bool(value), "LIVE_TIMESTAMP_MISSING:" + field)
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("LIVE_TIMESTAMP_INVALID:" + field) from None
+        require(parsed.tzinfo is not None, "LIVE_TIMESTAMP_TIMEZONE_REQUIRED:" + field)
+        timestamps.append(parsed.astimezone(timezone.utc))
+    started, completed = timestamps
+    require(started <= completed, "LIVE_TIMESTAMP_ORDER_INVALID")
+    require((completed - clock).total_seconds() <= FUTURE_TOLERANCE_SECONDS, "LIVE_TIMESTAMP_FUTURE")
+    require((clock - started).total_seconds() <= MAX_LIVE_PROOF_AGE_SECONDS, "LIVE_PROOF_STALE")
     require(data.get("scope") in (None, "FULL_LIVE"), "READINESS_ONLY_NOT_RELEASE_QUALIFICATION")
     for field in ("isolated_resources_deleted", "preset_unchanged", "source_unchanged_during_benchmark", "synthetic_public_fixture"):
         require(data.get(field) is True, "LIVE_PROOF_MISSING:"+field)

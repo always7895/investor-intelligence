@@ -14,6 +14,10 @@ $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 Push-Location $ProjectRoot
 try {
     $sha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+    $checkoutStatus = @(git status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $checkoutStatus.Count -ne 0) {
+        throw 'R75 validation requires a clean exact checkout; no source-bound receipt can be issued for a dirty tree.'
+    }
     if ($env:GITHUB_SHA -and $sha -ne $env:GITHUB_SHA.ToLowerInvariant()) {
         throw "Exact checkout mismatch: expected=$env:GITHUB_SHA actual=$sha"
     }

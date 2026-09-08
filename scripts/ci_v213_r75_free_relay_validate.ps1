@@ -53,7 +53,20 @@ try {
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',
         'scripts/v213_free_relay_heartbeat.ps1','scripts/verify_v213_r75_free_relay_hotfix.py',
         'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md',
-        'tests/test_v213_free_relay_package_payload.py'
+        'tests/test_v213_free_relay_package_payload.py',
+        # Reviewed staged/local-only source collection and shared admission fixes.
+        # Exact paths only: no blanket scripts/, tests/ or state/ exception.
+        'scripts/adapters/base.py','scripts/adapters/official_rss.py',
+        'scripts/adapters/staged_public.py','scripts/adapters/taiwan_equities.py',
+        'scripts/fetch_public_source_observations.py','scripts/import_option_observations.py',
+        'scripts/options_service.py','scripts/public_options_provider_gate.py',
+        'scripts/source_observation.py','scripts/source_registry.py',
+        'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
+        'tests/test_import_option_observations.py','tests/test_official_news.py',
+        'tests/test_options_service.py','tests/test_public_options_provider_gate.py',
+        'tests/test_public_source_transport.py','tests/test_source_observation.py',
+        'tests/test_source_registry.py','tests/test_taiwan_equity_sources.py',
+        'tests/test_current_release_lane.py'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.

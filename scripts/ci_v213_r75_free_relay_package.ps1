@@ -34,6 +34,8 @@ try {
             $env:PROJECT_PYTHON = $python.Source
         }
     }
+    & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof
+    if ($LASTEXITCODE -ne 0) { throw 'Fresh source-bound live proof required before packaging.' }
     if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $env:RUNNER_TEMP "ii-v213-r75-FREE_RELAY-$sha-$runId-$attempt" }
     $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
     Remove-Item -LiteralPath $OutputRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -93,14 +95,14 @@ try {
         trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = 'qwen38-q6'; health_schema_version = 2
         signed_route_registration = $true; route_generation_required = $true; heartbeat_lease_required = $true; stale_and_replay_rejected = $true
         blue_green_startup = $true; verified_rollback = $true; allow_test_tunnel_exception_used = $false; named_tunnel_optional = $true
-        protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $false
+        protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $true; live_proof_max_age_seconds = 86400
         production_mutation_by_ci = $false; worker_deployed = $false; production_kv_or_do_written = $false; line_message_sent = $false; schedules_registered = $false
     }
     [IO.File]::WriteAllText((Join-Path $stage 'HOTFIX-REFS.json'), (($refs | ConvertTo-Json -Depth 8) + "`n"), [Text.UTF8Encoding]::new($false))
     $sbom = [ordered]@{
         spdxVersion='SPDX-2.3'; dataLicense='CC0-1.0'; SPDXID='SPDXRef-DOCUMENT'; name="Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-$sha-$runId"
         documentNamespace="https://github.com/always7895/investor-intelligence/spdx/R75-Free-Relay-Hotfix/$sha/$runId"
-        creationInfo=[ordered]@{creators=@('Tool: scripts/ci_v213_r75_free_relay_package.ps1');created='2026-09-04T00:00:00Z'}
+        creationInfo=[ordered]@{creators=@('Tool: scripts/ci_v213_r75_free_relay_package.ps1');created=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')}
         packages=@([ordered]@{name='Investor Intelligence';SPDXID='SPDXRef-Package-Investor-Intelligence';versionInfo='2.1.3-R75-Free-Relay-Hotfix';downloadLocation='NOASSERTION';filesAnalyzed=$false;licenseConcluded='NOASSERTION';licenseDeclared='NOASSERTION';copyrightText='NOASSERTION'})
         relationships=@([ordered]@{spdxElementId='SPDXRef-DOCUMENT';relationshipType='DESCRIBES';relatedSpdxElement='SPDXRef-Package-Investor-Intelligence'})
     }
@@ -159,6 +161,13 @@ try {
             Remove-Item -LiteralPath $installProbe -Recurse -Force -ErrorAction SilentlyContinue
         }
     } finally { Remove-Item -LiteralPath $zipProbe -Recurse -Force -ErrorAction SilentlyContinue }
+    # A proof can expire while ZIP/install tests run; recheck before receipts.
+    & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof
+    if ($LASTEXITCODE -ne 0) { throw 'Live proof expired or changed during packaging.' }
+    if ((Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $windows.qa_live_receipt_sha256) { throw 'Live proof digest changed during packaging.' }
+    $finalSha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+    $finalStatus = @(git status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $finalSha -cne $sha -or $finalStatus.Count -ne 0) { throw 'Exact checkout changed during packaging.' }
     $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     $shaPath = Join-Path $OutputRoot "$stem.zip.sha256"
     [IO.File]::WriteAllText($shaPath,"$zipSha  $stem.zip`n",[Text.Encoding]::ASCII)

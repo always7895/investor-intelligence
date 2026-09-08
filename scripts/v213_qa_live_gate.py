@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -101,7 +102,7 @@ def main():
     gateway_domain = "v213-free-relay-gateway." + generation
     gateway_secret = hmac.new(synthetic_auth.encode(), gateway_domain.encode(), hashlib.sha256).hexdigest()
     session = requests.Session()
-    evidence = {"schema_version": 1, "status": "FAIL", "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
+    evidence = {"schema_version": 1, "status": "FAIL", "started_at": datetime.now(timezone.utc).isoformat(), "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
                 "exact_model": "qwen38-q6", "canonical_model": canonical,
                 "model_catalog": [{"id": m["id"], "aliases": m.get("aliases", [])} for m in catalog] if catalog else None,
                 "request_enable_thinking": False, "synthetic_public_fixture": True,
@@ -270,6 +271,7 @@ def main():
         evidence["preset_unchanged"] = hashlib.sha256(preset.read_bytes()).hexdigest() == preset_sha
         evidence["source_unchanged_during_benchmark"] = source_manifest() == manifest
         if not cleanup or not evidence["preset_unchanged"] or not evidence["source_unchanged_during_benchmark"]: evidence["status"] = "FAIL"
+        evidence["completed_at"] = datetime.now(timezone.utc).isoformat()
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
         if args.readiness_only and evidence["status"] != "PASS_READINESS_ONLY":

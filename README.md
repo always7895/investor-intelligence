@@ -10,6 +10,8 @@ Privacy-first, zero-cost public-market research. / 隱私優先、零付費公�
 
 The candidate adds an opt-in local collector for Fed/SEC/ECB announcements and TWSE/TPEx equity EOD observations, plus local-export adapters for TAIFEX options and Alpaca indicative quotes, alongside existing Yahoo/local IBKR paths. All five endpoints have local direct-CLI live-read evidence on the supported hash-verified CPython3.12.10 plus locked certifi trust bundle. Earlier TLS failures are preserved, not relabelled; arbitrary system Python versions are not qualified. GitHub Windows acceptance still awaits a registered runner. These are **not live public LINE feeds**: redistribution review and source-bound live acceptance remain pending. Daily/indicative data cannot be presented as executable NBBO. Current audit findings supersede historical zero-defect counts; the released executable below is unchanged.
 
+Current-release hardening routes new candidates through receipt-bound ZIP/extracted-install verification, not the legacy generic packager. Live Q&A qualification now requires timezone-aware start/completion timestamps within 24 hours; old receipts remain historical. Release is still blocked by missing Windows runner acceptance and fresh exact-Q6 proof (the observed local endpoint advertises Q5); no model/preset was changed.
+
 ## Delivered functionality / 已完成的功能
 
 - Interactive and scheduled Top20 share **20 complete seven-field bilingual cards**: four carousels of five companies. `Top20 文字` provides complete company-grouped text, not a truncated table.

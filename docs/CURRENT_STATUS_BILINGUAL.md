@@ -6,6 +6,12 @@
 
 New opt-in local collection covers official announcements and equity EOD data. All five live reads succeeded using supported pinned CPython3.12.10 plus locked certifi roots. Historical TLS failures remain failures; certificate/hostname verification and default flags are intact. GitHub Windows acceptance still awaits a runner. Missing closes stay null; record counts do not equal usable quote counts. See [coverage and evidence](PUBLIC_SOURCE_COVERAGE.md).
 
+### 正式發布 gate／Current release gates
+
+一般候選版改走既有 receipt 綁定 FREE_RELAY 打包器，保留最終 ZIP 解壓測試與隔離安裝驗證；不再自動呼叫會刪除測試依賴並填入固定舊計數的 legacy 一般打包器。歷史腳本保留，已認證 QA 不變。Live Q&A 證據現在要求含時區的開始／完成時間、順序有效、最早開始距今不超過 24 小時；未替舊證據補上新時間。尚無合格新發布：runner 缺席、fresh exact-Q6 證據待補，本機端點觀察到 Q5，未換模型或改 preset。
+
+Current candidates use the existing receipt-bound FREE_RELAY packager with final-ZIP tests and isolated installation, not the legacy generic packager that strips test dependencies and records fixed old counts. Historical scripts and certified QA remain unchanged. Live evidence needs ordered timezone-aware start/completion timestamps, with the start no older than 24 hours. Old receipts were not restamped. No new release is qualified: Windows runner acceptance and fresh exact-Q6 evidence remain missing; the observed endpoint advertises Q5, without any model/preset changes.
+
 ### 期權／Options
 
 新增 TAIFEX 日行情、Alpaca indicative 本機匯入 adapters；未啟用 live feed、公共 LINE 發布或 brokerage 連線。修正來源失敗隔離、持倉容量與兩種推薦視圖不一致、日期及布林驗證。完整專案驗收仍未完成，歷史缺陷數不代表目前全面安全。
