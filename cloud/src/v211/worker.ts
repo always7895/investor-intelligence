@@ -320,16 +320,10 @@ async function processLineEvent(
   const pairingRequest = Boolean(
     text?.normalize("NFKC").trim().match(/^(?:配對|配对|pair)\s+/i),
   );
-  const authorized = await isOwnerTenant(env, tenantId);
-  if (!pairingRequest && !authorized) return;
   if (!(await claimEvent(env, event.webhookEventId))) return;
 
   try {
     if (pairingRequest && text && (await processPairing(env, event, source, tenantId, text))) {
-      await completeEvent(env, event.webhookEventId);
-      return;
-    }
-    if (!authorized) {
       await completeEvent(env, event.webhookEventId);
       return;
     }
