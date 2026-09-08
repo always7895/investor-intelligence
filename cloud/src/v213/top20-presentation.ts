@@ -10,7 +10,7 @@ import {
 
 type PresentationEnv = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / Historical returns, not forecasts. Public research, not investment advice.";
-const text = (value: string, size = "sm", color = "#172B4D") => ({ type: "text", text: value, size, color, wrap: true });
+const text = (value: string, size = "sm", color = "#172B4D", extra: { weight?: "regular" | "bold" } = {}) => ({ type: "text", text: value, size, color, wrap: true, ...extra });
 const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
 
 const TOP20_SENSITIVITY: Record<string, { bull: string; bear: string }> = {
@@ -3345,6 +3345,15 @@ function buildStockDeepDiveText(ticker: string, stock: StockResearchFact): strin
 }
 
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
+  // Options must use the certified deterministicAnswer path and its public
+  // freshness/closed-DTO gates. Presentation-only constants and raw KV status
+  // are not quote evidence. Check before any keyword-based presentation route.
+  if (query.intent === "options") return null;
+  return legacyNonOptionPresentation(env, query);
+}
+
+// Private compatibility implementation: the exported entrypoint excludes options.
+async function legacyNonOptionPresentation(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
 
   if (/(?:AI算力|算力).*深度|深度.*(?:AI算力|算力)/i.test(query.normalized)) {
@@ -3451,13 +3460,13 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
           `標的：${intlOption.name} ｜ 交易所：${intlOption.exchange}`,
           "──────────────────────────────",
           "💡 交易路徑與交易所確認：",
-          intlOption.ibkrPath,
+          "OPTION_DATA_UNAVAILABLE：交易路徑不能替代合約與報價驗證。",
           "",
           "🟢 Covered Call 賣買權（不賣股為第一優先）：",
-          intlOption.callStrategy,
+          "OPTION_DATA_UNAVAILABLE：不提供未驗證的 covered call 報價。",
           "",
           "🟡 Cash-Secured Put 賣賣權折價低接：",
-          intlOption.putStrategy,
+          "OPTION_DATA_UNAVAILABLE：不提供未驗證的 cash-secured put 報價。",
           "",
           "──────────────────────────────",
           "💡 守護者提示：限價單請掛在 Mid 中間價，切勿追打市價單避免滑點！",

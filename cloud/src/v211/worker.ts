@@ -60,6 +60,7 @@ export interface V211Env extends QaEnv, LineEnv, V21AdminEnv, V21BroadcastEnv {
   V21_OWNER_PAIRING_ENABLED?: string;
   V21_OWNER_PAIRING_CODE_HASH?: string;
   V21_MAX_WEBHOOK_BODY_BYTES?: string;
+  LINE_SYNC_TIMEOUT_MS?: string;
 }
 
 function envBool(value: string | undefined): boolean {
@@ -216,7 +217,8 @@ export async function processAuthorizedLineEvent(
         await replyMessages(env, event.replyToken, currentReport);
       } catch (err) {
         console.error("V213_FLEX_REPLY_FAILED", err instanceof Error ? err.message : String(err));
-        const alt = currentReport[0]?.altText ?? "系統已完成分析，請查看圖文選單。";
+        const first = currentReport[0];
+        const alt = first?.type === "flex" ? first.altText : first?.type === "text" ? first.text : "系統已完成分析，請查看圖文選單。";
         await replyText(env, event.replyToken, alt);
       }
     }
@@ -244,7 +246,15 @@ export async function processAuthorizedLineEvent(
     return;
   }
 
-  const deterministic = await deterministicAnswer(env, query, requestContext);
+  let deterministic: string | null;
+  try {
+    deterministic = await deterministicAnswer(env, query, requestContext);
+  } catch (error) {
+    if (query.intent !== "options") throw error;
+    // Malformed/unreadable public data must not trigger a model or static quote fallback.
+    await replyText(env, event.replyToken, "OPTION_DATA_INVALID：公開期權資料無法驗證；不提供報價或替代交易數字。");
+    return;
+  }
   if (deterministic !== null) {
     await replyText(
       env,
@@ -256,7 +266,7 @@ export async function processAuthorizedLineEvent(
 
   const operationEpoch = await tenantWriteEpoch(env, tenantId);
   const answerPromise = (env[V211_GENERAL_QA] ?? generalAnswer)(env, query, requestContext);
-  const syncTimeoutMs = Number((env as Record<string, unknown>).LINE_SYNC_TIMEOUT_MS ?? "7000") || 7000;
+  const syncTimeoutMs = Number(env.LINE_SYNC_TIMEOUT_MS ?? "7000") || 7000;
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), syncTimeoutMs));
   const quick = await Promise.race([answerPromise, timeout]);
   if (quick !== null) {
