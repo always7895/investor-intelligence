@@ -34,7 +34,61 @@ export interface ParsedQuery {
 
 // Do not hard-code the repository owner's symbols, holdings or preferences into
 // the shared bot. Explicit ticker symbols are parsed directly from each query.
-const TICKER_ALIASES: Record<string, string> = {};
+const TICKER_ALIASES: Record<string, string> = {
+  // 台灣代號與中文別名
+  "台積電": "TSM",
+  "聯發科": "2454.TW",
+  "聯亞": "3081.TW",
+  "聯亞光電": "3081.TW",
+  "晶豪科": "3006.TW",
+  "川湖": "2059.TW",
+  "弘塑": "3131.TW",
+  "弘塑科技": "3131.TW",
+  "辛耘": "3583.TW",
+  "辛耘企業": "3583.TW",
+  "聯鈞": "3450.TW",
+  "聯鈞光電": "3450.TW",
+  "光聖": "6442.TW",
+  "光聖科技": "6442.TW",
+  "緯穎": "6669.TW",
+  "台達電": "2308.TW",
+  "2330": "TSM",
+  "2330.tw": "TSM",
+  "3006": "3006.TW",
+  "3081": "3081.TW",
+  "2059": "2059.TW",
+  "3131": "3131.TW",
+  "3583": "3583.TW",
+  "3450": "3450.TW",
+  "6442": "6442.TW",
+  "6669": "6669.TW",
+  "2308": "2308.TW",
+  "2454": "2454.TW",
+  // 瑞典標的與中文別名
+  "sivers": "SIVE",
+  "sive": "SIVE",
+  "atlascopco": "ATCO",
+  "atlas": "ATCO",
+  "mycronic": "MYCR",
+  "hexagon": "HEXA",
+  // 英國標的
+  "arm": "ARM",
+  "安謀": "ARM",
+  "iqe": "IQE",
+  "renishaw": "REN",
+  "雷尼紹": "REN",
+  // 全球關鍵物理瓶頸
+  "asml": "ASML",
+  "艾司摩爾": "ASML",
+  "vertiv": "VRT",
+  "維諦": "VRT",
+  "palantir": "PLTR",
+  "synopsys": "SNPS",
+  "新思科技": "SNPS",
+  "camtek": "CAMT",
+  "onto": "ONTO",
+  "poet": "POET",
+};
 const EXPLICIT_TICKER_TOKEN = "[A-Za-z0-9]{1,8}(?:[.-][A-Za-z0-9]{1,4})?";
 const CONTEXTUAL_TICKER_TOKEN = "[A-Za-z][A-Za-z0-9]{0,5}(?:[.-][A-Za-z0-9]{1,4})?";
 const CHINESE_TICKER_CONTEXT =
@@ -143,6 +197,30 @@ const KNOWN_UNIVERSE_TICKERS = new Set([
   "3006.TW",
   "6775.TW",
   "ESMT",
+  // 擴充台灣核心物理瓶頸鏈
+  "3081.TW",
+  "2059.TW",
+  "3131.TW",
+  "3583.TW",
+  "3450.TW",
+  "6442.TW",
+  "6669.TW",
+  "2308.TW",
+  "2454.TW",
+  // 擴充英國與瑞典核心標的
+  "ARM",
+  "ATCO",
+  "MYCR",
+  "HEXA",
+  "REN",
+  // 擴充全球關鍵半導體與 AI 瓶頸
+  "ASML",
+  "VRT",
+  "PLTR",
+  "SNPS",
+  "ONTO",
+  "CAMT",
+  "POET",
 ]);
 
 export function normalizeText(text: string): string {
