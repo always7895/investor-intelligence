@@ -4,6 +4,12 @@
 
 Privacy-first, zero-cost public-market research. / 隱私優先、零付費公開市場研究。 Research software—not personalized investment advice, trading instructions or guaranteed returns.
 
+## Development audit / 開發中稽核
+
+[Options source review and import usage](docs/OPTIONS_SOURCE_REVIEW.md) · [Candidate PR #37](https://github.com/always7895/investor-intelligence/pull/37) · [Remote quote-provenance blocker #38](https://github.com/always7895/investor-intelligence/issues/38).
+
+The candidate adds local-export adapters for TAIFEX daily options and Alpaca indicative quotes, alongside existing Yahoo/local IBKR paths. These are **not live public LINE feeds**: redistribution review and source-bound live acceptance remain pending. Daily/indicative data cannot be presented as executable NBBO. Current audit findings supersede historical zero-defect counts; the released executable below is unchanged.
+
 ## Delivered functionality / 已完成的功能
 
 - Interactive and scheduled Top20 share **20 complete seven-field bilingual cards**: four carousels of five companies. `Top20 文字` provides complete company-grouped text, not a truncated table.

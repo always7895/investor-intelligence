@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from options_service import fetch_options, merge_results, privacy_minimize  # noqa: E402
+from options_service import apply_derived_capacity, fetch_options, merge_results, privacy_minimize  # noqa: E402
 
 
 def candidate(strike: float, ticker: str = "TEST") -> dict:
@@ -83,6 +83,27 @@ class OptionsServiceTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "OPTIONS_FALLBACK_FAILED_NO_USABLE_PRIMARY"):
                     fetch_options(provider="yfinance", output_dir=root)
             self.assertFalse((root / "options_latest.json").exists())
+
+    def test_zero_capacity_clears_both_recommendation_views(self) -> None:
+        item = candidate(120)
+        record = {"periods": {"weekly": {"status": "OK", "covered_call": {
+            "recommended_candidates": [item], "all_window_observations": [item]
+        }}}, "suggestions": {"weekly": {"sell_call": item, "covered_call_candidates": [item]}}}
+        result = apply_derived_capacity(record, 0)
+        self.assertEqual(result["periods"]["weekly"]["covered_call"]["recommended_candidates"], [])
+        self.assertIsNone(result["suggestions"]["weekly"]["sell_call"])
+        self.assertEqual(result["suggestions"]["weekly"]["covered_call_candidates"], [])
+        self.assertIsNotNone(record["suggestions"]["weekly"]["sell_call"])
+
+    def test_failed_period_and_truthy_liquidity_cannot_promote_candidates(self) -> None:
+        for status, liquidity in (("CHAIN_PROVIDER_ERROR", True), ("OK", "false")):
+            item = candidate(120)
+            item["liquidity_pass"] = liquidity
+            record = {"periods": {"weekly": {"status": status, "covered_call": {
+                "recommended_candidates": [], "all_window_observations": [item]
+            }}}}
+            result = apply_derived_capacity(record, 2)
+            self.assertEqual(result["periods"]["weekly"]["covered_call"]["recommended_candidates"], [])
 
     def test_usable_ibkr_result_is_preferred(self) -> None:
         primary = {

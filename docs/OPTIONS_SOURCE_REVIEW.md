@@ -2,6 +2,23 @@
 
 No new provider is activated by this review. Free access does not establish redistribution rights. Public LINE remains isolated from brokerage accounts. Existing prohibited-provider decisions remain intact pending explicit, evidenced policy review.
 
+## Implemented local-export adapters / 已實作本機匯入
+
+`scripts/import_option_observations.py` accepts an operator-authorized export, normalizes only allowlisted fields and prints a LOCAL_IMPORT_ONLY document. It performs no HTTP, credential lookup, storage publication or orders. It is deliberately not wired into the public LINE quote DTO or scheduled refresh. These adapters add import capabilities, not verified live feed availability.
+
+```powershell
+python scripts/import_option_observations.py --source taifex_eod --input <authorized-daily-export.json>
+python scripts/import_option_observations.py --source alpaca_indicative --input <authorized-indicative-export.json>
+```
+
+- TAIFEX: official schema https://openapi.taifex.com.tw/swagger.json defines `DailyMarketReportOpt`, including trade date, contract month/week, strike, call/put, bid/ask, volume, open interest and session. Daily date is not an intraday quote timestamp; week codes are not invented expiry dates. Missing `-` observations remain null. Futures are not substituted for options.
+- Alpaca: https://docs.alpaca.markets/us/reference/optionlatestquotes documents the latest quotes map. The adapter accepts **indicative exports only**, explicitly labels OPRA_DERIVED/INDICATIVE_NOT_NBBO, preserves timestamps and does not infer multiplier or Greeks. Operators must not import OPRA-entitled data under an indicative label.
+- TAIFEX terms https://www.taifex.com.tw/cht/edu/userTerms require permission for reuse except specifically authorized government open datasets. The exception has not been mapped to this endpoint; **public redistribution remains unapproved**. API schema access is not a license.
+- All output records carry `publication_eligible=false` and `executable_quote=false`. Import time never replaces retrieval/quote time. Invalid rows, duplicates, stale/future quotes, nonfinite/negative/crossed prices, fractional counts, unsupported sessions and malformed contracts are covered by regression tests. Stale valid records remain labelled observations, not current recommendations.
+- The CLI returns nonzero for partial, failed or empty imports; failures contain only row index/category, not raw source text. Authorized exports remain local and must never be committed.
+
+繁中摘要：兩個 adapter 已可匯入合法取得的本機 JSON，不需或讀取金鑰。TAIFEX 是日行情，Alpaca 是 indicative；兩者都不能宣稱即時可成交報價。尚未完成公開再散布授權或真實資料驗收，因此不接入 LINE，也不把匯入時間當行情時間。
+
 ## Independent delivery paths to investigate
 
 | Source | Evidence | Appropriate scope / unresolved limitation |

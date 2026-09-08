@@ -1,4 +1,14 @@
-# 目前狀態／Current status — 2026-09-06 Asia/Taipei
+# 目前狀態／Current status
+
+## 開發中期權稽核／Options audit candidate
+
+新增 TAIFEX 日行情、Alpaca indicative 本機匯入 adapters；未啟用 live feed、公共 LINE 發布或 brokerage 連線。修正來源失敗隔離、持倉容量與兩種推薦視圖不一致、日期及布林驗證。完整專案驗收仍未完成，歷史缺陷數不代表目前全面安全。
+
+Local-export adapters now normalize TAIFEX EOD and Alpaca indicative observations. No live feed/public LINE/brokerage activation. Candidate fixes cover provider failures, capacity/recommendation-view consistency and strict review fields. Whole-project acceptance is incomplete.
+
+See [source review / 使用說明](OPTIONS_SOURCE_REVIEW.md), [PR #37](https://github.com/always7895/investor-intelligence/pull/37), [quote-provenance blocker #38](https://github.com/always7895/investor-intelligence/issues/38), and [current audit evidence](../state/STATUS.md). The following release evidence is historical and does not qualify these changes.
+
+## 已發布基線／Released baseline — 2026-09-06 Asia/Taipei
 
 ## 已驗證範圍／Verified scope
 

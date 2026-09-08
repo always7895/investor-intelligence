@@ -133,7 +133,7 @@ def apply_derived_capacity(record: dict[str, Any], capacity: int) -> dict[str, A
     }
     periods = value.get("periods")
     if isinstance(periods, dict):
-        for period in periods.values():
+        for period_name, period in periods.items():
             if not isinstance(period, dict):
                 continue
             covered_call = period.get("covered_call")
@@ -149,18 +149,27 @@ def apply_derived_capacity(record: dict[str, Any], capacity: int) -> dict[str, A
                     candidate["position_shares"] = None
                     candidate["covered_contract_capacity"] = capacity
                     candidate["coverage_status"] = "COVERED" if capacity >= 1 else "NOT_COVERED_OR_UNKNOWN"
-            if capacity >= 1:
+            if capacity >= 1 and period.get("status") == "OK":
                 observations = covered_call.get("all_window_observations")
                 if isinstance(observations, list):
                     eligible = [
                         item
                         for item in observations
-                        if isinstance(item, dict) and item.get("liquidity_pass")
+                        if isinstance(item, dict) and item.get("liquidity_pass") is True
                     ]
                     maximum = max(1, len(covered_call.get("recommended_candidates") or []) or 3)
                     covered_call["recommended_candidates"] = eligible[:maximum]
                     covered_call["eligible_count"] = len(eligible)
                     covered_call["status"] = "OK" if eligible else "NO_ELIGIBLE_LIQUID_CONTRACT"
+            else:
+                covered_call["recommended_candidates"] = []
+                covered_call["eligible_count"] = 0
+                covered_call["status"] = "NOT_COVERED_OR_UNAVAILABLE"
+            suggestions = value.get("suggestions")
+            if isinstance(suggestions, dict) and isinstance(suggestions.get(period_name), dict):
+                recommended = covered_call.get("recommended_candidates") or []
+                suggestions[period_name]["sell_call"] = recommended[0] if recommended else None
+                suggestions[period_name]["covered_call_candidates"] = recommended
     return value
 
 
