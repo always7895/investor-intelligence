@@ -2329,7 +2329,22 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
       }
     }
 
-    if (style === "text" && tUpper) {
+    if (style === "text") {
+      if (!tUpper) {
+        return [
+          "【韭菜守護者・期權即時觀測快查中心】",
+          "──────────────────────────────",
+          "💡 本系統支援全球核心瓶頸標的期權觀測與收租限價推薦！",
+          "",
+          "📌 查詢方式：輸入「股票代號 + 期權」或「代號 + sell call」",
+          "• 美股示例：AAOI sell call、COHR 期權、NVDA 每週期權",
+          "• 歐股示例：SIVE sell call (瑞典 SFB)、ASML 期權 (阿姆斯特丹/美股)、ARM 每週期權",
+          "• 日韓示例：6857.T 期權 (愛德萬)、000660.KS 期權 (SK海力士)",
+          "• 台股示例：TSM sell call (台積電 ADR + 台指期貨對沖)",
+          "",
+          "🛡️ 守護者心法：不賣股為第一優先，建議選擇價外 +15%～+25% 高履約價，穩收 Theta 時間價值！",
+        ].join("\n");
+      }
       if (intlOption) {
         return [
           `📈【${intlOption.symbol} 期權限價與對沖觀測・${intlOption.country} IBKR】`,

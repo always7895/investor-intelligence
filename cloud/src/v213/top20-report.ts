@@ -18,7 +18,8 @@ export async function loadV213FreshTop20Report(
   if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
   const stamp = await publicText(env, ["last_successful_pipeline_timestamp"]);
   const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
-  if ([stamp, report.generated_at].some(value => {
+  const timestamps = [report.generated_at, ...(stamp ? [stamp] : [])];
+  if (timestamps.some(value => {
     const age = (Date.now() - Date.parse(value ?? "")) / 1000;
     return !Number.isFinite(age) || age < -300 || age > limit;
   })) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
