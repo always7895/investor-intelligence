@@ -114,6 +114,37 @@ const IGNORED_TICKER_TOKENS = new Set([
   "CURRENT",
 ]);
 
+const KNOWN_UNIVERSE_TICKERS = new Set([
+  "AAOI",
+  "AXTI",
+  "COHR",
+  "TSEM",
+  "SIVE",
+  "SIVE.ST",
+  "NVDA",
+  "TSM",
+  "AMD",
+  "AVGO",
+  "MU",
+  "BE",
+  "ALAB",
+  "LITE",
+  "MRVL",
+  "WDC",
+  "SMCI",
+  "APH",
+  "CIEN",
+  "CRDO",
+  "MTSI",
+  "JBL",
+  "APLD",
+  "IQE",
+  "IQE.L",
+  "3006.TW",
+  "6775.TW",
+  "ESMT",
+]);
+
 export function normalizeText(text: string): string {
   return text.normalize("NFKC").trim().replace(/\s+/g, " ");
 }
@@ -132,6 +163,13 @@ export function extractTicker(text: string): string | null {
   const compact = normalized.toLowerCase().replace(/[^a-z0-9.]/g, "");
   for (const [alias, ticker] of Object.entries(TICKER_ALIASES)) {
     if (compact.includes(alias)) return ticker;
+  }
+
+  // 1. Direct match for known universe tickers (case-insensitive)
+  const standaloneWord = normalized.replace(/^[\$#]/, "").trim();
+  const upperStandalone = standaloneWord.toUpperCase();
+  if (KNOWN_UNIVERSE_TICKERS.has(upperStandalone)) {
+    return upperStandalone;
   }
 
   const candidatePatterns = [
@@ -164,7 +202,16 @@ export function extractTicker(text: string): string | null {
     }
   }
 
-  // A deliberately uppercase standalone token is an explicit symbol signal.
+  // 2. Known universe ticker contained within query as a standalone token (case-insensitive)
+  const words = normalized.split(/[^A-Za-z0-9.]+/);
+  for (const w of words) {
+    const up = w.toUpperCase();
+    if (KNOWN_UNIVERSE_TICKERS.has(up)) {
+      return up;
+    }
+  }
+
+  // 3. A deliberately uppercase standalone token is an explicit symbol signal.
   // Do not uppercase arbitrary prose before matching: doing so turns ordinary
   // words such as "opto" into fake tickers and can select unrelated snapshots.
   const uppercasePattern =
