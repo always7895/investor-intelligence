@@ -333,6 +333,173 @@ export function buildOptionsFlexMessages(
   return messages;
 }
 
+interface InternationalOptionFact {
+  symbol: string;
+  name: string;
+  country: string;
+  exchange: string;
+  currency: string;
+  ibkrPath: string;
+  callStrategy: string;
+  putStrategy: string;
+}
+
+const INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE: Record<string, InternationalOptionFact> = {
+  SIVE: {
+    symbol: "SIVE",
+    name: "Sivers Semiconductors AB",
+    country: "瑞典",
+    exchange: "Nasdaq Stockholm (SFB) ｜ 幣別：SEK 瑞典克朗",
+    currency: "SEK",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「SIVE」，選擇「Sivers Semiconductors AB (SFB - Stocks/Options)」，即可連通瑞典斯德哥爾摩期權市場！",
+    callStrategy: "• 履約價挑選：蘇格蘭格拉斯哥廠年產 1 億顆 CW 雷射具倍數爆發力，絕不賣股！建議挑選價外 +20%～+30% 之最高可用 Strike（Delta < 0.15）。\n• 建議合約天數：30～60 天月選合約，賺取高額北歐時間價值（Theta）。",
+    putStrategy: "• 履約價挑選：選擇現價折價 15%～25% 之強支撐價位，預留 100% 現金保證金，收取時間價值並準備折價接盤。",
+  },
+  IQE: {
+    symbol: "IQE",
+    name: "IQE plc",
+    country: "英國",
+    exchange: "London Stock Exchange (LSE / ICE) ｜ 幣別：GBP 英鎊",
+    currency: "GBP",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「IQE」，選擇「IQE PLC (LSE - Stocks/Options)」，即可連通英國倫敦期權市場！",
+    callStrategy: "• 履約價挑選：化合物半導體與量子點雷射磊晶長線爆發潛力極大，絕不賣股！建議挑選價外 +20%～+30% 之最高可用 Strike（Delta < 0.15）。\n• 建議合約天數：30～60 天月選合約，賺取高額時間價值（Theta）。",
+    putStrategy: "• 履約價挑選：選擇自願長線建倉之強支撐價位（現價折價 15%～25%），收取權利金降低實質持股成本，預留 100% 現金保證金。",
+  },
+  ASML: {
+    symbol: "ASML",
+    name: "艾司摩爾 / ASML Holding",
+    country: "歐洲/美股",
+    exchange: "Euronext Amsterdam (AEB) / Nasdaq ｜ 幣別：EUR / USD",
+    currency: "EUR / USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「ASML」，可自由選擇荷蘭泛歐交易所（AEB - 歐元）或美股那斯達克（Nasdaq - 美元）雙邊期權鏈！",
+    callStrategy: "• 履約價挑選：2nm High-NA EUV 光刻機全球唯一壟斷，絕不賣股！建議挑選價外 +15%～+25% 之最高可用 Strike（Delta < 0.20）。\n• 建議合約天數：每週期權（Weekly）或 30 天月選合約。",
+    putStrategy: "• 履約價挑選：選擇現價折價 10%～20% 支撐位掛單，預留 100% 現金保證金，準備折價接盤全球半導體總閥門。",
+  },
+  ARM: {
+    symbol: "ARM",
+    name: "安謀 / ARM Holdings",
+    country: "英國/美股",
+    exchange: "Nasdaq (CBOE / OPRA) ｜ 幣別：USD 美元",
+    currency: "USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「ARM」，直接進入美股標準化每週期權鏈，流動性極佳！",
+    callStrategy: "• 履約價挑選：全球微處理器指令集與節能 IP 壟斷，絕不賣股！建議挑選價外 +15%～+25% 之最高可用 Strike（Delta < 0.20）。\n• 建議合約天數：5～14 天每週期權，快速收取時間價值。",
+    putStrategy: "• 履約價挑選：現價折價 15%～20% 掛單接盤，收取權利金。",
+  },
+  ATCO: {
+    symbol: "ATCO",
+    name: "阿特拉斯·科普柯 / Atlas Copco AB",
+    country: "瑞典",
+    exchange: "Nasdaq Stockholm (SFB) ｜ 幣別：SEK 瑞典克朗",
+    currency: "SEK",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「ATCO A」，選擇「Atlas Copco AB (SFB - Stocks/Options)」，即可進入瑞典真空設備期權鏈！",
+    callStrategy: "• 履約價挑選：全球半導體 EUV 真空泵浦市佔逾 50%，絕不賣股！建議挑選價外 +15%～+25% 之月選合約。\n• 建議合約天數：30～60 天月選合約。",
+    putStrategy: "• 履約價挑選：現價折價 10%～20% 之強支撐位掛單。",
+  },
+  MYCR: {
+    symbol: "MYCR",
+    name: "邁克羅尼 / Mycronic AB",
+    country: "瑞典",
+    exchange: "Nasdaq Stockholm (SFB) ｜ 幣別：SEK 瑞典克朗",
+    currency: "SEK",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「MYCR」，選擇「Mycronic AB (SFB - Stocks/Options)」！",
+    callStrategy: "• 履約價挑選：全球半導體與顯示器光罩雷射繪圖機絕對壟斷，絕不賣股！建議挑選價外 +20%～+30% 之月選合約。\n• 建議合約天數：30～60 天月選合約。",
+    putStrategy: "• 履約價挑選：現價折價 15%～25% 強支撐位掛單。",
+  },
+  REN: {
+    symbol: "REN",
+    name: "雷尼紹 / Renishaw plc",
+    country: "英國",
+    exchange: "London Stock Exchange (LSE) ｜ 幣別：GBP 英鎊",
+    currency: "GBP",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「RSW」，選擇「Renishaw PLC (LSE - Stocks/Options)」！",
+    callStrategy: "• 履約價挑選：半導體曝光機與機器人高精度光學編碼器龍頭，絕不賣股！建議挑選價外 +15%～+25% 之最高可用 Strike。\n• 建議合約天數：30～60 天月選合約。",
+    putStrategy: "• 履約價挑選：現價折價 15%～20% 支撐位掛單。",
+  },
+};
+
+export function buildInternationalOptionFlexMessages(fact: InternationalOptionFact): LineOutboundMessage[] {
+  const bubble = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text(`期權限價與流動性觀測 · ${fact.country} IBKR`, "xs", "#CBD5E1"),
+      text(`【${fact.symbol}】· ${fact.name}`, "xl", "#FFFFFF", { weight: "bold" }),
+      text(`交易所：${fact.exchange}`, "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "md" }),
+    body: box([
+      box([
+        text("💡 IBKR（盈透證券）交易路徑確認", "xs", "#1D4ED8", { weight: "bold" }),
+        text(fact.ibkrPath, "sm", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "sm", cornerRadius: "md" }),
+      box([
+        text("🟢 Covered Call 賣買權（不賣股為第一優先）", "xs", "#15803D", { weight: "bold" }),
+        text(fact.callStrategy, "sm", "#1E293B"),
+        box([
+          text("💡 限價單心法：歐洲期權價差較寬，務必以「限價單（Limit Order）」掛在 Mid 中間價成交，杜絕市價滑點！", "xs", "#15803D", { weight: "bold" }),
+        ], { backgroundColor: "#DCFCE7", paddingAll: "xs", cornerRadius: "sm" }),
+      ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }),
+      box([
+        text("🟡 Cash-Secured Put 賣賣權折價低接", "xs", "#B45309", { weight: "bold" }),
+        text(fact.putStrategy, "sm", "#1E293B"),
+      ], { backgroundColor: "#FEFCE8", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#FDE047", borderWidth: "1px" }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("唯讀公共觀測，限價單請在推薦區間內掛單，切勿追打市價單！", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${fact.symbol} 深度詳細分析`, text: `${fact.symbol} 詳細` } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+    ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
+  };
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: `【${fact.symbol} 期權觀測與 IBKR 操作指引】${fact.exchange}`,
+      contents: { type: "carousel", contents: [bubble] },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
+export function buildTaiwanOptionFlexMessages(ticker: string, industry: string): LineOutboundMessage[] {
+  const bubble = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text("期權限價與對沖觀測 · 台灣 TAIFEX", "xs", "#CBD5E1"),
+      text(`【${ticker}】`, "xl", "#FFFFFF", { weight: "bold" }),
+      text(`行業別：${industry} ｜ 新台幣 TWD`, "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "md" }),
+    body: box([
+      box([
+        text("💡 台灣市場衍生品交易機制確認", "xs", "#1D4ED8", { weight: "bold" }),
+        text("• 台股上市櫃標的在公開市場無美股標準化選擇權（Options）合約鏈。若欲進行衍生品收租、避險或對沖，可運用台灣期貨交易所（TAIFEX）發行之個股期貨（每口表彰 2,000 股現貨標的）！", "sm", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "sm", cornerRadius: "md" }),
+      box([
+        text("🛡️【不賣股長線持股原則】", "xs", "#15803D", { weight: "bold" }),
+        text("• 核心標的掌握關鍵半導體與先進封裝物理瓶頸，具備跨週期倍數爆發力，建議現貨 100% 抱緊，切勿輕易在低檔被洗出場！", "sm", "#1E293B"),
+      ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }),
+      box([
+        text("⚡ 美股同賽道高流動性期權替代標的", "xs", "#B45309", { weight: "bold" }),
+        text("• 若需操作美股標準化每週期權（Covered Call 賣買權收租），可參考同賽道美股巨頭：AAOI（光模組）、COHR（光雷射）、VRT（液冷散熱）、NVDA、TSM！", "sm", "#1E293B"),
+      ], { backgroundColor: "#FEFCE8", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#FDE047", borderWidth: "1px" }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("唯讀公共觀測，切勿追打市價單！", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${ticker} 深度詳細分析`, text: `${ticker} 詳細` } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+    ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
+  };
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: `【${ticker} 期權與期貨對沖指引】台灣期交所 TAIFEX 股票期貨`,
+      contents: { type: "carousel", contents: [bubble] },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export function buildSiveOptionsFlexMessages(): LineOutboundMessage[] {
   const bubble = {
     type: "bubble",
@@ -989,6 +1156,10 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
   }
 
   if (query.intent === "options") {
+    const tUpper = query.ticker ? query.ticker.toUpperCase() : null;
+    const norm = tUpper ? tUpper.replace(/\.(ST|L|TWO)$/i, "") : null;
+    const intlOption = tUpper ? (INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE[tUpper] ?? (norm ? INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE[norm] : null)) : null;
+
     if (style === "flex") {
       if (!query.ticker) {
         try {
@@ -997,20 +1168,29 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
           return null;
         }
       }
-      const tUpper = query.ticker.toUpperCase();
-      if (tUpper === "SIVE" || tUpper === "SIVE.ST" || tUpper === "SIVEF") {
+      if (intlOption) {
         try {
-          return buildSiveOptionsFlexMessages();
+          return buildInternationalOptionFlexMessages(intlOption);
         } catch {
           // fall through
+        }
+      }
+      if (tUpper) {
+        const twStock = STOCK_RESEARCH_KNOWLEDGE_BASE[tUpper] ?? (norm ? STOCK_RESEARCH_KNOWLEDGE_BASE[norm] : null);
+        if (twStock && (tUpper.endsWith(".TW") || ["2454.TW", "3081.TW", "2059.TW", "3131.TW", "3583.TW", "3450.TW", "6442.TW", "6669.TW", "2308.TW", "3006.TW"].includes(tUpper))) {
+          try {
+            return buildTaiwanOptionFlexMessages(tUpper, twStock.industry);
+          } catch {
+            // fall through
+          }
         }
       }
       try {
         const publicOptions = await publicJson<unknown>(env, ["options:latest", "latest_options"]);
         if (Array.isArray(publicOptions)) {
-          const norm = query.ticker.toUpperCase();
+          const normTicker = query.ticker.toUpperCase();
           const record = publicOptions.find(
-            (item) => item && typeof item === "object" && String((item as any).ticker ?? "").toUpperCase() === norm,
+            (item) => item && typeof item === "object" && String((item as any).ticker ?? "").toUpperCase() === normTicker,
           );
           if (record && typeof record === "object") {
             const flex = buildOptionsFlexMessages(record as Record<string, unknown>, query.period);
@@ -1019,6 +1199,43 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
         }
       } catch {
         // ignore and fall through
+      }
+    }
+
+    if (style === "text" && tUpper) {
+      if (intlOption) {
+        return [
+          `📈【${intlOption.symbol} 期權限價與對沖觀測・${intlOption.country} IBKR】`,
+          `標的：${intlOption.name} ｜ 交易所：${intlOption.exchange}`,
+          "──────────────────────────────",
+          "💡 IBKR（盈透證券）交易路徑確認：",
+          intlOption.ibkrPath,
+          "",
+          "🟢 Covered Call 賣買權（不賣股為第一優先）：",
+          intlOption.callStrategy,
+          "",
+          "🟡 Cash-Secured Put 賣賣權折價低接：",
+          intlOption.putStrategy,
+          "",
+          "──────────────────────────────",
+          "💡 守護者提示：限價單請掛在 Mid 中間價，切勿追打市價單避免滑點！",
+        ].join("\n");
+      }
+      const twStock = STOCK_RESEARCH_KNOWLEDGE_BASE[tUpper] ?? (norm ? STOCK_RESEARCH_KNOWLEDGE_BASE[norm] : null);
+      if (twStock && (tUpper.endsWith(".TW") || ["2454.TW", "3081.TW", "2059.TW", "3131.TW", "3583.TW", "3450.TW", "6442.TW", "6669.TW", "2308.TW", "3006.TW"].includes(tUpper))) {
+        return [
+          `📈【${tUpper} 期權與期貨對沖觀測・台灣 TAIFEX】`,
+          `行業別：${twStock.industry}`,
+          "──────────────────────────────",
+          "💡 台灣市場衍生品交易機制確認：",
+          "• 台股標的在公開市場無美股每週期權鏈。若欲收租或對沖，可運用台灣期貨交易所（TAIFEX）發行之個股期貨（每口表彰 2,000 股現貨）！",
+          "",
+          "🛡️【不賣股長線持股原則】：",
+          "• 核心標的掌握先進封裝與半導體物理瓶頸，具備倍數爆發力，建議現貨 100% 抱緊，切勿在低檔被洗出場！",
+          "",
+          "⚡ 美股同賽道高流動性期權替代標的：",
+          "• 若需操作標準化每週期權收租，可參考美股同業：AAOI（光模組）、COHR（光雷射）、VRT（液冷散熱）、NVDA、TSM！",
+        ].join("\n");
       }
     }
   }

@@ -38,18 +38,18 @@ const TICKER_ALIASES: Record<string, string> = {
   // 台灣代號與中文別名
   "台積電": "TSM",
   "聯發科": "2454.TW",
-  "聯亞": "3081.TW",
   "聯亞光電": "3081.TW",
+  "聯亞": "3081.TW",
   "晶豪科": "3006.TW",
   "川湖": "2059.TW",
-  "弘塑": "3131.TW",
   "弘塑科技": "3131.TW",
-  "辛耘": "3583.TW",
+  "弘塑": "3131.TW",
   "辛耘企業": "3583.TW",
-  "聯鈞": "3450.TW",
+  "辛耘": "3583.TW",
   "聯鈞光電": "3450.TW",
-  "光聖": "6442.TW",
+  "聯鈞": "3450.TW",
   "光聖科技": "6442.TW",
+  "光聖": "6442.TW",
   "緯穎": "6669.TW",
   "台達電": "2308.TW",
   "2330": "TSM",
@@ -64,6 +64,32 @@ const TICKER_ALIASES: Record<string, string> = {
   "6669": "6669.TW",
   "2308": "2308.TW",
   "2454": "2454.TW",
+  // 美股與全球核心標的中文別名
+  "美超微": "SMCI",
+  "超微半導體": "AMD",
+  "超微": "AMD",
+  "輝達": "NVDA",
+  "博通": "AVGO",
+  "高意集團": "COHR",
+  "高意": "COHR",
+  "美光科技": "MU",
+  "美光": "MU",
+  "威騰電子": "WDC",
+  "威騰": "WDC",
+  "安費諾": "APH",
+  "席安娜": "CIEN",
+  "默升科技": "CRDO",
+  "默升": "CRDO",
+  "邁威爾科技": "MRVL",
+  "邁威爾": "MRVL",
+  "朗美通": "LITE",
+  "捷普集團": "JBL",
+  "捷普": "JBL",
+  "應用數位": "APLD",
+  "奧普托電子": "AAOI",
+  "奧普托": "AAOI",
+  "阿斯特拉實驗室": "ALAB",
+  "阿斯特拉": "ALAB",
   // 瑞典標的與中文別名
   "sivers": "SIVE",
   "sive": "SIVE",
@@ -81,6 +107,7 @@ const TICKER_ALIASES: Record<string, string> = {
   "asml": "ASML",
   "艾司摩爾": "ASML",
   "vertiv": "VRT",
+  "維諦技術": "VRT",
   "維諦": "VRT",
   "palantir": "PLTR",
   "synopsys": "SNPS",
@@ -238,12 +265,17 @@ function normalizedTickerCandidate(raw: string | undefined): string | null {
 
 export function extractTicker(text: string): string | null {
   const normalized = normalizeText(text);
-  const compact = normalized.toLowerCase().replace(/[^a-z0-9.]/g, "");
-  for (const [alias, ticker] of Object.entries(TICKER_ALIASES)) {
-    if (compact.includes(alias)) return ticker;
+  const compactWithChinese = normalized.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5.]/g, "");
+
+  // 1. Direct match for Chinese names or aliases (sorted by longest alias first)
+  const sortedAliases = Object.entries(TICKER_ALIASES).sort((a, b) => b[0].length - a[0].length);
+  for (const [alias, ticker] of sortedAliases) {
+    if (normalized.includes(alias) || compactWithChinese.includes(alias.toLowerCase())) {
+      return ticker;
+    }
   }
 
-  // 1. Direct match for known universe tickers (case-insensitive)
+  // 2. Direct match for known universe tickers (case-insensitive)
   const standaloneWord = normalized.replace(/^[\$#]/, "").trim();
   const upperStandalone = standaloneWord.toUpperCase();
   if (KNOWN_UNIVERSE_TICKERS.has(upperStandalone)) {
