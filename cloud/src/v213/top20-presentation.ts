@@ -1,5 +1,6 @@
-import type { ParsedQuery } from "../core";
+import type { OptionPeriod, ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { publicJson } from "../storage";
 import type { FieldLocale } from "./field-labels";
 import {
   loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
@@ -68,9 +69,240 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   return messages;
 }
 
+export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
+  const sectors = [
+    {
+      title: "AI 算力與超大規模叢集",
+      sub: "Compute & Scale-Out Networking",
+      icon: "🤖",
+      landscape: "全球四大 CSP 巨頭（微軟、Google、Meta、AWS）加速建置十萬卡級超大規模叢集，推論算力需求首度超越訓練。",
+      bottleneck: "集群互聯頻寬飽和、交換機散熱功耗牆（Power Wall）、低延遲光電轉換傳輸極限。",
+      capex: "2026-2027 年全球四大雲端巨頭合計資本支出（CapEx）預估突破 3,500 億美元（年增 +35%～45%）。",
+      revenue: "客製化 ASIC 與光電互聯交換晶片複合成長率（CAGR）高於整體硬體，定價權向實體供應鏈傾斜。",
+    },
+    {
+      title: "光通訊、CPO 與矽光子",
+      sub: "Optical Interconnect & Silicon Photonics",
+      icon: "⚡",
+      landscape: "800G 光模組進入交付高峰，1.6T 加速於 2026H2 放量，3.2T 光電共封裝（CPO）啟動產能鎖定。",
+      bottleneck: "InP（磷化銦）高品質基板產能耗盡、連續波（CW）雷射良率與年產能缺口達 40%～60%。",
+      capex: "光模組與光引擎採購支出佔整體 AI 機櫃 BOM 比例從過往 8% 攀升至 15%～18%。",
+      revenue: "上游基板與磊晶廠獲一線大廠（Lumentum、Coherent、NVIDIA）多年預付款與長約保證，ASP 具抗跌定價權。",
+    },
+    {
+      title: "AI 電力設施與現場發電",
+      sub: "On-Site Power & Grid Deficit",
+      icon: "🔋",
+      landscape: "美國資料中心電網接入等待期長達 4 至 7 年，自備電源（Behind-the-Meter）成為超大規模資料中心落地的唯一解方。",
+      bottleneck: "大功率固態氧化物燃料電池（SOFC）、小型模組化核反應爐（SMR）審批，以及升壓變壓器交期長達 120 週。",
+      capex: "微軟、Google、亞馬遜簽訂之 15-20 年超長 PPA 電力採購與現場微電網合約累計承諾已逾 650 億美元。",
+      revenue: "現場能源服務商享有長達 15 年的不可撤銷合約與通膨轉嫁條款，營運現金流極度確定。",
+    },
+    {
+      title: "先進封裝與高頻寬記憶體",
+      sub: "CoWoS & HBM Supercycle",
+      icon: "📦",
+      landscape: "先進封裝 CoWoS 與 SoIC 產能供不應求，HBM3e/HBM4 產能被晶片巨頭提前包攬至 2027 年底。",
+      bottleneck: "三大原廠將產能全面移轉至 HBM 與 DDR5，導致成熟製程 DDR3/DDR2 出現結構性產能真空。",
+      capex: "晶圓代工龍頭與記憶體大廠之先進封裝與矽穿孔（TSV）專項 CapEx 佔比提升至 30% 以上。",
+      revenue: "具備成熟記憶體現貨產能（如利基型 DRAM）及封測代工廠享有現貨價跳漲與產能溢價利益。",
+    },
+    {
+      title: "人形機器人與物理致動",
+      sub: "Humanoid Robotics & Actuation",
+      icon: "🦾",
+      landscape: "由原型機展示邁向 2026-2027 年工廠物流場景試點，供應鏈自汽車零件體系分化獨立。",
+      bottleneck: "行星滾柱絲槓（Planetary Roller Screws）與空心杯無刷電機的高精度磨削良率低於 40%，產能極度稀缺。",
+      capex: "全球主流車廠與物流霸主設立專項機器人產線升級預算，試產階段資本開支預估年增 >80%。",
+      revenue: "首波通過 Tier 1 認證並具備精密機床擴產能力之機械組件廠，享有汽車工業級 5-8 年長期排他供貨期。",
+    },
+  ];
+
+  const bubbles = sectors.map((s, idx) => ({
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text(`宏觀產業審查 · ${idx + 1}/5 · 跨週期賽道`, "xs", "#CBD5E1"),
+      text(`${s.icon} ${s.title}`, "lg", "#FFFFFF", { weight: "bold" }),
+      text(s.sub, "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "md" }),
+    body: box([
+      box([
+        text("產業現況 / Current Landscape", "xs", "#475569", { weight: "bold" }),
+        text(s.landscape, "sm", "#1E293B"),
+      ], { backgroundColor: "#F1F5F9", paddingAll: "sm", cornerRadius: "md" }),
+      box([
+        text("實體物理瓶頸 / Physical Bottleneck", "xs", "#B91C1C", { weight: "bold" }),
+        text(s.bottleneck, "sm", "#1E293B"),
+      ], { backgroundColor: "#FEF2F2", paddingAll: "sm", cornerRadius: "md" }),
+      box([
+        text("未來支出展望 (CapEx) / Future CapEx", "xs", "#1D4ED8", { weight: "bold" }),
+        text(s.capex, "sm", "#1E293B"),
+        text("未來收入能見度 / Revenue Visibility", "xs", "#047857", { weight: "bold" }),
+        text(s.revenue, "sm", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "sm", cornerRadius: "md", spacing: "xs" }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("公開研究非投資建議 / Not investment advice.", "xs", "#64748B"),
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "最新報告完整文字版", text: "最新報告 文字" } },
+    ], { paddingAll: "sm", backgroundColor: "#F8FAFC" }),
+  }));
+
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: "【韭菜守護者・最新宏觀產業深度審查報告】AI算力、光通訊、現場發電、先進封裝與機器人五大賽道",
+      contents: { type: "carousel", contents: bubbles },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
+export function buildOptionsFlexMessages(
+  record: Record<string, unknown>,
+  preferredPeriod: OptionPeriod = null,
+): LineOutboundMessage[] {
+  const symbol = String(record.ticker ?? "N/A");
+  const periods = (record.periods ?? {}) as Record<string, unknown>;
+  const activePeriods = preferredPeriod ? [preferredPeriod] : (["weekly", "monthly"] as const);
+
+  const bubbles: Record<string, unknown>[] = [];
+  for (const pName of activePeriods) {
+    const pRaw = periods[pName];
+    if (!pRaw || typeof pRaw !== "object") continue;
+    const pRecord = pRaw as Record<string, unknown>;
+    const status = String(pRecord.status ?? "UNKNOWN");
+    if (status !== "OK") continue;
+
+    const bodyContents: unknown[] = [
+      box([
+        text(`📅 到期日：${String(pRecord.expiration ?? "N/A")} ｜ DTE：${String(pRecord.actual_dte ?? "N/A")} 天 ｜ ${pName === "weekly" ? "每週期權 (Weekly)" : "每月期權 (Monthly)"}`, "xs", "#334155", { weight: "bold" }),
+      ], { backgroundColor: "#F8FAFC", paddingAll: "sm", cornerRadius: "md" }),
+    ];
+
+    for (const [keys, label, isCall] of [
+      [["covered_call", "call_observations"], "買權報價 (Covered Call / 賣買權收租防守)", true],
+      [["cash_secured_put", "put_observations"], "賣權報價 (Cash-Secured Put / 賣賣權折價低接)", false],
+    ] as const) {
+      let strategyRaw: unknown = null;
+      for (const k of keys) {
+        if (pRecord[k] && typeof pRecord[k] === "object") {
+          strategyRaw = pRecord[k];
+          break;
+        }
+      }
+      if (!strategyRaw || typeof strategyRaw !== "object") continue;
+      const strategy = strategyRaw as Record<string, unknown>;
+      const rawCandidates = Array.isArray(strategy.recommended_candidates) && strategy.recommended_candidates.length > 0
+        ? strategy.recommended_candidates
+        : Array.isArray(strategy.all_window_observations)
+        ? strategy.all_window_observations
+        : [];
+      const candidates = rawCandidates.filter((c): c is Record<string, unknown> => !!c && typeof c === "object");
+      if (candidates.length === 0) continue;
+
+      for (const candidate of candidates.slice(0, 1)) {
+        const currency = String(candidate.currency ?? record.currency ?? "USD");
+        const strike = typeof candidate.strike === "number" ? candidate.strike.toFixed(2) : String(candidate.strike ?? "N/A");
+        const bid = typeof candidate.bid === "number" ? candidate.bid.toFixed(2) : String(candidate.bid ?? "N/A");
+        const ask = typeof candidate.ask === "number" ? candidate.ask.toFixed(2) : String(candidate.ask ?? "N/A");
+        const mid = typeof candidate.midpoint === "number" ? candidate.midpoint.toFixed(2) : String(candidate.midpoint ?? "N/A");
+        const dist = typeof candidate.distance_from_spot_pct === "number" ? `${candidate.distance_from_spot_pct > 0 ? "+" : ""}${candidate.distance_from_spot_pct.toFixed(1)}%` : "";
+        const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
+        const midYield = typeof yields.mid === "number" ? `${(yields.mid * 100).toFixed(1)}%` : "N/A";
+        const bidYield = typeof yields.bid === "number" ? `${(yields.bid * 100).toFixed(1)}%` : "N/A";
+        const iv = typeof candidate.implied_volatility_pct === "number" ? `${(candidate.implied_volatility_pct * 100).toFixed(1)}%` : "N/A";
+        const limitBand = typeof candidate.recommended_limit_band === "object" && candidate.recommended_limit_band
+          ? `${currency} ${(candidate.recommended_limit_band as any).min?.toFixed(2)} ～ ${(candidate.recommended_limit_band as any).max?.toFixed(2)}`
+          : `${currency} ${bid} ～ ${mid}`;
+
+        bodyContents.push(
+          box([
+            text(isCall ? "🟢 " + label : "🟡 " + label, "xs", isCall ? "#15803D" : "#B45309", { weight: "bold" }),
+            text(`• 履約價 K ${currency} ${strike}${dist ? ` (價外 ${dist})` : ""}`, "sm", "#1E293B", { weight: "bold" }),
+            text(`  Bid ${currency} ${bid} ｜ Ask ${currency} ${ask} ｜ Mid ${currency} ${mid}`, "xs", "#475569"),
+            box([
+              text(`💡 推薦限價區間：${limitBand}`, "xs", isCall ? "#15803D" : "#B45309", { weight: "bold" }),
+            ], { backgroundColor: isCall ? "#DCFCE7" : "#FEF3C7", paddingAll: "xs", cornerRadius: "sm" }),
+            text(`📊 年化收益率：Mid ${midYield} (Bid ${bidYield}) ｜ IV ${iv}`, "xs", "#334155"),
+            text(`🛡️ 流動性驗證：${candidate.liquidity_pass ? "PASS ✅" : "觀察 ⚠️"}`, "xs", candidate.liquidity_pass ? "#047857" : "#D97706", { weight: "bold" }),
+          ], {
+            backgroundColor: isCall ? "#F0FDF4" : "#FEFCE8",
+            paddingAll: "sm",
+            cornerRadius: "md",
+            spacing: "xs",
+            borderColor: isCall ? "#86EFAC" : "#FDE047",
+            borderWidth: "1px",
+          }),
+        );
+      }
+    }
+
+    bubbles.push({
+      type: "bubble",
+      size: "mega",
+      header: box([
+        text("期權限價與流動性觀測 · Public Options", "xs", "#CBD5E1"),
+        text(`【${symbol}】`, "xxl", "#FFFFFF", { weight: "bold" }),
+        text(`來源：${String(record.quote_source ?? "yfinance")} ｜ 唯讀公開觀測`, "xs", "#94A3B8"),
+      ], { backgroundColor: "#0F172A", paddingAll: "md" }),
+      body: box(bodyContents, { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
+      footer: box([
+        text("唯讀公共觀測，限價單請在推薦區間內掛單，切勿追打市價單！", "xs", "#64748B"),
+        { type: "button", style: "link", height: "sm", action: { type: "message", label: `查看 ${symbol} 供應鏈瓶頸`, text: symbol } },
+        { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+      ], { paddingAll: "sm", backgroundColor: "#F8FAFC" }),
+    });
+  }
+
+  if (bubbles.length === 0) return [];
+
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: `【${symbol} 期權限價與流動性觀測】Covered Call 賣買權與限價區間`,
+      contents: { type: "carousel", contents: bubbles.slice(0, 5) },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
+  const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
+
+  if (query.intent === "latest_report" || query.intent === "morning_report" || query.intent === "evening_report") {
+    if (style === "flex") {
+      try {
+        return buildMacroIndustryFlexMessages();
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  if (query.intent === "options" && query.ticker && style === "flex") {
+    try {
+      const publicOptions = await publicJson<unknown>(env, ["options:latest", "latest_options"]);
+      if (Array.isArray(publicOptions)) {
+        const norm = query.ticker.toUpperCase();
+        const record = publicOptions.find(
+          (item) => item && typeof item === "object" && String((item as any).ticker ?? "").toUpperCase() === norm,
+        );
+        if (record && typeof record === "object") {
+          const flex = buildOptionsFlexMessages(record as Record<string, unknown>, query.period);
+          if (flex.length > 0) return flex;
+        }
+      }
+    } catch {
+      // ignore and fall through
+    }
+  }
+
   const result = await loadV213FreshTop20Report(env, query);
   if (!result || typeof result === "string") return result;
-  const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
   return buildV213Top20Messages(result, v213FieldLocale(env.V213_FIELD_LOCALE), style);
 }
