@@ -186,6 +186,108 @@ const TICKER_ALIASES: Record<string, string> = {
   "中芯": "0981.HK",
   "smic": "0981.HK",
   "0981": "0981.HK",
+  // 台灣深度半導體與 AI 基礎設施
+  "穎崴科技": "6515.TW",
+  "穎崴": "6515.TW",
+  "winway": "6515.TW",
+  "6515": "6515.TW",
+  "世芯-KY": "3661.TW",
+  "世芯": "3661.TW",
+  "alchip": "3661.TW",
+  "3661": "3661.TW",
+  "創意電子": "3443.TW",
+  "創意": "3443.TW",
+  "guc": "3443.TW",
+  "3443": "3443.TW",
+  "華城電機": "1519.TW",
+  "華城": "1519.TW",
+  "1519": "1519.TW",
+  "技嘉科技": "2376.TW",
+  "技嘉": "2376.TW",
+  "gigabyte": "2376.TW",
+  "2376": "2376.TW",
+  "元太科技": "8069.TWO",
+  "元太": "8069.TWO",
+  "eink": "8069.TWO",
+  "8069": "8069.TWO",
+  // 日本新增
+  "日立製作所": "6501.T",
+  "日立": "6501.T",
+  "hitachi": "6501.T",
+  "6501": "6501.T",
+  "保谷": "7741.T",
+  "hoya": "7741.T",
+  "7741": "7741.T",
+  "瑞薩電子": "6723.T",
+  "瑞薩": "6723.T",
+  "renesas": "6723.T",
+  "6723": "6723.T",
+  "日本電產": "6594.T",
+  "尼得科": "6594.T",
+  "nidec": "6594.T",
+  "6594": "6594.T",
+  "smc": "6273.T",
+  "6273": "6273.T",
+  // 韓國新增
+  "斗山能源": "034020.KS",
+  "斗山": "034020.KS",
+  "doosan": "034020.KS",
+  "034020": "034020.KS",
+  "三星sdi": "006400.KS",
+  "samsungsdi": "006400.KS",
+  "006400": "006400.KS",
+  // 歐洲新增
+  "英飛凌": "IFX",
+  "infineon": "IFX",
+  "ifx": "IFX",
+  "意法半導體": "STM",
+  "stmicro": "STM",
+  "stm": "STM",
+  "愛思強": "AIXA",
+  "aixtron": "AIXA",
+  "世佳半導體": "SOITEC",
+  "soitec": "SOITEC",
+  // 中國新增
+  "韋爾股份": "603501.SH",
+  "韋爾": "603501.SH",
+  "豪威": "603501.SH",
+  "603501": "603501.SH",
+  "寧德時代": "300750.SZ",
+  "寧德": "300750.SZ",
+  "catl": "300750.SZ",
+  "300750": "300750.SZ",
+  "立訊精密": "002475.SZ",
+  "立訊": "002475.SZ",
+  "luxshare": "002475.SZ",
+  "002475": "002475.SZ",
+  "海光信息": "688041.SH",
+  "海光": "688041.SH",
+  "hygon": "688041.SH",
+  "688041": "688041.SH",
+  // 美國新增
+  "科磊": "KLAC",
+  "kla": "KLAC",
+  "klac": "KLAC",
+  "科林研發": "LRCX",
+  "lamresearch": "LRCX",
+  "lrcx": "LRCX",
+  "應用材料": "AMAT",
+  "appliedmaterials": "AMAT",
+  "amat": "AMAT",
+  "arista": "ANET",
+  "anet": "ANET",
+  "星座能源": "CEG",
+  "constellation": "CEG",
+  "ceg": "CEG",
+  "伊頓": "ETN",
+  "eaton": "ETN",
+  "etn": "ETN",
+  "德州儀器": "TXN",
+  "ti": "TXN",
+  "txn": "TXN",
+  "高通": "QCOM",
+  "qualcomm": "QCOM",
+  "qcom": "QCOM",
 };
 const EXPLICIT_TICKER_TOKEN = "[A-Za-z0-9]{1,8}(?:[.-][A-Za-z0-9]{1,4})?";
 const CONTEXTUAL_TICKER_TOKEN = "[A-Za-z][A-Za-z0-9]{0,5}(?:[.-][A-Za-z0-9]{1,4})?";
@@ -342,6 +444,41 @@ const KNOWN_UNIVERSE_TICKERS = new Set([
   "688012.SH",
   "601138.SH",
   "0981.HK",
+  // 擴充台灣全球第一梯隊
+  "6515.TW",
+  "3661.TW",
+  "3443.TW",
+  "1519.TW",
+  "2376.TW",
+  "8069.TWO",
+  // 擴充日本
+  "6501.T",
+  "7741.T",
+  "6723.T",
+  "6594.T",
+  "6273.T",
+  // 擴充韓國
+  "034020.KS",
+  "006400.KS",
+  // 擴充歐洲
+  "IFX",
+  "STM",
+  "AIXA",
+  "SOITEC",
+  // 擴充中國
+  "603501.SH",
+  "300750.SZ",
+  "002475.SZ",
+  "688041.SH",
+  // 擴充美股
+  "KLAC",
+  "LRCX",
+  "AMAT",
+  "ANET",
+  "CEG",
+  "ETN",
+  "TXN",
+  "QCOM",
 ]);
 
 export function normalizeText(text: string): string {
@@ -364,8 +501,15 @@ export function extractTicker(text: string): string | null {
   // 1. Direct match for Chinese names or aliases (sorted by longest alias first)
   const sortedAliases = Object.entries(TICKER_ALIASES).sort((a, b) => b[0].length - a[0].length);
   for (const [alias, ticker] of sortedAliases) {
-    if (normalized.includes(alias) || compactWithChinese.includes(alias.toLowerCase())) {
-      return ticker;
+    if (/[\u4e00-\u9fa5]/.test(alias)) {
+      if (normalized.includes(alias) || compactWithChinese.includes(alias.toLowerCase())) {
+        return ticker;
+      }
+    } else {
+      const p = new RegExp(`(?:^|[^A-Za-z0-9])${alias.replace(/[.]/g, "\\.")}(?=$|[^A-Za-z0-9])`, "i");
+      if (p.test(normalized)) {
+        return ticker;
+      }
     }
   }
 
