@@ -326,7 +326,22 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
     if (query.ticker) {
       const ticker = query.ticker.toUpperCase();
       if (ticker === "SIVE" || ticker === "SIVE.ST" || ticker === "SIVEF") {
-        return "【SIVE 期權市場說明】\nSIVE（Sivers Semiconductors）主要掛牌於瑞典斯德哥爾摩證交所（SIVE.ST）及美股場外粉紅單（SIVEF），該標的目前在公開金融市場「無發行標準化選擇權（Options）合約」。\n若欲參與其 InP 雷射擴產行情，僅能透過現貨股票進行配置，無法執行 Sell Call / Sell Put 策略。\n（若需操作光通訊期權，可參考同屬瓶頸鏈且有豐富期權之標的，如 AXTI、COHR、AAOI、LITE、AVGO 等！）";
+        return [
+          "📈【SIVE（Sivers）期權交易與 IBKR 操作指引】",
+          "🎯 標的：Sivers Semiconductors AB（瑞典斯德哥爾摩 Nasdaq Nordic / IBKR代碼: SIVE）",
+          "──────────────────────────────",
+          "💡 IBKR（盈透證券）交易路徑確認：",
+          "• 市場交易所：SIVE 的標準化選擇權掛牌於瑞典斯德哥爾摩期權市場（Nasdaq Nordic / 交易所代號：SFB 或 OMS），合約計價幣別為瑞典克朗（SEK）。",
+          "• IBKR 搜尋方式：在 TWS 或 IBKR Mobile 輸入「SIVE」，選擇「Sivers Semiconductors AB (SFB - Stocks/Options)」，即可進入斯德哥爾摩期權鏈。",
+          "",
+          "🛡️【不賣股為第一優先】Covered Call 賣買權收租建議：",
+          "• 履約價挑選（Strike K）：Sivers 蘇格蘭格拉斯哥廠年產 1 億顆 CW 雷射預計 2027 年放量，長線爆發潛力極大，絕不賣股！建議選擇價外 +20%～+30% 之最高可用 Strike（Delta < 0.15）。",
+          "• 到期天數（DTE）：優先選擇 30～60 天月選合約，賺取高額北歐市場時間價值（Theta）。",
+          "• 掛單心法：北歐期權買賣價差較寬，務必採用「限價單（Limit Order）」掛在 Mid 中間價，避免市價單滑點！",
+          "",
+          "🟡 Cash-Secured Put 賣賣權折價低接建議：",
+          "• 履約價挑選：選擇自願長線建倉之強支撐價位（現價折價 15%～25%），收取權利金降低實質持股成本，預留 100% 現金保證金，杜絕槓桿穿倉！",
+        ].join("\n");
       }
       if (ticker === "3006.TW" || ticker === "6775.TW" || ticker === "ESMT") {
         return "【3006.TW 晶豪科期權說明】\n晶豪科為台灣證券交易所上市公司，無美股標準化選擇權（Options）鏈，無法直接執行美股 Sell Call / Cash-Secured Put 策略。建議以現貨股票配置為主。";

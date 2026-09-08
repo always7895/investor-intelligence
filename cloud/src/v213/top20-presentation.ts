@@ -333,6 +333,50 @@ export function buildOptionsFlexMessages(
   return messages;
 }
 
+export function buildSiveOptionsFlexMessages(): LineOutboundMessage[] {
+  const bubble = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text("期權限價與流動性觀測 · Sivers IBKR", "xs", "#CBD5E1"),
+      text("【SIVE】· Sivers Semiconductors", "xl", "#FFFFFF", { weight: "bold" }),
+      text("交易所：Nasdaq Stockholm (SFB) ｜ 幣別：SEK 瑞典克朗", "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "md" }),
+    body: box([
+      box([
+        text("💡 IBKR（盈透證券）交易路徑確認", "xs", "#1D4ED8", { weight: "bold" }),
+        text("• 在 TWS 或 IBKR Mobile 搜尋「SIVE」，選擇「Sivers Semiconductors AB (SFB - Stocks/Options)」，即可連通瑞典斯德哥爾摩期權市場！", "sm", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "sm", cornerRadius: "md" }),
+      box([
+        text("🟢 Covered Call 賣買權（不賣股為第一優先）", "xs", "#15803D", { weight: "bold" }),
+        text("• 履約價挑選：蘇格蘭格拉斯哥廠年產 1 億顆 CW 雷射具倍數爆發力，絕不賣股！建議挑選價外 +20%～+30% 之最高可用 Strike（Delta < 0.15）。", "sm", "#1E293B"),
+        text("• 建議合約天數：30～60 天月選合約，賺取高額北歐時間價值（Theta）。", "xs", "#475569"),
+        box([
+          text("💡 限價單心法：北歐期權價差較寬，務必以「限價單（Limit Order）」掛在 Mid 中間價成交，杜絕市價滑點！", "xs", "#15803D", { weight: "bold" }),
+        ], { backgroundColor: "#DCFCE7", paddingAll: "xs", cornerRadius: "sm" }),
+      ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }),
+      box([
+        text("🟡 Cash-Secured Put 賣賣權折價低接", "xs", "#B45309", { weight: "bold" }),
+        text("• 履約價挑選：選擇現價折價 15%～25% 之強支撐價位，預留 100% 現金保證金，收取時間價值並準備折價接盤。", "sm", "#1E293B"),
+      ], { backgroundColor: "#FEFCE8", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#FDE047", borderWidth: "1px" }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("唯讀公共觀測，限價單請在推薦區間內掛單，切勿追打市價單！", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: "查看 SIVE 深度詳細分析", text: "SIVE 詳細" } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+    ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
+  };
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: "【SIVE 期權觀測與 IBKR 操作指引】Nasdaq Stockholm (SFB) 期權鏈與高 Strike 防守收租",
+      contents: { type: "carousel", contents: [bubble] },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
   const card1 = {
     type: "bubble",
@@ -951,6 +995,14 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
           return buildOptionsGuideFlexMessages();
         } catch {
           return null;
+        }
+      }
+      const tUpper = query.ticker.toUpperCase();
+      if (tUpper === "SIVE" || tUpper === "SIVE.ST" || tUpper === "SIVEF") {
+        try {
+          return buildSiveOptionsFlexMessages();
+        } catch {
+          // fall through
         }
       }
       try {
