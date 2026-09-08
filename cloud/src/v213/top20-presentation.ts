@@ -415,6 +415,56 @@ const INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE: Record<string, InternationalOptionFa
     callStrategy: "• 履約價挑選：半導體曝光機與機器人高精度光學編碼器龍頭，絕不賣股！建議挑選價外 +15%～+25% 之最高可用 Strike。\n• 建議合約天數：30～60 天月選合約。",
     putStrategy: "• 履約價挑選：現價折價 15%～20% 支撐位掛單。",
   },
+  TSM: {
+    symbol: "TSM",
+    name: "台積電 / TSMC ADR",
+    country: "台灣/美股",
+    exchange: "NYSE / CBOE ｜ 幣別：USD 美元（美股 ADR 每週期權）",
+    currency: "USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「TSM」，選擇「TSM (NYSE - Stocks/Options)」，即可直接進入全球流動性最強之美股每週期權鏈！",
+    callStrategy: "• 履約價挑選：全球 2nm/3nm 先進製程與 CoWoS/SoIC 封裝絕對壟斷，長線爆發力不可限量，絕不賣股！建議挑選價外 +15%～+25%（Delta 0.12～0.18）之每週或月選合約，享有極厚安全墊。\n• 建議合約天數：5～14 天每週期權，週週穩健收取時間價值（Theta）。",
+    putStrategy: "• 履約價挑選：選擇自願長線建倉之強支撐價位（現價折價 10%～20%），預留 100% 現金保證金，折價接盤全球半導體總閥門。",
+  },
+  "2330.TW": {
+    symbol: "2330.TW",
+    name: "台積電（台灣現貨與期貨）",
+    country: "台灣",
+    exchange: "台灣期交所（TAIFEX）股票期貨 ｜ 幣別：TWD 新台幣",
+    currency: "TWD",
+    ibkrPath: "在 IBKR 或台灣券商搜尋「台積電」或「CDO（台積電期貨）」，每口表彰 2,000 股現貨標的！",
+    callStrategy: "• 台灣市場無每週期權鏈，建議以現貨 100% 抱緊為第一優先，享受資本公積與全球半導體紅利，切勿在低檔輕易出脫！\n• 若需操作標準化 Covered Call 賣買權收租，建議轉戰美股 ADR「TSM sell call」，享有超高流動性與每週時間價值！",
+    putStrategy: "• 建議現貨分批低接，或以美股 TSM 賣 Put（現價折價 10%～20%）賺取權利金。",
+  },
+  VRT: {
+    symbol: "VRT",
+    name: "維諦技術 / Vertiv Holdings",
+    country: "美股",
+    exchange: "NYSE (CBOE / OPRA) ｜ 幣別：USD 美元",
+    currency: "USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「VRT」，選擇「VRT (NYSE - Stocks/Options)」，直接連通美股每週期權鏈！",
+    callStrategy: "• 履約價挑選：全球 AI 資料中心液冷散熱歧管（CDU）霸主，絕不賣股！建議挑選價外 +15%～+25% 之每週或月選合約。\n• 建議合約天數：7～30 天合約。",
+    putStrategy: "• 履約價挑選：現價折價 15%～20% 強支撐位掛單接盤。",
+  },
+  PLTR: {
+    symbol: "PLTR",
+    name: "Palantir Technologies",
+    country: "美股",
+    exchange: "NYSE (CBOE / OPRA) ｜ 幣別：USD 美元",
+    currency: "USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「PLTR」，直接進入美股每週期權鏈，交易量巨大！",
+    callStrategy: "• 履約價挑選：國防主權 AI 與 AIP 企業本體論中樞，長線爆發力強，絕不賣股！建議挑選價外 +15%～+25% 之每週高 Strike。\n• 建議合約天數：5～14 天每週期權。",
+    putStrategy: "• 履約價挑選：現價折價 15%～20% 支撐位掛單接盤。",
+  },
+  POET: {
+    symbol: "POET",
+    name: "POET Technologies",
+    country: "美股/加拿大",
+    exchange: "Nasdaq (OPRA) ｜ 幣別：USD 美元",
+    currency: "USD",
+    ibkrPath: "在 TWS 或 IBKR Mobile 搜尋「POET」，直接進入那斯達克期權鏈！",
+    callStrategy: "• 履約價挑選：晶圓級光引擎與光電中介層平台，爆發彈性高，絕不賣股！建議挑選價外 +25%～+35% 之高 Strike。\n• 建議合約天數：30～60 天月選合約。",
+    putStrategy: "• 履約價挑選：現價折價 20%～30% 支撐位掛單。",
+  },
 };
 
 export function buildInternationalOptionFlexMessages(fact: InternationalOptionFact): LineOutboundMessage[] {
@@ -921,9 +971,10 @@ export function buildStockResearchFlexMessages(
     ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("基於第一手公開法定申報，非投資建議 / Not investment advice.", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: `查看 ${ticker} 深度詳細分析`, text: `${ticker} 詳細` } },
       { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查詢 ${ticker} 期權限價（不賣股收租）`, text: `${ticker} sell call` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
-    ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
+    ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "xs" }),
   };
 
   const messages: LineOutboundMessage[] = [
@@ -1093,6 +1144,38 @@ function buildSectorDeepDiveText(sectorKey: string): string {
 }
 
 function buildStockDeepDiveText(ticker: string, stock: StockResearchFact): string {
+  if (ticker === "TSM" || ticker === "2330.TW") {
+    return [
+      "🔬【台積電（TSM / 2330.TW）全球半導體總閥門・深度專題研析】",
+      "行業分類：全球先進半導體晶圓製造與 CoWoS/SoIC 先進封裝絕對壟斷",
+      "──────────────────────────────",
+      "1️⃣ 核心技術與物理約束層深度剖析：",
+      "• 製程總閥門：台積電在 3nm 與 2nm GAA（N2/N2P/A16 埃米製程）具備全球 90%+ 獨佔市場份額，領先 Intel 與三星超過一個世代。",
+      "• 先進封裝物理天花板：Blackwell 晶片全面導入 CoWoS-L，矽中介層（Silicon Interposer）面積擴大至光罩極限 3.3x 面積；High-NA EUV 光刻機在 A16 埃米製程與背面供電（Super Power Rail）中扮演物理極限核心，全球無第二家代工廠能提供百萬片級商業化良率。",
+      "",
+      "2️⃣ 市場供需格局與客戶導入進展：",
+      "• 頂級客戶全量包攬：蘋果、NVIDIA、AMD、高通、聯發科、Google、微軟全面包攬 2026-2027 年先進製程與 CoWoS 產能。",
+      "• 產能缺口持續擴大：CoWoS 月產能由 2024 年底 3.5 萬片急擴至 2026 年底 8 萬片以上仍供不應求，一線客戶自願加價 10%～15% 鎖定產能配額。",
+      "",
+      "3️⃣ 法定財報、契約金額與擴產排程（具體數字）：",
+      "• 營收與毛利：SEC Form 20-F 與台灣 MOPS 申報：年合併營收挑戰突破 3 兆新台幣（逾 950 億美元），毛利率長期穩定在 54%～56% 頂級水準。",
+      "• 資本支出（CapEx）：2026 年資本開支維持在 320 億至 360 億美元高檔，其中 70%-80% 專注於先進製程與先進封裝。",
+      "• 全球建廠進度：美國亞利桑那州一廠（4nm）2025 年量產，二廠（3nm/2nm）2027 年就緒；日本熊本一廠量產、二廠（6nm/7nm）動工；德國德勒斯登車用晶圓廠穩步推進。",
+      "",
+      "4️⃣ 📈 訂單敏感度與潛在股價空間（Valuation Sensitivity）：",
+      "• 🟢 樂觀實現未來訂單：股價預估成長 +70% ～ +110%（美股 TSM ADR 目標價 260～300 美元，台股現貨挑戰 1,500～1,800 元，全球算力壟斷溢價重估）。",
+      "• 🔴 訂單推遲或落空：股價預估回撤 -18% ～ -25%（海外建廠折舊或地緣政治短期干擾，但全球無替代廠商的超強定價權構建堅實底線）。",
+      "",
+      "5️⃣ 🛡️ 韭菜守護者・不賣股防守收租策略：",
+      "• 策略心法：長線抱緊世界半導體總龍頭，絕不輕易在低檔被洗出場！",
+      "• 美股 ADR：輸入「TSM sell call」獲取價外 +15%～+25% 高 Strike 限價單，週週穩健收取時間價值（Theta）！",
+      "• 台股現貨：輸入「2330.TW」，現貨 100% 長期持有，切勿隨短期新聞波動恐慌賣出！",
+      "",
+      "──────────────────────────────",
+      "⚠️ 風險揭露：基於第一手 SEC Form 20-F 與台灣 MOPS 公開法定申報，不構成個人化投資建議。",
+    ].join("\n");
+  }
+
   const sens = TOP20_SENSITIVITY[ticker];
   return [
     `🔬【${ticker} 深度物理約束與合約價值專題研析】`,

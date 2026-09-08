@@ -213,6 +213,29 @@ function percent(value: number | null): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+export const TOP20_DETAILED_INDUSTRY: Record<string, string> = {
+  TSEM: "半導體代工（矽光子晶圓製造與片上雷射耦合代工）",
+  AMD: "半導體晶片（AI 算力 GPU 加速卡與資料中心處理器）",
+  AVGO: "半導體設計（AI 乙太網交換晶片與客製化 ASIC）",
+  COHR: "光電通訊（800G/1.6T 光收發模組與 InP/GaAs 光學雷射）",
+  MRVL: "半導體設計（光通訊 PAM4 DSP 晶片與客製化 AI ASIC）",
+  MU: "半導體記憶體（HBM3e/HBM4 高頻寬記憶體與高階 DRAM）",
+  SMCI: "伺服器系統（AI 伺服器機櫃與直接水冷 DLC 散熱系統）",
+  APH: "電子零組件（AI 伺服器高頻銅互連纜線與高速背板連接器）",
+  BE: "能源基礎設施（AI 資料中心固態氧化物燃料電池 SOFC 現場發電）",
+  CIEN: "光通訊傳輸（資料中心互聯 DCI 與長途相干光傳輸系統）",
+  CRDO: "電子零組件（伺服器主動式電纜 AEC 與低功耗高速 SerDes）",
+  NVDA: "半導體晶片（AI 算力加速晶片與 NVLink 叢集網路）",
+  WDC: "電腦週邊儲存（企業級 Enterprise SSD 與大容量近線 HDD）",
+  ALAB: "電子零組件（PCIe Gen 5/6 與 CXL 智慧高速 Retimer 晶片）",
+  MTSI: "半導體設計（800G/1.6T 高速類比驅動 IC 與連續波 CW 雷射）",
+  JBL: "電子代工服務（光電精密製造、系統級封裝與光學代工組裝）",
+  AAOI: "光電通訊（800G/1.6T 高速光收發模組與矽光子光引擎）",
+  AXTI: "半導體材料（InP 磷化銦與 GaAs 化合物半導體基板晶圓）",
+  LITE: "光電通訊（EML 電吸收調製雷射與連續波 CW 雷射晶片）",
+  APLD: "資料中心基礎設施（AI HPC 超大規模高效能運算算力中心園區）",
+};
+
 export function v213Top20DisplayHeader(locale: FieldLocale): readonly string[] {
   if (locale === "en") return V213_TOP20_DISPLAY_COLUMNS_EN;
   if (locale === "bilingual") return V213_TOP20_DISPLAY_COLUMNS_BILINGUAL;
@@ -220,8 +243,9 @@ export function v213Top20DisplayHeader(locale: FieldLocale): readonly string[] {
 }
 
 export function v213Top20DisplayValues(item: V213Top20ReportRecord): string[] {
+  const detailedInd = TOP20_DETAILED_INDUSTRY[item.ticker] ?? item.industry;
   return [item.ticker, percent(item.long_term_return_pct), percent(item.short_term_return_pct),
-    item.industry, item.profit_summary, item.current_orders, item.future_orders_estimate];
+    detailedInd, item.profit_summary, item.current_orders, item.future_orders_estimate];
 }
 
 /**
