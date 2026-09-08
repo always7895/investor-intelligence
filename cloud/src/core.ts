@@ -407,7 +407,18 @@ export function formatOptionsAnswer(
           lines.push("  ▫️ 無符合公開資料與流動性條件的候選報價");
           continue;
         }
-        for (const candidate of candidates.slice(0, 3)) {
+        const isCall = label === "買權報價";
+        const sorted = isCall
+          ? [...candidates].sort((a, b) => {
+              const aLiq = Boolean(a.liquidity_pass);
+              const bLiq = Boolean(b.liquidity_pass);
+              if (aLiq !== bLiq) return aLiq ? -1 : 1;
+              const aDist = typeof a.distance_from_spot_pct === "number" ? a.distance_from_spot_pct : (Number(a.strike) || 0);
+              const bDist = typeof b.distance_from_spot_pct === "number" ? b.distance_from_spot_pct : (Number(b.strike) || 0);
+              return bDist - aDist;
+            })
+          : candidates;
+        for (const candidate of sorted.slice(0, 3)) {
           const currency = String(candidate.currency ?? record.currency ?? "USD");
           if (!candidate.retrieved_at && record.retrieved_at) candidate.retrieved_at = record.retrieved_at;
           lines.push(...optionCandidateLines(candidate, currency));
@@ -419,9 +430,11 @@ export function formatOptionsAnswer(
   lines.push(
     "",
     "──────────────────────────────",
-    "💡 韭菜守護者交易心法：",
-    "• 賣買權（Covered Call）：建議選擇價外 7%～15% 且 Delta 約 0.20～0.30 之履約價，兼顧權利金收入與正股上漲空間。",
-    "• 賣賣權（Cash-Secured Put）：建議選擇自願以折價接盤之支撐價位，預留 100% 現金保證金，杜絕槓桿穿倉！",
+    "💡 韭菜守護者交易心法（不賣股為第一原則）：",
+    "• 核心目標：長線看好物理瓶頸爆發力，「正股不被賣出」為最高優先級！",
+    "• 履約價挑選：優先選擇「價外幅度最高（OTM +12%～+25%）」且權利金仍豐厚之合約，兼具安全厚墊與高額現金流。",
+    "• 避開短兵相接：避免選擇價外低於 8% 之近價合約，防止單日爆發性漲勢導致正股被強行履約。",
+    "• 遇暴漲防守法：若正股急漲逼近履約價，在到期日前以「平倉當週 + 往後移倉至下週更高 Strike（Roll Up & Out）」爭取時間並保持正股持倉！",
   );
 
   return lines.join("\n");

@@ -21,8 +21,8 @@
     "enabled": true,
     "require_position_shares": 100,
     "minimum_otm_pct": 0.05,
-    "maximum_otm_pct": 0.20,
-    "maximum_candidates": 3
+    "maximum_otm_pct": 0.30,
+    "maximum_candidates": 5
   },
   "cash_secured_put": {
     "enabled": true,

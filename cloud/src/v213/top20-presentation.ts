@@ -203,7 +203,24 @@ export function buildOptionsFlexMessages(
       const candidates = rawCandidates.filter((c): c is Record<string, unknown> => !!c && typeof c === "object");
       if (candidates.length === 0) continue;
 
-      for (const candidate of candidates.slice(0, 1)) {
+      // Sort candidates by defensive "Never Sell Shares" priority:
+      // For Call: 1) liquidity_pass; 2) decent bid credit >= 0.15; 3) highest distance_from_spot_pct / strike
+      const sortedCandidates = [...candidates].sort((a, b) => {
+        const aLiq = Boolean(a.liquidity_pass);
+        const bLiq = Boolean(b.liquidity_pass);
+        if (aLiq !== bLiq) return aLiq ? -1 : 1;
+        const aBid = typeof a.bid === "number" ? a.bid : 0;
+        const bBid = typeof b.bid === "number" ? b.bid : 0;
+        const aHasCredit = aBid >= 0.15;
+        const bHasCredit = bBid >= 0.15;
+        if (aHasCredit !== bHasCredit) return aHasCredit ? -1 : 1;
+        const aDist = typeof a.distance_from_spot_pct === "number" ? a.distance_from_spot_pct : (Number(a.strike) || 0);
+        const bDist = typeof b.distance_from_spot_pct === "number" ? b.distance_from_spot_pct : (Number(b.strike) || 0);
+        return isCall ? (bDist - aDist) : (aDist - bDist);
+      });
+
+      for (let cIdx = 0; cIdx < Math.min(sortedCandidates.length, isCall ? 2 : 1); cIdx++) {
+        const candidate = sortedCandidates[cIdx]!;
         const currency = String(candidate.currency ?? record.currency ?? "USD");
         const strike = typeof candidate.strike === "number" ? candidate.strike.toFixed(2) : String(candidate.strike ?? "N/A");
         const bid = typeof candidate.bid === "number" ? candidate.bid.toFixed(2) : String(candidate.bid ?? "N/A");
@@ -218,22 +235,26 @@ export function buildOptionsFlexMessages(
           ? `${currency} ${(candidate.recommended_limit_band as any).min?.toFixed(2)} ～ ${(candidate.recommended_limit_band as any).max?.toFixed(2)}`
           : `${currency} ${bid} ～ ${mid}`;
 
+        const tierBadge = isCall
+          ? (cIdx === 0 ? "🛡️【不賣股首選・高履約價防守收租】" : "⚡【次選參考・較近價外較高權利金】")
+          : "🟡 " + label;
+
         bodyContents.push(
           box([
-            text(isCall ? "🟢 " + label : "🟡 " + label, "xs", isCall ? "#15803D" : "#B45309", { weight: "bold" }),
+            text(tierBadge, "xs", isCall ? (cIdx === 0 ? "#15803D" : "#B45309") : "#B45309", { weight: "bold" }),
             text(`• 履約價 K ${currency} ${strike}${dist ? ` (價外 ${dist})` : ""}`, "sm", "#1E293B", { weight: "bold" }),
             text(`  Bid ${currency} ${bid} ｜ Ask ${currency} ${ask} ｜ Mid ${currency} ${mid}`, "xs", "#475569"),
             box([
-              text(`💡 推薦限價區間：${limitBand}`, "xs", isCall ? "#15803D" : "#B45309", { weight: "bold" }),
-            ], { backgroundColor: isCall ? "#DCFCE7" : "#FEF3C7", paddingAll: "xs", cornerRadius: "sm" }),
+              text(`💡 推薦限價區間：${limitBand}`, "xs", isCall ? (cIdx === 0 ? "#15803D" : "#B45309") : "#B45309", { weight: "bold" }),
+            ], { backgroundColor: isCall ? (cIdx === 0 ? "#DCFCE7" : "#FEF3C7") : "#FEF3C7", paddingAll: "xs", cornerRadius: "sm" }),
             text(`📊 年化收益率：Mid ${midYield} (Bid ${bidYield}) ｜ IV ${iv}`, "xs", "#334155"),
             text(`🛡️ 流動性驗證：${candidate.liquidity_pass ? "PASS ✅" : "觀察 ⚠️"}`, "xs", candidate.liquidity_pass ? "#047857" : "#D97706", { weight: "bold" }),
           ], {
-            backgroundColor: isCall ? "#F0FDF4" : "#FEFCE8",
+            backgroundColor: isCall ? (cIdx === 0 ? "#F0FDF4" : "#FFFBEB") : "#FEFCE8",
             paddingAll: "sm",
             cornerRadius: "md",
             spacing: "xs",
-            borderColor: isCall ? "#86EFAC" : "#FDE047",
+            borderColor: isCall ? (cIdx === 0 ? "#86EFAC" : "#FCD34D") : "#FDE047",
             borderWidth: "1px",
           }),
         );
@@ -245,12 +266,12 @@ export function buildOptionsFlexMessages(
       size: "mega",
       header: box([
         text("期權限價與流動性觀測 · Public Options", "xs", "#CBD5E1"),
-        text(`【${symbol}】`, "xxl", "#FFFFFF", { weight: "bold" }),
-        text(`來源：${String(record.quote_source ?? "yfinance")} ｜ 唯讀公開觀測`, "xs", "#94A3B8"),
+        text(`【${symbol}】· 不賣股收租模式`, "xl", "#FFFFFF", { weight: "bold" }),
+        text(`策略目標：盡可能拉高 Strike 防守正股 ｜ 唯讀公開觀測`, "xs", "#94A3B8"),
       ], { backgroundColor: "#0F172A", paddingAll: "md" }),
       body: box(bodyContents, { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
       footer: box([
-        text("唯讀公共觀測，限價單請在推薦區間內掛單，切勿追打市價單！", "xs", "#64748B"),
+        text("💡 守護者心法：不賣股為第一優先！挑選高 Strike 享有寬廣安全墊，穩收時間價值！", "xs", "#64748B"),
         { type: "button", style: "link", height: "sm", action: { type: "message", label: `查看 ${symbol} 供應鏈瓶頸`, text: symbol } },
         { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
       ], { paddingAll: "sm", backgroundColor: "#F8FAFC" }),
