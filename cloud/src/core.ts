@@ -368,7 +368,7 @@ export function parseQuery(text: string): ParsedQuery {
   } else if (/(晚報|晚报|evening report|evening briefing|盤前報告|盘前报告)/i.test(lowered)) {
     intent = "evening_report";
   } else if (
-    /(最新報告|最新报告|今日報告|今日报告|daily report|briefing|宏觀產業分析|宏觀產業|宏觀分析|產業分析)/i.test(
+    /(宏觀產業分析|宏觀產業|宏觀分析|產業分析|大盤報告|大盤分析)/i.test(
       lowered,
     )
   ) {
@@ -606,7 +606,7 @@ export function helpText(): string {
     "Investor Intelligence LINE Bot（公開資料模式）",
     "",
     "可用自然語言提問，例如：",
-    "• 早報 / 晚報 / 最新報告",
+    "• 早報 / 晚報 / 宏觀產業分析",
     "• ALPHA 每週期權 BID ASK",
     "• BETA 每月期權",
     "• 目前排名 / ALPHA 評分",

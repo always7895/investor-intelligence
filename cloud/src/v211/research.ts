@@ -135,7 +135,7 @@ export function v211HelpText(): string {
     "• NVDA vs CRDO 比較",
     "• NVDA 這週 sell call / 每月期權",
     "• 任何其他明確股票代號：若不在已同步系統量化 universe，會交給本機模型的多來源 on-demand 研究層，而不是直接回覆『沒有資料』。",
-    "• 最新報告 / 系統狀態 / 通知狀態",
+    "• 宏觀產業分析 / 系統狀態 / 通知狀態",
     "系統量化 universe 與公開期權是 deterministic；Serenity 公開方法只以 public-logic fidelity reconstruction 呈現，與專案量化分數分離。",
   ].join("\n");
 }
@@ -292,7 +292,7 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
   if (answer === "LOCAL_MODEL_NOT_CONFIGURED") {
     return [
       "本機模型橋接尚未啟用，所以這個開放式問題目前無法自由生成回答。",
-      "已同步系統量化 universe、Top 20、公開期權、最新報告與系統狀態仍可直接使用。",
+      "已同步系統量化 universe、Top 20、公開期權、宏觀產業分析與系統狀態仍可直接使用。",
       "本機模型橋接啟用後，universe 外的明確股票代號會走多來源 on-demand 研究。",
     ].join("\n");
   }
