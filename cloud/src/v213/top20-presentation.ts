@@ -2843,7 +2843,7 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
 
   if (query.intent === "options") {
     const tUpper = query.ticker ? query.ticker.toUpperCase() : null;
-    const norm = tUpper ? tUpper.replace(/\.(ST|L|TWO)$/i, "") : null;
+    const norm = tUpper ? tUpper.replace(/\.[A-Za-z0-9]{1,4}$/, "") : null;
     const intlOption = tUpper ? (INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE[tUpper] ?? (norm ? INTERNATIONAL_OPTIONS_KNOWLEDGE_BASE[norm] : null)) : null;
 
     if (style === "flex") {
@@ -2943,7 +2943,7 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
 
   if (query.ticker && query.intent !== "options") {
     const rawTicker = query.ticker.toUpperCase();
-    const norm = rawTicker.replace(/\.(ST|L|TWO)$/i, "");
+    const norm = rawTicker.replace(/\.[A-Za-z0-9]{1,4}$/, "");
     const stock = STOCK_RESEARCH_KNOWLEDGE_BASE[rawTicker] ?? STOCK_RESEARCH_KNOWLEDGE_BASE[norm];
     if (stock) {
       if (/(?:詳細|深度|detail)/i.test(query.normalized)) {
