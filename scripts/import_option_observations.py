@@ -10,7 +10,7 @@ import argparse
 import json
 import math
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ def normalize(source: str, payload: Any, *, now: datetime | None = None) -> dict
                 if not re.fullmatch(r"\d{8}", raw_day):
                     raise ValueError("INVALID_TRADE_DATE")
                 day = date(int(raw_day[:4]), int(raw_day[4:6]), int(raw_day[6:]))
-                if day > now.date():
+                if day > now.astimezone(timezone(timedelta(hours=8))).date():
                     raise ValueError("FUTURE_TRADE_DATE")
                 contract = str(row.get("Contract", ""))
                 month = str(row.get("ContractMonth(Week)", ""))
@@ -132,6 +132,15 @@ def normalize(source: str, payload: Any, *, now: datetime | None = None) -> dict
             "observations": observations, "failures": failures}
 
 
+def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("DUPLICATE_JSON_FIELD")
+        result[key] = value
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", choices=tuple(SOURCE_URLS), required=True)
@@ -140,7 +149,7 @@ def main() -> int:
     try:
         if args.input.stat().st_size > 20_000_000:
             raise ValueError("INPUT_TOO_LARGE")
-        result = normalize(args.source, json.loads(args.input.read_text(encoding="utf-8")))
+        result = normalize(args.source, json.loads(args.input.read_text(encoding="utf-8"), object_pairs_hook=unique_object))
     except (OSError, ValueError):
         print(json.dumps({"status": "FAILED", "error": "INVALID_PROVIDER_EXPORT"}))
         return 1

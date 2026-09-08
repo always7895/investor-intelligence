@@ -1,5 +1,12 @@
 # R75 takeover status
 
+## Import audit follow-up — 2026-09-09
+
+- Starting fetched HEAD `59a1cea38844dfff1a8e4d7bb3d88ba90937b6cb`; clean source; PR37/issue38 still open. Fixed TAIFEX trade-date comparison to use Taipei rather than UTC (avoids rejecting legitimate post-midnight Taiwan observations). CLI JSON parser rejects duplicate keys instead of silently overwriting provider/contract fields. New calendar-boundary and actual CLI regressions PASS.
+- Full Python602 tests/2 skipped PASS; security/docs gates and diff check PASS. No new live feed/publication activation. Other candidate Worker/typecheck/PS results remain scoped to prior checkpoint; no fresh live release proof claimed.
+- Separate source-views worktree based on `52e285f9` now contains issue38 option-route containment and actual caller tests, plus typecheck fixes and profile-path redaction. Its baseline independently reproduced 52 TS diagnostics and Python647 tests with one failure/four errors. Candidate Worker160 tests and typecheck/security now PASS, but five Python failing cases remain. Do not merge that branch into main or infer public live quote eligibility.
+- Outstanding main-branch integration items remain rights-reviewed live sources/public caller integration, activation state model, exact-universe selective fallback. Whole-project acceptance is incomplete. External mutations to this point: Git read/worktrees, dependency downloads and synthetic local tests only; planned GitHub updates are candidate branches/PRs, not Production. Next: review independent containment PR and resolve existing source-views evidence failures without bypassing gates.
+
 ## Multi-source import adapters / 多源匯入候選 — 2026-09-08
 
 - GitHub checkpoint: implementation `56a498d` pushed; PR37 title/body synchronized in English/Traditional Chinese with tested scope and pending blockers. These branch/PR updates are the only subsequent external writes; no merge/release/deployment. Working source remains an unqualified development candidate.

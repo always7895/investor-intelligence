@@ -38,6 +38,14 @@ class ImportOptionObservationsTests(unittest.TestCase):
         self.assertFalse(row["publication_eligible"])
         self.assertFalse(row["executable_quote"])
 
+    def test_taifex_trade_date_uses_taipei_not_utc_calendar(self):
+        row = daily()
+        row["Date"] = "20260908"
+        before_utc_midnight = datetime(2026, 9, 7, 17, tzinfo=timezone.utc)
+        self.assertEqual(normalize("taifex_eod", [row], now=before_utc_midnight)["status"], "OK")
+        row["Date"] = "20260909"
+        self.assertEqual(normalize("taifex_eod", [row], now=before_utc_midnight)["status"], "FAILED")
+
     def test_alpaca_indicative_is_not_independent_opra_or_nbbo(self):
         row = normalize("alpaca_indicative", indicative(), now=NOW)["observations"][0]
         self.assertEqual(row["strike"], 100)
@@ -91,6 +99,10 @@ class ImportOptionObservationsTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
             self.assertEqual(result.returncode, 1)
             self.assertEqual(json.loads(result.stdout)["status"], "NO_DATA")
+            path.write_text('{"quotes": {}, "quotes": {}}')
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)["error"], "INVALID_PROVIDER_EXPORT")
 
 
 if __name__ == "__main__":
