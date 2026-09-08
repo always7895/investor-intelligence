@@ -49,9 +49,11 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     const chunks: string[] = [];
     let chunk = prefix;
     for (const record of report.records) {
+      const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
+      const nameText = stockInfo ? `\n公司全稱：【${stockInfo.chineseName}】${stockInfo.originalName}` : "";
       const sens = TOP20_SENSITIVITY[record.ticker];
       const sensText = sens ? `\n• 樂觀實現未來訂單／股價成長預估：${sens.bull}\n• 訂單未實現或推遲／股價下行風險：${sens.bear}` : "";
-      const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n") + sensText;
+      const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n") + nameText + sensText;
       if (chunk.length + block.length > 4900) { chunks.push(chunk); chunk = prefix; }
       if (chunk.length + block.length > 4900) throw new Error("V213_PRESENTATION_ROW_TOO_LARGE");
       chunk += block;
@@ -1005,15 +1007,15 @@ export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
     body: box([
       box([
         text("🚀 焦點光通訊與 CPO 供應鏈", "xs", "#475569", { weight: "bold" }),
-        text("• AAOI：800G/1.6T 光模組，高波動收租（輸入「AAOI sell call」）", "sm", "#1E293B"),
-        text("• AXTI：InP 磷化銦基板龍頭（輸入「AXTI 每週期權」）", "sm", "#1E293B"),
-        text("• COHR：高意與 NVIDIA 戰略合作（輸入「COHR sell call」）", "sm", "#1E293B"),
+        text("• AAOI (祥茂光電)：800G/1.6T 光模組，高波動收租（輸入「AAOI sell call」）", "sm", "#1E293B"),
+        text("• AXTI (AXT/北京通美)：InP 磷化銦基板龍頭（輸入「AXTI 每週期權」）", "sm", "#1E293B"),
+        text("• COHR (高意)：與 NVIDIA 戰略合作（輸入「COHR sell call」）", "sm", "#1E293B"),
       ], { backgroundColor: "#F8FAFC", paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
       box([
         text("⚡ 算力晶片、記憶體與資料中心能源", "xs", "#475569", { weight: "bold" }),
-        text("• AMD：AI 算力加速卡（輸入「AMD 每週期權」）", "sm", "#1E293B"),
-        text("• MU：HBM3e 高頻寬記憶體（輸入「MU 每月期權」）", "sm", "#1E293B"),
-        text("• BE：Bloom Energy 現場燃料電池（輸入「BE 每週期權」）", "sm", "#1E293B"),
+        text("• AMD (超微)：AI 算力加速卡（輸入「AMD 每週期權」）", "sm", "#1E293B"),
+        text("• MU (美光)：HBM3e 高頻寬記憶體（輸入「MU 每月期權」）", "sm", "#1E293B"),
+        text("• BE (布魯姆能源)：現場燃料電池（輸入「BE 每週期權」）", "sm", "#1E293B"),
       ], { backgroundColor: "#F8FAFC", paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
     footer: box([

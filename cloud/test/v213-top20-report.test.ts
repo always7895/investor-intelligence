@@ -124,6 +124,32 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(all).toContain("Historical returns, not forecasts");
   });
 
+  it("diagnoses user queries Sive sell call, TSM sell call, Sive, TOP20", async () => {
+    const kv = new MemoryKv(); const data = report(); data.generated_at = new Date().toISOString();
+    kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_TOKEN", LINE_CHANNEL_SECRET: "SYNTHETIC_SECRET" } as any);
+    
+    for (const q of [
+      "Sive sell call",
+      "TSM sell call",
+      "Sive",
+      "TOP20",
+      "祥茂光電 sell call",
+      "祥茂 sell call",
+      "AAOI sell call",
+      "北京通美 sell call",
+      "布魯姆能源 sell call",
+      "宏觀產業分析",
+      "期權",
+    ]) {
+      const calls: any[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (_url, init) => { calls.push(JSON.parse(String(init.body))); return new Response("{}"); }));
+      await processAuthorizedLineEvent(env, {} as ExecutionContext, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: q }, timestamp: Date.now() }, "synthetic-tenant");
+      expect(calls).toHaveLength(1);
+    }
+  });
+
   it("offers a complete explicit text fallback through the authorized LINE caller", async () => {
     const kv = new MemoryKv(); const data = report(); data.generated_at = new Date().toISOString();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
