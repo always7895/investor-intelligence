@@ -88,7 +88,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       ], { paddingAll: "lg", spacing: "lg", backgroundColor: "#FFFFFF" }),
       footer: box([
         text(generated, "xs", "#475569"), text(NOTICE, "xs", "#475569"),
-        { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${record.ticker} 深度詳細分析`, text: `${record.ticker} 詳細` } },
+        { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看深度詳細分析`, text: `${record.ticker} 詳細` } },
         { type: "button", style: "link", height: "sm", action: { type: "message", label: "完整文字版 / Full text", text: "Top20 文字" } },
       ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "xs" }),
     };
@@ -182,7 +182,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
     ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("公開研究非投資建議 / Not investment advice.", "xs", "#64748B"),
-      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${s.btnLabel} 深度分析`, text: `${s.btnLabel} 深度分析` } },
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看深度分析`, text: `${s.btnLabel} 深度分析` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
     ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
   }));
@@ -314,7 +314,7 @@ export function buildOptionsFlexMessages(
       body: box(bodyContents, { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
       footer: box([
         text("💡 守護者心法：不賣股為第一優先！挑選高 Strike 享有寬廣安全墊，穩收時間價值！", "xs", "#64748B"),
-        { type: "button", style: "link", height: "sm", action: { type: "message", label: `查看 ${symbol} 供應鏈瓶頸`, text: symbol } },
+        { type: "button", style: "link", height: "sm", action: { type: "message", label: `查看供應鏈瓶頸`, text: symbol } },
         { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
       ], { paddingAll: "sm", backgroundColor: "#F8FAFC" }),
     });
@@ -901,7 +901,7 @@ export function buildInternationalOptionFlexMessages(fact: InternationalOptionFa
     body: box(bodyContents, { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("💡 守護者心法：不賣股為第一優先！挑選高 Strike 享有寬廣安全墊，穩收時間價值！", "xs", "#64748B"),
-      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${fact.symbol} 深度詳細分析`, text: `${fact.symbol} 詳細` } },
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看深度詳細分析`, text: `${fact.symbol} 詳細` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
     ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
   };
@@ -944,7 +944,7 @@ export function buildTaiwanOptionFlexMessages(ticker: string, industry: string):
     ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("💡 守護者心法：台股現貨 100% 長期抱緊，期貨僅作避險套利，切勿過度槓桿！", "xs", "#64748B"),
-      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${ticker} 深度詳細分析`, text: `${ticker} 詳細` } },
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看深度詳細分析`, text: `${ticker} 詳細` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
     ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
   };
@@ -984,8 +984,8 @@ export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
     ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("點擊下方快速查詢焦點標的期權：", "xs", "#64748B"),
-      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: "查詢 AAOI 800G 光模組期權", text: "AAOI sell call" } },
-      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查詢 AXTI 磷化銦基板期權", text: "AXTI 每週期權" } },
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: "查詢 AAOI 期權", text: "AAOI sell call" } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查詢 AXTI 期權", text: "AXTI 每週期權" } },
     ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
   };
 
@@ -1012,7 +1012,7 @@ export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
       ], { backgroundColor: "#F8FAFC", paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
     footer: box([
-      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: "查詢 COHR NVIDIA 合作期權", text: "COHR sell call" } },
+      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: "查詢 COHR 期權", text: "COHR sell call" } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
     ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
   };
@@ -2015,8 +2015,8 @@ export function buildStockResearchFlexMessages(
     ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("基於第一手公開法定申報，非投資建議 / Not investment advice.", "xs", "#64748B"),
-      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: `查看 ${ticker} 深度詳細分析`, text: `${ticker} 詳細` } },
-      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查詢 ${ticker} 期權限價（不賣股收租）`, text: `${ticker} sell call` } },
+      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: `查看深度詳細分析`, text: `${ticker} 詳細` } },
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查詢期權限價`, text: `${ticker} sell call` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
     ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "xs" }),
   };

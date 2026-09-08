@@ -209,8 +209,17 @@ export async function processAuthorizedLineEvent(
   // v213's published report must win over all legacy five-field routes.
   const currentReport = await env[V211_TOP20_REPORT]?.(env, query);
   if (currentReport != null) {
-    if (typeof currentReport === "string") await replyText(env, event.replyToken, currentReport);
-    else await replyMessages(env, event.replyToken, currentReport);
+    if (typeof currentReport === "string") {
+      await replyText(env, event.replyToken, currentReport);
+    } else {
+      try {
+        await replyMessages(env, event.replyToken, currentReport);
+      } catch (err) {
+        console.error("V213_FLEX_REPLY_FAILED", err instanceof Error ? err.message : String(err));
+        const alt = currentReport[0]?.altText ?? "系統已完成分析，請查看圖文選單。";
+        await replyText(env, event.replyToken, alt);
+      }
+    }
     return;
   }
 
