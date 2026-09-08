@@ -73,13 +73,18 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       text(`• 樂觀訂單落實：${sens.bull}`, "xs", "#15803D", { weight: "bold" }),
       text(`• 訂單推遲／落空：${sens.bear}`, "xs", "#B91C1C"),
     ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }) : null;
+    const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
+    const nameLine = stockInfo
+      ? text(`【${stockInfo.chineseName}】${stockInfo.originalName}`, "xs", "#93C5FD", { weight: "bold" })
+      : null;
     return {
       type: "bubble", size: "mega",
       header: box([
         text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#CBD5E1"),
         text(labels[0]!, "xs", "#CBD5E1"),
         { ...text(values[0]!, "xxl", "#FFFFFF"), weight: "bold" },
-      ], { backgroundColor: "#142C47", paddingAll: "lg" }),
+        ...(nameLine ? [nameLine] : []),
+      ], { backgroundColor: "#142C47", paddingAll: "lg", spacing: "xs" }),
       body: box([
         box([field(1, true), field(2, true)], { layout: "horizontal", backgroundColor: "#F1F5F9", paddingAll: "md", cornerRadius: "md", spacing: "md" }),
         field(3), { type: "separator", color: "#E2E8F0" }, field(4),
