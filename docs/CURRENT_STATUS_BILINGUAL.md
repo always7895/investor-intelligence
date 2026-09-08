@@ -2,9 +2,9 @@
 
 ## 開發中全來源稽核／Public-source audit candidate
 
-新增官方公告與股票日行情的選用本機抓取器；Fed／SEC／TPEx 已真實讀取，ECB／TWSE TLS 失敗未跳過。TPEx 無成交資料保留空報價，不把紀錄數當有效價格數。完整範圍、限制與證據見[來源覆蓋](PUBLIC_SOURCE_COVERAGE.md)。
+新增官方公告與股票日行情的選用本機抓取器；五個端點皆已在核准 CPython3.12.10＋鎖定 certifi 下直接 CLI 真實讀取。舊 TLS 失敗保留；未關閉憑證／hostname 驗證或降低 verify flags。GitHub Windows 驗收仍等待 runner。TPEx 無成交資料保留空報價，不把紀錄數當有效價格數。完整範圍、限制與證據見[來源覆蓋](PUBLIC_SOURCE_COVERAGE.md)。
 
-New opt-in local collection covers official announcements and equity EOD data. Fed/SEC/TPEx live reads succeeded; ECB/TWSE TLS failures remain failures. Missing closes stay null; record counts do not equal usable quote counts. See [coverage and evidence](PUBLIC_SOURCE_COVERAGE.md).
+New opt-in local collection covers official announcements and equity EOD data. All five live reads succeeded using supported pinned CPython3.12.10 plus locked certifi roots. Historical TLS failures remain failures; certificate/hostname verification and default flags are intact. GitHub Windows acceptance still awaits a runner. Missing closes stay null; record counts do not equal usable quote counts. See [coverage and evidence](PUBLIC_SOURCE_COVERAGE.md).
 
 ### 期權／Options
 
