@@ -55,9 +55,9 @@
 * **Defensive Sorting Algorithm**: Prioritizes the highest out-of-the-money (+15% to +25% OTM) Strike with active liquidity, combining deep safety cushions with rapid weekly Theta decay.
 * **Dual-Tier Cards**: Clearly separates `🛡️【Never-Sell-Shares Primary Pick: High-Strike Defensive Rental】` from `⚡【Secondary Alternative: Closer OTM Higher Premium】`.
 
-### 4. Cross-Border Options (IBKR / LSE / Euronext / Nasdaq Nordic) & Taiwan TAIFEX Guidance
+### 4. Cross-Border International Options (LSE / Euronext / Nasdaq Nordic) & Taiwan TAIFEX Guidance
 * **US Stocks (AAOI, COHR, AMD, TSM, etc.)**: CBOE standardized weekly option chains, limit bands, and annualized yields.
-* **UK / European / Nordic Stocks (SIVE, IQE, ASML, ARM, Atlas Copco, Mycronic, Renishaw)**: Explicit Interactive Brokers (IBKR) execution paths (exchange codes SFB / LSE / AEB, currencies SEK / GBP / EUR), with zero domain-parked ads!
+* **UK / European / Nordic Stocks (SIVE, IQE, ASML, ARM, Atlas Copco, Mycronic, Renishaw)**: Universal brokerage execution paths (exchange codes SFB / LSE / AEB, currencies SEK / GBP / EUR), with zero domain-parked ads!
 * **Taiwan Stocks (TSMC, LandMark, King Slide, GPTC, etc.)**: Taiwan Futures Exchange (TAIFEX) stock futures (2,000 shares/contract) hedging and US liquid option peer recommendations!
 
 ### 5. TOP 20 Industry Sub-Sector Definitions & Valuation Sensitivity
@@ -120,7 +120,7 @@
 | **Stock Query (with 2Y CAGR)** | `台積電`<br>`2330`<br>`AAOI`<br>`Advantest`<br>`SK Hynix` | High-contrast banner showing **2Y CAGR** and **6M Return**, followed by 3 pillars (Supply & Demand, Bottlenecks, SEC Financials), with zero scores! |
 | **In-Depth Stock Report** | `台積電 詳細`<br>`AAOI 詳細`<br>`TSEM 詳細` | Exhaustive 5-part deep dive (technology constraints, contract milestones, valuation sensitivity, moats, and falsifiers) |
 | **Never-Sell-Shares Options** | `AAOI sell call`<br>`COHR sell call`<br>`TSM sell call` | Recommends +15% to +25% OTM high Strikes, limit bands, effective prices, and annualized yields! |
-| **European & UK Options** | `IQE sell call`<br>`ASML sell call`<br>`Sive sell call` | Dedicated IBKR execution paths for LSE, Euronext, and Nasdaq Nordic (SEK/GBP/EUR) with zero web ads! |
+| **European & UK Options** | `IQE sell call`<br>`ASML sell call`<br>`Sive sell call` | Universal brokerage execution paths for LSE, Euronext, and Nasdaq Nordic (SEK/GBP/EUR) with zero web ads! |
 | **Taiwan Futures Hedging** | `聯亞 期權`<br>`川湖 期權`<br>`弘塑 期權` | Taiwan TAIFEX stock futures (2,000 shares/contract) hedging guide and US peer recommendations! |
 | **Macro Industry Analysis** | `宏觀產業分析`<br>`產業分析`<br>`最新報告` | 5-sector cross-cycle carousel and forward CapEx outlook! |
 | **Sector In-Depth Reports** | `AI算力 深度分析`<br>`光通訊 深度分析` | Extensive technical value-chain, physical constraints, and 3-year CapEx roadmaps! |

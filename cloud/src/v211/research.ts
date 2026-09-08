@@ -327,11 +327,11 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
       const ticker = query.ticker.toUpperCase();
       if (ticker === "SIVE" || ticker === "SIVE.ST" || ticker === "SIVEF") {
         return [
-          "📈【SIVE（Sivers）期權價格推薦與 IBKR 操作指引】",
+          "📈【SIVE（Sivers）期權價格推薦與操作指引】",
           "🎯 標的：Sivers Semiconductors AB ｜ 現價：SEK 28.50 ｜ 交易所：Nasdaq Stockholm (SFB)",
           "──────────────────────────────",
-          "💡 IBKR（盈透證券）交易路徑確認：",
-          "• 在 TWS 或 IBKR Mobile 搜尋「SIVE」，選擇「Sivers Semiconductors AB (SFB - Stocks/Options)」，即可連通瑞典斯德哥爾摩期權市場！",
+          "💡 交易路徑與交易所確認：",
+          "• 在各大券商下單軟體搜尋「SIVE」，選擇「Sivers Semiconductors AB (SFB - Stocks/Options)」，即可連通瑞典斯德哥爾摩期權市場！",
           "",
           "🛡️【不賣股首選・高履約價防守收租】(Covered Call)：",
           "• 履約價 K：SEK 35.00 (價外 +22.8%)",
@@ -356,7 +356,7 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
           "🎯 標的：台積電 ｜ 美股 ADR 現價：USD 428.90 ｜ 交易所：NYSE (CBOE / OPRA)",
           "──────────────────────────────",
           "💡 交易市場與路徑確認：",
-          "• 美股 ADR 每週期權：在 IBKR 搜尋「TSM」，選擇「TSM (NYSE - Stocks/Options)」，流動性為全球半導體之冠！",
+          "• 美股 ADR 每週期權：在各大券商軟體搜尋「TSM」，選擇「TSM (NYSE - Stocks/Options)」，流動性為全球半導體之冠！",
           "• 台灣期貨交易所：搜尋「台積電」或「CDO（台積電股票期貨）」，每口表彰 2,000 股現貨標的。",
           "",
           "🛡️【不賣股首選・高履約價防守收租】(Covered Call)：",
@@ -378,11 +378,11 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
       }
       if (ticker === "IQE" || ticker === "IQE.L") {
         return [
-          "📈【IQE plc 期權價格推薦與 IBKR 操作指引】",
+          "📈【IQE plc 期權價格推薦與操作指引】",
           "🎯 標的：IQE plc ｜ 現價：GBp 48.00 ｜ 交易所：London Stock Exchange (LSE / ICE)",
           "──────────────────────────────",
-          "💡 IBKR（盈透證券）交易路徑確認：",
-          "• 在 TWS 或 IBKR Mobile 搜尋「IQE」，選擇「IQE PLC (LSE - Stocks/Options)」，即可連通英國倫敦期權市場！",
+          "💡 交易路徑與交易所確認：",
+          "• 在各大券商下單軟體搜尋「IQE」，選擇「IQE PLC (LSE - Stocks/Options)」，即可連通英國倫敦期權市場！",
           "",
           "🛡️【不賣股首選・高履約價防守收租】(Covered Call)：",
           "• 履約價 K：GBp 60.00 (0.60 GBP / 價外 +25.0%)",
