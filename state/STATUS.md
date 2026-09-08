@@ -2,6 +2,8 @@
 
 ## Multi-source import adapters / 多源匯入候選 — 2026-09-08
 
+- GitHub checkpoint: implementation `56a498d` pushed; PR37 title/body synchronized in English/Traditional Chinese with tested scope and pending blockers. These branch/PR updates are the only subsequent external writes; no merge/release/deployment. Working source remains an unqualified development candidate.
+
 - Fetched starting HEAD `fdec9715e1bf8d4535a4b5f088cbb9a6124c0058`, clean worktree; origin/main unchanged. Existing PR37 OPEN/MERGEABLE; issue38 OPEN. Current branch's GitHub audit runs are SKIPPED, not authoritative Windows acceptance.
 - Added `scripts/import_option_observations.py`: TAIFEX daily option export and Alpaca indicative latest-quote export adapters with an actual CLI. Explicit LOCAL_IMPORT_ONLY, publication/execution false; no HTTP, account/config/credential reads or cloud writes. Preserve source/origin/feed type, trade date versus quote/import time, session and unknown fields. Validate finite nonnegative quotes/counts, contracts, dates/timezones, crossed markets, duplicate observations and bounded input. Per-row failures are retained; empty/partial/failed CLI exits nonzero. Only synthetic data tested; no live market-feed claim.
 - Reviewed official TAIFEX Swagger and linked use terms; automatic/public redistribution permission not established by schema access. Alpaca latest-quote docs do not grant public redistribution. No prohibited provider/catalog decision overridden and no new production feed activated.
