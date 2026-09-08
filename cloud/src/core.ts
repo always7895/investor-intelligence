@@ -603,8 +603,8 @@ export function extractTicker(text: string): string | null {
 
 export function extractPeriod(text: string): OptionPeriod {
   const normalized = normalizeText(text).toLowerCase();
-  if (/(每週|每周|週選|周選|weekly|week)/i.test(normalized)) return "weekly";
-  if (/(每月|月選|monthly|month)/i.test(normalized)) return "monthly";
+  if (/(每週|每周|週選|周選|週期權|周期权|weekly|week)/i.test(normalized)) return "weekly";
+  if (/(每月|月選|月期權|月期权|monthly|month)/i.test(normalized)) return "monthly";
   return null;
 }
 
@@ -642,7 +642,8 @@ export function parseQuery(text: string): ParsedQuery {
   ) {
     intent = "latest_report";
   } else if (
-    /(選擇權|选择权|期權|期权|option|covered call|sell call|sell put|cash secured put|\bbid\b|\bask\b)/i.test(
+    (period !== null && ticker !== null) ||
+    /(選擇權|选择权|期權|期权|option|covered call|sell call|sell put|cash secured put|\bbid\b|\bask\b|週選|周選|月選|週期權|周期权|月期權|月期权)/i.test(
       lowered,
     )
   ) {

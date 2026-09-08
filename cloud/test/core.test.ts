@@ -21,6 +21,18 @@ describe("LINE bot public-only core", () => {
     expect(value.intent).toBe("options");
     expect(value.ticker).toBe("ALPHA");
     expect(value.period).toBe("weekly");
+
+    const q1 = parseQuery("AAOI 週選");
+    expect(q1.intent).toBe("options");
+    expect(q1.period).toBe("weekly");
+
+    const q2 = parseQuery("NVDA 週期權");
+    expect(q2.intent).toBe("options");
+    expect(q2.period).toBe("weekly");
+
+    const q3 = parseQuery("TSM 月選");
+    expect(q3.intent).toBe("options");
+    expect(q3.period).toBe("monthly");
   });
 
   it("parses a synthetic monthly query and tenant memory controls", () => {

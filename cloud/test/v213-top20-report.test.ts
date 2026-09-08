@@ -150,6 +150,9 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       "LITE sell call",
       "3017.TW sell call",
       "000660.KS sell call",
+      "AAOI 週選",
+      "AAOI 週期權",
+      "AAOI 每月期權",
     ]) {
       const calls: any[] = [];
       vi.stubGlobal("fetch", vi.fn(async (_url, init) => { calls.push(JSON.parse(String(init.body))); return new Response("{}"); }));
