@@ -1,5 +1,7 @@
 # Options source review (development checkpoint)
 
+For the broader stock/news/macro source audit and explicit local collector, see [Public source coverage / 全來源覆蓋](PUBLIC_SOURCE_COVERAGE.md). Broader coverage does not upgrade option quote eligibility.
+
 No new provider is activated by this review. Free access does not establish redistribution rights. Public LINE remains isolated from brokerage accounts. Existing prohibited-provider decisions remain intact pending explicit, evidenced policy review.
 
 ## Implemented local-export adapters / 已實作本機匯入

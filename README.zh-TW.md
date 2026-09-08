@@ -6,9 +6,9 @@
 
 ## 開發中稽核／Development audit
 
-[期權來源與匯入用法](docs/OPTIONS_SOURCE_REVIEW.md)｜[候選 PR #37](https://github.com/always7895/investor-intelligence/pull/37)｜[遠端報價來源阻擋 #38](https://github.com/always7895/investor-intelligence/issues/38)。
+[股票／新聞／期權來源覆蓋與抓取](docs/PUBLIC_SOURCE_COVERAGE.md)｜[期權來源與匯入用法](docs/OPTIONS_SOURCE_REVIEW.md)｜[候選 PR #37](https://github.com/always7895/investor-intelligence/pull/37)｜[遠端報價來源阻擋 #38](https://github.com/always7895/investor-intelligence/issues/38)。
 
-候選版新增 TAIFEX 選擇權日行情及 Alpaca indicative 報價的本機匯出檔 adapter，保留原有 Yahoo／本機 IBKR 路徑。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
+候選版新增 Fed／SEC／ECB 公告與 TWSE／TPEx 股票日行情的明確選用本機抓取器，以及 TAIFEX 期權／Alpaca indicative 匯入 adapter，保留原有 Yahoo／本機 IBKR 路徑。Fed／SEC／TPEx 已有本機真實抓取證據；ECB／TWSE 在此 transport 的 TLS 驗證失敗，保留失敗狀態。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
 
 ## 已完成／Delivered
 

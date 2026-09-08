@@ -1,6 +1,12 @@
 # 目前狀態／Current status
 
-## 開發中期權稽核／Options audit candidate
+## 開發中全來源稽核／Public-source audit candidate
+
+新增官方公告與股票日行情的選用本機抓取器；Fed／SEC／TPEx 已真實讀取，ECB／TWSE TLS 失敗未跳過。TPEx 無成交資料保留空報價，不把紀錄數當有效價格數。完整範圍、限制與證據見[來源覆蓋](PUBLIC_SOURCE_COVERAGE.md)。
+
+New opt-in local collection covers official announcements and equity EOD data. Fed/SEC/TPEx live reads succeeded; ECB/TWSE TLS failures remain failures. Missing closes stay null; record counts do not equal usable quote counts. See [coverage and evidence](PUBLIC_SOURCE_COVERAGE.md).
+
+### 期權／Options
 
 新增 TAIFEX 日行情、Alpaca indicative 本機匯入 adapters；未啟用 live feed、公共 LINE 發布或 brokerage 連線。修正來源失敗隔離、持倉容量與兩種推薦視圖不一致、日期及布林驗證。完整專案驗收仍未完成，歷史缺陷數不代表目前全面安全。
 
