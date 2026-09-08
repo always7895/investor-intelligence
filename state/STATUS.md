@@ -2,6 +2,8 @@
 
 ## Options audit continuation — 2026-09-08 (candidate, not deployed)
 
+- Publication checkpoint: implementation commit `ead246c` pushed to `fix/options-provenance-audit`; draft PR https://github.com/always7895/investor-intelligence/pull/37 . Remote hardcoded-quote blocker tracked at https://github.com/always7895/investor-intelligence/issues/38 . GitHub branch/PR/issue writes are the only subsequent external mutations; no merge, workflow dispatch, release or Production operation. Repository-local public noreply author configured successfully; prior missing-identity blocker resolved.
+
 - Refetched HEAD/main `0ea7a8d5eac3b19937e09bac6e1d2eeda46c1b0f`; preserved prior staged work in isolated branch `fix/options-provenance-audit`. Current-session user authorized continued actions. No Production change needed for this development checkpoint.
 - Additional fixes: optional fallback exceptions preserve usable primary observations with explicit PROVIDER_ERROR and UNKNOWN_FALLBACK_FAILED universe coverage; total failure raises a sanitized error before any success file write. Rights review dates must be real nonfuture UTC calendar dates; numeric/string activation/access flags are rejected rather than accepted as booleans.
 - Final local validation: `python scripts/run_offline_tests.py --repository` PASS, 592 tests/2 skipped (earlier intermediate 590/2 also PASS); cloud `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test -- --run` PASS (22 files/142 tests). Security, documentation boundary, workflow supply-chain, public-options provider gates and git diff --check PASS. Publication contract test PASS under native PS5.1 and PS7. This is not the complete authoritative Windows/live-release matrix.
