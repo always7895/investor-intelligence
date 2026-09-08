@@ -4,7 +4,7 @@ import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
 import { parseV213Top20Report, v213FieldLocale } from "./top20-report";
-import { buildV213Top20Messages } from "./top20-presentation";
+import { buildV213Top20Messages, STOCK_RESEARCH_KNOWLEDGE_BASE } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
   V213_BROADCAST_DEDUPE?: DurableObjectNamespace;
@@ -96,7 +96,11 @@ function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): s
   const dayOfYear = Math.floor(now / 86_400_000);
   const topic = CURRENT_EVENT_TOPICS[(dayOfYear * 7 + dayIndex) % CURRENT_EVENT_TOPICS.length]!;
 
-  const top3 = report.records.slice(0, 3).map((r) => r.ticker).join("、");
+  const formatTicker = (ticker: string) => {
+    const info = STOCK_RESEARCH_KNOWLEDGE_BASE[ticker];
+    return info ? `${ticker} (${info.chineseName})` : ticker;
+  };
+  const top3 = report.records.slice(0, 3).map((r) => formatTicker(r.ticker)).join("、");
   const sortedByReturn = [...report.records].sort((a, b) => (Number(b.short_term_return_pct) || 0) - (Number(a.short_term_return_pct) || 0));
   const gainer = sortedByReturn[0];
 
@@ -115,11 +119,11 @@ function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): s
   ];
 
   if (gainer && Number(gainer.short_term_return_pct) > 0) {
-    lines.push(`⚡ 近期動能指標：【${gainer.ticker}】近6月累積回報 +${Number(gainer.short_term_return_pct).toFixed(1)}%`);
+    lines.push(`⚡ 近期動能指標：【${formatTicker(gainer.ticker)}】近6月累積回報 +${Number(gainer.short_term_return_pct).toFixed(1)}%`);
   }
 
   if (featured && featured.current_orders && !featured.current_orders.includes("未揭露")) {
-    lines.push("", `🔍 今日亮點照妖鏡【${featured.ticker}】：`, `• 訂單合約：${featured.current_orders.slice(0, 75)}`);
+    lines.push("", `🔍 今日亮點照妖鏡【${formatTicker(featured.ticker)}】：`, `• 訂單合約：${featured.current_orders.slice(0, 75)}`);
   }
 
   lines.push(
