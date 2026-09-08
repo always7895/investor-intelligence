@@ -211,9 +211,9 @@ export function buildOptionsFlexMessages(
         const mid = typeof candidate.midpoint === "number" ? candidate.midpoint.toFixed(2) : String(candidate.midpoint ?? "N/A");
         const dist = typeof candidate.distance_from_spot_pct === "number" ? `${candidate.distance_from_spot_pct > 0 ? "+" : ""}${candidate.distance_from_spot_pct.toFixed(1)}%` : "";
         const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
-        const midYield = typeof yields.mid === "number" ? `${(yields.mid * 100).toFixed(1)}%` : "N/A";
-        const bidYield = typeof yields.bid === "number" ? `${(yields.bid * 100).toFixed(1)}%` : "N/A";
-        const iv = typeof candidate.implied_volatility_pct === "number" ? `${(candidate.implied_volatility_pct * 100).toFixed(1)}%` : "N/A";
+        const midYield = typeof yields.mid === "number" ? `${yields.mid.toFixed(1)}%` : "N/A";
+        const bidYield = typeof yields.bid === "number" ? `${yields.bid.toFixed(1)}%` : "N/A";
+        const iv = typeof candidate.implied_volatility_pct === "number" ? `${candidate.implied_volatility_pct.toFixed(1)}%` : "N/A";
         const limitBand = typeof candidate.recommended_limit_band === "object" && candidate.recommended_limit_band
           ? `${currency} ${(candidate.recommended_limit_band as any).min?.toFixed(2)} ～ ${(candidate.recommended_limit_band as any).max?.toFixed(2)}`
           : `${currency} ${bid} ～ ${mid}`;
@@ -270,6 +270,75 @@ export function buildOptionsFlexMessages(
   return messages;
 }
 
+export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
+  const card1 = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text("期權即時觀測快查中心 · Public Options Guide", "xs", "#CBD5E1"),
+      text("📈 美股期權限價與收租觀測", "xl", "#FFFFFF", { weight: "bold" }),
+      text("自由輸入「任意股票代號 + 期權」即刻精算", "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "lg" }),
+    body: box([
+      box([
+        text("🟢 Covered Call（賣買權收租防守）", "xs", "#15803D", { weight: "bold" }),
+        text("適合正股持倉防守或收租。建議選擇價外 7%～15% 之履約價，賺取時間價值並保留正股上漲空間。", "sm", "#1E293B"),
+      ], { backgroundColor: "#F0FDF4", paddingAll: "md", cornerRadius: "md", borderColor: "#86EFAC", borderWidth: "1px" }),
+      box([
+        text("🟡 Cash-Secured Put（賣賣權折價低接）", "xs", "#B45309", { weight: "bold" }),
+        text("適合想折價買入核心標的者。建議選擇自願接盤之支撐價位，預留 100% 現金保證金，杜絕槓桿穿倉！", "sm", "#1E293B"),
+      ], { backgroundColor: "#FEFCE8", paddingAll: "md", cornerRadius: "md", borderColor: "#FDE047", borderWidth: "1px" }),
+      box([
+        text("💡 韭菜守護者交易心法", "xs", "#1D4ED8", { weight: "bold" }),
+        text("掛單務必採用「限價單（Limit Order）」在推薦限價區間內成交，切勿使用市價單避免被做市商吃滑點！", "xs", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "sm", cornerRadius: "md" }),
+    ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("點擊下方快速查詢焦點標的期權：", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: "查詢 AAOI 800G 光模組期權", text: "AAOI sell call" } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查詢 AXTI 磷化銦基板期權", text: "AXTI 每週期權" } },
+    ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
+  };
+
+  const card2 = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text("高流動性瓶頸標的 · Liquid Candidates", "xs", "#CBD5E1"),
+      text("🎯 常用焦點標的直接查詢", "xl", "#FFFFFF", { weight: "bold" }),
+      text("支援美股任意代號，點擊即可立即測算", "xs", "#94A3B8"),
+    ], { backgroundColor: "#0F172A", paddingAll: "lg" }),
+    body: box([
+      box([
+        text("🚀 焦點光通訊與 CPO 供應鏈", "xs", "#475569", { weight: "bold" }),
+        text("• AAOI：800G/1.6T 光模組，高波動收租（輸入「AAOI sell call」）", "sm", "#1E293B"),
+        text("• AXTI：InP 磷化銦基板龍頭（輸入「AXTI 每週期權」）", "sm", "#1E293B"),
+        text("• COHR：高意與 NVIDIA 戰略合作（輸入「COHR sell call」）", "sm", "#1E293B"),
+      ], { backgroundColor: "#F8FAFC", paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
+      box([
+        text("⚡ 算力晶片、記憶體與資料中心能源", "xs", "#475569", { weight: "bold" }),
+        text("• AMD：AI 算力加速卡（輸入「AMD 每週期權」）", "sm", "#1E293B"),
+        text("• MU：HBM3e 高頻寬記憶體（輸入「MU 每月期權」）", "sm", "#1E293B"),
+        text("• BE：Bloom Energy 現場燃料電池（輸入「BE 每週期權」）", "sm", "#1E293B"),
+      ], { backgroundColor: "#F8FAFC", paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
+    ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      { type: "button", style: "primary", color: "#1D4ED8", height: "sm", action: { type: "message", label: "查詢 COHR NVIDIA 合作期權", text: "COHR sell call" } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+    ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
+  };
+
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: "【韭菜守護者・期權即時觀測快查中心】Covered Call 賣買權收租與 Cash-Secured Put 折價低接指引",
+      contents: { type: "carousel", contents: [card1, card2] },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
 
@@ -284,21 +353,30 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
     return null;
   }
 
-  if (query.intent === "options" && query.ticker && style === "flex") {
-    try {
-      const publicOptions = await publicJson<unknown>(env, ["options:latest", "latest_options"]);
-      if (Array.isArray(publicOptions)) {
-        const norm = query.ticker.toUpperCase();
-        const record = publicOptions.find(
-          (item) => item && typeof item === "object" && String((item as any).ticker ?? "").toUpperCase() === norm,
-        );
-        if (record && typeof record === "object") {
-          const flex = buildOptionsFlexMessages(record as Record<string, unknown>, query.period);
-          if (flex.length > 0) return flex;
+  if (query.intent === "options") {
+    if (style === "flex") {
+      if (!query.ticker) {
+        try {
+          return buildOptionsGuideFlexMessages();
+        } catch {
+          return null;
         }
       }
-    } catch {
-      // ignore and fall through
+      try {
+        const publicOptions = await publicJson<unknown>(env, ["options:latest", "latest_options"]);
+        if (Array.isArray(publicOptions)) {
+          const norm = query.ticker.toUpperCase();
+          const record = publicOptions.find(
+            (item) => item && typeof item === "object" && String((item as any).ticker ?? "").toUpperCase() === norm,
+          );
+          if (record && typeof record === "object") {
+            const flex = buildOptionsFlexMessages(record as Record<string, unknown>, query.period);
+            if (flex.length > 0) return flex;
+          }
+        }
+      } catch {
+        // ignore and fall through
+      }
     }
   }
 
