@@ -360,6 +360,204 @@ export function buildOptionsGuideFlexMessages(): LineOutboundMessage[] {
   return messages;
 }
 
+interface StockResearchFact {
+  industry: string;
+  supplyDemand: string;
+  bottleneck: string;
+  synthesis: string;
+}
+
+const STOCK_RESEARCH_KNOWLEDGE_BASE: Record<string, StockResearchFact> = {
+  AAOI: {
+    industry: "光通訊與 800G/1.6T 光收發模組",
+    supplyDemand: "北美超大規模 CSP（微軟、AWS）全面推動 AI 資料中心網路向 800G/1.6T 換代，模組供不應求，訂單能見度直通 2026-2027 年。",
+    bottleneck: "關鍵瓶頸在於連續波（CW）雷射封裝良率與上游 InP 基板晶圓配額，高頻散熱與訊號完整性技術門檻極高。",
+    synthesis: "SEC Form 10-Q 申報：德州工廠加速產能調度以承接 800G 規模放量；已獲大型雲端客戶採購承諾，正鎖定上游雷射供應鏈；需留意營運現金流與擴產資本開支。",
+  },
+  AXTI: {
+    industry: "InP（磷化銦）與化合物半導體關鍵基板",
+    supplyDemand: "AI 光互聯暴增引發全球 InP 晶圓短缺，受惠 800G/1.6T/3.2T 光模組與矽光子光源強勁剛需。",
+    bottleneck: "全球 InP 襯底高純度長晶與 6 吋晶圓切割良率壁壘極高，產能被少數頭部廠商寡占，具備絕對定價權（ASP 連續調升）。",
+    synthesis: "SEC Form 8-K/10-Q：獲 Lumentum 4,350 萬美元產能預留定金，及 Coherent 2,229 萬美元 3 年預付款協議；需提防中國關鍵金屬（鎵/鍺）出口限制及原料風險。",
+  },
+  COHR: {
+    industry: "高意集團・光通訊收發器與先進光學雷射",
+    supplyDemand: "全球光通訊雙雄之一，深度綁定 NVIDIA Blackwell 算力集群與超大規模雲端客戶，800G/1.6T 光學模組訂單滿載。",
+    bottleneck: "垂直整合 InP/GaAs 磊晶、雷射晶片與光引擎組裝能力極度稀缺，是少數能滿足十萬卡集群低延遲互聯標準的廠商。",
+    synthesis: "與 NVIDIA 簽署多年戰略合作協議，涵蓋數十億美元採購承諾與未來先進光網路產能權利；SEC 10-K 顯示研發 CapEx 擴大，毛利率進入上行週期。",
+  },
+  TSEM: {
+    industry: "矽光子（SiPho）晶圓代工製造",
+    supplyDemand: "國際一線晶片巨頭與光通訊模組大廠全面委外下單矽光子晶片，產能利用率逼近上限。",
+    bottleneck: "矽光子晶圓製造、光波導蝕刻與片上雷射耦合良率門檻極高，全球具備商業化代工規模者屈指可數。",
+    synthesis: "SEC Form 20-F 與官方公告：鎖定 2027 年達 13 億美元客戶合約，並已收取 2.9 億美元大額預付款定金，產能預計 2027Q4 全面放量；需留意台積電競爭。",
+  },
+  SIVE: {
+    industry: "InP 光學連續波（CW）雷射與 CPO 核心組件",
+    supplyDemand: "CPO 矽光子架構必備外置連續波光源（ELS），每台交換機需數十至上百顆雷射晶片，市場需求呈現指數級增長。",
+    bottleneck: "蘇格蘭格拉斯哥晶圓廠為全球少數具備年產 1 億顆 CW DFB 雷射能力的量產線，高功率單模雷射良率為關鍵約束。",
+    synthesis: "官方公告獲 ALL.SPACE 820 萬美元生產訂單，商機漏斗超過 12 億美元；需高度警惕多次折價現增、可轉債轉股對股權之攤薄，靜待 2027 年產能放量。",
+  },
+  NVDA: {
+    industry: "AI 算力加速晶片與 NVLink 超大規模互聯",
+    supplyDemand: "全球雲端巨頭與主權 AI 算力軍備競賽需求無上限，Blackwell 架構機櫃全面排單至未來數個季度。",
+    bottleneck: "核心物理瓶頸在於台積電 CoWoS 封裝產能、高頻寬記憶體（HBM3e）配額與機櫃水冷散熱組件交期。",
+    synthesis: "SEC Form 10-Q 揭露待履行訂單（RPO）約 32 億美元，單季營收年增 >70%；需關注光互聯交期與下游客戶推理貨幣化回收節奏。",
+  },
+  TSM: {
+    industry: "全球先進半導體晶圓製造與 CoWoS 先進封裝",
+    supplyDemand: "3nm/2nm 先進製程與 CoWoS/SoIC 封裝產能全數售罄，蘋果、NVIDIA、AMD、高通包攬全部產能。",
+    bottleneck: "晶圓製造微縮物理極限、EUV 曝光機交期、先進封裝中介層（Interposer）產能為全球算力總閥門。",
+    synthesis: "SEC Form 20-F：毛利率維持 54% 以上高位，具備強大轉嫁成本之定價權；需留意海外設廠（美、日、德）折舊成本與地緣政治波動。",
+  },
+  AMD: {
+    industry: "高效能 CPU、GPU 算力晶片與自適應運算",
+    supplyDemand: "MI300X / MI325X 獲微軟、Meta 等雲端大客戶規模部署，企業對雙供應商（Second Source）抗衡 NVIDIA 需求迫切。",
+    bottleneck: "供應鏈約束在於台積電 CoWoS 產能獲取配額、HBM 供應鏈供貨速度及 ROCm 軟體生態兼容門檻。",
+    synthesis: "SEC Form 10-Q 申報待履行訂單（RPO）達 2.22 億美元；資料中心事業部營收翻倍增長，需留意與 CUDA 生態之競爭壁壘。",
+  },
+  AVGO: {
+    industry: "AI 乙太網交換晶片、光電通訊與客製化 ASIC",
+    supplyDemand: "Tomahawk 5 / Jericho 3-AI 晶片霸占超大規模雲端資料中心網路，Google / Meta 客製化 TPU / ASIC 需求爆發。",
+    bottleneck: "掌握高頻交換晶片底層物理 SerDes 專利、光電互聯封裝核心技術，客戶轉換成本極高。",
+    synthesis: "SEC Form 10-Q 揭露待履行訂單（RPO）高達 1,646 億美元；非半導體與軟體整合帶來豐沛自由現金流，需留意雲端自研晶片競爭。",
+  },
+  MU: {
+    industry: "HBM3e / HBM4 高頻寬記憶體與先進 DRAM",
+    supplyDemand: "AI 伺服器對 HBM 需求吞噬全球晶圓產能，2026-2027 年 HBM 產能已全量被預訂一空。",
+    bottleneck: "12 層 / 16 層 3D 堆疊良率、熱膨脹係數控制與 TSV 矽穿孔良率為核心物理天花板。",
+    synthesis: "SEC Form 10-Q 揭露 RPO 達 50 億美元；日本經銷通路報告指出全球高階記憶體缺口達 40-60%，產品單價與毛利迎來超級週期。",
+  },
+  BE: {
+    industry: "固態氧化物燃料電池（SOFC）現場自備能源",
+    supplyDemand: "資料中心電網接入排隊期長達 4-7 年，雲端算力中心轉向「自備發電（Behind-the-Meter）」剛需爆發。",
+    bottleneck: "大功率高溫燃料電池電堆製造良率、抗熱震材料壽命，以及現場微電網併網工程能力。",
+    synthesis: "SEC Form 10-Q：獲美光與頂級 AI 資料中心巨額現場發電訂單，享有 15 年超長服務長約；需注意天然氣原料成本與資本開支周轉。",
+  },
+  ALAB: {
+    industry: "PCIe Gen 5/6 與 CXL 智慧高速 Retimer 晶片",
+    supplyDemand: "伺服器內部 GPU 與 CPU 高速互聯長度受物理信號衰減限制，每台 Blackwell 伺服器需搭載數十顆 Retimer。",
+    bottleneck: "超高頻信號補償演算法、低延遲極限與各家主機板硬體兼容協議具備極高軟硬體護城河。",
+    synthesis: "SEC Form 10-Q 揭露：毛利率超過 75%，獲一線伺服器 ODM 全面導入；需留意新進競品低價競爭。",
+  },
+  LITE: {
+    industry: "EML 電吸收調製雷射與連續波（CW）雷射晶片",
+    supplyDemand: "800G/1.6T 光模組不可或缺之上游雷射晶片，雲端資料中心長約採購持續放量。",
+    bottleneck: "磷化銦（InP）高品質磊晶生長與雷射諧振腔高精度加工技術壁壘極高。",
+    synthesis: "SEC Form 10-K：向 AXTI 預留數千萬美元 InP 基板產能，鎖定關鍵原料；需關注雲端大客戶採購節奏與拉貨週期。",
+  },
+  MRVL: {
+    industry: "光通訊 PAM4 DSP 晶片與客製化 AI 雲端 ASIC",
+    supplyDemand: "光模組內部電信號與光信號轉換大腦，5nm/3nm DSP 晶片需求隨 800G/1.6T 換代倍數擴張。",
+    bottleneck: "極低功耗類比電路設計與超高速 DSP 演算法架構，進入門檻極高。",
+    synthesis: "SEC Form 10-K：獲雲端巨頭多個 5nm/3nm 客製化晶片設計定案（Design Wins）；需關注研發費用支出與插槽份額。",
+  },
+  WDC: {
+    industry: "大容量企業級 Enterprise SSD 與近線高密度 HDD",
+    supplyDemand: "AI 大模型海量數據訓練集存儲與推理檢索（RAG）資料庫帶動企業級儲存爆發。",
+    bottleneck: "3D NAND 高堆疊層數良率、近線硬碟磁頭定位精度與熱輔助磁記錄（HAMR）產能。",
+    synthesis: "SEC Form 10-K：獲全球一線雲端大廠長期供貨協議，企業級產品佔比大幅提升；需留意消費級儲存週期干擾。",
+  },
+  SMCI: {
+    industry: "AI 伺服器機櫃與浸沒式／直接水冷（DLC）散熱",
+    supplyDemand: "十萬卡集群功耗飆破百千瓦，傳統氣冷失效，液冷伺服器出貨滲透率自 5% 躍升至 30%+。",
+    bottleneck: "高密度伺服器冷卻管路防漏、分流歧管（Manifold）與冷卻液分配單元（CDU）工程交付能力。",
+    synthesis: "SEC 申報待履行訂單達 26.1 億美元；需密切留意審計機構年報延遲審查風險與內部控制改善進度。",
+  },
+  APH: {
+    industry: "AI 高頻銅互連纜線與高速背板連接器",
+    supplyDemand: "NVLink 與伺服器內部機架高速銅互連需求隨 Blackwell 密鑰架構呈現暴增。",
+    bottleneck: "224G 高速信號微波干擾屏蔽、金屬精密衝壓與特種高分子絕緣材料壁壘。",
+    synthesis: "SEC Form 10-Q 申報未履行訂單高達 89 億美元；需關注長線「銅退光進（CPO）」對銅連接器份額之演進衝擊。",
+  },
+  CIEN: {
+    industry: "資料中心互聯（DCI）與長途相干光傳輸系統",
+    supplyDemand: "跨資料中心巨量資料同步與分散式集群訓練帶動 800G/1.6T DCI 傳輸設備擴建。",
+    bottleneck: "WaveLogic 相干光電晶片與長距離低色散傳輸演算法，全球少數能提供端到端系統之龍頭。",
+    synthesis: "SEC Form 10-Q：雲端客戶訂單佔比首度超越傳統電信商，毛利結構優化；需留意傳統電信市場支出疲弱。",
+  },
+  CRDO: {
+    industry: "主動式電纜（AEC）與低功耗高速 SerDes",
+    supplyDemand: "伺服器機櫃內部短距連接以 AEC 取代傳統光纖或無源銅纜，兼顧低成本、低功耗與柔軟度。",
+    bottleneck: "晶片直接嵌入線纜內部封裝技術、信號重構演算法與高抗干擾專利。",
+    synthesis: "SEC Form 10-Q 申報待履行訂單約 3,190 萬美元；正擴展微軟等超大規模客戶，需關注與光纖之成本博弈。",
+  },
+  MTSI: {
+    industry: "高速類比驅動 IC、TIA 與 CW 連續波雷射封裝",
+    supplyDemand: "800G/1.6T 光模組內部不可或缺的高頻類比放大晶片，需求維持高景氣度。",
+    bottleneck: "磷化銦與砷化鎵射頻晶片精密製程、高線性度類比放大電路設計專利。",
+    synthesis: "SEC Form 10-Q：營運利潤率穩步攀升，產能利用率滿載；需持續追蹤擴產設備調試進度。",
+  },
+  JBL: {
+    industry: "光電精密製造、系統級封裝與代工組裝",
+    supplyDemand: "雲端巨頭與光晶片新創尋求具備全套無塵室光學組裝與測試能力的製造夥伴。",
+    bottleneck: "光纖自動耦合對準（Active Alignment）高精度設備與良率控制能力。",
+    synthesis: "SEC Form 10-K：與 Sivers 蘇格蘭晶圓廠深化封測代工合作；需留意代工產業低毛利特性。",
+  },
+  APLD: {
+    industry: "AI 高效能運算（HPC）超大規模資料中心基礎設施",
+    supplyDemand: "科技巨頭爭奪具備數百兆瓦（MW）充裕電力配額之資料中心場地。",
+    bottleneck: "關鍵約束在於已獲電網批准之高壓變電所電力容量與土地資源，具備天然排他性。",
+    synthesis: "SEC Form 8-K：簽署長達 15 年期之超大規模長期租賃合約；需留意高槓桿專案融資利率與償債進度。",
+  },
+  IQE: {
+    industry: "量子點雷射（Quantum Dot）與先進化合物半導體磊晶",
+    supplyDemand: "矽光子晶圓需要高溫穩定性優異的量子點磊晶片作為晶圓級光源。",
+    bottleneck: "分子束磊晶（MBE）超高真空長晶技術與晶格缺陷控制難度極大。",
+    synthesis: "官方公告與 Quintessent 簽署晶圓採購協議；需密切關注 2028 年商業化進度與現金流融資需求。",
+  },
+  "3006.TW": {
+    industry: "利基型成熟製程 DRAM（DDR2 / DDR3）",
+    supplyDemand: "三大記憶體原廠將全部產能抽調至 HBM 與 DDR5，引發網通、電視與邊緣終端成熟 DRAM 結構性大缺貨。",
+    bottleneck: "掌握成熟製程產能配額，在原廠退出市場之際享有現貨定價權與搶貨溢價。",
+    synthesis: "台灣公開資訊觀測站（MOPS）營收申報：8 月營收出現爆發性倍數躍升；需注意原廠擴產週期與終端庫存調節。",
+  },
+};
+
+export function buildStockResearchFlexMessages(
+  ticker: string,
+  stock: StockResearchFact,
+): LineOutboundMessage[] {
+  const bubble = {
+    type: "bubble",
+    size: "mega",
+    header: box([
+      text("個股物理瓶頸研析 · Supply Chain Intelligence", "xs", "#CBD5E1"),
+      text(`【${ticker}】`, "xxl", "#FFFFFF", { weight: "bold" }),
+      text(`行業別：${stock.industry} ｜ 唯讀研析`, "xs", "#94A3B8"),
+    ], { backgroundColor: "#142C47", paddingAll: "lg" }),
+    body: box([
+      box([
+        text("📊 市場供應與需求 (Supply & Demand)", "xs", "#1D4ED8", { weight: "bold" }),
+        text(stock.supplyDemand, "sm", "#1E293B"),
+      ], { backgroundColor: "#EFF6FF", paddingAll: "md", cornerRadius: "md", borderColor: "#93C5FD", borderWidth: "1px" }),
+      box([
+        text("⚠️ 實體物理約束層與瓶頸 (Physical Bottleneck)", "xs", "#B91C1C", { weight: "bold" }),
+        text(stock.bottleneck, "sm", "#1E293B"),
+      ], { backgroundColor: "#FEF2F2", paddingAll: "md", cornerRadius: "md", borderColor: "#FCA5A5", borderWidth: "1px" }),
+      box([
+        text("📑 財報與重大新聞總結 (Financials & News Synthesis)", "xs", "#15803D", { weight: "bold" }),
+        text(stock.synthesis, "sm", "#1E293B"),
+      ], { backgroundColor: "#F0FDF4", paddingAll: "md", cornerRadius: "md", borderColor: "#86EFAC", borderWidth: "1px" }),
+    ], { paddingAll: "lg", spacing: "md", backgroundColor: "#FFFFFF" }),
+    footer: box([
+      text("基於第一手公開法定申報，非投資建議 / Not investment advice.", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查詢 ${ticker} 期權限價（不賣股收租）`, text: `${ticker} sell call` } },
+      { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
+    ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "sm" }),
+  };
+
+  const messages: LineOutboundMessage[] = [
+    {
+      type: "flex",
+      altText: `【${ticker} 供應鏈研析】供應需求、實體瓶頸與財報總結`,
+      contents: { type: "carousel", contents: [bubble] },
+    },
+  ];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
 
@@ -398,6 +596,37 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
       } catch {
         // ignore and fall through
       }
+    }
+  }
+
+  if (query.ticker && query.intent !== "options") {
+    const rawTicker = query.ticker.toUpperCase();
+    const norm = rawTicker.replace(/\.(ST|L|TWO)$/i, "");
+    const stock = STOCK_RESEARCH_KNOWLEDGE_BASE[rawTicker] ?? STOCK_RESEARCH_KNOWLEDGE_BASE[norm];
+    if (stock) {
+      if (style === "flex") {
+        try {
+          return buildStockResearchFlexMessages(rawTicker, stock);
+        } catch {
+          // fall through to text
+        }
+      }
+      return [
+        `【${rawTicker} 供應鏈瓶頸與潛力研析】`,
+        `行業別：${stock.industry}`,
+        "──────────────────────────────",
+        "📊 市場供應與需求 (Supply & Demand)：",
+        stock.supplyDemand,
+        "",
+        "⚠️ 實體物理約束層與瓶頸 (Physical Bottleneck)：",
+        stock.bottleneck,
+        "",
+        "📑 財報與重大新聞總結 (Financials & News Synthesis)：",
+        stock.synthesis,
+        "",
+        "──────────────────────────────",
+        `💡 守護者提示：輸入「${rawTicker} sell call」可即刻獲取不賣股高履約價期權限價建議！`,
+      ].join("\n");
     }
   }
 
