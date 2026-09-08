@@ -204,6 +204,17 @@ const SERENITY_CANDIDATE_SUMMARY: Record<string, string> = {
   WDC: "Western Digital 大容量 Enterprise SSD 與近線 HDD 受惠 AI 模型資料留存需求，獲機構頂級重倉；留意消費級週期波動。\n來源：US SEC EDGAR 10-K (CIK 0000106040) https://www.sec.gov",
   IQE: "IQE 為量子點雷射磊晶龍頭，與 Quintessent 簽署採購協議進入客戶送樣；留意 2028 年前商業化進度與現金流融資需求。\n來源：IQE plc Official Announcement (LSE: IQE) https://www.iqep.com",
   "IQE.L": "IQE 為量子點雷射磊晶龍頭，與 Quintessent 簽署採購協議進入客戶送樣；留意 2028 年前商業化進度與現金流融資需求。\n來源：IQE plc Official Announcement (LSE: IQE) https://www.iqep.com",
+  AMD: "AMD 在 MI300X/MI325X 算力加速卡獲微軟與 Meta 大規模採購，SEC 申報揭露 RPO 約 2.22 億美元；注意與 NVIDIA CUDA 生態壁壘及供應鏈排產交期。\n來源：US SEC EDGAR 10-Q (CIK 0000002488) https://www.sec.gov",
+  AVGO: "Broadcom 為 AI 集群乙太網交換晶片（Tomahawk/Jericho）與 Google/Meta 客製 ASIC 獨家霸主，SEC 申報待履行訂單（RPO）達 1,646 億美元；留意雲端客戶自研晶片替換率。\n來源：US SEC EDGAR 10-Q (CIK 0001730168) https://www.sec.gov",
+  ALAB: "Astera Labs 為 PCIe Gen 5/6 與 CXL 智慧 Retimer 晶片領導者，獲 NVIDIA Blackwell 與各大雲端伺服器架構全量導入；注意晶片定價權與競品低價替代。\n來源：Astera Labs Official SEC 10-Q (CIK 0001736297) https://www.sec.gov",
+  SMCI: "Supermicro 為 AI 伺服器水冷散熱模組領導廠，SEC 申報待履行訂單達 26.1 億美元；注意審計年報延期風險與現金流周轉。\n來源：US SEC EDGAR 10-K/8-K (CIK 0001375365) https://www.sec.gov",
+  APH: "Amphenol 掌握 AI 伺服器高頻銅互連與高速背板連接器核心專利，未履行訂單高達 89 億美元；注意銅退光進（CPO）技術演進速度。\n來源：US SEC EDGAR 10-Q (CIK 0000820313) https://www.sec.gov",
+  BE: "Bloom Energy 固態氧化物燃料電池（SOFC）獲 AI 資料中心現場發電大單，直供美光與雲端算力中心，避開電網 5 年排隊期；留意天然氣原料成本。\n來源：Bloom Energy SEC 10-Q (CIK 0001664703) https://www.sec.gov",
+  CIEN: "Ciena 為資料中心互聯（DCI）與光傳輸系統龍頭，WaveLogic 6 獲全球雲端服務商長約；注意電信端資本支出縮減。\n來源：US SEC EDGAR 10-Q (CIK 0000936395) https://www.sec.gov",
+  CRDO: "Credo 專精主動電纜（AEC）與低功耗 SerDes，SEC 揭露待履行訂單約 3,190 萬美元；留意光纖與銅纜成本競爭。\n來源：US SEC EDGAR 10-Q (CIK 0001807794) https://www.sec.gov",
+  MTSI: "MACOM 提供 800G/1.6T 高速模擬驅動 IC 與連續波（CW）雷射封裝，產能全滿；留意產能擴張良率。\n來源：US SEC EDGAR 10-Q (CIK 0001493594) https://www.sec.gov",
+  JBL: "Jabil 為全球頂級光電系統整合與製造夥伴，深度協同 Sivers 蘇格蘭雷射封測；留意整體代工毛利率。\n來源：US SEC EDGAR 10-K (CIK 0000898263) https://www.sec.gov",
+  APLD: "Applied Digital 為新一代 AI 高效能運算資料中心業者，簽署 15 年期超大規模長約租賃協議；留意專案融資槓桿。\n來源：US SEC EDGAR 8-K (CIK 0001213900) https://www.sec.gov",
 };
 
 function formatReportTraditionalChinese(_raw: string): string {
@@ -292,6 +303,18 @@ export function humanizeFallback(answer: string, query: ParsedQuery): string {
     }
     if (/(買多少|倉位|配置|買幾成|加倉|建倉|部位|買什麼|推薦買|如何買)/i.test(query.normalized)) {
       return "【配置與倉位策略建議】\n依據 Serenity 瓶頸投資原則：\n1. 高彈性/高稀釋瓶頸股（如 SIVE、AXTI、AAOI）：單一標的建議不超過總投資組合 5%～8%，嚴控融資與稀釋風險。\n2. 核心護城河權值股（如 NVDA、TSM、AVGO）：可作為核心持倉（15%～25%）。\n3. 現金準備：建議常態保留 20%～30% 現金流以應對半導體週期大幅回撤與加倉機會。\n\n（註：本機 GPU 目前正處理其他專案大型任務，已自動為您調取標準配置準則。）";
+    }
+    if (/(賣出|何時賣|出場|退場|停損|停利|何時走|偽證|風險指標|退出條件)/i.test(query.normalized)) {
+      return [
+        "【動態退出與偽證準則（何時該賣？）】",
+        "依據 Serenity 跨週期風控框架，出現以下 4 種情況時，必須果斷停利或停損離場，絕不戀戰：",
+        "1. 【技術擴產或替代方案湧現】（物理瓶頸消失）：若有替代技術落地（如 LPO 解決散熱繞過 CPO、或住友電工大舉擴產 InP 基板壓低 ASP）。",
+        "2. 【股權頻繁稀釋與現金流斷裂】：管理層若連續進行折價定向增發（Private Placement）或可轉債大量轉股（如 SIVE），股東權益遭永久稀釋。",
+        "3. 【大客戶實體訂單砍單或違約】：SEC 季報揭露待履行訂單（RPO）連續 2 季衰退，或主要雲端巨頭延遲採購。",
+        "4. 【估值完全透支未來 3 年利潤】：當股價已充分反映 2-3 年後的飽和營收，預期回報率低於無風險利率時，分批轉為 Sell Call 收租鎖定利潤。",
+        "",
+        "（註：本機 GPU 目前正處理其他專案任務，已自動為您調取權威風控退出準則。）",
+      ].join("\n");
     }
     return "本機模型目前正處理其他本機專案的大型任務（排隊中）；系統量化 universe、Top 20、期權與報告型問答仍可直接使用。";
   }

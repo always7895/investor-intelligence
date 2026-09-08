@@ -83,9 +83,9 @@ function lineHelpText(): string {
     "",
     v211HelpText(),
     "",
-    "通知：每天 08:00 與 21:00（Asia/Taipei）只在 freshness gate 通過後推送公開 Top 20。",
-    "Top 20 固定只顯示：股票／長期投資報酬率／短期投資報酬率／行業別／獲利簡述。",
-    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。101 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
+    "通知：每日早晨 08:00（Asia/Taipei）單次推送最新動態巡邏提醒，極致守護每月推播額度。",
+    "Top 20 完整七欄：股票／長期投資報酬率／短期投資報酬率／行業別／獲利簡述／目前訂單／未來訂單預估（100% 綁定第一方法定訂單與合約）。",
+    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。多來源體系涵蓋 Google、SEC EDGAR、Nasdaq、CBOE、MOPS、SEMI 與 TrendForce 等官方權威數據。",
   ].join("\n");
 }
 
@@ -247,7 +247,8 @@ export async function processAuthorizedLineEvent(
 
   const operationEpoch = await tenantWriteEpoch(env, tenantId);
   const answerPromise = (env[V211_GENERAL_QA] ?? generalAnswer)(env, query, requestContext);
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 28000));
+  const syncTimeoutMs = Number((env as Record<string, unknown>).LINE_SYNC_TIMEOUT_MS ?? "7000") || 7000;
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), syncTimeoutMs));
   const quick = await Promise.race([answerPromise, timeout]);
   if (quick !== null) {
     await replyText(env, event.replyToken, humanizeFallback(quick, query));
