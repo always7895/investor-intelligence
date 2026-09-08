@@ -14,26 +14,26 @@ const text = (value: string, size = "sm", color = "#172B4D") => ({ type: "text",
 const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
 
 const TOP20_SENSITIVITY: Record<string, { bull: string; bear: string }> = {
-  TSEM: { bull: "股價預估成長 +135% ～ +180%（矽光子市佔飆升）", bear: "股價預估回撤 -25% ～ -35%（成熟製程現金流支撐）" },
-  AMD: { bull: "股價預估成長 +95% ～ +140%（AI 市佔突破 15%）", bear: "股價預估回撤 -30% ～ -40%（受限於 CUDA 生態壁壘）" },
-  AVGO: { bull: "股價預估成長 +70% ～ +105%（客製 ASIC 滲透率翻倍）", bear: "股價預估回撤 -20% ～ -28%（傳統網通現金流構建極強護城河）" },
-  COHR: { bull: "股價預估成長 +110% ～ +165%（1.6T 市佔霸榜）", bear: "股價預估回撤 -30% ～ -38%（若客戶轉向自製光引擎）" },
-  MRVL: { bull: "股價預估成長 +85% ～ +130%（光電互聯龍頭溢價）", bear: "股價預估回撤 -28% ～ -36%（若雲端巨頭 ASIC 延期交付）" },
-  MU: { bull: "股價預估成長 +80% ～ +125%（超級週期毛利破 50%）", bear: "股價預估回撤 -35% ～ -45%（若消費端儲存崩盤）" },
-  SMCI: { bull: "股價預估成長 +150% ～ +220%（審計合規與液冷放量）", bear: "股價預估回撤 -40% ～ -55%（若面臨監管下市風險）" },
-  APH: { bull: "股價預估成長 +60% ～ +90%（機櫃銅互連價值量翻倍）", bear: "股價預估回撤 -20% ～ -26%（多元工業訂單提供防禦底線）" },
-  BE: { bull: "股價預估成長 +140% ～ +210%（現場發電剛需爆發）", bear: "股價預估回撤 -35% ～ -48%（天然氣原料飆漲或融資利率高企）" },
-  CIEN: { bull: "股價預估成長 +65% ～ +100%（雲端相干光互聯市佔第一）", bear: "股價預估回撤 -22% ～ -30%（若傳統電信商預算持續縮水）" },
-  CRDO: { bull: "股價預估成長 +90% ～ +145%（AEC 機櫃市佔擴大）", bear: "股價預估回撤 -32% ～ -42%（若無源銅纜改良延緩 AEC 採用）" },
-  NVDA: { bull: "股價預估成長 +65% ～ +95%（全球算力霸主地位穩固）", bear: "股價預估回撤 -25% ～ -35%（若雲端巨頭 CapEx 成長放緩）" },
-  WDC: { bull: "股價預估成長 +75% ～ +115%（儲存超級週期爆發）", bear: "股價預估回撤 -30% ～ -40%（消費級儲存週期性疲軟）" },
-  ALAB: { bull: "股價預估成長 +105% ～ +160%（高速互聯獨佔地位）", bear: "股價預估回撤 -35% ～ -46%（高本益比面臨競品低價切入壓力）" },
-  MTSI: { bull: "股價預估成長 +80% ～ +120%（射頻類比定價權）", bear: "股價預估回撤 -25% ～ -35%（晶圓廠設備擴產調試期延誤）" },
-  JBL: { bull: "股價預估成長 +55% ～ +85%（切入矽光子量產代工）", bear: "股價預估回撤 -20% ～ -28%（代工產業低毛利抗風險承壓）" },
-  AAOI: { bull: "股價預估成長 +130% ～ +200%（微軟/亞馬遜放量代工）", bear: "股價預估回撤 -40% ～ -52%（若 CW 雷射上游供貨受限）" },
-  AXTI: { bull: "股價預估成長 +145% ～ +230%（基板壟斷定價權爆發）", bear: "股價預估回撤 -38% ～ -50%（中國原料出口管制衝擊）" },
-  LITE: { bull: "股價預估成長 +90% ～ +140%（雷射晶片供不應求定價權）", bear: "股價預估回撤 -28% ～ -38%（雲端客戶庫存調整或競爭搶單）" },
-  APLD: { bull: "股價預估成長 +150% ～ +240%（算力電力資產價值重估）", bear: "股價預估回撤 -42% ～ -55%（高槓桿專案融資利率上升）" },
+  TSEM: { bull: "2～3年內股價預估成長 +135% ～ +180%（2027年13億美元矽光子合約全面放量）", bear: "1～2年回撤風險 -25% ～ -35%（成熟製程折舊與代工競爭）" },
+  AMD: { bull: "2～3年內股價預估成長 +95% ～ +140%（MI350/MI400市佔突破15%）", bear: "1～2年回撤風險 -30% ～ -40%（受限於CUDA生態壁壘）" },
+  AVGO: { bull: "2～3年內股價預估成長 +70% ～ +105%（客製ASIC滲透率翻倍與X100放量）", bear: "1～2年回撤風險 -20% ～ -28%（傳統網通現金流構建底線）" },
+  COHR: { bull: "2～3年內股價預估成長 +110% ～ +165%（1.6T光模組出貨與NVIDIA長約落實）", bear: "1～2年回撤風險 -30% ～ -38%（若客戶轉向自製光引擎延緩採購）" },
+  MRVL: { bull: "2～3年內股價預估成長 +85% ～ +130%（3nm ASIC與PAM4 DSP光電放量）", bear: "1～2年回撤風險 -28% ～ -36%（若雲端巨頭客製晶片延期交付）" },
+  MU: { bull: "2～3年內股價預估成長 +80% ～ +125%（HBM4超級週期毛利破50%）", bear: "1～2年回撤風險 -35% ～ -45%（若消費端儲存週期性回落）" },
+  SMCI: { bull: "2～3年內股價預估成長 +150% ～ +220%（審計合規與DLC直接水冷機櫃全面放量）", bear: "1～2年回撤風險 -40% ～ -55%（若面臨監管下市或訂單轉單）" },
+  APH: { bull: "2～3年內股價預估成長 +60% ～ +90%（NVL72高速銅互連纜線價值量倍增）", bear: "1～2年回撤風險 -20% ～ -26%（多元工業與車用訂單提供防禦底線）" },
+  BE: { bull: "2～3年內股價預估成長 +140% ～ +210%（AI資料中心現場SOFC發電剛需爆發）", bear: "1～2年回撤風險 -35% ～ -48%（天然氣原料飆漲或融資利率高企）" },
+  CIEN: { bull: "2～3年內股價預估成長 +65% ～ +100%（DCI資料中心互聯800G相干光市佔第一）", bear: "1～2年回撤風險 -22% ～ -30%（若傳統電信商預算持續縮水）" },
+  CRDO: { bull: "2～3年內股價預估成長 +90% ～ +145%（AEC主動式電纜機櫃市佔率達50%）", bear: "1～2年回撤風險 -32% ～ -42%（若無源銅纜改良延緩AEC普及）" },
+  NVDA: { bull: "2～3年內股價預估成長 +65% ～ +95%（Blackwell/Rubin全球算力霸主地位穩固）", bear: "1～2年回撤風險 -25% ～ -35%（若雲端巨頭CapEx資本開支成長放緩）" },
+  WDC: { bull: "2～3年內股價預估成長 +75% ～ +115%（AI訓練集儲存與高階eSSD超級週期）", bear: "1～2年回撤風險 -30% ～ -40%（消費級儲存週期性疲軟）" },
+  ALAB: { bull: "2～3年內股價預估成長 +105% ～ +160%（PCIe 6/CXL高速Retimer晶片壟斷放量）", bear: "1～2年回撤風險 -35% ～ -46%（高估值面臨新進競品低價切入壓力）" },
+  MTSI: { bull: "2～3年內股價預估成長 +80% ～ +120%（800G/1.6T射頻類比放大晶片定價權）", bear: "1～2年回撤風險 -25% ～ -35%（晶圓廠設備擴產調試期延誤）" },
+  JBL: { bull: "2～3年內股價預估成長 +55% ～ +85%（切入矽光子CPO晶圓級組裝量產代工）", bear: "1～2年回撤風險 -20% ～ -28%（代工產業低毛利抗風險承壓）" },
+  AAOI: { bull: "2～3年內股價預估成長 +130% ～ +200%（微軟/亞馬遜800G光模組2026-2027放量）", bear: "1～2年回撤風險 -40% ～ -52%（若上游CW雷射供貨受限延期）" },
+  AXTI: { bull: "2～3年內股價預估成長 +145% ～ +230%（InP磷化銦襯底壟斷定價權與擴產）", bear: "1～2年回撤風險 -38% ～ -50%（中國關鍵原料出口管制衝擊）" },
+  LITE: { bull: "2～3年內股價預估成長 +90% ～ +140%（EML/CW雷射晶片供不應求定價權擴張）", bear: "1～2年回撤風險 -28% ～ -38%（雲端客戶庫存調整或競爭搶單）" },
+  APLD: { bull: "2～3年內股價預估成長 +150% ～ +240%（15年期AI算力電力資產價值重估）", bear: "1～2年回撤風險 -42% ～ -55%（高槓桿專案融資利率上升）" },
 };
 
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
@@ -52,7 +52,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
       const nameText = stockInfo ? `\n公司全稱：${stockInfo.chineseName} ${stockInfo.originalName}` : "";
       const sens = TOP20_SENSITIVITY[record.ticker];
-      const sensText = sens ? `\n• 樂觀實現未來訂單／股價成長預估：${sens.bull}\n• 訂單未實現或推遲／股價下行風險：${sens.bear}` : "";
+      const sensText = sens ? `\n• 樂觀實現未來訂單 (2～3年)：${sens.bull}\n• 訂單推遲或落空 (1～2年)：${sens.bear}` : "";
       const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n") + nameText + sensText;
       if (chunk.length + block.length > 4900) { chunks.push(chunk); chunk = prefix; }
       if (chunk.length + block.length > 4900) throw new Error("V213_PRESENTATION_ROW_TOO_LARGE");
@@ -71,9 +71,9 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     ], { flex: 1 });
     const sens = TOP20_SENSITIVITY[record.ticker];
     const sensBox = sens ? box([
-      text("📈 訂單敏感度與潛在股價空間 (Valuation Sensitivity)", "xs", "#1D4ED8", { weight: "bold" }),
-      text(`• 樂觀訂單落實：${sens.bull}`, "xs", "#15803D", { weight: "bold" }),
-      text(`• 訂單推遲／落空：${sens.bear}`, "xs", "#B91C1C"),
+      text("📈 訂單敏感度與潛在股價空間 (未來 2～3 年跨週期)", "xs", "#1D4ED8", { weight: "bold" }),
+      text(`• 🟢 樂觀訂單落實 (2～3年)：${sens.bull}`, "xs", "#15803D", { weight: "bold" }),
+      text(`• 🔴 訂單推遲／落空 (1～2年)：${sens.bear}`, "xs", "#B91C1C"),
     ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }) : null;
     const stockInfo = STOCK_RESEARCH_KNOWLEDGE_BASE[record.ticker];
     const nameLine = stockInfo
@@ -2213,9 +2213,9 @@ function buildStockDeepDiveText(ticker: string, stock: StockResearchFact): strin
       "• 資本支出（CapEx）：2026 年資本開支維持在 320 億至 360 億美元高檔，其中 70%-80% 專注於先進製程與先進封裝。",
       "• 全球建廠進度：美國亞利桑那州一廠（4nm）2025 年量產，二廠（3nm/2nm）2027 年就緒；日本熊本一廠量產、二廠（6nm/7nm）動工；德國德勒斯登車用晶圓廠穩步推進。",
       "",
-      "4️⃣ 📈 訂單敏感度與潛在股價空間（Valuation Sensitivity）：",
-      "• 🟢 樂觀實現未來訂單：股價預估成長 +70% ～ +110%（美股 TSM ADR 目標價 260～300 美元，台股現貨挑戰 1,500～1,800 元，全球算力壟斷溢價重估）。",
-      "• 🔴 訂單推遲或落空：股價預估回撤 -18% ～ -25%（海外建廠折舊或地緣政治短期干擾，但全球無替代廠商的超強定價權構建堅實底線）。",
+      "4️⃣ 📈 訂單敏感度與潛在股價空間（未來 2～3 年跨週期 / Valuation Sensitivity）：",
+      "• 🟢 樂觀實現未來訂單（2～3年內）：股價預估成長 +70% ～ +110%（美股 TSM ADR 目標價 260～300 美元，台股現貨挑戰 1,500～1,800 元，全球算力壟斷溢價重估）。",
+      "• 🔴 訂單推遲或落空（1～2年回撤）：股價預估回撤 -18% ～ -25%（海外建廠折舊或地緣政治短期干擾，但全球無替代廠商的超強定價權構建堅實底線）。",
       "",
       "5️⃣ 🛡️ 韭菜守護者・不賣股防守收租策略：",
       "• 策略心法：長線抱緊世界半導體總龍頭，絕不輕易在低檔被洗出場！",
@@ -2242,8 +2242,8 @@ function buildStockDeepDiveText(ticker: string, stock: StockResearchFact): strin
     stock.synthesis,
     "",
     "4️⃣ 📈 訂單敏感度與潛在股價空間（Valuation Sensitivity）：",
-    `• 🟢 樂觀實現未來訂單：${sens?.bull ?? "市場溢價重估，潛在成長空間翻倍"}`,
-    `• 🔴 訂單推遲或落空：${sens?.bear ?? "回測基本面現金流支撐，估值下修 25%～35%"}`,
+    `• 🟢 樂觀實現未來訂單（2～3年）：${sens?.bull ?? "市場溢價重估，2～3年潛在成長空間翻倍"}`,
+    `• 🔴 訂單推遲或落空（1～2年）：${sens?.bear ?? "回測基本面現金流支撐，1～2年估值下修 25%～35%"}`,
     "",
     "5️⃣ 🛡️ 韭菜守護者・不賣股防守收租策略：",
     `• 策略心法：長線看好物理瓶頸爆發力，以「正股絕不被賣出」為最高優先級！`,
