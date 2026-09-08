@@ -2,6 +2,8 @@
 
 ## Current options containment candidate — 2026-09-09 (NOT release-qualified)
 
+- GitHub checkpoint: `ea1f186` pushed as draft PR39 (https://github.com/always7895/investor-intelligence/pull/39), targeting source-views only. Issue38 updated and kept OPEN; five Python failing cases remain blockers. No merge, deployment, release, LINE or storage write. Source adapter calendar/duplicate-key follow-up separately pushed as `9006dbc` on PR37.
+
 - Fetched source branch baseline `52e285f99ff591e6cb04cf5dc57b13162af81a5b`; isolated worktree/branch `fix/options-static-fallback`. Reviewed this branch's AGENTS, STATUS, R75 workflow and actual authorized LINE caller tests. Historical Production/release statements below are not acceptance for this candidate.
 - Public presentation entrypoint now delegates ALL option intents before macro/stock/guide keyword matching to the existing certified deterministic quote path. It cannot read raw KV or return hardcoded international quotes or Taiwanese stock futures as options. Legacy presentation helpers remain compatibility code, inaccessible from this option entrypoint; no claim their constants are current evidence.
 - Actual authorized LINE caller catches unreadable/malformed option data and returns bounded OPTION_DATA_INVALID, without model/static fallback or raw exception leakage. Certified qa.ts untouched. Eleven new negative/caller tests cover flex/text, Taiwan/international symbols, mixed keywords, missing/malformed/stale/future/status-only records.
