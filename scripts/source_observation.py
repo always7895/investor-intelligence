@@ -117,7 +117,7 @@ def _hostname_allowed(source: SourceDefinition, url: str) -> bool:
         return False
     for allowed_url in source.canonical_urls:
         allowed = (urlsplit(allowed_url).hostname or "").casefold()
-        if target == allowed or target.endswith(f".{allowed}") or allowed.endswith(f".{target}"):
+        if target == allowed or target.endswith(f".{allowed}"):
             return True
     return False
 
@@ -159,7 +159,10 @@ def _public_payload(raw: Any) -> dict[str, Any]:
         raise SourceObservationError(
             f"Public source payload contains forbidden private fields: {', '.join(findings[:8])}"
         )
-    encoded = json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    try:
+        encoded = json.dumps(raw, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError):
+        raise SourceObservationError("Public payload must contain finite JSON values") from None
     if len(encoded) > MAX_PUBLIC_PAYLOAD_BYTES:
         raise SourceObservationError(
             f"payload exceeds {MAX_PUBLIC_PAYLOAD_BYTES} bytes"
@@ -212,11 +215,16 @@ def normalize_observation(
             f"canonical_url is outside the admitted source domain: {source_id}"
         )
 
-    current = (now or utc_now()).astimezone(timezone.utc)
+    clock = now or utc_now()
+    if clock.tzinfo is None:
+        raise SourceObservationError("Validation clock must include a timezone")
+    current = clock.astimezone(timezone.utc)
     published = parse_timestamp(raw.get("published_at"), "published_at")
     retrieved = parse_timestamp(raw.get("retrieved_at"), "retrieved_at")
     if retrieved > current + FUTURE_CLOCK_TOLERANCE:
         raise SourceObservationError("retrieved_at is implausibly in the future")
+    if published > current + FUTURE_CLOCK_TOLERANCE:
+        raise SourceObservationError("published_at is implausibly in the future")
     if published > retrieved + FUTURE_CLOCK_TOLERANCE:
         raise SourceObservationError("published_at is later than retrieved_at")
 
@@ -362,6 +370,6 @@ def promote_last_known_good(
 
 def observation_set_hash(observations: Iterable[SourceObservation]) -> str:
     material = "\n".join(
-        sorted(observation.observation_id for observation in observations)
+        sorted({observation.observation_id for observation in observations})
     ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()

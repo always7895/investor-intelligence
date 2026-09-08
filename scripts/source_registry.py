@@ -142,11 +142,16 @@ def canonicalize_url(value: str) -> str:
     text = str(value or "").strip()
     parsed = urlsplit(text)
     if parsed.scheme.casefold() != "https":
-        raise SourceRegistryError(f"Source URL must use HTTPS: {text}")
+        raise SourceRegistryError("Source URL must use HTTPS")
     if not parsed.hostname:
-        raise SourceRegistryError(f"Source URL has no hostname: {text}")
+        raise SourceRegistryError("Source URL has no hostname")
     if parsed.username or parsed.password:
-        raise SourceRegistryError(f"Credentials are forbidden in source URL: {text}")
+        raise SourceRegistryError("Credentials are forbidden in source URL")
+    try:
+        if parsed.port not in (None, 443):
+            raise SourceRegistryError("Source URL must use the standard HTTPS port")
+    except ValueError:
+        raise SourceRegistryError("Invalid source URL port") from None
     filtered_query = [
         (key, item)
         for key, item in parse_qsl(parsed.query, keep_blank_values=True)
@@ -184,6 +189,8 @@ def _string_tuple(value: Any, field: str, source_id: str) -> tuple[str, ...]:
 
 
 def _integer(value: Any, field: str, source_id: str, minimum: int, maximum: int) -> int:
+    if type(value) is not int:
+        raise SourceRegistryError(f"{source_id}: {field} must be an integer")
     try:
         result = int(value)
     except (TypeError, ValueError) as exc:
@@ -207,6 +214,12 @@ def _number(
             f"{source_id}: {field} must be between {minimum} and {maximum}"
         )
     return result
+
+
+def _boolean(value: Any, field: str, source_id: str) -> bool:
+    if type(value) is not bool:
+        raise SourceRegistryError(f"{source_id}: {field} must be a boolean")
+    return value
 
 
 def _validate_source(
@@ -258,8 +271,8 @@ def _validate_source(
     access = raw.get("access")
     if not isinstance(access, dict):
         raise SourceRegistryError(f"{source_id}: access must be an object")
-    free_access_required = bool(access.get("free_access_required", True))
-    payment_required = bool(access.get("payment_required", False))
+    free_access_required = _boolean(access.get("free_access_required", True), "access.free_access_required", source_id)
+    payment_required = _boolean(access.get("payment_required", False), "access.payment_required", source_id)
     terms_review_status = _nonempty_string(
         access.get("terms_review_status", "pending"),
         "access.terms_review_status",
@@ -280,7 +293,7 @@ def _validate_source(
     runtime = raw.get("runtime")
     if not isinstance(runtime, dict):
         raise SourceRegistryError(f"{source_id}: runtime must be an object")
-    runtime_enabled = bool(runtime.get("enabled", False))
+    runtime_enabled = _boolean(runtime.get("enabled", False), "runtime.enabled", source_id)
     per_host_concurrency = _integer(
         runtime.get("per_host_concurrency", 1),
         "runtime.per_host_concurrency",
@@ -318,8 +331,8 @@ def _validate_source(
     provenance = raw.get("provenance")
     if not isinstance(provenance, dict):
         raise SourceRegistryError(f"{source_id}: provenance must be an object")
-    provenance_required = bool(provenance.get("required", True))
-    correction_tracking = bool(provenance.get("correction_tracking", True))
+    provenance_required = _boolean(provenance.get("required", True), "provenance.required", source_id)
+    correction_tracking = _boolean(provenance.get("correction_tracking", True), "provenance.correction_tracking", source_id)
     if not provenance_required:
         raise SourceRegistryError(f"{source_id}: provenance.required must be true")
 
