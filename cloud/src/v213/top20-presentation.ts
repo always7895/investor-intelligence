@@ -226,7 +226,8 @@ export function buildOptionsFlexMessages(
         const bid = typeof candidate.bid === "number" ? candidate.bid.toFixed(2) : String(candidate.bid ?? "N/A");
         const ask = typeof candidate.ask === "number" ? candidate.ask.toFixed(2) : String(candidate.ask ?? "N/A");
         const mid = typeof candidate.midpoint === "number" ? candidate.midpoint.toFixed(2) : String(candidate.midpoint ?? "N/A");
-        const dist = typeof candidate.distance_from_spot_pct === "number" ? `${candidate.distance_from_spot_pct > 0 ? "+" : ""}${candidate.distance_from_spot_pct.toFixed(1)}%` : "";
+        const distNum = typeof candidate.distance_from_spot_pct === "number" ? candidate.distance_from_spot_pct : null;
+        const distText = distNum !== null ? ` (${isCall ? "價外" : "折價"} ${Math.abs(distNum).toFixed(1)}%)` : "";
         const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
         const midYield = typeof yields.mid === "number" ? `${yields.mid.toFixed(1)}%` : "N/A";
         const bidYield = typeof yields.bid === "number" ? `${yields.bid.toFixed(1)}%` : "N/A";
@@ -234,6 +235,9 @@ export function buildOptionsFlexMessages(
         const limitBand = typeof candidate.recommended_limit_band === "object" && candidate.recommended_limit_band
           ? `${currency} ${(candidate.recommended_limit_band as any).min?.toFixed(2)} ～ ${(candidate.recommended_limit_band as any).max?.toFixed(2)}`
           : `${currency} ${bid} ～ ${mid}`;
+        const breakEvenText = !isCall && typeof candidate.strike === "number" && typeof candidate.midpoint === "number"
+          ? ` ｜ 實質接盤成本 ${currency} ${(candidate.strike - candidate.midpoint).toFixed(2)}`
+          : "";
 
         const tierBadge = isCall
           ? (cIdx === 0 ? "🛡️【不賣股首選・高履約價防守收租】" : "⚡【次選參考・較近價外較高權利金】")
@@ -242,10 +246,10 @@ export function buildOptionsFlexMessages(
         bodyContents.push(
           box([
             text(tierBadge, "xs", isCall ? (cIdx === 0 ? "#15803D" : "#B45309") : "#B45309", { weight: "bold" }),
-            text(`• 履約價 K ${currency} ${strike}${dist ? ` (價外 ${dist})` : ""}`, "sm", "#1E293B", { weight: "bold" }),
+            text(`• 履約價 K ${currency} ${strike}${distText}`, "sm", "#1E293B", { weight: "bold" }),
             text(`  Bid ${currency} ${bid} ｜ Ask ${currency} ${ask} ｜ Mid ${currency} ${mid}`, "xs", "#475569"),
             box([
-              text(`💡 推薦限價區間：${limitBand}`, "xs", isCall ? (cIdx === 0 ? "#15803D" : "#B45309") : "#B45309", { weight: "bold" }),
+              text(`💡 推薦限價區間：${limitBand}${breakEvenText}`, "xs", isCall ? (cIdx === 0 ? "#15803D" : "#B45309") : "#B45309", { weight: "bold" }),
             ], { backgroundColor: isCall ? (cIdx === 0 ? "#DCFCE7" : "#FEF3C7") : "#FEF3C7", paddingAll: "xs", cornerRadius: "sm" }),
             text(`📊 年化收益率：Mid ${midYield} (Bid ${bidYield}) ｜ IV ${iv}`, "xs", "#334155"),
             text(`🛡️ 流動性驗證：${candidate.liquidity_pass ? "PASS ✅" : "觀察 ⚠️"}`, "xs", candidate.liquidity_pass ? "#047857" : "#D97706", { weight: "bold" }),

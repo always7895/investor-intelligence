@@ -39,8 +39,20 @@
 * **Dynamic Model Discovery**: Removed rigid model ID locks; automatically binds whatever model is loaded into the Router (`http://127.0.0.1:8080`).
 * **Zero-Downtime Fallback**: If local GPU slot 0 is occupied by other local tasks, the system automatically serves authoritative audited snapshot facts without dead-end offline errors.
 
-### 7. Multi-Source Federation Expanded to Google & Global Standards
-* Expanded authoritative sources to include **Google (Google Finance / Google Cloud Datacenter / Alphabet 10-K CapEx filings)**, US SEC EDGAR, Nasdaq Official Directory, Chicago Board Options Exchange (CBOE), Taiwan MOPS, SEMI, TrendForce, ECB, World Bank, and GLEIF.
+### 7. Ultra-Federated 25+ Authoritative Multi-Source Matrix (Data Sources Expanded to the Limit)
+* **Cross-Border Statutory Disclosures & Exchanges**: US SEC EDGAR (10-K, 10-Q, 8-K, Form 20-F, RPO/Backlog), Taiwan MOPS, Nasdaq Official Directory, NYSE, London Stock Exchange (LSE), Nasdaq Stockholm.
+* **Hyperscaler First-Party CapEx Verification**: Google (Google Finance, Google Cloud Datacenter Roadmap, Alphabet 10-K CapEx Disclosures), Microsoft (Azure CapEx), Amazon (AWS CapEx), Meta (Meta AI Infra).
+* **Specialized Semiconductor & Photonics Think Tanks**: SEMI (Global Fab Forecast & Billings), TrendForce (Global Laser/HBM/DRAM Supply Database), Yole Group (Advanced Packaging & Compound Semiconductors), LightCounting (Optical Transceivers & CPO Market Share), Nikkei (Japanese Supply Chain Surveys).
+* **Derivatives & Macro Liquidity**: Chicago Board Options Exchange (CBOE Option Chains, Greeks, IV, VIX), Federal Reserve FRED Database, Alpha Vantage, Yahoo Finance (T3 auxiliary observation).
+* **Central Banks & Multilateral Institutions**: European Central Bank (ECB SDMX), World Bank Open Data, US Bureau of Labor Statistics (BLS), Global Legal Entity Identifier Foundation (GLEIF), Bank for International Settlements (BIS).
+* **Multi-Source Boundary Coverage**: 100% (a single commercial source cannot prove an independent bottleneck; uncorroborated claims fail closed).
+
+### 8. Global Cross-Market Bottleneck Knowledge Arsenal (Taiwan / UK / Sweden / US / Europe)
+* **Taiwan Semiconductor & Packaging Spine**: LandMark Optoelectronics (3081.TW / InP laser epi), King Slide (2059.TW / 90%+ AI server rail monopoly), GPTC (3131.TW / CoWoS single wafer spin cleaning), Scientech (3583.TW / CoWoS batch cleaning), FOCI (3450.TW / CPO packaging), OCP (6442.TW / Datacenter ODF frames), MediaTek (2454.TW / AI ASIC), Wiwynn (6669.TW / liquid cooling racks), Delta Electronics (2308.TW / AI power & CDU).
+* **UK Architecture & Metrology**: ARM Holdings (ARM / energy-efficient instruction set IP monopoly), IQE plc (quantum dot laser epi), Renishaw (REN / wafer probes & high-precision optical encoders).
+* **Sweden Vacuum & Mask Writers**: Sivers Semiconductors (SIVE / CW lasers), Atlas Copco (ATCO / global dry vacuum pump monopoly Edwards), Mycronic (MYCR / mask writer laser drawing monopoly), Hexagon (HEXA / industrial digital twin sensing).
+* **Global Core Chokepoints**: ASML (High-NA EUV lithography monopoly), Vertiv (VRT / datacenter liquid cooling CDU/Chiller), Palantir (PLTR / defense & AIP ontology core), POET Technologies (optical interposer), Camtek / Onto (CoWoS 3D optical inspection duopoly), Synopsys (SNPS / physical EDA software).
+* **Bidirectional Chinese/English Alias Resolution & Case-Insensitive NLP**: Type Chinese names (`聯亞`, `川湖`, `安謀`, `艾司摩爾`, `維諦`) or arbitrary casing (`Sive`, `Nvda`, `aaoi`, `cohr`), and the system immediately renders the dedicated Flex Card without friction!
 
 ---
 

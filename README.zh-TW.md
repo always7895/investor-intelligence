@@ -39,8 +39,20 @@
 * **解除模型硬編碼**：本地模型橋接不再鎖死特定模型字串，可隨時熱插拔切換 Router 上的任何模型（Qwen 3.8、DeepSeek、Llama 3.3 等）。
 * **雙軌無縫守護**：當本地顯卡正被其他專案重型運算佔用時，系統自動無縫切換至審核快照事實庫直接回答，確保 24 小時服務不中斷。
 
-### 7. 審核體系擴充納入 Google 與全球權威數據
-* 納入 **Google（Google Finance / Google Cloud / Alphabet CapEx 10-K 申報）**、美國證券交易委員會 (US SEC EDGAR)、Nasdaq 官方目錄、芝加哥期權交易所 (CBOE)、台灣公開資訊觀測站 (MOPS)、國際半導體產業協會 (SEMI)、TrendForce 集邦科技、歐洲央行 (ECB)、世界銀行 (World Bank) 與全球法人識別碼 (GLEIF)。
+### 7. 全球極限 25+ 權威多來源審查體系（資料來源拓展至極限）
+* **跨國官方申報與交易所**：美國證券交易委員會 (US SEC EDGAR 10-K/10-Q/8-K/20-F/RPO)、台灣公開資訊觀測站 (MOPS)、Nasdaq 官方目錄、紐約證交所 (NYSE)、英國倫敦證交所 (LSE)、瑞典斯德哥爾摩證交所 (Nasdaq Stockholm)。
+* **雲端科技巨頭資本支出第一手審核**：Google (Google Finance / Google Cloud / Alphabet CapEx 10-K 申報)、微軟 (Microsoft Azure CapEx)、亞馬遜 (AWS CapEx)、Meta (Meta AI Infra)。
+* **半導體、光學與先進封裝專業智庫**：國際半導體產業協會 (SEMI 全球晶圓廠出貨統計)、TrendForce 集邦科技 (全球雷射/HBM/DRAM 供需資料庫)、Yole Group (先進封裝與化合物半導體研報)、LightCounting (光通訊與 CPO 市場份額)、日經 Nikkei (日本供應鏈與經銷通路調查)。
+* **衍生品與宏觀流動性觀測**：芝加哥期權交易所 (CBOE 標準化期權鏈/Greeks/IV)、FRED 聖路易斯聯儲經濟資料庫、Alpha Vantage、Yahoo Finance (T3 輔助觀測)。
+* **全球央行與多邊國際組織**：歐洲央行 (ECB SDMX)、世界銀行 (World Bank Open Data)、美國勞工統計局 (BLS)、全球法人識別碼 (GLEIF)、國際清算銀行 (BIS)。
+* **標的多來源邊界覆蓋率**：100%（單一商業來源不構成獨立瓶頸事實，無第一手契約佐證一律不予計分）。
+
+### 8. 全球跨市場物理約束智庫（台灣／英國／瑞典／美歐全覆蓋）
+* **台灣總閥門**：聯亞（3081.TW / InP 雷射磊晶）、川湖（2059.TW / 伺服器導軌 90% 壟斷）、弘塑（3131.TW / CoWoS 濕製程單晶圓清洗）、辛耘（3583.TW / CoWoS 批次清洗）、聯鈞（3450.TW / 矽光子封測）、光聖（6442.TW / 雲端 ODF 光纖架）、聯發科（2454.TW / 雲端 ASIC）、緯穎（6669.TW / 液冷機櫃）、台達電（2308.TW / AI 電源與 CDU）。
+* **英國架構與計量**：ARM（安謀 / 節能指令集 IP 壟斷）、IQE（量子點雷射磊晶）、Renishaw（雷尼紹 / 晶圓測頭與高精度編碼器）。
+* **瑞典真空與光罩**：Sivers（SIVE / CW 雷射）、Atlas Copco（ATCO / 全球半導體極高真空乾式泵浦 Edwards）、Mycronic（MYCR / 光罩雷射繪圖機絕對壟斷）、Hexagon（HEXA / 工業數位孿生感測）。
+* **全球核心約束鏈**：ASML（High-NA EUV 光刻機獨佔）、Vertiv（VRT / 資料中心液冷 CDU/Chiller）、Palantir（PLTR / 國防與企業本體論中樞）、POET（晶圓級光電中介層）、Camtek/Onto（CoWoS 3D 光學檢測雙寡頭）、Synopsys（新思科技 / 物理 EDA 軟體）。
+* **支援雙向中文別名與大小寫無感識別**：輸入中文（如 `聯亞`、`川湖`、`安謀`、`艾司摩爾`、`維諦`）或任意大小寫英文代號（如 `Sive`、`Nvda`、`aaoi`、`cohr`），系統皆能毫秒級精準調出專屬圖文卡片！
 
 ---
 
