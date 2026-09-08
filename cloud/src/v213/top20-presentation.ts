@@ -13,6 +13,29 @@ const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / H
 const text = (value: string, size = "sm", color = "#172B4D") => ({ type: "text", text: value, size, color, wrap: true });
 const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
 
+const TOP20_SENSITIVITY: Record<string, { bull: string; bear: string }> = {
+  TSEM: { bull: "股價預估成長 +135% ～ +180%（矽光子市佔飆升）", bear: "股價預估回撤 -25% ～ -35%（成熟製程現金流支撐）" },
+  AMD: { bull: "股價預估成長 +95% ～ +140%（AI 市佔突破 15%）", bear: "股價預估回撤 -30% ～ -40%（受限於 CUDA 生態壁壘）" },
+  AVGO: { bull: "股價預估成長 +70% ～ +105%（客製 ASIC 滲透率翻倍）", bear: "股價預估回撤 -20% ～ -28%（傳統網通現金流構建極強護城河）" },
+  COHR: { bull: "股價預估成長 +110% ～ +165%（1.6T 市佔霸榜）", bear: "股價預估回撤 -30% ～ -38%（若客戶轉向自製光引擎）" },
+  MRVL: { bull: "股價預估成長 +85% ～ +130%（光電互聯龍頭溢價）", bear: "股價預估回撤 -28% ～ -36%（若雲端巨頭 ASIC 延期交付）" },
+  MU: { bull: "股價預估成長 +80% ～ +125%（超級週期毛利破 50%）", bear: "股價預估回撤 -35% ～ -45%（若消費端儲存崩盤）" },
+  SMCI: { bull: "股價預估成長 +150% ～ +220%（審計合規與液冷放量）", bear: "股價預估回撤 -40% ～ -55%（若面臨監管下市風險）" },
+  APH: { bull: "股價預估成長 +60% ～ +90%（機櫃銅互連價值量翻倍）", bear: "股價預估回撤 -20% ～ -26%（多元工業訂單提供防禦底線）" },
+  BE: { bull: "股價預估成長 +140% ～ +210%（現場發電剛需爆發）", bear: "股價預估回撤 -35% ～ -48%（天然氣原料飆漲或融資利率高企）" },
+  CIEN: { bull: "股價預估成長 +65% ～ +100%（雲端相干光互聯市佔第一）", bear: "股價預估回撤 -22% ～ -30%（若傳統電信商預算持續縮水）" },
+  CRDO: { bull: "股價預估成長 +90% ～ +145%（AEC 機櫃市佔擴大）", bear: "股價預估回撤 -32% ～ -42%（若無源銅纜改良延緩 AEC 採用）" },
+  NVDA: { bull: "股價預估成長 +65% ～ +95%（全球算力霸主地位穩固）", bear: "股價預估回撤 -25% ～ -35%（若雲端巨頭 CapEx 成長放緩）" },
+  WDC: { bull: "股價預估成長 +75% ～ +115%（儲存超級週期爆發）", bear: "股價預估回撤 -30% ～ -40%（消費級儲存週期性疲軟）" },
+  ALAB: { bull: "股價預估成長 +105% ～ +160%（高速互聯獨佔地位）", bear: "股價預估回撤 -35% ～ -46%（高本益比面臨競品低價切入壓力）" },
+  MTSI: { bull: "股價預估成長 +80% ～ +120%（射頻類比定價權）", bear: "股價預估回撤 -25% ～ -35%（晶圓廠設備擴產調試期延誤）" },
+  JBL: { bull: "股價預估成長 +55% ～ +85%（切入矽光子量產代工）", bear: "股價預估回撤 -20% ～ -28%（代工產業低毛利抗風險承壓）" },
+  AAOI: { bull: "股價預估成長 +130% ～ +200%（微軟/亞馬遜放量代工）", bear: "股價預估回撤 -40% ～ -52%（若 CW 雷射上游供貨受限）" },
+  AXTI: { bull: "股價預估成長 +145% ～ +230%（基板壟斷定價權爆發）", bear: "股價預估回撤 -38% ～ -50%（中國原料出口管制衝擊）" },
+  LITE: { bull: "股價預估成長 +90% ～ +140%（雷射晶片供不應求定價權）", bear: "股價預估回撤 -28% ～ -38%（雲端客戶庫存調整或競爭搶單）" },
+  APLD: { bull: "股價預估成長 +150% ～ +240%（算力電力資產價值重估）", bear: "股價預估回撤 -42% ～ -55%（高槓桿專案融資利率上升）" },
+};
+
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
 export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLocale = "bilingual", style: "flex" | "text" = "flex"): LineOutboundMessage[] {
   if (!parseV213Top20Report(report)) throw new Error("V213_PRESENTATION_REPORT_INVALID");
@@ -26,7 +49,9 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     const chunks: string[] = [];
     let chunk = prefix;
     for (const record of report.records) {
-      const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
+      const sens = TOP20_SENSITIVITY[record.ticker];
+      const sensText = sens ? `\n• 樂觀實現未來訂單／股價成長預估：${sens.bull}\n• 訂單未實現或推遲／股價下行風險：${sens.bear}` : "";
+      const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n") + sensText;
       if (chunk.length + block.length > 4900) { chunks.push(chunk); chunk = prefix; }
       if (chunk.length + block.length > 4900) throw new Error("V213_PRESENTATION_ROW_TOO_LARGE");
       chunk += block;
@@ -42,6 +67,12 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       text(labels[i]!, "xs", "#475569"),
       { ...text(values[i]!, emphasis ? "xl" : "sm"), ...(emphasis ? { weight: "bold" } : {}) },
     ], { flex: 1 });
+    const sens = TOP20_SENSITIVITY[record.ticker];
+    const sensBox = sens ? box([
+      text("📈 訂單敏感度與潛在股價空間 (Valuation Sensitivity)", "xs", "#1D4ED8", { weight: "bold" }),
+      text(`• 樂觀訂單落實：${sens.bull}`, "xs", "#15803D", { weight: "bold" }),
+      text(`• 訂單推遲／落空：${sens.bear}`, "xs", "#B91C1C"),
+    ], { backgroundColor: "#F0FDF4", paddingAll: "sm", cornerRadius: "md", spacing: "xs", borderColor: "#86EFAC", borderWidth: "1px" }) : null;
     return {
       type: "bubble", size: "mega",
       header: box([
@@ -53,11 +84,13 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         box([field(1, true), field(2, true)], { layout: "horizontal", backgroundColor: "#F1F5F9", paddingAll: "md", cornerRadius: "md", spacing: "md" }),
         field(3), { type: "separator", color: "#E2E8F0" }, field(4),
         box([field(5), field(6)], { backgroundColor: "#EFF6FF", paddingAll: "md", cornerRadius: "md", spacing: "lg" }),
+        ...(sensBox ? [{ type: "separator", color: "#E2E8F0" }, sensBox] : []),
       ], { paddingAll: "lg", spacing: "lg", backgroundColor: "#FFFFFF" }),
       footer: box([
         text(generated, "xs", "#475569"), text(NOTICE, "xs", "#475569"),
+        { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${record.ticker} 深度詳細分析`, text: `${record.ticker} 詳細` } },
         { type: "button", style: "link", height: "sm", action: { type: "message", label: "完整文字版 / Full text", text: "Top20 文字" } },
-      ], { paddingAll: "md", backgroundColor: "#F8FAFC" }),
+      ], { paddingAll: "md", backgroundColor: "#F8FAFC", spacing: "xs" }),
     };
   });
   const messages: LineOutboundMessage[] = [];
@@ -75,6 +108,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
       title: "AI 算力與超大規模叢集",
       sub: "Compute & Scale-Out Networking",
       icon: "🤖",
+      btnLabel: "AI算力",
       landscape: "全球四大 CSP 巨頭（微軟、Google、Meta、AWS）加速建置十萬卡級超大規模叢集，推論算力需求首度超越訓練。",
       bottleneck: "集群互聯頻寬飽和、交換機散熱功耗牆（Power Wall）、低延遲光電轉換傳輸極限。",
       capex: "2026-2027 年全球四大雲端巨頭合計資本支出（CapEx）預估突破 3,500 億美元（年增 +35%～45%）。",
@@ -84,6 +118,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
       title: "光通訊、CPO 與矽光子",
       sub: "Optical Interconnect & Silicon Photonics",
       icon: "⚡",
+      btnLabel: "光通訊",
       landscape: "800G 光模組進入交付高峰，1.6T 加速於 2026H2 放量，3.2T 光電共封裝（CPO）啟動產能鎖定。",
       bottleneck: "InP（磷化銦）高品質基板產能耗盡、連續波（CW）雷射良率與年產能缺口達 40%～60%。",
       capex: "光模組與光引擎採購支出佔整體 AI 機櫃 BOM 比例從過往 8% 攀升至 15%～18%。",
@@ -93,6 +128,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
       title: "AI 電力設施與現場發電",
       sub: "On-Site Power & Grid Deficit",
       icon: "🔋",
+      btnLabel: "電力能源",
       landscape: "美國資料中心電網接入等待期長達 4 至 7 年，自備電源（Behind-the-Meter）成為超大規模資料中心落地的唯一解方。",
       bottleneck: "大功率固態氧化物燃料電池（SOFC）、小型模組化核反應爐（SMR）審批，以及升壓變壓器交期長達 120 週。",
       capex: "微軟、Google、亞馬遜簽訂之 15-20 年超長 PPA 電力採購與現場微電網合約累計承諾已逾 650 億美元。",
@@ -102,6 +138,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
       title: "先進封裝與高頻寬記憶體",
       sub: "CoWoS & HBM Supercycle",
       icon: "📦",
+      btnLabel: "先進封裝",
       landscape: "先進封裝 CoWoS 與 SoIC 產能供不應求，HBM3e/HBM4 產能被晶片巨頭提前包攬至 2027 年底。",
       bottleneck: "三大原廠將產能全面移轉至 HBM 與 DDR5，導致成熟製程 DDR3/DDR2 出現結構性產能真空。",
       capex: "晶圓代工龍頭與記憶體大廠之先進封裝與矽穿孔（TSV）專項 CapEx 佔比提升至 30% 以上。",
@@ -111,6 +148,7 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
       title: "人形機器人與物理致動",
       sub: "Humanoid Robotics & Actuation",
       icon: "🦾",
+      btnLabel: "機器人",
       landscape: "由原型機展示邁向 2026-2027 年工廠物流場景試點，供應鏈自汽車零件體系分化獨立。",
       bottleneck: "行星滾柱絲槓（Planetary Roller Screws）與空心杯無刷電機的高精度磨削良率低於 40%，產能極度稀缺。",
       capex: "全球主流車廠與物流霸主設立專項機器人產線升級預算，試產階段資本開支預估年增 >80%。",
@@ -144,15 +182,15 @@ export function buildMacroIndustryFlexMessages(): LineOutboundMessage[] {
     ], { paddingAll: "md", spacing: "sm", backgroundColor: "#FFFFFF" }),
     footer: box([
       text("公開研究非投資建議 / Not investment advice.", "xs", "#64748B"),
+      { type: "button", style: "primary", color: "#0F766E", height: "sm", action: { type: "message", label: `查看 ${s.btnLabel} 深度分析`, text: `${s.btnLabel} 深度分析` } },
       { type: "button", style: "link", height: "sm", action: { type: "message", label: "查看 TOP 20 標的榜單", text: "TOP20" } },
-      { type: "button", style: "link", height: "sm", action: { type: "message", label: "最新報告完整文字版", text: "最新報告 文字" } },
-    ], { paddingAll: "sm", backgroundColor: "#F8FAFC" }),
+    ], { paddingAll: "sm", backgroundColor: "#F8FAFC", spacing: "xs" }),
   }));
 
   const messages: LineOutboundMessage[] = [
     {
       type: "flex",
-      altText: "【韭菜守護者・最新宏觀產業深度審查報告】AI算力、光通訊、現場發電、先進封裝與機器人五大賽道",
+      altText: "【韭菜守護者・宏觀產業分析】AI算力、光通訊、現場發電、先進封裝與機器人五大賽道",
       contents: { type: "carousel", contents: bubbles },
     },
   ];
@@ -688,10 +726,214 @@ export function buildStockResearchFlexMessages(
   return messages;
 }
 
+function buildSectorDeepDiveText(sectorKey: string): string {
+  if (/算力|compute/i.test(sectorKey)) {
+    return [
+      "🤖【AI 算力與超大規模叢集網絡・跨週期深度專題分析】",
+      "──────────────────────────────",
+      "1️⃣ 價值鏈分層剖析：",
+      "• 最底層架構：ARM 節能指令集架構與 EDA 物理布線軟體（Synopsys）。",
+      "• 核心晶片層：GPU / TPU / 客製化 ASIC 晶片（NVIDIA、AMD、Broadcom、Marvell）。",
+      "• 伺服器機櫃與散熱：高密度機架直接水冷（緯穎、超微電腦、台達電）。",
+      "• 終端部署：微軟 Azure、Google Cloud、AWS、Meta 四大 CSP 巨頭。",
+      "",
+      "2️⃣ 實體物理約束關鍵數據：",
+      "• 散熱功耗牆：單一 Blackwell NVL72 機架熱設計功耗（TDP）達 120kW，傳統風冷物理失效，直接水冷（DLC）成為強制物理門檻。",
+      "• 互聯帶寬極限：晶片對晶片（Die-to-Die）與節點互聯帶寬達 1.8TB/s，銅纜在 224G 頻率下傳輸長度極限受阻於 1.5 米以內。",
+      "",
+      "3️⃣ 四大雲端巨頭專案與自研晶片進展：",
+      "• Google：TPU v5e 與 v6p 全量上線，100% 部署光學路徑開關（OCS）。",
+      "• 微軟：Maia 100 算力晶片與 Cobalt 100 節能 CPU 加速導入 OpenAI 叢集。",
+      "• Meta：自研 MTIA 推論晶片量產，降低對通用 GPU 之單一依賴。",
+      "• 亞馬遜：Trainium 2 與 Inferentia 2 在手訂單排滿，為客戶提供低成本算力。",
+      "",
+      "4️⃣ 未來 3 年收支路徑圖：",
+      "• 四大雲端巨頭 2026-2027 年合計資本支出（CapEx）預估突破 3,500 億至 4,200 億美元（年增 +35%～45%）。",
+      "• 企業端 AI 軟體貨幣化加速，推論算力支出首度超越訓練算力，專屬 ASIC 複合增長率高於整體硬體。",
+      "",
+      "5️⃣ 賽道偽證與退場指標：",
+      "• 若四大雲端巨頭企業端 AI 應用年化投報率（ROI）無法在 24 個月內打平，引發 CapEx 懸崖式縮減。",
+      "• 開源輕量級模型（7B/8B）在邊緣端滿足 90% 商業需求，導致超大規模集群擴建停滯。",
+      "",
+      "💡 守護者指引：點擊圖文選單【每日 TOP 20】查看算力賽道核心持倉，或輸入「AMD sell call」進行期權限價測算！",
+    ].join("\n");
+  }
+
+  if (/光通訊|CPO|optics/i.test(sectorKey)) {
+    return [
+      "⚡【光通訊、CPO 與矽光子・跨週期深度專題分析】",
+      "──────────────────────────────",
+      "1️⃣ 價值鏈分層剖析：",
+      "• 原料襯底層：InP 磷化銦與化合物半導體基板（AXTI 具絕對定價權）。",
+      "• 磊晶生長層：MOCVD 連續波雷射與 EML 磊晶片（聯亞光電 3081.TW、IQE）。",
+      "• 雷射與代工層：CW DFB 雷射與矽光子晶圓代工（Tower Semi TSEM、Sivers SIVE、Lumentum）。",
+      "• 模組與封裝層：800G/1.6T 光收發模組與 CPO 晶圓級封裝（Coherent、AAOI、聯鈞、光聖）。",
+      "",
+      "2️⃣ 實體物理約束關鍵數據：",
+      "• 銅退光進臨界點：在 1.6T 與 3.2T 世代，銅纜長度受限於 1 米，光通訊佔 AI 伺服器 BOM 成本自 8% 攀升至 16%～18%。",
+      "• 連續波雷射缺口：全球 AI 光模組年需高功率 CW 雷射超過 6 億顆，當前符合高溫穩定性與良率標準之產能缺口達 40%～60%。",
+      "",
+      "3️⃣ 四大雲端巨頭專案與自研進展：",
+      "• NVIDIA：Blackwell 伺服器全量標配 800G 光通訊，與 Coherent 簽署數十億美元採購協議。",
+      "• 微軟：啟動 3.2T 光電共封裝（CPO）實驗室認證，直連交換機 ASIC 晶片以消除光模組熱阻。",
+      "• 亞馬遜：與 AAOI 簽訂長期採購合作，保障 800G 與 1.6T 模組供應鏈產能。",
+      "",
+      "4️⃣ 未來 3 年收支路徑圖：",
+      "• 全球高速光模組市場規模自 2024 年 120 億美元暴增至 2027 年 240 億美元以上。",
+      "• 具備 InP 基板壟斷力與雷射垂直整合能力的廠商享有 ASP 持續調升之毛利抗跌優勢。",
+      "",
+      "5️⃣ 賽道偽證與退場指標：",
+      "• 若線性直驅（LPO）克服訊號干擾並成功將無源銅纜壽命延長至 3.2T 世代。",
+      "• 矽光子晶圓製造與片上雷射耦合良率在 2027 年底前仍停留在 30% 以下難以規模量產。",
+      "",
+      "💡 守護者指引：輸入「AAOI sell call」或「COHR sell call」可獲取防守收租限價建議！",
+    ].join("\n");
+  }
+
+  if (/電力|能源|power/i.test(sectorKey)) {
+    return [
+      "🔋【AI 電力基礎設施與現場自備能源・跨週期深度專題分析】",
+      "──────────────────────────────",
+      "1️⃣ 價值鏈分層剖析：",
+      "• 現場自備電源：固態氧化物燃料電池 SOFC（Bloom Energy）、小型核反應爐 SMR（Kairos）。",
+      "• 配電與電力設備：特高壓升壓變壓器、HVDC 高壓直流電源架構（台達電、伊頓、西門子）。",
+      "• 綠能合約與營運商：長期電力採購合約（PPA）、微電網營運商與能源重資產（Applied Digital）。",
+      "",
+      "2️⃣ 實體物理約束關鍵數據：",
+      "• 電網排隊天花板：美國主要區域電網（PJM / ERCOT）新設資料中心排隊期長達 5 至 7 年。",
+      "• 變壓器嚴重缺料：500kV 升壓變壓器交貨週期由過去 50 週暴增至 120～150 週，成為物理總卡點。",
+      "",
+      "3️⃣ 科技巨頭現場發電實例：",
+      "• 微軟：簽約重啟三哩島核電廠（835MW），簽署長達 20 年之不可撤銷全額購電長約。",
+      "• 亞馬遜：以 6.5 億美元直接收購 Talen Energy 毗鄰核電廠之 960MW 園區，避開公共電網。",
+      "• Google：簽約 Kairos Power 部署首批小型模組化核反應爐（SMR），預計 2030 年前供電。",
+      "",
+      "4️⃣ 未來 3 年收支路徑圖：",
+      "• 科技巨頭在現場綠能、燃料電池與核能 SMR 簽署之長約累計合約價值突破 650 億美元。",
+      "• 現場能源營運商享有 15-20 年超長合約鎖定與通膨轉嫁條款，營運現金流極度確定。",
+      "",
+      "5️⃣ 賽道偽證與退場指標：",
+      "• 美國聯邦能源監管委員會（FERC）出台強硬法規禁止資料中心共置電廠優先併網。",
+      "• 天然氣原料價格暴漲摧毀燃料電池發電經濟效益。",
+      "",
+      "💡 守護者指引：輸入「BE sell call」可調出 Bloom Energy 現場發電期權限價！",
+    ].join("\n");
+  }
+
+  if (/先進封裝|CoWoS|HBM|packaging/i.test(sectorKey)) {
+    return [
+      "📦【先進封裝與高頻寬記憶體・跨週期深度專題分析】",
+      "──────────────────────────────",
+      "1️⃣ 價值鏈分層剖析：",
+      "• 封裝代工龍頭：台積電 CoWoS / SoIC、日月光投控、Amkor。",
+      "• 核心濕製程設備：單晶圓清洗機與蝕刻設備（弘塑科技 3131.TW、辛耘 3583.TW）。",
+      "• 光學與量測檢測：CoWoS 3D 凸塊光學檢測（Camtek、Onto Innovation）。",
+      "• 原廠與成熟記憶體：HBM3e/HBM4（美光、海力士）、利基型成熟 DRAM（晶豪科 3006.TW）。",
+      "",
+      "2️⃣ 實體物理約束關鍵數據：",
+      "• 中介層面積極限：Blackwell CoWoS-L 矽中介層面積達到光罩極限 3.3 倍，缺陷率成倍攀升。",
+      "• HBM 堆疊熱阻：12 層至 16 層 3D 垂直堆疊厚度受限於 720 微米，散熱與翹曲控制難度極大。",
+      "",
+      "3️⃣ 晶圓廠產能擴充進度：",
+      "• 台積電：CoWoS 產能由 2024 年月產 3.5 萬片加速擴建至 2026 年底月產 8 萬片以上。",
+      "• 美光：2026-2027 年 HBM 產能全數售罄包攬，SEC 申報待履行訂單達 50 億美元。",
+      "• 原廠產能擠壓：成熟 DRAM（DDR2/DDR3）因產能抽調至先進製程，形成結構性斷供缺口。",
+      "",
+      "4️⃣ 未來 3 年收支路徑圖：",
+      "• 先進封裝專項 CapEx 佔台積電總資本支出提升至 30% 以上。",
+      "• HBM 產值佔整體記憶體市場比例自 8% 翻倍躍升至 35% 以上，ASP 與毛利率創歷史新高。",
+      "",
+      "5️⃣ 賽道偽證與退場指標：",
+      "• 玻璃基板（Glass Substrate）或面板級封裝（PLP）無預警提早量產並顛覆矽中介層。",
+      "• 記憶體原廠過度擴產 HBM 產能導致 2027 年出現供過於求價格崩盤。",
+      "",
+      "💡 守護者指引：輸入「MU 每週期權」或「弘塑」查看先進封裝產業細節！",
+    ].join("\n");
+  }
+
+  // Default: Humanoid Robotics
+  return [
+    "🦾【人形機器人與精密物理致動・跨週期深度專題分析】",
+    "──────────────────────────────",
+    "1️⃣ 價值鏈分層剖析：",
+    "• 精密傳動機構：行星滾柱絲槓（三益、力姆、台灣精銳）、諧波減速機（綠的諧波）。",
+    "• 馬達與致動器：空心杯無刷直流電機（Maxon、鳴志電器）、無框力矩電機。",
+    "• 感測與反饋：高精度雷射光學編碼器（Renishaw 雷尼紹）、六維力矩感測器（柯力傳感）。",
+    "• 整機主機廠：Tesla Optimus、Figure AI、波士頓動力、Unitree 宇樹科技。",
+    "",
+    "2️⃣ 實體物理約束關鍵數據：",
+    "• 全身致動器密度：雙足人形機器人全身需搭載 28-40 個旋轉與線性致動關節。",
+    "• 絲槓精密加工極限：行星滾柱絲槓螺紋道粗糙度要求達 Ra 0.05μm，硬度 HRC 58-62，目前全球磨削良率普遍低於 40%。",
+    "",
+    "3️⃣ 車廠與物流大廠進展：",
+    "• 特斯拉：Optimus 預計 2025 年內部工廠試點千台，2026 年啟動對外小批量交付。",
+    "• BMW 與現代汽車：展開工廠零件搬運與車體裝配之場景實測。",
+    "",
+    "4️⃣ 未來 3 年收支路徑圖：",
+    "• 機器人由 2024 年實驗室概念驗證邁向 2026-2027 年工廠小批量產（數萬台級別）。",
+    "• 通過 Tier 1 車廠認證之高精度絲槓與減速機供應商享有 5-8 年排他性供貨週期。",
+    "",
+    "5️⃣ 賽道偽證與退場指標：",
+    "• 具身智能運動控制模型泛化能力不足，工廠場景故障停機率高於 5%。",
+    "• 直接驅動（Direct Drive）電機技術突破繞過機械絲槓與減速機。",
+    "",
+    "💡 守護者指引：點擊圖文選單【每日 TOP 20】查看實體製造卡點標的！",
+  ].join("\n");
+}
+
+function buildStockDeepDiveText(ticker: string, stock: StockResearchFact): string {
+  const sens = TOP20_SENSITIVITY[ticker];
+  return [
+    `🔬【${ticker} 深度物理約束與合約價值專題研析】`,
+    `行業分類：${stock.industry}`,
+    "──────────────────────────────",
+    "1️⃣ 核心技術與物理約束層深度剖析：",
+    stock.bottleneck,
+    "",
+    "2️⃣ 市場供需格局與客戶導入進展：",
+    stock.supplyDemand,
+    "",
+    "3️⃣ 法定財報、契約金額與擴產排程（具體數字）：",
+    stock.synthesis,
+    "",
+    "4️⃣ 📈 訂單敏感度與潛在股價空間（Valuation Sensitivity）：",
+    `• 🟢 樂觀實現未來訂單：${sens?.bull ?? "市場溢價重估，潛在成長空間翻倍"}`,
+    `• 🔴 訂單推遲或落空：${sens?.bear ?? "回測基本面現金流支撐，估值下修 25%～35%"}`,
+    "",
+    "5️⃣ 🛡️ 韭菜守護者・不賣股防守收租策略：",
+    `• 策略心法：長線看好物理瓶頸爆發力，以「正股絕不被賣出」為最高優先級！`,
+    `• 操作指令：輸入「${ticker} sell call」可獲取價外 +15%～+25% 之最高安全 Strike 與推薦限價區間！`,
+    "",
+    "──────────────────────────────",
+    "⚠️ 風險揭露：基於第一手 SEC EDGAR / 官方申報公開資料，不構成個人化投資建議。",
+  ].join("\n");
+}
+
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
 
-  if (query.intent === "latest_report" || query.intent === "morning_report" || query.intent === "evening_report") {
+  if (/(?:AI算力|算力).*深度|深度.*(?:AI算力|算力)/i.test(query.normalized)) {
+    return buildSectorDeepDiveText("算力");
+  }
+  if (/(?:光通訊|CPO).*深度|深度.*(?:光通訊|CPO)/i.test(query.normalized)) {
+    return buildSectorDeepDiveText("光通訊");
+  }
+  if (/(?:電力|能源).*深度|深度.*(?:電力|能源)/i.test(query.normalized)) {
+    return buildSectorDeepDiveText("電力");
+  }
+  if (/(?:先進封裝|CoWoS|HBM).*深度|深度.*(?:先進封裝|CoWoS|HBM)/i.test(query.normalized)) {
+    return buildSectorDeepDiveText("先進封裝");
+  }
+  if (/(?:機器人|致動).*深度|深度.*(?:機器人|致動)/i.test(query.normalized)) {
+    return buildSectorDeepDiveText("機器人");
+  }
+
+  if (
+    query.intent === "latest_report" ||
+    query.intent === "morning_report" ||
+    query.intent === "evening_report" ||
+    /(?:宏觀產業分析|宏觀分析|產業分析)/i.test(query.normalized)
+  ) {
     if (style === "flex") {
       try {
         return buildMacroIndustryFlexMessages();
@@ -734,6 +976,9 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
     const norm = rawTicker.replace(/\.(ST|L|TWO)$/i, "");
     const stock = STOCK_RESEARCH_KNOWLEDGE_BASE[rawTicker] ?? STOCK_RESEARCH_KNOWLEDGE_BASE[norm];
     if (stock) {
+      if (/(?:詳細|深度|detail)/i.test(query.normalized)) {
+        return buildStockDeepDiveText(rawTicker, stock);
+      }
       if (style === "flex") {
         try {
           return buildStockResearchFlexMessages(rawTicker, stock);

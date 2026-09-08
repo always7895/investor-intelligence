@@ -335,7 +335,11 @@ export function parseQuery(text: string): ParsedQuery {
     intent = "morning_report";
   } else if (/(晚報|晚报|evening report|evening briefing|盤前報告|盘前报告)/i.test(lowered)) {
     intent = "evening_report";
-  } else if (/(最新報告|最新报告|今日報告|今日报告|daily report|briefing)/i.test(lowered)) {
+  } else if (
+    /(最新報告|最新报告|今日報告|今日报告|daily report|briefing|宏觀產業分析|宏觀產業|宏觀分析|產業分析)/i.test(
+      lowered,
+    )
+  ) {
     intent = "latest_report";
   } else if (
     /(選擇權|选择权|期權|期权|option|covered call|sell call|sell put|cash secured put|\bbid\b|\bask\b)/i.test(
