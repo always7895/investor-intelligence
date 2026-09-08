@@ -37,6 +37,49 @@ function taipeiDetails(now = Date.now()): { dayIndex: number; dateStr: string } 
   return { dayIndex: dayIndex >= 0 ? dayIndex : 1, dateStr };
 }
 
+const CURRENT_EVENT_TOPICS: Array<{ theme: string; commentary: string }> = [
+  {
+    theme: "⚡ 雲端巨頭 CapEx 爆表與電力荒",
+    commentary: "四大雲端巨頭 2026 資本開支預期突破 3,500 億美元！然而華爾街只看概念，真正懂行的人都在盯變壓器交期與現場發電。沒有電，十萬卡集群就是昂貴的散熱鐵盒，抱緊現場能源與物理瓶頸！",
+  },
+  {
+    theme: "🚀 1.6T 光模組換代加速與 InP 荒",
+    commentary: "微軟與 AWS 加速向 800G/1.6T 光互聯狂奔！銅退光進成為物理宿命，上游 InP 磷化銦基板與 CW 雷射短缺已成定局。別被短線主力洗盤甩轎，手握第一手產能契約才能笑到最後！",
+  },
+  {
+    theme: "📦 台積電 CoWoS-L 擴產與先進封裝搶單",
+    commentary: "Blackwell 伺服器全面標配 CoWoS-L 封裝，矽中介層達到光罩極限 3.3 倍！晶圓代工總閥門供不應求，一線大廠加價搶產能。認清誰在靠故事裸泳、誰在手握真訂單放量！",
+  },
+  {
+    theme: "💾 美光 HBM3e 售罄與成熟記憶體大缺貨",
+    commentary: "三大原廠產能轉往 HBM 引發傳統 DDR3 出現結構性產能真空！經銷通路調查記憶體缺口達 40%-60%，量價齊揚的超級週期正在上演，切忌在黎明前被主力震盪洗出場！",
+  },
+  {
+    theme: "🦾 人形機器人工廠試產與精密絲槓瓶頸",
+    commentary: "特斯拉 Optimus 與主流車廠啟動工廠搬運實測！全身 30 餘個致動關節的核心卡在行星滾柱絲槓的 Ra 0.05μm 極限磨削良率。炒作概念不如深挖不可替代的精密機械護城河！",
+  },
+  {
+    theme: "🎯 聯準會利率路徑與半導體週期定海神針",
+    commentary: "宏觀降息預期反覆拉扯，科技權值劇烈波動！但在高波動市場中，唯有具備第一方法定待履行訂單（RPO）與多年排他協議的標的，才是穿越多空牛熊的真正定海神針！",
+  },
+  {
+    theme: "🛡️ 華爾街季報季與合約真金白銀檢驗",
+    commentary: "財報季來臨，華爾街大鐮刀又在磨刀霍霍！故事吹得再大，終究要面臨法定 SEC 申報與客戶定金的照妖鏡檢驗。守護者每日幫你過濾雜訊，不賣股、高 Strike 穩健收租！",
+  },
+  {
+    theme: "🔋 現場自備微電網避開 5 年電網排隊",
+    commentary: "美國電網接入排隊期長達 5-7 年，誰能提供 Behind-the-Meter 現場電源，誰就掌握超大規模算力落地的鑰匙。15-20 年超長 PPA 協議帶來極度確定性的現金流！",
+  },
+  {
+    theme: "🔬 矽光子晶圓代工與片上雷射耦合商業化",
+    commentary: "CPO 進入試產衝刺期，光引擎被動封裝技術突飛猛進。市場情緒隨短期消息起伏，唯有鎖定專利壁壘與長約預付款的底層代工廠，才能穩穩享受產業成長紅利！",
+  },
+  {
+    theme: "💡 不賣股為第一優先・高履約價防守收租",
+    commentary: "物理約束標的長線倍數潛力極大，『絕不賣股』是第一原則！善用每週價外 +15%～+25% 高 Strike 限價收租，時間價值每週末無損落袋，正股張數一股不少！",
+  },
+];
+
 function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): string {
   const { dayIndex, dateStr } = taipeiDetails(now);
 
@@ -50,24 +93,29 @@ function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): s
     "【週六復盤巡航】週末美股收盤，回顧一週籌碼與訂單變化，為下一波趨勢提前做好準備！",
   ];
 
+  const dayOfYear = Math.floor(now / 86_400_000);
+  const topic = CURRENT_EVENT_TOPICS[(dayOfYear * 7 + dayIndex) % CURRENT_EVENT_TOPICS.length]!;
+
   const top3 = report.records.slice(0, 3).map((r) => r.ticker).join("、");
   const sortedByReturn = [...report.records].sort((a, b) => (Number(b.short_term_return_pct) || 0) - (Number(a.short_term_return_pct) || 0));
   const gainer = sortedByReturn[0];
 
-  const dayOfYear = Math.floor(now / 86_400_000);
   const featuredIndex = (dayOfYear + dayIndex) % Math.max(1, report.records.length);
   const featured = report.records[featuredIndex];
 
   const lines = [
-    `🔔【韭菜守護者・每日早報巡邏】🌱🛡️（${dateStr}）`,
-    weekdayGreetings[dayIndex] || weekdayGreetings[1],
+    `🛡️【韭菜守護者・每日早報巡邏】📢🕵️（${dateStr}）`,
+    weekdayGreetings[dayIndex] || weekdayGreetings[1]!,
+    "",
+    `🔥 今日焦點時事點評【${topic.theme}】：`,
+    topic.commentary,
     "",
     "📊 今日最新【TOP 20 物理瓶頸榜】已完成校準！",
     `當前焦點領跑：${top3} 等 20 檔核心標的～`,
   ];
 
   if (gainer && Number(gainer.short_term_return_pct) > 0) {
-    lines.push(`🔥 近期動能指標：【${gainer.ticker}】近6月累積回報 +${Number(gainer.short_term_return_pct).toFixed(1)}%`);
+    lines.push(`⚡ 近期動能指標：【${gainer.ticker}】近6月累積回報 +${Number(gainer.short_term_return_pct).toFixed(1)}%`);
   }
 
   if (featured && featured.current_orders && !featured.current_orders.includes("未揭露")) {
@@ -76,7 +124,7 @@ function dailyHumorousReminderText(report: V213Top20Report, now = Date.now()): s
 
   lines.push(
     "",
-    "👇 點擊下方圖文選單【每日 TOP 20】免費查看完整 20 檔雙語卡片，別讓主力又把你割了！👇",
+    "💡 點擊下方圖文選單【宏觀產業分析】查看五大賽道深度評析，或點擊【每日 TOP 20】查看完整雙語卡片！🛡️",
   );
   return lines.join("\n");
 }
