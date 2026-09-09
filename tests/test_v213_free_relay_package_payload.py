@@ -26,7 +26,8 @@ class PackagedWorkerPayloadTests(unittest.TestCase):
         paths = ['skills/serenity-public-research/SKILL.md',
                  'skills/serenity-public-research/references/RESEARCH_METHOD.md',
                  'skills/serenity-public-research/references/CROSS_VALIDATION.md',
-                 'cloud/src/v213/top20-report.ts', 'docs/CURRENT_STATUS_BILINGUAL.md']
+                 'cloud/src/v213/top20-report.ts', 'docs/CURRENT_STATUS_BILINGUAL.md',
+                 'docs/SERENITY_TIMELESS_SELECTION_METHODOLOGY.md']
         files = {p.casefold(): (p, (ROOT / p).read_bytes()) for p in paths}
         VERIFIER.verify_public_research_payload(files)
         for path in files:

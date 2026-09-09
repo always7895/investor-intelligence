@@ -55,39 +55,28 @@ async function eventKey(eventId: string): Promise<string> {
 
 export async function claimEvent(env: LineEnv, eventId: string | undefined): Promise<boolean> {
   if (!eventId) return true;
-  try {
-    const key = await eventKey(eventId);
-    if (await env.EPHEMERAL_SECURITY_CACHE.get(key)) return false;
-    await env.EPHEMERAL_SECURITY_CACHE.put(key, "processing", {
-      expirationTtl: EVENT_PROCESSING_TTL_SECONDS,
-    });
-  } catch (error) {
-    // Graceful degradation when KV write quota is exceeded
-    console.warn("EPHEMERAL_SECURITY_CACHE_PUT_FAILED", error instanceof Error ? error.message : String(error));
-  }
+  const key = await eventKey(eventId);
+  if (await env.EPHEMERAL_SECURITY_CACHE.get(key)) return false;
+  // KV is eventually consistent, so this is a retry-safe best-effort gate rather
+  // than a strict distributed lock. Phase 8 may move exact-once claims to D1/DO.
+  await env.EPHEMERAL_SECURITY_CACHE.put(key, "processing", {
+    expirationTtl: EVENT_PROCESSING_TTL_SECONDS,
+  });
   return true;
 }
 
 export async function completeEvent(env: LineEnv, eventId: string | undefined): Promise<void> {
   if (!eventId) return;
-  try {
-    await env.EPHEMERAL_SECURITY_CACHE.put(await eventKey(eventId), "done", {
-      expirationTtl: EVENT_DONE_TTL_SECONDS,
-    });
-  } catch (error) {
-    // Graceful degradation
-  }
+  await env.EPHEMERAL_SECURITY_CACHE.put(await eventKey(eventId), "done", {
+    expirationTtl: EVENT_DONE_TTL_SECONDS,
+  });
 }
 
 export async function releaseEvent(env: LineEnv, eventId: string | undefined): Promise<void> {
   if (!eventId) return;
-  try {
-    const key = await eventKey(eventId);
-    const value = await env.EPHEMERAL_SECURITY_CACHE.get(key);
-    if (value === "processing") await env.EPHEMERAL_SECURITY_CACHE.delete(key);
-  } catch (error) {
-    // Graceful degradation
-  }
+  const key = await eventKey(eventId);
+  const value = await env.EPHEMERAL_SECURITY_CACHE.get(key);
+  if (value === "processing") await env.EPHEMERAL_SECURITY_CACHE.delete(key);
 }
 
 export async function rateLimit(
@@ -95,22 +84,17 @@ export async function rateLimit(
   tenantId: string,
   intent: string,
 ): Promise<boolean> {
-  try {
-    const configured = Number(env.MAX_REQUESTS_PER_MINUTE ?? "12");
-    const limit = Number.isFinite(configured) ? Math.max(1, configured) : 12;
-    const bucket = Math.floor(Date.now() / 60000);
-    const key = `rate:${tenantId}:${intent}:${bucket}`;
-    const current = Number((await env.EPHEMERAL_SECURITY_CACHE.get(key)) ?? "0");
-    if (Number.isFinite(current) && current >= limit) return false;
-    await env.EPHEMERAL_SECURITY_CACHE.put(
-      key,
-      String((Number.isFinite(current) ? current : 0) + 1),
-      { expirationTtl: 120 },
-    );
-  } catch (error) {
-    // If KV put limit is exceeded, allow read-only query to proceed
-    console.warn("RATE_LIMIT_KV_PUT_FAILED", error instanceof Error ? error.message : String(error));
-  }
+  const configured = Number(env.MAX_REQUESTS_PER_MINUTE ?? "12");
+  const limit = Number.isFinite(configured) ? Math.max(1, configured) : 12;
+  const bucket = Math.floor(Date.now() / 60000);
+  const key = `rate:${tenantId}:${intent}:${bucket}`;
+  const current = Number((await env.EPHEMERAL_SECURITY_CACHE.get(key)) ?? "0");
+  if (Number.isFinite(current) && current >= limit) return false;
+  await env.EPHEMERAL_SECURITY_CACHE.put(
+    key,
+    String((Number.isFinite(current) ? current : 0) + 1),
+    { expirationTtl: 120 },
+  );
   return true;
 }
 

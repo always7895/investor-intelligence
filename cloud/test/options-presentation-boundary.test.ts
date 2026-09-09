@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
+import { claimEvent, completeEvent, releaseEvent } from "../src/line";
 import { deterministicAnswer } from "../src/qa";
 import { humanizeFallback } from "../src/v211/research";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
@@ -8,6 +9,41 @@ import { processAuthorizedLineEvent } from "../src/v211/worker";
 import { MemoryKv, asKv } from "./fake-kv";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+describe("security storage failures cannot authorize a request", () => {
+  it.each(["get", "put"] as const)("actual authorized caller stops on rate-limit %s failure", async (method) => {
+    const security = new MemoryKv();
+    vi.spyOn(security, method).mockRejectedValue(new Error("SYNTHETIC_STORAGE_FAILURE"));
+    const network = vi.fn();
+    vi.stubGlobal("fetch", network);
+    const warning = vi.spyOn(console, "warn");
+    await expect(processAuthorizedLineEvent({
+      EPHEMERAL_SECURITY_CACHE: asKv(security), PUBLIC_CACHE: asKv(new MemoryKv()),
+      TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
+    } as any, {} as ExecutionContext, {
+      type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" },
+      message: { type: "text", text: "AAOI sell call" }, timestamp: Date.now(),
+    }, "synthetic-tenant")).rejects.toThrow("SYNTHETIC_STORAGE_FAILURE");
+    expect(network).not.toHaveBeenCalled();
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it.each(["get", "put"] as const)("claim does not succeed on storage %s failure", async (method) => {
+    const security = new MemoryKv();
+    vi.spyOn(security, method).mockRejectedValue(new Error("SYNTHETIC_STORAGE_FAILURE"));
+    await expect(claimEvent({ EPHEMERAL_SECURITY_CACHE: asKv(security) } as any,
+      "synthetic-event")).rejects.toThrow("SYNTHETIC_STORAGE_FAILURE");
+  });
+
+  it("does not silently report completion or release when storage fails", async () => {
+    const security = new MemoryKv();
+    const env = { EPHEMERAL_SECURITY_CACHE: asKv(security) } as any;
+    vi.spyOn(security, "put").mockRejectedValue(new Error("SYNTHETIC_STORAGE_FAILURE"));
+    await expect(completeEvent(env, "synthetic-event")).rejects.toThrow("SYNTHETIC_STORAGE_FAILURE");
+    vi.spyOn(security, "get").mockRejectedValue(new Error("SYNTHETIC_STORAGE_FAILURE"));
+    await expect(releaseEvent(env, "synthetic-event")).rejects.toThrow("SYNTHETIC_STORAGE_FAILURE");
+  });
+});
 
 describe("option presentation cannot bypass the certified public quote path", () => {
   it.each(["AAOI sell call", "AAOI sell call 文字", "2330.TW 期權", "SIVE sell call", "期權", "AAOI 期權 光通訊深度"])(

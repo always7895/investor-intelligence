@@ -1,5 +1,16 @@
 ﻿# R75 takeover status
 
+## Security-storage restoration and package fixture correction — 2026-09-09
+
+- Fetched starting HEAD `5cb8a816180578af8a99f5e23386bacfc2a22465`, clean isolated PR39 worktree. Re-read contract/status, current authoritative workflow and failing tests. Reproduced Python647/4 skipped with one failure/four errors before changes.
+- Inspected retained-blob drift rather than updating expected hashes: branch modifications caught KV admission/rate-limit failures and returned true, logged raw errors, and silently ignored completion/release failures; legacy Worker quick-response deadline had changed from7s to28s. Restored `cloud/src/line.ts` and `cloud/src/worker.ts` exactly to the existing protected baseline. `cloud/src/qa.ts` remains unchanged. Existing owner-delivery gate now PASS with its original expected hashes.
+- Added five negative regressions: actual authorized LINE caller rejects rate-limit get/put failures without network delivery or console warnings; claim get/put errors reject; completion/release errors remain observable. This restores failure propagation, not strict distributed exactly-once guarantees for eventually consistent KV.
+- Package-payload test fixture omitted the newly linked methodology document; included the existing document in the synthetic archive fixture and retained every missing-reference/unreviewed-skill negative check. No verifier/path allowlist weakening and no claim of an actual release ZIP qualification.
+- Final complete Python647/4 skipped now has THREE errors (down from five failing cases): canonical-model receipt policy mismatch, exact-runtime manifest mismatch, Pi synthetic contract policy mismatch. Existing live receipts and expected live policy/source gates were not rewritten, restamped or relaxed. These remain genuine evidence/acceptance blockers; the full Python suite is NOT PASS.
+- Worker24 files/165 tests and typecheck PASS; security/documentation/workflow/storage/owner-delivery gates PASS; PS5.1/7 publication contract PASS; CRLF-aware diff check PASS. First new test typecheck exposed two widened method-name strings; constrained their fixture tuples with `as const`, then reran typecheck/full Worker successfully. Verified retained line/worker/QA bytes match the protected main baseline using git diff --exit-code.
+- Open counts: three failing Python evidence cases; whole-project P0/P1/P2 unassessed. Other hardcoded stock/forecast routes, exact-Q6/isolated-runner/fresh artifact acceptance and source rights remain unresolved. Main PR37 stays separate; no merge or cross-branch rollout.
+- External changes to this point: local synthetic tests only; no Production/storage/LINE/schedule/broker/credentials/model/preset/billing mutations. Next: push scoped PR39 restoration and issue38 evidence, then obtain genuine source-bound live recertification rather than manufacturing passing receipts.
+
 ## Current options containment candidate — 2026-09-09 (NOT release-qualified)
 
 - GitHub checkpoint: `ea1f186` pushed as draft PR39 (https://github.com/always7895/investor-intelligence/pull/39), targeting source-views only. Issue38 updated and kept OPEN; five Python failing cases remain blockers. No merge, deployment, release, LINE or storage write. Source adapter calendar/duplicate-key follow-up separately pushed as `9006dbc` on PR37.
