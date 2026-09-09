@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
-  "enable_thinking": true,
-  "reasoning_effort": "xhigh",
+  "enable_thinking": false,
+  "reasoning_effort": "none",
   "max_output_tokens": 1024,
   "smoke_output_tokens": 128,
   "timeout_ms": 18000

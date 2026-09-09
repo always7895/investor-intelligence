@@ -2,9 +2,9 @@
 
 ## Current result / 目前結果
 
-The candidate implements a common profile across the EXE, PowerShell bridge, Python gateway and Worker. **Configuration integration tests pass; Q5 research-answer requalification does not.** It is not a new release or Production activation.
+The candidate implements a common profile across the EXE, PowerShell bridge, Python gateway and Worker. With the operator's downgrade authorization, the candidate now requests thinking=false/effort=none. One actual Worker-generated research question completed on the existing Q5 Router in1078ms with prompt caching disabled and656ms with caching enabled; both exact model/profile pins matched. This is scoped development proof, not full live/release qualification, and the Production Worker has not adopted it. Historical xhigh failures remain unchanged.
 
-候選版已接上 EXE、PowerShell bridge、Python gateway 與 Worker 的共同設定；設定整合測試通過，但 Q5 真實研究問答重新驗收未通過。未替換已安裝的正式 EXE／Worker。
+候選版已接上各端共同設定。依操作者降級授權，改為 thinking=false／effort=none，同一真實研究問題兩次皆完整回覆（1078／656ms），模型及 profile 相符。這不是完整 live／發布驗收；先前 xhigh 失敗紀錄保留，正式 EXE／Worker 尚未替換。
 
 ## Authoritative settings / 設定來源
 

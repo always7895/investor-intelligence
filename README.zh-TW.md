@@ -10,7 +10,7 @@
 
 候選版新增 Fed／SEC／ECB 公告與 TWSE／TPEx 股票日行情的明確選用本機抓取器，以及 TAIFEX 期權／Alpaca indicative 匯入 adapter，保留原有 Yahoo／本機 IBKR 路徑。五個端點皆已在核准且雜湊驗證的 CPython3.12.10＋鎖定 certifi 信任來源下，通過本機直接 CLI 真實抓取。早期 TLS 失敗仍保留，不代表任意系統 Python 皆已驗收；受控 GitHub Windows 回歸已通過只驗證模式，完整發布驗收仍待完成。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
 
-目前候選發布改走 receipt 綁定、最終 ZIP 解壓及隔離安裝驗證，不再自動使用舊一般打包器。Live Q&A 須有含時區且 24 小時內的開始／完成時間；舊 receipt 原樣保留為歷史證據。可替換的 Q5／thinking 設定已接上開發 EXE、PowerShell bridge、gateway 與 Worker，並核對相同雜湊。但真實 Q5 研究問答因回答不完整而被拒絕，舊 receipt 也不符合目前來源；重新認證尚未通過。受控 Windows run34303303119 已通過只驗證模式，單次 runner 隨後自動解除註冊；未產生發布檔案。詳見[模型／runner 遷移範圍](docs/MODEL_RUNTIME_MIGRATION.md)；尚無新 EXE 或正式環境模型切換驗收。
+目前候選發布改走 receipt 綁定、最終 ZIP 解壓及隔離安裝驗證，不再自動使用舊一般打包器。Live Q&A 須有含時區且 24 小時內的開始／完成時間；舊 receipt 原樣保留為歷史證據。可替換的 Q5／thinking 設定已接上開發 EXE、PowerShell bridge、gateway 與 Worker，並核對相同雜湊。先前 Q5／xhigh 研究回答不完整；依授權改為 thinking=false／effort=none 的候選設定後，同一研究問題兩次完整回覆（1078／656ms），但完整 live／發布驗收尚未完成。正式更新排程因授權維修暫停；尚未發布新資料或恢復自動更新。受控 Windows run34303303119 已通過只驗證模式，單次 runner 隨後自動解除註冊；未產生發布檔案。詳見[模型／runner 遷移範圍](docs/MODEL_RUNTIME_MIGRATION.md)；尚無新 EXE 或正式環境模型切換驗收。
 
 ## 已完成／Delivered
 
