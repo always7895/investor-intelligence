@@ -139,7 +139,13 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     for (const url of ["https://fixture@example.com/report", "https://www.sec.gov/report?access%5Ftoken=fixture", "https://www.sec.gov/report#access_token=fixture"]) {
       data.records[0]!.current_order_source_urls = [url];
       kv.values.set("v213:top20-report:latest", JSON.stringify(data));
-      expect(await v213Top20LineAnswer({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) }, parseQuery(`Top20 證據詳情 T00 ${data.generated_at}`))).toContain("已拒絕顯示");
+      expect(parseV213Top20Report(data)).toBeNull();
+      const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+      for (const command of ["Top20", `Top20 證據詳情 T00 ${data.generated_at}`]) {
+        const response = await v213Top20LineAnswer(env, parseQuery(command));
+        expect(response).toContain("未通過驗證");
+        expect(response).not.toContain(url);
+      }
     }
   });
 

@@ -385,6 +385,22 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it("rejects credential citations even with valid payload digests before any KV write", async () => {
+    const { env, publicKv, privateKv, securityKv } = runtime();
+    const value = await bundle();
+    const report = JSON.parse(value.payloads.v213_top20_report_json);
+    report.records[0].orders_confidence = "PRIMARY_ONLY";
+    report.records[0].orders_as_of = value.generated_at;
+    report.records[0].current_order_source_urls = ["https://example.com/report?access%255ftoken=synthetic"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+    expect(publicKv.values.size).toBe(0);
+    expect(privateKv.values.size).toBe(0);
+    expect(securityKv.values.size).toBe(0);
+    report.records[0].current_order_source_urls = ["https://example.com/report"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).status).toBe("accepted");
+  });
   it("preflights the exact supplied sealed bundle through Worker commit/readback/replay/rollback/finalize without network", async () => {
     const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OFFLINE_PREFLIGHT_NETWORK_FORBIDDEN"));
     try {

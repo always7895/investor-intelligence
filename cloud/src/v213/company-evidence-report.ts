@@ -1,23 +1,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
 
-function safeCitation(value: string): string {
-  const url = new URL(value);
-  let credentialParameter = false;
-  const inspect = (_value: string, key: string) => {
-    if (/(?:access[_-]?token|api[_-]?key|authorization|password|secret|signature)/i.test(key)) credentialParameter = true;
-  };
-  url.searchParams.forEach(inspect);
-  new URLSearchParams(url.hash.slice(1)).forEach(inspect);
-  if (credentialParameter || url.protocol !== "https:" || url.username || url.password ||
-      (url.port && url.port !== "443") || !url.hostname.includes(".") ||
-      /^[\d.]+$/.test(url.hostname) || /\.(local|localhost)$/i.test(url.hostname) ||
-      /[\s\u0000-\u001f]/.test(value) ||
-      /(?:access_token|api_key|apikey|authorization|password|secret|signature)=/i.test(value)) {
-    throw new Error("UNSAFE_REPORT_CITATION");
-  }
-  return value;
-}
+import { requirePublicCitation as safeCitation } from "./public-citation";
 
 /** Evidence inspection, NOT a fabricated valuation report from seven short fields. */
 export function buildCompanyEvidenceMessages(

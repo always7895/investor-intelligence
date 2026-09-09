@@ -28,6 +28,7 @@ try {
         'cloud/src/line-messages.ts','cloud/src/v21/line-push.ts',
         'cloud/src/v213/top20-presentation.ts','cloud/test/r75-line-presentation-proof.ts',
         'cloud/src/v213/company-evidence-report.ts','docs/DETAILED_REPORT_CONTRACT.md',
+        'cloud/src/v213/public-citation.ts','cloud/test/public-citation.test.ts',
         'cloud/src/v211/worker.ts','cloud/src/v213/compact-qa.ts','cloud/src/v213/readiness.ts',
         'cloud/src/v213/top20-report.ts','cloud/src/v213/broadcast.ts','cloud/test/v213-top20-report.test.ts',
         'cloud/test/v213-scheduled-broadcast.test.ts','scripts/audit_v213_refresh_tasks.ps1',

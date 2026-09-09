@@ -1,4 +1,5 @@
 import { fieldLabel, type FieldLocale } from "./field-labels";
+import { isPublicCitationUrl } from "./public-citation";
 import { publicJson, publicText, type StorageEnv } from "../storage";
 import type { ParsedQuery } from "../core";
 
@@ -135,9 +136,7 @@ function finiteOrNull(value: unknown): value is number | null {
 }
 
 function httpsUrls(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length <= 8 && value.every((item) =>
-    typeof item === "string" && item.startsWith("https://") && item.length <= 1000
-  );
+  return Array.isArray(value) && value.length <= 8 && value.every(isPublicCitationUrl);
 }
 
 function lineSafeText(value: unknown, max: number): value is string {
