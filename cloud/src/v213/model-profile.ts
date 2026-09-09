@@ -33,8 +33,8 @@ export function configuredModelProfile(env: ModelProfileEnv): ModelProfile | und
   try {
     if (raw.length > 4096) throw new Error();
     const value = validateModelProfile(JSON.parse(raw));
-    const numericTokens = raw.match(/:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?=\s*[,}])/g) ?? [];
-    if (numericTokens.some(token => /[.eE]/.test(token))) throw new Error();
+    const numericLexemes = raw.match(/:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?=\s*[,}])/g) ?? [];
+    if (numericLexemes.some(lexeme => /[.eE]/.test(lexeme))) throw new Error();
     // Flat schema; count lexical keys too, so JSON.parse cannot hide duplicates.
     if ((raw.match(/"(?:[^"\\]|\\.)*"\s*:/g) ?? []).length !== fields.length) throw new Error();
     return value;

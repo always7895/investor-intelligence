@@ -76,7 +76,18 @@ class LiveQaQualificationTests(unittest.TestCase):
             verify(data,self.manifest)
 
     def test_synthetic_complete_matrix_still_binds_exact_runtime_source(self):
-        self.assertTrue(verify(self.proof)['release_ready'])
+        # Exercise the default manifest-loader path with an explicitly synthetic
+        # runtime. A historical receipt must not be required to certify new code.
+        # No receipt, clock or production verifier is rewritten by this test.
+        with patch('verify_r75_qa_evidence.source_manifest', return_value=self.manifest) as loader:
+            self.assertTrue(verify(self.proof, now=self.now)['release_ready'])
+            loader.assert_called_once_with()
+        changed = copy.deepcopy(self.manifest)
+        runtime_path = next(p for p in changed if p != 'scripts/v213_qa_live_gate.py')
+        changed[runtime_path] = '0' * 64 if changed[runtime_path] != '0' * 64 else '1' * 64
+        with patch('verify_r75_qa_evidence.source_manifest', return_value=changed):
+            with self.assertRaisesRegex(ValueError, 'LIVE_SOURCE_MANIFEST_MISMATCH'):
+                verify(self.proof, now=self.now)
 
     def test_historical_untimestamped_receipt_cannot_qualify_release(self):
         original = json.loads((ROOT / 'state/r75-qa-live-qualification.json').read_text(encoding='utf-8-sig'))

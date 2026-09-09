@@ -103,13 +103,14 @@ class ModelProfileTests(unittest.TestCase):
 
     def test_actual_authenticated_gateway_enforces_profile_and_completion(self):
         import v213_local_llm_gateway as gateway
-        secret = 'synthetic-only-' * 4
+        import secrets
+        auth_value = secrets.token_hex(32)
         response = Mock(ok=True)
         response.json.return_value = {'model': PROFILE['model'], 'choices': [
             {'finish_reason': 'stop', 'message': {'content': 'synthetic complete answer'}}]}
         server = ThreadingHTTPServer(('127.0.0.1', 0), gateway.V213GatewayHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        def call(body, auth=secret):
+        def call(body, auth=auth_value):
             req = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/v1/chat/completions',
                 data=json.dumps(body).encode(), headers={'content-type': 'application/json', 'x-investor-shared-secret': auth})
             try:
@@ -118,7 +119,7 @@ class ModelProfileTests(unittest.TestCase):
                 result = exc
             with result:
                 return result.status, json.load(result)
-        with patch.dict(os.environ, {'II_LOCAL_LLM_SHARED_SECRET': secret, 'II_LOCAL_LLM_MODEL': 'ignored-legacy-selection',
+        with patch.dict(os.environ, {'II_LOCAL_LLM_SHARED_SECRET': auth_value, 'II_LOCAL_LLM_MODEL': 'ignored-legacy-selection',
                                      'V213_MODEL_PROFILE_JSON': json.dumps(PROFILE)}), \
              patch.object(gateway, '_available_model_catalog', return_value=[{'id': PROFILE['model']}]), \
              patch.object(gateway.requests, 'post', return_value=response) as upstream:
