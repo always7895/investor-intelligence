@@ -7,8 +7,9 @@ from typing import Any, Mapping
 from .base import AdapterError, ParsedBatch, utc_iso
 from .official_rss import RSS_ADAPTERS
 from .taiwan_equities import EQUITY_ADAPTERS
+from .issuer_directory import ISSUER_ADAPTERS
 
-STAGED_ADAPTERS = {**RSS_ADAPTERS, **EQUITY_ADAPTERS}
+STAGED_ADAPTERS = {**RSS_ADAPTERS, **EQUITY_ADAPTERS, **ISSUER_ADAPTERS}
 
 
 def parse_source_payload(source_id: str, content: bytes, *, content_type: str,

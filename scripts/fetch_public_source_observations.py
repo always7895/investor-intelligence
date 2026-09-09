@@ -20,9 +20,10 @@ from adapters import AdapterError
 from adapters.staged_public import parse_source_payload
 from adapters.official_rss import FEEDS
 from adapters.taiwan_equities import EQUITY_FEEDS
+from adapters.issuer_directory import ISSUER_FEEDS
 from source_observation import atomic_write_json
 
-ENDPOINTS = {**{key: value[0] for key, value in FEEDS.items()}, **EQUITY_FEEDS}
+ENDPOINTS = {**{key: value[0] for key, value in FEEDS.items()}, **EQUITY_FEEDS, **ISSUER_FEEDS}
 MAX_BYTES = 8_000_000
 
 

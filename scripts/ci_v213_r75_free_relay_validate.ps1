@@ -61,6 +61,8 @@ try {
         'scripts/fetch_public_source_observations.py','scripts/import_option_observations.py',
         'scripts/options_service.py','scripts/public_options_provider_gate.py',
         'scripts/build_line_public_options.py','tests/test_build_line_public_options.py',
+        'scripts/adapters/issuer_directory.py','tests/test_issuer_directory.py',
+        'config/public-options-provider-candidates.json','docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
