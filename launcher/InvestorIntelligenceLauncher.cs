@@ -57,7 +57,7 @@ namespace InvestorIntelligence
                 return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(json))).Replace("-", "").ToLowerInvariant();
         }
 
-        static int ModelProfileSelfTest() {
+        static int ModelProfileSelfTest(bool exerciseUi = false) {
             var serializer = new JavaScriptSerializer();
             var profile = new Dictionary<string, object> {
                 { "schema_version", 1 }, { "model", "synthetic-model-a" }, { "enable_thinking", true },
@@ -80,6 +80,15 @@ namespace InvestorIntelligence
             try {
                 ProfileTestConfigRoot = isolated;
                 Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", serializer.Serialize(profile));
+                if (exerciseUi) {
+                    var context = System.Threading.SynchronizationContext.Current;
+                    try {
+                        using (var form = new MainForm(false)) {
+                            int result = form.ThinkingUiSelfTest(isolated);
+                            if (result != 0) return result;
+                        }
+                    } finally { System.Threading.SynchronizationContext.SetSynchronizationContext(context); }
+                }
                 string before = ModelProfileHash(profile);
                 foreach (string model in new [] { "third/model-v3", "fourth/model-v4" }) {
                     SaveSelection(model, "http://127.0.0.1:8080", new List<string> { model }, "synthetic-self-test");
@@ -451,7 +460,8 @@ namespace InvestorIntelligence
             string model,
             string baseUrl,
             IEnumerable<string> availableModels,
-            string source)
+            string source,
+            string thinkingEffort = null)
         {
             if (!SafeModelId(model))
                 throw new InvalidOperationException("Invalid model ID / 模型 ID 格式不正確。");
@@ -472,8 +482,13 @@ namespace InvestorIntelligence
             };
 
             var profile = LoadModelProfile();
+            if (thinkingEffort != null && profile == null) throw new InvalidOperationException("MODEL_PROFILE_REQUIRED");
             if (profile != null) {
                 profile["model"] = model;
+                if (thinkingEffort != null) {
+                    profile["enable_thinking"] = thinkingEffort != "none";
+                    profile["reasoning_effort"] = thinkingEffort;
+                }
                 string profileJson = serializer.Serialize(profile);
                 ParseModelProfile(profileJson);
                 value["model_profile_sha256"] = ModelProfileHash(profile);
@@ -512,7 +527,7 @@ namespace InvestorIntelligence
                 return 2;
             }
 
-            string logRoot = Path.Combine(
+            string logRoot = ProfileTestConfigRoot != null ? Path.Combine(ProfileTestConfigRoot, "logs") : Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "InvestorIntelligence", "logs", "launcher");
             Directory.CreateDirectory(logRoot);
@@ -792,6 +807,7 @@ namespace InvestorIntelligence
             if (args.Contains("--pipe-hold-self-test"))
                 return PipeHoldSelfTest();
             if (args.Contains("--model-profile-self-test")) return ModelProfileSelfTest();
+            if (args.Contains("--model-thinking-ui-self-test")) return ModelProfileSelfTest(true);
             if (args.Contains("--model-selection-self-test"))
                 return ModelSelectionSelfTest();
             if (args.Contains("--self-test"))
@@ -909,6 +925,8 @@ namespace InvestorIntelligence
             readonly Label status;
             readonly Label endpointLabel;
             readonly ComboBox modelBox;
+            readonly ComboBox thinkingBox;
+            readonly bool thinkingAvailable;
             readonly Button scanButton;
             readonly Button useModelButton;
             readonly Button refreshButton;
@@ -925,7 +943,7 @@ namespace InvestorIntelligence
             string discoveredBaseUrl = "";
             bool busy;
 
-            public MainForm()
+            public MainForm(bool discoverOnShow = true)
             {
                 Text = "Investor Intelligence v" + Version + " " + Revision;
                 Width = 720;
@@ -1070,7 +1088,8 @@ namespace InvestorIntelligence
                     if (!TryCommitSelection(out selection)) return;
                     status.Text =
                         "模型選擇已儲存，尚未通過回答／think 驗證 / Saved, not qualified\r\n" +
-                        selection.Model + " @ " + selection.LlamaBaseUrl;
+                        selection.Model + " @ " + selection.LlamaBaseUrl +
+                        "\r\nTHINK: " + (string)thinkingBox.SelectedItem;
                 };
 
                 freeRelayButton.Click += async delegate {
@@ -1215,7 +1234,70 @@ namespace InvestorIntelligence
                         MessageBoxIcon.Information);
                 };
 
-                Shown += async delegate { await RefreshModelsAsync(); };
+                // Add the mode controls without compressing existing action/status text.
+                foreach (Control control in Controls) if (control.Top >= 166) control.Top += 64;
+                Height += 64;
+                var initialProfile = LoadModelProfile();
+                thinkingAvailable = initialProfile != null;
+                thinkingBox = new ComboBox {
+                    Left = 166, Top = 162, Width = 160, Height = 28,
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    AccessibleName = "THINK reasoning effort", Enabled = thinkingAvailable
+                };
+                thinkingBox.Items.AddRange(new object[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" });
+                thinkingBox.SelectedItem = initialProfile == null ? "none" : (string)initialProfile["reasoning_effort"];
+                Controls.Add(new Label { Left = 24, Top = 165, Width = 140, Height = 24, Text = "THINK / 推理模式" });
+                Controls.Add(thinkingBox);
+                Controls.Add(new Label { Left = 340, Top = 160, Width = 335, Height = 48,
+                    Text = "none = 關閉；其他 = 要求的推理強度\n支援能力待實測 / Support unverified" });
+                thinkingBox.SelectedIndexChanged += delegate {
+                    status.Text = "THINK 設定尚未儲存／驗證 / Pending, unqualified";
+                };
+                if (discoverOnShow) Shown += async delegate { await RefreshModelsAsync(); };
+            }
+
+            public int ThinkingUiSelfTest(string isolated)
+            {
+                // Only synthetic choices and isolated profile storage. No discovery,
+                // inference, activation, task registration or production buttons.
+                foreach (var button in new[] { scanButton, refreshButton, activateButton, bridgeButton,
+                    folderButton, namedTunnelButton, freeRelayButton }) button.Enabled = false;
+                Show();
+                if (!thinkingBox.Visible || !ClientRectangle.Contains(thinkingBox.Bounds) ||
+                    thinkingBox.DropDownStyle != ComboBoxStyle.DropDownList) return 77;
+                foreach (string model in new[] { "synthetic-ui-a", "synthetic-ui-b" }) {
+                    discoveredModels.Clear(); discoveredModels.Add(model);
+                    modelBox.Items.Clear(); modelBox.Items.Add(model); modelBox.Text = model;
+                    foreach (string effort in new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max", "none" }) {
+                        thinkingBox.SelectedItem = effort;
+                        useModelButton.PerformClick();
+                        var persisted = ParseModelProfile(File.ReadAllText(ModelProfilePath, Encoding.UTF8));
+                        if ((string)persisted["model"] != model || (string)persisted["reasoning_effort"] != effort ||
+                            (bool)persisted["enable_thinking"] != (effort != "none")) return 73;
+                        var saved = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
+                        if ((bool)saved["model_profile_qualified"] || (string)saved["model_profile_sha256"] != ModelProfileHash(persisted) ||
+                            !status.Text.Contains("not qualified")) return 74;
+                        if (effort == "none" || effort == "xhigh") {
+                            string probe = Path.Combine(isolated, "thinking-ui-child.ps1");
+                            File.WriteAllText(probe, "$p=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json; if($p.model -cne " + PowerShellLiteral(model) +
+                                " -or $p.reasoning_effort -cne " + PowerShellLiteral(effort) + " -or $p.enable_thinking -ne " +
+                                (effort == "none" ? "$false" : "$true") + "){exit 1}; exit 0", new UTF8Encoding(false));
+                            if (Task.Run(() => RunPowerShellCli(probe, "")).GetAwaiter().GetResult() != 0) return 75;
+                        }
+                    }
+                }
+                string validBytes = File.ReadAllText(ModelProfilePath, Encoding.UTF8);
+                try {
+                    SaveSelection("synthetic-ui-b", DefaultLlamaBase, discoveredModels, "synthetic-test", "invalid-mode");
+                    return 78;
+                } catch (InvalidOperationException) { }
+                if (File.ReadAllText(ModelProfilePath, Encoding.UTF8) != validBytes) return 79;
+                SetBusy(true, "synthetic busy check");
+                bool locked = !thinkingBox.Enabled && !modelBox.Enabled && !useModelButton.Enabled;
+                SetBusy(false, "");
+                if (!locked || !thinkingBox.Enabled) return 76;
+                Close();
+                return 0;
             }
 
             async Task RefreshModelsAsync()
@@ -1320,13 +1402,18 @@ namespace InvestorIntelligence
                     modelBox.Text = canonical;
                 }
 
+                if (thinkingAvailable && thinkingBox.SelectedItem == null) {
+                    MessageBox.Show("請選擇 THINK 模式 / Select a reasoning mode.");
+                    return false;
+                }
                 try
                 {
                     SaveSelection(
                         requestedModel,
                         requestedBaseUrl,
                         discoveredModels,
-                        "launcher_model_selector");
+                        "launcher_model_selector",
+                        thinkingAvailable ? (string)thinkingBox.SelectedItem : null);
                     selection = new ModelSelection {
                         Model = requestedModel,
                         LlamaBaseUrl = requestedBaseUrl
@@ -1384,6 +1471,7 @@ namespace InvestorIntelligence
                 scanButton.Enabled = !value;
                 useModelButton.Enabled = !value;
                 modelBox.Enabled = !value;
+                thinkingBox.Enabled = !value && thinkingAvailable;
                 refreshButton.Enabled = !value;
                 activateButton.Enabled = !value;
                 bridgeButton.Enabled = !value;

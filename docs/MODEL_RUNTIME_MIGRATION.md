@@ -14,14 +14,16 @@ Historical qualification, failed xhigh responses, runner proof and prior documen
 - Discovery stays on the configured loopback endpoint, or `http://127.0.0.1:8080` when none is configured. Invalid configured URLs fail; a failed selected endpoint does not trigger scans of unrelated ports.
 - Reject credentials, query/fragment and paths in the base URL. Catalog HTTP redirects are disabled. Transfer is bounded by a 1MiB payload limit and 4.5-second I/O deadline per endpoint path; at most `/models` and `/v1/models` are attempted. At most1024 distinct identities/aliases are admitted.
 - Catalog deduplication uses a set; preferred-profile lookup happens once per discovery, not once per catalog row. These are bounded operations, not a measured whole-product performance claim.
-- Scanning locks other GUI operations and preserves the user's pending choice when it remains available. Saved selection text explicitly says unqualified. Native catalog/profile tests do not replace interactive GUI/extracted-install acceptance.
+- EXE has a THINK dropdown: `none` disables thinking; `minimal/low/medium/high/xhigh/max` request thinking with that effort. These are requested settings, not inferred model capabilities. Model and THINK choices are saved together in the common profile; token/time bounds stay unchanged and qualification remains false.
+- Scanning/operations lock both selectors. Native UI self-tests display the actual form, click its Save/Use handler across two synthetic models/all effort choices, verify persisted booleans/hash/unqualified state, and check actual PowerShell child snapshots for off/on modes. Invalid effort cannot overwrite a valid profile. No model/network/production buttons are invoked by this test; its logs/config are isolated.
+- The existing packager now runs profile and THINK UI self-tests on its compiled EXE. A passing candidate test does not replace a newly qualified ZIP or installed/live acceptance.
 - `--model-catalog-check <loopback-base>` is a read-only native transport check. It does not start a model, send inference, change presets or save selection. Exit0 means a valid catalog only.
 
 ## Authoritative profile / 設定來源
 
 Schema: `config/v213-model-profile-v1.json`; validators: Python `scripts/v213_model_profile.py`, Worker `cloud/src/v213/model-profile.ts`, EXE parser.
 
-Precedence: explicit `V213_MODEL_PROFILE_JSON` process environment, then `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-profile-v1.json`, then the packaged template. Model selection changes the model and preserves the other profile fields; each profile-file replacement is atomic. Profile + compatibility selection + child processes + remote Worker are **not** one atomic transaction. The selection file is not the authority or release approval.
+Precedence: explicit `V213_MODEL_PROFILE_JSON` process environment, then `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-profile-v1.json`, then the packaged template. Model selection changes the model; an explicit THINK selection also changes `enable_thinking` and `reasoning_effort`, preserving token/time bounds. Each profile-file replacement is atomic. Profile + compatibility selection + child processes + remote Worker are **not** one atomic transaction. The selection file is not the authority or release approval.
 
 | Field | Contract |
 |---|---|
@@ -37,7 +39,7 @@ Unknown/duplicate keys, invalid types and conflicting settings fail closed. The 
 
 ## Auto-think boundary / 自動 think 的未完成部分
 
-Automatic think selection is **not implemented or qualified**. Current EXE selection preserves settings; it does not prove a new model supports them. Pi's own thinking setting is separate from this application's local-model profile.
+Automatic think selection is **not implemented or qualified**. EXE supports manual THINK selection; it does not prove a new model supports or honors those settings. Pi's own thinking setting is separate from this application's local-model profile.
 
 Required future acceptance:
 

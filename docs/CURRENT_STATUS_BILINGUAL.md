@@ -8,7 +8,7 @@
 
 ## 模型與 EXE／Model and EXE
 
-候選版有共同 model profile、模型清單選擇及子程序傳遞。新增單一 Router、禁止重新導向、大小／時間上限等清單讀取保護，並以原生 EXE 測試。**選到模型不等於完成回答；自動 think 判定尚未實作／驗收。** 舊 Q5 none-thinking PASS 不符合後續來源版本；不得 restamp 或默默換模型／模式。
+候選 EXE 有共同 model profile、模型清單、手動 THINK 關閉／強度選擇及子程序傳遞；原生 UI 測試涵蓋實際 Use 按鈕與設定儲存。新增單一 Router、禁止重新導向、大小／時間上限等清單讀取保護，並以原生 EXE 測試。**選到模型不等於完成回答；自動 think 判定尚未實作／驗收。** 舊 Q5 none-thinking PASS 不符合後續來源版本；不得 restamp 或默默換模型／模式。
 
 The candidate shares a profile across the EXE/bridge/gateway/Worker. Catalog transport is bounded and remains on the selected Router. Catalog success is not inference qualification. Automatic think selection remains pending. See [model contract](MODEL_RUNTIME_MIGRATION.md).
 

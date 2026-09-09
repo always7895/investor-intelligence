@@ -48,7 +48,7 @@ class ModelProfileTests(unittest.TestCase):
                 '/reference:System.Windows.Forms.dll', '/reference:System.Web.Extensions.dll',
                 '/out:' + str(exe), str(source)], capture_output=True, timeout=45)
             self.assertEqual(result.returncode, 0, 'Native profile launcher compilation failed')
-            for flag in ('--model-profile-self-test', '--model-selection-self-test', '--self-test', '--pipe-hold-self-test'):
+            for flag in ('--model-profile-self-test', '--model-thinking-ui-self-test', '--model-selection-self-test', '--self-test', '--pipe-hold-self-test'):
                 with self.subTest(flag=flag):
                     result = subprocess.run([str(exe), flag], capture_output=True, timeout=45)
                     self.assertEqual(result.returncode, 0)
@@ -108,6 +108,12 @@ class ModelProfileTests(unittest.TestCase):
                 self.assertEqual(paths, [])
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
+
+    def test_packager_checks_compiled_profile_and_thinking_ui(self):
+        source = (ROOT / 'scripts/ci_v213_r75_free_relay_package.ps1').read_text(encoding='utf-8-sig')
+        arguments = re.search(r'foreach \(\$argument in @\(([^\n]+)\)\)', source).group(1)
+        for flag in ('--model-profile-self-test', '--model-thinking-ui-self-test'):
+            self.assertIn("'" + flag + "'", arguments)
 
     def test_actual_profile_cli_and_bounded_invalid_output(self):
         with tempfile.TemporaryDirectory() as directory:

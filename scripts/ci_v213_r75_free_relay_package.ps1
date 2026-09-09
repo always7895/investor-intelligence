@@ -87,7 +87,7 @@ try {
     & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$launcher" $temporarySource
     if ($LASTEXITCODE -ne 0) { throw 'FREE_RELAY launcher compilation failed.' }
     Remove-Item -LiteralPath $temporarySource -Force
-    foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {
+    foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test','--model-profile-self-test','--model-thinking-ui-self-test')) {
         $process = Start-Process -FilePath $launcher -ArgumentList $argument -PassThru
         if (-not $process.WaitForExit(30000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; throw "Packaged launcher test timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Packaged launcher test failed: $argument" }
