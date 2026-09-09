@@ -49,6 +49,21 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         self.assertIn('contents: read', self.workflow)
         self.assertNotIn('gh release create', self.workflow)
 
+    def test_validation_only_cannot_package_upload_or_claim_release(self):
+        self.assertIn('default: false', self.workflow)
+        self.assertIn("github.actor == 'always7895'", self.workflow)
+        self.assertIn('runs-on: [self-hosted, Windows, X64, investor-intelligence-reviewed]', self.workflow)
+        self.assertNotIn('runs-on: [self-hosted, Windows, X64, investor-intelligence]', self.workflow)
+        self.assertIn('release_qualified=false', self.step('Run source-bound Windows validation only'))
+        for name in ('Run R75 Named Tunnel deployment-hotfix validation',
+                     'Run current R75 release validation',
+                     'Build and independently verify immutable Named Tunnel deployment hotfix',
+                     'Build and independently verify current immutable R75 package',
+                     'Require current release qualification',
+                     'Upload immutable R75 Named Tunnel hotfix and receipts',
+                     'Upload current immutable R75 package and receipts'):
+            self.assertIn('inputs.validation_only != true', self.step(name), name)
+
     def test_operation_lock_actual_callers_have_no_clixml_progress(self):
         shells = [shell for shell in ('powershell.exe', 'pwsh') if shutil.which(shell)]
         if not shells:

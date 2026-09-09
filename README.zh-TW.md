@@ -10,7 +10,7 @@
 
 候選版新增 Fed／SEC／ECB 公告與 TWSE／TPEx 股票日行情的明確選用本機抓取器，以及 TAIFEX 期權／Alpaca indicative 匯入 adapter，保留原有 Yahoo／本機 IBKR 路徑。五個端點皆已在核准且雜湊驗證的 CPython3.12.10＋鎖定 certifi 信任來源下，通過本機直接 CLI 真實抓取。早期 TLS 失敗仍保留，不代表任意系統 Python 皆已驗收；GitHub Windows 驗收仍等待登記的 runner。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
 
-目前候選發布改走 receipt 綁定、最終 ZIP 解壓及隔離安裝驗證，不再自動使用舊一般打包器。Live Q&A 須有含時區且 24 小時內的開始／完成時間；舊 receipt 原樣保留為歷史證據。Windows runner 驗收及新 exact-Q6 證據仍阻擋發布；觀察到的本機端點提供 Q5，未修改模型／preset。
+目前候選發布改走 receipt 綁定、最終 ZIP 解壓及隔離安裝驗證，不再自動使用舊一般打包器。Live Q&A 須有含時區且 24 小時內的開始／完成時間；舊 receipt 原樣保留為歷史證據。本次改要求可替換的 Q5／thinking xhigh；開發請求已成功，但共享設定遷移及重新認證未完成。已登記受控單次 runner，登記不等於 Windows 驗收。詳見[模型／runner 遷移範圍](docs/MODEL_RUNTIME_MIGRATION.md)；尚無新 EXE 或正式環境模型切換驗收。
 
 ## 已完成／Delivered
 

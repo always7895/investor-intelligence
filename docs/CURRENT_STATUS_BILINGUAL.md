@@ -1,5 +1,7 @@
 # 目前狀態／Current status
 
+本次操作者改要求可替換的 Q5／thinking xhigh；已完成單次開發請求及受控 ephemeral runner 登記，但共享設定、EXE／Worker 整合與重新認證仍待完成。登記 runner 不等於驗收，舊 Q6 證據仍屬歷史。See [Q5/model and runner migration scope](MODEL_RUNTIME_MIGRATION.md): the newly requested profile is not yet release-qualified; no new EXE or Production switch is claimed.
+
 ## 開發中全來源稽核／Public-source audit candidate
 
 新增官方公告與股票日行情的選用本機抓取器；五個端點皆已在核准 CPython3.12.10＋鎖定 certifi 下直接 CLI 真實讀取。舊 TLS 失敗保留；未關閉憑證／hostname 驗證或降低 verify flags。GitHub Windows 驗收仍等待 runner。TPEx 無成交資料保留空報價，不把紀錄數當有效價格數。完整範圍、限制與證據見[來源覆蓋](PUBLIC_SOURCE_COVERAGE.md)。
