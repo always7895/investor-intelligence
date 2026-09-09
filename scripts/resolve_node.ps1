@@ -104,10 +104,22 @@ $nodeDirectory = Split-Path $resolved.Node
 $env:PATH = "$nodeDirectory;$env:PATH"
 
 if ($env:GITHUB_ENV) {
+    # A package must not dirty its exact checkout through ambient npm exports.
+    # Validate before writing any job environment/path records; no local fallback.
+    if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -or $env:RUNNER_TEMP -match '[\x00-\x1f]' -or
+        $env:RUNNER_TEMP -notmatch '^[A-Za-z]:[\\/]') { throw 'CI_NPM_TEMP_ROOT_INVALID' }
+    $cacheTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char[]]'\/')
+    $cacheSource = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([char[]]'\/')
+    if (-not (Test-Path -LiteralPath $cacheTemp -PathType Container) -or
+        $cacheTemp.Equals($cacheSource,[StringComparison]::OrdinalIgnoreCase) -or
+        $cacheTemp.StartsWith($cacheSource+'\',[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'CI_NPM_TEMP_ROOT_INVALID'
+    }
+    $cachePath = Join-Path $cacheTemp ('ii-npm-cache-'+[guid]::NewGuid().ToString('N'))
     "PROJECT_NODE=$($resolved.Node)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     "PROJECT_NPM=$($resolved.Npm)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     "$nodeDirectory" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-    "NPM_CONFIG_CACHE=$([System.IO.Path]::GetFullPath((Join-Path (Get-Location) '.npm-cache')))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    "NPM_CONFIG_CACHE=$cachePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 }
 
 Write-Host "Using Node $($resolved.NodeVersion) at $($resolved.Node)"

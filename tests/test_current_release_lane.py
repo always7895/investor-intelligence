@@ -65,6 +65,37 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         for path in (ROOT / 'cloud/src').rglob('*.ts'):
             self.assertNotRegex(path.read_text(encoding='utf-8-sig'), r'''(?:from\s*|(?:import|require)\s*\(\s*)["'][^"']*activation-v2["']''', str(path))
 
+    @unittest.skipUnless(os.name == 'nt', 'native Windows npm export')
+    def test_actual_node_export_uses_unique_external_cache_and_rejects_bad_temp(self):
+        text = (ROOT / 'scripts/resolve_node.ps1').read_text(encoding='utf-8')
+        block = text[text.index('if ($env:GITHUB_ENV) {'):text.index('\nWrite-Host "Using Node')]
+        for shell in ('powershell.exe', 'pwsh.exe'):
+            if not shutil.which(shell): continue
+            with tempfile.TemporaryDirectory(prefix='npm export ') as d:
+                parent = Path(d); source = parent / 'source'; scripts = source / 'scripts'; scripts.mkdir(parents=True)
+                outside = parent / 'runner temp'; outside.mkdir()
+                inside = source / 'bad temp'; inside.mkdir()
+                probe = scripts / 'probe.ps1'
+                probe.write_text("$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$nodeDirectory='synthetic-node';$resolved=[pscustomobject]@{Node='synthetic-node';Npm='synthetic-npm'};\n" + block, encoding='utf-8-sig')
+                caches = []
+                for index, temporary in enumerate((str(outside), str(outside), str(inside), '')):
+                    env_file = parent / f'env-{index}.txt'; path_file = parent / f'path-{index}.txt'
+                    result = subprocess.run([shell, '-NoProfile', '-File', str(probe)], cwd=source,
+                        env={**os.environ, 'RUNNER_TEMP': temporary, 'GITHUB_ENV': str(env_file), 'GITHUB_PATH': str(path_file)},
+                        capture_output=True, timeout=20)
+                    if index < 2:
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        values = dict(line.split('=', 1) for line in env_file.read_text(encoding='utf-8-sig').splitlines())
+                        cache = Path(values['NPM_CONFIG_CACHE'])
+                        self.assertTrue(cache.is_relative_to(outside), str(cache))
+                        self.assertFalse(cache.is_relative_to(source))
+                        caches.append(cache)
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(env_file.exists())
+                        self.assertFalse(path_file.exists())
+                self.assertNotEqual(caches[0], caches[1])
+
     def test_historical_scripts_are_retained_and_no_production_mutation_added(self):
         for name in ('ci_v213_r75_package.ps1', 'verify_v213_r75_artifact.py'):
             self.assertTrue((ROOT / 'scripts' / name).is_file())

@@ -52,7 +52,7 @@ try {
         'register-v213-free-relay-task.ps1','run-v213-local-llm-bridge-source-diverse.ps1',
         'run-v213-local-llm-bridge.ps1','run-v213-local-serenity-latest.ps1',
         'run-v213-local-source-diverse.ps1','run-v213-local.ps1',
-        'scripts/ci_v213_r75_free_relay_package.ps1','scripts/ci_v213_r75_free_relay_validate.ps1',
+        'scripts/ci_v213_r75_free_relay_package.ps1','scripts/ci_v213_r75_free_relay_validate.ps1','scripts/resolve_node.ps1',
         'scripts/ci_v213_r75_validate.ps1','scripts/run_v213_local_llm_bridge_core.ps1',
         'scripts/run_v213_local_llm_bridge_core_v2.ps1','scripts/test_v213_free_relay.ps1',
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',

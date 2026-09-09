@@ -4,8 +4,8 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Starting HEAD e945f6065f3f20a416325f2953144a681b4e72bb; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
-- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: versioned activation and isolated QA Worker/KV create/delete; no Production mutation.
+- Starting HEAD92b4c5c730dcbb01c649d4bcfb0343ea1e9467c8; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: CI package/cache repair; prior isolated QA resources deleted. No Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
 ## Candidate EXE evidence (7bc9df7)
@@ -14,22 +14,21 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authorized runner and isolated gate
 
-- Runner24 repaired at `D:\actions-runner-win-x64-2.337.0`; original Access denied5 and authorized service/label repair in Git338fb73 / `runner-service-repair-20260909.json`. Other-project runner untouched. Windows run34367564694 on7bc9df7 passed regression only.
-- Readiness failed runs and HTTP-error/array negatives remain in Gitdcbec3e/50dfa57 and `r75-live-authorized-*`, `r75-readiness-*`, `readiness-*` logs. Direct bounded transport retained; no baseline/gate relaxation, all isolated resources cleaned.
-- `r75-live-direct-transport-20260909.json`:10/10 real Q5 none cases, max2593ms, reference/negative checks and independent verifier PASS. Synthetic public data, model-Q&A scope only. Original audit bytes retained; repository copy named `state/r75-qa-live-direct-20260909.json`.
-- Prior Python688/2 skipped, Worker227/typecheck/six gates/PS5.1/7 PASS; Windows validation-only34372642727 on dcbec3e PASS, no package. Initial STATUS12378-byte failure preserved.
+- Runner24 at `D:\actions-runner-win-x64-2.337.0` recovered per Git338fb73; other-project runner untouched. Original service/readiness/early-QA receipts, failures and Windows regression details remain in Git50dfa57 and `runner-service-repair-*`, `r75-live-*`, `r75-readiness-*`, `readiness-*` logs. No transport/baseline waiver; isolated resources cleaned.
 
 ## Current release-input audit
 
 - Git18d0938: HEAD-bound reference/shared selector, regular committed bytes, no invalid-pointer fallback, byte-preserving attributes. Windows/package/ZIP bind path/SHA and verify actual archive runtime against mandatory adjacent QA evidence, without archive code imports. Selection is not qualification; old receipts unchanged.
-- Found destructive OutputRoot pre-clean and non-mandatory QA sidecar gaps. Existing output/source-child paths now reject; actual PS caller tests preserve sentinels. Synthetic rehashed ZIP/CLI negatives cover missing/tampered/stale QA, runtime drift and ref/Windows mismatch. Python697/2 skipped and Worker227/typecheck PASS; six gates/PS5.1/7 and Windows validation-only34377067625 on18d0938 PASS. Initial full run failed only STATUS12576-byte budget; trimmed, not relaxed.
-- Formal release FAIL retained: `full-release-activation-baseline-red.log`. V2 now restored to protected536644d bytes; only v3 active in production, preserving no stale carry-forward. Legacy activation.ts diff reviewed; no protected hash waived. Actual signed Worker route RED on v2 / GREEN on v3; rollback originals intact (`activation-version-*`). Worker227/typecheck, Python698/2 skipped/six gates PASS; new Windows/full release validation pending.
+- Found destructive OutputRoot pre-clean and non-mandatory QA sidecar gaps. Existing output/source-child paths now reject; actual PS caller tests preserve sentinels. Synthetic rehashed ZIP/CLI negatives cover missing/tampered/stale QA, runtime drift and ref/Windows mismatch. Python697/2 skipped and Worker227/typecheck PASS; six gates/PS5.1/7 and Windows validation-only34377067625 on18d0938 PASS. Budget failures retained, limits unchanged.
+- Formal release FAIL retained: `full-release-activation-baseline-red.log`. V2 now restored to protected536644d bytes; production source imports only v3, preserving no stale carry-forward. Legacy activation.ts diff reviewed; no protected hash waived. Actual signed Worker route RED on v2 / GREEN on v3; rollback originals intact (`activation-version-*`). Worker227/typecheck, Python698/2 skipped/six gates PASS; formal release validation and Windows validation-only34379897641 on92b4c5c PASS.
 - Clean e945f60 fresh `r75-live-activation-v3-20260909.json`:10/10 Q5 none cases/max3062ms, real-waitUntil synthetic LINE/reference and negative checks PASS; independent verifier PASS, resources deleted, source/preset unchanged. Exact audit bytes copied to state and reference updated, original18d proof retained. Scoped Q&A only, not genuine market-data/installation/publication acceptance. No installation/publication/task restoration.
 
 ## Prior installation audit (569c5ef)
 - Prior installed check: both tasks Disabled with expected actions;10 chain files had6 differences/2 missing/2 equal. Router8080 advertised one approved model, not an inference proof. Do not replace only the EXE.
 - Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
 - Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
+
+- Package run34380328481 on92b4c5c FAIL at final clean-checkout guard; original log `package-run-34380328481-failure.log`. Extracted Worker227 and isolated install passed, not delivery qualification. Read-only runner check found `.npm-cache/`; resolver exported checkout cache. Fix exports unique external RUNNER_TEMP cache, rejects bad temp before env writes; native PS5.1/7 RED/GREEN retained. No .gitignore/gate bypass or manual cache deletion. Python699/2 skipped PASS (budget-only failure retained); package rerun pending.
 
 ## Production and release blockers
 
@@ -53,7 +52,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Broker leads are not licensed feeds. Goldman403/Morgan Stanley abort, six count failures and101 runtime boundary retained in Git309a93a / `broker-source-catalog-*.log`.
 - Installed options24 records: retrieval is not BBO time, eligibility/privacy incomplete. Yahoo stays line_public_eligible=false; no broker/private fallback.
 - [Rights review](../docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md): TAIFEX11320 is Taiwan daily/EOD with attribution, not realtime/US options. Last provider gate: public-access reviewed1, pending7, prohibited4; fully eligible/runtime/LINE-quote providers0, production selected false. Nasdaq terms failure and indicative-data permission gaps retained. No provider activated.
-- Installed universe:30 rows, September7 generation, legacy policy. June30 may be a financial period, not stale-filing proof. No date/scoring relabelling. Broad directory collection1094 TWSE+890 TPEx, September8 dates, zero warnings; all PRIMARY_ONLY/discovery pending/publication false, not ranked global research.
+- Installed universe remains legacy, not fresh ranked global research. Directory collection1094 TWSE+890 TPEx is PRIMARY_ONLY/discovery pending/publication false. No date/scoring relabelling; financial periods are not filing timestamps.
 - Thematic120/240 discovery and40/80 SEC reserves remain; counts do not corroborate claims. AMD original retrieved/Broadcom abort retained; no search-number promotion.
 
 ## Method, history and cleanup boundaries
