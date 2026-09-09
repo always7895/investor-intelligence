@@ -32,7 +32,8 @@ class LiveQaQualificationTests(unittest.TestCase):
         session = SimpleNamespace(get=Mock(return_value=response))
         with patch('v213_qa_live_gate.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps(body))) as run:
             rows = isolated_transport_diagnostics(session, origin, version)
-            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_count, 5)
+            self.assertEqual([r['client'] for r in rows][-3:-1], ['pwsh-direct-http', 'pwsh-direct-http-agent'])
             self.assertTrue(all(r['release_qualified'] is False for r in rows))
             self.assertEqual(session.get.call_count, 1)
             self.assertFalse(session.get.call_args.kwargs['allow_redirects'])
@@ -40,11 +41,39 @@ class LiveQaQualificationTests(unittest.TestCase):
             for bad in ('https://production.synthetic.workers.dev', origin + '/path', origin + '?secret=redacted'):
                 with self.assertRaisesRegex(RuntimeError, 'SCOPE_INVALID'):
                     isolated_transport_diagnostics(session, bad, version)
-            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_count, 5)
         with patch('v213_qa_live_gate.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps({**body, 'private': 'PRIVATE_SENTINEL'}))):
             rows = isolated_transport_diagnostics(session, origin, version)
             self.assertTrue(rows[0]['diagnostic_failed'])
             self.assertNotIn('PRIVATE_SENTINEL', json.dumps(rows))
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native diagnostic contract')
+    def test_same_http_client_diagnostics_preserve_status_scope_and_nonqualification(self):
+        import subprocess, shutil
+        helper = str(ROOT / 'scripts/v213_edge_readiness.ps1').replace("'", "''")
+        for shell in ('powershell.exe', 'pwsh.exe'):
+            if not shutil.which(shell): continue
+            command = f"$ErrorActionPreference='Stop';. '{helper}';" + r'''
+foreach($flag in @('DiagnosticEnvelope','DiagnosticUserAgent')){
+ $args=@{};$args[$flag]=$true
+ try {Invoke-V213ReadinessGet -Uri 'https://production.invalid/v213/readiness' @args;throw 'SCOPE_BYPASS'}
+ catch {if($_.Exception.Message -notmatch 'ISOLATED_DIAGNOSTIC_SCOPE_INVALID'){throw}}
+}
+function Invoke-V213ReadinessGet([uri]$Uri,[switch]$DiagnosticUserAgent,[switch]$DiagnosticEnvelope){
+ if(-not$DiagnosticEnvelope){throw 'ENVELOPE_REQUIRED'}
+ $script:agent=[bool]$DiagnosticUserAgent
+ if($script:status-eq404){throw 'V213_READINESS_HTTP_FAILED; http_status=404; body_kind=other'}
+ return [pscustomobject]@{http_status=$script:status;body=[pscustomobject]@{challenge=('a'*32);worker_version='12345678-1234-1234-1234-123456789abc';ready=($script:status-eq200)}}
+}
+foreach($script:status in @(200,409,404)){
+ foreach($enable in @($false,$true)){
+  $row=Get-V213IsolatedTransportDiagnostic -Origin 'https://ii-r75-qa-bench-012345abcd.synthetic.workers.dev' -ExpectedVersion '12345678-1234-1234-1234-123456789abc' -Challenge ('a'*32) -HttpClient -Agent:$enable
+  if($row.http_status-ne$script:status-or$row.release_qualified-ne$false-or$script:agent-ne$enable-or-not$row.proxy_bypassed){throw 'DIAGNOSTIC_CONTRACT_FAILED'}
+ }
+}
+'''
+            result = subprocess.run([shell, '-NoProfile', '-Command', command], capture_output=True, timeout=25)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_only_new_test_host_empty_cloudflare_page_can_wait(self):
         pending=SimpleNamespace(status_code=404, headers={'server':'cloudflare'}, text='There is nothing here yet')

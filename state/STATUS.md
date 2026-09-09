@@ -4,7 +4,7 @@ Updated2026-09-09. NOT a release certificate. Release identity belongs in README
 
 ## Authority and workspace
 
-- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts from14544d20d7d497c9e78c6cda0094cc43041d4141, branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
+- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts from6f4861d386d02d81be3a205a14c7e8100f8564ce, branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
 - Git source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. Outer project is installed runtime, not Git. Audit tools/receipts: `_workspace/audit-runtime`; historical archives are not market-data inputs.
 - User authorizes continued unattended work. Production installation/sealed publication/exact two-task restoration remain conditional on ALL gates. No real LINE test sends, broker operations, paid fallback, credential disclosure or stale activation replay. CI remains no-Production-mutation.
 - This step: isolated installer verification and SEC chronology code/tests. Real installed runtime, Production Worker/KV, schedules and Router preset unchanged. Earlier isolated QA resources were deleted. Use only existing Router8080 and approved exact model.
@@ -22,6 +22,7 @@ Updated2026-09-09. NOT a release certificate. Release identity belongs in README
 
 - Actual v213 metric caller accepted malformed date prefixes and could borrow a filing date from another document. Current fix requires date-only source end/start/filed, rejects conflicting dates for one URL/tag/period, and removes cross-document fallback. Missing filing remains unknown; valid formulas/scoring weights unchanged.
 - Tests exercise actual metrics and CLI failure/restored hooks, malformed dates/types, conflicting and duplicate records, and distinct-document dates. Logs `sec-chronology-red.log`, `sec-chronology-green.log`; Python705/2 skipped PASS; fresh source-bound live proof/Windows pending. Do not promote old QA as current.
+- Fresh chronology attempts `r75-live-sec-chronology-*` failed readiness404/500 before inference; resources deleted/source/preset unchanged. Failures retained, later200 never qualifies them. Added isolated-only same-HttpClient/default-vs-descriptive-UA diagnostics; default product headers/status/nonce gate unchanged. `r75-readiness-same-client-20260909.json` PASS_READINESS_ONLY, all six clients200; dirty-source diagnostic only, no full Q&A or single root cause established. Python706/2 skipped and PS5.1/7 PASS; fresh clean-source QA still required.
 - Financial ratios still require explicit period/currency/accounting-basis comparability audit. No claim of complete financial reconciliation or genuine20-company reports.
 
 ## Production and installation blockers

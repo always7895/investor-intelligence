@@ -74,7 +74,10 @@ function Test-V213EdgeReadinessResponse($Response,[string]$ExpectedVersion,[stri
     if($ExpectedVersion-and$version-cne$ExpectedVersion){return $false}
     return $true
 }
-function Invoke-V213ReadinessGet([uri]$Uri){
+function Invoke-V213ReadinessGet([uri]$Uri,[switch]$DiagnosticUserAgent,[switch]$DiagnosticEnvelope){
+    if(($DiagnosticUserAgent-or$DiagnosticEnvelope)-and($Uri.Scheme-cne'https'-or$Uri.Port-ne443-or$Uri.UserInfo-or
+       $Uri.Host-cnotmatch'^ii-r75-qa-bench-[0-9a-f]{10}\.[a-z0-9-]+\.workers\.dev$'-or
+       $Uri.AbsolutePath-cne'/v213/readiness')){throw 'ISOLATED_DIAGNOSTIC_SCOPE_INVALID'}
     # Per-request direct transport, identical on PS5.1/7; no global proxy changes.
     Add-Type -AssemblyName System.Net.Http
     $handler=New-Object Net.Http.HttpClientHandler
@@ -85,6 +88,7 @@ function Invoke-V213ReadinessGet([uri]$Uri){
     $client.MaxResponseContentBufferSize=1048576
     $client.DefaultRequestHeaders.TryAddWithoutValidation('cache-control','no-store')|Out-Null
     $client.DefaultRequestHeaders.TryAddWithoutValidation('pragma','no-cache')|Out-Null
+    if($DiagnosticUserAgent){$client.DefaultRequestHeaders.UserAgent.ParseAdd('InvestorIntelligence-IsolatedDiagnostic/1.0')}
     $response=$null;$status=0;$body=''
     try {
         $response=$client.GetAsync($Uri).GetAwaiter().GetResult()
@@ -100,6 +104,7 @@ function Invoke-V213ReadinessGet([uri]$Uri){
             if(-not$readyProperty-or$readyProperty.Value-isnot[bool]-or$readyProperty.Value-or
                -not$codeProperty-or$codeProperty.Value-isnot[string]-or$codeProperty.Value-cne'V213_READINESS_VERSION_MISMATCH'){throw 'HTTP_CONFLICT_REJECTED'}
         }
+        if($DiagnosticEnvelope){return [pscustomobject]@{http_status=$status;body=$parsed}}
         return $parsed
     } catch {
         $failureType=$_.Exception.GetBaseException().GetType().Name
@@ -109,7 +114,8 @@ function Invoke-V213ReadinessGet([uri]$Uri){
         if($response){$response.Dispose()};$client.Dispose();$handler.Dispose()
     }
 }
-function Get-V213IsolatedTransportDiagnostic([string]$Origin,[string]$ExpectedVersion,[string]$Challenge,[switch]$Direct) {
+function Get-V213IsolatedTransportDiagnostic([string]$Origin,[string]$ExpectedVersion,[string]$Challenge,[switch]$Direct,[switch]$HttpClient,[switch]$Agent) {
+    if($Agent-and-not$HttpClient){throw 'ISOLATED_DIAGNOSTIC_SCOPE_INVALID'}
     if($Origin-cnotmatch'^https://ii-r75-qa-bench-[0-9a-f]{10}\.[a-z0-9-]+\.workers\.dev$'-or
        $ExpectedVersion-cnotmatch'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'-or
        $Challenge-cnotmatch'^[0-9a-f]{32}$'){throw 'ISOLATED_DIAGNOSTIC_SCOPE_INVALID'}
@@ -118,6 +124,23 @@ function Get-V213IsolatedTransportDiagnostic([string]$Origin,[string]$ExpectedVe
     $proxy=if($PSVersionTable.PSVersion.Major-ge7){[Net.Http.HttpClient]::DefaultProxy}else{[Net.WebRequest]::DefaultWebProxy}
     $result.proxy_bypassed=($null-eq$proxy-or$proxy.IsBypassed($target))
     $result.direct_requested=[bool]$Direct
+    if($HttpClient){
+        $result.proxy_bypassed=$true;$result.direct_requested=$true
+        try {
+            $response=Invoke-V213ReadinessGet -Uri $target -DiagnosticUserAgent:$Agent -DiagnosticEnvelope
+            $body=$response.body
+            $result.http_status=[int]$response.http_status
+            $result.nonce_match=((Get-V213ReadyField $body 'challenge' '')-ceq$Challenge)
+            $result.version_match=((Get-V213ReadyField $body 'worker_version' '')-ceq$ExpectedVersion)
+            $ready=Get-V213ReadyField $body 'ready' $null
+            $result.ready=($ready-is[bool]-and$ready)
+        } catch {
+            $message=$_.Exception.Message
+            if($message-match'http_status=(\d{1,3})'){$result.http_status=[int]$Matches[1]}
+            if($message-match'body_kind=(empty_worker|not_found|html|other)'){$result.body_kind=$Matches[1]}
+        }
+        return [pscustomobject]$result
+    }
     $options=@{}
     if($Direct){if($PSVersionTable.PSVersion.Major-lt7){throw 'DIAGNOSTIC_DIRECT_REQUIRES_PS7'};$options.NoProxy=$true}
     $text=''

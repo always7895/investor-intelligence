@@ -85,11 +85,12 @@ def isolated_transport_diagnostics(session, origin, version):
     challenge = secrets.token_hex(16)
     url = origin + '/v213/readiness?challenge=' + challenge + '&expected_version=' + version
     rows = []
-    for shell, direct in (('powershell.exe', False), ('pwsh', False), ('pwsh', True)):
-        label = shell + ('-direct' if direct else '')
+    for shell, direct, http, agent in (('powershell.exe', False, False, False), ('pwsh', False, False, False),
+                                      ('pwsh', True, False, False), ('pwsh', True, True, False), ('pwsh', True, True, True)):
+        label = shell + ('-direct' if direct else '') + ('-http' if http else '') + ('-agent' if agent else '')
         try:
             helper = str(ROOT / 'scripts/v213_edge_readiness.ps1').replace("'", "''")
-            command = f"$ErrorActionPreference='Stop';. '{helper}';Get-V213IsolatedTransportDiagnostic -Origin '{origin}' -ExpectedVersion '{version}' -Challenge '{challenge}' {'-Direct' if direct else ''}|ConvertTo-Json -Compress"
+            command = f"$ErrorActionPreference='Stop';. '{helper}';Get-V213IsolatedTransportDiagnostic -Origin '{origin}' -ExpectedVersion '{version}' -Challenge '{challenge}' {'-Direct' if direct else ''} {'-HttpClient' if http else ''} {'-Agent' if agent else ''}|ConvertTo-Json -Compress"
             result = subprocess.run([shell, '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
             if result.returncode: raise RuntimeError('DIAGNOSTIC_TRANSPORT_FAILED')
             data = json.loads(result.stdout)
@@ -246,6 +247,7 @@ def main():
             if mismatch.status_code != 409: raise RuntimeError("VERSION_MISMATCH_ACCEPTED")
             evidence.update(worker_version=version, active_percentage=100, readiness=proofs, convergence="PASS_REAL_ISOLATED", compact_policy_sha256=policy_hash)
             if args.readiness_only:
+                evidence['readiness_only_transport_observations'] = isolated_transport_diagnostics(session, origin, version)
                 evidence.update(status="PASS_READINESS_ONLY", live_qa="NOT_RUN", release_ready=False)
                 return
             os.environ.update(II_LLAMA_BASE_URL="http://127.0.0.1:8080", II_LOCAL_LLM_MODEL=selected, II_LOCAL_LLM_SHARED_SECRET=gateway_secret)
