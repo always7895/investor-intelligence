@@ -4,7 +4,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 ## Authority and workspaces
 
-- Latest fetched starting HEAD38860e730997f7d5b9bccdc242d15e9a904e4c15; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\investor-intelligence-source`; PR39 remains isolated at d58fdaf in `D:\investor-options-presentation-audit`. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
+- Current fetched audit baseline b66b5a398e3122791453e0fead5f18ce923a8fb4; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\investor-intelligence-source`; PR39 remains isolated at d58fdaf in `D:\investor-options-presentation-audit`. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
 - User authorized Production publication/Worker/schedule repair, newly validated data, and project cleanup. No real LINE sends, broker operations, new paid services or arbitrary credential access. Current step changes source/docs and bounded rebuildable artifacts only.
 - Installed runtime `D:\Investor-Intelligence-LINE-Pi` is not this Git worktree. Candidate changes are not installed acceptance.
 
@@ -14,6 +14,13 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 - Last confirmed remote data remains2026-09-08T12:20:02Z, evening promotion12:22:09.595Z; not freshly reverified here.
 - Prior signed recovery returned NOT_COMMITTED, preserving original FAIL and byte-identical journal archive; previous journal scan unresolved0. Never replay that stale bundle.
 - Current sealed schema4 has seven payloads, not fresh options/universe. Candidate containment removes stale carry-forward, but replacement contract/builders/readback/replay/rollback acceptance remains unfinished.
+
+## Current audit increment — malformed evidence dates
+
+- Fetched clean HEAD b66b5a398e3122791453e0fead5f18ce923a8fb4. Reproduced a fail-open in the actual hardened bundle builder: replacing all first-candidate source dates with a valid date prefix plus NOT_A_TIMESTAMP still built a bundle. Negative tests failed before the fix (four malformed formats plus actual caller).
+- Removed invalid-date-prefix rescue in `build_v213_activation_bundle_v2.py` and the upstream `v213_build_v21_public_snapshot.py` evidence guard. Valid date-only disclosure precision and valid ISO offset timestamps remain accepted; malformed times/offsets/suffixes no longer count as evidence. No scoring weights, certified qa.ts, historical receipts or Production objects changed.
+- New actual-bundle and upstream support tests PASS; full Python659/2 skipped PASS (`timestamp-audit-python.log`), Worker160/typecheck, security/docs/workflow/storage gates, PS5.1/7 parse and diff check PASS. This fixes one identified defect class at two admission points, not a completed project-wide defect inventory. Other date-prefix consumers need role-specific review; do not indiscriminately change reporting-period extraction or broker code.
+- Changes remain source-only. Existing protected-source release recertification is still required; reviewed source inventory does not bypass that gate. No deployment, publication or restored schedule claim.
 
 ## Current data findings and progress
 

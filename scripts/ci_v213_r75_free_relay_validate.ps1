@@ -64,6 +64,8 @@ try {
         'scripts/adapters/issuer_directory.py','tests/test_issuer_directory.py',
         'config/public-options-provider-candidates.json','docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md',
         'docs/WORKSPACE_MAINTENANCE.md',
+        'scripts/build_v213_activation_bundle_v2.py','scripts/v213_build_v21_public_snapshot.py',
+        'tests/test_activation_evidence_timestamps.py',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
