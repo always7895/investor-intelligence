@@ -24,6 +24,7 @@ class KvNamespaceIsolationGateTests(unittest.TestCase):
             "config/kv-namespace-policy.json",
             "cloud/wrangler.toml",
             "cloud/src/storage.ts",
+            "cloud/src/v213/public-snapshot.ts",
             "cloud/src/line.ts",
             "cloud/src/worker.ts",
             "cloud/test/storage.test.ts",
@@ -67,6 +68,25 @@ class KvNamespaceIsolationGateTests(unittest.TestCase):
         finally:
             temporary.cleanup()
         self.assertTrue(any("public read path touches tenant-private KV" in item for item in findings))
+
+    def test_current_snapshot_reader_cannot_use_non_public_kv_or_write(self) -> None:
+        for replacement in ('TENANT_PRIVATE_CACHE', 'EPHEMERAL_SECURITY_CACHE'):
+            temporary, root = self.fixture_root()
+            try:
+                path = root / 'cloud/src/v213/public-snapshot.ts'
+                text = path.read_text(encoding='utf-8')
+                self.assertIn('env.PUBLIC_CACHE.get<T>', text)
+                path.write_text(text.replace('env.PUBLIC_CACHE.get<T>', f'env.{replacement}.get<T>'), encoding='utf-8')
+                self.assertTrue(any('public read path touches non-public KV' in item for item in audit_kv_isolation(root)))
+            finally:
+                temporary.cleanup()
+        temporary, root = self.fixture_root()
+        try:
+            path = root / 'cloud/src/v213/public-snapshot.ts'
+            path.write_text(path.read_text(encoding='utf-8') + '\nvoid env.PUBLIC_CACHE.put("fixture", "fixture");\n', encoding='utf-8')
+            self.assertTrue(any('read-only view must not write KV' in item for item in audit_kv_isolation(root)))
+        finally:
+            temporary.cleanup()
 
     def test_rejects_memory_enabled_by_default_and_generic_private_api(self) -> None:
         temporary, root = self.fixture_root()

@@ -133,6 +133,27 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
   });
 
+  it("does not combine a report with another run's fresh pipeline stamp", async () => {
+    class SwitchingKv extends MemoryKv {
+      pointerReads = 0;
+      override async get<T = string>(key: string, type?: "text" | "json"): Promise<T | string | null> {
+        if (key === "snapshot:current") this.pointerReads++;
+        const value = await super.get<T>(key, type);
+        if (key === "snapshot:run-a:v213:top20-report:latest") this.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
+        return value;
+      }
+    }
+    const data = report(); data.generated_at = new Date().toISOString();
+    const kv = new SwitchingKv();
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    kv.values.set("snapshot:run-a:v213:top20-report:latest", JSON.stringify(data));
+    kv.values.set("snapshot:run-a:last_successful_pipeline_timestamp", new Date(Date.now() - 86400000).toISOString());
+    kv.values.set("snapshot:run-b:last_successful_pipeline_timestamp", data.generated_at);
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("已過期");
+    expect(kv.pointerReads).toBe(1);
+  });
+
   it("rejects credential-bearing citations instead of displaying them", async () => {
     const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
     const kv = new MemoryKv(); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);

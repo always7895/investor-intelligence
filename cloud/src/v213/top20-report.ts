@@ -1,6 +1,7 @@
 import { fieldLabel, type FieldLocale } from "./field-labels";
 import { isPublicCitationUrl } from "./public-citation";
-import { publicJson, publicText, type StorageEnv } from "../storage";
+import type { StorageEnv } from "../storage";
+import { pinPublicSnapshot } from "./public-snapshot";
 import type { ParsedQuery } from "../core";
 
 export function v213FieldLocale(value?: string): FieldLocale {
@@ -15,9 +16,10 @@ export async function loadV213FreshTop20Report(
   query: ParsedQuery,
 ): Promise<V213Top20Report | string | null> {
   if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) return null;
-  const report = parseV213Top20Report(await publicJson(env, ["v213:top20-report:latest"]));
+  const view = await pinPublicSnapshot(env);
+  const report = parseV213Top20Report(await view.json(["v213:top20-report:latest"]));
   if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
-  const stamp = await publicText(env, ["last_successful_pipeline_timestamp"]);
+  const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
   if ([stamp, report.generated_at].some(value => {
     const age = (Date.now() - Date.parse(value ?? "")) / 1000;

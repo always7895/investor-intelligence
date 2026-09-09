@@ -136,6 +136,16 @@ def audit_kv_isolation(root: Path = ROOT) -> list[str]:
     if "PUBLIC_CACHE" in line:
         findings.append("cloud/src/line.ts: dedupe/rate-limit code must not touch public KV")
 
+    # The retained v2 storage blob stays frozen. Audit the current report reader
+    # separately; older source-package fixtures may predate this module.
+    public_reader = root / "cloud/src/v213/public-snapshot.ts"
+    if public_reader.exists():
+        text = public_reader.read_text(encoding="utf-8")
+        if re.search(r"TENANT_PRIVATE_CACHE|EPHEMERAL_SECURITY_CACHE|env\.CACHE|privateJson|putPrivateJson", text):
+            findings.append("cloud/src/v213/public-snapshot.ts: public read path touches non-public KV")
+        if re.search(r"\.(?:put|delete)\s*\(", text):
+            findings.append("cloud/src/v213/public-snapshot.ts: read-only view must not write KV")
+
     required_tests = {
         "cloud/test/storage.test.ts": (
             "reads public snapshots only from PUBLIC_CACHE",

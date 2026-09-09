@@ -4,17 +4,24 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Fetched clean starting HEAD309a93a3e712ab0dbc19a71ee60aabf0e0c29031, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Fetched clean starting HEADcf8370fc5b42e8eeb4a1d0a88381fa781fc43ee5, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
 - User authorizes repairs and LINE integration only after all data/work/validation acceptance. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. This step changes source/tests/docs only; no Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
-## Current audit: citation admission before publication
+## Current audit: public snapshot selection
+
+- Found2 additional logic defects: an existing malformed/empty pointer could resolve to absence and resurrect direct public keys; separate report/stamp reads could resolve different snapshots and borrow another run's fresh stamp.
+- Current Top20 uses `v213/public-snapshot.ts`: absent/invalid/valid pointer states, no invalid-pointer fallback, compatible bare IDs/runId alias, frozen read context shared by report/stamp. Retained storage.ts/qa.ts remain byte-identical. Other legacy consumers still require migration or recertification; NOT a global storage fix.
+- Tests include malformed-pointer JSON/text reads with populated direct keys, legacy compatibility, immutable view metadata and pointer switches. Actual Top20 caller must reject run A's stale pipeline stamp even when pointer changes to fresh run B between reads. This fixes read consistency, NOT stored-content integrity or full card run/report-SHA binding.
+- Initial Python failed3 guards: status12008-byte budget, old namespace-negative coverage and retained storage blob. Original log `snapshot-view-python.log` preserved. Restored storage exactly; moved modern reader to its own module and EXPANDED namespace/write-negative checks, no baseline-hash relaxation. Final Python676/2 skipped PASS (`snapshot-view-python-final.log`), Worker208/typecheck, five gates, retained-blob gate and PS5.1/7 parse PASS. Top20 source fixes2/deployed0; global/card-hash/data/release blockers remain.
+
+## Retained audit: citation admission before publication
 
 - Found report schema accepted any bounded https:// string, while evidence rendering rejected credential URLs later. An unsafe-to-display report could pass schema/activation. Formatter-only checks were insufficient.
 - Shared `cloud/src/v213/public-citation.ts` now serves schema and renderer. Reject userinfo, IP/local-host shapes, nonstandard ports, controls/backslashes and credential query/hash keys, including nested encoding. Preserve ordinary escaped-space/percent filenames. This is URL-shape checking, NOT DNS, authority, rights or claim corroboration.
 - Tests exercise normal Top20/detail loaders and actual activation: unsafe citation with correctly recomputed payload digests rejects before any KV write; same fixture with safe citation succeeds. No certified qa.ts or scoring changes. Python producer parity and other admission fields still need audit; no claim that every disclosure/privacy issue is solved.
-- Worker24 files/185 tests and typecheck PASS; security/docs/workflow/storage gates PASS. First Python run failed only STATUS12225-byte budget; history compacted without raising limit. Initial failures retained in `citation-admission-python.log` and `citation-admission-python-final.log` (compaction also omitted the required literal publication flag; restored, test unchanged). PS5.1/7 parse PASS. Final Python675/2 skipped PASS (`citation-admission-python-final2.log`); new scoped code/test defects0, whole-product blockers remain.
-- Commands: pinned Python `-B -m unittest discover -s tests -p 'test_*.py'`; `npm run typecheck`; `npm test -- --run`; four repository gates; PS5.1/7 AST parse. Local regressions do not replace live/installed acceptance.
+- Citation source regression passed Python675/2 skipped, Worker185 and gates; original failures and final proof remain in `citation-admission-python*.log` and Gitcf8370f. Not latest release qualification.
+- Commands: pinned Python `-B -m unittest discover -s tests -p 'test_*.py'`; `npm run typecheck`; `npm test -- --run`; repository gates and PS5.1/7 parse. Local tests do not replace live/install acceptance.
 
 ## Production and release blockers
 
@@ -47,7 +54,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Serenity remains primary public-method lens; Leopold CONTEXT_ONLY, never company proof or score bonus. `research-method-refresh-20260909.json` records actual reference/tool evidence. X direct403 then truncated July31 oEmbed is not current/full stance; another404 remains unverified. Leopold original is historical2024, not today's holdings/facts.
 - Three canonical source/installed skill files hash-matched at synchronization; originals archived `_archive/instruction-sync-20260909T070339Z`. Unsupported installed case sheet replaced by pointer. Documentation is not proof of an unbiased executed screen.
 - Malformed-date-prefix rescue removed at snapshot/bundle admission in2a88e8e; legitimate date-only and actual-caller negatives preserved. Other time consumers require role-specific review.
-- Physical consolidation1113a1c preserved worktree HEADs/branches and signed evidence; five former roots absent, no junction substitutes. Relocated regressions passed (`consolidation-*.log`), runtime actions unchanged. Prior bounded pyc cleanup evidence remains in Git; no unique evidence/locks/rollback/runtime deletion.
+- Consolidation1113a1c preserved HEADs/branches/evidence; five old roots absent, no junction substitutes. Relocated tests passed (`consolidation-*.log`), runtime unchanged. Bounded cleanup proofs remain in Git; no unique evidence/locks/rollback/runtime deletion.
 - Old-named registered runner last observed Running/Auto with2.337.0 junction targets: not disposable. Installed inventory had57 file-stat errors, not complete deletion-safety proof. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs cleanup; no broad git clean, junction traversal or drive-wide deletion.
 
 ## Next actions
