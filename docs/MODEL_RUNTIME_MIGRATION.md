@@ -33,4 +33,8 @@ Required implementation, still pending:
 
 The supplied Windows runner was compared against all275 files of the official v2.337.0 archive (SHA256 `1150692afa94e71f872017e254ea55b6eece1eece3fe7e3a6d4c93d0a1b85cfc`). Registration uses an ephemeral runner and the distinct `investor-intelligence-reviewed` label, without the old `investor-intelligence` label. This prevents it from accepting the known old queued release workflow. The current workflow additionally restricts the actor to the repository owner.
 
+Actual [Windows run34303303119](https://github.com/always7895/investor-intelligence/actions/runs/34303303119) succeeded on exact source `4fade419e02d1b0fd9d7c9a9361ed25de79d8f77`. All package/upload/release steps were skipped and artifact count was zero. The ephemeral runner then exited and deregistered as intended; it must be re-armed for the next reviewed job. This is not Q5/EXE/product qualification.
+
+實際 Windows 工作已成功完成；未產生發布檔案，單次 runner 已自動退出／解除註冊。下一次受控工作需重新登記，並非持續運行的服務。
+
 The authoritative workflow's `validation_only` input is opt-in and excludes every package/upload/release-qualification step. It proves runner execution and regression only, never Q5 acceptance or Production deployment. The host is not represented as a VM/security sandbox; only reviewed same-owner code may execute. Runner credentials stay in its local credential store, outside Git/artifacts; registration tokens are not printed or passed in command arguments.
