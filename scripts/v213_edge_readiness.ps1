@@ -52,6 +52,9 @@ function Get-V213ReadyField($Value,[string]$Name,$Default=$null){
     if($null-eq$Value){return $Default};$p=$Value.PSObject.Properties[$Name];if($null-eq$p){return $Default};return $p.Value
 }
 function Test-V213EdgeReadinessResponse($Response,[string]$ExpectedVersion,[string]$Challenge,[string]$PolicyHash){
+    foreach($name in @('no_write','ready','challenge','worker_version','schema_version','parser_schema','compatibility','publication_contract_id','publication_contract_sha256','compact_policy_sha256','code')){
+        if($null-ne$Response){$property=$Response.PSObject.Properties[$name];if($property-and$property.Value-is[array]){throw 'V213_READINESS_SCALAR_REQUIRED'}}
+    }
     $noWrite=Get-V213ReadyField $Response 'no_write' $false
     $isReady=Get-V213ReadyField $Response 'ready' $false
     if($noWrite-isnot[bool]-or-not$noWrite-or$isReady-isnot[bool]-or(Get-V213ReadyField $Response 'challenge' '')-cne$Challenge){throw 'V213_READINESS_NONCE_OR_NO_WRITE_INVALID'}
@@ -72,21 +75,68 @@ function Test-V213EdgeReadinessResponse($Response,[string]$ExpectedVersion,[stri
     return $true
 }
 function Invoke-V213ReadinessGet([uri]$Uri){
-    try{return Invoke-RestMethod -Method Get -Uri $Uri -Headers @{'cache-control'='no-store';'pragma'='no-cache'} -TimeoutSec 10 -MaximumRedirection 0}
-    catch{
-        $failureType=$_.Exception.GetType().Name
-        $response=Get-V213ReadyField $_.Exception 'Response' $null
-        $status=[int](Get-V213ReadyField $response 'StatusCode' 0)
-        $failure="V213_READINESS_HTTP_FAILED; http_status=$status; exception_type=$failureType"
-        $body=''
-        if($_.ErrorDetails){$body=[string]$_.ErrorDetails.Message}
-        if(-not$body-and$_.Exception.Response){
-            try{$reader=New-Object IO.StreamReader($_.Exception.Response.GetResponseStream());try{$body=$reader.ReadToEnd()}finally{$reader.Dispose()}}catch{}
+    # Per-request direct transport, identical on PS5.1/7; no global proxy changes.
+    Add-Type -AssemblyName System.Net.Http
+    $handler=New-Object Net.Http.HttpClientHandler
+    $handler.UseProxy=$false;$handler.UseCookies=$false
+    $handler.UseDefaultCredentials=$false;$handler.AllowAutoRedirect=$false
+    $client=New-Object Net.Http.HttpClient($handler)
+    $client.Timeout=[TimeSpan]::FromSeconds(10)
+    $client.MaxResponseContentBufferSize=1048576
+    $client.DefaultRequestHeaders.TryAddWithoutValidation('cache-control','no-store')|Out-Null
+    $client.DefaultRequestHeaders.TryAddWithoutValidation('pragma','no-cache')|Out-Null
+    $response=$null;$status=0;$body=''
+    try {
+        $response=$client.GetAsync($Uri).GetAwaiter().GetResult()
+        $status=[int]$response.StatusCode
+        $bytes=$response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+        $utf8=New-Object Text.UTF8Encoding($false,$true)
+        $body=$utf8.GetString($bytes)
+        if($status-notin@(200,409)){throw 'HTTP_STATUS_REJECTED'}
+        $parsed=$body|ConvertFrom-Json
+        if($status-eq409){
+            $readyProperty=$parsed.PSObject.Properties['ready']
+            $codeProperty=$parsed.PSObject.Properties['code']
+            if(-not$readyProperty-or$readyProperty.Value-isnot[bool]-or$readyProperty.Value-or
+               -not$codeProperty-or$codeProperty.Value-isnot[string]-or$codeProperty.Value-cne'V213_READINESS_VERSION_MISMATCH'){throw 'HTTP_CONFLICT_REJECTED'}
         }
-        try{$parsed=$body|ConvertFrom-Json}catch{throw $failure}
-        if(-not$parsed){throw $failure}
         return $parsed
+    } catch {
+        $failureType=$_.Exception.GetBaseException().GetType().Name
+        $bodyKind=if($body-match'There is nothing here yet'){'empty_worker'}elseif($body.Trim()-ceq'Not found'){'not_found'}elseif($body-match'(?i)<html'){'html'}else{'other'}
+        throw "V213_READINESS_HTTP_FAILED; http_status=$status; exception_type=$failureType; body_kind=$bodyKind"
+    } finally {
+        if($response){$response.Dispose()};$client.Dispose();$handler.Dispose()
     }
+}
+function Get-V213IsolatedTransportDiagnostic([string]$Origin,[string]$ExpectedVersion,[string]$Challenge,[switch]$Direct) {
+    if($Origin-cnotmatch'^https://ii-r75-qa-bench-[0-9a-f]{10}\.[a-z0-9-]+\.workers\.dev$'-or
+       $ExpectedVersion-cnotmatch'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'-or
+       $Challenge-cnotmatch'^[0-9a-f]{32}$'){throw 'ISOLATED_DIAGNOSTIC_SCOPE_INVALID'}
+    $target=[uri]($Origin+'/v213/readiness?challenge='+$Challenge+'&expected_version='+$ExpectedVersion)
+    $result=[ordered]@{scope='ISOLATED_TRANSPORT_DIAGNOSTIC';release_qualified=$false;http_status=0;body_kind='other';nonce_match=$false;version_match=$false;ready=$false}
+    $proxy=if($PSVersionTable.PSVersion.Major-ge7){[Net.Http.HttpClient]::DefaultProxy}else{[Net.WebRequest]::DefaultWebProxy}
+    $result.proxy_bypassed=($null-eq$proxy-or$proxy.IsBypassed($target))
+    $result.direct_requested=[bool]$Direct
+    $options=@{}
+    if($Direct){if($PSVersionTable.PSVersion.Major-lt7){throw 'DIAGNOSTIC_DIRECT_REQUIRES_PS7'};$options.NoProxy=$true}
+    $text=''
+    try {
+        $response=Invoke-WebRequest -UseBasicParsing -Uri $target -Headers @{'cache-control'='no-store';'pragma'='no-cache'} -MaximumRedirection 0 -TimeoutSec 10 @options
+        $result.http_status=[int]$response.StatusCode;$text=[string]$response.Content
+    } catch {
+        $result.http_status=[int](Get-V213ReadyField (Get-V213ReadyField $_.Exception 'Response' $null) 'StatusCode' 0)
+        if($_.ErrorDetails){$text=[string]$_.ErrorDetails.Message}
+    }
+    $result.body_kind=if($text-match'There is nothing here yet'){'empty_worker'}elseif($text.Trim()-ceq'Not found'){'not_found'}elseif($text-match'(?i)<html'){'html'}else{'other'}
+    try {
+        $body=$text|ConvertFrom-Json
+        $result.nonce_match=((Get-V213ReadyField $body 'challenge' '')-ceq$Challenge)
+        $result.version_match=((Get-V213ReadyField $body 'worker_version' '')-ceq$ExpectedVersion)
+        $ready=Get-V213ReadyField $body 'ready' $null
+        $result.ready=($ready-is[bool]-and$ready)
+    } catch { }
+    return [pscustomobject]$result
 }
 function Wait-V213EdgeReadiness {
     param([string]$Origin,[string]$ExpectedVersion='',[string]$ProjectRoot,[int]$MaxAttempts=8,[int]$DelayMilliseconds=1000,[scriptblock]$Transport=$null)

@@ -77,6 +77,44 @@ def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep
     raise RuntimeError("ISOLATED_ORIGIN_PROVISIONING_TIMEOUT")
 
 
+def isolated_transport_diagnostics(session, origin, version):
+    """One observation per client, after a failed gate. Never retry/qualify it."""
+    if (not re.fullmatch(r'https://ii-r75-qa-bench-[0-9a-f]{10}\.[a-z0-9-]+\.workers\.dev', origin)
+            or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', version)):
+        raise RuntimeError('ISOLATED_DIAGNOSTIC_SCOPE_INVALID')
+    challenge = secrets.token_hex(16)
+    url = origin + '/v213/readiness?challenge=' + challenge + '&expected_version=' + version
+    rows = []
+    for shell, direct in (('powershell.exe', False), ('pwsh', False), ('pwsh', True)):
+        label = shell + ('-direct' if direct else '')
+        try:
+            helper = str(ROOT / 'scripts/v213_edge_readiness.ps1').replace("'", "''")
+            command = f"$ErrorActionPreference='Stop';. '{helper}';Get-V213IsolatedTransportDiagnostic -Origin '{origin}' -ExpectedVersion '{version}' -Challenge '{challenge}' {'-Direct' if direct else ''}|ConvertTo-Json -Compress"
+            result = subprocess.run([shell, '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
+            if result.returncode: raise RuntimeError('DIAGNOSTIC_TRANSPORT_FAILED')
+            data = json.loads(result.stdout)
+            allowed = {'scope', 'release_qualified', 'http_status', 'body_kind', 'nonce_match', 'version_match', 'ready', 'proxy_bypassed', 'direct_requested'}
+            if set(data) != allowed or data['release_qualified'] is not False: raise RuntimeError('DIAGNOSTIC_SCHEMA_INVALID')
+            rows.append({'client': label, **data})
+        except Exception:
+            rows.append({'client': label, 'diagnostic_failed': True})
+    try:
+        response = session.get(url, headers={'cache-control': 'no-store', 'pragma': 'no-cache'}, timeout=10, allow_redirects=False)
+        text = response.text if len(response.content) <= 1048576 else ''
+        try: body = json.loads(text)
+        except ValueError: body = {}
+        if not isinstance(body, dict): body = {}
+        rows.append({'client': 'python', 'scope': 'ISOLATED_TRANSPORT_DIAGNOSTIC', 'release_qualified': False,
+                     'http_status': response.status_code,
+                     'body_kind': 'empty_worker' if 'There is nothing here yet' in text else 'not_found' if text.strip() == 'Not found' else 'html' if '<html' in text.lower() else 'other',
+                     'nonce_match': body.get('challenge') == challenge, 'version_match': body.get('worker_version') == version,
+                     'ready': body.get('ready') is True,
+                     'proxy_bypassed': requests.utils.select_proxy(url, requests.utils.get_environ_proxies(url)) is None})
+    except Exception:
+        rows.append({'client': 'python', 'diagnostic_failed': True})
+    return rows
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--live-isolated", action="store_true")
@@ -185,6 +223,8 @@ def main():
                 evidence["readiness_error_codes"] = codes
                 evidence["readiness_transport_statuses"] = re.findall(r'http_status=(\d{1,3})', check.stderr)
                 evidence["readiness_transport_exception_types"] = re.findall(r'exception_type=([A-Za-z]+)', check.stderr)
+                evidence['readiness_transport_body_kinds'] = re.findall(r'body_kind=([a-z_]+)', check.stderr)
+                evidence['failed_gate_transport_observations'] = isolated_transport_diagnostics(session, origin, version)
                 try:
                     diagnostic = session.get(origin+"/v213/readiness", params={"expected_version":version,"challenge":secrets.token_hex(16)}, timeout=15)
                     evidence["readiness_diagnostic_http_status"] = diagnostic.status_code

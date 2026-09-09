@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from verify_r75_qa_evidence import verify
 from v213_model_profile import parse_profile, profile_sha256
-from v213_qa_live_gate import router_limits, validate_router_proof, wait_isolated_origin
+from v213_qa_live_gate import router_limits, validate_router_proof, wait_isolated_origin, isolated_transport_diagnostics
 
 class LiveQaQualificationTests(unittest.TestCase):
     def setUp(self):
@@ -21,6 +21,30 @@ class LiveQaQualificationTests(unittest.TestCase):
         self.now = datetime.now(timezone.utc)
         self.proof['started_at'] = (self.now - timedelta(minutes=1)).isoformat()
         self.proof['completed_at'] = self.now.isoformat()
+
+    def test_failed_gate_diagnostics_are_scoped_bounded_and_not_qualification(self):
+        origin = 'https://ii-r75-qa-bench-012345abcd.synthetic.workers.dev'
+        version = '12345678-1234-1234-1234-123456789abc'
+        body = {'scope': 'ISOLATED_TRANSPORT_DIAGNOSTIC', 'release_qualified': False,
+                'http_status': 200, 'body_kind': 'other', 'nonce_match': True,
+                'version_match': True, 'ready': True, 'proxy_bypassed': True, 'direct_requested': False}
+        response = SimpleNamespace(status_code=200, text='{}', content=b'{}')
+        session = SimpleNamespace(get=Mock(return_value=response))
+        with patch('v213_qa_live_gate.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps(body))) as run:
+            rows = isolated_transport_diagnostics(session, origin, version)
+            self.assertEqual(run.call_count, 3)
+            self.assertTrue(all(r['release_qualified'] is False for r in rows))
+            self.assertEqual(session.get.call_count, 1)
+            self.assertFalse(session.get.call_args.kwargs['allow_redirects'])
+            self.assertEqual(session.get.call_args.kwargs['timeout'], 10)
+            for bad in ('https://production.synthetic.workers.dev', origin + '/path', origin + '?secret=redacted'):
+                with self.assertRaisesRegex(RuntimeError, 'SCOPE_INVALID'):
+                    isolated_transport_diagnostics(session, bad, version)
+            self.assertEqual(run.call_count, 3)
+        with patch('v213_qa_live_gate.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps({**body, 'private': 'PRIVATE_SENTINEL'}))):
+            rows = isolated_transport_diagnostics(session, origin, version)
+            self.assertTrue(rows[0]['diagnostic_failed'])
+            self.assertNotIn('PRIVATE_SENTINEL', json.dumps(rows))
 
     def test_only_new_test_host_empty_cloudflare_page_can_wait(self):
         pending=SimpleNamespace(status_code=404, headers={'server':'cloudflare'}, text='There is nothing here yet')
@@ -41,6 +65,41 @@ class LiveQaQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'PROVISIONING_TIMEOUT'):
             wait_isolated_origin(session,'https://ii-r75-qa-bench-012345abcd.synthetic.workers.dev',lambda:now[0],lambda n:now.__setitem__(0,now[0]+n))
         self.assertEqual(now[0],20)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PowerShell transport')
+    def test_readiness_http_error_cannot_become_ready_json(self):
+        import http.server, threading, subprocess, shutil, os
+        state = {'status': 200, 'ready': True}
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_GET(self):
+                state.setdefault('paths', []).append(self.path)
+                body = json.dumps({'ready': state['ready'], 'code': 'V213_READINESS_VERSION_MISMATCH',
+                                   'note': 'PRIVATE_DIAGNOSTIC_SENTINEL'}).encode()
+                if state['ready'] == 'invalid_utf8': body = b'\xff'
+                if state['ready'] == 'oversize': body = b' ' * 1048577
+                self.send_response(state['status']); self.send_header('Content-Length', str(len(body)))
+                if state['status'] == 302: self.send_header('Location', '/must-not-follow')
+                self.end_headers()
+                try: self.wfile.write(body)
+                except (ConnectionError, OSError): pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            helper = str(ROOT / 'scripts/v213_edge_readiness.ps1').replace("'", "''")
+            command = f"$ErrorActionPreference='Stop';. '{helper}'; Invoke-V213ReadinessGet 'http://127.0.0.1:{server.server_port}/v213/readiness'|Out-Null"
+            for shell in ('powershell.exe', 'pwsh.exe'):
+                if not shutil.which(shell): continue
+                for status, ready in ((200, True), (409, False), (409, True), (409, [False]), (500, True), (404, True), (302, True), (200, 'invalid_utf8'), (200, 'oversize')):
+                    with self.subTest(shell=shell, status=status, ready=ready):
+                        state.update(status=status, ready=ready, paths=[])
+                        env = {**os.environ, 'HTTP_PROXY': 'http://127.0.0.1:9', 'HTTPS_PROXY': 'http://127.0.0.1:9', 'ALL_PROXY': 'http://127.0.0.1:9', 'NO_PROXY': ''}
+                        result = subprocess.run([shell, '-NoProfile', '-Command', command], env=env, capture_output=True, timeout=20)
+                        self.assertEqual(result.returncode == 0, (status == 200 and ready is True) or (status == 409 and ready is False))
+                        self.assertEqual(state['paths'], ['/v213/readiness'])
+                        self.assertNotIn(b'PRIVATE_DIAGNOSTIC_SENTINEL', result.stdout + result.stderr)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=5)
 
     def test_router_proof_rejects_empty_multiple_or_non_integer_limits(self):
         listener = {'pid': 17, 'name': 'llama-server'}

@@ -52,6 +52,14 @@ The later `state/exe-local-route-final-20260909.json` records the actual compile
 
 This observes off/on output behavior and local caller completion, **not** graded-effort semantics, best-mode selection, broad answer quality, a cold-load comparison, installed EXE end-to-end acceptance or release readiness. The initial-model-state field is only a boolean membership check, not a load trace. Dirty-source observation and `release_qualified=false` remain; the release verifier explicitly rejects this receipt. Earlier failures remain intact.
 
+### Readiness transport and isolated Q&A follow-up
+
+The failed authorized run and two diagnostic runs remain in audit-runtime (`r75-live-authorized-*`, `r75-readiness-transport-diagnostic-*`, `r75-readiness-direct-control-*`). PS7 selected a proxy where other clients reported bypass, but subsequent status differences do not prove a single cause for every404/500. Diagnostic observations cannot qualify a failed gate.
+
+The shared readiness transport now uses a per-request HttpClient handler: direct connection, no cookies/default credentials/redirects,10s timeout,1MiB response cap and strict UTF-8. It does not modify global proxy settings. Non200 HTTP responses fail except an explicit409 version mismatch; scalar arrays cannot masquerade as primitive readiness fields. The original parser/version/hash/nonce and three-consecutive-proof rules remain.
+
+A new `r75-live-direct-transport-20260909.json` passed all10 real Q5 none-mode cold/warm cases (maximum2593ms), asynchronous reference completion and negative lease/replay/model/profile checks. The independent verifier accepted its exact runtime manifest/profile; cleanup, unchanged preset/source and no real LINE/Production mutation were confirmed. This is model-Q&A qualification using synthetic public data, not licensed financial-data, all-THINK-mode, installer or whole-release acceptance. The historical default receipt is not overwritten; a future release must explicitly bind a fresh qualified receipt and its archive/Windows evidence.
+
 Required future acceptance:
 
 1. Probe only the explicitly selected model on the approved Router, serially, without starting another model/server or modifying presets.
