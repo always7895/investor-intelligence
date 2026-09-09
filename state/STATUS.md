@@ -4,19 +4,25 @@ Updated2026-09-09. Current acceptance, NOT a release certificate. Detailed histo
 
 ## Authority and workspaces
 
-- Fetched clean starting HEAD e79554e99d5f0eadd0b99b7f907abbb1ca9d5692 on `fix/options-provenance-audit` (PR37). Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 stays isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer; no implicit review-branch integration.
+- Fetched clean starting HEAD 2b5419b88304e4dc113e1598c04ae2170376592c on `fix/options-provenance-audit` (PR37). Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 stays isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer; no implicit review-branch integration.
 - User currently authorizes completing verified data and subsequent LINE integration, alongside earlier reviewed Production/schedule repair. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. This step changes source/tests/docs only; network research is public/read-only.
 - Outer `D:\Investor-Intelligence-LINE-Pi` is installed runtime, NOT this Git worktree. Audit tools/evidence are `_workspace/audit-runtime`; backups `_archive/history-backups`. Never package/scan those two trees as runtime market data.
 
 ## Current implementation: honest historical-return inputs
 
-- Actual pre-fix builder admitted600 days as two-year annualized return and120 days as six-month return. Executed old e79554e caller on synthetic100→120 inputs:600d yielded0.11738177496958224 annualized;120d yielded0.19999999999999996 short return. New caller returns unavailable for those incomplete windows. This is a synthetic regression, not market performance.
-- Existing `build_v212_top20_report.py` now uses shared `historical_return_evidence.py`: complete24/6 calendar-month targets, leap/month-end handling, last available observation on/before target within7 days, actual elapsed days/365.25. Reject invalid prices, duplicate/reversed dates and non-finite results; do not drop an invalid final observation and advance retrieval time over an older price.
+- Fixed actual admission of600/120 days as2y/6m. Old-source synthetic100→120 reproductions and new unavailable results remain in Git at2b5419b; not market performance.
+- Shared `historical_return_evidence.py` serves the existing builder: complete calendar windows, bounded backward alignment, ACT/365.25; invalid prices/dates fail closed without dropping an invalid final observation.
 - Existing CLI also writes an explicitly unqualified return-evidence sidecar containing actual start/end dates/prices, cumulative/annualized calculations and matching report-file SHA. It is NOT in the public seven-field schema or sealed payload. Currency/adjustment/dividend/calendar verification remains unknown; public eligibility false. No live Yahoo collection or new20-stock data qualification claimed.
-- Required-module check added to source `run-v212-local.ps1`; compatibility function and normal CLI remain. Current package stages `git archive`, so tracked helper is included; actual extracted installation still needs qualification. Reviewed CI inventory updated with exact paths, no wildcard exemption.
-- New tests10 PASS plus existing report tests4 PASS, including real CLI→build→market caller→calculation→atomic report/sidecar with20 synthetic tickers; only external inputs mocked. Includes insufficient history, leap/month ends, bounded alignment, NaN/duplicate/reversal/overflow, output collision and file-SHA checks. First full regression failed only the required historical-status command pointer; restored it without changing the test. Initial log `return-evidence-python.log` preserved. Final Python674/2 skipped PASS (`return-evidence-python-final2.log`); Worker163/typecheck, security/docs/workflow/storage and PS5.1/7 parse PASS.
+- Source wrapper requires the new helper; compatibility CLI retained. Git-archive packaging includes it, but actual extracted installation remains unqualified.
+- Return-evidence actual CLI/20 synthetic ticker and negative regressions passed: Python674/2 skipped, Worker163/typecheck and gates (`return-evidence-python-final2.log`). Initial historical-pointer failure preserved; these are not latest release qualification.
 - Validation commands: pinned Python `-B -m unittest discover -s tests -p 'test_*.py'`; `npm run typecheck`; `npm test -- --run`; four repository gates above and PS5.1/7 AST parsing of both changed PowerShell files.
-- Public research refresh: AMD original Q2 release retrieved at `https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results` (fetch response mtttvgu2ollk18). Broadcom original Q3 release fetch aborted; search numbers not admitted. AMD remains an issuer-only source, not an independently qualified detailed report.
+- Prior AMD Q2 original retrieved (mtttvgu2ollk18); Broadcom original aborted. Neither search numbers nor issuer-only facts were promoted to a qualified report.
+
+## Broker and international research discovery expansion
+
+- Added15 T3/discovery_only/metadata_only candidates: six brokers/banks, three asset managers and six international reporting/research publishers. [Coverage and probes](../docs/PUBLIC_SOURCE_COVERAGE.md) records exact scope/URLs. Explicit `config/authoritative-source-catalog.research-candidate.json` reuses the same loader/gates/source fragments:116 candidates; default reviewed catalog unchanged101. No second collector or automatic activation.
+- Six public sample fetches: four readable article/landing pages, Goldman403, Morgan Stanley aborted. Other entries remain search leads/proposals. No paid/login bypass, quote eligibility, account/private data or independent company-claim qualification.
+- Initial default-catalog expansion caused6 engine errors (`116 != 101`); preserved in `broker-source-catalog-python.log`. Restored the default unchanged; did NOT relax frozen engine/activation contracts. Tests enforce candidate/base policy and original-record equality, and reject forced activation without rights. Final Python675/2 skipped, Worker163/typecheck, security/docs/workflow/storage/adapter gates and PS5.1/7 parse PASS (`broker-source-catalog-python-final.log`); new scoped code/test defects0. No Production/LINE/storage/schedule mutation; prior whole-product blockers remain.
 
 ## Production remains in maintenance
 
@@ -53,7 +59,7 @@ Updated2026-09-09. Current acceptance, NOT a release certificate. Detailed histo
 ## Consolidation and cleanup retained
 
 - Physical move in1113a1c used worktree move/repair; source/reviews/tools under `_workspace`, history under `_archive`. Five old roots absent, no junction substitutes, HEADs/branches/signed evidence preserved. Relocated full regressions passed (`consolidation-*.log`); runtime actions unchanged.
-- Prior bounded cleanup:654 untracked pyc/10 directories/7,837,559 bytes across three worktrees; earlier source467/4/5,755,638. Ownership/containment/type/identity checked. No source, locks, unique evidence, rollback or active runtime deleted.
+- Prior bounded pyc cleanup and ownership/containment proofs remain in Git. No source/locks/unique evidence/rollback/active runtime deleted.
 - Old-named registered runner is Running/Auto with2.337.0 junction targets, not disposable. Installed inventory had57 file-stat errors; no complete dependency/deletion-safety claim. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs further cleanup.
 - Instruction budgets enforced by tests; history kept in Git rather than growing STATUS. Fewer bytes do not prove latency/accuracy. No broad git clean, junction traversal or drive-wide deletion.
 

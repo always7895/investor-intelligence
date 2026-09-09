@@ -43,10 +43,34 @@ Every result is `LOCAL_PUBLIC_SOURCE_OBSERVATIONS`, `publication_eligible=false`
 
 Registry security flags require actual booleans and integer limits cannot silently truncate. Nonstandard HTTPS ports and credential-bearing URLs fail without echoing credentials. A subdomain admission cannot admit its parent. Evidence rejects nonfinite payloads, naive clocks and stacked future-time tolerances. Shared JSON parsing rejects duplicate fields/nonfinite constants. Duplicate observations do not alter a set hash or increase independent corroboration.
 
+## Public broker, asset-manager and media candidates — 2026-09-09
+
+Added15 **disabled discovery candidates** using the existing authoritative catalog loader, planner and gates, not a second collector or publication workflow. Explicit candidate manifest `config/authoritative-source-catalog.research-candidate.json` has116 entries; the reviewed default remains101. Candidate inventory is neither116 working feeds nor116 independent witnesses. Fragment: `config/authoritative-sources/public-research-candidates.json`. All new records are T3 / discovery_only / metadata_only, without adapters or credentials; access, redistribution, article schema and runtime gates remain unqualified.
+
+| Candidate group | Publishers | Permitted research role after admission |
+| --- | --- | --- |
+| Broker/bank public research | Goldman Sachs, J.P. Morgan, Morgan Stanley, Charles Schwab, Fidelity, UBS | Dated analyst views, macro/industry hypotheses and education. Not broker accounts, customer-only reports, executed trades or authoritative option quotes. |
+| Investment-manager public research | BlackRock Investment Institute, Vanguard, PIMCO | Dated allocation, macro, rates and credit views; retain assumptions, horizon, revisions and disclosures. Not company-order proof or guaranteed returns. |
+| International market reporting | Reuters, Bloomberg, Financial Times, Wall Street Journal, CNBC, Morningstar | Publicly accessible original reporting and research leads only. Paid terminals, Pro/premium reports, subscriber feeds and full-article republication excluded. |
+
+Actual public tool checks (`web_search` mttuyika2fxi99; `fetch_content` mttv0ik8mvpllv):
+
+- Goldman sample `https://www.goldmansachs.com/insights/outlooks/2026-outlooks`: HTTP403, retained as failed. Morgan Stanley sample `https://www.morganstanley.com/insights/articles/investment-outlook-shaping-markets-2026`: aborted, not verified.
+- J.P. Morgan `https://www.jpmorgan.com/insights/global-research/outlook/mid-year-outlook`: readable page returned. Fidelity `https://www.fidelity.com/learning-center/viewpoints`, Vanguard `https://corporate.vanguard.com/vemo`, PIMCO `https://www.pimco.com/us/en/insights`: landing-page text returned. This is not four qualified article feeds or proof of financial claims.
+- Schwab/BlackRock were search-discovered, not directly checked. UBS search returned an ambiguous nested URL; only the publisher root is retained for discovery, not a fabricated article endpoint. The six international reporting sites are proposed candidates, not newly fetched or licensed feeds.
+
+Six sample fetches, four readable returns, one403 and one aborted request. No paid fallback, authentication/paywall bypass, cookies or account data used. Search-synthesized forecasts were not promoted to verified observations.
+
+Pair by issuer/security identity, claim, unit/currency, period and source role. A broker quoting an issuer or official statistic does not become another independent witness to that fact. Syndication, shared press releases and affiliated brands require lineage review; different domains alone do not prove independence. Original analyst views remain attributed views, not Serenity's views. Retain conflicts and contrary evidence; do not average incompatible targets or fill undisclosed orders from analyst conjecture.
+
+Inspect explicitly with `python scripts/authoritative_source_catalog.py --manifest config/authoritative-source-catalog.research-candidate.json`. Candidate/base policies and all original source records are checked for equality in tests; only the added fragment differs.
+
+**Release boundary:** initially appending the fragment to the default manifest caused six actual engine regressions (`Catalog count changed: 116 != 101`). Those failures remain in `broker-source-catalog-python.log`. The default was restored unchanged and the expansion isolated through the existing explicit manifest parameter. Existing activation validators still pin the reviewed101-source plan; they were NOT relaxed to accept the expanded candidate catalog. A future runtime plan needs versioned review/recertification; do not publish a116-source plan under the old101-source contract or silently restamp the old plan. No new candidate is runtime-enabled or LINE quote-eligible.
+
 ## 未完成事項／Remaining
 
 - ECB／TWSE 已在核准 Python3.12.10＋鎖定 certifi 的直接 CLI 通過；既有系統 Python3.13.15 的失敗不改寫。全球憑證儲存區未變更、未降低 verify flags、不得使用 `verify=false`。
-- GitHub 權威 Windows workflow 仍等待 runner；repository runner API 登記數為0。本機通過不是 GitHub／安裝／完整發布驗收。
+- GitHub／Windows／安裝發布驗收以 [目前狀態](../state/STATUS.md) 為準；不沿用歷史 runner 清單推斷現況。本機通過不是完整發布驗收。
 - 股票與期權的美股同標的多源報價、新聞跨出版機構去重／主張核實，以及新來源公開再散布授權仍未完成。
 - 新增的 RSS 是官方公告，不代表已覆蓋 Reuters/AP 等新聞，亦不代表所有全球市場或所有資料類型已多元化。
-- PR39 分支既有五個 Python 測試失敗、Windows／live／封裝資格仍需獨立解決。不能以本分支的通過結果代替。
+- PR39 的證據錯誤與 Windows／live／封裝資格仍需獨立解決；目前缺陷紀錄見 STATUS，不以本分支通過代替。

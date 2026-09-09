@@ -71,6 +71,8 @@ try {
         'state/research-dossiers/TSEM-20260909.json','tests/test_research_dossier_receipts.py',
         'scripts/build_v212_top20_report.py','scripts/historical_return_evidence.py','run-v212-local.ps1',
         'tests/test_v212_top20_report.py','tests/test_historical_return_evidence.py',
+        'config/authoritative-source-catalog.research-candidate.json','config/authoritative-sources/public-research-candidates.json',
+        'tests/test_authoritative_source_catalog.py',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
