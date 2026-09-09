@@ -14,6 +14,15 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 - Do not replay the previous Production activation to test an installer. Sealed object integrity and pointer-last commit are mandatory; legacy single-report writes are not a substitute.
 - Pi installs, if requested, must use project-local `pi install -l ...`; log the command, never install globally.
 
+## Efficient execution / 精簡執行
+
+- Keep this file as the engineering entrypoint; load the research skill only for research. Read current status first, then only the caller, validators and tests relevant to the task.
+- `state/STATUS.md` holds current findings and next actions, not an accumulating transcript. Preserve dated history in Git and immutable receipts; never restamp evidence.
+- Keep one authoritative R75 pipeline, shared adapters/validators and exact dependency locks. Discovery is not scored research; collection, rights, publication and release acceptance are separate gates.
+- Before deletion, prove ownership, no tracked/unique evidence, reproducibility and no task/service/process dependency. Never follow junctions or use broad `git clean -xfd`. Folder names and age do not establish disuse.
+- Remove only bounded reproducible artifacts; keep rollback journals, receipts, unmerged worktrees, active runtimes/models and unrelated projects. Read [workspace maintenance](docs/WORKSPACE_MAINTENANCE.md) before disk cleanup.
+- Measure actual bytes/tests/latency; do not claim maximum efficiency, token savings or whole-product completion from a scoped change.
+
 ## Work and evidence / 執行與證據
 
 Make small reviewable commits. Test the actual user-facing caller, not merely an internal formatter. Validate installed task actions separately from source templates. A NoSync local refresh is not cloud publication; a healthy model endpoint is not a completed answer.

@@ -63,6 +63,7 @@ try {
         'scripts/build_line_public_options.py','tests/test_build_line_public_options.py',
         'scripts/adapters/issuer_directory.py','tests/test_issuer_directory.py',
         'config/public-options-provider-candidates.json','docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md',
+        'docs/WORKSPACE_MAINTENANCE.md',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
