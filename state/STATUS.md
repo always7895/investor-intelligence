@@ -1,5 +1,14 @@
 # R75 takeover status
 
+## Authorized production recovery maintenance — 2026-09-09 (IN PROGRESS)
+
+- User explicitly authorized Production transaction/Worker/schedule repair and publication of newly validated data. Started from fetched clean HEAD `8dc1d2bfec3d685cc0717ed9f3a7d7bf36eb885f`. No LINE send, broker operation or new paid service authorized/performed.
+- Existing signed rollback control returned not_committed with exact failed transaction/run identity. Original diagnostic wrapper erroneously accessed optional exact_pointer_restored under StrictMode and reported PropertyNotFoundException after ACK had already been written; independently re-read the ACK and confirmed not_committed. No claim that this optional field is required for not_committed. The authorized server control can write replay protection metadata; it was not labelled read-only.
+- Added explicit-confirmation journal recovery through the existing signed Rollback client. Requires failed/unresolved state and exact local journal scope, retains byte-identical original under SHA256 history, validates ACK identity/status, detects concurrent journal changes and preserves FAIL/error/timestamps/unknown mutation evidence. It never commits an old bundle. Synthetic PS5.1/7 tests cover not_committed, exact rollback, unconfirmed calls, bad identity/restore, transport failure and repeat refusal.
+- Full Python647/2 skipped PASS; security/docs/workflow/storage gates and diff check PASS. Recovery helper source is prepared for controlled execution, not yet claimed applied by this entry.
+- Authorized maintenance change: exactly InvestorIntelligence-v21-MorningRefresh and InvestorIntelligence-v21-EveningRefresh changed Ready -> Disabled. Neither was running. This intentionally prevents the old carry-forward publisher from running after journal reconciliation. Other tasks/Worker schedules were not changed. Automatic publication is PAUSED, not repaired/healthy; re-enable only after fresh-data sealed publication and actual installed action acceptance.
+- Outstanding: apply validated journal reconciliation, extended fresh options/universe contract, profile-aware live proof, reviewed Worker deployment/install and actual resumed scheduled publication. Production pointer remains the previously observed evening snapshot until rechecked. No whole-product completion claim.
+
 ## Stop stale snapshot carry-forward — 2026-09-09 (CONTAINMENT, NOT FULL AUTOMATION)
 
 - Fetched HEAD `0c7f04020b3029d1732ac72e85b534e64a189e12`; preserved the existing uncommitted read-only reconciliation record below. Inspected both activation implementations, storage candidate selection, actual certified QA caller and current activation tests before edits.

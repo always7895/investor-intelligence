@@ -37,7 +37,7 @@ try {
         'tests/test_v213_r75_gateway_process.py','tests/test_r75_qa_evidence.py',
         'tests/test_v213_bridge_model_identity.py','install-v213-source-diverse-runtime-v2.ps1',
         'scripts/v213_windows_security.ps1','tests/test_v213_windows_security.py',
-        'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py',
+        'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py','tests/test_v213_journal_reconciliation.py',
         'run-v213-scheduled-refresh.ps1','register-v213-refresh-tasks.ps1',
         'cloud/test/r75-live-bench-worker.ts','scripts/v213_qa_live_gate.py','scripts/verify_r75_qa_evidence.py',
         'state/r75-qa-live-qualification.json',

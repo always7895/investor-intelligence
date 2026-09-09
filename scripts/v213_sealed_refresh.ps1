@@ -122,3 +122,45 @@ function Invoke-V213SealedRefresh {
     }
     return [pscustomobject]$record
 }
+
+function Resolve-V213SealedRefreshJournal {
+    param([string]$ProjectRoot,[string]$JournalPath,[string]$LocalConfigPath,
+          [switch]$ConfirmRollbackReconciliation)
+    if(-not$ConfirmRollbackReconciliation){throw 'V213_RECONCILE_EXPLICIT_CONFIRMATION_REQUIRED'}
+    $root=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/status/sealed-publication'))
+    if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($JournalPath))-ine$root-or[IO.Path]::GetExtension($JournalPath)-ine'.json'){throw 'V213_RECONCILE_JOURNAL_SCOPE_INVALID'}
+    $held=$false
+    try {
+        [void](Enter-V213OperationLock -Owner 'authorized-journal-reconciliation' -TimeoutSeconds 0);$held=$true
+        $original=[IO.File]::ReadAllBytes($JournalPath)
+        $digest=(Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $record=Get-Content -LiteralPath $JournalPath -Raw -Encoding utf8|ConvertFrom-Json
+        if($record.status-cne'FAIL'-or$record.remote_sync_attempted-isnot[bool]-or-not$record.remote_sync_attempted-or
+           $record.publication_state-notin@('UNKNOWN','COMMITTED')-or
+           $record.transaction_id-cnotmatch'^[0-9a-f]{32}$'-or$record.run_id-cnotmatch'^\d{8}T\d{6}Z-[0-9a-f]{12}$'){throw 'V213_RECONCILE_STATE_INVALID'}
+        $history=Join-Path $root 'reconciliation-history'
+        New-Item -ItemType Directory -Force -Path $history|Out-Null
+        $archive=Join-Path $history ($digest+'.original.json')
+        if(-not(Test-Path -LiteralPath $archive)){[IO.File]::WriteAllBytes($archive,$original)}
+        if((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_ARCHIVE_MISMATCH'}
+        $ackPath=Join-Path $history ([guid]::NewGuid().ToString('N')+'.ack.json')
+        # Explicitly mutating recovery control, not a read-only status request.
+        # The existing signed server operation either proves not_committed or
+        # restores the exact previous pointer; never commit/replay a stale bundle.
+        $global:LASTEXITCODE=0
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath | Out-Null
+        if($LASTEXITCODE-ne0){throw 'V213_RECONCILE_TRANSPORT_FAILED'}
+        $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
+        Test-V213RefreshAck $ack $record 'Rollback'
+        if((Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_JOURNAL_CHANGED'}
+        $record.publication_state=([string]$ack.status).ToUpperInvariant()
+        if($ack.status-ceq'rolled_back'){$record.production_mutation=$true}
+        # Preserve FAIL, original timestamps/error and unknown mutation evidence.
+        $record|Add-Member -Force -NotePropertyName reconciliation -NotePropertyValue ([ordered]@{
+            reconciled_at=[DateTimeOffset]::UtcNow.ToString('o');action='Rollback';status=$ack.status
+            original_sha256=$digest;original_archive=$archive;acknowledgement=$ackPath
+        })
+        Save-V213RefreshJournal $record $JournalPath
+        return [pscustomobject]@{status='RECONCILED';publication_state=$record.publication_state;historical_status=$record.status;original_preserved=$true}
+    } finally {if($held){Exit-V213OperationLock}}
+}
