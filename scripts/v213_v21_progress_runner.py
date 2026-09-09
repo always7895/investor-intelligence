@@ -65,11 +65,10 @@ class PublicationAwareEvidence:
 
 
 def _date_text(value: Any) -> str:
-    text = str(value or "").strip()[:10]
-    if not text:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
         return ""
     try:
-        return dt.date.fromisoformat(text).isoformat()
+        return dt.date.fromisoformat(value).isoformat()
     except ValueError:
         return ""
 
@@ -88,9 +87,7 @@ def publication_aware_metrics(
     period-end date is retained so the downstream gate fails closed.
     """
 
-    official_metrics, legacy_evidence = LEGACY_METRICS(records)
     filed_by_exact_key: dict[tuple[str, str, str], str] = {}
-    filed_by_fact_key: dict[tuple[str, str], str] = {}
 
     for raw in records:
         if (
@@ -99,6 +96,14 @@ def publication_aware_metrics(
             or raw.get("taxonomy") != "us-gaap"
         ):
             continue
+        # SEC wire dates are date-only; never rescue prefixes before the legacy
+        # extractor can clip a malformed period into a seemingly valid title.
+        if not _date_text(raw.get("end")):
+            raise engine.PipelineError("SEC_FACT_PERIOD_DATE_INVALID")
+        for field in ("start", "filed"):
+            value = raw.get(field)
+            if value is not None and value != "" and not _date_text(value):
+                raise engine.PipelineError("SEC_FACT_SOURCE_DATE_INVALID")
         tag = str(raw.get("tag") or "").strip()
         period_end = _date_text(raw.get("end"))
         filed = _date_text(raw.get("filed"))
@@ -106,12 +111,11 @@ def publication_aware_metrics(
         if not tag or not period_end or not filed:
             continue
         exact_key = (url, tag, period_end)
-        fact_key = (tag, period_end)
-        if filed > filed_by_exact_key.get(exact_key, ""):
-            filed_by_exact_key[exact_key] = filed
-        if filed > filed_by_fact_key.get(fact_key, ""):
-            filed_by_fact_key[fact_key] = filed
+        if exact_key in filed_by_exact_key and filed_by_exact_key[exact_key] != filed:
+            raise engine.PipelineError("SEC_FACT_PUBLICATION_DATE_CONFLICT")
+        filed_by_exact_key[exact_key] = filed
 
+    official_metrics, legacy_evidence = LEGACY_METRICS(records)
     normalized: list[PublicationAwareEvidence] = []
     for item in legacy_evidence:
         source_id = str(getattr(item, "source_id", ""))
@@ -124,8 +128,6 @@ def publication_aware_metrics(
         filed = ""
         if source_id == "sec_edgar" and tag and period_end:
             filed = filed_by_exact_key.get((url, tag, period_end), "")
-            if not filed:
-                filed = filed_by_fact_key.get((tag, period_end), "")
         normalized.append(
             PublicationAwareEvidence(
                 source_id=source_id,

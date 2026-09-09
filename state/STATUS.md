@@ -1,72 +1,54 @@
 # Current engineering status
 
-Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 309a93a:state/STATUS.md`; full historical record: `git show 38860e7:state/STATUS.md`. Receipts, failed runs and journals remain intact. Release identity belongs in README.
+Updated2026-09-09. NOT a release certificate. Release identity belongs in README. Historical details and failures remain in Git: `git show 0ec13cc:state/STATUS.md`, `git show 38860e7:state/STATUS.md`. Never restamp receipts.
 
 ## Authority and workspace
 
-- Fetched starting HEAD0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
-- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: installer metadata/source tests; no Production mutation.
-- Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
+- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts from14544d20d7d497c9e78c6cda0094cc43041d4141, branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
+- Git source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. Outer project is installed runtime, not Git. Audit tools/receipts: `_workspace/audit-runtime`; historical archives are not market-data inputs.
+- User authorizes continued unattended work. Production installation/sealed publication/exact two-task restoration remain conditional on ALL gates. No real LINE test sends, broker operations, paid fallback, credential disclosure or stale activation replay. CI remains no-Production-mutation.
+- This step: isolated installer verification and SEC chronology code/tests. Real installed runtime, Production Worker/KV, schedules and Router preset unchanged. Earlier isolated QA resources were deleted. Use only existing Router8080 and approved exact model.
 
-## Authorized runner and isolated gate
+## Verified slices — not whole-product acceptance
 
-- Runner24 at `D:\actions-runner-win-x64-2.337.0` recovered per Git338fb73; other-project runner untouched. Original service/readiness/early-QA receipts, failures and Windows regression details remain in Git50dfa57 and `runner-service-repair-*`, `r75-live-*`, `r75-readiness-*`, `readiness-*` logs. No transport/baseline waiver; isolated resources cleaned.
+- Installer14544d2: four writers emit preferred_model=null, model_selection_authority=runtime_model_profile, model_profile_qualified=false. Installation does not select/certify models or overwrite operator profiles. No second profile parser. PS5.1/7 actual callers and package metadata negatives pass; historical Serenity fixture is not current R75 certification.
+- Full Windows CI34385623770 on14544d2 PASS: Python701/2 skipped, Worker227/typecheck, six gates, native EXE/PS tests, extracted ZIP and isolated installation. Downloaded ZIP/three receipts/QA independently verified by trusted source tool. ZIP SHA d07ee032d52bd781f4e0d751f3b8ec8f6547121ea837e975348b01ebee0b2fd0.
+- `downloaded-install-34385623770/receipt.json`: actual downloaded installation matched10 audited chain files and EXE bytes; native EXE version/profile/THINK self-tests and metadata authority PASS. Remains release_qualified=false for whole release. Earlier RVN-Q6 metadata mismatch in `downloaded-install-34382938201/receipt.json` is preserved, not rewritten; no inference downgrade was observed.
+- Original Q5 none proof on clean e945f60:10/10 cases/max3062ms, real-waitUntil synthetic LINE/reference and negatives PASS; resources deleted/source/preset unchanged. `state/r75-qa-live-activation-v3-20260909.json` and current reference retain exact bytes. NEW chronology changes invalidate that runtime manifest until fresh proof. Marker/THINK UI tests do not establish graded effort, automatic best mode, research quality or actual installed GUI acceptance.
+- Shared HEAD-bound QA selector rejects uncommitted/drifted/invalid references without fallback. Windows/package/ZIP bind path/SHA; verifier compares QA with archive runtime, never imports archive code. CRLF receipts stay byte-exact. Existing/source-child OutputRoot rejected without deletion.
+- V2 activation restored to protected536644d bytes; production SOURCE imports v3, preserving no stale options/universe carry-forward and exact rollback. storage.ts/qa.ts untouched. Actual signed Worker route RED/GREEN retained.
 
-## Current release-input audit
+## Current SEC chronology findings
 
-- Git18d0938: HEAD-bound reference/shared selector, regular committed bytes, no invalid-pointer fallback, byte-preserving attributes. Windows/package/ZIP bind path/SHA and verify actual archive runtime against mandatory adjacent QA evidence, without archive code imports. Selection is not qualification; old receipts unchanged.
-- OutputRoot refuses existing/source-child paths without deletion. Native sentinel and rehashed ZIP/CLI negative proofs retained in Git18d0938 and logs. Budget failures retained, limits unchanged.
-- V2 restored to protected536644d bytes; production source imports only v3, preserving no stale carry-forward/rollback originals. No protected hash waived. Original formal FAIL and actual signed Worker route RED/GREEN: `full-release-activation-baseline-red.log`, `activation-version-*` / Gite945f60.
-- Clean e945f60 fresh `r75-live-activation-v3-20260909.json`:10/10 Q5 none cases/max3062ms, real-waitUntil synthetic LINE/reference and negative checks PASS; independent verifier PASS, resources deleted, source/preset unchanged. Exact audit bytes copied to state and reference updated, original18d proof retained. Scoped Q&A only, not genuine market-data/installation/publication acceptance. No installation/publication/task restoration.
+- Actual v213 metric caller accepted malformed date prefixes and could borrow a filing date from another document. Current fix requires date-only source end/start/filed, rejects conflicting dates for one URL/tag/period, and removes cross-document fallback. Missing filing remains unknown; valid formulas/scoring weights unchanged.
+- Tests exercise actual metrics and CLI failure/restored hooks, malformed dates/types, conflicting and duplicate records, and distinct-document dates. Logs `sec-chronology-red.log`, `sec-chronology-green.log`; Python705/2 skipped PASS; fresh source-bound live proof/Windows pending. Do not promote old QA as current.
+- Financial ratios still require explicit period/currency/accounting-basis comparability audit. No claim of complete financial reconciliation or genuine20-company reports.
 
-## Prior installation audit (569c5ef)
-- Prior installed check: both tasks Disabled with expected actions;10 chain files had6 differences/2 missing/2 equal. Router8080 advertised one approved model, not an inference proof. Do not replace only the EXE.
-- Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
-- Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
+## Production and installation blockers
 
-## CI package and downloaded installation
+- Last direct check: InvestorIntelligence-v21-MorningRefresh and InvestorIntelligence-v21-EveningRefresh both Disabled. Prior installed10-file chain:6 differences/2 missing/2 equal; candidate isolated install is NOT real runtime replacement. Do not update only EXE.
+- Old Production data2026-09-08T12:20:02Z/promoted12:22:09.595Z is historical, not freshly reverified. Prior signed NOT_COMMITTED reconciliation and original FAIL/archive preserved; last journal audit unresolved0. Never replay the stale bundle. Pointer-last, sealed integrity, replay/rollback/finalize remain mandatory.
+- Schema4 seals seven payloads; fresh options/universe/deep reports are not included. Their producer/schema/admission/readback contracts remain unfinished. Pinned card/input SHA is not sealed-claim authorization.
+- Source-SHA/run-ID package and isolated install PASS do not qualify real installed GUI/actions, fresh market data, publication or an actual scheduled run. Whole-product P0 inventory NOT closed. PR39 retains3 historical evidence errors (LIVE_POLICY_MISMATCH, LIVE_SOURCE_MANIFEST_MISMATCH, synthetic Pi policy mismatch), not repaired/rerun here.
 
-- Failed runs34380328481 (checkout npm cache) and34382057316 (test's service-account 8.3 alias comparison) remain in `package-run-*-failure.log`. Cache now unique/external RUNNER_TEMP; native PS5.1/7 alias/inside-source negatives pass. No ignore rule, dirty-source waiver or manual cache deletion.
-- Full R75 run34382938201 on e540595 PASS: Windows699 Python/2 skipped, Worker227/typecheck, six gates, native EXE/PS, ZIP extraction and isolated install. Downloaded artifact independently verified by trusted source tool: `download-34382938201/download-independent-verification.json`; ZIP SHA13a9653b504486f790245d71693fc40302ebfa8018b47e322469a55de18741d4. Source/run/three receipts/QA binding verified, not just CI assertions.
-- Original downloaded chain10/EXE tests passed but `downloaded-install-34382938201/receipt.json` stays release_qualified=false: legacy metadata RVN-Q6 contradicted Q5 profile. No inference downgrade observed. Original evidence unchanged.
-- Current fix: four installer writers declare preferred_model=null, runtime_model_profile authority and model_profile_qualified=false. No duplicated profile parser, guessed selection or user-profile overwrite. Actual PS5.1/7 installer callers pass; historical Serenity uses synthetic compatible markers, not R75 certification. Added actual packager negatives for selection, qualification and array/string confusion. Logs `installer-model-authority-*`; initial PS5 inherited-module-path failure retained. Python701/2 skipped, Worker227/typecheck PASS; package/download acceptance pending, real runtime/tasks unchanged.
+## Research/data/report gaps
 
-## Production and release blockers
+- Three outputs must contain distinct snapshot-bound card summary, detailed data/calculations and causal narrative, separately stored/routed for stocks/options/macro. Current seven-field evidence action is NOT a complete deep report. Identity, financial/order/capacity/dilution tables,6m/1y/2y valuation inputs and sealed report artifacts remain incomplete. `numeric_total_order_estimate_prohibited=true`.
+- TSEM draft and `state/research-dossiers/TSEM-20260909.json` retain passages/calculations/failures. Four pages/three publishers do not independently corroborate Tower contracts.1 dated draft,0 new deep-report routes; no invented names/orders/EPS/targets.
+- Calendar24/6-month return producer replaces600/120-day proxies and stores endpoints/formulas/hashes. Sidecar publication_eligible=false. Lawful observations, currency/dividend/adjustment/calendar and installed acceptance still required; not a genuine20-stock refresh.
+- Qualified LINE options quote providers0. Yahoo remains line_public_eligible=false, no broker/private fallback. TAIFEX11320 is Taiwan daily/EOD with attribution, not realtime/US options. Access does not grant redistribution rights. Original terms/fetch failures retained; no provider activated.
+- Default catalog101;116-candidate catalog contains15 disabled T3 leads, not licensed active feeds. Directory1094 TWSE+890 TPEx remains PRIMARY_ONLY/discovery pending/publication false. Directories and global source counts cannot corroborate company claims.
+- Call graph: canonical v213_v21_progress_runner calls v21 engine, NOT v211 thematic selectors. Legacy120/240 and40/80 quotas remain in their paths; do not patch inactive code as a live coverage fix. Current weighted Yahoo T3 discovery needs broader evidence-led coverage, without changing scoring.
+- Serenity public-method lens primary; Leopold CONTEXT_ONLY, no score bonus/portfolio inference. Original X403/truncation/404, broker-source failures and independent-lineage gaps retained. Skill/reference loading is not executed investment-screen evidence.
 
-- Last checked tasks `InvestorIntelligence-v21-MorningRefresh` and `InvestorIntelligence-v21-EveningRefresh` both Disabled. No restoration, Worker/model/EXE replacement or new sealed publication. Last confirmed remote data2026-09-08T12:20:02Z, promoted12:22:09.595Z; not freshly reverified here.
-- Prior signed reconciliation returned NOT_COMMITTED, original FAIL/byte-identical archive preserved; prior journal scan unresolved0. Never replay that stale bundle. Sealed object integrity, exact rollback and pointer-last commit remain mandatory.
-- Schema4 still seals seven payloads, excluding fresh options/universe and detailed-report datasets. Stale carry-forward removed, but replacement contracts, both builders/preflight/consumers and readback/replay/rollback/finalize acceptance remain incomplete.
-- Fresh versioned-runtime Q&A passes; old manifests and xhigh failure remain invalid. No restamp, alternate Router/model/preset or paid fallback. CI package/download/isolated-chain gates above pass; real installed GUI/task/data/publication acceptance remains incomplete, no whole-product release.
-- Automatic best THINK/graded effort and actual installed GUI acceptance remain unqualified; original local proofs retained in Git0ec13cc.
-- Whole-product P0 inventory NOT closed. PR39 historically retains3 Python evidence errors, not rerun/fixed here. New scoped regression results never establish whole-product zero defects.
+## Failure/history and cleanup boundaries
 
-## Actual report delivery gaps
-
-- Candidate evidence actions now check pinned run/input SHA, generation, membership and row freshness; not installed. The derived seven-field evidence response is still not an independently sealed deep-report artifact. Three-output contracts and immutable source/claim verification remain incomplete.
-- [Detailed report contract](../docs/DETAILED_REPORT_CONTRACT.md): card summary, detailed data report and explanatory analysis need distinct content from one validated snapshot. Existing seven-field schema lacks verified Chinese/legal identity, detailed financial/order/capacity tables, diluted shares and valuation assumptions. `numeric_total_order_estimate_prohibited=true` remains.
-- [TSEM draft](../docs/research/TSEM-20260909.md) and `research-dossiers/TSEM-20260909.json` retain passages, calculations and failures. Four pages/three publishers do not independently verify Tower contracts; draft SHA is not sealed binding.
-- Scope:1 dated stock draft,0 newly delivered deep-report routes. Other company dossiers,6m/1y/2y valuations, options and macro reports remain incomplete. No invented names, orders, EPS or price targets; no summary clone labelled complete.
-- Calendar-window return producer (Git2b5419b / `return-evidence-python-final2.log`) rejects600/120-day proxy spans. Endpoint/CAGR/SHA sidecar stays `publication_eligible=false`; currency/adjustment/dividend/calendar and installed acceptance missing. Not a sealed payload or live20-stock refresh.
-
-## Source expansion and data qualification
-
-- Same-loader T3 candidate catalog116 (default101) adds15 discovery-only broker/manager/media leads, not active feeds. No automatic activation. [Coverage](../docs/PUBLIC_SOURCE_COVERAGE.md) records scope.
-- Broker leads are not licensed feeds. Goldman403/Morgan Stanley abort, six count failures and101 runtime boundary retained in Git309a93a / `broker-source-catalog-*.log`.
-- Installed options24 records: retrieval is not BBO time, eligibility/privacy incomplete. Yahoo stays line_public_eligible=false; no broker/private fallback.
-- [Rights review](../docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md): TAIFEX11320 is Taiwan daily/EOD with attribution, not realtime/US options. Last provider gate: public-access reviewed1, pending7, prohibited4; fully eligible/runtime/LINE-quote providers0, production selected false. Nasdaq terms failure and indicative-data permission gaps retained. No provider activated.
-- Installed universe remains legacy, not fresh ranked global research. Directory collection1094 TWSE+890 TPEx is PRIMARY_ONLY/discovery pending/publication false. No date/scoring relabelling; financial periods are not filing timestamps.
-- Thematic120/240 discovery and40/80 SEC reserves remain; counts do not corroborate claims. AMD original retrieved/Broadcom abort retained; no search-number promotion.
-
-## Method, history and cleanup boundaries
-
-- Serenity remains primary public-method lens; Leopold CONTEXT_ONLY, never company proof or score bonus. `research-method-refresh-20260909.json` records actual reference/tool evidence. X direct403 then truncated July31 oEmbed is not current/full stance; another404 remains unverified. Leopold original is historical2024, not today's holdings/facts.
-- Three canonical source/installed skill files hash-matched at synchronization; originals archived `_archive/instruction-sync-20260909T070339Z`. Unsupported installed case sheet replaced by pointer. Documentation is not proof of an unbiased executed screen.
-- Malformed-date-prefix rescue removed at snapshot/bundle admission in2a88e8e; legitimate date-only and actual-caller negatives preserved. Other time consumers require role-specific review.
-- Consolidation1113a1c preserved HEADs/branches/evidence; five old roots absent, no junction substitutes. Relocated tests passed (`consolidation-*.log`), runtime unchanged. Bounded cleanup proofs remain in Git; no unique evidence/locks/rollback/runtime deletion.
-- Other-project runner and its junction targets are not disposable. Installed inventory had57 file-stat errors, not deletion-safety proof. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs cleanup; no broad git clean, junction traversal or drive-wide deletion.
+- Retain `full-release-activation-baseline-red.log`, `activation-version-*`, `installer-model-authority-*` (including initial PS5 module-path fixture failure), and prior readiness failures. Successful diagnostics never restamp failed runs.
+- Package34380328481 failed checkout npm cache;34382057316 failed test-only8.3 alias comparison. Fixed external unique RUNNER_TEMP cache and canonical fixture identity; no ignore rule/dirty-source waiver. Original logs retained. Budget failures retained,12000-byte STATUS limit unchanged.
+- Runner24 at D:\actions-runner-win-x64-2.337.0 recovered per Git338fb73; unrelated runner untouched. Preserve models/junction targets/rollback/unmerged work.57 inventory errors are not deletion proof. Pi has6 project registrations/one skill; no safe-removal proof or global installation. See docs/WORKSPACE_MAINTENANCE.md; no broad cleanup.
 
 ## Next actions
 
-1. Requalify installer metadata through full CI and downloaded installation; never confuse copied files with selected/qualified models. No synthetic/historical market-data promotion. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
-2. Complete rights, identity/currency/session/freshness qualification; connect evidence and three distinct report outputs through one reviewed versioned sealed contract and actual Worker routes. No unsealed fallback or researcher-draft promotion.
-3. Requalify exact source/model/Windows/package/installed actions. Publish only newly validated immutable data, read back bytes/claim/pointer, restore exactly the paused tasks and verify an actual scheduled run. No real LINE test sending; do not claim completion before these gates pass.
+1. Finish chronology full regression, fresh isolated QA and exact-source Windows/archive/download acceptance; no stale evidence promotion.
+2. Audit financial comparability and actual discovery/admission callers; complete genuine identity/financial/order/dilution data, source rights/lineage and three distinct report producers. Keep failures/conflicts/unavailable states.
+3. Qualify appropriate THINK selection without silent downgrade. After ALL data/model/package/install gates, update complete real runtime, publish newly sealed data, read back bytes/claim/pointer, restore only the two paused tasks and verify actual scheduled execution. No real LINE test sends or whole-product completion claim beforehand.
