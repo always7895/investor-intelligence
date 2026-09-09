@@ -10,6 +10,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from verify_r75_qa_evidence import verify
+from v213_model_profile import parse_profile, profile_sha256
 from v213_qa_live_gate import router_limits, validate_router_proof, wait_isolated_origin
 
 class LiveQaQualificationTests(unittest.TestCase):
@@ -88,6 +89,41 @@ class LiveQaQualificationTests(unittest.TestCase):
         with patch('verify_r75_qa_evidence.source_manifest', return_value=changed):
             with self.assertRaisesRegex(ValueError, 'LIVE_SOURCE_MANIFEST_MISMATCH'):
                 verify(self.proof, now=self.now)
+
+    def test_profile_receipt_binds_intended_settings_driver_and_observed_mode(self):
+        profile = parse_profile((ROOT / 'config/v213-model-profile-v1.json').read_text(encoding='utf-8-sig'))
+        data = copy.deepcopy(self.proof)
+        data.update(schema_version=2, model_profile=profile, model_profile_sha256=profile_sha256(profile),
+                    exact_model=profile['model'], canonical_model=profile['model'],
+                    model_catalog=[{'id': profile['model'], 'aliases': []}], profile_mismatch='PASS')
+        for row in data['results']:
+            row.update(model=profile['model'], reasoning_present=False)
+        for row in data['readiness']:
+            row['model_profile_sha256'] = profile_sha256(profile)
+        self.assertTrue(verify(data, self.manifest, expected_profile=profile)['release_ready'])
+        with self.assertRaisesRegex(ValueError, 'LIVE_PROFILE_DOWNGRADE'):
+            verify(self.proof, self.manifest, expected_profile=profile)
+        for field, value in [('model_profile_sha256', '0'*64), ('profile_mismatch', 'FAIL'), ('exact_model', 'wrong')]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                verify({**data, field:value}, self.manifest, expected_profile=profile)
+        changed = copy.deepcopy(self.manifest)
+        changed['scripts/v213_qa_live_gate.py'] = '0'*64
+        with self.assertRaisesRegex(ValueError, 'LIVE_SOURCE_MANIFEST_MISMATCH'):
+            verify(data, changed, expected_profile=profile)
+        for section, field, value, error in [('results','reasoning_present',True,'UNEXPECTED_REASONING'),
+                                           ('readiness','model_profile_sha256','0'*64,'READINESS_PROFILE_MISMATCH')]:
+            invalid = copy.deepcopy(data); invalid[section][0][field] = value
+            with self.subTest(section=section), self.assertRaisesRegex(ValueError,error):
+                verify(invalid,self.manifest,expected_profile=profile)
+        invalid = copy.deepcopy(data)
+        smoke = next(row for row in invalid['results'] if row['case']=='smoke')
+        smoke['usage']['completion_tokens'] = profile['smoke_output_tokens']+1
+        with self.assertRaisesRegex(ValueError,'OUTPUT_TOKEN_PROOF_INVALID'):
+            verify(invalid,self.manifest,expected_profile=profile)
+        thinking = {**profile, 'enable_thinking':True,'reasoning_effort':'high'}
+        invalid = {**data,'model_profile':thinking,'model_profile_sha256':profile_sha256(thinking)}
+        with self.assertRaisesRegex(ValueError,'LIVE_THINKING_CAPABILITY_UNPROVEN'):
+            verify(invalid,self.manifest,expected_profile=thinking)
 
     def test_historical_untimestamped_receipt_cannot_qualify_release(self):
         original = json.loads((ROOT / 'state/r75-qa-live-qualification.json').read_text(encoding='utf-8-sig'))

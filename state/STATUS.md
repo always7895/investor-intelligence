@@ -1,5 +1,12 @@
 # R75 takeover status
 
+## Profile-aware isolated live qualification — 2026-09-09 (PREPARED)
+
+- Fetched clean HEAD `7e2056c5f145da2520aaa3b2158a526aac325c36`; inspected authoritative live driver, verifier, benchmark Worker and readiness caller before edits.
+- Existing driver now accepts explicit --model-profile, propagates one profile to isolated Worker/gateway/lease and verifies readiness/tunnel fingerprints. Legacy Q6 lane retained. Schema2 receipts bind intended profile, unique catalog identity, driver plus runtime source, readiness fingerprint, negative profile test, per-smoke/answer token ceilings and absence of reported reasoning. Explicit expected profile rejects schema1 downgrade. Graded thinking remains rejected until separate capability proof exists.
+- Preserved source/time/latency/completion/full-case/LINE-mock/reference/cleanup gates and historical receipts. Unexpected reasoning content is not retained as an answer. Cleanup now attempts both isolated Worker and KV deletion independently, including uncertain deployment outcomes; cleanup failures remain failed evidence with bounded resource identifiers for remediation.
+- Full pinned Python648/2 skipped PASS; security/docs/workflow/storage gates and diff check PASS. No Worker production code or schedule changed by this step. Next: run this exact source against the existing Q5 Router in uniquely named isolated resources and verify its new receipt; this is not yet a live PASS. Production refresh tasks remain disabled for maintenance; no new Production data published.
+
 ## Authorized reduced-thinking candidate — 2026-09-09 (DEVELOPMENT PROOF ONLY)
 
 - Fetched clean HEAD `f5a3ee03192ceb4496de319e4db81440f08f8989`. Reviewed existing model profile tests and live qualification driver; legacy Q6-only live driver is still a separate release blocker, not silently recertified.
