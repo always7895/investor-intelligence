@@ -2,6 +2,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { publicJson } from "../src/storage";
+import { parseQuery } from "../src/core";
+import { deterministicAnswer } from "../src/qa";
 import { parseV21Top20 } from "../src/v21/top20";
 import { asKv, MemoryKv } from "./fake-kv";
 import {
@@ -474,8 +477,15 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:source-independence:latest`)).toBeTruthy();
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe("old-universe");
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:options:latest`)).toBe("old-options");
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe(false);
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:options:latest`)).toBe(false);
+    publicKv.values.set('options:latest', JSON.stringify([{ source: 'stale-direct-key' }]));
+    publicKv.values.set('v211:universe:latest', JSON.stringify({ source: 'stale-direct-key' }));
+    expect(await publicJson(env, ['options:latest', 'latest_options'])).toBeNull();
+    expect(await publicJson(env, ['v211:universe:latest'])).toBeNull();
+    expect(await deterministicAnswer(env, parseQuery('AAOI options'), {
+      tenantId: 'synthetic-public-only', chatType: 'user',
+    })).toBe('OPTION_DATA_UNAVAILABLE');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
 
     const replay = await ingestV213ActivationBundle(JSON.stringify(value), env);
@@ -486,6 +496,8 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(rolledBack.status).toBe("rolled_back");
     expect(rolledBack.exact_pointer_restored).toBe(true);
     expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest')).toBe('old-options');
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:v211:universe:latest')).toBe('old-universe');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
   });
 

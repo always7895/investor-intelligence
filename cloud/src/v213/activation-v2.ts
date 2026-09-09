@@ -527,12 +527,9 @@ export async function ingestV213ActivationBundle(
     ["v213:source-independence:latest", JSON.stringify(sourceAudit)],
     ["v213:activation-claim", existingClaimText ?? await env.PUBLIC_CACHE.get(runClaimKey, "text") ?? ""],
   ];
-  if (state.previous_run_id) {
-    for (const key of ["v211:universe:latest", "options:latest"] as const) {
-      const value = await env.PUBLIC_CACHE.get(`snapshot:${state.previous_run_id}:${key}`, "text");
-      if (value !== null) objects.push([key, value]);
-    }
-  }
+  // These payloads are not part of this sealed contract. Never rebrand a prior
+  // run's options/universe as current. Missing current-run objects fail closed
+  // in publicJson; old immutable objects remain available for exact rollback.
   if (idempotentReplay) {
     await verifySnapshotObjects(env, prefix, objects, true);
     return {
