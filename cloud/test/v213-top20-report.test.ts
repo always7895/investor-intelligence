@@ -84,6 +84,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five", async () => {
     const kv = new MemoryKv();
     const data = report(); data.generated_at = new Date().toISOString();
+    data.records[0]!.retrieved_at = data.generated_at;
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
@@ -99,6 +100,62 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(proof.header).toContain("公司現在訂單 / Current orders");
     expect(proof.header).toContain("未來訂單預估 / Future order outlook");
+    const command = messages[0].contents.contents[0].footer.contents.find((x: any) => x.type === "button").action.text;
+    expect(command).toContain("T00");
+    expect(command).not.toBe("Top20 文字");
+    messages.length = 0;
+    await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: command }, timestamp: Date.now() }, "synthetic-report-tenant");
+    const detail = messages.map(x => x.text ?? "").join("\n");
+    expect(detail).toContain("T00｜本輪 Top20");
+    expect(detail).not.toContain("T01");
+    expect(detail).toContain("https://www.sec.gov/example/current");
+    expect(detail).toContain("6 個月情境");
+    expect(detail).toContain("1 年情境");
+    expect(detail).toContain("2 年情境");
+    expect(detail).toContain("尚非完整深度估值報告");
+    expect(detail).toContain("兩年累積報酬：缺少");
+    expect(detail).not.toBe(formatV213Top20Report(parseV213Top20Report(data)!));
+    assertLineMessages(messages);
+  });
+
+  it("refuses obsolete card generations, stale row retrievals and unknown companies", async () => {
+    const data = report(); data.generated_at = new Date().toISOString();
+    data.records[0]!.retrieved_at = data.generated_at;
+    const kv = new MemoryKv();
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    const save = () => { kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at); };
+    save();
+    const command = `Top20 證據詳情 T00 ${data.generated_at}`;
+    expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
+    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; save();
+    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("取得時間已過期");
+    data.generated_at = new Date(Date.now() + 1000).toISOString(); save();
+    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
+  });
+
+  it("rejects credential-bearing citations instead of displaying them", async () => {
+    const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
+    const kv = new MemoryKv(); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    for (const url of ["https://fixture@example.com/report", "https://www.sec.gov/report?access%5Ftoken=fixture", "https://www.sec.gov/report#access_token=fixture"]) {
+      data.records[0]!.current_order_source_urls = [url];
+      kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+      expect(await v213Top20LineAnswer({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) }, parseQuery(`Top20 證據詳情 T00 ${data.generated_at}`))).toContain("已拒絕顯示");
+    }
+  });
+
+  it("keeps all long evidence citations within LINE message limits", async () => {
+    const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
+    const urls = Array.from({ length: 8 }, (_, i) => `https://issuer.example/${"x".repeat(900)}/${i}`);
+    data.records[0]!.current_order_source_urls = urls;
+    data.records[0]!.future_order_source_urls = urls.map(url => `${url}/future`);
+    const kv = new MemoryKv(); kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    const result = await v213Top20LineAnswer({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) }, parseQuery(`Top20 證據詳情 T00 ${data.generated_at}`));
+    expect(Array.isArray(result)).toBe(true);
+    if (!Array.isArray(result)) throw new Error("expected evidence messages");
+    assertLineMessages(result);
+    const body = result.map(m => m.type === "text" ? m.text : "").join("\n");
+    for (const url of [...urls, ...data.records[0]!.future_order_source_urls]) expect(body).toContain(url);
+    expect(body).toContain("完整研究必須補齊");
   });
 
   it("preserves all maximum-length fields in cards and complete text blocks without clipping", () => {

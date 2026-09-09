@@ -4,7 +4,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 ## Authority and workspaces
 
-- Current fetched audit baseline 1113a1cc4f596318e416760ed0c2dc0a42a5084f; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
+- Current fetched audit baseline 5ec208e1426b46031c69e0ffc4c0f89ac21a4cd3; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
 - User authorized Production publication/Worker/schedule repair, newly validated data, and project cleanup. No real LINE sends, broker operations, new paid services or arbitrary credential access. Current step changes source/docs and bounded rebuildable artifacts only.
 - Installed runtime `D:\Investor-Intelligence-LINE-Pi` is not this Git worktree. Candidate changes are not installed acceptance.
 
@@ -12,7 +12,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 - Starting clean HEAD2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7. User explicitly requested a single project folder. Before moving: all three Git worktrees clean; no observed process/task/service references to the five moved roots; no old-root references in installed PowerShell/Python callers inspected.
 - Physically moved source, both isolated review worktrees and audit runtime under `_workspace`; history backups under `_archive/history-backups`. The five former top-level D-drive investor directories no longer exist; no junction/shortcut substitutes created. Used `git worktree move` then `git worktree repair` after main repository relocation. All three HEADs/branches preserved and clean before documentation updates.
-- Relocated pinned Python3.12.10/OpenSSL/certifi imports PASS; full Python659/2 skipped, Worker160/typecheck PASS from the new paths. Logs now under `_workspace/audit-runtime/consolidation-*.log`. Installed runtime and task paths remain unchanged. Root installed AGENTS now points development work to the nested Git repository; no runtime binary/config replacement.
+- Relocated tools and full regressions passed; logs: `_workspace/audit-runtime/consolidation-*.log`. Installed runtime/task paths unchanged; root AGENTS points to the nested Git source.
 - Existing signed/history evidence moved intact, not restamped. Running registered runner, models/Router and unrelated projects remain outside consolidation; they were not safe deletion targets. Moving folders reduces top-level clutter, not their byte size. Current release/data blockers remain unchanged.
 - Final bounded cleanup across the three source/review scripts/tests trees removed654 untracked .pyc files in10 directories,7,837,559 bytes; source12, baseline214, source-views428. No tracked files, unique evidence or dependencies deleted. Final instruction-budget/security/docs/workflow/storage/diff gates PASS. Both publisher tasks rechecked Disabled; consolidation did not restore or modify their actions.
 
@@ -31,12 +31,16 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 - Prior signed recovery returned NOT_COMMITTED, preserving original FAIL and byte-identical journal archive; previous journal scan unresolved0. Never replay that stale bundle.
 - Current sealed schema4 has seven payloads, not fresh options/universe. Candidate containment removes stale carry-forward, but replacement contract/builders/readback/replay/rollback acceptance remains unfinished.
 
-## Current audit increment — malformed evidence dates
+## Retained evidence fix
 
-- Fetched clean HEAD b66b5a398e3122791453e0fead5f18ce923a8fb4. Reproduced a fail-open in the actual hardened bundle builder: replacing all first-candidate source dates with a valid date prefix plus NOT_A_TIMESTAMP still built a bundle. Negative tests failed before the fix (four malformed formats plus actual caller).
-- Removed invalid-date-prefix rescue in `build_v213_activation_bundle_v2.py` and the upstream `v213_build_v21_public_snapshot.py` evidence guard. Valid date-only disclosure precision and valid ISO offset timestamps remain accepted; malformed times/offsets/suffixes no longer count as evidence. No scoring weights, certified qa.ts, historical receipts or Production objects changed.
-- New actual-bundle and upstream support tests PASS; full Python659/2 skipped PASS (`timestamp-audit-python.log`), Worker160/typecheck, security/docs/workflow/storage gates, PS5.1/7 parse and diff check PASS. This fixes one identified defect class at two admission points, not a completed project-wide defect inventory. Other date-prefix consumers need role-specific review; do not indiscriminately change reporting-period extraction or broker code.
-- Changes remain source-only. Existing protected-source release recertification is still required; reviewed source inventory does not bypass that gate. No deployment, publication or restored schedule claim.
+2a88e8e removed malformed-date-prefix rescue at both snapshot and bundle evidence admission; actual caller negatives and legitimate date-only disclosures are covered. Other date-prefix consumers still require role-specific review. Historical failure evidence remains in Git/logs.
+
+## Company report boundary — source candidate only
+
+- Starting clean5ec208e, PR39 unchanged d58fdaf. Confirmed every old card button sent the same Top20 text-summary command. New per-company evidence action checks card generation time, fresh row retrieval and membership, returns source citations/definitions/gaps rather than another20-row summary. Generation checks are not full immutable report SHA binding.
+- The seven-field schema lacks verified names, endpoint prices, detailed financial/order tables and valuation inputs. The new screen explicitly says it is NOT a complete valuation report; no invented2Y totals, company translations, order forecasts or6m/1y/2y upside/downside. See [detailed report requirements](../docs/DETAILED_REPORT_CONTRACT.md). Stock deep research, options and macro detailed reports remain unfinished.
+- Actual authorized LINE event→card action→company response tested, including stale generation/row, unknown company, encoded credential URLs and maximum citations without clipping. Python660/2 skipped, Worker163/typecheck, security/docs/workflow/storage gates PASS. Initial fixture typecheck omitted required KV bindings; corrected, not weakened.
+- Actual existing model-live receipt verifier now rejects current source with LIVE_SOURCE_MANIFEST_MISMATCH. Receipt preserved; fresh source-bound qualification required before shipping. No installed Worker/card update, real LINE send, publication or task restoration. Certified qa.ts and scoring unchanged.
 
 ## Current data findings and progress
 
@@ -59,7 +63,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 - [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) defines bounded deletion and junction/dependency checks. Inventory found the apparently old runner folder has a Running/Auto registered service and junctions to2.337.0. It is NOT unused; retained. Raw first process-reference counts included the inspection command itself and are not inactivity evidence.
 - Installed tree inventory had57 file-stat errors; no completeness/deletion safety claim. Models, Router, other projects, history/recovery evidence and unmerged worktrees retained. No broad drive/temp/runner cleanup.
 - After tests, removed only467 untracked .pyc files in4 flat __pycache__ directories under source scripts/tests:5,755,638 bytes. Checked tracked paths, regular-file types, junction/symlink exclusion, root containment and unchanged file identities before unlinking. No source, lock, evidence, installed data or runner workspace removed.
-- Instruction measurements before final result notes: STATUS123,910→6,205 bytes; skill2,886→2,813; AGENTS2,939→4,119 (adds explicit cleanup safety). These are UTF-8 byte measurements, not tokenizer/latency benchmarks. New size-budget tests prevent unbounded entrypoint/history growth. Installed instructions still require separate verified synchronization.
+- Instruction size budgets remain enforced; byte reductions are not latency or accuracy qualification. Installed skill synchronization is separately recorded above.
 
 ## Next actions
 
