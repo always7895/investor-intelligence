@@ -80,6 +80,17 @@ if($env:FIXTURE_CASE-eq'rollback'){
                     self.assertTrue(journals, result.stdout + result.stderr)
                     records = [json.loads(p.read_text(encoding='utf-8-sig')) for p in journals]
                     self.assertIn(state, [r['publication_state'] for r in records])
+                    target = next(r for r in records if r['publication_state'] == state)
+                    expected_phase = {'pass': '', 'preflight': 'PREFLIGHT', 'readback': 'COMMIT_ACK',
+                                      'boolean': 'COMMIT_ACK', 'identity_boolean': 'COMMIT_ACK',
+                                      'status_boolean': 'COMMIT_ACK', 'finalize': 'FINALIZE_REQUEST',
+                                      'rollback': 'FINALIZE_REQUEST'}[case]
+                    self.assertEqual(target['failed_phase'], expected_phase)
+                    self.assertEqual(target['rollback_failed_phase'], 'ROLLBACK_REQUEST' if case == 'rollback' else '')
+                    if case == 'rollback':
+                        blocked = next(r for r in records if r['publication_state'] == 'NOT_ATTEMPTED')
+                        self.assertEqual(blocked['failed_phase'], 'JOURNAL_CHECK')
+                        self.assertFalse(blocked['remote_sync_attempted'])
                     path = folder / 'actions.txt'
                     observed = path.read_text(encoding='utf-8-sig').splitlines() if path.exists() else []
                     self.assertEqual(observed, actions)

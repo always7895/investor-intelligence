@@ -1,5 +1,13 @@
 # R75 takeover status
 
+## Sealed publication failure-phase diagnostics — 2026-09-09 (SCOPED PASS)
+
+- Fetched clean HEAD `407392e2deb372152ff651ccac7a9476f49ba21e`; continued the installed UNKNOWN-transaction investigation using the existing authoritative publication caller and its real PowerShell orchestration tests.
+- Added fixed, bounded `failed_phase`, `rollback_failed_phase` and rollback exception-type metadata. Distinguishes journal admission, bundle validation, preflight/auth, commit/ack, finalize/ack and rollback/ack without recording raw exception messages, endpoints or credentials. Original failure phase survives a second rollback failure.
+- Existing UNKNOWN/no-replay guard, sealed-copy integrity, exact acknowledgements, pointer-last commit and rollback semantics are unchanged. Tests exercise actual PS5.1/7 helpers and assert phase classification, original action sequence and refusal to retry an unresolved transaction.
+- Full pinned Python646 tests/2 skipped PASS; security/documentation/workflow/storage gates and diff check PASS. No TypeScript/Worker behavior changed in this patch. No installed file, production transaction, schedule, LINE delivery, model configuration or credential mutation. This improves future diagnostics but does not reconstruct or resolve the already UNKNOWN historical transaction.
+- Still open: read-only remote transaction/pointer reconciliation before any recovery; deployment/install qualification; refresh failure notifications and freshness presentation; dynamic industry selection; reduced-thinking live qualification. Whole-product completion and severity counts remain unassessed.
+
 ## Automation incident and Python fixture repair — 2026-09-09 (NOT COMPLETE)
 
 - Fetched clean starting HEAD `9eb53a0d04e2c13f4f9284caaca663c10f5dc895`. Inspected current release workflow, live verifier/tests and installed scheduled-refresh/publication callers. User authorizes continued repair and reduced thinking when needed; no model setting has yet been downgraded by this change.

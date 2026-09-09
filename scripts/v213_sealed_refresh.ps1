@@ -45,8 +45,12 @@ function Invoke-V213SealedRefresh {
     New-Item -ItemType Directory $details -ErrorAction Stop|Out-Null
     $record=[ordered]@{schema_version=1;status='FAIL';publication_state='NOT_ATTEMPTED';remote_sync_attempted=$false;production_mutation=$false;real_line_sent=$false;worker_deployed=$false;run_id='';transaction_id='';bundle_sha256='';error_type='';recorded_utc=[DateTimeOffset]::UtcNow.ToString('o')}
     $held=$false; $committed=$false
+    # Fixed phase identifiers only: never persist exception messages, URLs or credentials.
+    $phase='LOCK'
+    $record.failed_phase='';$record.rollback_failed_phase='';$record.rollback_error_type=''
     try {
         [void](Enter-V213OperationLock -Owner 'sealed-refresh' -TimeoutSeconds 0);$held=$true
+        $phase='JOURNAL_CHECK'
         foreach($previous in Get-ChildItem -LiteralPath $journalRoot -File -Filter '*.json'){
             $old=Get-Content -LiteralPath $previous.FullName -Raw -Encoding utf8|ConvertFrom-Json
             if($old.remote_sync_attempted-isnot[bool]-or$old.publication_state-isnot[string]-or
@@ -54,16 +58,19 @@ function Invoke-V213SealedRefresh {
                (-not$old.remote_sync_attempted-and$old.publication_state-cne'NOT_ATTEMPTED')){throw 'V213_REFRESH_JOURNAL_INVALID'}
             if($old.remote_sync_attempted-and$old.publication_state-notin@('FINALIZED','ROLLED_BACK','NOT_COMMITTED')){throw 'V213_REFRESH_UNRESOLVED_JOURNAL'}
         }
+        $phase='BUNDLE_VALIDATION'
         $document=Get-Content -LiteralPath $bundle -Raw -Encoding utf8|ConvertFrom-Json
         $record.run_id=[string]$document.run_id;$record.transaction_id=[string]$document.transaction_id
         if($record.run_id-cnotmatch'^\d{8}T\d{6}Z-[0-9a-f]{12}$'-or$record.transaction_id-cnotmatch'^[0-9a-f]{32}$'){throw 'V213_REFRESH_BUNDLE_IDENTITY_INVALID'}
         $sealed=Join-Path $details 'sealed-bundle.json'
         $record.bundle_sha256=(Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+        $phase='PREFLIGHT'
         & (Join-Path $ProjectRoot 'activate-v213-seven-field-schedule.ps1') -ProjectRoot $ProjectRoot -PreflightOnly -FieldLocale bilingual
         if($LASTEXITCODE-ne0){throw 'V213_REFRESH_PREFLIGHT_FAILED'}
         if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()-cne$record.bundle_sha256){throw 'V213_REFRESH_BUNDLE_CHANGED_AFTER_PREFLIGHT'}
         Copy-Item -LiteralPath $bundle -Destination $sealed
         if((Get-FileHash -LiteralPath $sealed -Algorithm SHA256).Hash.ToLowerInvariant()-cne$record.bundle_sha256){throw 'V213_REFRESH_SEALED_COPY_MISMATCH'}
+        $phase='AUTH_CHECK'
         $wrangler=Join-Path $ProjectRoot 'cloud/node_modules/.bin/wrangler.cmd'
         $auth=(& $wrangler whoami 2>$null|Out-String)
         if($LASTEXITCODE-ne0){throw 'V213_REFRESH_READ_ONLY_AUTH_FAILED'}
@@ -72,31 +79,42 @@ function Invoke-V213SealedRefresh {
         $record.remote_sync_attempted=$true;$record.production_mutation=$null;$record.publication_state='UNKNOWN'
         Save-V213RefreshJournal $record $ResultPath
         $ackPath=Join-Path $details 'commit.json'
+        $phase='COMMIT_REQUEST'
         & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath
         if($LASTEXITCODE-ne0){throw 'V213_REFRESH_COMMIT_FAILED'}
+        $phase='COMMIT_ACK'
         $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
         Test-V213RefreshAck $ack $record 'Commit'
         $committed=$true;$record.production_mutation=$true;$record.publication_state='COMMITTED'
         Save-V213RefreshJournal $record $ResultPath
         $ackPath=Join-Path $details 'finalize.json'
+        $phase='FINALIZE_REQUEST'
         & $sync -Action Finalize -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath
         if($LASTEXITCODE-ne0){throw 'V213_REFRESH_FINALIZE_FAILED'}
+        $phase='FINALIZE_ACK'
         $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
         Test-V213RefreshAck $ack $record 'Finalize'
         $record.publication_state='FINALIZED';$record.status='PASS'
     } catch {
+        $record.failed_phase=$phase
         $record.error_type=$_.Exception.GetType().Name
         if($record.remote_sync_attempted){
             try {
                 $ackPath=Join-Path $details 'rollback.json'
+                $phase='ROLLBACK_REQUEST'
                 & $sync -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath
                 if($LASTEXITCODE-ne0){throw 'V213_REFRESH_ROLLBACK_FAILED'}
+                $phase='ROLLBACK_ACK'
                 $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
                 Test-V213RefreshAck $ack $record 'Rollback'
                 $record.publication_state=([string]$ack.status).ToUpperInvariant()
                 if($ack.status-ceq'rolled_back'){$record.production_mutation=$true}
                 # not_committed proves no active pointer for this run, not zero KV writes.
-            } catch {$record.publication_state='UNKNOWN';$record.production_mutation=$(if($committed){$true}else{$null})}
+            } catch {
+                $record.rollback_failed_phase=$phase
+                $record.rollback_error_type=$_.Exception.GetType().Name
+                $record.publication_state='UNKNOWN';$record.production_mutation=$(if($committed){$true}else{$null})
+            }
         }
         throw 'V213_SEALED_REFRESH_FAILED; inspect_local_publication_journal=true'
     } finally {
