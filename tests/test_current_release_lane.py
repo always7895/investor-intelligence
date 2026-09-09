@@ -44,7 +44,8 @@ class CurrentReleaseLaneTests(unittest.TestCase):
     def test_profile_candidates_select_new_evidence_and_never_stamp_q6(self):
         for name in ('ci_v213_r75_free_relay_validate.ps1', 'ci_v213_r75_free_relay_package.ps1'):
             script = (ROOT / 'scripts' / name).read_text()
-            self.assertIn('state/r75-qa-live-model-profile-qualification.json', script)
+            self.assertIn('scripts/r75_release_inputs.py --project-root $ProjectRoot', script)
+            self.assertIn('$qaInput.source_commit -cne $sha', script)
             self.assertIn("$profileArgs=@('--model-profile',$profilePath)", script)
             self.assertIn('--receipt $liveProof @profileArgs', script)
             self.assertNotRegex(script, r"exact_model\s*=\s*'qwen38-q6'")

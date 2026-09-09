@@ -145,6 +145,44 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
             receipt_paths.append(path)
         return archive, checksum, commit, run, receipt_paths
 
+    def test_actual_archive_cli_requires_bound_live_receipt_and_zip_runtime(self):
+        from datetime import datetime, timedelta, timezone
+        from v213_qa_live_gate import source_manifest
+        for variant in ('valid', 'missing', 'tampered', 'runtime_drift', 'stale', 'missing_reference', 'windows_drift'):
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as d:
+                directory = Path(d)
+                # In-memory synthetic verifier fixture; real receipts are never changed.
+                qa = json.loads((ROOT / 'state/r75-qa-live-direct-20260909.json').read_text(encoding='utf-8'))
+                now = datetime.now(timezone.utc)
+                qa['started_at'] = (now - timedelta(minutes=1)).isoformat()
+                qa['completed_at'] = now.isoformat()
+                manifest = source_manifest()
+                qa['source_manifest'] = {k.casefold(): v for k, v in manifest.items()}
+                if variant == 'stale':
+                    qa['started_at'] = (now - timedelta(days=2)).isoformat()
+                    qa['completed_at'] = (now - timedelta(days=2, minutes=-1)).isoformat()
+                raw = json.dumps(qa).encode()
+                qa_path = directory / 'synthetic-qa.json'; qa_path.write_bytes(raw)
+                def mutate(files, refs, receipts):
+                    for p in manifest: files[p.casefold()] = (ROOT / p).read_bytes()
+                    files['scripts/r75_release_inputs.py'] = (ROOT / 'scripts/r75_release_inputs.py').read_bytes()
+                    for record in (refs, receipts[0], receipts[1]):
+                        record.update(exact_model=qa['exact_model'], model_profile_sha256=qa['model_profile_sha256'])
+                    binding = dict(qa_live_receipt_path='state/synthetic-qa.json', qa_live_receipt_sha256=VERIFIER.sha(raw))
+                    refs.update(binding); receipts[0].update(binding)
+                    if variant == 'runtime_drift': files['scripts/v213_compact_qa_gateway.py'] += b'\n# synthetic drift\n'
+                    if variant == 'missing_reference': del refs['qa_live_receipt_path']
+                    if variant == 'windows_drift': receipts[0]['qa_live_receipt_sha256'] = '0'*64
+                archive, checksum, commit, run, receipts = self.fixture(directory, mutate=mutate)
+                if variant == 'tampered': qa_path.write_bytes(raw + b' ')
+                command = [sys.executable, str(ROOT / 'scripts/verify_v213_r75_free_relay_hotfix.py'),
+                           '--archive', str(archive), '--checksum', str(checksum), '--source-commit', commit,
+                           '--workflow-run-id', run]
+                for receipt in receipts: command += ['--receipt', str(receipt)]
+                if variant != 'missing': command += ['--qa-live-receipt', str(qa_path)]
+                result = subprocess.run(command, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode == 0, variant == 'valid', result.stdout + result.stderr)
+
     def test_actual_archive_cli_accepts_bound_profile_and_legacy(self):
         for modern in (False, True):
             with self.subTest(modern=modern), tempfile.TemporaryDirectory() as d:

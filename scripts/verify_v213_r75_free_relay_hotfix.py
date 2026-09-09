@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import fnmatch
 import json
 import posixpath
 import re
@@ -137,7 +138,39 @@ def verify_model_binding(files, refs, receipts, archive_sha):
     return identity
 
 
-def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path]) -> dict:
+def verify_qa_binding(files, refs, receipts, qa_receipt):
+    bound = ('scripts/r75_release_inputs.py' in files or 'qa_live_receipt_path' in refs
+             or 'qa_live_receipt_sha256' in refs or any('qa_live_receipt_path' in r for r in receipts))
+    if not bound:
+        if qa_receipt is not None: raise VerificationError('legacy archive has no QA binding')
+        return
+    relative, digest = refs.get('qa_live_receipt_path'), refs.get('qa_live_receipt_sha256')
+    if (not isinstance(relative, str) or not re.fullmatch(r'state/[A-Za-z0-9][A-Za-z0-9._-]{0,160}\.json', relative)
+            or '..' in relative or not isinstance(digest, str) or not HEX64.fullmatch(digest)):
+        raise VerificationError('QA reference binding missing or invalid')
+    windows = [r for r in receipts if r.get('release_ready') is True]
+    if (len(windows) != 1 or windows[0].get('qa_live_receipt_path') != relative
+            or windows[0].get('qa_live_receipt_sha256') != digest):
+        raise VerificationError('Windows/QA reference mismatch')
+    if qa_receipt is None or not 0 < qa_receipt.stat().st_size <= 1048576:
+        raise VerificationError('external QA receipt missing or oversized')
+    raw = qa_receipt.read_bytes()
+    if sha(raw) != digest: raise VerificationError('external QA receipt digest mismatch')
+    data = load_json(raw, 'external QA receipt')
+    manifest = {name: sha(body) for name, body in files.values() if name.startswith('cloud/src/')
+                or fnmatch.fnmatchcase(name, 'scripts/v21*.py') or fnmatch.fnmatchcase(name, 'config/*.json')
+                or name in ('cloud/test/r75-live-bench-worker.ts', 'cloud/test/r75-line-presentation-proof.ts', 'scripts/v213_edge_readiness.ps1')}
+    try:
+        from verify_r75_qa_evidence import verify as verify_live
+        profile = parse_profile(files['config/v213-model-profile-v1.json'][1].decode('utf-8-sig')) if 'config/v213-model-profile-v1.json' in files else None
+        qualified = verify_live(data, manifest, expected_profile=profile)
+        if any(qualified.get(key) != refs.get(key) for key in ('exact_model', 'model_profile_sha256')):
+            raise ValueError('QA model identity differs from archive')
+    except (ValueError, KeyError, TypeError, UnicodeError):
+        raise VerificationError('external QA qualification failed') from None
+
+
+def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path], qa_receipt: Path | None = None) -> dict:
     commit = commit.lower()
     if not HEX40.fullmatch(commit) or not run_id.isdigit():
         raise VerificationError("invalid immutable identity")
@@ -238,6 +271,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             deployment[0].get("extracted_zip_runtime_install") != "PASS"):
         raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
     model_binding = verify_model_binding(files, refs, verified, actual)
+    verify_qa_binding(files, refs, verified, qa_receipt)
     return {
         **model_binding,
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
@@ -249,6 +283,8 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "activation_test_payload": "PASS", "public_research_payload": "PASS", "extracted_zip_worker_gate": "PASS",
         "extracted_zip_runtime_install": "PASS",
         "packaged_worker_tests": refs["packaged_worker_test_count"],
+        "qa_live_receipt_path": refs.get('qa_live_receipt_path'),
+        "qa_live_receipt_sha256": refs.get('qa_live_receipt_sha256'),
         "production_mutation_by_ci": False, "protected_release_semantics_unchanged": True,
     }
 
@@ -260,10 +296,11 @@ def main() -> int:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--workflow-run-id", required=True)
     parser.add_argument("--receipt", action="append", default=[], type=Path)
+    parser.add_argument("--qa-live-receipt", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt)
+        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt, args.qa_live_receipt)
     except (OSError, UnicodeError, zipfile.BadZipFile, VerificationError) as exc:
         print(f"V213_R75_FREE_RELAY_ARTIFACT_VERIFICATION = FAIL; reason={type(exc).__name__}")
         return 1

@@ -15,7 +15,7 @@ try {
     if (@(git status --porcelain).Count -ne 0) { throw 'FREE_RELAY validation requires a clean checkout.' }
     $changed = @(git diff --name-only "$baseCommit..$sha")
     $allowed = @(
-        '.github/workflows/v213-r75-release.yml',
+        '.github/workflows/v213-r75-release.yml','.gitattributes',
         'AGENTS.md','skills/serenity-public-research/SKILL.md',
         'skills/serenity-public-research/references/RESEARCH_METHOD.md','tests/test_agent_skill_structure.py',
         'skills/serenity-public-research/references/CROSS_VALIDATION.md',
@@ -87,7 +87,9 @@ try {
         'config/v213-model-profile-v1.json','tests/test_v213_model_profile.py',
         'cloud/test/model-profile.test.ts','state/model-profile-development-failure.json','state/model-profile-none-development-proof.json',
         'state/model-thinking-observation-20260909.json','state/exe-local-route-observation-20260909.json',
-        'state/exe-local-route-final-20260909.json'
+        'state/exe-local-route-final-20260909.json',
+        'scripts/r75_release_inputs.py','tests/test_r75_release_inputs.py',
+        'state/r75-qa-live-current.ref.json','state/r75-qa-live-direct-20260909.json'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.
@@ -118,16 +120,20 @@ try {
     if (-not $workerResults.success -or $workerResults.numFailedTests -ne 0) { throw 'Worker evidence is not successful.' }
     # Consume the already completed, exact-runtime-source-bound live test.
     # CI never creates a tunnel/Worker, accesses the GPU or writes Production.
-    $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
+    $qaInputRaw = & $env:PROJECT_PYTHON scripts/r75_release_inputs.py --project-root $ProjectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Committed QA input selection failed.' }
+    $qaInput = $qaInputRaw | ConvertFrom-Json
+    if ($qaInput.source_commit -cne $sha) { throw 'QA input source commit mismatch.' }
+    $liveProof = Join-Path $ProjectRoot $qaInput.receipt_path
     $profileArgs=@()
     $profilePath=Join-Path $ProjectRoot 'config/v213-model-profile-v1.json'
     if(Test-Path -LiteralPath $profilePath -PathType Leaf){
-        $liveProof=Join-Path $ProjectRoot 'state/r75-qa-live-model-profile-qualification.json'
         $profileArgs=@('--model-profile',$profilePath)
     }
     $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof @profileArgs
     if ($LASTEXITCODE -ne 0) { throw 'Source-bound live Q&A qualification failed.' }
     $qa = $qaRaw | ConvertFrom-Json
+    if ((Get-FileHash -LiteralPath $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $qaInput.receipt_sha256) { throw 'Committed QA input changed during validation.' }
     if ($qa.release_ready -ne $true) { throw 'Live Q&A is not release-qualified.' }
     $env:R75_QA_RELEASE_READY = 'true'
     if ($env:GITHUB_ENV) { 'R75_QA_RELEASE_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
@@ -140,7 +146,7 @@ try {
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
         worker_typecheck='PASS';worker_test_files=@($workerResults.testResults).Count;worker_tests=[int]$workerResults.numTotalTests;
         compact_context='PASS';deployment_readiness='PASS_REAL_ISOLATED';live_qa='PASS';live_free_relay_smoke='PASS';release_ready=$true;
-        live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
+        live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_path=$qaInput.receipt_path;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
         exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
         quick_tunnel_ephemeral=$true;exact_model=$qa.exact_model;model_profile_sha256=$qa.model_profile_sha256;health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
