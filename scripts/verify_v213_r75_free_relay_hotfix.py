@@ -8,8 +8,12 @@ import json
 import posixpath
 import re
 import stat
+import sys
 import zipfile
 from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from v213_model_profile import parse_profile, profile_sha256
 
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -34,9 +38,16 @@ def safe_name(value: str) -> str:
 
 
 def load_json(data: bytes, label: str) -> dict:
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = value
+        return result
     try:
-        value = json.loads(data.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(data.decode("utf-8-sig"), object_pairs_hook=unique)
+    except (ValueError, RecursionError) as exc:
         raise VerificationError(f"invalid {label}") from exc
     if not isinstance(value, dict):
         raise VerificationError(f"invalid {label}")
@@ -90,6 +101,40 @@ def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) 
     count = refs.get("packaged_worker_test_count")
     if type(count) is not int or count <= 0:
         raise VerificationError("packaged Worker test count invalid")
+
+
+def verify_model_binding(files, refs, receipts, archive_sha):
+    """Use trusted validators, never import code from the archive being checked."""
+    key = 'config/v213-model-profile-v1.json'
+    markers = {key, 'scripts/v213_model_profile.py', 'cloud/src/v213/model-profile.ts'}
+    modern = bool(markers.intersection(files)) or any(r.get('model_profile_sha256') is not None for r in [refs, *receipts])
+    if not modern:
+        if refs.get('exact_model') != 'qwen38-q6':
+            raise VerificationError('legacy model mismatch')
+        return {'exact_model': 'qwen38-q6', 'model_profile_sha256': None}
+    required = {key, 'scripts/v213_model_profile.py', 'scripts/v213_compact_qa_gateway.py',
+                'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts'}
+    if not required.issubset(files):
+        raise VerificationError('profile runtime payload missing')
+    try:
+        profile = parse_profile(files[key][1].decode('utf-8-sig'))
+    except (ValueError, UnicodeError):
+        raise VerificationError('packaged model profile invalid') from None
+    if profile['enable_thinking'] or profile['reasoning_effort'] != 'none':
+        raise VerificationError('thinking capability unqualified')
+    identity = {'exact_model': profile['model'], 'model_profile_sha256': profile_sha256(profile)}
+    if any(r.get('artifact_kind') != 'R75_FREE_WORKERS_RELAY_HOTFIX' for r in receipts):
+        raise VerificationError('profile receipt artifact kind mismatch')
+    windows = [r for r in receipts if r.get('release_ready') is True and
+               r.get('live_qa') == 'PASS' and r.get('live_free_relay_smoke') == 'PASS']
+    deployment = [r for r in receipts if r.get('extracted_zip_worker_gate') == 'PASS']
+    delivery = [r for r in receipts if r.get('zip_sha256') == archive_sha]
+    if any(len(group) != 1 for group in (windows, deployment, delivery)) or len({id(windows[0]), id(deployment[0]), id(delivery[0])}) != 3:
+        raise VerificationError('profile receipt roles missing or ambiguous')
+    for record in (refs, windows[0], deployment[0]):
+        if any(record.get(k) != v for k, v in identity.items()):
+            raise VerificationError('model profile receipt binding mismatch')
+    return identity
 
 
 def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path]) -> dict:
@@ -146,7 +191,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("base_named_tunnel_commit") != BASE or refs.get("source_commit") != commit or
             str(refs.get("workflow_run_id")) != run_id or refs.get("production_mutation_by_ci") is not False or
             refs.get("protected_release_semantics_unchanged") is not True or refs.get("consecutive_public_health_required") != 3 or
-            refs.get("health_schema_version") != 2 or refs.get("exact_model") != "qwen38-q6" or
+            refs.get("health_schema_version") != 2 or
             refs.get("normal_production_tunnel_mode") != "quick_free_relay" or
             refs.get("workers_dev_stable_entrypoint") is not True or refs.get("custom_domain_required") is not False):
         raise VerificationError("hotfix refs mismatch")
@@ -192,7 +237,9 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"] or
             deployment[0].get("extracted_zip_runtime_install") != "PASS"):
         raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
+    model_binding = verify_model_binding(files, refs, verified, actual)
     return {
+        **model_binding,
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
         "archive": archive.name, "archive_sha256": actual, "source_commit": commit,
         "workflow_run_id": run_id, "base_named_tunnel_commit": BASE, "zip_crc": "PASS",

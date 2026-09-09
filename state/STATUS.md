@@ -4,17 +4,16 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Fetched starting HEAD569c5ef2ba828124f949eb8a6e4c4ad19c442a94, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Fetched starting HEAD010fad63d102cd8ae39e81de7f86fc0af82d677e, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
 - User authorizes repairs and LINE integration only after all data/work/validation acceptance. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. This step changes source/tests/docs only; no Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
-## Current audit: actual bridge startup profile
+## Current audit: profile-bound artifact verification
 
-- Found a real caller defect: after loading the validated profile, FreeRelay startup still unconditionally rejected every non-Q6 model. New PS5.1/7 regression executes the actual startup decision block with synthetic transport; both shells reproduced failure (`bridge-startup-profile-red.log`). Profile-backed startup now retains exact profile agreement while unprofiled FreeRelay still requires Q6. Incomplete-response and conflicting-selection negatives remain; routing smoke now prohibits redirects.
-- Focused native regression and full Python676/2 skipped, Worker25 files/227, typecheck, six gates and PS5.1/7 host self-tests PASS (`bridge-startup-profile-green.log`, `bridge-startup-python-full.log`, `bridge-startup-worker.log`). No real inference, cloud credentials, new services, installed changes or Production mutation. This is NOT auto-think or full EXE/install qualification.
-- Committed/pushed source fix0d19e94. Read-only GitHub runner query found0 online idle runners with the required reviewed label; no workflow dispatched, runner changes or qualification claim.
-- STATUS12081/12017-byte edits failed budget; shortened without relaxing the gate.
-- Next concrete packaging defect found, not relaxed: FREE_RELAY packager writes the qualified profile model/hash, but `verify_v213_r75_free_relay_hotfix.py` still hardcodes Q6. Versioned model/receipt/archive binding needs regression before this lane can ship. Non-FreeRelay legacy endpoint discovery/auto-start also remains to review.
+- Reproduced original Q6-only verifier rejecting a coherent synthetic profile ZIP (`archive-profile-baseline-red.log`). New admission binds packaged profile/runtime modules, refs and Windows/deployment model hashes; distinct receipt roles and delivery ZIP SHA are required. Legacy unprofiled archives remain Q6-only. Duplicate JSON keys, missing profile markers/dependencies, drift and unqualified thinking fail closed; no archive code is imported.
+- Actual archive CLI plus rehashed tamper fixtures tested. Python682/2 skipped, Worker25 files/227 and typecheck PASS (`archive-profile-python-final.log`, `archive-profile-worker.log`). Synthetic MZ/receipts test admission, not genuine PE, source attestation, live inference or installed acceptance. Six gates and PS5.1/7 parser/host self-tests PASS; protected source bytes unchanged.
+- Local routing-smoke attempt failed BEFORE inference; original `local-route-smoke-20260909T202648.json` retained. Ad-hoc capacity guard rejected PowerShell Int64; subsequent read-only diagnostics showed Router role/max1 but0 loaded models. No guard bypass, model load/preset change, new service, credential use, LINE or Production mutation.
+- Prior startup fix0d19e94, native red/green proofs and STATUS budget failures remain in `git show 010fad6:state/STATUS.md`. Last GitHub query found0 idle reviewed runners; no workflow dispatched. Auto-think, fresh qualified inference, non-FreeRelay discovery/auto-start and coordinated installed acceptance remain open.
 
 ## Prior native catalog and installation audit (569c5ef)
 
