@@ -11,16 +11,17 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 ## Current audit: actual bridge startup profile
 
 - Found a real caller defect: after loading the validated profile, FreeRelay startup still unconditionally rejected every non-Q6 model. New PS5.1/7 regression executes the actual startup decision block with synthetic transport; both shells reproduced failure (`bridge-startup-profile-red.log`). Profile-backed startup now retains exact profile agreement while unprofiled FreeRelay still requires Q6. Incomplete-response and conflicting-selection negatives remain; routing smoke now prohibits redirects.
-- Focused native regression and full Python676/2 skipped, Worker25 files/227 typecheck, six gates and PS5.1/7 host self-tests PASS (`bridge-startup-profile-green.log`, `bridge-startup-python-full.log`, `bridge-startup-worker.log`). No real inference, cloud credentials, new services, installed changes or Production mutation. This is NOT auto-think or full EXE/install qualification.
-- Initial STATUS12081-byte edit failed budget; shortened without relaxing the gate.
+- Focused native regression and full Python676/2 skipped, Worker25 files/227, typecheck, six gates and PS5.1/7 host self-tests PASS (`bridge-startup-profile-green.log`, `bridge-startup-python-full.log`, `bridge-startup-worker.log`). No real inference, cloud credentials, new services, installed changes or Production mutation. This is NOT auto-think or full EXE/install qualification.
+- Committed/pushed source fix0d19e94. Read-only GitHub runner query found0 online idle runners with the required reviewed label; no workflow dispatched, runner changes or qualification claim.
+- STATUS12081/12017-byte edits failed budget; shortened without relaxing the gate.
 - Next concrete packaging defect found, not relaxed: FREE_RELAY packager writes the qualified profile model/hash, but `verify_v213_r75_free_relay_hotfix.py` still hardcodes Q6. Versioned model/receipt/archive binding needs regression before this lane can ship. Non-FreeRelay legacy endpoint discovery/auto-start also remains to review.
 
 ## Prior native catalog and installation audit (569c5ef)
 
 - EXE catalog transport stays on the selected Router, with redirect/type/size/deadline guards and no saving from an unavailable catalog. Native CLI/slow-stream negatives, GUI source changes, original disconnect trace and Python676/Worker227/gates proof remain in Git569c5ef and `exe-catalog-*` logs. Catalog success does not qualify inference or installed GUI.
-- Read-only actual checks: both publisher tasks Disabled, one action each targeting the expected installed wrapper. Ten known chain files:6 differ from candidate,2 new modules missing,2 equal. Do not install only the EXE. Existing8080 `/v1/models` returned200/one approved advertised identity; inference was NOT tested by that probe.
+- Prior installed check: both tasks Disabled with expected actions;10 chain files had6 differences/2 missing/2 equal. Router8080 advertised one approved model, not an inference proof. Do not replace only the EXE.
 - Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
-- Prior card SHA/pinned snapshot/broadcast/citation fixes and original failures remain in `git show dd3cf57:state/STATUS.md` and `report-reference-*`, `citation-admission-*`, `snapshot-view-*` logs. Prior Python676/2 skipped, Worker25 files/227, typecheck, six gates and PS5.1/7 passed. Input SHA still is NOT sealed-claim authorization; retained storage.ts/qa.ts unchanged.
+- Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
 - Original catalog/whitespace failures and commands remain in `git show 569c5ef:state/STATUS.md`; candidate source only, no release. Automatic think selection and fresh inference/install acceptance remain open.
 
 ## Production and release blockers
