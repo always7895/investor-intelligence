@@ -56,4 +56,6 @@ Use the approved Python runtime:
 
 This returns validated settings, a fingerprint and `release_qualified=false`, not a deployment receipt. Worker binding must contain the same validated profile as the gateway. Health/response pins and readiness must match; changing only one side is invalid.
 
+The bridge startup now uses the validated profile's exact model instead of rejecting every non-Q6 selection. Unprofiled FreeRelay callers retain the Q6 restriction. PS5.1/7 tests execute the actual startup decision block with synthetic transport, including profile conflict, incomplete response and legacy negatives; they do not certify an installed bridge or live model. The routing smoke disables HTTP redirects.
+
 Gateway requests require exact profile/model agreement and reject incomplete or mismatched responses. Timeout remains bounded `MODEL_PROFILE_TIMEOUT`; no raw exception or reasoning transcript should be retained. Install the complete reviewed dependency chain, validate installed actions separately, then obtain fresh Windows/source-bound/archive/install evidence. No old activation replay and no real LINE test sends.

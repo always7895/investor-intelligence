@@ -4,19 +4,24 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Fetched starting HEADdd3cf574914112dd686e4c058ef418d0b45bfab5, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Fetched starting HEAD569c5ef2ba828124f949eb8a6e4c4ad19c442a94, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
 - User authorizes repairs and LINE integration only after all data/work/validation acceptance. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. This step changes source/tests/docs only; no Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
-## Current audit: native catalog and actual installation boundaries
+## Current audit: actual bridge startup profile
 
-- Candidate EXE discovery stays on the selected loopback Router; invalid configured URLs fail without scanning another port. Redirects/default credentials are disabled, strict UTF-8 and1MiB/1024-identity bounds apply, with4.5s per-path deadlines. HashSet deduplication and one preferred-profile lookup bound work. GUI scanning locks other actions; empty catalog cannot authorize saving; saved selections explicitly remain unqualified.
-- New read-only `--model-catalog-check` exercises the compiled EXE. Native fixtures cover valid/alternate paths, redirects, bad JSON/UTF-8, declared/streamed oversize, slow trickle and invalid URL rejection without requests. Focused8 tests PASS (`exe-catalog-native.log`, `exe-catalog-deadline.log`). Original slow-stream fixture logged expected Windows connection abort; now handled without masking assertions. Full Python676/2 skipped, Worker25 files/227, typecheck, six gates and PS5.1/7 parse PASS (`exe-catalog-python-final.log`, `exe-catalog-worker.log`). No installed GUI or automatic think qualification.
+- Found a real caller defect: after loading the validated profile, FreeRelay startup still unconditionally rejected every non-Q6 model. New PS5.1/7 regression executes the actual startup decision block with synthetic transport; both shells reproduced failure (`bridge-startup-profile-red.log`). Profile-backed startup now retains exact profile agreement while unprofiled FreeRelay still requires Q6. Incomplete-response and conflicting-selection negatives remain; routing smoke now prohibits redirects.
+- Focused native regression and full Python676/2 skipped, Worker25 files/227 typecheck, six gates and PS5.1/7 host self-tests PASS (`bridge-startup-profile-green.log`, `bridge-startup-python-full.log`, `bridge-startup-worker.log`). No real inference, cloud credentials, new services, installed changes or Production mutation. This is NOT auto-think or full EXE/install qualification.
+- Initial STATUS12081-byte edit failed budget; shortened without relaxing the gate.
+- Next concrete packaging defect found, not relaxed: FREE_RELAY packager writes the qualified profile model/hash, but `verify_v213_r75_free_relay_hotfix.py` still hardcodes Q6. Versioned model/receipt/archive binding needs regression before this lane can ship. Non-FreeRelay legacy endpoint discovery/auto-start also remains to review.
+
+## Prior native catalog and installation audit (569c5ef)
+
+- EXE catalog transport stays on the selected Router, with redirect/type/size/deadline guards and no saving from an unavailable catalog. Native CLI/slow-stream negatives, GUI source changes, original disconnect trace and Python676/Worker227/gates proof remain in Git569c5ef and `exe-catalog-*` logs. Catalog success does not qualify inference or installed GUI.
 - Read-only actual checks: both publisher tasks Disabled, one action each targeting the expected installed wrapper. Ten known chain files:6 differ from candidate,2 new modules missing,2 equal. Do not install only the EXE. Existing8080 `/v1/models` returned200/one approved advertised identity; inference was NOT tested by that probe.
-- Filtered Pi inventory: installed-project6 package registrations/one skill; source-project settings absent; active-user packages/extensions0 and extension directory empty. Five extension manifests plus core runtime registration; four packages declare a core dependency. No ownership/use proof supports deleting them. No packages/files removed, installs, settings changes or performance claim. Current docs now separate historical proof from acceptance and avoid duplicate release tables.
+- Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
 - Prior card SHA/pinned snapshot/broadcast/citation fixes and original failures remain in `git show dd3cf57:state/STATUS.md` and `report-reference-*`, `citation-admission-*`, `snapshot-view-*` logs. Prior Python676/2 skipped, Worker25 files/227, typecheck, six gates and PS5.1/7 passed. Input SHA still is NOT sealed-claim authorization; retained storage.ts/qa.ts unchanged.
-- Initial precommit diff check rejected STATUS CRLF whitespace; normalized to LF, no gate relaxation. Candidate commit/push only, not release publication.
-- Commands: Git fetch/HEAD/diff; pinned Python native unittest; filtered task/file-hash/package metadata checks; bounded read-only Router GET. No Production, real LINE, schedule, installed-runtime or preset mutation. Automatic think selection, fresh source-bound inference and coordinated installation remain open.
+- Original catalog/whitespace failures and commands remain in `git show 569c5ef:state/STATUS.md`; candidate source only, no release. Automatic think selection and fresh inference/install acceptance remain open.
 
 ## Production and release blockers
 

@@ -32,7 +32,8 @@ function Get-ModelCatalog { param($Base) return $script:Catalog }
 Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $script:ProfileActive=$false
 function Invoke-RestMethod {
- param($Method,$Uri,$ContentType,$Body,$TimeoutSec)
+ param($Method,$Uri,$ContentType,$Body,$TimeoutSec,$MaximumRedirection)
+ if($MaximumRedirection-cne0){throw 'PROBE_REDIRECTS_NOT_DISABLED'}
  if($Uri-cne'http://127.0.0.1:1/v1/chat/completions'){throw 'UNEXPECTED_ENDPOINT'}
  $request=[Text.Encoding]::UTF8.GetString([byte[]]$Body)|ConvertFrom-Json
  if($script:ProfileActive){
@@ -71,7 +72,44 @@ $script:Catalog+=@([pscustomobject]@{id='other';aliases=@('QWEN38-Q6')})
 $failed=$false
 try{$null=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'}catch{$failed=$true}
 if(-not$failed){throw 'AMBIGUOUS_ALIAS_ACCEPTED'}
-Write-Output 'BRIDGE_SHARED_IDENTITY=PASS; no_network=true; no_mutation=true'
+# Execute the real startup decision block, not just its internal formatter/probe.
+$source=$ast.Extent.Text
+$start=$source.IndexOf('$runtimeProfile = Get-RuntimeModelProfile')
+$end=$source.IndexOf('$bridgeMaterial = if', $start)
+if($start-lt0-or$end-le$start){throw 'STARTUP_BLOCK_MISSING'}
+$startup=[scriptblock]::Create($source.Substring($start,$end-$start))
+function Resolve-Llama { return 'http://127.0.0.1:1' }
+$tunnelPolicy=@{mode='FreeRelay'}
+$LlamaBaseUrl='http://127.0.0.1:1'
+$script:ProfileActive=$true
+$env:V213_MODEL_PROFILE_JSON=@{schema_version=1;model='profile-model-test';enable_thinking=$true;reasoning_effort='xhigh';max_output_tokens=1024;smoke_output_tokens=128;timeout_ms=18000}|ConvertTo-Json -Compress
+$script:Catalog=$profileCatalog
+$script:Response=@{model='profile-model-test';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+$Model=''
+. $startup
+if($Model-cne'profile-model-test'){throw 'STARTUP_PROFILE_NOT_SELECTED'}
+$script:Response.choices[0].finish_reason='length'
+$failure=''
+try{. $startup}catch{$failure=$_.Exception.Message}
+if($failure-notlike'MODEL_ROUTING_PROBE_FAILED;*'){throw 'STARTUP_INCOMPLETE_RESPONSE_ACCEPTED'}
+$script:Response.choices[0].finish_reason='stop'
+$Model='other-model'
+$failure=''
+try{. $startup}catch{$failure=$_.Exception.Message}
+if($failure-cne'MODEL_PROFILE_SELECTION_MISMATCH'){throw 'STARTUP_PROFILE_CONFLICT_NOT_REJECTED'}
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
+$script:ProfileActive=$false
+$Model=''
+$script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
+$script:Response=@{model=$canonical;choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+. $startup
+if($Model-cne'qwen38-q6'){throw 'LEGACY_STARTUP_MODEL_CHANGED'}
+$Model='profile-model-test'
+$script:Catalog=$profileCatalog
+$failure=''
+try{. $startup}catch{$failure=$_.Exception.Message}
+if($failure-cne'FREE_RELAY_LEGACY_MODEL_MISMATCH'){throw 'UNPROFILED_FREE_RELAY_MODEL_ACCEPTED'}
+Write-Output 'BRIDGE_SHARED_IDENTITY=PASS; startup_profile=PASS; no_network=true; no_mutation=true'
 '''.replace('ROOT_VALUE', quote(ROOT)).replace('PYTHON_VALUE', quote(sys.executable))
         with tempfile.TemporaryDirectory(prefix='Bridge 身分 (1) ') as directory:
             path = Path(directory) / 'check.ps1'

@@ -385,7 +385,7 @@ function Test-SelectedModelRoute {
     }
     $body = $generation | ConvertTo-Json -Depth 6 -Compress
     try {
-        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec $probeTimeout
+        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec $probeTimeout -MaximumRedirection 0
         $null=Invoke-SharedModelIdentity -Selected $SelectedModel -Catalog $Catalog -Response $response -VerifyResponse
     }
     catch { throw 'MODEL_ROUTING_PROBE_FAILED; complete_exact_identity_and_marker_required=true' }
@@ -625,7 +625,10 @@ if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
+# A validated profile owns the exact model in the new lane. Keep the retained
+# Q6 restriction for unprofiled callers; Test-SelectedModelRoute below rechecks
+# profile agreement and requires a complete response with exact identity.
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile -and $Model -cne 'qwen38-q6') { throw 'FREE_RELAY_LEGACY_MODEL_MISMATCH' }
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
