@@ -70,6 +70,39 @@ class V213SafePreselectionWrapperTests(unittest.TestCase):
                     accession_number='0000000000-26-000001',
                     record_url='https://www.sec.gov/Archives/edgar/data/1/annual.htm', value=100.0)
 
+    def test_metric_ratios_require_same_period_unit_and_filing(self):
+        revenue = {**self.fact(), 'unit': 'USD', 'value': 100.0}
+        net = {**revenue, 'tag': 'NetIncomeLoss', 'value': 20.0}
+        self.assertEqual(MODULE.publication_aware_metrics([revenue, net])[0]['net_margin'], 0.2)
+        for change in ({'start': '2026-01-01'}, {'end': '2025-12-31'}, {'unit': 'EUR'}, {'unit': None},
+                       {'record_url': 'https://www.sec.gov/Archives/edgar/data/1/other.htm'},
+                       {'accession_number': '0000000000-26-000002'}):
+            with self.subTest(change=change):
+                self.assertIsNone(MODULE.publication_aware_metrics([revenue, {**net, **change}])[0]['net_margin'])
+        for metric, tag in (('gross_margin', 'GrossProfit'), ('operating_margin', 'OperatingIncomeLoss')):
+            row = {**net, 'tag': tag}
+            self.assertEqual(MODULE.publication_aware_metrics([revenue, row])[0][metric], 0.2)
+            self.assertIsNone(MODULE.publication_aware_metrics([revenue, {**row, 'unit': 'EUR'}])[0][metric])
+        # Missing unit is not an agreement just because both rows omit it.
+        self.assertIsNone(MODULE.publication_aware_metrics([{**revenue, 'unit': None}, {**net, 'unit': None}])[0]['net_margin'])
+        equity = {**revenue, 'tag': 'StockholdersEquity', 'start': None, 'value': 50.0}
+        debt = {**equity, 'tag': 'LongTermDebt', 'value': 25.0}
+        self.assertEqual(MODULE.publication_aware_metrics([equity, debt])[0]['debt_to_equity'], 0.5)
+        self.assertIsNone(MODULE.publication_aware_metrics([equity, {**debt, 'end': '2025-12-31'}])[0]['debt_to_equity'])
+
+    def test_growth_requires_comparable_adjacent_annual_periods(self):
+        current = {**self.fact(), 'unit': 'USD', 'value': 120.0}
+        prior = {**current, 'start': '2024-07-01', 'end': '2025-06-30', 'fiscal_year': 2025,
+                 'filed': '2025-07-29', 'accession_number': '0000000000-25-000001',
+                 'record_url': 'https://www.sec.gov/Archives/edgar/data/1/prior.htm', 'value': 100.0}
+        self.assertAlmostEqual(MODULE.publication_aware_metrics([current, prior])[0]['revenue_growth'], 0.2)
+        weekly_current = {**current, 'start': '2025-06-29', 'end': '2026-07-04'}
+        weekly_prior = {**prior, 'start': '2024-06-30', 'end': '2025-06-28'}
+        self.assertAlmostEqual(MODULE.publication_aware_metrics([weekly_current, weekly_prior])[0]['revenue_growth'], 0.2)
+        for change in ({'unit': 'EUR'}, {'start': '2025-01-01'}, {'start': '2024-07-16'}, {'end': '2024-06-30', 'start': '2023-07-01'}, {'unit': None}):
+            with self.subTest(change=change):
+                self.assertIsNone(MODULE.publication_aware_metrics([current, {**prior, **change}])[0]['revenue_growth'])
+
     def test_actual_metric_caller_rejects_malformed_source_dates(self):
         for field in ('start', 'end', 'filed'):
             for bad in ('2026-06-30junk', '2026-06-30T00:00:00Z', ' 2026-06-30',

@@ -73,6 +73,42 @@ def _date_text(value: Any) -> str:
         return ""
 
 
+def _money_unit(record: Mapping[str, Any] | None) -> str:
+    unit = record.get('unit') if record else None
+    return unit if isinstance(unit, str) and re.fullmatch(r'[A-Z]{3}', unit) else ''
+
+
+def _same_filing_basis(left, right, *, duration: bool) -> bool:
+    if not left or not right or not _money_unit(left) or _money_unit(left) != _money_unit(right):
+        return False
+    if left.get('end') != right.get('end'):
+        return False
+    if duration:
+        if not _date_text(left.get('start')) or left.get('start') != right.get('start'):
+            return False
+    elif left.get('start') or right.get('start'):
+        return False
+    accession = left.get('accession_number')
+    return (isinstance(accession, str) and bool(re.fullmatch(r'[0-9]{10}-[0-9]{2}-[0-9]{6}', accession))
+            and accession == right.get('accession_number')
+            and isinstance(left.get('record_url'), str) and bool(left['record_url'])
+            and left['record_url'] == right.get('record_url'))
+
+
+def _adjacent_annual_basis(current, prior) -> bool:
+    if (not _money_unit(current) or _money_unit(current) != _money_unit(prior)
+            or current.get('tag') != prior.get('tag')):
+        return False
+    try:
+        start, end = (dt.date.fromisoformat(_date_text(current.get(k))) for k in ('start', 'end'))
+        old_start, old_end = (dt.date.fromisoformat(_date_text(prior.get(k))) for k in ('start', 'end'))
+    except ValueError:
+        return False
+    # Reported annual comparisons (52/53-week years allowed), not normalized growth.
+    return ((end-start).days+1 in (364, 365, 366, 371) and (old_end-old_start).days+1 in (364, 365, 366, 371)
+            and (start-old_end).days == 1)
+
+
 def publication_aware_metrics(
     records: Sequence[Mapping[str, Any]],
 ) -> tuple[dict[str, float | None], list[PublicationAwareEvidence]]:
@@ -116,6 +152,21 @@ def publication_aware_metrics(
         filed_by_exact_key[exact_key] = filed
 
     official_metrics, legacy_evidence = LEGACY_METRICS(records)
+    # Preserve arithmetic/score weights, but do not divide unrelated financial bases.
+    revenue_tags = ('RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet')
+    revenue = engine.latest_value(records, revenue_tags, duration=True)
+    for metric, tags in (('gross_margin', ('GrossProfit',)), ('operating_margin', ('OperatingIncomeLoss',)),
+                         ('net_margin', ('NetIncomeLoss', 'ProfitLoss'))):
+        numerator = engine.latest_value(records, tags, duration=True)
+        if not _same_filing_basis(numerator, revenue, duration=True):
+            official_metrics[metric] = None
+    equity = engine.latest_value(records, ('StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'), duration=False)
+    debts = engine.latest_records(records, ('LongTermDebtCurrent', 'LongTermDebtNoncurrent', 'LongTermDebt'))
+    if not _same_filing_basis(debts[0] if debts else None, equity, duration=False):
+        official_metrics['debt_to_equity'] = None
+    annual = engine.annual_values(records, revenue_tags)
+    if len(annual) < 2 or not _adjacent_annual_basis(annual[0], annual[1]):
+        official_metrics['revenue_growth'] = None
     normalized: list[PublicationAwareEvidence] = []
     for item in legacy_evidence:
         source_id = str(getattr(item, "source_id", ""))
