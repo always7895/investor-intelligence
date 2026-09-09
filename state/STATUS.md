@@ -4,25 +4,26 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Fetched starting HEADed0dcd1a9ea50b694f99f6412b3bf871a9e75283, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
-- User authorizes repairs and LINE integration only after all data/work/validation acceptance. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. Source/tests/docs plus four real-Router fixed-marker requests; no Production mutation.
+- Fetched starting HEAD7bc9df72d222ba4775e92a7b249210289f15ca93, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: runner service/label and isolated Worker/KV create/delete; no Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
-## Current audit: actual EXE local reply path
+## Candidate EXE evidence (7bc9df7)
 
-- Candidate GUI Test reply and `--model-route-check` share one caller into core `-RoutingCheckOnly`. Requires profile, existing64-bit CPython3.12.10/requests and exact complete reply; no global-Python fallback/download, deployment credentials, gateway/tunnel, task or publication calls. Conflicting mutation/self-test flags and mixed --version reject. GUI saves unqualified selection first; CLI only writes diagnostics. Self-test now checks new dependency files.
-- Native compiled EXE fixtures exercise actual core/HTTP requests: completion PASS; incomplete, wrong model, redirect, missing configured Python and argument conflicts reject without fallback/config writes. Earlier endpoint containment/type/PS-array failures and685-test proof remain in Gited0dcd1 / `router-resolution-*` / `router-thinking-*`; controls/archive history in Git8e9e52a/f126f25.
-- Actual compiled EXE→PowerShell→approved Q5 Router: final none/low exit0 in2156/6094ms, no runtime config directory created. `exe-local-route-final-20260909.json` binds source/EXE hashes; initial `exe-local-route-observation-20260909.json` retained. Both dirty-source/local-only/release_qualified=false; release verifier rejects them. No inference text stored. Final run follows source changes; initial evidence was not restamped.
-- Prior direct Q5 none/low observation exposed no reasoning/reasoning respectively (`model-thinking-observation-20260909.json`). Fixed-marker completion is not research quality, graded effort, best-mode, installed GUI or authenticated gateway/Worker acceptance. Native CLI uses same GUI helper; actual live GUI click not certified.
-- Python686/2 skipped, Worker227/typecheck, six gates and PS5.1/7 parser/host PASS; logs `exe-route-python-full.log`, `exe-route-worker.log`, `exe-route-typecheck.log`, `exe-route-check-native-complete.log`. No installed/preset/task/Production/LINE changes; diagnostic logs only. Existing Router can load its sole model normally. Fresh GitHub read:0 idle reviewed runners; no dispatch. Auto-think/install and remaining core transport bounds stay open.
+- GUI Test reply/CLI share core RoutingCheckOnly; native completion/negative/profile/dependency tests PASS, no deployment. Details and original failures: Git7bc9df7/ed0dcd1/8e9e52a/f126f25 and `exe-route-*`, `router-resolution-*`, `router-thinking-*` logs.
+- `exe-local-route-final-20260909.json`: actual EXE→PowerShell→Q5 none/low exit0 in2156/6094ms, no config creation. Source/EXE hashes bound; original observation retained, no restamp. Dirty-source/local-only/release_qualified=false; release verifier rejects it. Direct `model-thinking-observation-20260909.json` records reasoning field absent/present, not text.
+- Python686/2 skipped, Worker227/typecheck, six gates and PS5.1/7 PASS on7bc9df7. Fixed markers are not research quality, graded effort, auto-best-mode, installed GUI or full gateway acceptance. Actual live GUI click, transport bounds, data and coordinated installation remain open.
 
-## Prior native catalog and installation audit (569c5ef)
+## Authorized runner and isolated gate
 
-- Prior EXE catalog guards, native negatives and failures remain in Git569c5ef / `exe-catalog-*`. Catalog success is not inference or installed qualification.
+- Runner24 registered offline in `D:\actions-runner-win-x64-2.337.0`; stopped project service pointed to missing `D:\investor-intelligence-runner\bin\RunnerService.exe`. Initial SC failed Access denied5. User-approved UAC corrected only that service path and started it; retained account/startup. Added reviewed label; confirmed online. Other-project Skyrim runner untouched. Receipt: `runner-service-repair-20260909.json` in audit-runtime.
+- R75 Windows validation-only run34367564694 on exact7bc9df7 PASS in2m22s. Packaging/release steps skipped; no release qualification. CI installed/cleaned isolated test dependencies, not the installed application.
+- Authorized `v213_qa_live_gate.py --live-isolated --model-profile config/v213-model-profile-v1.json` FAIL before inference: `V213_READINESS_HTTP_FAILED`, PS HTTP404; later Python diagnostic200 is NOT acceptance or a proven cause. Model cases0. Original `r75-live-authorized-20260909.json/.log` retained in audit-runtime. Receipt confirms isolated resources deleted, preset/source unchanged, no Production mutation/real LINE. No retry-as-PASS or weakened gate. Status-only update: six gates and6 instruction tests PASS; both publisher tasks rechecked Disabled. Runtime code unchanged.
+
+## Prior installation audit (569c5ef)
 - Prior installed check: both tasks Disabled with expected actions;10 chain files had6 differences/2 missing/2 equal. Router8080 advertised one approved model, not an inference proof. Do not replace only the EXE.
 - Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
 - Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
-- Original catalog/whitespace failures and commands remain in `git show 569c5ef:state/STATUS.md`; candidate source only, no release. Automatic think selection and fresh inference/install acceptance remain open.
 
 ## Production and release blockers
 
@@ -56,10 +57,10 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Three canonical source/installed skill files hash-matched at synchronization; originals archived `_archive/instruction-sync-20260909T070339Z`. Unsupported installed case sheet replaced by pointer. Documentation is not proof of an unbiased executed screen.
 - Malformed-date-prefix rescue removed at snapshot/bundle admission in2a88e8e; legitimate date-only and actual-caller negatives preserved. Other time consumers require role-specific review.
 - Consolidation1113a1c preserved HEADs/branches/evidence; five old roots absent, no junction substitutes. Relocated tests passed (`consolidation-*.log`), runtime unchanged. Bounded cleanup proofs remain in Git; no unique evidence/locks/rollback/runtime deletion.
-- Old-named registered runner last observed Running/Auto with2.337.0 junction targets: not disposable. Installed inventory had57 file-stat errors, not complete deletion-safety proof. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs cleanup; no broad git clean, junction traversal or drive-wide deletion.
+- Other-project runner and its junction targets are not disposable. Installed inventory had57 file-stat errors, not deletion-safety proof. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs cleanup; no broad git clean, junction traversal or drive-wide deletion.
 
 ## Next actions
 
-1. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
+1. Diagnose isolated readiness PS404/Python200 without weakening admission, then rerun with a new receipt. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
 2. Complete rights, identity/currency/session/freshness qualification; connect evidence and three distinct report outputs through one reviewed versioned sealed contract and actual Worker routes. No unsealed fallback or researcher-draft promotion.
 3. Requalify exact source/model/Windows/package/installed actions. Publish only newly validated immutable data, read back bytes/claim/pointer, restore exactly the paused tasks and verify an actual scheduled run. No real LINE test sending; do not claim completion before these gates pass.
