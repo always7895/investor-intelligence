@@ -60,6 +60,7 @@ try {
         'scripts/adapters/staged_public.py','scripts/adapters/taiwan_equities.py',
         'scripts/fetch_public_source_observations.py','scripts/import_option_observations.py',
         'scripts/options_service.py','scripts/public_options_provider_gate.py',
+        'scripts/build_line_public_options.py','tests/test_build_line_public_options.py',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
