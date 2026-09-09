@@ -16,6 +16,7 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 
 ## Efficient execution / 精簡執行
 
+- Research uses Serenity as the primary public-method lens and Leopold Aschenbrenner as context-only auxiliary reasoning, never an automatic score bonus or fixed AI-universe filter. Require independent claim-level evidence; multiple mirrors of one disclosure are one lineage.
 - Keep this file as the engineering entrypoint; load the research skill only for research. Read current status first, then only the caller, validators and tests relevant to the task.
 - `state/STATUS.md` holds current findings and next actions, not an accumulating transcript. Preserve dated history in Git and immutable receipts; never restamp evidence.
 - Keep one authoritative R75 pipeline, shared adapters/validators and exact dependency locks. Discovery is not scored research; collection, rights, publication and release acceptance are separate gates.

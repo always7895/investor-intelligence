@@ -5,6 +5,10 @@ description: Public-only Serenity/@aleabitoreddit source views and independent s
 
 # Public research / 公開研究
 
+## Primary method and auxiliary context
+
+Serenity is the primary public-research lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: use dated demand, compute, capital and physical-deployment scenarios to generate hypotheses, never as company proof or extra Serenity score. Do not infer current holdings from historical essays or delayed disclosures. Neither author guarantees future returns.
+
 ## Choose the lane first
 
 - **ATTRIBUTED_SOURCE_VIEWS:** retrieve the original @aleabitoreddit passage, date, ticker identity, stance, horizon and later revisions. Archives only discover leads; unavailable originals remain UNVERIFIED. @stockgodserenity is a different, quarantined identity.
@@ -15,7 +19,7 @@ description: Public-only Serenity/@aleabitoreddit source views and independent s
 
 For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Do not recursively load release histories for a research-only task.
 
-Start with system change → constrained layer → companies. Separate customer relationships from scarce effective substitutes, commitments from revenue, operating success from shareholder capture, and timing from price gains. Preserve existing scoring and LIMITED gates; finish with falsifiers and multi-axis confidence.
+Start with system change → constrained layer → companies. Separate customer relationships from scarce effective substitutes, commitments from revenue, operating success from shareholder capture, and timing from price gains. Preserve existing scoring and LIMITED gates; finish with falsifiers and multi-axis confidence. Apply the dynamic discovery, source-role reconciliation and retirement rules in CROSS_VALIDATION.md. A directory, diversified URL list or edited skill is not an executed investment screen.
 
 ## Non-negotiable output boundaries
 

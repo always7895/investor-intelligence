@@ -66,6 +66,7 @@ try {
         'docs/WORKSPACE_MAINTENANCE.md',
         'scripts/build_v213_activation_bundle_v2.py','scripts/v213_build_v21_public_snapshot.py',
         'tests/test_activation_evidence_timestamps.py',
+        'state/research-method-refresh-20260909.json',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',

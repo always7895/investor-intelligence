@@ -4,7 +4,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 ## Authority and workspaces
 
-- Current fetched audit baseline 2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
+- Current fetched audit baseline 1113a1cc4f596318e416760ed0c2dc0a42a5084f; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
 - User authorized Production publication/Worker/schedule repair, newly validated data, and project cleanup. No real LINE sends, broker operations, new paid services or arbitrary credential access. Current step changes source/docs and bounded rebuildable artifacts only.
 - Installed runtime `D:\Investor-Intelligence-LINE-Pi` is not this Git worktree. Candidate changes are not installed acceptance.
 
@@ -12,10 +12,17 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 - Starting clean HEAD2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7. User explicitly requested a single project folder. Before moving: all three Git worktrees clean; no observed process/task/service references to the five moved roots; no old-root references in installed PowerShell/Python callers inspected.
 - Physically moved source, both isolated review worktrees and audit runtime under `_workspace`; history backups under `_archive/history-backups`. The five former top-level D-drive investor directories no longer exist; no junction/shortcut substitutes created. Used `git worktree move` then `git worktree repair` after main repository relocation. All three HEADs/branches preserved and clean before documentation updates.
-- First command stopped before mutation because PowerShell HOME is read-only; corrected local variable name. Git repair messages about old .git paths were expected and followed by successful worktree/status verification.
 - Relocated pinned Python3.12.10/OpenSSL/certifi imports PASS; full Python659/2 skipped, Worker160/typecheck PASS from the new paths. Logs now under `_workspace/audit-runtime/consolidation-*.log`. Installed runtime and task paths remain unchanged. Root installed AGENTS now points development work to the nested Git repository; no runtime binary/config replacement.
 - Existing signed/history evidence moved intact, not restamped. Running registered runner, models/Router and unrelated projects remain outside consolidation; they were not safe deletion targets. Moving folders reduces top-level clutter, not their byte size. Current release/data blockers remain unchanged.
 - Final bounded cleanup across the three source/review scripts/tests trees removed654 untracked .pyc files in10 directories,7,837,559 bytes; source12, baseline214, source-views428. No tracked files, unique evidence or dependencies deleted. Final instruction-budget/security/docs/workflow/storage/diff gates PASS. Both publisher tasks rechecked Disabled; consolidation did not restore or modify their actions.
+
+## Research refresh — partial, not screening qualification
+
+- See `research-method-refresh-20260909.json` for actual Pi provider/model, before/after reference hashes and tool evidence. Serenity remains primary; Aschenbrenner CONTEXT_ONLY. Generic value-chain discovery, independent claim lineage, conflict/retirement and source-specific freshness rules are explicit, not a claim of implemented accuracy.
+- Official X oEmbed recovered a truncated July31 author-matched excerpt after direct-page403; latest stance/full thread/company facts remain unverified. Another lead returned404. Leopold's retrieved original is a historical2024 scenario, not today's facts.
+- Actual collector:7 endpoints/14,417 observations; news5 recent/55 stale under its policy. Not14,417 companies or independent company claims. No provider activated.
+- Legacy v211 policy still reserves120/240 seeds and40/80 SEC slots for fixed themes. Caller/selector repair remains open; documentation does not fix this bias.
+- Python660/2 skipped, Worker160/typecheck, package-reference tests, security/docs/workflow/storage gates and PS5.1/7 parse PASS. Three canonical skill files synchronized to installed paths with matching hashes; prior instructions archived under `_archive/instruction-sync-20260909T070339Z`. Installed-only unsupported case sheet replaced by a compatibility pointer; outer AGENTS updated without overwriting its runtime role. No Worker/storage/schedule mutation or whole-project PASS.
 
 ## Production: maintenance still active
 
@@ -43,7 +50,7 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 - Q5 thinking=false/effort=none full live matrix previously passed10 cases844–1890ms, with negatives, reference completion, mock LINE and isolated cleanup. Receipt: `r75-qa-live-model-profile-qualification.json`, starts2026-09-09T05:26:24.943379Z;24h/source/profile binding applies. Historical xhigh failure unchanged. Model PASS is not data/release PASS.
 - Source-bound Windows/package/extracted-install/download acceptance and protected-source recertification remain incomplete. No new immutable released ZIP. Certified `cloud/src/qa.ts` unchanged.
-- Final current regression: Python655/2 skipped PASS (`lean-source-python-final.log`); Worker23 files/160 tests and typecheck PASS; security/docs/workflow/storage/provider gates and diff check PASS; changed release validator parses on PS5.1/7. Earlier failures retained in logs: old catalog counts after actual review, then unpackaged links introduced in the skill. Fixed the counts without activating providers and reused the existing packaged status link without weakening package verification.
+- Prior cleanup regression: Python655/2 skipped PASS (`lean-source-python-final.log`); Worker23 files/160 tests and typecheck PASS; security/docs/workflow/storage/provider gates and diff check PASS; changed release validator parses on PS5.1/7. Earlier failures retained in logs: old catalog counts after actual review, then unpackaged links introduced in the skill. Fixed the counts without activating providers and reused the existing packaged status link without weakening package verification.
 - PR39 previously retained three Python evidence errors; not rerun or represented as fixed. Whole-product P0 inventory is not closed; known P0 must be zero before shipping, not assumed zero from a scoped test.
 
 ## Lightweight architecture and cleanup
