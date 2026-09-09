@@ -67,6 +67,7 @@ class CurrentReleaseLaneTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows npm export')
     def test_actual_node_export_uses_unique_external_cache_and_rejects_bad_temp(self):
+        import ctypes
         text = (ROOT / 'scripts/resolve_node.ps1').read_text(encoding='utf-8')
         block = text[text.index('if ($env:GITHUB_ENV) {'):text.index('\nWrite-Host "Using Node')]
         for shell in ('powershell.exe', 'pwsh.exe'):
@@ -74,11 +75,18 @@ class CurrentReleaseLaneTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix='npm export ') as d:
                 parent = Path(d); source = parent / 'source'; scripts = source / 'scripts'; scripts.mkdir(parents=True)
                 outside = parent / 'runner temp'; outside.mkdir()
+                short_parent = ctypes.create_unicode_buffer(32768)
+                if ctypes.windll.kernel32.GetShortPathNameW(str(parent), short_parent, len(short_parent)):
+                    outside = Path(short_parent.value) / outside.name
                 inside = source / 'bad temp'; inside.mkdir()
                 probe = scripts / 'probe.ps1'
                 probe.write_text("$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$nodeDirectory='synthetic-node';$resolved=[pscustomobject]@{Node='synthetic-node';Npm='synthetic-npm'};\n" + block, encoding='utf-8-sig')
                 caches = []
-                for index, temporary in enumerate((str(outside), str(outside), str(inside), '')):
+                temporaries = [str(outside), str(outside), str(inside), '']
+                short = ctypes.create_unicode_buffer(32768)
+                if ctypes.windll.kernel32.GetShortPathNameW(str(inside), short, len(short)) and short.value != str(inside):
+                    temporaries.append(short.value)  # Service accounts can inherit 8.3 aliases.
+                for index, temporary in enumerate(temporaries):
                     env_file = parent / f'env-{index}.txt'; path_file = parent / f'path-{index}.txt'
                     result = subprocess.run([shell, '-NoProfile', '-File', str(probe)], cwd=source,
                         env={**os.environ, 'RUNNER_TEMP': temporary, 'GITHUB_ENV': str(env_file), 'GITHUB_PATH': str(path_file)},
@@ -87,8 +95,8 @@ class CurrentReleaseLaneTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         values = dict(line.split('=', 1) for line in env_file.read_text(encoding='utf-8-sig').splitlines())
                         cache = Path(values['NPM_CONFIG_CACHE'])
-                        self.assertTrue(cache.is_relative_to(outside), str(cache))
-                        self.assertFalse(cache.is_relative_to(source))
+                        self.assertTrue(cache.resolve().is_relative_to(outside.resolve()), str(cache))
+                        self.assertFalse(cache.resolve().is_relative_to(source.resolve()))
                         caches.append(cache)
                     else:
                         self.assertNotEqual(result.returncode, 0)

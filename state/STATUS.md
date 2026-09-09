@@ -4,7 +4,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Starting HEAD92b4c5c730dcbb01c649d4bcfb0343ea1e9467c8; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Starting HEADd917ec29d740635c1a2c497ac519ec8684a87bc8; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
 - Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: CI package/cache repair; prior isolated QA resources deleted. No Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
@@ -28,7 +28,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
 - Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
 
-- Package run34380328481 on92b4c5c FAIL at final clean-checkout guard; original log `package-run-34380328481-failure.log`. Extracted Worker227 and isolated install passed, not delivery qualification. Read-only runner check found `.npm-cache/`; resolver exported checkout cache. Fix exports unique external RUNNER_TEMP cache, rejects bad temp before env writes; native PS5.1/7 RED/GREEN retained. No .gitignore/gate bypass or manual cache deletion. Python699/2 skipped PASS (budget-only failure retained); package rerun pending.
+- Package run34380328481 on92b4c5c FAIL at final clean-checkout guard; original log `package-run-34380328481-failure.log`. Extracted Worker227 and isolated install passed, not delivery qualification. Read-only runner check found `.npm-cache/`; resolver exported checkout cache. Fix exports unique external RUNNER_TEMP cache, rejects bad temp before env writes; native PS5.1/7 RED/GREEN retained. No .gitignore/gate bypass or manual cache deletion. Python699/2 skipped PASS (budget-only failure retained). Rerun34382057316 FAIL before packaging: test compared service-account 8.3 temp alias lexically with expanded path. Fixture now resolves filesystem identity and explicitly covers alias-positive/inside-source-negative cases on PS5.1/7; no production guard changed. Failure retained; package rerun pending.
 
 ## Production and release blockers
 
