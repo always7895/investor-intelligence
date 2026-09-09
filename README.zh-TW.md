@@ -1,5 +1,7 @@
 # Investor Intelligence v2.1.3 R75 — Serenity Final
 
+> **開發稽核：尚不符合發布資格。** 本分支期權入口已改走既有公開快照驗證，不再回退硬編碼報價或拿期貨替代期權；壞資料明確拒絕。安全儲存失敗時現在停止准入／限流請求，不再默默放行，並恢復舊版受保護檔案。型別與 165 個 Worker 測試通過；完整 Python 仍有三個 live 證據錯誤，發布／封裝資格仍被阻擋。下列歷史功能與發布文字不代表本候選版已驗收。詳見[當前證據](state/STATUS.md)及[阻擋 #38](https://github.com/always7895/investor-intelligence/issues/38)。本輪未部署。
+
 [English (Full Evidence)](README.md) ｜ [GitHub 最新正式發布](https://github.com/always7895/investor-intelligence/releases/latest) ｜ [方法論深度解析](docs/SERENITY_TIMELESS_SELECTION_METHODOLOGY.md) ｜ [期權推薦規格](docs/OPTIONS_RECOMMENDATION_SPEC.md)
 
 **隱私優先、零付費公開市場研究與跨週期供應鏈情報系統。**

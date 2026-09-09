@@ -1,5 +1,29 @@
 ﻿# R75 takeover status
 
+## Security-storage restoration and package fixture correction — 2026-09-09
+
+- Fetched starting HEAD `5cb8a816180578af8a99f5e23386bacfc2a22465`, clean isolated PR39 worktree. Re-read contract/status, current authoritative workflow and failing tests. Reproduced Python647/4 skipped with one failure/four errors before changes.
+- Inspected retained-blob drift rather than updating expected hashes: branch modifications caught KV admission/rate-limit failures and returned true, logged raw errors, and silently ignored completion/release failures; legacy Worker quick-response deadline had changed from7s to28s. Restored `cloud/src/line.ts` and `cloud/src/worker.ts` exactly to the existing protected baseline. `cloud/src/qa.ts` remains unchanged. Existing owner-delivery gate now PASS with its original expected hashes.
+- Added five negative regressions: actual authorized LINE caller rejects rate-limit get/put failures without network delivery or console warnings; claim get/put errors reject; completion/release errors remain observable. This restores failure propagation, not strict distributed exactly-once guarantees for eventually consistent KV.
+- Package-payload test fixture omitted the newly linked methodology document; included the existing document in the synthetic archive fixture and retained every missing-reference/unreviewed-skill negative check. No verifier/path allowlist weakening and no claim of an actual release ZIP qualification.
+- Final complete Python647/4 skipped now has THREE errors (down from five failing cases): canonical-model receipt policy mismatch, exact-runtime manifest mismatch, Pi synthetic contract policy mismatch. Existing live receipts and expected live policy/source gates were not rewritten, restamped or relaxed. These remain genuine evidence/acceptance blockers; the full Python suite is NOT PASS.
+- Worker24 files/165 tests and typecheck PASS; security/documentation/workflow/storage/owner-delivery gates PASS; PS5.1/7 publication contract PASS; CRLF-aware diff check PASS. First new test typecheck exposed two widened method-name strings; constrained their fixture tuples with `as const`, then reran typecheck/full Worker successfully. Verified retained line/worker/QA bytes match the protected main baseline using git diff --exit-code.
+- Open counts: three failing Python evidence cases; whole-project P0/P1/P2 unassessed. Other hardcoded stock/forecast routes, exact-Q6/isolated-runner/fresh artifact acceptance and source rights remain unresolved. Main PR37 stays separate; no merge or cross-branch rollout.
+- External changes to this point: local synthetic tests only; no Production/storage/LINE/schedule/broker/credentials/model/preset/billing mutations. Next: push scoped PR39 restoration and issue38 evidence, then obtain genuine source-bound live recertification rather than manufacturing passing receipts.
+
+## Current options containment candidate — 2026-09-09 (NOT release-qualified)
+
+- GitHub checkpoint: `ea1f186` pushed as draft PR39 (https://github.com/always7895/investor-intelligence/pull/39), targeting source-views only. Issue38 updated and kept OPEN; five Python failing cases remain blockers. No merge, deployment, release, LINE or storage write. Source adapter calendar/duplicate-key follow-up separately pushed as `9006dbc` on PR37.
+
+- Fetched source branch baseline `52e285f99ff591e6cb04cf5dc57b13162af81a5b`; isolated worktree/branch `fix/options-static-fallback`. Reviewed this branch's AGENTS, STATUS, R75 workflow and actual authorized LINE caller tests. Historical Production/release statements below are not acceptance for this candidate.
+- Public presentation entrypoint now delegates ALL option intents before macro/stock/guide keyword matching to the existing certified deterministic quote path. It cannot read raw KV or return hardcoded international quotes or Taiwanese stock futures as options. Legacy presentation helpers remain compatibility code, inaccessible from this option entrypoint; no claim their constants are current evidence.
+- Actual authorized LINE caller catches unreadable/malformed option data and returns bounded OPTION_DATA_INVALID, without model/static fallback or raw exception leakage. Certified qa.ts untouched. Eleven new negative/caller tests cover flex/text, Taiwan/international symbols, mixed keywords, missing/malformed/stale/future/status-only records.
+- Reproduced original baseline in independent detached worktree: typecheck FAIL with 52 diagnostics; security FAIL with two profile paths; Python647/4 skipped FAIL (one failure/four errors). Candidate fixes missing type imports/env declarations, flex/text union narrowing and optional text weight parameter; typecheck now PASS. Two historical profile paths redacted to USERPROFILE placeholders without printing originals; security now PASS.
+- Candidate Worker24 files/160 tests PASS; docs/workflow gates and PS5.1/7 publication contract PASS. CRLF-aware diff check (`git -c core.whitespace=cr-at-eol diff --check`) PASS. Python647/4 skipped still FAIL with same one failure/four errors as baseline: retained line/worker blob drift, live QA policy evidence mismatch, packaged research skill and Pi evidence tests. These gates remain intact; no receipt regeneration, protected-blob acceptance override or claimed broad PASS.
+- Open release blockers: remote hardcoded quote route contained in candidate only (issue38 remains open until reviewed/integrated); five Python failing test cases plus current source-bound live/Windows/package acceptance pending. Global severity counts unassessed. Other hardcoded stock/forecast claims remain outside this scoped containment and require evidence review.
+- External mutations so far: local isolated worktrees, locked npm dependencies and public Git/GitHub read-only inspection. No Production/LINE/storage/task/model/preset/broker changes. Next: publish separate draft against the source-views branch, not main; review remaining failures before release. PR37 import adapters stay on their independent branch.
+
+
 ## CURRENT — Serenity supply chain bottleneck universe enriched + tasks unified + obsolete AppData cleanup (2026-09-07)
 
 - **Immutable Bilingual Production Final Release (`v2.1.3-R75-final-bilingual`)**:
@@ -225,8 +249,8 @@
   - Unregistered obsolete disabled `InvestorIntelligence-v212-LocalModelBridge` task.
   - All 4 scheduled tasks (`InvestorDailyBriefing`, `MorningRefresh`, `EveningRefresh`, `FreeRelay`) now run exclusively from `D:\Investor-Intelligence-LINE-Pi`.
 - **Local Obsolete File Cleanup Executed (>800 MB freed)**:
-  - Deleted obsolete staging directory `C:\Users\moon9\AppData\Local\InvestorIntelligence\UpgradeStaging` (273 MB).
-  - Deleted superseded duplicate tree `C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime` (524 MB).
+  - Deleted obsolete staging directory `%USERPROFILE%\AppData\Local\InvestorIntelligence\UpgradeStaging` (273 MB).
+  - Deleted superseded duplicate tree `%USERPROFILE%\AppData\Local\InvestorIntelligence\V213Runtime` (524 MB).
   - Active configurations in `%LOCALAPPDATA%\InvestorIntelligence\UserData\config` preserved untouched.
 - **Known P0/P1/P2 = 0/0/0.**
 

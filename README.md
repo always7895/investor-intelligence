@@ -1,5 +1,7 @@
 # Investor Intelligence v2.1.3 R75 — Serenity Final
 
+> **Development audit: NOT release-qualified.** This branch's options entrypoint now delegates to the certified public snapshot gates instead of hardcoded quote/futures fallbacks. Malformed data fails closed. Security-storage failures now stop admission/rate-limited requests rather than silently allowing them; legacy protected bytes are restored. Typecheck and 165 Worker tests pass; full Python retains three live-evidence errors, so release/package qualification remains blocked; the historical feature/release claims below do not qualify this candidate. See [current evidence](state/STATUS.md) and [blocker #38](https://github.com/always7895/investor-intelligence/issues/38). No deployment was performed by this audit.
+
 [繁體中文 (Traditional Chinese)](README.zh-TW.md) ｜ [GitHub Latest Release](https://github.com/always7895/investor-intelligence/releases/latest) ｜ [Methodology Guide](docs/SERENITY_TIMELESS_SELECTION_METHODOLOGY.md) ｜ [Options Recommendation Spec](docs/OPTIONS_RECOMMENDATION_SPEC.md)
 
 **Privacy-first, zero-cost public-market research and cross-cycle supply chain intelligence system.**

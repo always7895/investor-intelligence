@@ -3,7 +3,8 @@ import { publicJson, publicText, type StorageEnv } from "../storage";
 import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { parseV213Top20Report, v213FieldLocale } from "./top20-report";
+import { parseV213Top20Report, v213FieldLocale, type V213Top20Report } from "./top20-report";
+import type { LineOutboundMessage } from "../line-messages";
 import { buildV213Top20Messages, STOCK_RESEARCH_KNOWLEDGE_BASE } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
@@ -12,6 +13,7 @@ export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
   V21_TOP20_MAX_AGE_SECONDS?: string;
   V213_FIELD_LOCALE?: string;
   V213_LINE_PRESENTATION?: string;
+  V213_BROADCAST_MODE?: string;
 }
 
 export type V213BroadcastSlot = "morning" | "evening" | "test";
