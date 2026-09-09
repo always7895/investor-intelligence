@@ -23,17 +23,21 @@ $python=PYTHON_VALUE
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $ProjectRoot 'scripts/run_v213_local_llm_bridge_core.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'BRIDGE_PARSE_FAILED'}
-$names=@('Get-ObjectPropertyValue','Invoke-SharedModelIdentity','Resolve-Model','Test-SelectedModelRoute')
+$names=@('Get-ObjectPropertyValue','Invoke-SharedModelIdentity','Resolve-Model','Test-SelectedModelRoute','Get-RuntimeModelProfile')
 $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $node.Name},$true))
-if($functions.Count-ne4){throw 'FUNCTION_INVENTORY_MISMATCH'}
+if($functions.Count-ne5){throw 'FUNCTION_INVENTORY_MISMATCH'}
 foreach($function in $functions){. ([scriptblock]::Create($function.Extent.Text))}
 function Read-ModelSelection { return $null }
 function Get-ModelCatalog { param($Base) return $script:Catalog }
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
+$script:ProfileActive=$false
 function Invoke-RestMethod {
  param($Method,$Uri,$ContentType,$Body,$TimeoutSec)
  if($Uri-cne'http://127.0.0.1:1/v1/chat/completions'){throw 'UNEXPECTED_ENDPOINT'}
  $request=[Text.Encoding]::UTF8.GetString([byte[]]$Body)|ConvertFrom-Json
- if($request.model-cne'qwen38-q6'-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
+ if($script:ProfileActive){
+  if($request.model-cne'profile-model-test'-or$request.max_tokens-ne128-or$request.chat_template_kwargs.enable_thinking-ne$true-or$request.reasoning_effort-cne'xhigh'-or$TimeoutSec-ne18){throw 'PROFILE_PROBE_INVALID'}
+ }elseif($request.model-cne'qwen38-q6'-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
  return $script:Response
 }
 $preferredModel='qwen38-q6'
@@ -53,6 +57,16 @@ foreach($bad in @(
  try{Test-SelectedModelRoute 'http://127.0.0.1:1' 'qwen38-q6' $script:Catalog}catch{$failed=$true}
  if(-not$failed){throw 'INVALID_COMPLETION_ACCEPTED'}
 }
+$script:ProfileActive=$true
+$env:V213_MODEL_PROFILE_JSON=@{schema_version=1;model='profile-model-test';enable_thinking=$true;reasoning_effort='xhigh';max_output_tokens=1024;smoke_output_tokens=128;timeout_ms=18000}|ConvertTo-Json -Compress
+$profileCatalog=@([pscustomobject]@{id='profile-model-test';aliases=@()})
+$script:Response=@{model='profile-model-test';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+Test-SelectedModelRoute 'http://127.0.0.1:1' 'profile-model-test' $profileCatalog
+$failed=$false
+try{Test-SelectedModelRoute 'http://127.0.0.1:1' 'wrong-model' $profileCatalog}catch{$failed=$true}
+if(-not$failed){throw 'PROFILE_SELECTION_MISMATCH_ACCEPTED'}
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
+$script:ProfileActive=$false
 $script:Catalog+=@([pscustomobject]@{id='other';aliases=@('QWEN38-Q6')})
 $failed=$false
 try{$null=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'}catch{$failed=$true}

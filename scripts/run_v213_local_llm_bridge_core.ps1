@@ -17,6 +17,7 @@ param(
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
+$script:RuntimeProfileHash = ''
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -103,7 +104,7 @@ function Get-ObjectPropertyValue {
 }
 
 function Test-HealthModel {
-    param([object]$Health, [string]$SelectedModel)
+    param([object]$Health, [string]$SelectedModel, [string]$ExpectedProfileHash = $script:RuntimeProfileHash)
     $ok = Get-ObjectPropertyValue $Health 'ok' $false
     $service = [string](Get-ObjectPropertyValue $Health 'service' '')
     $schema = 0
@@ -111,7 +112,10 @@ function Test-HealthModel {
     $reachable = Get-ObjectPropertyValue $Health 'llama_reachable' $false
     $available = Get-ObjectPropertyValue $Health 'selected_model_available' $false
     $reportedModel = [string](Get-ObjectPropertyValue $Health 'selected_model' '')
+    $reportedProfile = [string](Get-ObjectPropertyValue $Health 'model_profile_sha256' '')
+    $profileMatches = if ($ExpectedProfileHash) { $ExpectedProfileHash -cmatch '^[0-9a-f]{64}$' -and $reportedProfile -ceq $ExpectedProfileHash } else { $reportedProfile -ceq '' }
     return (
+        $profileMatches -and
         $ok -eq $true -and
         $service -eq 'v213-local-llm-gateway' -and
         $schema -ge 2 -and
@@ -133,6 +137,10 @@ if ($SelfTest) {
         selected_model = 'model-a'
     }
     if (-not (Test-HealthModel $valid 'model-a')) { throw 'Health schema v2 payload was rejected.' }
+    $profileHealth = $valid | Select-Object *
+    $profileHealth | Add-Member -NotePropertyName model_profile_sha256 -NotePropertyValue ('a' * 64)
+    if (-not (Test-HealthModel $profileHealth 'model-a' ('a' * 64))) { throw 'Matching model profile was rejected.' }
+    if ((Test-HealthModel $profileHealth 'model-a' ('b' * 64)) -or (Test-HealthModel $profileHealth 'model-a' '') -or (Test-HealthModel $valid 'model-a' ('a' * 64))) { throw 'Model profile drift was accepted.' }
     $pythonPath = ''
     if ($env:PROJECT_PYTHON -and (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) { $pythonPath = [IO.Path]::GetFullPath($env:PROJECT_PYTHON) }
     if (-not $pythonPath) {
@@ -318,6 +326,16 @@ function Invoke-SharedModelIdentity {
     return $raw | ConvertFrom-Json
 }
 
+function Get-RuntimeModelProfile {
+    $script:RuntimeProfileHash = ''
+    if ($null -eq [Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')) { return $null }
+    $raw = & $python (Join-Path $ProjectRoot 'scripts/v213_model_profile.py') --env
+    if ($LASTEXITCODE -ne 0) { throw 'MODEL_PROFILE_INVALID' }
+    $validated = $raw | ConvertFrom-Json
+    $script:RuntimeProfileHash = [string]$validated.profile_sha256
+    return $validated.profile
+}
+
 function Resolve-Model {
     param([string]$Base, [string]$Requested)
     $catalog = @(Get-ModelCatalog $Base)
@@ -348,16 +366,26 @@ function Resolve-Model {
 function Test-SelectedModelRoute {
     param([string]$Base, [string]$SelectedModel, [object[]]$Catalog)
     $policy=Get-Content -LiteralPath (Join-Path $ProjectRoot 'config/v213-compact-qa-v1.json') -Raw -Encoding utf8 | ConvertFrom-Json
-    $body = [ordered]@{
+    $profile = Get-RuntimeModelProfile
+    if ($profile -and $profile.model -cne $SelectedModel) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $generation = [ordered]@{
         model = $SelectedModel
         messages = @(@{ role = 'user'; content = $policy.smoke_prompt })
         temperature = 0
         max_tokens = $policy.smoke_output_tokens
         stream = $false
         chat_template_kwargs = @{ enable_thinking=$policy.compact_request_enable_thinking }
-    } | ConvertTo-Json -Depth 6 -Compress
+    }
+    $probeTimeout = 300 # retained legacy cold-start probe only
+    if ($profile) {
+        $generation.max_tokens = $profile.smoke_output_tokens
+        $generation.chat_template_kwargs = @{ enable_thinking = $profile.enable_thinking }
+        $generation['reasoning_effort'] = $profile.reasoning_effort
+        $probeTimeout = [int][Math]::Floor($profile.timeout_ms / 1000)
+    }
+    $body = $generation | ConvertTo-Json -Depth 6 -Compress
     try {
-        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 300
+        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec $probeTimeout
         $null=Invoke-SharedModelIdentity -Selected $SelectedModel -Catalog $Catalog -Response $response -VerifyResponse
     }
     catch { throw 'MODEL_ROUTING_PROBE_FAILED; complete_exact_identity_and_marker_required=true' }
@@ -586,6 +614,11 @@ if ($tunnelPolicy.mode -eq 'FreeRelay') {
 }
 $GatewayPort = Resolve-GatewayPort $GatewayPort
 $python = Resolve-Python
+$runtimeProfile = Get-RuntimeModelProfile
+if ($runtimeProfile) {
+    if ($Model -and $Model -cne $runtimeProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $Model = [string]$runtimeProfile.model
+}
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
 $llama = Resolve-Llama
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }

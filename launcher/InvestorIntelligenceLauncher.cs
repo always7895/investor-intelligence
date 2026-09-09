@@ -16,8 +16,99 @@ namespace InvestorIntelligence
     static class Program
     {
         const string Version = "2.1.3";
-        const string Revision = "ModelSelect-R43";
-        const string PreferredModel = "qwen38-q6";
+        const string Revision = "ModelProfile-V1-Development";
+        static string PreferredModel {
+            get { var profile = LoadModelProfile(); return profile == null ? "" : (string)profile["model"]; }
+        }
+
+        static string ProfileTestConfigRoot = null;
+
+        static string ModelProfilePath {
+            get { return Path.Combine(ConfigRoot, "v213-model-profile-v1.json"); }
+        }
+
+        static Dictionary<string, object> ParseModelProfile(string raw) {
+            if (raw == null || raw.Length > 4096) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            var profile = new JavaScriptSerializer().DeserializeObject(raw) as Dictionary<string, object>;
+            string[] fields = { "schema_version", "model", "enable_thinking", "reasoning_effort", "max_output_tokens", "smoke_output_tokens", "timeout_ms" };
+            if (profile == null || profile.Count != fields.Length || fields.Any(k => !profile.ContainsKey(k)) ||
+                System.Text.RegularExpressions.Regex.Matches(raw, "\"(?:[^\"\\\\]|\\\\.)*\"\\s*:").Count != fields.Length)
+                throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            if (!(profile["schema_version"] is int) || (int)profile["schema_version"] != 1 ||
+                !(profile["model"] is string) || !System.Text.RegularExpressions.Regex.IsMatch((string)profile["model"], @"\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z") ||
+                !(profile["enable_thinking"] is bool) || !(profile["reasoning_effort"] is string))
+                throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            string effort = (string)profile["reasoning_effort"];
+            if (!(new [] { "none", "minimal", "low", "medium", "high", "xhigh", "max" }).Contains(effort) ||
+                (bool)profile["enable_thinking"] == (effort == "none")) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            foreach (string key in new [] { "max_output_tokens", "smoke_output_tokens", "timeout_ms" }) {
+                int low = key == "timeout_ms" ? 1000 : 1;
+                int high = key == "timeout_ms" ? 20000 : 8192;
+                if (!(profile[key] is int) || (int)profile[key] < low || (int)profile[key] > high) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            }
+            if ((int)profile["smoke_output_tokens"] > (int)profile["max_output_tokens"]) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            return profile;
+        }
+
+        static string ModelProfileHash(Dictionary<string, object> profile) {
+            string[] keys = { "schema_version", "model", "enable_thinking", "reasoning_effort", "max_output_tokens", "smoke_output_tokens", "timeout_ms" };
+            string json = new JavaScriptSerializer().Serialize(keys.Select(k => profile[k]).ToArray());
+            using (var hash = System.Security.Cryptography.SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(json))).Replace("-", "").ToLowerInvariant();
+        }
+
+        static int ModelProfileSelfTest() {
+            var serializer = new JavaScriptSerializer();
+            var profile = new Dictionary<string, object> {
+                { "schema_version", 1 }, { "model", "synthetic-model-a" }, { "enable_thinking", true },
+                { "reasoning_effort", "xhigh" }, { "max_output_tokens", 1024 }, { "smoke_output_tokens", 128 }, { "timeout_ms", 18000 }
+            };
+            var boundary = new Dictionary<string, object>(profile); boundary["model"] = new string('x', 200);
+            ParseModelProfile(serializer.Serialize(boundary)); boundary["model"] = new string('x', 201);
+            try { ParseModelProfile(serializer.Serialize(boundary)); return 65; } catch (InvalidOperationException) { }
+            string raw = serializer.Serialize(profile);
+            if (ModelProfileHash(ParseModelProfile(raw)) != "2bea7c8ce0f160ea609ddf82c7f34631a6841f9a939debdb0a663444b5307d19") return 58;
+            foreach (var change in new Dictionary<string, object> { { "schema_version", true }, { "model", "bad\nmodel" }, { "enable_thinking", "true" }, { "reasoning_effort", "none" }, { "max_output_tokens", 8193 }, { "smoke_output_tokens", 1025 }, { "timeout_ms", 20001 }, { "extra", "unreviewed" } }) {
+                var invalid = new Dictionary<string, object>(profile); invalid[change.Key] = change.Value;
+                try { ParseModelProfile(serializer.Serialize(invalid)); return 59; } catch (InvalidOperationException) { }
+            }
+            try { ParseModelProfile(raw.Substring(0, raw.Length - 1) + ",\"model\":\"hidden\"}"); return 60; } catch (InvalidOperationException) { }
+            profile["model"] = "other/model-v2"; profile["enable_thinking"] = false; profile["reasoning_effort"] = "none";
+            if ((string)ParseModelProfile(serializer.Serialize(profile))["model"] != "other/model-v2") return 61;
+            string previous = Environment.GetEnvironmentVariable("V213_MODEL_PROFILE_JSON");
+            string isolated = Path.Combine(Path.GetTempPath(), "ii-profile-selftest-" + Guid.NewGuid().ToString("N"));
+            try {
+                ProfileTestConfigRoot = isolated;
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", serializer.Serialize(profile));
+                string before = ModelProfileHash(profile);
+                foreach (string model in new [] { "third/model-v3", "fourth/model-v4" }) {
+                    SaveSelection(model, "http://127.0.0.1:8080", new List<string> { model }, "synthetic-self-test");
+                    var persisted = ParseModelProfile(File.ReadAllText(ModelProfilePath, Encoding.UTF8));
+                    if (LoadSelection().Model != model || (string)persisted["model"] != model || (bool)persisted["enable_thinking"] || (string)persisted["reasoning_effort"] != "none") return 62;
+                    var selection = serializer.DeserializeObject(File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
+                    if ((string)selection["model_profile_sha256"] != ModelProfileHash(persisted) || (bool)selection["model_profile_qualified"] || before == ModelProfileHash(persisted)) return 63;
+                }
+                string probe = Path.Combine(isolated, "profile-child.ps1");
+                File.WriteAllText(probe, "$p=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json; if($p.model -cne 'fourth/model-v4' -or $p.enable_thinking -ne $false -or $p.reasoning_effort -cne 'none'){exit 1}; Write-Output 'V213_MODEL_PROFILE_CHILD = PASS'; exit 0", new UTF8Encoding(false));
+                if (RunPowerShellCli(probe, "") != 0) return 64;
+            } finally {
+                ProfileTestConfigRoot = null;
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", previous);
+                if (Directory.Exists(isolated)) Directory.Delete(isolated, true);
+            }
+            return 0;
+        }
+
+        static Dictionary<string, object> LoadModelProfile() {
+            string raw = Environment.GetEnvironmentVariable("V213_MODEL_PROFILE_JSON");
+            if (raw == null) {
+                string path = File.Exists(ModelProfilePath) ? ModelProfilePath : Path.Combine(Root, "config", "v213-model-profile-v1.json");
+                if (!File.Exists(path)) return null; // legacy installations without a profile
+                raw = File.ReadAllText(path, Encoding.UTF8);
+            }
+            try { return ParseModelProfile(raw); }
+            catch { throw new InvalidOperationException("MODEL_PROFILE_INVALID"); }
+        }
 
         static readonly string[] KnownLlamaBases = {
             "http://127.0.0.1:8080",
@@ -73,6 +164,7 @@ namespace InvestorIntelligence
         {
             get
             {
+                if (ProfileTestConfigRoot != null) return ProfileTestConfigRoot;
                 return Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvestorIntelligence", "UserData", "config");
@@ -159,7 +251,7 @@ namespace InvestorIntelligence
         static bool SafeModelId(string value)
         {
             return !String.IsNullOrWhiteSpace(value) &&
-                Regex.IsMatch(value, @"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$");
+                Regex.IsMatch(value, @"\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z");
         }
 
         static bool SafeLoopbackBase(string value)
@@ -289,7 +381,7 @@ namespace InvestorIntelligence
                 if (root == null) return new ModelSelection();
 
                 return new ModelSelection {
-                    Model = root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : "",
+                    Model = !String.IsNullOrEmpty(PreferredModel) ? PreferredModel : (root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : ""),
                     LlamaBaseUrl = root.ContainsKey("llama_base_url")
                         ? Convert.ToString(root["llama_base_url"]) ?? ""
                         : ""
@@ -368,6 +460,19 @@ namespace InvestorIntelligence
                 { "preferred_model", PreferredModel }
             };
 
+            var profile = LoadModelProfile();
+            if (profile != null) {
+                profile["model"] = model;
+                string profileJson = serializer.Serialize(profile);
+                ParseModelProfile(profileJson);
+                value["model_profile_sha256"] = ModelProfileHash(profile);
+                value["model_profile_qualified"] = false;
+                string profileTemp = ModelProfilePath + ".tmp";
+                File.WriteAllText(profileTemp, profileJson, new UTF8Encoding(false));
+                if (File.Exists(ModelProfilePath)) File.Replace(profileTemp, ModelProfilePath, null);
+                else File.Move(profileTemp, ModelProfilePath);
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", profileJson);
+            }
             string temporary = SelectionPath + ".tmp";
             File.WriteAllText(temporary, serializer.Serialize(value), new UTF8Encoding(false));
             if (File.Exists(SelectionPath))
@@ -459,6 +564,8 @@ namespace InvestorIntelligence
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                var profile = LoadModelProfile();
+                if (profile != null) startInfo.EnvironmentVariables["V213_MODEL_PROFILE_JSON"] = new JavaScriptSerializer().Serialize(profile);
                 var process = new Process { StartInfo = startInfo };
                 if (!process.Start())
                 {
@@ -629,15 +736,17 @@ namespace InvestorIntelligence
 
         static int ModelSelectionSelfTest()
         {
+            const string PreferredModel = "synthetic-model-a";
+            if (ModelProfileSelfTest() != 0) return 58;
             string json =
                 "{\"data\":[{\"id\":\"gemma4\"},{\"id\":\"" +
                 PreferredModel + "\"}]}";
             List<string> models = ExtractModelIds(json);
             if (models.Count != 2) return 51;
-            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]}]}");
+            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-test\",\"aliases\":[\"" + PreferredModel + "\"]}]}");
             if (!aliases.Contains(PreferredModel)) return 56;
             try {
-                ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]},{\"id\":\"wrong\",\"aliases\":[\"qwen38-q6\"]}]}");
+                ExtractModelIds("{\"data\":[{\"id\":\"canonical-test\",\"aliases\":[\"" + PreferredModel + "\"]},{\"id\":\"wrong\",\"aliases\":[\"" + PreferredModel + "\"]}]}");
                 return 57;
             } catch (InvalidOperationException) { }
             if (!models.Any(id => id.Equals(
@@ -659,6 +768,7 @@ namespace InvestorIntelligence
             }
             if (args.Contains("--pipe-hold-self-test"))
                 return PipeHoldSelfTest();
+            if (args.Contains("--model-profile-self-test")) return ModelProfileSelfTest();
             if (args.Contains("--model-selection-self-test"))
                 return ModelSelectionSelfTest();
             if (args.Contains("--self-test"))

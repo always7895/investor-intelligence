@@ -1,6 +1,6 @@
 # 目前狀態／Current status
 
-本次操作者改要求可替換的 Q5／thinking xhigh；已完成單次開發請求及受控 Windows validation-only run34303303119（SUCCESS），但共享設定、EXE／Worker 整合與重新認證仍待完成。登記 runner 不等於驗收，舊 Q6 證據仍屬歷史。See [Q5/model and runner migration scope](MODEL_RUNTIME_MIGRATION.md): the newly requested profile is not yet release-qualified; no new EXE or Production switch is claimed.
+本次操作者改要求可替換的 Q5／thinking xhigh；已完成單次開發請求及受控 Windows validation-only run34303303119（SUCCESS），目前共享 profile 已接上開發 EXE、bridge、gateway 與 Worker；設定測試通過，但 Q5 真實研究回答不完整、舊來源證據失效，重新認證仍未通過。登記 runner 不等於驗收，舊 Q6 證據仍屬歷史。See [Q5/model and runner migration scope](MODEL_RUNTIME_MIGRATION.md): the newly requested profile is not yet release-qualified; no new EXE or Production switch is claimed.
 
 ## 開發中全來源稽核／Public-source audit candidate
 

@@ -66,7 +66,10 @@ try {
         'tests/test_options_service.py','tests/test_public_options_provider_gate.py',
         'tests/test_public_source_transport.py','tests/test_source_observation.py',
         'tests/test_source_registry.py','tests/test_taiwan_equity_sources.py',
-        'tests/test_current_release_lane.py','scripts/test_v213_operation_lock.ps1'
+        'tests/test_current_release_lane.py','scripts/test_v213_operation_lock.ps1',
+        'scripts/v213_model_profile.py','cloud/src/v213/model-profile.ts',
+        'config/v213-model-profile-v1.json','tests/test_v213_model_profile.py',
+        'cloud/test/model-profile.test.ts','state/model-profile-development-failure.json'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.
