@@ -4,9 +4,18 @@ Updated2026-09-09. This is current acceptance, not a release certificate. Histor
 
 ## Authority and workspaces
 
-- Current fetched audit baseline b66b5a398e3122791453e0fead5f18ce923a8fb4; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\investor-intelligence-source`; PR39 remains isolated at d58fdaf in `D:\investor-options-presentation-audit`. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
+- Current fetched audit baseline 2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7; source review implementation committed as c1ed14e. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
 - User authorized Production publication/Worker/schedule repair, newly validated data, and project cleanup. No real LINE sends, broker operations, new paid services or arbitrary credential access. Current step changes source/docs and bounded rebuildable artifacts only.
 - Installed runtime `D:\Investor-Intelligence-LINE-Pi` is not this Git worktree. Candidate changes are not installed acceptance.
+
+## Physical workspace consolidation — 2026-09-09
+
+- Starting clean HEAD2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7. User explicitly requested a single project folder. Before moving: all three Git worktrees clean; no observed process/task/service references to the five moved roots; no old-root references in installed PowerShell/Python callers inspected.
+- Physically moved source, both isolated review worktrees and audit runtime under `_workspace`; history backups under `_archive/history-backups`. The five former top-level D-drive investor directories no longer exist; no junction/shortcut substitutes created. Used `git worktree move` then `git worktree repair` after main repository relocation. All three HEADs/branches preserved and clean before documentation updates.
+- First command stopped before mutation because PowerShell HOME is read-only; corrected local variable name. Git repair messages about old .git paths were expected and followed by successful worktree/status verification.
+- Relocated pinned Python3.12.10/OpenSSL/certifi imports PASS; full Python659/2 skipped, Worker160/typecheck PASS from the new paths. Logs now under `_workspace/audit-runtime/consolidation-*.log`. Installed runtime and task paths remain unchanged. Root installed AGENTS now points development work to the nested Git repository; no runtime binary/config replacement.
+- Existing signed/history evidence moved intact, not restamped. Running registered runner, models/Router and unrelated projects remain outside consolidation; they were not safe deletion targets. Moving folders reduces top-level clutter, not their byte size. Current release/data blockers remain unchanged.
+- Final bounded cleanup across the three source/review scripts/tests trees removed654 untracked .pyc files in10 directories,7,837,559 bytes; source12, baseline214, source-views428. No tracked files, unique evidence or dependencies deleted. Final instruction-budget/security/docs/workflow/storage/diff gates PASS. Both publisher tasks rechecked Disabled; consolidation did not restore or modify their actions.
 
 ## Production: maintenance still active
 

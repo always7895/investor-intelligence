@@ -2,10 +2,13 @@
 
 ## Authoritative layout
 
-- Source: `D:\investor-intelligence-source`; reviewable Git commits, shared validators, one R75 release pipeline.
+- Single project home: `D:\Investor-Intelligence-LINE-Pi`.
+- Source: `_workspace/source` under that home; reviewable Git commits, shared validators, one R75 release pipeline.
 - Installed application: `D:\Investor-Intelligence-LINE-Pi`; changes here are not automatically source changes or qualified releases.
-- Isolated review worktrees: preserve unmerged branch work and baseline provenance until integration acceptance.
-- Audit runtime: pinned tools, live proofs and failed receipts; not a generic disposable temp directory.
+- Isolated review worktrees: `_workspace/review-baseline` and `_workspace/review-source-views`; preserve unmerged work and baseline provenance until integration acceptance.
+- Audit runtime: `_workspace/audit-runtime`; pinned tools, live proofs and failed receipts, not a generic disposable temp directory.
+- Historical backups: `_archive/history-backups`; do not rewrite old receipts to replace their historical paths.
+- The former five top-level investor directories were physically relocated and Git worktree links repaired. No old-path aliases or junctions were created. Treat `_workspace` and `_archive` as non-runtime material: never recursively include them in publication or installed-runtime packaging.
 - Runner folders: inspect registration, service state, executable paths and junction targets before deciding anything is obsolete.
 - Router/models and unrelated projects are outside routine repository cleanup.
 
