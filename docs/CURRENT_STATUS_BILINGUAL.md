@@ -8,9 +8,9 @@
 
 ## 模型與 EXE／Model and EXE
 
-候選 EXE 有共同 model profile、模型清單、手動 THINK 關閉／強度選擇及子程序傳遞；原生 UI 測試涵蓋實際 Use 按鈕與設定儲存。新增單一 Router、禁止重新導向、大小／時間上限等清單讀取保護，並以原生 EXE 測試。**選到模型不等於完成回答；自動 think 判定尚未實作／驗收。** 舊 Q5 none-thinking PASS 不符合後續來源版本；不得 restamp 或默默換模型／模式。
+候選 EXE 有共同 model profile、模型清單、手動 THINK 關閉／強度選擇及子程序傳遞；原生 UI 測試涵蓋實際 Use 按鈕與設定儲存。新增單一 Router、禁止重新導向、大小／時間上限等清單讀取保護，並以原生 EXE 測試。新增「本機回覆測試」與相同呼叫路徑的 CLI；實際候選 EXE → PowerShell → Q5 在 none／low 完成固定回覆。**這不是研究品質、所有 THINK 強度或正式安裝驗收；自動最佳模式仍未實作／驗收。** 舊 Q5 none-thinking PASS 不符合後續來源版本；不得 restamp 或默默換模型／模式。
 
-The candidate shares a profile across the EXE/bridge/gateway/Worker. Catalog transport is bounded and remains on the selected Router. Catalog success is not inference qualification. Automatic think selection remains pending. See [model contract](MODEL_RUNTIME_MIGRATION.md).
+The candidate shares a profile across the EXE/bridge/gateway/Worker. Catalog transport is bounded and remains on the selected Router. The new local-reply button and CLI share one caller; the compiled candidate completed fixed replies through PowerShell and the real Q5 Router for none/low. This is not research quality, all-effort support or installed/release acceptance. Automatic think selection remains pending. See [model contract](MODEL_RUNTIME_MIGRATION.md).
 
 ## 自動更新／Automatic refresh
 

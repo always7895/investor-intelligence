@@ -18,7 +18,9 @@ Historical qualification, failed xhigh responses, runner proof and prior documen
 - EXE has a THINK dropdown: `none` disables thinking; `minimal/low/medium/high/xhigh/max` request thinking with that effort. These are requested settings, not inferred model capabilities. Model and THINK choices are saved together in the common profile; token/time bounds stay unchanged and qualification remains false.
 - Scanning/operations lock both selectors. Native UI self-tests display the actual form, click its Save/Use handler across two synthetic models/all effort choices, verify persisted booleans/hash/unqualified state, and check actual PowerShell child snapshots for off/on modes. Invalid effort cannot overwrite a valid profile. No model/network/production buttons are invoked by this test; its logs/config are isolated.
 - The existing packager now runs profile and THINK UI self-tests on its compiled EXE. A passing candidate test does not replace a newly qualified ZIP or installed/live acceptance.
-- `--model-catalog-check <loopback-base>` is a read-only native transport check. It does not start a model, send inference, change presets or save selection. Exit0 means a valid catalog only.
+- `--model-catalog-check <loopback-base>` checks metadata only. Exit0 means a valid catalog, not inference.
+- The candidate's **本機回覆測試 / Test reply** button and `--model-route-check <loopback-base>` share one C# caller and the existing bridge's `-RoutingCheckOnly` branch. That branch requires a profile, exact complete-marker response and existing64-bit CPython3.12.10 with requests (explicit PROJECT_PYTHON or the installed portable-runtime path). It never downloads Python, launches gateway/tunnel, reads deployment credentials, registers tasks or publishes. Mutation switches cannot be combined with it; mixed `--version` cannot bypass a route check.
+- The GUI first saves the selected model/mode as unqualified; the CLI does not save selection. Local diagnostic logs may be written. Router inference may load the selected model normally. Successful fixed-marker checks do not certify THINK levels or research-answer quality. These are candidate-build controls, not features verified in the older installed EXE.
 
 ## Authoritative profile / 設定來源
 
@@ -46,7 +48,9 @@ Automatic think selection is **not implemented or qualified**. EXE supports manu
 
 `state/model-thinking-observation-20260909.json` records two synthetic local requests through the existing Router to the approved Q5 model, built with the shared request/profile validators. Both returned the complete exact marker within the18s profile budget: none9594ms/no exposed reasoning field; low4703ms/reasoning field present. No reasoning text was retained. No preset was changed or alternate stack started; the existing Router could load its sole configured model normally.
 
-This observes off/on output behavior, **not** graded-effort semantics, best-mode selection, broad answer quality, a cold-load comparison, installed EXE end-to-end acceptance or release readiness. The initial-model-state field is only a boolean membership check, not a load trace. Dirty-source observation and `release_qualified=false` remain; the release verifier explicitly rejects this receipt. Earlier failures remain intact.
+The later `state/exe-local-route-final-20260909.json` records the actual compiled candidate EXE → PowerShell core → real Q5 Router path for none/low, with exact-marker success and no runtime config directory created. It binds compiled-EXE/source-file hashes; startup/IPC time is included. The initial EXE observation is retained separately. No full gateway/Worker/LINE route was exercised, and no installed EXE was replaced.
+
+This observes off/on output behavior and local caller completion, **not** graded-effort semantics, best-mode selection, broad answer quality, a cold-load comparison, installed EXE end-to-end acceptance or release readiness. The initial-model-state field is only a boolean membership check, not a load trace. Dirty-source observation and `release_qualified=false` remain; the release verifier explicitly rejects this receipt. Earlier failures remain intact.
 
 Required future acceptance:
 

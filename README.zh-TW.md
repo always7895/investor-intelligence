@@ -10,7 +10,7 @@
 
 候選版新增 Fed／SEC／ECB 公告與 TWSE／TPEx 股票日行情的明確選用本機抓取器，以及 TAIFEX 期權／Alpaca indicative 匯入 adapter，保留原有 Yahoo／本機 IBKR 路徑。五個端點皆已在核准且雜湊驗證的 CPython3.12.10＋鎖定 certifi 信任來源下，通過本機直接 CLI 真實抓取。早期 TLS 失敗仍保留，不代表任意系統 Python 皆已驗收；受控 GitHub Windows 回歸已通過只驗證模式，完整發布驗收仍待完成。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
 
-候選發布需要新鮮 source／profile 綁定問答證據、receipt 綁定 ZIP 與解壓安裝驗收。舊 Q5 none-thinking PASS 不能替後續來源版本背書，失敗紀錄保留。候選 EXE 已有模型清單與手動 THINK 關閉／強度選擇，測試涵蓋共同 profile 儲存及子程序傳遞；清單讀取固定所選 Router。設定可傳遞不等於模型已支援或完成回答，think 自動判定仍未實作。已安裝鏈路與候選檔案存在差異，兩個發布任務仍 Disabled；沒有新的合格 EXE、正式模型切換、新資料發布或自動更新恢復。詳見[當前驗收](state/STATUS.md)及[模型契約](docs/MODEL_RUNTIME_MIGRATION.md)。
+候選發布需要新鮮 source／profile 綁定問答證據、receipt 綁定 ZIP 與解壓安裝驗收。舊 Q5 none-thinking PASS 不能替後續來源版本背書，失敗紀錄保留。候選 EXE 已有模型清單與手動 THINK 關閉／強度選擇，測試涵蓋共同 profile 儲存及子程序傳遞；清單讀取固定所選 Router。新增本機回覆測試按鈕與 CLI，已有候選 EXE 對真實 Q5 none／low 的固定回覆觀察；這不是完整模型能力或安裝驗收，think 自動最佳模式仍未實作。已安裝鏈路與候選檔案存在差異，兩個發布任務仍 Disabled；沒有新的合格 EXE、正式模型切換、新資料發布或自動更新恢復。詳見[當前驗收](state/STATUS.md)及[模型契約](docs/MODEL_RUNTIME_MIGRATION.md)。
 
 ## 歷史已發布功能／Previously released functionality
 

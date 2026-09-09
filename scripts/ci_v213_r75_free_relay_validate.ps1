@@ -86,7 +86,8 @@ try {
         'scripts/v213_model_profile.py','cloud/src/v213/model-profile.ts',
         'config/v213-model-profile-v1.json','tests/test_v213_model_profile.py',
         'cloud/test/model-profile.test.ts','state/model-profile-development-failure.json','state/model-profile-none-development-proof.json',
-        'state/model-thinking-observation-20260909.json'
+        'state/model-thinking-observation-20260909.json','state/exe-local-route-observation-20260909.json',
+        'state/exe-local-route-final-20260909.json'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.

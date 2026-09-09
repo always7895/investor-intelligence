@@ -14,9 +14,13 @@ param(
     [string]$NamedTunnelConfig = '',
     [string]$FreeRelayConfigPath = '',
     [int]$FreeRelayLeaseTtlSeconds = 180,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$RoutingCheckOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($RoutingCheckOnly -and @($PSBoundParameters.Keys | Where-Object { $_ -notin @('ProjectRoot','LlamaBaseUrl','Model','RoutingCheckOnly') }).Count) {
+    throw 'ROUTING_CHECK_ARGUMENT_CONFLICT'
+}
 $script:RuntimeProfileHash = ''
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
@@ -207,7 +211,6 @@ $GatewayScript = Join-Path $ProjectRoot 'scripts\v213_local_llm_gateway.py'
 if (-not (Test-Path -LiteralPath $GatewayScript -PathType Leaf)) { throw "Missing $GatewayScript" }
 $stateRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
 $logRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\logs\v213-local-model'
-New-Item -ItemType Directory -Force -Path $stateRoot, $logRoot | Out-Null
 $statePath = Join-Path $stateRoot 'v213-local-model.json'
 $selectionPath = Join-Path $stateRoot 'v213-model-selection.json'
 
@@ -538,6 +541,28 @@ function Start-HealthyNamedTunnel {
     }
 }
 
+if ($RoutingCheckOnly) {
+    # No deployment credential reads, runtime config writes, gateway/tunnel start,
+    # registration or publication. Requests stay on the resolved loopback Router.
+    [Net.WebRequest]::DefaultWebProxy = $null
+    $python = $env:PROJECT_PYTHON
+    if ([string]::IsNullOrWhiteSpace($python)) {
+        $python = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime\python-3.12.10\python.exe'
+    }
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'ROUTING_CHECK_PYTHON_UNAVAILABLE' }
+    & $python -c "import requests,sys,struct; assert sys.version_info[:3] == (3,12,10) and struct.calcsize('P') == 8" 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'ROUTING_CHECK_PYTHON_UNQUALIFIED' }
+    $checkProfile = Get-RuntimeModelProfile
+    if (-not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
+    if ($Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $checkBase = Resolve-Llama
+    $checkModel = Resolve-Model $checkBase ([string]$checkProfile.model)
+    Test-SelectedModelRoute $checkBase ([string]$checkModel.model) @($checkModel.identity_catalog)
+    [ordered]@{scope='LOCAL_ROUTING_CHECK_ONLY';complete_exact_marker=$true;model_profile_sha256=$script:RuntimeProfileHash;release_qualified=$false}|ConvertTo-Json -Compress
+    return
+}
+
+New-Item -ItemType Directory -Force -Path $stateRoot, $logRoot | Out-Null
 $operationLockScript = Join-Path $ProjectRoot 'scripts\v213_operation_lock.ps1'
 if (-not (Test-Path -LiteralPath $operationLockScript -PathType Leaf)) { throw 'R75 operation-lock module is missing.' }
 . $operationLockScript

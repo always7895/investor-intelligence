@@ -725,6 +725,14 @@ namespace InvestorIntelligence
             return exitCode;
         }
 
+        static Task<int> CheckLocalModelAsync(ModelSelection selection, bool showErrors)
+        {
+            return RunPowerShellAsync("scripts/run_v213_local_llm_bridge_core.ps1",
+                "-RoutingCheckOnly -ProjectRoot " + PowerShellLiteral(Root) +
+                " -LlamaBaseUrl " + PowerShellLiteral(selection.LlamaBaseUrl) +
+                " -Model " + PowerShellLiteral(selection.Model), showErrors);
+        }
+
         static int RunPowerShellCli(string script, string arguments)
         {
             return RunPowerShellAsync(script, arguments, false)
@@ -790,7 +798,7 @@ namespace InvestorIntelligence
         [STAThread]
         static int Main(string[] args)
         {
-            if (args.Contains("--version"))
+            if (args.Length == 1 && args[0] == "--version")
             {
                 Console.WriteLine(
                     "Investor Intelligence " + Version + " " + Revision);
@@ -802,6 +810,16 @@ namespace InvestorIntelligence
                 try {
                     var catalog = DiscoverModels(new ModelSelection { LlamaBaseUrl = args[1] });
                     return catalog.Models.Count > 0 ? 0 : 71;
+                } catch { return 72; }
+            }
+            if (args.Length > 0 && args[0] == "--model-route-check") {
+                if (args.Length != 2 || !SafeLoopbackBase(args[1])) return 70;
+                try {
+                    var profile = LoadModelProfile();
+                    if (profile == null) return 71;
+                    return CheckLocalModelAsync(new ModelSelection {
+                        Model = (string)profile["model"], LlamaBaseUrl = args[1]
+                    }, false).GetAwaiter().GetResult();
                 } catch { return 72; }
             }
             if (args.Contains("--pipe-hold-self-test"))
@@ -826,7 +844,15 @@ namespace InvestorIntelligence
                     @"scripts\v213_free_relay.ps1",
                     @"scripts\v213_free_relay_heartbeat.ps1",
                     "register-v213-free-relay-task.ps1",
-                    "requirements-ci.txt"
+                    "requirements-ci.txt",
+                    @"scripts\run_v213_local_llm_bridge_core.ps1",
+                    @"scripts\run_v213_local_llm_bridge_core_v2.ps1",
+                    @"scripts\v213_windows_security.ps1",
+                    @"scripts\v213_local_llm_gateway.py",
+                    @"scripts\v213_model_profile.py",
+                    @"scripts\v213_compact_qa_gateway.py",
+                    @"config\v213-compact-qa-v1.json",
+                    @"config\v213-model-profile-v1.json"
                 };
                 foreach (string item in required)
                 {
@@ -928,6 +954,7 @@ namespace InvestorIntelligence
             readonly ComboBox thinkingBox;
             readonly bool thinkingAvailable;
             readonly Button scanButton;
+            readonly Button checkModelButton;
             readonly Button useModelButton;
             readonly Button refreshButton;
             readonly Button activateButton;
@@ -1253,6 +1280,17 @@ namespace InvestorIntelligence
                 thinkingBox.SelectedIndexChanged += delegate {
                     status.Text = "THINK 設定尚未儲存／驗證 / Pending, unqualified";
                 };
+                checkModelButton = new Button { Left = 166, Top = 195, Width = 160, Height = 28,
+                    Text = "本機回覆測試 / Test reply" };
+                Controls.Add(checkModelButton);
+                checkModelButton.Click += async delegate {
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    await RunBusyAsync("驗證本機固定回覆 / Checking local reply...", async delegate {
+                        return await CheckLocalModelAsync(selection, true);
+                    }, "本機固定回覆通過；THINK強度／發布未驗證 / Marker passed, not release-qualified",
+                       "本機回覆測試失敗 / Local reply check failed");
+                };
                 if (discoverOnShow) Shown += async delegate { await RefreshModelsAsync(); };
             }
 
@@ -1260,7 +1298,7 @@ namespace InvestorIntelligence
             {
                 // Only synthetic choices and isolated profile storage. No discovery,
                 // inference, activation, task registration or production buttons.
-                foreach (var button in new[] { scanButton, refreshButton, activateButton, bridgeButton,
+                foreach (var button in new[] { scanButton, checkModelButton, refreshButton, activateButton, bridgeButton,
                     folderButton, namedTunnelButton, freeRelayButton }) button.Enabled = false;
                 Show();
                 if (!thinkingBox.Visible || !ClientRectangle.Contains(thinkingBox.Bounds) ||
@@ -1469,6 +1507,7 @@ namespace InvestorIntelligence
             {
                 busy = value;
                 scanButton.Enabled = !value;
+                checkModelButton.Enabled = !value;
                 useModelButton.Enabled = !value;
                 modelBox.Enabled = !value;
                 thinkingBox.Enabled = !value && thinkingAvailable;

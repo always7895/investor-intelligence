@@ -61,6 +61,20 @@ class ModelProfileTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+            def do_POST(self):
+                paths.append(self.path)
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                valid = (self.path == '/v1/chat/completions' and request.get('model') == PROFILE['model']
+                         and request.get('reasoning_effort') == 'xhigh'
+                         and request.get('chat_template_kwargs', {}).get('enable_thinking') is True)
+                if mode[0] == 'route_redirect':
+                    self.send_response(307); self.send_header('Location', '/must-not-follow'); self.end_headers(); return
+                response = {'model': 'wrong' if mode[0] == 'route_wrong_model' else PROFILE['model'],
+                            'choices': [{'finish_reason': 'length' if mode[0] == 'route_incomplete' else 'stop',
+                                         'message': {'content': POLICY['smoke_prompt'].removeprefix('Reply exactly ')}}]}
+                payload = json.dumps(response).encode()
+                self.send_response(200 if valid else 400)
+                self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
             def do_GET(self):
                 paths.append(self.path)
                 selected = mode[0]
@@ -106,6 +120,30 @@ class ModelProfileTests(unittest.TestCase):
                                         env=child_env, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, 70)
                 self.assertEqual(paths, [])
+            local = exe.parent / 'isolated-route-user'
+            child_env.update(PROJECT_PYTHON=sys.executable, LOCALAPPDATA=str(local))
+            for case in ('route_good', 'route_incomplete', 'route_wrong_model', 'route_redirect'):
+                with self.subTest(route=case):
+                    mode[0] = case; paths.clear()
+                    result = subprocess.run([str(exe), '--model-route-check', base], env=child_env,
+                                            capture_output=True, timeout=30)
+                    self.assertEqual(result.returncode == 0, case == 'route_good', result.stdout + result.stderr)
+                    self.assertEqual(paths, ['/models', '/v1/chat/completions'])
+                    self.assertFalse((local / 'InvestorIntelligence/UserData/config').exists(), 'Routing check wrote runtime state/config')
+            paths.clear()
+            result = subprocess.run([str(exe), '--model-route-check', base],
+                                    env={**child_env, 'PROJECT_PYTHON': ''}, capture_output=True, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(paths, [], 'Check must not fall back to system Python or install a runtime')
+            result = subprocess.run([str(exe), '--model-route-check', base, '--version'], env=child_env, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 70)
+            for flag in ('-StopExisting', '-InstallCloudflared', '-SelfTest'):
+                result = subprocess.run(['powershell.exe', '-NoProfile', '-File',
+                    str(exe.parent / 'scripts/run_v213_local_llm_bridge_core.ps1'), '-RoutingCheckOnly', flag],
+                    env=child_env, capture_output=True, timeout=15)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b'ROUTING_CHECK_ARGUMENT_CONFLICT', result.stdout + result.stderr)
+            self.assertEqual(paths, [])
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
 
@@ -225,6 +263,22 @@ class ModelProfileTests(unittest.TestCase):
             self.assertIs(row['complete_exact_marker'], True)
             self.assertNotIn('answer', row)
             self.assertNotIn('reasoning_content', row)
+        with self.assertRaisesRegex(ValueError, 'LIVE_GATE_NOT_PASS'):
+            verify(data)
+
+    def test_exe_local_route_receipt_does_not_qualify_release(self):
+        from verify_r75_qa_evidence import verify
+        path = ROOT / 'state/exe-local-route-final-20260909.json'
+        self.assertLess(path.stat().st_size, 8192)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(data['scope'], 'EXE_LOCAL_ROUTE_CHECK_ONLY')
+        for field in ('release_qualified', 'production_mutation', 'real_line_sent'):
+            self.assertIs(data[field], False)
+        self.assertEqual([r['effort'] for r in data['results']], ['none', 'low'])
+        self.assertRegex(data['exe_sha256'], r'^[0-9a-f]{64}$')
+        for row in data['results']:
+            self.assertEqual(row['exit_code'], 0)
+            self.assertIs(row['runtime_config_created'], False)
         with self.assertRaisesRegex(ValueError, 'LIVE_GATE_NOT_PASS'):
             verify(data)
 
