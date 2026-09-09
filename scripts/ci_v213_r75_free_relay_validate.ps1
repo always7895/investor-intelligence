@@ -90,7 +90,8 @@ try {
         'state/model-thinking-observation-20260909.json','state/exe-local-route-observation-20260909.json',
         'state/exe-local-route-final-20260909.json',
         'scripts/r75_release_inputs.py','tests/test_r75_release_inputs.py',
-        'state/r75-qa-live-current.ref.json','state/r75-qa-live-direct-20260909.json'
+        'state/r75-qa-live-current.ref.json','state/r75-qa-live-direct-20260909.json',
+        'state/r75-qa-live-activation-v3-20260909.json'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.

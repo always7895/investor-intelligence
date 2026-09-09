@@ -90,11 +90,17 @@ class ReleaseInputsTests(unittest.TestCase):
         relative = 'state/r75-qa-live-synthetic.json'
         (self.root / relative).write_bytes(payload)
         self.write_ref({**self.ref, 'receipt_path': relative, 'receipt_sha256': hashlib.sha256(payload).hexdigest()})
+        self.git('add', '-A')
+        self.git('diff', '--cached', '--check')  # CRLF evidence stays byte-exact, not a whitespace waiver.
         self.commit()
         clone = Path(self.temp.name) / 'clone'
         subprocess.run(['git', '-c', 'core.autocrlf=true', 'clone', '-q', str(self.root), str(clone)], check=True, capture_output=True)
         self.assertEqual((clone / relative).read_bytes(), payload)
         self.assertEqual(select_receipt(clone)['receipt_sha256'], hashlib.sha256(payload).hexdigest())
+        (self.root / relative).write_bytes(payload + b' \r\n')
+        self.git('add', relative)
+        bad = subprocess.run(['git', '-C', str(self.root), 'diff', '--cached', '--check'], capture_output=True)
+        self.assertNotEqual(bad.returncode, 0)
 
     def test_git_symlink_mode_is_rejected_before_reading_target(self):
         blob = self.git('rev-parse', 'HEAD:state/fresh.json')
