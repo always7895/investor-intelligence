@@ -89,7 +89,9 @@ foreach ($retiredMarker in @(
     stable_activation_wrapper = 'source-independence-aware-current-contract'
     retired_strict_post_bundle_audit = $false
     stale_native_exit_code_is_success_authority = $false
-    preferred_model = 'RVN-Q6_K-multilingual-mtp'
+    preferred_model = $null
+    model_selection_authority = 'runtime_model_profile'
+    model_profile_qualified = $false
     latest_public_serenity_source_required = $true
     per_ticker_claim_source_families_minimum = 2
     per_ticker_claim_source_domains_minimum = 2

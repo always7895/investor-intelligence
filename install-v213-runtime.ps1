@@ -196,7 +196,10 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     market_calculation_source='yfinance_compatibility_only'
     independent_market_attempts=@('stooq_daily_csv','nasdaq_historical_api','hfmarketdata_daily_bars','optional_alpha_vantage_adjusted')
     official_macro_context='fred_official_macro'
-    preferred_model='RVN-Q6_K-multilingual-mtp'
+    # Installation copies files; only the strict runtime profile selects a model.
+    preferred_model=$null
+    model_selection_authority='runtime_model_profile'
+    model_profile_qualified=$false
     health_schema_version=2
     official_serenity_formula_claimed=$false
     official_serenity_score_claimed=$false

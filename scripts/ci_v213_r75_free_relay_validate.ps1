@@ -41,6 +41,7 @@ try {
         'scripts/test_v213_edge_readiness.ps1','scripts/v213_edge_readiness.ps1','tests/test_v213_compact_qa_gateway.py',
         'tests/test_v213_r75_gateway_process.py','tests/test_r75_qa_evidence.py',
         'tests/test_v213_bridge_model_identity.py','install-v213-source-diverse-runtime-v2.ps1',
+        'install-v213-source-diverse-runtime.ps1','install-v213-serenity-latest-runtime.ps1','tests/test_installer_model_authority.py',
         'scripts/v213_windows_security.ps1','tests/test_v213_windows_security.py',
         'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py','tests/test_v213_journal_reconciliation.py',
         'run-v213-scheduled-refresh.ps1','register-v213-refresh-tasks.ps1',

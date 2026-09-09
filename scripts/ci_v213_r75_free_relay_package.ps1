@@ -168,7 +168,15 @@ try {
                     throw "Installed runtime test dependency missing or changed: $relative"
                 }
             }
-            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; production_mutation=false'
+            foreach($metadataPath in @((Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/v213-runtime-state.json'),(Join-Path $installProbe 'runtime/V213-SOURCE-DIVERSE-RUNTIME.json'))){
+                $metadata=Get-Content -LiteralPath $metadataPath -Raw -Encoding utf8|ConvertFrom-Json
+                if($null-ne$metadata.preferred_model -or $metadata.model_selection_authority -isnot [string] -or
+                   $metadata.model_selection_authority-cne'runtime_model_profile' -or
+                   $metadata.model_profile_qualified -isnot [bool] -or $metadata.model_profile_qualified-ne$false){
+                    throw 'Installed metadata incorrectly selects or qualifies a model.'
+                }
+            }
+            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; model_selection=runtime_profile_only; production_mutation=false'
         } finally {
             $env:LOCALAPPDATA = $savedLocalAppData
             Remove-Item -LiteralPath $installProbe -Recurse -Force -ErrorAction SilentlyContinue

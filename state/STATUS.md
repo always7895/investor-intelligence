@@ -4,13 +4,9 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Starting HEADe540595e66b38e46a27f5137b2827000ad6fb95a; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
-- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: CI package/cache repair; prior isolated QA resources deleted. No Production mutation.
+- Fetched starting HEAD0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: installer metadata/source tests; no Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
-
-## Candidate EXE evidence (7bc9df7)
-
-- Model/manual THINK/GUI/CLI proofs: Git7bc9df7/ed0dcd1/8e9e52a/f126f25 and `exe-route-*`/`router-*`. Local receipts retained unqualified; field presence is not graded effort, best mode, research quality or installed acceptance.
 
 ## Authorized runner and isolated gate
 
@@ -32,7 +28,8 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 - Failed runs34380328481 (checkout npm cache) and34382057316 (test's service-account 8.3 alias comparison) remain in `package-run-*-failure.log`. Cache now unique/external RUNNER_TEMP; native PS5.1/7 alias/inside-source negatives pass. No ignore rule, dirty-source waiver or manual cache deletion.
 - Full R75 run34382938201 on e540595 PASS: Windows699 Python/2 skipped, Worker227/typecheck, six gates, native EXE/PS, ZIP extraction and isolated install. Downloaded artifact independently verified by trusted source tool: `download-34382938201/download-independent-verification.json`; ZIP SHA13a9653b504486f790245d71693fc40302ebfa8018b47e322469a55de18741d4. Source/run/three receipts/QA binding verified, not just CI assertions.
-- Downloaded isolated install additionally matched all10 chain files and EXE bytes; actual installed EXE version/profile/THINK self-tests PASS. Receipt `downloaded-install-34382938201/receipt.json` remains release_qualified=false:1 confirmed metadata mismatch, installed profile Q5 but runtime-state preferred_model still RVN-Q6. No observed inference downgrade; consumer impact/installer writers require repair and acceptance. Real installed runtime untouched; both named publisher tasks freshly confirmed Disabled.
+- Original downloaded chain10/EXE tests passed but `downloaded-install-34382938201/receipt.json` stays release_qualified=false: legacy metadata RVN-Q6 contradicted Q5 profile. No inference downgrade observed. Original evidence unchanged.
+- Current fix: four installer writers declare preferred_model=null, runtime_model_profile authority and model_profile_qualified=false. No duplicated profile parser, guessed selection or user-profile overwrite. Actual PS5.1/7 installer callers pass; historical Serenity uses synthetic compatible markers, not R75 certification. Added actual packager negatives for selection, qualification and array/string confusion. Logs `installer-model-authority-*`; initial PS5 inherited-module-path failure retained. Python701/2 skipped, Worker227/typecheck PASS; package/download acceptance pending, real runtime/tasks unchanged.
 
 ## Production and release blockers
 
@@ -40,6 +37,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Prior signed reconciliation returned NOT_COMMITTED, original FAIL/byte-identical archive preserved; prior journal scan unresolved0. Never replay that stale bundle. Sealed object integrity, exact rollback and pointer-last commit remain mandatory.
 - Schema4 still seals seven payloads, excluding fresh options/universe and detailed-report datasets. Stale carry-forward removed, but replacement contracts, both builders/preflight/consumers and readback/replay/rollback/finalize acceptance remain incomplete.
 - Fresh versioned-runtime Q&A passes; old manifests and xhigh failure remain invalid. No restamp, alternate Router/model/preset or paid fallback. CI package/download/isolated-chain gates above pass; real installed GUI/task/data/publication acceptance remains incomplete, no whole-product release.
+- Automatic best THINK/graded effort and actual installed GUI acceptance remain unqualified; original local proofs retained in Git0ec13cc.
 - Whole-product P0 inventory NOT closed. PR39 historically retains3 Python evidence errors, not rerun/fixed here. New scoped regression results never establish whole-product zero defects.
 
 ## Actual report delivery gaps
@@ -69,6 +67,6 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Next actions
 
-1. Fix profile/installer metadata inconsistency with actual-caller tests, then requalify. No synthetic/historical market-data promotion. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
+1. Requalify installer metadata through full CI and downloaded installation; never confuse copied files with selected/qualified models. No synthetic/historical market-data promotion. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
 2. Complete rights, identity/currency/session/freshness qualification; connect evidence and three distinct report outputs through one reviewed versioned sealed contract and actual Worker routes. No unsealed fallback or researcher-draft promotion.
 3. Requalify exact source/model/Windows/package/installed actions. Publish only newly validated immutable data, read back bytes/claim/pointer, restore exactly the paused tasks and verify an actual scheduled run. No real LINE test sending; do not claim completion before these gates pass.
