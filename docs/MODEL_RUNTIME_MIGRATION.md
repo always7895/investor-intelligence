@@ -62,7 +62,7 @@ A new `r75-live-direct-transport-20260909.json` passed all10 real Q5 none-mode c
 
 New packages bind that QA reference in HOTFIX-REFS and require the adjacent QA receipt as a delivery artifact. The independent ZIP verifier compares its digest/Windows binding and evaluates its live evidence against the actual archive runtime; it never imports archive code. Synthetic archive tests are not real installation attestations. The packager now refuses existing output directories instead of clearing operator data or previous failures.
 
-A separate release audit still finds historical activation.ts/activation-v2.ts changes outside the hotfix allowlist, with activation-v2 differing from the protected baseline. Do not erase the no-stale-carry-forward fix or weaken baseline hashes to pass. Versioned migration/recertification and full release acceptance remain required.
+The formal release validator reproduced a historical activation baseline failure (retained as `full-release-activation-baseline-red.log`). `activation-v2.ts` is now restored byte-for-byte to the existing certified baseline; production imports only the versioned `activation-v3.ts` implementation, which preserves the no-stale-carry-forward fix and unchanged bundle signatures/schemas. The legacy activation.ts safety diff was separately reviewed. No protected hash was changed. An authenticated synthetic request through the actual Worker route catches stale carry-forward if wired back to v2; rollback originals remain intact. This migration invalidates the earlier runtime-manifest QA evidence: fresh isolated proof and full release/installation acceptance are still required.
 
 Required future acceptance:
 

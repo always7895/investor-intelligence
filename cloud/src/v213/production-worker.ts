@@ -9,7 +9,7 @@ import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "./activation-v2";
+} from "./activation-v3";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
 import {
   currentFreeRelayRoute,

@@ -55,6 +55,16 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         self.assertIn('Windows/model profile receipt mismatch.', package)
         self.assertIn('Protected R75 release source changed:', package)
 
+    def test_active_activation_is_versioned_and_certified_v2_bytes_are_preserved(self):
+        script = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text()
+        baseline = re.search(r"\$r75Commit\s*=\s*'([0-9a-f]{40})'", script).group(1)
+        relative = 'cloud/src/v213/activation-v2.ts'
+        frozen = subprocess.check_output(['git', '-C', str(ROOT), 'show', baseline + ':' + relative])
+        self.assertEqual((ROOT / relative).read_bytes(), frozen)
+        self.assertIn('from "./activation-v3"', (ROOT / 'cloud/src/v213/production-worker.ts').read_text())
+        for path in (ROOT / 'cloud/src').rglob('*.ts'):
+            self.assertNotRegex(path.read_text(encoding='utf-8-sig'), r'''(?:from\s*|(?:import|require)\s*\(\s*)["'][^"']*activation-v2["']''', str(path))
+
     def test_historical_scripts_are_retained_and_no_production_mutation_added(self):
         for name in ('ci_v213_r75_package.ps1', 'verify_v213_r75_artifact.py'):
             self.assertTrue((ROOT / 'scripts' / name).is_file())

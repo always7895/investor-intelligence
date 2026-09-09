@@ -1,7 +1,8 @@
 /// <reference types="node" />
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
+import productionWorker from "../src/v213/production-worker";
 import { publicJson } from "../src/storage";
 import { parseQuery } from "../src/core";
 import { deterministicAnswer } from "../src/qa";
@@ -11,7 +12,7 @@ import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "../src/v213/activation-v2";
+} from "../src/v213/activation-v3";
 
 const SCORING_VERSION = "system-operationalization-v2.1.3-diversified";
 const MARKET_DEGRADATION = "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE";
@@ -483,7 +484,21 @@ describe("v2.1.3 atomic activation transaction", () => {
     publicKv.values.set("snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest", "old-options");
 
     const value = await bundle();
-    const accepted = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const body = JSON.stringify(value);
+    const key = "synthetic-test-only-key-".repeat(3);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = "a".repeat(32);
+    const version = "12345678-1234-1234-1234-123456789abc";
+    const response = await productionWorker.fetch(new Request("https://synthetic.invalid/v213/admin/activation-bundle", {
+      method: "POST", body, headers: {
+        "x-ii-expected-worker-version": version, "x-ii-v21-timestamp": timestamp,
+        "x-ii-v21-nonce": nonce,
+        "x-ii-v21-signature": createHmac("sha256", key).update(`${timestamp}.${nonce}.${body}`).digest("hex"),
+      },
+    }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version } } as any,
+    { waitUntil: () => undefined } as unknown as ExecutionContext);
+    expect(response.status).toBe(200);
+    const accepted = await response.json<Record<string, unknown>>();
     expect(accepted.status).toBe("accepted");
     expect(accepted.pointer_written_last).toBe(true);
     expect(accepted.rollback_available).toBe(true);
