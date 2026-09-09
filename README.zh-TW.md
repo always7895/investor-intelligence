@@ -2,7 +2,7 @@
 
 [English／完整證據](README.md)｜[最新不可變 Release](https://github.com/always7895/investor-intelligence/releases/latest)｜[共同中英狀態](docs/CURRENT_STATUS_BILINGUAL.md)
 
-隱私優先、零付費公開市場研究。不是個人化投資建議、交易指令或報酬保證。
+隱私優先、零付費公開研究與資料依據的條件式建議。不連接券商下單，不保證報酬。
 
 ## 開發中稽核／Development audit
 
@@ -10,9 +10,9 @@
 
 候選版新增 Fed／SEC／ECB 公告與 TWSE／TPEx 股票日行情的明確選用本機抓取器，以及 TAIFEX 期權／Alpaca indicative 匯入 adapter，保留原有 Yahoo／本機 IBKR 路徑。五個端點皆已在核准且雜湊驗證的 CPython3.12.10＋鎖定 certifi 信任來源下，通過本機直接 CLI 真實抓取。早期 TLS 失敗仍保留，不代表任意系統 Python 皆已驗收；受控 GitHub Windows 回歸已通過只驗證模式，完整發布驗收仍待完成。**尚非 LINE 即時多源資料**：再散布權利與來源綁定 live 驗收未完成。日行情／指示價不可冒充可成交 NBBO。目前稽核問題不受歷史零缺陷數字覆蓋；以下已發布版本未變更。
 
-目前候選發布改走 receipt 綁定、最終 ZIP 解壓及隔離安裝驗證，不再自動使用舊一般打包器。Live Q&A 須有含時區且 24 小時內的開始／完成時間；舊 receipt 原樣保留為歷史證據。可替換的 Q5／thinking 設定已接上開發 EXE、PowerShell bridge、gateway 與 Worker，並核對相同雜湊。先前 Q5／xhigh 研究回答不完整；依授權改為 thinking=false／effort=none 的候選設定後，完整隔離模型 live 矩陣10次請求及負向／非同步／LINE格式模擬驗證已通過，最長1890ms。這不是正式市場資料更新或整體發布驗收。正式更新排程因授權維修暫停；尚未發布新資料或恢復自動更新。受控 Windows run34303303119 已通過只驗證模式，單次 runner 隨後自動解除註冊；未產生發布檔案。詳見[模型／runner 遷移範圍](docs/MODEL_RUNTIME_MIGRATION.md)；尚無新 EXE 或正式環境模型切換驗收。
+候選發布需要新鮮 source／profile 綁定問答證據、receipt 綁定 ZIP 與解壓安裝驗收。舊 Q5 none-thinking PASS 不能替後續來源版本背書，失敗紀錄保留。EXE 清單讀取現已限制大小／時間並固定所選 Router，但選到模型不等於完成回答，think 自動判定仍未實作。已安裝鏈路與候選檔案存在差異，兩個發布任務仍 Disabled；沒有新的合格 EXE、正式模型切換、新資料發布或自動更新恢復。詳見[當前驗收](state/STATUS.md)及[模型契約](docs/MODEL_RUNTIME_MIGRATION.md)。
 
-## 已完成／Delivered
+## 歷史已發布功能／Previously released functionality
 
 - 互動與排程 Top20 共用 **20 檔完整七欄雙語卡片**：四組 carousel，每組五家公司。輸入 `Top20 文字` 可取得完整、依公司分組的文字版，不再橫向擠表格或省略尾端股票。
 - 七欄：股票、近2年歷史年化報酬、近6個月歷史報酬、行業別、獲利簡述、目前訂單、未來訂單展望。沒有可靠證據就顯示未揭露／無可靠預估，不編造訂單總額、不把 LIMITED 升 HIGH。
@@ -22,7 +22,7 @@
 
 ## 實際驗證與界線／Evidence and limits
 
-目前已發布／安裝 source `b5baae936dd3d422583decf9268910ed5783e4d5`，Windows33992169731、Python585／2 skipped PASS。ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`。發布後重新下載獨立驗證，`gh release verify-asset` 密碼學 release-asset attestation **PASS**。
+2026-09-06 已發布／安裝 source `b5baae936dd3d422583decf9268910ed5783e4d5`，Windows33992169731、Python585／2 skipped PASS。ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`。發布後重新下載獨立驗證，`gh release verify-asset` 密碼學 release-asset attestation **PASS**。
 
 2026-09-06 功能切換基線：`bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`，Windows CI [33989794415](https://github.com/always7895/investor-intelligence/actions/runs/33989794415)。每一份 ZIP 的真正 source／workflow run，以該檔案內 `HOTFIX-REFS.json`、外部 SHA 與相鄰 receipts 為準；不要把較早文件表格套用到後續封裝。
 
@@ -37,12 +37,12 @@
 
 ## 安全與安裝／Safety and installation
 
-唯一免費路徑：workers.dev → 簽章短期 lease → TryCloudflare → Gateway → 既有 llama.cpp。只有 compact Q&A／固定 smoke 的單次 request 使用 `enable_thinking=false`；不放寬 stale／future／provenance／digest／privacy／IBKR 邊界。
+免費路徑：workers.dev → 簽章短期 lease → TryCloudflare → Gateway → 既有 localhost:8080 Router。候選版單次 request 的 thinking／effort 依共同 profile；目前範本為 false／none，不是自動判定或 preset 變更。不放寬 stale／future／provenance／digest／privacy／IBKR 邊界，其餘舊消費端仍待審查。
 
 Serenity 為公開研究重建，不是官方／私人公式，也不是已查證的最新本人立場。巨觀或身分來源不能當成公司訂單證據；不得用網站／鏡像數量灌高獨立佐證。
 
 先驗證下載 ZIP 的外部 SHA256，再執行 `install-v213-source-diverse-runtime.ps1`。固定路徑 `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`；必要時在其 `cloud` 目錄以 `npm ci --ignore-scripts --no-audit --no-fund` 準備鎖定依賴。安裝程式碼不等於授權 Production 部署／發布。
 
-驗證過的使用者主機已安裝，桌面入口 **Investor Intelligence R75**。請勿把 LINE／Cloudflare／Gateway credentials、`.env` 或私人財務資料貼到 issue／log。
+歷史桌面入口為 **Investor Intelligence R75**；必須另核對實際 EXE、依賴鏈、所選模型與排程動作，舊捷徑不是目前的驗收證明。請勿把 LINE／Cloudflare／Gateway credentials、`.env` 或私人財務資料貼到 issue／log。
 
 [操作文件](docs/V213_FREE_WORKERS_RELAY.md)｜[行動七欄 UI](docs/LINE_TOP20_UI.md)｜[完整狀態](docs/CURRENT_STATUS_BILINGUAL.md)

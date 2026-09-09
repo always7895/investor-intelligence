@@ -5,13 +5,14 @@ import sys
 import unittest
 import os
 import threading
+import time
 import tempfile
 import subprocess
 import shutil
 import re
 import urllib.request
 import urllib.error
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +52,62 @@ class ModelProfileTests(unittest.TestCase):
                 with self.subTest(flag=flag):
                     result = subprocess.run([str(exe), flag], capture_output=True, timeout=45)
                     self.assertEqual(result.returncode, 0)
+            self._assert_native_catalog_transport(exe)
+
+    def _assert_native_catalog_transport(self, exe):
+        mode = ['valid']
+        paths = []
+        body = json.dumps({'data': [{'id': PROFILE['model']}]}).encode()
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                paths.append(self.path)
+                selected = mode[0]
+                if selected == 'redirect':
+                    self.send_response(302)
+                    self.send_header('Location', '/must-not-follow')
+                    self.end_headers()
+                    return
+                if selected == 'alias' and self.path == '/models':
+                    self.send_response(404); self.end_headers(); return
+                self.send_response(200)
+                payload = b'\xff' if selected == 'invalid_utf8' else b'{broken' if selected == 'invalid_json' else body
+                if selected in ('oversize_header', 'oversize_stream'):
+                    payload = b'x' * (1024 * 1024 + 1)
+                if selected != 'oversize_stream':
+                    self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                try:
+                    if selected == 'slow_stream':
+                        for byte in payload:
+                            self.wfile.write(bytes([byte])); self.wfile.flush(); time.sleep(0.15)
+                    else:
+                        self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        child_env = {**os.environ, 'V213_MODEL_PROFILE_JSON': json.dumps(PROFILE)}
+        try:
+            for case in ('valid', 'alias', 'redirect', 'invalid_utf8', 'invalid_json', 'oversize_header', 'oversize_stream', 'slow_stream'):
+                with self.subTest(catalog=case):
+                    mode[0] = case; paths.clear()
+                    result = subprocess.run([str(exe), '--model-catalog-check', base],
+                                            env=child_env, capture_output=True, timeout=15)
+                    self.assertEqual(result.returncode, 0 if case in ('valid', 'alias') else 71)
+                    self.assertEqual(paths, ['/models'] if case == 'valid' else ['/models', '/v1/models'])
+                    self.assertNotIn(b'{broken', result.stdout + result.stderr)
+            for suffix in ('?key=fixture', '#fixture', '/path'):
+                paths.clear()
+                result = subprocess.run([str(exe), '--model-catalog-check', base + suffix],
+                                        env=child_env, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 70)
+                self.assertEqual(paths, [])
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=5)
 
     def test_actual_profile_cli_and_bounded_invalid_output(self):
         with tempfile.TemporaryDirectory() as directory:

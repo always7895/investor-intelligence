@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md) · [Latest immutable release](https://github.com/always7895/investor-intelligence/releases/latest) · [Bilingual status](docs/CURRENT_STATUS_BILINGUAL.md)
 
-Privacy-first, zero-cost public-market research. / 隱私優先、零付費公開市場研究。 Research software—not personalized investment advice, trading instructions or guaranteed returns.
+Privacy-first, zero-cost public-market research and data-grounded conditional recommendations. / 隱私優先、零付費公開研究與條件式建議。 No broker execution or guaranteed returns.
 
 ## Development audit / 開發中稽核
 
@@ -10,9 +10,9 @@ Privacy-first, zero-cost public-market research. / 隱私優先、零付費公�
 
 The candidate adds an opt-in local collector for Fed/SEC/ECB announcements and TWSE/TPEx equity EOD observations, plus local-export adapters for TAIFEX options and Alpaca indicative quotes, alongside existing Yahoo/local IBKR paths. All five endpoints have local direct-CLI live-read evidence on the supported hash-verified CPython3.12.10 plus locked certifi trust bundle. Earlier TLS failures are preserved, not relabelled; arbitrary system Python versions are not qualified. Reviewed GitHub Windows regression has now passed in validation-only mode; full release acceptance is still pending. These are **not live public LINE feeds**: redistribution review and source-bound live acceptance remain pending. Daily/indicative data cannot be presented as executable NBBO. Current audit findings supersede historical zero-defect counts; the released executable below is unchanged.
 
-Current-release hardening routes new candidates through receipt-bound ZIP/extracted-install verification, not the legacy generic packager. Live Q&A qualification now requires timezone-aware start/completion timestamps within 24 hours; old receipts remain historical. The configurable Q5/thinking profile is now wired through a development EXE, PowerShell bridge, gateway and Worker, with matching fingerprints. Historical Q5/xhigh research requests failed closed. The authorized thinking=false/effort=none candidate passed the full isolated10-case model live matrix with exact pins, negative gates, asynchronous reference completion and mock LINE presentation (maximum1890ms). This is model qualification, not fresh market-data publication or whole-release acceptance. Production refresh tasks are temporarily disabled for authorized maintenance; fresh cloud publication and restored automation are not claimed. Reviewed Windows run34303303119 passed validation-only; the ephemeral runner then deregistered. This produced no release artifact. See [model/runner migration scope](docs/MODEL_RUNTIME_MIGRATION.md). No new EXE or Production model switch is qualified.
+Current candidates require fresh source/profile-bound Q&A evidence, receipt-bound ZIP verification and extracted-install acceptance. Historical Q5 none-thinking PASS does not qualify newer source; failed receipts are preserved. EXE catalog discovery is now bounded and stays on the selected Router, but selection is not a completed answer and automatic think selection remains unimplemented. Installed scripts differ from the candidate dependency chain; both publisher tasks remain disabled. No new EXE, Production model switch, fresh publication or restored automation is claimed. See [current acceptance](state/STATUS.md) and [model contract](docs/MODEL_RUNTIME_MIGRATION.md).
 
-## Delivered functionality / 已完成的功能
+## Previously released functionality / 歷史已發布功能
 
 - Interactive and scheduled Top20 share **20 complete seven-field bilingual cards**: four carousels of five companies. `Top20 文字` provides complete company-grouped text, not a truncated table.
 - Seven fields: ticker, historical 2Y annualized return, historical 6M return, industry, profit summary, current orders and future order outlook. Missing evidence stays unavailable; no invented order totals or LIMITED upgrades.
@@ -41,10 +41,10 @@ The functional cutover baseline was `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, 
 LINE -> privacy/admission gates -> deterministic seven-field research tools
                               -> bounded public Q&A
 workers.dev -> signed short-lived route lease -> TryCloudflare -> Gateway
-            -> existing llama.cpp -> exact qwen38-q6
+            -> existing localhost:8080 Router -> exact selected/qualified model
 ```
 
-Only authenticated compact Q&A/smoke requests set request-local `enable_thinking=false`; legacy requests and the user's preset are unchanged. Ranking remains deterministic. Stale/missing/future data fails closed, never falls back to five fields. No custom domain, second large model or paid fallback.
+The candidate's request-local thinking/effort follows its validated common profile; its current template requests false/none. This is not automatic mode detection or a persistent preset change. Ranking remains deterministic. Freshness, provenance and privacy must fail closed; remaining legacy-consumer audits are tracked in STATUS. No second large model or paid fallback.
 
 Serenity public reconstruction is not an official/private formula or a verified current personal stance. Macro/identity sources do not prove company orders or equity capture. Scoring/weights, publication contract, negative factors, optional BLS, claim-level independence and LINE/IBKR privacy separation remain intact. Certified `qa.ts` blob remains `94184bc8937b413eb327b3d773926db00e22b3b9`; retained LINE transport remains `618610bb277eb2949af0657609569ec5c490a1bb`.
 
@@ -52,6 +52,6 @@ Serenity public reconstruction is not an official/private formula or a verified 
 
 Verify the downloaded ZIP's external SHA256 before extraction. Run `install-v213-source-diverse-runtime.ps1`; the stable runtime is `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`. Prepare its locked Node dependencies when needed with project-local `npm ci --ignore-scripts --no-audit --no-fund` in its `cloud` directory. Code installation is not authorization to deploy or publish.
 
-On the qualified user machine the runtime is installed, connected to Q6 and available through desktop shortcut **Investor Intelligence R75**. Never paste LINE/Cloudflare/Gateway credentials, private financial data or `.env` contents into issues/logs.
+The historical desktop entry is **Investor Intelligence R75**. Verify the actual installed EXE, dependency chain, selected model and task actions; an old shortcut is not current qualification. Never paste LINE/Cloudflare/Gateway credentials, private financial data or `.env` contents into issues/logs.
 
 [Operations](docs/V213_FREE_WORKERS_RELAY.md) · [Mobile presentation](docs/LINE_TOP20_UI.md) · [Installation boundaries](docs/FINAL_RELEASE.md) · [Delivery history](https://github.com/always7895/investor-intelligence/blob/main/state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)

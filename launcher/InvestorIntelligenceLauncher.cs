@@ -110,14 +110,8 @@ namespace InvestorIntelligence
             catch { throw new InvalidOperationException("MODEL_PROFILE_INVALID"); }
         }
 
-        static readonly string[] KnownLlamaBases = {
-            "http://127.0.0.1:8080",
-            "http://127.0.0.1:7905",
-            "http://127.0.0.1:14410",
-            "http://127.0.0.1:8813",
-            "http://127.0.0.1:8081",
-            "http://127.0.0.1:8000"
-        };
+        const string DefaultLlamaBase = "http://127.0.0.1:8080";
+        const int MaxModelCatalogBytes = 1024 * 1024;
 
         static string LastPowerShellSummary = "";
         static volatile string LastPowerShellLiveLine = "";
@@ -262,7 +256,8 @@ namespace InvestorIntelligence
             if (!(uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
                   uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))) return false;
             return uri.Port >= 1 && uri.Port <= 65535 &&
-                (uri.AbsolutePath == "/" || uri.AbsolutePath == "");
+                (uri.AbsolutePath == "/" || uri.AbsolutePath == "") &&
+                String.IsNullOrEmpty(uri.Query) && String.IsNullOrEmpty(uri.Fragment);
         }
 
         static List<string> ExtractModelIds(string json)
@@ -278,6 +273,7 @@ namespace InvestorIntelligence
             // UI choices only. The shared Python resolver revalidates the full
             // catalog and actual completion before the bridge can be used.
             var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (object raw in rows)
             {
                 var item = raw as Dictionary<string, object>;
@@ -302,7 +298,8 @@ namespace InvestorIntelligence
                     if (owners.TryGetValue(name, out owner) && !owner.Equals(id, StringComparison.Ordinal))
                         throw new InvalidOperationException("Ambiguous model catalog alias.");
                     owners[name] = id;
-                    if (!result.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase))) result.Add(name);
+                    if (seen.Add(name)) result.Add(name);
+                    if (result.Count > 1024) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
                 }
             }
             return result;
@@ -313,32 +310,46 @@ namespace InvestorIntelligence
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
             request.Proxy = null;
+            request.AllowAutoRedirect = false;
+            request.UseDefaultCredentials = false;
             request.KeepAlive = false;
             request.Timeout = 4500;
             request.ReadWriteTimeout = 4500;
             request.Headers[HttpRequestHeader.CacheControl] = "no-cache";
 
+            var clock = Stopwatch.StartNew();
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8, true))
+            using (var stream = response.GetResponseStream())
+            using (var bytes = new MemoryStream())
             {
-                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
-                    throw new InvalidOperationException("HTTP " + (int)response.StatusCode);
-                return reader.ReadToEnd();
+                if ((int)response.StatusCode != 200) throw new InvalidOperationException("MODEL_CATALOG_HTTP_FAILED");
+                if (response.ContentLength > MaxModelCatalogBytes) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
+                byte[] buffer = new byte[4096];
+                while (true) {
+                    int remaining = 4500 - (int)clock.ElapsedMilliseconds;
+                    if (remaining <= 0) throw new InvalidOperationException("MODEL_CATALOG_TIMEOUT");
+                    if (stream.CanTimeout) stream.ReadTimeout = remaining;
+                    int count = stream.Read(buffer, 0, buffer.Length);
+                    if (clock.ElapsedMilliseconds > 4500) throw new InvalidOperationException("MODEL_CATALOG_TIMEOUT");
+                    if (count == 0) break;
+                    if (bytes.Length + count > MaxModelCatalogBytes) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
+                    bytes.Write(buffer, 0, count);
+                }
+                return new UTF8Encoding(false, true).GetString(bytes.ToArray());
             }
         }
 
         static ModelCatalog DiscoverModels(ModelSelection previous)
         {
             var catalog = new ModelCatalog();
-            var bases = new List<string>();
-
-            if (previous != null && SafeLoopbackBase(previous.LlamaBaseUrl))
-                bases.Add(previous.LlamaBaseUrl.TrimEnd('/'));
-            foreach (string item in KnownLlamaBases)
-            {
-                if (!bases.Any(existing => existing.Equals(item, StringComparison.OrdinalIgnoreCase)))
-                    bases.Add(item);
+            if (previous != null && !String.IsNullOrEmpty(previous.LlamaBaseUrl) && !SafeLoopbackBase(previous.LlamaBaseUrl)) {
+                catalog.Error = "MODEL_ROUTER_URL_INVALID";
+                return catalog;
             }
+            // Never hop to an unrelated local service when the selected Router fails.
+            var bases = new[] { previous != null && SafeLoopbackBase(previous.LlamaBaseUrl)
+                ? previous.LlamaBaseUrl.TrimEnd('/') : DefaultLlamaBase };
+            string preferred = PreferredModel;
 
             string last = "";
             foreach (string baseUrl in bases)
@@ -351,15 +362,15 @@ namespace InvestorIntelligence
                         if (ids.Count == 0) continue;
                         catalog.BaseUrl = baseUrl;
                         catalog.Models.AddRange(ids.OrderBy(
-                            id => id.Equals(PreferredModel, StringComparison.OrdinalIgnoreCase)
+                            id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase)
                                 ? "0" + id
                                 : "1" + id,
                             StringComparer.OrdinalIgnoreCase));
                         return catalog;
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        last = baseUrl + suffix + ": " + ex.Message;
+                        last = "MODEL_CATALOG_UNAVAILABLE";
                     }
                 }
             }
@@ -754,6 +765,10 @@ namespace InvestorIntelligence
                     StringComparison.Ordinal))) return 52;
             if (!SafeModelId(PreferredModel)) return 53;
             if (!SafeLoopbackBase("http://127.0.0.1:8080")) return 54;
+            foreach (string invalid in new[] { "http://localhost:8080?key=fixture", "http://localhost:8080#fixture", "http://fixture@localhost:8080", "http://localhost:8080/path", "https://example.com" })
+                if (SafeLoopbackBase(invalid) || DiscoverModels(new ModelSelection { LlamaBaseUrl = invalid }).Error != "MODEL_ROUTER_URL_INVALID") return 66;
+            string many = "{\"data\":[" + String.Join(",", Enumerable.Range(0, 1025).Select(i => "{\"id\":\"synthetic-" + i + "\"}")) + "]}";
+            try { ExtractModelIds(many); return 67; } catch (InvalidOperationException) { }
             return 0;
         }
 
@@ -765,6 +780,14 @@ namespace InvestorIntelligence
                 Console.WriteLine(
                     "Investor Intelligence " + Version + " " + Revision);
                 return 0;
+            }
+            // Read-only native transport check: no selection, model start or preset mutation.
+            if (args.Length > 0 && args[0] == "--model-catalog-check") {
+                if (args.Length != 2 || !SafeLoopbackBase(args[1])) return 70;
+                try {
+                    var catalog = DiscoverModels(new ModelSelection { LlamaBaseUrl = args[1] });
+                    return catalog.Models.Count > 0 ? 0 : 71;
+                } catch { return 72; }
             }
             if (args.Contains("--pipe-hold-self-test"))
                 return PipeHoldSelfTest();
@@ -1020,7 +1043,7 @@ namespace InvestorIntelligence
                     Top = 445,
                     Width = 652,
                     Height = 105,
-                    Text = "Ready / 就緒\r\nPreferred / 預設首選: " +
+                    Text = "設定待驗證 / Configuration not qualified\r\nPreferred / 預設首選: " +
                         PreferredModel,
                     BorderStyle = BorderStyle.FixedSingle,
                     Padding = new Padding(8)
@@ -1046,7 +1069,7 @@ namespace InvestorIntelligence
                     ModelSelection selection;
                     if (!TryCommitSelection(out selection)) return;
                     status.Text =
-                        "模型選擇已儲存 / Model selection saved\r\n" +
+                        "模型選擇已儲存，尚未通過回答／think 驗證 / Saved, not qualified\r\n" +
                         selection.Model + " @ " + selection.LlamaBaseUrl;
                 };
 
@@ -1198,11 +1221,9 @@ namespace InvestorIntelligence
             async Task RefreshModelsAsync()
             {
                 if (busy) return;
-                scanButton.Enabled = false;
-                useModelButton.Enabled = false;
-                status.Text =
-                    "正在掃描 llama.cpp 模型 / Scanning llama.cpp models...";
-
+                SetBusy(true, "讀取所選 Router 清單 / Reading selected Router catalog...");
+                try {
+                string requested = modelBox.Text.Trim();
                 ModelSelection previous = LoadSelection();
                 ModelCatalog catalog = await Task.Run(
                     delegate { return DiscoverModels(previous); });
@@ -1216,7 +1237,7 @@ namespace InvestorIntelligence
                     foreach (string id in catalog.Models)
                         modelBox.Items.Add(id);
 
-                    string current = modelBox.Text.Trim();
+                    string current = requested;
                     string canonical = catalog.Models.FirstOrDefault(
                         id => id.Equals(current, StringComparison.OrdinalIgnoreCase));
                     if (canonical == null)
@@ -1247,8 +1268,13 @@ namespace InvestorIntelligence
                         catalog.Error;
                 }
 
-                scanButton.Enabled = true;
-                useModelButton.Enabled = true;
+                } catch {
+                    discoveredModels.Clear();
+                    modelBox.Items.Clear();
+                    status.Text = "模型清單不可用；未更換模型 / Catalog unavailable; selection unchanged.";
+                } finally {
+                    SetBusy(false, "");
+                }
             }
 
             bool TryCommitSelection(out ModelSelection selection)
@@ -1269,6 +1295,10 @@ namespace InvestorIntelligence
                 if (!SafeLoopbackBase(requestedBaseUrl))
                     requestedBaseUrl = "http://127.0.0.1:8080";
 
+                if (discoveredModels.Count == 0) {
+                    MessageBox.Show("請先取得所選 Router 的有效模型清單；不猜測模型。\nRead a valid Router catalog before changing models.", "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
                 if (discoveredModels.Count > 0)
                 {
                     string lookupModel = requestedModel;
