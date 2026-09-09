@@ -94,7 +94,7 @@ def verify(data, manifest=None, *, now=None, expected_profile=None):
     require(data.get("text_fallback_values_match") is True and type(data.get("text_message_count")) is int and 1 <= data["text_message_count"] <= 5, "LINE_TEXT_FALLBACK_UNPROVEN")
     require(data.get("reference_job") == "PASS_REAL_WAITUNTIL_SYNTHETIC_LINE", "REFERENCE_JOB_UNPROVEN")
     for field in ("stale_lease", "replay", "exact_model_mismatch"): require(data.get(field) == "PASS", "NEGATIVE_GATE_UNPROVEN:"+field)
-    return {"status":"PASS", "live_qa":"PASS", "live_free_relay_smoke":"PASS", "release_ready":True, "max_latency_ms":max(r["total_ms"] for r in rows), "production_mutation_by_ci":False}
+    return {"status":"PASS", "live_qa":"PASS", "live_free_relay_smoke":"PASS", "release_ready":True, "exact_model":selected, "model_profile_sha256":profile_sha256(profile) if profile else None, "max_latency_ms":max(r["total_ms"] for r in rows), "production_mutation_by_ci":False}
 
 if __name__ == "__main__":
     p=argparse.ArgumentParser(description=__doc__); p.add_argument("--receipt",type=Path,required=True)

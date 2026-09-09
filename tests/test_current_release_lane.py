@@ -41,6 +41,19 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         self.assertIn('Exact checkout changed during packaging', package)
         self.assertNotIn("created='2026-09-04T00:00:00Z'", package)
 
+    def test_profile_candidates_select_new_evidence_and_never_stamp_q6(self):
+        for name in ('ci_v213_r75_free_relay_validate.ps1', 'ci_v213_r75_free_relay_package.ps1'):
+            script = (ROOT / 'scripts' / name).read_text()
+            self.assertIn('state/r75-qa-live-model-profile-qualification.json', script)
+            self.assertIn("$profileArgs=@('--model-profile',$profilePath)", script)
+            self.assertIn('--receipt $liveProof @profileArgs', script)
+            self.assertNotRegex(script, r"exact_model\s*=\s*'qwen38-q6'")
+            self.assertIn('$qa.model_profile_sha256', script)
+        self.assertTrue((ROOT / 'state/r75-qa-live-qualification.json').is_file())
+        package = (ROOT / 'scripts/ci_v213_r75_free_relay_package.ps1').read_text()
+        self.assertIn('Windows/model profile receipt mismatch.', package)
+        self.assertIn('Protected R75 release source changed:', package)
+
     def test_historical_scripts_are_retained_and_no_production_mutation_added(self):
         for name in ('ci_v213_r75_package.ps1', 'verify_v213_r75_artifact.py'):
             self.assertTrue((ROOT / 'scripts' / name).is_file())

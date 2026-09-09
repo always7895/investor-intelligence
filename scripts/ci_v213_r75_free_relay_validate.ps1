@@ -40,7 +40,7 @@ try {
         'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py','tests/test_v213_journal_reconciliation.py',
         'run-v213-scheduled-refresh.ps1','register-v213-refresh-tasks.ps1',
         'cloud/test/r75-live-bench-worker.ts','scripts/v213_qa_live_gate.py','scripts/verify_r75_qa_evidence.py',
-        'state/r75-qa-live-qualification.json',
+        'state/r75-qa-live-qualification.json','state/r75-qa-live-model-profile-qualification.json',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
         'cloud/src/v21/top20.ts','cloud/test/v213-activation.test.ts','cloud/package.json','cloud/package-lock.json',
         'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
@@ -101,7 +101,13 @@ try {
     # Consume the already completed, exact-runtime-source-bound live test.
     # CI never creates a tunnel/Worker, accesses the GPU or writes Production.
     $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
-    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof
+    $profileArgs=@()
+    $profilePath=Join-Path $ProjectRoot 'config/v213-model-profile-v1.json'
+    if(Test-Path -LiteralPath $profilePath -PathType Leaf){
+        $liveProof=Join-Path $ProjectRoot 'state/r75-qa-live-model-profile-qualification.json'
+        $profileArgs=@('--model-profile',$profilePath)
+    }
+    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof @profileArgs
     if ($LASTEXITCODE -ne 0) { throw 'Source-bound live Q&A qualification failed.' }
     $qa = $qaRaw | ConvertFrom-Json
     if ($qa.release_ready -ne $true) { throw 'Live Q&A is not release-qualified.' }
@@ -118,7 +124,7 @@ try {
         compact_context='PASS';deployment_readiness='PASS_REAL_ISOLATED';live_qa='PASS';live_free_relay_smoke='PASS';release_ready=$true;
         live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
         exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
-        quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
+        quick_tunnel_ephemeral=$true;exact_model=$qa.exact_model;model_profile_sha256=$qa.model_profile_sha256;health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false
         worker_deployed=$false;production_kv_or_do_written=$false;line_message_sent=$false;schedules_registered=$false;completed_utc=(Get-Date).ToUniversalTime().ToString('o')

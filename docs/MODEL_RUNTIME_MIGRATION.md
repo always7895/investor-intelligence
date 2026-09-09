@@ -2,6 +2,10 @@
 
 ## Current result / 目前結果
 
+Full isolated model qualification subsequently passed on source `75d651b`:10 cold-prompt/warm-prompt cases,844–1890ms, exact profile/model and complete replies, negative gates, real asynchronous reference completion and mock LINE presentation. Receipt: `state/r75-qa-live-model-profile-qualification.json`; verifier accepts it with the intended profile. Isolated resources were independently confirmed removed. This supersedes the two-case development-only scope below, not historical failures. Formal market-data publication/Worker deployment/installed release acceptance remain pending; morning/evening publisher tasks are paused for maintenance.
+
+後續完整隔離模型驗收已通過（10次、最長1890ms），但正式資料發布、Worker部署與安裝驗收尚未完成；早晚發布排程仍在維修暫停中。
+
 The candidate implements a common profile across the EXE, PowerShell bridge, Python gateway and Worker. With the operator's downgrade authorization, the candidate now requests thinking=false/effort=none. One actual Worker-generated research question completed on the existing Q5 Router in1078ms with prompt caching disabled and656ms with caching enabled; both exact model/profile pins matched. This is scoped development proof, not full live/release qualification, and the Production Worker has not adopted it. Historical xhigh failures remain unchanged.
 
 候選版已接上各端共同設定。依操作者降級授權，改為 thinking=false／effort=none，同一真實研究問題兩次皆完整回覆（1078／656ms），模型及 profile 相符。這不是完整 live／發布驗收；先前 xhigh 失敗紀錄保留，正式 EXE／Worker 尚未替換。
