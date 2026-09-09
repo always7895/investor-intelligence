@@ -4,7 +4,7 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Authority and workspace
 
-- Starting HEADd917ec29d740635c1a2c497ac519ec8684a87bc8; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
+- Starting HEADe540595e66b38e46a27f5137b2827000ad6fb95a; initial fetch50dfa57, branch `fix/options-provenance-audit`/PR37. Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer, no implicit integration.
 - Current-session authorization: repair project runner, isolated validation, then full installation/sealed publication/exact two-task restoration ONLY after all gates. No real LINE sends, broker operations, paid services or stale replay. This step: CI package/cache repair; prior isolated QA resources deleted. No Production mutation.
 - Outer project is installed runtime, not the Git root. Audit tools/evidence: `_workspace/audit-runtime`; history: `_archive/history-backups`. Never package or scan these as runtime market data. Root/source AGENTS have distinct roles.
 
@@ -19,8 +19,8 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 ## Current release-input audit
 
 - Git18d0938: HEAD-bound reference/shared selector, regular committed bytes, no invalid-pointer fallback, byte-preserving attributes. Windows/package/ZIP bind path/SHA and verify actual archive runtime against mandatory adjacent QA evidence, without archive code imports. Selection is not qualification; old receipts unchanged.
-- Found destructive OutputRoot pre-clean and non-mandatory QA sidecar gaps. Existing output/source-child paths now reject; actual PS caller tests preserve sentinels. Synthetic rehashed ZIP/CLI negatives cover missing/tampered/stale QA, runtime drift and ref/Windows mismatch. Python697/2 skipped and Worker227/typecheck PASS; six gates/PS5.1/7 and Windows validation-only34377067625 on18d0938 PASS. Budget failures retained, limits unchanged.
-- Formal release FAIL retained: `full-release-activation-baseline-red.log`. V2 now restored to protected536644d bytes; production source imports only v3, preserving no stale carry-forward. Legacy activation.ts diff reviewed; no protected hash waived. Actual signed Worker route RED on v2 / GREEN on v3; rollback originals intact (`activation-version-*`). Worker227/typecheck, Python698/2 skipped/six gates PASS; formal release validation and Windows validation-only34379897641 on92b4c5c PASS.
+- OutputRoot refuses existing/source-child paths without deletion. Native sentinel and rehashed ZIP/CLI negative proofs retained in Git18d0938 and logs. Budget failures retained, limits unchanged.
+- V2 restored to protected536644d bytes; production source imports only v3, preserving no stale carry-forward/rollback originals. No protected hash waived. Original formal FAIL and actual signed Worker route RED/GREEN: `full-release-activation-baseline-red.log`, `activation-version-*` / Gite945f60.
 - Clean e945f60 fresh `r75-live-activation-v3-20260909.json`:10/10 Q5 none cases/max3062ms, real-waitUntil synthetic LINE/reference and negative checks PASS; independent verifier PASS, resources deleted, source/preset unchanged. Exact audit bytes copied to state and reference updated, original18d proof retained. Scoped Q&A only, not genuine market-data/installation/publication acceptance. No installation/publication/task restoration.
 
 ## Prior installation audit (569c5ef)
@@ -28,14 +28,18 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 - Prior Pi audit:6 project registrations (five extension manifests plus core), one skill, no global package/extension entries. Four packages depend on core. No safe-removal proof, deletion or performance claim. Details in Git569c5ef.
 - Prior card/snapshot/citation proofs and failures remain in `git show dd3cf57:state/STATUS.md` and original logs. Input SHA is NOT sealed-claim authorization; storage.ts/qa.ts remain byte-protected.
 
-- Package run34380328481 on92b4c5c FAIL at final clean-checkout guard; original log `package-run-34380328481-failure.log`. Extracted Worker227 and isolated install passed, not delivery qualification. Read-only runner check found `.npm-cache/`; resolver exported checkout cache. Fix exports unique external RUNNER_TEMP cache, rejects bad temp before env writes; native PS5.1/7 RED/GREEN retained. No .gitignore/gate bypass or manual cache deletion. Python699/2 skipped PASS (budget-only failure retained). Rerun34382057316 FAIL before packaging: test compared service-account 8.3 temp alias lexically with expanded path. Fixture now resolves filesystem identity and explicitly covers alias-positive/inside-source-negative cases on PS5.1/7; no production guard changed. Failure retained; package rerun pending.
+## CI package and downloaded installation
+
+- Failed runs34380328481 (checkout npm cache) and34382057316 (test's service-account 8.3 alias comparison) remain in `package-run-*-failure.log`. Cache now unique/external RUNNER_TEMP; native PS5.1/7 alias/inside-source negatives pass. No ignore rule, dirty-source waiver or manual cache deletion.
+- Full R75 run34382938201 on e540595 PASS: Windows699 Python/2 skipped, Worker227/typecheck, six gates, native EXE/PS, ZIP extraction and isolated install. Downloaded artifact independently verified by trusted source tool: `download-34382938201/download-independent-verification.json`; ZIP SHA13a9653b504486f790245d71693fc40302ebfa8018b47e322469a55de18741d4. Source/run/three receipts/QA binding verified, not just CI assertions.
+- Downloaded isolated install additionally matched all10 chain files and EXE bytes; actual installed EXE version/profile/THINK self-tests PASS. Receipt `downloaded-install-34382938201/receipt.json` remains release_qualified=false:1 confirmed metadata mismatch, installed profile Q5 but runtime-state preferred_model still RVN-Q6. No observed inference downgrade; consumer impact/installer writers require repair and acceptance. Real installed runtime untouched; both named publisher tasks freshly confirmed Disabled.
 
 ## Production and release blockers
 
 - Last checked tasks `InvestorIntelligence-v21-MorningRefresh` and `InvestorIntelligence-v21-EveningRefresh` both Disabled. No restoration, Worker/model/EXE replacement or new sealed publication. Last confirmed remote data2026-09-08T12:20:02Z, promoted12:22:09.595Z; not freshly reverified here.
 - Prior signed reconciliation returned NOT_COMMITTED, original FAIL/byte-identical archive preserved; prior journal scan unresolved0. Never replay that stale bundle. Sealed object integrity, exact rollback and pointer-last commit remain mandatory.
 - Schema4 still seals seven payloads, excluding fresh options/universe and detailed-report datasets. Stale carry-forward removed, but replacement contracts, both builders/preflight/consumers and readback/replay/rollback/finalize acceptance remain incomplete.
-- Fresh versioned-runtime Q&A passes; old manifests and xhigh failure remain invalid. No restamp, alternate Router/model/preset or paid fallback. Full Windows/package/install/download acceptance and source-SHA/run-ID ZIP verification remain incomplete; no qualified release.
+- Fresh versioned-runtime Q&A passes; old manifests and xhigh failure remain invalid. No restamp, alternate Router/model/preset or paid fallback. CI package/download/isolated-chain gates above pass; real installed GUI/task/data/publication acceptance remains incomplete, no whole-product release.
 - Whole-product P0 inventory NOT closed. PR39 historically retains3 Python evidence errors, not rerun/fixed here. New scoped regression results never establish whole-product zero defects.
 
 ## Actual report delivery gaps
@@ -65,6 +69,6 @@ Updated2026-09-09. This is NOT a release certificate. Prior detail: `git show 30
 
 ## Next actions
 
-1. Complete exact-source Windows/full release validation and genuine package/install proof; do not promote synthetic or historical data. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
+1. Fix profile/installer metadata inconsistency with actual-caller tests, then requalify. No synthetic/historical market-data promotion. Audit remaining producer/admission/time/source-binding logic. Complete genuine company/financial/order data and separate stock/options/macro report producers; preserve failures/conflicts and independent lineage. Fix actual thematic selection without changing scoring.
 2. Complete rights, identity/currency/session/freshness qualification; connect evidence and three distinct report outputs through one reviewed versioned sealed contract and actual Worker routes. No unsealed fallback or researcher-draft promotion.
 3. Requalify exact source/model/Windows/package/installed actions. Publish only newly validated immutable data, read back bytes/claim/pointer, restore exactly the paused tasks and verify an actual scheduled run. No real LINE test sending; do not claim completion before these gates pass.
