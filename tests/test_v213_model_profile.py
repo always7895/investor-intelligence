@@ -211,6 +211,23 @@ class ModelProfileTests(unittest.TestCase):
             finally:
                 server.shutdown(); server.server_close(); thread.join(timeout=5)
 
+    def test_local_thinking_observation_is_bounded_and_not_release_evidence(self):
+        from verify_r75_qa_evidence import verify
+        path = ROOT / 'state/model-thinking-observation-20260909.json'
+        self.assertLess(path.stat().st_size, 8192)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(data['scope'], 'LOCAL_MODEL_CAPABILITY_OBSERVATION_ONLY')
+        for field in ('release_qualified', 'production_mutation', 'real_line_sent', 'preset_modified'):
+            self.assertIs(data[field], False)
+        self.assertEqual([r['requested_effort'] for r in data['results']], ['none', 'low'])
+        self.assertEqual([r['reasoning_present'] for r in data['results']], [False, True])
+        for row in data['results']:
+            self.assertIs(row['complete_exact_marker'], True)
+            self.assertNotIn('answer', row)
+            self.assertNotIn('reasoning_content', row)
+        with self.assertRaisesRegex(ValueError, 'LIVE_GATE_NOT_PASS'):
+            verify(data)
+
     def test_every_configuration_change_invalidates_digest(self):
         for key, value in [('model', 'other'), ('reasoning_effort', 'high'), ('max_output_tokens', 512),
                            ('smoke_output_tokens', 64), ('timeout_ms', 10000)]:

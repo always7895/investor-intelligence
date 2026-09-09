@@ -211,95 +211,40 @@ New-Item -ItemType Directory -Force -Path $stateRoot, $logRoot | Out-Null
 $statePath = Join-Path $stateRoot 'v213-local-model.json'
 $selectionPath = Join-Path $stateRoot 'v213-model-selection.json'
 
-function Test-Llama {
-    param([string]$Base)
-    foreach ($suffix in @('/v1/models?reload=1', '/models?reload=1', '/v1/models', '/health')) {
-        try {
-            $response = Invoke-WebRequest -UseBasicParsing -Uri ($Base.TrimEnd('/') + $suffix) -TimeoutSec 5
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) { return $true }
-        }
-        catch { }
-    }
-    return $false
-}
-
-function Get-RunningLlamaCandidates {
-    $result = New-Object System.Collections.Generic.List[string]
-    try {
-        $processes = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -match '(?i)llama|localai|kobold'
-        })
-        foreach ($process in $processes) {
-            try {
-                $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
-                foreach ($listener in $listeners) {
-                    $port = [int]$listener.LocalPort
-                    if ($port -gt 0) {
-                        $candidate = "http://127.0.0.1:$port"
-                        if (-not $result.Contains($candidate)) { $result.Add($candidate) }
-                    }
-                }
-            }
-            catch { }
-        }
-    }
-    catch { }
-    return @($result)
-}
-
 function Read-ModelSelection {
     if (-not (Test-Path -LiteralPath $selectionPath -PathType Leaf)) { return $null }
     try {
-        $selection = Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8 | ConvertFrom-Json
-        if (-not (Get-ObjectPropertyValue $selection 'model' '')) { return $null }
+        if ((Get-Item -LiteralPath $selectionPath).Length -gt 1048576) { throw 'SELECTION_TOO_LARGE' }
+        $raw = Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8
+        if (-not $raw.TrimStart().StartsWith('{')) { throw 'INVALID_ROOT' }
+        $selection = $raw | ConvertFrom-Json
+        $savedModel = $null
+        $property = $selection.PSObject.Properties['model']
+        if ($null -ne $property) { $savedModel = $property.Value }
+        if ($savedModel -isnot [string] -or $savedModel -notmatch '\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z') { throw 'INVALID_MODEL' }
         return $selection
     }
-    catch { return $null }
+    catch { throw 'MODEL_SELECTION_INVALID' }
 }
 
 function Resolve-Llama {
-    if ($LlamaBaseUrl) {
-        if ($LlamaBaseUrl -notmatch '^http://(?:127\.0\.0\.1|localhost):\d{1,5}$') {
-            throw 'LlamaBaseUrl must be a loopback HTTP endpoint.'
+    # Resolve identity only. The actual catalog and complete-marker checks below
+    # must succeed on this endpoint; never discover/start an alternative service.
+    $candidate = $LlamaBaseUrl
+    if ([string]::IsNullOrEmpty($candidate)) {
+        $selection = Read-ModelSelection
+        $candidate = ''
+        if ($null -ne $selection) {
+            $property = $selection.PSObject.Properties['llama_base_url']
+            if ($null -ne $property) { $candidate = $property.Value }
         }
-        if (-not (Test-Llama $LlamaBaseUrl)) { throw "llama.cpp unavailable: $LlamaBaseUrl" }
-        return $LlamaBaseUrl.TrimEnd('/')
+        if ($candidate -isnot [string]) { throw 'MODEL_ROUTER_URL_INVALID' }
+        if ($candidate.Length -eq 0) { $candidate = 'http://127.0.0.1:8080' }
     }
-    $candidates = New-Object System.Collections.Generic.List[string]
-    $selection = Read-ModelSelection
-    $savedBase = [string](Get-ObjectPropertyValue $selection 'llama_base_url' '')
-    if ($savedBase -match '^http://(?:127\.0\.0\.1|localhost):\d{1,5}$') {
-        $candidates.Add($savedBase.TrimEnd('/'))
-    }
-    foreach ($candidate in @(
-        'http://127.0.0.1:8080', 'http://127.0.0.1:7905',
-        'http://127.0.0.1:14410', 'http://127.0.0.1:8813',
-        'http://127.0.0.1:8081', 'http://127.0.0.1:8000'
-    )) {
-        if (-not $candidates.Contains($candidate)) { $candidates.Add($candidate) }
-    }
-    foreach ($candidate in @(Get-RunningLlamaCandidates)) {
-        if (-not $candidates.Contains($candidate)) { $candidates.Add($candidate) }
-    }
-    foreach ($candidate in $candidates) {
-        if (Test-Llama $candidate) { return $candidate }
-    }
-    foreach ($starter in @('D:\LocalAI\Start-LocalAI.cmd', 'D:\llama.cpp\Start-LocalAI.cmd')) {
-        if (-not (Test-Path -LiteralPath $starter -PathType Leaf)) { continue }
-        Write-Host "Starting local llama.cpp stack: $starter" -ForegroundColor Cyan
-        Start-Process -FilePath $starter | Out-Null
-        $deadline = (Get-Date).AddSeconds(90)
-        while ((Get-Date) -lt $deadline) {
-            foreach ($candidate in (@(
-                'http://127.0.0.1:8080', 'http://127.0.0.1:7905',
-                'http://127.0.0.1:14410', 'http://127.0.0.1:8813'
-            ) + @(Get-RunningLlamaCandidates) | Select-Object -Unique)) {
-                if (Test-Llama $candidate) { return $candidate }
-            }
-            Start-Sleep -Seconds 2
-        }
-    }
-    throw 'No healthy llama.cpp OpenAI-compatible loopback endpoint was found.'
+    if ($candidate -notmatch '\Ahttp://(?:127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?/?\z') { throw 'MODEL_ROUTER_URL_INVALID' }
+    $port = if ($Matches[1]) { [int]$Matches[1] } else { 80 }
+    if ($port -lt 1 -or $port -gt 65535) { throw 'MODEL_ROUTER_URL_INVALID' }
+    return $candidate.TrimEnd('/')
 }
 
 function Get-ModelCatalog {
@@ -341,12 +286,12 @@ function Resolve-Model {
     $catalog = @(Get-ModelCatalog $Base)
     $ids = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' '') })
     $names = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' ''); @(Get-ObjectPropertyValue $_ 'aliases' @()) })
-    $selection = Read-ModelSelection
     $candidate = ''
     if (-not [string]::IsNullOrWhiteSpace($Requested)) {
         $candidate = $Requested.Trim()
     }
     else {
+        $selection = Read-ModelSelection
         $saved = [string](Get-ObjectPropertyValue $selection 'model' '')
         if (-not [string]::IsNullOrWhiteSpace($saved)) { $candidate = $saved.Trim() }
     }
@@ -619,7 +564,6 @@ if ($runtimeProfile) {
     if ($Model -and $Model -cne $runtimeProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
     $Model = [string]$runtimeProfile.model
 }
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
 $llama = Resolve-Llama
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
 $modelResolution = Resolve-Model $llama $Model

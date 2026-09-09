@@ -11,7 +11,8 @@ Historical qualification, failed xhigh responses, runner proof and prior documen
 ## EXE candidate / EXE 候選功能
 
 - Selection uses an explicit identity from the selected Router catalog; no model-family guessing. An empty/unavailable catalog cannot authorize saving a guessed model.
-- Discovery stays on the configured loopback endpoint, or `http://127.0.0.1:8080` when none is configured. Invalid configured URLs fail; a failed selected endpoint does not trigger scans of unrelated ports.
+- EXE and bridge resolve the explicit/saved loopback endpoint, or `http://127.0.0.1:8080` when absent. Invalid configuration fails closed. Bridge resolution does not probe `/health`, send `reload=1`, scan processes/ports or launch a different model stack. Catalog and completed-marker checks must succeed on the resolved endpoint; returning its URL alone is not health qualification.
+- Saved selection root/model/URL types are checked without PowerShell's single-item-array unrolling. Explicit model/endpoint inputs do not depend on an unrelated malformed compatibility selection file.
 - Reject credentials, query/fragment and paths in the base URL. Catalog HTTP redirects are disabled. Transfer is bounded by a 1MiB payload limit and 4.5-second I/O deadline per endpoint path; at most `/models` and `/v1/models` are attempted. At most1024 distinct identities/aliases are admitted.
 - Catalog deduplication uses a set; preferred-profile lookup happens once per discovery, not once per catalog row. These are bounded operations, not a measured whole-product performance claim.
 - EXE has a THINK dropdown: `none` disables thinking; `minimal/low/medium/high/xhigh/max` request thinking with that effort. These are requested settings, not inferred model capabilities. Model and THINK choices are saved together in the common profile; token/time bounds stay unchanged and qualification remains false.
@@ -40,6 +41,12 @@ Unknown/duplicate keys, invalid types and conflicting settings fail closed. The 
 ## Auto-think boundary / 自動 think 的未完成部分
 
 Automatic think selection is **not implemented or qualified**. EXE supports manual THINK selection; it does not prove a new model supports or honors those settings. Pi's own thinking setting is separate from this application's local-model profile.
+
+### Bounded real-model observation
+
+`state/model-thinking-observation-20260909.json` records two synthetic local requests through the existing Router to the approved Q5 model, built with the shared request/profile validators. Both returned the complete exact marker within the18s profile budget: none9594ms/no exposed reasoning field; low4703ms/reasoning field present. No reasoning text was retained. No preset was changed or alternate stack started; the existing Router could load its sole configured model normally.
+
+This observes off/on output behavior, **not** graded-effort semantics, best-mode selection, broad answer quality, a cold-load comparison, installed EXE end-to-end acceptance or release readiness. The initial-model-state field is only a boolean membership check, not a load trace. Dirty-source observation and `release_qualified=false` remain; the release verifier explicitly rejects this receipt. Earlier failures remain intact.
 
 Required future acceptance:
 
