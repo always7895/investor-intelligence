@@ -1,9 +1,10 @@
 import { runV213BroadcastOnce } from "./broadcast-dedupe";
-import { publicJson, publicText, type StorageEnv } from "../storage";
+import type { StorageEnv } from "../storage";
+import { pinPublicSnapshot } from "./public-snapshot";
 import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { parseV213Top20Report, v213FieldLocale } from "./top20-report";
+import { readV213Top20Report, v213FieldLocale } from "./top20-report";
 import { buildV213Top20Messages } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
@@ -40,25 +41,26 @@ export async function broadcastV213Top20(
   const owner = await getOwnerPushTarget(env);
   if (!owner) return { status: "owner_not_paired" };
 
-  const records = parseV21Top20(await publicJson<unknown>(env, ["v21:top20:latest"]));
+  const view = await pinPublicSnapshot(env);
+  const records = parseV21Top20(await view.json<unknown>(["v21:top20:latest"]));
   if (!records) return { status: "top20_unavailable" };
-  const report = parseV213Top20Report(
-    await publicJson<unknown>(env, ["v213:top20-report:latest"]),
-  );
+  const report = await readV213Top20Report(view);
   if (!report) return { status: "top20_report_unavailable" };
   if (report.records.some((item, index) => item.ticker !== records[index]?.ticker)) {
     return { status: "top20_report_order_mismatch" };
   }
 
-  const stamp = (await publicText(env, ["last_successful_pipeline_timestamp"])) ?? records[0]!.generated_at;
+  const stamp = (await view.text(["last_successful_pipeline_timestamp"])) ?? "";
   const parsedPipeline = Date.parse(stamp);
   const parsedReport = Date.parse(report.generated_at);
   const maxAge = Math.max(
     300,
     Math.min(86_400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200),
   );
-  const pipelineAgeSeconds = (now - parsedPipeline) / 1000;
-  const reportAgeSeconds = (now - parsedReport) / 1000;
+  // A delayed cron's nominal scheduledTime is not the execution clock.
+  const observedAt = Date.now();
+  const pipelineAgeSeconds = (observedAt - parsedPipeline) / 1000;
+  const reportAgeSeconds = (observedAt - parsedReport) / 1000;
   if (
     !Number.isFinite(parsedPipeline) ||
     !Number.isFinite(parsedReport) ||
@@ -72,8 +74,7 @@ export async function broadcastV213Top20(
 
   const messages = buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex");
 
-  const pointer = (await env.PUBLIC_CACHE.get("snapshot:current", "json")) as Record<string, unknown> | null;
-  const runId = String(pointer?.run_id ?? "unknown");
+  const runId = view.runId ?? "unknown";
   const date = taipeiDate(now);
   const dedupeKey = `v213:broadcast:${date}:${slot}:${runId}`;
   if (slot === "test") {

@@ -100,7 +100,7 @@ function report() {
   };
 }
 
-function fakeDedupeNamespace(): DurableObjectNamespace {
+function fakeDedupeStub() {
   const values = new Map<string, unknown>();
   let chain = Promise.resolve();
   const state = {
@@ -119,14 +119,21 @@ function fakeDedupeNamespace(): DurableObjectNamespace {
       return result;
     },
   };
+  return stub;
+}
+
+function fakeDedupeNamespace(): DurableObjectNamespace {
+  const stubs = new Map<string, ReturnType<typeof fakeDedupeStub>>();
   return {
     idFromName: (name: string) => name,
-    get: () => stub,
+    get: (id: string) => {
+      if (!stubs.has(id)) stubs.set(id, fakeDedupeStub());
+      return stubs.get(id)!;
+    },
   } as unknown as DurableObjectNamespace;
 }
 
-function runtime() {
-  const publicKv = new MemoryKv();
+function runtime(publicKv = new MemoryKv()) {
   const privateKv = new MemoryKv();
   const securityKv = new MemoryKv();
   const env = {
@@ -216,6 +223,86 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     const proof = inspectSevenFieldFlex(messages, parseV213Top20Report(rep)!);
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(JSON.stringify(messages)).not.toContain("Serenity");
+  });
+
+  it("keeps payload and dedupe on one run when the pointer changes mid-read", async () => {
+    class SwitchingKv extends MemoryKv {
+      pointerReads = 0;
+      override async get<T = string>(key: string, type?: "text" | "json"): Promise<T | string | null> {
+        if (key === "snapshot:current") this.pointerReads++;
+        const value = await super.get<T>(key, type);
+        if (key === "snapshot:run-a:v21:top20:latest") this.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
+        return value;
+      }
+    }
+    const kv = new SwitchingKv();
+    const { env } = runtime(kv);
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    for (const runId of ["run-a", "run-b"]) {
+      const rep = report(); rep.records[0]!.industry = `合成 ${runId}`;
+      expect(parseV213Top20Report(rep)).not.toBeNull();
+      kv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+      kv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(rep));
+      kv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    }
+    const payloads: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      payloads.push(String(init?.body)); return new Response("{}");
+    }));
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "sent", run_id: "run-a" });
+    expect(kv.pointerReads).toBe(1);
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "sent", run_id: "run-b" });
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("duplicate");
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]).toContain("合成 run-a");
+    expect(payloads[0]).not.toContain("合成 run-b");
+    expect(payloads[1]).toContain("合成 run-b");
+  });
+
+  it.each(["{}", "", '{"run_id":""}'])("does not broadcast legacy keys behind an invalid pointer %s", async pointer => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("snapshot:current", pointer);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not use a delayed cron's nominal clock to qualify stale data", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const nominal = Date.now() - 3 * 3600000;
+    const stamp = new Date(nominal).toISOString();
+    const top = top20(); top.forEach(row => { row.generated_at = stamp; });
+    const rep = report(); rep.generated_at = stamp; rep.records.forEach(row => { row.retrieved_at = stamp; });
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(rep));
+    publicKv.values.set("last_successful_pipeline_timestamp", stamp);
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning", nominal)).status).toBe("stale");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not substitute report generation for a missing pipeline success stamp", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    publicKv.values.set("snapshot:run-a:v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("snapshot:run-a:v213:top20-report:latest", JSON.stringify(report()));
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("stale");
+    expect(send).not.toHaveBeenCalled();
+    publicKv.values.set("snapshot:run-a:last_successful_pipeline_timestamp", new Date().toISOString());
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("sent");
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("atomically sends exactly once under concurrent scheduled delivery", async () => {

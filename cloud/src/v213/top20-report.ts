@@ -1,7 +1,7 @@
 import { fieldLabel, type FieldLocale } from "./field-labels";
 import { isPublicCitationUrl } from "./public-citation";
 import type { StorageEnv } from "../storage";
-import { pinPublicSnapshot } from "./public-snapshot";
+import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { ParsedQuery } from "../core";
 
 export function v213FieldLocale(value?: string): FieldLocale {
@@ -11,13 +11,47 @@ export function v213FieldLocale(value?: string): FieldLocale {
 
 export type V213Top20Env = StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string };
 
+export interface V213ReportReference {
+  readonly snapshot: string;
+  readonly reportSha256: string;
+}
+const reportReferences = new WeakMap<V213Top20Report, V213ReportReference>();
+export function getV213ReportReference(report: V213Top20Report): V213ReportReference | null {
+  return reportReferences.get(report) ?? null;
+}
+
+/** Bind the displayed object to the UTF-8 stored report text and pinned run.
+ * This is content identity, not a substitute for sealed-claim/source qualification.
+ * Pure parser/formatter inputs do not receive an actionable reference.
+ */
+export async function readV213Top20Report(view: PublicSnapshotView): Promise<V213Top20Report | null> {
+  if (view.kind === "invalid") return null;
+  const raw = await view.text(["v213:top20-report:latest"]);
+  if (raw === null || raw.length > 2097152) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  const report = parseV213Top20Report(value);
+  if (!report) return null;
+  const bytes = new TextEncoder().encode(raw);
+  if (bytes.byteLength > 2097152) return null;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const reportSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  for (const row of report.records) {
+    Object.freeze(row.current_order_source_urls); Object.freeze(row.future_order_source_urls);
+    Object.freeze(row);
+  }
+  Object.freeze(report.records); Object.freeze(report.display_columns); Object.freeze(report);
+  reportReferences.set(report, Object.freeze({ snapshot: view.kind === "legacy" ? "legacy" : `s:${view.runId}`, reportSha256 }));
+  return report;
+}
+
 export async function loadV213FreshTop20Report(
   env: V213Top20Env,
   query: ParsedQuery,
 ): Promise<V213Top20Report | string | null> {
   if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) return null;
   const view = await pinPublicSnapshot(env);
-  const report = parseV213Top20Report(await view.json(["v213:top20-report:latest"]));
+  const report = await readV213Top20Report(view);
   if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
@@ -133,8 +167,9 @@ function exactKeys(value: Record<string, unknown>, expected: Set<string>): boole
   return keys.length === expected.size && keys.every((key) => expected.has(key));
 }
 
-function finiteOrNull(value: unknown): value is number | null {
-  return value === null || (typeof value === "number" && Number.isFinite(value));
+function returnPercentOrNull(value: unknown): value is number | null {
+  // These are positive-price stock returns, not leveraged portfolio P/L.
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= -100);
 }
 
 function httpsUrls(value: unknown): value is string[] {
@@ -174,7 +209,7 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     doc.owner_watchlist_inherited !== false ||
     doc.long_term_definition !== "trailing_2y_adjusted_close_cagr" ||
     doc.short_term_definition !== "trailing_6m_adjusted_close_price_return" ||
-    !Number.isFinite(Date.parse(String(doc.generated_at ?? ""))) ||
+    typeof doc.generated_at !== "string" || !Number.isFinite(Date.parse(doc.generated_at)) ||
     !Array.isArray(doc.display_columns) ||
     doc.display_columns.length !== V213_TOP20_DISPLAY_COLUMNS.length ||
     doc.display_columns.some((value, index) => value !== V213_TOP20_DISPLAY_COLUMNS[index]) ||
@@ -188,11 +223,11 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     if (!rawRecord || typeof rawRecord !== "object" || Array.isArray(rawRecord)) return null;
     const item = rawRecord as Record<string, unknown>;
     if (!exactKeys(item, RECORD_KEYS)) return null;
-    const ticker = String(item.ticker ?? "").toUpperCase();
+    const ticker = typeof item.ticker === "string" ? item.ticker.toUpperCase() : "";
     if (
       item.schema_version !== 2 || item.rank !== index + 1 ||
       !TICKER_RE.test(ticker) || seen.has(ticker) ||
-      !finiteOrNull(item.long_term_return_pct) || !finiteOrNull(item.short_term_return_pct) ||
+      !returnPercentOrNull(item.long_term_return_pct) || !returnPercentOrNull(item.short_term_return_pct) ||
       !lineSafeText(item.industry, 100) || !TRADITIONAL_CHINESE_RE.test(item.industry) ||
       !lineSafeText(item.profit_summary, 120) ||
       !lineSafeText(item.current_orders, 150) || !lineSafeText(item.future_orders_estimate, 170) ||
@@ -201,7 +236,7 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
       !orderEvidenceSemantics(item) ||
       item.numeric_total_order_estimate_prohibited !== true ||
       item.provider_scope !== "public_only" || item.owner_watchlist_inherited !== false ||
-      !Number.isFinite(Date.parse(String(item.retrieved_at ?? "")))
+      typeof item.retrieved_at !== "string" || !Number.isFinite(Date.parse(item.retrieved_at))
     ) return null;
     seen.add(ticker);
     records.push({ ...(item as unknown as V213Top20ReportRecord), ticker });
