@@ -66,7 +66,7 @@ try {
         'tests/test_options_service.py','tests/test_public_options_provider_gate.py',
         'tests/test_public_source_transport.py','tests/test_source_observation.py',
         'tests/test_source_registry.py','tests/test_taiwan_equity_sources.py',
-        'tests/test_current_release_lane.py'
+        'tests/test_current_release_lane.py','scripts/test_v213_operation_lock.ps1'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.

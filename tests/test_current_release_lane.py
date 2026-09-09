@@ -49,6 +49,21 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         self.assertIn('contents: read', self.workflow)
         self.assertNotIn('gh release create', self.workflow)
 
+    def test_operation_lock_actual_callers_have_no_clixml_progress(self):
+        shells = [shell for shell in ('powershell.exe', 'pwsh') if shutil.which(shell)]
+        if not shells:
+            self.skipTest('PowerShell required for actual caller regression')
+        for shell in shells:
+            result = subprocess.run([shell, '-NoProfile', '-NonInteractive', '-File',
+                                     str(ROOT / 'scripts/test_v213_operation_lock.ps1'),
+                                     '-ProjectRoot', str(ROOT)], capture_output=True, text=True,
+                                    errors='replace', timeout=30)
+            with self.subTest(shell=shell):
+                self.assertEqual(result.returncode, 0)
+                self.assertIn('V213_OPERATION_LOCK_SELF_TEST = PASS', result.stdout)
+                self.assertNotIn('CLIXML', result.stdout + result.stderr)
+                self.assertEqual(result.stderr.strip(), '')
+
     def test_actual_validator_rejects_dirty_checkout_before_bootstrap(self):
         shells = [shell for shell in ('powershell.exe', 'pwsh') if shutil.which(shell)]
         if not shells or not shutil.which('git'):
