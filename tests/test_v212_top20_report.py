@@ -45,8 +45,8 @@ class V212Top20ReportTests(unittest.TestCase):
     def test_return_windows_and_display_labels_are_explicit(self) -> None:
         self.assertEqual(LONG_TERM_WINDOW_DAYS, 730)
         self.assertEqual(SHORT_TERM_WINDOW_DAYS, 183)
-        self.assertEqual(MIN_LONG_TERM_ELAPSED_DAYS, 600)
-        self.assertEqual(MIN_SHORT_TERM_ELAPSED_DAYS, 120)
+        self.assertEqual(MIN_LONG_TERM_ELAPSED_DAYS, 730)
+        self.assertEqual(MIN_SHORT_TERM_ELAPSED_DAYS, 181)
         self.assertEqual(
             DISPLAY_COLUMNS,
             [
@@ -61,8 +61,8 @@ class V212Top20ReportTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('period="3y"', module_text)
-        self.assertIn("start_point(LONG_TERM_WINDOW_DAYS)", module_text)
-        self.assertIn("start_point(SHORT_TERM_WINDOW_DAYS)", module_text)
+        self.assertIn("legacy_return_pair(_history_return_evidence(history))", module_text)
+        self.assertIn('auto_adjust=True', module_text)
 
     def test_industry_is_localized_to_traditional_chinese(self) -> None:
         self.assertEqual(translate_industry("Semiconductors"), "半導體")

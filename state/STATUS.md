@@ -1,77 +1,64 @@
 # Current engineering status
 
-Updated2026-09-09. This is current acceptance, not a release certificate. Historical milestones and exact old text remain in [Git at38860e7](https://github.com/always7895/investor-intelligence/blob/38860e730997f7d5b9bccdc242d15e9a904e4c15/state/STATUS.md); use `git show 38860e7:state/STATUS.md` offline. Historical receipts/journals are not removed or restamped.
+Updated2026-09-09. Current acceptance, NOT a release certificate. Detailed history remains in Git: `git show e79554e:state/STATUS.md`, and the older full record via `git show 38860e7:state/STATUS.md`. Historical receipts, failures and journals are not removed or restamped. Release identity remains in README.
 
 ## Authority and workspaces
 
-- Current fetched audit baseline fad075a5ff8bc4c50de5a9582aa649118ba561e3; clean before this research step. Main-derived PR37 work is in `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; PR39 remains isolated at d58fdaf in `_workspace/review-source-views` under the same project home. Baseline worktree remains52e285f. Do not merge divergent source-view changes implicitly.
-- User authorized Production publication/Worker/schedule repair, newly validated data, and project cleanup. No real LINE sends, broker operations, new paid services or arbitrary credential access. Current step changes source/docs and bounded rebuildable artifacts only.
-- Installed runtime `D:\Investor-Intelligence-LINE-Pi` is not this Git worktree. Candidate changes are not installed acceptance.
+- Fetched clean starting HEAD e79554e99d5f0eadd0b99b7f907abbb1ca9d5692 on `fix/options-provenance-audit` (PR37). Source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. PR39 stays isolated at d58fdaf in `_workspace/review-source-views`; baseline52e285f in `_workspace/review-baseline`. One writer; no implicit review-branch integration.
+- User currently authorizes completing verified data and subsequent LINE integration, alongside earlier reviewed Production/schedule repair. No real LINE sends, broker operations, new paid services, arbitrary credentials or stale activation replay. This step changes source/tests/docs only; network research is public/read-only.
+- Outer `D:\Investor-Intelligence-LINE-Pi` is installed runtime, NOT this Git worktree. Audit tools/evidence are `_workspace/audit-runtime`; backups `_archive/history-backups`. Never package/scan those two trees as runtime market data.
 
-## Physical workspace consolidation — 2026-09-09
+## Current implementation: honest historical-return inputs
 
-- Starting clean HEAD2a88e8ef4a1e002a9506bfcd6c3c7b780b41abc7. User explicitly requested a single project folder. Before moving: all three Git worktrees clean; no observed process/task/service references to the five moved roots; no old-root references in installed PowerShell/Python callers inspected.
-- Source/reviews/tools moved physically under `_workspace`, history under `_archive`; five old roots absent, no junction substitutes. `git worktree move/repair` preserved HEADs/branches. Full relocated regressions passed (`_workspace/audit-runtime/consolidation-*.log`). Installed actions unchanged; signed/history evidence intact. Registered runner, models/Router and unrelated projects retained. Folder moves alone do not save bytes.
-- Final bounded cleanup across the three source/review scripts/tests trees removed654 untracked .pyc files in10 directories,7,837,559 bytes; source12, baseline214, source-views428. No tracked files, unique evidence or dependencies deleted. Final instruction-budget/security/docs/workflow/storage/diff gates PASS. Both publisher tasks rechecked Disabled; consolidation did not restore or modify their actions.
+- Actual pre-fix builder admitted600 days as two-year annualized return and120 days as six-month return. Executed old e79554e caller on synthetic100→120 inputs:600d yielded0.11738177496958224 annualized;120d yielded0.19999999999999996 short return. New caller returns unavailable for those incomplete windows. This is a synthetic regression, not market performance.
+- Existing `build_v212_top20_report.py` now uses shared `historical_return_evidence.py`: complete24/6 calendar-month targets, leap/month-end handling, last available observation on/before target within7 days, actual elapsed days/365.25. Reject invalid prices, duplicate/reversed dates and non-finite results; do not drop an invalid final observation and advance retrieval time over an older price.
+- Existing CLI also writes an explicitly unqualified return-evidence sidecar containing actual start/end dates/prices, cumulative/annualized calculations and matching report-file SHA. It is NOT in the public seven-field schema or sealed payload. Currency/adjustment/dividend/calendar verification remains unknown; public eligibility false. No live Yahoo collection or new20-stock data qualification claimed.
+- Required-module check added to source `run-v212-local.ps1`; compatibility function and normal CLI remain. Current package stages `git archive`, so tracked helper is included; actual extracted installation still needs qualification. Reviewed CI inventory updated with exact paths, no wildcard exemption.
+- New tests10 PASS plus existing report tests4 PASS, including real CLI→build→market caller→calculation→atomic report/sidecar with20 synthetic tickers; only external inputs mocked. Includes insufficient history, leap/month ends, bounded alignment, NaN/duplicate/reversal/overflow, output collision and file-SHA checks. First full regression failed only the required historical-status command pointer; restored it without changing the test. Initial log `return-evidence-python.log` preserved. Final Python674/2 skipped PASS (`return-evidence-python-final2.log`); Worker163/typecheck, security/docs/workflow/storage and PS5.1/7 parse PASS.
+- Validation commands: pinned Python `-B -m unittest discover -s tests -p 'test_*.py'`; `npm run typecheck`; `npm test -- --run`; four repository gates above and PS5.1/7 AST parsing of both changed PowerShell files.
+- Public research refresh: AMD original Q2 release retrieved at `https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results` (fetch response mtttvgu2ollk18). Broadcom original Q3 release fetch aborted; search numbers not admitted. AMD remains an issuer-only source, not an independently qualified detailed report.
 
-## Research refresh — partial, not screening qualification
+## Production remains in maintenance
 
-- See `research-method-refresh-20260909.json` for actual Pi provider/model, before/after reference hashes and tool evidence. Serenity remains primary; Aschenbrenner CONTEXT_ONLY. Generic value-chain discovery, independent claim lineage, conflict/retirement and source-specific freshness rules are explicit, not a claim of implemented accuracy.
-- Official X oEmbed recovered a truncated July31 author-matched excerpt after direct-page403; latest stance/full thread/company facts remain unverified. Another lead returned404. Leopold's retrieved original is a historical2024 scenario, not today's facts.
-- Actual collector:7 endpoints/14,417 observations; news5 recent/55 stale under its policy. Not14,417 companies or independent company claims. No provider activated.
-- Legacy v211 policy still reserves120/240 seeds and40/80 SEC slots for fixed themes. Caller/selector repair remains open; documentation does not fix this bias.
-- Python660/2 skipped, Worker160/typecheck, package-reference tests, security/docs/workflow/storage gates and PS5.1/7 parse PASS. Three canonical skill files synchronized to installed paths with matching hashes; prior instructions archived under `_archive/instruction-sync-20260909T070339Z`. Installed-only unsupported case sheet replaced by a compatibility pointer; outer AGENTS updated without overwriting its runtime role. No Worker/storage/schedule mutation or whole-project PASS.
+- Rechecked `InvestorIntelligence-v21-MorningRefresh` and `InvestorIntelligence-v21-EveningRefresh`: both Disabled. Not restored; no Worker/model/EXE replacement or new sealed publication in this step. Last confirmed remote data2026-09-08T12:20:02Z, promoted12:22:09.595Z; not freshly reverified here.
+- Prior signed recovery returned NOT_COMMITTED; original FAIL and byte-identical journal archive preserved. Previous journal scan unresolved0. Never replay the stale bundle or bypass pointer-last activation.
+- Sealed schema4 still has seven payloads, excluding fresh options/universe and detailed-report datasets. Stale carry-forward was removed; replacement schemas/builders/preflight, exact-key readback, replay/rollback/finalize acceptance remain incomplete.
+- Known whole-product P0 inventory is NOT closed. PR39 historically retains3 Python evidence errors; not rerun or fixed here. No new scoped defects found after final regressions; whole-product release acceptance pending.
 
-## Production: maintenance still active
+## Report depth and actual delivery boundary
 
-- Rechecked morning/evening publisher tasks: both Disabled. No task restoration, Production Worker/model/EXE replacement or new sealed publication in this step.
-- Last confirmed remote data remains2026-09-08T12:20:02Z, evening promotion12:22:09.595Z; not freshly reverified here.
-- Prior signed recovery returned NOT_COMMITTED, preserving original FAIL and byte-identical journal archive; previous journal scan unresolved0. Never replay that stale bundle.
-- Current sealed schema4 has seven payloads, not fresh options/universe. Candidate containment removes stale carry-forward, but replacement contract/builders/readback/replay/rollback acceptance remains unfinished.
+- Candidate company button now selects ticker and generation, checks membership/row freshness and returns evidence/definitions/gaps rather than identical Top20 text. Actual authorized LINE event→card action→response and stale/unknown/unsafe-URL/maximum-citation cases passed. It explicitly is NOT full valuation. Generation equality is NOT immutable run/report-SHA binding. Candidate not installed.
+- [Detailed report contract](../docs/DETAILED_REPORT_CONTRACT.md) covers legal/Chinese identity, exact return inputs, capacity/qualification, contracts/prepayments, customers, management revisions, income/cash/dilution, valuation scenarios, options and macro. Existing seven-field schema still lacks these structured report inputs. `numeric_total_order_estimate_prohibited=true` remains.
+- [TSEM operating draft](../docs/research/TSEM-20260909.md) has actual contract/prepayment, customer/capacity, financial/cash-flow, management-model and competitor analysis. Receipt `research-dossiers/TSEM-20260909.json` retains passages, inputs, report-byte SHA, actual Pi identity/reference hashes and failed retrieval checks. Four pages/three publisher families do NOT independently corroborate Tower contracts. Report SHA is not sealed binding.
+- Scope remains1 dated stock draft and0 newly delivered deep-report routes. Other stock dossiers, verified historical inputs,6m/1y/2y valuation, options and macro detailed reports remain incomplete. No guessed names/orders/EPS/price targets, no card-summary clone relabelled complete.
+- Historical draft validation: Python664/2 skipped, Worker163/typecheck, security/docs/workflow/storage and PS5.1/7 parse passed (`tsem-depth-python.log`). Those results are not current-source release qualification.
 
-## Retained evidence fix
+## Data and methodology blockers
 
-2a88e8e removed malformed-date-prefix rescue at both snapshot and bundle evidence admission; actual caller negatives and legitimate date-only disclosures are covered. Other date-prefix consumers still require role-specific review. Historical failure evidence remains in Git/logs.
+- Installed raw options:24 records with September9 retrievals, no complete public eligibility/privacy attestation. Retrieval is not BBO time. Development Yahoo DTO stays `line_public_eligible=false` on success/no-underlying paths; no private/broker fallback.
+- [Rights review](../docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md): TAIFEX11320 open license is dataset-specific Taiwan daily/EOD with attribution, not realtime/US options. Provider gate last checked: reviewed public access1, pending7, prohibited4; fully eligible runtime0, production selected false. Nasdaq terms fetch failed; indicative documentation is not redistribution permission. No provider activated.
+- Installed universe:30 rows, September7 generation, legacy serenity-first policy. June30 as_of may be financial period, not proof of stale filing. Scoring/dates not relabelled.
+- Broad Taiwan directory collection:1094 TWSE +890 TPEx issuers, September8 source dates, zero warnings; all PRIMARY_ONLY / DISCOVERED_EVIDENCE_AND_SCORING_PENDING / publication_eligible=false. Discovery is not ranked global research.
+- Research collector7 endpoints/14,417 observations, news5 recent/55 stale. Neither endpoint nor observation counts corroborate company claims. Legacy fixed themes still reserve120/240 discovery seeds and40/80 SEC slots; actual selector repair remains open.
+- Serenity is primary public-method lens; Leopold Aschenbrenner CONTEXT_ONLY, never company proof/score bonus. `research-method-refresh-20260909.json` records actual reference/tool evidence. X direct403 followed by author-matched truncated July31 oEmbed is not full/latest stance; other lead404 remains unverified. Leopold original is historical2024, not today's facts.
+- Three canonical research skill files source/installed hash-matched at synchronization; originals archived `_archive/instruction-sync-20260909T070339Z`. Unsupported installed case sheet replaced by pointer. Root/source AGENTS intentionally have distinct runtime/development roles. Rules are not proof of an executed unbiased screen.
 
-## Company report boundary — source candidate only
+## Model and release blockers
 
-- Starting clean5ec208e, PR39 unchanged d58fdaf. Confirmed every old card button sent the same Top20 text-summary command. New per-company evidence action checks card generation time, fresh row retrieval and membership, returns source citations/definitions/gaps rather than another20-row summary. Generation checks are not full immutable report SHA binding.
-- The seven-field schema lacks verified names, endpoint prices, detailed financial/order tables and valuation inputs. The new screen explicitly says it is NOT a complete valuation report; no invented2Y totals, company translations, order forecasts or6m/1y/2y upside/downside. See [detailed report requirements](../docs/DETAILED_REPORT_CONTRACT.md). Stock deep research, options and macro detailed reports remain unfinished.
-- Actual authorized LINE event→card action→company response tested, including stale generation/row, unknown company, encoded credential URLs and maximum citations without clipping. Python660/2 skipped, Worker163/typecheck, security/docs/workflow/storage gates PASS. Initial fixture typecheck omitted required KV bindings; corrected, not weakened.
-- Actual existing model-live receipt verifier now rejects current source with LIVE_SOURCE_MANIFEST_MISMATCH. Receipt preserved; fresh source-bound qualification required before shipping. No installed Worker/card update, real LINE send, publication or task restoration. Certified qa.ts and scoring unchanged.
+- Historical Q5 thinking=false/effort=none live matrix passed10 cases844–1890ms with negatives/reference completion/mock LINE/isolated cleanup. `r75-qa-live-model-profile-qualification.json` starts2026-09-09T05:26:24.943379Z;24h/source/profile binding applies. Old xhigh failure preserved.
+- Actual old receipt verifier rejects changed runtime source with LIVE_SOURCE_MANIFEST_MISMATCH. Do not restamp, bypass source manifests, start another Router/model, change presets or use paid fallback. Model smoke PASS is not data/delivery/release PASS.
+- Fresh source-bound model proof, protected-source recertification, Windows self-hosted acceptance, immutable SHA/run-ID ZIP and independent archive/receipt/extracted-install/download verification remain incomplete. Certified `cloud/src/qa.ts`, scoring and installed actions unchanged.
+- Earlier malformed-date-prefix rescue was removed at snapshot/bundle admission in2a88e8e; legitimate date-only and actual-caller negatives preserved. Other date-prefix consumers need role-specific review.
 
-## Operating-research depth — one local draft, not delivered reports
+## Consolidation and cleanup retained
 
-- Fetched clean fad075a; read actual caller, CI, report contract and full installed research references. [TSEM draft](../docs/research/TSEM-20260909.md) expands actual contracts/prepayments, customers, capacity limits, Q2 financial/cash-flow calculations, revised management model, competitor evidence and falsifiers. Four source pages/three publisher families do NOT independently corroborate Tower contracts.
-- `research-dossiers/TSEM-20260909.json` records actual Pi identity/reference hashes, passages, calculation inputs and report-byte SHA. Original IR timeout, later search-provider failure and incomplete newest-disclosure index preserved; no paid fallback. Report hash is NOT sealed snapshot binding.
-- Python664/2 skipped, Worker163/typecheck, security/docs/workflow/storage and PS5.1/7 parse PASS (`tsem-depth-python.log`). Four artifact consistency/negative tests; no new scoped defects found. Initial status budget failure fixed by trimming history, not raising the limit. Scope:1 dated stock draft,0 newly delivered detailed routes; stock/options/macro delivery and valuation remain open. No scoring, installed runtime, Worker, storage, schedules or LINE mutation.
-
-## Current data findings and progress
-
-- Installed raw options file:24 records, September9 retrieval timestamps, no public eligibility/privacy provenance attestation; retrieval time is not quote time. Development Yahoo DTO now remains line_public_eligible=false on both success/no-underlying paths (38860e7).
-- Old installed universe:30 rows, generated September7, legacy serenity-first-v2.1.0. June30 as_of may be a reporting period, not proof of stale financial statements. Do not relabel scoring or dates.
-- [Dataset-specific rights review](../docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md): TAIFEX dataset11320 has explicit open-data license with attribution, scoped to Taiwan daily/EOD observations. This does not authorize real-time quotes or US options. Actual provider gate: reviewed public access1, pending7, prohibited4; fully eligible runtime providers0, selected false. No automatic activation.
-- Existing public collector now discovers all1094 TWSE +890 TPEx issuer records, source dates September8, zero parser warnings in the live run. No owner list, fixed sector seed or score changes. All1984 remain PRIMARY_ONLY / DISCOVERED_EVIDENCE_AND_SCORING_PENDING / publication_eligible=false. This is Taiwan discovery, not a globally rebuilt ranked Top20.
-- Nasdaq terms retrieval timed out; Alpaca indicative documentation is not redistribution permission. Failed/pending rights states remain visible.
-
-## Model and release acceptance
-
-- Q5 thinking=false/effort=none full live matrix previously passed10 cases844–1890ms, with negatives, reference completion, mock LINE and isolated cleanup. Receipt: `r75-qa-live-model-profile-qualification.json`, starts2026-09-09T05:26:24.943379Z;24h/source/profile binding applies. Historical xhigh failure unchanged. Model PASS is not data/release PASS.
-- Source-bound Windows/package/extracted-install/download acceptance and protected-source recertification remain incomplete. No new immutable released ZIP. Certified `cloud/src/qa.ts` unchanged.
-- Prior cleanup regression and initial catalog/package-link failures remain in `lean-source-python-final.log` and Git history; no provider activation or package-gate weakening.
-- PR39 previously retained three Python evidence errors; not rerun or represented as fixed. Whole-product P0 inventory is not closed; known P0 must be zero before shipping, not assumed zero from a scoped test.
-
-## Lightweight architecture and cleanup
-
-- AGENTS/skill remain bounded entrypoints; old118k-character status history is in Git. No scoring, schema or release guard removed.
-- [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) defines bounded deletion and junction/dependency checks. Inventory found the apparently old runner folder has a Running/Auto registered service and junctions to2.337.0. It is NOT unused; retained. Raw first process-reference counts included the inspection command itself and are not inactivity evidence.
-- Installed tree inventory had57 file-stat errors; no completeness/deletion safety claim. Models, Router, other projects, history/recovery evidence and unmerged worktrees retained. No broad drive/temp/runner cleanup.
-- Earlier bounded source cleanup removed467 untracked .pyc files/4 directories/5,755,638 bytes after ownership, containment and identity checks; no source/locks/evidence/runtime deletion.
-- Instruction budgets remain enforced; fewer bytes do not prove lower latency or better research.
+- Physical move in1113a1c used worktree move/repair; source/reviews/tools under `_workspace`, history under `_archive`. Five old roots absent, no junction substitutes, HEADs/branches/signed evidence preserved. Relocated full regressions passed (`consolidation-*.log`); runtime actions unchanged.
+- Prior bounded cleanup:654 untracked pyc/10 directories/7,837,559 bytes across three worktrees; earlier source467/4/5,755,638. Ownership/containment/type/identity checked. No source, locks, unique evidence, rollback or active runtime deleted.
+- Old-named registered runner is Running/Auto with2.337.0 junction targets, not disposable. Installed inventory had57 file-stat errors; no complete dependency/deletion-safety claim. Models/Router/unrelated projects retained. [Workspace maintenance](../docs/WORKSPACE_MAINTENANCE.md) governs further cleanup.
+- Instruction budgets enforced by tests; history kept in Git rather than growing STATUS. Fewer bytes do not prove latency/accuracy. No broad git clean, junction traversal or drive-wide deletion.
 
 ## Next actions
 
-1. Build and connect separate data-rich stock/options/macro reports through the authoritative sealed pipeline; a local dossier or evidence button is not delivery.
-2. Complete company evidence/constraint/financing analysis and unchanged scoring for the expanded discovery pool; add US/global coverage with explicit admission. Do not call a directory a qualified research universe.
-3. Integrate rights/attribution/freshness-aware options and universe into one versioned sealed contract, both builders, preflight and actual Worker callers. Missing qualified quotes must remain unavailable.
-4. Recertify changed activation semantics, exact-source Windows and installed actions; publish only a newly validated bundle with remote byte/claim/pointer readback. Restore exactly the paused tasks only after safe installed acceptance, then verify an actual scheduled run.
+1. Complete genuine company-specific evidence/financial/order inputs and stock/options/macro report producers; preserve absent/failed evidence and independent lineage. Repair actual fixed-theme selection without changing scoring.
+2. Finish rights, currency/session/freshness and financial/identity admission; connect calculation evidence and separate reports through one versioned sealed contract, both builders and actual Worker callers. No unsealed-key fallback.
+3. Requalify exact source/model, Windows, package and installed actions. Publish only newly validated immutable data, read back bytes/claim/pointer, then restore exactly the paused schedules and verify an actual scheduled run. Do not use real LINE delivery as a test.

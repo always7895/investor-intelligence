@@ -69,6 +69,8 @@ try {
         'tests/test_activation_evidence_timestamps.py',
         'state/research-method-refresh-20260909.json',
         'state/research-dossiers/TSEM-20260909.json','tests/test_research_dossier_receipts.py',
+        'scripts/build_v212_top20_report.py','scripts/historical_return_evidence.py','run-v212-local.ps1',
+        'tests/test_v212_top20_report.py','tests/test_historical_return_evidence.py',
         'scripts/source_observation.py','scripts/source_registry.py',
         'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
         'tests/test_import_option_observations.py','tests/test_official_news.py',
