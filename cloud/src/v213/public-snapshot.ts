@@ -15,12 +15,29 @@ function invalidView(): PublicSnapshotView {
     async json<T>() { return null as T | null; }, async text() { return null; } });
 }
 
+// Opt-in per-question cache, never keyed by the reusable Worker env/KV binding.
+// The state is module-private; configuration or request text cannot supply a view.
+const questionViews = new WeakMap<StorageEnv, { pending?: Promise<PublicSnapshotView> }>();
+export function scopePublicSnapshot<T extends StorageEnv>(env: T): T {
+  const scoped = { ...env };
+  questionViews.set(scoped, {});
+  return scoped;
+}
+
+export function pinPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
+  const state = questionViews.get(env);
+  if (!state) return readPublicSnapshot(env);
+  // Cache in-flight, invalid and rejected results too. No retry or scope repair
+  // inside an answer; a subsequent question gets a new scope and a new read.
+  return state.pending ??= readPublicSnapshot(env);
+}
+
 /** Pin related public reads. Current transaction snapshots verify all stored
  * objects first and retain exact bytes. No writes/private fallback; integrity
  * does not grant source truth, current freshness, rights or release acceptance.
  * Absent-pointer/non-transaction bootstrap compatibility remains unsealed.
  */
-export async function pinPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
+async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
   const text = await env.PUBLIC_CACHE.get("snapshot:current", "text");
   if (text !== null && (typeof text !== "string" || text.length > 2048)) return invalidView();
   let runId: string | null = null;

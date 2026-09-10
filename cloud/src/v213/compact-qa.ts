@@ -2,6 +2,7 @@ import policy from "../../../config/v213-compact-qa-v1.json";
 import { configuredModelProfile, validateModelProfile, modelProfileSha256, type ModelProfileEnv } from './model-profile';
 import { generalAnswer, type QaEnv, type RequestContext } from "../qa";
 import { type ParsedQuery } from "../core";
+import { pinPublicSnapshot } from "./public-snapshot";
 
 export const COMPACT_CONTEXT_MARKER = "II_V213_COMPACT_CONTEXT_V1:";
 export const COMPACT_MODE = "compact_public_v1";
@@ -24,29 +25,26 @@ function https(raw: unknown): string {
 /** Pin all context reads to ONE existing snapshot. Project only public fields;
  * neither arbitrary reports nor the full ranking/source universe enter prompts.
  */
-export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now = Date.now()): Promise<Obj> {
+export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now?: number): Promise<Obj> {
   const kind = query.ticker ? "ticker" : /Serenity|Aschenbrenner|方法|瓶頸/i.test(query.normalized) ? "methodology" : /來源|證據|SEC|source|evidence/i.test(query.normalized) ? "evidence" : "general";
   // Timeless methodology needs no market snapshot. Current-date questions still
   // pass through qa.ts's freshness gate and fail closed without a timestamp.
   if (kind === "methodology") return { v: 1, kind, freshness: "UNAVAILABLE", as_of: null, methodology: policy.methodology_context };
-  const pointerText = await env.PUBLIC_CACHE.get("snapshot:current", "text");
-  let prefix = "";
-  if (pointerText) {
-    let pointer: Obj;
-    try { pointer = obj(JSON.parse(pointerText)); } catch { return { v: 1, freshness: "UNAVAILABLE" }; }
-    const id = pointer.run_id ?? pointer.runId;
-    if (typeof id !== "string" || !/^\d{8}T\d{6}Z-[0-9a-f]{12}$/.test(id)) return { v: 1, freshness: "UNAVAILABLE" };
-    prefix = `snapshot:${id}:`;
-  }
-  const stamp = await env.PUBLIC_CACHE.get(prefix + "last_successful_pipeline_timestamp", "text");
-  const age = stamp ? (now - Date.parse(stamp)) / 1000 : NaN;
+  const view = await pinPublicSnapshot(env);
+  // Keep absent-pointer bootstrap compatibility, not a new admission path for
+  // referenced legacy/unsealed snapshots. Current runs require the full seal.
+  const stamp = view.integrity === "sealed" || view.kind === "legacy"
+    ? await view.text(["last_successful_pipeline_timestamp"]) : null;
+  // Verification can cross a freshness deadline. Use the execution clock after
+  // reads, not function-entry time; explicit clocks remain test-only caller input.
+  const age = stamp ? ((now ?? Date.now()) - Date.parse(stamp)) / 1000 : NaN;
   const limit = Number(env.PUBLIC_DATA_MAX_AGE_SECONDS ?? "1800");
   const fresh = ["true", "1", "yes", "on"].includes(String(env.CURRENT_PUBLIC_DATA_ENABLED ?? "false").toLowerCase()) &&
     Number.isFinite(age) && age >= -300 && age <= Math.max(60, Number.isFinite(limit) ? limit : 1800);
   const base: Obj = { v: 1, kind, freshness: fresh ? "FRESH" : Number.isFinite(age) ? "STALE" : "UNAVAILABLE", as_of: age < -300 ? null : stamp ?? null };
   if (kind === "evidence") base.evidence_principles = policy.evidence_context;
   if (!fresh) return { ...base, ticker: query.ticker, facts: "No current facts available. Explain concepts only; do not assert current company conditions." };
-  const audit = obj(await env.PUBLIC_CACHE.get(prefix + "v213:source-independence:latest", "json"));
+  const audit = obj(await view.json(["v213:source-independence:latest"]));
   if (!query.ticker) {
     const portfolio = obj(audit.portfolio);
     return { ...base, summary: "Public research only; no broker/portfolio access. Evidence is claim-specific, not an endorsement.",
@@ -54,7 +52,7 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now =
       evidence_qualified: typeof portfolio.evidence_qualified_candidate_count === "number" ? portfolio.evidence_qualified_candidate_count : null };
   }
   const ticker = query.ticker;
-  const row = list(await env.PUBLIC_CACHE.get(prefix + "v21:top20:latest", "json")).find((r) => r.ticker === ticker);
+  const row = list(await view.json(["v21:top20:latest"])).find((r) => r.ticker === ticker);
   const evidence = list(audit.records).find((r) => r.ticker === ticker);
   if (!row || !evidence) return { ...base, ticker, facts: "Ticker or claim audit unavailable; do not infer company facts." };
   const mode = text(evidence.publication_evidence_mode ?? obj(evidence.freshness_state).publication_evidence_mode, 40);

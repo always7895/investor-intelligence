@@ -28,6 +28,7 @@ import {
   type LineSourceIdentity,
 } from "../security";
 import { deleteTenantData, putJob, tenantWriteEpoch } from "../storage";
+import { scopePublicSnapshot } from "../v213/public-snapshot";
 import {
   authenticateV21AdminRequest,
   ingestV21PublicSnapshot,
@@ -205,6 +206,10 @@ export async function processAuthorizedLineEvent(
     );
     return;
   }
+
+  // One lazy public view for this authorized question, including asynchronous
+  // QA completion. Never memoize on the Worker env shared by other events.
+  env = scopePublicSnapshot(env);
 
   // v213's published report must win over all legacy five-field routes.
   const currentReport = await env[V211_TOP20_REPORT]?.(env, query);

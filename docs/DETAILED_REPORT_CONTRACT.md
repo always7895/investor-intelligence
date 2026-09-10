@@ -15,7 +15,7 @@
 - 完整文字分析：以問題→證據→因果推論→反方→條件結論展開，解釋資料代表什麼、何時成立及如何被推翻；不再逐欄貼卡片或整張資料表，也不為篇幅加入空話。必要數字可引用，但需增加有依據的解讀。
 - 三者出自同一份驗證後研究資料，分別生成／儲存；以輸出類型區分 card_summary、data_report、narrative_analysis。每份參照包含 snapshot run ID、report ID、內容 SHA256 及標的身分。三個入口不可指向同一份文字；缺少詳報／分析時不得重導向摘要冒充。
 - 快照汰換時拒絕把新報告冒充舊卡片內容；若沒有保留且允許讀取的原快照，就請使用者更新卡片。未知標的不得改查其他公司或未封存直接鍵。
-- 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。受保留契約保護的 `storage.ts` 不改寫，其餘舊消費端仍需逐一遷移或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
+- 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。`storage.ts` 公開讀取相容出口已委派同一 selector；私有函式及 `qa.ts` 不改。現行授權問題的整段處理共用一次 selection；其餘舊 entrypoint／外部直接呼叫仍需逐一核對 scope 或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
 - 詳報可分頁，但不得悄悄刪除尾段、來源或風險來迎合 LINE 長度限制。沒有完整資料時只顯示「證據／缺口」，不冠名完整分析。
 
 ### 已提交快照的逐物件完整性（不提高資料資格）
@@ -27,10 +27,19 @@
 - 在任何 mutation 前建立／限制物件集合；manifest 隨全套寫入、讀回，既有執行時鐘門檻通過後才 pointer-last，pointer 必須精確回讀。正常 replay 只驗證、不寫入／更新時間；缺 manifest、舊 pointer 或內容不符不能就地補 seal。已 finalize／無對應 journal 的現行 run 不重建 rollback handle。
 - Selector 先核對 pointer→manifest→全部13個物件的 bytes/size/SHA、claim run/transaction、pipeline stamp，再交出 `integrity=sealed` 的固定 view。同次 answer 僅用已驗證 bytes，不重新取得物件，也不讀未列入集合的 key；任一成員缺失／改動使整個 view unavailable。這不自動證明 HTTP 原文、報價權利、財報 context 或當下 freshness，消費端仍須原本的時間與內容門檻。
 - Finalize 先重新核對所有物件及精確 current pointer，才刪 journal；失敗保留 handle。Rollback 仍只按授權控制恢復原 pointer bytes，**不保證舊 pointer 可通過新版 reader**。任何版本遷移須新鮮的新交易，不能拿舊 activation 重放／改 pointer 取得資格。
-- 舊 metadata pointer（schema1）、transaction-format run ID 缺 seal、留下 claim／manifest 卻改成簡化 pointer，都不能降為 bootstrap。真正無 pointer 或非交易格式的歷史簡化 pointer 保留明示 `integrity=legacy` 相容讀取，**不是新封存接受證明**。受保護的 `storage.ts`、歷史 activation-v2／單檔 helpers 不改，其他舊消費端仍需逐一遷移／重認證，不宣稱全部路由已驗證。
+- 舊 metadata pointer（schema1）、transaction-format run ID 缺 seal、留下 claim／manifest 卻改成簡化 pointer，都不能降為 bootstrap。真正無 pointer 或非交易格式的歷史簡化 pointer 保留明示 `integrity=legacy` 相容讀取，**不是新封存接受證明**。歷史 activation-v2／單檔 helpers 不改；公開 storage 相容出口按下節移植，但不把所有舊 caller 或 legacy 資料宣稱為已封存／已重新認證。
 - Trust anchor 仍是受控 PUBLIC_CACHE 的 committed pointer；這不是抵抗能同時重寫 pointer/manifest/全部 objects 的特權攻擊者之簽章，也不是 KV 串列化、跨交易鎖、原子讀取或 native Cloudflare certification。雲端沒有新增候選財務產物／options keys、三種新入口、配額或 Production 操作。
 
 合成 KV／日期、假免費 entitlement／provider acceptance、legacy compatibility 與真實來源／原生交易／手機收件是不同驗收。新版實際 ingestion→讀取→既有推送 caller 有獨立測試；舊未封存 fixture 的時鐘／呈現／防重複控制不得冒稱新封存或 exactly-once 收件證明。
+
+### QA 公開讀取移植與單一問題 scope
+
+- 實際反例：舊 `storage.publicText` 令未修改的 `qa.ts` 顯示封存後被改寫的報告；compact reader 則信任被改成 HIGH／EVIDENCE_QUALIFIED 的 audit。兩者現在都經現行逐物件 selector，不用另一套 pointer parser。`storage.publicJson/publicText/snapshotStatus` 保留 API；加密、epoch、記憶、工作與刪除函式不改。
+- `scopePublicSnapshot(env)` 建立新 env 副本及 module-private lazy state，不在共用 Worker env／KV binding 上快取。現行 `processAuthorizedLineEvent` 在授權／限流與早期本機控制之後，為**每個問題**建立一次 scope；報告路由、研究、deterministic／general QA 及其非同步 completion 共用它。併行讀取共用 pending promise；invalid／rejected 結果也保留，不因 pointer 變更而在本題內重試或修復。下一題／事件重新選取。
+- Sealed view 使用整套已驗 bytes；legacy scope **只固定 pointer，不能保證舊 mutable bodies 不變**。直接呼叫函式若未建立 scope，每次讀取仍獨立驗證，不可宣稱跨呼叫同輪。這不是分散式鎖、KV 原子性或任意舊 worker 的全面遷移。
+- `compactPublicContext` 先驗共同 view 再取 stamp／audit／Top20，保留投影、LIMITED、freshness 門檻與 model profile；新鮮度改用讀取／驗證後的執行時鐘，避免等待跨過截止仍拿函式進入時刻報 FRESH。原 stamp 不變，歷史-clock 反例不是 fresh-source proof。只有原有 absent-pointer bootstrap 或新 sealed view 可進該投影；不把非交易 legacy pointer 新增為 compact admission。純方法問題仍不讀市場快照。投影交給原 `qa.ts` 的記憶內 virtual KV 僅含固定精簡內容／stamp，沒有持倉／期權鏈／任意 raw report，也不冒充另一份封存。
+- `qa.ts` bytes、認證的 privacy guards、模型／免費 transport 與 LINE sender 不改；舊憑證不等於新依賴行為已完成 live recertification。新增 actual ingestion→signed paired webhook 證明只用合成資料及 model／LINE doubles：改寫後的當前問題不呼叫模型；同一題不混輪，下一題可讀新輪。非法簽章不啟動公用讀取或模型。這不是實際模型答案／LINE收件／來源權利證明。
+- 相容 H6B2 的舊 transaction-format 未封存 fixture 明確拒絕；歷史 preview／order controls 另標 legacy synthetic，未改其內容 SHA 或 sender。不得將這些控制當成當前可發布報告。
 
 ### 最終排序與候選檔綁定（本機；不是封存交易）
 

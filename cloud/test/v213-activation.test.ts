@@ -6,6 +6,7 @@ import productionWorker from "../src/v213/production-worker";
 import { publicJson } from "../src/storage";
 import { parseQuery } from "../src/core";
 import { deterministicAnswer } from "../src/qa";
+import { compactPublicContext } from "../src/v213/compact-qa";
 import { parseV21Top20 } from "../src/v21/top20";
 import { v213Top20ReportAnswer, readV213Top20Report } from "../src/v213/top20-report";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
@@ -15,6 +16,7 @@ import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { deriveTenantId } from "../src/security";
 import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
+import approvedProfile from "../../config/v213-model-profile-v1.json";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
@@ -398,7 +400,150 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
   }) }));
 }
 
+async function qaWebhookFixture(compact = true) {
+  const fixture = runtime();
+  const env = { ...fixture.env, LINE_CHANNEL_SECRET: "SYNTHETIC_QA_SIGNATURE_NOT_REAL", LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_QA_REPLY_NOT_REAL",
+    TENANT_HASH_SECRET: "SYNTHETIC_QA_TENANT_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_QA_DATA_NOT_REAL", MEMORY_FEATURE_AVAILABLE: "false",
+    CURRENT_PUBLIC_DATA_ENABLED: "true", GENERAL_QA_ENABLED: "true", V213_COMPACT_QA_ENABLED: compact ? "true" : "false",
+    LOCAL_LLM_BASE_URL: "https://synthetic-qa.example.test", LOCAL_LLM_ALLOWED_HOSTS: "synthetic-qa.example.test",
+    LOCAL_LLM_SHARED_SECRET: "SYNTHETIC_QA_MODEL_NOT_REAL", LOCAL_LLM_MODEL: approvedProfile.model,
+    V213_MODEL_PROFILE_JSON: JSON.stringify(approvedProfile) };
+  const target = String.fromCharCode(85) + "1".repeat(32);
+  await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: target }, env.TENANT_HASH_SECRET), target);
+  const prompts: string[] = []; const replies: string[] = [];
+  const network = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input)); const body = JSON.parse(String(init?.body));
+    if (url.origin === "https://synthetic-qa.example.test" && url.pathname === "/v1/chat/completions") {
+      prompts.push(JSON.stringify(body.messages));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "SYNTHETIC_QA_ANSWER_NOT_LIVE" } }] }));
+    }
+    if (url.origin === "https://api.line.me" && url.pathname === "/v2/bot/message/reply") {
+      replies.push(JSON.stringify(body.messages)); return new Response("{}");
+    }
+    throw new Error("UNEXPECTED_SYNTHETIC_QA_TRANSPORT");
+  });
+  let sequence = 0;
+  async function deliver(text: string) {
+    const body = JSON.stringify({ events: [{ type: "message", timestamp: Date.now(), webhookEventId: `synthetic-qa-event-${++sequence}`,
+      replyToken: "synthetic-qa-reply", source: { type: "user", userId: target }, message: { type: "text", text } }] });
+    const signature = createHmac("sha256", env.LINE_CHANNEL_SECRET).update(body).digest("base64");
+    const tasks: Promise<unknown>[] = [];
+    const response = await productionWorker.fetch(new Request("https://synthetic-worker.example.test/webhook", {
+      method: "POST", headers: { "x-line-signature": signature }, body,
+    }), env, { waitUntil(task: Promise<unknown>) { tasks.push(task); } } as ExecutionContext);
+    expect(response.status).toBe(200); await Promise.all(tasks);
+  }
+  return { ...fixture, env, prompts, replies, deliver, restore: () => network.mockRestore() };
+}
+
 describe("v2.1.3 atomic activation transaction", () => {
+  it.each([true, false])("blocks corrupt context in the actual signed direct-chat webhook before model transport (compact=%s)", async compact => {
+    const f = await qaWebhookFixture(compact);
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      await f.deliver("目前景氣循環如何影響企業融資？");
+      expect(f.prompts).toHaveLength(1); expect(f.replies).toHaveLength(1);
+      const key = `snapshot:${RUN_ID}:v213:source-independence:latest`; const audit = JSON.parse(f.publicKv.values.get(key)!);
+      audit.portfolio.evidence_qualified_candidate_count = 20; f.publicKv.values.set(key, JSON.stringify(audit));
+      await f.deliver("目前景氣循環如何影響企業融資？");
+      expect(f.prompts).toHaveLength(1);
+      expect(f.replies).toHaveLength(2); expect(f.replies[1]).toContain("CURRENT_DATA_TIMESTAMP_MISSING");
+    } finally { f.restore(); }
+  });
+  it("pins one signed webhook question across certified QA reads but not across later questions", async () => {
+    const f = await qaWebhookFixture(false); const second = runtime();
+    try {
+      const a = await bundle(TRANSACTION_ID, "SYNTHETIC_ROUND_A"); await ingestV213ActivationBundle(JSON.stringify(a), f.env);
+      const b = await bundle("b".repeat(32), "SYNTHETIC_ROUND_B"); b.run_id = "20260902T150001Z-abcdef123456";
+      await ingestV213ActivationBundle(JSON.stringify(b), second.env);
+      for (const [key, value] of second.publicKv.values) if (key !== "snapshot:current") f.publicKv.values.set(key, value);
+      const get = f.publicKv.get.bind(f.publicKv); let pointers = 0;
+      const reads = vi.spyOn(f.publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+        const result = await get(key, type); if (key === "snapshot:current") pointers += 1;
+        if (key === `snapshot:${RUN_ID}:reports:latest`) f.publicKv.values.set("snapshot:current", second.publicKv.values.get("snapshot:current")!);
+        return result;
+      });
+      try {
+        await f.deliver("目前景氣循環如何影響企業融資？");
+        expect(f.replies).toHaveLength(1); expect(f.prompts).toHaveLength(1);
+        expect(pointers).toBe(1);
+        expect(f.prompts[0]).toContain("SYNTHETIC_ROUND_A"); expect(f.prompts[0]).not.toContain("SYNTHETIC_ROUND_B");
+        await f.deliver("目前景氣循環如何影響企業融資？");
+        expect(pointers).toBe(2); expect(f.prompts[1]).toContain("SYNTHETIC_ROUND_B");
+      } finally { reads.mockRestore(); }
+    } finally { f.restore(); }
+  });
+  it("uses post-verification execution time for compact freshness without renewing the source stamp", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-09-10T16:00:00.000Z"));
+    const { env, publicKv } = runtime(); let reads: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const b = await bundle(); await ingestV213ActivationBundle(JSON.stringify(b), env);
+      const get = publicKv.get.bind(publicKv);
+      reads = vi.spyOn(publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+        const result = await get(key, type);
+        if (key === `snapshot:${RUN_ID}:v213:activation-claim`) vi.setSystemTime(new Date("2026-09-10T16:01:01.000Z"));
+        return result;
+      });
+      const data = await compactPublicContext({ ...env, CURRENT_PUBLIC_DATA_ENABLED: "true", PUBLIC_DATA_MAX_AGE_SECONDS: "60" }, parseQuery("景氣如何？"));
+      expect(data.freshness).toBe("STALE"); expect(data.as_of).toBe(b.public_data_as_of);
+      expect(data.evidence_qualified).toBeUndefined();
+    } finally { reads?.mockRestore(); vi.useRealTimers(); }
+  });
+  it("does not pin public data or run a model for an invalid webhook signature", async () => {
+    const f = await qaWebhookFixture(); const get = vi.spyOn(f.publicKv, "get");
+    try {
+      const response = await productionWorker.fetch(new Request("https://synthetic-worker.example.test/webhook", {
+        method: "POST", headers: { "x-line-signature": "invalid" }, body: '{"events":[]}',
+      }), f.env, { waitUntil() { throw new Error("UNAUTHENTICATED_TASK"); } } as unknown as ExecutionContext);
+      expect(response.status).toBe(401); expect(get).not.toHaveBeenCalled();
+      expect(f.prompts).toHaveLength(0); expect(f.replies).toHaveLength(0);
+    } finally { get.mockRestore(); f.restore(); }
+  });
+  it("does not fall back to direct compact facts for malformed or referenced unsealed pointers", async () => {
+    const { env, publicKv } = runtime(); const b = await bundle(); await ingestV213ActivationBundle(JSON.stringify(b), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" };
+    publicKv.values.set("last_successful_pipeline_timestamp", b.public_data_as_of);
+    publicKv.values.set("v213:source-independence:latest", b.payloads.source_independence_json);
+    publicKv.values.set("snapshot:legacy-test:last_successful_pipeline_timestamp", b.public_data_as_of);
+    publicKv.values.set("snapshot:legacy-test:v213:source-independence:latest", b.payloads.source_independence_json);
+    for (const pointer of ["", "null", "{}", '{"run_id":null}', JSON.stringify({ run_id: RUN_ID }), '{"run_id":"legacy-test"}']) {
+      publicKv.values.set("snapshot:current", pointer);
+      const data = await compactPublicContext(qa, parseQuery("目前景氣如何？"));
+      expect(data.freshness).toBe("UNAVAILABLE"); expect(data.as_of).toBeNull(); expect(data.evidence_qualified).toBeUndefined();
+    }
+  });
+  it("does not expose unlisted injected options or universe through compatibility storage", async () => {
+    const { env, publicKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    for (const key of ["options:latest", "v211:universe:latest"]) {
+      publicKv.values.set(`snapshot:${RUN_ID}:${key}`, JSON.stringify([{ ticker: "T00", source: "UNCOMMITTED_MEMBER" }]));
+      publicKv.values.set(key, JSON.stringify([{ ticker: "T00", source: "UNCOMMITTED_DIRECT_FALLBACK" }]));
+      expect(await publicJson(env, [key])).toBeNull();
+    }
+    expect(await deterministicAnswer(env, parseQuery("T00 期權"), { tenantId: "synthetic", chatType: "group" })).toBe("OPTION_DATA_UNAVAILABLE");
+    expect((await pinPublicSnapshot(env)).integrity).toBe("sealed");
+  });
+  it("does not serve changed sealed report text through the certified legacy QA caller", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" };
+    const context = { tenantId: "synthetic-only", chatType: "group" as const };
+    expect(await deterministicAnswer(qa, parseQuery("最新報告"), context)).toContain("Synthetic public report");
+    publicKv.values.set(`snapshot:${RUN_ID}:reports:latest`, "SYNTHETIC_CHANGED_QA_REPORT");
+    expect(await deterministicAnswer(qa, parseQuery("最新報告"), context)).toBe("CURRENT_DATA_TIMESTAMP_MISSING");
+  });
+  it("does not promote altered LIMITED audit flags through the actual compact context caller", async () => {
+    const { env, publicKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" }; const query = parseQuery("T00 風險分析");
+    expect(query.ticker).toBe("T00");
+    expect(await compactPublicContext(qa, query)).toMatchObject({ mode: "LIMITED_RESEARCH_CANDIDATE", high_eligible: false });
+    const key = `snapshot:${RUN_ID}:v213:source-independence:latest`; const audit = JSON.parse(publicKv.values.get(key)!);
+    audit.records[0].publication_evidence_mode = "EVIDENCE_QUALIFIED";
+    audit.records[0].eligible_for_high_confidence_model_inference = true;
+    publicKv.values.set(key, JSON.stringify(audit));
+    const data = await compactPublicContext(qa, query);
+    expect(data.high_eligible).not.toBe(true);
+    expect(data.freshness).toBe("UNAVAILABLE");
+  });
   it("does not turn altered sealed bytes into a newly identified Top20 answer", async () => {
     const { env, publicKv } = runtime();
     const value = await bundle();

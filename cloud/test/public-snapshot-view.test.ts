@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { pinPublicSnapshot, publicJson, publicText } from "../src/v213/public-snapshot";
+import { pinPublicSnapshot, publicJson, publicText, scopePublicSnapshot } from "../src/v213/public-snapshot";
+import { publicJson as storageJson, publicText as storageText, snapshotStatus } from "../src/storage";
 import { asKv, MemoryKv } from "./fake-kv";
 
 class TracedKv extends MemoryKv {
@@ -26,6 +27,9 @@ describe("public snapshot selection", () => {
     kv.values.set("alternate", "legacy-data");
     expect(await publicJson(env, ["report"])).toBeNull();
     expect(await publicText(env, ["alternate"])).toBeNull();
+    expect(await storageJson(env, ["report"])).toBeNull();
+    expect(await storageText(env, ["alternate"])).toBeNull();
+    expect(await snapshotStatus(env)).toEqual({ promoted_snapshot: null, has_snapshot: false });
     expect(kv.reads.every(key => key === "snapshot:current")).toBe(true);
     expect((await pinPublicSnapshot(env)).kind).toBe("invalid");
   });
@@ -44,6 +48,49 @@ describe("public snapshot selection", () => {
     expect(await publicJson(env, ["report"])).toBeNull();
     kv.values.set("snapshot:run-a:report", JSON.stringify({ run: "a" }));
     expect(await publicJson(env, ["report"])).toEqual({ run: "a" });
+  });
+
+  it("lazily shares one in-flight selection across current and compatibility exports", async () => {
+    const { kv, env } = runtime();
+    kv.values.set("snapshot:current", '{"run_id":"run-a"}');
+    kv.values.set("snapshot:run-a:report", JSON.stringify({ run: "a" }));
+    const scoped = scopePublicSnapshot(env);
+    expect(scoped).not.toBe(env); expect(scoped.PUBLIC_CACHE).toBe(env.PUBLIC_CACHE);
+    expect(scoped.TENANT_PRIVATE_CACHE).toBe(env.TENANT_PRIVATE_CACHE);
+    expect(kv.reads).toHaveLength(0);
+    const [a, b, view] = await Promise.all([storageJson(scoped, ["report"]), publicJson(scoped, ["report"]), pinPublicSnapshot(scoped)]);
+    expect(a).toEqual({ run: "a" }); expect(b).toEqual(a); expect(view.integrity).toBe("legacy");
+    expect(kv.reads.filter(key => key === "snapshot:current")).toHaveLength(1);
+    // Legacy scope pins only its pointer; it does NOT seal mutable legacy bodies.
+    kv.values.set("snapshot:current", '{"run_id":"run-b"}');
+    expect((await pinPublicSnapshot(scoped)).runId).toBe("run-a");
+    expect((await pinPublicSnapshot(scopePublicSnapshot(scoped))).runId).toBe("run-b");
+    expect(kv.reads.filter(key => key === "snapshot:current")).toHaveLength(2);
+  });
+
+  it("retains invalid selection for the question rather than repairing it after pointer changes", async () => {
+    const { kv, env } = runtime(); kv.values.set("snapshot:current", "null");
+    kv.values.set("report", "MUST_NOT_RESCUE_INVALID_POINTER"); const scoped = scopePublicSnapshot(env);
+    expect(await storageText(scoped, ["report"])).toBeNull();
+    kv.values.delete("snapshot:current");
+    expect(await publicText(scoped, ["report"])).toBeNull();
+    expect((await pinPublicSnapshot(scoped)).integrity).toBe("invalid");
+    expect(kv.reads).toEqual(["snapshot:current"]);
+    expect(await storageText(scopePublicSnapshot(env), ["report"])).toBe("MUST_NOT_RESCUE_INVALID_POINTER");
+  });
+
+  it("does not retry a failed pointer read in the same question", async () => {
+    const { kv, env } = runtime(); const get = kv.get.bind(kv); let calls = 0; let fail = true;
+    env.PUBLIC_CACHE = asKv({ ...kv, async get<T>(key: string, type?: "text" | "json") {
+      calls += 1; if (fail) throw new Error("SYNTHETIC_POINTER_READ_FAILED"); return get<T>(key, type);
+    } } as unknown as MemoryKv);
+    const scoped = scopePublicSnapshot(env);
+    await expect(storageText(scoped, ["report"])).rejects.toThrow("SYNTHETIC_POINTER_READ_FAILED");
+    fail = false;
+    await expect(publicJson(scoped, ["report"])).rejects.toThrow("SYNTHETIC_POINTER_READ_FAILED");
+    expect(calls).toBe(1);
+    expect((await pinPublicSnapshot(scopePublicSnapshot(env))).kind).toBe("legacy");
+    expect(calls).toBe(2);
   });
 
   it("pins related reads and lets subsequent requests select a newer run", async () => {
