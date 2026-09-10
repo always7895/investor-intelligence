@@ -815,3 +815,13 @@ Fixture規則：
 - 被動SACL capability query只在新PS5.1 fixture呼叫GetNamedSecurityInfoW，Win32=1314，receipt BLOCKED、presence=null，wrapper exit2。**不enable privilege、不elevate、不改policy、不試第二host**；權限未知依第12節停止該驗收。需要明確授權的受控fixture SACL讀取能力與B3/Astra裁決，不能把Owner/DACL測試或新backup當作SACL資格。
 - 權限停止後只做獨立靜態／Worker檢查與文件保存：7 gates PASS、269個Python AST無syntax error（1既有warning）、Worker typecheck及227/227 PASS。沒有full Python/native installer／Windows CI dispatch、release build、cloud/KV/LINE、排程或model動作。
 - 詳細結果見`docs/W1_ATOMIC_IO_REVIEW_20260910.md`及新evidence index。W1 NOT ACCEPTED，G01/G02 OPEN，整體P0/P1/P2仍UNKNOWN；新增的是已重現metadata缺陷，不是將所有review子項算成P0。下一步先取得上述最小權限／審查決策，再B4/B5 trusted ownership、durable originals/shared locks/recovery/consumer barrier與四caller驗收；W2–W12未被跳過。
+
+### 12.4 已授權的 child-only SeSecurityPrivilege 讀取：未具備可啟用權限
+
+- 本次使用者明確允許：只在新建隔離fixture的子程序，暫時啟用**已授予**的SeSecurityPrivilege做讀取驗收。不是授予新權限、UAC／linked token／系統policy變更、SACL寫入、Production或CI常態提權授權。過往1314及其他失敗保持原狀。
+- 編輯前fetch HEAD=`9025b20cb88806dcf2b7085e25e20fac0e65ebfb`、相同6個dirty/untracked草稿、CI queued/in-progress空；讀兩層AGENTS、STATUS、相關PLAN／tests／current workflow。`audit-runtime/w1-sacl-authorized-a/`保存11份before檔、patch、明確scope與baseline；上一輪index SHA驗證吻合。
+- 新test-only C#/PS/Python probe：固定新建fixture target（CreateNew，先建立再查權限），只用current-process token、拒絕impersonation context；先查SeSecurityPrivilege是否具備，不對缺失權限呼叫AdjustTokenPrivileges；僅調整單一既有privilege，檢查ERROR_NOT_ALL_ASSIGNED，在finally還原原屬性並比對完整privilege snapshot。SACL僅兩次讀取／記憶體比較；不輸出token lists、handles、SID、ACL bytes、raw errors。此原生enable/read/restore成功路徑尚未實測合格。
+- 預設unittest不啟用native privilege：雙host純parse成功，**3方法PASS**，含8個fake state-machine案例／host（missing、already enabled、還原、讀錯／exception、1300、restore失敗、其他privilege變化）及no-consent／scope／digest反例。明確session opt-in只用於本次獲准的新case，不變成CI預設。
+- 真正authorized PS5.1 child結果：**BLOCKED_PRIVILEGE_NOT_ASSIGNED，exit2**；assigned=false、enabled_before=false、enable_attempted=false、read_attempted=false、restore_attempted=false。兩次privilege snapshot完全相同、其他privileges未變、fixture bytes未變。`privileges_restored=true`在此僅表示狀態相等，**不是曾經執行還原或SACL讀取成功**；SACL presence/null/equality仍null。
+- 按授權邊界停止，PS7 authorized case未執行；未取linked/elevated token、未grant rights、未改policy或SACL。只證明該child目前沒有可啟用的已授予權限，不能推論整個帳戶／系統policy從未授予。需要**本已具備該能力的受控驗收環境**及B3/Astra決策，不再把問題寫成使用者未授權。
+- 後續僅獨立static／Worker檢查與保存：7 gates PASS、額外3新檔security scan零finding、270 Python AST零syntax error／1既有warning、Worker typecheck及227/227 PASS。完整Python/native installer／Windows CI、release build、LINE、model、Production均未執行。W1 NOT ACCEPTED，G01/G02 OPEN、整體P0/P1/P2 UNKNOWN；五份產品draft未改，也未修復已確認的metadata缺陷。

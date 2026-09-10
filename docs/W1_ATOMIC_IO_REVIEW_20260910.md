@@ -56,9 +56,19 @@ Native replacement/parent-ACL tests on both hosts show:
 - After a deliberate parent ACL update, inherited target DACLs match the unreplaced control and change together; protected controls/targets remain unchanged.
 - **An inherited backup's descriptor changes with that parent update.** Therefore a backup alone is not an immutable ACL-original record. The protected fixture's backup descriptor remains equal. This does not authorize protecting an operator's existing ACL or dropping inheritance.
 
-A passive `GetNamedSecurityInfoW` SACL query on a new PS5.1 fixture returns Win32 **1314**. Receipt is BLOCKED, SACL presence is null/unknown, CLI exits2; PS7 capability retry was not attempted. No privilege was enabled, no elevation/policy change was made, and no real runtime metadata was read. SACL qualification remains blocked pending explicit narrowly scoped authorization and B3/Astra review; no production ACL-normalization or IO patch is approved by these tests.
+A passive `GetNamedSecurityInfoW` SACL query on a new PS5.1 fixture returns Win32 **1314**. Receipt is BLOCKED, SACL presence is null/unknown, CLI exits2; PS7 capability retry was not attempted. No privilege was enabled, no elevation/policy change was made, and no real runtime metadata was read. At that point SACL qualification was blocked pending narrow authorization and B3/Astra review. The subsequent authorized attempt below does not qualify a production ACL-normalization rule or IO patch.
 
 The first auxiliary PS5.1 parse driver failed (no product body); a new assigned-array driver parsed both hosts. First two inheritance attempts failed; the second's bounded receipt identifies `CREATE_STREAMS` / NotSupportedException (`-2146233067`). Replacing only the fixture's legacy .NET ADS path operations with Win32 handles, on the same verified local NTFS scope, preserves the stream oracle. Final three diagnostic methods pass across both hosts; frozen baseline failures remain failures, not installer acceptance. Original helper temporary-file cleanup still exists in that frozen baseline.
+
+## Authorized child-only read attempt
+
+Current-session authorization subsequently permits temporary enablement of **already-assigned** SeSecurityPrivilege, exclusively in a new isolated fixture child for reading. `audit-runtime/w1-sacl-authorized-a/` records this narrower action; it is not standing CI permission, UAC/linked-token access, a new rights grant, a policy change or permission to write SACLs.
+
+The new probe queries only its current-process privilege state, rejects impersonation, refuses missing privileges before any adjustment, and creates/holds only its own new target. Its enable/read/finally-restore state machine checks ERROR_NOT_ALL_ASSIGNED, exact previous attributes and other privilege states; eight fake cases per host cover success/failure paths. Default tests do not construct the native privilege context. Native reads compare two SACL observations in memory, with no raw security data emitted.
+
+**Actual PS5.1 authorized result: BLOCKED_PRIVILEGE_NOT_ASSIGNED, exit2.** The child has no eligible assigned privilege to enable. Enable/read/restore attempts are all false. Before/after privilege snapshots match; other privileges and the fixture's bytes are unchanged. The `privileges_restored=true` field means equality of state in this no-op case, NOT successful execution of an enable/restore cycle. SACL fields remain unknown/null.
+
+PS7 was not tried after this capability stop. No rights were granted, no policy or SACL changed, and no linked/elevated token was obtained. This is a statement about the current child context, not proof of account-wide policy. A controlled acceptance context already possessing the required privilege is still needed. Neither real native restoration nor SACL-read success is certified by the fake tests.
 
 ## GitHub scope
 
