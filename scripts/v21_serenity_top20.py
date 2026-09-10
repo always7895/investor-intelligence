@@ -341,7 +341,17 @@ def source_plan(policy: Mapping[str, Any], activation: Mapping[str, Any]) -> dic
     }
 
 
+def discovery_cache_path(policy: Mapping[str, Any]) -> Path:
+    # Never reuse a prior sector-biased seed list after changing discovery policy.
+    # Preserve legacy cache files; this is policy isolation, not source qualification.
+    basis = {"schema_version": 1, "candidate_screeners": policy["candidate_screeners"],
+             "per_screener_count": policy["per_screener_count"], "candidate_seed_limit": policy["candidate_seed_limit"]}
+    digest = hashlib.sha256(json.dumps(basis, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    return CACHE_ROOT / f"candidate_seed.{digest}.json"
+
+
 def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
+    cache_path = discovery_cache_path(policy)
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -376,7 +386,7 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
                 entry["market"] = dict(raw)
 
     if not merged:
-        value = cached(CACHE_ROOT / "candidate_seed.json", int(policy["candidate_cache_hours"]))
+        value = cached(cache_path, int(policy["candidate_cache_hours"]))
         if isinstance(value, list) and value:
             return [item for item in value if isinstance(item, dict)]
         raise PipelineError("All T3 candidate screeners failed: " + ", ".join(failures))
@@ -386,7 +396,7 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
         key=lambda item: (-float(item["screen_weight"]), str(item["ticker"])),
     )
     ranked = ranked[: int(policy["candidate_seed_limit"])]
-    atomic_json(CACHE_ROOT / "candidate_seed.json", ranked)
+    atomic_json(cache_path, ranked)
     return ranked
 
 

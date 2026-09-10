@@ -197,6 +197,17 @@ def publication_aware_metrics(
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
     policy = engine.load_object(engine.POLICY_PATH)
     activation = engine.load_object(engine.ACTIVATION_PATH)
+    # Admit the existing broad screeners only; a named sector must not reserve
+    # pre-SEC candidate capacity. Discovery is still T3, not final research.
+    broad_screeners = {"undervalued_growth_stocks", "most_actives", "day_gainers"}
+    screeners = policy.get("candidate_screeners")
+    if (not isinstance(screeners, list) or not screeners
+            or any(not isinstance(row, dict) or set(row) != {"name", "weight"}
+                   or not isinstance(row.get("name"), str) or row["name"] not in broad_screeners
+                   or type(row.get("weight")) not in (int, float)
+                   or not math.isfinite(row["weight"]) or row["weight"] <= 0 for row in screeners)
+            or len({row["name"] for row in screeners}) != len(screeners)):
+        raise engine.PipelineError("V213_DISCOVERY_SCREENER_POLICY_INVALID")
     weights = policy.get("factor_weights")
     expected = {
         "demand_wave", "chokepoint", "pricing_power", "replacement_friction",

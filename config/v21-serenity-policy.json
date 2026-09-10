@@ -10,10 +10,6 @@
   "candidate_cache_hours": 12,
   "candidate_screeners": [
     {
-      "name": "growth_technology_stocks",
-      "weight": 6
-    },
-    {
       "name": "undervalued_growth_stocks",
       "weight": 5
     },
