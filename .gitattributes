@@ -1,0 +1,2 @@
+# Live evidence and its source-pinned reference are byte-exact, not restamped.
+state/r75-qa-live*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

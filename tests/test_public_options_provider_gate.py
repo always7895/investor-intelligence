@@ -14,6 +14,29 @@ from public_options_provider_gate import audit_public_options_providers  # noqa:
 
 
 class PublicOptionsProviderGateTests(unittest.TestCase):
+    def test_rejects_invalid_or_future_review_dates(self) -> None:
+        for value in ("2026-02-30", "2026-99-99", "9999-01-01"):
+            with self.subTest(value=value):
+                temporary, root = self.fixture_root()
+                with temporary:
+                    path, document = self.read_candidates(root)
+                    document["providers"][0]["rights_reviewed_at"] = value
+                    self.write_candidates(path, document)
+                    findings, _ = audit_public_options_providers(root)
+                self.assertTrue(any("requires a review date" in item for item in findings))
+
+    def test_rejects_non_boolean_activation_and_access_flags(self) -> None:
+        for field in ("runtime_enabled", "line_quote_eligible", "automated_access_allowed"):
+            for value in (0, 1, "false", "true"):
+                with self.subTest(field=field, value=value):
+                    temporary, root = self.fixture_root()
+                    with temporary:
+                        path, document = self.read_candidates(root)
+                        document["providers"][0][field] = value
+                        self.write_candidates(path, document)
+                        findings, _ = audit_public_options_providers(root)
+                    self.assertTrue(any(field + " must be" in item for item in findings))
+
     def test_repository_has_reviewed_rejections_but_no_live_provider(self) -> None:
         findings, summary = audit_public_options_providers()
         self.assertEqual(findings, [])
@@ -21,8 +44,9 @@ class PublicOptionsProviderGateTests(unittest.TestCase):
         self.assertGreaterEqual(summary["authority_count"], 10)
         self.assertGreaterEqual(summary["jurisdiction_count"], 6)
         self.assertEqual(summary["automation_prohibited_count"], 4)
-        self.assertEqual(summary["pending_rights_count"], 8)
-        self.assertEqual(summary["reviewed_public_access_count"], 0)
+        self.assertEqual(summary["pending_rights_count"], 7)
+        self.assertEqual(summary["reviewed_public_access_count"], 1)
+        self.assertEqual(summary["fully_eligible_count"], 0)
         self.assertEqual(summary["runtime_enabled_count"], 0)
         self.assertEqual(summary["line_quote_eligible_count"], 0)
         self.assertFalse(summary["production_provider_selected"])

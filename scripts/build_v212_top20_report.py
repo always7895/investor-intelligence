@@ -19,11 +19,12 @@ is read or emitted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -34,13 +35,15 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
+from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 LONG_TERM_WINDOW_DAYS = 730
 SHORT_TERM_WINDOW_DAYS = 183
-MIN_LONG_TERM_ELAPSED_DAYS = 600
-MIN_SHORT_TERM_ELAPSED_DAYS = 120
+# Compatibility constants only; selection uses complete calendar-month targets.
+MIN_LONG_TERM_ELAPSED_DAYS = 730
+MIN_SHORT_TERM_ELAPSED_DAYS = 181
 DISPLAY_COLUMNS = [
     "股票",
     "長期投資報酬率（近2年年化）",
@@ -172,39 +175,23 @@ def translate_industry(value: str) -> str:
     return raw[:100]
 
 
+def _history_return_evidence(history: Any) -> dict[str, Any]:
+    if history is None or "Close" not in history:
+        return calculate_return_evidence([])
+    # Do not drop a missing last price and silently move the observation clock.
+    return calculate_return_evidence([(stamp.date(), price) for stamp, price in history["Close"].items()])
+
+
 def _returns_from_history(history: Any) -> tuple[float | None, float | None]:
-    if history is None or len(getattr(history, "index", [])) < 2 or "Close" not in history:
+    try:
+        return legacy_return_pair(_history_return_evidence(history))
+    except (ReturnEvidenceError, TypeError, ValueError, AttributeError, OverflowError):
         return None, None
-    closes = history["Close"].dropna()
-    if len(closes) < 2:
-        return None, None
-    latest_price = _finite(closes.iloc[-1])
-    if latest_price is None or latest_price <= 0:
-        return None, None
-    latest_time = closes.index[-1]
-
-    def start_point(days: int) -> tuple[float | None, int]:
-        target = latest_time - timedelta(days=days)
-        window = closes[closes.index >= target]
-        if len(window) < 2:
-            return None, 0
-        first_price = _finite(window.iloc[0])
-        elapsed = int((latest_time - window.index[0]).days)
-        return first_price, elapsed
-
-    long_start, long_days = start_point(LONG_TERM_WINDOW_DAYS)
-    long_term = None
-    if long_start and long_start > 0 and long_days >= MIN_LONG_TERM_ELAPSED_DAYS:
-        long_term = (latest_price / long_start) ** (365.25 / long_days) - 1
-
-    short_start, short_days = start_point(SHORT_TERM_WINDOW_DAYS)
-    short_term = None
-    if short_start and short_start > 0 and short_days >= MIN_SHORT_TERM_ELAPSED_DAYS:
-        short_term = latest_price / short_start - 1
-    return long_term, short_term
 
 
-def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | None, float | None, str]:
+def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: dict | None = None) -> tuple[float | None, float | None, str]:
+    if evidence_sink is not None:
+        evidence_sink.update(status="UNAVAILABLE", publication_eligible=False, provider="yfinance", ticker=ticker)
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -212,7 +199,15 @@ def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | No
     try:
         obj = yf.Ticker(ticker)
         history = obj.history(period="3y", interval="1d", auto_adjust=True)
-        long_term, short_term = _returns_from_history(history)
+        evidence = _history_return_evidence(history)
+        long_term, short_term = legacy_return_pair(evidence)
+        if evidence_sink is not None:
+            evidence_sink.update(evidence)
+            evidence_sink.update(
+                status=("CALCULATED_NOT_QUALIFIED" if any(w["status"] == "AVAILABLE" for w in evidence["windows"].values()) else "NO_COMPLETE_RETURN_WINDOW"),
+                retrieved_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                request={"period": "3y", "interval": "1d", "auto_adjust": True},
+            )
         industry = ""
         try:
             info = obj.info
@@ -225,7 +220,7 @@ def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | No
         return None, None, translate_industry(fallback_industry)
 
 
-def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
+def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None) -> dict[str, Any]:
     try:
         raw = json.loads(top20_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -240,7 +235,12 @@ def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for item in top20:
         ticker = str(item["ticker"])
-        long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""))
+        if return_evidence_sink is None:
+            long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""))
+        else:
+            observation: dict[str, Any] = {}
+            long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""), evidence_sink=observation)
+            return_evidence_sink[ticker] = observation
         metrics: dict[str, Any] = {}
         official = reference.get(ticker)
         if official:
@@ -312,13 +312,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
+    parser.add_argument("--return-evidence-output", type=Path, help="Local unqualified calculation sidecar; never a publication payload")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
             return 0
-        document = build()
+        evidence_output = args.return_evidence_output or args.output.with_name(args.output.stem + ".return-evidence-candidate.json")
+        if evidence_output.resolve() == args.output.resolve():
+            raise Top20ReportError("Report and return evidence paths must differ")
+        observations: dict[str, Any] = {}
+        document = build(return_evidence_sink=observations)
         atomic_write(args.output, document)
+        atomic_write(evidence_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "provider_scope": "public_only",
+            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
+            "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
+            "records": observations,
+        })
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
     except (Top20ReportError, snapshot.SnapshotError, base.PipelineError, OSError, ValueError) as exc:

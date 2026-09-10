@@ -1,4 +1,7 @@
+import { configuredModelProfile } from './model-profile';
+
 export interface FreeRelayEnv {
+  V213_MODEL_PROFILE_JSON?: string;
   V213_FREE_RELAY_ROUTE?: DurableObjectNamespace;
   V21_SYNC_HMAC_SECRET?: string;
   FREE_RELAY_ENABLED?: string;
@@ -53,7 +56,7 @@ function maxTtlSeconds(env: FreeRelayEnv): number {
 }
 
 function expectedModel(env: FreeRelayEnv): string {
-  return (env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
+  return (configuredModelProfile(env)?.model ?? env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
 }
 
 function routeUrl(value: string): URL | null {

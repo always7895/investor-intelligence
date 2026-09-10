@@ -14,9 +14,14 @@ param(
     [string]$NamedTunnelConfig = '',
     [string]$FreeRelayConfigPath = '',
     [int]$FreeRelayLeaseTtlSeconds = 180,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$RoutingCheckOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($RoutingCheckOnly -and @($PSBoundParameters.Keys | Where-Object { $_ -notin @('ProjectRoot','LlamaBaseUrl','Model','RoutingCheckOnly') }).Count) {
+    throw 'ROUTING_CHECK_ARGUMENT_CONFLICT'
+}
+$script:RuntimeProfileHash = ''
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -103,7 +108,7 @@ function Get-ObjectPropertyValue {
 }
 
 function Test-HealthModel {
-    param([object]$Health, [string]$SelectedModel)
+    param([object]$Health, [string]$SelectedModel, [string]$ExpectedProfileHash = $script:RuntimeProfileHash)
     $ok = Get-ObjectPropertyValue $Health 'ok' $false
     $service = [string](Get-ObjectPropertyValue $Health 'service' '')
     $schema = 0
@@ -111,7 +116,10 @@ function Test-HealthModel {
     $reachable = Get-ObjectPropertyValue $Health 'llama_reachable' $false
     $available = Get-ObjectPropertyValue $Health 'selected_model_available' $false
     $reportedModel = [string](Get-ObjectPropertyValue $Health 'selected_model' '')
+    $reportedProfile = [string](Get-ObjectPropertyValue $Health 'model_profile_sha256' '')
+    $profileMatches = if ($ExpectedProfileHash) { $ExpectedProfileHash -cmatch '^[0-9a-f]{64}$' -and $reportedProfile -ceq $ExpectedProfileHash } else { $reportedProfile -ceq '' }
     return (
+        $profileMatches -and
         $ok -eq $true -and
         $service -eq 'v213-local-llm-gateway' -and
         $schema -ge 2 -and
@@ -133,6 +141,10 @@ if ($SelfTest) {
         selected_model = 'model-a'
     }
     if (-not (Test-HealthModel $valid 'model-a')) { throw 'Health schema v2 payload was rejected.' }
+    $profileHealth = $valid | Select-Object *
+    $profileHealth | Add-Member -NotePropertyName model_profile_sha256 -NotePropertyValue ('a' * 64)
+    if (-not (Test-HealthModel $profileHealth 'model-a' ('a' * 64))) { throw 'Matching model profile was rejected.' }
+    if ((Test-HealthModel $profileHealth 'model-a' ('b' * 64)) -or (Test-HealthModel $profileHealth 'model-a' '') -or (Test-HealthModel $valid 'model-a' ('a' * 64))) { throw 'Model profile drift was accepted.' }
     $pythonPath = ''
     if ($env:PROJECT_PYTHON -and (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) { $pythonPath = [IO.Path]::GetFullPath($env:PROJECT_PYTHON) }
     if (-not $pythonPath) {
@@ -199,99 +211,43 @@ $GatewayScript = Join-Path $ProjectRoot 'scripts\v213_local_llm_gateway.py'
 if (-not (Test-Path -LiteralPath $GatewayScript -PathType Leaf)) { throw "Missing $GatewayScript" }
 $stateRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
 $logRoot = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\logs\v213-local-model'
-New-Item -ItemType Directory -Force -Path $stateRoot, $logRoot | Out-Null
 $statePath = Join-Path $stateRoot 'v213-local-model.json'
 $selectionPath = Join-Path $stateRoot 'v213-model-selection.json'
-
-function Test-Llama {
-    param([string]$Base)
-    foreach ($suffix in @('/v1/models?reload=1', '/models?reload=1', '/v1/models', '/health')) {
-        try {
-            $response = Invoke-WebRequest -UseBasicParsing -Uri ($Base.TrimEnd('/') + $suffix) -TimeoutSec 5
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) { return $true }
-        }
-        catch { }
-    }
-    return $false
-}
-
-function Get-RunningLlamaCandidates {
-    $result = New-Object System.Collections.Generic.List[string]
-    try {
-        $processes = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -match '(?i)llama|localai|kobold'
-        })
-        foreach ($process in $processes) {
-            try {
-                $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
-                foreach ($listener in $listeners) {
-                    $port = [int]$listener.LocalPort
-                    if ($port -gt 0) {
-                        $candidate = "http://127.0.0.1:$port"
-                        if (-not $result.Contains($candidate)) { $result.Add($candidate) }
-                    }
-                }
-            }
-            catch { }
-        }
-    }
-    catch { }
-    return @($result)
-}
 
 function Read-ModelSelection {
     if (-not (Test-Path -LiteralPath $selectionPath -PathType Leaf)) { return $null }
     try {
-        $selection = Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8 | ConvertFrom-Json
-        if (-not (Get-ObjectPropertyValue $selection 'model' '')) { return $null }
+        if ((Get-Item -LiteralPath $selectionPath).Length -gt 1048576) { throw 'SELECTION_TOO_LARGE' }
+        $raw = Get-Content -LiteralPath $selectionPath -Raw -Encoding utf8
+        if (-not $raw.TrimStart().StartsWith('{')) { throw 'INVALID_ROOT' }
+        $selection = $raw | ConvertFrom-Json
+        $savedModel = $null
+        $property = $selection.PSObject.Properties['model']
+        if ($null -ne $property) { $savedModel = $property.Value }
+        if ($savedModel -isnot [string] -or $savedModel -notmatch '\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z') { throw 'INVALID_MODEL' }
         return $selection
     }
-    catch { return $null }
+    catch { throw 'MODEL_SELECTION_INVALID' }
 }
 
 function Resolve-Llama {
-    if ($LlamaBaseUrl) {
-        if ($LlamaBaseUrl -notmatch '^http://(?:127\.0\.0\.1|localhost):\d{1,5}$') {
-            throw 'LlamaBaseUrl must be a loopback HTTP endpoint.'
+    # Resolve identity only. The actual catalog and complete-marker checks below
+    # must succeed on this endpoint; never discover/start an alternative service.
+    $candidate = $LlamaBaseUrl
+    if ([string]::IsNullOrEmpty($candidate)) {
+        $selection = Read-ModelSelection
+        $candidate = ''
+        if ($null -ne $selection) {
+            $property = $selection.PSObject.Properties['llama_base_url']
+            if ($null -ne $property) { $candidate = $property.Value }
         }
-        if (-not (Test-Llama $LlamaBaseUrl)) { throw "llama.cpp unavailable: $LlamaBaseUrl" }
-        return $LlamaBaseUrl.TrimEnd('/')
+        if ($candidate -isnot [string]) { throw 'MODEL_ROUTER_URL_INVALID' }
+        if ($candidate.Length -eq 0) { $candidate = 'http://127.0.0.1:8080' }
     }
-    $candidates = New-Object System.Collections.Generic.List[string]
-    $selection = Read-ModelSelection
-    $savedBase = [string](Get-ObjectPropertyValue $selection 'llama_base_url' '')
-    if ($savedBase -match '^http://(?:127\.0\.0\.1|localhost):\d{1,5}$') {
-        $candidates.Add($savedBase.TrimEnd('/'))
-    }
-    foreach ($candidate in @(
-        'http://127.0.0.1:8080', 'http://127.0.0.1:7905',
-        'http://127.0.0.1:14410', 'http://127.0.0.1:8813',
-        'http://127.0.0.1:8081', 'http://127.0.0.1:8000'
-    )) {
-        if (-not $candidates.Contains($candidate)) { $candidates.Add($candidate) }
-    }
-    foreach ($candidate in @(Get-RunningLlamaCandidates)) {
-        if (-not $candidates.Contains($candidate)) { $candidates.Add($candidate) }
-    }
-    foreach ($candidate in $candidates) {
-        if (Test-Llama $candidate) { return $candidate }
-    }
-    foreach ($starter in @('D:\LocalAI\Start-LocalAI.cmd', 'D:\llama.cpp\Start-LocalAI.cmd')) {
-        if (-not (Test-Path -LiteralPath $starter -PathType Leaf)) { continue }
-        Write-Host "Starting local llama.cpp stack: $starter" -ForegroundColor Cyan
-        Start-Process -FilePath $starter | Out-Null
-        $deadline = (Get-Date).AddSeconds(90)
-        while ((Get-Date) -lt $deadline) {
-            foreach ($candidate in (@(
-                'http://127.0.0.1:8080', 'http://127.0.0.1:7905',
-                'http://127.0.0.1:14410', 'http://127.0.0.1:8813'
-            ) + @(Get-RunningLlamaCandidates) | Select-Object -Unique)) {
-                if (Test-Llama $candidate) { return $candidate }
-            }
-            Start-Sleep -Seconds 2
-        }
-    }
-    throw 'No healthy llama.cpp OpenAI-compatible loopback endpoint was found.'
+    if ($candidate -notmatch '\Ahttp://(?:127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?/?\z') { throw 'MODEL_ROUTER_URL_INVALID' }
+    $port = if ($Matches[1]) { [int]$Matches[1] } else { 80 }
+    if ($port -lt 1 -or $port -gt 65535) { throw 'MODEL_ROUTER_URL_INVALID' }
+    return $candidate.TrimEnd('/')
 }
 
 function Get-ModelCatalog {
@@ -318,17 +274,27 @@ function Invoke-SharedModelIdentity {
     return $raw | ConvertFrom-Json
 }
 
+function Get-RuntimeModelProfile {
+    $script:RuntimeProfileHash = ''
+    if ($null -eq [Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')) { return $null }
+    $raw = & $python (Join-Path $ProjectRoot 'scripts/v213_model_profile.py') --env
+    if ($LASTEXITCODE -ne 0) { throw 'MODEL_PROFILE_INVALID' }
+    $validated = $raw | ConvertFrom-Json
+    $script:RuntimeProfileHash = [string]$validated.profile_sha256
+    return $validated.profile
+}
+
 function Resolve-Model {
     param([string]$Base, [string]$Requested)
     $catalog = @(Get-ModelCatalog $Base)
     $ids = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' '') })
     $names = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' ''); @(Get-ObjectPropertyValue $_ 'aliases' @()) })
-    $selection = Read-ModelSelection
     $candidate = ''
     if (-not [string]::IsNullOrWhiteSpace($Requested)) {
         $candidate = $Requested.Trim()
     }
     else {
+        $selection = Read-ModelSelection
         $saved = [string](Get-ObjectPropertyValue $selection 'model' '')
         if (-not [string]::IsNullOrWhiteSpace($saved)) { $candidate = $saved.Trim() }
     }
@@ -348,16 +314,26 @@ function Resolve-Model {
 function Test-SelectedModelRoute {
     param([string]$Base, [string]$SelectedModel, [object[]]$Catalog)
     $policy=Get-Content -LiteralPath (Join-Path $ProjectRoot 'config/v213-compact-qa-v1.json') -Raw -Encoding utf8 | ConvertFrom-Json
-    $body = [ordered]@{
+    $profile = Get-RuntimeModelProfile
+    if ($profile -and $profile.model -cne $SelectedModel) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $generation = [ordered]@{
         model = $SelectedModel
         messages = @(@{ role = 'user'; content = $policy.smoke_prompt })
         temperature = 0
         max_tokens = $policy.smoke_output_tokens
         stream = $false
         chat_template_kwargs = @{ enable_thinking=$policy.compact_request_enable_thinking }
-    } | ConvertTo-Json -Depth 6 -Compress
+    }
+    $probeTimeout = 300 # retained legacy cold-start probe only
+    if ($profile) {
+        $generation.max_tokens = $profile.smoke_output_tokens
+        $generation.chat_template_kwargs = @{ enable_thinking = $profile.enable_thinking }
+        $generation['reasoning_effort'] = $profile.reasoning_effort
+        $probeTimeout = [int][Math]::Floor($profile.timeout_ms / 1000)
+    }
+    $body = $generation | ConvertTo-Json -Depth 6 -Compress
     try {
-        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 300
+        $response = Invoke-RestMethod -Method Post -Uri ($Base.TrimEnd('/') + '/v1/chat/completions') -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec $probeTimeout -MaximumRedirection 0
         $null=Invoke-SharedModelIdentity -Selected $SelectedModel -Catalog $Catalog -Response $response -VerifyResponse
     }
     catch { throw 'MODEL_ROUTING_PROBE_FAILED; complete_exact_identity_and_marker_required=true' }
@@ -565,6 +541,28 @@ function Start-HealthyNamedTunnel {
     }
 }
 
+if ($RoutingCheckOnly) {
+    # No deployment credential reads, runtime config writes, gateway/tunnel start,
+    # registration or publication. Requests stay on the resolved loopback Router.
+    [Net.WebRequest]::DefaultWebProxy = $null
+    $python = $env:PROJECT_PYTHON
+    if ([string]::IsNullOrWhiteSpace($python)) {
+        $python = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime\python-3.12.10\python.exe'
+    }
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'ROUTING_CHECK_PYTHON_UNAVAILABLE' }
+    & $python -c "import requests,sys,struct; assert sys.version_info[:3] == (3,12,10) and struct.calcsize('P') == 8" 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'ROUTING_CHECK_PYTHON_UNQUALIFIED' }
+    $checkProfile = Get-RuntimeModelProfile
+    if (-not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
+    if ($Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $checkBase = Resolve-Llama
+    $checkModel = Resolve-Model $checkBase ([string]$checkProfile.model)
+    Test-SelectedModelRoute $checkBase ([string]$checkModel.model) @($checkModel.identity_catalog)
+    [ordered]@{scope='LOCAL_ROUTING_CHECK_ONLY';complete_exact_marker=$true;model_profile_sha256=$script:RuntimeProfileHash;release_qualified=$false}|ConvertTo-Json -Compress
+    return
+}
+
+New-Item -ItemType Directory -Force -Path $stateRoot, $logRoot | Out-Null
 $operationLockScript = Join-Path $ProjectRoot 'scripts\v213_operation_lock.ps1'
 if (-not (Test-Path -LiteralPath $operationLockScript -PathType Leaf)) { throw 'R75 operation-lock module is missing.' }
 . $operationLockScript
@@ -586,13 +584,20 @@ if ($tunnelPolicy.mode -eq 'FreeRelay') {
 }
 $GatewayPort = Resolve-GatewayPort $GatewayPort
 $python = Resolve-Python
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { $LlamaBaseUrl='http://127.0.0.1:8080' }
+$runtimeProfile = Get-RuntimeModelProfile
+if ($runtimeProfile) {
+    if ($Model -and $Model -cne $runtimeProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    $Model = [string]$runtimeProfile.model
+}
 $llama = Resolve-Llama
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
 $modelResolution = Resolve-Model $llama $Model
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and $Model -cne 'qwen38-q6') { throw "FREE_RELAY requires exact model qwen38-q6; observed=$Model" }
+# A validated profile owns the exact model in the new lane. Keep the retained
+# Q6 restriction for unprofiled callers; Test-SelectedModelRoute below rechecks
+# profile agreement and requires a complete response with exact identity.
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile -and $Model -cne 'qwen38-q6') { throw 'FREE_RELAY_LEGACY_MODEL_MISMATCH' }
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET

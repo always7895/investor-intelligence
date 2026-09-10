@@ -25,6 +25,32 @@ class SourceRegistryTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.registry = load_registry()
 
+    def test_security_flags_require_actual_booleans(self) -> None:
+        path = ROOT / "config/sources/americas-authorities.json"
+        policy = load_json(DEFAULT_POLICY_PATH)
+        for section, field in (("runtime", "enabled"), ("access", "free_access_required"),
+                               ("access", "payment_required"), ("provenance", "required"),
+                               ("provenance", "correction_tracking")):
+            for value in ("false", "true", 0, 1):
+                raw = load_json(path)["sources"][0]
+                raw[section][field] = value
+                with self.subTest(section=section, field=field, value=value), self.assertRaises(SourceRegistryError):
+                    _validate_source(raw, catalog_file=path, policy=policy)
+
+    def test_integer_fields_do_not_truncate_or_accept_booleans(self) -> None:
+        path = ROOT / "config/sources/americas-authorities.json"
+        for value in (True, 1.9, "2"):
+            raw = load_json(path)["sources"][0]
+            raw["runtime"]["per_host_concurrency"] = value
+            with self.assertRaises(SourceRegistryError):
+                _validate_source(raw, catalog_file=path, policy=load_json(DEFAULT_POLICY_PATH))
+
+    def test_url_errors_do_not_echo_credentials_and_nonstandard_ports_fail(self) -> None:
+        for url in ("https://synthetic-user:synthetic-private@example.test/", "https://example.test:8443/"):
+            with self.assertRaises(SourceRegistryError) as error:
+                canonicalize_url(url)
+            self.assertNotIn("synthetic-private", str(error.exception))
+
     def test_registry_has_no_artificial_source_count_limit(self) -> None:
         summary = self.registry.summary()
         self.assertIsNone(summary["artificial_source_count_limit"])

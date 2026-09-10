@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -83,7 +84,12 @@ def _safe_https(value: Any) -> bool:
 
 
 def _review_date(value: Any) -> bool:
-    return isinstance(value, str) and bool(DATE_RE.fullmatch(value))
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        return False
+    try:
+        return date.fromisoformat(value) <= datetime.now(timezone.utc).date()
+    except ValueError:
+        return False
 
 
 def audit_public_options_providers(root: Path = ROOT) -> tuple[list[str], dict[str, Any]]:
@@ -186,7 +192,7 @@ def audit_public_options_providers(root: Path = ROOT) -> tuple[list[str], dict[s
             findings.append(f"{provider_id or label}: invalid rights_status")
         if adapter_status not in ALLOWED_ADAPTER_STATUSES:
             findings.append(f"{provider_id or label}: invalid adapter_status")
-        if automation_allowed not in (True, False, None):
+        if automation_allowed is not None and type(automation_allowed) is not bool:
             findings.append(f"{provider_id or label}: automated_access_allowed must be true, false or null")
 
         if rights_status == "review_before_enable":
@@ -222,6 +228,9 @@ def audit_public_options_providers(root: Path = ROOT) -> tuple[list[str], dict[s
             if adapter_status != "not_permitted":
                 findings.append(f"{provider_id}: pinned provider cannot receive an executable adapter")
 
+        for field in ("runtime_enabled", "line_quote_eligible"):
+            if type(provider.get(field)) is not bool:
+                findings.append(f"{provider_id or label}: {field} must be a boolean")
         enabled = provider.get("runtime_enabled") is True
         line_eligible = provider.get("line_quote_eligible") is True
         reviewed = (

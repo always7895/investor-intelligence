@@ -77,7 +77,7 @@ class R75GatewayProcessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="Investor Intelligence 測試 (1) ") as directory:
             scripts = Path(directory) / "專案 (1)" / "scripts"
             scripts.mkdir(parents=True)
-            for name in ("v212_local_llm_gateway.py", "v213_local_llm_gateway.py", "v213_compact_qa_gateway.py"):
+            for name in ("v212_local_llm_gateway.py", "v213_local_llm_gateway.py", "v213_compact_qa_gateway.py", "v213_model_profile.py"):
                 shutil.copy2(ROOT / "scripts" / name, scripts / name)
             config = scripts.parent / "config"
             config.mkdir()

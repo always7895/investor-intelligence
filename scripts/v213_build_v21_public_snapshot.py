@@ -112,10 +112,8 @@ def _timestamp(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
-        try:
-            parsed = datetime.fromisoformat(text[:10] + "T00:00:00+00:00")
-        except ValueError:
-            return None
+        # Invalid suffixes/times are failed evidence, not date-only evidence.
+        return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)

@@ -132,12 +132,11 @@ def _timestamp(value: Any, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        try:
-            parsed = datetime.fromisoformat(text[:10] + "T00:00:00+00:00")
-        except ValueError:
-            raise SerenityEvidenceError(
-                f"Invalid evidence timestamp: {label}"
-            ) from exc
+        # Date-only ISO values are already accepted above. Never rescue a
+        # corrupt timestamp by discarding its invalid time/offset/suffix.
+        raise SerenityEvidenceError(
+            f"Invalid evidence timestamp: {label}"
+        ) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)

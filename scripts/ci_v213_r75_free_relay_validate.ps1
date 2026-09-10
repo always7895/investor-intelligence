@@ -15,7 +15,7 @@ try {
     if (@(git status --porcelain).Count -ne 0) { throw 'FREE_RELAY validation requires a clean checkout.' }
     $changed = @(git diff --name-only "$baseCommit..$sha")
     $allowed = @(
-        '.github/workflows/v213-r75-release.yml',
+        '.github/workflows/v213-r75-release.yml','.gitattributes',
         'AGENTS.md','skills/serenity-public-research/SKILL.md',
         'skills/serenity-public-research/references/RESEARCH_METHOD.md','tests/test_agent_skill_structure.py',
         'skills/serenity-public-research/references/CROSS_VALIDATION.md',
@@ -27,8 +27,13 @@ try {
         'cloud/src/qa.ts','cloud/src/v213/free-relay.ts','cloud/src/v213/production-worker.ts',
         'cloud/src/line-messages.ts','cloud/src/v21/line-push.ts',
         'cloud/src/v213/top20-presentation.ts','cloud/test/r75-line-presentation-proof.ts',
+        'cloud/src/v213/company-evidence-report.ts','docs/DETAILED_REPORT_CONTRACT.md',
+        'cloud/src/v213/public-citation.ts','cloud/test/public-citation.test.ts',
+        'cloud/src/v213/public-snapshot.ts','cloud/test/public-snapshot-view.test.ts',
+        'scripts/kv_namespace_isolation_gate.py','tests/test_kv_namespace_isolation_gate.py',
         'cloud/src/v211/worker.ts','cloud/src/v213/compact-qa.ts','cloud/src/v213/readiness.ts',
-        'cloud/src/v213/top20-report.ts','cloud/src/v213/broadcast.ts','cloud/test/v213-top20-report.test.ts',
+        'cloud/src/v213/activation.ts','cloud/src/v213/activation-v3.ts',
+        'cloud/src/v213/top20-report.ts','cloud/src/v213/broadcast.ts','cloud/test/v213-top20-report.test.ts','cloud/test/qa.test.ts',
         'cloud/test/v213-scheduled-broadcast.test.ts','scripts/audit_v213_refresh_tasks.ps1',
         'cloud/test/v213-compact-qa.test.ts','cloud/test/v213-qa-reference-job.test.ts','cloud/test/v213-readiness.test.ts',
         'config/v213-compact-qa-v1.json','sync-v213-activation-bundle.ps1',
@@ -36,24 +41,61 @@ try {
         'scripts/test_v213_edge_readiness.ps1','scripts/v213_edge_readiness.ps1','tests/test_v213_compact_qa_gateway.py',
         'tests/test_v213_r75_gateway_process.py','tests/test_r75_qa_evidence.py',
         'tests/test_v213_bridge_model_identity.py','install-v213-source-diverse-runtime-v2.ps1',
+        'install-v213-source-diverse-runtime.ps1','install-v213-serenity-latest-runtime.ps1','tests/test_installer_model_authority.py','tests/test_installer_boundaries.py',
+        'scripts/v213_v21_progress_runner.py','tests/test_v213_v21_progress_runner.py',
         'scripts/v213_windows_security.ps1','tests/test_v213_windows_security.py',
-        'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py',
+        'scripts/v213_sealed_refresh.ps1','tests/test_v213_sealed_refresh.py','tests/test_v213_journal_reconciliation.py',
         'run-v213-scheduled-refresh.ps1','register-v213-refresh-tasks.ps1',
         'cloud/test/r75-live-bench-worker.ts','scripts/v213_qa_live_gate.py','scripts/verify_r75_qa_evidence.py',
-        'state/r75-qa-live-qualification.json',
+        'state/r75-qa-live-qualification.json','state/r75-qa-live-model-profile-qualification.json',
         'cloud/test/v213-free-relay.test.ts','cloud/wrangler.v213.production.template.toml',
         'cloud/src/v21/top20.ts','cloud/test/v213-activation.test.ts','cloud/package.json','cloud/package-lock.json',
         'docs/V213_FREE_WORKERS_RELAY.md','launcher/InvestorIntelligenceLauncher.cs','install-v213-runtime.ps1',
         'register-v213-free-relay-task.ps1','run-v213-local-llm-bridge-source-diverse.ps1',
         'run-v213-local-llm-bridge.ps1','run-v213-local-serenity-latest.ps1',
         'run-v213-local-source-diverse.ps1','run-v213-local.ps1',
-        'scripts/ci_v213_r75_free_relay_package.ps1','scripts/ci_v213_r75_free_relay_validate.ps1',
+        'scripts/ci_v213_r75_free_relay_package.ps1','scripts/ci_v213_r75_free_relay_validate.ps1','scripts/resolve_node.ps1',
         'scripts/ci_v213_r75_validate.ps1','scripts/run_v213_local_llm_bridge_core.ps1',
         'scripts/run_v213_local_llm_bridge_core_v2.ps1','scripts/test_v213_free_relay.ps1',
         'scripts/test_v213_named_tunnel.ps1','scripts/v213_free_relay.ps1',
         'scripts/v213_free_relay_heartbeat.ps1','scripts/verify_v213_r75_free_relay_hotfix.py',
         'state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md','state/STATUS.md',
-        'tests/test_v213_free_relay_package_payload.py'
+        'tests/test_v213_free_relay_package_payload.py',
+        # Reviewed staged/local-only source collection and shared admission fixes.
+        # Exact paths only: no blanket scripts/, tests/ or state/ exception.
+        'scripts/adapters/base.py','scripts/adapters/official_rss.py',
+        'scripts/adapters/staged_public.py','scripts/adapters/taiwan_equities.py',
+        'scripts/fetch_public_source_observations.py','scripts/import_option_observations.py',
+        'scripts/options_service.py','scripts/public_options_provider_gate.py',
+        'scripts/build_line_public_options.py','tests/test_build_line_public_options.py',
+        'scripts/adapters/issuer_directory.py','tests/test_issuer_directory.py',
+        'config/public-options-provider-candidates.json','docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md',
+        'docs/WORKSPACE_MAINTENANCE.md',
+        'scripts/build_v213_activation_bundle_v2.py','scripts/v213_build_v21_public_snapshot.py',
+        'tests/test_activation_evidence_timestamps.py',
+        'state/research-method-refresh-20260909.json',
+        'state/research-dossiers/TSEM-20260909.json','tests/test_research_dossier_receipts.py',
+        'scripts/build_v212_top20_report.py','scripts/historical_return_evidence.py','run-v212-local.ps1',
+        'tests/test_v212_top20_report.py','tests/test_historical_return_evidence.py',
+        'config/authoritative-source-catalog.research-candidate.json','config/authoritative-sources/public-research-candidates.json',
+        'tests/test_authoritative_source_catalog.py',
+        'scripts/source_observation.py','scripts/source_registry.py',
+        'state/public-source-development-proof.json','state/public-source-pinned-runtime-proof.json',
+        'tests/test_import_option_observations.py','tests/test_official_news.py',
+        'tests/test_options_service.py','tests/test_public_options_provider_gate.py',
+        'tests/test_public_source_transport.py','tests/test_source_observation.py',
+        'tests/test_source_registry.py','tests/test_taiwan_equity_sources.py',
+        'tests/test_current_release_lane.py','scripts/test_v213_operation_lock.ps1',
+        'scripts/v213_model_profile.py','cloud/src/v213/model-profile.ts',
+        'config/v213-model-profile-v1.json','tests/test_v213_model_profile.py',
+        'cloud/test/model-profile.test.ts','state/model-profile-development-failure.json','state/model-profile-none-development-proof.json',
+        'state/model-thinking-observation-20260909.json','state/exe-local-route-observation-20260909.json',
+        'state/exe-local-route-final-20260909.json',
+        'scripts/r75_release_inputs.py','tests/test_r75_release_inputs.py',
+        'state/r75-qa-live-current.ref.json','state/r75-qa-live-direct-20260909.json',
+        'state/r75-qa-live-activation-v3-20260909.json',
+        # Exact independently verified Sept10 receipt; no state wildcard/baseline waiver.
+        'state/r75-qa-live-financial-basis-20260910.json'
     )
     foreach ($path in $changed) {
         # Documentation sync does not require a growing per-filename exception list.
@@ -84,10 +126,20 @@ try {
     if (-not $workerResults.success -or $workerResults.numFailedTests -ne 0) { throw 'Worker evidence is not successful.' }
     # Consume the already completed, exact-runtime-source-bound live test.
     # CI never creates a tunnel/Worker, accesses the GPU or writes Production.
-    $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
-    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof
+    $qaInputRaw = & $env:PROJECT_PYTHON scripts/r75_release_inputs.py --project-root $ProjectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Committed QA input selection failed.' }
+    $qaInput = $qaInputRaw | ConvertFrom-Json
+    if ($qaInput.source_commit -cne $sha) { throw 'QA input source commit mismatch.' }
+    $liveProof = Join-Path $ProjectRoot $qaInput.receipt_path
+    $profileArgs=@()
+    $profilePath=Join-Path $ProjectRoot 'config/v213-model-profile-v1.json'
+    if(Test-Path -LiteralPath $profilePath -PathType Leaf){
+        $profileArgs=@('--model-profile',$profilePath)
+    }
+    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof @profileArgs
     if ($LASTEXITCODE -ne 0) { throw 'Source-bound live Q&A qualification failed.' }
     $qa = $qaRaw | ConvertFrom-Json
+    if ((Get-FileHash -LiteralPath $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $qaInput.receipt_sha256) { throw 'Committed QA input changed during validation.' }
     if ($qa.release_ready -ne $true) { throw 'Live Q&A is not release-qualified.' }
     $env:R75_QA_RELEASE_READY = 'true'
     if ($env:GITHUB_ENV) { 'R75_QA_RELEASE_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
@@ -100,9 +152,9 @@ try {
         workflow_run_id=$runId;workflow_run_attempt=$attempt;windows_powershell_51='PASS';powershell_7='PASS';python_full_suite='PASS'
         worker_typecheck='PASS';worker_test_files=@($workerResults.testResults).Count;worker_tests=[int]$workerResults.numTotalTests;
         compact_context='PASS';deployment_readiness='PASS_REAL_ISOLATED';live_qa='PASS';live_free_relay_smoke='PASS';release_ready=$true;
-        live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
+        live_qa_max_latency_ms=$qa.max_latency_ms;qa_live_receipt_path=$qaInput.receipt_path;qa_live_receipt_sha256=(Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant();
         exact_sealed_bundle_predeploy_gate='PASS_SYNTHETIC';sec_filing_provenance_schema='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false
-        quick_tunnel_ephemeral=$true;exact_model='qwen38-q6';health_schema_version=2;consecutive_health_checks=3
+        quick_tunnel_ephemeral=$true;exact_model=$qa.exact_model;model_profile_sha256=$qa.model_profile_sha256;health_schema_version=2;consecutive_health_checks=3
         worker_runtime_redirect_compatibility='PASS_SYNTHETIC';authenticated_smoke_gate='PASS_SYNTHETIC';signed_route_registration='PASS_SYNTHETIC';stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';rollback='PASS'
         allow_test_tunnel_exception_used=$false;protected_release_semantics_unchanged=$true;production_mutation_by_ci=$false;external_mutation=$false
         worker_deployed=$false;production_kv_or_do_written=$false;line_message_sent=$false;schedules_registered=$false;completed_utc=(Get-Date).ToUniversalTime().ToString('o')

@@ -29,6 +29,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import v212_local_llm_gateway as base
 from v213_compact_qa_gateway import compact_upstream, complete_compact_response, resolve_model_id
+from v213_model_profile import parse_profile, profile_sha256
 
 ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
@@ -437,7 +438,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if self.path.split("?", 1)[0] != "/health":
             super().do_GET()
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID', 'llama_reachable': False})
+            return
+        selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         try:
             response = requests.get(
                 base.llama_base_url() + "/health",
@@ -448,12 +455,12 @@ class V213GatewayHandler(base.GatewayHandler):
             upstream_health = False
         self._json(
             200,
-            _build_health_payload(
+            {**_build_health_payload(
                 selected,
                 _available_model_catalog(),
                 upstream_health,
                 _source_audit_health(),
-            ),
+            ), **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {})},
         )
 
 
@@ -481,7 +488,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
             self._json(400, {"error": "MESSAGES_REQUIRED"})
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID'})
+            return
+        selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         requested = str(body.get("model") or "").strip()
         if not selected:
             self._json(503, {"error": "SELECTED_MODEL_NOT_CONFIGURED"})
@@ -498,7 +511,7 @@ class V213GatewayHandler(base.GatewayHandler):
             return
         try:
             try:
-                upstream = compact_upstream(body, selected)
+                upstream = compact_upstream(body, selected, runtime_profile)
             except (ValueError, TypeError, KeyError):
                 self._json(400, {"error": "COMPACT_REQUEST_INVALID"})
                 return
@@ -524,14 +537,16 @@ class V213GatewayHandler(base.GatewayHandler):
                 return
             response = requests.post(
                 base.llama_url(), json=upstream,
-                headers={"content-type": "application/json"}, timeout=(2, 18) if is_compact else (5, 180),
+                headers={"content-type": "application/json"},
+                timeout=(2, runtime_profile['timeout_ms'] / 1000) if runtime_profile else ((2, 18) if is_compact else (5, 180)),
             )
             if not response.ok:
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
             if not isinstance(result, dict) or result.get("model") != canonical or (is_compact and not complete_compact_response(result, selected, catalog)):
-                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH"})
+                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH",
+                                 **({'failure_kind': 'MODEL_MISMATCH' if not isinstance(result, dict) or result.get('model') != canonical else 'INCOMPLETE'} if runtime_profile else {})})
                 return
             if isinstance(result, dict):
                 result["ii_exact_model_pin"] = {
@@ -539,6 +554,7 @@ class V213GatewayHandler(base.GatewayHandler):
                     "canonical_model": canonical,
                     "identity_proof": "unique_router_catalog",
                     "request_model_substitution_allowed": False,
+                    **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {}),
                 }
                 result["ii_source_ensemble"] = {
                     "successful_source_families": context.get("successful_source_families", []) if isinstance(context, dict) else [],
@@ -546,6 +562,11 @@ class V213GatewayHandler(base.GatewayHandler):
                     "model_confidence_cap": context.get("model_confidence_cap", "LIMITED") if isinstance(context, dict) else "LIMITED",
                 }
             self._json(200, result)
+        except requests.Timeout as exc:
+            if runtime_profile:
+                self._json(504, {'error': 'MODEL_PROFILE_TIMEOUT'})
+            else:
+                self._json(502, {'error': 'LOCAL_GATEWAY_FAILED', 'detail': type(exc).__name__})
         except Exception as exc:
             self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
         finally:

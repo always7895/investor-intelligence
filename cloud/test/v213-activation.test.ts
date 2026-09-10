@@ -1,14 +1,18 @@
 /// <reference types="node" />
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
+import productionWorker from "../src/v213/production-worker";
+import { publicJson } from "../src/storage";
+import { parseQuery } from "../src/core";
+import { deterministicAnswer } from "../src/qa";
 import { parseV21Top20 } from "../src/v21/top20";
 import { asKv, MemoryKv } from "./fake-kv";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "../src/v213/activation-v2";
+} from "../src/v213/activation-v3";
 
 const SCORING_VERSION = "system-operationalization-v2.1.3-diversified";
 const MARKET_DEGRADATION = "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE";
@@ -382,6 +386,22 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it("rejects credential citations even with valid payload digests before any KV write", async () => {
+    const { env, publicKv, privateKv, securityKv } = runtime();
+    const value = await bundle();
+    const report = JSON.parse(value.payloads.v213_top20_report_json);
+    report.records[0].orders_confidence = "PRIMARY_ONLY";
+    report.records[0].orders_as_of = value.generated_at;
+    report.records[0].current_order_source_urls = ["https://example.com/report?access%255ftoken=synthetic"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+    expect(publicKv.values.size).toBe(0);
+    expect(privateKv.values.size).toBe(0);
+    expect(securityKv.values.size).toBe(0);
+    report.records[0].current_order_source_urls = ["https://example.com/report"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).status).toBe("accepted");
+  });
   it("preflights the exact supplied sealed bundle through Worker commit/readback/replay/rollback/finalize without network", async () => {
     const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OFFLINE_PREFLIGHT_NETWORK_FORBIDDEN"));
     try {
@@ -464,7 +484,21 @@ describe("v2.1.3 atomic activation transaction", () => {
     publicKv.values.set("snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest", "old-options");
 
     const value = await bundle();
-    const accepted = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const body = JSON.stringify(value);
+    const key = "synthetic-test-only-key-".repeat(3);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = "a".repeat(32);
+    const version = "12345678-1234-1234-1234-123456789abc";
+    const response = await productionWorker.fetch(new Request("https://synthetic.invalid/v213/admin/activation-bundle", {
+      method: "POST", body, headers: {
+        "x-ii-expected-worker-version": version, "x-ii-v21-timestamp": timestamp,
+        "x-ii-v21-nonce": nonce,
+        "x-ii-v21-signature": createHmac("sha256", key).update(`${timestamp}.${nonce}.${body}`).digest("hex"),
+      },
+    }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version } } as any,
+    { waitUntil: () => undefined } as unknown as ExecutionContext);
+    expect(response.status).toBe(200);
+    const accepted = await response.json<Record<string, unknown>>();
     expect(accepted.status).toBe("accepted");
     expect(accepted.pointer_written_last).toBe(true);
     expect(accepted.rollback_available).toBe(true);
@@ -474,8 +508,15 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:source-independence:latest`)).toBeTruthy();
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe("old-universe");
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:options:latest`)).toBe("old-options");
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe(false);
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:options:latest`)).toBe(false);
+    publicKv.values.set('options:latest', JSON.stringify([{ source: 'stale-direct-key' }]));
+    publicKv.values.set('v211:universe:latest', JSON.stringify({ source: 'stale-direct-key' }));
+    expect(await publicJson(env, ['options:latest', 'latest_options'])).toBeNull();
+    expect(await publicJson(env, ['v211:universe:latest'])).toBeNull();
+    expect(await deterministicAnswer(env, parseQuery('AAOI options'), {
+      tenantId: 'synthetic-public-only', chatType: 'user',
+    })).toBe('OPTION_DATA_UNAVAILABLE');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
 
     const replay = await ingestV213ActivationBundle(JSON.stringify(value), env);
@@ -486,6 +527,8 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(rolledBack.status).toBe("rolled_back");
     expect(rolledBack.exact_pointer_restored).toBe(true);
     expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest')).toBe('old-options');
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:v211:universe:latest')).toBe('old-universe');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
   });
 

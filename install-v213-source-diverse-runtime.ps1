@@ -41,6 +41,9 @@ foreach($relative in $required){
     product_version='2.1.3'
     runtime_profile='source-diverse-exact-model'
     installed_utc=(Get-Date).ToUniversalTime().ToString('o')
+    preferred_model=$null
+    model_selection_authority='runtime_model_profile'
+    model_profile_qualified=$false
     health_schema_version=2
     source_independence_gate='scripts/v213_source_independence_gate.py'
     source_policy='config/v213-serenity-public-logic-policy.json'

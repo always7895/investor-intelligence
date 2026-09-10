@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import worker, { freeRelayRequestEnv } from "../src/v213/production-worker";
 import { processAuthorizedLineEvent } from "../src/v211/worker";
 import { v213Top20ReportAnswer } from "../src/v213/top20-report";
@@ -9,6 +10,7 @@ import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 import { asKv, MemoryKv } from "./fake-kv";
 import {
   formatV213Top20Report,
+  loadV213FreshTop20Report,
   parseV213Top20Report,
   V213_NO_CURRENT_ORDERS,
   V213_NO_FUTURE_ORDER_ESTIMATE,
@@ -53,6 +55,12 @@ function report() {
   };
 }
 
+async function evidenceCommand(env: Parameters<typeof v213Top20LineAnswer>[0]): Promise<string> {
+  const cards = await v213Top20LineAnswer(env, parseQuery("Top20"));
+  if (!Array.isArray(cards)) throw new Error("EXPECTED_BOUND_CARDS");
+  return (cards[0] as any).contents.contents[0].footer.contents.find((item: any) => item.type === "button").action.text;
+}
+
 afterEach(() => vi.unstubAllGlobals());
 describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it("accepts exactly 20 closed-schema seven-field rows", () => {
@@ -75,6 +83,24 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     for (const line of text.split("\n")) expect(line.split("｜")).toHaveLength(7);
   });
 
+  it.each([
+    ["ticker", true], ["ticker", 2330], ["ticker", ["T00"]],
+    ["generated_at", 0], ["generated_at", ["2026-09-09T00:00:00Z"]],
+    ["retrieved_at", 0], ["retrieved_at", ["2026-09-09T00:00:00Z"]],
+  ])("does not coerce %s identities or clocks from non-string values", (field, value) => {
+    const data = report();
+    if (field === "generated_at") (data as any)[field] = value;
+    else (data.records[0] as any)[String(field)] = value;
+    expect(parseV213Top20Report(data)).toBeNull();
+  });
+
+  it.each(["long_term_return_pct", "short_term_return_pct"] as const)("rejects impossible stock-price losses in %s", field => {
+    const data = report(); data.records[0]![field] = -100.01;
+    expect(parseV213Top20Report(data)).toBeNull();
+    data.records[0]![field] = -100;
+    expect(parseV213Top20Report(data)).not.toBeNull();
+  });
+
   it("refuses delimiter injection in order summaries", () => {
     const bad = report();
     bad.records[0]!.current_orders = "A｜B";
@@ -84,6 +110,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five", async () => {
     const kv = new MemoryKv();
     const data = report(); data.generated_at = new Date().toISOString();
+    data.records[0]!.retrieved_at = data.generated_at;
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
@@ -99,9 +126,145 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(proof.header).toContain("公司現在訂單 / Current orders");
     expect(proof.header).toContain("未來訂單預估 / Future order outlook");
+    const command = messages[0].contents.contents[0].footer.contents.find((x: any) => x.type === "button").action.text;
+    expect(command).toContain("T00");
+    expect(command).not.toBe("Top20 文字");
+    messages.length = 0;
+    await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: command }, timestamp: Date.now() }, "synthetic-report-tenant");
+    const detail = messages.map(x => x.text ?? "").join("\n");
+    expect(detail).toContain("T00｜本輪 Top20");
+    expect(detail).not.toContain("T01");
+    expect(detail).toContain("https://www.sec.gov/example/current");
+    expect(detail).toContain("6 個月情境");
+    expect(detail).toContain("1 年情境");
+    expect(detail).toContain("2 年情境");
+    expect(detail).toContain("尚非完整深度估值報告");
+    expect(detail).toContain("兩年累積報酬：缺少");
+    expect(detail).not.toBe(formatV213Top20Report(parseV213Top20Report(data)!));
+    assertLineMessages(messages);
   });
 
-  it("preserves all maximum-length fields in cards and complete text blocks without clipping", () => {
+  it.each(["content", "representation", "run"])("rejects an actual old card click after same-date %s replacement", async mutation => {
+    const kv = new MemoryKv();
+    const data = report(); data.generated_at = new Date().toISOString();
+    data.records[0]!.retrieved_at = data.generated_at;
+    const raw = JSON.stringify(data);
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    const save = (run: string, body: string) => {
+      kv.values.set(`snapshot:${run}:v213:top20-report:latest`, body);
+      kv.values.set(`snapshot:${run}:last_successful_pipeline_timestamp`, data.generated_at);
+    };
+    save("run-a", raw);
+    const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
+    const messages: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      messages.push(...JSON.parse(String(init.body)).messages); return new Response("{}");
+    }));
+    const send = async (text: string) => {
+      messages.length = 0;
+      await processAuthorizedLineEvent(env, {} as ExecutionContext, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text }, timestamp: Date.now() }, "synthetic-binding-tenant");
+    };
+    await send("Top20");
+    const command = messages[0].contents.contents[0].footer.contents.find((item: any) => item.type === "button").action.text;
+    expect(command).toContain(`s:run-a ${createHash("sha256").update(raw, "utf8").digest("hex")}`);
+    if (mutation === "run") {
+      save("run-b", raw); kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
+    } else if (mutation === "representation") save("run-a", JSON.stringify(data, null, 2));
+    else { data.records[0]!.industry = "合成異動內容"; save("run-a", JSON.stringify(data)); }
+    await send(command);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toContain("內容不符");
+    expect(messages[0].text).not.toContain("合成異動內容");
+  });
+
+  it("freezes admitted report objects and refuses malformed/oversized report text", async () => {
+    const kv = new MemoryKv(); const data = report(); data.generated_at = new Date().toISOString();
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    const loaded = await loadV213FreshTop20Report(env, parseQuery("Top20"));
+    if (!loaded || typeof loaded === "string") throw new Error("EXPECTED_REPORT");
+    expect(Object.isFrozen(loaded)).toBe(true);
+    expect(Object.isFrozen(loaded.records[0]!.current_order_source_urls)).toBe(true);
+    expect(() => { loaded.records[0]!.industry = "異動"; }).toThrow();
+    expect(await v213Top20LineAnswer(env, parseQuery(`Top20 證據詳情 T00 ${data.generated_at}`))).toContain("有效");
+    for (const raw of ["{broken", " ".repeat(2097153) + JSON.stringify(data)]) {
+      kv.values.set("v213:top20-report:latest", raw);
+      expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("未通過驗證");
+    }
+  });
+
+  it("refuses obsolete card generations, stale row retrievals and unknown companies", async () => {
+    const data = report(); data.generated_at = new Date().toISOString();
+    data.records[0]!.retrieved_at = data.generated_at;
+    const kv = new MemoryKv();
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    const save = () => { kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at); };
+    save();
+    const command = await evidenceCommand(env);
+    expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
+    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; save();
+    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("內容不符");
+    const staleRowCommand = await evidenceCommand(env);
+    expect(await v213Top20LineAnswer(env, parseQuery(staleRowCommand))).toContain("取得時間已過期");
+    data.generated_at = new Date(Date.now() + 1000).toISOString(); save();
+    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
+  });
+
+  it("does not combine a report with another run's fresh pipeline stamp", async () => {
+    class SwitchingKv extends MemoryKv {
+      pointerReads = 0;
+      override async get<T = string>(key: string, type?: "text" | "json"): Promise<T | string | null> {
+        if (key === "snapshot:current") this.pointerReads++;
+        const value = await super.get<T>(key, type);
+        if (key === "snapshot:run-a:v213:top20-report:latest") this.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
+        return value;
+      }
+    }
+    const data = report(); data.generated_at = new Date().toISOString();
+    const kv = new SwitchingKv();
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    kv.values.set("snapshot:run-a:v213:top20-report:latest", JSON.stringify(data));
+    kv.values.set("snapshot:run-a:last_successful_pipeline_timestamp", new Date(Date.now() - 86400000).toISOString());
+    kv.values.set("snapshot:run-b:last_successful_pipeline_timestamp", data.generated_at);
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("已過期");
+    expect(kv.pointerReads).toBe(1);
+  });
+
+  it("rejects credential-bearing citations instead of displaying them", async () => {
+    const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
+    const kv = new MemoryKv(); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    for (const url of ["https://fixture@example.com/report", "https://www.sec.gov/report?access%5Ftoken=fixture", "https://www.sec.gov/report#access_token=fixture"]) {
+      data.records[0]!.current_order_source_urls = [url];
+      kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+      expect(parseV213Top20Report(data)).toBeNull();
+      const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+      for (const command of ["Top20", `Top20 證據詳情 T00 ${data.generated_at} legacy ${"0".repeat(64)}`]) {
+        const response = await v213Top20LineAnswer(env, parseQuery(command));
+        expect(response).toContain("未通過驗證");
+        expect(response).not.toContain(url);
+      }
+    }
+  });
+
+  it("keeps all long evidence citations within LINE message limits", async () => {
+    const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
+    const urls = Array.from({ length: 8 }, (_, i) => `https://issuer.example/${"x".repeat(900)}/${i}`);
+    data.records[0]!.current_order_source_urls = urls;
+    data.records[0]!.future_order_source_urls = urls.map(url => `${url}/future`);
+    const kv = new MemoryKv(); kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    const result = await v213Top20LineAnswer(env, parseQuery(await evidenceCommand(env)));
+    expect(Array.isArray(result)).toBe(true);
+    if (!Array.isArray(result)) throw new Error("expected evidence messages");
+    assertLineMessages(result);
+    const body = result.map(m => m.type === "text" ? m.text : "").join("\n");
+    for (const url of [...urls, ...data.records[0]!.future_order_source_urls]) expect(body).toContain(url);
+    expect(body).toContain("完整研究必須補齊");
+  });
+
+  it("preserves all maximum-length fields in cards and complete text blocks without clipping", async () => {
     const data = report();
     for (const row of data.records) {
       row.industry = "業".repeat(100); row.profit_summary = "利".repeat(120);
@@ -112,6 +275,8 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     }
     const parsed = parseV213Top20Report(data)!;
     const cards = buildV213Top20Messages(parsed);
+    expect(JSON.stringify(cards)).toContain("Unbound detail reference");
+    expect(JSON.stringify(cards)).not.toContain("Top20 證據詳情");
     expect(inspectSevenFieldFlex(cards, parsed).values_match).toBe(true);
     expect(JSON.stringify(cards)).not.toMatch(/maxLines|height.*px/);
     const messages = buildV213Top20Messages(parsed, "bilingual", "text");
@@ -122,6 +287,21 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       expect(all).toContain(row.profit_summary); expect(all).toContain(row.current_orders); expect(all).toContain(row.future_orders_estimate);
     }
     expect(all).toContain("Historical returns, not forecasts");
+    data.generated_at = new Date().toISOString();
+    data.records.forEach(row => { row.retrieved_at = data.generated_at; });
+    const runId = "r".repeat(128);
+    const kv = new MemoryKv();
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    kv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(data));
+    kv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, data.generated_at);
+    const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
+    const bound = await v213Top20LineAnswer(env, parseQuery("Top20"));
+    if (!Array.isArray(bound)) throw new Error("EXPECTED_BOUND_CARDS");
+    assertLineMessages(bound);
+    expect(JSON.stringify(bound)).toContain(`s:${runId}`);
+    const command = await evidenceCommand(env);
+    expect(command.length).toBeLessThanOrEqual(300);
+    expect(Array.isArray(await v213Top20LineAnswer(env, parseQuery(command)))).toBe(true);
   });
 
   it("offers a complete explicit text fallback through the authorized LINE caller", async () => {

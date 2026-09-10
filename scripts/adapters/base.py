@@ -174,9 +174,23 @@ def parse_source_payload(
     )
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise AdapterError("Official JSON contains duplicate fields")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise AdapterError("Official JSON contains nonfinite values")
+
+
 def json_document(content: bytes) -> Any:
     try:
-        return json.loads(content.decode("utf-8-sig"))
+        return json.loads(content.decode("utf-8-sig"), object_pairs_hook=_unique_json_object,
+                          parse_constant=_reject_json_constant)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AdapterError("Official JSON payload is invalid") from exc
 

@@ -95,6 +95,34 @@ class AuthoritativeSourceCatalogTests(unittest.TestCase):
             self.assertEqual(source.adapter_status, "metadata_only")
             self.assertEqual(source.evidence_role, "public_market_observation")
 
+    def test_public_broker_and_media_candidates_remain_discovery_only(self) -> None:
+        manifest, expanded, warnings = load_catalog(ROOT / 'config/authoritative-source-catalog.research-candidate.json')
+        self.assertEqual(len(expanded), 116)
+        self.assertEqual(manifest['catalog_source_count_snapshot'], 116)
+        self.assertEqual(warnings, [])
+        # The candidate uses the SAME loader, gates and original source rows;
+        # it must not alter the reviewed plan or shadow existing definitions.
+        originals = {source.id: source for source in self.sources}
+        self.assertEqual({source.id: source for source in expanded if source.id in originals}, originals)
+        for key in ('catalog_policy', 'runtime_defaults', 'member_columns', 'source_defaults'):
+            self.assertEqual(manifest[key], self.manifest[key])
+        self.assertEqual(manifest['fragment_paths'][:-1], self.manifest['fragment_paths'])
+        candidates = [source for source in expanded if source.id.endswith('_public_research')]
+        self.assertEqual(len(candidates), 15)
+        for source in candidates:
+            with self.subTest(source=source.id):
+                self.assertEqual(source.evidence_tier, 'T3')
+                self.assertEqual(source.evidence_role, 'discovery_only')
+                self.assertEqual(source.adapter_status, 'metadata_only')
+                self.assertIsNone(source.adapter_id)
+                self.assertIsNone(source.credential_env)
+                self.assertFalse(source.runtime_enabled)
+                self.assertFalse(source.gates['rights_reviewed'])
+                self.assertFalse(source.gates['free_access_verified'])
+                self.assertEqual(source.redistribution_status, 'review_before_enable')
+                with self.assertRaises(CatalogError):
+                    validate_runtime_activation(replace(source, runtime_enabled=True), credentials={})
+
     def test_unknown_manifest_or_fragment_fields_fail_closed(self) -> None:
         _root, manifest_path = self.copied_catalog()
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

@@ -54,6 +54,24 @@ class SourceObservationTests(unittest.TestCase):
             "payload": {"ticker": "TEST", "reported_revenue": 100},
         }
 
+    def test_subdomain_admission_does_not_admit_parent_domain(self) -> None:
+        source = replace(self.registry.sources[0], canonical_urls=("https://api.example.test/data",))
+        registry = replace(self.registry, sources=(source,))
+        raw = self.valid_raw()
+        raw["canonical_url"] = "https://example.test/forged"
+        with self.assertRaises(SourceObservationError):
+            normalize_observation(raw, registry=registry, raw_content=b"test", now=self.now)
+
+    def test_nonfinite_payload_and_naive_clock_fail_closed(self) -> None:
+        for value in (float("nan"), float("inf"), float("-inf")):
+            raw = self.valid_raw()
+            raw["payload"]["reported_revenue"] = value
+            with self.assertRaises(SourceObservationError):
+                normalize_observation(raw, registry=self.registry, raw_content=b"test", now=self.now)
+        with self.assertRaises(SourceObservationError):
+            normalize_observation(self.valid_raw(), registry=self.registry, raw_content=b"test",
+                                  now=self.now.replace(tzinfo=None))
+
     def test_normalizes_registry_owned_provenance(self) -> None:
         observation = normalize_observation(
             self.valid_raw(),
@@ -98,6 +116,13 @@ class SourceObservationTests(unittest.TestCase):
                 raw_content=b"x",
                 now=self.now,
             )
+
+    def test_clock_tolerances_cannot_stack_into_future_publication(self) -> None:
+        raw = self.valid_raw()
+        raw["retrieved_at"] = (self.now + timedelta(minutes=4)).isoformat()
+        raw["published_at"] = (self.now + timedelta(minutes=8)).isoformat()
+        with self.assertRaises(SourceObservationError):
+            normalize_observation(raw, registry=self.registry, raw_content=b"test", now=self.now)
 
     def test_rejects_future_or_inverted_chronology(self) -> None:
         raw = self.valid_raw()
@@ -183,6 +208,7 @@ class SourceObservationTests(unittest.TestCase):
             raw_content=b"second",
             now=self.now,
         )
+        self.assertEqual(observation_set_hash([first, first]), observation_set_hash([first]))
         self.assertEqual(
             observation_set_hash([first, second]),
             observation_set_hash([second, first]),

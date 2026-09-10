@@ -1,48 +1,35 @@
-# 目前狀態／Current status — 2026-09-06 Asia/Taipei
+# 目前狀態／Current status
 
-## 已驗證範圍／Verified scope
+**尚未完成整體驗收；沒有新的合格 EXE／Production 發布。**
+**Whole-product acceptance is incomplete; no newly qualified EXE or Production release.**
 
-七欄、Q6別名、封存更新與正式切換已完成實測；不是所有未測功能／真機送達皆已驗證。最新下載與自身 source/run 身分請見 [Release](https://github.com/always7895/investor-intelligence/releases/latest)、ZIP 的 HOTFIX-REFS 與相鄰 receipts。本文記錄已完成的功能基線；後續封裝須以自身 receipts 為準。
+- 當前缺陷、測試及下一步以 [state/STATUS.md](../state/STATUS.md) 為準。下載版本身分以 [README](../README.md)、該 ZIP 的 HOTFIX-REFS、checksum 和相鄰 receipts 為準；不把舊版本的通過數字套到候選版。
+- Current findings live in STATUS. Release identity belongs in README and each archive's own immutable evidence, not duplicated mutable tables.
 
-Seven-field routing, exact Q6 identity, sealed refresh and authorized cutover are qualified. This does not certify every untested scenario or LINE-device delivery. A ZIP's own refs/receipts identify its build; the latest release is authoritative for current downloadable identity.
+## 模型與 EXE／Model and EXE
 
-## 七欄／Seven fields
+候選 EXE 有共同 model profile、模型清單、手動 THINK 關閉／強度選擇及子程序傳遞；原生 UI 測試涵蓋實際 Use 按鈕與設定儲存。新增單一 Router、禁止重新導向、大小／時間上限等清單讀取保護，並以原生 EXE 測試。新增「本機回覆測試」與相同呼叫路徑的 CLI；實際候選 EXE → PowerShell → Q5 在 none／low 完成固定回覆。**這不是研究品質、所有 THINK 強度或正式安裝驗收；自動最佳模式仍未實作／驗收。** 舊 Q5 none-thinking PASS 不符合後續來源版本；不得 restamp 或默默換模型／模式。
 
-| 繁體中文 | English |
-|---|---|
-| 股票 | Ticker |
-| 近2年歷史年化報酬 | Historical 2Y annualized return |
-| 近6個月歷史報酬 | Historical 6M return |
-| 行業別 | Industry |
-| 獲利簡述 | Profit summary |
-| 公司現在訂單 | Current orders |
-| 未來訂單展望 | Future order outlook |
+The candidate shares a profile across the EXE/bridge/gateway/Worker. Catalog transport is bounded and remains on the selected Router. The new local-reply button and CLI share one caller; the compiled candidate completed fixed replies through PowerShell and the real Q5 Router for none/low. This is not research quality, all-effort support or installed/release acceptance. Automatic think selection remains pending. See [model contract](MODEL_RUNTIME_MIGRATION.md).
 
-互動與排程共用20檔完整資料：四組五卡 Flex；`Top20 文字` 完整公司分組備援。缺乏證據不填造訂單數字、不提升 LIMITED；雙語欄名不代表每份來源原文已重新翻譯／驗證。
+## 自動更新／Automatic refresh
 
-Interactive and scheduled handlers share20 complete records, four five-card carousels and a complete text fallback. Missing evidence stays unavailable. Labels do not upgrade eligibility or certify every source narrative.
+本輪讀取確認早晚發布任務仍 Disabled，動作指向預期安裝腳本；已知十個鏈路檔案中六個與來源不同、兩個新版模組未安裝。不能只換 EXE 或複製一個腳本就聲稱完成升級。尚未恢復排程、發布新資料或進行真實 LINE 測試。
 
-## 實證／Evidence
+Both publisher tasks remain disabled. Installed dependency-chain drift requires a coordinated, qualified installation. Fresh sealed publication, readback and actual scheduled-run acceptance remain separate requirements.
 
-最新正式 source／CI／SHA 見 [README](../README.md)；已發布並安裝 b5baae9 /33992169731，發布後再次下載驗證與 `gh release verify-asset` PASS。Later documentation-only commits do not change that executable identity.
+## 資料與輸出／Data and outputs
 
-- 功能切換基線／Functional baseline: `bfb4e3db75f7bb00f8dd693aca2ba178ba6f5879`, Windows CI33989794415 PASS. PS5.1/7、Python、typecheck、Worker22 files/142 tests、下載獨立驗證與安裝 PASS；後續 Windows-only／封裝修正以其新 CI 為準。
-- 既有 Router／Existing Router: `127.0.0.1:8080`, max_instances=1; selected `qwen38-q6`, canonical `Qwen3.8-27B-UD-Q6_K_XL-844843d973bf`. Preset unchanged; no second model/server. 十個完整隔離 Q6 cases 最大1425.23ms；Production固定smoke2231/2097ms。
-- Worker `54442104-0e1f-419c-84a9-b7c4ca63ee3f` at100%; subsequent Windows-only corrections leave Worker bytes identical. 三個舊未封存入口已無認證唯讀式空請求確認 HTTP410。
-- 已安裝實際完整更新／Actual installed end-to-end refresh: `20260905T205013Z-749cc4fbd2cd`, transaction `124ed6f6603d68ea05f81e82517ae320`; FINALIZED,20 LIMITED/0 qualified. Bundle SHA256 `e870c27ab21273900aaf1c2588a2d48823dc7d95f60ca4703c174f747b467610`.
-- 獨立遠端讀回／Independent remote readback:13 required objects present; actual stored report locally renders four Flex messages/20 cards/two text messages. LINE transport was not invoked by this check.
-- 排程／Tasks:07:20/20:20 Taipei, canonical wrapper + explicit sealed publication, Interactive owner, IgnoreNew,100-minute limit/retries. Worker cron remains08:00/21:00. 需主機／網路可用且使用者登入；鎖定桌面可執行，登出後不保證。
+- 卡片候選入口已綁定快照與七欄來源報告 SHA；排程候選固定同輪，使用實際執行時鐘檢查新鮮度。這不代表 sealed claim 已完整驗證。
+- Card input identity and broadcast consistency are improved; they do not certify sealed claims or data truth.
+- 卡片摘要、詳細資料報告、完整文字分析須不同內容、同一驗證快照。股票／期權／宏觀仍未全面完成；七欄文字重排不是深度分析。見[報告契約](DETAILED_REPORT_CONTRACT.md)。
+- No fabricated names, orders, EPS or targets; missing/unavailable/conflicting evidence stays explicit. Historical returns are not forecasts. No LIMITED upgrade based on formatting.
+- 券商／國際研究網站候選不是已授權資料 feed；來源數不代表獨立主張佐證。LINE 期權報價來源資格仍未完成。見[來源覆蓋](PUBLIC_SOURCE_COVERAGE.md)與[期權權利審查](OPTIONS_SOURCE_REVIEW.md)。
 
-## 剩餘界線／Remaining boundaries
+## 精簡與權限／Lean operation and authority
 
-- 已追蹤／Tracked P0/P1/P2 = **0/0/1**. Separate `InvestorDailyBriefing` has a missing target/unproven ownership and was not modified. Its historical error is not relabelled fixed.
-- 正常切換後08:00/21:00送達、LINE真機排版仍待自然觀察。No extra real LINE test; mocked transport or local rendering is not device certification.
-- SLSA workflow build attestation remains unavailable (HTTP404). The separate cryptographic GitHub immutable-release asset attestation passed after publication; independent published-ZIP checks also PASS. These are distinct evidence types. 廣泛 Q6文字審查仍 INCOMPLETE；窄範圍 ACK型別審查完成，不替代整體測試。
-- 直接 X 原始候選仍403／UNVERIFIED；公開 Serenity 重建不是官方／私人公式，不宣稱最新本人立場。Mirrors are not independent evidence; macro/identity facts do not prove company operations.
-- Freshness, provenance, digest, ordering, negative factors, optional BLS, privacy/IBKR boundaries remain enforced. Missing/stale data fails closed; no five-field fallback or fabricated data.
+Pi 套件、執行環境、測試依賴和 rollback 證據不是同一類檔案。先查依賴與實際使用，再清理可重建的多餘項目；不刪 active models、runner、未合併 worktrees 或唯一證據。見[工作區規範](WORKSPACE_MAINTENANCE.md)。
 
-## 變更權限／Mutation accounting
+`production_mutation_by_ci=false`. Public LINE stays separated from owner/portfolio/IBKR data; no broker execution, new paid fallback, credential disclosure or stale activation replay. Historical operator approval is not current-session authorization. Old source/model/runner evidence remains historical, not a zero-defect guarantee.
 
-`production_mutation_by_ci=false`. CI did not mutate Production. Separately authorized operator work installed the runtime and changed relay, Worker, fresh snapshots and refresh task definitions;08:00/21:00 cron remained unchanged. No paid activation, provider-secret rotation/upload or extra real LINE test.
-
-以上是本次當前授權操作的事實記錄，不能作為未來 session 的授權。This record is evidence, not transferable authorization.
+Prior detail remains in Git: `git show dd3cf57:docs/CURRENT_STATUS_BILINGUAL.md`.

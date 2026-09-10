@@ -11,6 +11,96 @@ $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $baseRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence'
 if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $baseRoot 'V213Runtime'}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
+
+function Remove-V213TrailingSeparator([string]$Path) {
+    if($Path -match '^[A-Za-z]:\\$' -or $Path -match '^\\\\[^\\]+\\[^\\]+\\$'){return $Path}
+    return $Path.TrimEnd('\\')
+}
+function Resolve-V213DirectoryIdentity([string]$Path,[string]$Label) {
+    if(-not(Test-Path -LiteralPath $Path -PathType Container)) {
+        if(Test-Path -LiteralPath $Path){throw "${Label}_TOPOLOGY_NOT_DIRECTORY"}
+    }
+    $probe=$Path
+    $missing=New-Object 'System.Collections.Generic.List[string]'
+    while(-not(Test-Path -LiteralPath $probe -PathType Container)) {
+        $leaf=Split-Path -Leaf $probe
+        if([string]::IsNullOrWhiteSpace($leaf)){throw "${Label}_TOPOLOGY_PATH_INVALID"}
+        $missing.Insert(0,$leaf)
+        $parent=Split-Path -Parent $probe
+        if([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe){throw "${Label}_TOPOLOGY_PARENT_UNAVAILABLE"}
+        $probe=$parent
+    }
+    $existing=Get-Item -LiteralPath $probe -Force
+    $walk=$existing
+    while($null -ne $walk) {
+        if(($walk.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw "${Label}_TOPOLOGY_REPARSE_ANCESTOR"}
+        $walk=$walk.Parent
+    }
+    $canonical=Remove-V213TrailingSeparator ([string]$existing.FullName)
+    foreach($part in $missing){$canonical=Join-Path $canonical $part}
+    return (Remove-V213TrailingSeparator $canonical)
+}
+function Test-V213SameOrBelow([string]$Ancestor,[string]$Candidate) {
+    $a=Remove-V213TrailingSeparator $Ancestor
+    $c=Remove-V213TrailingSeparator $Candidate
+    return [string]::Equals($a,$c,[StringComparison]::OrdinalIgnoreCase) -or $c.StartsWith($a+'\',[StringComparison]::OrdinalIgnoreCase)
+}
+function Assert-V213NoReparseTree([string]$Root,[string]$Label) {
+    if(-not(Test-Path -LiteralPath $Root -PathType Container)){return}
+    $pending=New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
+    $pending.Push([IO.DirectoryInfo](Get-Item -LiteralPath $Root -Force))
+    while($pending.Count -gt 0) {
+        $directory=$pending.Pop()
+        foreach($entry in $directory.GetFileSystemInfos()) {
+            if(($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw "${Label}_TOPOLOGY_REPARSE_ENTRY"}
+            if($entry -is [IO.DirectoryInfo]){$pending.Push([IO.DirectoryInfo]$entry)}
+        }
+    }
+}
+function Get-V213ManagedRelativePaths([string]$Root) {
+    $excluded=@('.git','versions','node_modules','.venv-v213-local','.npm-cache')
+    $paths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $pending=New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
+    $pending.Push([IO.DirectoryInfo](Get-Item -LiteralPath $Root -Force))
+    while($pending.Count -gt 0) {
+        $directory=$pending.Pop()
+        foreach($entry in $directory.GetFileSystemInfos()) {
+            $relative=$entry.FullName.Substring($Root.Length).TrimStart('\\')
+            $first=($relative -split '\\',2)[0]
+            if($excluded -contains $first){continue}
+            [void]$paths.Add($relative)
+            if($entry -is [IO.DirectoryInfo]){$pending.Push([IO.DirectoryInfo]$entry)}
+        }
+    }
+    return $paths
+}
+function Assert-V213DestinationOwnership([string]$Root,[string]$Source) {
+    if(-not(Test-Path -LiteralPath $Root -PathType Container)){return}
+    $managed=Get-V213ManagedRelativePaths $Source
+    $allowedGenerated=@('V213-SOURCE-DIVERSE-RUNTIME.json','V213-SERENITY-LATEST-RUNTIME.json','V213-RUNTIME-MANIFEST.json')
+    $pending=New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
+    $pending.Push([IO.DirectoryInfo](Get-Item -LiteralPath $Root -Force))
+    while($pending.Count -gt 0) {
+        $directory=$pending.Pop()
+        foreach($entry in $directory.GetFileSystemInfos()) {
+            $relative=$entry.FullName.Substring($Root.Length).TrimStart('\\')
+            if(-not$managed.Contains($relative) -and $allowedGenerated -notcontains $relative){throw 'RUNTIME_TOPOLOGY_UNOWNED_DATA'}
+            if($entry -is [IO.DirectoryInfo]){$pending.Push([IO.DirectoryInfo]$entry)}
+        }
+    }
+}
+function Assert-V213InstallTopology([string]$Source,[string]$Destination) {
+    if(-not(Test-Path -LiteralPath $Source -PathType Container)){throw 'PROJECT_ROOT_NOT_DIRECTORY'}
+    $sourceIdentity=Resolve-V213DirectoryIdentity $Source 'PROJECT_ROOT'
+    $destinationIdentity=Resolve-V213DirectoryIdentity $Destination 'RUNTIME_ROOT'
+    if((Test-V213SameOrBelow $sourceIdentity $destinationIdentity) -or (Test-V213SameOrBelow $destinationIdentity $sourceIdentity)){
+        throw 'RUNTIME_TOPOLOGY_SOURCE_DESTINATION_OVERLAP'
+    }
+    Assert-V213NoReparseTree $sourceIdentity 'PROJECT_ROOT'
+    Assert-V213NoReparseTree $destinationIdentity 'RUNTIME_ROOT'
+    Assert-V213DestinationOwnership $destinationIdentity $sourceIdentity
+}
+
 $refs=Join-Path $ProjectRoot 'VERSION-REFS.json'
 if(-not(Test-Path -LiteralPath $refs -PathType Leaf)){
     $hotfixRefs=Join-Path $ProjectRoot 'HOTFIX-REFS.json'
@@ -20,17 +110,18 @@ if(-not(Test-Path -LiteralPath $refs -PathType Leaf)){
        $identity.source_commit-notmatch'^[0-9a-f]{40}$'-or [string]$identity.workflow_run_id-notmatch'^\d+$'-or
        $identity.production_mutation_by_ci-ne$false){throw 'R75 FREE_RELAY package identity is invalid.'}
 }
+# Refuse overlap, reparse traversal and unowned destination data before any
+# directory creation or /MIR operation. Existing generated receipts are
+# explicitly preserved until their owning wrapper rewrites them.
+Assert-V213InstallTopology $ProjectRoot $RuntimeRoot
 New-Item -ItemType Directory -Force -Path $baseRoot,$RuntimeRoot|Out-Null
 
-$sameRoot=$ProjectRoot.TrimEnd('\')-eq$RuntimeRoot.TrimEnd('\')
-if(-not$sameRoot){
-    $robocopy=(Get-Command robocopy.exe -ErrorAction Stop).Source
-    & $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD '.git' 'versions' 'node_modules' '.venv-v213-local' '.npm-cache'
-    $code=$LASTEXITCODE
-    if($code-gt7){throw "Runtime copy failed with robocopy exit code $code."}
-}else{
-    Write-Host "V213_RUNTIME_SOURCE = IN_PLACE; path=$RuntimeRoot" -ForegroundColor DarkGray
-}
+$robocopy=(Get-Command robocopy.exe -ErrorAction Stop).Source
+& $robocopy $ProjectRoot $RuntimeRoot /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP `
+    /XD '.git' 'versions' 'node_modules' '.venv-v213-local' '.npm-cache' `
+    /XF 'V213-SOURCE-DIVERSE-RUNTIME.json' 'V213-SERENITY-LATEST-RUNTIME.json' 'V213-RUNTIME-MANIFEST.json'
+$code=$LASTEXITCODE
+if($code-gt7){throw "Runtime copy failed with robocopy exit code $code."}
 
 # Canonicalize the source-diverse entrypoints inside the stable runtime. This is
 # executed inside the activation core's rollback scope, so a missing or invalid
@@ -196,7 +287,10 @@ foreach($needle in @('SOURCE-INDEPENDENCE RULES','v213_source_independence_lates
     market_calculation_source='yfinance_compatibility_only'
     independent_market_attempts=@('stooq_daily_csv','nasdaq_historical_api','hfmarketdata_daily_bars','optional_alpha_vantage_adjusted')
     official_macro_context='fred_official_macro'
-    preferred_model='RVN-Q6_K-multilingual-mtp'
+    # Installation copies files; only the strict runtime profile selects a model.
+    preferred_model=$null
+    model_selection_authority='runtime_model_profile'
+    model_profile_qualified=$false
     health_schema_version=2
     official_serenity_formula_claimed=$false
     official_serenity_score_claimed=$false
