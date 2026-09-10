@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import calendar
 import math
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from numbers import Real
 from typing import Iterable
 
@@ -82,6 +82,78 @@ def calculate_return_evidence(points: Iterable[tuple[date, float]]) -> dict:
             annualized_return_pct=annualized,
         )
     return result
+
+
+def validate_return_observation(value: dict, *, ticker: str, long_pct, short_pct, completed: str) -> None:
+    """Closed local candidate readback. No rights, selection-history or freshness grant."""
+    def require(ok):
+        if not ok:
+            raise ReturnEvidenceError('RETURN_CANDIDATE_INVALID')
+    def day(raw):
+        require(isinstance(raw, str))
+        try:
+            parsed = date.fromisoformat(raw)
+        except ValueError:
+            raise ReturnEvidenceError('RETURN_CANDIDATE_INVALID') from None
+        require(parsed.isoformat() == raw)
+        return parsed
+    require(isinstance(value, dict))
+    if not value:  # Explicit no-observation legacy/local fixture, never invented prices.
+        require(long_pct is None and short_pct is None)
+        return
+    minimal = {'status', 'publication_eligible', 'provider', 'ticker'}
+    require(value.get('publication_eligible') is False and value.get('provider') == 'yfinance'
+            and value.get('ticker') == ticker)
+    if set(value) == minimal:
+        require(value['status'] == 'UNAVAILABLE' and long_pct is None and short_pct is None)
+        return
+    template = calculate_return_evidence([])
+    require(set(value) == minimal | set(template) | {'observed_at', 'retrieved_at', 'acquisition_status', 'request'})
+    require(type(value['schema_version']) is int and value['schema_version'] == 1)
+    for key, expected in template.items():
+        if key != 'windows':
+            require(type(value[key]) is type(expected) and value[key] == expected)
+    require(value['retrieved_at'] is None and value['acquisition_status'] == 'UNKNOWN_PROVIDER_ACQUISITION_TIME')
+    request = value['request']
+    require(isinstance(request, dict) and set(request) == {'period', 'interval', 'auto_adjust'}
+            and request['period'] == '3y' and request['interval'] == '1d' and request['auto_adjust'] is True)
+    try:
+        observed = datetime.fromisoformat(value['observed_at'].replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(completed.replace('Z', '+00:00'))
+        require(value['observed_at'].endswith('Z') and observed.tzinfo == timezone.utc
+                and observed < end_time + timedelta(seconds=1))  # Completion is stored to UTC seconds.
+    except (AttributeError, TypeError, ValueError):
+        raise ReturnEvidenceError('RETURN_CANDIDATE_INVALID') from None
+    windows = value['windows']
+    require(isinstance(windows, dict) and set(windows) == {'two_year', 'six_month'})
+    available = False
+    for name, months in (('two_year', 24), ('six_month', 6)):
+        window = windows[name]; require(isinstance(window, dict))
+        status = window.get('status')
+        require(status in ('AVAILABLE', 'INSUFFICIENT_HISTORY', 'START_OBSERVATION_GAP', 'NON_FINITE_RESULT'))
+        if set(window) == {'status'}:
+            require(status == 'INSUFFICIENT_HISTORY')
+            continue
+        dates = {'status', 'requested_start', 'actual_end'}
+        require(dates <= set(window))
+        end = day(window['actual_end']); requested = day(window['requested_start'])
+        require(end <= observed.date() and requested == _months_before(end, months))
+        if status != 'AVAILABLE':
+            require(set(window) == dates)  # Retain failure, never repair it from two prices.
+            continue
+        available = True
+        require(set(window) == dates | {'actual_start', 'start_adjusted_close', 'end_adjusted_close',
+                                       'elapsed_days', 'cumulative_return_pct', 'annualized_return_pct'})
+        require(type(window['elapsed_days']) is int)
+        for key in ('start_adjusted_close', 'end_adjusted_close', 'cumulative_return_pct', 'annualized_return_pct'):
+            require(type(window[key]) in (int, float) and math.isfinite(window[key]))
+        expected = calculate_return_evidence([(day(window['actual_start']), window['start_adjusted_close']),
+                                               (end, window['end_adjusted_close'])])['windows'][name]
+        require(window == expected)
+    require(value['status'] == ('CALCULATED_NOT_QUALIFIED' if available else 'NO_COMPLETE_RETURN_WINDOW'))
+    pair = legacy_return_pair(value)
+    for actual, ratio in zip((long_pct, short_pct), pair):
+        require(actual is None if ratio is None else type(actual) in (int, float) and actual == round(ratio * 100, 2))
 
 
 def legacy_return_pair(evidence: dict) -> tuple[float | None, float | None]:

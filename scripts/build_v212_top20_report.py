@@ -35,9 +35,9 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
-from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
+from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError, validate_return_observation
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, FINANCIAL_V2_LIMITATIONS
-from company_financial_products import build_financial_products, verify_financial_products
+from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
                                        row_time, validate_company_receipt, validate_report_acquisition)
 
@@ -316,6 +316,55 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
 
 def json_bytes(value: Mapping[str, Any]) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+
+
+def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_bytes: bytes, products_bytes: bytes) -> tuple[bytes, bytes, bytes]:
+    """Rank-only local rebind after the existing scoring/normalization stages.
+
+    Recover the original report ordering using the retained product manifest,
+    but accept it ONLY if its complete UTF-8 SHA matches the original basis and
+    the prior products verify. No value/date reconstruction, stale-input rescue,
+    fetching, score change or publication authorization.
+    """
+    def require(ok):
+        if not ok:
+            raise Top20ReportError('RANKED_CANDIDATE_BINDING_INVALID')
+    report = parse_candidate_json(report_bytes)
+    validate_report_acquisition(report)
+    prior = parse_candidate_json(products_bytes)
+    require(isinstance(prior, dict) and isinstance(prior.get('records'), list) and len(prior['records']) == 20)
+    order = []
+    for item in prior['records']:
+        require(isinstance(item, dict) and isinstance(item.get('ticker'), str))
+        order.append(item['ticker'])
+    mapping = {row['ticker']: row for row in report['records']}
+    require(len(set(order)) == 20 and set(order) == set(mapping))
+    original = {**report, 'records': [dict(mapping[ticker], rank=index) for index, ticker in enumerate(order, 1)]}
+    original_bytes = json_bytes(original)
+    # Matching the original full-report hash is mandatory, not a best-effort
+    # guess at a former serialization or a new basis derived from summaries.
+    verify_financial_products(products_bytes, original_bytes, basis_bytes)
+    basis = parse_candidate_json(basis_bytes)
+    returns = parse_candidate_json(returns_bytes)
+    keys = {'schema_version', 'status', 'publication_eligible', 'provider_scope', 'owner_watchlist_inherited', 'generated_at', 'report_sha256', 'records'}
+    require(isinstance(returns, dict) and set(returns) == keys
+            and type(returns['schema_version']) is int and returns['schema_version'] == 1
+            and returns['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
+            and returns['publication_eligible'] is False and returns['provider_scope'] == 'public_only'
+            and returns['owner_watchlist_inherited'] is False and returns['generated_at'] == report['generated_at']
+            and returns['report_sha256'] == hashlib.sha256(original_bytes).hexdigest()
+            and isinstance(returns['records'], dict) and set(returns['records']) == set(mapping))
+    for ticker, row in mapping.items():
+        validate_return_observation(returns['records'][ticker], ticker=ticker,
+            long_pct=row['long_term_return_pct'], short_pct=row['short_term_return_pct'], completed=report['generated_at'])
+    if original_bytes == report_bytes:
+        return returns_bytes, basis_bytes, products_bytes
+    digest = hashlib.sha256(report_bytes).hexdigest()
+    new_returns = json_bytes(dict(returns, report_sha256=digest))
+    new_basis = json_bytes(dict(basis, report_sha256=digest))
+    new_products = json_bytes(build_financial_products(report_bytes, new_basis))
+    verify_financial_products(new_products, report_bytes, new_basis)
+    return new_returns, new_basis, new_products
 
 
 def atomic_write(path: Path, value: Mapping[str, Any]) -> None:

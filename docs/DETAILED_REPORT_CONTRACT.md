@@ -18,6 +18,17 @@
 - 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。受保留契約保護的 `storage.ts` 不改寫，其餘舊消費端仍需逐一遷移或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
 - 詳報可分頁，但不得悄悄刪除尾段、來源或風險來迎合 LINE 長度限制。沒有完整資料時只顯示「證據／缺口」，不冠名完整分析。
 
+### 最終排序與候選檔綁定（本機；不是封存交易）
+
+既有 Serenity pipeline 在多次評分／正規化後，仍由 `v213_finalize_rank_coupled_order.py` 完成最終名次對齊，不新增平行工作流。中間步驟可能已改寫五欄報告，舊 companion 此時**不匹配且不可使用**；不得跳過最終驗證，或把單一階段 PASS 當成完整產物就緒。
+
+- 預設要求同目錄既有 return evidence、financial evidence、financial products 三份候選；自訂 producer 輸出須以同名 CLI 旗標提供確切路径。缺件、重複／硬連結／reparse／非普通檔、私有擴充或錯誤成員拒絕，沒有舊版／摘要 fallback。
+- 以先前 product manifest 的 ticker 順序還原**僅名次／排列**。只接受 `build_v212_top20_report.json_bytes` 得到的完整原報告 UTF-8 SHA 與原 financial basis 精確相符，且原 products 通過既有 validator；任何欄值、原始時鐘、cutoff、主體或 header 改動均不能借用舊依據。不猜原檔空白、不從已四捨五入摘要反推數字。
+- 更新三份候選對最終報告的 hash／snapshot binding；ticker/kind 的穩定 report ID、內容／分頁 SHA、原始運算元、日期、來源、缺漏及失敗狀態保留。新取得時間、評分、HTTP 資料、sealed run ID、發布资格均不產生。
+- Return companion 另核對封閉 schema、原始起訖價／日數公式與顯示投影；失敗窗口不從兩價救回。這只驗證**提供給 finalizer 的本機輸入**與算術，沒有獨立綁定其歷史 HTTP body，也不證明整段歷史選點、價格真實性、權利或原始 provider acquisition。比率相同不能證明原始價格來源；mutable hash 不是認證。
+- 先以既有五欄 schema 驗證原始輸入（含 rank 型別／序列），不能先修好錯誤 rank 再驗證。全部五份 rank-coupled 文件及三份候選驗證後，再檢查輸入未變，逐檔替換、五欄報告最後、核對實際磁碟 bytes；未變時不寫。不再以記憶體排序冒充 readback。中途失敗不回報 PASS、不假裝 rollback，不自動修復不匹配的半寫入候選。
+- **沒有跨檔 atomicity、consumer lock、TOCTOU 防護、耐久原件／journal／recovery 或發布資格。**部分替換仍可能存在，須保留失敗；既有完整輸入 validator 必須拒絕不匹配。正式三產物封存／pinned reader 尚未接入，不能把此候選操作當 Production pointer-last transaction。
+
 ### 已接入 CLI 的財務部分產物（未封存）
 
 既有 `build_v212_top20_report.py` 現在透過 `company_financial_products.py`，另輸出 `.financial-products-candidate.json`。不增加 collector、模型或發布通道；現行 LINE 七欄卡片／證據入口不變。
