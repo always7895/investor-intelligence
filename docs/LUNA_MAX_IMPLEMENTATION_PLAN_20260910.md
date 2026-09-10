@@ -1,8 +1,9 @@
 # 專案查漏補缺與完整實作計畫 — Luna Max 交接
 
-> **狀態：PLAN ONLY／尚未實作。** 本文不是 release certificate，也不是部署、發送 LINE 或變更模型的執行授權。
-> 使用者最新指示：停止 build，唯讀查漏補缺，完成計畫後停止；由使用者手動切換 mode 給 Luna Max 才進入實作。
-> 本計畫日期：2026-09-10。盤點基準 HEAD：`13bd043986c409ea2aaf54a5820acdc107686ed1`，分支 `fix/options-provenance-audit`／PR37。
+> **狀態：ASTRA REVIEW A／更新計畫後停止。** W0 文件與 W1 局部 guard 已提交；完整 W1／rollback 尚未完成。本文不是 release certificate，也不是部署、LINE 或換模授權。
+> 最新指示：Astra 查漏補缺並更新本 PLAN，之後交給 Luna Max；本輪僅唯讀查核與文件更新。Luna Max 續作須遵守「非預期狀況或疑問立即停止，交 Astra 裁決」。
+> 日期：2026-09-10。原始盤點 HEAD：`13bd043986c409ea2aaf54a5820acdc107686ed1`；本次 Astra 已 fetch 的實際 HEAD：`59bcd41f9b3164c8c88efc0c989f60b993f454a1`，開始查核時 working tree clean。
+> **續作順序以第10節為準：先 W1-A0～A7，不得跳 W2、build 或正式安裝。** 第1節保留原始盤點切片，不是最新全面驗收。
 
 ## 0. 執行摘要與本輪停止點
 
@@ -23,7 +24,7 @@
 
 ## 1. 依據、範圍與可信度
 
-### 1.1 此次唯讀查核的事實
+### 1.1 原始13bd043盤點的事實（本次 W1 審查見第10節）
 
 | 項目 | 此次觀察 | 邊界 |
 |---|---|---|
@@ -64,7 +65,7 @@
 
 ## 2. 不可變更的工程與費用邊界
 
-1. **現在只准規劃。** 使用者切 mode 前不得實作，即使先前曾授權發送真實 LINE。切換由使用者操作，不自行設定 Luna Max 或其他模型。
+1. **本次 Astra 回合只准查核與更新 PLAN。** 交接後 Luna Max 依第10節續作；任何非預期失敗／疑問立即停止，不自行選方案、修 fixture、改預期或重試。只有事先列明且符合 oracle 的預期 RED 是正常開發步驟。mode 由使用者切換。
 2. **Luna Max 是下一個 coding agent，不是 runtime 換模指示。** 產品仍只使用既有 localhost:8080 Router 與核准 exact model；目前 Q5 profile 的 none 資格不延伸到其他 effort。
 3. 永遠免費：不付費 API／升級 Cloudflare 或 LINE 方案／付費模型／付費報價／付費 tunnel／試用額度轉收費／另一帳戶規避限額。不接受需要綁卡才能保證工作的設計。
 4. 收件者、tokens、cookies、憑證庫、LINE IDs、券商及持倉資料不得進入模型 context、計畫、Git、stdout 或 artifacts。只在獲准的執行路徑內最小化使用所需憑證。
@@ -85,7 +86,7 @@
 
 | ID | 建議級別 | 狀態與證據 | 風險／完成定義 |
 |---|---|---|---|
-| G01 | P0 安装阻塞 | installer 直接 `/MIR`，排除名單未包含 `_workspace`／`_archive`；現有測試是新建 sibling 暫存目錄 | 先用隔離 fixture 重現 ancestor／nested／junction／既存資料危害，修復保護，再准實裝 |
+| G01 | P0 安装阻塞／未關閉 | 59bcd41 增加 guard，局部案例 PASS；ownership／path identity／copy 語義及交易仍有缺口 | 第10節 A01–A12 先重現／修正；不可把 guard PASS 視為 W1 結案 |
 | G02 | P0 放行阻塞 | 實際 runtime 6 差異／2 缺失；候選安裝測試不等於現場 | 完整受控安裝、rollback、GUI／child／task action bytes 與行为一致 |
 | G03 | P1 資料正確性 | 財務 latest selection 與 debt 計算只選部分資料；新 basis guard 仍有限 | context、currency／scale、restatement、分部、負債及股數可重算；缺漏可解釋 |
 | G04 | P1 研究品質 | v21 Yahoo screeners 加權截取 seed；不是 v211 主題配額 caller | 開放 discovery 與逐階排除 receipt；不改最終 scoring 以掩蓋漏候選 |
@@ -107,7 +108,7 @@
 
 **G01 — 安裝鏡像與工作區安全**
 
-`install-v213-runtime.ps1` 在不同 root 時執行 `robocopy ... /MIR`；目前排除 `.git`、versions、node_modules 等，並無集中工作區保護。`GetFullPath` 與字串 same-root 判斷不等同檔案系統身份／reparse 安全。新建安裝 fixture 不會暴露「目標裡已有唯一資料」或「source 位於 destination 子目錄」的刪除問題。**本輪未執行此 installer，不宣稱已實際刪除任何東西。**
+原始13bd043版本在不同 root 時直接 `/MIR`，沒有集中工作區保護；Luna 的隔離 RED 後續重現 runtime sentinel 被刪除，非正式資料損失。59bcd41 已加 topology／reparse／同名路徑 guard，保留局部 GREEN，但並未完成 ownership 或交易保證。Astra 本輪只讀程式／既存 logs，沒有執行 installer；新增發現與既定修正方向見第10節。
 
 **G03 — 財務語義與證據可追溯**
 
@@ -178,7 +179,7 @@
 
 **檔案／依據**：兩層 AGENTS、STATUS、本文、README、current QA ref、PR37／PR39 worktrees。
 
-- 由使用者切 mode 後重新 fetch／確認 HEAD、dirty、未完 CI、來源及 installed root；不要覆蓋本次未提交的計畫。
+- 接手後重新 fetch／確認 HEAD、dirty、未完 CI、來源及 installed root；辨認前次已提交 W0/W1 與本次文件修訂，不能誤稱未提交修補，也不能覆蓋交接文件。
 - 把 G01–G17 轉為可追踪條目，記 severity、evidence class、owner、測試、阻塞依賴及 scope。未知總數不得填零。
 - 明確列出會變動的檔案與 protected 檔案；以實際 import／caller 判斷 active／legacy／dead，不按檔名猜。
 - 檢查 PR39 的必要修正及 evidence failures，不整支合併或重用它的舊資格。
@@ -192,13 +193,13 @@
 **既有 tests**：`tests/test_installer_model_authority.py`、`tests/test_v213_free_relay_package_payload.py`。
 
 1. 在新隔離目錄重現 `/MIR`：目標含 `_workspace`／`_archive`／operator config／唯一 sentinel；source 為目標子目錄、目標為 source 子目錄；same-root、8.3 alias、UNC／extended path、junction、缺失檔、複製中斷。
-2. 選擇受控 manifest 安裝或明確拒絕不安全 topology；不以單純加幾個 exclusions 當完整解法。進入第一個寫入前檢查實際 filesystem identity、reparse 與 source/destination boundaries。
+2. **方案已裁決：受控 manifest＋完整 staging＋單一 coordinator／journal 的受隔離切換**，依第10節落實。禁止直接 copy 覆寫 live root 再期待 backup restore；不以加 exclusions 當完整解法。第一個寫入前檢查 filesystem identity、reparse、ownership 與 source/destination boundaries。
 3. 對既存 operator/profile／資料／journal／rollback 採顯式保存規則；不能把 runtime 外的工作區當 managed files。
 4. 確認 overlay 後的 canonical bytes 屬於 reviewed release；驗證完整依賴，不只十檔或 EXE。
-5. 檔案集合與服務／task actions 使用可 rollback 的協調安裝；故障不能留下混合版本。安裝 metadata 仍不得選模型或證明 qualification。
+5. 四個 caller 的 base／overlay／驗證只在同一 staging transaction 執行；僅最外層 coordinator commit。metadata、runtime 與外部 activation 分別列 rollback 狀態；兩次 rename 不是跨目錄／跨檔案 atomic transaction。安裝 metadata 仍不得選模型或證明 qualification。
 6. 不更改 protected activation core 來繞过限制；若需升版先列出新的認證方案。
 
-**退出門檻**：PS5.1／7 真正 installer caller 反例通過；sentinels 零損失；中斷後 originals 可恢復；正式 root 從未用作試驗目的地。
+**退出門檻**：第10節的 full-caller、path／ownership、crash／recovery 與 consumer isolation 矩陣全部通過，相關全套回歸完成；sentinels 零損失。正式 mixed root 從未作試驗或 swap 目標；完整 W1 未驗收不得進 W2。
 
 ### W2 — 財務與身份正確性
 
@@ -392,7 +393,7 @@
 - [ ] 所有已執行流程沒有付費替代／方案升級／越權憑證或私人券商資料流入。
 - [ ] README release identity、STATUS 現況與原始 receipts 一致；原失敗保留。
 
-## 9. 本輪審計紀錄與交接停止指令
+## 9. 原始規劃回合審計紀錄（13bd043；最新見第10節）
 
 **已執行（唯讀）**：Git fetch／HEAD／status／worktree；CI 歷史與 queued/in-progress 查詢；文件與 caller／tests 閱讀；十檔來源／安裝 hash 比較；兩個指定 task 的狀態、action 數量及預期 script 布林檢查。
 
@@ -400,4 +401,212 @@
 
 **文件變更範圍**：本文及 `state/STATUS.md` 的 planning-only 交接索引。沒有產品程式修改。未 commit 或 push；保留給使用者切 mode 後檢閱。
 
-**停止點**：計畫完成即停止。Luna Max 接手的第一步是 W0，不能直接執行 W9 build 或 W11 LINE，也不能因前一輪的發送授權而跳過這次最新的 planning-only 指令。
+**原始停止點**：原計畫完成即停，之後使用者曾授權 Luna 開始 W0/W1。該階段提交2cd14b7／59bcd41，尚未完成 W1；目前停在 Astra 審查。接下來以第10節交接，不把原始 planning-only 的歷史敘述當成現在 W1 尚未修改的證明。
+
+---
+
+## 10. Astra Review A：W1 缺口裁決與 Luna Max 續作指令
+
+**本節優先於原 W1 中尚未定案的選項。** 它提供明確的設計方案，不代表程式已修、測試已跑、正式遷移已獲准。W2–W12 的資料／免費／發布門檻維持不變。
+
+### 10.1 先校正交接事實
+
+1. Astra 已重新 fetch：HEAD=`59bcd41f9b3164c8c88efc0c989f60b993f454a1`，進入本輪時 working tree **clean**。W0 計畫已在 `2cd14b7` 提交；W1 installer／test／validator／STATUS 已在 `59bcd41` 提交。上一輪結尾「未提交修改仍在工作區」不符合目前 Git 狀態，不得沿用。
+2. 只讀了既存結果：`w1-boundaries-tests.log` 5 tests OK；`w1-authority-tests.log` 2 tests OK；`w1-current-lane-tests.log` 11 tests OK。本輪沒有重跑。這些不是 full Python／Worker／Windows build，也不是完整 W1 或 current ZIP qualification。
+3. 原始 `/MIR` RED 確實記錄隔離 sentinel 被刪；早期錯誤還包括 unittest module 載入、fixture 缺 identity、命令 quoting、路徑分隔符及 NUL split。全部保留；不要把 fixture failure 算成產品 RED，或把後續 GREEN 改寫前次 FAIL。
+4. 當下 queued／in-progress CI 查詢為空。本輪沒有 task／runtime／Production／LINE 變更，沒有讀取憑證庫或執行 installer。
+5. **W1 狀態：PARTIAL／NOT ACCEPTED。** G01/G02 未關閉；下表列12個 W1 子項，不額外灌成12個已確認 P0。除已留存的具體反例外，新增疑點是靜態發現，下一位須先重現。
+
+### 10.2 W1 子缺口與處置
+
+| ID | 審查結果 | Luna 必須採取的處置 |
+|---|---|---|
+| A01 | handoff／STATUS 的「未提交／待 commit」與59bcd41不符，且局部 guard 被概括成 ownership PASS | 接手先核對 HEAD／diff；使用本節 PARTIAL 狀態，不 reset／重播 commit |
+| A02 | `Get-V213ManagedRelativePaths()` 以新 source 的相對檔名集合當 ownership；同名可覆蓋 operator 改過的檔案；三個 generated receipt 只依名字例外 | ownership 必须来自先前可信安裝紀錄＋舊 effective manifest／實際 bytes／root identity，不是新檔案同名或 marker 存在 |
+| A03 | `/MIR` 仍直接寫目的地；base 完成後 wrapper 可再 copy／失敗；base 提前寫 AppData metadata | 統一 staging transaction，所有 overlay／validators完成後才由外層 commit；任何內層不得更新 live／metadata或宣告整體 PASS |
+| A04 | drive/share root 尾分隔符及 `StartsWith` 拼接、extended/device/UNC 表示、existing ancestor 是 file 等尚無完整證據；HashSet 回傳可能被 PowerShell pipeline 展開 | 明確 filesystem admission、root canonical identity及集合型別；測0／1／多元素與case；不用字串看似相同當 filesystem 證明 |
+| A05 | reparse pre-scan 與 copy 間仍有 TOCTOU；hardlink 非 reparse；tree scan 未見界限；metadata父目錄未纳入同等前置檢查 | 鎖定、ACL／identity recheck、link政策及有界 inventory；unknown／不可讀／變動即拒絕，不跟隨外部物件 |
+| A06 | guard 只跳過第一層 excluded 名稱，robocopy `/XD` 的目錄匹配與之不同；`/XF` 依basename會作用於子目錄，未綁實際 generated paths | 以一份精確 typed manifest 定義 copy／保留／generated paths，測 nested dependencies；移除靠同名例外的管理語義 |
+| A07 | same package reinstall 通過不代表升版、已修改同名檔案、半途失敗或舊layout可以復原 | 增加不同 old/new fixture manifest、碰撞、process kill、磁碟不足、rollback failure；禁止只測新空目錄 |
+| A08 | activation core 先 deploy／commit cloud pointer，再 install/register tasks；catch有 pointer/task/config/Worker restore，未見完整 runtime tree及installer metadata restore | 以版本化 coordinator 整合 local prepare/commit/rollback/finalize；舊core不能用註解或 `production_restored=true` 證明本機已恢復 |
+| A09 | `v213_operation_lock.ps1` 使用 `Local\...` mutex；當前 cross-process test 不證明跨Windows session／服務帳號；abandoned lock也不等於沒有未決交易 | 延伸共享 lock協定覆盖實際mutation participants及session；先恢復／阻擋未決journal，不把取得鎖當新裝许可 |
+| A10 | boundary tests 以shell缺失時continue；8.3假設always不同；junction cleanup未檢查exit；部分名稱宣稱before-any-creation但沒檢查metadata/local目錄 | 收斂fixture oracle及前後inventory；環境缺能力標SKIP/BLOCKED，必需的native acceptance不准靜默PASS；精確檢查cleanup |
+| A11 | `test_v213_windows_security.py` 只抽取robocopy第一行，現在命令已多行；其測試也繞過新的guard | 必须測實際共享copy/installer caller或完整AST範圍，不以擷取第一行／補預期文字掩蓋回歸；先保留真實RED |
+| A12 | 前輪遇到非預期fixture／命令錯誤仍自行修與重跑，不符合使用者要求 | 嚴格採10.9停止協定；只有事前列明的產品RED／故障注入可以照計畫進行 |
+
+補充證據限制：legacy `VERSION-REFS.json` 存在時會跳過 HOTFIX-REFS 的該段檢查；這不代表已驗證 package bytes。installer 應把既有可信 archive verification 接到不可變輸入，而非信任任意 identity JSON。不得為測試 synthetic package 放寬真實發行的 trust chain。
+
+### 10.3 決策 D1：選 staging；不選直接覆寫後 restore
+
+**正式採用候選方案1的受控版本：完整 staging＋單一 transaction coordinator＋journal＋隔離切換。** 不再讓 Luna 在兩個方案間自行選擇。
+
+- source 僅讀；所有 managed code、config模板及四caller所需 overlays，都先組裝至新的唯一 staging 目錄並完成驗證。
+- 活躍 root 不作 `/MIR` 目的地，不先逐檔覆寫 live 再用 backup救援。若有 bounded copy工具，只能用於本交易新建且未被consumer使用的 staging。
+- 新／舊 generations 分別完整，切換只處理受管理的專用 runtime；原 generation 保留作 recovery，不把全家目錄複製到不明備份位置。
+- **兩次 rename（live→old，stage→live）不是單一 atomic directory exchange。** 各次rename及metadata replacement只能在已驗證的檔案系統條件下提供其個別語義；中間可能缺 live path，跨 metadata／Worker／KV 更不是一個原子事務。
+- 正確承諾是：切換期間 consumer 不可讀新舊混合內容；任一中斷有可辨識、可拒絕使用、可復原的狀態。不能承諾未知平台上的斷電零風險或無停機。
+- backup／old generation 是 recovery input，不是另一個 live server；不新增 junction／symlink作 live alias、不啟第二模型或第二永久 runtime。
+- rename因檔案鎖、ACL、不同 volume 或其他原因不能安全完成時 **fail closed**；禁止自動退回方案2（直接copy live）、force-unlock、UAC、搬資料或改ACL。
+
+#### 支援拓撲與舊 runtime
+
+1. 第一版只接受可證明本機、同 volume 的受管理 NTFS 切換。source 可位於另一 volume，但 stage/live/old/journal的交易位置必須符合定案的同volume與identity條件。
+2. same-root、ancestor/descendant overlap、drive/share root、reparse根／祖先／子項、跨volume切換拒絕。UNC/SMB/遠端或未知檔案系統先回明確 UNSUPPORTED；本輪不以UNC正例迫使擴張範圍。
+3. `\\?\` 本機長路徑與8.3是表示法，不是另一個root：先驗證namespace、canonical volume/file identity再比较；`\\.\` 等device namespace拒絕。不能僅刪prefix或小寫化字串。
+4. 新裝只在獲准的不存在／空專用目標進行；空目錄也要驗證owner／ACL／ancestor／file identity。存在非空目標只有可信舊manifest、receipt與實際bytes／身份一致才可升版。
+5. **正式 `D:\Investor-Intelligence-LINE-Pi` 是 mixed-use root，含 `_workspace`／`_archive`，不准整棵 rename/swap／mirror／建立 ownership marker把它收編。** W1只用隔離fixture。W10須另有該實際layout的顯式遷移mapping及授權，不能因預設 `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime` 可用就自動把排程或資料改指那裡。
+6. 舊 runtime 無可信 ownership，或含 mutable cache/data／operator檔案／未知檔案：保持原樣並回 MIGRATION_REQUIRED／OWNERSHIP_UNPROVEN，不自動收編或刪除。獨立專用候選可先組裝，但這不等於完成舊layout升級。
+7. 不掃描 `_workspace`／`_archive` 全樹來證明它們不屬於 runtime：先辨識reserved roots並拒絕不合格安裝拓撲。不能在實際root試錯。
+
+### 10.4 決策 D2：四個入口，一個 transaction owner
+
+保留四個公開入口名稱及現有 ProjectRoot／RuntimeRoot 基本介面：
+
+- `install-v213-runtime.ps1`
+- `install-v213-source-diverse-runtime.ps1`
+- `install-v213-source-diverse-runtime-v2.ps1`
+- `install-v213-serenity-latest-runtime.ps1`
+
+將其收斂成明確profile的薄入口，委派**同一個共享 installer coordinator**。此模組屬於既有R75流程，不是新的平行installer產品或release workflow。
+
+- coordinator先產生有序安裝plan（base→所選overlay→全部validators→effective manifest），再執行一次transaction。共用phase是內部函式／不可變context，不再一層公開wrapper呼叫另一層公開wrapper而各自commit。
+- 每個profile保留自己的相容性／marker與實際驗證義務；Serenity-latest歷史fixture不能當當前R75資格。輸入／profile不相容即在prepare前拒絕，不自動選更寬鬆profile。
+- 内部phase只准寫coordinator提供的staging scope；不dot-source整份有副作用的base installer以借用其變數，不共用任意全域RuntimeRoot，不接受任意journal／backup path作跳過驗證的公開flag。
+- 不新增 `-Force`／`-SkipOwnership`／`-SkipValidation`／`-IgnoreRollback` 類bypass；testing fault injection只能在受控fixture／內部test seam，不得讓production CLI繞過流程。
+- 所有final validators必须針對**overlay後**的實際bytes，而不是base中途結果、presence或幾個字符串。
+- standalone正常安裝由coordinator完成local verify／commit／finalize才回 local-install PASS；若外層activation需持有rollback，回結構化 PREPARED／COMMITTED_PENDING_FINALIZE，不輸出誤導的整體PASS。
+- 內層不得寫 `%LOCALAPPDATA%\InvestorIntelligence\v213-runtime-state.json`、runtime外的profile或正式receipt；metadata在交易commit階段由唯一owner寫，根路徑指final runtime，不指staging。
+- PUBLIC installer通過不等於release_qualified=true；preferred_model=null、model_selection_authority=runtime_model_profile、model_profile_qualified=false繼續維持。
+
+#### Manifest與ownership
+
+- 區分 archive原始檔案manifest、所選overlay後effective immutable file manifest、generated non-secret metadata。不能期待被overlay替換的canonical file等於archive原位置檔案；必須綁到明確source file／digest／profile transformation。
+- manifest每entry需精確相對path、file/directory類型、size/hash與role；拒絕絕對path、`..`、ADS、case-colliding或正規化後重複entries、超量／過大inventory及未知檔案類型。
+- `source有同名`不構成destination ownership。升版讀可信**舊manifest**對照舊bytes，並驗root identity、app/profile及receipt；新manifest只描述新generation。
+- marker或 `V213-RUNTIME-MANIFEST.json` 檔名只是尋址，不是自我認證。偽造／未知／僅schema正確的marker不能認領資料。
+- expected old bytes被人工改過、或unknown file插入時停止；不以「目標在產品目錄內」授權覆蓋。metadata缺失也不等於可重建成功receipt。
+- 不從live root複製不受管dependencies到stage。對目前 `cloud/node_modules` 等依賴先辨識真正runtime用途：僅驗收依賴應留在隔離測試scope；執行必要依賴須綁hash-locked provisioning／manifest，不能因目錄叫node_modules就信任。無法歸類就停交Astra。
+- 應有manifest self-hash規則，避免manifest把自己的digest再遞迴納入；effective manifest digest由外部transaction/receipt綁定。
+
+### 10.5 決策 D3：鎖、journal、metadata與crash recovery
+
+#### 鎖與存取隔離
+
+- 先在共享 `scripts/v213_operation_lock.ps1` 框架內設計participant鎖協定，不另做互不認識的臨時mutex。`Local\...` mutex不能被稱為跨session保證。
+- coordinator需對將修改的runtime root及non-secret metadata位置取得跨process/session有效的exclusive ownership。不同runtime如果共用同一metadata也不能同時寫；不能只把root+metadata拼成不同pair的鎖名而漏掉共享資源。
+- 採受保護、精確定位的participant lock files／排他handles等可驗證機制，固定排序取得locks以避免deadlock；不得降低ACL至Everyone或自動提權。可重入只限同一transaction/context，不能依單純depth或同PID讓其他operation進來。
+- 無權取得、scope不支援、有人執行、abandoned lock或存在未決journal：回BUSY／RECOVERY_REQUIRED；不能直接當新裝開始。
+- 所有新路徑reader／launcher／refresh需有維護barrier或generation pinning；未升級的consumer無法配合時，W1只驗fixture，W10必須明確停妥相關project程序後再切換。不擅自停止Router、其他runner或任意同名process。
+- locked EXE／仍開啟的檔案無法rename时拒絕，不強制關閉不明process。journal/recovery程式必須由live root之外的可信來源執行，避免root暫時缺失時無法復原。
+- pre-scan後可能變動，必須在copy/rename/rollback前重查root/parent identity與manifest；針對可寫來源先建立驗證過的不可變staging input。hardlink/link-count或其他無法排除外部alias的物件預設拒絕。無法排除非協作writer即停止，不宣稱單靠lock防住任意管理員變更。
+
+#### 狀態機（名稱可與既有 schema 對齊，語義不可削弱）
+
+| 狀態 | 所有權／允许動作 | 中斷時的默认行为 |
+|---|---|---|
+| PREFLIGHT／LOCKED | roots、scope、來源／舊bytes與未決交易查核；尚未寫stage/live/metadata | 拒絕即零live／metadata變更；鎖本身的建立須有預先驗證的位置 |
+| PREPARED | journal綁transaction、paths/identities、manifest；完整stage及所有overlay validators PASS | 舊live／metadata保持；stage不可被reader選用 |
+| COMMIT_INTENT | 持久寫入將採取的rename步驟與expected identities；再次比對舊live／metadata | reader維持barrier；recovery讀指定journal，不找最新dir |
+| OLD_RETAINED | 舊live已rename到本transaction的old generation；可能暫無live | 根據實際old/stage/live identities判定；保守恢復verified old，不以空live判新裝 |
+| NEW_PRESENT | stage已成為live，但metadata可能仍舊或未寫 | 尚不可serve；對新live再驗digest，完成或精確rollback |
+| LOCAL_COMMITTED_PENDING_FINALIZE | local root與metadata一致；outer activation尚可要求回復 | 舊generation與metadata original保留；普通consumer未全面放行前不結束barrier |
+| FINALIZED | 完整caller／必要外層coordinator接受同一transaction | 只表示本次協定的成功；不表示LINE／排程或全產品完成；backup依保留政策不立即刪 |
+| ROLLED_BACK | old root identity/bytes與old metadata存在／不存在狀態已readback一致 | 回失敗但記已驗證恢復，不寫安裝成功receipt |
+| RECOVERY_REQUIRED | 任何不符、disk/ACL失敗、ambiguous state或恢復失敗 | 保留old/new/journal、barrier與原始錯誤；非零退出並停交Astra |
+
+- 每次破壞性操作前必須有durable intent，後有實際結果記錄；journal寫入本身需bounded schema、duplicate/type/path檢查、atomic replacement與flush策略。原始FAILED試驗證據另外immutable保存，不因journal狀態推進而改寫。
+- crash可能落在OS操作成功但journal未更新之間。recovery必須比對實際directory/file identities、digest與該transaction預期，不能只信最後state字串。
+- journal recovery入口用exact transaction/reference選取；沒有可信reference就RECOVERY_REQUIRED，禁用「挑最新backup／掃所有tmp猜一個」。
+- 原live不存在時，新裝失敗須回到原不存在狀態；只可移走／隔離本transaction證明擁有的新generation，不得刪除後來出現的不明同路徑資料。
+- live→old或stage→live任何一步失敗都不自動降級copy。若old移回也失敗，留recovery資料並停止，不回 `production_restored=true`。
+- 不以finally無条件刪stage/backup；只釋放本次持有的handles/locks。失敗generation隔離保留，cleanup另依ownership、evidence與W12安全協定執行。
+
+#### metadata也屬transaction
+
+- 只處理明確schema的non-secret installer metadata；不備份／dump整份UserData、DPAPI/token/cookie設定或credential-store。
+- 在受保護交易區保存原metadata的**存在狀態與原始bytes**及需要保留的ACL等資訊；若内容不符合可安全保存的schema，停止，不把未知設定複製進journal。
+- 新metadata用同transaction綁定，先安全寫temp再replacement。跨volume metadata不宣稱與directory rename原子；使用journal的participant狀態精確恢復。
+- rollback只在當前metadata仍是old或本transaction預期new時恢復原bytes／原不存在狀態；若已被其他writer修改，回RECOVERY_REQUIRED，不能覆寫對方資料。
+- original不存在不是「刪除目前這個檔即可」：必須先證明目前檔仍由本transaction寫入。
+- code root、metadata、Worker、pointer、tasks各自有驗證結果；整體成功／恢復要所有必要participants一致，不用單一bool掩蓋局部失敗。
+
+### 10.6 決策 D4：舊 activation 與 mixed root 的處置
+
+靜態查核 `activate-v213-seven-field-schedule-core.ps1` 的實際順序是 cloud commit 後再 install／register tasks。其catch未提供本機完整runtime／installer metadata rollback，且會宣稱production_restored。**不要在這個core外加try/catch就假裝已達分散式原子更新。**
+
+- W1先完成純本機coordinator及外層協定的mock/fixture契約；不調用舊core去Production測installer。
+- W10採版本化協調入口整合 `Prepare → local/remote commit orchestration → Verify → Finalize`，local rollback與Worker/pointer rollback各自回傳完整結果。舊core保持歷史契約；新caller wiring、manifest、preflight、allowlist、tests要一同review／recertify，不能直接放寬protected checks。
+- 在remote變更之前完成所有可離線完成的local prepare／ownership／stage檢查。跨local／cloud不是ACID：必須有maintenance fence、明確次序、故障補償與readback，不承諾不存在部分成功。
+- 若任何後段local／remote驗證失敗，保持consumer／發送barrier，按journal只回復該transaction所有受影響participants；一項無法驗證就整體RECOVERY_REQUIRED。outer finalize之前local不得丟棄rollback originals。
+- task activation從此與installer commit分離；W10不得呼叫會提前啟用排程的舊路徑，W11才准恢復恰好兩個指定tasks。task與資料原始狀態要按實際scope保存／核對，不藉驗收重播Production歷史狀態。
+- 實際D: mixed root遷往何處、mutable data/config該如何保留、現有task/launcher如何改指，仍是W10前需提出的**顯式現場遷移計畫**。目前只裁決「不得whole-root swap／不得自動收編」，不授權搬動現場或替使用者指定新正式根。
+
+### 10.7 W1-A0～A7：具體續作順序
+
+每步都有退出條件；Luna不得一次把所有架構猜完後直接跑大build。
+
+| 步驟 | 允許的工作 | 退出條件 |
+|---|---|---|
+| W1-A0 | 重新fetch／HEAD／dirty／既存logs；確認本Review A修訂；將A01–A12對應具體tests/檔案 | 沒有未識別dirty變更或authority衝突；承認59bcd41只局部PASS |
+| W1-A1 | 先建立ownership、root/path/exclusion及A11真實caller回歸RED；重用既有fixture技巧但不吞環境錯誤 | 失敗確實到達目標assertion；fixture準備錯誤不算RED，須停Astra |
+| W1-A2 | 落實D1/D2的共享manifest／context與四入口thin adapters；去掉對live的mirror／內層metadata寫入 | 四種profile有效輸入能完成stage；overlay任一步失敗舊root／metadata完全不變 |
+| W1-A3 | 落實D3的participant locks、journal、commit／rollback／resume、metadata記錄 | root/metadata/cross-session競爭及每個mutation邊界故障矩陣通過；不將catch當crash proof |
+| W1-A4 | 新generation驗證與read-barrier；外層activation prepare/commit/rollback/finalize介面採fixture驗證 | consumer只能完整舊／完整新或明確blocked；outer fail也能恢復，tasks仍未真啟用 |
+| W1-A5 | existing tests整合：native copy、四installers、model authority、package/allowlist/完整依賴；未知檔案／operator同名修改等 | 保留既有安全與相容義務；不刪反例、不開wildcard，legacy lane不被當新資格 |
+| W1-A6 | 局部通過後跑工程契約要求的完整離線gates／Python／typecheck／Worker／PS5.1/7；必要時僅獲准Windows validation-only | 所有command exit與skip原因記錄；任何非預期失敗立即停止，不自動repair或dispatch full build |
+| W1-A7 | 更新STATUS與本節結果；小reviewable commits；只讀獨立review | G01候選反例關閉、W1退出條件全通過、尚未完成的mixed-root遷移/Production門檻明确。才可申報W1完成並按主線進W2 |
+
+檔案範圍：四個installer、共享installer/lock模組、相應tests、packager/validator的必要依賴與exact-path admission、STATUS/本PLAN。新共享模組的檔名可依repo命名慣例定義，但不得生出第二個自動工作流、直接改certified core、或跳到實際migration。遇到需擴張此範圍先停Astra。
+
+### 10.8 必要驗收矩陣與更精確的 oracle
+
+下列都是**待執行**項目；已有5個boundary tests只能cover其中少數。
+
+| 類別 | 必測情境 | oracle（不只比error字串） |
+|---|---|---|
+| 新裝/升版 | 新專用root、可信old→不同new、四profiles、多次重入 | effective bytes/receipt一致；只有最外層一次commit；重入不得另啟第二transaction |
+| ownership | 同名但old bytes被改、偽造marker、未知dir/file、old manifest缺／衝突、新manifest移除舊檔 | before-first-mutation拒絕；sentinel／原metadata存在狀態不變，不重新收編 |
+| 拓撲 | same-root、雙向nested、drive root、share root、source missing、parent為file、mixed `_workspace/_archive` | 不深入保護tree、不create live/metadata、不mirror；明確unsupported／overlap |
+| alias/namespace | native/8.3/本機extended同identity、case差、near-prefix但不同dir、UNC/SMB/device | 同物件不能當獨立source/live；合法near-prefix不被誤判；未知FS不進copy |
+| link/競態 | source或dest/metadata ancestor junction、子項link、dangling link、hardlink、scan後替換 | 不跟隨外部target；有界時間／inventory；無法證明即blocked |
+| 集合/複製語義 | 0/1/many entries、大小寫、typed directories、nested node_modules、generated同basename | HashSet不被pipeline意外轉型造成不同語義；copy完全按同一精確manifest；原依賴保存義務或有明確遷移，不吞舊測試 |
+| stage失败 | 缺overlay／hash不符／validator不通／來源中途改／磁碟不足 | live、metadata原bytes/absence未變；stage failure不打印overall PASS |
+| rename/crash | 第一rename前後、第二rename前後、journal前後、metadata replacement前後kill fixture子process | 新process用exact transaction恢復；不依finally；實際 identities與journal能對帳 |
+| rollback失败 | old移回被鎖、new被外部改、journal torn/missing、backup identity不符、metadata第三方改 | RECOVERY_REQUIRED、原始錯誤保留、zero盲目刪除／覆寫／自動重試 |
+| locks/consumers | same target雙installer、共用metadata不同target、GUI與service sessions、reader多檔讀取中切換 | 互斥、固定lock順序、無混輪；無可用cross-session測試環境時native acceptance標BLOCKED |
+| metadata | old present/absent、合法non-secret、未知schema、父目錄reparse、I/O失敗 | original raw bytes/absence按本transaction恢復；不用新JSON序列化冒充原bytes；不dump settings |
+| 外層失敗 | stage成功後remote失敗、local commit後outer驗證失敗、finalize失敗 | 全participants逐项readback；task仍Disabled；pending/failed不誤報complete |
+| 回歸 | `test_v213_windows_security.py`、installer model authority、full payload、PS5.1/7 | 測真正caller與所有參數，不抽第一行、不刪測試、不把synthetic PE當真的EXE驗收 |
+
+Fixture規則：
+
+- 先設好合法且明確標為synthetic的package identity／必要檔，確保到達要測的產品邊界；不能用缺檔導致拒絕就宣稱topology guard通過。
+- missing shell／沒有short-name／權限不允許junction等屬環境能力：清楚SKIP/BLOCKED並停交Astra決定；不能簡單continue後讓suite顯示全PASS，也不能自行提權開功能。
+- junction cleanup必須檢查exit與link消失，外部target sentinel保持；不能finally無視失敗後讓TemporaryDirectory递迴碰外部target。
+- 每項before-write反例都檢查live root、LOCALAPPDATA metadata、protected fixture dirs及stage/journal（若已允許建立）的實際前後狀態。test名稱不構成證明。
+- 熱路徑不跑實際installed script；只執行新建隔離fixture內的版本。child kill只能針對本次fixture的精確PID／context，絕不按process name清場。
+- 分開保存各次log，exit code如實記錄；不得把失敗的Python退出用`exit 0`包裝成總成功。negative harness可期待非零，但其scope與oracle必须明確。
+
+### 10.9 停止與交接協定（使用者要求，非可選）
+
+**可照計畫繼續的失敗**：執行前已列明、fixture正確、到達目標產品assertion且符合预期的RED／故障注入。這些是正常實作步驟，不是忽略錯誤。
+
+**下列任何一項立即停止**：
+
+- unittest載入錯、syntax／quoting／NUL解析錯、fixture未備妥、unexpected exit/error code或未預期assertion。
+- permission、short-path／filesystem行為與計畫不符、unknown data、cleanup不確定、非fixture資源受影響。
+- 要更換設計、新增fallback、改欄位語義／測試期望、放寬guard、擴張檔案範圍、改protected caller／schema。
+- runtime/metadata/journal/remote state無法對帳、lock不支援實際sessions、same-name process歸屬不明。
+- 碰到免費quota或權利不足、需要付費／提權／新帳戶／不同模型，或有其他未定問題。
+
+停止後只准做最小唯讀狀態確認、保留日誌／原始bytes與已明確可安全完成的本次fixture清理；ownership或cleanup本身有疑問則保留，不再猜。不得自行修一行、重跑、切換方案或繼續下個工作包，即使修法看似顯而易見。
+
+交接報告固定包含：HEAD/dirty檔、W1-A步驟、原預期、實際結果/exit、log路徑、受影響scope、已完成/未完成cleanup、是否有任何正式變更、需要Astra裁決的單一問題。勿貼secret／raw identifiers。使用者切Astra并給出修訂方案後，Luna才依更新PLAN續作。
+
+### 10.10 本次 Astra 回合結論／交接
+
+- **已裁決**：staging＋shared coordinator＋可恢復journal＋consumer isolation；直接覆寫live後restore不是fallback。metadata必須參與交易；兩次rename不是整體atomic；mixed outer root不准whole-tree swap。
+- **已校正**：59bcd41已提交且本輪起始clean；W1目前僅局部tests PASS，不是ownership／完整rollback／full regression或最新release PASS。
+- **已發現並納入**：A01–A12；包含shared lock跨session、native copy test多行回歸、canonical path/collection/exclusion語義、raw metadata恢复及舊activation未restore本機runtime等。
+- **本輪只做文件**：只讀Git、code/tests、既有logs、CI清單；不執行任何新的tests/build/installer/provisioning／LINE／task／model／cleanup，不修59bcd41產品程式，不commit/push。
+- **Luna下一步**：使用者交回後先W1-A0→A1，核對本次PLAN/STATUS文件diff；不先改rollback code，不直接進W2或重跑full CI。若實作發現任何新問題，遵守10.9停止。
