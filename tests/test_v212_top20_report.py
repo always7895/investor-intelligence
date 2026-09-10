@@ -198,6 +198,28 @@ class V212Top20ReportTests(unittest.TestCase):
             self.assertEqual(failed['records']['T00']['status'], 'SOURCE_FETCH_OR_VALIDATION_FAILED')
             self.assertNotIn('metrics', failed['records']['T00'])
             self.assertFalse(failed['publication_eligible'])
+            products = json.loads((Path(tmp) / 'report.financial-products-candidate.json').read_text(encoding='utf-8'))
+            for product in products['records'][0]['products'].values():
+                self.assertEqual(product['status'], 'UNAVAILABLE')
+                self.assertIsNone(product['content_utf8'])
+
+    def test_actual_cli_emits_distinct_financial_products_not_only_a_summary(self):
+        original = builder.build
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'report.json'
+            facts = [self.fact(), self.fact(tag='OperatingIncomeLoss', value=12.0),
+                     self.fact(tag='NetIncomeLoss', value=20.0)]
+            with patch.object(builder, 'build', side_effect=lambda **kw: self.actual_report(facts, _build=original, **kw)), \
+                    patch.object(sys, 'argv', ['build', '--output', str(output)]), redirect_stdout(StringIO()):
+                self.assertEqual(builder.main(), 0)
+            product_file = Path(tmp) / 'report.financial-products-candidate.json'
+            self.assertTrue(product_file.is_file(), 'actual CLI has no separately generated financial products')
+            doc = json.loads(product_file.read_text(encoding='utf-8'))
+            products = doc['records'][0]['products']
+            self.assertEqual(set(products), {'card_summary', 'data_report', 'narrative_analysis'})
+            self.assertIn('分子', products['data_report']['content_utf8'])
+            self.assertIn('本業', products['narrative_analysis']['content_utf8'])
+            self.assertFalse(doc['publication_eligible'])
 
     def test_financial_candidate_cannot_overwrite_report_or_return_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

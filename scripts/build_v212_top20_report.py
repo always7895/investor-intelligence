@@ -37,6 +37,7 @@ import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
 from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
 from v213_v21_progress_runner import profitability_evidence
+from company_financial_products import build_financial_products, verify_financial_products
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -288,11 +289,14 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
     }
 
 
+def json_bytes(value: Mapping[str, Any]) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+
+
 def atomic_write(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n", delete=False, dir=path.parent, prefix=f".{path.name}.", suffix=".tmp") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
-        handle.write("\n")
+        handle.write(json_bytes(value).decode("utf-8"))
         temporary = Path(handle.name)
     temporary.replace(path)
 
@@ -323,6 +327,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
     parser.add_argument("--return-evidence-output", type=Path, help="Local unqualified calculation sidecar; never a publication payload")
     parser.add_argument("--financial-evidence-output", type=Path, help="Local operand/basis candidate; not a complete or sealed research report")
+    parser.add_argument("--financial-products-output", type=Path, help="Distinct local financial components only; not sealed or LINE eligible")
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -330,12 +335,24 @@ def main() -> int:
             return 0
         evidence_output = args.return_evidence_output or args.output.with_name(args.output.stem + ".return-evidence-candidate.json")
         financial_output = args.financial_evidence_output or args.output.with_name(args.output.stem + ".financial-evidence-candidate.json")
-        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve()]
+        products_output = args.financial_products_output or args.output.with_name(args.output.stem + ".financial-products-candidate.json")
+        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve()]
         if len(set(destinations)) != len(destinations):
             raise Top20ReportError("Report and evidence paths must differ")
         observations: dict[str, Any] = {}
         financials: dict[str, Any] = {}
         document = build(return_evidence_sink=observations, financial_evidence_sink=financials)
+        report_body = json_bytes(document)
+        financial_document = {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "provider_scope": "public_only",
+            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
+            "report_sha256": hashlib.sha256(report_body).hexdigest(),
+            "hash_scope": "v212 report UTF-8 bytes, not source HTTP or sealed snapshot",
+            "records": financials,
+        }
+        # Validate/render before any output mutation; no new collector or cloud key.
+        products = build_financial_products(report_body, json_bytes(financial_document))
         atomic_write(args.output, document)
         atomic_write(evidence_output, {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -344,14 +361,9 @@ def main() -> int:
             "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
             "records": observations,
         })
-        atomic_write(financial_output, {
-            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
-            "publication_eligible": False, "provider_scope": "public_only",
-            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
-            "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
-            "hash_scope": "v212 report UTF-8 bytes, not source HTTP or sealed snapshot",
-            "records": financials,
-        })
+        atomic_write(financial_output, financial_document)
+        atomic_write(products_output, products)
+        verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes())
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
     except (Top20ReportError, snapshot.SnapshotError, base.PipelineError, OSError, ValueError) as exc:

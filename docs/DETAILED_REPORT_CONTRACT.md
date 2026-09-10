@@ -18,6 +18,18 @@
 - 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。受保留契約保護的 `storage.ts` 不改寫，其餘舊消費端仍需逐一遷移或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
 - 詳報可分頁，但不得悄悄刪除尾段、來源或風險來迎合 LINE 長度限制。沒有完整資料時只顯示「證據／缺口」，不冠名完整分析。
 
+### 已接入 CLI 的財務部分產物（未封存）
+
+既有 `build_v212_top20_report.py` 現在透過 `company_financial_products.py`，另輸出 `.financial-products-candidate.json`。不增加 collector、模型或發布通道；現行 LINE 七欄卡片／證據入口不變。
+
+- `card_summary`：少量財務比率、各自期間及重要限制，**不是取代七欄的正式新卡片**。
+- `data_report`：逐項列出分子／分母的原始值、XBRL tag、單位、start/end、filed、accession、公式、ratio及百分比，以及未取得／衝突狀態和來源。
+- `narrative_analysis`：檢查同分母／同口徑的營益率與淨利率，區分本業虧損但底線獲利、營業獲利但底線虧損、兩者差距或相等；分開計算觀察、条件解讀、可能反方、結論前提及推翻條件。利息、稅等僅列待查原因，不作已證實歸因。缺少可比较的營業／淨利資料時為 `UNAVAILABLE`，不改送摘要或模板分析。
+
+輸入為原報告與財務依據的固定 UTF-8 bytes，先核对 SHA、標的集合、cutoff、公開邊界及既有計算規則；保留失敗狀態，不因重算可得就將衝突重新放行。每個產物與分頁都有型態、report ID、ticker／CIK、兩份輸入 SHA、內容 SHA 和候選 snapshot 身分。分頁完整重組原文；CJK／非BMP字元按 UTF-16 長度計算，超限拒絕而非刪去末頁風險／來源。CLI 寫後回讀並用相同規則重建比較，這是本機一致性檢查，不是獨立來源審查或跨檔案原子交易。
+
+目前 `scope=financial_evidence_only`、`complete=false`、`publication_eligible=false`、`snapshot_run_id=null`。候選 snapshot ID 不是正式 run ID；不得用這些產物、列數、不同 SHA 或段落長度宣告完整三產物完成。現金流／產能／客戶訂單／稀釋／情境估值、完整證券身分、來源新鮮度與權利，以及股票／期權／宏觀各自的完整內容仍待補齊。只有正式升版並通過封存／讀取驗收後，才能給 LINE 可用入口；禁止從候選檔偷接 direct key。
+
 ## 股票：逐欄資料與計算
 
 ### 公司身分
