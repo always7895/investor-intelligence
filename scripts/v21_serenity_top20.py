@@ -493,7 +493,29 @@ def validate_sec_adapter(raw: Any, url: str) -> list[dict[str, Any]]:
         retrieved_at=iso_now(),
         context={"request_url": url},
     )
-    return [dict(x) for x in batch.records]
+    records = [dict(x) for x in batch.records]
+    for row in records:
+        if row.get('record_type') != 'company_fact':
+            continue
+        # The shared adapter emits canonical UTC-midnight instants from SEC's
+        # date-only wire values. Restore those dates at this metric boundary,
+        # not by clipping arbitrary timestamps or weakening the metric guard.
+        for field in ('start', 'end', 'filed'):
+            value = row.get(field)
+            if field == 'start' and value is None:
+                continue
+            if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T00:00:00\+00:00', value):
+                raise PipelineError('SEC_ADAPTER_METRIC_DATE_INVALID')
+            row[field] = value.removesuffix('T00:00:00+00:00')
+        # A Companyfacts URL is a collection, not one document: repeated
+        # periods in different accessions must not collapse to a false filing-
+        # date conflict. Keep source_request_url (the actual API) unchanged.
+        cik, accession = row.get('cik'), row.get('accession_number')
+        if (not isinstance(cik, str) or not re.fullmatch(r'[0-9]{10}', cik) or int(cik) == 0
+                or not isinstance(accession, str) or not re.fullmatch(r'[0-9]{10}-[0-9]{2}-[0-9]{6}', accession)):
+            raise PipelineError('SEC_ADAPTER_METRIC_LOCATOR_INVALID')
+        row['record_url'] = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/"
+    return records
 
 
 def sec_companyfacts(

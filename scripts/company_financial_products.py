@@ -12,7 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from v213_v21_progress_runner import profitability_evidence
+from v213_v21_progress_runner import profitability_evidence, validate_cashflow_evidence, FINANCIAL_V2_LIMITATIONS
 
 KINDS = ('card_summary', 'data_report', 'narrative_analysis')
 LABELS = {'revenue_growth': '年度營收成長', 'gross_margin': '毛利率',
@@ -29,7 +29,13 @@ LIMITATIONS = ['COMPANYFACTS_CONTEXT_AND_RESTATEMENT_REVIEW_INCOMPLETE',
               'NOT_INDEPENDENT_COMPANY_CLAIM_CORROBORATION',
               'NO_CASHFLOW_CAPACITY_ORDERS_DILUTION_OR_VALUATION_BRIDGE']
 NOTICE = '僅財務證據組件，非完整公司研究；未封存、未取得發布資格。'
-GAPS = '尚缺：完整證券／ADR身分、財報附註與重編核對、現金流、產能、客戶／訂單、融資稀釋及估值。不得據此生成目標價、總訂單或投資論點評分。'
+GAPS = '尚缺：完整證券／ADR身分、附註與重編核對、完整現金流調節、產能、客戶／訂單、融資條款及估值。加權平均股數差不是完整稀釋分析。不得據此生成目標價、總訂單或投資論點評分。'
+CASH_LABELS = {'operating_cashflow': '營業現金流', 'ppe_payments': 'PPE現金支出',
+               'net_income': '所選淨利', 'sbc': '股份基礎給付披露',
+               'basic_shares': '基本加權平均股數', 'diluted_shares': '稀釋加權平均股數'}
+CASH_METRIC_LABELS = {'cash_after_ppe': '營業現金流減PPE現金支出',
+                      'cash_conversion': '營業現金流／所選淨利',
+                      'diluted_share_increment': '稀釋／基本加權平均股數差額比'}
 
 
 class FinancialProductsError(ValueError):
@@ -88,15 +94,17 @@ def _validated_company(raw, generated):
     if raw.get('status') in ('NO_OFFICIAL_IDENTITY', 'SOURCE_FETCH_OR_VALIDATION_FAILED'):
         _object(raw, {'status', 'publication_eligible'})
         _require(raw['publication_eligible'] is False)
-        return None, {}, raw['status']
-    _object(raw, COMPANY_KEYS)
-    _require(type(raw['schema_version']) is int and raw['schema_version'] == 1
+        return None, {}, raw['status'], None
+    version = raw.get('schema_version')
+    _require(type(version) is int and version in (1, 2))
+    _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version == 2 else set()))
+    _require(type(raw['schema_version']) is int and raw['schema_version'] == version
              and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
              and raw['as_of_cutoff'] == generated and raw['provider_scope'] == 'public_only'
              and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
              and raw['source_retrieved_at'] is None
              and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
-             and raw['limitations'] == LIMITATIONS)
+             and raw['limitations'] == (FINANCIAL_V2_LIMITATIONS if version == 2 else LIMITATIONS))
     metrics = _object(raw['metrics'], set(LABELS))
     facts = []
     for key, metric in metrics.items():
@@ -129,7 +137,13 @@ def _validated_company(raw, generated):
             _require(canonical(metric) == canonical(recomputed['metrics'][key]), 'FINANCIAL_PRODUCTS_CALCULATION_MISMATCH')
         # Never promote a failed/conflicting status just because the sidecar
         # does not retain the rejected source's original (possibly unsafe) data.
-    return raw['cik'], metrics, None
+    cash = raw.get('cashflow_bridge')
+    if version == 2:
+        try:
+            validate_cashflow_evidence(cash, cik=raw['cik'], as_of=generated)
+        except Exception:
+            raise FinancialProductsError('FINANCIAL_PRODUCTS_CASHFLOW_INVALID') from None
+    return raw['cik'], metrics, None, cash
 
 
 def _number(value):
@@ -145,7 +159,7 @@ def _period(metric):
     return f"{value['start']}～{value['end']} ({value['unit']})"
 
 
-def _sources(metrics, refs):
+def _sources(metrics, refs, cash=None):
     sources = {}
     for key in refs:
         for role in ('numerator', 'denominator'):
@@ -153,6 +167,11 @@ def _sources(metrics, refs):
             if fact is not None:
                 identity = (fact['record_url'], fact['accession_number'], fact['filed'])
                 sources[identity] = fact
+    if cash:
+        for item in cash['observations'].values():
+            fact = item['operand']
+            if fact is not None:
+                sources[(fact['record_url'], fact['accession_number'], fact['filed'])] = fact
     return ['來源與限制：SEC Companyfacts 與其 filing 屬同一揭露血緣；不是多個獨立佐證。資料取得時間未驗證，可能來自快取。'] + [
         f"Filed {fact['filed']}；accession {fact['accession_number']}\n{fact['record_url']}" for fact in sources.values()]
 
@@ -175,6 +194,79 @@ def _data_blocks(metrics):
         else:
             block.append('本項不輸出計算結果；未知／不相容／衝突並不等於零。')
         blocks.append('\n'.join(block))
+    return blocks
+
+
+def _cash_value(metric):
+    return _percent(metric['value']) if metric['value_unit'] == 'ratio' and metric['formula'].endswith('- 1') else f"{_number(metric['value'])} {metric['value_unit']}"
+
+
+def _cash_data(cash):
+    if cash is None:
+        return ['舊版財務依據未保留現金流組件；不從摘要反推。']
+    blocks = ['現金流與股數核查：PPE現金支出不是全部資本投資；不把淨投資現金流冒充capex，不將負支出取絕對值，不以缺少當零。各期間分別列示，不用季度淨利配全年現金流。']
+    for key, item in cash['observations'].items():
+        fact = item['operand']
+        if fact is None:
+            blocks.append(f"{CASH_LABELS[key]} [{key}]：{item['status']}；未保留可用原值。")
+        else:
+            blocks.append(f"{CASH_LABELS[key]} [{key}]：{item['status']}\n\n"
+                          '| XBRL tag | 原值 | 單位 | 期間 | Filed | accession |\n'
+                          '|---|---:|---|---|---|---|\n'
+                          f"| {fact['tag']} | {_number(fact['value'])} | {fact['unit']} | {fact['start']}～{fact['end']} | {fact['filed']} | {fact['accession_number']} |")
+    for key, metric in cash['metrics'].items():
+        blocks.append(f"{CASH_METRIC_LABELS[key]} [{key}]：{metric['status']}\n"
+                      f"公式：{metric['formula']}；operands：{', '.join(metric['operand_refs'])}\n"
+                      + (f"原計算值：{_number(metric['value'])} {metric['value_unit']}" if metric['status'] == 'AVAILABLE' else '不輸出結果；不得改選較舊文件補回。'))
+    return blocks
+
+
+def _cash_summary(cash):
+    if cash is None:
+        return []
+    blocks = []
+    for key in ('operating_cashflow', 'ppe_payments'):
+        fact = cash['observations'][key]['operand']
+        if fact:
+            blocks.append(f"{CASH_LABELS[key]}：{_number(fact['value'])} {fact['unit']}；{fact['start']}～{fact['end']}")
+    metric = cash['metrics']['cash_after_ppe']
+    if metric['status'] == 'AVAILABLE':
+        blocks.append(f"{CASH_METRIC_LABELS['cash_after_ppe']}：{_cash_value(metric)}；不是可分配股東現金。")
+    return blocks
+
+
+def _cash_analysis(cash):
+    if cash is None or not any(m['status'] == 'AVAILABLE' for m in cash['metrics'].values()):
+        return []
+    blocks = ['問題：帳面獲利經投資現金支出後，是否已成為股東可留存的價值？以下僅檢查已取得的數值鏈，不等於完整利益／融資橋。']
+    metrics, observations = cash['metrics'], cash['observations']
+    cash_left = metrics['cash_after_ppe']
+    if cash_left['status'] == 'AVAILABLE':
+        cfo, ppe = (observations[key]['operand'] for key in ('operating_cashflow', 'ppe_payments'))
+        blocks.append(f"計算觀察 [cashflow.cash_after_ppe]：{cfo['start']}～{cfo['end']}，同文件營業現金流 {_number(cfo['value'])} 減PPE現金支出 {_number(ppe['value'])} = {_cash_value(cash_left)}。不是標準化FCF、每股收益或自由分配現金。")
+        if cash_left['value'] < 0:
+            blocks.append('條件解讀（INFERENCE）：所列PPE現金支出高於營業現金流；單靠這兩項的本期淨額無法覆蓋該支出。但不能據此宣告資金斷裂：尚需核對期初現金、其他投資、借款／到期及股權融資。')
+        elif cash_left['value'] > 0:
+            blocks.append('條件解讀（INFERENCE）：扣除所列PPE支出後仍為正，不代表全部可以配息；其他投資、租賃、還債及受限現金等義務仍待核對。')
+        else:
+            blocks.append('條件解讀（INFERENCE）：這兩項的淨額為零，不表示總現金收支平衡，也不表示沒有其他資金需求。')
+    conversion = metrics['cash_conversion']
+    if conversion['status'] == 'AVAILABLE':
+        cfo, net = (observations[key]['operand'] for key in ('operating_cashflow', 'net_income'))
+        blocks.append(f"計算觀察 [cashflow.cash_conversion]：{cfo['start']}～{cfo['end']}，同文件 CFO {_number(cfo['value'])}／所選正淨利 {_number(net['value'])} = {_number(conversion['value'])} 倍。倍數高不自動表示品質佳；營運資金回收、預收款及非現金調整只是待查原因，不是已證實歸因。")
+        if cfo['value'] < 0:
+            blocks.append('條件解讀（INFERENCE）：正淨利伴隨營業現金淨流出；帳面獲利尚不能代表同期間現金流入。應核對營運資金和非現金項目，不猜測是哪個客戶延付。')
+        elif conversion['value'] < 1:
+            blocks.append('條件解讀（INFERENCE）：營業現金流小於所選正淨利；差距需要期間調節，不能直接外推為永久現金轉換率。')
+    shares = metrics['diluted_share_increment']
+    if shares['status'] == 'AVAILABLE':
+        basic, diluted = (observations[key]['operand'] for key in ('basic_shares', 'diluted_shares'))
+        blocks.append(f"計算觀察 [cashflow.diluted_share_increment]：{basic['start']}～{basic['end']}，同文件基本／稀釋加權平均股數 {_number(basic['value'])}／{_number(diluted['value'])} shares，差額比 {_percent(shares['value'])}。這不是本期新發股比例、未來完全稀釋股數或ADR比率；零差額也不證明沒有反稀釋而排除的工具。")
+    sbc = observations['sbc']['operand']
+    if sbc:
+        blocks.append(f"股份基礎給付觀察 [cashflow.sbc]：{sbc['start']}～{sbc['end']}，ShareBasedCompensation {_number(sbc['value'])} {sbc['unit']}。原報表位置及是否已列入CFO調整須查附註；不是現金支付或完整授予價值。不機械從CFO再扣一次，也不以此單一金額推算股權稀釋。")
+    blocks.extend(['反方與條件結論：PPE投資可能是擴張亦可能是維持需求；正現金流也可能含需履約的預收款。需查附註、投資用途及融資條款，不能把營運成功直接當股東價值提升，更不能只凭單期缺口否定營運論點。',
+                   '推翻／更新條件：現金流、支出或加權股數重編，期間／合併／股別口徑改變，必須重算；融資、認股權或可轉債新條款須另行評估。未取得的工具與義務不等於零，不生成每股現金收益或目標價。'])
     return blocks
 
 
@@ -267,21 +359,26 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
     records = []
     for row in rows:
         ticker = row['ticker']
-        cik, metrics, failure = _validated_company(basis['records'][ticker], report['generated_at'])
+        cik, metrics, failure, cash = _validated_company(basis['records'][ticker], report['generated_at'])
         refs = [key for key in LABELS if metrics.get(key, {}).get('status') == 'AVAILABLE']
+        cash_refs = ([f'cashflow.{key}' for group in ('observations', 'metrics')
+                      for key, item in cash[group].items() if item['status'] == 'AVAILABLE'] if cash else [])
         identity = {'candidate_snapshot_id': snapshot, 'snapshot_run_id': None,
                     'source_report_sha256': source_report_sha, 'source_basis_sha256': source_basis_sha,
                     'subject': {'ticker': ticker, 'issuer_cik': cik, 'security_identity_qualified': False}}
         header = [f"{ticker}｜CIK {cik or '未知'}｜財務證據", NOTICE,
                   f"計算 cutoff：{report['generated_at']}；不是當前報價或來源重新取得證明。"]
-        reason = failure or (None if refs else 'NO_AVAILABLE_FINANCIAL_METRICS')
+        reason = failure or (None if refs or cash_refs else 'NO_AVAILABLE_FINANCIAL_METRICS')
         summary = [f"{LABELS[key]}：{_percent(metrics[key]['value'])}；{_period(metrics[key])}" for key in refs]
         analysis, analysis_reason = _analysis(metrics)
         analysis_refs = ['operating_margin', 'net_margin'] if not analysis_reason else []
+        cash_analysis = _cash_analysis(cash)
+        if cash_analysis:
+            analysis_reason = None
         products = {
-            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary, GAPS] + _sources(metrics, refs), refs, identity, reason),
-            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + [GAPS] + _sources(metrics, list(metrics)), list(metrics), identity, reason),
-            'narrative_analysis': _product('narrative_analysis', header + ['獲利結構解讀 / Earnings interpretation'] + analysis + [GAPS] + _sources(metrics, analysis_refs), analysis_refs, identity, reason or analysis_reason),
+            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary] + _cash_summary(cash) + [GAPS] + _sources(metrics, refs, cash), refs + cash_refs, identity, reason),
+            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + _cash_data(cash) + [GAPS] + _sources(metrics, list(metrics), cash), list(metrics) + cash_refs, identity, reason),
+            'narrative_analysis': _product('narrative_analysis', header + ['獲利結構解讀 / Earnings interpretation'] + analysis + cash_analysis + [GAPS] + _sources(metrics, analysis_refs, cash), analysis_refs + (cash_refs if cash_analysis else []), identity, reason or analysis_reason),
         }
         records.append({'ticker': ticker, 'products': products})
     return {'schema_version': 1, 'status': 'LOCAL_FINANCIAL_COMPONENTS_NOT_RELEASE_QUALIFIED',

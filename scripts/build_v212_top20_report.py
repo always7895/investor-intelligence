@@ -36,7 +36,7 @@ if str(SCRIPT_DIR) not in sys.path:
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
 from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
-from v213_v21_progress_runner import profitability_evidence
+from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, FINANCIAL_V2_LIMITATIONS
 from company_financial_products import build_financial_products, verify_financial_products
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
@@ -254,6 +254,8 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 # A separate process no longer inherits the preselection hook.
                 # Explicitly reuse its basis guard and retain all displayed operands.
                 financial = profitability_evidence(records, cik=official.get("cik"), as_of=generated)
+                financial.update(schema_version=2, limitations=list(FINANCIAL_V2_LIMITATIONS),
+                                 cashflow_bridge=cashflow_evidence(records, cik=official.get("cik"), as_of=generated))
                 metrics = {key: entry["value"] for key, entry in financial["metrics"].items()}
             except Exception:
                 metrics = {}

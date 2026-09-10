@@ -79,15 +79,30 @@ class V212Top20ReportTests(unittest.TestCase):
                     accession_number='0000000001-26-000001', cik='0000000001', unit='USD',
                     record_url='https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json', value=100.0), **changes)
 
-    def actual_report(self, facts, _build=None, **kwargs):
+    def wire_document(self, facts):
+        tags = {}
+        for fact in facts:
+            units = tags.setdefault(fact['tag'], {'units': {}})['units']
+            units.setdefault(fact['unit'], []).append({
+                'val': fact['value'], 'start': fact['start'], 'end': fact['end'],
+                'filed': fact['filed'], 'accn': fact['accession_number'],
+                'form': fact['form'], 'fy': fact['fiscal_year'], 'fp': 'FY'})
+        return {'cik': 1, 'entityName': 'Synthetic public issuer', 'facts': {'us-gaap': tags}}
+
+    def actual_report(self, facts, _build=None, wire=False, **kwargs):
         rows = [{'ticker': f'T{i:02}', 'rank': i + 1} for i in range(20)]
         with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
             source = Path(tmp) / 'top20.json'; source.write_text('[]', encoding='utf-8')
             stack.enter_context(patch.object(builder.snapshot, 'validate_top20', return_value=rows))
-            for name, value in [('validate_policy', ({}, {})), ('sec_headers', {}), ('session', None),
-                                ('sec_reference', {r['ticker']: {'cik': '0000000001'} for r in rows}),
-                                ('sec_companyfacts', facts)]:
+            policy = {'sec_companyfacts_url': 'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json',
+                      'sec_minimum_interval_seconds': 0}
+            for name, value in [('validate_policy', (policy, {})), ('sec_headers', {}), ('session', None),
+                                ('sec_reference', {r['ticker']: {'cik': '0000000001'} for r in rows})]:
                 stack.enter_context(patch.object(builder.base, name, return_value=value))
+            if wire:
+                stack.enter_context(patch.object(builder.base, 'get_json', return_value=self.wire_document(facts)))
+            else:
+                stack.enter_context(patch.object(builder.base, 'sec_companyfacts', return_value=facts))
             stack.enter_context(patch.object(builder, '_market_observation', return_value=(None, None, '工業設備')))
             return (_build or builder.build)(top20_path=source, **kwargs)
 
@@ -99,6 +114,24 @@ class V212Top20ReportTests(unittest.TestCase):
              'future_order_source_urls': []} for row in report['records']]}
         seven = scheduled.build(report, baseline)
         self.assertEqual(seven['records'][0]['profit_summary'], 'SEC 可用獲利指標不足')
+
+    def test_actual_sec_adapter_dates_reach_report_not_only_handwritten_records(self):
+        sink = {}
+        report = self.actual_report([self.fact(), self.fact(tag='NetIncomeLoss', value=20.0)],
+                                    wire=True, financial_evidence_sink=sink)
+        self.assertEqual(report['records'][0]['profit_summary'], '獲利；淨利率 20.0%')
+        self.assertEqual(sink['T00']['metrics']['net_margin']['numerator']['filed'], '2026-07-29')
+        self.assertFalse(sink['T00']['source_refresh_verified'])
+
+    def test_actual_companyfacts_repeated_periods_keep_filing_identity(self):
+        old = [self.fact(), self.fact(tag='NetIncomeLoss', value=20)]
+        newer = [{**r, 'filed': '2026-08-01', 'accession_number': '0000000001-26-000002'} for r in old]
+        sink = {}
+        report = self.actual_report(old + newer, wire=True, financial_evidence_sink=sink)
+        self.assertEqual(report['records'][0]['profit_summary'], '獲利；淨利率 20.0%')
+        selected = sink['T00']['metrics']['net_margin']['numerator']
+        self.assertEqual(selected['filed'], '2026-08-01')
+        self.assertEqual(selected['record_url'], 'https://www.sec.gov/Archives/edgar/data/1/000000000126000002/')
 
     def test_actual_builder_preserves_compatible_profit_arithmetic(self):
         sink = {}
@@ -219,6 +252,33 @@ class V212Top20ReportTests(unittest.TestCase):
             self.assertEqual(set(products), {'card_summary', 'data_report', 'narrative_analysis'})
             self.assertIn('分子', products['data_report']['content_utf8'])
             self.assertIn('本業', products['narrative_analysis']['content_utf8'])
+            self.assertFalse(doc['publication_eligible'])
+
+    def test_actual_cli_keeps_cashflow_and_share_operands_in_distinct_products(self):
+        original = builder.build
+        facts = [self.fact(), self.fact(tag='OperatingIncomeLoss', value=12),
+                 self.fact(tag='NetIncomeLoss', value=20),
+                 self.fact(tag='NetCashProvidedByUsedInOperatingActivities', value=40),
+                 self.fact(tag='PaymentsToAcquirePropertyPlantAndEquipment', value=60),
+                 self.fact(tag='ShareBasedCompensation', value=5),
+                 self.fact(tag='WeightedAverageNumberOfSharesOutstandingBasic', unit='shares', value=100),
+                 self.fact(tag='WeightedAverageNumberOfDilutedSharesOutstanding', unit='shares', value=110)]
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'report.json'
+            with patch.object(builder, 'build', side_effect=lambda **kw: self.actual_report(facts, wire=True, _build=original, **kw)), \
+                    patch.object(sys, 'argv', ['build', '--output', str(output)]), redirect_stdout(StringIO()):
+                self.assertEqual(builder.main(), 0)
+            basis = json.loads((Path(tmp) / 'report.financial-evidence-candidate.json').read_bytes())
+            self.assertIn('cashflow_bridge', basis['records']['T00'])
+            cash = basis['records']['T00']['cashflow_bridge']
+            self.assertEqual(cash['metrics']['cash_after_ppe']['value'], -20)
+            self.assertEqual(cash['metrics']['cash_conversion']['value'], 2)
+            self.assertAlmostEqual(cash['metrics']['diluted_share_increment']['value'], 0.1)
+            doc = json.loads((Path(tmp) / 'report.financial-products-candidate.json').read_bytes())
+            products = doc['records'][0]['products']
+            self.assertIn('PaymentsToAcquirePropertyPlantAndEquipment', products['data_report']['content_utf8'])
+            self.assertIn('支出高於營業現金流', products['narrative_analysis']['content_utf8'])
+            self.assertIn('不是本期新發股比例', products['narrative_analysis']['content_utf8'])
             self.assertFalse(doc['publication_eligible'])
 
     def test_financial_candidate_cannot_overwrite_report_or_return_evidence(self):

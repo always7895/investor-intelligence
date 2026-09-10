@@ -23,12 +23,12 @@
 既有 `build_v212_top20_report.py` 現在透過 `company_financial_products.py`，另輸出 `.financial-products-candidate.json`。不增加 collector、模型或發布通道；現行 LINE 七欄卡片／證據入口不變。
 
 - `card_summary`：少量財務比率、各自期間及重要限制，**不是取代七欄的正式新卡片**。
-- `data_report`：逐項列出分子／分母的原始值、XBRL tag、單位、start/end、filed、accession、公式、ratio及百分比，以及未取得／衝突狀態和來源。
-- `narrative_analysis`：檢查同分母／同口徑的營益率與淨利率，區分本業虧損但底線獲利、營業獲利但底線虧損、兩者差距或相等；分開計算觀察、条件解讀、可能反方、結論前提及推翻條件。利息、稅等僅列待查原因，不作已證實歸因。缺少可比较的營業／淨利資料時為 `UNAVAILABLE`，不改送摘要或模板分析。
+- `data_report`：逐項列出利潤率分子／分母，以及現金流／PPE支出／股份基礎給付／加權股數的原始值、XBRL tag、單位、start/end、filed、accession、公式與結果，保留未取得／不相容／衝突狀態和來源。
+- `narrative_analysis`：同分母營益率／淨利率比較，另可根據同文件現金流／PPE支出、CFO／正淨利、稀釋／基本加權平均股數展開條件解讀、反方及推翻條件。沒有利潤率仍可交付有數據的現金流比較；兩類皆缺少可比較輸入才 `UNAVAILABLE`，不改送摘要。利息、稅、營運資金等只是待查原因，不作已證實歸因。
 
 輸入為原報告與財務依據的固定 UTF-8 bytes，先核对 SHA、標的集合、cutoff、公開邊界及既有計算規則；保留失敗狀態，不因重算可得就將衝突重新放行。每個產物與分頁都有型態、report ID、ticker／CIK、兩份輸入 SHA、內容 SHA 和候選 snapshot 身分。分頁完整重組原文；CJK／非BMP字元按 UTF-16 長度計算，超限拒絕而非刪去末頁風險／來源。CLI 寫後回讀並用相同規則重建比較，這是本機一致性檢查，不是獨立來源審查或跨檔案原子交易。
 
-目前 `scope=financial_evidence_only`、`complete=false`、`publication_eligible=false`、`snapshot_run_id=null`。候選 snapshot ID 不是正式 run ID；不得用這些產物、列數、不同 SHA 或段落長度宣告完整三產物完成。現金流／產能／客戶訂單／稀釋／情境估值、完整證券身分、來源新鮮度與權利，以及股票／期權／宏觀各自的完整內容仍待補齊。只有正式升版並通過封存／讀取驗收後，才能給 LINE 可用入口；禁止從候選檔偷接 direct key。
+目前 `scope=financial_evidence_only`、`complete=false`、`publication_eligible=false`、`snapshot_run_id=null`。候選 snapshot ID 不是正式 run ID；不得用這些產物、列數、不同 SHA 或段落長度宣告完整三產物完成。完整現金流調節／產能／客戶訂單／融資稀釋條款／情境估值、完整證券身分、來源新鮮度與權利，以及股票／期權／宏觀各自的完整內容仍待補齊。只有正式升版並通過封存／讀取驗收後，才能給 LINE 可用入口；禁止從候選檔偷接 direct key。
 
 ## 股票：逐欄資料與計算
 
@@ -63,7 +63,20 @@
 
 同一 CLI 另產生 `.financial-evidence-candidate.json`，以原報告 UTF-8 SHA 綁定，保存每项利潤率及年度營收成長的全部分子／分母、公式、原始值、單位、start/end/filed、accession、CIK 及公開來源；不受舊五筆 citation 上限截斷。缺少／不相容／衝突各留狀態，不保留上次成功計算冒充本輪。數值為 ratio，顯示百分比須乘100，不把四捨五入摘要當輸入。CIK 是發行人識別，不是完整交易所／股別／ADR 身分。
 
-此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload；不宣稱新抓來源，`source_retrieved_at=null`，CLI 執行可能使用原有 cache。財報 context、重編、單位登錄、現金流／產能／訂單／稀釋及估值仍待補齊；SEC API 與其 filing 只算同一揭露血緣。新檔不能直接寫入雲端鍵或被卡片當完整詳報讀取；既有七 payload 與發布門檻未變。
+此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload；不宣稱新抓來源，`source_retrieved_at=null`，CLI 執行可能使用原有 cache。財報 context、重編、單位登錄、完整現金流調節／產能／訂單／融資稀釋條款及估值仍待補齊；SEC API 與其 filing 只算同一揭露血緣。新檔不能直接寫入雲端鍵或被卡片當完整詳報讀取；既有七 payload 與發布門檻未變。
+
+### 已接入的現金流／股數計算部分
+
+實際 SEC adapter 把 wire 日期轉成午夜 UTC timestamp；既有 `v21_serenity_top20.validate_sec_adapter` 的指標邊界現在只將精確 `YYYY-MM-DDT00:00:00+00:00` 還原為日期，拒絕其他時間／時區／尾綴，不弱化下游日期驗證。每筆 fact 另以 CIK＋accession 的官方 archive 目錄作 filing locator，保留原 adapter 的 `source_request_url`；不同 filing 不再因共用 Companyfacts collection URL 被誤判為同文件日期衝突。同一 accession 的衝突仍拒絕。目錄 locator 不是已取得的 primary-document 原文／頁碼／佐證，也不新增獨立血緣。
+
+同一報告 CLI 的 company financial candidate 升至 schema2，保留原利潤率並加入 `cashflow_bridge` schema1；舊 schema1 仍可明示讀取，不自動補造現金流。公開五／七欄、scoring body、現有七 sealed payload 與 LINE route 不變。
+
+- 沿用同次 Companyfacts records 與共用 operand 驗證，保留 CFO、PPE現金支出、所選淨利、ShareBasedCompensation、基本／稀釋加權平均股數。不新增 collector 或以 market／private data 補位。
+- 以最新 CFO 的 end／filed cohort 作 anchor；同 cohort 有單季和YTD時只選相同 start 的比較項。anchor 本身多期間／多單位／多文件不明則 `AMBIGUOUS_OPERAND`。不以排序挑一個值、不退較舊 filing、不把投資活動淨現金流當 capex；最新無效值與衝突不救回。比較還須同幣別／單位、start/end、filed、form、fiscal year、CIK、accession及locator。
+- `cash_after_ppe = operating_cashflow - ppe_payments`，保留負值及 currency；PPE支出必須非負，缺少不填零、不取絕對值。這不是標準化FCF、全部投資、可分配股東現金或每股現金收益。
+- `cash_conversion = operating_cashflow / net_income` 只在所選淨利為正時算 ratio；虧損／零分母留 withheld。比率高不直接證明獲利品質，預收款／營運資金／非現金調整需附註核對。
+- `diluted_share_increment = diluted_shares / basic_shares - 1` 使用同文件正加權平均股數，稀釋數小於基本數則拒絕。這不是新發股比例、未來完全稀釋股數或ADR換算；零差也不排除反稀釋工具。SBC僅保留披露數值，原報表位置及是否已列CFO調整仍須查附註；不再機械扣CFO或當現金支出／完整授予價值。
+- 三種財務內容引用同份依據；數據表保留原值及公式，解讀隨現金盈餘／缺口／零值改變，列明其他投資、債務到期、租賃、受限現金及融資條款缺口。未知不是零；這仍不是完整股東收益橋、營運論點或估值。
 
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 
