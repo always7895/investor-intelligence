@@ -1,6 +1,15 @@
 # 七欄修正與更新鏈遷移 / Seven-field repair and refresh migration
 
-## 2026-09-06 migration checkpoint / 遷移現況
+Current acceptance is recorded in [`state/STATUS.md`](../state/STATUS.md); historical checkpoints below do not qualify newer source.
+
+## Delivery integrity candidate / 投遞完整性候選修正
+
+- 同輪 `date + slot + run_id` 的 LINE transport／完成回執失敗可能發生在提供者已接受之後。候選程式保留 `delivery_unknown`，不因失敗、十分鐘 lease 或舊72小時計時器自動重送；舊 `release` 請求拒絕刪除紀錄。壞狀態不得當成沒有紀錄。
+- `sent` 表示推送呼叫成功且完成紀錄已確認，**不是手機實收證明，也不是 exactly-once 保證**。不確定結果必須保留並核對；不得清空紀錄、改用 test slot／新 run ID 來強迫重送。回滾到舊的失敗即釋放版本時不能保持 delivery enabled。
+- 排程、互動 Flex／文字及文字報告共用實際執行時鐘的新鮮度規則。整批輸出必須逐列檢查 `retrieved_at`；新的報告／pipeline 時間不能更新舊公司的取得時間。個股詳情仍先驗證 snapshot／SHA／主體，再檢查該列。
+- These are local candidate safeguards, not deployment or received-message evidence. Retrieval freshness is not quote timeliness, rights or claim qualification. Manual/test-send free-quota, timeout and retry-key controls still require separate acceptance; this change does not close PLAN G11 or authorize a send.
+
+## 2026-09-06 historical migration checkpoint / 歷史遷移紀錄
 
 七欄／Q6／封存發布已正式切換；07:20/20:20 更新任務已驗證讀回，08:00/21:00 Worker cron 不變。實際已安裝 wrapper 的資料產生＋Commit＋Finalize PASS，20 LIMITED／0 qualified；尚未額外發送真實 LINE。完整當前範圍：[中英狀態](CURRENT_STATUS_BILINGUAL.md)。
 

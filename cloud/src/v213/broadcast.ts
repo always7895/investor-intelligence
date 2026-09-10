@@ -4,7 +4,7 @@ import { pinPublicSnapshot } from "./public-snapshot";
 import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { readV213Top20Report, v213FieldLocale } from "./top20-report";
+import { readV213Top20Report, v213FieldLocale, v213TimesAreFresh } from "./top20-report";
 import { buildV213Top20Messages } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
@@ -51,24 +51,9 @@ export async function broadcastV213Top20(
   }
 
   const stamp = (await view.text(["last_successful_pipeline_timestamp"])) ?? "";
-  const parsedPipeline = Date.parse(stamp);
-  const parsedReport = Date.parse(report.generated_at);
-  const maxAge = Math.max(
-    300,
-    Math.min(86_400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200),
-  );
-  // A delayed cron's nominal scheduledTime is not the execution clock.
-  const observedAt = Date.now();
-  const pipelineAgeSeconds = (observedAt - parsedPipeline) / 1000;
-  const reportAgeSeconds = (observedAt - parsedReport) / 1000;
-  if (
-    !Number.isFinite(parsedPipeline) ||
-    !Number.isFinite(parsedReport) ||
-    pipelineAgeSeconds < -300 ||
-    reportAgeSeconds < -300 ||
-    pipelineAgeSeconds > maxAge ||
-    reportAgeSeconds > maxAge
-  ) {
+  // A delayed cron's nominal scheduledTime is not the execution clock; a new
+  // envelope cannot refresh an old company's retrieval timestamp.
+  if (!v213TimesAreFresh(env, [stamp, report.generated_at, ...report.records.map(row => row.retrieved_at)])) {
     return { status: "stale" };
   }
 

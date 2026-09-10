@@ -55,6 +55,12 @@ function report() {
   };
 }
 
+function freshReport() {
+  const data = report(); data.generated_at = new Date().toISOString();
+  data.records.forEach(row => { row.retrieved_at = data.generated_at; });
+  return data;
+}
+
 async function evidenceCommand(env: Parameters<typeof v213Top20LineAnswer>[0]): Promise<string> {
   const cards = await v213Top20LineAnswer(env, parseQuery("Top20"));
   if (!Array.isArray(cards)) throw new Error("EXPECTED_BOUND_CARDS");
@@ -107,10 +113,30 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(parseV213Top20Report(bad)).toBeNull();
   });
 
+  it.each([-3 * 3600_000, 6 * 60_000])("refuses stale/future rows in actual card/text replies with a fresh envelope (%s)", async offset => {
+    const kv = new MemoryKv(); const data = freshReport();
+    data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
+    kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_TOKEN", LINE_CHANNEL_SECRET: "SYNTHETIC_SECRET" } as any);
+    const messages: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      expect(String(url)).toBe("https://api.line.me/v2/bot/message/reply");
+      messages.push(...JSON.parse(String(init.body)).messages); return new Response("{}");
+    }));
+    for (const text of ["Top20", "Top20 文字"]) {
+      messages.length = 0;
+      await processAuthorizedLineEvent(env, {} as ExecutionContext, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text }, timestamp: Date.now() }, "synthetic-stale-tenant");
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ type: "text", text: expect.stringContaining("取得時間已過期") });
+      expect(messages[0].text).not.toContain("Top20 證據詳情");
+    }
+    expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("取得時間已過期");
+  });
+
   it("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five", async () => {
     const kv = new MemoryKv();
-    const data = report(); data.generated_at = new Date().toISOString();
-    data.records[0]!.retrieved_at = data.generated_at;
+    const data = freshReport();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
@@ -146,8 +172,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
 
   it.each(["content", "representation", "run"])("rejects an actual old card click after same-date %s replacement", async mutation => {
     const kv = new MemoryKv();
-    const data = report(); data.generated_at = new Date().toISOString();
-    data.records[0]!.retrieved_at = data.generated_at;
+    const data = freshReport();
     const raw = JSON.stringify(data);
     kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
     const save = (run: string, body: string) => {
@@ -195,8 +220,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   });
 
   it("refuses obsolete card generations, stale row retrievals and unknown companies", async () => {
-    const data = report(); data.generated_at = new Date().toISOString();
-    data.records[0]!.retrieved_at = data.generated_at;
+    const data = freshReport();
     const kv = new MemoryKv();
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     const save = () => { kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at); };
@@ -205,7 +229,9 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
     data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("內容不符");
-    const staleRowCommand = await evidenceCommand(env);
+    expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("取得時間已過期");
+    // Even a correctly hashed manual reference cannot bypass row freshness.
+    const staleRowCommand = command.replace(/[a-f0-9]{64}$/, createHash("sha256").update(JSON.stringify(data), "utf8").digest("hex"));
     expect(await v213Top20LineAnswer(env, parseQuery(staleRowCommand))).toContain("取得時間已過期");
     data.generated_at = new Date(Date.now() + 1000).toISOString(); save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
@@ -249,7 +275,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   });
 
   it("keeps all long evidence citations within LINE message limits", async () => {
-    const data = report(); data.generated_at = new Date().toISOString(); data.records[0]!.retrieved_at = data.generated_at;
+    const data = freshReport();
     const urls = Array.from({ length: 8 }, (_, i) => `https://issuer.example/${"x".repeat(900)}/${i}`);
     data.records[0]!.current_order_source_urls = urls;
     data.records[0]!.future_order_source_urls = urls.map(url => `${url}/future`);
@@ -305,7 +331,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   });
 
   it("offers a complete explicit text fallback through the authorized LINE caller", async () => {
-    const kv = new MemoryKv(); const data = report(); data.generated_at = new Date().toISOString();
+    const kv = new MemoryKv(); const data = freshReport();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_TOKEN", LINE_CHANNEL_SECRET: "SYNTHETIC_SECRET" } as any);

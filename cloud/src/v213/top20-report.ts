@@ -45,6 +45,20 @@ export async function readV213Top20Report(view: PublicSnapshotView): Promise<V21
   return report;
 }
 
+export const V213_STALE_RECORDS_MESSAGE = "公司資料取得時間已過期或無效，不能以新的報告日期掩蓋舊資料。 / Company retrieval time is stale or invalid.";
+
+/** Shared execution-clock gate. Retrieval freshness does not certify quote timeliness. */
+export function v213TimesAreFresh(
+  env: Pick<V213Top20Env, "V21_TOP20_MAX_AGE_SECONDS">,
+  times: readonly (string | null)[], observedAt = Date.now(),
+): boolean {
+  const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
+  return times.length > 0 && times.every(value => {
+    const age = (observedAt - Date.parse(value ?? "")) / 1000;
+    return Number.isFinite(age) && age >= -300 && age <= limit;
+  });
+}
+
 export async function loadV213FreshTop20Report(
   env: V213Top20Env,
   query: ParsedQuery,
@@ -54,17 +68,15 @@ export async function loadV213FreshTop20Report(
   const report = await readV213Top20Report(view);
   if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
-  const limit = Math.max(300, Math.min(86400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
-  if ([stamp, report.generated_at].some(value => {
-    const age = (Date.now() - Date.parse(value ?? "")) / 1000;
-    return !Number.isFinite(age) || age < -300 || age > limit;
-  })) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+  if (!v213TimesAreFresh(env, [stamp, report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
   return report;
 }
 
 export async function v213Top20ReportAnswer(env: V213Top20Env, query: ParsedQuery): Promise<string | null> {
   const result = await loadV213FreshTop20Report(env, query);
-  return result && typeof result !== "string" ? formatV213Top20Report(result, v213FieldLocale(env.V213_FIELD_LOCALE)) : result;
+  if (!result || typeof result === "string") return result;
+  if (!v213TimesAreFresh(env, result.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
+  return formatV213Top20Report(result, v213FieldLocale(env.V213_FIELD_LOCALE));
 }
 
 export interface V213Top20ReportRecord {

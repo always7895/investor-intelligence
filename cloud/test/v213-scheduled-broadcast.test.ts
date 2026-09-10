@@ -100,13 +100,16 @@ function report() {
   };
 }
 
-function fakeDedupeStub() {
+function fakeDedupeStub(failComplete = false) {
   const values = new Map<string, unknown>();
   let chain = Promise.resolve();
   const state = {
     storage: {
       get: async (key: string) => values.get(key),
-      put: async (key: string, value: unknown) => { values.set(key, value); },
+      put: async (key: string, value: unknown) => {
+        if (failComplete && (value as any)?.status === "sent") { failComplete = false; throw new Error("SYNTHETIC_COMPLETE_FAILED"); }
+        values.set(key, value);
+      },
       delete: async (key: string) => values.delete(key),
     },
   } as unknown as DurableObjectState;
@@ -122,12 +125,12 @@ function fakeDedupeStub() {
   return stub;
 }
 
-function fakeDedupeNamespace(): DurableObjectNamespace {
+function fakeDedupeNamespace(failComplete = false): DurableObjectNamespace {
   const stubs = new Map<string, ReturnType<typeof fakeDedupeStub>>();
   return {
     idFromName: (name: string) => name,
     get: (id: string) => {
-      if (!stubs.has(id)) stubs.set(id, fakeDedupeStub());
+      if (!stubs.has(id)) stubs.set(id, fakeDedupeStub(failComplete));
       return stubs.get(id)!;
     },
   } as unknown as DurableObjectNamespace;
@@ -153,9 +156,50 @@ function runtime(publicKv = new MemoryKv()) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("v2.1.3 scheduled seven-field owner broadcast", () => {
+  it.each(["transport", "complete"])("does not replay an ambiguous %s outcome through the actual scheduled caller", async failure => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-10T04:00:00Z"));
+    const { publicKv, env } = runtime();
+    env.V213_BROADCAST_DEDUPE = fakeDedupeNamespace(failure === "complete");
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => {
+      if (failure === "transport") throw new Error("SYNTHETIC_AMBIGUOUS_PUSH");
+      return new Response("{}");
+    });
+    vi.stubGlobal("fetch", send);
+    const run = async () => {
+      const pending: Promise<unknown>[] = [];
+      await productionWorker.scheduled({ cron: "0 0 * * *", scheduledTime: Date.now() } as ScheduledController,
+        env as any, { waitUntil(p: Promise<unknown>) { pending.push(p); } } as unknown as ExecutionContext);
+      return Promise.all(pending);
+    };
+    await expect(run()).rejects.toThrow(failure === "transport" ? "SYNTHETIC_AMBIGUOUS_PUSH" : "SYNTHETIC_COMPLETE_FAILED");
+    await run();
+    vi.setSystemTime(new Date(Date.now() + 11 * 60_000));
+    await run();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "delivery_unknown" });
+  });
+
+  it.each([-3 * 3600_000, 6 * 60_000])("blocks stale/future company retrievals despite fresh report and pipeline timestamps (%s)", async offset => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const data = report(); data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "stale" });
+    expect(send).not.toHaveBeenCalled();
+  });
   it.each(["0 0 * * *", "0 13 * * *"])("runs the actual Production scheduled entrypoint for %s with seven bilingual fields and dedupe", async cron => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({type:"user",userId:LINE_TARGET}, HASH_KEY);
