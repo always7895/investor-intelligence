@@ -10,6 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CurrentReleaseLaneTests(unittest.TestCase):
+    def test_current_qa_reference_has_exact_reviewed_path_admission(self):
+        import json
+        reference = json.loads((ROOT / 'state/r75-qa-live-current.ref.json').read_text())
+        script = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8-sig')
+        allowed = script.split('$allowed = @(', 1)[1].split('\n    )', 1)[0]
+        paths = re.findall(r"'([^']+)'", allowed)
+        self.assertIn(reference['receipt_path'], paths)
+        self.assertFalse(any('*' in path for path in paths))
+
     def setUp(self):
         self.workflow = (ROOT / '.github/workflows/v213-r75-release.yml').read_text(encoding='utf-8')
 
