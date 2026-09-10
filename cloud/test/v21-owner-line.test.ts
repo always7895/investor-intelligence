@@ -175,6 +175,18 @@ afterEach(() => {
 });
 
 describe("v2.1 private owner LINE delivery", () => {
+  it("refuses the retained transaction-shaped unsealed fixture before LINE transport", async () => {
+    const { publicKv, env } = runtime();
+    await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);
+    const runId = "20260830T000000Z-0123456789ab";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV21Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
   it("accepts only an exact sorted Top 20 and answers ticker detail", async () => {
     const rows = top20();
     expect(parseV21Top20(rows)).toHaveLength(20);
@@ -217,11 +229,11 @@ describe("v2.1 private owner LINE delivery", () => {
     expect(publicKv.values.has("snapshot:current")).toBe(true);
   });
 
-  it("fails closed on a future pipeline timestamp", async () => {
+  it("retains the future-timestamp guard for explicit legacy unsealed fixtures", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260830T000000Z-0123456789ab";
+    const runId = "legacy-synthetic-future"; // Not a current sealed-admission proof.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
@@ -249,11 +261,11 @@ describe("v2.1 private owner LINE delivery", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("pushes exactly one five-field fresh scheduled message and deduplicates the slot", async () => {
+  it("retains five-field legacy unsealed presentation and mocked slot dedupe", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260830T000000Z-0123456789ab";
+    const runId = "legacy-synthetic-five-field"; // Actual current seal/push caller is tested separately.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));

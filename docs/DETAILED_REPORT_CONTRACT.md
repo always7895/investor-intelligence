@@ -6,7 +6,7 @@
 
 現行七欄 schema2 沒有中／原文法定名稱、起訖價格與實際區間、逐筆訂單、完整財報、稀釋股數或情境估值。`numeric_total_order_estimate_prohibited=true` 仍有效。不能用模板、代號翻譯表、年化報酬乘二、固定 EPS／倍數或猜測訂單填滿畫面。
 
-原卡片「完整文字版」全部送出 `Top20 文字`，實際只是同一七欄的文字格式。候選入口已改為「證據詳情」，並綁定公司、生成時間、快照標記及所儲存 UTF-8 七欄來源報告的 SHA256；同日期換內容、重新序列化或換輪都須更新卡片。讀取後的資料凍結，單純 formatter 輸入不產生可點詳情。這仍不是完整深報，也不代表驗證 sealed claim 或封存了三份不同輸出。
+原卡片「完整文字版」全部送出 `Top20 文字`，實際只是同一七欄的文字格式。候選入口已改為「證據詳情」，並綁定公司、生成時間、快照標記及所儲存 UTF-8 七欄來源報告的 SHA256；同日期換內容、重新序列化或換輪都須更新卡片。讀取後的資料凍結，單純 formatter 輸入不產生可點詳情。這仍不是完整深報，也沒有封存三份不同輸出；下述新版 selector 另核對已提交的儲存物件集合，不把卡片內容 SHA 當來源真實性。
 
 ## 同一資料基礎、三種不同輸出
 
@@ -17,6 +17,20 @@
 - 快照汰換時拒絕把新報告冒充舊卡片內容；若沒有保留且允許讀取的原快照，就請使用者更新卡片。未知標的不得改查其他公司或未封存直接鍵。
 - 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。受保留契約保護的 `storage.ts` 不改寫，其餘舊消費端仍需逐一遷移或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
 - 詳報可分頁，但不得悄悄刪除尾段、來源或風險來迎合 LINE 長度限制。沒有完整資料時只顯示「證據／缺口」，不冠名完整分析。
+
+### 已提交快照的逐物件完整性（不提高資料資格）
+
+實際 activation→Top20 查詢反例：封存後改寫報告，舊 reader 仍顯示新文字並賦予新內容 SHA。現行 `activation-v3.ts` 與 `public-snapshot.ts` 共用 `snapshot-seal.ts` 修補：
+
+- Upload schema4、七個原始 payload、簽名與來源／LIMITED／freshness gates 不變。新增 `snapshot:<run>:v213:snapshot-seal:v1`（manifest schema1／contract `v213-stored-snapshot-v1`），逐一綁定**實際驗證／轉換後儲存的13個物件**，包含 ranking、衍生 scores/source views、plan、三個 report aliases、pipeline stamp、五／七欄報告、federation、independence、activation claim。加 manifest 共14個物件；原始 upload digest 與正規化 stored digest 分開，不能互相冒充。
+- Pointer升 schema2，精確綁定 run、transaction、manifest UTF-8 SHA、public-data-as-of、promotion time 和公開邊界。每個物件≤2MiB、總集≤8MiB、manifest≤8KiB；控制文件要求 Worker 原生 JSON.stringify spelling，重複／escaped重複鍵、BOM、非有限／非整數 byte count、異常 UTF-16、額外／缺少物件均拒絕。這是現行固定控制格式，不宣稱通用 JSON canonicalization。
+- 在任何 mutation 前建立／限制物件集合；manifest 隨全套寫入、讀回，既有執行時鐘門檻通過後才 pointer-last，pointer 必須精確回讀。正常 replay 只驗證、不寫入／更新時間；缺 manifest、舊 pointer 或內容不符不能就地補 seal。已 finalize／無對應 journal 的現行 run 不重建 rollback handle。
+- Selector 先核對 pointer→manifest→全部13個物件的 bytes/size/SHA、claim run/transaction、pipeline stamp，再交出 `integrity=sealed` 的固定 view。同次 answer 僅用已驗證 bytes，不重新取得物件，也不讀未列入集合的 key；任一成員缺失／改動使整個 view unavailable。這不自動證明 HTTP 原文、報價權利、財報 context 或當下 freshness，消費端仍須原本的時間與內容門檻。
+- Finalize 先重新核對所有物件及精確 current pointer，才刪 journal；失敗保留 handle。Rollback 仍只按授權控制恢復原 pointer bytes，**不保證舊 pointer 可通過新版 reader**。任何版本遷移須新鮮的新交易，不能拿舊 activation 重放／改 pointer 取得資格。
+- 舊 metadata pointer（schema1）、transaction-format run ID 缺 seal、留下 claim／manifest 卻改成簡化 pointer，都不能降為 bootstrap。真正無 pointer 或非交易格式的歷史簡化 pointer 保留明示 `integrity=legacy` 相容讀取，**不是新封存接受證明**。受保護的 `storage.ts`、歷史 activation-v2／單檔 helpers 不改，其他舊消費端仍需逐一遷移／重認證，不宣稱全部路由已驗證。
+- Trust anchor 仍是受控 PUBLIC_CACHE 的 committed pointer；這不是抵抗能同時重寫 pointer/manifest/全部 objects 的特權攻擊者之簽章，也不是 KV 串列化、跨交易鎖、原子讀取或 native Cloudflare certification。雲端沒有新增候選財務產物／options keys、三種新入口、配額或 Production 操作。
+
+合成 KV／日期、假免費 entitlement／provider acceptance、legacy compatibility 與真實來源／原生交易／手機收件是不同驗收。新版實際 ingestion→讀取→既有推送 caller 有獨立測試；舊未封存 fixture 的時鐘／呈現／防重複控制不得冒稱新封存或 exactly-once 收件證明。
 
 ### 最終排序與候選檔綁定（本機；不是封存交易）
 

@@ -240,6 +240,18 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(formatV213Top20Report(parsed!, "bilingual")).toContain("公司現在訂單 / Current orders");
   });
 
+  it("refuses the retained transaction-shaped unsealed fixture before LINE transport", async () => {
+    const { publicKv, env } = runtime();
+    await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);
+    const runId = "20260901T122248Z-fccfd14d3c79";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
   it("ingests only when the report order matches the promoted Top20", async () => {
     const { publicKv, env } = runtime();
     const runId = "20260901T122248Z-fccfd14d3c79";
@@ -250,11 +262,11 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(publicKv.values.has(`snapshot:${runId}:v213:top20-report:latest`)).toBe(true);
   });
 
-  it("sends all twenty seven-field cards in one request and deduplicates a scheduled slot", async () => {
+  it("retains twenty-card legacy unsealed presentation and mocked slot dedupe", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-cards"; // Not current sealed admission; actual ingestion is covered separately.
     const top = top20();
     const rep = report();
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
@@ -357,11 +369,11 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("atomically sends exactly once under concurrent scheduled delivery", async () => {
+  it("reserves one mocked send under concurrent legacy unsealed scheduled calls", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-concurrent"; // Not native DO or phone exactly-once proof.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
@@ -380,11 +392,11 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(sends).toBe(1);
   });
 
-  it("fails closed when live Top20 order drifts", async () => {
+  it("retains the order-mismatch guard for legacy unsealed fixtures", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-order";
     const top = top20();
     [top[18], top[19]] = [top[19]!, top[18]!];
     top.forEach((item, index) => { item.rank = index + 1; item.serenity_score = 98 - index; item.serenity_raw_score = 98 - index; });

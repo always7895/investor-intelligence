@@ -1,11 +1,13 @@
 // Active source-safe implementation; activation-v2 remains byte-frozen for
-// historical R75 verification. Bundle schemas/signatures are unchanged.
+// historical R75 verification. Upload schemas/signatures are unchanged;
+// current stored-object seals/pointers are versioned independently.
 import type { V21AdminEnv } from "../v21/admin";
 import { parseV21Top20, type V21Evidence, type V21Top20Record } from "../v21/top20";
 import { parseV212Top20Report } from "../v212/top20-report";
 import { parseV213Top20Report, v213TimesAreFresh } from "./top20-report";
 import contract from "../../../config/v213-r75-publication-mode-v1.json";
 import { r75PublicationModeContractHash, validateR75PublicationModes } from "./publication-mode";
+import { buildSnapshotSeal, parseSealedPointer, readSealedSnapshot, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
 
 const ENCODER = new TextEncoder();
 const RUN_ID_RE = /^\d{8}T\d{6}Z-[0-9a-f]{12}$/;
@@ -483,7 +485,7 @@ export async function ingestV213ActivationBundle(
   let state: RollbackState;
   let idempotentReplay = false;
   let journalRecovered = false;
-  if (existingStateText) {
+  if (existingStateText !== null) {
     state = parseRollbackState(existingStateText, transactionId, runId);
     idempotentReplay = previousRunId === runId;
     journalRecovered = !idempotentReplay;
@@ -491,6 +493,7 @@ export async function ingestV213ActivationBundle(
       throw new Error("V213_ACTIVATION_CONCURRENT_POINTER_CHANGE");
     }
   } else {
+    if (previousRunId === runId) throw new Error("V213_ACTIVATION_FINALIZED_OR_UNOWNED_REPLAY");
     state = {
       schema_version: 2,
       transaction_id: transactionId,
@@ -501,31 +504,19 @@ export async function ingestV213ActivationBundle(
     };
   }
 
-  assertAcquisitionFresh();
-  await env.TENANT_PRIVATE_CACHE.put(rollbackStateKey, JSON.stringify(state));
   const runClaimKey = claimKey(runId);
   const existingClaimText = await env.PUBLIC_CACHE.get(runClaimKey, "text");
-  if (existingClaimText) {
+  if (existingClaimText !== null) {
     const claim = parseRunClaim(existingClaimText);
     if (claim.transaction_id !== transactionId || claim.run_id !== runId || !sameDigests(claim.payload_digests, digests)) {
       throw new Error("V213_ACTIVATION_RUN_ID_COLLISION");
     }
-  } else {
-    const claim: RunClaim = {
-      schema_version: 1,
-      transaction_id: transactionId,
-      run_id: runId,
-      payload_digests: Object.fromEntries(PAYLOAD_NAMES.map((name) => [name, String(digests[name])])),
-      claimed_at: new Date().toISOString(),
-    };
-    await env.PUBLIC_CACHE.put(runClaimKey, JSON.stringify(claim));
-    const confirmedText = await env.PUBLIC_CACHE.get(runClaimKey, "text");
-    if (!confirmedText) throw new Error("V213_ACTIVATION_RUN_CLAIM_WRITE_FAILED");
-    const confirmed = parseRunClaim(confirmedText);
-    if (confirmed.transaction_id !== transactionId || !sameDigests(confirmed.payload_digests, digests)) {
-      throw new Error("V213_ACTIVATION_RUN_ID_COLLISION");
-    }
   }
+  const claimText = existingClaimText ?? JSON.stringify({
+    schema_version: 1, transaction_id: transactionId, run_id: runId,
+    payload_digests: Object.fromEntries(PAYLOAD_NAMES.map(name => [name, String(digests[name])])),
+    claimed_at: new Date().toISOString(),
+  } satisfies RunClaim);
 
   const prefix = `snapshot:${runId}:`;
   const objects: Array<[string, string]> = [
@@ -541,12 +532,23 @@ export async function ingestV213ActivationBundle(
     ["v213:top20-report:latest", JSON.stringify(v213)],
     ["v213:source-federation:latest", JSON.stringify(federation)],
     ["v213:source-independence:latest", JSON.stringify(sourceAudit)],
-    ["v213:activation-claim", existingClaimText ?? await env.PUBLIC_CACHE.get(runClaimKey, "text") ?? ""],
+    ["v213:activation-claim", claimText],
   ];
+  // Hash the actual validated/derived stored bytes, not the differently encoded
+  // upload payload strings. Build and bound this set before any mutation.
+  const seal = await buildSnapshotSeal({ run_id: runId, transaction_id: transactionId,
+    generated_at: String(root.generated_at), public_data_as_of: String(root.public_data_as_of) }, objects);
+  const existingSeal = await env.PUBLIC_CACHE.get(prefix + SNAPSHOT_SEAL_KEY, "text");
+  if (existingSeal !== null && existingSeal !== seal.text) throw new Error("V213_ACTIVATION_STORED_SEAL_COLLISION");
+  objects.push([SNAPSHOT_SEAL_KEY, seal.text]);
   // These payloads are not part of this sealed contract. Never rebrand a prior
   // run's options/universe as current. Missing current-run objects fail closed
   // in publicJson; old immutable objects remain available for exact rollback.
   if (idempotentReplay) {
+    if (existingSeal === null || previousPointer === null) throw new Error("V213_ACTIVATION_LEGACY_SEAL_UNAVAILABLE");
+    const pointer = parseSealedPointer(previousPointer);
+    if (pointer.run_id !== runId || pointer.transaction_id !== transactionId || pointer.seal_sha256 !== seal.sha256
+      || pointer.public_data_as_of !== root.public_data_as_of) throw new Error("V213_ACTIVATION_REPLAY_CORRUPT");
     await verifySnapshotObjects(env, prefix, objects, true);
     assertAcquisitionFresh();
     return {
@@ -566,21 +568,26 @@ export async function ingestV213ActivationBundle(
       publication_mode_contract_sha256: publicationModeContractHash,
     };
   }
+  assertAcquisitionFresh();
+  await env.TENANT_PRIVATE_CACHE.put(rollbackStateKey, JSON.stringify(state));
+  if (existingClaimText === null) {
+    await env.PUBLIC_CACHE.put(runClaimKey, claimText);
+    if (await env.PUBLIC_CACHE.get(runClaimKey, "text") !== claimText) throw new Error("V213_ACTIVATION_RUN_CLAIM_WRITE_FAILED");
+  }
   for (const [key, value] of objects) {
     await env.PUBLIC_CACHE.put(`${prefix}${key}`, value);
   }
   await verifySnapshotObjects(env, prefix, objects);
   assertAcquisitionFresh();
-  await env.PUBLIC_CACHE.put("snapshot:current", JSON.stringify({
-    schema_version: 1,
-    run_id: runId,
-    public_data_as_of: root.public_data_as_of,
-    promoted_at: new Date().toISOString(),
-    provider_scope: "public_only",
-    owner_watchlist_inherited: false,
-  }));
+  const pointerText = JSON.stringify({
+    schema_version: 2, run_id: runId, transaction_id: transactionId, seal_sha256: seal.sha256,
+    public_data_as_of: root.public_data_as_of, promoted_at: new Date().toISOString(),
+    provider_scope: "public_only", owner_watchlist_inherited: false,
+  });
+  parseSealedPointer(pointerText);
+  await env.PUBLIC_CACHE.put("snapshot:current", pointerText);
   const confirmedPointer = await env.PUBLIC_CACHE.get("snapshot:current", "text");
-  if (currentRunId(confirmedPointer) !== runId) {
+  if (confirmedPointer !== pointerText) {
     throw new Error("V213_ACTIVATION_POINTER_WRITE_NOT_VERIFIED");
   }
   await verifySnapshotObjects(env, prefix, objects);
@@ -645,9 +652,12 @@ export async function finalizeV213Activation(
   if (!stateText) throw new Error("V213_ACTIVATION_FINALIZE_STATE_MISSING");
   parseRollbackState(stateText, control.transaction_id, control.run_id);
   const currentText = await env.PUBLIC_CACHE.get("snapshot:current", "text");
-  if (currentRunId(currentText) !== control.run_id) {
+  if (currentRunId(currentText) !== control.run_id || currentText === null) {
     throw new Error("V213_ACTIVATION_FINALIZE_POINTER_MISMATCH");
   }
+  const verified = await readSealedSnapshot(currentText, objectKey => env.PUBLIC_CACHE.get(objectKey, "text"));
+  if (verified.pointer.transaction_id !== control.transaction_id
+    || await env.PUBLIC_CACHE.get("snapshot:current", "text") !== currentText) throw new Error("V213_ACTIVATION_FINALIZE_POINTER_MISMATCH");
   await env.TENANT_PRIVATE_CACHE.delete(key);
   return {
     status: "finalized",

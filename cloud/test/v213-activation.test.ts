@@ -7,6 +7,13 @@ import { publicJson } from "../src/storage";
 import { parseQuery } from "../src/core";
 import { deterministicAnswer } from "../src/qa";
 import { parseV21Top20 } from "../src/v21/top20";
+import { v213Top20ReportAnswer, readV213Top20Report } from "../src/v213/top20-report";
+import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import { broadcastV213Top20 } from "../src/v213/broadcast";
+import { storeOwnerPairing } from "../src/v21/owner-storage";
+import { deriveTenantId } from "../src/security";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
 import {
   finalizeV213Activation,
@@ -392,6 +399,128 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it("does not turn altered sealed bytes into a newly identified Top20 answer", async () => {
+    const { env, publicKv } = runtime();
+    const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const key = `snapshot:${RUN_ID}:v213:top20-report:latest`;
+    const changed = JSON.parse(publicKv.values.get(key)!);
+    changed.records[19].profit_summary = "SYNTHETIC_ALTERED_AFTER_SEAL";
+    publicKv.values.set(key, JSON.stringify(changed));
+    const answer = await v213Top20ReportAnswer(env, parseQuery("Top20 文字"));
+    expect(answer).not.toContain("SYNTHETIC_ALTERED_AFTER_SEAL");
+    expect(answer).toContain("尚未通過驗證");
+  });
+  it("binds actual normalized storage bytes separately from differently encoded upload digests", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle();
+    for (const key of Object.keys(value.payloads) as Array<keyof typeof value.payloads>) {
+      if (key === "report_text") continue;
+      value.payloads[key] = JSON.stringify(JSON.parse(value.payloads[key]), null, 2);
+      value.sha256[key] = await digest(value.payloads[key]);
+    }
+    const result = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    expect(result.object_count).toBe(14);
+    const prefix = `snapshot:${RUN_ID}:`; const pointer = JSON.parse(publicKv.values.get("snapshot:current")!);
+    const raw = publicKv.values.get(prefix + SNAPSHOT_SEAL_KEY)!; const manifest = JSON.parse(raw);
+    expect(pointer.schema_version).toBe(2); expect(pointer.seal_sha256).toBe(await digest(raw));
+    for (const key of SNAPSHOT_OBJECT_KEYS) {
+      const body = publicKv.values.get(prefix + key)!;
+      expect(manifest.objects[key]).toEqual({ sha256: await digest(body), utf8_bytes: new TextEncoder().encode(body).byteLength });
+    }
+    expect(manifest.objects["v213:top20-report:latest"].sha256).not.toBe(value.sha256.v213_top20_report_json);
+    const view = await pinPublicSnapshot(env); expect(view.integrity).toBe("sealed");
+    const report = await readV213Top20Report(view); expect(report!.records[19]!.profit_summary).toContain("淨利率");
+    expect((await v213Top20ReportAnswer(env, parseQuery("Top20 文字")))).toContain("T19");
+  });
+  it("keeps normal replay read-only and refuses replay after finalize without recreating a rollback journal", async () => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const pub = vi.spyOn(publicKv, "put"); const priv = vi.spyOn(privateKv, "put");
+    expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).idempotent_replay).toBe(true);
+    expect(pub).not.toHaveBeenCalled(); expect(priv).not.toHaveBeenCalled();
+    await finalizeV213Activation(control(), env);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_FINALIZED_OR_UNOWNED_REPLAY");
+    expect(pub).not.toHaveBeenCalled(); expect(priv).not.toHaveBeenCalled();
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
+  });
+  it.each(["missing_manifest", "legacy_pointer", "corrupt_manifest", "corrupt_claim"])("never synthesizes a promoted seal on %s replay", async mode => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env); const prefix = `snapshot:${RUN_ID}:`;
+    if (mode === "missing_manifest") publicKv.values.delete(prefix + SNAPSHOT_SEAL_KEY);
+    if (mode === "legacy_pointer") publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 1, run_id: RUN_ID }));
+    if (mode === "corrupt_manifest") publicKv.values.set(prefix + SNAPSHOT_SEAL_KEY, "{}");
+    if (mode === "corrupt_claim") publicKv.values.set(prefix + "v213:activation-claim", "");
+    const pub = new Map(publicKv.values); const priv = new Map(privateKv.values);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow();
+    expect(publicKv.values).toEqual(pub); expect(privateKv.values).toEqual(priv);
+    expect((await pinPublicSnapshot(env)).kind).toBe("invalid");
+  });
+  it.each(["reports:evening:latest", "scores:latest", "v213:activation-claim", SNAPSHOT_SEAL_KEY])("does not finalize a corrupt %s or delete its recovery journal", async key => {
+    const { env, publicKv, privateKv } = runtime();
+    await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    publicKv.values.set(`snapshot:${RUN_ID}:${key}`, "SYNTHETIC_CORRUPTION");
+    const before = new Map(privateKv.values); const pointer = publicKv.values.get("snapshot:current");
+    await expect(finalizeV213Activation(control(), env)).rejects.toThrow("V213_SNAPSHOT_SEAL_INVALID");
+    expect(privateKv.values).toEqual(before); expect(publicKv.values.get("snapshot:current")).toBe(pointer);
+    expect((await pinPublicSnapshot(env)).kind).toBe("invalid");
+  });
+  it("rechecks the exact current pointer after finalize object verification", async () => {
+    const { env, publicKv, privateKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const before = new Map(privateKv.values); const get = publicKv.get.bind(publicKv);
+    vi.spyOn(publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+      const result = await get(key,type);
+      if (key.endsWith("source_views:latest")) publicKv.values.set("snapshot:current", "SYNTHETIC_CONCURRENT_POINTER");
+      return result;
+    });
+    await expect(finalizeV213Activation(control(), env)).rejects.toThrow("V213_ACTIVATION_FINALIZE_POINTER_MISMATCH");
+    expect(privateKv.values).toEqual(before);
+  });
+  it("bounds stored objects and rejects malformed UTF-16 before any journal/claim write", async () => {
+    for (const mode of ["oversized", "surrogate"]) {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      if (mode === "oversized") {
+        const doc = JSON.parse(value.payloads.source_federation_json); doc.synthetic_padding = "x".repeat(2097153);
+        await replacePayload(value, "source_federation_json", doc);
+      } else {
+        value.payloads.report_text += "\ud800"; value.sha256.report_text = await digest(value.payloads.report_text);
+      }
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_SNAPSHOT_SEAL_INVALID");
+      expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+    }
+  });
+  it("refuses altered sealed data in the paired actual push caller before LINE/quota transport", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle(); await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const e = { ...env, TENANT_HASH_SECRET: "SYNTHETIC_SEAL_HASH_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_SEAL_DATA_NOT_REAL",
+      LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_SEAL_LINE_NOT_REAL" };
+    const target = String.fromCharCode(85) + "0".repeat(32);
+    await storeOwnerPairing(e, await deriveTenantId({ type: "user", userId: target }, e.TENANT_HASH_SECRET), target);
+    const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("NETWORK_FORBIDDEN"));
+    try {
+      // Positive reader control reaches the existing free-plan gate, not a sender bypass.
+      await expect(broadcastV213Top20(e, "test")).rejects.toThrow("LINE_FREE_PLAN_REVIEW_REQUIRED");
+      publicKv.values.set(`snapshot:${RUN_ID}:reports:evening:latest`, "SYNTHETIC_ALTERED_OTHER_MEMBER");
+      expect((await broadcastV213Top20(e, "test")).status).toBe("top20_unavailable");
+      expect(network).not.toHaveBeenCalled();
+    } finally { network.mockRestore(); }
+  });
+  it.each(["morning", "evening"] as const)("passes the actual admitted synthetic seal through the %s caller and mocked free sender once", async slot => {
+    const { env } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const e = { ...env, TENANT_HASH_SECRET: "SYNTHETIC_SEALED_HASH_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_SEALED_DATA_NOT_REAL",
+      LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_SEALED_LINE_NOT_REAL", LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+      V21_SCHEDULED_PUSH_ENABLED: "true", V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace };
+    const target = String.fromCharCode(85) + "0".repeat(32);
+    await storeOwnerPairing(e, await deriveTenantId({ type: "user", userId: target }, e.TENANT_HASH_SECRET), target);
+    const messages: unknown[] = [];
+    const network = vi.spyOn(globalThis, "fetch").mockImplementation(withPushPreflight(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      messages.push(JSON.parse(String(init?.body)).messages); return new Response("{}", { status: 200 });
+    }));
+    try {
+      expect(await broadcastV213Top20(e, slot)).toMatchObject({ status: "sent", run_id: RUN_ID, count: 20 });
+      expect((await broadcastV213Top20(e, slot)).status).toBe("duplicate");
+      expect(messages).toHaveLength(1); expect(JSON.stringify(messages[0])).toContain("T19");
+    } finally { network.mockRestore(); }
+    // Mock provider acceptance is NOT a real free-plan review or phone receipt.
+  });
   it("refuses actual CLI cached source time before sealed writes despite fresh outer clocks", async () => {
     const vectors = JSON.parse(readFileSync(new URL("../../tests/fixtures/source-acquisition-reports.json", import.meta.url), "utf8"));
     const data = vectors.cases.stale;
@@ -422,6 +551,8 @@ describe("v2.1.3 atomic activation transaction", () => {
         const stored = JSON.parse(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)!);
         expect(stored.records[19].retrieved_at).toBe(data.source_time);
         expect(stored.records[19].source_acquisition).toEqual(data.v212.records[19].source_acquisition);
+        const view = await pinPublicSnapshot(env); expect(view.integrity).toBe("sealed");
+        expect((await readV213Top20Report(view))!.records[19]!.retrieved_at).toBe(data.source_time);
         expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).idempotent_replay).toBe(true);
       }
     } finally { vi.useRealTimers(); }
