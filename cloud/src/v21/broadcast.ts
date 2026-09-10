@@ -63,7 +63,7 @@ export async function broadcastV21Top20(
 
   // v2.1.2 requirement: no title/narrative/score fields in the Top 20 push.
   // Only the exact five requested columns are emitted by the formatter.
-  await pushText(env, owner.lineUserId, formatV212Top20Report(report));
+  await pushText(env, owner.lineUserId, formatV212Top20Report(report), slot === "test" ? undefined : { date, slot });
   if (slot !== "test") {
     await env.EPHEMERAL_SECURITY_CACHE.put(dedupeKey, "sent", { expirationTtl: 259200 });
   }

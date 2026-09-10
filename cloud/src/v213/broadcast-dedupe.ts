@@ -1,3 +1,5 @@
+import { reserveFreePush } from "../v21/line-push-policy";
+
 type DedupeState = {
   schema_version: 1;
   status: "pending" | "sent";
@@ -44,6 +46,7 @@ export class V213BroadcastDedupe {
     let body: Record<string, unknown>;
     try { body = object(await request.json()); }
     catch { return json({ error: "JSON_INVALID" }, 400); }
+    if (body.action === "reserve_push") return reserveFreePush(this.state, body);
     if (typeof body.action !== "string" || (body.action !== "status" && typeof body.token !== "string") ||
         Object.keys(body).some(key => key !== "action" && key !== "token")) return json({ error: "REQUEST_INVALID" }, 400);
     const action = body.action;

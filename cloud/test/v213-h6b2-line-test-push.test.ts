@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveTenantId } from "../src/security";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { parseH6B2Preview, sendH6B2SevenFieldTestPush } from "../src/v213/h6b2-line-test-push";
@@ -102,6 +103,8 @@ function runtime() {
     TENANT_HASH_SECRET: HASH_KEY,
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_CHANNEL_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+    V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace,
   };
   return { publicKv, privateKv, securityKv, env };
 }
@@ -146,7 +149,7 @@ describe("v2.1.3 H6B2 order-reconciled seven-field LINE acceptance", () => {
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     const beforeKeys = [...publicKv.values.keys()].sort();
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));

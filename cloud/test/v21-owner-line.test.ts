@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
 import { authenticateV21AdminRequest, ingestV21PublicSnapshot } from "../src/v21/admin";
@@ -104,6 +105,8 @@ function runtime() {
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_CHANNEL_KEY_NOT_REAL",
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_CHANNEL_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+    V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace,
     V21_SYNC_HMAC_SECRET: SYNC_KEY,
     V21_SCHEDULED_PUSH_ENABLED: "true",
     V21_TOP20_MAX_AGE_SECONDS: "7200",
@@ -239,7 +242,7 @@ describe("v2.1 private owner LINE delivery", () => {
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));

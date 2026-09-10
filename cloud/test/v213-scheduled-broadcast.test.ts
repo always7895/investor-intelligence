@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveTenantId } from "../src/security";
+import { createHmac } from "node:crypto";
 import { asKv, MemoryKv } from "./fake-kv";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { broadcastV213Top20 } from "../src/v213/broadcast";
 import { ingestV213Top20Report } from "../src/v213/admin";
 import { formatV213Top20Report, parseV213Top20Report } from "../src/v213/top20-report";
-import { V213BroadcastDedupe } from "../src/v213/broadcast-dedupe";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import productionWorker from "../src/v213/production-worker";
 import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 
@@ -100,40 +101,8 @@ function report() {
   };
 }
 
-function fakeDedupeStub(failComplete = false) {
-  const values = new Map<string, unknown>();
-  let chain = Promise.resolve();
-  const state = {
-    storage: {
-      get: async (key: string) => values.get(key),
-      put: async (key: string, value: unknown) => {
-        if (failComplete && (value as any)?.status === "sent") { failComplete = false; throw new Error("SYNTHETIC_COMPLETE_FAILED"); }
-        values.set(key, value);
-      },
-      delete: async (key: string) => values.delete(key),
-    },
-  } as unknown as DurableObjectState;
-  const instance = new V213BroadcastDedupe(state);
-  const stub = {
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = input instanceof Request ? input : new Request(input, init);
-      const result = chain.then(() => instance.fetch(request));
-      chain = result.then(() => undefined, () => undefined);
-      return result;
-    },
-  };
-  return stub;
-}
-
 function fakeDedupeNamespace(failComplete = false): DurableObjectNamespace {
-  const stubs = new Map<string, ReturnType<typeof fakeDedupeStub>>();
-  return {
-    idFromName: (name: string) => name,
-    get: (id: string) => {
-      if (!stubs.has(id)) stubs.set(id, fakeDedupeStub(failComplete));
-      return stubs.get(id)!;
-    },
-  } as unknown as DurableObjectNamespace;
+  return memoryPushNamespace({ failComplete }).namespace;
 }
 
 function runtime(publicKv = new MemoryKv()) {
@@ -146,6 +115,7 @@ function runtime(publicKv = new MemoryKv()) {
     TENANT_HASH_SECRET: HASH_KEY,
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
     V21_SCHEDULED_PUSH_ENABLED: "true",
     V21_TOP20_MAX_AGE_SECONDS: "7200",
     V213_BROADCAST_DEDUPE: fakeDedupeNamespace(),
@@ -160,6 +130,44 @@ afterEach(() => {
 });
 
 describe("v2.1.3 scheduled seven-field owner broadcast", () => {
+  it("blocks the actual manual push caller without a reviewed free plan before any LINE request", async () => {
+    const { publicKv, env } = runtime();
+    delete (env as any).LINE_FREE_PUSH_POLICY;
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    await expect(broadcastV213Top20(env, "test")).rejects.toThrow("LINE_FREE_PLAN_REVIEW_REQUIRED");
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("keeps both authenticated admin aliases inside the same free/manual attempt gate", async () => {
+    const { publicKv, env } = runtime();
+    const secret = "SYNTHETIC_PUSH_ADMIN_HMAC_NOT_REAL_123456";
+    const e = { ...env, V21_SYNC_HMAC_SECRET: secret };
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(e, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const post = vi.fn(async () => new Response("{}")); const network = withPushPreflight(post); vi.stubGlobal("fetch", network);
+    const call = async (path: string, number: number) => {
+      const stamp = String(Math.floor(Date.now() / 1000)); const nonce = String(number).padStart(32, "0");
+      const signature = createHmac("sha256", secret).update(`${stamp}.${nonce}.{}`).digest("hex");
+      return productionWorker.fetch(new Request(`https://synthetic.workers.dev${path}`, { method: "POST", body: "{}", headers: {
+        "x-ii-v21-timestamp": stamp, "x-ii-v21-nonce": nonce, "x-ii-v21-signature": signature,
+      } }), e as any, {} as ExecutionContext);
+    };
+    const approved = e.LINE_FREE_PUSH_POLICY; delete (e as any).LINE_FREE_PUSH_POLICY;
+    expect(await (await call("/v213/admin/test-push", 1)).json()).toMatchObject({ ok: false, code: "LINE_FREE_PLAN_REVIEW_REQUIRED" });
+    expect(network).not.toHaveBeenCalled();
+    e.LINE_FREE_PUSH_POLICY = approved;
+    expect(await (await call("/v213/admin/test-push", 2)).json()).toMatchObject({ status: "sent" });
+    expect(await (await call("/v21/admin/test-push", 3)).json()).toMatchObject({ ok: false, code: "LINE_PUSH_ALREADY_ATTEMPTED" });
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["transport", "complete"])("does not replay an ambiguous %s outcome through the actual scheduled caller", async failure => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-10T04:00:00Z"));
     const { publicKv, env } = runtime();
@@ -173,14 +181,14 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
       if (failure === "transport") throw new Error("SYNTHETIC_AMBIGUOUS_PUSH");
       return new Response("{}");
     });
-    vi.stubGlobal("fetch", send);
+    vi.stubGlobal("fetch", withPushPreflight(send));
     const run = async () => {
       const pending: Promise<unknown>[] = [];
       await productionWorker.scheduled({ cron: "0 0 * * *", scheduledTime: Date.now() } as ScheduledController,
         env as any, { waitUntil(p: Promise<unknown>) { pending.push(p); } } as unknown as ExecutionContext);
       return Promise.all(pending);
     };
-    await expect(run()).rejects.toThrow(failure === "transport" ? "SYNTHETIC_AMBIGUOUS_PUSH" : "SYNTHETIC_COMPLETE_FAILED");
+    await expect(run()).rejects.toThrow(failure === "transport" ? "LINE_PUSH_TRANSPORT_UNCERTAIN" : "SYNTHETIC_COMPLETE_FAILED");
     await run();
     vi.setSystemTime(new Date(Date.now() + 11 * 60_000));
     await run();
@@ -208,7 +216,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
     publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
     const calls: any[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (url: string, init: RequestInit) => {
       expect(String(url)).toBe("https://api.line.me/v2/bot/message/push");
       calls.push(JSON.parse(String(init.body)));
       return new Response("{}");
@@ -255,7 +263,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
 
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));
@@ -292,13 +300,13 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
       kv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     }
     const payloads: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       payloads.push(String(init?.body)); return new Response("{}");
     }));
     expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "sent", run_id: "run-a" });
     expect(kv.pointerReads).toBe(1);
-    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "sent", run_id: "run-b" });
-    expect((await broadcastV213Top20(env, "morning")).status).toBe("duplicate");
+    expect(await broadcastV213Top20(env, "evening")).toMatchObject({ status: "sent", run_id: "run-b" });
+    expect((await broadcastV213Top20(env, "evening")).status).toBe("duplicate");
     expect(payloads).toHaveLength(2);
     expect(payloads[0]).toContain("合成 run-a");
     expect(payloads[0]).not.toContain("合成 run-b");
@@ -341,7 +349,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
     publicKv.values.set("snapshot:run-a:v21:top20:latest", JSON.stringify(top20()));
     publicKv.values.set("snapshot:run-a:v213:top20-report:latest", JSON.stringify(report()));
-    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", withPushPreflight(send));
     expect((await broadcastV213Top20(env, "morning")).status).toBe("stale");
     expect(send).not.toHaveBeenCalled();
     publicKv.values.set("snapshot:run-a:last_successful_pipeline_timestamp", new Date().toISOString());
@@ -359,7 +367,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     let sends = 0;
-    vi.stubGlobal("fetch", vi.fn(async () => {
+    vi.stubGlobal("fetch", withPushPreflight(async () => {
       sends += 1;
       await new Promise((resolve) => setTimeout(resolve, 20));
       return new Response("{}", { status: 200 });

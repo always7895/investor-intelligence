@@ -69,7 +69,7 @@ export async function broadcastV213Top20(
     const delivery = await runV213BroadcastOnce(
       env.V213_BROADCAST_DEDUPE,
       dedupeKey,
-      () => pushMessages(env, owner.lineUserId, messages),
+      () => pushMessages(env, owner.lineUserId, messages, { date, slot }),
     );
     if (delivery.status !== "sent") return { status: delivery.status };
   }
