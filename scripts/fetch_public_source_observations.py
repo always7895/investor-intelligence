@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in collection of official announcement and equity EOD endpoints; local only."""
+"""Local public observations; daily options require explicit --source opt-in."""
 from __future__ import annotations
 
 import argparse
@@ -21,9 +21,12 @@ from adapters.staged_public import parse_source_payload
 from adapters.official_rss import FEEDS
 from adapters.taiwan_equities import EQUITY_FEEDS
 from adapters.issuer_directory import ISSUER_FEEDS
+from adapters.taifex_options_eod import TAIFEX_EOD_FEEDS
 from source_observation import atomic_write_json
 
 ENDPOINTS = {**{key: value[0] for key, value in FEEDS.items()}, **EQUITY_FEEDS, **ISSUER_FEEDS}
+DEFAULT_SOURCES = tuple(ENDPOINTS)  # Preserve existing default collection; no implicit options activation.
+ENDPOINTS = {**ENDPOINTS, **TAIFEX_EOD_FEEDS}
 MAX_BYTES = 8_000_000
 
 
@@ -99,7 +102,7 @@ def main() -> int:
     args = parser.parse_args()
     if not args.fetch:
         parser.error("--fetch is required; no implicit network requests")
-    result = collect(args.source or list(ENDPOINTS))
+    result = collect(args.source or list(DEFAULT_SOURCES))
     atomic_write_json(args.output, result)
     summary = [{key: value for key, value in row.items() if key != "warnings"}
                | {"warning_count": len(row.get("warnings", []))} for row in result["sources"]]

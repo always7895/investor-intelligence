@@ -10,12 +10,17 @@ import argparse
 import json
 import math
 import re
+import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+# Embedded Python ignores the caller's cwd/PYTHONPATH. Admit this script directory only.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from taifex_contract import TAIFEX_DAILY_URL, daily_identity
+
 SOURCE_URLS = {
-    "taifex_eod": "https://openapi.taifex.com.tw/v1/DailyMarketReportOpt",
+    "taifex_eod": TAIFEX_DAILY_URL,
     "alpaca_indicative": "https://data.alpaca.markets/v1beta1/options/quotes/latest",
 }
 OCC = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$")
@@ -70,20 +75,8 @@ def normalize(source: str, payload: Any, *, now: datetime | None = None) -> dict
             if not isinstance(row, dict):
                 raise ValueError("INVALID_ROW")
             if source == "taifex_eod":
-                raw_day = str(row.get("Date", ""))
-                if not re.fullmatch(r"\d{8}", raw_day):
-                    raise ValueError("INVALID_TRADE_DATE")
-                day = date(int(raw_day[:4]), int(raw_day[4:6]), int(raw_day[6:]))
-                if day > now.astimezone(timezone(timedelta(hours=8))).date():
-                    raise ValueError("FUTURE_TRADE_DATE")
-                contract = str(row.get("Contract", ""))
-                month = str(row.get("ContractMonth(Week)", ""))
-                session = str(row.get("TradingSession", ""))
-                right = {"買權": "C", "賣權": "P", "Call": "C", "Put": "P", "C": "C", "P": "P"}.get(row.get("CallPut"))
-                if not re.fullmatch(r"[A-Z0-9]{1,12}", contract) or not re.fullmatch(r"\d{6}(?:W[1-5])?", month) or not right:
-                    raise ValueError("INVALID_CONTRACT")
-                if session not in {"一般", "盤後", "Position", "AfterHours"}:
-                    raise ValueError("UNKNOWN_SESSION")
+                day, contract, month, right, session = daily_identity(
+                    row, taipei_day=now.astimezone(timezone(timedelta(hours=8))).date())
                 strike = number(row.get("StrikePrice"))
                 bid, ask = number(row.get("BestBid")), number(row.get("BestAsk"))
                 item = {"contract": contract, "contract_month": month, "right": right,

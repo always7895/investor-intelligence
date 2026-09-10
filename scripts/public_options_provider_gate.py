@@ -40,6 +40,7 @@ ALLOWED_RIGHTS_STATUSES = {
 }
 ALLOWED_ADAPTER_STATUSES = {
     "not_implemented",
+    "candidate_implemented",  # local-only code; never satisfies the runtime reviewed gate
     "adapter_reviewed",
     "not_permitted",
 }

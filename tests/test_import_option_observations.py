@@ -38,6 +38,13 @@ class ImportOptionObservationsTests(unittest.TestCase):
         self.assertFalse(row["publication_eligible"])
         self.assertFalse(row["executable_quote"])
 
+    def test_shared_identity_supports_friday_series_and_rejects_invalid_calendar_month(self):
+        for series, status in [('202609F2', 'OK'), ('202613', 'FAILED'), ('202609F9', 'FAILED')]:
+            row = {**daily(), 'ContractMonth(Week)': series}
+            result = normalize('taifex_eod', [row], now=NOW)
+            self.assertEqual(result['status'], status)
+            if status == 'OK': self.assertIsNone(result['observations'][0]['expiry'])
+
     def test_taifex_trade_date_uses_taipei_not_utc_calendar(self):
         row = daily()
         row["Date"] = "20260908"
