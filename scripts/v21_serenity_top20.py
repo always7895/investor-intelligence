@@ -26,12 +26,12 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+from http.cookiejar import DefaultCookiePolicy
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -180,17 +180,23 @@ def ticker(value: Any) -> str:
     return text
 
 
+class _NoPublicCookies(DefaultCookiePolicy):
+    def set_ok(self, cookie, request):
+        return False
+
+    def return_ok(self, cookie, request):
+        return False
+
+
 def session() -> requests.Session:
-    retry = Retry(
-        total=3, connect=3, read=3, status=3,
-        backoff_factor=0.8,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=frozenset({"GET"}),
-        respect_retry_after_header=True,
-        raise_on_status=False,
-    )
+    # These three reviewed public JSON callers need no cookies, proxy/netrc
+    # credentials, ambient headers or transport retries. LINE is separate.
     value = requests.Session()
-    value.mount("https://", HTTPAdapter(max_retries=retry))
+    value.trust_env = False
+    value.headers.clear()
+    value.cookies.set_policy(_NoPublicCookies())
+    value.mount('https://', HTTPAdapter(max_retries=0))
+    value._public_json_blocked_sources = set()
     return value
 
 
@@ -206,6 +212,140 @@ def cached(path: Path, hours: int) -> Any | None:
         return None
 
 
+PUBLIC_JSON_MAX_BYTES = 20_000_000
+SEC_REFERENCE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
+WORLD_BANK_JSON_URL = 'https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5'
+
+
+def public_json_cache_path(path: Path) -> Path:
+    # Keep legacy raw caches untouched for compatibility/history. Their mtime
+    # alone cannot authenticate which URL/body was obtained, or a failed refresh.
+    return path.with_name(path.name + '.source-v1.json')
+
+
+def _json_source(url: str) -> str:
+    if url == SEC_REFERENCE_URL:
+        return 'sec'
+    match = re.fullmatch(r'https://data\.sec\.gov/api/xbrl/companyfacts/CIK([0-9]{10})\.json', url) if isinstance(url, str) else None
+    if match and int(match[1]) != 0:
+        return 'sec'
+    if url == WORLD_BANK_JSON_URL:
+        return 'world_bank'
+    raise PipelineError('PUBLIC_JSON_URL_UNADMITTED')
+
+
+def _strict_public_json(body: bytes) -> Any:
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError()
+            value[key] = item
+        return value
+    def constant(_):
+        raise ValueError()
+    try:
+        value = json.loads(body.decode('utf-8-sig'), object_pairs_hook=pairs, parse_constant=constant)
+        # Also reject exponent overflow (1e999), which parse_constant does not see.
+        json.dumps(value, allow_nan=False)
+        if not isinstance(value, (dict, list)):
+            raise ValueError()
+        return value
+    except (ValueError, UnicodeError, RecursionError):
+        raise PipelineError('PUBLIC_JSON_PAYLOAD_INVALID') from None
+
+
+def _source_time(text):
+    try:
+        if not isinstance(text, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z', text):
+            raise ValueError()
+        return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        raise PipelineError('PUBLIC_JSON_CACHE_INVALID') from None
+
+
+def _source_cache(path: Path, url: str, hours: int):
+    if not path.exists():
+        return None, None
+    try:
+        if not path.is_file() or path.stat().st_size > PUBLIC_JSON_MAX_BYTES * 2 + 8192:
+            raise ValueError()
+        doc = _strict_public_json(path.read_bytes())
+        if (not isinstance(doc, dict) or set(doc) != {'schema_version', 'url', 'attempt', 'last_success'}
+                or type(doc['schema_version']) is not int or doc['schema_version'] != 1 or doc['url'] != url):
+            raise ValueError()
+        attempt, success = doc['attempt'], doc['last_success']
+        if (not isinstance(attempt, dict) or set(attempt) != {'status', 'at', 'failure_code'}
+                or attempt['status'] not in ('PENDING', 'AVAILABLE', 'FAILED')):
+            raise ValueError()
+        stamp = _source_time(attempt['at']); now = utc_now()
+        if stamp > now:
+            raise ValueError()
+        code = attempt['failure_code']
+        if (attempt['status'] == 'FAILED' and (not isinstance(code, str) or not re.fullmatch(r'PUBLIC_JSON_[A-Z0-9_]{1,60}', code))
+                or attempt['status'] != 'FAILED' and code is not None):
+            raise ValueError()
+        value = None
+        if success is not None:
+            if (not isinstance(success, dict) or set(success) != {'retrieved_at', 'body_sha256', 'body_utf8'}
+                    or not isinstance(success['body_utf8'], str)):
+                raise ValueError()
+            raw = success['body_utf8'].encode('utf-8'); retrieved = _source_time(success['retrieved_at'])
+            if not 0 < len(raw) <= PUBLIC_JSON_MAX_BYTES or hashlib.sha256(raw).hexdigest() != success['body_sha256'] or retrieved > stamp:
+                raise ValueError()
+            value = _strict_public_json(raw)
+        if attempt['status'] == 'AVAILABLE':
+            if success is None or success['retrieved_at'] != attempt['at']:
+                raise ValueError()
+            if hours > 0 and 0 <= (now - stamp).total_seconds() <= hours * 3600:
+                return doc, value
+        # Pending/failed attempts never reuse the retained older success.
+        return doc, None
+    except (OSError, ValueError, TypeError, KeyError, PipelineError):
+        raise PipelineError('PUBLIC_JSON_CACHE_INVALID') from None
+
+
+def _save_source_cache(path: Path, value: dict) -> None:
+    try:
+        atomic_json(path, value)
+        if _strict_public_json(path.read_bytes()) != value:
+            raise ValueError()
+    except (OSError, ValueError, PipelineError):
+        raise PipelineError('PUBLIC_JSON_CACHE_WRITE_FAILED') from None
+
+
+def _public_request_headers(source: str, headers: Mapping[str, str]) -> dict[str, str]:
+    allowed = {'User-Agent', 'Accept', 'Accept-Encoding'} | ({'From'} if source == 'sec' else set())
+    if (not isinstance(headers, Mapping) or not set(headers) <= allowed
+            or not isinstance(headers.get('User-Agent'), str) or not headers['User-Agent']
+            or any(not isinstance(v, str) or not 0 < len(v) <= 512 or re.search(r'[^\x20-\x7e]', v) for v in headers.values())):
+        raise PipelineError('PUBLIC_JSON_HEADERS_UNADMITTED')
+    if source == 'sec':
+        contact = headers.get('From', '')
+        if not CONTACT_RE.fullmatch(contact) or contact not in headers['User-Agent']:
+            raise PipelineError('PUBLIC_JSON_SEC_CONTACT_REQUIRED')
+    return dict(headers)
+
+
+def _public_payload(value, raw: bytes, url: str, contact: str) -> None:
+    if contact and (contact.casefold() in raw.decode('utf-8-sig').casefold()
+                    or contact.casefold() in json.dumps(value, ensure_ascii=False).casefold()):
+        raise PipelineError('PUBLIC_JSON_SENSITIVE_RESPONSE')
+    if url == SEC_REFERENCE_URL:
+        valid = (isinstance(value, dict) and set(value) == {'fields', 'data'}
+                 and value['fields'] == ['cik', 'name', 'ticker', 'exchange'] and isinstance(value['data'], list))
+    elif url == WORLD_BANK_JSON_URL:
+        valid = isinstance(value, list) and len(value) == 2 and isinstance(value[0], dict) and isinstance(value[1], list)
+    else:
+        cik = value.get('cik') if isinstance(value, dict) else None
+        valid = (isinstance(value, dict) and set(value) == {'cik', 'entityName', 'facts'}
+                 and type(cik) in (str, int) and bool(re.fullmatch(r'[0-9]{1,10}', str(cik)))
+                 and str(cik).zfill(10) == url.rsplit('CIK', 1)[1][:-5]
+                 and isinstance(value['entityName'], str) and isinstance(value['facts'], dict))
+    if not valid:
+        raise PipelineError('PUBLIC_JSON_SOURCE_SHAPE_INVALID')
+
+
 def get_json(
     http: requests.Session,
     url: str,
@@ -215,32 +355,92 @@ def get_json(
     cache_hours: int,
     minimum_delay: float = 0.0,
 ) -> Any:
-    value = cached(cache_path, cache_hours)
+    source = _json_source(url)
+    outgoing = _public_request_headers(source, headers)
+    if (http.trust_env is not False or http.verify is not True or http.auth is not None
+            or http.proxies or http.headers or not isinstance(http.cookies.get_policy(), _NoPublicCookies)
+            or http.get_adapter(url).max_retries.total != 0
+            or type(getattr(http, '_public_json_blocked_sources', None)) is not set):
+        raise PipelineError('PUBLIC_JSON_SESSION_UNSAFE')
+    if source in http._public_json_blocked_sources:
+        raise PipelineError('PUBLIC_JSON_SOURCE_BLOCKED')
+    if (type(cache_hours) is not int or not 0 <= cache_hours <= 168
+            or type(minimum_delay) not in (int, float) or not 0 <= minimum_delay <= 10):
+        raise PipelineError('PUBLIC_JSON_POLICY_INVALID')
+    bound_path = public_json_cache_path(cache_path)
+    prior, value = _source_cache(bound_path, url, cache_hours)
+    if prior and prior['last_success']:
+        previous_raw = prior['last_success']['body_utf8'].encode('utf-8')
+        _public_payload(_strict_public_json(previous_raw), previous_raw, url, outgoing.get('From', ''))
     if value is not None:
         return value
     if minimum_delay:
         time.sleep(minimum_delay)
-    response = http.get(url, headers=dict(headers), timeout=(10, 45))
-    if not 200 <= response.status_code < 300:
-        if response.status_code == 403 and "sec.gov" in url:
-            LOGGER.error(
-                "SEC fair-access request was rejected with HTTP 403; "
-                "no bypass will be attempted"
-            )
-        if cache_path.is_file():
-            try:
-                stale = json.loads(cache_path.read_text(encoding="utf-8"))
-                LOGGER.warning("HTTP %s; using stale cache for %s", response.status_code, url)
-                return stale
-            except (OSError, json.JSONDecodeError):
-                pass
-        raise PipelineError(f"HTTP {response.status_code}: {url}")
+    envelope = {'schema_version': 1, 'url': url,
+                'attempt': {'status': 'PENDING', 'at': iso_now(), 'failure_code': None},
+                'last_success': prior['last_success'] if prior else None}
+    # One mutable local envelope: pending before HTTP, available only after a
+    # successful bounded response. It is not a sealed/publication transaction.
+    _save_source_cache(bound_path, envelope)
+    response = None
+    http.cookies.clear()
     try:
-        value = response.json()
-    except ValueError as exc:
-        raise PipelineError(f"Non-JSON response: {url}") from exc
-    atomic_json(cache_path, value)
-    return value
+        response = http.get(url, headers=outgoing, timeout=(5, 20), allow_redirects=False, stream=True)
+        status = response.status_code
+        if type(status) is not int or not 100 <= status <= 599:
+            raise PipelineError('PUBLIC_JSON_HTTP_INVALID')
+        if status != 200:
+            if status in (403, 429):
+                http._public_json_blocked_sources.add(source)
+            raise PipelineError(f'PUBLIC_JSON_HTTP_{status}')
+        if response.url != url or response.history:
+            raise PipelineError('PUBLIC_JSON_REDIRECT_REJECTED')
+        if response.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':
+            raise PipelineError('PUBLIC_JSON_CONTENT_TYPE_INVALID')
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            if type(chunk) is not bytes:
+                raise PipelineError('PUBLIC_JSON_BODY_INVALID')
+            if len(body) + len(chunk) > PUBLIC_JSON_MAX_BYTES:
+                raise PipelineError('PUBLIC_JSON_TOO_LARGE')
+            body.extend(chunk)
+        raw = bytes(body)
+        if not raw:
+            raise PipelineError('PUBLIC_JSON_EMPTY')
+        value = _strict_public_json(raw)
+        _public_payload(value, raw, url, outgoing.get('From', ''))
+        received = iso_now()
+        envelope.update(attempt={'status': 'AVAILABLE', 'at': received, 'failure_code': None},
+                        last_success={'retrieved_at': received, 'body_sha256': hashlib.sha256(raw).hexdigest(), 'body_utf8': raw.decode('utf-8')})
+        _save_source_cache(bound_path, envelope)
+        return value
+    except Exception as error:
+        known = {'PUBLIC_JSON_HTTP_INVALID', 'PUBLIC_JSON_REDIRECT_REJECTED',
+                 'PUBLIC_JSON_CONTENT_TYPE_INVALID', 'PUBLIC_JSON_BODY_INVALID', 'PUBLIC_JSON_TOO_LARGE',
+                 'PUBLIC_JSON_EMPTY', 'PUBLIC_JSON_PAYLOAD_INVALID', 'PUBLIC_JSON_SENSITIVE_RESPONSE',
+                 'PUBLIC_JSON_SOURCE_SHAPE_INVALID', 'PUBLIC_JSON_CACHE_WRITE_FAILED'}
+        candidate = error.args[0] if isinstance(error, PipelineError) and error.args else None
+        is_http = isinstance(candidate, str) and bool(re.fullmatch(r'PUBLIC_JSON_HTTP_[1-5][0-9]{2}', candidate))
+        code = candidate if isinstance(candidate, str) and (candidate in known or is_http) else 'PUBLIC_JSON_REQUEST_FAILED'
+        if code == 'PUBLIC_JSON_CACHE_WRITE_FAILED':
+            http._public_json_blocked_sources.add(source)
+        # Retain the prior success only as history, never as this attempt's value.
+        failed = {'schema_version': 1, 'url': url,
+                  'attempt': {'status': 'FAILED', 'at': iso_now(), 'failure_code': code},
+                  'last_success': prior['last_success'] if prior else None}
+        try:
+            _save_source_cache(bound_path, failed)
+        except PipelineError:
+            pass  # Do not mask the primary failure with a cache-write error.
+        raise PipelineError(code) from None
+    finally:
+        outgoing.clear()
+        http.cookies.clear()
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
 
 
 def validate_policy() -> tuple[dict[str, Any], dict[str, Any]]:

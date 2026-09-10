@@ -63,7 +63,18 @@
 
 同一 CLI 另產生 `.financial-evidence-candidate.json`，以原報告 UTF-8 SHA 綁定，保存每项利潤率及年度營收成長的全部分子／分母、公式、原始值、單位、start/end/filed、accession、CIK 及公開來源；不受舊五筆 citation 上限截斷。缺少／不相容／衝突各留狀態，不保留上次成功計算冒充本輪。數值為 ratio，顯示百分比須乘100，不把四捨五入摘要當輸入。CIK 是發行人識別，不是完整交易所／股別／ADR 身分。
 
-此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload；不宣稱新抓來源，`source_retrieved_at=null`，CLI 執行可能使用原有 cache。財報 context、重編、單位登錄、完整現金流調節／產能／訂單／融資稀釋條款及估值仍待補齊；SEC API 與其 filing 只算同一揭露血緣。新檔不能直接寫入雲端鍵或被卡片當完整詳報讀取；既有七 payload 與發布門檻未變。
+此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload；財務候選的 `source_retrieved_at=null`、`source_refresh_verified=false` 尚未接入下述 HTTP receipt。CLI 可使用有效且來源綁定的 cache，但不能因此宣稱本輪重新抓取。財報 context、重編、單位登錄、完整現金流調節／產能／訂單／融資稀釋條款及估值仍待補齊；SEC API 與其 filing 只算同一揭露血緣。新檔不能直接寫入雲端鍵或被卡片當完整詳報讀取；既有七 payload 與發布門檻未變。
+
+### 既有公開 JSON 取得／快取邊界
+
+`v21_serenity_top20.get_json` 的 SEC reference、Companyfacts 與既有 World Bank 序列共用同一修正，不新增 collector 或改評分公式。
+
+- 僅允許三類已審核的精確 HTTPS URL；SEC 使用既有有效聯絡設定，不記錄 request headers／聯絡內容。關閉 ambient proxy／netrc、cookies、redirect 與 transport retry；403／429 封鎖同一 session 後續同來源家族請求，不能改用 SEC 的另一端點試過關。獨立 World Bank 來源不因此停用。不增加訂阅、權限或付費 fallback。
+- 僅 HTTP200、JSON content type、UTF-8、無重複鍵／非有限數值、符合來源外層形狀及 CIK 才可保留；解壓後 body 上限20MB，connect/read socket timeout為5／20秒，**不是硬性總耗時保證**。錯誤 body、聯絡內容回顯及原始 exception 不寫入快取／診斷。
+- `<legacy-cache>.source-v1.json` 保存精確解壓後 HTTP body 的 UTF-8 bytes對應文字／SHA、URL、原取得時間與最新嘗試狀態；舊 raw cache 不刪除、不拿 mtime 當來源證明。開始請求先寫 `PENDING`，成功後才 `AVAILABLE`；失敗寫 `FAILED`，保留前次成功僅供歷史核對，不將其回傳成本次結果。失敗狀態持久化也可能失敗，不得掩蓋主要錯誤或宣稱安裝／發布交易已驗收。
+- 使用快取不更新原取得時間。過期須重新取得，URL／body hash／時間／schema 不一致則拒絕，不靠修改 mtime 修復。此單檔可變本機 envelope 不是 immutable HTTP archive、完整 freshness／真實性認證、跨程序鎖或 sealed pointer-last transaction；後一次明確呼叫仍可發起新讀取，沒有新增背景重試器。
+
+**尚未修復的下游時間缺口：**實際 CLI 仍把組裝時間寫成 row `retrieved_at`。已用三小時前的有效 cache、CLI 零 HTTP 呼叫重現此差異；有來源 receipt 不代表它已傳到公開 row／sealed reader。必須保留並傳遞各顯示值原始取得時間／未知狀態，不能憑此 transport 修正或單一公司 HTTP200 接受 LINE 發布。
 
 ### 已接入的現金流／股數計算部分
 
