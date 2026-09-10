@@ -63,7 +63,7 @@
 
 同一 CLI 另產生 `.financial-evidence-candidate.json`，以原報告 UTF-8 SHA 綁定，保存每项利潤率及年度營收成長的全部分子／分母、公式、原始值、單位、start/end/filed、accession、CIK 及公開來源；不受舊五筆 citation 上限截斷。缺少／不相容／衝突各留狀態，不保留上次成功計算冒充本輪。數值為 ratio，顯示百分比須乘100，不把四捨五入摘要當輸入。CIK 是發行人識別，不是完整交易所／股別／ADR 身分。
 
-此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload；財務候選的 `source_retrieved_at=null`、`source_refresh_verified=false` 尚未接入下述 HTTP receipt。CLI 可使用有效且來源綁定的 cache，但不能因此宣稱本輪重新抓取。財報 context、重編、單位登錄、完整現金流調節／產能／訂單／融資稀釋條款及估值仍待補齊；SEC API 與其 filing 只算同一揭露血緣。新檔不能直接寫入雲端鍵或被卡片當完整詳報讀取；既有七 payload 與發布門檻未變。
+此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload。CLI 的 company schema3 保留同次 SEC receipt 的原始取得時間、URL、body SHA、CIK、adapter records SHA及 `DIRECT_HTTP`／`BOUND_CACHE`；無 receipt 則未知，`source_refresh_verified=false` 不改。純財務 helpers／舊版公司候選及內嵌 cashflow schema1 未自行取得來源，不另造時鐘。產品核對 receipt／顯示值參照及原始算式，不代表已獨立逐fact核對 HTTP 原文或最新揭露完整性。cache 不冒充本輪 HTTP；財報 context、重編、單位登錄、完整營運／融資／估值仍待補齊；SEC API 與 filing 仍只有一個揭露血緣。新檔禁止直接接雲端鍵／完整詳報入口；七 payload 名稱及交易協定不變，新封存須另通過下述時間門檻。
 
 ### 既有公開 JSON 取得／快取邊界
 
@@ -74,13 +74,24 @@
 - `<legacy-cache>.source-v1.json` 保存精確解壓後 HTTP body 的 UTF-8 bytes對應文字／SHA、URL、原取得時間與最新嘗試狀態；舊 raw cache 不刪除、不拿 mtime 當來源證明。開始請求先寫 `PENDING`，成功後才 `AVAILABLE`；失敗寫 `FAILED`，保留前次成功僅供歷史核對，不將其回傳成本次結果。失敗狀態持久化也可能失敗，不得掩蓋主要錯誤或宣稱安裝／發布交易已驗收。
 - 使用快取不更新原取得時間。過期須重新取得，URL／body hash／時間／schema 不一致則拒絕，不靠修改 mtime 修復。此單檔可變本機 envelope 不是 immutable HTTP archive、完整 freshness／真實性認證、跨程序鎖或 sealed pointer-last transaction；後一次明確呼叫仍可發起新讀取，沒有新增背景重試器。
 
-**尚未修復的下游時間缺口：**實際 CLI 仍把組裝時間寫成 row `retrieved_at`。已用三小時前的有效 cache、CLI 零 HTTP 呼叫重現此差異；有來源 receipt 不代表它已傳到公開 row／sealed reader。必須保留並傳遞各顯示值原始取得時間／未知狀態，不能憑此 transport 修正或單一公司 HTTP200 接受 LINE 發布。
+### 取得時間的下游傳遞與封存拒絕
+
+原先三小時 cache／零 HTTP卻重蓋 row時間的 RED 保留。現有 CLI／進度入口共同使用 `report_source_acquisition.py`，不以新 envelope 隱藏舊值：
+
+- `get_json` 清空並在同次成功結果填入 receipt；Companyfacts 再綁定 CIK與實際 adapter records摘要，builder 不另讀可變 cache 猜時間。失敗／未知不繼承上次 receipt。
+- 五欄報告／row 升 schema2，保留 `calculation_cutoff`，完成後才記 `generated_at`。四個資料欄各有顯示值綁定的 `KNOWN`／`UNKNOWN`／`UNAVAILABLE` clock及證據摘要；row取已知適用欄的最早時間。任何有值欄時間未知、或全無已知欄，row時間為 null，不改生成時間。摘要hash是參照／一致性證明，不是來源真實性。
+- yfinance 的函式返回只記 `observed_at`；library cache／provider原始取得時點未獲證明，因此 `retrieved_at=null`、`UNKNOWN_PROVIDER_ACQUISITION_TIME`。保留本機數值研究，不虛構目前報價、新鮮度或權利。
+- 七欄 builder 沿用此時間；有訂單主張時再與保留 baseline row時間取較早者，缺失為未知。baseline時間只是保守沿用，**不是補做訂單 HTTP receipt認證**；不拿 `orders_as_of`／新生成時間當取得時間。預設可寫明示 CANDIDATE、未知時間的本機研究檔；`--require-known-acquisition` 在未知時於寫檔前拒絕，並不授予發布權限。
+- 本機 sealed builder與實際 Worker activation-v3要求來源感知五欄 schema2、已知欄時鐘、五／七欄值一致且七欄不得更新五欄取得時間；所有顯示 row 都須通過既有兩小時門檻。Worker在任何交易寫入前及 pointer-last commit前再核對執行時鐘；中途過期保留交易／failed evidence，不宣稱自動 rollback。舊五欄 schema1仍可明示讀取，但不得降版取得新 v3 seal；歷史 activation-v2不改寫。
+- 五／七欄文字、卡片及舊五欄推送別名採固定 snapshot讀取並檢查所有顯示 row時鐘；缺失成功時間戳不以生成時間代替。已封存不等於查詢當下仍新鮮，讀取端繼續拒絕過期。
+
+這些是來源時間保留／失敗關閉，不是完整來源真實性、證券身分、最新公告／附註、訂單、報價權利或實際 LINE 發布驗收。未知市場時鐘仍阻擋受影響發布；不刪去資料欄、偷偷換來源或以新 run續命。
 
 ### 已接入的現金流／股數計算部分
 
 實際 SEC adapter 把 wire 日期轉成午夜 UTC timestamp；既有 `v21_serenity_top20.validate_sec_adapter` 的指標邊界現在只將精確 `YYYY-MM-DDT00:00:00+00:00` 還原為日期，拒絕其他時間／時區／尾綴，不弱化下游日期驗證。每筆 fact 另以 CIK＋accession 的官方 archive 目錄作 filing locator，保留原 adapter 的 `source_request_url`；不同 filing 不再因共用 Companyfacts collection URL 被誤判為同文件日期衝突。同一 accession 的衝突仍拒絕。目錄 locator 不是已取得的 primary-document 原文／頁碼／佐證，也不新增獨立血緣。
 
-同一報告 CLI 的 company financial candidate 升至 schema2，保留原利潤率並加入 `cashflow_bridge` schema1；舊 schema1 仍可明示讀取，不自動補造現金流。公開五／七欄、scoring body、現有七 sealed payload 與 LINE route 不變。
+company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1；schema3 再增加上述來源 receipt。舊 company schema1／2仍可明示讀取，不自動補造現金流或時鐘。五／七個顯示欄位、scoring body、七個 sealed payload 名稱與 LINE route 不變；報告及封存的時間驗證依上述來源感知契約。
 
 - 沿用同次 Companyfacts records 與共用 operand 驗證，保留 CFO、PPE現金支出、所選淨利、ShareBasedCompensation、基本／稀釋加權平均股數。不新增 collector 或以 market／private data 補位。
 - 以最新 CFO 的 end／filed cohort 作 anchor；同 cohort 有單季和YTD時只選相同 start 的比較項。anchor 本身多期間／多單位／多文件不明則 `AMBIGUOUS_OPERAND`。不以排序挑一個值、不退較舊 filing、不把投資活動淨現金流當 capex；最新無效值與衝突不救回。比較還須同幣別／單位、start/end、filed、form、fiscal year、CIK、accession及locator。

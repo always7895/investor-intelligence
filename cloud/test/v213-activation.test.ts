@@ -94,7 +94,8 @@ function top20(generated: string) {
 
 function v212(generated: string) {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    calculation_cutoff: generated,
     product_version: "2.1.2",
     generated_at: generated,
     display_columns: [
@@ -104,7 +105,12 @@ function v212(generated: string) {
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
     records: Array.from({ length: 20 }, (_, index) => ({
-      schema_version: 1,
+      schema_version: 2,
+      // Explicit synthetic clock control, not a source HTTP certification.
+      source_acquisition: Object.fromEntries(Object.entries({
+        long_term_return_pct: 40 - index, short_term_return_pct: 20 - index, industry: "半導體",
+        profit_summary: "獲利；營收年增 +20.0%；營益率 15.0%；淨利率 10.0%",
+      }).map(([key, value]) => [key, { status: "KNOWN", value, retrieved_at: generated, evidence_sha256: "1".repeat(64) }])),
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
       long_term_return_pct: 40 - index,
@@ -386,6 +392,76 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it("refuses actual CLI cached source time before sealed writes despite fresh outer clocks", async () => {
+    const vectors = JSON.parse(readFileSync(new URL("../../tests/fixtures/source-acquisition-reports.json", import.meta.url), "utf8"));
+    const data = vectors.cases.stale;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(data.v212.generated_at));
+    try {
+      const { env, publicKv, privateKv } = runtime();
+      const value = await bundle();
+      await replacePayload(value, "v212_top20_report_json", data.v212);
+      await replacePayload(value, "v213_top20_report_json", data.v213);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_SOURCE_ACQUISITION_STALE");
+      expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(["fresh", "unknown"])("checks actual CLI %s clock metadata in sealed admission and readback", async name => {
+    const vectors = JSON.parse(readFileSync(new URL("../../tests/fixtures/source-acquisition-reports.json", import.meta.url), "utf8"));
+    const data = vectors.cases[name];
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(data.v212.generated_at));
+    try {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      await replacePayload(value, "v212_top20_report_json", data.v212);
+      await replacePayload(value, "v213_top20_report_json", data.v213);
+      if (name === "unknown") {
+        await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+        expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+      } else {
+        expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).status).toBe("accepted");
+        const stored = JSON.parse(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)!);
+        expect(stored.records[19].retrieved_at).toBe(data.source_time);
+        expect(stored.records[19].source_acquisition).toEqual(data.v212.records[19].source_acquisition);
+        expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).idempotent_replay).toBe(true);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(["legacy_downgrade", "changed_profit", "renewed_seven_clock", "old_last_row"])("refuses %s with valid hashes before any sealed write", async mode => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    const five = JSON.parse(value.payloads.v212_top20_report_json); const seven = JSON.parse(value.payloads.v213_top20_report_json);
+    let code = "V213_ACTIVATION_REPORT_ACQUISITION_MISMATCH";
+    if (mode === "legacy_downgrade") {
+      five.schema_version = 1; delete five.calculation_cutoff;
+      for (const row of five.records) { row.schema_version = 1; delete row.source_acquisition; }
+      await replacePayload(value, "v212_top20_report_json", five); code = "V213_ACTIVATION_REPORT_SCHEMA_INVALID";
+    } else {
+      if (mode === "changed_profit") seven.records[19].profit_summary = "獲利；淨利率 99.0%";
+      if (mode === "renewed_seven_clock") seven.records[19].retrieved_at = new Date(Date.parse(value.generated_at) + 1000).toISOString();
+      if (mode === "old_last_row") { seven.records[19].retrieved_at = new Date(Date.parse(value.generated_at) - 3 * 3600_000).toISOString(); code = "V213_ACTIVATION_SOURCE_ACQUISITION_STALE"; }
+      await replacePayload(value, "v213_top20_report_json", seven);
+    }
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow(code);
+    expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+  });
+
+  it("rechecks execution-clock freshness before pointer-last commit and retains failed transaction history", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      const prior = JSON.stringify({ run_id: "20260901T000000Z-aaaaaaaaaaaa" }); publicKv.values.set("snapshot:current", prior);
+      const original = publicKv.put.bind(publicKv); let advanced = false;
+      const write = vi.spyOn(publicKv, "put").mockImplementation(async (key, body) => {
+        await original(key, body);
+        if (!advanced && key.startsWith(`snapshot:${RUN_ID}:`)) { advanced = true; vi.setSystemTime(Date.now() + 3 * 3600_000); }
+      });
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_SOURCE_ACQUISITION_STALE");
+      expect(advanced).toBe(true); expect(publicKv.values.get("snapshot:current")).toBe(prior);
+      expect(write.mock.calls.some(call => call[0] === "snapshot:current")).toBe(false);
+      expect(privateKv.values.size).toBeGreaterThan(0); // retained journal, no pretend rollback
+    } finally { vi.useRealTimers(); }
+  });
+
   it("rejects credential citations even with valid payload digests before any KV write", async () => {
     const { env, publicKv, privateKv, securityKv } = runtime();
     const value = await bundle();

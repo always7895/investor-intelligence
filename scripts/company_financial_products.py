@@ -13,6 +13,8 @@ from decimal import Decimal
 from typing import Any
 
 from v213_v21_progress_runner import profitability_evidence, validate_cashflow_evidence, FINANCIAL_V2_LIMITATIONS
+from report_source_acquisition import (SourceAcquisitionError, validate_report_acquisition,
+                                       validate_company_receipt, digest, utc_time)
 
 KINDS = ('card_summary', 'data_report', 'narrative_analysis')
 LABELS = {'revenue_growth': '年度營收成長', 'gross_margin': '毛利率',
@@ -89,22 +91,33 @@ def _finite(value):
     return type(value) in (int, float) and -1.7976931348623157e308 <= value <= 1.7976931348623157e308
 
 
-def _validated_company(raw, generated):
+def _validated_company(raw, generated, completed):
     _require(isinstance(raw, dict))
     if raw.get('status') in ('NO_OFFICIAL_IDENTITY', 'SOURCE_FETCH_OR_VALIDATION_FAILED'):
         _object(raw, {'status', 'publication_eligible'})
         _require(raw['publication_eligible'] is False)
         return None, {}, raw['status'], None
     version = raw.get('schema_version')
-    _require(type(version) is int and version in (1, 2))
-    _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version == 2 else set()))
+    _require(type(version) is int and version in (1, 2, 3))
+    _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version >= 2 else set()) | ({'source_acquisition'} if version == 3 else set()))
     _require(type(raw['schema_version']) is int and raw['schema_version'] == version
              and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
              and raw['as_of_cutoff'] == generated and raw['provider_scope'] == 'public_only'
              and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
-             and raw['source_retrieved_at'] is None
+             and (version == 3 or raw['source_retrieved_at'] is None)
              and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
-             and raw['limitations'] == (FINANCIAL_V2_LIMITATIONS if version == 2 else LIMITATIONS))
+             and raw['limitations'] == (FINANCIAL_V2_LIMITATIONS if version >= 2 else LIMITATIONS))
+    if version == 3:
+        receipt = raw['source_acquisition']
+        if receipt is None:
+            _require(raw['source_retrieved_at'] is None)
+        else:
+            try:
+                validate_company_receipt(receipt, cik=raw['cik'])
+                _require(raw['source_retrieved_at'] == receipt['retrieved_at']
+                         and utc_time(receipt['retrieved_at']) <= utc_time(completed))
+            except SourceAcquisitionError:
+                raise FinancialProductsError('FINANCIAL_PRODUCTS_ACQUISITION_INVALID') from None
     metrics = _object(raw['metrics'], set(LABELS))
     facts = []
     for key, metric in metrics.items():
@@ -138,7 +151,7 @@ def _validated_company(raw, generated):
         # Never promote a failed/conflicting status just because the sidecar
         # does not retain the rejected source's original (possibly unsafe) data.
     cash = raw.get('cashflow_bridge')
-    if version == 2:
+    if version >= 2:
         try:
             validate_cashflow_evidence(cash, cik=raw['cik'], as_of=generated)
         except Exception:
@@ -327,9 +340,17 @@ def _product(kind, blocks, refs, identity, reason=None):
 
 
 def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
-    report = _object(_json(report_bytes), REPORT_KEYS)
+    report = _json(report_bytes)
+    _require(isinstance(report, dict))
+    version = report.get('schema_version')
+    _object(report, REPORT_KEYS | ({'calculation_cutoff'} if version == 2 else set()))
+    if version == 2:
+        try:
+            validate_report_acquisition(report)
+        except SourceAcquisitionError:
+            raise FinancialProductsError('FINANCIAL_PRODUCTS_ACQUISITION_INVALID') from None
     basis = _object(_json(basis_bytes), BASIS_KEYS)
-    _require(type(report['schema_version']) is int and report['schema_version'] == 1
+    _require(type(version) is int and version in (1, 2)
              and report['product_version'] == '2.1.2' and report['provider_scope'] == 'public_only'
              and report['owner_watchlist_inherited'] is False)
     _require(type(basis['schema_version']) is int and basis['schema_version'] == 1
@@ -345,12 +366,14 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
     _require(isinstance(rows, list) and len(rows) == 20 and isinstance(basis['records'], dict))
     seen = set()
     for i, row in enumerate(rows):
-        _object(row, ROW_KEYS)
+        _object(row, ROW_KEYS | ({'source_acquisition'} if version == 2 else set()))
         _require(type(row['rank']) is int and row['rank'] == i + 1
-                 and type(row['schema_version']) is int and row['schema_version'] == 1
+                 and type(row['schema_version']) is int and row['schema_version'] == version
                  and isinstance(row['ticker'], str) and bool(re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,14}', row['ticker'])))
         _require(row['ticker'] not in seen and row['provider_scope'] == 'public_only'
-                 and row['owner_watchlist_inherited'] is False and row['retrieved_at'] == report['generated_at'])
+                 and row['owner_watchlist_inherited'] is False)
+        if version == 1:
+            _time(row['retrieved_at'])  # Legacy clocks are not reinterpreted as new receipts.
         seen.add(row['ticker'])
     _require(set(basis['records']) == seen, 'FINANCIAL_PRODUCTS_SUBJECT_SET_MISMATCH')
     source_report_sha = sha256(report_bytes)
@@ -359,7 +382,17 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
     records = []
     for row in rows:
         ticker = row['ticker']
-        cik, metrics, failure, cash = _validated_company(basis['records'][ticker], report['generated_at'])
+        company = basis['records'][ticker]
+        cutoff = report.get('calculation_cutoff', report['generated_at'])
+        cik, metrics, failure, cash = _validated_company(company, cutoff, report['generated_at'])
+        receipt = company.get('source_acquisition')
+        if version == 2:
+            clock = row['source_acquisition']['profit_summary']
+            if clock['status'] == 'KNOWN':
+                _require(receipt is not None and clock['retrieved_at'] == receipt['retrieved_at']
+                         and clock['evidence_sha256'] == digest(receipt), 'FINANCIAL_PRODUCTS_ACQUISITION_MISMATCH')
+            elif clock['status'] == 'UNKNOWN':
+                _require(receipt is None, 'FINANCIAL_PRODUCTS_ACQUISITION_MISMATCH')
         refs = [key for key in LABELS if metrics.get(key, {}).get('status') == 'AVAILABLE']
         cash_refs = ([f'cashflow.{key}' for group in ('observations', 'metrics')
                       for key, item in cash[group].items() if item['status'] == 'AVAILABLE'] if cash else [])
@@ -367,7 +400,9 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
                     'source_report_sha256': source_report_sha, 'source_basis_sha256': source_basis_sha,
                     'subject': {'ticker': ticker, 'issuer_cik': cik, 'security_identity_qualified': False}}
         header = [f"{ticker}｜CIK {cik or '未知'}｜財務證據", NOTICE,
-                  f"計算 cutoff：{report['generated_at']}；不是當前報價或來源重新取得證明。"]
+                  f"計算 cutoff：{cutoff}；不是當前報價或完整新鮮度認證。",
+                  (f"SEC body 原取得時間：{receipt['retrieved_at']}；{receipt['retrieval_mode']}；body SHA256 {receipt['body_sha256']}。仍須最新披露／附註核對。"
+                   if receipt else 'SEC body 原取得時間未知；不以本機組裝時間代替，不從舊版摘要反推。')]
         reason = failure or (None if refs or cash_refs else 'NO_AVAILABLE_FINANCIAL_METRICS')
         summary = [f"{LABELS[key]}：{_percent(metrics[key]['value'])}；{_period(metrics[key])}" for key in refs]
         analysis, analysis_reason = _analysis(metrics)

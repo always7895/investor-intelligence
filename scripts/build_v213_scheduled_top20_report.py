@@ -12,9 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from report_source_acquisition import SourceAcquisitionError, field_clock, utc_time, validate_report_acquisition
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -66,7 +73,11 @@ def _records(doc: Mapping[str, Any], version: str) -> list[dict[str, Any]]:
     return result
 
 
-def build(v212: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any]:
+def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], *, require_known_acquisition: bool = False) -> dict[str, Any]:
+    try:
+        validate_report_acquisition(v212, require_known=require_known_acquisition)
+    except SourceAcquisitionError as error:
+        raise V213ScheduledReportError(str(error)) from None
     fresh = _records(v212, "2.1.2")
     accepted = _records(baseline, "2.1.3")
     fresh_order = [row["ticker"] for row in fresh]
@@ -84,6 +95,27 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any
     for rank, fresh_row in enumerate(fresh, 1):
         ticker = fresh_row["ticker"]
         evidence = evidence_by_ticker[ticker]
+        retrieved = fresh_row['retrieved_at']
+        no_order_claim = (evidence.get('orders_confidence') in ('UNAVAILABLE', 'NO_RELIABLE_PUBLIC_ORDER_NUMBER')
+                          and evidence.get('current_orders') == '未揭露（無可靠公開訂單數字）'
+                          and evidence.get('future_orders_estimate') == '無可靠公開預估'
+                          and evidence.get('current_order_source_urls') == []
+                          and evidence.get('future_order_source_urls') == [])
+        if not no_order_claim:
+            # Retained order evidence does not inherit a refreshed market clock.
+            # Neither orders_as_of nor a new generation date is acquisition time.
+            try:
+                retained = evidence.get('retrieved_at')
+                if retained is None:
+                    retrieved = None
+                else:
+                    if utc_time(retained) > utc_time(v212['generated_at']):
+                        raise SourceAcquisitionError('SOURCE_ACQUISITION_AFTER_COMPLETION')
+                    retrieved = min((retrieved, retained), key=utc_time) if retrieved is not None else None
+            except SourceAcquisitionError:
+                raise V213ScheduledReportError('ORDER_SOURCE_ACQUISITION_UNKNOWN_OR_INVALID') from None
+        if require_known_acquisition and retrieved is None:
+            raise V213ScheduledReportError('SOURCE_ACQUISITION_UNKNOWN')
         rows.append({
             "schema_version": 2,
             "rank": rank,
@@ -103,7 +135,7 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, Any
             "current_order_source_urls": list(evidence.get("current_order_source_urls") or []),
             "future_order_source_urls": list(evidence.get("future_order_source_urls") or []),
             "numeric_total_order_estimate_prohibited": True,
-            "retrieved_at": fresh_row.get("retrieved_at") or v212.get("generated_at"),
+            "retrieved_at": retrieved,
             "provider_scope": "public_only",
             "owner_watchlist_inherited": False,
         })
@@ -170,6 +202,15 @@ def self_test() -> None:
             "profit_summary": "獲利", "retrieved_at": generated,
         } for i, ticker in enumerate(tickers)]
     }
+    # Explicit synthetic acquisition metadata; not a real source proof.
+    v212.update(schema_version=2, calculation_cutoff=generated, display_columns=DISPLAY_COLUMNS[:5],
+                long_term_definition='trailing_2y_adjusted_close_cagr', short_term_definition='trailing_6m_adjusted_close_price_return',
+                provider_scope='public_only', owner_watchlist_inherited=False)
+    for row in v212['records']:
+        row.update(schema_version=2, long_term_window='2y_cagr', short_term_window='6m_price_return',
+                   market_source='yfinance', profit_source='sec_edgar', provider_scope='public_only', owner_watchlist_inherited=False)
+        row['source_acquisition'] = {key: field_clock(key, row[key], retrieved_at=generated, evidence_sha256='1'*64)
+                                     for key in ('long_term_return_pct', 'short_term_return_pct', 'industry', 'profit_summary')}
     baseline = {
         "product_version": "2.1.3",
         "records": [{
@@ -203,15 +244,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--preview", type=Path, default=DEFAULT_PREVIEW)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--require-known-acquisition", action="store_true", help="Refuse unknown clocks before output writes; never grants publication authority")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
-    report = build(_load(args.v212_report), _load(args.baseline))
+    report = build(_load(args.v212_report), _load(args.baseline), require_known_acquisition=args.require_known_acquisition)
     text = preview(report)
     atomic_text(args.output, json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n")
     atomic_text(args.preview, text + "\n")
-    print(f"V213_SCHEDULED_REPORT = PASS; rows=20; chars={len(text)}")
+    unknown = sum(row['retrieved_at'] is None for row in report['records'])
+    print(f"V213_SCHEDULED_REPORT = CANDIDATE; rows=20; chars={len(text)}; acquisition_unknown={unknown}; publication_qualified=false")
     return 0
 
 

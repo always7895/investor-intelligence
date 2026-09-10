@@ -38,6 +38,8 @@ import v21_serenity_top20 as base
 from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, FINANCIAL_V2_LIMITATIONS
 from company_financial_products import build_financial_products, verify_financial_products
+from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
+                                       row_time, validate_company_receipt, validate_report_acquisition)
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -207,7 +209,9 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
             evidence_sink.update(evidence)
             evidence_sink.update(
                 status=("CALCULATED_NOT_QUALIFIED" if any(w["status"] == "AVAILABLE" for w in evidence["windows"].values()) else "NO_COMPLETE_RETURN_WINDOW"),
-                retrieved_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                observed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                retrieved_at=None,
+                acquisition_status="UNKNOWN_PROVIDER_ACQUISITION_TIME",
                 request={"period": "3y", "interval": "1d", "auto_adjust": True},
             )
         industry = ""
@@ -233,37 +237,40 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
     headers = base.sec_headers()
     http = base.session()
     reference = base.sec_reference(policy, http, headers)
-    generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    cutoff = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     rows: list[dict[str, Any]] = []
     for item in top20:
         ticker = str(item["ticker"])
-        if return_evidence_sink is None:
-            long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""))
-        else:
-            observation: dict[str, Any] = {}
-            long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""), evidence_sink=observation)
+        observation: dict[str, Any] = {}
+        long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""), evidence_sink=observation)
+        if return_evidence_sink is not None:
             return_evidence_sink[ticker] = observation
         metrics: dict[str, Any] = {}
+        receipt: dict[str, Any] = {}
         financial: dict[str, Any] = {"status": "NO_OFFICIAL_IDENTITY", "publication_eligible": False}
         official = reference.get(ticker)
         if official:
             try:
                 candidate = {"ticker": ticker, "official": dict(official), "market": {}}
-                records = base.sec_companyfacts(candidate, policy, http, headers)
-                # A separate process no longer inherits the preselection hook.
-                # Explicitly reuse its basis guard and retain all displayed operands.
-                financial = profitability_evidence(records, cik=official.get("cik"), as_of=generated)
-                financial.update(schema_version=2, limitations=list(FINANCIAL_V2_LIMITATIONS),
-                                 cashflow_bridge=cashflow_evidence(records, cik=official.get("cik"), as_of=generated))
+                records = base.sec_companyfacts(candidate, policy, http, headers, receipt_sink=receipt)
+                if receipt:
+                    validate_company_receipt(receipt, cik=official.get('cik'), records=records)
+                # The mathematical helper remains unqualified; schema3 adds the
+                # same-call receipt without replacing disclosure dates/cutoff.
+                financial = profitability_evidence(records, cik=official.get("cik"), as_of=cutoff)
+                financial.update(schema_version=3, limitations=list(FINANCIAL_V2_LIMITATIONS),
+                                 cashflow_bridge=cashflow_evidence(records, cik=official.get("cik"), as_of=cutoff),
+                                 source_acquisition=dict(receipt) if receipt else None,
+                                 source_retrieved_at=receipt.get('retrieved_at'))
                 metrics = {key: entry["value"] for key, entry in financial["metrics"].items()}
             except Exception:
-                metrics = {}
+                metrics = {}; receipt.clear()
                 financial = {"status": "SOURCE_FETCH_OR_VALIDATION_FAILED", "publication_eligible": False}
         if financial_evidence_sink is not None:
             financial_evidence_sink[ticker] = financial
-        rows.append({
-            "schema_version": 1,
+        row = {
+            "schema_version": 2,
             "rank": int(item["rank"]),
             "ticker": ticker,
             "long_term_return_pct": None if long_term is None else round(long_term * 100, 2),
@@ -274,14 +281,28 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "retrieved_at": generated,
+            "retrieved_at": None,
             "provider_scope": "public_only",
             "owner_watchlist_inherited": False,
-        })
-    return {
-        "schema_version": 1,
+        }
+        market_clocks = observation.get('source_acquisition', {})
+        if not isinstance(market_clocks, dict) or not set(market_clocks) <= set(FIELDS[:3]):
+            raise SourceAcquisitionError('SOURCE_ACQUISITION_INVALID')
+        clocks = {key: market_clocks[key] if key in market_clocks else field_clock(key, row[key]) for key in FIELDS[:3]}
+        clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'])
+        if receipt and clocks['profit_summary']['status'] != 'UNAVAILABLE':
+            clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'],
+                retrieved_at=receipt['retrieved_at'], evidence_sha256=digest(receipt))
+        row['source_acquisition'] = clocks
+        rows.append(row)
+    generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    for row in rows:
+        row['retrieved_at'] = row_time(row, generated_at=generated)
+    document = {
+        "schema_version": 2,
         "product_version": "2.1.2",
         "generated_at": generated,
+        "calculation_cutoff": cutoff,
         "display_columns": DISPLAY_COLUMNS,
         "long_term_definition": "trailing_2y_adjusted_close_cagr",
         "short_term_definition": "trailing_6m_adjusted_close_price_return",
@@ -289,6 +310,8 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
         "provider_scope": "public_only",
         "owner_watchlist_inherited": False,
     }
+    validate_report_acquisition(document)
+    return document
 
 
 def json_bytes(value: Mapping[str, Any]) -> bytes:

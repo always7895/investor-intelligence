@@ -232,6 +232,23 @@ describe("v2.1 private owner LINE delivery", () => {
     expect((await broadcastV21Top20(env, "morning")).status).toBe("stale");
   });
 
+  it("refuses an old displayed row in the actual five-field push alias despite fresh envelopes", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const runId = "synthetic-source-clock";
+    const data = top20Report();
+    data.records[19]!.retrieved_at = new Date(Date.now() - 3 * 3600_000).toISOString();
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(data));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const fetch = vi.fn(withPushPreflight(async () => new Response("{}", { status: 200 })));
+    vi.stubGlobal("fetch", fetch);
+    expect((await broadcastV21Top20(env, "test")).status).toBe("stale");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("pushes exactly one five-field fresh scheduled message and deduplicates the slot", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);

@@ -216,7 +216,8 @@ class FinancialCashflowBridgeTests(unittest.TestCase):
         helper = report_fixture.V212Top20ReportTests(); sink = {}
         report = helper.actual_report([helper.fact(), helper.fact(tag='NetIncomeLoss', value=20)], financial_evidence_sink=sink)
         for company in sink.values():
-            company.pop('cashflow_bridge'); company.update(schema_version=1, limitations=list(products.LIMITATIONS))
+            company.pop('cashflow_bridge'); company.pop('source_acquisition')
+            company.update(schema_version=1, limitations=list(products.LIMITATIONS))
         raw = builder.json_bytes(report)
         basis = dict(schema_version=1, status='CANDIDATE_NOT_PUBLICATION_QUALIFIED', publication_eligible=False,
                      provider_scope='public_only', owner_watchlist_inherited=False, generated_at=report['generated_at'],

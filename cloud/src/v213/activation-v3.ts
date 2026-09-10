@@ -3,7 +3,7 @@
 import type { V21AdminEnv } from "../v21/admin";
 import { parseV21Top20, type V21Evidence, type V21Top20Record } from "../v21/top20";
 import { parseV212Top20Report } from "../v212/top20-report";
-import { parseV213Top20Report } from "./top20-report";
+import { parseV213Top20Report, v213TimesAreFresh } from "./top20-report";
 import contract from "../../../config/v213-r75-publication-mode-v1.json";
 import { r75PublicationModeContractHash, validateR75PublicationModes } from "./publication-mode";
 
@@ -448,9 +448,22 @@ export async function ingestV213ActivationBundle(
   }
   const v212 = parseV212Top20Report(parseJson(String(payloads.v212_top20_report_json), "V213_ACTIVATION_V212_JSON_INVALID"));
   const v213 = parseV213Top20Report(parseJson(String(payloads.v213_top20_report_json), "V213_ACTIVATION_V213_JSON_INVALID"));
-  if (!v212 || !v213) throw new Error("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+  // Legacy reports remain readable, but cannot qualify a new source-aware seal.
+  if (!v212 || v212.schema_version !== 2 || !v213) throw new Error("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
   sameOrder(v212.records.map((row) => row.ticker), order, "V213_ACTIVATION_V212_ORDER_INVALID");
   sameOrder(v213.records.map((row) => row.ticker), order, "V213_ACTIVATION_V213_ORDER_INVALID");
+  const sharedFields = ["long_term_return_pct", "short_term_return_pct", "industry", "profit_summary"] as const;
+  if (v213.records.some((row, index) => {
+    const five = v212.records[index]!;
+    return sharedFields.some(key => row[key] !== five[key]) || Date.parse(row.retrieved_at) > Date.parse(five.retrieved_at);
+  })) throw new Error("V213_ACTIVATION_REPORT_ACQUISITION_MISMATCH");
+  const assertAcquisitionFresh = () => {
+    if (!v213TimesAreFresh({}, [String(root.generated_at), String(root.public_data_as_of), v212.generated_at, v213.generated_at,
+      ...top20.map(row => row.generated_at), ...v212.records.map(row => row.retrieved_at), ...v213.records.map(row => row.retrieved_at)])) {
+      throw new Error("V213_ACTIVATION_SOURCE_ACQUISITION_STALE");
+    }
+  };
+  assertAcquisitionFresh();
   const federation = validateFederation(
     parseJson(String(payloads.source_federation_json), "V213_ACTIVATION_FEDERATION_JSON_INVALID"),
     order,
@@ -488,6 +501,7 @@ export async function ingestV213ActivationBundle(
     };
   }
 
+  assertAcquisitionFresh();
   await env.TENANT_PRIVATE_CACHE.put(rollbackStateKey, JSON.stringify(state));
   const runClaimKey = claimKey(runId);
   const existingClaimText = await env.PUBLIC_CACHE.get(runClaimKey, "text");
@@ -534,6 +548,7 @@ export async function ingestV213ActivationBundle(
   // in publicJson; old immutable objects remain available for exact rollback.
   if (idempotentReplay) {
     await verifySnapshotObjects(env, prefix, objects, true);
+    assertAcquisitionFresh();
     return {
       status: "accepted",
       product_version: "2.1.3",
@@ -555,6 +570,7 @@ export async function ingestV213ActivationBundle(
     await env.PUBLIC_CACHE.put(`${prefix}${key}`, value);
   }
   await verifySnapshotObjects(env, prefix, objects);
+  assertAcquisitionFresh();
   await env.PUBLIC_CACHE.put("snapshot:current", JSON.stringify({
     schema_version: 1,
     run_id: runId,

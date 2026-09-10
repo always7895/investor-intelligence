@@ -31,6 +31,7 @@ foreach ($relative in @(
     'scripts\historical_return_evidence.py',
     'scripts\v213_v21_progress_runner.py',
     'scripts\company_financial_products.py',
+    'scripts\report_source_acquisition.py',
     'sync-v21-public-snapshot.ps1',
     'sync-v212-top20-report.ps1'
 )) {

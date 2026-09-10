@@ -166,13 +166,13 @@ def main() -> int:
     original_policy_validator = report.base.validate_policy
     counter = {"value": 0}
 
-    def progress_market_observation(ticker: str, fallback_industry: str):
+    def progress_market_observation(ticker: str, fallback_industry: str, *, evidence_sink: dict | None = None):
         counter["value"] += 1
         print(
             f"II_PROGRESS v2.1.2 market/SEC row {counter['value']}/20 | {ticker}",
             flush=True,
         )
-        return original_market(ticker, fallback_industry)
+        return original_market(ticker, fallback_industry, evidence_sink=evidence_sink)
 
     report._market_observation = progress_market_observation
     report.snapshot.validate_top20 = validate_provisional_top20

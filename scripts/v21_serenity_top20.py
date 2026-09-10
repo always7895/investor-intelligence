@@ -40,6 +40,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from adapters import parse_source_payload
 from authoritative_source_catalog import inventory, load_catalog
+from report_source_acquisition import bind_company_receipt
 
 POLICY_PATH = ROOT / "config" / "v21-serenity-policy.json"
 ACTIVATION_PATH = ROOT / "config" / "v21-source-activation.json"
@@ -354,7 +355,12 @@ def get_json(
     cache_path: Path,
     cache_hours: int,
     minimum_delay: float = 0.0,
+    receipt_sink: dict | None = None,
 ) -> Any:
+    if receipt_sink is not None:
+        if type(receipt_sink) is not dict:
+            raise PipelineError('PUBLIC_JSON_RECEIPT_SINK_INVALID')
+        receipt_sink.clear()
     source = _json_source(url)
     outgoing = _public_request_headers(source, headers)
     if (http.trust_env is not False or http.verify is not True or http.auth is not None
@@ -373,6 +379,10 @@ def get_json(
         previous_raw = prior['last_success']['body_utf8'].encode('utf-8')
         _public_payload(_strict_public_json(previous_raw), previous_raw, url, outgoing.get('From', ''))
     if value is not None:
+        if receipt_sink is not None:
+            receipt_sink.update(schema_version=1, request_url=url,
+                                body_sha256=prior['last_success']['body_sha256'],
+                                retrieved_at=prior['last_success']['retrieved_at'], retrieval_mode='BOUND_CACHE')
         return value
     if minimum_delay:
         time.sleep(minimum_delay)
@@ -413,6 +423,10 @@ def get_json(
         envelope.update(attempt={'status': 'AVAILABLE', 'at': received, 'failure_code': None},
                         last_success={'retrieved_at': received, 'body_sha256': hashlib.sha256(raw).hexdigest(), 'body_utf8': raw.decode('utf-8')})
         _save_source_cache(bound_path, envelope)
+        if receipt_sink is not None:
+            receipt_sink.update(schema_version=1, request_url=url,
+                                body_sha256=envelope['last_success']['body_sha256'],
+                                retrieved_at=received, retrieval_mode='DIRECT_HTTP')
         return value
     except Exception as error:
         known = {'PUBLIC_JSON_HTTP_INVALID', 'PUBLIC_JSON_REDIRECT_REJECTED',
@@ -723,7 +737,13 @@ def sec_companyfacts(
     policy: Mapping[str, Any],
     http: requests.Session,
     headers: Mapping[str, str],
+    *, receipt_sink: dict | None = None,
 ) -> list[dict[str, Any]]:
+    if receipt_sink is not None:
+        if type(receipt_sink) is not dict:
+            raise PipelineError('PUBLIC_JSON_RECEIPT_SINK_INVALID')
+        receipt_sink.clear()
+    received: dict[str, Any] = {}
     cik = str(candidate["official"]["cik"])
     url = str(policy["sec_companyfacts_url"]).format(cik=cik)
     raw = get_json(
@@ -733,10 +753,14 @@ def sec_companyfacts(
         cache_path=CACHE_ROOT / "companyfacts" / f"CIK{cik}.json",
         cache_hours=24,
         minimum_delay=float(policy["sec_minimum_interval_seconds"]),
+        receipt_sink=received,
     )
     if not isinstance(raw, dict):
         raise PipelineError(f"SEC companyfacts invalid for {candidate['ticker']}")
-    return validate_sec_adapter(raw, url)
+    records = validate_sec_adapter(raw, url)
+    if receipt_sink is not None and received:
+        receipt_sink.update(bind_company_receipt(received, cik=cik, records=records))
+    return records
 
 
 def latest_records(records: Sequence[Mapping[str, Any]], tag_names: Sequence[str]) -> list[dict[str, Any]]:

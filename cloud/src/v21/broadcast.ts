@@ -1,4 +1,6 @@
-import { publicJson, publicText, type StorageEnv } from "../storage";
+import type { StorageEnv } from "../storage";
+import { pinPublicSnapshot } from "../v213/public-snapshot";
+import { v213TimesAreFresh } from "../v213/top20-report";
 import { formatV212Top20Report, parseV212Top20Report } from "../v212/top20-report";
 import { getOwnerPushTarget } from "./owner-storage";
 import { pushText, type V21LinePushEnv } from "./line-push";
@@ -35,26 +37,24 @@ export async function broadcastV21Top20(
   const owner = await getOwnerPushTarget(env);
   if (!owner) return { status: "owner_not_paired" };
 
-  const records = parseV21Top20(await publicJson<unknown>(env, ["v21:top20:latest"]));
+  const view = await pinPublicSnapshot(env);
+  const records = parseV21Top20(await view.json<unknown>(["v21:top20:latest"]));
   if (!records) return { status: "top20_unavailable" };
   const report = parseV212Top20Report(
-    await publicJson<unknown>(env, ["v212:top20-report:latest"]),
+    await view.json<unknown>(["v212:top20-report:latest"]),
   );
   if (!report) return { status: "top20_report_unavailable" };
   if (report.records.some((item, index) => item.ticker !== records[index]?.ticker)) {
     return { status: "top20_report_order_mismatch" };
   }
 
-  const stamp = (await publicText(env, ["last_successful_pipeline_timestamp"])) ?? records[0]!.generated_at;
-  const parsed = Date.parse(stamp);
-  const maxAge = Math.max(300, Math.min(86_400, Number(env.V21_TOP20_MAX_AGE_SECONDS ?? "7200") || 7200));
-  const ageSeconds = (now - parsed) / 1000;
-  if (!Number.isFinite(parsed) || ageSeconds < -300 || ageSeconds > maxAge) {
+  const stamp = await view.text(["last_successful_pipeline_timestamp"]);
+  if (!v213TimesAreFresh(env, [stamp, report.generated_at,
+    ...report.records.map(row => row.retrieved_at), ...records.map(row => row.generated_at)])) {
     return { status: "stale" };
   }
 
-  const pointer = (await env.PUBLIC_CACHE.get("snapshot:current", "json")) as Record<string, unknown> | null;
-  const runId = String(pointer?.run_id ?? "unknown");
+  const runId = view.runId ?? "unknown";
   const date = taipeiDate(now);
   const dedupeKey = `v21:broadcast:${date}:${slot}:${runId}`;
   if (slot !== "test" && (await env.EPHEMERAL_SECURITY_CACHE.get(dedupeKey))) {
