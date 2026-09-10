@@ -76,6 +76,13 @@ const IGNORED_TICKER_TOKENS = new Set([
   "CURRENT",
 ]);
 
+// These are ambiguous macro terms, not implicit stock selections. Explicit
+// $symbol, ticker declarations and instrument-context queries still take priority.
+const MACRO_ABBREVIATIONS = new Set([
+  "GDP", "CPI", "PPI", "PMI", "FOMC", "FED", "ECB", "BOJ", "BOE",
+  "IMF", "OECD", "OPEC", "EIA", "IEA", "DXY", "VIX", "USD", "EUR", "CNY", "TWD",
+]);
+
 export function normalizeText(text: string): string {
   return text.normalize("NFKC").trim().replace(/\s+/g, " ");
 }
@@ -129,7 +136,7 @@ export function extractTicker(text: string): string | null {
     /(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{0,5}(?:[.-][A-Z0-9]{1,4})?)(?=$|[^A-Za-z0-9])/g;
   for (const match of normalized.matchAll(uppercasePattern)) {
     const candidate = normalizedTickerCandidate(match[1]);
-    if (candidate) return candidate;
+    if (candidate && !MACRO_ABBREVIATIONS.has(candidate)) return candidate;
   }
   return null;
 }

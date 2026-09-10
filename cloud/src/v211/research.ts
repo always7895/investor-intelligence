@@ -152,18 +152,18 @@ function asksResearch(text: string): boolean {
 
 export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): Promise<string | null> {
   if (isGreeting(query.normalized)) return v211HelpText();
-  if (query.intent === "options") return null;
+  if (!["general_qa", "ranking", "source_views"].includes(query.intent)) return null;
+  const tickers = explicitTickers(query.normalized);
+  if (query.ticker && !tickers.includes(query.ticker)) tickers.unshift(query.ticker);
+  const universeRequest = /^(?:研究範圍|研究范围|universe|research universe)$/i.test(query.normalized);
+  // A missing stock universe must not intercept macro, sector or methodology
+  // questions. Their downstream model/evidence/freshness gates still apply.
+  if (!query.ticker && !(asksComparison(query.normalized) && tickers.length >= 2) && !universeRequest) return null;
   const raw = await publicJson<unknown>(env, ["v211:universe:latest"]);
   const universe = parseV211ResearchUniverse(raw);
   if (!universe) {
-    if (query.ticker || asksResearch(query.normalized)) {
-      return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
-    }
-    return null;
+    return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
   }
-
-  const tickers = explicitTickers(query.normalized);
-  if (query.ticker && !tickers.includes(query.ticker)) tickers.unshift(query.ticker);
   if (asksComparison(query.normalized) && tickers.length >= 2) {
     const left = universe.find((item) => item.ticker === tickers[0]);
     const right = universe.find((item) => item.ticker === tickers[1]);
@@ -176,7 +176,7 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
     return item ? formatResearchDetail(item, universe.length) : null;
   }
 
-  if (/^(?:研究範圍|研究范围|universe|research universe)$/i.test(query.normalized)) {
+  if (universeRequest) {
     const cutoff = universe[19];
     return `本輪公開系統量化 universe 共 ${universe.length} 檔；Top 20 cutoff 為 ${cutoff?.ticker ?? "N/A"} 系統量化分 ${cutoff?.serenity_score ?? "N/A"}/100。候選發現包含 broad screeners + AI-infrastructure thematic + SEC official-name coverage；theme 本身不加分。此量化公式是專案 operationalization，不等於 Serenity 本人公式。`;
   }
