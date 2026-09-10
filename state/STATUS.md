@@ -4,7 +4,7 @@ Updated2026-09-10. NOT a release certificate. Release identity belongs in README
 
 ## Authority and workspace
 
-- W0 implementation handoff confirmed HEAD13bd043986c409ea2aaf54a5820acdc107686ed1, branch fix/options-provenance-audit / PR37. Only expected uncommitted plan/STATUS files exist; PR39 d58fdaf and baseline52e285f remain separate.
+- W0 handoff baseline was HEAD13bd043986c409ea2aaf54a5820acdc107686ed1; current W1 changes are scoped installer/test/validator/status files. Branch fix/options-provenance-audit / PR37; PR39 d58fdaf and baseline52e285f remain separate.
 - Git source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. Outer project is installed runtime, not Git. Audit tools/receipts: `_workspace/audit-runtime`; historical archives are not market-data inputs.
 - LATEST USER INSTRUCTION: implement strictly from `docs/LUNA_MAX_IMPLEMENTATION_PLAN_20260910.md`; on any unexpected condition or question stop and request user switch to Astra. Free-only/no paid alternatives, no private/broker fallback or stale replay; Production/LINE remain gated; CI no-Production-mutation.
 - W0 read-only baseline: no active/queued workflow at query time; Production runtime/Worker/KV/schedules and Router preset unchanged; both named tasks remain Disabled; installed chain is6 different/2 missing/2 equal; isolated QA resources deleted. Existing Router8080/exact approved model only.
@@ -12,7 +12,7 @@ Updated2026-09-10. NOT a release certificate. Release identity belongs in README
 ## Verified slices — not whole-product acceptance
 
 - Installer14544d2: four writers emit preferred_model=null, model_selection_authority=runtime_model_profile, model_profile_qualified=false. Installation does not select/certify models or overwrite operator profiles. No second profile parser. PS5.1/7 actual callers and package metadata negatives pass; historical Serenity fixture is not current R75 certification.
-- Historical installer CI34385623770 on14544d2 and independent download/install verification PASS; exact ZIP SHA and receipts retained in Git38c980f/audit-runtime. Not current-source acceptance.
+- Historical package/download/install PASS remains non-current. W1 added pre-copy fail-closed installer topology/ownership/reparse checks: focused PS5.1/7 RED/GREEN logs and full fixture reinstall/unknown-data tests pass; no real root touched. Original REDs retained.
 - `downloaded-install-34385623770/receipt.json`: actual downloaded installation matched10 audited chain files and EXE bytes; native EXE version/profile/THINK self-tests and metadata authority PASS. Remains release_qualified=false for whole release. Earlier RVN-Q6 metadata mismatch in `downloaded-install-34382938201/receipt.json` is preserved, not rewritten; no inference downgrade was observed.
 - Historical e945f60 Q5 none proof retains exact bytes in `state/r75-qa-live-activation-v3-20260909.json`; not current qualification. Current reference selects Sept10 proof below. Marker/THINK UI tests do not establish graded effort, automatic best mode, research quality or installed GUI acceptance.
 - Shared HEAD-bound QA selector rejects uncommitted/drifted/invalid references without fallback. Windows/package/ZIP bind path/SHA; verifier compares QA with archive runtime, never imports archive code. CRLF receipts stay byte-exact. Existing/source-child OutputRoot rejected without deletion.
@@ -55,6 +55,6 @@ Updated2026-09-10. NOT a release certificate. Release identity belongs in README
 
 ## Next actions
 
-1. W0 complete: plan and status are ready for implementation; plan baseline and read-only findings are preserved. Commit these handoff documents before W1.
-2. W1 is next: isolated `/MIR` topology/reparse/rollback tests and complete-chain install contract. Do not touch the real installed root. Stop and request Astra for any unplanned topology, permission, data-loss risk or scope ambiguity.
-3. No real LINE, Production publication, task enablement or paid service is allowed before W11 gates. Overall P0 inventory remains unknown, not zero; every PASS is scoped.
+1. W1 topology/ownership guard and isolated installer callers pass; commit scoped code/tests, then continue W1 interruption/rollback and complete-chain audit. Real installed root remains untouched.
+2. W2 is next only after W1 exit criteria: financial context/debt/share-count evidence and identity reconciliation. Stop and request Astra for any unplanned topology, permission, data-loss risk or scope ambiguity.
+3. No real LINE, Production publication, task enablement or paid service before W11 gates. Overall P0 inventory remains unknown, not zero; every PASS is scoped.
