@@ -39,6 +39,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from adapters import parse_source_payload
+from adapters.world_bank import AdapterError, US_REAL_GDP_URL, select_us_real_gdp_window
 from authoritative_source_catalog import inventory, load_catalog
 from report_source_acquisition import bind_company_receipt
 
@@ -215,7 +216,7 @@ def cached(path: Path, hours: int) -> Any | None:
 
 PUBLIC_JSON_MAX_BYTES = 20_000_000
 SEC_REFERENCE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
-WORLD_BANK_JSON_URL = 'https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5'
+WORLD_BANK_JSON_URL = US_REAL_GDP_URL
 
 
 def public_json_cache_path(path: Path) -> Path:
@@ -336,7 +337,11 @@ def _public_payload(value, raw: bytes, url: str, contact: str) -> None:
         valid = (isinstance(value, dict) and set(value) == {'fields', 'data'}
                  and value['fields'] == ['cik', 'name', 'ticker', 'exchange'] and isinstance(value['data'], list))
     elif url == WORLD_BANK_JSON_URL:
-        valid = isinstance(value, list) and len(value) == 2 and isinstance(value[0], dict) and isinstance(value[1], list)
+        try:
+            select_us_real_gdp_window(value, as_of_day=datetime.now(timezone.utc).date().isoformat())
+            valid = True
+        except AdapterError:
+            valid = False
     else:
         cik = value.get('cik') if isinstance(value, dict) else None
         valid = (isinstance(value, dict) and set(value) == {'cik', 'entityName', 'facts'}
@@ -1068,32 +1073,23 @@ def synthetic_candidates() -> list[tuple[dict[str, Any], dict[str, Any], list[Ev
     return result
 
 
-def world_bank_context(policy: Mapping[str, Any], http: requests.Session) -> dict[str, Any]:
-    url = str(policy["world_bank_url"])
+def world_bank_context(policy: Mapping[str, Any], http: requests.Session, *, cache_path: Path | None = None) -> dict[str, Any]:
+    url = str(policy['world_bank_url'])
+    scope = {'schema_version': 1, 'source_id': 'world_bank_indicators', 'provider_scope': 'public_only',
+             'publication_eligible': False, 'source_lineage': 'world_bank_wdi_national_accounts_compilation'}
+    receipt = {}
     try:
-        raw = get_json(
-            http,
-            url,
-            headers={"User-Agent": "Investor Intelligence 2.1 public research"},
-            cache_path=CACHE_ROOT / "world_bank_gdp_growth.json",
-            cache_hours=24,
-        )
-    except PipelineError:
-        return {"source_id": "world_bank_indicators", "status": "DEGRADED"}
-    observations = raw[1] if isinstance(raw, list) and len(raw) >= 2 and isinstance(raw[1], list) else []
-    latest = next(
-        (item for item in observations if isinstance(item, dict) and finite(item.get("value")) is not None),
-        None,
-    )
-    if latest is None:
-        return {"source_id": "world_bank_indicators", "status": "DEGRADED"}
-    return {
-        "source_id": "world_bank_indicators",
-        "status": "HEALTHY",
-        "period": str(latest.get("date") or ""),
-        "value": finite(latest.get("value")),
-        "url": url,
-    }
+        raw = get_json(http, url, headers={'User-Agent': 'Investor Intelligence 2.1 public research'},
+                       cache_path=cache_path if cache_path is not None else CACHE_ROOT / 'world_bank_gdp_growth.json',
+                       cache_hours=24, receipt_sink=receipt)
+        selected = select_us_real_gdp_window(raw, as_of_day=datetime.now(timezone.utc).date().isoformat())
+    except (PipelineError, AdapterError) as error:
+        code = error.args[0] if error.args else None
+        safe = code if isinstance(code, str) and re.fullmatch(r'(?:PUBLIC_JSON_[A-Z0-9_]{1,60}|WORLD_BANK_US_GDP_WINDOW_INVALID)', code) else 'WORLD_BANK_CONTEXT_INVALID'
+        return {**scope, 'status': 'DEGRADED', 'failure_code': safe}
+    return {**scope, **selected, 'status': 'HEALTHY' if selected['value'] is not None else 'DEGRADED',
+            'url': url, 'source_acquisition': receipt}
+
 
 
 def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], macro: Mapping[str, Any], generated: str) -> str:

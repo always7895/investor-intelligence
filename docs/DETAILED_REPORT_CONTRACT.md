@@ -195,6 +195,16 @@ Backlog、RPO、預付款、產能預約、設計採用、意向書與已認列�
 
 保存數列定義、原始發布機關、發布時間、觀察期間、修訂 vintage、頻率、季調／名目／實質與幣別。將總體→需求→供給約束→公司收益的每條傳導關係標示為事實或推論，附時間落差、反例與相反數據。新聞標題或宏觀資料不能單獨證明公司订单或定價權。
 
+### 既有美國 GDP caller 的資料身分／窗口驗證（不是宏觀三產物）
+
+`v21_serenity_top20.world_bank_context` 與 federation 的同來源分支共用 `adapters.world_bank.select_us_real_gdp_window`：只接受既有 `USA / NY.GDP.MKTP.KD.ZG / WDI source2 / page1 / per_page5`。回應全窗口須國別、指標、名稱、單位、觀察狀態、年份及分頁一致；數值不能是 bool／字串／非有限／超範圍，年度值不得早於其期間結束。重複／缺年／混國別／混指標／錯誤尾列整批拒絕，不從前面的合法列救回。
+
+- 明示選取**回傳第一頁中最新非 null 年度**，不是陣列第一筆、當季成長、預測或全球最新發布認證。保留 null 年度；全部 null 是 DEGRADED。有效但較舊的連續窗口不會憑本機年份變成最新資料；`full_history_verified`／`latest_release_verified` 都為 false。
+- 保留未四捨五入原值、年度百分比／constant-local-currency 定義、provider decimal、原 dataset lastupdated 日期與窗口內容。lastupdated 不是 observation year，也不是精確發布時間／歷史 vintage 完整性證明。
+- 沿用既有 bounded JSON transport、same-call body SHA／取得時間 receipt 與24h原來源快取。組裝不重置取得时间，失敗／403／429不能借用旧值。這個快取政策不是發布 freshness gate。federation 的 WDI 分支不繼承其他來源的 session／contact，也不讀取原 mtime/hex cache；其他來源分支未因此取得驗收。
+- WDI context 帶資料集／供應者 attribution、metadata／license／完整條款連結、轉換說明及非背書／非保證聲明。資料集權利審查見 [來源權利紀錄](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md)；網站／API與下游條款合規仍須資格化，不能只看 CC BY label。
+- `publication_eligible=false`；World Bank彙編及其原國民所得來源不是多個獨立公司佐證。引擎原報告仍只顯示 macro status，federation保留context；沒有新的宏觀產品／LINE連結、scoring改寫或封存升版。通用 replay adapter及其他legacy macro gateway不等於本節caller驗收。
+
 ## 共同放行條件
 
 - 每個重大投資論點都有相關且獨立的公司級證據；轉載／同一原始揭露只算一個來源血緣。

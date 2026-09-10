@@ -163,7 +163,10 @@ class PublicJsonRefreshTests(unittest.TestCase):
                     with self.assertRaisesRegex(engine.PipelineError, 'PUBLIC_JSON_SOURCE_BLOCKED'):
                         engine.get_json(session, engine.SEC_REFERENCE_URL, headers=headers(), cache_path=root / 'ref.json', cache_hours=24)
                     self.assertEqual(get.call_count, 1)
-                body = b'[{"page":1},[]]'
+                body = json.dumps([{'page':1,'pages':1,'per_page':5,'total':1,'sourceid':'2','lastupdated':'2026-07-13'},
+                    [{'indicator':{'id':'NY.GDP.MKTP.KD.ZG','value':'GDP growth (annual %)'},
+                      'country':{'id':'US','value':'United States'},'countryiso3code':'USA','date':'2025',
+                      'value':2.1,'unit':'','obs_status':'','decimal':1}]]).encode()
                 with patch.object(session, 'get', return_value=Response(body=body, url=engine.WORLD_BANK_JSON_URL)):
                     value = engine.get_json(session, engine.WORLD_BANK_JSON_URL, headers={'User-Agent':'SyntheticPublicTest/1.0'}, cache_path=root/'macro.json', cache_hours=24)
                     self.assertEqual(value, json.loads(body))
