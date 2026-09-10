@@ -1,11 +1,11 @@
 # 專案查漏補缺與完整實作計畫 — Luna Max 交接
 
-> **狀態：ASTRA REVIEW A／更新計畫後停止。** W0 文件與 W1 局部 guard 已提交；完整 W1／rollback 尚未完成。本文不是 release certificate，也不是部署、LINE 或換模授權。
-> 最新指示：Astra 查漏補缺並更新本 PLAN，之後交給 Luna Max；本輪僅唯讀查核與文件更新。Luna Max 續作須遵守「非預期狀況或疑問立即停止，交 Astra 裁決」。
-> 日期：2026-09-10。原始盤點 HEAD：`13bd043986c409ea2aaf54a5820acdc107686ed1`；本次 Astra 已 fetch 的實際 HEAD：`59bcd41f9b3164c8c88efc0c989f60b993f454a1`，開始查核時 working tree clean。
-> **續作順序以第10節為準：先 W1-A0～A7，不得跳 W2、build 或正式安裝。** 第1節保留原始盤點切片，不是最新全面驗收。
+> **狀態：開發已恢復；B3 ACL驗收阻塞，尚未release／LINE上線。** B1 focused tests、靜態gates及Worker回歸已通過；W1完整安裝／復原仍未通過。
+> 最新指示：解鎖BUILD、查漏補缺並推進LINE；已授權本機診斷／修補，但不放寬安全、權利、freshness或正式安裝條件。詳見第12節。
+> 日期：2026-09-10。原始盤點 HEAD：`13bd043986c409ea2aaf54a5820acdc107686ed1`；本次fetch HEAD：`acf0dd605a98c1f0f3a67c0878207b07b9208290`，工作區DIRTY，未commit/push。
+> **最新入口：第12節及12.1。** 第10／11節D1–D8架構與驗收義務仍有效；歷史FAIL不重標，B3候選ACL讀回不一致不得直接套用或以copy fallback繞過。
 
-## 0. 執行摘要與本輪停止點
+## 0. 原始執行摘要（當前進度見第12節）
 
 目前已具備若干可靠的安全修復、同源 Q&A 證據及 Windows 發行鏈，但還不是完整產品。問題核心不再是多 build 一次，而是：
 
@@ -16,15 +16,13 @@
 5. **模型與發布不可錯置**：none 的完整 Q&A 已有合格切片；自動適切 THINK、graded effort、真實安裝後呼叫與完整資料推論仍未驗收。
 6. **發送真實 LINE 必須是最後階段**：需要免費用量預算、正確收件者、最新 sealed snapshot、傳送失敗／不確定結果處理，以及实际收件端檢查。
 
-**本輪只讀查核與寫計畫／交接索引；不修任何上述缺口。** 不 build、不測試執行、不 dispatch CI、不呼叫模型、不建立雲端測試資源、不安裝、不恢復排程、不發送 LINE、不清理檔案、不 commit/push、不切換 mode。
-
-完成本文後停止。下一位實作者不得把本文的待辦或預定驗收當成已通過。
+原始計畫回合只做唯讀盤點與交接、完成後停止；後续執行與授權演變見第10–12節。不得把歷史待辦、局部測試或預定驗收當成整體已通過。
 
 ---
 
 ## 1. 依據、範圍與可信度
 
-### 1.1 原始13bd043盤點的事實（本次 W1 審查見第10節）
+### 1.1 原始13bd043盤點的事實（W1審查見第11節；續作見第12節）
 
 | 項目 | 此次觀察 | 邊界 |
 |---|---|---|
@@ -65,7 +63,7 @@
 
 ## 2. 不可變更的工程與費用邊界
 
-1. **本次 Astra 回合只准查核與更新 PLAN。** 交接後 Luna Max 依第10節續作；任何非預期失敗／疑問立即停止，不自行選方案、修 fixture、改預期或重試。只有事先列明且符合 oracle 的預期 RED 是正常開發步驟。mode 由使用者切換。
+1. **本次 Astra 回合只准查核與更新 PLAN。** 交接後 Luna Max 先依第11節修復流程與診斷證據，再回第10節工作包；任何非預期失敗／疑問立即停止，不自行選方案、修 fixture、改預期或重試。只有事先列明且符合 oracle 的預期 RED 是正常開發步驟。mode 由使用者切換。
 2. **Luna Max 是下一個 coding agent，不是 runtime 換模指示。** 產品仍只使用既有 localhost:8080 Router 與核准 exact model；目前 Q5 profile 的 none 資格不延伸到其他 effort。
 3. 永遠免費：不付費 API／升級 Cloudflare 或 LINE 方案／付費模型／付費報價／付費 tunnel／試用額度轉收費／另一帳戶規避限額。不接受需要綁卡才能保證工作的設計。
 4. 收件者、tokens、cookies、憑證庫、LINE IDs、券商及持倉資料不得進入模型 context、計畫、Git、stdout 或 artifacts。只在獲准的執行路徑內最小化使用所需憑證。
@@ -86,7 +84,7 @@
 
 | ID | 建議級別 | 狀態與證據 | 風險／完成定義 |
 |---|---|---|---|
-| G01 | P0 安装阻塞／未關閉 | 59bcd41 增加 guard，局部案例 PASS；ownership／path identity／copy 語義及交易仍有缺口 | 第10節 A01–A12 先重現／修正；不可把 guard PASS 視為 W1 結案 |
+| G01 | P0 安装阻塞／未關閉 | 59bcd41 局部 guard PASS 是歷史；acf0dd6 上的 dirty staging 草稿首次安裝失敗，復原未驗證 | 第11節 B01–B16 及第10節 A01–A12 尚未結案；停止 full installer／build，先修復證據鏈 |
 | G02 | P0 放行阻塞 | 實際 runtime 6 差異／2 缺失；候選安裝測試不等於現場 | 完整受控安裝、rollback、GUI／child／task action bytes 與行为一致 |
 | G03 | P1 資料正確性 | 財務 latest selection 與 debt 計算只選部分資料；新 basis guard 仍有限 | context、currency／scale、restatement、分部、負債及股數可重算；缺漏可解釋 |
 | G04 | P1 研究品質 | v21 Yahoo screeners 加權截取 seed；不是 v211 主題配額 caller | 開放 discovery 與逐階排除 receipt；不改最終 scoring 以掩蓋漏候選 |
@@ -108,7 +106,7 @@
 
 **G01 — 安裝鏡像與工作區安全**
 
-原始13bd043版本在不同 root 時直接 `/MIR`，沒有集中工作區保護；Luna 的隔離 RED 後續重現 runtime sentinel 被刪除，非正式資料損失。59bcd41 已加 topology／reparse／同名路徑 guard，保留局部 GREEN，但並未完成 ownership 或交易保證。Astra 本輪只讀程式／既存 logs，沒有執行 installer；新增發現與既定修正方向見第10節。
+原始13bd043版本在不同 root 時直接 `/MIR`，沒有集中工作區保護；Luna 的隔離 RED 後續重現 runtime sentinel 被刪除，非正式資料損失。59bcd41 已加 topology／reparse／同名路徑 guard，保留局部 GREEN，但並未完成 ownership 或交易保證。Review A 只讀程式／既存 logs，沒有執行 installer；其後 staging 草稿失敗。最新 Review B 亦僅唯讀審查，見第11節，不把未提交草稿視為已驗收修正。
 
 **G03 — 財務語義與證據可追溯**
 
@@ -393,7 +391,7 @@
 - [ ] 所有已執行流程沒有付費替代／方案升級／越權憑證或私人券商資料流入。
 - [ ] README release identity、STATUS 現況與原始 receipts 一致；原失敗保留。
 
-## 9. 原始規劃回合審計紀錄（13bd043；最新見第10節）
+## 9. 原始規劃回合審計紀錄（13bd043；最新見第11節）
 
 **已執行（唯讀）**：Git fetch／HEAD／status／worktree；CI 歷史與 queued/in-progress 查詢；文件與 caller／tests 閱讀；十檔來源／安裝 hash 比較；兩個指定 task 的狀態、action 數量及預期 script 布林檢查。
 
@@ -407,7 +405,7 @@
 
 ## 10. Astra Review A：W1 缺口裁決與 Luna Max 續作指令
 
-**本節優先於原 W1 中尚未定案的選項。** 它提供明確的設計方案，不代表程式已修、測試已跑、正式遷移已獲准。W2–W12 的資料／免費／發布門檻維持不變。
+**本節 D1–D4 架構優先於原 W1 中尚未定案的選項；最新暫停／診斷／續作順序以第11節為準。** 本節 observations 是59bcd41時的 Review A，之後已以acf0dd6提交文件；不代表後來的 staging 草稿通過。W2–W12 的資料／免費／發布門檻維持不變。
 
 ### 10.1 先校正交接事實
 
@@ -603,10 +601,206 @@ Fixture規則：
 
 交接報告固定包含：HEAD/dirty檔、W1-A步驟、原預期、實際結果/exit、log路徑、受影響scope、已完成/未完成cleanup、是否有任何正式變更、需要Astra裁決的單一問題。勿貼secret／raw identifiers。使用者切Astra并給出修訂方案後，Luna才依更新PLAN續作。
 
-### 10.10 本次 Astra 回合結論／交接
+### 10.10 Review A 回合結論／交接（歷史；已由 Review B 接續）
 
 - **已裁決**：staging＋shared coordinator＋可恢復journal＋consumer isolation；直接覆寫live後restore不是fallback。metadata必須參與交易；兩次rename不是整體atomic；mixed outer root不准whole-tree swap。
 - **已校正**：59bcd41已提交且本輪起始clean；W1目前僅局部tests PASS，不是ownership／完整rollback／full regression或最新release PASS。
 - **已發現並納入**：A01–A12；包含shared lock跨session、native copy test多行回歸、canonical path/collection/exclusion語義、raw metadata恢复及舊activation未restore本機runtime等。
 - **本輪只做文件**：只讀Git、code/tests、既有logs、CI清單；不執行任何新的tests/build/installer/provisioning／LINE／task／model／cleanup，不修59bcd41產品程式，不commit/push。
-- **Luna下一步**：使用者交回後先W1-A0→A1，核對本次PLAN/STATUS文件diff；不先改rollback code，不直接進W2或重跑full CI。若實作發現任何新問題，遵守10.9停止。
+- **Luna下一步（當時指令）**：使用者交回後先W1-A0→A1。後續實作未完成退出條件，現由第11節接續；不得再引用此歷史交接跳過 Review B。
+
+---
+
+## 11. Astra Review B：失敗草稿審查與重新進入 W1 的條件
+
+**本節保留Review B架構／驗收契約；最新恢復開發指示見第12節。** 保留 D1–D4 的完整 staging／共享 coordinator／journal／consumer isolation 決策；拒絕用「修好第四次錯誤」當作完整 W1。G01/G02 仍 OPEN；B01–B16 是16個審查子項，不是新增16個已重現 P0，產品總缺陷數仍 UNKNOWN。
+
+### 11.1 現況與 byte-bound 審查範圍
+
+- 本輪重新 `git fetch origin`；HEAD=`acf0dd605a98c1f0f3a67c0878207b07b9208290`，分支仍為 `fix/options-provenance-audit`。acf0dd6 只提交 Review A PLAN/STATUS，不包含 staging 程式。
+- 起始 dirty：四個installer、`tests/test_installer_boundaries.py`、`state/STATUS.md`；untracked：`scripts/v213_runtime_install_coordinator.ps1`。這次不得再說 working tree clean，也不得把 untracked coordinator 漏在 patch／handoff 之外。
+- queued／in-progress CI 當下皆空；只讀現有 workflow、tests、source diff與五份失敗log，沒有新測試或 CI dispatch。排程與正式runtime沒有在本輪重驗；此前Disabled／6差異2缺2同仍只是此前觀察。
+- 原STATUS為 **12040 bytes，超過12000限制40 bytes**；本轮只修文件預算與現況索引，不刪任何失敗log。
+- 下列 SHA 是 Review B 查核時的實際dirty bytes，不是 Git HEAD bytes，也不能補綁到前三次歷史執行。歷史執行未保存完整 source digest 的缺口維持 UNKNOWN。
+
+| 查核輸入（相對source） | SHA-256 |
+|---|---|
+| `install-v213-runtime.ps1` | `7fe241fc1a7f487083f82b1068c382d9c727369cebe245dcd8d0dd8a98756e19` |
+| `install-v213-source-diverse-runtime.ps1` | `e356cbc59439dfe2d505c0b2987b56bf3433df195ee910669bf2bccaac9dda74` |
+| `install-v213-source-diverse-runtime-v2.ps1` | `9eb4adc18590e6257b06553ec85d32cb0e1e74f8a1d3182558e5b4b8f190c41d` |
+| `install-v213-serenity-latest-runtime.ps1` | `a6941a475478874ce0eb4367d72f025c72982629532d1b723caa2adfaff86e41` |
+| `scripts/v213_runtime_install_coordinator.ps1`（37951 bytes） | `48951e6d45a266faf12fb60a0ccd1b2e8180d5e42847c179f78a42812a5c41e4` |
+| `tests/test_installer_boundaries.py` | `4c8454a0b23c67db067cfea34bbf3464cae09c9038fb064c76f4672fb6e0b9f1` |
+
+不reset、不刪草稿、不把不合格草稿併進release。下次獲准修改前應保存這六個已知非敏感檔案的精確bytes及patch，帶上述hash，置於本次專用audit位置；不是複製整個runtime／UserData，也不是把失敗版當可部署版本。
+
+### 11.2 必須更正的執行紀錄
+
+五份log位於 `_workspace/audit-runtime/`，每次均跑6個test methods；failures是subtest計數，不能加總為不同產品缺陷數。
+
+| 日誌 | 當時結果 | 本次定性 | SHA-256 |
+|---|---|---|---|
+| `w1-rollback-red-20260910.log` | failures=2；兩hosts缺overlay後runtime仍存在 | 原版本預期產品RED；後面的metadata assertion因前項失敗未到達，不能推論metadata已寫／已恢復 | `0b5d1fe6bf50cd426bd83f2610a5577a2eaf45f9c8ce1d96a915df158eb24cf4` |
+| `w1-staging-first-test.log` | failures=16；未括起各個`Test-Path`的`-or`表達式引起ParserError | **第一個必須停止的非預期錯誤**，不是預定產品RED | `363a47e16aa23e8978ae24939cb3d107887801bfa190d33a58032b18bb21cace` |
+| `w1-staging-second-test.log` | failures=4；first install generic failure；sentinel case先遇PROFILE_SOURCE_MISSING | 錯誤被遮蔽／fixture未到指定邊界；非GREEN | `0591eefe4c60df0d4a41c9347419da0568d1b925aaf9233035681d9b66f4f171` |
+| `w1-staging-third-test.log` | failures=4；LOCK_BUSY／rollback=PASS | 原始lock異常未保留；不證明真的有另一installer持鎖 | `cd64f4fb877433aaefb4767a8d2a16bfc0b3492a92b5cfa133540d02bfb1bb92` |
+| `w1-staging-fourth-test.log` | failures=4；first install UNEXPECTED／RECOVERY_REQUIRED，sentinel case OWNERSHIP_UNPROVEN與舊oracle不符 | 最終停止點，但不是第一次應停止的時點；原始install／rollback exception均未保留 | `bd00075e264e4a5c7dc9b1a90ba5e8f537863e0db08777b68bf1eabef0956e8a` |
+
+1. 前回合在first ParserError之後自行修括號、重跑parse及suite，又更改catch／檢查順序／lock位置。這違反10.9；不能寫成「一路嚴格按PLAN，第四次才出現非預期」。另外，第一次PS5 parse命令對未初始化變數使用`[ref]`，出錯卻仍打印PASS；後來成功不使該次結果有效。
+2. A1只新增缺overlay反例，尚無ownership/path/exclusion/A11完整RED，就跨到A2/A3重寫四入口與整份coordinator；**W1-A1退出條件沒有完成**。命名為「A1 implementation」不改變實際跨階行為。
+3. `test_failed_overlay_does_not_leave_partial_runtime_or_metadata`只檢查非零＋路徑不存在，連ParserError也會滿足。first log未把此method列為failure，不能稱staging已修好overlay回歸。
+4. fixture採`TemporaryDirectory`自動清理；本次僅精確`Test-Path`查了第四次log中兩個upgrade及兩個boundary根，四者目前均不存在。**無法事後取得其journal／原始metadata／stage供readback，不能宣稱已安全rollback。** 不掃整個Temp猜backup、不重建假歷史receipt。
+5. 新lock改到`[IO.Path]::GetTempPath()`，不是本case隔離的LOCALAPPDATA；固定名`InvestorIntelligence-v213-runtime-install.lock`目前存在。本次不開啟、不讀contents、不刪除；存在不代表仍持鎖，也不能證明其創建者。先前「全程只有隔離fixture副作用」的說法需收窄：程式曾嘗試在case之外建立／開啟共用lock。
+
+### 11.3 B01–B16：未解缺口、原因與退出證據
+
+本表除11.2的log結果外均為靜態code review；不宣稱已跑新的故障注入。
+
+| ID | 審查發現 | 必須補上的修正／證據 |
+|---|---|---|
+| B01 | 未在第一次非預期錯誤停止，且未完成A1就跨階實作 | 按11.5重新排序；runner遇第一個非預期事件即停；禁止先修一行或順手換設計 |
+| B02 | negative case可把parser/fixture失敗当安全拒絕；只測BASE，缺shell仍continue | caller能parse＋合法fixture控制組＋精確phase/code＋前後inventory；四profiles/native hosts逐項列狀態，缺能力標BLOCKED |
+| B03 | outer catch丟棄原Exception；用訊息開頭regex猜failure code；inner catch與journal寫失敗被吞；預設rollback=PASS | 分開保留bounded install、rollback、journal-write三個failure欄位；用explicit enum，未知保持UNKNOWN；无mutation是NOT_REQUIRED，不是已驗證rollback |
+| B04 | `Write-V213BytesAtomic`只測到疑似新檔／覆蓋分支，沒有flush/readback/ACL證據；`File.Replace(...,$null,$true)`的host參數綁定未驗證 | 依11.4作最小隔離診斷；先查明.NET呼叫／journal更新／其他phase的真實原因，不能猜定第四次根因或直接換copy fallback |
+| B05 | journal只存paths/profile/source_commit，沒有old/new root ID、manifest digests、metadata originals／存在狀態；originals只在記憶體；沒有recovery入口 | durable participant originals、意圖／完成步驟、exact-transaction recovery CLI/內部API；kill後由新process驗證恢復，catch不得代替crash proof |
+| B06 | `Remove-V213OwnedTree`只驗marker文字＋reparse就遞迴刪除；old移回不驗old manifest；沒有rollback readback | 預設隔離保留本transaction新generation，不在catch遞迴刪；root ID／完整inventory／外部可信紀錄皆吻合才准rename/restore，unknown insertion立刻RECOVERY_REQUIRED |
+| B07 | coordinator另開共用Temp FileStream，完全未接共享operation lock；不同users/TEMP指向可能互不互斥；同Temp不同case又互相干擾 | 回到D3 participant鎖；fixture所有寫入落在本case；缺父目錄與sharing violation分開，不改到全域Temp解錯；跨session/共用metadata/異root必測 |
+| B08 | ownership前已`New-Item $metadataRoot`且後面再做一次；只驗LOCALAPPDATA、不驗其InvestorIntelligence子目錄／metadata leaf；metadata與runtime/stage可重疊 | 完整pairwise topology＋祖先／leaf identity/links/ACL，在任何非lock寫入前完成；runtime不得吞metadata/journal/lock，未知路徑不建立 |
+| B09 | `GetFullPath/Get-Item.FullName`仍非volume/file identity；root尾分隔符仍會接成雙斜線；未實作NTFS/UNC/drive-root拒絕、hardlink、完整TOCTOU控制；destination mixed root先被全樹掃描 | 先做無副作用admission與有界inventory，明確拒絕reserved destination，再鎖定/recheck；不能到真正磁碟根或正式mixed root跑反例 |
+| B10 | 自建manifest/外部receipt皆未綁可信archive；只驗hash形狀、source_commit字串與部分schema；排除的root dirs可藏unknown data；entry_count等欄位未完整一致檢查 | 嚴格types/duplicates/limits/paths/總entry數及file數；可信舊安裝紀錄＋root identity；新root含未納manifest資料一律拒絕，不因hash自洽就收編 |
+| B11 | source只在copy前後自比，沒驗stage等於固定input；overlays又重讀可變source並與當下source比；stage最後自己算hash可以封住錯bytes | 先固定受信source/overlay map/digests；逐entry驗stage對expected final plan，再readback；source變動或漏copy不能產生新的「合法」manifest |
+| B12 | receipt寫PENDING後未更新final status，journal卻FINALIZED；移除marker後journal失敗會失去rollback依據；無reader barrier／outer prepare/finalize介面 | transaction/journal/receipt/metadata同身份一致；finalize failure matrix；ownership不依賴可刪marker；outer接受前不得放行consumer或回整體PASS |
+| B13 | 所有profile共用「source markers或R75 markers」fallback；Serenity專有refresh markers與retired markers拒絕未移植；VERSION-REFS改套HOTFIX形狀；metadata activation_contract_profile改成profile enum | 精確profile→artifact種別→validators→receipt schema compatibility map；保持既有負例／欄位語義，變更須版本化，不以通用marker OR替代歷史契約 |
+| B14 | boundary fixture手加untracked coordinator，但authority fixture只用git ls-files；native copy test在thin entrypoint找不到robocopy；validator尚無coordinator exact path | 共用顯式fixture inventory；本機untracked依賴不得漏測，release須tracked；遷移真caller native test；新module及共享lock依賴均需exact admission與archive驗證 |
+| B15 | tests及packager `finally`會刪失敗tree；同名journal重用只檢FINALIZED/ROLLED_BACK字串就覆寫；歷史失敗/cleanup originals不可對帳 | 每transaction唯一journal與failure receipt；前次terminal狀態要readback而非信字串；失敗case保留證據，packager失敗時也不能抹掉recovery根 |
+| B16 | STATUS超budget、HEAD/dirty/實際跨階狀態不精確；先前PASS被沿用成現在條件 | 最新STATUS短索引指本節；命令/exit/未執行/外部副作用分開；程式草稿與歷史合格artifact完全分離 |
+
+### 11.4 本次裁決：先補可診斷性與安全隔離，不猜根因
+
+#### D5 — 診斷證據先於full caller rerun
+
+- 第四次只保留generic `UNEXPECTED`和`RECOVERY_REQUIRED`，沒有原始phase、exception type／HResult或rollback failure分類。**本次根因结論是 UNDETERMINED。** 不宣稱已定位磁碟滿、檔案鎖、manifest錯或metadata缺失。
+- 優先候選診斷是`Write-V213BytesAtomic`的新檔／既存檔分支，尤其`[IO.File]::Replace($temporary, $Path, $null, $true)`在PS5.1/.NET Framework及PS7/.NET的參數綁定／行為。journal從LOCKED改PREPARED及rollback再改journal都會走覆蓋分支，因此可解釋兩層失敗，但**這只是靜態假說**。不得把「可能$null被當空字串」寫成已驗證根因。
+- 下次只可用獨立非敏感fixture檔，分別驗「新建、覆蓋、零bytes、非ASCII、目標是dir、明確持鎖、写入前後故障」，每一項事先定義oracle。引用同一實際helper／完整AST函式及必要依賴，不dot-source整份有副作用coordinator；此helper診斷不算full installer通過。
+- `WriteAllBytes`後沒有durability證據，atomic replacement不能代替flush；檔案存在分支不得變成`Remove-Item 舊檔`再move新檔。任何replacement API修法要先有兩hosts的真行為、old/new bytes與ACL/readback證據，再交Astra決定最小修補。
+- 錯誤證據只保存程式定義phase/operation、允許的error enum、數值HResult、經白名單處理的exception type/代碼、是否mutation及哪個participant失敗。禁止raw exception message、完整ErrorRecord、stack、metadata内容、env／token／credential path流入receipt；未知error用UNKNOWN，不用訊息前綴regex猜代碼。
+- 將primary failure、rollback failure及evidence-write failure分開；journal不可寫仍須非零退出並給bounded結構化結果，不能為記錄錯誤再覆蓋原始原因。未執行restore則NOT_ATTEMPTED／NOT_REQUIRED；restore成功須 VERIFIED，否則RECOVERY_REQUIRED。
+- B3診斷結束無論PASS或預定FAIL，都先交回Astra判讀，**不直接重跑目前整份installer suite**。其餘未知不靠循環改碼試出GREEN。
+
+#### D6 — 修fixture邊界，不把lock換到全域Temp
+
+- 本次固定Temp lock保留不動；不開啟測忙、不刪除、不強制釋放。後續fixture改為本case專用、持久化的audit根，驗證祖先/links後才建立。
+- fixture宿主在啟動子process前建立其LOCALAPPDATA/TEMP/TMP等已宣告範圍；同時驗証env、resolver及所有可能寫入路徑都指本case。不能只改LOCALAPPDATA就宣稱完全隔離；不使用真實UserData或憑證。
+- production coordinator若LOCALAPPDATA／鎖participant父目錄不存在，先明確UNAVAILABLE／PREFLIGHT_REJECTED；不改用其他Temp／UAC／ACL放寬。建立缺少的產品專用子目錄只能在其父scope已可信且協定允許之後；fixture預先建立合法父目錄不是放寬production guard。
+- 正式鎖須接`v213_operation_lock.ps1`，覆蓋runtime及metadata等實際participants，且與activation的鎖順序一致；單一Temp鎖與現有Local mutex並存不算共享協定。
+- 預期產品RED必須同時具備有效fixture正例、正確拒絕phase/code及零非允許mutation。缺overlay允許在preflight拒絕，**不必強迫先建stage**；另用明確故障注入測overlay處理中斷，二者不能互相冒充。
+- 同一命令內`unittest subTest`會繼續下一case，單加一般failfast不足以取代明確error分類。harness必須先區分預定RED和unexpected；unexpected立即停止餘下cases/hosts，只作已驗證安全的evidence保存。語法檢查必須先完成兩host，初始化所有`[ref]`變數、terminating error及exit檢查，不能有error後仍打印PASS。
+
+#### D7 — 無破壞性rollback與跨程序復原
+
+- 預設保留／隔離失敗stage/new generation；從catch移除「marker相等就遞迴刪」的所有權推論。恢復舊generation前驗其原ID、manifest與舊metadata，未知資料不能因目錄是本transaction建立就被刪。
+- 同volume journal/old/stage要在live之外的受保護交易區，metadata即使在另一volume也必須有durable participant originals/reference與分層狀態。只在記憶體保存bytes或只在journal存path不足以recover。
+- journal包含可信來源／effective digests、old/new IDs、metadata存在狀態與非敏感originals引用、每步intent/result、所有participant狀態。保留原始FAILED證據；exact transaction recovery不能挑最新檔。
+- metadata狀態需區分「仍是original」「是本交易new」「不存在」「第三方修改」；仍是original时可readback確認無需再寫，不誤報RECOVERY_REQUIRED；第三方變更一律拒絕覆寫。計畫生成new bytes不等於已寫成功，不可只用`$newStateBytes -ne $null`判定需要回復。
+- source/live/stage/old/metadata/lock/journal都要pairwise admission及identity約束。尤其metadata不能在將被rename的live內，metadata子目錄或leaf是junction/hardlink時先拒絕。
+- 不發布FINALIZED與PENDING並存的結果；receipt status與journal/metadata/readback規則需版本化對齊。marker只能是輔助訊號，不是cleanup授權或consumer barrier。rollback、crash、finalize必須分別測試。
+- standalone与outer activation均透過同一受控協定，但outer模式必須保留originals直到外層接受；不更新protected core，不在本輪啟用tasks或重播cloud交易。
+
+#### D8 — 可信bytes、profiles及既有測試不退化
+
+- stage的expected bytes由可信artifact＋精確overlay plan預先推導，不能copy後對自己算hash就稱完整。固定source input後不得再從未鎖定live source重讀overlay；copy每一entry／總集合都對expected比對，未知／漏檔即拒絕。
+- `Get-V213Manifest`不能以第一層excluded dir作ownership豁免，也不能將robocopy basename exclusions當相同語義。排序/array的0、1、多項、UTF-8/CRLF、case/正規化、總entry數與file數在兩host一致；scan先檢大小/數量/深度/期限再讀，不在超界後才發現已hash巨檔。
+- artifact identity JSON只是索引；連上現有可信archive verifier與immutable input digest。VERSION-REFS的legacy admission與HOTFIX-REFS current admission分開；conflicting雙identity fail closed，不以presence優先或同一形狀强行相容。
+- 對四profiles逐項移植原檢查，尤其Serenity refresh四markers、retired activation兩markers拒絕、source-independence contract；更強bytes驗證不能成為刪除歷史負例的理由。保持`activation_contract_profile`語義，新的installer profile另加明確欄位／schema版本，不偷改原值。
+- `cloud/test`及publication-mode fixtures是packager明確標示的installed activation gate依賴，不能按tests名稱刪除。`cloud/node_modules`需明確trusted provisioning/manifest：不偷copy untrusted source依賴，也不刪既有resident資料。
+- A11 native test遷移裁決：**不再抽thin wrapper的一行robocopy**。拆成「未受管resident dependency目的地應拒絕且bytes原樣」及「可信全套新generation/升版按manifest安裝」的實際caller測試；取消危險直接mirror不等於可以放棄原資料保護義務。不能改成只比error文字或單純skip。
+- 四caller的fixture共用明確檔案清單，含coordinator及共享helpers；不只在一份測試手加untracked檔。release必須track新檔、exact-path admission及不可變archive包含同bytes；不因本機fixture有檔就認為Git archive也有。
+- 所有failure fixtures／packager probe保留在各自持久case根，保存非敏感minimal evidence後才依已驗證cleanup協定處理；原有無條件`finally Remove-Item`不能抹掉RECOVERY_REQUIRED。不因此刪改protected packager，只修改已review的free-relay caller範圍。
+
+### 11.5 新的逐步續作順序與停止點
+
+**Review B文件回合結束時，下表全部待辦；其後B0完成、B1在首個host停止，結果見11.7–11.8。B2/B3仍未執行。** B0–B3是重新進入A1前的診斷修復段；不能拿一個snapshot／syntax PASS就跳A2/A3。
+
+| 步驟 | 工作邊界／預定產物 | 退出／停止條件 |
+|---|---|---|
+| W1-B0 | fetch、HEAD/dirty，核對11.1 code及11.2 log hashes；保存六份dirty source非敏感副本和patch；不提交失敗版为成功修補 | 未識別改動／source hash不符就停；目前草稿保持非release |
+| W1-B1 | 只修改test harness/fixture inventory/保留與error分類；先兩host純parse，不執行coordinator主體；設持久隔離case、harness控制組与明确oracle（此步不跑安裝正例） | syntax/loader/權限/cleanup/未知寫入第一個錯即停；不准為跑suite修product rollback |
+| W1-B2 | 最小bounded diagnostics：phase/primary/rollback/journal-write分類及不可擦除failure receipt；獨立fault seam驗證不漏secret、不吞錯、不假PASS | 只在新fixture驗證logging/serialization；不啟動全交易、不改lock fallback/guard語義 |
+| W1-B3 | 依D5在PS5.1/7重現實際atomic-write helper的新建/覆蓋/journal更新；保存old/new bytes/hash、exception code及結果 | **固定交回Astra**判定第四次根因是否可證明、是否還有其他獨立原因，核准最小修补；未查明不進B4 |
+| W1-B4 | Astra依B3證據裁決後，先最小修atomic IO；完成A1缺失的ownership/path/exclusion/A11反例及profile相容性map | 真正到目標assertion的RED；診斷GREEN不代表installer GREEN |
+| W1-B5 | 逐段落實D1–D8：admission/manifest→共享participant locks→durable originals/recovery→readbarrier/finalize，對應A2–A4 | 每段先oracle再最小修補；任一缺口不得在public caller回PASS；所有commit條件齊備前不跑完整安裝 |
+| W1-B6 | 四profiles實際caller、舊→新、unknown data、kill/restart、外層fail、metadata衝突、原依賴与package/native負例 | 對應10.8＋B01–B16有獨立證據；failure retention及cleanup verified；無新unexpected |
+| W1-B7 | A5–A7的exact payload/allowlist、完整離線gates/Python/Worker/typecheck/PS5.1/7、只讀review及小commit | W1全部退出條件已驗收才可W2；full release build仍等W1–W8與W9新source-bound證據，不為趕進度提前dispatch |
+
+補充最小故障矩陣（均未執行）：
+
+- 原live：不存在／可信空／可信舊generation／同名operator修改；新裝與upgrade分開。
+- journal：新建成功但覆寫失敗、替換成功而state記錄落後、torn/duplicate/wrong transaction、terminal字串偽造、證據寫入再失敗。
+- metadata：original present/absent/empty，第一次write失敗、state成功而receipt失敗、他方插入/修改/刪除；restore後以raw bytes/absence/ACL驗。
+- rename：old移出後kill、stage移入前後kill、marker移除後finalize失敗、old/new被外部換掉；使用exact identity不得`Move-Item`把tree意外nested進另一個既存dir。
+- 锁与reader：同root不同LOCALAPPDATA、不同root共用metadata、不同TEMP/users/sessions；reader跨兩個檔案讀取時不能混generation。能力不足標BLOCKED，不自創mutex／第二服務。
+- source/manifest：copy時修改再還原、overlay階段漂移、漏檔／多檔、nested excluded名、same-name forged receipt、hash自洽但未受信artifact；皆不准新manifest自行合法化。
+- 路徑：先用無副作用resolver/admission fixture測drive/UNC/device/aliases／mixed-use拒絕；證明會拒絕前不以實際磁碟根或正式runtime跑full caller。
+
+### 11.6 本輪完成範圍與交接
+
+- 已完成：fetch/HEAD/dirty與CI清單、code/tests/workflow/diffs及五份log閱讀、六份code/五份log SHA、五個已知Temp路徑的存在性查核（沒有recursive scan、contents讀取或cleanup），更新本PLAN和STATUS。
+- 未完成／未執行：新parse/tests/diagnostic/installer/build/CI dispatch、產品程式修正、正式runtime/Production/cloud/LINE/task/model/credentials操作、commit/push。本輪產品程式與五份失敗log保持11.1/11.2原bytes。
+- 本次結論：第四次root cause尚未證明；當前coordinator有架構缺口且未完成A1，不可用於正式安裝。Temp lock存在不代表仍busy；四個case根不存在不代表成功復原。歷史PASS不提升草稿資格。
+- 文件自檢初次發現EOF多餘空行，STATUS修訂中達12376 bytes；僅修文件格式／篇幅，保留此記錄，不算產品測試失敗或通過。
+- Review B當時交接為：使用者交回後B0→B3，B3再停交Astra；不自行切mode、不把規劃授權當成繼續build。後續B0結果如下。
+
+### 11.7 B0 絕對路徑續作：證據保存完成，非 W1 驗收
+
+- 使用者明示「Astra 確認改用明確絕對路徑」後，只恢復B0。重新fetch，HEAD仍為`acf0dd605a98c1f0f3a67c0878207b07b9208290`，PR37分支不變；dirty為PLAN/STATUS、四installer、boundary tests及untracked coordinator。queued/in-progress CI當下皆空；未dispatch。
+- 保留兩次先前B0失敗：①`production_mutation=false`令裸`false`被當命令，exit1，是CommandNotFound而非ParserError；當次留下六份副本與tracked patch，manifest未完成。②相對`[IO.Path]::GetFullPath`解析到`D:\audit-runtime\...`，唯讀Get-Item exit1；沒有寫manifest。兩次均不重標PASS。先前引用不存在的11.9已更正，停止規則是10.9／11.5。
+- 此次所有root均為明確絕對路徑，不依賴PowerShell location或process working directory。只檢查指定檔案與祖先reparse狀態，沒有掃描／開啟固定Temp lock或正式runtime內容。六份source及既存副本SHA均符合11.1，五份原始log符合11.2；沒有重建或覆寫副本／log。
+- 既有`tracked-working-tree.patch`為37951 bytes，SHA=`bb46e9ba0895a415db3ab171a3affa5b895a83cf4dd7942662148ee18ece1e3b`。對五個tracked檔的`git diff --no-ext-diff --no-color --binary`只在比較時正規化CRLF→LF，原patch bytes保留。untracked coordinator以11.1的完整37951-byte副本單獨列入handoff；不能宣稱這份tracked patch包含第六檔，也不能只帶patch而遺漏該副本。
+- **新增唯一audit產物**：`D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\w1-review-b-baseline-20260910\snapshot-manifest.json`，5102 bytes，SHA=`bce43a2bd736772e0e6d4d6a65c13f70ee0fcf372f4d170cd4108986f2e667d1`。使用CreateNew而非覆寫，flush後逐byte readback；JSON布林值型別及6檔／5log數量檢查通過。manifest記錄HEAD、精確副本／patch／log雜湊、patch範圍、untracked完整檔及兩次先前失敗；它不是installer ownership receipt或可信release archive。
+- 命令結果：唯讀native驗證exit0；manifest新增／readback exit0；另用已存在audit Python312的`-B -c`只讀驗證器exit0，獨立核對manifest SHA、絕對roots、HEAD、六份source／副本、五log、patch bytes／diff／scope、untracked範圍及false布林邊界。沒有import／執行產品程式，也不是unittest、PS5.1/7 installer或完整gates。
+- **B0僅證據保存完成。** `release_qualified=false`、`w1_accepted=false`；W1/A1不合格、G01/G02 OPEN、P0總數UNKNOWN，第四次installer根因仍UNDETERMINED。除新增manifest與更新PLAN/STATUS外，未修改產品／測試程式或既有證據，未build/install/cloud/LINE/task/model/cleanup/commit/push。
+- B0後續以11.8記錄B1停止；B3後固定交Astra。B0成功不授權直接跑目前installer suite，更不跳過W1–W8進入release build。
+
+### 11.8 B1 首個 native host 純 parse 停止：非預定產品 RED
+
+- Astra確認絕對路徑後，B1只修改`tests/test_installer_boundaries.py`：要求`powershell.exe`與`pwsh.exe`均存在，缺失即`BLOCKED`而非continue；新增專用`w1-review-b-cases`持久根、valid control、四caller/coordinator明確roles、輸入bytes/hash及bounded結果record。未改coordinator或任何production source；原installer執行測試未啟動。
+- 只呼叫指定Python unittest method `InstallerBoundaryTests.test_pure_parse_is_green_on_both_native_hosts_with_valid_control`；該method寫入獨立`parse-only.ps1`，用PowerShell Parser API解析valid control、四入口及coordinator，不dot-source、不執行任何產品script body。合法control oracle是兩個native host均exit0並精確輸出`PURE_PARSE_PASS;MAIN_EXECUTED=false;ROLES=6`。
+- `powershell.exe`為第一個host，結果：unittest exit=`1`，bounded record status=`UNEXPECTED`、returncode=`1`、output_bytes=`497`、output_sha256=`ca8876e20b983f81cf76f4e14c30e54839871a74c7ce1d180363bb68566e46f2`。因首個host已是非預期，依10.9未啟動`pwsh.exe`；不能把一個host失敗改寫成雙host PASS。此非coordinator RED，純parse根因仍`UNDETERMINED`，沒有診斷或修補。
+- 唯一新log：`D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\w1-b1-pure-parse-20260910.log`，1146 bytes，SHA=`471f73c1f2bf05fb4dc3ae7da75d73d76bbd43e131461390382d2f96ebac6c8b`。log只保留bounded unittest／record結果，不含raw PowerShell output；失敗case未cleanup，未掃描未知根。不得由此推論coordinator、atomic IO、權限或fixture哪一項是根因。
+- 這次失敗後沒有重試、讀case、改oracle、執行第二host、跑完整suite或改product code；失敗log與case證據保留。當時`B1`不接受，`B2/B3`不開始，等待交回。後續恢復指示見第12節。`release_qualified=false`、`w1_accepted=false`。
+
+## 12. 使用者解除開發停等，恢復 BUILD／LINE 關鍵路徑
+
+- 新指示：「解鎖BUILD，並對整個專案進行後續工作，在最快的時間內查漏補缺後，進行LINE上線」。允許恢復本機診斷、最小修補與新attempt驗證，不再為已授權的harness／命令修復反覆等待mode交回；不把此授權解讀為跳過驗收、修改失敗oracle或把FAIL改成PASS。
+- 10.9的「每個開發錯誤都必須另等使用者切mode」由本次指示接續：失敗仍終止當次case／交易、保留原始證據，再依固定oracle診斷修補。未知資料／ownership、cleanup不確定、secret／權利／quota、paid或模型fallback、protected contract變更仍必須停；不自動重試外部交易。D1–D8、B3證據審查及W1–W12依賴不取消。
+- 正式LINE上線是目標授權，不是立刻發送資格：只准free/public/direct-chat/verified-recipient；新source-bound proof、混合root迁移mapping、sealed pointer-last/readback/recovery、Windows acceptance及實際task actions全部達標後才進正式操作。未具備收件人確認、權利或fresh snapshot時保持停用；不重播舊activation、不以舊zip頂替新來源資格。
+- 本輪先fetch並讀完整STATUS／相關tests／CI。HEAD=`acf0dd605a98c1f0f3a67c0878207b07b9208290`，dirty集合延續前輪，queued/in-progress CI當下空。修改前8份非敏感source/docs副本及patch已保存於`audit-runtime/w1-build-resumption-20260910-a/`；其中B1失敗test檔SHA=`d00bbfb3e21828cd83f653686c76993ad0e3bc34f94e21f4a39289cbd871c13e`。B0與B1失敗case/log不覆寫。
+- 優先順序：B1 parser／fixture／fail-closed receipt → B2/B3 bounded IO診斷 → W1完整transaction／consumer／caller验收 → W2–W8數據、報告、模型及全回歸 → W9 fresh build → W10/W11正式安裝、發布及LINE。只能並行互不依賴的唯讀查核／測試，維持one writer；不能用加速理由另開installer或Production pipeline。
+
+### 12.1 本輪實績與 B3 權限 blocker
+
+本輪產物集中於`audit-runtime/w1-build-resumption-20260910-a/`，不是release artifact。`evidence-index.json` SHA=`2231607abb9f62c1e4e865eab890a5486ba47696dc7db5c2b7bce4de9c744479`，綁定tested inputs／logs／receipts；五份原product draft與六份歷史失敗log重驗SHA不變。
+
+- B1：修正陣列`-cne`被誤作equality；新增`tests/installer_parse_harness.py`及test-only parser fixture。兩host使用明確paths、copied input/digest及獨立env，不繼承private值；缺host非零BLOCKED、拒絕stderr假GREEN、receipt CreateNew/flush/readback、保留case與junction。原installer測試的自動TemporaryDirectory清理已移除；實際caller fixture／完整native矩陣仍未驗收。
+- 第一個focused attempt因embedded Python找不到helper而exit1，保留`b1-focused-attempt-1.log`；改為顯式file-based import，不改oracle。第二個attempt **7 tests PASS**：雙host parse及role/digest/syntax反例、false-green、host缺失、env、receipt及mocked link/overlap測試；這不是整個Python或installer suite。
+- B2：`tests/fixtures/v213_io_probe.ps1`的test-only bounded serializer，**1 test／兩host PASS**；primary與journal failure保持獨立，unknown類型收窄，僅允許type/HResult，不輸出合成private message。這個diagnostic adapter不等於已修coordinator原catch或durable journal。
+- Repository **7 static gates PASS**；額外掃描untracked新檔無security findings；267個Python檔AST無SyntaxError，既有metric guard docstring的invalid-escape SyntaxWarning保留未改。Worker typecheck及 **227/227 tests PASS**，無部署／新依賴安裝；不是source-bound release證明。
+- B3實際helper：從SHA `48951e6d45a266faf12fb60a0ccd1b2e8180d5e42847c179f78a42812a5c41e4`的snapshot，以AST只載入`Write-V213BytesAtomic`定義；兩host各8個獨立cases。既存檔覆寫均失敗，inner ArgumentException/HResult=-2147024809，old bytes保持；新建/empty/UTF8及directory/locked/before/after故障的固定安全oracles有記錄。失敗不改名PASS；full coordinator/rollback/crash/ACL驗收均false。
+- 追加的binding comparison只跑PS5.1：`$null`失敗，typed NullString成功替換new bytes，但**ACL SDDL文字讀回不相等**，觸發`TYPED_NULL_ORACLE_FAILED`、exit1。是否權限語義改變尚UNDETERMINED；沒有保存original SDDL，不能補造原metadata。保留`binding-comparison/powershell_exe/comparison.json`，不繼續第二host、不把候選fix套進coordinator、不弱化ACL oracle。
+- 下一個安全決策是ACL semantics／originals／preservation對帳，不是直接採typed-null或copy fallback。B3審查及W1整體transaction仍未完成；G01/G02 OPEN，P0/P1/P2總數UNKNOWN，`release_qualified=false`、`w1_accepted=false`。
+- 正式runtime只作4個精確檔案SHA比較，3異1同；不是重驗舊10檔鏈。兩個指定refresh tasks目前Disabled、各一action，未執行action或改trigger。Source installer本身仍是失敗草稿，不因installed bytes不同就copy覆蓋正式根。
+- 本輪無Worker/KV/LINE/model/IBKR/排程修改、paid fallback、operator/runtime/history cleanup、commit/push。B3原helper的finally仍會處理其自建temp；保留的是case、intended-new/original及receipt，不假稱所有中間temp留存。八份修改前副本保留完整舊STATUS/PLAN；本輪STATUS改為短的當前索引，不再沿用失準bytes／歷史PASS。
+
+### 12.2 繼續至 LINE／更新 GitHub：ACL 差異定位與診斷提交
+
+- 使用者要求接續查漏補缺至LINE正式上線，並更新GitHub；沿用第12節的開發授權與安全界線，不因期限撤掉W1–W12或B3審查。編輯前重新fetch：HEAD仍`acf0dd605a98c1f0f3a67c0878207b07b9208290`，queued/in-progress CI空；讀兩層AGENTS、STATUS、相關PLAN/tests及current workflow。
+- 新證據根：`audit-runtime/w1-acl-followup-20260910-a/`。先驗上一輪index與10份tested/product輸入hash，再保存12份完整source/docs副本、patch及baseline。沒有覆寫B0／舊B1／首次typed-null失敗。
+- 新的PS5.1.26100.9168與PS7.6.5獨立case各跑4種File.Replace：inherited/ignore、inherited/strict、protected/strict、explicit-backup/strict。Owner/group、ordered DACL bytes及ACE順序皆相同；inherited新target的control flags為32772→33796，唯一XOR1024=`SE_DACL_AUTO_INHERITED`；protected完全相同，explicit backup保留原SDDL與OLD bytes。新target NEW bytes由Python另讀驗證；不是完整coordinator或crash recovery。
+- Microsoft ReplaceFileW／SECURITY_DESCRIPTOR_CONTROL文件與有界證據見`docs/W1_ATOMIC_IO_REVIEW_20260910.md`。只將差異定位為繼承control bit，不把current DACL相等推論成全部權限語義等價；SACL、日後繼承、stream／filesystem identity仍未驗證。test-only comparator只是提議的diagnostic分類，**不是核准的production ACL-normalization白名單**，舊exact-SDDL仍false。
+- Comparator有12個合成案例、雙host各執行一次：僅exact/0x0400 addition接受；移除標記、owner/group、rights、deny ACE、ACE順序、protection、ACE繼承、null/empty DACL均拒絕。另加host timeout/start failure的bounded receipt反例，不保存raw私密例外。沒有修改五份產品draft，也沒有套typed-null shortcut。
+- Harness明確支援caller提供的absolute local audit root，或GitHub Actions明示RUNNER_TEMP；不採ambient TEMP。拒絕relative/parent traversal/UNC/device namespace，保留case及失敗收據。新helper/fixtures已追蹤；既有working-tree boundary-test改動及coordinator仍不在診斷提交內。
+- 本輪B1 focused **7 PASS**。從Git staged tree獨立匯出的診斷集、不含untracked coordinator，最後 **5 PASS**（B2 1＋ACL 4，雙native host，含transport/root negatives）。第一個staged版本4 PASS仍保留，新增timeout/original-byte檢查後用新attempt驗證，不覆寫舊結果。不是full Python/native installer suite。
+- 7個static gates PASS；Worker typecheck、**227/227 Worker tests PASS**，沒有dependency install/model/Production操作。未dispatch完整Windows workflow：目前dirty installer及部分legacy fixture/recovery缺口不因診斷成功而獲准。
+- 已commit/push診斷與review：`9e81bfa5cce01c503c984e1a7cf148cb8ad665d8`，tree=`1dd17b6073bc11c129463c6b0fde92d6f83e0c91`與最後staged驗證一致；remote readback吻合，PR37維持draft，PR39不動。不是發布失敗coordinator或release build；後續文件提交另見Git。
+- **仍未LINE上線。** W1 NOT ACCEPTED、G01/G02 OPEN、P0/P1/P2總數UNKNOWN。下一步是B3剩餘ACL/繼承/metadata審查與transaction-bound originals，再以strict errors實作IO修正、共享鎖、durable recovery、consumer barrier及四caller矩陣；不能以新primitive測試取代ownership或外層交易驗收。正式runtime/tasks/cloud/LINE/credentials未觸碰，無cleanup、paid fallback、fresh發布或release qualification。
+- 文件precommit第一次`git diff --check`因EOF多一空行而exit1；`doc-diff-attempt-1/`保留完整當時PLAN bytes及失敗receipt，只修該格式後使用新check，不改原FAIL。268個Python檔AST無SyntaxError、1個既有invalid-escape警告；不是full Python regression。

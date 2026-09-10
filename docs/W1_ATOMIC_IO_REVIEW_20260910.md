@@ -30,7 +30,7 @@ The test-only comparator requires non-null owner/group/DACL, exact owner/group, 
 
 Twelve synthetic comparator cases run on both hosts: exact match, documented marker addition, marker removal, owner/group changes, rights expansion, added deny ACE, ACE reordering, protection change, ACE inheritance change, null-vs-empty DACL and null-DACL admission. Only the first two are accepted. The native regression also checks strict metadata-error handling, protected ACLs and exact original-backup descriptor preservation.
 
-The old exact-SDDL observation is still false for inherited targets. The new result is a separately scoped access-metadata comparison, not a restamped old PASS. Do not use it to admit unknown ACL types, unsupported storage, untrusted ownership or unobserved SACL semantics.
+The old exact-SDDL observation is still false for inherited targets. The new result is a separately scoped access-metadata comparison, not a restamped old PASS. This is a proposed diagnostic classification, NOT an approved production ACL-normalization rule. Future inheritance behavior remains untested; current DACL equality alone does not prove all permission semantics equivalent. Do not use it to admit unknown ACL types, unsupported storage, untrusted ownership or unobserved SACL semantics.
 
 ## Implementation boundary
 
