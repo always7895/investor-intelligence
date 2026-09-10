@@ -29,6 +29,7 @@ foreach ($relative in @(
     'run-v211-evidence-gated.ps1',
     'scripts\build_v212_top20_report.py',
     'scripts\historical_return_evidence.py',
+    'scripts\v213_v21_progress_runner.py',
     'sync-v21-public-snapshot.ps1',
     'sync-v212-top20-report.ps1'
 )) {

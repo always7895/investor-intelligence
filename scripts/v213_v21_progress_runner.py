@@ -194,6 +194,89 @@ def publication_aware_metrics(
     return official_metrics, normalized
 
 
+def profitability_evidence(
+    records: Sequence[Mapping[str, Any]], *, cik: str, as_of: str,
+) -> dict[str, Any]:
+    """Report-facing projection of the reviewed metrics, not a new scorer.
+
+    Keep every operand, including both annual revenues, without the legacy
+    five-citation cap. Companyfacts and filings are ONE disclosure lineage.
+    These local candidates are not source refresh or publication receipts.
+    """
+    if not isinstance(cik, str) or not re.fullmatch(r'[0-9]{10}', cik) or int(cik) == 0:
+        raise engine.PipelineError('PROFIT_CIK_INVALID')
+    try:
+        cutoff = dt.datetime.fromisoformat(as_of.replace('Z', '+00:00'))
+        if cutoff.tzinfo is None:
+            raise ValueError()
+        cutoff_day = cutoff.astimezone(dt.timezone.utc).date().isoformat()
+    except (AttributeError, TypeError, ValueError):
+        raise engine.PipelineError('PROFIT_CUTOFF_INVALID') from None
+    metrics, _ = publication_aware_metrics(records)
+    revenue_tags = ('RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet')
+    revenue = engine.latest_value(records, revenue_tags, duration=True)
+    annual = engine.annual_values(records, revenue_tags)
+    pairs = {
+        'revenue_growth': (annual[0] if annual else None, annual[1] if len(annual) > 1 else None, 'numerator / denominator - 1'),
+        'gross_margin': (engine.latest_value(records, ('GrossProfit',), duration=True), revenue, 'numerator / denominator'),
+        'operating_margin': (engine.latest_value(records, ('OperatingIncomeLoss',), duration=True), revenue, 'numerator / denominator'),
+        'net_margin': (engine.latest_value(records, ('NetIncomeLoss', 'ProfitLoss'), duration=True), revenue, 'numerator / denominator'),
+    }
+    fields = ('cik', 'taxonomy', 'tag', 'unit', 'value', 'start', 'end', 'filed', 'form', 'fiscal_year', 'accession_number', 'record_url')
+    identity = ('cik', 'taxonomy', 'tag', 'unit', 'start', 'end', 'filed', 'accession_number', 'record_url')
+
+    def operand(raw):
+        if raw is None:
+            return None, 'MISSING_OPERAND'
+        value = raw.get('value')
+        start, end, filed = (_date_text(raw.get(key)) for key in ('start', 'end', 'filed'))
+        url, accession, tag, unit = (raw.get(key) for key in ('record_url', 'accession_number', 'tag', 'unit'))
+        # Only known SEC public locators; do not persist arbitrary/credential URLs.
+        archive = re.fullmatch(r'https://www\.sec\.gov/Archives/edgar/data/([0-9]+)/([0-9]{18})/([A-Za-z0-9._-]*)', url) if isinstance(url, str) else None
+        url_safe = isinstance(url, str) and (
+            url == f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
+            or bool(archive and archive[1] == str(int(cik)) and isinstance(accession, str)
+                    and archive[2] == accession.replace('-', '') and archive[3] not in {'.', '..'}))
+        if (raw.get('cik') != cik or raw.get('taxonomy') != 'us-gaap'
+                or not isinstance(tag, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,159}', tag)
+                or not (unit is None or isinstance(unit, str) and bool(re.fullmatch(r'[A-Z]{3}', unit)))
+                or type(value) not in (int, float) or not (-9007199254740991 <= value <= 9007199254740991)
+                or not start or not end or not filed or not start <= end <= filed <= cutoff_day
+                or not isinstance(accession, str) or not re.fullmatch(r'[0-9]{10}-[0-9]{2}-[0-9]{6}', accession)
+                or not url_safe or raw.get('form') not in {'10-K', '10-K/A', '10-Q', '10-Q/A', '20-F', '40-F'}
+                or type(raw.get('fiscal_year')) is not int or not 1900 <= raw['fiscal_year'] <= 9999):
+            return None, 'INVALID_OPERAND'
+        # Stable sort order must not choose a convenient value from a conflict.
+        if any(all(other.get(key) == raw.get(key) for key in identity)
+               and (type(other.get('value')) not in (int, float) or other.get('value') != value)
+               for other in records if other.get('record_type') == 'company_fact'):
+            return None, 'CONFLICTING_OPERAND'
+        return {key: raw.get(key) for key in fields}, None
+
+    result = {}
+    for name, (numerator, denominator, formula) in pairs.items():
+        a, a_error = operand(numerator)
+        b, b_error = operand(denominator)
+        value = metrics[name]
+        reason = a_error or b_error
+        if reason is None and (value is None or not math.isfinite(value)):
+            reason = 'WITHHELD_NOT_COMPARABLE_OR_NONPOSITIVE_DENOMINATOR'
+        result[name] = {
+            'status': reason or 'AVAILABLE', 'value': value if reason is None else None,
+            'value_unit': 'ratio', 'formula': formula, 'numerator': a, 'denominator': b,
+        }
+    return {
+        'schema_version': 1, 'status': 'CANDIDATE_NOT_PUBLICATION_QUALIFIED',
+        'cik': cik, 'as_of_cutoff': as_of, 'provider_scope': 'public_only',
+        'publication_eligible': False, 'source_retrieved_at': None,
+        'source_lineage': 'issuer_filing_via_sec_companyfacts',
+        'source_refresh_verified': False, 'metrics': result,
+        'limitations': ['COMPANYFACTS_CONTEXT_AND_RESTATEMENT_REVIEW_INCOMPLETE',
+                        'NOT_INDEPENDENT_COMPANY_CLAIM_CORROBORATION',
+                        'NO_CASHFLOW_CAPACITY_ORDERS_DILUTION_OR_VALUATION_BRIDGE'],
+    }
+
+
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:
     policy = engine.load_object(engine.POLICY_PATH)
     activation = engine.load_object(engine.ACTIVATION_PATH)

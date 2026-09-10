@@ -36,6 +36,7 @@ if str(SCRIPT_DIR) not in sys.path:
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
 from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError
+from v213_v21_progress_runner import profitability_evidence
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -133,7 +134,7 @@ def profit_summary(metrics: Mapping[str, Any]) -> str:
     if not parts:
         return "SEC 可用獲利指標不足"
     if net is not None:
-        parts.insert(0, "獲利" if net >= 0 else "虧損")
+        parts.insert(0, "損益兩平" if net == 0 else "獲利" if net > 0 else "虧損")
     return "；".join(parts)[:120]
 
 
@@ -220,7 +221,8 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
         return None, None, translate_industry(fallback_industry)
 
 
-def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None) -> dict[str, Any]:
+def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
+          financial_evidence_sink: dict | None = None) -> dict[str, Any]:
     try:
         raw = json.loads(top20_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -242,14 +244,21 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""), evidence_sink=observation)
             return_evidence_sink[ticker] = observation
         metrics: dict[str, Any] = {}
+        financial: dict[str, Any] = {"status": "NO_OFFICIAL_IDENTITY", "publication_eligible": False}
         official = reference.get(ticker)
         if official:
             try:
                 candidate = {"ticker": ticker, "official": dict(official), "market": {}}
                 records = base.sec_companyfacts(candidate, policy, http, headers)
-                metrics, _evidence = base.metrics(records)
+                # A separate process no longer inherits the preselection hook.
+                # Explicitly reuse its basis guard and retain all displayed operands.
+                financial = profitability_evidence(records, cik=official.get("cik"), as_of=generated)
+                metrics = {key: entry["value"] for key, entry in financial["metrics"].items()}
             except Exception:
                 metrics = {}
+                financial = {"status": "SOURCE_FETCH_OR_VALIDATION_FAILED", "publication_eligible": False}
+        if financial_evidence_sink is not None:
+            financial_evidence_sink[ticker] = financial
         rows.append({
             "schema_version": 1,
             "rank": int(item["rank"]),
@@ -313,16 +322,20 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
     parser.add_argument("--return-evidence-output", type=Path, help="Local unqualified calculation sidecar; never a publication payload")
+    parser.add_argument("--financial-evidence-output", type=Path, help="Local operand/basis candidate; not a complete or sealed research report")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
             return 0
         evidence_output = args.return_evidence_output or args.output.with_name(args.output.stem + ".return-evidence-candidate.json")
-        if evidence_output.resolve() == args.output.resolve():
-            raise Top20ReportError("Report and return evidence paths must differ")
+        financial_output = args.financial_evidence_output or args.output.with_name(args.output.stem + ".financial-evidence-candidate.json")
+        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve()]
+        if len(set(destinations)) != len(destinations):
+            raise Top20ReportError("Report and evidence paths must differ")
         observations: dict[str, Any] = {}
-        document = build(return_evidence_sink=observations)
+        financials: dict[str, Any] = {}
+        document = build(return_evidence_sink=observations, financial_evidence_sink=financials)
         atomic_write(args.output, document)
         atomic_write(evidence_output, {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -330,6 +343,14 @@ def main() -> int:
             "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
             "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
             "records": observations,
+        })
+        atomic_write(financial_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "provider_scope": "public_only",
+            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
+            "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
+            "hash_scope": "v212 report UTF-8 bytes, not source HTTP or sealed snapshot",
+            "records": financials,
         })
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
