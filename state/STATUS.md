@@ -4,10 +4,10 @@ Updated2026-09-10. NOT a release certificate. Release identity belongs in README
 
 ## Authority and workspace
 
-- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts from38c980f078212c98eaef92f58a084f978f7b800e (fetched/clean), branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
+- W0 implementation handoff confirmed HEAD13bd043986c409ea2aaf54a5820acdc107686ed1, branch fix/options-provenance-audit / PR37. Only expected uncommitted plan/STATUS files exist; PR39 d58fdaf and baseline52e285f remain separate.
 - Git source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. Outer project is installed runtime, not Git. Audit tools/receipts: `_workspace/audit-runtime`; historical archives are not market-data inputs.
-- User authorizes continued unattended work. Production installation/sealed publication/exact two-task restoration remain conditional on ALL gates. Current user explicitly authorizes eventual real LINE delivery, free-only with NO paid alternatives. Delivery remains conditional on all gates and verified recipient; no broker operations, credential disclosure or stale activation replay. CI remains no-Production-mutation.
-- Production runtime/Worker/KV/schedules and Router preset unchanged. Isolated QA resources deleted; existing Router8080/exact approved model only.
+- LATEST USER INSTRUCTION: implement strictly from `docs/LUNA_MAX_IMPLEMENTATION_PLAN_20260910.md`; on any unexpected condition or question stop and request user switch to Astra. Free-only/no paid alternatives, no private/broker fallback or stale replay; Production/LINE remain gated; CI no-Production-mutation.
+- W0 read-only baseline: no active/queued workflow at query time; Production runtime/Worker/KV/schedules and Router preset unchanged; both named tasks remain Disabled; installed chain is6 different/2 missing/2 equal; isolated QA resources deleted. Existing Router8080/exact approved model only.
 
 ## Verified slices — not whole-product acceptance
 
@@ -55,6 +55,6 @@ Updated2026-09-10. NOT a release certificate. Release identity belongs in README
 
 ## Next actions
 
-1. Sept10 fresh QA/full Windows/package/download PASS. Complete real installed acceptance and remaining data/publication/recipient gates before authorized real LINE. Respect free quotas; no paid/account fallback or stale receipts.
-2. Audit financial comparability and actual discovery/admission callers; complete genuine identity/financial/order/dilution data, source rights/lineage and three distinct report producers. Keep failures/conflicts/unavailable states.
-3. Qualify appropriate THINK selection without silent downgrade. After ALL data/model/package/install gates, update complete real runtime, publish newly sealed data, read back bytes/claim/pointer, restore only the two paused tasks and verify actual scheduled execution. Real LINE delivery is now authorized only after these gates and recipient verification; no whole-product completion claim beforehand.
+1. W0 complete: plan and status are ready for implementation; plan baseline and read-only findings are preserved. Commit these handoff documents before W1.
+2. W1 is next: isolated `/MIR` topology/reparse/rollback tests and complete-chain install contract. Do not touch the real installed root. Stop and request Astra for any unplanned topology, permission, data-loss risk or scope ambiguity.
+3. No real LINE, Production publication, task enablement or paid service is allowed before W11 gates. Overall P0 inventory remains unknown, not zero; every PASS is scoped.
