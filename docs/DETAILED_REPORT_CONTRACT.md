@@ -68,7 +68,7 @@
 
 - `card_summary`：少量財務比率、各自期間及重要限制，**不是取代七欄的正式新卡片**。
 - `data_report`：逐項列出利潤率分子／分母，以及現金流／PPE支出／股份基礎給付／加權股數的原始值、XBRL tag、單位、start/end、filed、accession、公式與結果，保留未取得／不相容／衝突狀態和來源。
-- `narrative_analysis`：同分母營益率／淨利率比較，另可根據同文件現金流／PPE支出、CFO／正淨利、稀釋／基本加權平均股數展開條件解讀、反方及推翻條件。沒有利潤率仍可交付有數據的現金流比較；兩類皆缺少可比較輸入才 `UNAVAILABLE`，不改送摘要。利息、稅、營運資金等只是待查原因，不作已證實歸因。
+- `narrative_analysis`：同分母營益率／淨利率比較，另可根據同文件現金流／PPE支出、CFO／正淨利、稀釋／基本加權平均股數展開條件解讀、反方及推翻條件。沒有利潤率仍可有數據支持的現金流或下節流動項目比較；所有組件皆缺少可比較輸入才 `UNAVAILABLE`，不改送摘要。利息、稅、營運資金等只是待查原因，不作已證實歸因。
 
 輸入為原報告與財務依據的固定 UTF-8 bytes，先核对 SHA、標的集合、cutoff、公開邊界及既有計算規則；保留失敗狀態，不因重算可得就將衝突重新放行。每個產物與分頁都有型態、report ID、ticker／CIK、兩份輸入 SHA、內容 SHA 和候選 snapshot 身分。分頁完整重組原文；CJK／非BMP字元按 UTF-16 長度計算，超限拒絕而非刪去末頁風險／來源。CLI 寫後回讀並用相同規則重建比較，這是本機一致性檢查，不是獨立來源審查或跨檔案原子交易。
 
@@ -107,7 +107,7 @@
 
 同一 CLI 另產生 `.financial-evidence-candidate.json`，以原報告 UTF-8 SHA 綁定，保存每项利潤率及年度營收成長的全部分子／分母、公式、原始值、單位、start/end/filed、accession、CIK 及公開來源；不受舊五筆 citation 上限截斷。缺少／不相容／衝突各留狀態，不保留上次成功計算冒充本輪。數值為 ratio，顯示百分比須乘100，不把四捨五入摘要當輸入。CIK 是發行人識別，不是完整交易所／股別／ADR 身分。
 
-此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload。CLI 的 company schema3 保留同次 SEC receipt 的原始取得時間、URL、body SHA、CIK、adapter records SHA及 `DIRECT_HTTP`／`BOUND_CACHE`；無 receipt 則未知，`source_refresh_verified=false` 不改。純財務 helpers／舊版公司候選及內嵌 cashflow schema1 未自行取得來源，不另造時鐘。產品核對 receipt／顯示值參照及原始算式，不代表已獨立逐fact核對 HTTP 原文或最新揭露完整性。cache 不冒充本輪 HTTP；財報 context、重編、單位登錄、完整營運／融資／估值仍待補齊；SEC API 與 filing 仍只有一個揭露血緣。新檔禁止直接接雲端鍵／完整詳報入口；七 payload 名稱及交易協定不變，新封存須另通過下述時間門檻。
+此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload。CLI 的 company schema4 承接 schema3，保留同次 SEC receipt 的原始取得時間、URL、body SHA、CIK、adapter records SHA及 `DIRECT_HTTP`／`BOUND_CACHE`；無 receipt 則未知，`source_refresh_verified=false` 不改。純財務 helpers／舊版公司候選及內嵌 cashflow schema1 未自行取得來源，不另造時鐘。產品核對 receipt／顯示值參照及原始算式，不代表已獨立逐fact核對 HTTP 原文或最新揭露完整性。cache 不冒充本輪 HTTP；財報 context、重編、單位登錄、完整營運／融資／估值仍待補齊；SEC API 與 filing 仍只有一個揭露血緣。新檔禁止直接接雲端鍵／完整詳報入口；七 payload 名稱及交易協定不變，新封存須另通過下述時間門檻。
 
 ### 既有公開 JSON 取得／快取邊界
 
@@ -135,7 +135,7 @@
 
 實際 SEC adapter 把 wire 日期轉成午夜 UTC timestamp；既有 `v21_serenity_top20.validate_sec_adapter` 的指標邊界現在只將精確 `YYYY-MM-DDT00:00:00+00:00` 還原為日期，拒絕其他時間／時區／尾綴，不弱化下游日期驗證。每筆 fact 另以 CIK＋accession 的官方 archive 目錄作 filing locator，保留原 adapter 的 `source_request_url`；不同 filing 不再因共用 Companyfacts collection URL 被誤判為同文件日期衝突。同一 accession 的衝突仍拒絕。目錄 locator 不是已取得的 primary-document 原文／頁碼／佐證，也不新增獨立血緣。
 
-company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1；schema3 再增加上述來源 receipt。舊 company schema1／2仍可明示讀取，不自動補造現金流或時鐘。五／七個顯示欄位、scoring body、七個 sealed payload 名稱與 LINE route 不變；報告及封存的時間驗證依上述來源感知契約。
+company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1；schema3 增加上述來源 receipt；schema4 再加入下節時點流動性。舊 company schema1／2／3仍可明示讀取，不自動補造現金流、流動性或時鐘。五／七個顯示欄位、scoring body、七個 sealed payload 名稱與 LINE route 不變；報告及封存的時間驗證依上述來源感知契約。
 
 - 沿用同次 Companyfacts records 與共用 operand 驗證，保留 CFO、PPE現金支出、所選淨利、ShareBasedCompensation、基本／稀釋加權平均股數。不新增 collector 或以 market／private data 補位。
 - 以最新 CFO 的 end／filed cohort 作 anchor；同 cohort 有單季和YTD時只選相同 start 的比較項。anchor 本身多期間／多單位／多文件不明則 `AMBIGUOUS_OPERAND`。不以排序挑一個值、不退較舊 filing、不把投資活動淨現金流當 capex；最新無效值與衝突不救回。比較還須同幣別／單位、start/end、filed、form、fiscal year、CIK、accession及locator。
@@ -143,6 +143,17 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 - `cash_conversion = operating_cashflow / net_income` 只在所選淨利為正時算 ratio；虧損／零分母留 withheld。比率高不直接證明獲利品質，預收款／營運資金／非現金調整需附註核對。
 - `diluted_share_increment = diluted_shares / basic_shares - 1` 使用同文件正加權平均股數，稀釋數小於基本數則拒絕。這不是新發股比例、未來完全稀釋股數或ADR換算；零差也不排除反稀釋工具。SBC僅保留披露數值，原報表位置及是否已列CFO調整仍須查附註；不再機械扣CFO或當現金支出／完整授予價值。
 - 三種財務內容引用同份依據；數據表保留原值及公式，解讀隨現金盈餘／缺口／零值改變，列明其他投資、債務到期、租賃、受限現金及融資條款缺口。未知不是零；這仍不是完整股東收益橋、營運論點或估值。
+
+### 已接入 CLI 的時點流動性（部分組件，未封存）
+
+實際合成 SEC wire→既有報告 CLI 反例：`AssetsCurrent`、`LiabilitiesCurrent`、`CashAndCashEquivalentsAtCarryingValue` 原值被丟棄；即使有可比較資產負債時點，仍全部拒絕文字分析。Company4 沿用同次 records／receipt，加入 `liquidity_bridge` schema1，不新增 collector、scorer、雲端 key 或發布開關。
+
+- 共用 `financial_operand(..., instant=True)`；只接受明示 `start=null` 的時點，不補造年度起日、不拿 duration 當 instant。原獲利／現金流呼叫預設仍要求合法 duration；CIK、tag、公開 locator、accession、form、fiscal year、end/filed/cutoff、安全數值驗證沿用。三種餘額須非負、幣別已知；未知／無效不是零。
+- 每個指定 tag 先選提供資料中的最新 end/filed cohort 再驗證；同鍵衝突、同時點多幣別／多文件／口徑歧義拒絕，不因排序挑值、不救回較舊數值。完全相同重複可去重。這不是最新完整披露／context 認證。沒有分類式報表時，不用 `Assets`／`Liabilities` 代替流動項目，也不拿 `RestrictedCash` 當自由現金。
+- `working_capital = current_assets - current_liabilities` [currency]；`current_ratio = current_assets / current_liabilities` [ratio]。只在相同 end、filed、form、fiscal year、CIK、taxonomy、accession、locator、unit 時比較。差額保留正／負／零；零分母留 withheld，不變成無限償債能力；超出安全範圍或非零下溢不冒充可用數值。現金披露另列自己的時點／單位，沒有混成第三個分子。
+- card_summary 顯示餘額／日期與少量比率；data_report 保留原值、tag、時點、filed、accession、公式及失敗狀態；narrative_analysis 解釋存量缺口／正差／零差、反方、資產變現品質與待核融資條件，不貼一張表冒充分析。缺獲利／CFO 仍可有基於可比較流動項目的 **AVAILABLE_PARTIAL** 分析；只有現金披露或缺少可比流動負債時不猜流動性比率／結論，亦不得撤掉另有可比利潤率支持的分析。刷新缺值覆蓋前次候選，不沿用舊分析。
+- 營運資金不是本期現金流，流動資產不等於可立即變現現金，現金披露不證明無限制／可分配。負差不自動宣告破產，正差不自動證明擴產／還債／配息能力；不機械產生融資續航月數、淨債務、評分或目標價。仍須債務到期／契約、受限現金、應收／存貨與預付款履約等附註。
+- 驗證器重算封閉 operands／metrics 並保留 failed states；原 receipt／body SHA／取得時間不變，內嵌 bridge 不另造時鐘。Company1–3 不因新版 renderer 增加流動性內容；最終排序仍用既有 rank-only binder，不改內容／日期／失敗狀態。原始來源真實性／權利／最新披露與完整三產物封存、LINE實送均尚未取得资格。
 
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 

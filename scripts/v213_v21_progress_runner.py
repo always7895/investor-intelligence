@@ -207,8 +207,8 @@ def _financial_cutoff(cik: str, as_of: str) -> str:
         raise engine.PipelineError('PROFIT_CUTOFF_INVALID') from None
 
 
-def financial_operand(raw, records, *, cik: str, cutoff_day: str, shares: bool = False):
-    """Closed retained operand shared by profit and cashflow projections."""
+def financial_operand(raw, records, *, cik: str, cutoff_day: str, shares: bool = False, instant: bool = False):
+    """Shared retained operand; instant is explicit, never a fabricated duration."""
     if raw is None:
         return None, 'MISSING_OPERAND'
     value = raw.get('value')
@@ -220,11 +220,13 @@ def financial_operand(raw, records, *, cik: str, cutoff_day: str, shares: bool =
         or bool(archive and archive[1] == str(int(cik)) and isinstance(accession, str)
                 and archive[2] == accession.replace('-', '') and archive[3] not in {'.', '..'}))
     unit_safe = unit == 'shares' if shares else (unit is None or isinstance(unit, str) and bool(re.fullmatch(r'[A-Z]{3}', unit)))
-    if (raw.get('cik') != cik or raw.get('taxonomy') != 'us-gaap'
+    period_safe = (bool(end and filed and end <= filed <= cutoff_day)
+                   and (('start' in raw and raw['start'] is None) if instant else bool(start and start <= end)))
+    if (type(instant) is not bool or instant and shares or raw.get('cik') != cik or raw.get('taxonomy') != 'us-gaap'
             or not isinstance(tag, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,159}', tag)
             or not unit_safe
             or type(value) not in (int, float) or not (-9007199254740991 <= value <= 9007199254740991)
-            or not start or not end or not filed or not start <= end <= filed <= cutoff_day
+            or not period_safe
             or not isinstance(accession, str) or not re.fullmatch(r'[0-9]{10}-[0-9]{2}-[0-9]{6}', accession)
             or not url_safe or not isinstance(raw.get('form'), str)
             or raw['form'] not in {'10-K', '10-K/A', '10-Q', '10-Q/A', '20-F', '40-F'}
@@ -421,6 +423,112 @@ def validate_cashflow_evidence(raw, *, cik: str, as_of: str) -> None:
     # Direct calculation from admitted observations: cannot reconstruct a
     # previously rejected/ambiguous source, nor promote one to AVAILABLE.
     require(equal(raw['metrics'], cashflow_calculations(observations)))
+
+
+LIQUIDITY_TAGS = {'current_assets': 'AssetsCurrent', 'current_liabilities': 'LiabilitiesCurrent',
+                  'cash_equivalents': 'CashAndCashEquivalentsAtCarryingValue'}
+LIQUIDITY_LIMITATIONS = ['PRIMARY_ONLY_NOT_INDEPENDENT_CORROBORATION',
+                        'CONTEXT_RESTATEMENT_AND_SECURITY_IDENTITY_REVIEW_INCOMPLETE',
+                        'INSTANT_BALANCES_NOT_CASHFLOW_OR_FINANCING_RUNWAY',
+                        'CURRENT_ASSETS_NOT_IMMEDIATELY_REALIZABLE_CASH',
+                        'CASH_EQUIVALENTS_NOT_VERIFIED_UNRESTRICTED_OR_DISTRIBUTABLE',
+                        'DEBT_MATURITIES_COVENANTS_AND_RESTRICTED_CASH_NOT_RECONCILED']
+FINANCIAL_V4_LIMITATIONS = FINANCIAL_V2_LIMITATIONS + ['LIQUIDITY_IS_PARTIAL_NOT_COMPLETE_FINANCING_REVIEW']
+
+
+def liquidity_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
+    """Latest supplied SEC instants; no older/unit/total-assets substitution."""
+    cutoff = _financial_cutoff(cik, as_of)
+    observations = {}
+    for key, tag in LIQUIDITY_TAGS.items():
+        rows = [r for r in records if r.get('record_type') == 'company_fact'
+                and r.get('taxonomy') == 'us-gaap' and r.get('tag') == tag]
+        reason, projected = None, []
+        if not rows:
+            reason = 'MISSING_OPERAND'
+        elif any(not _date_text(r.get('end')) or not _date_text(r.get('filed')) for r in rows):
+            reason = 'INVALID_OPERAND'
+        else:
+            latest = max((r['end'], r['filed']) for r in rows)
+            for row in rows:
+                if (row['end'], row['filed']) != latest:
+                    continue
+                operand, error = financial_operand(row, rows, cik=cik, cutoff_day=cutoff, instant=True)
+                if error or operand['unit'] is None or operand['value'] < 0:
+                    reason = error or 'INVALID_OPERAND'
+                    break
+                if operand not in projected:
+                    projected.append(operand)
+            if reason is None and len(projected) != 1:
+                reason = 'AMBIGUOUS_OPERAND'
+        observations[key] = {'status': reason or 'AVAILABLE', 'operand': None if reason else projected[0]}
+    return {'schema_version': 1, 'status': 'CANDIDATE_NOT_PUBLICATION_QUALIFIED',
+            'cik': cik, 'as_of_cutoff': as_of, 'provider_scope': 'public_only',
+            'publication_eligible': False, 'source_refresh_verified': False, 'source_retrieved_at': None,
+            'source_lineage': 'issuer_filing_via_sec_companyfacts', 'observations': observations,
+            'metrics': liquidity_calculations(observations), 'limitations': list(LIQUIDITY_LIMITATIONS)}
+
+
+def liquidity_calculations(observations) -> dict[str, Any]:
+    """Instant arithmetic only; no threshold-based rating or solvency claim."""
+    a, b = (observations[key]['operand'] if observations[key]['status'] == 'AVAILABLE' else None
+            for key in ('current_assets', 'current_liabilities'))
+    basis = ('cik', 'taxonomy', 'start', 'end', 'filed', 'form', 'fiscal_year', 'accession_number', 'record_url', 'unit')
+    result = {}
+    for key, formula in [('working_capital', 'current_assets - current_liabilities'),
+                         ('current_ratio', 'current_assets / current_liabilities')]:
+        reason, value, unit = None, None, 'ratio' if key == 'current_ratio' else None
+        if not a or not b:
+            reason = 'WITHHELD_REQUIRED_OPERAND'
+        elif any(a[field] != b[field] for field in basis):
+            reason = 'WITHHELD_NOT_COMPARABLE'
+        elif key == 'current_ratio' and b['value'] <= 0:
+            reason = 'WITHHELD_NONPOSITIVE_DENOMINATOR'
+        else:
+            av, bv = (Decimal(str(v['value'])) for v in (a, b))
+            calculated = av - bv if key == 'working_capital' else av / bv
+            unit = a['unit'] if key == 'working_capital' else 'ratio'
+            if not calculated.is_finite() or abs(calculated) > 9007199254740991:
+                reason = 'WITHHELD_UNSAFE_RESULT'
+            else:
+                value = float(calculated)
+                if not math.isfinite(value) or value == 0 and calculated != 0:
+                    reason, value = 'WITHHELD_UNSAFE_RESULT', None
+        result[key] = {'status': reason or 'AVAILABLE', 'value': value, 'value_unit': unit,
+                       'formula': formula, 'operand_refs': ['current_assets', 'current_liabilities']}
+    return result
+
+
+def validate_liquidity_evidence(raw, *, cik: str, as_of: str) -> None:
+    """Same-byte local replay, not raw-HTTP or complete-disclosure verification."""
+    def require(ok):
+        if not ok:
+            raise engine.PipelineError('LIQUIDITY_EVIDENCE_INVALID')
+    def equal(a, b):
+        return json.dumps(a, sort_keys=True, allow_nan=False) == json.dumps(b, sort_keys=True, allow_nan=False)
+    cutoff = _financial_cutoff(cik, as_of)
+    keys = set('schema_version status cik as_of_cutoff provider_scope publication_eligible source_refresh_verified source_retrieved_at source_lineage observations metrics limitations'.split())
+    require(isinstance(raw, dict) and set(raw) == keys)
+    require(type(raw['schema_version']) is int and raw['schema_version'] == 1
+            and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED' and raw['cik'] == cik
+            and raw['as_of_cutoff'] == as_of and raw['provider_scope'] == 'public_only'
+            and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
+            and raw['source_retrieved_at'] is None and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
+            and raw['limitations'] == LIQUIDITY_LIMITATIONS)
+    observations = raw['observations']
+    require(isinstance(observations, dict) and set(observations) == set(LIQUIDITY_TAGS))
+    for key, item in observations.items():
+        require(isinstance(item, dict) and set(item) == {'status', 'operand'})
+        require(isinstance(item['status'], str) and item['status'] in
+                {'AVAILABLE', 'MISSING_OPERAND', 'INVALID_OPERAND', 'CONFLICTING_OPERAND', 'AMBIGUOUS_OPERAND'})
+        operand = item['operand']
+        if item['status'] != 'AVAILABLE':
+            require(operand is None)
+            continue
+        require(isinstance(operand, dict) and operand.get('tag') == LIQUIDITY_TAGS[key])
+        checked, error = financial_operand(operand, [], cik=cik, cutoff_day=cutoff, instant=True)
+        require(error is None and equal(operand, checked) and operand['unit'] is not None and operand['value'] >= 0)
+    require(equal(raw['metrics'], liquidity_calculations(observations)))
 
 
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:

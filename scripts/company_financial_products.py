@@ -12,7 +12,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from v213_v21_progress_runner import profitability_evidence, validate_cashflow_evidence, FINANCIAL_V2_LIMITATIONS
+from v213_v21_progress_runner import (profitability_evidence, validate_cashflow_evidence, validate_liquidity_evidence,
+                                       FINANCIAL_V2_LIMITATIONS, FINANCIAL_V4_LIMITATIONS)
 from report_source_acquisition import (SourceAcquisitionError, validate_report_acquisition,
                                        validate_company_receipt, digest, utc_time)
 
@@ -96,18 +97,19 @@ def _validated_company(raw, generated, completed):
     if raw.get('status') in ('NO_OFFICIAL_IDENTITY', 'SOURCE_FETCH_OR_VALIDATION_FAILED'):
         _object(raw, {'status', 'publication_eligible'})
         _require(raw['publication_eligible'] is False)
-        return None, {}, raw['status'], None
+        return None, {}, raw['status'], None, None
     version = raw.get('schema_version')
-    _require(type(version) is int and version in (1, 2, 3))
-    _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version >= 2 else set()) | ({'source_acquisition'} if version == 3 else set()))
+    _require(type(version) is int and version in (1, 2, 3, 4))
+    _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version >= 2 else set())
+            | ({'source_acquisition'} if version >= 3 else set()) | ({'liquidity_bridge'} if version == 4 else set()))
     _require(type(raw['schema_version']) is int and raw['schema_version'] == version
              and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
              and raw['as_of_cutoff'] == generated and raw['provider_scope'] == 'public_only'
              and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
-             and (version == 3 or raw['source_retrieved_at'] is None)
+             and (version >= 3 or raw['source_retrieved_at'] is None)
              and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
-             and raw['limitations'] == (FINANCIAL_V2_LIMITATIONS if version >= 2 else LIMITATIONS))
-    if version == 3:
+             and raw['limitations'] == (FINANCIAL_V4_LIMITATIONS if version == 4 else FINANCIAL_V2_LIMITATIONS if version >= 2 else LIMITATIONS))
+    if version >= 3:
         receipt = raw['source_acquisition']
         if receipt is None:
             _require(raw['source_retrieved_at'] is None)
@@ -156,7 +158,13 @@ def _validated_company(raw, generated, completed):
             validate_cashflow_evidence(cash, cik=raw['cik'], as_of=generated)
         except Exception:
             raise FinancialProductsError('FINANCIAL_PRODUCTS_CASHFLOW_INVALID') from None
-    return raw['cik'], metrics, None, cash
+    liquidity = raw.get('liquidity_bridge')
+    if version == 4:
+        try:
+            validate_liquidity_evidence(liquidity, cik=raw['cik'], as_of=generated)
+        except Exception:
+            raise FinancialProductsError('FINANCIAL_PRODUCTS_LIQUIDITY_INVALID') from None
+    return raw['cik'], metrics, None, cash, liquidity
 
 
 def _number(value):
@@ -172,7 +180,7 @@ def _period(metric):
     return f"{value['start']}～{value['end']} ({value['unit']})"
 
 
-def _sources(metrics, refs, cash=None):
+def _sources(metrics, refs, cash=None, liquidity=None):
     sources = {}
     for key in refs:
         for role in ('numerator', 'denominator'):
@@ -180,11 +188,12 @@ def _sources(metrics, refs, cash=None):
             if fact is not None:
                 identity = (fact['record_url'], fact['accession_number'], fact['filed'])
                 sources[identity] = fact
-    if cash:
-        for item in cash['observations'].values():
-            fact = item['operand']
-            if fact is not None:
-                sources[(fact['record_url'], fact['accession_number'], fact['filed'])] = fact
+    for bridge in (cash, liquidity):
+        if bridge:
+            for item in bridge['observations'].values():
+                fact = item['operand']
+                if fact is not None:
+                    sources[(fact['record_url'], fact['accession_number'], fact['filed'])] = fact
     return ['來源與限制：SEC Companyfacts 與其 filing 屬同一揭露血緣；不是多個獨立佐證。資料取得時間未驗證，可能來自快取。'] + [
         f"Filed {fact['filed']}；accession {fact['accession_number']}\n{fact['record_url']}" for fact in sources.values()]
 
@@ -245,6 +254,58 @@ def _cash_summary(cash):
     metric = cash['metrics']['cash_after_ppe']
     if metric['status'] == 'AVAILABLE':
         blocks.append(f"{CASH_METRIC_LABELS['cash_after_ppe']}：{_cash_value(metric)}；不是可分配股東現金。")
+    return blocks
+
+
+def _liquidity_blocks(liquidity, kind):
+    if liquidity is None:
+        return []  # Legacy company1–3 output bytes are not silently upgraded.
+    labels = {'current_assets': '流動資產', 'current_liabilities': '流動負債',
+              'cash_equivalents': '現金及約當現金披露', 'working_capital': '營運資金（流動資產減流動負債）',
+              'current_ratio': '流動比率（流動資產／流動負債）'}
+    observations, metrics = liquidity['observations'], liquidity['metrics']
+    if kind == 'data_report':
+        blocks = ['資產負債表時點核查：start=null 是時點資料，不補造年度起日，不與期間現金流相加。沒有分類式資產負債表時，不用總資產／總負債代替流動項目。']
+        for key, item in observations.items():
+            fact = item['operand']
+            blocks.append(f"{labels[key]} [liquidity.{key}]：{item['status']}\n\n" + (
+                '| XBRL tag | 原值 | 單位 | 時點 | Filed | accession |\n|---|---:|---|---|---|---|\n'
+                f"| {fact['tag']} | {_number(fact['value'])} | {fact['unit']} | {fact['end']} | {fact['filed']} | {fact['accession_number']} |"
+                if fact else '未保留可用原值；未知／已拒絕不等於零。'))
+        for key, metric in metrics.items():
+            blocks.append(f"{labels[key]} [liquidity.{key}]：{metric['status']}\n公式：{metric['formula']}；operands：{', '.join(metric['operand_refs'])}\n" + (
+                f"原計算值：{_number(metric['value'])} {metric['value_unit']}" if metric['status'] == 'AVAILABLE' else '本項不計算；不得選較舊數值拼接。'))
+        return blocks + ['現金披露不保證可自由動用或分配；流動項目也非全部現金。債務到期、契約限制、受限現金、客戶預付款履約義務與資產變現品質仍須查附註。']
+    if kind == 'card_summary':
+        blocks = []
+        for key, item in observations.items():
+            fact = item['operand']
+            if fact:
+                blocks.append(f"{labels[key]}：{_number(fact['value'])} {fact['unit']}；時點 {fact['end']}")
+        for key, metric in metrics.items():
+            if metric['status'] == 'AVAILABLE':
+                blocks.append(f"{labels[key]}：{_number(metric['value'])} {metric['value_unit']}；時點 {observations['current_assets']['operand']['end']}；不是即時支付能力保證。")
+        return blocks
+    working = metrics['working_capital']
+    if working['status'] != 'AVAILABLE':
+        return []
+    a, b = (observations[key]['operand'] for key in ('current_assets', 'current_liabilities'))
+    blocks = ['問題：同一資產負債表時點的流動項目，是否顯示需要進一步核對的資金銜接風險？這不是資金斷裂判定或完整融資分析。',
+              f"計算觀察 [liquidity.current_assets, liquidity.current_liabilities, liquidity.working_capital]：截至 {a['end']}，同文件、同幣別流動資產 {_number(a['value'])} 減流動負債 {_number(b['value'])} = {_number(working['value'])} {working['value_unit']}。這是存量差額，不是本期現金淨流入／流出。"]
+    if working['value'] < 0:
+        blocks.append('條件解讀（INFERENCE）：流動負債高於流動資產。須核對到期分布、循環融資可用額及應收／存貨變現，不直接宣告破產；預收款與供應商信用可能影響營運資金結構，尚非已證實原因。')
+    elif working['value'] > 0:
+        blocks.append('條件解讀（INFERENCE）：流動資產高於流動負債，不保證資產能按時足額變現；正差額不等於全部可拿去擴產、還債或配息。')
+    else:
+        blocks.append('條件解讀（INFERENCE）：流動項目差額為零，不代表現金收支平衡；收付款日期、資產品質與不可動用限制仍可能造成資金需求。')
+    ratio = metrics['current_ratio']
+    blocks.append(f"流動比率 [liquidity.current_ratio]：{_number(ratio['value'])} 倍；不用單一門檻給財務安全評分。" if ratio['status'] == 'AVAILABLE'
+                  else f"流動比率 [liquidity.current_ratio]：{ratio['status']}；零分母不是無限償債能力，不填造倍數。")
+    cash = observations['cash_equivalents']['operand']
+    if cash:
+        blocks.append(f"另列觀察 [liquidity.cash_equivalents]：截至 {cash['end']}，現金及約當現金 {_number(cash['value'])} {cash['unit']}。未核對受限性，不把這個時點存量除以單期CFO推算續航月數。")
+    blocks.extend(['反方：負營運資金可能涉及商業模式與履約義務，正營運資金也可能包含低品質應收或滯銷存貨。不同產業／分類式報表不可只憑比率排名；營運優勢與股東可捕捉價值須分開驗證。',
+                   '條件結論與推翻條件：補核現金限制、債務到期／契約、應收與存貨明細、後續融資及履約責任；任一重編、口徑／幣別／時點變動須重算。不產生目標價、信用評等或完整淨債務數字。'])
     return blocks
 
 
@@ -384,7 +445,7 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
         ticker = row['ticker']
         company = basis['records'][ticker]
         cutoff = report.get('calculation_cutoff', report['generated_at'])
-        cik, metrics, failure, cash = _validated_company(company, cutoff, report['generated_at'])
+        cik, metrics, failure, cash, liquidity = _validated_company(company, cutoff, report['generated_at'])
         receipt = company.get('source_acquisition')
         if version == 2:
             clock = row['source_acquisition']['profit_summary']
@@ -396,6 +457,8 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
         refs = [key for key in LABELS if metrics.get(key, {}).get('status') == 'AVAILABLE']
         cash_refs = ([f'cashflow.{key}' for group in ('observations', 'metrics')
                       for key, item in cash[group].items() if item['status'] == 'AVAILABLE'] if cash else [])
+        liquidity_refs = ([f'liquidity.{key}' for group in ('observations', 'metrics')
+                           for key, item in liquidity[group].items() if item['status'] == 'AVAILABLE'] if liquidity else [])
         identity = {'candidate_snapshot_id': snapshot, 'snapshot_run_id': None,
                     'source_report_sha256': source_report_sha, 'source_basis_sha256': source_basis_sha,
                     'subject': {'ticker': ticker, 'issuer_cik': cik, 'security_identity_qualified': False}}
@@ -403,17 +466,20 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
                   f"計算 cutoff：{cutoff}；不是當前報價或完整新鮮度認證。",
                   (f"SEC body 原取得時間：{receipt['retrieved_at']}；{receipt['retrieval_mode']}；body SHA256 {receipt['body_sha256']}。仍須最新披露／附註核對。"
                    if receipt else 'SEC body 原取得時間未知；不以本機組裝時間代替，不從舊版摘要反推。')]
-        reason = failure or (None if refs or cash_refs else 'NO_AVAILABLE_FINANCIAL_METRICS')
+        reason = failure or (None if refs or cash_refs or liquidity_refs else 'NO_AVAILABLE_FINANCIAL_METRICS')
         summary = [f"{LABELS[key]}：{_percent(metrics[key]['value'])}；{_period(metrics[key])}" for key in refs]
         analysis, analysis_reason = _analysis(metrics)
         analysis_refs = ['operating_margin', 'net_margin'] if not analysis_reason else []
         cash_analysis = _cash_analysis(cash)
-        if cash_analysis:
+        liquidity_analysis = _liquidity_blocks(liquidity, 'narrative_analysis')
+        if cash_analysis or liquidity_analysis:
             analysis_reason = None
+        elif analysis_reason is not None and liquidity_refs:
+            analysis_reason = 'NO_COMPARABLE_FINANCIAL_ANALYSIS_INPUTS'
         products = {
-            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary] + _cash_summary(cash) + [GAPS] + _sources(metrics, refs, cash), refs + cash_refs, identity, reason),
-            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + _cash_data(cash) + [GAPS] + _sources(metrics, list(metrics), cash), list(metrics) + cash_refs, identity, reason),
-            'narrative_analysis': _product('narrative_analysis', header + ['獲利結構解讀 / Earnings interpretation'] + analysis + cash_analysis + [GAPS] + _sources(metrics, analysis_refs, cash), analysis_refs + (cash_refs if cash_analysis else []), identity, reason or analysis_reason),
+            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary] + _cash_summary(cash) + _liquidity_blocks(liquidity, 'card_summary') + [GAPS] + _sources(metrics, refs, cash, liquidity), refs + cash_refs + liquidity_refs, identity, reason),
+            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + _cash_data(cash) + _liquidity_blocks(liquidity, 'data_report') + [GAPS] + _sources(metrics, list(metrics), cash, liquidity), list(metrics) + cash_refs + liquidity_refs, identity, reason),
+            'narrative_analysis': _product('narrative_analysis', header + ['獲利結構解讀 / Earnings interpretation'] + analysis + cash_analysis + liquidity_analysis + [GAPS] + _sources(metrics, analysis_refs, cash, liquidity), analysis_refs + (cash_refs if cash_analysis else []) + (liquidity_refs if liquidity_analysis else []), identity, reason or analysis_reason),
         }
         records.append({'ticker': ticker, 'products': products})
     return {'schema_version': 1, 'status': 'LOCAL_FINANCIAL_COMPONENTS_NOT_RELEASE_QUALIFIED',
