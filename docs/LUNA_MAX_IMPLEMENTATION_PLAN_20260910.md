@@ -804,3 +804,14 @@ Fixture規則：
 - 已commit/push診斷與review：`9e81bfa5cce01c503c984e1a7cf148cb8ad665d8`，tree=`1dd17b6073bc11c129463c6b0fde92d6f83e0c91`與最後staged驗證一致；remote readback吻合，PR37維持draft，PR39不動。不是發布失敗coordinator或release build；後續文件提交另見Git。
 - **仍未LINE上線。** W1 NOT ACCEPTED、G01/G02 OPEN、P0/P1/P2總數UNKNOWN。下一步是B3剩餘ACL/繼承/metadata審查與transaction-bound originals，再以strict errors實作IO修正、共享鎖、durable recovery、consumer barrier及四caller矩陣；不能以新primitive測試取代ownership或外層交易驗收。正式runtime/tasks/cloud/LINE/credentials未觸碰，無cleanup、paid fallback、fresh發布或release qualification。
 - 文件precommit第一次`git diff --check`因EOF多一空行而exit1；`doc-diff-attempt-1/`保留完整當時PLAN bytes及失敗receipt，只修該格式後使用新check，不改原FAIL。268個Python檔AST無SyntaxError、1個既有invalid-escape警告；不是full Python regression。
+
+### 12.3 再續作：metadata 復原缺陷與 SACL 權限停止點
+
+- 使用者再要求「繼續工作直到line正式上線」。編輯前fetch HEAD=`74c4e0a1d58ad70530f7852db9cd31f7a64a3e24`，dirty仍四installers／boundary test與untracked coordinator，CI queued/in-progress空；讀兩層AGENTS、STATUS、相關PLAN／完整coordinator／tests／R75 workflow。第12節普通開發授權不等於未知權限或B3/Astra審查豁免。
+- 新證據根`audit-runtime/w1-metadata-followup-a/`保存10份完整before檔、patch及baseline；5份產品draft hash未變。從實際coordinator AST擷取7個原函式成frozen UNACCEPTED fixture，保留原source SHA；不是新production helper、不是替換caller，也不把失敗草稿提交為修復。
+- 雙host重現：原metadata bytes（含empty）未變時Restore回false；原來absent但現在是directory時回true（第三方sentinel未刪，但成功回報錯誤）。另驗LOCKED journal新建成功，PREPARED及ROLLED_BACK覆寫均ArgumentException，支持雙層失敗機制；歷史full-install journal缺失，仍不能宣稱唯一歷史根因。
+- 新native fixture驗證原／replacement file identities、OLD/NEW bytes與兩條非敏感ADS；再改新fixture父目錄DACL。inherited candidate與unreplaced control一致，protected不被繼承改動；**inherited backup的原descriptor也跟著變化**，所以backup不等於immutable ACL originals。沒有授權修改operator ACL或把所有inheritance改成protected。
+- 保留非預期attempts：第一個auxiliary PS5 parse driver失敗、raw output只保留digest；assigned-array新driver雙host成功。metadata attempt1通過journal/restore後inheritance transport失敗；attempt2加bounded phase/type/HResult後定位CREATE_STREAMS/NotSupportedException=-2146233067。只在fixture改Win32 ADS handle（同local NTFS，不改oracle／正式IO），attempt3 **3 diagnostic methods PASS／雙host**。原helper finally仍會刪自身temp；案例／originals／收據不cleanup。
+- 被動SACL capability query只在新PS5.1 fixture呼叫GetNamedSecurityInfoW，Win32=1314，receipt BLOCKED、presence=null，wrapper exit2。**不enable privilege、不elevate、不改policy、不試第二host**；權限未知依第12節停止該驗收。需要明確授權的受控fixture SACL讀取能力與B3/Astra裁決，不能把Owner/DACL測試或新backup當作SACL資格。
+- 權限停止後只做獨立靜態／Worker檢查與文件保存：7 gates PASS、269個Python AST無syntax error（1既有warning）、Worker typecheck及227/227 PASS。沒有full Python/native installer／Windows CI dispatch、release build、cloud/KV/LINE、排程或model動作。
+- 詳細結果見`docs/W1_ATOMIC_IO_REVIEW_20260910.md`及新evidence index。W1 NOT ACCEPTED，G01/G02 OPEN，整體P0/P1/P2仍UNKNOWN；新增的是已重現metadata缺陷，不是將所有review子項算成P0。下一步先取得上述最小權限／審查決策，再B4/B5 trusted ownership、durable originals/shared locks/recovery/consumer barrier與四caller驗收；W2–W12未被跳過。

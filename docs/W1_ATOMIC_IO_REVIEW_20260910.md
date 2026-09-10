@@ -38,6 +38,28 @@ No production coordinator fix is certified here. A reviewed transaction should u
 
 W1 still needs trusted archive/ownership admission, shared participant locks, durable journal/originals, reader isolation, all four real callers and restart/finalize negatives. The mixed installed root must not be swapped or automatically adopted. Full Python/native/Windows acceptance and fresh source-bound release proof remain prerequisites to shipping.
 
+## Follow-up: recovery, inheritance, identity and streams
+
+Evidence: `audit-runtime/w1-metadata-followup-a/`. The diagnostic baseline contains seven AST-selected definitions from the unchanged coordinator (original SHA above). It is a frozen UNACCEPTED fixture, not replacement production code. Its normalized-LF SHA is `68956b7d64467be25acdcc26c7a4780b9b45e50a0f7228accd4e21e61a63d275`; default tests do not depend on an untracked coordinator.
+
+Both hosts reproduce two additional recovery defects:
+
+- `Restore-V213Metadata` returns false when the original file (including an empty original) is already unchanged. This is not a verified recovery failure requiring an overwrite.
+- With an originally absent file, a third-party directory at that pathname returns true. A non-leaf object is not equivalent to absence. The synthetic directory/sentinel survives, but the reported recovery success is wrong.
+
+The journal sequence independently reproduces LOCKED creation succeeding, then both PREPARED and ROLLED_BACK updates failing with inner ArgumentException. This supports a double-failure mechanism; missing historical full-install journals still prevent claiming the sole historical cause.
+
+Native replacement/parent-ACL tests on both hosts show:
+
+- The new target uses the replacement file identity; backup retains the original identity and OLD bytes.
+- Original/replacement named streams are present in the resulting target; the original stream remains in backup. This does not admit arbitrary streams or hardlinks into a runtime manifest.
+- After a deliberate parent ACL update, inherited target DACLs match the unreplaced control and change together; protected controls/targets remain unchanged.
+- **An inherited backup's descriptor changes with that parent update.** Therefore a backup alone is not an immutable ACL-original record. The protected fixture's backup descriptor remains equal. This does not authorize protecting an operator's existing ACL or dropping inheritance.
+
+A passive `GetNamedSecurityInfoW` SACL query on a new PS5.1 fixture returns Win32 **1314**. Receipt is BLOCKED, SACL presence is null/unknown, CLI exits2; PS7 capability retry was not attempted. No privilege was enabled, no elevation/policy change was made, and no real runtime metadata was read. SACL qualification remains blocked pending explicit narrowly scoped authorization and B3/Astra review; no production ACL-normalization or IO patch is approved by these tests.
+
+The first auxiliary PS5.1 parse driver failed (no product body); a new assigned-array driver parsed both hosts. First two inheritance attempts failed; the second's bounded receipt identifies `CREATE_STREAMS` / NotSupportedException (`-2146233067`). Replacing only the fixture's legacy .NET ADS path operations with Win32 handles, on the same verified local NTFS scope, preserves the stream oracle. Final three diagnostic methods pass across both hosts; frozen baseline failures remain failures, not installer acceptance. Original helper temporary-file cleanup still exists in that frozen baseline.
+
 ## GitHub scope
 
 The diagnostic test fixtures/helpers and this review can be committed independently. They do not require the untracked coordinator in their default regression modes. The unaccepted four-installer/coordinator draft and working-tree boundary-test changes remain explicitly outside that diagnostic-only commit. Updating GitHub does not mean build, install, publication or LINE delivery has passed.
