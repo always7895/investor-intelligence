@@ -2,6 +2,7 @@ import type { ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
+import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
   v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE,
@@ -72,6 +73,8 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
 }
 
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
+  const requested = parseResearchProductRequest(query.normalized);
+  if (requested) return unavailableResearchProduct(requested);
   const detailPrefix = /^top\s*20\s+證據詳情(?:\s|$)/i.test(query.normalized);
   const detail = /^top\s*20\s+證據詳情\s+([A-Z0-9][A-Z0-9.-]{0,14})\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(legacy|s:[A-Z0-9][A-Z0-9._-]{0,127})\s+([a-f0-9]{64})$/i.exec(query.normalized);
   if (detailPrefix && !detail) return "請從卡片選擇有效的公司證據詳情。";

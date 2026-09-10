@@ -437,6 +437,50 @@ async function qaWebhookFixture(compact = true) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it.each(["Top20 數據詳報", "Top20 深入分析", "宏觀 數據詳報", "T00 期權 數據詳報", "股票 T00 narrative_analysis", "Top20 card_summary"])("does not downgrade the explicit product request %s in the actual signed webhook", async text => {
+    const f = await qaWebhookFixture();
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(f.replies[0]).not.toContain('"type":"flex"');
+      expect(f.replies[0]).not.toContain("SYNTHETIC_QA_ANSWER_NOT_LIVE");
+      expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it.each(["Top20", "Top20 文字"])("retains the separately requested seven-field %s after refusing an unsealed kind", async text => {
+    const f = await qaWebhookFixture();
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      const get = vi.spyOn(f.publicKv, "get");
+      await f.deliver("Top20 data_report");
+      expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED"); expect(get).not.toHaveBeenCalled();
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(2); expect(f.prompts).toHaveLength(0);
+      const messages = JSON.parse(f.replies[1]!) as { type: string }[];
+      expect(messages.length).toBeGreaterThan(0); expect(messages.length).toBeLessThanOrEqual(5);
+      expect(messages.every(message => message.type === (text.includes("文字") ? "text" : "flex"))).toBe(true);
+      for (let i = 0; i < 20; i++) expect(f.replies[1]).toContain(`T${String(i).padStart(2, "0")}`);
+      expect(f.replies[1]).not.toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(get.mock.calls.filter(([key]) => key === "snapshot:current")).toHaveLength(1);
+    } finally { f.restore(); }
+  });
+  it("does not make planted direct or unlisted candidate products actionable in the signed webhook", async () => {
+    const f = await qaWebhookFixture(false);
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      const forged = JSON.stringify({ schema_version: 1, complete: true, publication_eligible: true,
+        content_utf8: "SYNTHETIC_UNSEALED_PRODUCT_MUST_NOT_LEAK" });
+      for (const key of ["v213:research-products:latest", `snapshot:${RUN_ID}:v213:research-products:latest`, "financial-products-candidate.json"])
+        f.publicKv.values.set(key, forged);
+      const before = [...f.publicKv.values]; const get = vi.spyOn(f.publicKv, "get");
+      await f.deliver("T00 data_report");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(f.replies[0]).not.toContain("SYNTHETIC_UNSEALED_PRODUCT_MUST_NOT_LEAK");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled(); expect([...f.publicKv.values]).toEqual(before);
+    } finally { f.restore(); }
+  });
   it.each([true, false])("blocks corrupt context in the actual signed direct-chat webhook before model transport (compact=%s)", async compact => {
     const f = await qaWebhookFixture(compact);
     try {

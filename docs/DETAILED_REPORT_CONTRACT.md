@@ -18,6 +18,16 @@
 - 同次查詢的報告與pipeline時間戳必須固定使用同一快照讀取上下文，不能各自重新解析pointer而混輪。現有pointer為空值、無效結構或衝突身分時，應拒絕讀取，不可冒充「不存在」而退回直接鍵。現行Top20查詢及排程候選路由共用 `v213/public-snapshot.ts`；排程的排名／報告／時間戳／防重複鍵固定同輪。缺少成功時間戳不得用生成時間代替；新鮮度使用實際執行時鐘，不用延遲cron的名義時間。`storage.ts` 公開讀取相容出口已委派同一 selector；私有函式及 `qa.ts` 不改。現行授權問題的整段處理共用一次 selection；其餘舊 entrypoint／外部直接呼叫仍需逐一核對 scope 或重新認證。卡片輸入 SHA 綁定不取代 sealed claim 完整性與三輸出封存。
 - 詳報可分頁，但不得悄悄刪除尾段、來源或風險來迎合 LINE 長度限制。沒有完整資料時只顯示「證據／缺口」，不冠名完整分析。
 
+### 明確產物要求不得降級（拒絕路由，不是三產物交付）
+
+實際合成 activation→已配對簽名 webhook 反例：`Top20 數據詳報`／`Top20 深入分析` 仍送七欄 Flex；宏觀詳報落入即席模型回答，期權詳報也未保留要求的產物類型。原 RED 保留。
+
+- 現行 `v213Top20LineAnswer` 在既有七欄／QA 路由前，共用 `research-product-request.ts` 的明確命令辨識。保留 stock/options/macro、card_summary/data_report/narrative_analysis、查詢代號／Top20 與週／月期權；不猜公司法定名稱、CIK、私有清單或完整證券身分。代號須完整吻合既有 parser，不將畸形或過長代號截成另一家公司。
+- 支援例如 `Top20 數據詳報`、`股票 T00 深入分析`、`T00 每週期權 數據詳報`、`宏觀 完整文字分析`，以及對應 machine kind；可用「產物 標的」或「標的 產物」形式。單獨 kind 不猜領域／標的。這是有限明確命令文法，**不是全部自然語句、模糊／多產物要求或任意舊 entrypoint 的分類認證**。
+- 現行 sealed set 尚無這三種獨立產物；辨識後明確回覆 `RESEARCH_PRODUCT_NOT_SEALED` 與所要求類型，不讀候選／直接鍵、不另選快照、不呼叫模型冒充。植入 `complete=true` 或 `publication_eligible=true` 的未封存物件不能啟用它。沒有假 manifest、資格開關、產品按鈕、可執行報價或新發布通道。
+- `Top20`、`Top20 文字`、原卡片綁定的「證據詳情」，以及一般宏觀／Serenity／個股分析問題繼續原本路徑與門檻；例如「分析 CPI 與 FOMC 對航運的影響」不是正式產物命令。拒絕訊息僅告知可**另行要求**七欄摘要，不自動改送它。簽章／直接對話／免費 sender、認證 `qa.ts`、private 實作不變。
+- 三領域×三類型的 parser 控制全是 **unavailable**，不是九格內容已完成。下一步仍須合格来源／權利與實質研究、正式 versioned 產物 admission/seal、同輪 subject/kind/run/report/content SHA 驗證與完整分頁，之後才可新增 LINE 可用入口。本修補不能代替這些工作或真實收件驗收。
+
 ### 已提交快照的逐物件完整性（不提高資料資格）
 
 實際 activation→Top20 查詢反例：封存後改寫報告，舊 reader 仍顯示新文字並賦予新內容 SHA。現行 `activation-v3.ts` 與 `public-snapshot.ts` 共用 `snapshot-seal.ts` 修補：
@@ -28,7 +38,7 @@
 - Selector 先核對 pointer→manifest→全部13個物件的 bytes/size/SHA、claim run/transaction、pipeline stamp，再交出 `integrity=sealed` 的固定 view。同次 answer 僅用已驗證 bytes，不重新取得物件，也不讀未列入集合的 key；任一成員缺失／改動使整個 view unavailable。這不自動證明 HTTP 原文、報價權利、財報 context 或當下 freshness，消費端仍須原本的時間與內容門檻。
 - Finalize 先重新核對所有物件及精確 current pointer，才刪 journal；失敗保留 handle。Rollback 仍只按授權控制恢復原 pointer bytes，**不保證舊 pointer 可通過新版 reader**。任何版本遷移須新鮮的新交易，不能拿舊 activation 重放／改 pointer 取得資格。
 - 舊 metadata pointer（schema1）、transaction-format run ID 缺 seal、留下 claim／manifest 卻改成簡化 pointer，都不能降為 bootstrap。真正無 pointer 或非交易格式的歷史簡化 pointer 保留明示 `integrity=legacy` 相容讀取，**不是新封存接受證明**。歷史 activation-v2／單檔 helpers 不改；公開 storage 相容出口按下節移植，但不把所有舊 caller 或 legacy 資料宣稱為已封存／已重新認證。
-- Trust anchor 仍是受控 PUBLIC_CACHE 的 committed pointer；這不是抵抗能同時重寫 pointer/manifest/全部 objects 的特權攻擊者之簽章，也不是 KV 串列化、跨交易鎖、原子讀取或 native Cloudflare certification。雲端沒有新增候選財務產物／options keys、三種新入口、配額或 Production 操作。
+- Trust anchor 仍是受控 PUBLIC_CACHE 的 committed pointer；這不是抵抗能同時重寫 pointer/manifest/全部 objects 的特權攻擊者之簽章，也不是 KV 串列化、跨交易鎖、原子讀取或 native Cloudflare certification。雲端沒有新增候選財務產物／options keys、可交付三產物入口、配額或 Production 操作；明確要求尚缺產物時採上節拒絕路由。
 
 合成 KV／日期、假免費 entitlement／provider acceptance、legacy compatibility 與真實來源／原生交易／手機收件是不同驗收。新版實際 ingestion→讀取→既有推送 caller 有獨立測試；舊未封存 fixture 的時鐘／呈現／防重複控制不得冒稱新封存或 exactly-once 收件證明。
 
