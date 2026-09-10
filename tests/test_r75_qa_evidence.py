@@ -95,6 +95,15 @@ foreach($script:status in @(200,409,404)){
             wait_isolated_origin(session,'https://ii-r75-qa-bench-012345abcd.synthetic.workers.dev',lambda:now[0],lambda n:now.__setitem__(0,now[0]+n))
         self.assertEqual(now[0],20)
 
+    def test_origin_failure_records_only_bounded_status_without_retry(self):
+        for status, expected in ((403, 403), (429, 429), (500, 500), (True, 0), ('PRIVATE_SENTINEL', 0)):
+            response = SimpleNamespace(status_code=status, headers={}, text='PRIVATE_SENTINEL')
+            session = SimpleNamespace(get=Mock(return_value=response))
+            with self.assertRaises(RuntimeError) as caught:
+                wait_isolated_origin(session, 'https://ii-r75-qa-bench-012345abcd.synthetic.workers.dev')
+            self.assertEqual(str(caught.exception), f'ISOLATED_ORIGIN_UNEXPECTED_HTTP; http_status={expected}; attempts=1')
+            self.assertEqual(session.get.call_count, 1)
+
     @unittest.skipUnless(sys.platform == 'win32', 'native PowerShell transport')
     def test_readiness_http_error_cannot_become_ready_json(self):
         import http.server, threading, subprocess, shutil, os

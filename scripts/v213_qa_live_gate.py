@@ -72,7 +72,9 @@ def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep
                 raise RuntimeError("ISOLATED_ORIGIN_WRONG_APPLICATION")
             return {"status":"PASS_TEST_HOST_PROVISIONING", "attempts":attempts, "initial_empty_worker_404_count":attempts-1}
         if response.status_code != 404 or response.headers.get("server", "").lower() != "cloudflare" or "There is nothing here yet" not in response.text:
-            raise RuntimeError("ISOLATED_ORIGIN_UNEXPECTED_HTTP")
+            # Preserve bounded transport evidence, never arbitrary response text/headers.
+            status = response.status_code if type(response.status_code) is int and 100 <= response.status_code <= 599 else 0
+            raise RuntimeError(f"ISOLATED_ORIGIN_UNEXPECTED_HTTP; http_status={status}; attempts={attempts}")
         sleep(max(0, min(1, deadline-clock())))
     raise RuntimeError("ISOLATED_ORIGIN_PROVISIONING_TIMEOUT")
 

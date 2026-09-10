@@ -1,12 +1,12 @@
 # Current engineering status
 
-Updated2026-09-09. NOT a release certificate. Release identity belongs in README. Historical details and failures remain in Git: `git show 0ec13cc:state/STATUS.md`, `git show 38860e7:state/STATUS.md`. Never restamp receipts.
+Updated2026-09-10. NOT a release certificate. Release identity belongs in README. Historical details and failures remain in Git: `git show 0ec13cc:state/STATUS.md`, `git show 38860e7:state/STATUS.md`. Never restamp receipts.
 
 ## Authority and workspace
 
-- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts frome532fe1d0c079860a56aa8936131ac56470386c6, branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
+- Session fetched0ec13cc7a18d4a1b23f2904e716fc308f0f0c3a8; current work starts from38c980f078212c98eaef92f58a084f978f7b800e (fetched/clean), branch fix/options-provenance-audit / PR37. One writer. PR39 isolated at d58fdaf; baseline52e285f remains separate.
 - Git source: `D:\Investor-Intelligence-LINE-Pi\_workspace\source`. Outer project is installed runtime, not Git. Audit tools/receipts: `_workspace/audit-runtime`; historical archives are not market-data inputs.
-- User authorizes continued unattended work. Production installation/sealed publication/exact two-task restoration remain conditional on ALL gates. No real LINE test sends, broker operations, paid fallback, credential disclosure or stale activation replay. CI remains no-Production-mutation.
+- User authorizes continued unattended work. Production installation/sealed publication/exact two-task restoration remain conditional on ALL gates. Current user explicitly authorizes eventual real LINE delivery, free-only with NO paid alternatives. Delivery remains conditional on all gates and verified recipient; no broker operations, credential disclosure or stale activation replay. CI remains no-Production-mutation.
 - This step: isolated installer verification and SEC chronology code/tests. Real installed runtime, Production Worker/KV, schedules and Router preset unchanged. Earlier isolated QA resources were deleted. Use only existing Router8080 and approved exact model.
 
 ## Verified slices — not whole-product acceptance
@@ -25,6 +25,8 @@ Updated2026-09-09. NOT a release certificate. Release identity belongs in README
 - Fresh chronology attempts `r75-live-sec-chronology-*` failed readiness404/500 before inference; resources deleted/source/preset unchanged. Failures retained, later200 never qualifies them. Added isolated-only same-HttpClient/default-vs-descriptive-UA diagnostics; default product headers/status/nonce gate unchanged. `r75-readiness-same-client-20260909.json` PASS_READINESS_ONLY, all six clients200; dirty-source diagnostic only, no full Q&A or single root cause established. Python706/2 skipped and PS5.1/7 PASS; fresh clean-source QA still required.
 - Financial basis RED reproduced cross-period/currency/document division. Current guards withhold margins/existing debt ratio without same known unit/period/filing; annual revenue growth needs same tag/unit and adjacent complete calendar or52/53-week years. Valid arithmetic/weights unchanged. `financial-basis-*`: Python708/2 skipped, Worker227/typecheck/six gates/PS5.1/7 PASS. Windows validation-only34390981058 on e532fe1 PASS; no package/live-proof qualification. Debt-component completeness, restatement/accounting/segment reconciliation and genuine20-company reports remain incomplete.
 - `r75-live-sec-qualified-20260909.log` failed before resource creation because approved model had idled out (loaded=[]). Only approved Q5 awakened on Router8080; `router-wakeup-sec-20260909.json` is unqualified wakeup-only. Separate `r75-live-sec-loaded-20260909.json` passed readiness then FAIL at route setup: Cloudflare KV daily put limit exceeded. Resources deleted/source/preset unchanged. STOP cloud retries until quota available; no paid/account fallback. Fresh QA/whole release blocked.
+
+- Sept10 resumption: approved Q5 alone loaded; latest Windows34390981058 source/conclusion reconfirmed. `r75-live-free-resumption-20260910.json/.log` FAIL at initial origin provisioning, before Q&A; resources deleted/source/preset unchanged. HTTP status was not retained, so neither quota recovery nor root cause is established. Added bounded status/attempt-count error evidence (no raw body/headers, no additional retry); Python709/2 skipped, Worker227/typecheck and six gates PASS; native PS coverage included in Python suite. No real LINE sent. New confirmed external blocker count1 (prior KV quota); overall P0 count remains unknown, not zero.
 
 ## Production and installation blockers
 
@@ -53,4 +55,4 @@ Updated2026-09-09. NOT a release certificate. Release identity belongs in README
 
 1. Cloudflare reports KV daily write quota exhausted: no further cloud retries/paid or account fallback. When quota is available, obtain fresh isolated QA for current source, then full Windows/archive/download acceptance. Old receipts cannot qualify current runtime. Offline work may continue; formal release remains blocked.
 2. Audit financial comparability and actual discovery/admission callers; complete genuine identity/financial/order/dilution data, source rights/lineage and three distinct report producers. Keep failures/conflicts/unavailable states.
-3. Qualify appropriate THINK selection without silent downgrade. After ALL data/model/package/install gates, update complete real runtime, publish newly sealed data, read back bytes/claim/pointer, restore only the two paused tasks and verify actual scheduled execution. No real LINE test sends or whole-product completion claim beforehand.
+3. Qualify appropriate THINK selection without silent downgrade. After ALL data/model/package/install gates, update complete real runtime, publish newly sealed data, read back bytes/claim/pointer, restore only the two paused tasks and verify actual scheduled execution. Real LINE delivery is now authorized only after these gates and recipient verification; no whole-product completion claim beforehand.
