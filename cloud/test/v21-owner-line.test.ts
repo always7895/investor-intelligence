@@ -175,6 +175,40 @@ afterEach(() => {
 });
 
 describe("v2.1 private owner LINE delivery", () => {
+  it.each(["missing", "malformed"])("keeps persisted %s target state for diagnosis rather than destructive cleanup", async failure => {
+    const { privateKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const targetKey = [...privateKv.values.keys()].find(key => key.endsWith(":v21:owner-line:push-target"))!;
+    expect(targetKey).toBeTruthy();
+    if (failure === "missing") privateKv.values.delete(targetKey);
+    else privateKv.values.set(targetKey, '{"v":99}');
+    const before = [...privateKv.values];
+    const remove = vi.spyOn(privateKv, "delete"); const put = vi.spyOn(privateKv, "put");
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+    expect([...privateKv.values]).toEqual(before);
+  });
+  it("does not delete a changed owner pointer after an older target lookup fails", async () => {
+    const { privateKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const originalGet = privateKv.get.bind(privateKv);
+    const replacement = "B".repeat(43);
+    const remove = vi.spyOn(privateKv, "delete");
+    vi.spyOn(privateKv, "get").mockImplementation(async (key, type) => {
+      if (key.endsWith(":v21:owner-line:push-target")) {
+        // Simulated interleaving, not a native KV/atomic pairing proof.
+        privateKv.values.set("v21:owner-line:tenant", replacement);
+        return null;
+      }
+      return originalGet(key, type);
+    });
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(privateKv.values.get("v21:owner-line:tenant")).toBe(replacement);
+    expect(remove).not.toHaveBeenCalled();
+  });
   it("refuses the retained transaction-shaped unsealed fixture before LINE transport", async () => {
     const { publicKv, env } = runtime();
     await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);

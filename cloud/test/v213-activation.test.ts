@@ -437,6 +437,67 @@ async function qaWebhookFixture(compact = true) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it.each(["missing", "malformed"])("preserves pairing after a %s target read in the signed webhook", async failure => {
+    const f = await qaWebhookFixture();
+    const before = [...f.privateKv.values];
+    const originalGet = f.privateKv.get.bind(f.privateKv);
+    const remove = vi.spyOn(f.privateKv, "delete");
+    const put = vi.spyOn(f.privateKv, "put");
+    let interrupted = false;
+    vi.spyOn(f.privateKv, "get").mockImplementation(async (key, type) => {
+      if (!interrupted && key.endsWith(":v21:owner-line:push-target")) {
+        interrupted = true;
+        return failure === "missing" ? null : '{"v":99}';
+      }
+      return originalGet(key, type);
+    });
+    try {
+      await f.deliver("通知狀態");
+      expect(interrupted).toBe(true); expect(f.replies).toHaveLength(0);
+      // A later successful read must recover without a new pairing or repair write.
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("PAIRED（已配對）");
+      expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+      expect([...f.privateKv.values]).toEqual(before); expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it.each(["missing", "malformed"])("refuses the push but preserves pairing after a %s target read", async failure => {
+    const f = await qaWebhookFixture();
+    const before = [...f.privateKv.values];
+    const originalGet = f.privateKv.get.bind(f.privateKv);
+    const remove = vi.spyOn(f.privateKv, "delete");
+    const put = vi.spyOn(f.privateKv, "put");
+    let interrupted = false;
+    vi.spyOn(f.privateKv, "get").mockImplementation(async (key, type) => {
+      if (!interrupted && key.endsWith(":v21:owner-line:push-target")) {
+        interrupted = true;
+        return failure === "missing" ? null : '{"v":99}';
+      }
+      return originalGet(key, type);
+    });
+    try {
+      expect(await broadcastV213Top20(f.env, "test")).toEqual({ status: "owner_not_paired" });
+      expect(interrupted).toBe(true);
+      // No public report was installed: recovered pairing must reach, not bypass, that gate.
+      expect(await broadcastV213Top20(f.env, "test")).toEqual({ status: "top20_unavailable" });
+      expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+      expect([...f.privateKv.values]).toEqual(before);
+      expect(f.replies).toHaveLength(0); expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it("still deletes pairing only for the explicit authorized unpair command", async () => {
+    const f = await qaWebhookFixture();
+    const remove = vi.spyOn(f.privateKv, "delete");
+    try {
+      await f.deliver("取消配對");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("配對已取消");
+      expect(f.privateKv.values.has("v21:owner-line:tenant")).toBe(false);
+      expect([...f.privateKv.values.keys()].some(key => key.endsWith(":v21:owner-line:push-target"))).toBe(false);
+      expect(remove).toHaveBeenCalledTimes(2); expect(f.prompts).toHaveLength(0);
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1); // Unpaired messages remain unauthorized.
+    } finally { f.restore(); }
+  });
   it.each(["false", "true"])("does not certify delivery from pairing in the signed webhook (schedule=%s)", async enabled => {
     const f = await qaWebhookFixture();
     Object.assign(f.env, { V21_SCHEDULED_PUSH_ENABLED: enabled });
