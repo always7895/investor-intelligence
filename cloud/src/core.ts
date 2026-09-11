@@ -157,7 +157,7 @@ export function parseQuery(text: string): ParsedQuery {
   const referenceId = resultMatch?.[1]?.toUpperCase() ?? null;
 
   let intent: BotIntent = "general_qa";
-  if (/^(help|幫助|帮助|功能|選單|菜单|menu|指令|怎麼用|怎么用)$/i.test(normalized)) {
+  if (/^(help|幫助|帮助|說明|说明|功能|選單|菜单|menu|指令|怎麼用|怎么用)$/i.test(normalized)) {
     intent = "help";
   } else if (/^(記憶狀態|记忆状态|memory status)$/i.test(normalized)) {
     intent = "memory_status";

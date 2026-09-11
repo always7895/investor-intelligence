@@ -437,6 +437,41 @@ async function qaWebhookFixture(compact = true) {
 }
 
 describe("v2.1.3 atomic activation transaction", () => {
+  it.each(["false", "true"])("does not certify delivery from pairing in the signed webhook (schedule=%s)", async enabled => {
+    const f = await qaWebhookFixture();
+    Object.assign(f.env, { V21_SCHEDULED_PUSH_ENABLED: enabled });
+    const get = vi.spyOn(f.publicKv, "get");
+    try {
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("PAIRED");
+      expect(f.replies[0]).toContain("本指令只確認配對");
+      expect(f.replies[0]).toContain("不代表排程已啟用、資料已通過發布驗收或 LINE 已送達");
+      expect(f.replies[0]).not.toContain("排程為 08:00／21:00");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled();
+    } finally { f.restore(); }
+  });
+  it.each(["help", "說明", "说明"])("qualifies notification and product availability in signed LINE help (%s)", async text => {
+    const f = await qaWebhookFixture();
+    Object.assign(f.env, { V21_SCHEDULED_PUSH_ENABLED: "false" });
+    const get = vi.spyOn(f.publicKv, "get");
+    try {
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("配對不代表推送已上線");
+      expect(f.replies[0]).toContain("完整數據報告／深入分析須另經當輪資料與發布驗收");
+      expect(f.replies[0]).not.toContain("Top 20 固定只顯示");
+      expect(f.replies[0]).not.toContain("通知：每天 08:00");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled();
+      expect(f.replies[0]).not.toContain("SYNTHETIC_QA_REPLY_NOT_REAL");
+    } finally { f.restore(); }
+  });
+  it("does not turn explanatory questions into standalone help commands", () => {
+    for (const text of ["說明 CPI 對航運的影響", "说明 ALPHA 每週期權", "期權試算說明", "如何閱讀完整文字分析"]) {
+      expect(parseQuery(text).intent).not.toBe("help");
+    }
+    for (const text of [" 說明 ", "说明\n", "ＨＥＬＰ"]) expect(parseQuery(text).intent).toBe("help");
+  });
   it.each(["Top20 數據詳報", "Top20 深入分析", "宏觀 數據詳報", "T00 期權 數據詳報", "股票 T00 narrative_analysis", "Top20 card_summary"])("does not downgrade the explicit product request %s in the actual signed webhook", async text => {
     const f = await qaWebhookFixture();
     try {
