@@ -21,7 +21,7 @@ import math
 import re
 import sys
 from dataclasses import dataclass
-from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -361,6 +361,21 @@ def cashflow_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
             'observations': observations, 'metrics': metrics, 'limitations': list(CASHFLOW_LIMITATIONS)}
 
 
+def _bounded_financial_result(calculated: Fraction) -> float | None:
+    """Check exact retained-number math BEFORE projecting to a JSON float.
+
+    Fraction(str(value)) uses the retained normalized decimal spelling, not the
+    binary float expansion or unretained HTTP/iXBRL precision. No ambient Decimal
+    context, epsilon or source rounding-policy inference participates in gates.
+    """
+    if abs(calculated) > 9007199254740991:
+        return None
+    value = float(calculated)
+    if not math.isfinite(value) or value == 0 and calculated != 0:
+        return None
+    return value
+
+
 def cashflow_calculations(observations) -> dict[str, Any]:
     """Shared replay calculation. Missing/conflicting observations stay failed."""
     result = {}
@@ -378,13 +393,14 @@ def cashflow_calculations(observations) -> dict[str, Any]:
         elif key == 'diluted_share_increment' and a['value'] < b['value']:
             reason = 'WITHHELD_DILUTED_BELOW_BASIC'
         else:
-            av, bv = (Decimal(str(v['value'])) for v in (a, b))
+            av, bv = (Fraction(str(v['value'])) for v in (a, b))
             if key == 'cash_after_ppe':
-                value, unit = float(av - bv), a['unit']
+                calculated, unit = av - bv, a['unit']
             else:
-                value = float(av / bv - (1 if key == 'diluted_share_increment' else 0))
-            if not math.isfinite(value) or abs(value) > 9007199254740991:
-                reason, value = 'WITHHELD_UNSAFE_RESULT', None
+                calculated = av / bv - (1 if key == 'diluted_share_increment' else 0)
+            value = _bounded_financial_result(calculated)
+            if value is None:
+                reason = 'WITHHELD_UNSAFE_RESULT'
         result[key] = {'status': reason or 'AVAILABLE', 'value': value,
                        'value_unit': unit, 'formula': formula, 'operand_refs': [left, right]}
     return result
@@ -490,15 +506,12 @@ def liquidity_calculations(observations) -> dict[str, Any]:
         elif key == 'current_ratio' and b['value'] <= 0:
             reason = 'WITHHELD_NONPOSITIVE_DENOMINATOR'
         else:
-            av, bv = (Decimal(str(v['value'])) for v in (a, b))
+            av, bv = (Fraction(str(v['value'])) for v in (a, b))
             calculated = av - bv if key == 'working_capital' else av / bv
             unit = a['unit'] if key == 'working_capital' else 'ratio'
-            if not calculated.is_finite() or abs(calculated) > 9007199254740991:
+            value = _bounded_financial_result(calculated)
+            if value is None:
                 reason = 'WITHHELD_UNSAFE_RESULT'
-            else:
-                value = float(calculated)
-                if not math.isfinite(value) or value == 0 and calculated != 0:
-                    reason, value = 'WITHHELD_UNSAFE_RESULT', None
         result[key] = {'status': reason or 'AVAILABLE', 'value': value, 'value_unit': unit,
                        'formula': formula, 'operand_refs': ['current_assets', 'current_liabilities']}
     return result
@@ -569,9 +582,9 @@ def debt_calculations(observations) -> dict[str, Any]:
     elif any(a[field] != b[field] for field in basis):
         reason, check = 'WITHHELD_NOT_COMPARABLE', 'NOT_COMPARABLE'
     else:
-        total = Decimal(str(a['value'])) + Decimal(str(b['value']))
+        total = Fraction(str(a['value'])) + Fraction(str(b['value']))
         currency = a['unit']
-        if not total.is_finite() or total > 9007199254740991:
+        if total > 9007199254740991:
             reason, check = 'WITHHELD_UNSAFE_RESULT', 'UNSAFE_COMPONENT_SUM'
         elif observations['reported_long_term_debt']['status'] == 'MISSING_OPERAND':
             check = 'NOT_REPORTED'
@@ -579,7 +592,7 @@ def debt_calculations(observations) -> dict[str, Any]:
             reason, check = 'WITHHELD_REPORTED_TOTAL_UNVERIFIED', 'UNVERIFIED'
         elif any(a[field] != reported[field] for field in basis):
             reason, check = 'WITHHELD_NOT_COMPARABLE', 'NOT_COMPARABLE'
-        elif total != Decimal(str(reported['value'])):
+        elif total != Fraction(str(reported['value'])):
             reason, check = 'WITHHELD_REPORTED_TOTAL_CONFLICT', 'CONFLICT'
         else:
             check = 'MATCHED'
@@ -592,10 +605,10 @@ def debt_calculations(observations) -> dict[str, Any]:
             if key == 'current_portion_fraction' and total <= 0:
                 failure = 'WITHHELD_NONPOSITIVE_DENOMINATOR'
             else:
-                calculated = total if key == 'long_term_components_sum' else Decimal(str(a['value'])) / total
-                value = float(calculated)
-                if not math.isfinite(value) or value == 0 and calculated != 0:
-                    failure, value = 'WITHHELD_UNSAFE_RESULT', None
+                calculated = total if key == 'long_term_components_sum' else Fraction(str(a['value'])) / total
+                value = _bounded_financial_result(calculated)
+                if value is None:
+                    failure = 'WITHHELD_UNSAFE_RESULT'
         result[key] = {'status': failure or 'AVAILABLE', 'value': value, 'value_unit': unit,
                        'formula': formula, 'operand_refs': ['current_debt', 'noncurrent_debt']}
     return {'metrics': result, 'reported_total_check': {'status': check, 'operand_refs': list(DEBT_TAGS)}}

@@ -155,6 +155,14 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 - 營運資金不是本期現金流，流動資產不等於可立即變現現金，現金披露不證明無限制／可分配。負差不自動宣告破產，正差不自動證明擴產／還債／配息能力；不機械產生融資續航月數、淨債務、評分或目標價。仍須債務到期／契約、受限現金、應收／存貨與預付款履約等附註。
 - 驗證器重算封閉 operands／metrics 並保留 failed states；原 receipt／body SHA／取得時間不變，內嵌 bridge 不另造時鐘。Company1–3 不因新版 renderer 增加流動性內容；最終排序仍用既有 rank-only binder，不改內容／日期／失敗狀態。原始來源真實性／權利／最新披露與完整三產物封存、LINE實送均尚未取得资格。
 
+### 保留數值的精確運算邊界（不是原始披露精度認證）
+
+現金流、流動性與債務 bridge 的 producer／replay 共用精確有理數運算及 `_bounded_financial_result`：從已驗證、已保留數值的十進位字串建立 `Fraction`，先作算式、債務等式及安全範圍比較，最後才投影為 JSON float。不是取 binary float 的完整展開，也不是還原原 HTTP numeric lexeme／iXBRL 的 decimals、scale 或 context。
+
+- 修補實際 SEC-wire→報告 CLI 反例：預設 Decimal 精度曾把微小債務差額捨去而誤判 `MATCHED`，或把超界合計變成界內值。現金流曾在 float 捨入後才檢查上限，也把非零現金轉換比下溢成可用的零。現在比較不受 ambient Decimal precision／rounding／traps 影響；超界及非零下溢維持 `WITHHELD_UNSAFE_RESULT`，不靠提高精度常數或 epsilon 過關。
+- 真正零、正負號、可表示的極小非零值和 `0.1 + 0.2 = 0.3` 的保留十進位語意分開。已保留 operands 不變；float 輸出仍可能近似，不能宣稱底層財報精確到所有小數位。舊候選若含原先錯誤的 `MATCHED`／可用超界值／非零變零，重算 validator 拒絕，不默默升格或覆寫舊證據。
+- 這只修三個 bridge 的算式與重算邊界，不是全部 formatter／profit／legacy scoring 的數值認證。來源身分、日期、receipt、原始取得時間、schema、發布／完整性旗標及 sealed payload 不改；已支持的其他分析不能被連帶撤掉。人工附註仍不能放行 rounding reconciliation，原始 precision／scale／context／unit／fact／文件綁定及版本化 admission 仍待完成。
+
 ### 已接入 CLI 的長期債務部分（不是完整融資／淨債務）
 
 實際 SEC wire→報告 CLI 原先丟棄已披露長期債務的流動／非流動部分，只有這些可比較資料時也無法產生有限分析；兩個合成 caller RED 保留。Company5 以同次 records／receipt 新增 `debt_bridge` schema1。與流動性共用最新 cohort selector 與既有 `financial_operand(..., instant=True)`；利潤／現金流／scoring及七個 sealed payload不改。舊 company1–4仍讀舊內容，不新增債務段落。
