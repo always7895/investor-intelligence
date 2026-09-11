@@ -1,64 +1,53 @@
-"""Real PS orchestration with synthetic files and transport; no remote calls."""
+"""Actual source publication/scheduled callers; persistent synthetic transport only."""
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
-import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location('sealed_native_fixtures', ROOT / 'tests/installer_parse_harness.py')
+h = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(h)
 
-
-class SealedRefreshTests(unittest.TestCase):
-    def test_transaction_and_failure_journals_on_both_windows_hosts(self):
-        shells = [shutil.which(x) for x in ('powershell.exe', 'pwsh')]
-        if not all(shells):
-            self.skipTest('Both Windows PowerShell hosts required')
-        for shell in shells:
-            for case, state, actions in (
-                ('pass', 'FINALIZED', ['Commit', 'Finalize']),
-                ('preflight', 'NOT_ATTEMPTED', []),
-                ('readback', 'ROLLED_BACK', ['Commit', 'Rollback']),
-                ('boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
-                ('identity_boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
-                ('status_boolean', 'ROLLED_BACK', ['Commit', 'Rollback']),
-                ('finalize', 'ROLLED_BACK', ['Commit', 'Finalize', 'Rollback']),
-                ('rollback', 'UNKNOWN', ['Commit', 'Finalize', 'Rollback']),
-            ):
-                with self.subTest(shell=shell, case=case), tempfile.TemporaryDirectory() as temp:
-                    folder = Path(temp) / 'synthetic (1) 版本'
-                    (folder / 'data/cache').mkdir(parents=True)
-                    (folder / 'cloud/node_modules/.bin').mkdir(parents=True)
-                    bundle = {'run_id': '20260905T180113Z-4a4132a50a46', 'transaction_id': 'a' * 32}
-                    (folder / 'data/cache/v213_activation_bundle_upload.json').write_text(json.dumps(bundle), encoding='utf-8')
-                    (folder / 'cloud/node_modules/.bin/wrangler.cmd').write_text('@echo off\r\nexit /b 0\r\n')
-                    (folder / 'activate-v213-seven-field-schedule.ps1').write_text("param($ProjectRoot,[switch]$PreflightOnly,$FieldLocale)\nif(-not$PreflightOnly){throw 'mutation requested'}\nif($env:FIXTURE_CASE-eq'preflight'){exit 7}\nexit 0\n", encoding='utf-8-sig')
-                    (folder / 'sync-v213-activation-bundle.ps1').write_text("""param($Action,$ProjectRoot,$BundlePath,$ExpectedBundleSha256,$LocalConfigPath,$ResultPath,$TransactionId,$RunId)
+SYNC = r"""param($Action,$ProjectRoot,$BundlePath,$ExpectedBundleSha256,$LocalConfigPath,$ResultPath,$TransactionId,$RunId)
 Add-Content -LiteralPath (Join-Path $ProjectRoot 'actions.txt') $Action
 if($Action-eq'Commit'){
  $b=Get-Content -LiteralPath $BundlePath -Raw|ConvertFrom-Json
  if((Get-FileHash -LiteralPath $BundlePath).Hash.ToLowerInvariant()-cne$ExpectedBundleSha256){throw 'wrong sealed bytes'}
- $r=@{transaction_id=$b.transaction_id;run_id=$b.run_id;status='accepted';pointer_written_last=$true;object_count=7;objects_read_back=7;rollback_available=$true}
- if($env:FIXTURE_CASE-eq'readback'){$r.objects_read_back=6}
- if($env:FIXTURE_CASE-eq'boolean'){$r.pointer_written_last='True'}
- if($env:FIXTURE_CASE-eq'identity_boolean'){$r.transaction_id=$true;$r.run_id=$true}
- if($env:FIXTURE_CASE-eq'status_boolean'){$r.status=$true}
+ $r=@{transaction_id=$b.transaction_id;run_id=$b.run_id;status='accepted';pointer_written_last=$true;object_count=14;objects_read_back=14;rollback_available=$true;idempotent_replay=$false}
+ switch($env:FIXTURE_CASE){
+  'readback' {$r.objects_read_back=13}
+  'boolean' {$r.pointer_written_last='True'}
+  'identity_boolean' {$r.transaction_id=$true;$r.run_id=$true}
+  'status_boolean' {$r.status=$true}
+  'upload_count' {$r.object_count=7;$r.objects_read_back=7}
+  'unsealed_count' {$r.object_count=13;$r.objects_read_back=13}
+  'extra_count' {$r.object_count=15;$r.objects_read_back=15}
+  'string_count' {$r.object_count='14';$r.objects_read_back='14'}
+  'boolean_count' {$r.object_count=$true;$r.objects_read_back=$true}
+  'zero_replay' {$r.object_count=0;$r.idempotent_replay=$true}
+  'positive_replay' {$r.idempotent_replay=$true}
+  'string_replay' {$r.idempotent_replay='false'}
+  'missing_replay' {$r.Remove('idempotent_replay')}
+ }
 }elseif($Action-eq'Finalize'){
  if($env:FIXTURE_CASE-in@('finalize','rollback')){exit 8}
  $r=@{transaction_id=$TransactionId;run_id=$RunId;status='finalized';rollback_handle_deleted=$true}
 }else{
+ if($Action-cne'Rollback'){throw 'UNEXPECTED_ACTION'}
  if($env:FIXTURE_CASE-eq'rollback'){exit 9}
  $r=@{transaction_id=$TransactionId;run_id=$RunId;status='rolled_back';exact_pointer_restored=$true}
 }
 $r|ConvertTo-Json|Set-Content -LiteralPath $ResultPath -Encoding utf8
 exit 0
-""", encoding='utf-8-sig')
-                    helper = str(ROOT / 'scripts/v213_sealed_refresh.ps1').replace("'", "''")
-                    runner = folder / 'runner.ps1'
-                    runner.write_text("""$ErrorActionPreference='Stop'
+"""
+
+RUNNER = r"""$ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-. 'HELPER'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
 $preference=Join-Path $PSScriptRoot 'preference.json'
 if(Get-V213SealedPublicationPreference -Path $preference){throw 'missing preference enabled publication'}
 foreach($flag in @($false,$true)){
@@ -71,56 +60,157 @@ try {$null=Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 
 if($env:FIXTURE_CASE-eq'rollback'){
  try{$null=Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only';throw 'unresolved journal accepted'}catch{if($_.Exception.Message-eq'unresolved journal accepted'){throw}}
 }
-""".replace('HELPER', helper), encoding='utf-8-sig')
-                    env = dict(os.environ, LOCALAPPDATA=str(folder), FIXTURE_CASE=case)
-                    result = subprocess.run([shell, '-NoProfile', '-NonInteractive', '-File', str(runner)], env=env,
-                                            capture_output=True, encoding='utf-8', errors='replace', timeout=45)
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    journals = list((folder / 'InvestorIntelligence/status/sealed-publication').glob('*.json'))
-                    self.assertTrue(journals, result.stdout + result.stderr)
-                    records = [json.loads(p.read_text(encoding='utf-8-sig')) for p in journals]
+"""
+
+DATA_JOB = r"""param($ProjectRoot,[switch]$NoModelBridge,[switch]$NoTunnel,[switch]$NoSync,[switch]$NoAutoActivation)
+if(-not($NoModelBridge-and$NoTunnel-and$NoSync-and$NoAutoActivation)){throw 'unsafe data job arguments'}
+. (Join-Path $ProjectRoot 'scripts/v213_windows_security.ps1')
+$run=[DateTimeOffset]::UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'")+'-'+[guid]::NewGuid().ToString('N').Substring(0,12)
+@{run_id=$run;transaction_id=[guid]::NewGuid().ToString('N')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $ProjectRoot 'data/cache/v213_activation_bundle_upload.json') -Encoding utf8
+exit 0
+"""
+
+
+class SealedRefreshTests(unittest.TestCase):
+    def _fixture(self, executable, case):
+        parent = h.new_case('ack')
+        folder = parent / 'synthetic (1) 版本'
+        folder.mkdir()
+        for name in ('data/cache', 'cloud/node_modules/.bin', 'scripts'):
+            (folder / name).mkdir(parents=True)
+        env = h.isolated_environment(parent, executable)
+        # The real scheduled caller always starts a PS5.1 data-only child.
+        env['PATH'] += os.pathsep + str(Path(dict(h.required_hosts())['powershell.exe']).parent)
+        # Without PATHEXT, WinPS treats even explicit .exe/.cmd paths as documents.
+        env['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
+        env['FIXTURE_CASE'] = case
+        originals, effective = {}, {}
+        for relative in ('scripts/v213_sealed_refresh.ps1', 'scripts/v213_windows_security.ps1',
+                         'scripts/v213_operation_lock.ps1', 'run-v213-scheduled-refresh.ps1'):
+            h.assert_plain_path(ROOT / relative)
+            raw = (ROOT / relative).read_bytes()
+            originals[relative] = hashlib.sha256(raw).hexdigest()
+            if relative.endswith('v213_operation_lock.ps1'):
+                needle = b'Local\\InvestorIntelligence_V213_R75_OPERATION'
+                self.assertEqual(raw.count(needle), 1)
+                # Same lock code, a fixture-only name; never acquire the live mutex.
+                raw = raw.replace(needle, ('Local\\V213_ACK_FIXTURE_' + parent.name).encode('ascii'))
+            h.write_new(folder / relative, raw)
+            effective[relative] = hashlib.sha256(raw).hexdigest()
+        bundle = json.dumps({'run_id': '20260905T180113Z-4a4132a50a46', 'transaction_id': 'a' * 32}).encode()
+        h.write_new(parent / 'original-bundle.json', bundle)
+        h.write_new(folder / 'data/cache/v213_activation_bundle_upload.json', bundle)
+        files = {
+            'cloud/node_modules/.bin/wrangler.cmd': '@echo off\r\nexit /b 0\r\n',
+            'activate-v213-seven-field-schedule.ps1': "param($ProjectRoot,[switch]$PreflightOnly,$FieldLocale)\nif(-not$PreflightOnly){throw 'mutation requested'}\nif($env:FIXTURE_CASE-eq'preflight'){exit 7}\nexit 0\n",
+            'sync-v213-activation-bundle.ps1': SYNC,
+            'runner.ps1': RUNNER,
+            'run-v213-local.ps1': DATA_JOB,
+        }
+        for name, text in files.items():
+            raw = text.encode('utf-8' if name.endswith('.cmd') else 'utf-8-sig')
+            h.write_new(folder / name, raw)
+            effective[name] = hashlib.sha256(raw).hexdigest()
+        h.write_json(parent / 'inputs.json', {'case': case, 'source_sha256': originals,
+            'effective_sha256': effective, 'operation_lock_single_literal_substitution': True,
+            'real_operation_lock_used': False, 'transport_and_preflight': 'SYNTHETIC',
+            'original_bundle_sha256': hashlib.sha256(bundle).hexdigest(), 'release_qualified': False})
+        return parent, folder, env, effective
+
+    def _run(self, executable, folder, env, bindings, phase, script, extra=()):
+        command = [executable, '-NoProfile', '-NonInteractive', '-File', str(folder / script), *extra]
+        try:
+            result = subprocess.run(command, cwd=folder, env=env, capture_output=True,
+                                    encoding='utf-8', errors='replace', timeout=45)
+        except (OSError, subprocess.TimeoutExpired):
+            h.write_json(folder.parent / (phase + '.json'), {'status': 'TRANSPORT_FAILED', 'release_qualified': False})
+            raise AssertionError('SEALED_CALLER_TRANSPORT_FAILED') from None
+        output = (result.stdout + result.stderr).encode('utf-8')
+        h.write_json(folder.parent / (phase + '.json'), {'command': command, 'exit_code': result.returncode,
+            'output_sha256': hashlib.sha256(output).hexdigest(), 'output_bytes': len(output),
+            'raw_output_retained': False, 'release_qualified': False})
+        for relative, digest in bindings.items():
+            path = folder / relative
+            h.assert_plain_path(path)
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest, 'FIXTURE_CODE_CHANGED')
+        return result
+
+    def _journals(self, env):
+        root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+        return [json.loads(p.read_text(encoding='utf-8-sig')) for p in root.glob('*.json')]
+
+    def _actions(self, folder):
+        path = folder / 'actions.txt'
+        return path.read_text(encoding='utf-8-sig').splitlines() if path.exists() else []
+
+    def test_transaction_and_failure_journals_on_both_windows_hosts(self):
+        for _, executable in h.required_hosts():
+            for case, state, actions, phase in (
+                ('pass', 'FINALIZED', ['Commit', 'Finalize'], ''),
+                ('preflight', 'NOT_ATTEMPTED', [], 'PREFLIGHT'),
+                ('readback', 'ROLLED_BACK', ['Commit', 'Rollback'], 'COMMIT_ACK'),
+                ('boolean', 'ROLLED_BACK', ['Commit', 'Rollback'], 'COMMIT_ACK'),
+                ('identity_boolean', 'ROLLED_BACK', ['Commit', 'Rollback'], 'COMMIT_ACK'),
+                ('status_boolean', 'ROLLED_BACK', ['Commit', 'Rollback'], 'COMMIT_ACK'),
+                ('finalize', 'ROLLED_BACK', ['Commit', 'Finalize', 'Rollback'], 'FINALIZE_REQUEST'),
+                ('rollback', 'UNKNOWN', ['Commit', 'Finalize', 'Rollback'], 'FINALIZE_REQUEST'),
+            ):
+                with self.subTest(host=Path(executable).name, case=case):
+                    _, folder, env, bindings = self._fixture(executable, case)
+                    result = self._run(executable, folder, env, bindings, 'direct', 'runner.ps1')
+                    self.assertEqual(result.returncode, 0, 'DIRECT_CALLER_DRIVER_FAILED')
+                    records = self._journals(env)
                     self.assertIn(state, [r['publication_state'] for r in records])
                     target = next(r for r in records if r['publication_state'] == state)
-                    expected_phase = {'pass': '', 'preflight': 'PREFLIGHT', 'readback': 'COMMIT_ACK',
-                                      'boolean': 'COMMIT_ACK', 'identity_boolean': 'COMMIT_ACK',
-                                      'status_boolean': 'COMMIT_ACK', 'finalize': 'FINALIZE_REQUEST',
-                                      'rollback': 'FINALIZE_REQUEST'}[case]
-                    self.assertEqual(target['failed_phase'], expected_phase)
+                    self.assertEqual(target['failed_phase'], phase)
                     self.assertEqual(target['rollback_failed_phase'], 'ROLLBACK_REQUEST' if case == 'rollback' else '')
                     if case == 'rollback':
                         blocked = next(r for r in records if r['publication_state'] == 'NOT_ATTEMPTED')
                         self.assertEqual(blocked['failed_phase'], 'JOURNAL_CHECK')
                         self.assertFalse(blocked['remote_sync_attempted'])
-                    path = folder / 'actions.txt'
-                    observed = path.read_text(encoding='utf-8-sig').splitlines() if path.exists() else []
-                    self.assertEqual(observed, actions)
+                    self.assertEqual(self._actions(folder), actions)
                     self.assertTrue(all(r['real_line_sent'] is False and r['worker_deployed'] is False for r in records))
+                    self.assertTrue(all(r['status'] == ('PASS' if case == 'pass' else 'FAIL') for r in records))
                     if case == 'pass':
-                        self.assertEqual(records[0]['status'], 'PASS')
-                    else:
-                        self.assertTrue(all(r['status'] == 'FAIL' for r in records))
-                    if case == 'pass':
-                        (folder / 'scripts').mkdir()
-                        for name in ('v213_operation_lock.ps1', 'v213_windows_security.ps1', 'v213_sealed_refresh.ps1'):
-                            shutil.copyfile(ROOT / 'scripts' / name, folder / 'scripts' / name)
-                        (folder / 'run-v213-local.ps1').write_text("""param($ProjectRoot,[switch]$NoModelBridge,[switch]$NoTunnel,[switch]$NoSync,[switch]$NoAutoActivation)
-if(-not($NoModelBridge-and$NoTunnel-and$NoSync-and$NoAutoActivation)){throw 'unsafe data job arguments'}
-$run=[DateTimeOffset]::UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'")+'-'+[guid]::NewGuid().ToString('N').Substring(0,12)
-@{run_id=$run;transaction_id=[guid]::NewGuid().ToString('N')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $ProjectRoot 'data/cache/v213_activation_bundle_upload.json') -Encoding utf8
-exit 0
-""", encoding='utf-8-sig')
                         for enabled in (False, True):
-                            argv = [shell, '-NoProfile', '-NonInteractive', '-File', str(ROOT / 'run-v213-scheduled-refresh.ps1'), '-RuntimeRoot', str(folder), '-Slot', 'manual']
+                            args = ['-RuntimeRoot', str(folder), '-Slot', 'manual']
                             if enabled:
-                                argv.append('-PublishSealedBundle')
-                            process = subprocess.run(argv, env=env, capture_output=True, encoding='utf-8', errors='replace', timeout=45)
-                            self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
-                            receipt = json.loads((folder / 'InvestorIntelligence/status/v213-r75-scheduled-refresh-manual-latest.json').read_text(encoding='utf-8-sig'))
+                                args.append('-PublishSealedBundle')
+                            result = self._run(executable, folder, env, bindings, 'scheduled-' + str(enabled),
+                                               'run-v213-scheduled-refresh.ps1', args)
+                            self.assertEqual(result.returncode, 0, 'SCHEDULED_POSITIVE_CONTROL_FAILED')
+                            receipt = json.loads((Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/v213-r75-scheduled-refresh-manual-latest.json').read_text('utf-8-sig'))
                             self.assertEqual(receipt['status'], 'PASS')
                             self.assertEqual(receipt['remote_sync_attempted'], enabled)
                             self.assertEqual(receipt['publication_state'], 'FINALIZED' if enabled else 'NOT_ATTEMPTED')
                             self.assertFalse(receipt['model_bridge_started'])
-                        self.assertEqual(path.read_text(encoding='utf-8-sig').splitlines(), ['Commit', 'Finalize', 'Commit', 'Finalize'])
+                        self.assertEqual(self._actions(folder), ['Commit', 'Finalize', 'Commit', 'Finalize'])
+
+    def test_scheduled_caller_refuses_incomplete_or_replayed_ack(self):
+        for _, executable in h.required_hosts():
+            for case in ('upload_count', 'unsealed_count', 'extra_count', 'string_count', 'boolean_count',
+                         'zero_replay', 'positive_replay', 'string_replay', 'missing_replay'):
+                with self.subTest(host=Path(executable).name, case=case):
+                    parent, folder, env, bindings = self._fixture(executable, case)
+                    result = self._run(executable, folder, env, bindings, 'scheduled-negative',
+                        'run-v213-scheduled-refresh.ps1', ['-RuntimeRoot', str(folder), '-Slot', 'manual', '-PublishSealedBundle'])
+                    receipt = json.loads((Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/v213-r75-scheduled-refresh-manual-latest.json').read_text('utf-8-sig'))
+                    records = self._journals(env)
+                    actions = self._actions(folder)
+                    h.write_json(parent / 'observation.json', {'caller_status': receipt['status'],
+                        'publication_state': receipt['publication_state'], 'actions': actions,
+                        'failed_phases': [r['failed_phase'] for r in records], 'release_qualified': False})
+                    self.assertNotEqual(result.returncode, 0, 'INCOMPLETE_OR_REPLAYED_ACK_FALSE_SCHEDULED_SUCCESS')
+                    self.assertEqual(receipt['status'], 'FAIL')
+                    self.assertEqual(receipt['publication_state'], 'ROLLED_BACK')
+                    self.assertTrue(receipt['remote_sync_attempted'])
+                    self.assertFalse(receipt['model_bridge_started'])
+                    self.assertEqual(actions, ['Commit', 'Rollback'], 'UNADMITTED_ACK_MUST_NOT_FINALIZE')
+                    self.assertEqual(len(records), 1)
+                    self.assertEqual(records[0]['status'], 'FAIL')
+                    self.assertEqual(records[0]['failed_phase'], 'COMMIT_ACK')
+                    self.assertFalse(records[0]['real_line_sent'])
+                    self.assertFalse(records[0]['worker_deployed'])
 
 
 if __name__ == '__main__':

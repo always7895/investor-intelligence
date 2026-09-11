@@ -23,10 +23,14 @@ function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
        $Ack.transaction_id-cne$Record.transaction_id-or$Ack.run_id-cne$Record.run_id){throw 'V213_REFRESH_ACK_IDENTITY_MISMATCH'}
     switch($Action){
         'Commit' {
+            # New v213-stored-snapshot-v1 commit: 13 logical objects plus the seal,
+            # not the seven upload payloads. Replay is not a new publication.
+            $replay=$Ack.PSObject.Properties['idempotent_replay']
             if($Ack.status-cne'accepted'-or$Ack.pointer_written_last-isnot[bool]-or$Ack.pointer_written_last-ne$true-or
-               -not($Ack.object_count-is[int]-or$Ack.object_count-is[long])-or$Ack.object_count-le0-or
+               -not($Ack.object_count-is[int]-or$Ack.object_count-is[long])-or$Ack.object_count-ne14-or
                -not($Ack.objects_read_back-is[int]-or$Ack.objects_read_back-is[long])-or
-               $Ack.objects_read_back-ne$Ack.object_count-or$Ack.rollback_available-isnot[bool]-or$Ack.rollback_available-ne$true){throw 'V213_REFRESH_READBACK_UNPROVEN'}
+               $Ack.objects_read_back-ne$Ack.object_count-or$Ack.rollback_available-isnot[bool]-or$Ack.rollback_available-ne$true-or
+               $null-eq$replay-or$replay.Value-isnot[bool]-or$replay.Value-ne$false){throw 'V213_REFRESH_READBACK_UNPROVEN'}
         }
         'Finalize' {if($Ack.status-cne'finalized'-or$Ack.rollback_handle_deleted-isnot[bool]-or$Ack.rollback_handle_deleted-ne$true){throw 'V213_REFRESH_FINALIZE_UNPROVEN'}}
         'Rollback' {if($Ack.status-cne'not_committed'-and($Ack.status-cne'rolled_back'-or$Ack.exact_pointer_restored-isnot[bool]-or$Ack.exact_pointer_restored-ne$true)){throw 'V213_REFRESH_ROLLBACK_UNPROVEN'}}
