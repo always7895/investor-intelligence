@@ -165,7 +165,9 @@ class FinancialCashflowBridgeTests(unittest.TestCase):
                     '2026-06-30T00:00:00Z', '2026-06-30T00:00:00+00:00suffix', '2026-06-30'):
             with patch.object(builder.base, 'parse_source_payload', return_value=SimpleNamespace(records=[{**normalized, 'end': bad}])):
                 with self.assertRaisesRegex(builder.base.PipelineError, 'SEC_ADAPTER_METRIC_DATE_INVALID'):
-                    builder.base.validate_sec_adapter({}, 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json')
+                    # Valid wire precondition; the injected adapter timestamp must be the refusal cause.
+                    builder.base.validate_sec_adapter(report_fixture.V212Top20ReportTests().wire_document(self.facts()),
+                                                      'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json')
 
     def test_actual_cli_replaces_previous_cashflow_with_missing_and_keeps_whole_pages(self):
         helper = report_fixture.V212Top20ReportTests(); original = builder.build
@@ -216,7 +218,7 @@ class FinancialCashflowBridgeTests(unittest.TestCase):
         helper = report_fixture.V212Top20ReportTests(); sink = {}
         report = helper.actual_report([helper.fact(), helper.fact(tag='NetIncomeLoss', value=20)], financial_evidence_sink=sink)
         for company in sink.values():
-            company.pop('cashflow_bridge'); company.pop('source_acquisition'); company.pop('liquidity_bridge')
+            company.pop('cashflow_bridge'); company.pop('source_acquisition'); company.pop('liquidity_bridge'); company.pop('debt_bridge')
             company.update(schema_version=1, limitations=list(products.LIMITATIONS))
         raw = builder.json_bytes(report)
         basis = dict(schema_version=1, status='CANDIDATE_NOT_PUBLICATION_QUALIFIED', publication_eligible=False,

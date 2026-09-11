@@ -127,6 +127,8 @@ class RankedReportCandidateTests(unittest.TestCase):
             products.verify_financial_products(paths['products'].read_bytes(),current_report,paths['basis'].read_bytes())
             old={row['ticker']:row['products'] for row in json.loads(before['products'])['records']}
             new=json.loads(paths['products'].read_bytes())
+            self.assertTrue(any(len(item['pages'])>1 for row in new['records'] for item in row['products'].values()),
+                            'MULTIPAGE_REBINDING_CONTROL_REQUIRED')
             self.assertNotEqual(new['candidate_snapshot_id'],json.loads(before['products'])['candidate_snapshot_id'])
             for row in new['records']:
                 for kind,item in row['products'].items():
@@ -137,7 +139,7 @@ class RankedReportCandidateTests(unittest.TestCase):
                     self.assertEqual(item['report_id'],previous['report_id'])  # Stable subject/kind ID; snapshot/hash binding changes.
                     self.assertNotEqual(item['candidate_snapshot_id'],previous['candidate_snapshot_id'])
                     self.assertNotEqual(item['source_report_sha256'],previous['source_report_sha256'])
-                    self.assertEqual(''.join(page['text'] for page in item['pages']),item['content_utf8'])
+                    self.assertEqual('\n\n'.join(page['text'] for page in item['pages']),item['content_utf8'])
             self.assertEqual(json.loads(paths['returns'].read_bytes())['records'],json.loads(before['returns'])['records'])
             self.assertEqual(json.loads(paths['basis'].read_bytes())['records'],json.loads(before['basis'])['records'])
 

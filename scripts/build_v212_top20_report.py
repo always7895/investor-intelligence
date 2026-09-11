@@ -36,7 +36,7 @@ if str(SCRIPT_DIR) not in sys.path:
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
 from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError, validate_return_observation
-from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, FINANCIAL_V4_LIMITATIONS
+from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
 from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
                                        row_time, validate_company_receipt, validate_report_acquisition)
@@ -256,12 +256,13 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 records = base.sec_companyfacts(candidate, policy, http, headers, receipt_sink=receipt)
                 if receipt:
                     validate_company_receipt(receipt, cik=official.get('cik'), records=records)
-                # Company4 adds instant liquidity; the same-call receipt and
-                # unqualified source state retain their original meaning/clocks.
+                # Company5 retains disclosed debt parts, not total liabilities;
+                # source receipt, profit projection and eligibility stay unchanged.
                 financial = profitability_evidence(records, cik=official.get("cik"), as_of=cutoff)
-                financial.update(schema_version=4, limitations=list(FINANCIAL_V4_LIMITATIONS),
+                financial.update(schema_version=5, limitations=list(FINANCIAL_V5_LIMITATIONS),
                                  cashflow_bridge=cashflow_evidence(records, cik=official.get("cik"), as_of=cutoff),
                                  liquidity_bridge=liquidity_evidence(records, cik=official.get("cik"), as_of=cutoff),
+                                 debt_bridge=debt_evidence(records, cik=official.get("cik"), as_of=cutoff),
                                  source_acquisition=dict(receipt) if receipt else None,
                                  source_retrieved_at=receipt.get('retrieved_at'))
                 metrics = {key: entry["value"] for key, entry in financial["metrics"].items()}

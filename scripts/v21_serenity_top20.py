@@ -329,6 +329,28 @@ def _public_request_headers(source: str, headers: Mapping[str, str]) -> dict[str
     return dict(headers)
 
 
+def _companyfacts_has_no_skipped_observations(value: Any) -> bool:
+    """Reject shapes the compatibility adapter would silently skip, not certify facts."""
+    if not isinstance(value, dict) or not isinstance(value.get('facts'), dict):
+        return False
+    for taxonomy in value['facts'].values():
+        if not isinstance(taxonomy, dict):
+            return False
+        for fact in taxonomy.values():
+            if not isinstance(fact, dict) or not isinstance(fact.get('units'), dict):
+                return False
+            for observations in fact['units'].values():
+                if not isinstance(observations, list):
+                    return False
+                for observation in observations:
+                    if not isinstance(observation, dict) or any(
+                        not isinstance(observation.get(key), str) or not observation[key].strip()
+                        for key in ('filed', 'end', 'accn', 'form')
+                    ):
+                        return False
+    return True
+
+
 def _public_payload(value, raw: bytes, url: str, contact: str) -> None:
     if contact and (contact.casefold() in raw.decode('utf-8-sig').casefold()
                     or contact.casefold() in json.dumps(value, ensure_ascii=False).casefold()):
@@ -347,7 +369,7 @@ def _public_payload(value, raw: bytes, url: str, contact: str) -> None:
         valid = (isinstance(value, dict) and set(value) == {'cik', 'entityName', 'facts'}
                  and type(cik) in (str, int) and bool(re.fullmatch(r'[0-9]{1,10}', str(cik)))
                  and str(cik).zfill(10) == url.rsplit('CIK', 1)[1][:-5]
-                 and isinstance(value['entityName'], str) and isinstance(value['facts'], dict))
+                 and isinstance(value['entityName'], str) and _companyfacts_has_no_skipped_observations(value))
     if not valid:
         raise PipelineError('PUBLIC_JSON_SOURCE_SHAPE_INVALID')
 
@@ -701,6 +723,10 @@ def validate_candidates(
 
 
 def validate_sec_adapter(raw: Any, url: str) -> list[dict[str, Any]]:
+    # The generic replay adapter stays compatible; this financial caller cannot
+    # turn an omitted malformed latest observation into an older valid cohort.
+    if not _companyfacts_has_no_skipped_observations(raw):
+        raise PipelineError('PUBLIC_JSON_SOURCE_SHAPE_INVALID')
     payload = (
         json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         + "\n"

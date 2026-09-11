@@ -212,7 +212,7 @@ class FinancialLiquidityBridgeTests(unittest.TestCase):
                 self.assertIn('來源與限制', value['content_utf8'])
         products.verify_financial_products(raw, report, basis)
         company = json.loads(basis)['records']['T00']
-        self.assertEqual(company['schema_version'], 4); self.assertFalse(company['source_refresh_verified'])
+        self.assertEqual(company['schema_version'], 5); self.assertFalse(company['source_refresh_verified'])
         self.assertIsNone(company['source_acquisition'])
         self.assertEqual(json.loads(report)['records'][0]['source_acquisition']['profit_summary']['status'], 'UNKNOWN')
 
@@ -223,7 +223,7 @@ class FinancialLiquidityBridgeTests(unittest.TestCase):
         for version in (1, 2, 3):
             legacy = json.loads(basis)
             for company in legacy['records'].values():
-                company.pop('liquidity_bridge'); company['schema_version'] = version
+                company.pop('liquidity_bridge'); company.pop('debt_bridge'); company['schema_version'] = version
                 company['limitations'] = list(products.LIMITATIONS if version == 1 else runner.FINANCIAL_V2_LIMITATIONS)
                 if version < 3: company.pop('source_acquisition')
                 if version < 2: company.pop('cashflow_bridge')

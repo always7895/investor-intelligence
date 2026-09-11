@@ -436,11 +436,10 @@ LIQUIDITY_LIMITATIONS = ['PRIMARY_ONLY_NOT_INDEPENDENT_CORROBORATION',
 FINANCIAL_V4_LIMITATIONS = FINANCIAL_V2_LIMITATIONS + ['LIQUIDITY_IS_PARTIAL_NOT_COMPLETE_FINANCING_REVIEW']
 
 
-def liquidity_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
-    """Latest supplied SEC instants; no older/unit/total-assets substitution."""
-    cutoff = _financial_cutoff(cik, as_of)
+def _instant_observations(records, tags, *, cik: str, cutoff: str):
+    """Shared latest-cohort selection; retain tag identity and failed evidence."""
     observations = {}
-    for key, tag in LIQUIDITY_TAGS.items():
+    for key, tag in tags.items():
         rows = [r for r in records if r.get('record_type') == 'company_fact'
                 and r.get('taxonomy') == 'us-gaap' and r.get('tag') == tag]
         reason, projected = None, []
@@ -462,6 +461,12 @@ def liquidity_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
             if reason is None and len(projected) != 1:
                 reason = 'AMBIGUOUS_OPERAND'
         observations[key] = {'status': reason or 'AVAILABLE', 'operand': None if reason else projected[0]}
+    return observations
+
+
+def liquidity_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
+    """Latest supplied SEC instants; no older/unit/total-assets substitution."""
+    observations = _instant_observations(records, LIQUIDITY_TAGS, cik=cik, cutoff=_financial_cutoff(cik, as_of))
     return {'schema_version': 1, 'status': 'CANDIDATE_NOT_PUBLICATION_QUALIFIED',
             'cik': cik, 'as_of_cutoff': as_of, 'provider_scope': 'public_only',
             'publication_eligible': False, 'source_refresh_verified': False, 'source_retrieved_at': None,
@@ -529,6 +534,103 @@ def validate_liquidity_evidence(raw, *, cik: str, as_of: str) -> None:
         checked, error = financial_operand(operand, [], cik=cik, cutoff_day=cutoff, instant=True)
         require(error is None and equal(operand, checked) and operand['unit'] is not None and operand['value'] >= 0)
     require(equal(raw['metrics'], liquidity_calculations(observations)))
+
+
+DEBT_TAGS = {'current_debt': 'LongTermDebtCurrent', 'noncurrent_debt': 'LongTermDebtNoncurrent',
+             'reported_long_term_debt': 'LongTermDebt'}
+DEBT_LIMITATIONS = ['PRIMARY_ONLY_NOT_INDEPENDENT_CORROBORATION',
+                    'CONTEXT_RESTATEMENT_AND_SECURITY_IDENTITY_REVIEW_INCOMPLETE',
+                    'CARRYING_AMOUNTS_NOT_PRINCIPAL_OR_FUTURE_CASH_PAYMENTS',
+                    'LONG_TERM_DEBT_PARTS_NOT_TOTAL_LIABILITIES_OR_ALL_BORROWINGS',
+                    'OTHER_BORROWINGS_LEASES_AND_COMMITMENTS_NOT_RECONCILED',
+                    'CURRENT_CLASSIFICATION_NOT_EXACT_MATURITY_SCHEDULE',
+                    'NO_NET_DEBT_COVENANT_REFINANCING_OR_SOLVENCY_QUALIFICATION']
+FINANCIAL_V5_LIMITATIONS = FINANCIAL_V4_LIMITATIONS + ['DEBT_COMPONENTS_NOT_COMPLETE_FINANCING_REVIEW']
+
+
+def debt_evidence(records, *, cik: str, as_of: str) -> dict[str, Any]:
+    """Disclosed long-term debt parts; no total-liabilities or alias substitution."""
+    observations = _instant_observations(records, DEBT_TAGS, cik=cik, cutoff=_financial_cutoff(cik, as_of))
+    return {'schema_version': 1, 'status': 'CANDIDATE_NOT_PUBLICATION_QUALIFIED',
+            'cik': cik, 'as_of_cutoff': as_of, 'provider_scope': 'public_only',
+            'publication_eligible': False, 'source_refresh_verified': False, 'source_retrieved_at': None,
+            'source_lineage': 'issuer_filing_via_sec_companyfacts', 'observations': observations,
+            **debt_calculations(observations), 'limitations': list(DEBT_LIMITATIONS)}
+
+
+def debt_calculations(observations) -> dict[str, Any]:
+    """Two-part arithmetic plus optional disclosed-total reconciliation, not debt coverage."""
+    basis = ('cik', 'taxonomy', 'start', 'end', 'filed', 'form', 'fiscal_year', 'accession_number', 'record_url', 'unit')
+    a, b, reported = (observations[key]['operand'] if observations[key]['status'] == 'AVAILABLE' else None
+                      for key in DEBT_TAGS)
+    reason, check, total, currency = None, 'COMPONENTS_UNAVAILABLE', None, None
+    if not a or not b:
+        reason = 'WITHHELD_REQUIRED_OPERAND'
+    elif any(a[field] != b[field] for field in basis):
+        reason, check = 'WITHHELD_NOT_COMPARABLE', 'NOT_COMPARABLE'
+    else:
+        total = Decimal(str(a['value'])) + Decimal(str(b['value']))
+        currency = a['unit']
+        if not total.is_finite() or total > 9007199254740991:
+            reason, check = 'WITHHELD_UNSAFE_RESULT', 'UNSAFE_COMPONENT_SUM'
+        elif observations['reported_long_term_debt']['status'] == 'MISSING_OPERAND':
+            check = 'NOT_REPORTED'
+        elif not reported:
+            reason, check = 'WITHHELD_REPORTED_TOTAL_UNVERIFIED', 'UNVERIFIED'
+        elif any(a[field] != reported[field] for field in basis):
+            reason, check = 'WITHHELD_NOT_COMPARABLE', 'NOT_COMPARABLE'
+        elif total != Decimal(str(reported['value'])):
+            reason, check = 'WITHHELD_REPORTED_TOTAL_CONFLICT', 'CONFLICT'
+        else:
+            check = 'MATCHED'
+    result = {}
+    for key, formula in [('long_term_components_sum', 'current_debt + noncurrent_debt'),
+                         ('current_portion_fraction', 'current_debt / (current_debt + noncurrent_debt)')]:
+        failure, value = reason, None
+        unit = currency if key == 'long_term_components_sum' else 'ratio'
+        if failure is None:
+            if key == 'current_portion_fraction' and total <= 0:
+                failure = 'WITHHELD_NONPOSITIVE_DENOMINATOR'
+            else:
+                calculated = total if key == 'long_term_components_sum' else Decimal(str(a['value'])) / total
+                value = float(calculated)
+                if not math.isfinite(value) or value == 0 and calculated != 0:
+                    failure, value = 'WITHHELD_UNSAFE_RESULT', None
+        result[key] = {'status': failure or 'AVAILABLE', 'value': value, 'value_unit': unit,
+                       'formula': formula, 'operand_refs': ['current_debt', 'noncurrent_debt']}
+    return {'metrics': result, 'reported_total_check': {'status': check, 'operand_refs': list(DEBT_TAGS)}}
+
+
+def validate_debt_evidence(raw, *, cik: str, as_of: str) -> None:
+    """Closed local replay; neither source truth nor full financing admission."""
+    def require(ok):
+        if not ok:
+            raise engine.PipelineError('DEBT_EVIDENCE_INVALID')
+    def equal(a, b):
+        return json.dumps(a, sort_keys=True, allow_nan=False) == json.dumps(b, sort_keys=True, allow_nan=False)
+    cutoff = _financial_cutoff(cik, as_of)
+    keys = set('schema_version status cik as_of_cutoff provider_scope publication_eligible source_refresh_verified source_retrieved_at source_lineage observations metrics reported_total_check limitations'.split())
+    require(isinstance(raw, dict) and set(raw) == keys)
+    require(type(raw['schema_version']) is int and raw['schema_version'] == 1
+            and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED' and raw['cik'] == cik
+            and raw['as_of_cutoff'] == as_of and raw['provider_scope'] == 'public_only'
+            and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
+            and raw['source_retrieved_at'] is None and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
+            and raw['limitations'] == DEBT_LIMITATIONS)
+    observations = raw['observations']
+    require(isinstance(observations, dict) and set(observations) == set(DEBT_TAGS))
+    for key, item in observations.items():
+        require(isinstance(item, dict) and set(item) == {'status', 'operand'})
+        require(isinstance(item['status'], str) and item['status'] in
+                {'AVAILABLE', 'MISSING_OPERAND', 'INVALID_OPERAND', 'CONFLICTING_OPERAND', 'AMBIGUOUS_OPERAND'})
+        operand = item['operand']
+        if item['status'] != 'AVAILABLE':
+            require(operand is None)
+            continue
+        require(isinstance(operand, dict) and operand.get('tag') == DEBT_TAGS[key])
+        checked, error = financial_operand(operand, [], cik=cik, cutoff_day=cutoff, instant=True)
+        require(error is None and equal(operand, checked) and operand['unit'] is not None and operand['value'] >= 0)
+    require(equal({'metrics': raw['metrics'], 'reported_total_check': raw['reported_total_check']}, debt_calculations(observations)))
 
 
 def validate_v213_policy() -> tuple[dict[str, Any], dict[str, Any]]:

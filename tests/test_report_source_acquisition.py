@@ -117,7 +117,9 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             value=actual_cli(Path(tmp),progress=True)
             report=value['report'];company=value['basis']['records']['T00'];receipt=company['source_acquisition']
-            self.assertEqual(company['schema_version'],4)
+            self.assertEqual(company['schema_version'],5)
+            self.assertIsNone(company['debt_bridge']['source_retrieved_at'])
+            self.assertFalse(company['debt_bridge']['source_refresh_verified'])
             self.assertIsNone(company['liquidity_bridge']['source_retrieved_at'])
             self.assertFalse(company['liquidity_bridge']['source_refresh_verified'])
             self.assertEqual(company['source_retrieved_at'],value['source_time'])
