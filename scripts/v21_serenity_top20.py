@@ -26,6 +26,7 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, localcontext
 from http.cookiejar import DefaultCookiePolicy
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -246,9 +247,31 @@ def _strict_public_json(body: bytes) -> Any:
         return value
     def constant(_):
         raise ValueError()
+    def integer(token):
+        if len(token) > 1024:
+            raise ValueError()
+        return int(token)  # Exact; field-specific safe-value bounds remain downstream.
+    def number(token):
+        if len(token) > 1024:
+            raise ValueError()
+        parsed = float(token)
+        if not math.isfinite(parsed):
+            raise ValueError()
+        # Check the original decimal numeric value before losing its spelling.
+        # Decimal construction/comparison is exact, not binary-float expansion;
+        # 0.1/0.1000/1e-1 agree, while 1e-400 must not silently become zero.
+        # Invalid extreme exponents may signal: confine flags/traps locally.
+        with localcontext() as context:
+            context.traps[InvalidOperation] = True
+            try:
+                if Decimal(token) != Decimal(str(parsed)):
+                    raise PipelineError('PUBLIC_JSON_NUMBER_PRECISION_LOSS')
+            except InvalidOperation:
+                raise ValueError() from None
+        return parsed
     try:
-        value = json.loads(body.decode('utf-8-sig'), object_pairs_hook=pairs, parse_constant=constant)
-        # Also reject exponent overflow (1e999), which parse_constant does not see.
+        value = json.loads(body.decode('utf-8-sig'), object_pairs_hook=pairs, parse_constant=constant,
+                           parse_int=integer, parse_float=number)
         json.dumps(value, allow_nan=False)
         if not isinstance(value, (dict, list)):
             raise ValueError()
@@ -458,8 +481,8 @@ def get_json(
     except Exception as error:
         known = {'PUBLIC_JSON_HTTP_INVALID', 'PUBLIC_JSON_REDIRECT_REJECTED',
                  'PUBLIC_JSON_CONTENT_TYPE_INVALID', 'PUBLIC_JSON_BODY_INVALID', 'PUBLIC_JSON_TOO_LARGE',
-                 'PUBLIC_JSON_EMPTY', 'PUBLIC_JSON_PAYLOAD_INVALID', 'PUBLIC_JSON_SENSITIVE_RESPONSE',
-                 'PUBLIC_JSON_SOURCE_SHAPE_INVALID', 'PUBLIC_JSON_CACHE_WRITE_FAILED'}
+                 'PUBLIC_JSON_EMPTY', 'PUBLIC_JSON_PAYLOAD_INVALID', 'PUBLIC_JSON_NUMBER_PRECISION_LOSS',
+                 'PUBLIC_JSON_SENSITIVE_RESPONSE', 'PUBLIC_JSON_SOURCE_SHAPE_INVALID', 'PUBLIC_JSON_CACHE_WRITE_FAILED'}
         candidate = error.args[0] if isinstance(error, PipelineError) and error.args else None
         is_http = isinstance(candidate, str) and bool(re.fullmatch(r'PUBLIC_JSON_HTTP_[1-5][0-9]{2}', candidate))
         code = candidate if isinstance(candidate, str) and (candidate in known or is_http) else 'PUBLIC_JSON_REQUEST_FAILED'

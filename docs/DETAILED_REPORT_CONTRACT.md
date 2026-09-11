@@ -117,6 +117,10 @@
 - 僅 HTTP200、JSON content type、UTF-8、無重複鍵／非有限數值、符合來源外層形狀及 CIK 才可保留；解壓後 body 上限20MB，connect/read socket timeout為5／20秒，**不是硬性總耗時保證**。錯誤 body、聯絡內容回顯及原始 exception 不寫入快取／診斷。
 - `<legacy-cache>.source-v1.json` 保存精確解壓後 HTTP body 的 UTF-8 bytes對應文字／SHA、URL、原取得時間與最新嘗試狀態；舊 raw cache 不刪除、不拿 mtime 當來源證明。開始請求先寫 `PENDING`，成功後才 `AVAILABLE`；失敗寫 `FAILED`，保留前次成功僅供歷史核對，不將其回傳成本次結果。失敗狀態持久化也可能失敗，不得掩蓋主要錯誤或宣稱安裝／發布交易已驗收。
 - 使用快取不更新原取得時間。過期須重新取得，URL／body hash／時間／schema 不一致則拒絕，不靠修改 mtime 修復。此單檔可變本機 envelope 不是 immutable HTTP archive、完整 freshness／真實性認證、跨程序鎖或 sealed pointer-last transaction；後一次明確呼叫仍可發起新讀取，沒有新增背景重試器。
+- **原始 JSON 數字值不得在解析時悄悄改變：** HTTP及cache body共用 `_strict_public_json`，在 float literal 尚未丟失前，精確比較其十進位數值與將保留的 float 最短十進位表示。`1e-400`／`-1e-400` 不可變成零，過長精度的數值不可先捨入再通過金融運算。有限但值改變為 `PUBLIC_JSON_NUMBER_PRECISION_LOSS`；HTTP嘗試記FAILED、receipt sink清空，前次success只留歷史，整戶受影響來源及其三產物不可用。已有hash正確但含失真literal的cache以 `PUBLIC_JSON_CACHE_INVALID` 拒絕，原檔不改、不自動改時鐘或重新請求救回。
+- 每個整數／小數／指數literal最多1024字元，在轉換前限制；整數精確保留，欄位安全值域仍由下游驗證。超長literal、非有限／無法表示的極端格式拒絕，不回顯原數字。這不是要求每個十進位數都可被binary float精確表示：`0.1`／`0.1000`／`1e-1`有相同十進位數值，正常零、帶符號零及可表示極小值仍保留；原body／SHA／取得時間不變。尾零與指數寫法不推定issuer披露精度、scale或iXBRL context，純Python Decimal flags/traps不外洩。
+
+實際合成報告／progress及WDI engine／federation CLI已重現原解析器把極小值轉成可用零、把WDI family算作HEALTHY；新guard在來源admission前拒絕。這不改通用replay adapter；已正規化dict／舊sidecar缺少原始literal，不能由此回推或重新取得來源資格。亦不補做來源真實性／最新附註／權利／完整fact身分驗收，不解除債務原始精度的CONFLICT或啟用發布。2026-09-11對既有AAPL accession原檔索引的公開GET返回403；本輪SEC來源家族停止後續請求，未換端點／憑證／代理繞過。原始iXBRL／精度context admission仍OPEN，詳見本機稽核 `sec-filing-precision-a/`。
 
 ### 取得時間的下游傳遞與封存拒絕
 
