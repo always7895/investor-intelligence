@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import unittest
@@ -35,6 +36,14 @@ RUNNER = r'''$ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
 $script:journal=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/status/sealed-publication/failed.json'
 $script:secondReads=0
+$script:sourceJournalReader=(Get-Command Read-V213RefreshJournal).ScriptBlock
+function Read-V213RefreshJournal([string]$Path) {
+ $snapshot=& $script:sourceJournalReader $Path
+ if($env:FIXTURE_CASE-ceq'changed'-and$Path.EndsWith('.original.json')){
+  [IO.File]::WriteAllBytes($script:journal,[IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'replacement.json')))
+ }
+ return $snapshot
+}
 # Controlled path-read seam: no source edits, unrelated commands delegate unchanged.
 function Get-Content {
  param([string]$LiteralPath,[switch]$Raw,[string]$Encoding)
@@ -56,7 +65,7 @@ $errors=@()
 try {$null=Resolve-V213SealedRefreshJournal -ProjectRoot $PSScriptRoot -JournalPath $script:journal -LocalConfigPath 'synthetic-only' -ConfirmRollbackReconciliation:($env:FIXTURE_CASE-cne'unconfirmed')}
 catch {
  $message=$_.Exception.Message
- $allowed=@('V213_RECONCILE_EXPLICIT_CONFIRMATION_REQUIRED','V213_RECONCILE_STATE_INVALID','V213_REFRESH_JOURNAL_INVALID','V213_RECONCILE_JOURNAL_CHANGED','V213_REFRESH_ACK_IDENTITY_MISMATCH','V213_REFRESH_ROLLBACK_UNPROVEN','V213_RECONCILE_TRANSPORT_FAILED')
+ $allowed=@('V213_RECONCILE_EXPLICIT_CONFIRMATION_REQUIRED','V213_RECONCILE_STATE_INVALID','V213_REFRESH_JOURNAL_INVALID','V213_RECONCILE_JOURNAL_CHANGED','V213_REFRESH_ACK_IDENTITY_MISMATCH','V213_REFRESH_ROLLBACK_UNPROVEN','V213_RECONCILE_TRANSPORT_FAILED','V213_RECONCILE_ARCHIVE_CREATE_FAILED','V213_RECONCILE_ARCHIVE_MISMATCH')
  $errors+= $(if($message-cin$allowed){$message}else{'UNEXPECTED_EXCEPTION'})
 }
 if($env:FIXTURE_CASE-cin@('not_committed','rolled_back')){
@@ -68,12 +77,20 @@ if($env:FIXTURE_CASE-cin@('not_committed','rolled_back')){
 
 
 class JournalReconciliationTests(unittest.TestCase):
-    def _fixture(self, executable, case, raw=None):
+    def _fixture(self, executable, case, raw=None, *, minimum_archive_length=None):
         parent = h.new_case('r')
         project = parent / 'p'
         (project / 'scripts').mkdir(parents=True)
         env = h.isolated_environment(parent, executable)
         env.update(PATHEXT='.COM;.EXE;.BAT;.CMD', FIXTURE_CASE=case)
+        suffix = Path('InvestorIntelligence/status/sealed-publication/reconciliation-history') / ('0' * 64 + '.original.json')
+        if minimum_archive_length is not None:
+            current_length = len(str(Path(env['LOCALAPPDATA']) / suffix))
+            target = max(minimum_archive_length, current_length + 2)
+            padded = Path(env['LOCALAPPDATA']) / ('長' * (target - current_length - 1))
+            padded.mkdir()
+            env['LOCALAPPDATA'] = str(padded)
+            self.assertEqual(len(str(padded / suffix)), target)
         journal = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication/failed.json'
         journal.parent.mkdir(parents=True)
         original = raw if raw is not None else json.dumps(original_record()).encode()
@@ -199,6 +216,46 @@ class JournalReconciliationTests(unittest.TestCase):
                 self.assertEqual(value['transaction_id'], original_record()['transaction_id'])
                 self.assertEqual(Path(value['reconciliation']['original_archive']).read_bytes(), original)
                 self.assertEqual(value['reconciliation']['original_sha256'], hashlib.sha256(original).hexdigest())
+
+    def test_actual_recovery_archives_at_and_beyond_260_characters_without_shortening(self):
+        for host, executable in h.required_hosts():
+            for length, existing in ((260, None), (300, None), (260, 'matching'), (260, 'mismatch')):
+                with self.subTest(host=host, minimum_length=length, existing=existing):
+                    fixture = self._fixture(executable, 'long_archive', minimum_archive_length=length)
+                    parent, _, _, journal, original, _ = fixture
+                    archive = journal.parent / 'reconciliation-history' / (hashlib.sha256(original).hexdigest() + '.original.json')
+                    self.assertGreaterEqual(len(str(archive)), length)
+                    initial = original if existing == 'matching' else original.replace(b'RuntimeException', b'OTHER_FAILURE')
+                    # Python's ordinary-path IO also has MAX_PATH limits on
+                    # this host. Map only this generated, checked fixture path;
+                    # never relax the shared harness's root/namespace policy.
+                    native_archive = Path('\\\\?\\' + str(archive))
+                    if existing:
+                        archive.parent.mkdir()
+                        h.assert_plain_path(archive.parent)
+                        with native_archive.open('xb') as handle:
+                            handle.write(initial)
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        self.assertEqual(native_archive.read_bytes(), initial)
+                    observed, actions = self._run(executable, fixture)
+                    h.write_json(parent / 'long-archive-observation.json', dict(path_characters=len(str(archive)),
+                        existing=existing, errors=observed['errors'], actions=actions, release_qualified=False))
+                    if existing == 'mismatch':
+                        self.assertEqual(actions, [], 'MISMATCHED_ORIGINAL_ARCHIVE_MUST_NOT_AUTHORIZE_ROLLBACK')
+                        self.assertEqual(observed['errors'], ['V213_RECONCILE_ARCHIVE_MISMATCH'])
+                        self.assertEqual(native_archive.read_bytes(), initial)
+                        self.assertEqual(journal.read_bytes(), original)
+                    else:
+                        self.assertEqual(actions, [{'action': 'Rollback', 'original_identity': True}], 'LONG_ARCHIVE_PATH_PREVENTED_ACTUAL_RECOVERY')
+                        self.assertEqual(observed['errors'], [])
+                        value = json.loads(journal.read_text('utf-8-sig'))
+                        self.assertEqual(value['publication_state'], 'NOT_COMMITTED')
+                        self.assertEqual(value['status'], 'FAIL')
+                        self.assertEqual(value['recorded_utc'], original_record()['recorded_utc'])
+                        self.assertEqual(Path(value['reconciliation']['original_archive']), archive)
+                        self.assertEqual(native_archive.read_bytes(), original)
+                        self.assertEqual(value['reconciliation']['original_sha256'], hashlib.sha256(original).hexdigest())
 
     def test_changed_journal_refuses_before_mutating_transport_not_only_after(self):
         for host, executable in h.required_hosts():

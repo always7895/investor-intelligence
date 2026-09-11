@@ -210,6 +210,34 @@ function Invoke-V213SealedRefresh {
     return [pscustomobject]$record
 }
 
+function Save-V213RefreshOriginalArchive([string]$Path,[byte[]]$Original,[string]$Digest) {
+    # Internal local-drive literal only. Do not change system long-path policy,
+    # shorten the content-addressed name, or reinterpret an operator device path.
+    $literal=$Path.Replace('/','\')
+    if($literal-cnotmatch'^[A-Za-z]:\\'-or$Digest-cnotmatch'^[0-9a-f]{64}$'-or
+       $null-eq$Original-or$Original.Length-lt1-or$Original.Length-gt262144){throw 'V213_RECONCILE_ARCHIVE_PATH_INVALID'}
+    foreach($part in $literal.Substring(3).Split('\')){
+        if([string]::IsNullOrEmpty($part)-or$part-in@('.','..')-or$part.TrimEnd([char[]]' .')-cne$part-or
+           $part.IndexOfAny([IO.Path]::GetInvalidFileNameChars())-ge0){throw 'V213_RECONCILE_ARCHIVE_PATH_INVALID'}
+    }
+    $native='\\?\'+$literal
+    $stream=$null
+    try {
+        try {$stream=[IO.File]::Open($native,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)}
+        catch {
+            $failure=$_.Exception.GetBaseException()
+            # Only existing-file errors admit read-only verification. Never
+            # overwrite an unknown archive or treat another IO error as absence.
+            if($failure-isnot[IO.IOException]-or($failure.HResult-band0xffff)-notin@(80,183)){throw 'V213_RECONCILE_ARCHIVE_CREATE_FAILED'}
+        }
+        if($null-ne$stream){$stream.Write($Original,0,$Original.Length);$stream.Flush($true);$stream.Dispose();$stream=$null}
+        $archived=Read-V213RefreshJournal $native
+        if($archived.Sha256-cne$Digest){throw 'V213_RECONCILE_ARCHIVE_MISMATCH'}
+    } finally {if($null-ne$stream){$stream.Dispose()}}
+    # Content/readback only, not metadata replacement, durable identity/parent
+    # locking, ACL/SACL preservation, hardlink or full crash-recovery acceptance.
+}
+
 function Resolve-V213SealedRefreshJournal {
     param([string]$ProjectRoot,[string]$JournalPath,[string]$LocalConfigPath,
           [switch]$ConfirmRollbackReconciliation)
@@ -227,9 +255,10 @@ function Resolve-V213SealedRefreshJournal {
         $history=Join-Path $root 'reconciliation-history'
         New-Item -ItemType Directory -Force -Path $history|Out-Null
         $archive=Join-Path $history ($digest+'.original.json')
-        if(-not(Test-Path -LiteralPath $archive)){[IO.File]::WriteAllBytes($archive,$original)}
-        if((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_ARCHIVE_MISMATCH'}
+        Save-V213RefreshOriginalArchive -Path $archive -Original $original -Digest $digest
         $ackPath=Join-Path $history ([guid]::NewGuid().ToString('N')+'.ack.json')
+        # Same validated local history root; keep the recorded path/name intact.
+        $ackIO='\\?\'+$ackPath.Replace('/','\')
         # Reject a changed journal before the mutating transport, not only after it.
         # Rechecking a hash is not a durable identity/participant lock or ABA proof.
         if((Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_JOURNAL_CHANGED'}
@@ -237,9 +266,9 @@ function Resolve-V213SealedRefreshJournal {
         # The existing signed server operation either proves not_committed or
         # restores the exact previous pointer; never commit/replay a stale bundle.
         $global:LASTEXITCODE=0
-        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackPath | Out-Null
+        & (Join-Path $ProjectRoot 'sync-v213-activation-bundle.ps1') -Action Rollback -ProjectRoot $ProjectRoot -LocalConfigPath $LocalConfigPath -TransactionId $record.transaction_id -RunId $record.run_id -ResultPath $ackIO | Out-Null
         if($LASTEXITCODE-ne0){throw 'V213_RECONCILE_TRANSPORT_FAILED'}
-        $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
+        $ack=Get-Content -LiteralPath $ackIO -Raw -Encoding utf8|ConvertFrom-Json
         Test-V213RefreshAck $ack $record 'Rollback'
         if((Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_JOURNAL_CHANGED'}
         $record.publication_state=([string]$ack.status).ToUpperInvariant()
