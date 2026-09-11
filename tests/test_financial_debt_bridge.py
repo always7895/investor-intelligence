@@ -123,6 +123,11 @@ class FinancialDebtBridgeTests(unittest.TestCase):
         self.assertIn('CONFLICT', values['narrative_analysis']['content_utf8'],
                       'ACTUAL_NARRATIVE_HIDES_KNOWN_DEBT_CONFLICT_BEHIND_VALID_PROFIT')
         self.assertIn('debt.reported_total_check', values['narrative_analysis']['claim_refs'])
+        for kind, value in values.items():
+            self.assertIn('原始披露精度尚未核驗', value['content_utf8'], kind)
+            self.assertIn('不能據此認定財報錯誤', value['content_utf8'], kind)
+            self.assertIn('不以猜測容差放行', value['content_utf8'], kind)
+            self.assertEqual('\n\n'.join(page['text'] for page in value['pages']), value['content_utf8'])
         products.verify_financial_products(raw, report, basis)
         with tempfile.TemporaryDirectory() as tmp:
             _, _, debt_only = self.cli(tmp, rows)

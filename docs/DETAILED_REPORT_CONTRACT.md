@@ -170,6 +170,14 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 
 一次保留 AAPL body 的新進度CLI回讀（HTTP0、不是新來源）呈現同一 June27/July31/accession 的流動部分11007000000USD、非流動部分71340000000USD、LongTermDebt82300000000USD。所列前兩值的和與第三值不一致，故保留 `CONFLICT`／withheld，而不是填容差或選舊報告過關。這是待查rounding／口徑／附註的差異，**不是對公司財報錯誤的判定**；獨立可比較的利潤／現金流／流動性仍保留。詳見 `_workspace/audit-runtime/debt-bridge-a/retained-body-cli-result.json`，原取得時間2026-09-10T11:55:08Z未更新。
 
+**2026-09-11 原始附註追查（顯示精度相容，不是解除機器拒絕）：** 從 [Apple IR](https://investor.apple.com/investor-relations/default.aspx) 動態頁面發現 [Q3 2026 10-Q PDF](https://s2.q4cdn.com/470004039/files/doc_earnings/2026/q3/filing/10Q-Q3-2026-as-filed.pdf)。PDF第6頁／印刷第3頁以百萬美元列示2026-06-27流動Term debt 11,007、非流動71,340；PDF第13頁／印刷第10頁Note6以十億美元列示fixed-rate notes合計carrying amount82.3（不是fair value71.2）。兩個原檔頁面經本機render後目視核對，並與另次取得的文字抽取作所列欄位比較；後者未回傳原PDF hash，不偽稱兩次fetch為同一HTTP receipt。
+
+- `11,007 + 71,340 = 82,347`百萬，即表列數值和82.347十億；以最近0.1十億示例四捨五入為82.3。這支持**顯示精度相容的解釋（INFERENCE）**，不是公司存在經濟金額矛盾的證據，也不是底層精確到美元的金額或issuer／iXBRL rounding policy已核驗。不能將fair value或另列Commercial paper混入此校對。
+- 這份issuer來源與Companyfacts是同一披露血緣；沒有增加獨立佐證。PDF來源SHA256 `24edb098ae87b47047eb8bf9b10b8d3d43afdad432051f9911dc510e6a3b78a6`，curl取得區間2026-09-11T04:09:15.838025Z～04:09:16.609684Z；不是filing／publication時間。IR關聯不等於已核SEC accession／完整證券身分、最新披露、重編或再散布權利。此PDF未接入runtime，不更新原Companyfacts時鐘。
+- 候選三產物在`CONFLICT`時補充「原始披露精度尚未核驗，不能據此認定財報錯誤，也不以猜測容差放行」。只修表達範圍；schema、數值、狀態、withheld及發布拒絕不變，不硬編AAPL／差額／epsilon。正式reconciliation須另行承接原始精度、scale、context／unit、文件及fact定位並經版本化validator/admission；人工筆記不能當完成旗標。
+
+證據保留於 `_workspace/audit-runtime/debt-notes-a/precision-review.json`、HTTP／render receipts及第6／13頁影像。原financials URL的404、靜態頁面不含動態文件連結、PDF工具另次fetch，以及前兩個local-render失敗均保留；不當作來源完整或發布PASS。
+
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 
 Backlog、RPO、預付款、產能預約、設計採用、意向書與已認列營收不是同一件事；重疊項不得相加。管理層指引和自行估計分開。缺少未來數量／單價／成交機率等依據時，不輸出猜測的總訂單數字。新數字契約須經驗證及封存流程升版，不能直接取消現行禁止旗標。

@@ -326,11 +326,13 @@ def _debt_blocks(debt, kind):
               'current_portion_fraction': '流動部分占所列合計比率'}
     observations, metrics = debt['observations'], debt['metrics']
     check = debt['reported_total_check']['status']
+    precision_notice = ('CONFLICT只表示所列數值不相等；原始披露精度尚未核驗，不能據此認定財報錯誤，也不以猜測容差放行。'
+                        if check == 'CONFLICT' else '')
     limitation = '這不是公司總負債、全部借款或淨債務；CommercialPaper、短借與租賃可能另列或口徑重疊，未核附註不相加。帳面值含折溢價／發行成本影響，不是未來本金加利息支付額。'
     if kind == 'failure_notice':
         if metrics['long_term_components_sum']['status'] == 'AVAILABLE' or all(v['status'] == 'MISSING_OPERAND' for v in observations.values()):
             return []
-        return [f"長期債務比較未放行 [debt.reported_total_check]：{check}；{metrics['long_term_components_sum']['status']}。差異或缺失仍待核對，不能用其他獲利／現金流結果忽略此限制或推論債務安全；須查原文件、口徑、精度與附註，不猜測原因。原值及個別失敗狀態保留於資料核查。"]
+        return [f"長期債務比較未放行 [debt.reported_total_check]：{check}；{metrics['long_term_components_sum']['status']}。差異或缺失仍待核對，不能用其他獲利／現金流結果忽略此限制或推論債務安全；須查原文件、口徑、精度與附註，不猜測原因。原值及個別失敗狀態保留於資料核查。{precision_notice}"]
     if kind == 'data_report':
         blocks = ['長期債務時點核查：僅使用三個指定tag；流動／非流動部分相加，LongTermDebt只作同口徑校對，不再加入合計。不從Liabilities、租賃或較舊文件補缺。']
         for key, item in observations.items():
@@ -339,7 +341,7 @@ def _debt_blocks(debt, kind):
                 '| XBRL tag | 原值 | 單位 | 時點 | Filed | accession |\n|---|---:|---|---|---|---|\n'
                 f"| {fact['tag']} | {_number(fact['value'])} | {fact['unit']} | {fact['end']} | {fact['filed']} | {fact['accession_number']} |"
                 if fact else '未保留可用原值；未知／衝突／已拒絕不等於零。'))
-        blocks.append(f"披露合計校對：{check}；operands：{', '.join(debt['reported_total_check']['operand_refs'])}。未披露合計不等於已核對一致；現有合計不明／衝突不能忽略。")
+        blocks.append(f"披露合計校對：{check}；operands：{', '.join(debt['reported_total_check']['operand_refs'])}。未披露合計不等於已核對一致；現有合計不明／衝突不能忽略。{precision_notice}")
         for key, metric in metrics.items():
             blocks.append(f"{labels[key]} [debt.{key}]：{metric['status']}\n公式：{metric['formula']}；operands：{', '.join(metric['operand_refs'])}\n" + (
                 f"原計算值：{_number(metric['value'])} {metric['value_unit']}" if metric['status'] == 'AVAILABLE' else '本項不輸出數字；不可改選較舊數值或從總額反推缺少的部分。'))
@@ -353,7 +355,7 @@ def _debt_blocks(debt, kind):
         total = metrics['long_term_components_sum']
         if total['status'] == 'AVAILABLE':
             blocks.append(f"{labels['long_term_components_sum']}：{_number(total['value'])} {total['value_unit']}；披露值僅校對，不再相加。")
-        return blocks + ([f'披露合計校對：{check}；不是公司總負債或償債安全保證。'] if blocks else [])
+        return blocks + ([f'披露合計校對：{check}；不是公司總負債或償債安全保證。{precision_notice}'] if blocks else [])
     total = metrics['long_term_components_sum']
     if total['status'] != 'AVAILABLE':
         return []
