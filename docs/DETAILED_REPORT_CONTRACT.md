@@ -120,7 +120,7 @@
 - **原始 JSON 數字值不得在解析時悄悄改變：** HTTP及cache body共用 `_strict_public_json`，在 float literal 尚未丟失前，精確比較其十進位數值與將保留的 float 最短十進位表示。`1e-400`／`-1e-400` 不可變成零，過長精度的數值不可先捨入再通過金融運算。有限但值改變為 `PUBLIC_JSON_NUMBER_PRECISION_LOSS`；HTTP嘗試記FAILED、receipt sink清空，前次success只留歷史，整戶受影響來源及其三產物不可用。已有hash正確但含失真literal的cache以 `PUBLIC_JSON_CACHE_INVALID` 拒絕，原檔不改、不自動改時鐘或重新請求救回。
 - 每個整數／小數／指數literal最多1024字元，在轉換前限制；整數精確保留，欄位安全值域仍由下游驗證。超長literal、非有限／無法表示的極端格式拒絕，不回顯原數字。這不是要求每個十進位數都可被binary float精確表示：`0.1`／`0.1000`／`1e-1`有相同十進位數值，正常零、帶符號零及可表示極小值仍保留；原body／SHA／取得時間不變。尾零與指數寫法不推定issuer披露精度、scale或iXBRL context，純Python Decimal flags/traps不外洩。
 
-實際合成報告／progress及WDI engine／federation CLI已重現原解析器把極小值轉成可用零、把WDI family算作HEALTHY；新guard在來源admission前拒絕。這不改通用replay adapter；已正規化dict／舊sidecar缺少原始literal，不能由此回推或重新取得來源資格。亦不補做來源真實性／最新附註／權利／完整fact身分驗收，不解除債務原始精度的CONFLICT或啟用發布。2026-09-11對既有AAPL accession原檔索引的公開GET返回403；本輪SEC來源家族停止後續請求，未換端點／憑證／代理繞過。原始iXBRL／精度context admission仍OPEN，詳見本機稽核 `sec-filing-precision-a/`。
+實際合成報告／progress及WDI engine／federation CLI已重現原解析器把極小值轉成可用零、把WDI family算作HEALTHY；新guard在來源admission前拒絕。這不改通用replay adapter；已正規化dict／舊sidecar缺少原始literal，不能由此回推或重新取得來源資格。亦不補做來源真實性／最新附註／權利／完整fact身分驗收，不解除債務原始精度的CONFLICT或啟用發布。2026-09-11對既有AAPL accession原檔索引的公開GET返回403；本輪SEC來源家族停止後續請求，未換端點／憑證／代理繞過。原始iXBRL／精度context admission仍OPEN，詳見本機稽核 `sec-filing-precision-a/`。後續另獲當次明確授權的讀取結果見下方原始iXBRL查核；這筆403及當時的停止紀錄不改寫。
 
 ### 取得時間的下游傳遞與封存拒絕
 
@@ -189,6 +189,32 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 - 候選三產物在`CONFLICT`時補充「原始披露精度尚未核驗，不能據此認定財報錯誤，也不以猜測容差放行」。只修表達範圍；schema、數值、狀態、withheld及發布拒絕不變，不硬編AAPL／差額／epsilon。正式reconciliation須另行承接原始精度、scale、context／unit、文件及fact定位並經版本化validator/admission；人工筆記不能當完成旗標。
 
 證據保留於 `_workspace/audit-runtime/debt-notes-a/precision-review.json`、HTTP／render receipts及第6／13頁影像。原financials URL的404、靜態頁面不含動態文件連結、PDF工具另次fetch，以及前兩個local-render失敗均保留；不當作來源完整或發布PASS。
+
+#### 2026-09-11 原始iXBRL查核：精度屬性已定位，尚非runtime reconciliation
+
+後續明確授權僅在記憶體使用既有SEC聯絡設定，不輸出／修改內容；固定此accession、最多3次GET、403／429即停。實際3次均200，未redirect／retry／換身分／代理，設定檔位元組未變；3次額度已用完。這是原檔研究，不是Companyfacts刷新或Production發布。
+
+- [SEC索引](https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/index.json)：取得2026-09-11T06:17:59.676670Z；6311bytes，SHA256 `3e5dde4c0403da2358df715608c679d66223c8d716a75fe1136d9257ba812fdc`。
+- [原始10-Q XHTML／iXBRL](https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm)：取得06:17:59.949894Z（同日UTC）；1018210bytes，SHA256 `4ad5bea67cedfa7542d623900355cc8d143ef95c1acc135a597f2eedabdb9177`。
+- [對應XBRL instance](https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627_htm.xml)：取得06:18:00.420401Z（同日UTC）；962405bytes，SHA256 `28f986bb243c8fdd445560d381df4b57912ca290b03b8451ecd518e63cdb5d2b`。
+
+索引directory及列出的檔名綁定accession `0000320193-26-000020`。兩份XML可離線解析、無DTD／ENTITY、ID無重複；未解析任何外部schema／連結。DEI顯示Apple Inc.／CIK `0000320193`、10-Q、FY2026／Q3、period end2026-06-27、此文件AmendmentFlag=false；這不證明不存在後續修訂或已完成證券／share-class身分驗證。DEI日期原文含NBSP且有日期transform，不能要求它與instance ISO日期逐字相等；本次只核對所列日期，不認證通用IXT處理器。
+
+當期三值均為context `c-21`、同CIK／scheme、instant2026-06-27、沒有entity segment／scenario；unit `usd`解析為ISO4217 USD。QName namespace實為 `http://fasb.org/us-gaap/2025`，不能從FY2026猜taxonomy年份。
+
+| tag（us-gaap） | 同一HTML／instance fact ID | inline文字 | scale | decimals（兩檔相同） | instance值（USD） |
+|---|---|---:|---:|---:|---:|
+| LongTermDebtCurrent | f-198 | 11,007 | 6 | -6 | 11007000000 |
+| LongTermDebtNoncurrent | f-202 | 71,340 | 6 | -6 | 71340000000 |
+| LongTermDebt | f-680 | 82.3 | 9 | -8 | 82300000000 |
+
+前兩項格式為2020-02-12 IXT registry的`num-dot-decimal`，總額沒有format屬性。本次驗的是這些簡單數字去分組逗號後乘列明scale，精確等於instance及保留Companyfacts的同accession／end／form／FY觀察；不是完整transformation engine。另保留前期context `c-22`／2025-09-27的f-199／f-203／f-681（三值12350000000／78328000000／90700000000），沒有選舊值救回當期。
+
+**原始來源確有不同decimals／scale聲明，已不是只憑PDF外觀猜精度。** 所列點值仍差47000000USD；不同精度支持先前顯示相容的解釋，但不把點值變成精確相等、不證明issuer實際未四捨五入金額，也不代表rounding interval／端點／聚合政策已審核。原HTML、SEC提供的instance、Companyfacts仍屬同一披露血緣，不是三個獨立證人。完整taxonomy定義／calculation linkbase、其他context與最新修訂覆蓋、下游權利仍待驗。
+
+原Companyfacts取得時間2026-09-10T11:55:08Z及body不改；新原檔時間不能替換整戶／報告時鐘。離線既有debt producer／validator仍為`CONFLICT`／`WITHHELD_REPORTED_TOTAL_CONFLICT`。本輪**不改runtime、schema、sealed payload、來源精度admission或發布旗標**；局部人工核對不能使舊sidecar或LINE卡片取得新資格。下一步是在現有producer／validator上定義並審核版本化、來源綁定的精度規則與拒絕測試，而不是再重試本次存取授權。
+
+原始body、逐GET receipt、六個fact／context／unit／Companyfacts比對與失敗查核紀錄保留於 `_workspace/audit-runtime/sec-filing-declared-a/`，核心為 `source-bound-precision-review.json`；檔案雜湊與局部核對不是獨立認證或整體上線PASS。
 
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 
