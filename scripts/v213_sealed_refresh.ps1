@@ -18,6 +18,92 @@ function Save-V213RefreshJournal($Record,[string]$Path) {
     $Record|ConvertTo-Json -Depth 8|Set-Content -LiteralPath ($Path+'.tmp') -Encoding utf8
     Move-Item -LiteralPath ($Path+'.tmp') -Destination $Path -Force
 }
+function Read-V213RefreshJournal([string]$Path) {
+    # Bind bytes, digest and parsed fields to one bounded read. This is not a
+    # durable file-identity/parent lock or a metadata replacement primitive.
+    $stream=$null;$hasher=$null
+    try {
+        $attributes=[IO.File]::GetAttributes($Path)
+        if(($attributes-band([IO.FileAttributes]::Directory-bor[IO.FileAttributes]::ReparsePoint))-ne0){throw 'INVALID'}
+        $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        if($stream.Length-lt1-or$stream.Length-gt262144){throw 'INVALID'}
+        $bytes=New-Object byte[] ([int]$stream.Length)
+        $offset=0
+        while($offset-lt$bytes.Length){
+            $read=$stream.Read($bytes,$offset,$bytes.Length-$offset)
+            if($read-le0){throw 'INVALID'}
+            $offset+=$read
+        }
+        if($stream.ReadByte()-ne-1){throw 'INVALID'}
+        $stream.Dispose();$stream=$null
+        $hasher=[Security.Cryptography.SHA256]::Create()
+        $digest=[BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()
+        $text=(New-Object Text.UTF8Encoding($false,$true)).GetString($bytes)
+        if($text.Length-gt0-and$text[0]-eq[char]0xfeff){$text=$text.Substring(1)}
+        # ConvertFrom-Json can discard duplicate keys. Check decoded names at
+        # every object level before using its result (including escaped aliases).
+        $pattern='\G(?:[ \t\r\n]+|"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"|[{}\[\]:,]|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)'
+        $lexer=[regex]::new($pattern,[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+        $tokens=[Collections.Generic.List[string]]::new();$position=0
+        while($position-lt$text.Length){
+            $match=$lexer.Match($text,$position)
+            if(-not$match.Success-or$match.Index-ne$position){throw 'INVALID'}
+            $position+=$match.Length
+            if(-not[string]::IsNullOrWhiteSpace($match.Value)){$tokens.Add($match.Value)}
+            if($tokens.Count-gt32768){throw 'INVALID'}
+        }
+        # PS7 can enumerate a one-element array into a PSCustomObject. Admit
+        # the original root token, not just the post-conversion PowerShell type.
+        if($tokens.Count-lt2-or$tokens[0]-cne'{'-or$tokens[$tokens.Count-1]-cne'}'){throw 'INVALID'}
+        $objects=[Collections.Stack]::new()
+        for($i=0;$i-lt$tokens.Count;$i++){
+            $token=$tokens[$i]
+            if($token-ceq'{'){$objects.Push(@{Kind='object';Names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)})}
+            elseif($token-ceq'['){$objects.Push(@{Kind='array'})}
+            elseif($token-cin@('}',']')){
+                if($objects.Count-eq0){throw 'INVALID'}
+                [void]$objects.Pop()
+            } elseif($i+1-lt$tokens.Count-and$tokens[$i+1]-ceq':'){
+                if(-not$token.StartsWith('"')-or$objects.Count-eq0-or$objects.Peek().Kind-cne'object'){throw 'INVALID'}
+                # Prefix prevents date-like property names becoming DateTime.
+                $key=(ConvertFrom-Json -InputObject ('{"name":"X'+$token.Substring(1)+'}')).name.Substring(1)
+                if(-not$objects.Peek().Names.Add($key)){throw 'INVALID'}
+            }
+            if($objects.Count-gt16){throw 'INVALID'}
+        }
+        if($objects.Count-ne0){throw 'INVALID'}
+        $jsonOptions=@{InputObject=$text}
+        if((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')){$jsonOptions.DateKind='String'}
+        $record=ConvertFrom-Json @jsonOptions
+        if($record-isnot[pscustomobject]){throw 'INVALID'}
+        $required=@('schema_version','status','publication_state','remote_sync_attempted','production_mutation','real_line_sent','worker_deployed','run_id','transaction_id','bundle_sha256','error_type','recorded_utc')
+        $optional=@('failed_phase','rollback_failed_phase','rollback_error_type','reconciliation')
+        $names=@($record.PSObject.Properties.Name)
+        foreach($name in $required){if($names-cnotcontains$name){throw 'INVALID'}}
+        foreach($name in $names){if(($required+$optional)-cnotcontains$name){throw 'INVALID'}}
+        if(-not($record.schema_version-is[int]-or$record.schema_version-is[long])-or$record.schema_version-ne1-or
+           $record.status-isnot[string]-or$record.status-cnotin@('PASS','FAIL')-or
+           $record.publication_state-isnot[string]-or$record.publication_state-cnotin@('NOT_ATTEMPTED','UNKNOWN','COMMITTED','FINALIZED','ROLLED_BACK','NOT_COMMITTED')-or
+           $record.remote_sync_attempted-isnot[bool]-or
+           ($null-ne$record.production_mutation-and$record.production_mutation-isnot[bool])-or
+           $record.real_line_sent-isnot[bool]-or$record.real_line_sent-or$record.worker_deployed-isnot[bool]-or$record.worker_deployed){throw 'INVALID'}
+        foreach($name in @('run_id','transaction_id','bundle_sha256','error_type','recorded_utc')+@($optional|Where-Object{$_-cne'reconciliation'-and$names-ccontains$_})){
+            if($record.$name-isnot[string]-or$record.$name.Length-gt128){throw 'INVALID'}
+        }
+        if($names-ccontains'reconciliation'-and$record.reconciliation-isnot[pscustomobject]){throw 'INVALID'}
+        if(($record.status-ceq'PASS')-ne($record.publication_state-ceq'FINALIZED')){throw 'INVALID'}
+        if($record.remote_sync_attempted){
+            if($record.publication_state-ceq'NOT_ATTEMPTED'-or
+               $record.transaction_id-cnotmatch'^[0-9a-f]{32}$'-or$record.run_id-cnotmatch'^\d{8}T\d{6}Z-[0-9a-f]{12}$'-or
+               $record.bundle_sha256-cnotmatch'^[0-9a-f]{64}$'-or
+               ($record.production_mutation-is[bool]-and-not$record.production_mutation)-or
+               ($record.publication_state-cin@('COMMITTED','FINALIZED','ROLLED_BACK')-and$record.production_mutation-ne$true)){throw 'INVALID'}
+        } elseif($record.publication_state-cne'NOT_ATTEMPTED'-or$record.production_mutation-isnot[bool]-or$record.production_mutation){throw 'INVALID'}
+        # Historical recorded_utc is retained, never treated as source freshness.
+        return [pscustomobject]@{Bytes=$bytes;Sha256=$digest;Record=$record}
+    } catch {throw 'V213_REFRESH_JOURNAL_INVALID'}
+    finally {if($null-ne$stream){$stream.Dispose()};if($null-ne$hasher){$hasher.Dispose()}}
+}
 function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
     if($Ack.transaction_id-isnot[string]-or$Ack.run_id-isnot[string]-or$Ack.status-isnot[string]-or
        $Ack.transaction_id-cne$Record.transaction_id-or$Ack.run_id-cne$Record.run_id){throw 'V213_REFRESH_ACK_IDENTITY_MISMATCH'}
@@ -56,10 +142,7 @@ function Invoke-V213SealedRefresh {
         [void](Enter-V213OperationLock -Owner 'sealed-refresh' -TimeoutSeconds 0);$held=$true
         $phase='JOURNAL_CHECK'
         foreach($previous in Get-ChildItem -LiteralPath $journalRoot -File -Filter '*.json'){
-            $old=Get-Content -LiteralPath $previous.FullName -Raw -Encoding utf8|ConvertFrom-Json
-            if($old.remote_sync_attempted-isnot[bool]-or$old.publication_state-isnot[string]-or
-               $old.publication_state-notin@('NOT_ATTEMPTED','UNKNOWN','COMMITTED','FINALIZED','ROLLED_BACK','NOT_COMMITTED')-or
-               (-not$old.remote_sync_attempted-and$old.publication_state-cne'NOT_ATTEMPTED')){throw 'V213_REFRESH_JOURNAL_INVALID'}
+            $old=(Read-V213RefreshJournal $previous.FullName).Record
             if($old.remote_sync_attempted-and$old.publication_state-notin@('FINALIZED','ROLLED_BACK','NOT_COMMITTED')){throw 'V213_REFRESH_UNRESOLVED_JOURNAL'}
         }
         $phase='BUNDLE_VALIDATION'
@@ -136,9 +219,8 @@ function Resolve-V213SealedRefreshJournal {
     $held=$false
     try {
         [void](Enter-V213OperationLock -Owner 'authorized-journal-reconciliation' -TimeoutSeconds 0);$held=$true
-        $original=[IO.File]::ReadAllBytes($JournalPath)
-        $digest=(Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        $record=Get-Content -LiteralPath $JournalPath -Raw -Encoding utf8|ConvertFrom-Json
+        $snapshot=Read-V213RefreshJournal $JournalPath
+        $original=$snapshot.Bytes;$digest=$snapshot.Sha256;$record=$snapshot.Record
         if($record.status-cne'FAIL'-or$record.remote_sync_attempted-isnot[bool]-or-not$record.remote_sync_attempted-or
            $record.publication_state-notin@('UNKNOWN','COMMITTED')-or
            $record.transaction_id-cnotmatch'^[0-9a-f]{32}$'-or$record.run_id-cnotmatch'^\d{8}T\d{6}Z-[0-9a-f]{12}$'){throw 'V213_RECONCILE_STATE_INVALID'}
@@ -148,6 +230,9 @@ function Resolve-V213SealedRefreshJournal {
         if(-not(Test-Path -LiteralPath $archive)){[IO.File]::WriteAllBytes($archive,$original)}
         if((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_ARCHIVE_MISMATCH'}
         $ackPath=Join-Path $history ([guid]::NewGuid().ToString('N')+'.ack.json')
+        # Reject a changed journal before the mutating transport, not only after it.
+        # Rechecking a hash is not a durable identity/participant lock or ABA proof.
+        if((Get-FileHash -LiteralPath $JournalPath -Algorithm SHA256).Hash.ToLowerInvariant()-cne$digest){throw 'V213_RECONCILE_JOURNAL_CHANGED'}
         # Explicitly mutating recovery control, not a read-only status request.
         # The existing signed server operation either proves not_committed or
         # restores the exact previous pointer; never commit/replay a stale bundle.

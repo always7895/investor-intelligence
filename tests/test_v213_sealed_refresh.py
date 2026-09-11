@@ -8,6 +8,7 @@ import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+SEALED_SOURCE = ROOT / 'scripts/v213_sealed_refresh.ps1'
 _spec = importlib.util.spec_from_file_location('sealed_native_fixtures', ROOT / 'tests/installer_parse_harness.py')
 h = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(h)
@@ -87,8 +88,9 @@ class SealedRefreshTests(unittest.TestCase):
         originals, effective = {}, {}
         for relative in ('scripts/v213_sealed_refresh.ps1', 'scripts/v213_windows_security.ps1',
                          'scripts/v213_operation_lock.ps1', 'run-v213-scheduled-refresh.ps1'):
-            h.assert_plain_path(ROOT / relative)
-            raw = (ROOT / relative).read_bytes()
+            source = SEALED_SOURCE if relative == 'scripts/v213_sealed_refresh.ps1' else ROOT / relative
+            h.assert_plain_path(source)
+            raw = source.read_bytes()
             originals[relative] = hashlib.sha256(raw).hexdigest()
             if relative.endswith('v213_operation_lock.ps1'):
                 needle = b'Local\\InvestorIntelligence_V213_R75_OPERATION'
@@ -185,6 +187,38 @@ class SealedRefreshTests(unittest.TestCase):
                             self.assertEqual(receipt['publication_state'], 'FINALIZED' if enabled else 'NOT_ATTEMPTED')
                             self.assertFalse(receipt['model_bridge_started'])
                         self.assertEqual(self._actions(folder), ['Commit', 'Finalize', 'Commit', 'Finalize'])
+
+    def test_scheduled_caller_does_not_ignore_an_unadmitted_terminal_journal(self):
+        for host, executable in h.required_hosts():
+            with self.subTest(host=host):
+                parent, folder, env, bindings = self._fixture(executable, 'pass')
+                root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+                root.mkdir(parents=True)
+                previous = root / 'previous.json'
+                raw = json.dumps(dict(schema_version=99, status='PASS', publication_state='FINALIZED',
+                    remote_sync_attempted=True, production_mutation=True, real_line_sent=False,
+                    worker_deployed=False, run_id='20260909T000000Z-123456789abc', transaction_id='a' * 32,
+                    bundle_sha256='c' * 64, error_type='', recorded_utc='2026-09-09T00:00:00Z')).encode()
+                h.write_new(previous, raw)
+                result = self._run(executable, folder, env, bindings, 'scheduled-journal-negative',
+                    'run-v213-scheduled-refresh.ps1', ['-RuntimeRoot', str(folder), '-Slot', 'manual', '-PublishSealedBundle'])
+                records = [r for r in self._journals(env) if r['schema_version'] == 1]
+                receipt = json.loads((Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/v213-r75-scheduled-refresh-manual-latest.json').read_text('utf-8-sig'))
+                actions = self._actions(folder)
+                h.write_json(parent / 'observation.json', dict(actions=actions, caller_status=receipt['status'],
+                    previous_bytes_unchanged=previous.read_bytes() == raw,
+                    failed_phases=[r['failed_phase'] for r in records], release_qualified=False))
+                self.assertEqual(actions, [], 'UNADMITTED_TERMINAL_JOURNAL_BYPASSED_PUBLICATION_FENCE')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(previous.read_bytes(), raw)
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0]['failed_phase'], 'JOURNAL_CHECK')
+                self.assertEqual(records[0]['status'], 'FAIL')
+                self.assertFalse(records[0]['remote_sync_attempted'])
+                self.assertEqual(receipt['status'], 'FAIL')
+                self.assertEqual(receipt['publication_state'], 'NOT_ATTEMPTED')
+                self.assertFalse(receipt['remote_sync_attempted'])
+                self.assertFalse(receipt['model_bridge_started'])
 
     def test_scheduled_caller_refuses_incomplete_or_replayed_ack(self):
         for _, executable in h.required_hosts():
