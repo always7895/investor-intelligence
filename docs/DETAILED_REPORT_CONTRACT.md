@@ -238,6 +238,20 @@ Company6另存 `debt_precision`，綁定原bundle SHA、三檔SHA／原取得時
 
 本次標準查閱的第一個拼錯複數path返回404；官方搜尋定位正確 `calculation-1.1` 後，上述兩份文件GET200，receipt／原檔在 `_workspace/audit-runtime/debt-source-precision-a/`（SHA256分別 `2897f41dcc39eb0b1593175e43bdd275aff30eee77ff445638d1a9c86abee4f9`、`9594a64a938387ab66989d911d691b25ceb9dc4e472fd1c67d8892f874f148e4`）。沒有追加SEC GET／設定讀取，沒有安裝外部處理器。另保留候選實作額外inline fact、target、時鐘三個失敗及修正後同輸入證據；不是將未交付功能或局部測試稱作整體完成。
 
+#### 2026-09-11：2025標準定義核對，不等於申報檔有效DTS
+
+針對上列實際namespace，直接查閱FASB的 [2025 element schema](https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd) 及 [documentation linkbase](https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-doc-2025.xml)。以schema ID → 同一labelLink內locator → concept-label arc → en-US documentation resource核對既有三個tag；不是從搜尋摘要、標籤相似度或Companyfacts說明猜定義。三者在該schema均為monetary item、instant、credit；定義的共同範圍是經未攤銷溢折價／發債成本調整的長期債務，並排除租賃義務。current／noncurrent是分類差別，不是本金到期日程。這不能改稱全部借款／全部負債，也不能把附註中另外列出的商業本票或租賃再加進現有bridge。
+
+**實際發現：保留Companyfacts的三個description，與此次2025 documentation文字不同。** Companyfacts該層metadata是共用tag說明，未攜帶這些個別觀察的完整taxonomy namespace／版本；不能將它提升為accession-specific定義證明。此文字差別不是數值矛盾或issuer錯報，也不授權改寫原始Companyfacts／adapter digest、挑選較合意的版本或改用其他tag。既有adapter仍保留原metadata；本次沒有更動runtime、算式、精度schema或三種部分產物。
+
+尚缺的不是另一個rounding tolerance，而是**申報檔有效計算網路**：保留HTML及instance均指向 `aapl-20260627.xsd`，兩檔內部calculationLink數皆為0；原索引另列該schema、`aapl-20260627_cal.xml`、`aapl-20260627_def.xml`，但本次未取得這三檔body。索引列出不等於已讀取；原檔未內嵌關係也不證明DTS中沒有關係。不能用FASB一般定義或假設的兩條+1 arc替代issuer實際DTS。
+
+依上引Calculations1.1 §4.1–5.2，後續需解析已授權且來源綁定的DTS：完整可達來源／QName、effective relationships及prohibition／priority override、相同total／extended link role／arcrole的計算集合、所有適用contribution weights、維度對齊／defaults與重複facts。XBRL2.1與Calculations1.1 arcrole是不同網路；不得合併，亦不得把缺失關係宣稱為已通過計算。§5.2.1的整份報告一致runtime rounding模式，是處理器配置要求；不能由此宣稱已查證issuer的私有捨入程序。現有两個條件測試仍不選定模式或宣稱conformance。
+
+這次完成的是**三個2025標準概念的來源定義查閱**，不是一般XBRL／IXT處理器、issuer DTS驗證、最新申報／修訂覆蓋或證券share-class／ADR身分驗收。47000000USD點差、CONFLICT、WITHHELD_REPORTED_TOTAL_CONFLICT及所有false admission旗標不變。原Companyfacts取得時間仍2026-09-10T11:55:08Z；2025 taxonomy今日取得也不會把財報變新。FASB有定義權威，但不是Apple金額的第二個獨立證人。
+
+原檔、完整條款、三概念原文／ID／arc與保留來源比對在 `_workspace/audit-runtime/debt-definition-review-a/review.json`。element schema SHA256 `4639263ec38aaa5d531cb7d0afb33f9582c2d602fb4623d4921e47e365b6ac9f`；documentation SHA256 `27f1d4ba06b0dcb0c91225db2ac746d5adefc167518fa3948abbdfb944dab019`。這些大檔留在隔離audit，不加進company6三檔bundle或runtime／release payload。使用條件與第三方權利見[來源權利紀錄](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md)；不因HTTP200或royalty-free字樣就嵌入公開產品。沒有追加SEC GET／聯絡設定讀取；先前三次授權已完成且耗盡，不是等待重試的舊核准。
+
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 
 Backlog、RPO、預付款、產能預約、設計採用、意向書與已認列營收不是同一件事；重疊項不得相加。管理層指引和自行估計分開。缺少未來數量／單價／成交機率等依據時，不輸出猜測的總訂單數字。新數字契約須經驗證及封存流程升版，不能直接取消現行禁止旗標。
