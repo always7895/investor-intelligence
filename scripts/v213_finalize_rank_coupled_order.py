@@ -28,6 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from build_v212_top20_report import json_bytes, parse_candidate_json, rebind_ranked_candidates
 from report_source_acquisition import validate_report_acquisition
+from debt_source_precision import read_bundle
 
 ROOT = SCRIPT_DIR.parent
 TOP20 = ROOT / "data" / "cache" / "top20_public_latest.json"
@@ -133,7 +134,7 @@ def reorder_document(document: Any, key: str, order: list[str]) -> dict[str, Any
     return result
 
 
-def finalize(top20_path: Path = TOP20, *, documents=None, companions=None) -> dict[str, Any]:
+def finalize(top20_path: Path = TOP20, *, documents=None, companions=None, precision_path: Path | None = None) -> dict[str, Any]:
     try:
         documents = DOCUMENTS if documents is None else documents
         if len(documents) != 5 or tuple(key for _, key in documents) != ('records', 'records', 'ticker_sources', 'records', 'records'):
@@ -143,7 +144,12 @@ def finalize(top20_path: Path = TOP20, *, documents=None, companions=None) -> di
             '.return-evidence-candidate.json', '.financial-evidence-candidate.json', '.financial-products-candidate.json')) if companions is None else companions
         if len(companions) != 3:
             raise FinalOrderError('FINAL_ORDER_COMPANION_ROLES_INVALID')
-        paths = _paths([top20_path, *(path for path, _ in documents), *companions])
+        paths = _paths([top20_path, *(path for path, _ in documents), *companions,
+                        *([precision_path] if precision_path is not None else [])])
+        precision_raw = None
+        if precision_path is not None:
+            precision_path = paths.pop()
+            precision_raw = read_bundle(precision_path, forbidden=paths)
         inputs = {path: _read(path) for path in paths}
         order = order_from_top20(parse_candidate_json(inputs[paths[0]]))
         changed = []
@@ -157,14 +163,17 @@ def finalize(top20_path: Path = TOP20, *, documents=None, companions=None) -> di
                 changed.append(path.name)
             outputs[path] = json_bytes(normalized)
         # Every document and prior product must validate before *any* replacement.
-        candidates = rebind_ranked_candidates(outputs[paths[1]], *(inputs[path] for path in paths[6:]))
+        options = {'precision_bundle':precision_raw} if precision_raw is not None else {}
+        candidates = rebind_ranked_candidates(outputs[paths[1]], *(inputs[path] for path in paths[6:]), **options)
         outputs.update(zip(paths[6:], candidates))
-        if any(_read(path) != body for path, body in inputs.items()):
+        if (any(_read(path) != body for path, body in inputs.items())
+                or precision_raw is not None and read_bundle(precision_path, forbidden=paths) != precision_raw):
             raise FinalOrderError('FINAL_ORDER_INPUT_CHANGED')
         for path in (*paths[2:6], *paths[6:], paths[1]):  # Five-field report last; not cross-file atomic.
             if outputs[path] != inputs[path]:
                 atomic_bytes(path, outputs[path])
-        if any(_read(path) != body for path, body in outputs.items()) or _read(paths[0]) != inputs[paths[0]]:
+        if (any(_read(path) != body for path, body in outputs.items()) or _read(paths[0]) != inputs[paths[0]]
+                or precision_raw is not None and read_bundle(precision_path, forbidden=paths) != precision_raw):
             raise FinalOrderError('FINAL_ORDER_READBACK_FAILED')
         return {'status': 'PASS', 'ticker_count': 20, 'first_ticker': order[0], 'changed': changed,
                 'candidates_bound': True, 'publication_qualified': False, 'transaction_atomic': False}
@@ -194,6 +203,7 @@ def main() -> int:
         parser.add_argument('--' + name, type=Path, default=path)
     for name in ('return-evidence', 'financial-evidence', 'financial-products'):
         parser.add_argument('--' + name, type=Path, help='Existing companion; default is beside --v212')
+    parser.add_argument('--debt-precision-bundle', type=Path, help='Required original input when any companion contains company6 precision; never rewritten')
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -202,7 +212,7 @@ def main() -> int:
     five = documents[0][0]
     companions = tuple(getattr(args, name.replace('-', '_')) or five.with_name(five.stem + '.' + name + '-candidate.json')
                        for name in ('return-evidence', 'financial-evidence', 'financial-products'))
-    result = finalize(args.top20, documents=documents, companions=companions)
+    result = finalize(args.top20, documents=documents, companions=companions, precision_path=args.debt_precision_bundle)
     print(
         "V213_FINAL_RANK_COUPLED_ORDER = PASS; "
         f"tickers={result['ticker_count']}; first={result['first_ticker']}; "

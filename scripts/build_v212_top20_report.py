@@ -227,7 +227,10 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
 
 
 def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
-          financial_evidence_sink: dict | None = None) -> dict[str, Any]:
+          financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None) -> dict[str, Any]:
+    from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
+    precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
+    precision_used = False
     try:
         raw = json.loads(top20_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -269,6 +272,12 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             except Exception:
                 metrics = {}; receipt.clear()
                 financial = {"status": "SOURCE_FETCH_OR_VALIDATION_FAILED", "publication_eligible": False}
+        if precision is not None and financial.get('schema_version') == 5 and financial['cik'] == precision.cik:
+            # A separate, replay-bound dimension: never replace the point bridge,
+            # promote CONFLICT, or discard independently supported profit/CFO.
+            financial.update(schema_version=6, limitations=list(PRECISION_LIMITATIONS),
+                             debt_precision=precision.assess(financial['debt_bridge'], financial['source_acquisition'], cutoff))
+            precision_used = True
         if financial_evidence_sink is not None:
             financial_evidence_sink[ticker] = financial
         row = {
@@ -297,6 +306,8 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 retrieved_at=receipt['retrieved_at'], evidence_sha256=digest(receipt))
         row['source_acquisition'] = clocks
         rows.append(row)
+    if precision is not None and not precision_used:
+        raise Top20ReportError('DEBT_PRECISION_INPUT_NOT_BOUND')
     generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     for row in rows:
         row['retrieved_at'] = row_time(row, generated_at=generated)
@@ -320,7 +331,8 @@ def json_bytes(value: Mapping[str, Any]) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
 
 
-def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_bytes: bytes, products_bytes: bytes) -> tuple[bytes, bytes, bytes]:
+def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_bytes: bytes, products_bytes: bytes,
+                             *, precision_bundle: bytes | None = None) -> tuple[bytes, bytes, bytes]:
     """Rank-only local rebind after the existing scoring/normalization stages.
 
     Recover the original report ordering using the retained product manifest,
@@ -345,7 +357,7 @@ def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_by
     original_bytes = json_bytes(original)
     # Matching the original full-report hash is mandatory, not a best-effort
     # guess at a former serialization or a new basis derived from summaries.
-    verify_financial_products(products_bytes, original_bytes, basis_bytes)
+    verify_financial_products(products_bytes, original_bytes, basis_bytes, precision_bundle=precision_bundle)
     basis = parse_candidate_json(basis_bytes)
     returns = parse_candidate_json(returns_bytes)
     keys = {'schema_version', 'status', 'publication_eligible', 'provider_scope', 'owner_watchlist_inherited', 'generated_at', 'report_sha256', 'records'}
@@ -364,8 +376,8 @@ def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_by
     digest = hashlib.sha256(report_bytes).hexdigest()
     new_returns = json_bytes(dict(returns, report_sha256=digest))
     new_basis = json_bytes(dict(basis, report_sha256=digest))
-    new_products = json_bytes(build_financial_products(report_bytes, new_basis))
-    verify_financial_products(new_products, report_bytes, new_basis)
+    new_products = json_bytes(build_financial_products(report_bytes, new_basis, precision_bundle=precision_bundle))
+    verify_financial_products(new_products, report_bytes, new_basis, precision_bundle=precision_bundle)
     return new_returns, new_basis, new_products
 
 
@@ -404,6 +416,7 @@ def main() -> int:
     parser.add_argument("--return-evidence-output", type=Path, help="Local unqualified calculation sidecar; never a publication payload")
     parser.add_argument("--financial-evidence-output", type=Path, help="Local operand/basis candidate; not a complete or sealed research report")
     parser.add_argument("--financial-products-output", type=Path, help="Distinct local financial components only; not sealed or LINE eligible")
+    parser.add_argument('--debt-precision-bundle', type=Path, help='Optional original-file bundle; conditional precision only, never debt reconciliation or publication')
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -415,9 +428,12 @@ def main() -> int:
         destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve()]
         if len(set(destinations)) != len(destinations):
             raise Top20ReportError("Report and evidence paths must differ")
+        from debt_source_precision import read_bundle
+        precision_raw = read_bundle(args.debt_precision_bundle, forbidden=destinations) if args.debt_precision_bundle else None
         observations: dict[str, Any] = {}
         financials: dict[str, Any] = {}
-        document = build(return_evidence_sink=observations, financial_evidence_sink=financials)
+        options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
+        document = build(return_evidence_sink=observations, financial_evidence_sink=financials, **options)
         report_body = json_bytes(document)
         financial_document = {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -428,7 +444,9 @@ def main() -> int:
             "records": financials,
         }
         # Validate/render before any output mutation; no new collector or cloud key.
-        products = build_financial_products(report_body, json_bytes(financial_document))
+        products = build_financial_products(report_body, json_bytes(financial_document), precision_bundle=precision_raw)
+        if precision_raw is not None and read_bundle(args.debt_precision_bundle, forbidden=destinations) != precision_raw:
+            raise Top20ReportError('DEBT_PRECISION_INPUT_CHANGED')
         atomic_write(args.output, document)
         atomic_write(evidence_output, {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -439,7 +457,7 @@ def main() -> int:
         })
         atomic_write(financial_output, financial_document)
         atomic_write(products_output, products)
-        verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes())
+        verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes(), precision_bundle=precision_raw)
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
     except (Top20ReportError, snapshot.SnapshotError, base.PipelineError, OSError, ValueError) as exc:

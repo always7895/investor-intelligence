@@ -107,7 +107,7 @@
 
 同一 CLI 另產生 `.financial-evidence-candidate.json`，以原報告 UTF-8 SHA 綁定，保存每项利潤率及年度營收成長的全部分子／分母、公式、原始值、單位、start/end/filed、accession、CIK 及公開來源；不受舊五筆 citation 上限截斷。缺少／不相容／衝突各留狀態，不保留上次成功計算冒充本輪。數值為 ratio，顯示百分比須乘100，不把四捨五入摘要當輸入。CIK 是發行人識別，不是完整交易所／股別／ADR 身分。
 
-此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload。CLI 的 company schema5 承接 schema4（加入下節長期債務部分），保留同次 SEC receipt 的原始取得時間、URL、body SHA、CIK、adapter records SHA及 `DIRECT_HTTP`／`BOUND_CACHE`；無 receipt 則未知，`source_refresh_verified=false` 不改。純財務 helpers／舊版公司候選及內嵌 cashflow schema1 未自行取得來源，不另造時鐘。產品核對 receipt／顯示值參照及原始算式，不代表已獨立逐fact核對 HTTP 原文或最新揭露完整性。cache 不冒充本輪 HTTP；財報 context、重編、單位登錄、完整營運／融資／估值仍待補齊；SEC API 與 filing 仍只有一個揭露血緣。新檔禁止直接接雲端鍵／完整詳報入口；七 payload 名稱及交易協定不變，新封存須另通過下述時間門檻。
+此檔仍為 `publication_eligible=false`，不是三個完整產物或 sealed payload。未提供原檔bundle時，CLI 的 company schema5 承接 schema4（加入下節長期債務部分），保留同次 SEC receipt 的原始取得時間、URL、body SHA、CIK、adapter records SHA及 `DIRECT_HTTP`／`BOUND_CACHE`；無 receipt 則未知，`source_refresh_verified=false` 不改。純財務 helpers／舊版公司候選及內嵌 cashflow schema1 未自行取得來源，不另造時鐘。產品核對 receipt／顯示值參照及原始算式，不代表已獨立逐fact核對 HTTP 原文或最新揭露完整性。cache 不冒充本輪 HTTP；財報 context、重編、單位登錄、完整營運／融資／估值仍待補齊；SEC API 與 filing 仍只有一個揭露血緣。新檔禁止直接接雲端鍵／完整詳報入口；七 payload 名稱及交易協定不變，新封存須另通過下述時間門檻。
 
 ### 既有公開 JSON 取得／快取邊界
 
@@ -165,7 +165,7 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 
 - 修補實際 SEC-wire→報告 CLI 反例：預設 Decimal 精度曾把微小債務差額捨去而誤判 `MATCHED`，或把超界合計變成界內值。現金流曾在 float 捨入後才檢查上限，也把非零現金轉換比下溢成可用的零。現在比較不受 ambient Decimal precision／rounding／traps 影響；超界及非零下溢維持 `WITHHELD_UNSAFE_RESULT`，不靠提高精度常數或 epsilon 過關。
 - 真正零、正負號、可表示的極小非零值和 `0.1 + 0.2 = 0.3` 的保留十進位語意分開。已保留 operands 不變；float 輸出仍可能近似，不能宣稱底層財報精確到所有小數位。舊候選若含原先錯誤的 `MATCHED`／可用超界值／非零變零，重算 validator 拒絕，不默默升格或覆寫舊證據。
-- 這只修三個 bridge 的算式與重算邊界，不是全部 formatter／profit／legacy scoring 的數值認證。來源身分、日期、receipt、原始取得時間、schema、發布／完整性旗標及 sealed payload 不改；已支持的其他分析不能被連帶撤掉。人工附註仍不能放行 rounding reconciliation，原始 precision／scale／context／unit／fact／文件綁定及版本化 admission 仍待完成。
+- 這只修三個 bridge 的算式與重算邊界，不是全部 formatter／profit／legacy scoring 的數值認證。來源身分、日期、receipt、原始取得時間、schema、發布／完整性旗標及 sealed payload 不改；已支持的其他分析不能被連帶撤掉。人工附註仍不能放行 rounding reconciliation。本段不處理原始 precision／scale／context／unit／fact／文件綁定；下節company6新增版本化原檔屬性與條件檢查，正式財務reconciliation admission仍未完成。
 
 ### 已接入 CLI 的長期債務部分（不是完整融資／淨債務）
 
@@ -212,9 +212,31 @@ company financial schema2 保留原利潤率並加入 `cashflow_bridge` schema1�
 
 **原始來源確有不同decimals／scale聲明，已不是只憑PDF外觀猜精度。** 所列點值仍差47000000USD；不同精度支持先前顯示相容的解釋，但不把點值變成精確相等、不證明issuer實際未四捨五入金額，也不代表rounding interval／端點／聚合政策已審核。原HTML、SEC提供的instance、Companyfacts仍屬同一披露血緣，不是三個獨立證人。完整taxonomy定義／calculation linkbase、其他context與最新修訂覆蓋、下游權利仍待驗。
 
-原Companyfacts取得時間2026-09-10T11:55:08Z及body不改；新原檔時間不能替換整戶／報告時鐘。離線既有debt producer／validator仍為`CONFLICT`／`WITHHELD_REPORTED_TOTAL_CONFLICT`。本輪**不改runtime、schema、sealed payload、來源精度admission或發布旗標**；局部人工核對不能使舊sidecar或LINE卡片取得新資格。下一步是在現有producer／validator上定義並審核版本化、來源綁定的精度規則與拒絕測試，而不是再重試本次存取授權。
+原Companyfacts取得時間2026-09-10T11:55:08Z及body不改；新原檔時間不能替換整戶／報告時鐘。離線既有debt producer／validator仍為`CONFLICT`／`WITHHELD_REPORTED_TOTAL_CONFLICT`。這次原檔查核為document-only，**當時不改runtime、schema、sealed payload、來源精度admission或發布旗標**；局部人工核對不能使舊sidecar或LINE卡片取得新資格。後續既有caller整合見下一節；不是再重試已完成的存取授權。
 
 原始body、逐GET receipt、六個fact／context／unit／Companyfacts比對與失敗查核紀錄保留於 `_workspace/audit-runtime/sec-filing-declared-a/`，核心為 `source-bound-precision-review.json`；檔案雜湊與局部核對不是獨立認證或整體上線PASS。
+
+#### Company6：原檔綁定及兩種條件區間，仍不放行債務reconciliation
+
+既有 `build_v212_top20_report.py`／`v213_v212_progress_runner.py` 新增選用 `--debt-precision-bundle <file>`；沒有此參數仍產生company5，不自行發出原檔HTTP或讀取聯絡設定。這不是第二條pipeline、通用XBRL處理器或新來源啟用。`scripts/debt_source_precision.py` 是共享的有界原檔／條件運算驗證器；原三個bridge算式、scoring、五／七欄公開schema、Worker與sealed set皆不變。
+
+- Bundle schema1閉合為 `schema_version,cik,accession,documents`，只接受一個CIK／accession及 `index,inline,instance` 三角色。每檔只含 `url,retrieved_at,body_sha256,body_base64`；canonical Base64保留原始entity bytes，不重組XHTML。整個bundle上限4MiB、每個原檔2MiB；既有報告／basis／products的2MiB及5×4400 UTF16頁面限制不提高。此單一輸入不是20家公司完整覆蓋或不可變檔案系統。
+- 核對封閉envelope、原body hash、精確SEC accession URL、索引directory及安全唯一檔名；不解析URL中的其他目的地，不查網路、DTD、ENTITY或外部schema／linkbase。路徑拒絕UNC、reparse、非檔案、hardlink、stream及輸出碰撞；取得與寫入前重讀bytes，不聲稱解決全部TOCTOU／locking／跨檔atomicity。
+- 只支援未修訂10-K／10-Q、USD、無segment／scenario的所選instants；DEI的CIK／form／FY／期別／period end／AmendmentFlag須在HTML與instance相符。選定QName使用各element實際namespace scope，不从FY猜年份。兩檔fact IDs、context／unit、原始值與縮放值須匹配既有三個指定tag的Companyfacts operand及同filing basis。即使有可用ID，額外／重複／nil／不支援kind的相關fact、非預設target或其他口徑也不能被忽略以救回校對。
+- 明列支援子集：plain非負decimal，或2020-02-12 IXT `num-dot-decimal` 的plain／三位逗號分組子集；scale及有限decimals範圍−18..18，或decimals=`INF`。僅DEI日期另外支援同registry的完整英文月份＋日＋逗號＋四位年（空白可為NBSP）。其他有效IXT形式、sign／continuation、其他幣別或複合context亦保守WITHHELD；這不是宣稱它們違反XBRL。原值不能帶有超出其declared decimals的非零位，不能先round成合法值。
+- 來源receipt缺失、原檔時鐘晚於cutoff／早於申報日、值／basis不符或不支援XML會使**precision維度WITHHELD**，不清掉獨立已支持的profit／CFO，也不改原debt點值狀態。格式／hash／索引不合法的整個bundle及未能綁到任何公司之輸入則使CLI在輸出替換前拒絕。舊原檔仍明示舊時鐘；局部比較不授予freshness或最新修訂覆蓋。
+
+**標準依據與有意保留的界線：**查閱 [Calculations 1.1 REC2023＋2024-02-14 errata](https://www.xbrl.org/Specification/calculation-1.1/REC-2023-02-22+corrected-errata-2024-02-14/calculation-1.1-REC-2023-02-22+corrected-errata-2024-02-14.html) §4–5.7，以及 [Transformation Registry 4](https://www.xbrl.org/Specification/inlineXBRL-transformationRegistry/REC-2020-02-12/inlineXBRL-transformationRegistry-REC-2020-02-12.html) §4.58／4.95。前者要求明確計算關係、維度、權重及整份報告一致的模式，不能單凭tag名字或相交結果宣告通過完整規範。專案policy `debt-source-precision-conditional-v1` 僅獨立測試兩個假設，不選定發行人模式，也不使用規範的 `calc11e` 錯誤碼冒充conformance。
+
+令精確Fraction點值為v、宣告decimals為d、步長q=10^(−d)：round-to-nearest採閉區間[v−q/2,v+q/2]，允許half ties任一方向；truncation正值[v,v+q)、負值(v−q,v]、零值(−q,q)。INF為單點[v,v]。非整數倍q的點值拒絕，不先截斷。兩部分區間相加時端點各自相加且必須兩者都包含才閉合；只有雙方都包含的接觸端點才算相交。全程Fraction、端點以精確有理數字串保存，不用float、epsilon或ambient Decimal context。每個模式各自套用於全部三個所列facts，結果為 `OVERLAP`／`DISJOINT`；**不是MATCHED、CORROBORATED或公司真實精確金額的認證**。
+
+Company6另存 `debt_precision`，綁定原bundle SHA、三檔SHA／原取得時間、Companyfacts body SHA、CIK／accession／cutoff、fact／QName／context／unit／literal／scale／decimals及條件區間。`issuer_rounding_mode_verified=false`、`taxonomy_calculation_verified=false`、`financial_reconciliation_admitted=false`、`source_refresh_verified=false`、`publication_eligible=false`。`build_financial_products`／`verify_financial_products` 必須收到同一原始 `precision_bundle` bytes重新核對；沒有原檔、只貼旗標／人工review JSON、改端點或改內容頁不能通過。finalizer新增相同CLI參數，先驗原companions與bundle再做rank-only rebind；來源檔不寫入，時鐘／內部facts／失敗不改。
+
+三種本機部分產物各自呈現：卡片摘要列點差和限制；data_report列三facts、原檔鏈及開閉區間；narrative保留獨立財務推導、衝突與反證。診斷不會讓原本無可比較輸入的narrative變AVAILABLE。只有通過原檔子集核對才把舊「原始披露精度尚未核驗」改為「原始精度屬性已核對」及明列剩餘限制；公司1–5不因此重新取得精度資格。這三者仍complete=false、snapshot_run_id=null，未接入正式LINE產品。原Windows caller若缺新module，須在子程序／聯絡設定讀取前拒絕；合成安裝目錄測試不等於installed task驗收。
+
+保留AAPL原檔經實際progress CLI＋完整重放驗證：原Companyfacts時鐘仍2026-09-10T11:55:08Z，原三檔及cache bytes不變、HTTP0。條件round-to-nearest之兩部分和為[82346000000,82348000000]、披露值[82250000000,82350000000]；truncation為[82347000000,82349000000)與[82300000000,82400000000)。兩種假設都相交，**47000000USD點差及CONFLICT／WITHHELD_REPORTED_TOTAL_CONFLICT仍完整保留**。只是一家保留來源加19個合成unavailable rows，不是fresh20-company證据或新披露取得。
+
+本次標準查閱的第一個拼錯複數path返回404；官方搜尋定位正確 `calculation-1.1` 後，上述兩份文件GET200，receipt／原檔在 `_workspace/audit-runtime/debt-source-precision-a/`（SHA256分別 `2897f41dcc39eb0b1593175e43bdd275aff30eee77ff445638d1a9c86abee4f9`、`9594a64a938387ab66989d911d691b25ceb9dc4e472fd1c67d8892f874f148e4`）。沒有追加SEC GET／設定讀取，沒有安裝外部處理器。另保留候選實作額外inline fact、target、時鐘三個失敗及修正後同輸入證據；不是將未交付功能或局部測試稱作整體完成。
 
 訂單逐項保存客戶／交易對手、合約或承諾類型、数量／金額、履約期間、取消條件、認列階段、日期及直接證據。
 

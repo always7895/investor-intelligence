@@ -17,6 +17,7 @@ from v213_v21_progress_runner import (profitability_evidence, validate_cashflow_
                                        FINANCIAL_V5_LIMITATIONS)
 from report_source_acquisition import (SourceAcquisitionError, validate_report_acquisition,
                                        validate_company_receipt, digest, utc_time)
+from debt_source_precision import prepare_bundle, DebtPrecisionError, LIMITATIONS as PRECISION_LIMITATIONS
 
 KINDS = ('card_summary', 'data_report', 'narrative_analysis')
 LABELS = {'revenue_growth': '年度營收成長', 'gross_margin': '毛利率',
@@ -93,24 +94,24 @@ def _finite(value):
     return type(value) in (int, float) and -1.7976931348623157e308 <= value <= 1.7976931348623157e308
 
 
-def _validated_company(raw, generated, completed):
+def _validated_company(raw, generated, completed, precision_source=None):
     _require(isinstance(raw, dict))
     if raw.get('status') in ('NO_OFFICIAL_IDENTITY', 'SOURCE_FETCH_OR_VALIDATION_FAILED'):
         _object(raw, {'status', 'publication_eligible'})
         _require(raw['publication_eligible'] is False)
-        return None, {}, raw['status'], None, None, None
+        return None, {}, raw['status'], None, None, None, None
     version = raw.get('schema_version')
-    _require(type(version) is int and version in (1, 2, 3, 4, 5))
+    _require(type(version) is int and version in (1, 2, 3, 4, 5, 6))
     _object(raw, COMPANY_KEYS | ({'cashflow_bridge'} if version >= 2 else set())
             | ({'source_acquisition'} if version >= 3 else set()) | ({'liquidity_bridge'} if version >= 4 else set())
-            | ({'debt_bridge'} if version == 5 else set()))
+            | ({'debt_bridge'} if version >= 5 else set()) | ({'debt_precision'} if version == 6 else set()))
     _require(type(raw['schema_version']) is int and raw['schema_version'] == version
              and raw['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
              and raw['as_of_cutoff'] == generated and raw['provider_scope'] == 'public_only'
              and raw['publication_eligible'] is False and raw['source_refresh_verified'] is False
              and (version >= 3 or raw['source_retrieved_at'] is None)
              and raw['source_lineage'] == 'issuer_filing_via_sec_companyfacts'
-             and raw['limitations'] == (FINANCIAL_V5_LIMITATIONS if version == 5 else FINANCIAL_V4_LIMITATIONS if version == 4 else FINANCIAL_V2_LIMITATIONS if version >= 2 else LIMITATIONS))
+             and raw['limitations'] == (PRECISION_LIMITATIONS if version == 6 else FINANCIAL_V5_LIMITATIONS if version == 5 else FINANCIAL_V4_LIMITATIONS if version == 4 else FINANCIAL_V2_LIMITATIONS if version >= 2 else LIMITATIONS))
     if version >= 3:
         receipt = raw['source_acquisition']
         if receipt is None:
@@ -167,12 +168,19 @@ def _validated_company(raw, generated, completed):
         except Exception:
             raise FinancialProductsError('FINANCIAL_PRODUCTS_LIQUIDITY_INVALID') from None
     debt = raw.get('debt_bridge')
-    if version == 5:
+    if version >= 5:
         try:
             validate_debt_evidence(debt, cik=raw['cik'], as_of=generated)
         except Exception:
             raise FinancialProductsError('FINANCIAL_PRODUCTS_DEBT_INVALID') from None
-    return raw['cik'], metrics, None, cash, liquidity, debt
+    precision = raw.get('debt_precision')
+    if version == 6:
+        _require(precision_source is not None and precision_source.cik == raw['cik'], 'FINANCIAL_PRODUCTS_PRECISION_SOURCE_REQUIRED')
+        expected = precision_source.assess(debt, raw['source_acquisition'], generated)
+        _require(canonical(precision) == canonical(expected), 'FINANCIAL_PRODUCTS_PRECISION_MISMATCH')
+    elif precision_source is not None:
+        _require(precision_source.cik != raw['cik'], 'FINANCIAL_PRODUCTS_PRECISION_DOWNGRADE')
+    return raw['cik'], metrics, None, cash, liquidity, debt, precision
 
 
 def _number(value):
@@ -188,7 +196,7 @@ def _period(metric):
     return f"{value['start']}～{value['end']} ({value['unit']})"
 
 
-def _sources(metrics, refs, cash=None, liquidity=None, debt=None):
+def _sources(metrics, refs, cash=None, liquidity=None, debt=None, precision=None):
     sources = {}
     for key in refs:
         for role in ('numerator', 'denominator'):
@@ -202,7 +210,9 @@ def _sources(metrics, refs, cash=None, liquidity=None, debt=None):
                 fact = item['operand']
                 if fact is not None:
                     sources[(fact['record_url'], fact['accession_number'], fact['filed'])] = fact
-    return ['來源與限制：SEC Companyfacts 與其 filing 屬同一揭露血緣；不是多個獨立佐證。資料取得時間未驗證，可能來自快取。'] + [
+    notice = ('來源與限制：SEC Companyfacts 與所列原檔屬同一披露血緣，不是多個獨立佐證。原始body時鐘及快取模式另列；不代表最新披露、權利或完整新鮮度已通過。'
+              if precision is not None else '來源與限制：SEC Companyfacts 與其 filing 屬同一揭露血緣；不是多個獨立佐證。資料取得時間未驗證，可能來自快取。')
+    return [notice] + [
         f"Filed {fact['filed']}；accession {fact['accession_number']}\n{fact['record_url']}" for fact in sources.values()]
 
 
@@ -317,7 +327,7 @@ def _liquidity_blocks(liquidity, kind):
     return blocks
 
 
-def _debt_blocks(debt, kind):
+def _debt_blocks(debt, kind, precision=None):
     if debt is None:
         return []  # Explicit company1–4 compatibility, not an implicit upgrade.
     labels = {'current_debt': '長期債務流動部分', 'noncurrent_debt': '長期債務非流動部分',
@@ -326,7 +336,9 @@ def _debt_blocks(debt, kind):
               'current_portion_fraction': '流動部分占所列合計比率'}
     observations, metrics = debt['observations'], debt['metrics']
     check = debt['reported_total_check']['status']
-    precision_notice = ('CONFLICT只表示所列數值不相等；原始披露精度尚未核驗，不能據此認定財報錯誤，也不以猜測容差放行。'
+    precision_notice = (('CONFLICT只表示所列數值不相等；原始精度屬性已核對，但未驗證發行人捨入方式或完整計算關係，不能據此認定財報錯誤，也不以猜測容差放行。'
+                         if precision and precision['status'] == 'SOURCE_BOUND_CONDITIONAL_CHECK' else
+                         'CONFLICT只表示所列數值不相等；原始披露精度尚未核驗，不能據此認定財報錯誤，也不以猜測容差放行。')
                         if check == 'CONFLICT' else '')
     limitation = '這不是公司總負債、全部借款或淨債務；CommercialPaper、短借與租賃可能另列或口徑重疊，未核附註不相加。帳面值含折溢價／發行成本影響，不是未來本金加利息支付額。'
     if kind == 'failure_notice':
@@ -373,6 +385,26 @@ def _debt_blocks(debt, kind):
                    '反方：帳面分類不是完整到期階梯；授信是否可用、抵押／保證、利率、契約條款、可轉債與現金受限性尚未核對。不機械減去現金、除以單期CFO、計算融資續航或套入企業價值。',
                    '條件結論與推翻條件：原值、文件／幣別／時點或合併口徑改變，披露合計不相符，必須停止本比較並重算；補核附註、後續還款／融資與股權稀釋。未披露合計校對不等於已獲證實；不產生信用評等、目標價或營運論點加分。'])
     return blocks
+
+
+def _precision_blocks(precision, kind):
+    if precision is None:
+        return []  # Legacy bytes and absence remain unchanged.
+    if precision['status'] == 'WITHHELD':
+        return [f"原始披露精度核對未通過 [debt_precision]：{precision['reason']}。原有點值／失敗狀態僅按原範圍保留；不取得精度一致、完整財報或發布資格。"]
+    modes = precision['modes']
+    blocks = [f"原始精度屬性已核對 [debt_precision]；{precision['policy_id']}。所列點差 {precision['point_difference']} USD，並未改寫原始數值或debt校對狀態。",
+              f"條件檢查（INFERENCE）：假設所列兩部分應加總為披露值，round-to-nearest：{modes['round-to-nearest']['status']}；truncation：{modes['truncation']['status']}。兩種模式各自一致套用，沒有選定或證明發行人的實際模式。區間相交不等於點值相等、獨立佐證或完整XBRL計算驗收；不以猜測容差放行。"]
+    if kind == 'data_report':
+        blocks.append('原檔精度屬性（僅所列facts；非完整IXT／taxonomy處理器）：\n\n| QName | fact / context / unit | inline原值 | scale | decimals | instance原值 |\n|---|---|---:|---:|---:|---:|\n' + '\n'.join(
+            f"| {f['qname']} | {f['fact_id']} / {f['context_ref']} / {f['unit_ref']} | {f['inline_value_literal']} | {f['scale']} | {f['decimals']} | {f['instance_value_literal']} |" for f in precision['facts']))
+        for mode, result in modes.items():
+            def shown(interval):
+                return ('[' if interval['lower_closed'] else '(') + interval['lower'] + ', ' + interval['upper'] + (']' if interval['upper_closed'] else ')')
+            blocks.append(f"{mode}（精確有理數，USD）：兩部分區間和 {shown(result['component_sum'])}；披露值區間 {shown(result['reported_total'])}。閉端點包含、開端點不包含；不是公司真實精確金額的認證。")
+        for role, item in precision['document_receipts'].items():
+            blocks.append(f"原檔 {role}：{item['url']}\n取得 {item['retrieved_at']}；SHA256 {item['body_sha256']}。這個時鐘不更新Companyfacts或報告欄位時鐘。")
+    return blocks + ['仍待核對：taxonomy定義、有效計算關係／權重與維度、完整轉換、後續重編及權利。這些原檔與Companyfacts只有一個披露血緣；不放行償債安全、淨債務或估值推論。']
 
 
 def _cash_analysis(cash):
@@ -466,7 +498,7 @@ def _product(kind, blocks, refs, identity, reason=None):
             'content_sha256': digest, 'content_bytes': len(content.encode('utf-8')), 'pages': pages}
 
 
-def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
+def build_financial_products(report_bytes: bytes, basis_bytes: bytes, *, precision_bundle: bytes | None = None) -> dict:
     report = _json(report_bytes)
     _require(isinstance(report, dict))
     version = report.get('schema_version')
@@ -507,11 +539,17 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
     source_basis_sha = sha256(basis_bytes)
     snapshot = 'candidate:' + sha256(report_bytes + b'\x00' + basis_bytes)
     records = []
+    try:
+        precision_source = prepare_bundle(precision_bundle) if precision_bundle is not None else None
+    except DebtPrecisionError:
+        raise FinancialProductsError('FINANCIAL_PRODUCTS_PRECISION_BUNDLE_INVALID') from None
+    precision_used = False
     for row in rows:
         ticker = row['ticker']
         company = basis['records'][ticker]
         cutoff = report.get('calculation_cutoff', report['generated_at'])
-        cik, metrics, failure, cash, liquidity, debt = _validated_company(company, cutoff, report['generated_at'])
+        cik, metrics, failure, cash, liquidity, debt, precision = _validated_company(company, cutoff, report['generated_at'], precision_source)
+        precision_used = precision_used or precision is not None
         receipt = company.get('source_acquisition')
         if version == 2:
             clock = row['source_acquisition']['profit_summary']
@@ -527,6 +565,7 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
                            for key, item in liquidity[group].items() if item['status'] == 'AVAILABLE'] if liquidity else [])
         debt_refs = ([f'debt.{key}' for group in ('observations', 'metrics')
                       for key, item in debt[group].items() if item['status'] == 'AVAILABLE'] if debt else [])
+        precision_refs = ['debt_precision'] if precision is not None else []
         identity = {'candidate_snapshot_id': snapshot, 'snapshot_run_id': None,
                     'source_report_sha256': source_report_sha, 'source_basis_sha256': source_basis_sha,
                     'subject': {'ticker': ticker, 'issuer_cik': cik, 'security_identity_qualified': False}}
@@ -540,19 +579,20 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
         analysis_refs = ['operating_margin', 'net_margin'] if not analysis_reason else []
         cash_analysis = _cash_analysis(cash)
         liquidity_analysis = _liquidity_blocks(liquidity, 'narrative_analysis')
-        debt_analysis = _debt_blocks(debt, 'narrative_analysis')
-        debt_notice = _debt_blocks(debt, 'failure_notice')  # Diagnostic does not qualify analysis.
+        debt_analysis = _debt_blocks(debt, 'narrative_analysis', precision)
+        debt_notice = _debt_blocks(debt, 'failure_notice', precision)  # Neither diagnostic qualifies analysis.
         if cash_analysis or liquidity_analysis or debt_analysis:
             analysis_reason = None
         elif analysis_reason is not None and (liquidity_refs or debt_refs):
             analysis_reason = 'NO_COMPARABLE_FINANCIAL_ANALYSIS_INPUTS'
         title = '財務與融資結構解讀 / Financial interpretation' if debt is not None else '獲利結構解讀 / Earnings interpretation'
         products = {
-            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary] + _cash_summary(cash) + _liquidity_blocks(liquidity, 'card_summary') + _debt_blocks(debt, 'card_summary') + [GAPS] + _sources(metrics, refs, cash, liquidity, debt), refs + cash_refs + liquidity_refs + debt_refs, identity, reason),
-            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + _cash_data(cash) + _liquidity_blocks(liquidity, 'data_report') + _debt_blocks(debt, 'data_report') + [GAPS] + _sources(metrics, list(metrics), cash, liquidity, debt), list(metrics) + cash_refs + liquidity_refs + debt_refs, identity, reason),
-            'narrative_analysis': _product('narrative_analysis', header + [title] + analysis + cash_analysis + liquidity_analysis + debt_analysis + debt_notice + [GAPS] + _sources(metrics, analysis_refs, cash, liquidity, debt), analysis_refs + (cash_refs if cash_analysis else []) + (liquidity_refs if liquidity_analysis else []) + (debt_refs if debt_analysis else []) + (['debt.reported_total_check'] if debt_notice else []), identity, reason or analysis_reason),
+            'card_summary': _product('card_summary', header + ['財務摘要 / Financial summary', *summary] + _cash_summary(cash) + _liquidity_blocks(liquidity, 'card_summary') + _debt_blocks(debt, 'card_summary', precision) + _precision_blocks(precision, 'card_summary') + [GAPS] + _sources(metrics, refs, cash, liquidity, debt, precision), refs + cash_refs + liquidity_refs + debt_refs + precision_refs, identity, reason),
+            'data_report': _product('data_report', header + ['財務數據核查 / Financial data review'] + _data_blocks(metrics) + _cash_data(cash) + _liquidity_blocks(liquidity, 'data_report') + _debt_blocks(debt, 'data_report', precision) + _precision_blocks(precision, 'data_report') + [GAPS] + _sources(metrics, list(metrics), cash, liquidity, debt, precision), list(metrics) + cash_refs + liquidity_refs + debt_refs + precision_refs, identity, reason),
+            'narrative_analysis': _product('narrative_analysis', header + [title] + analysis + cash_analysis + liquidity_analysis + debt_analysis + debt_notice + _precision_blocks(precision, 'narrative_analysis') + [GAPS] + _sources(metrics, analysis_refs, cash, liquidity, debt, precision), analysis_refs + (cash_refs if cash_analysis else []) + (liquidity_refs if liquidity_analysis else []) + (debt_refs if debt_analysis else []) + (['debt.reported_total_check'] if debt_notice else []) + precision_refs, identity, reason or analysis_reason),
         }
         records.append({'ticker': ticker, 'products': products})
+    _require(precision_source is None or precision_used, 'FINANCIAL_PRODUCTS_PRECISION_UNUSED')
     return {'schema_version': 1, 'status': 'LOCAL_FINANCIAL_COMPONENTS_NOT_RELEASE_QUALIFIED',
             'candidate_snapshot_id': snapshot, 'snapshot_run_id': None,
             'source_report_sha256': source_report_sha, 'source_basis_sha256': source_basis_sha,
@@ -561,10 +601,10 @@ def build_financial_products(report_bytes: bytes, basis_bytes: bytes) -> dict:
             'records': records}
 
 
-def verify_financial_products(products_bytes: bytes, report_bytes: bytes, basis_bytes: bytes) -> None:
+def verify_financial_products(products_bytes: bytes, report_bytes: bytes, basis_bytes: bytes, *, precision_bundle: bytes | None = None) -> None:
     """Replay validation/rendering against exact input bytes (shared algorithm).
 
     Local integrity only. Does not grant freshness, rights or sealed admission.
     """
-    expected = build_financial_products(report_bytes, basis_bytes)
+    expected = build_financial_products(report_bytes, basis_bytes, precision_bundle=precision_bundle)
     _require(canonical(_json(products_bytes)) == canonical(expected), 'FINANCIAL_PRODUCTS_OUTPUT_MISMATCH')
