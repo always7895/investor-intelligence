@@ -1,0 +1,67 @@
+# Research execution and card-content audit / 研究接線與資訊保留
+
+Checked against source `4ba2a606c9e459884e15354aa91798ec432df0ba` on 2026-09-12, then corrected locally. This is source/caller analysis, **not fresh Production verification, current investment recommendations or a completed 20-company deep-research run**. Latest tests/findings: [STATUS](../state/STATUS.md).
+
+## Two screenshots: what actually changed
+
+The operator supplied a 2026-09-08 card and a 2026-09-12 card. They contain different companies/runs; changed membership and historical returns are not by themselves evidence of regression.
+
+| Observation | Source trace / correction |
+| --- | --- |
+| Chinese names and detailed product descriptions disappeared | Old presentation contained ticker-keyed static narratives. Current report carries `name` from the accepted public universe; evidence detail incorrectly said original names were absent. Corrected to display the actual row name. Curated, source-bound Chinese names/product descriptions still need an admitted data path; no guesses restored. |
+| MU +80%～+125%, SMCI +150%～+220% and downside ranges disappeared | `git show 6444dcd:cloud/src/v213/top20-presentation.ts` contains literal strings in `TOP20_SENSITIVITY`; no per-order operands, EPS/share bridge, dated comparable multiples or reproducible calculation. These are not validated forecasts and must not be copied back. |
+| Deep-analysis / full-text buttons disappeared | The old labels overstated the available data. Current full research products deliberately return `RESEARCH_PRODUCT_NOT_SEALED`. Corrected candidate cards retain two honest, same-snapshot actions: evidence detail and full **company seven-field text**, not fake deep analysis. |
+| Order timing and requested horizons are hard to find | Preserve the exact existing outlook string, including any disclosed percentages/windows. Explain filing date vs fulfillment date. Surface 6/12/24-month missing valuation status on cards and expand premises/limitations in evidence details. |
+
+The actual authorized Worker caller is tested with mocked LINE transport, including both card actions, same-date content/run replacement, field completeness and size limits. No real LINE message is sent by these tests.
+
+## Does the SKILL execute?
+
+| Lane | Actual mechanism | What it does **not** prove |
+| --- | --- | --- |
+| Pi interactive research | On-demand `skills/serenity-public-research/SKILL.md` instructs the agent to read both references; all three were read and installed/source hashes compared in this audit | Not a scheduled screen, production model invocation or proof all claims were independently verified |
+| Deterministic Top20 | Python collection/scoring/order reconciliation → seven-field report → pinned Worker renderer | Does not invoke Pi SKILL or a full model-led research process; a `canonical_serenity_skill` path in H6B output is metadata |
+| Legacy enriched gateway | `v213_local_llm_gateway.enrich_messages` injects a system directive and existing source-independence context | Does not load the full SKILL/reference files. New response evidence reports `LEGACY_SYSTEM_DIRECTIVE`, directive hash, `full_skill_executed=false` and unverified model adherence |
+| Profiled compact Q&A | `compact_upstream` validates a bounded prebuilt policy/context; `do_POST` bypasses legacy enrichment | Not the full SKILL. Reports `COMPACT_POLICY_ONLY`; transport marker smoke is `TRANSPORT_SMOKE`, not research |
+
+The compact policy currently requests two short sentences, at most 65 Chinese characters. It cannot serve as the missing full report; do not silently enlarge the certified route, change model/presets or loosen its latency gates to hide that gap. Adding metadata is observability, **not implementing full autonomous research**.
+
+The source/installed SKILL and references matched before edits:
+
+- SKILL SHA256 `0fea4749dfdcf6ab88fe4eff71aacef34e5088b77e14c4064a7470cdd69ebd70`
+- RESEARCH_METHOD SHA256 `32e66a880665143641f35d75e30abd99a8fdd5244775bf921eaebd2745d5cb2c`
+- CROSS_VALIDATION SHA256 `ffb3994f5b8863024c1a77342b7e3f0f81c3a756bfc20da65a6e72472b3e18d1`
+
+No actual local-model inference was run for this audit; no provider/model or skill-execution receipt is fabricated. Source-reading and synthetic caller tests are the evidence scope.
+
+## Serenity and Leopold logic
+
+Serenity remains the primary **public reconstruction**: system change → constrained layer → effective substitutes → company operating capture → financing/dilution → falsifiers. Named customers, high margins, sector labels or a rising stock price do not alone prove scarcity. The original scoring and LIMITED gates are unchanged.
+
+Leopold Aschenbrenner is **CONTEXT_ONLY**: dated compute, capital, energy and deployment scenarios generate hypotheses, never company-order evidence, a score bonus, a current holding claim or a permanent AI-universe filter. The legacy gateway lacked an explicit Leopold-only trigger/context boundary; the candidate now states this and tests it. `included_in_serenity_score=false` remains unchanged.
+
+Recent public-source check:
+
+- Retrieved [Leopold's original cluster essay](https://situational-awareness.ai/racing-to-the-trillion-dollar-cluster/): “These are just very rough numbers anyway”; infrastructure “lead times ... are much longer still.” This is the historical 2024 scenario, not a new 2026 forecast or proof of any supplier's orders.
+- [Community methodology archive](https://github.com/yan-labs/serenity-aleabitoreddit/blob/main/serenity-aleabitoreddit/references/methodology.md) is a discovery lead, not independent company corroboration or verified current Serenity advice.
+- Direct [discovered @aleabitoreddit post](https://x.com/aleabitoreddit/status/2088226398708338889) returned **HTTP403**. Content/current stance remains UNVERIFIED; no mirror count or search synthesis cures it. No authentication or paywall bypass.
+
+## Required order ledger — still not implemented in the seal
+
+Each item must carry company/security identity, contract/customer (or explicitly undisclosed), RPO/backlog/firm order/LOI/pipeline type, amount and/or quantity/unit/currency, original passage and URL, publication/financial-as-of/retrieval dates, hash, claim status and underlying disclosure lineage. Preserve cancellation terms, recognized vs remaining amounts and superseded revisions.
+
+**Timing:** retain disclosed start/end, fiscal/calendar basis and precision (day/month/quarter/year/window/unknown). “Within 12 months” is a window anchored to the disclosure's applicable date, not an invented exact delivery day. Delivery, acceptance, revenue recognition, cash collection and stock repricing are separate events. An aggregate RPO disclosure is not a list of individual customer orders; do not invent the missing rows. Overlapping backlog/RPO/prepayment entries cannot be summed.
+
+**Three horizons:** for 6 months, 1 year and 2 years, separately model on-time, delay/partial and failure/reversal:
+
+1. Evidence-bound shipment/recognition schedule and unit economics → revenue.
+2. Margin, operating expenses, taxes, capex and working capital → earnings/cash flow.
+3. Debt, funding, SBC/warrants/convertibles → diluted shareholder capture.
+4. Appropriate valuation with dated comparables or explicitly justified assumptions; EV-to-equity adjustments; do not apply positive P/E to loss-making cases.
+5. `price_return_pct = (scenario_value_per_share / dated_reference_price - 1) × 100`. Distinguish price return from dividends/total return. No unjustified probabilities or fixed bull/bear percentages.
+
+Missing inputs mean **UNAVAILABLE**, not 0%, “very large,” guaranteed growth or a fabricated date. A local financial candidate exists but lacks this complete order/valuation chain and is not sealed. See [full report contract](DETAILED_REPORT_CONTRACT.md).
+
+## Remaining release work
+
+Acquire/review admissible per-order source data, implement the ledger and scenario validator, bind distinct data/narrative products to a versioned sealed manifest, test pinned readers and real button callers, and obtain fresh source-bound Windows/archive/install acceptance. Deployment and genuine LINE delivery require explicit current-session authorization. This audit fixes visibility and truthful execution reporting; it does not claim those missing products now exist.

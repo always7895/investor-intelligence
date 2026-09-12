@@ -12,6 +12,7 @@ import {
   formatV213Top20Report,
   loadV213FreshTop20Report,
   parseV213Top20Report,
+  v213Top20DisplayValues,
   V213_NO_CURRENT_ORDERS,
   V213_NO_FUTURE_ORDER_ESTIMATE,
 } from "../src/v213/top20-report";
@@ -153,13 +154,21 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(proof.header).toContain("公司現在訂單 / Current orders");
     expect(proof.header).toContain("未來訂單預估 / Future order outlook");
-    const command = messages[0].contents.contents[0].footer.contents.find((x: any) => x.type === "button").action.text;
+    const buttons = messages[0].contents.contents[0].footer.contents.filter((x: any) => x.type === "button");
+    expect(buttons).toHaveLength(2);
+    const command = buttons[0].action.text;
+    const fullTextCommand = buttons[1].action.text;
+    expect(fullTextCommand).toContain("Top20 公司文字 T00");
+    expect(JSON.stringify(messages)).toContain("6個月／1年／2年");
     expect(command).toContain("T00");
     expect(command).not.toBe("Top20 文字");
     messages.length = 0;
     await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: command }, timestamp: Date.now() }, "synthetic-report-tenant");
     const detail = messages.map(x => x.text ?? "").join("\n");
     expect(detail).toContain("T00｜本輪 Top20");
+    expect(detail).toContain(`原文公司名稱：${data.records[0]!.name}`);
+    expect(detail).toContain("已載明的履約／認列展望");
+    expect(detail).toContain("文件日期不是交貨日");
     expect(detail).not.toContain("T01");
     expect(detail).toContain("https://www.sec.gov/example/current");
     expect(detail).toContain("6 個月情境");
@@ -168,6 +177,15 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(detail).toContain("尚非完整深度估值報告");
     expect(detail).toContain("兩年累積報酬：缺少");
     expect(detail).not.toBe(formatV213Top20Report(parseV213Top20Report(data)!));
+    assertLineMessages(messages);
+    messages.length = 0;
+    await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: fullTextCommand }, timestamp: Date.now() }, "synthetic-report-tenant");
+    const fullText = messages.map(x => x.text ?? "").join("\n");
+    expect(fullText).toContain(data.records[0]!.name);
+    for (const value of v213Top20DisplayValues(parseV213Top20Report(data)!.records[0]!)) expect(fullText).toContain(value);
+    expect(fullText).not.toContain("T01");
+    expect(fullText).toContain("七欄摘要");
+    expect(fullText).not.toBe(detail);
     assertLineMessages(messages);
   });
 
@@ -191,16 +209,19 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       await processAuthorizedLineEvent(env, {} as ExecutionContext, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text }, timestamp: Date.now() }, "synthetic-binding-tenant");
     };
     await send("Top20");
-    const command = messages[0].contents.contents[0].footer.contents.find((item: any) => item.type === "button").action.text;
-    expect(command).toContain(`s:run-a ${createHash("sha256").update(raw, "utf8").digest("hex")}`);
+    const commands = messages[0].contents.contents[0].footer.contents.filter((item: any) => item.type === "button").map((item: any) => item.action.text);
+    expect(commands).toHaveLength(2);
+    for (const command of commands) expect(command).toContain(`s:run-a ${createHash("sha256").update(raw, "utf8").digest("hex")}`);
     if (mutation === "run") {
       save("run-b", raw); kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
     } else if (mutation === "representation") save("run-a", JSON.stringify(data, null, 2));
     else { data.records[0]!.industry = "合成異動內容"; save("run-a", JSON.stringify(data)); }
-    await send(command);
-    expect(messages).toHaveLength(1);
-    expect(messages[0].text).toContain("內容不符");
-    expect(messages[0].text).not.toContain("合成異動內容");
+    for (const command of commands) {
+      await send(command);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].text).toContain("內容不符");
+      expect(messages[0].text).not.toContain("合成異動內容");
+    }
   });
 
   it("freezes admitted report objects and refuses malformed/oversized report text", async () => {
@@ -213,20 +234,22 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(Object.isFrozen(loaded)).toBe(true);
     expect(Object.isFrozen(loaded.records[0]!.current_order_source_urls)).toBe(true);
     expect(() => { loaded.records[0]!.industry = "異動"; }).toThrow();
-    expect(await v213Top20LineAnswer(env, parseQuery(`Top20 證據詳情 T00 ${data.generated_at}`))).toContain("有效");
+    for (const action of ["證據詳情", "公司文字"]) {
+      expect(await v213Top20LineAnswer(env, parseQuery(`Top20 ${action} T00 ${data.generated_at}`))).toContain("有效");
+    }
     for (const raw of ["{broken", " ".repeat(2097153) + JSON.stringify(data)]) {
       kv.values.set("v213:top20-report:latest", raw);
       expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("未通過驗證");
     }
   });
 
-  it("refuses obsolete card generations, stale row retrievals and unknown companies", async () => {
+  it.each(["證據詳情", "公司文字"])("refuses obsolete card generations, stale row retrievals and unknown companies (%s)", async action => {
     const data = freshReport();
     const kv = new MemoryKv();
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     const save = () => { kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at); };
     save();
-    const command = await evidenceCommand(env);
+    const command = (await evidenceCommand(env)).replace("證據詳情", action);
     expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
     data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("內容不符");
@@ -267,7 +290,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       kv.values.set("v213:top20-report:latest", JSON.stringify(data));
       expect(parseV213Top20Report(data)).toBeNull();
       const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
-      for (const command of ["Top20", `Top20 證據詳情 T00 ${data.generated_at} legacy ${"0".repeat(64)}`]) {
+      for (const command of ["Top20", ...["證據詳情", "公司文字"].map(action => `Top20 ${action} T00 ${data.generated_at} legacy ${"0".repeat(64)}`)]) {
         const response = await v213Top20LineAnswer(env, parseQuery(command));
         expect(response).toContain("未通過驗證");
         expect(response).not.toContain(url);

@@ -9,6 +9,7 @@ score.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -39,7 +40,7 @@ MAX_CONCURRENT_GENERATIONS = max(1, min(8, int(os.getenv("II_GATEWAY_MAX_CONCURR
 GENERATION_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_GENERATIONS)
 RETRY_AFTER_SECONDS = max(1, min(60, int(os.getenv("II_GATEWAY_RETRY_AFTER_SECONDS", "2"))))
 METHODOLOGY_RE = re.compile(
-    r"(?:serenity|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
+    r"(?:serenity|leopold|aschenbrenner|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
     r"supply\s*chain|source|來源|来源|evidence|證據|证据|thesis|投資邏輯)",
     re.I,
 )
@@ -61,6 +62,20 @@ official formula, or official score. Keep these layers separate:
    operationalization and never as a Serenity score.
 10. Explicitly labelled model inference with uncertainty.
 11. The user's long-term preference as a separate overlay.
+12. Leopold Aschenbrenner is CONTEXT_ONLY: dated macro/compute/power scenarios
+    generate hypotheses, never company-order evidence, a Serenity score bonus,
+    a current holding claim or a permanent AI-sector discovery filter.
+
+ORDER TIMING AND VALUATION:
+- Preserve each disclosed order's amount/quantity, currency, counterparty,
+  contract type, source passage/date, fulfillment window and cancellation terms.
+  Report exact dates only when disclosed; a filing/retrieval date is not delivery.
+- RPO, backlog, prepayments, pipeline and recognized revenue are distinct;
+  overlapping commitments must not be summed. "Large" is not numerical evidence.
+- Separate 6/12/24-month on-time, delay/partial and failure scenarios from past
+  returns. Numeric price upside requires a reproducible revenue/profit/cash-flow,
+  financing/diluted-share and valuation bridge with dated inputs. Missing inputs
+  mean UNAVAILABLE, never a hard-coded percentage or a guarantee.
 
 SOURCE-INDEPENDENCE RULES:
 - v213_source_independence_latest.json is the claim-level control plane. If it is
@@ -352,6 +367,8 @@ def enrich_messages(messages: list[dict[str, Any]]):
             enriched.insert(0, {"role": "system", "content": directive})
         context = dict(context) if isinstance(context, dict) else {}
         context["serenity_public_logic_fidelity"] = "2.1.3-source-independence-v3"
+        context["methodology_directive_sha256"] = hashlib.sha256(PUBLIC_LOGIC_DIRECTIVE.encode("utf-8")).hexdigest()
+        context["aschenbrenner_role"] = "CONTEXT_ONLY"
         context["legacy_quantitative_overlay_label"] = "System operationalization score"
         context["private_process_reproduction_claimed"] = False
         context["official_serenity_formula_claimed"] = False
@@ -359,6 +376,27 @@ def enrich_messages(messages: list[dict[str, Any]]):
         context["source_independence_high_confidence_eligible"] = eligible
         context["model_confidence_cap"] = "HIGH_ELIGIBLE" if eligible else "LIMITED"
     return enriched, context
+
+
+def methodology_execution_evidence(mode: object, context: Mapping[str, Any]) -> dict[str, Any]:
+    """Report actual routing, not skill-file presence as research execution.
+
+    Compact traffic deliberately bypasses legacy enrichment. Neither path loads
+    the complete Pi skill/references or proves model adherence/research quality.
+    Do not echo a prompt, source payload, user text or model reasoning here.
+    """
+    injected = mode is None and "methodology_directive_sha256" in context
+    lane = ("TRANSPORT_SMOKE" if mode == "transport_smoke_v1" else
+            "COMPACT_POLICY_ONLY" if mode is not None else
+            "LEGACY_SYSTEM_DIRECTIVE" if injected else "NO_RESEARCH_ENRICHMENT")
+    return {
+        "lane": lane,
+        "full_skill_executed": False,
+        "reference_files_loaded": [],
+        "model_adherence_verified": False,
+        "directive_sha256": context["methodology_directive_sha256"] if injected else None,
+        "aschenbrenner_role": "CONTEXT_ONLY" if injected else "NOT_EVALUATED",
+    }
 
 
 def _available_model_catalog() -> list[dict[str, Any]]:
@@ -556,6 +594,7 @@ class V213GatewayHandler(base.GatewayHandler):
                     "request_model_substitution_allowed": False,
                     **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {}),
                 }
+                result["ii_methodology_execution"] = methodology_execution_evidence(body.get("ii_context_mode"), context)
                 result["ii_source_ensemble"] = {
                     "successful_source_families": context.get("successful_source_families", []) if isinstance(context, dict) else [],
                     "source_diversity_status": context.get("source_diversity_status", "UNKNOWN") if isinstance(context, dict) else "UNKNOWN",

@@ -22,6 +22,7 @@ CANONICAL = "canonical-model-測試"
 
 class FakeLlamaHandler(BaseHTTPRequestHandler):
     observed_models: list[str] = []
+    observed_messages: list[list[dict]] = []
     delay_seconds = 0.8
 
     def log_message(self, *_args):
@@ -44,6 +45,7 @@ class FakeLlamaHandler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         body = json.loads(self.rfile.read(int(self.headers.get("content-length", "0"))))
         self.observed_models.append(str(body.get("model")))
+        self.observed_messages.append(body.get("messages", []))
         time.sleep(self.delay_seconds)
         self._send({"model": CANONICAL, "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "OK"}}]})
 
@@ -81,7 +83,10 @@ class R75GatewayProcessTests(unittest.TestCase):
                 shutil.copy2(ROOT / "scripts" / name, scripts / name)
             config = scripts.parent / "config"
             config.mkdir()
-            shutil.copy2(ROOT / "config/v213-compact-qa-v1.json", config / "v213-compact-qa-v1.json")
+            policy = json.loads((ROOT / "config/v213-compact-qa-v1.json").read_text(encoding="utf-8"))
+            # Isolated fake catalog only; no change to an installed model/profile.
+            policy["model"] = SELECTED
+            (config / "v213-compact-qa-v1.json").write_text(json.dumps(policy), encoding="utf-8")
             port = free_port()
             env = os.environ.copy()
             env.update({
@@ -145,6 +150,25 @@ class R75GatewayProcessTests(unittest.TestCase):
                 self.assertFalse(first[0][1]["ii_exact_model_pin"]["request_model_substitution_allowed"])
                 self.assertEqual(first[0][1]["model"], CANONICAL)
                 self.assertEqual(first[0][1]["ii_exact_model_pin"]["canonical_model"], CANONICAL)
+                proof = first[0][1]["ii_methodology_execution"]
+                self.assertEqual(proof["lane"], "NO_RESEARCH_ENRICHMENT")
+                self.assertFalse(proof["full_skill_executed"])
+                self.assertEqual(proof["reference_files_loaded"], [])
+                compact_messages = [
+                    {"role": "system", "content": policy["system"] + '\nDATA={"v":1,"freshness":"UNAVAILABLE"}'},
+                    {"role": "user", "content": "Serenity 研究方法"},
+                ]
+                status, compact, _ = request(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    body={"model": SELECTED, "messages": compact_messages,
+                          "ii_context_mode": "compact_public_v1", "max_tokens": 160}, secret=secret,
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(FakeLlamaHandler.observed_messages[-1], compact_messages)
+                self.assertEqual(compact["ii_methodology_execution"]["lane"], "COMPACT_POLICY_ONLY")
+                self.assertFalse(compact["ii_methodology_execution"]["full_skill_executed"])
+                self.assertEqual(compact["ii_methodology_execution"]["reference_files_loaded"], [])
+                self.assertIsNone(compact["ii_methodology_execution"]["directive_sha256"])
             finally:
                 process.terminate()
                 try:

@@ -3,6 +3,8 @@
 > Primary source: Leopold Aschenbrenner, *Situational Awareness: The Decade Ahead* (June 2024).
 >
 > Attribution boundary: the essay presents arguments about AI progress, infrastructure, security and geopolitics. The stock-screen taxonomy and numerical investment rules in this repository are project-authored operationalizations, not rules published or endorsed by Aschenbrenner.
+>
+> **CONTEXT_ONLY** auxiliary reference, not a separate executable SKILL or a score bonus. The canonical [research skill](serenity-public-research/SKILL.md) uses Serenity as the primary public-method lens. These AI examples must not become a permanent discovery-universe filter; a macro scenario is not company-order evidence. [Actual execution lanes](../docs/RESEARCH_EXECUTION_AUDIT.md).
 
 ## 1. Source-derived view
 

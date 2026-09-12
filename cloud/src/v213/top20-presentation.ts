@@ -7,11 +7,14 @@ import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
   v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE,
   v213Top20DisplayHeader, v213Top20DisplayValues,
-  type V213Top20Env, type V213Top20Report,
+  type V213Top20Env, type V213Top20Report, type V213Top20ReportRecord,
 } from "./top20-report";
 
 type PresentationEnv = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / Historical returns, not forecasts. Public research, not investment advice.";
+const SCENARIO_STATUS = "6個月／1年／2年情境：尚缺逐筆訂單與估值依據；不是零成長。訂單時程與缺口見證據詳情。";
+const companyText = (record: V213Top20ReportRecord, labels: readonly string[]) =>
+  `── ${record.rank}/20 · ${record.ticker}｜${record.name} ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
 const text = (value: string, size = "sm", color = "#172B4D") => ({ type: "text", text: value, size, color, wrap: true });
 const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
 
@@ -29,7 +32,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     const chunks: string[] = [];
     let chunk = prefix;
     for (const record of report.records) {
-      const block = `\n\n── ${record.rank}/20 · ${record.ticker}｜${record.name} ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
+      const block = `\n\n${companyText(record, labels)}`;
       if (chunk.length + block.length > 4900) { chunks.push(chunk); chunk = prefix; }
       if (chunk.length + block.length > 4900) throw new Error("V213_PRESENTATION_ROW_TOO_LARGE");
       chunk += block;
@@ -59,8 +62,12 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         box([field(5), field(6)], { backgroundColor: "#EFF6FF", paddingAll: "md", cornerRadius: "md", spacing: "lg" }),
       ], { paddingAll: "lg", spacing: "lg", backgroundColor: "#FFFFFF" }),
       footer: box([
+        text(SCENARIO_STATUS, "xs", "#475569"),
         text(generated, "xs", "#475569"), text(NOTICE, "xs", "#475569"),
-        ...(reference ? [{ type: "button", style: "link", height: "sm", action: { type: "message", label: "證據詳情 / Evidence", text: `Top20 證據詳情 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}` } }] : [text("詳情入口未綁定 / Unbound detail reference", "xs", "#475569")]),
+        ...(reference ? [["證據詳情", "證據詳情 / Evidence"], ["公司文字", "本公司七欄文字"]].map(([command, label]) => ({
+          type: "button", style: "link", height: "sm", action: { type: "message", label,
+            text: `Top20 ${command} ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}` },
+        })) : [text("詳情入口未綁定 / Unbound detail reference", "xs", "#475569")]),
       ], { paddingAll: "md", backgroundColor: "#F8FAFC" }),
     };
   });
@@ -76,8 +83,9 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const requested = parseResearchProductRequest(query.normalized);
   if (requested) return unavailableResearchProduct(requested);
-  const detailPrefix = /^top\s*20\s+證據詳情(?:\s|$)/i.test(query.normalized);
-  const detail = /^top\s*20\s+證據詳情\s+([A-Z0-9][A-Z0-9.-]{0,14})\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(legacy|s:[A-Z0-9][A-Z0-9._-]{0,127})\s+([a-f0-9]{64})$/i.exec(query.normalized);
+  const detailPrefix = /^top\s*20\s+(?:證據詳情|公司文字)(?:\s|$)/i.test(query.normalized);
+  const companyOnly = /^top\s*20\s+公司文字(?:\s|$)/i.test(query.normalized);
+  const detail = /^top\s*20\s+(?:證據詳情|公司文字)\s+([A-Z0-9][A-Z0-9.-]{0,14})\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(legacy|s:[A-Z0-9][A-Z0-9._-]{0,127})\s+([a-f0-9]{64})$/i.exec(query.normalized);
   if (detailPrefix && !detail) return "請從卡片選擇有效的公司證據詳情。";
   const result = await loadV213FreshTop20Report(env, detail ? { ...query, ticker: null, intent: "ranking", normalized: "Top20" } : query);
   if (!result || typeof result === "string") return result;
@@ -87,8 +95,13 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
     const row = result.records.find(record => record.ticker === detail[1]!.toUpperCase());
     if (!row) return "該公司不在本輪 Top20 快照，沒有改用舊資料或其他公司的報告。";
     if (!v213TimesAreFresh(env, [row.retrieved_at])) return V213_STALE_RECORDS_MESSAGE;
-    try { return buildCompanyEvidenceMessages(result, row.ticker); }
-    catch { return "公司證據詳情未通過來源或訊息完整性檢查，已拒絕顯示。"; }
+    try {
+      if (!companyOnly) return buildCompanyEvidenceMessages(result, row.ticker);
+      const messages: LineOutboundMessage[] = [{ type: "text", text:
+        `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
+      assertLineMessages(messages);
+      return messages;
+    } catch { return "公司證據詳情未通過來源或訊息完整性檢查，已拒絕顯示。"; }
   }
   if (!v213TimesAreFresh(env, result.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
