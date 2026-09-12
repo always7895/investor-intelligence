@@ -24,11 +24,15 @@ HEAD **`7253764`**（本輪 8 commits：6f93242→7253764），branch`fix/option
    - 可變 segment 補齊：`__pycache__`（任意深度）、`reports/`（public_briefing_latest.md）、`.wrangler/`（auth cache）。
    - `cloud/node_modules` 被 name-based /XD 全深度排除 → runtime 無 wrangler → AUTH_CHECK `CommandNotFoundException`（9/12 evening 第二輪失敗根因）→ /XD 改 full top-level path；source 有 wrangler 時 stage 必須帶（否則 RUNTIME_REQUIRED_FILE_MISSING）。
    - 驗證：installer 測試 **35/35 PASS**（PS5.1+pwsh，含新 wrangler 回歸測試）；live reinstall **PASS**（transaction `71921c0f410c4a5ea895a6a21702efc5`，舊 root 保留；wrangler hash == source；manifest 678 files、無 excluded-segment leak）。
-5. **Worker**：typecheck PASS；vitest **505/505 PASS**（含 core.ts `TOP20/TOP10` ranking-token 修正；deployed worker c81e8825 建於該修正前，但 `Top 20`（含空格）在 deployed code 已正確 routing — redeploy 非上線阻塞項，待下次 Worker 變更一併部署）。
+5. **Worker**：typecheck PASS；vitest **507/507 PASS**（含 core.ts `TOP20/TOP10` ranking-token 修正 + ticker-research 修復，見 #7）。**2026-09-12 14:20 UTC redeploy：deployed worker `fd50556d-43c3-4a1c-af4c-a886e5df64c9`**（取代 c81e8825；readiness ready=true、publication contract sha 不變 `9b96f2fd…`）。
 6. **Python 全量**：941 tests；剩餘 14 broken 全部 pre-existing（HEAD 2b9e143 同失敗）：`test_v213_journal_reconciliation`（3，PS host archive readback）、`test_compiled_exe_profile_persistence_and_child_propagation`、`test_rejects_public_reads_from_private_namespace`（storage.ts 靜態 marker）、`test_repository_passes_v21_delivery_gate`（storage.ts retained v2.0 blob finding）。非 P0 關鍵路徑；不冒充已修。
 - `git diff --check`: 0 issues（所有 commit 前）。
 
+7. **Ticker research / TOP20（無空格）修復（使用者 13:28 實測發現）**：deployed c81e8825 把 `TOP20` 解成 ticker → 走 V211 research 路徑讀 `v211:universe:latest` → 該 key 的 R75 carryover chain 在 9/11 17:35 斷裂後永不再生成 → 拒答「沒有通過驗證的 universe」。修復（commit aa9ce3b，**不改 seal schema / commit object list / publication contract**）：research 改讀 sealed snapshot 內的 `v21:top20:latest`（同一批 21-key rows，legacy key 僅供 pre-R75 snapshot 回退）+ `parseV211ResearchUniverse` 接受 `system-operationalization-v2.1.3-diversified`（v2.1.3 rows 的 key set 與 RECORD_KEYS 完全一致，原本只卡 scoring_version 硬編碼）。現行 production snapshot（20260912T051141Z）deploy 後立即恢復 research 能力，rollback 到舊 snapshot 也不受影響。
+
 ## Open findings（未修，非上線阻塞）
+
+- **P2** `options:latest`（期權問題）同屬斷裂 carryover，且 R75 bundle 無 options payload（市場資料 fail-closed 期間無法再生成）→ 期權類問題回 `OPTION_DATA_UNAVAILABLE`；待市場資料 pipeline 恢復後另行處理。
 
 - **P2** manifest `source_commit` 綁定 `HOTFIX-REFS.json`（stale CI 產物，2b9e143）而非安裝當下 git HEAD；檔案 hash（entries_sha256）才是真實完整性綁定。建議：installer 以實際 git HEAD 記錄 source_commit 或要求 fresh refs。
 - **P2** evening trigger 延遲 22 分鐘觸發（StartWhenAvailable）；WakeToRun=true 但未能在 12:20 準時喚醒/觸發。觀察明晨 07:20 自然觸發。
@@ -38,7 +42,7 @@ HEAD **`7253764`**（本輪 8 commits：6f93242→7253764），branch`fix/option
 
 ## Next step
 
-1. **操作者**：手機 LINE 發 `Top 20` → 預期 20 筆七欄報告（run 20260912T051141Z，bilingual 欄位）。
+1. **操作者重測**（worker fd50556d 已上線）：`TOP20`（無空格）→ 應回 20 筆七欄報告；`NVDA 怎麼看` → 應回 universe research（#rank/20、系統量化分、公開證據）；`NVDA vs CRDO 比較` → 對比表。
 2. 明晨 07:20 local morning slot 自然觸發 → 驗證 receipt（含 publication）→ CP4 兩 slot 自然跑各一次。
 3. 其後依 PLAN §13：UI/UX → EXE/THINK → GitHub 上架。
 
