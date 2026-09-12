@@ -26,6 +26,7 @@ from report_source_acquisition import SourceAcquisitionError, field_clock, utc_t
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 DEFAULT_BASELINE = ROOT / "data" / "bootstrap" / "v213-r15r-order-baseline.json"
+DEFAULT_TOP20 = ROOT / "data" / "cache" / "top20_public_latest.json"
 DEFAULT_OUTPUT = ROOT / "data" / "cache" / "v213_top20_report_public_latest.json"
 DEFAULT_PREVIEW = ROOT / "data" / "cache" / "v213_top20_report_public_latest.txt"
 
@@ -54,6 +55,26 @@ def _load(path: Path) -> dict[str, Any]:
     return value
 
 
+def _load_names(path: Path) -> dict[str, str]:
+    """Official public company names from the accepted Top20 universe, keyed by ticker."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise V213ScheduledReportError(f"Unable to read Top20 universe: {path}") from exc
+    rows = raw if isinstance(raw, list) else raw.get("records") if isinstance(raw, dict) else None
+    if not isinstance(rows, list) or len(rows) != 20:
+        raise V213ScheduledReportError("TOP20_UNIVERSE_INVALID")
+    names: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise V213ScheduledReportError("TOP20_UNIVERSE_INVALID")
+        ticker = str(row.get("ticker") or "").upper()
+        if not ticker or ticker in names:
+            raise V213ScheduledReportError("TOP20_UNIVERSE_INVALID")
+        names[ticker] = str(row.get("name") or "")
+    return names
+
+
 def _records(doc: Mapping[str, Any], version: str) -> list[dict[str, Any]]:
     if str(doc.get("product_version")) != version:
         raise V213ScheduledReportError(f"Expected product_version={version}")
@@ -73,7 +94,8 @@ def _records(doc: Mapping[str, Any], version: str) -> list[dict[str, Any]]:
     return result
 
 
-def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], *, require_known_acquisition: bool = False) -> dict[str, Any]:
+def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Mapping[str, str], *,
+          require_known_acquisition: bool = False) -> dict[str, Any]:
     try:
         validate_report_acquisition(v212, require_known=require_known_acquisition)
     except SourceAcquisitionError as error:
@@ -116,10 +138,15 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], *, require_known
                 raise V213ScheduledReportError('ORDER_SOURCE_ACQUISITION_UNKNOWN_OR_INVALID') from None
         if require_known_acquisition and retrieved is None:
             raise V213ScheduledReportError('SOURCE_ACQUISITION_UNKNOWN')
+        name = top20_names.get(ticker)
+        if (not isinstance(name, str) or not name.strip() or len(name.strip()) > 120
+                or "\r" in name or "\n" in name or "｜" in name):
+            raise V213ScheduledReportError(f"TOP20_NAME_MISSING_OR_INVALID:{ticker}")
         rows.append({
             "schema_version": 2,
             "rank": rank,
             "ticker": ticker,
+            "name": name.strip(),
             "long_term_return_pct": fresh_row.get("long_term_return_pct"),
             "short_term_return_pct": fresh_row.get("short_term_return_pct"),
             "industry": fresh_row.get("industry"),
@@ -222,14 +249,16 @@ def self_test() -> None:
             "current_order_source_urls": [], "future_order_source_urls": [],
         } for i, ticker in enumerate(reversed(tickers))]
     }
-    result = build(v212, baseline)
+    names = {ticker: f"Synthetic Company {i}" for i, ticker in enumerate(tickers)}
+    result = build(v212, baseline, names)
     assert [r["ticker"] for r in result["records"]] == tickers
+    assert [r["name"] for r in result["records"]] == [f"Synthetic Company {i}" for i in range(20)]
     assert len(preview(result).splitlines()) == 21
     bad = dict(v212)
     bad["records"] = [dict(row) for row in v212["records"]]
     bad["records"][19]["ticker"] = "NEW"
     try:
-        build(bad, baseline)
+        build(bad, baseline, names)
     except V213ScheduledReportError:
         pass
     else:
@@ -241,6 +270,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--v212-report", type=Path, default=DEFAULT_V212)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    parser.add_argument("--top20", type=Path, default=DEFAULT_TOP20, help="Accepted Top20 universe (official company names)")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--preview", type=Path, default=DEFAULT_PREVIEW)
     parser.add_argument("--self-test", action="store_true")
@@ -249,7 +279,8 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
-    report = build(_load(args.v212_report), _load(args.baseline), require_known_acquisition=args.require_known_acquisition)
+    report = build(_load(args.v212_report), _load(args.baseline), _load_names(args.top20),
+                   require_known_acquisition=args.require_known_acquisition)
     text = preview(report)
     atomic_text(args.output, json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n")
     atomic_text(args.preview, text + "\n")

@@ -83,6 +83,8 @@ export interface V213Top20ReportRecord {
   schema_version: 2;
   rank: number;
   ticker: string;
+  /** Official public company name from the accepted universe; public data, not a rights statement. */
+  name: string;
   long_term_return_pct: number | null;
   short_term_return_pct: number | null;
   industry: string;
@@ -157,7 +159,7 @@ export const V213_NO_CURRENT_ORDERS = "未揭露（無可靠公開訂單數字�
 export const V213_NO_FUTURE_ORDER_ESTIMATE = "無可靠公開預估";
 
 const RECORD_KEYS = new Set([
-  "schema_version", "rank", "ticker", "long_term_return_pct", "short_term_return_pct",
+  "schema_version", "rank", "ticker", "name", "long_term_return_pct", "short_term_return_pct",
   "industry", "profit_summary", "current_orders", "future_orders_estimate",
   "long_term_window", "short_term_window", "market_source", "profit_source",
   "orders_as_of", "orders_confidence", "current_order_source_urls",
@@ -239,6 +241,7 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     if (
       item.schema_version !== 2 || item.rank !== index + 1 ||
       !TICKER_RE.test(ticker) || seen.has(ticker) ||
+      !lineSafeText(item.name, 120) ||
       !returnPercentOrNull(item.long_term_return_pct) || !returnPercentOrNull(item.short_term_return_pct) ||
       !lineSafeText(item.industry, 100) || !TRADITIONAL_CHINESE_RE.test(item.industry) ||
       !lineSafeText(item.profit_summary, 120) ||

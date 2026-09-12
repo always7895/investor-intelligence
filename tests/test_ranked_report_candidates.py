@@ -38,7 +38,7 @@ def prepare(root, *, rich=False, prices=None):
              'federation':root/'federation.json','source_audit':root/'source.json','ledger':root/'ledger.json',
              'returns':root/'report.return-evidence-candidate.json','basis':root/'report.financial-evidence-candidate.json',
              'products':root/'report.financial-products-candidate.json'}
-    seven=fixture.scheduled.build(result['report'],fixture.no_orders(result['report']))
+    seven=fixture.scheduled.build(result['report'],fixture.no_orders(result['report']),fixture.names_for(result['report']))
     paths['v213'].write_bytes(builder.json_bytes(seven))
     for name,key in [('federation','ticker_sources'),('source_audit','records'),('ledger','records')]:
         paths[name].write_bytes(builder.json_bytes({key:[{'rank':i+1,'ticker':f'T{i:02d}','scope':'SYNTHETIC'} for i in range(20)]}))
@@ -85,7 +85,11 @@ class RankedReportCandidateTests(unittest.TestCase):
             self.assertEqual(basis['records'],json.loads(before['basis'])['records'])
             self.assertEqual(returns['records'],json.loads(before['returns'])['records'])
             self.assertEqual(json.loads(raw)['generated_at'],json.loads(before['v212'])['generated_at'])
-            self.assertIsNone(json.loads(raw)['records'][0]['retrieved_at'])  # Unknown market time stays unknown.
+            first = json.loads(raw)['records'][0]
+            # Fresh local yfinance fetch mints a dated receipt (bar-age guarded); the
+            # row clock is the earliest KNOWN field clock, no longer None.
+            self.assertIsNotNone(first['retrieved_at'], 'FRESH_LOCAL_FETCH_RECEIPT_MISSING')
+            self.assertEqual(first['source_acquisition']['long_term_return_pct']['status'], 'KNOWN')
 
     def test_invalid_late_document_cannot_partially_rewrite_earlier_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

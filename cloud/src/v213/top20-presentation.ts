@@ -29,7 +29,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     const chunks: string[] = [];
     let chunk = prefix;
     for (const record of report.records) {
-      const block = `\n\n── ${record.rank}/20 ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
+      const block = `\n\n── ${record.rank}/20 · ${record.ticker}｜${record.name} ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
       if (chunk.length + block.length > 4900) { chunks.push(chunk); chunk = prefix; }
       if (chunk.length + block.length > 4900) throw new Error("V213_PRESENTATION_ROW_TOO_LARGE");
       chunk += block;
@@ -51,6 +51,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#CBD5E1"),
         text(labels[0]!, "xs", "#CBD5E1"),
         { ...text(values[0]!, "xxl", "#FFFFFF"), weight: "bold" },
+        text(record.name, "sm", "#CBD5E1"),
       ], { backgroundColor: "#142C47", paddingAll: "lg" }),
       body: box([
         box([field(1, true), field(2, true)], { layout: "horizontal", backgroundColor: "#F1F5F9", paddingAll: "md", cornerRadius: "md", spacing: "md" }),

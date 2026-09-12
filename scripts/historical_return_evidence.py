@@ -113,7 +113,13 @@ def validate_return_observation(value: dict, *, ticker: str, long_pct, short_pct
     for key, expected in template.items():
         if key != 'windows':
             require(type(value[key]) is type(expected) and value[key] == expected)
-    require(value['retrieved_at'] is None and value['acquisition_status'] == 'UNKNOWN_PROVIDER_ACQUISITION_TIME')
+    if value['status'] == 'CALCULATED_NOT_QUALIFIED':
+        # Minted local fetch receipt: the moment this exact response was acquired
+        # from the provider; equal to observed_at (the bar-age guard gates minting).
+        require(value['acquisition_status'] == 'LOCAL_FETCH_RECEIPT'
+                and value['retrieved_at'] == value['observed_at'])
+    else:
+        require(value['retrieved_at'] is None and value['acquisition_status'] == 'UNKNOWN_PROVIDER_ACQUISITION_TIME')
     request = value['request']
     require(isinstance(request, dict) and set(request) == {'period', 'interval', 'auto_adjust'}
             and request['period'] == '3y' and request['interval'] == '1d' and request['auto_adjust'] is True)

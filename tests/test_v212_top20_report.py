@@ -27,6 +27,10 @@ from build_v212_top20_report import (  # noqa: E402
 )
 
 
+def names_for(report):
+    return {row['ticker']: f"Synthetic Company {i}" for i, row in enumerate(report['records'])}
+
+
 class V212Top20ReportTests(unittest.TestCase):
     def test_profit_summary_is_deterministic_and_public_metric_only(self) -> None:
         value = profit_summary(
@@ -114,15 +118,15 @@ class V212Top20ReportTests(unittest.TestCase):
              'future_order_source_urls': [], 'current_orders': '未揭露（無可靠公開訂單數字）',
              'future_orders_estimate': '無可靠公開預估', 'orders_confidence': 'UNAVAILABLE', 'orders_as_of': ''}
             for row in report['records']]}
-        self.assertIsNone(scheduled.build(report, baseline)['records'][0]['retrieved_at'])
+        self.assertIsNone(scheduled.build(report, baseline, names_for(report))['records'][0]['retrieved_at'])
         with self.assertRaises(scheduled.V213ScheduledReportError):
-            scheduled.build(report, baseline, require_known_acquisition=True)  # No clock rescue at publication preflight.
+            scheduled.build(report, baseline, names_for(report), require_known_acquisition=True)  # No clock rescue at publication preflight.
         # Synthetic market-clock control only; no real source certification.
         for row in report['records']:
             row['source_acquisition']['industry'] = scheduled.field_clock('industry', row['industry'],
                 retrieved_at=report['generated_at'], evidence_sha256='a'*64)
             row['retrieved_at'] = report['generated_at']
-        seven = scheduled.build(report, baseline)
+        seven = scheduled.build(report, baseline, names_for(report))
         self.assertEqual(seven['records'][0]['profit_summary'], 'SEC 可用獲利指標不足')
 
     def test_actual_sec_adapter_dates_reach_report_not_only_handwritten_records(self):

@@ -39,9 +39,14 @@ from historical_return_evidence import calculate_return_evidence, legacy_return_
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
 from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
-                                       row_time, validate_company_receipt, validate_report_acquisition)
+                                       row_time, unavailable, validate_company_receipt,
+                                       validate_report_acquisition)
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
+# Stale-bar tolerance for minting a local yfinance fetch receipt; same horizon as
+# the market-corroboration degradation policy. A stale provider response degrades
+# exactly like a failed fetch instead of being presented as fresh.
+MAX_MARKET_BAR_AGE_DAYS = 7
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 LONG_TERM_WINDOW_DAYS = 730
 SHORT_TERM_WINDOW_DAYS = 183
@@ -203,15 +208,31 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
     try:
         obj = yf.Ticker(ticker)
         history = obj.history(period="3y", interval="1d", auto_adjust=True)
-        evidence = _history_return_evidence(history)
-        long_term, short_term = legacy_return_pair(evidence)
+        observed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        points: list[tuple] = []
+        if history is not None and "Close" in history:
+            points = [(stamp.date(), price) for stamp, price in history["Close"].items()]
+        # A local fetch receipt is minted only while the freshest bar is recent;
+        # empty or stale price data degrades to N/A exactly like a failed fetch.
+        # Industry from provider identity is independent of price history.
+        fresh = bool(points) and (datetime.now(timezone.utc).date() - max(day for day, _ in points)).days <= MAX_MARKET_BAR_AGE_DAYS
+        if fresh:
+            evidence = calculate_return_evidence(points)
+            long_term, short_term = legacy_return_pair(evidence)
+        else:
+            evidence = calculate_return_evidence([])
+            long_term = short_term = None
+        usable = fresh and any(w["status"] == "AVAILABLE" for w in evidence["windows"].values())
         if evidence_sink is not None:
             evidence_sink.update(evidence)
             evidence_sink.update(
-                status=("CALCULATED_NOT_QUALIFIED" if any(w["status"] == "AVAILABLE" for w in evidence["windows"].values()) else "NO_COMPLETE_RETURN_WINDOW"),
-                observed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                retrieved_at=None,
-                acquisition_status="UNKNOWN_PROVIDER_ACQUISITION_TIME",
+                status=("CALCULATED_NOT_QUALIFIED" if usable else "NO_COMPLETE_RETURN_WINDOW"),
+                observed_at=observed_at,
+                # Local fetch receipt: the moment this exact response was acquired
+                # from the provider, bound to the evidence below. Not a provider-side
+                # timestamp; the bar-age guard above is what makes minting safe.
+                retrieved_at=observed_at if usable else None,
+                acquisition_status=("LOCAL_FETCH_RECEIPT" if usable else "UNKNOWN_PROVIDER_ACQUISITION_TIME"),
                 request={"period": "3y", "interval": "1d", "auto_adjust": True},
             )
         industry = ""
@@ -300,10 +321,16 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
         market_clocks = observation.get('source_acquisition', {})
         if not isinstance(market_clocks, dict) or not set(market_clocks) <= set(FIELDS[:3]):
             raise SourceAcquisitionError('SOURCE_ACQUISITION_INVALID')
+        market_receipt = observation.get('retrieved_at')
+        if observation.get('acquisition_status') != 'LOCAL_FETCH_RECEIPT' or not isinstance(market_receipt, str):
+            market_receipt = None
+        market_receipt_sha = digest(observation.get('windows') or {}) if market_receipt is not None else None
         clocks = {}
         for key in FIELDS[:3]:
             if key in market_clocks:
                 clocks[key] = market_clocks[key]
+            elif market_receipt is not None and not unavailable(key, row[key]):
+                clocks[key] = field_clock(key, row[key], retrieved_at=market_receipt, evidence_sha256=market_receipt_sha)
             elif require_known_acquisition:
                 row[key] = '未分類' if key == 'industry' else None
                 clocks[key] = field_clock(key, row[key])

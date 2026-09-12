@@ -30,7 +30,7 @@ class WindowsSecurityHostTests(unittest.TestCase):
             with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temp:
                 folder=Path(temp); source=folder/'source (1)'; stage=folder/'stage (2)'
                 (source/'cloud/node_modules').mkdir(parents=True)
-                (source/'cloud/node_modules/untrusted-source.txt').write_text('not copied')
+                (source/'cloud/node_modules/wrangler-path-marker.txt').write_text('staged wrangler path marker')
                 (source/'fresh.txt').write_text('new')
                 script=folder/'copy.ps1'
                 script.write_text("$sourceIdentity='"+str(source).replace("'","''")+"'\n$stagePath='"+str(stage).replace("'","''")+"'\n$markerName='v213-stage-ownership-marker.tmp'\n$robocopy=(Get-Command robocopy.exe).Source\n"+args_block+"\n"+command+"\nif($LASTEXITCODE-gt7){exit 1}\nexit 0\n",encoding='utf-8-sig')
@@ -38,8 +38,13 @@ class WindowsSecurityHostTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                 self.assertTrue((stage/'fresh.txt').is_file())
                 # The live root is swapped as a whole (old root retained), so the
-                # stage must never inherit source node_modules.
-                self.assertFalse((stage/'cloud/node_modules').exists())
+                # stage must never inherit the source root node_modules.
+                self.assertFalse((stage/'node_modules').exists())
+                # cloud/node_modules is deliberately staged: the scheduled refresh
+                # AUTH_CHECK invokes cloud/node_modules/.bin/wrangler from the live
+                # runtime, so excluding it (the pre-wrangler name-based /XD bug)
+                # breaks scheduled publication.
+                self.assertTrue((stage/'cloud/node_modules/wrangler-path-marker.txt').is_file())
 
     def test_real_task_settings_construct_without_registering_tasks(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]

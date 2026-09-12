@@ -263,7 +263,7 @@ class DebtSourcePrecisionTests(unittest.TestCase):
             paths={'top20':root/'top20.json','v212':root/'report.json','v213':root/'seven.json','federation':root/'federation.json',
                    'source_audit':root/'source.json','ledger':root/'ledger.json','returns':root/'report.return-evidence-candidate.json',
                    'basis':root/'report.financial-evidence-candidate.json','products':root/'report.financial-products-candidate.json'}
-            paths['v213'].write_bytes(builder.json_bytes(fixture.scheduled.build(value['report'],fixture.no_orders(value['report']))))
+            paths['v213'].write_bytes(builder.json_bytes(fixture.scheduled.build(value['report'],fixture.no_orders(value['report']),fixture.names_for(value['report']))))
             for name,key in [('federation','ticker_sources'),('source_audit','records'),('ledger','records')]:
                 paths[name].write_bytes(builder.json_bytes({key:[{'rank':i+1,'ticker':f'T{i:02d}'} for i in range(20)]}))
             ranked.ranked_top(paths);before=ranked.current_bytes(paths);source=root/'precision-input.json';source_before=source.read_bytes()

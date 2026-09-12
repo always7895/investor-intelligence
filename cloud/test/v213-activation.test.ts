@@ -154,6 +154,7 @@ function v213(generated: string) {
       schema_version: 2,
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
+      name: `Synthetic ${index}`,
       long_term_return_pct: 40 - index,
       short_term_return_pct: 20 - index,
       industry: "半導體",

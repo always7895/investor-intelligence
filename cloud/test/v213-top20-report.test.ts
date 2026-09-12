@@ -31,6 +31,7 @@ function report() {
       schema_version: 2,
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
+      name: `Synthetic ${index}`,
       long_term_return_pct: 50 - index,
       short_term_return_pct: 15 - index / 2,
       industry: "半導體",

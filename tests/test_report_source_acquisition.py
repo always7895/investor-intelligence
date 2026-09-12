@@ -64,6 +64,9 @@ def no_orders(report):
             'orders_as_of':'','orders_confidence':'UNAVAILABLE','current_order_source_urls':[],
             'future_order_source_urls':[]} for r in report['records']]}
 
+def names_for(report):
+    return {row['ticker']: f"Synthetic Company {i}" for i, row in enumerate(report['records'])}
+
 
 class ReportSourceAcquisitionTests(unittest.TestCase):
     def test_actual_cli_retains_three_hour_cache_time_not_assembly_time(self):
@@ -83,7 +86,7 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             report=actual_cli(Path(tmp))['report'];report['records'][19]['retrieved_at']=None
             with self.assertRaises(scheduled.V213ScheduledReportError):
-                scheduled.build(report,no_orders(report))
+                scheduled.build(report,no_orders(report),names_for(report))
 
 
     def test_default_two_hour_sec_cache_refetches_stale_cache_with_fresh_receipt(self):
@@ -128,7 +131,7 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
     def test_actual_cli_old_cache_cannot_qualify_local_sealed_bundle(self):
         import build_v213_activation_bundle_v2 as seal
         with tempfile.TemporaryDirectory() as tmp:
-            result=actual_cli(Path(tmp));seven=scheduled.build(result['report'],no_orders(result['report']))
+            result=actual_cli(Path(tmp));seven=scheduled.build(result['report'],no_orders(result['report']),names_for(result['report']))
             envelope,_,_,federation,source=seal._synthetic_documents()
             with self.assertRaisesRegex(seal.SerenityEvidenceError,'stale'):
                 seal.build_bundle(envelope,result['report'],seven,federation,source)
@@ -136,7 +139,7 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
     def test_local_sealed_admission_preserves_fresh_clocks_and_rejects_downgrade_unknown_or_mixed_reports(self):
         import build_v213_activation_bundle_v2 as seal
         with tempfile.TemporaryDirectory() as tmp:
-            result=actual_cli(Path(tmp),age_hours=.05);five=result['report'];seven=scheduled.build(five,no_orders(five))
+            result=actual_cli(Path(tmp),age_hours=.05);five=result['report'];seven=scheduled.build(five,no_orders(five),names_for(five))
             envelope,_,_,federation,source=seal._synthetic_documents()
             value=seal.build_bundle(envelope,five,seven,federation,source)
             stored=json.loads(value['payloads']['v212_top20_report_json'])
@@ -181,7 +184,7 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             value=actual_cli(Path(tmp),progress=True,market=market)
             self.assertEqual(value['report']['records'][19]['retrieved_at'],value['source_time'])
-            seven=scheduled.build(value['report'],no_orders(value['report']),require_known_acquisition=True)
+            seven=scheduled.build(value['report'],no_orders(value['report']),names_for(value['report']),require_known_acquisition=True)
             self.assertEqual(seven['records'][19]['retrieved_at'],value['source_time'])
 
     def test_unknown_market_keeps_local_values_but_no_freshness_or_publication_fallback(self):
@@ -191,10 +194,10 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             self.assertEqual(row['long_term_return_pct'],12.0)
             self.assertEqual(row['source_acquisition']['industry']['status'],'UNKNOWN')
             self.assertIsNone(row['retrieved_at'])
-            baseline=no_orders(result['report']);seven=scheduled.build(result['report'],baseline)
+            baseline=no_orders(result['report']);seven=scheduled.build(result['report'],baseline,names_for(result['report']))
             self.assertIsNone(seven['records'][0]['retrieved_at'])
             with self.assertRaises(scheduled.V213ScheduledReportError):
-                scheduled.build(result['report'],baseline,require_known_acquisition=True)
+                scheduled.build(result['report'],baseline,names_for(result['report']),require_known_acquisition=True)
             report=Path(tmp)/'five.json';base=Path(tmp)/'orders.json';out=Path(tmp)/'seven.json';text=Path(tmp)/'seven.txt'
             report.write_bytes(builder.json_bytes(result['report']));base.write_bytes(builder.json_bytes(baseline))
             out.write_text('SYNTHETIC_ORIGINAL');text.write_text('SYNTHETIC_PREVIEW')
@@ -231,12 +234,12 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             row=baseline['records'][19];old=(datetime.now(timezone.utc)-timedelta(days=1)).replace(microsecond=0).isoformat().replace('+00:00','Z')
             row.update(current_orders='合約證據待核對',orders_confidence='EVIDENCE_BOUND',orders_as_of='2026-07-01',
                        current_order_source_urls=['https://www.sec.gov/example/current'],retrieved_at=old)
-            self.assertEqual(scheduled.build(report,baseline)['records'][19]['retrieved_at'],old)
+            self.assertEqual(scheduled.build(report,baseline,names_for(report))['records'][19]['retrieved_at'],old)
             del row['retrieved_at']
-            self.assertIsNone(scheduled.build(report,baseline)['records'][19]['retrieved_at'])
-            with self.assertRaises(scheduled.V213ScheduledReportError):scheduled.build(report,baseline,require_known_acquisition=True)
+            self.assertIsNone(scheduled.build(report,baseline,names_for(report))['records'][19]['retrieved_at'])
+            with self.assertRaises(scheduled.V213ScheduledReportError):scheduled.build(report,baseline,names_for(report),require_known_acquisition=True)
             row['retrieved_at']=report['generated_at']+'suffix'
-            with self.assertRaises(scheduled.V213ScheduledReportError):scheduled.build(report,baseline)
+            with self.assertRaises(scheduled.V213ScheduledReportError):scheduled.build(report,baseline,names_for(report))
 
     def test_clock_value_binding_omissions_and_future_or_coerced_times_refuse(self):
         with tempfile.TemporaryDirectory() as tmp:
