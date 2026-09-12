@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -13,11 +14,16 @@ import v21_serenity_top20 as v21
 
 
 class SerenityEngineV21Tests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory(prefix='ii-engine-case-')
+        self.addCleanup(temporary.cleanup)
+        self.output_root = Path(temporary.name)
+
     def test_synthetic_exact_top20_and_101_source_plan(self) -> None:
-        output = v21.run(synthetic=True)
+        output = v21.run(synthetic=True, output_root=self.output_root)
         self.assertEqual(output["top20_count"], 20)
         self.assertEqual(output["catalog_count"], 101)
-        top = json.loads(v21.TOP20_PATH.read_text(encoding="utf-8"))
+        top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
         self.assertEqual([item["rank"] for item in top], list(range(1, 21)))
         self.assertEqual(
             top,
@@ -34,8 +40,8 @@ class SerenityEngineV21Tests(unittest.TestCase):
     def test_seven_factors_total_100_and_aschenbrenner_is_separate(self) -> None:
         policy, _ = v21.validate_policy()
         self.assertEqual(sum(policy["factor_weights"].values()), 100)
-        output = v21.run(synthetic=True)
-        top = json.loads(v21.TOP20_PATH.read_text(encoding="utf-8"))
+        output = v21.run(synthetic=True, output_root=self.output_root)
+        top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
         self.assertTrue(
             all(
                 item["aschenbrenner_overlay"]["included_in_serenity_score"] is False
@@ -81,8 +87,8 @@ class SerenityEngineV21Tests(unittest.TestCase):
         self.assertEqual(headers["From"], contact)
 
     def test_public_top20_contains_no_private_fields(self) -> None:
-        v21.run(synthetic=True)
-        serialized = v21.TOP20_PATH.read_text(encoding="utf-8").casefold()
+        output = v21.run(synthetic=True, output_root=self.output_root)
+        serialized = Path(output['top20_path']).read_text(encoding="utf-8").casefold()
         for marker in (
             '"account"',
             '"portfolio"',

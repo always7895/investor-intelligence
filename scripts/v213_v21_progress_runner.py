@@ -801,6 +801,7 @@ def safe_preselection_score(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic", action="store_true")
+    parser.add_argument("--output-root", type=Path, help="Required non-default output directory for synthetic data only")
     args = parser.parse_args()
 
     original_companyfacts = engine.sec_companyfacts
@@ -825,7 +826,7 @@ def main() -> int:
     engine.score_candidate = safe_preselection_score
     try:
         print("II_PROGRESS Top20 candidate discovery starting; Yahoo is T3 seed only", flush=True)
-        result = engine.run(synthetic=args.synthetic)
+        result = engine.run(synthetic=args.synthetic, **({'output_root': args.output_root} if args.output_root is not None else {}))
         print("II_PROGRESS SEC evidence chronology normalized: filing_date!=period_end; retrieval_time_not_used", flush=True)
         print("II_PROGRESS safe preselection complete; proxy-heavy factors excluded; diversified postprocessor required", flush=True)
         print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)

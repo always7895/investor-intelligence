@@ -1207,7 +1207,23 @@ def validate_top20(records: Sequence[Mapping[str, Any]]) -> None:
             raise PipelineError(f"Forbidden public field: {forbidden}")
 
 
-def run(*, synthetic: bool) -> dict[str, Any]:
+def public_output_paths(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Path]:
+    defaults = {'top20': TOP20_PATH, 'plan': PLAN_PATH, 'metadata': METADATA_PATH, 'report': REPORT_PATH}
+    if synthetic and output_root is None:
+        raise PipelineError('SYNTHETIC_OUTPUT_ROOT_REQUIRED')
+    if not synthetic and output_root is not None:
+        raise PipelineError('OUTPUT_ROOT_ONLY_FOR_SYNTHETIC')
+    if output_root is None:
+        return defaults
+    root = Path(output_root).resolve()
+    targets = {key: root / path.name for key, path in defaults.items()}
+    if any(target.resolve() == original.resolve() for target in targets.values() for original in defaults.values()):
+        raise PipelineError('SYNTHETIC_DEFAULT_OUTPUT_FORBIDDEN')
+    return targets
+
+
+def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
+    paths = public_output_paths(synthetic=synthetic, output_root=output_root)
     policy, activation = validate_policy()
     plan = source_plan(policy, activation)
     generated = iso_now()
@@ -1275,41 +1291,43 @@ def run(*, synthetic: bool) -> dict[str, Any]:
     }
     report = build_report(top20, plan, macro, generated)
 
-    atomic_json(TOP20_PATH, top20)
-    atomic_json(PLAN_PATH, plan)
-    atomic_json(METADATA_PATH, metadata)
-    atomic_text(REPORT_PATH, report)
+    atomic_json(paths['top20'], top20)
+    atomic_json(paths['plan'], plan)
+    atomic_json(paths['metadata'], metadata)
+    atomic_text(paths['report'], report)
 
     return {
         "top20_count": len(top20),
         "catalog_count": plan["catalog_count"],
-        "top20_path": str(TOP20_PATH),
-        "source_plan_path": str(PLAN_PATH),
-        "report_path": str(REPORT_PATH),
+        "top20_path": str(paths['top20']),
+        "source_plan_path": str(paths['plan']),
+        "report_path": str(paths['report']),
         "macro_status": macro.get("status"),
     }
 
 
 def self_test() -> None:
-    output = run(synthetic=True)
-    if output["top20_count"] != 20 or output["catalog_count"] != 101:
-        raise PipelineError("Synthetic acceptance failed")
-    top = json.loads(TOP20_PATH.read_text(encoding="utf-8"))
-    if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):
-        raise PipelineError("Aschenbrenner overlay leaked into Serenity score")
+    with tempfile.TemporaryDirectory(prefix='ii-v21-self-test-') as temporary:
+        output = run(synthetic=True, output_root=Path(temporary))
+        if output["top20_count"] != 20 or output["catalog_count"] != 101:
+            raise PipelineError("Synthetic acceptance failed")
+        top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
+        if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):
+            raise PipelineError("Aschenbrenner overlay leaked into Serenity score")
     print("V21_SERENITY_ENGINE_SELF_TEST = PASS")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic", action="store_true")
+    parser.add_argument("--output-root", type=Path, help="Required non-default output directory for synthetic data only")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
         else:
-            print(json.dumps(run(synthetic=args.synthetic), ensure_ascii=False, indent=2))
+            print(json.dumps(run(synthetic=args.synthetic, output_root=args.output_root), ensure_ascii=False, indent=2))
         return 0
     except (PipelineError, OSError, ValueError, requests.RequestException) as exc:
         LOGGER.error("V2.1 Serenity engine failed: %s", exc)

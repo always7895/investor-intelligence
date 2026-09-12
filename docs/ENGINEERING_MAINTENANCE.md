@@ -17,3 +17,13 @@ The offline [documentation structure gate](../scripts/documentation_structure_ga
 Do not simplify away per-order values, dates, evidence, negative cases or required future scenario horizons. [Research execution audit](RESEARCH_EXECUTION_AUDIT.md) distinguishes genuine lost fields from removed unsourced constants. Historical narratives may become bounded summaries linked to immutable Git history; evidence JSON, receipts, locks, wrappers and schemas are not deleted.
 
 No disk cleanup, package install/update, model change, new workflow, production mutation or paid fallback is part of this source cleanup. The existing unrelated untracked installer inputs are retained.
+
+## Synthetic output isolation
+
+The legacy v2.1/v2.1.1 engine tests previously wrote synthetic records to the checkout's default public cache/report paths. A passing regression run did not make those files usable research inputs. Current observations and preserved hashes belong in [STATUS](../state/STATUS.md); do not silently relabel, publish or restore fabricated market snapshots.
+
+- `--self-test` uses an owned temporary output directory, without mutating module path globals.
+- Explicit synthetic runs require `--synthetic --output-root <owned-fixture-directory>`; missing or default public/report destinations are refused before providers/writes. The output override is not accepted for live runs. The v213 progress CLI forwards this same contract.
+- The retained coverage wrapper forwards the output root and checks the returned plan path against the independently resolved destination before reading/writing it. It must not accidentally update the default source plan.
+- Tests execute the actual CLI parsers with child-process defaults redirected to sentinel fixtures, so a failing test cannot corrupt the actual checkout. Scoring/discovery calculations and live default destinations are unchanged; no wrapper is deleted.
+- This is bounded output isolation, not a general filesystem or network sandbox. `run_offline_tests.py` is not a network sandbox either. Keep publication gates and source-bound live acceptance separate.
