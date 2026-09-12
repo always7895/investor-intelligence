@@ -8,7 +8,7 @@ Updated:2026-09-12 UTC (13:30 local). Release identity:`README.md`. Historical l
 
 Source:`_workspace/source`; evidence:`_workspace/audit-runtime`; mixed parent `D:\Investor-Intelligence-LINE-Pi` is not a fixture. One writer; retain worktrees/drafts, locks/journals and failures。
 
-HEAD **`7253764`**（本輪 8 commits：6f93242→7253764），branch`fix/options-provenance-audit`, upstream`8178f72e1acb5d36cf51212a815a1097a28fdf3a`。未 commit 的本地安裝輸入（維持 untracked）：`HOTFIX-REFS.json`、`InvestorIntelligence.exe`。
+HEAD **`fe3ff1c`**（本輪 11 commits：6f93242→fe3ff1c），branch`fix/options-provenance-audit`, upstream`8178f72e1acb5d36cf51212a815a1097a28fdf3a`。未 commit 的本地安裝輸入（維持 untracked）：`HOTFIX-REFS.json`、`InvestorIntelligence.exe`、`cloud/wrangler.v213.production.local.toml`（deploy config，僅 KV namespace id）。
 
 ## 2026-09-12 完成事項（LINE 上線關鍵路徑）
 
@@ -40,10 +40,15 @@ HEAD **`7253764`**（本輪 8 commits：6f93242→7253764），branch`fix/option
 - AAPL debt conflict：`publication_eligible=false` 持續（不擋 Top20 發布）。
 - `/v213/admin/test-push` 仍 `LINE_FREE_PLAN_REVIEW_REQUIRED`（channel SHA pairing 未設）；上線驗證改走使用者真實對話。
 
+## 2026-09-12 真實 LINE 驗收（操作者 14:17 UTC / 22:17 local 前）
+
+- **`TOP20`（無空格）→ ✅ 20 筆七欄卡片全數回傳**（CF、FIS、NTNX、SMCI、ACGL、AFRM、BBY、CDE、FSLR、GAP … DG、NEM、PBR…），run 20260912T051141Z（報告產生 台北 13:11），bilingual 欄位、SEC profit summary（營收年增/益率/淨利率）、SEC RPO current orders（含文件日期與金額，如 CF ≈$1.5B 2026-08-06）、未來訂單展望、市場欄位 N/A（fail-closed 語意）、disclaimer、證據詳情連結。
+- **`NVDA 怎麼看` → ✅ 設計內行為**：NVDA 不在本輪 Top20 → 交多來源 on-demand 研究層 → 本機模型橋接未啟用 → 回 `LOCAL_MODEL_NOT_CONFIGURED` 的 humanized 訊息（說明哪些功能仍可直接使用）。非錯誤、非假資料。
+- **CP3 LINE Top 20 驗收完成。**
+
 ## Next step
 
-1. **操作者重測**（worker fd50556d 已上線）：`TOP20`（無空格）→ 應回 20 筆七欄報告；`NVDA 怎麼看` → 應回 universe research（#rank/20、系統量化分、公開證據）；`NVDA vs CRDO 比較` → 對比表。
-2. 明晨 07:20 local morning slot 自然觸發 → 驗證 receipt（含 publication）→ CP4 兩 slot 自然跑各一次。
-3. 其後依 PLAN §13：UI/UX → EXE/THINK → GitHub 上架。
+1. 明晨 07:20 local morning slot 自然觸發 → 驗證 receipt（含 publication）→ 明晚 20:20 同輪 → CP4 雙 slot 自然跑各一次完成。
+2. 其後依 PLAN §13：UI/UX → EXE/THINK → GitHub 上架。
 
 **G01/G02/G11 status updated; W1 installer regression closed（含本輪三個 coverage/toolchain 缺陷）。Production snapshot live（20260912T051141Z）。**
