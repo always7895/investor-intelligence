@@ -8,6 +8,18 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 
+# Path segments outside manifest/ownership coverage. data/ is mutable
+# runtime state (refresh caches, activation bundles, publication journals)
+# written by scheduled runs; __pycache__ is an execution byproduct. Both can
+# change after install without changing the runtime payload, so ownership
+# attests the immutable payload only.
+$script:V213ManifestExcluded = @('.git', 'versions', 'node_modules', '.venv-v213-local', '.npm-cache', 'data', '__pycache__')
+
+function Test-V213PathExcluded([string]$Relative) {
+    foreach ($segment in ($Relative -split '\\')) { if ($script:V213ManifestExcluded -contains $segment) { return $true } }
+    return $false
+}
+
 function Remove-V213TrailingSeparator([string]$Path) {
     if ($Path -match '^[A-Za-z]:\\$' -or $Path -match '^\\\\[^\\]+\\[^\\]+\\$') { return $Path }
     return $Path.TrimEnd('\')
@@ -124,7 +136,6 @@ function Get-V213RelativePath([string]$Root, [IO.FileSystemInfo]$Entry) {
 }
 
 function Get-V213Manifest([string]$Root) {
-    $excluded = @('.git', 'versions', 'node_modules', '.venv-v213-local', '.npm-cache')
     $entries = New-Object 'System.Collections.Generic.List[object]'
     $pending = New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
     $pending.Push([IO.DirectoryInfo](Get-Item -LiteralPath $Root -Force))
@@ -136,8 +147,7 @@ function Get-V213Manifest([string]$Root) {
             if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'RUNTIME_MANIFEST_REPARSE_ENTRY' }
             $relative = Get-V213RelativePath $Root $entry
             if ($relative -eq 'V213-RUNTIME-MANIFEST.json' -or $relative -eq 'V213-INSTALL-TRANSACTION.marker') { continue }
-            $first = ($relative -split '\\', 2)[0]
-            if ($excluded -contains $first) { continue }
+            if (Test-V213PathExcluded $relative) { continue }
             if ($entry -is [IO.DirectoryInfo]) {
                 [void]$entries.Add([ordered]@{ path = $relative; kind = 'directory' })
                 $pending.Push([IO.DirectoryInfo]$entry)
@@ -250,11 +260,28 @@ function Assert-V213OwnedDestination([string]$Root, [string]$MetadataRoot, [stri
         [int]$manifest.entry_count -lt 0 -or [int64]$manifest.byte_count -lt 0) { throw 'RUNTIME_OWNERSHIP_INVALID' }
     $manifestBytes = [IO.File]::ReadAllBytes($manifestPath)
     if ((Get-V213Sha256Bytes $manifestBytes) -ne [string]$receipt.manifest_sha256) { throw 'RUNTIME_OWNERSHIP_DIGEST_MISMATCH' }
+    # Coverage-aware ownership: the manifest file must be authentic per the
+    # receipt, every live payload file must be a known unmodified manifest
+    # entry, and every payload entry of the historical manifest must remain
+    # present and unmodified. Paths dropped by a coverage migration (mutable
+    # data/) are never re-attested, so a completed refresh cannot block the
+    # next reinstall.
+    $manifestFiles = @{}
+    foreach ($e in $manifest.entries) { if ($e.kind -eq 'file') { $manifestFiles[[string]$e.path] = [string]$e.sha256 } }
     $actual = Get-V213Manifest $Root
-    if ($actual.sha256 -ne [string]$manifest.entries_sha256 -or
-        $actual.sha256 -ne [string]$receipt.effective_entries_sha256 -or
-        $actual.file_count -ne [int]$manifest.file_count -or
-        $actual.byte_count -ne [int64]$manifest.byte_count) { throw 'RUNTIME_OWNERSHIP_DIGEST_MISMATCH' }
+    foreach ($e in $actual.entries) {
+        if ($e.kind -ne 'file') { continue }
+        $path = [string]$e.path
+        if (-not $manifestFiles.ContainsKey($path) -or $manifestFiles[$path] -cne [string]$e.sha256) { throw 'RUNTIME_OWNERSHIP_DIGEST_MISMATCH' }
+    }
+    foreach ($e in $manifest.entries) {
+        if ($e.kind -ne 'file') { continue }
+        $path = [string]$e.path
+        if (Test-V213PathExcluded $path) { continue }
+        $livePath = Join-Path $Root $path
+        if (-not (Test-Path -LiteralPath $livePath -PathType Leaf)) { throw 'RUNTIME_OWNERSHIP_DIGEST_MISMATCH' }
+        if ((Get-V213Sha256File $livePath) -cne [string]$e.sha256) { throw 'RUNTIME_OWNERSHIP_DIGEST_MISMATCH' }
+    }
     return $receipt
 }
 
