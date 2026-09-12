@@ -111,7 +111,7 @@ for ($index = 0; $index -lt 20; $index++) {
         Require ($positive.Count -eq 0) "$ticker limited research candidate retains positive Serenity advantages: $($positive -join ',')."
         Require (-not $eligible) "$ticker limited research candidate is high-confidence eligible."
         Require ([string](Value $logic 'model_inference_confidence' '') -eq 'LIMITED') "$ticker limited research candidate is not LIMITED."
-        Require ((Value $logic 'validated_company_thesis $true) -eq $false) "$ticker limited research candidate is mislabeled as a validated thesis."
+        Require ((Value $logic 'validated_company_thesis' $true) -eq $false) "$ticker limited research candidate is mislabeled as a validated thesis."
         Require ((Value $logic 'identity_provenance_is_company_claim_evidence' $true) -eq $false) "$ticker identity provenance is treated as company evidence."
         Require ((Value $logic 'identity_provenance_can_support_positive_advantage' $true) -eq $false) "$ticker identity provenance may support a positive advantage."
         Require ($claimPrimary -ge 1) "$ticker limited research candidate lacks a latest-available primary company source."

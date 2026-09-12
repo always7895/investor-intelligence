@@ -85,12 +85,12 @@ foreach ($top in $top20) {
         Require ($positive.Count -eq 0) "$ticker limited candidate contributes a sensitive positive factor."
         Require ((Value $record 'eligible_for_high_confidence_model_inference' $false) -eq $false) "$ticker limited candidate is high-confidence eligible."
         Require ([string](Value $logic 'model_inference_confidence' '') -eq 'LIMITED') "$ticker limited candidate model confidence is not LIMITED."
-        Require ((Value $logic 'validated_company_thesis $true) -eq $false) "$ticker limited candidate is labeled a validated thesis."
+        Require ((Value $logic 'validated_company_thesis' $true) -eq $false) "$ticker limited candidate is labeled a validated thesis."
         Require ((Value $logic 'identity_provenance_can_support_positive_advantage' $true) -eq $false) "$ticker identity provenance may create an advantage."
         foreach ($state in @('architecture','dependency_graph','bottleneck_or_expansion','company_capture','lifecycle')) {
             Require ([string](Value $logic $state '') -eq 'UNPROVEN') "$ticker limited candidate has a proven claim state: $state."
         }
-        $limitedScoreMax = [Math]::Max($limitedScoreMax,(Num (Value $top 'serenity_score' 0))
+        $limitedScoreMax = [Math]::Max($limitedScoreMax,(Num (Value $top 'serenity_score' 0)))
     }
     else {
         throw "$ticker has an unknown publication evidence mode: $mode"
