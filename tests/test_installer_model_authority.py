@@ -44,6 +44,7 @@ class InstallerModelAuthorityTests(unittest.TestCase):
             parent = Path(directory)
             source = parent / 'source'; source.mkdir()
             tracked = subprocess.check_output(['git', '-C', str(ROOT), 'ls-files', '-z']).decode().split('\0')
+            tracked.append('scripts/v213_runtime_install_coordinator.ps1')
             for relative in tracked:
                 if not relative or relative.startswith(('.github/', 'state/', 'tests/')):
                     continue

@@ -89,7 +89,8 @@ def isolated_environment(case, host_path):
     assert_plain_path(case)
     home = Path(host_path).parent
     # Never inherit tokens, LINE IDs, broker config or caller PSModulePath.
-    env = {key: os.environ[key] for key in ("SystemRoot", "WINDIR", "SystemDrive", "COMSPEC") if key in os.environ}
+    env = {key: os.environ[key] for key in ("SystemRoot", "WINDIR", "SystemDrive", "COMSPEC", "PATHEXT") if key in os.environ}
+    env.setdefault("PATHEXT", ".COM;.EXE;.BAT;.CMD")
     for key, directory in (("LOCALAPPDATA", "local"), ("APPDATA", "roaming"),
                            ("TEMP", "temp"), ("TMP", "temp"), ("USERPROFILE", "profile"), ("HOME", "profile")):
         target = case / directory
@@ -107,17 +108,45 @@ def isolated_environment(case, host_path):
     return env
 
 
-def result_record(case, host, result, expected_stdout, expected_returncode=0):
+def _write_parse_evidence(path, record):
+    try:
+        write_json(path, record)
+    except (OSError, RuntimeError):
+        # Do not overwrite an existing receipt or leak an OS message/path. Keep
+        # the primary result distinct from failure to persist that result.
+        status = record.get("status")
+        if status not in ("PURE_PARSE_PASS", "EXPECTED_REJECTION", "UNEXPECTED"):
+            status = "UNEXPECTED"
+        code = record.get("code", "NONE")
+        if code not in ("NONE", "TIMEOUT", "HOST_START_FAILED", "INPUT_CHANGED", "INPUT_UNAVAILABLE"):
+            code = "UNKNOWN"
+        rc = record.get("returncode")
+        if type(rc) is not int:
+            rc = "NOT_STARTED"
+        raise RuntimeError(f"UNEXPECTED_PARSE_EVIDENCE_WRITE;primary_status={status};primary_code={code};returncode={rc}") from None
+
+
+def result_record(case, host, result, expected_stdout, expected_returncode=0, *,
+                  input_binding_sha256=None, input_integrity="NOT_BOUND"):
     if host not in REQUIRED_NATIVE_HOSTS:
         raise ValueError("HOST_LABEL_INVALID")
+    if input_binding_sha256 is not None:
+        if (not isinstance(input_binding_sha256, str) or len(input_binding_sha256) != 64
+                or any(c not in "0123456789abcdef" for c in input_binding_sha256)
+                or input_integrity not in ("UNCHANGED", "CHANGED", "UNAVAILABLE")):
+            raise ValueError("PARSE_BINDING_INVALID")
+    elif input_integrity != "NOT_BOUND":
+        raise ValueError("PARSE_BINDING_REQUIRED")
     output = (result.stdout + result.stderr).encode("utf-8", errors="replace")
-    passed = (type(result.returncode) is int and result.returncode == expected_returncode
-              and result.stdout.strip() == expected_stdout and result.stderr == "")
-    record = dict(schema_version=1, host=host, returncode=result.returncode,
+    matched = (type(result.returncode) is int and result.returncode == expected_returncode
+               and result.stdout.strip() == expected_stdout and result.stderr == "")
+    passed = matched and input_integrity in ("NOT_BOUND", "UNCHANGED")
+    record = dict(schema_version=2, host=host, returncode=result.returncode,
                   status=("PURE_PARSE_PASS" if expected_returncode == 0 else "EXPECTED_REJECTION") if passed else "UNEXPECTED",
+                  process_oracle_matched=matched, input_integrity=input_integrity, input_binding_sha256=input_binding_sha256,
                   output_bytes=len(output), output_sha256=hashlib.sha256(output).hexdigest(),
                   main_execution_allowed=False, raw_output_retained=False, release_qualified=False)
-    write_json(case / (host.replace(".", "_") + "-result.json"), record)
+    _write_parse_evidence(case / (host.replace(".", "_") + "-result.json"), record)
     return passed, record
 
 
@@ -153,28 +182,71 @@ def prepare_parse_case(fault=None):
     return case, manifest, driver
 
 
+def _parse_input_integrity(inventory):
+    try:
+        for path, digest in inventory.items():
+            assert_plain_path(path)
+            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                return "CHANGED"
+    except (OSError, RuntimeError):
+        return "UNAVAILABLE"  # Includes rejected links; never follow them to rescue a hash.
+    return "UNCHANGED"
+
+
 def run_parse_case(fault=None):
     hosts = required_hosts()  # Missing capability is a nonzero blocker, never suite OK(skipped).
     case, manifest, driver = prepare_parse_case(fault)
     expected = PASS_MARKER if fault is None else "PURE_PARSE_REJECT;CODE=" + fault + ";MAIN_EXECUTED=false"
-    inventory = {path: hashlib.sha256(path.read_bytes()).hexdigest()
-                 for path in (driver, manifest, *(case / "inputs").iterdir())}
+    inventory, entries = {}, []
+    for path in (driver, manifest, *sorted((case / "inputs").iterdir())):
+        assert_plain_path(path)
+        data = path.read_bytes()
+        inventory[path] = hashlib.sha256(data).hexdigest()
+        entries.append(dict(path=str(path.relative_to(case)), bytes=len(data), sha256=inventory[path]))
+    harness_path = Path(__file__)
+    assert_plain_path(harness_path)
+    inventory[harness_path] = hashlib.sha256(harness_path.read_bytes()).hexdigest()
+    binding = case / "parse-run-inputs.json"
+    _write_parse_evidence(binding, dict(schema_version=1, kind="PURE_PARSE_INPUT_BINDING", fault=fault,
+                         inputs=entries, harness_sha256=inventory[harness_path], hosts=[name for name, _ in hosts],
+                         main_execution_allowed=False, release_qualified=False))
+    binding_sha256 = hashlib.sha256(binding.read_bytes()).hexdigest()
+    inventory[binding] = binding_sha256
     for name, executable in hosts:
         host_case = case / name.replace(".", "_")
         host_case.mkdir()
         env = isolated_environment(host_case, executable)
+        integrity = _parse_input_integrity(inventory)
+        if integrity != "UNCHANGED":
+            _write_parse_evidence(host_case / "transport-failure.json", dict(status="UNEXPECTED", host=name,
+                                 code="INPUT_" + integrity, input_integrity=integrity, input_binding_sha256=binding_sha256,
+                                 returncode=None, main_execution_allowed=False, release_qualified=False))
+            raise RuntimeError("PARSE_INPUT_" + integrity)
         try:
             result = subprocess.run([executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                                      "-File", str(driver), "-InputManifest", str(manifest)],
                                     cwd=str(host_case), env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            write_json(host_case / "transport-failure.json", dict(status="UNEXPECTED", code="TIMEOUT" if isinstance(exc, subprocess.TimeoutExpired) else "HOST_START_FAILED", release_qualified=False))
+            partial = b""
+            if isinstance(exc, subprocess.TimeoutExpired):
+                for value in (exc.output, exc.stderr):
+                    if isinstance(value, str):
+                        partial += value.encode("utf-8", errors="replace")
+                    elif isinstance(value, bytes):
+                        partial += value
+            _write_parse_evidence(host_case / "transport-failure.json", dict(status="UNEXPECTED", host=name,
+                                 code="TIMEOUT" if isinstance(exc, subprocess.TimeoutExpired) else "HOST_START_FAILED",
+                                 input_integrity=_parse_input_integrity(inventory), input_binding_sha256=binding_sha256,
+                                 returncode=None, output_bytes=len(partial), output_sha256=hashlib.sha256(partial).hexdigest(),
+                                 raw_output_retained=False, main_execution_allowed=False, release_qualified=False))
             raise RuntimeError("UNEXPECTED_PARSE_TRANSPORT") from None
-        passed, record = result_record(case, name, result, expected, 0 if fault is None else 1)
-        for path, digest in inventory.items():
-            assert_plain_path(path)
-            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-                raise RuntimeError("PARSE_INPUT_CHANGED")
+        # Classify input integrity BEFORE writing any success receipt. A process
+        # marker alone is not a source-bound PASS. These checks are not a TOCTOU proof.
+        integrity = _parse_input_integrity(inventory)
+        passed, record = result_record(case, name, result, expected, 0 if fault is None else 1,
+                                       input_binding_sha256=binding_sha256, input_integrity=integrity)
+        if integrity != "UNCHANGED":
+            raise RuntimeError("PARSE_INPUT_" + integrity)
         if not passed:
             raise AssertionError("UNEXPECTED_PURE_PARSE_RESULT: " + json.dumps(record, sort_keys=True))
     return case
