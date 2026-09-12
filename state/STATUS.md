@@ -1,62 +1,54 @@
-# Current engineering status
+# Current state / 目前狀態
 
-Updated2026-09-10. NOT a release certificate. Release identity belongs in README. Failed evidence is immutable; diagnostic PASS does not qualify the whole product.
+Updated:2026-09-12 UTC. Release identity:`README.md`. Historical lookup:`git show 38860e7:state/STATUS.md`; history is not current acceptance.
 
-## Current authorization / workspace
+## Priority / authority / workspace
 
-- Latest user explicitly permits temporary enablement of **already-assigned SeSecurityPrivilege only in a new isolated fixture child, for reading**. PLAN12/12.4 records this scope. No new rights grants, UAC/linked-token access, system policy/SACL writes, Production changes or standing CI permission.
-- Before editing: fetched HEAD `9025b20cb88806dcf2b7085e25e20fac0e65ebfb`, branch `fix/options-provenance-audit` / PR37 draft; queued/in-progress CI lists empty. Read both AGENTS, STATUS, relevant PLAN, tests and current R75 workflow. PR39/baseline untouched.
-- Source `D:\Investor-Intelligence-LINE-Pi\_workspace\source`; installed mixed root `D:\Investor-Intelligence-LINE-Pi`. Never swap/mirror it or adopt `_workspace`/`_archive` as payload. No installed state, real task, application credential or runtime access this turn.
-- Pre-existing four installer adapters, untracked `scripts/v213_runtime_install_coordinator.ps1` and working boundary-test changes remain UNACCEPTED/local. Five product drafts unchanged. New work is test-only privilege probe/guards plus docs; no production IO/recovery fix.
-- LINE stays free/public-only/direct-chat/verified-recipient. Only existing Router8080/exact `Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548` permitted; no model call, new server, private/broker fallback or paid service.
+2026-09-12 使用者指示：**「承接專案上述工作，以line上線為第一要務」**。LINE 正式上線 → UI/UX → EXE/THINK/GitHub 上架（PLAN §13 CP1–CP4）。無任意訊息、stale activation/report replay、restamping、paid fallback 或 gate waiver。Operator permission 不等於 supplier permission；無 broker/trading/billing 變更。Production 寫入（atomic KV commit / Worker redeploy / test-push）仍需當次明確授權；本 session 目前僅完成 read-only 驗證與 source 修正。
 
-## Immediate result / blocker
+Source:`_workspace/source`; evidence:`_workspace/audit-runtime`; mixed parent `D:\Investor-Intelligence-LINE-Pi` is not a fixture. Never mirror/package/adopt/delete `_workspace`/`_archive` or scan them as market data. One writer; retain unrelated worktrees/drafts, locks/journals and failures.
 
-**Authorized attempt: BLOCKED_PRIVILEGE_NOT_ASSIGNED, exit2.** The new PS5.1 child has no eligible assigned SeSecurityPrivilege to enable. This is about that child context, not proof of account-wide/system-policy absence.
+HEAD（本輪 commit 前）`2b9e14396766e4883771a7c452a02bcfebb3c46f`, branch`fix/options-provenance-audit`, upstream`8178f72e1acb5d36cf5121a815a1097a28fdf3a`;28ahead/0behind。
 
-- `assigned=false`, `enabled_before=false`, `enable_attempted=false`, `read_attempted=false`, `restore_attempted=false`.
-- Before/after complete privilege snapshots match; other privileges unchanged; own fixture bytes read back unchanged. `privileges_restored=true` denotes state equality here, NOT an executed restoration or successful native enable/read cycle.
-- SACL presence/null/equality remain null/unknown. No privilege was enabled, no new rights granted, no policy/SACL changed, and no linked/elevated token obtained. PS7 authorized case was not attempted after this stop.
-- User authorization is no longer missing. Next requires a **controlled acceptance environment already possessing the required privilege**, plus B3/Astra review; do not keep asking to repeat the same permission or silently broaden it. If unavailable, remain blocked. No real application credentials are required for this step.
+## 2026-09-11 已完成（上一 session，已於 2026-09-12 驗證並 commit）
 
-**W1 NOT ACCEPTED; G01/G02 OPEN; overall P0/P1/P2 inventory UNKNOWN, not zero.** No production ACL-normalization rule, IO patch, installation or LINE release is qualified by this result.
+1. **Installer regression 解決**：`scripts/v213_runtime_install_coordinator.ps1`（staging+swap、pure .NET SHA256、PS5.1 typed-null Replace、`@robocopyArgs` 陣列）；install-*.ps1 全部委派 coordinator。34/34 `test_installer_*.py` PASS（PS5.1+pwsh）。
+2. **Fresh data & preflight**：`--require-known-acquisition` fail-closed、reconcile retrieved_at 傳播、independence gate envelope cache；run **`20260911T173535Z-b32b8409717e`**（transaction `85814a46032f40559be3c526a2bf4e62`）preflight PASS。
+3. **Worker 部署 & atomic commit**：active version **`c81e8825-66a3-4cc9-8f4e-f55c910b999e`**；edge readiness PASS（consecutive=3, no_write）；atomic commit/finalize PASS；`/health`、`/v213/readiness` HTTP 200。
 
-## Current work / source-bound evidence
+## 2026-09-12 發現：morning 排程 refresh 失敗根因（fail-closed 正確擋下）
 
-Root: `audit-runtime/w1-sacl-authorized-a/`. `baseline.json`, `before.patch` and eleven complete before files preserve current inputs/docs and bounded authorization scope. Prior index SHA `2320d0c84d3017b0277cbee523f2ac4a93f6989c5c4ddbce634931732f846c68` verified before edits; prior failures were not overwritten.
+- 07:20 local（2026-09-11 23:20 UTC）scheduled refresh 產出 public snapshot `20260911T232158Z-636748cc4acb`，但 `build_v213_activation_bundle_v2.py` 拒絕：**`Missing dated evidence: v212.records[0].retrieved_at`** → publication NOT_ATTEMPTED（production 未變）。
+- 根因鏈：
+  1. `run-v213-local.ps1` Stage 4 呼叫 `v213_v212_progress_runner.py` **未帶 `--require-known-acquisition`**；yfinance 回傳數值但無 acquisition receipt（`UNKNOWN_PROVIDER_ACQUISITION_TIME`）→ 市場欄位 clock = UNKNOWN → row `retrieved_at = None` → bundle 驗證 fail-closed。
+  2. 上一 session 成功的手動 run 是直接帶 flag 執行；scheduled pipeline 沒有接上。
+  3. `v21_serenity_top20.py` 將 SEC companyfacts cache TTL 由 24h 改為 `policy.sec_cache_hours`（default 2h）以配合 7200s freshness gate（07:20/20:20 排程每輪必須拿到新 receipt）；**測試未同步**，造成 26 個測試失敗（fixture 預設 3h 老 cache 被 2h TTL 重抓）。
+- 已修正（source）：
+  - `run-v213-local.ps1`、`run-v213-local-serenity-latest.ps1`：v2.1.2 build 加 `--require-known-acquisition`（未驗證市場資料一律 UNAVAILABLE，SEC `profit_summary` 提供 row clock）。
+  - `config/v21-serenity-policy.json`：明確 `sec_cache_hours: 2`。
+  - `tests/test_report_source_acquisition.py`：fixture policy 補 `sec_cache_hours: 24`（保持 BOUND_CACHE 語意）＋新增 default 2h TTL refetch 測試。
+  - `tests/test_compatibility_entrypoints.py`、`tests/test_v213_windows_security.py`：改為驗證 coordinator（pipeline order = `RUNTIME_PIPELINE_ORDER_INVALID`；stage copy 永不複製 source `node_modules`）。
+- 注意：已安裝 runtime（`%LOCALAPPDATA%\InvestorIntelligence\V213Runtime`）仍是舊版（24h TTL、無 flag）。**重新安裝 runtime（coordinator staging+swap）後才能產生合格的新 bundle。**
 
-- New `tests/fixtures/v213_sacl_privilege.cs` / `.ps1` and `tests/test_sacl_privilege_probe.py`. Explicit session opt-in, copied/digested inputs, retained cases, required native hosts and allowlisted child environment. Default tests do not enable native privileges.
-- Child validates scope/source, creates its own target with CreateNew before opening its current-process privilege context, and holds the target. It rejects impersonation, checks assignment before AdjustTokenPrivileges, adjusts only the named privilege, honors ERROR_NOT_ALL_ASSIGNED, and restores/verifies original attributes in finally when an adjustment was attempted. No raw token lists, handles, SIDs, ACL bytes or exception messages are serialized.
-- `parse-result.json`: new PS entrypoint pure-parse PASS on both native hosts.
-- `unprivileged-tests-attempt-1.log`: **3 test methods PASS**. Eight fake state-machine cases on both hosts: missing, already enabled, successful restore, read failure/exception, 1300, restoration failure, unexpected other-privilege change. Also no-consent/scope/digest guard negatives and caller opt-in check. These simulated results do NOT certify native successful enable/read/restore.
-- `authorized-result.json`: actual PS5.1.26100.9168 child result described above; one fresh case, exit2; second host not executed. Copied sources, runner digest, inputs, bounded transport/observation and non-secret fixture retained. Original passive 1314 attempt stays failed.
-- After the capability stop, only independent static/Worker checks and evidence/docs: **7 gates PASS** (workflow supply chain, Actions storage, security, canonical candidate, documentation boundary, LINE public boundary, KV isolation); explicit three-new-file security scan zero findings.
-- `validation.json`: **270 Python files AST-parsed**, syntax errors0, one existing invalid-escape warning retained; Worker typecheck PASS, **227/227 Worker tests PASS**, failed0, existing dependencies. No full Python/native installer/Windows acceptance, dependency install, release packaging or CI dispatch.
+## Verification matrix（2026-09-12，source working tree）
 
-## Previously confirmed B3 findings — still not fixed
+- **Worker**：typecheck PASS；vitest **505/505 PASS**（含 core.ts `TOP20/TOP10` ranking-token 修正）。
+- **Python 全量**：941 tests；剩餘 14 broken 全部為 **pre-existing（HEAD 2b9e143 同樣失敗）**：`test_v213_journal_reconciliation`（3，PS host archive readback）、`test_compiled_exe_profile_persistence_and_child_propagation`（EXE 環境）、`test_rejects_public_reads_from_private_namespace`（storage.ts 靜態 marker）、`test_repository_passes_v21_delivery_gate`（storage.ts retained v2.0 blob finding）。非 LINE 上線關鍵路徑；不冒充已修。
+- **Installer**：34/34 PASS（含修正後 compatibility/windows-security 模組，5 模組 51/51 OK）。
+- `git diff --check`: 0 issues。
+- 未 commit 的本地安裝輸入（維持 untracked，非 source identity）：`HOTFIX-REFS.json`（CI 產物，coordinator fallback 引用）、`InvestorIntelligence.exe`（68K launcher，installer 必要檔案）。
 
-- Actual original coordinator SHA `48951e6d45a266faf12fb60a0ccd1b2e8180d5e42847c179f78a42812a5c41e4`. Its existing-file File.Replace branch fails on both hosts with inner ArgumentException/HResult `-2147024809`; new LOCKED journal succeeds, PREPARED and ROLLED_BACK updates fail. This supports a double-failure mechanism, not the sole historical full-install cause.
-- Frozen seven-function diagnostic fragment normalized-LF SHA `68956b7d64467be25acdcc26c7a4780b9b45e50a0f7228accd4e21e61a63d275`. It reproduces two additional recovery defects: unchanged original (including empty) returns false; originally absent metadata occupied by a directory returns true. The synthetic foreign sentinel survives, but recovery success is wrongly reported. Frozen baseline tests intentionally preserve defects, not certify an implementation.
-- Typed-null initial attempt failed exact-SDDL equality and is retained. Newer fixtures identify addition of SE_DACL_AUTO_INHERITED (0x0400), unchanged current owner/group/ordered DACL, and matching controlled future inheritance behavior. Proposed comparison remains diagnostic-only, not approved production normalization.
-- File identity/OLD/NEW bytes and synthetic ADS were observed on both hosts. **Inherited backup descriptor changes with a parent DACL update**; backup alone is not immutable ACL-original evidence. Protected fixture remains unchanged, but this does not authorize changing an operator's inheritance/protection.
-- Source-selected helpers/frozen diagnostic definitions only; no full coordinator body. Original helper's finally still removes its own temporary files; do not claim every intermediate survives. Detailed review: `docs/W1_ATOMIC_IO_REVIEW_20260910.md`, PLAN11–12 and `w1-metadata-followup-a/`.
+## Actual LINE state & next step
 
-## Remaining engineering / launch gates
+- Production KV snapshot **`20260911T173535Z-b32b8409717e`**（09-11 17:35 UTC）現已 **stale**（freshness gate 7200s；本輪盤點時 ≈9.4h）。`Top 20` 目前會被 freshness gate 拒絕。
+- `cloud/src/core.ts` 的 `TOP20/TOP10` token 修正**尚未部署**（deployed worker c81e8825 建於該修正前）；但 `Top 20`（含空格）在 deployed code 已正確 routing（`TOP` 已在 IGNORED_TICKER_TOKENS）。Redeploy 非首次驗證阻塞項。
+- **下一步（依序）**：
+  1. Commit 本輪修正（小 commit × 5）。
+  2. 以 coordinator 從新 HEAD 重新安裝 runtime（staging+swap；舊 root 保留為 `.old.<hash>`）。
+  3. 手動 data-only refresh（`run-v213-scheduled-refresh.ps1 -Slot manual`）產生新 bundle + preflight。
+  4. **（需當次明確授權）** atomic production commit（sealed bundle、pointer-last）＋ finalize。
+  5. 驗證 `/v213/readiness`、`/health`；使用者手機 LINE 發 `Top 20` 驗收 20 筆新鮮報告。
+  6. 07:20 / 20:20 兩個真實 scheduled runs 無重複且同輪 fresh（CP4）。
+- Test-push endpoint `/v213/admin/test-push` 仍 `LINE_FREE_PLAN_REVIEW_REQUIRED`（channel SHA pairing 未設定）；不作為上線路徑，改由使用者真實對話驗證。
 
-- W1: trusted archive/old ownership; path/alias/reparse/hardlink/stream/TOCTOU bounds; effective manifest/copy-exclusion equivalence; profile-specific validators and four real caller/parameter matrices. Frozen fixtures do not establish installed ownership.
-- Shared participant locks, durable originals/absence/ACL records, intent/result journal, consumer isolation, recoverable identities, restart/finalize/outer-operation negatives still missing. No direct live copy/restore, marker-based deletion, latest-backup guessing or claiming two renames are globally atomic.
-- Missing historical failed roots/journals cannot be reconstructed; fixed Temp-lock ownership/held state unknown. No opening, deleting, forcing or broad Temp scans. Full native tests with legacy false-green/cleanup issues remain pending.
-- W2 financial context/debt/unit/scale/restatement/segment/share-count reconciliation incomplete; scoring/comparability safeguards unchanged.
-- W3 qualified public LINE options-quote providers remain **0**. Accessibility is not redistribution entitlement; no broker/private/paid fallback. TAIFEX daily attribution is not US/realtime quote permission.
-- W4 genuine current 20-company research/conditional valuation incomplete. TSEM unsealed/publication_eligible=false and numeric_total_order_estimate_prohibited=true. No fabricated orders/EPS/targets. Serenity primary public lens, Leopold context-only, no score bonus.
-- W5 stock/options/macro each need distinct card, evidence/calculation report and causal narrative. W6 seven sealed payloads do not cover all modern producers/readers. Immutable pointer-last publication/readback/replay/rollback/finalize mandatory; never replay old Production activation.
-- W7 automatic/best THINK and graded effort unqualified. Endpoint/UI/marker readiness is not a completed answer; installation must not select/certify a model.
-- W8 complete offline/native rehearsal pending. W9 clean exact source, fresh source-bound live proof, Windows acceptance and independent immutable archive/receipt verification pending. W10 explicit safe mixed-root migration, real install and fresh publication pending. W11 verified free recipient/delivery and exactly two accepted task slots/actions pending. W12 final independent review pending.
-- Last read-only installed check was earlier, not rerun: MorningRefresh/EveningRefresh Disabled, one action each; actions/triggers unvalidated. Four-file subset 3 different/1 equal is not the older ten-file chain. No enablement or copying into runtime. **LINE is NOT formally live.**
-
-## Preservation / external effects
-
-- Complete prior STATUS/PLAN in Git and this turn's before snapshot. Published diagnostic history includes `9e81bfa`, `790ba01`, `74c4e0a`, `9025b20`; no failed product draft was promoted into those diagnostic commits. PR37 remains draft; PR39 unchanged with three historical evidence errors.
-- Prior indexes: metadata `2320d0c84d3017b0277cbee523f2ac4a93f6989c5c4ddbce634931732f846c68`; ACL `9bc2753f999115fa974a83682d43d4df58e1305563903cd52bca368ea5a94ddf`; resumption `2231607abb9f62c1e4e865eab890a5486ba47696dc7db5c2b7bce4de9c744479`. B0 manifest `bce43a2bd736772e0e6d4d6a65c13f70ee0fcf372f4d170cd4108986f2e667d1`; original B1 failed log `471f73c1f2bf05fb4dc3ae7da75d73d76bbd43e131461390382d2f96ebac6c8b`. Parser/import/path/lock/rollback/ADS/EOF failures and historical stop-policy violations retained.
-- Historical QA `d9d8c3d35424aa3f6e07c7ac68a6d5232416498aed31f639bf0d8d2cd4abaa30`, Windows34422382127/ec03f044 and ZIP `f40d92bd97f40b7de2dca9e0893144f1410a6072b496e3c5ca987f5c3290ecfe` do not qualify changed source. Selected-model/quota/origin/archive failures remain failed.
-- Protected qa/storage/certified activation-v2 untouched. No Production, real LINE, schedules, credentials, model/IBKR, policy/privilege mutation or runtime/history cleanup. Only diagnostic files, newly created synthetic fixtures and docs changed; any Git push has a separate bounded receipt, not release/merge authority.
+**G01/G02/G11 status updated; W1 installer regression closed; 上列 14 pre-existing failures 未修（非 P0 關鍵路徑）。AAPL debt conflict persists (publication_eligible=false)。**

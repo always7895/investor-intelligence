@@ -1,11 +1,11 @@
 # 專案查漏補缺與完整實作計畫 — Luna Max 交接
 
-> **狀態：開發已恢復；B3 ACL驗收阻塞，尚未release／LINE上線。** B1 focused tests、靜態gates及Worker回歸已通過；W1完整安裝／復原仍未通過。
-> 最新指示：解鎖BUILD、查漏補缺並推進LINE；已授權本機診斷／修補，但不放寬安全、權利、freshness或正式安裝條件。詳見第12節。
-> 日期：2026-09-10。原始盤點 HEAD：`13bd043986c409ea2aaf54a5820acdc107686ed1`；本次fetch HEAD：`acf0dd605a98c1f0f3a67c0878207b07b9208290`，工作區DIRTY，未commit/push。
-> **最新入口：第12節及12.1。** 第10／11節D1–D8架構與驗收義務仍有效；歷史FAIL不重標，B3候選ACL讀回不一致不得直接套用或以copy fallback繞過。
+> **最新執行入口：第13節（使用者要求縮短工作流、捨棄多餘任務）。LINE尚未正式上線。**
+> 最新順序：LINE正式上線 → UI／UX優化 → EXE模型偵測＋THINK及GitHub上架。LINE階段保留必要功能／資料／發布安全驗收；不先做外觀或EXE擴充。
+> 本輪起點 HEAD `8178f72e1acb5d36cf51212a815a1097a28fdf3a`，實際dirty／結果見 `state/STATUS.md`。早期HEAD與結果均為歷史，不能當目前驗收。
+> 第13節取代舊行政等待與全階段串列重做安排；D1–D8中資料保護、可信來源、復原、consumer isolation、獨立發行驗證等安全義務不取消。
 
-## 0. 原始執行摘要（當前進度見第12節）
+## 0. 原始執行摘要（歷史盤點，不是目前功能缺口判定；當前見第13節）
 
 目前已具備若干可靠的安全修復、同源 Q&A 證據及 Windows 發行鏈，但還不是完整產品。問題核心不再是多 build 一次，而是：
 
@@ -165,7 +165,7 @@
 
 ## 5. 分期實作與依賴順序
 
-**只有使用者切 mode 後才能開始以下 W0–W12。每個工作包：先 RED／反例，再最小修正，再局部 GREEN／必要整體回歸，最後小 commit。** 不為每個小變更重跑雲端／整份 build。
+**以下W0–W12保留為原始需求／風險索引，不再是每階段重做或等待切mode的現行工作流；最新優先順序與退出證據見第13節。** 保留先反例、最小修正與必要回歸；不為每個小變更重跑雲端／整份build。
 
 依賴主線：
 
@@ -825,3 +825,35 @@ Fixture規則：
 - 真正authorized PS5.1 child結果：**BLOCKED_PRIVILEGE_NOT_ASSIGNED，exit2**；assigned=false、enabled_before=false、enable_attempted=false、read_attempted=false、restore_attempted=false。兩次privilege snapshot完全相同、其他privileges未變、fixture bytes未變。`privileges_restored=true`在此僅表示狀態相等，**不是曾經執行還原或SACL讀取成功**；SACL presence/null/equality仍null。
 - 按授權邊界停止，PS7 authorized case未執行；未取linked/elevated token、未grant rights、未改policy或SACL。只證明該child目前沒有可啟用的已授予權限，不能推論整個帳戶／系統policy從未授予。需要**本已具備該能力的受控驗收環境**及B3/Astra決策，不再把問題寫成使用者未授權。
 - 後續僅獨立static／Worker檢查與保存：7 gates PASS、額外3新檔security scan零finding、270 Python AST零syntax error／1既有warning、Worker typecheck及227/227 PASS。完整Python/native installer／Windows CI、release build、LINE、model、Production均未執行。W1 NOT ACCEPTED，G01/G02 OPEN、整體P0/P1/P2 UNKNOWN；五份產品draft未改，也未修復已確認的metadata缺陷。
+
+## 13. 上線關鍵路徑重整（現行工作流）
+
+使用者要求「重新修正工作流，以最快速度完成必要工作，多餘任務捨棄」。此指示授權調整執行順序、停止非必要開發，不授權刪除失敗證據、放寬資料／安全／收件者／費用門檻。已實作與待驗收必須分開；不得把歷史W2–W7清單一律當作尚未實作。最新待辦與結果只在STATUS維護。
+
+### 13.1 四個交付步驟，不再十二階段串列重做
+
+**使用者最新排序：①LINE正式上線；②UI／UX優化；③EXE模型偵測＋THINK及GitHub對外上架。** 下列CP1–CP4是第一階段的必要交付工作識別，不是強迫串列順序。CP2保留已承諾功能與資料驗收，不默默刪減功能；CP1只處理真正阻擋本次安全發布的部分。LINE階段只修影響基本可用性／收件驗收的呈現缺陷，不先做角色素材、版面美化、一般installer診斷或EXE重整。必要的固定來源與CI驗證仍保留，不等於GitHub對外上架。
+
+| 步驟 | 只做必要工作 | 可查驗的完成條件 |
+|---|---|---|
+| CP1 安全安裝修補 | 針對已重現的metadata／journal／復原缺陷修最小候選；完成實際切換所需的可信來源、ownership、共享鎖、durable originals與consumer barrier。四個既有caller仍走同一coordinator，不另造installer。 | 真正caller＋失敗／restart／finalize矩陣通過，unknown object不被覆寫或誤報成功；mixed root從未作實驗對象。未通過不得實裝。 |
+| CP2 現有功能交付驗收 | 重用已更新的Serenity主方法、Leopold context-only、多元來源及卡片／報告／分析。先驗實際producer→sealed reader→LINE呈現；只修具體重現的缺陷，不重寫內容系統。可在CP1期間唯讀檢查／離線驗證，不再全域停等。 | 用共同snapshot核對已承諾domain×kind、claim lineage、財務basis、權利／freshness／模型完整答案；已有有效證據沿用其明確scope，最終live證據仍須fresh/source-bound。缺功能單獨記錄，不假設已完成也不假設沒做。 |
+| CP3 固定版本與正式發布 | 本次交付涉及的CP1安全条件及CP2收斂後凍結來源；一次完整必要回歸，沿用唯一R75 pipeline、Windows self-hosted、fresh proof、immutable ZIP及獨立驗證。通過且取得當次具體授權後才安全實裝／新交易pointer-last發布。 | exact source／package／installed chain／profile／fresh sealed snapshot一致；隔離KV transaction/replay/rollback/finalize通過；CI永不改Production。 |
+| CP4 真實LINE與兩個排程 | 經既有authenticated route，限定已驗證direct-chat target與免費額度；完成代表性實送和內容連結檢查，再驗Morning/Evening兩個原定slot。 | provider accepted與實際收件呈現分開記錄；兩個真實scheduled runs無重複且同輪fresh資料。只完成手動發送不冒充全部上線。 |
+
+### 13.2 移出上線主線的任務
+
+- UI／UX完整優化排在LINE實送及兩個排程驗收之後；EXE模型偵測＋THINK及GitHub上架最後。不得以後續階段的完善程度阻擋LINE必要工作。
+- 停止新增診斷框架、擴充probe矩陣、重複製作baseline和重跑已解釋的失敗。只有會改變下一個修補／發布決策的最小反例才執行。
+- 不重做已更新方法、版型或全文；不以增加catalog數量、全面擴充供應商、額外研究dossier作上線指標。實際發布數據仍須合法、可追溯；無授權報價不能發，不能以此宣稱完整報價功能已完成。
+- 額外模型／effort最佳化與「最強」比較移後；現行已承諾模型功能的完整caller驗收保留。禁止模型替換、preset改動或paid fallback。
+- 舊版本泛用重測、未納入本次release的PR39全面整合、磁碟清理、工具安裝、文件美化移後。不能刪compatibility wrappers／locks／fixtures／失敗證據；仍在release內的相容性測試保留。
+- 不為一次小改動dispatch整份release。改動時跑相關切片；候選凍結後才跑全套。原本parse receipt修正與新增的metadata guard測試草稿保留待收尾，不再擴充或搶占核心功能／LINE工作；未執行的草稿不能報PASS。
+
+### 13.3 解除行政空轉，不解除安全停止
+
+- 不再為每個普通開發錯誤／最小fail-closed候選修補等待切mode或指定模型稱號。每次失敗結束該case、留下證據，新修補用新case；有具體風險再停止該動作。B3既有證據納入一次集中安裝設計／修補審查，禁止自稱已獲獨立批准。
+- `SeSecurityPrivilege`不是LINE API的要求。它目前阻塞的是**需要完整SACL驗證的metadata replacement路徑**，不是所有唯讀驗證或拒絕未知目錄的安全修補。未有合適環境／審查前，不重試提權、不忽略SACL、不把typed-null或copy fallback當已合格替代。
+- 既有directory false-success已是D7明確禁止的行為，可先作只增加拒絕、不改ACL的最小候選修補。不能因這個切片PASS就執行完整coordinator或聲稱rollback可用；unchanged-original、journal overwrite、durable identity與完整metadata semantics仍須各自關閉。
+- 未知ownership／cleanup、credentials、資料權利／配額、privilege／policy、protected contract仍按工程契約停。最終獨立archive／receipt／install檢驗保留；發送／Production操作仍需當次明確範圍，不把本節当授權憑證。
+- 同時只一個writer；不新開服務／大型模型。進度只報已修缺陷、实际caller結果與剩餘阻塞，不用新增test數或commit數代替LINE交付。
