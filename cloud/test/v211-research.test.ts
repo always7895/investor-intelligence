@@ -124,6 +124,29 @@ describe("v2.1.3 signed-universe + attribution-safe local-research routing", () 
     expect(parsed?.[20]?.rank).toBe(21);
   });
 
+  it("accepts the R75 v2.1.3-diversified scoring universe", () => {
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    const parsed = parseV211ResearchUniverse(rows);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.[0]?.ticker).toBe("T00");
+  });
+
+  it("serves ticker research from the sealed v21:top20:latest object", async () => {
+    const publicKv = new MemoryKv();
+    await publicKv.put("snapshot:current", JSON.stringify({ run_id: "run-1" }));
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    await publicKv.put("snapshot:run-1:v21:top20:latest", JSON.stringify(rows));
+    const env = {
+      PUBLIC_CACHE: asKv(publicKv),
+      TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
+      EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()),
+    };
+    const answer = await v211ResearchAnswer(env as StorageEnv, parseQuery("T00 怎麼看"));
+    expect(answer).toContain("T00");
+    expect(answer).toContain("#1/20");
+    expect(answer).toContain("系統量化 Top 20");
+  });
+
   it("answers greetings without exposing LOCAL_MODEL_NOT_CONFIGURED", async () => {
     const answer = await v211ResearchAnswer(await envWithUniverse(), parseQuery("你好"));
     expect(answer).toContain("公開研究問答");

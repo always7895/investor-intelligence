@@ -50,7 +50,7 @@ export function parseV211ResearchUniverse(raw: unknown): V21Top20Record[] | null
       typeof item.name !== "string" ||
       typeof item.category !== "string" ||
       typeof item.rating !== "string" ||
-      item.scoring_version !== "serenity-first-v2.1.0" ||
+      (item.scoring_version !== "serenity-first-v2.1.0" && item.scoring_version !== "system-operationalization-v2.1.3-diversified") ||
       item.line_public_eligible !== true ||
       item.provider_scope !== "public_only" ||
       item.owner_watchlist_inherited !== false ||
@@ -159,7 +159,10 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
   // A missing stock universe must not intercept macro, sector or methodology
   // questions. Their downstream model/evidence/freshness gates still apply.
   if (!query.ticker && !(asksComparison(query.normalized) && tickers.length >= 2) && !universeRequest) return null;
-  const raw = await publicJson<unknown>(env, ["v211:universe:latest"]);
+  // The sealed R75 snapshot stores the scored research rows as
+  // v21:top20:latest; v211:universe:latest is the pre-R75 key retained for
+  // legacy sealed snapshots only.
+  const raw = await publicJson<unknown>(env, ["v21:top20:latest", "v211:universe:latest"]);
   const universe = parseV211ResearchUniverse(raw);
   if (!universe) {
     return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
