@@ -40,6 +40,8 @@ try {
         'scripts\workflow_supply_chain_gate.py',
         'scripts\actions_storage_policy_gate.py',
         'scripts\security_check.py',
+        'scripts\documentation_boundary_gate.py',
+        'scripts\documentation_structure_gate.py',
         'scripts\canonical_release_candidate_gate_v2.py'
     )) {
         & $env:PROJECT_PYTHON $gate
