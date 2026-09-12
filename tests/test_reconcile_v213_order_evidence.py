@@ -1,6 +1,5 @@
 from __future__ import annotations
 import copy
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -68,11 +67,60 @@ class ReconcileOrderEvidenceTests(unittest.TestCase):
                 row = result['records'][0]
                 self.assertIn(expected_current, row['current_orders'])
                 self.assertIn(expected_future, row['future_orders_estimate'])
-                self.assertEqual(row['reconciliation_source'], 'automated_r15_quantitative_sec_delta')
+                self.assertEqual(row['reconciliation_source'], 'automated_r15_source_clock_sec_delta')
+                if expected_current != r.h6b.CURRENT_FALLBACK:
+                    self.assertIsNotNone(r.utc_time(row['retrieved_at']))
+                else:
+                    self.assertIsNone(row['retrieved_at'])
+                self.assertFalse(receipt['market_clock_inherited_for_orders'])
+                self.assertFalse(receipt['publication_qualified'])
                 self.assertFalse(receipt['local_model_used_for_order_totals'])
                 self.assertTrue(receipt['numeric_total_order_estimate_prohibited'])
                 self.assertEqual(json.loads((root / 'baseline.json').read_text()), baseline)
                 self.assertGreater(len(fetched), 0)
+
+    def test_new_member_never_inherits_company_clock_and_keeps_explicit_order_clock(self):
+        for clock in (None, '2026-01-01T00:00:00Z'):
+            fresh, baseline = documents()
+            fresh['records'][0]['retrieved_at'] = '2026-09-12T00:00:00Z'
+            outlook = r.h6b._outlook('RPO $2 billion', r.h6b.FUTURE_FALLBACK,
+                current_urls=['https://www.sec.gov/synthetic'], confidence='EVIDENCE_BOUND', as_of='2026-07-01')
+            if clock is not None: outlook['retrieved_at'] = clock
+            result, _ = r.reconcile(fresh, baseline, resolver=lambda _: outlook)
+            self.assertEqual(result['records'][0]['retrieved_at'], clock)
+
+    def test_known_unbound_producers_cannot_recycle_their_market_clock(self):
+        for producer in r.UNBOUND_CLOCK_PRODUCERS:
+            fresh, baseline = documents(False)
+            baseline['accepted_from'] = producer
+            baseline['records'][0]['retrieved_at'] = '2026-09-12T00:00:00Z'
+            original = copy.deepcopy(baseline)
+            result, _ = r.reconcile(fresh, baseline)
+            self.assertIsNone(result['records'][0]['retrieved_at'])
+            self.assertEqual(baseline, original)
+
+    def test_only_successful_cited_source_reads_supply_the_oldest_clock(self):
+        url = 'https://www.sec.gov/synthetic'
+        missing = 'https://www.sec.gov/not-read'
+        failed = 'https://www.sec.gov/failed'
+        def transport(target):
+            if target == failed: raise r.h6b.H6BError('SYNTHETIC_FETCH_FAILED')
+            return 'SYNTHETIC_VISIBLE_TEXT'
+        for cited in ([url], [url, missing], [failed]):
+            def extractor(*args, **kwargs):
+                # Equal seconds with/without a fraction must sort as time, not
+                # strings. Repeated retrieval must not advance the first clock.
+                kwargs['text_fetcher'](url)
+                kwargs['text_fetcher'](url)
+                try: kwargs['text_fetcher'](failed)
+                except r.h6b.H6BError: pass
+                return r.h6b._outlook('RPO $2 billion', r.h6b.FUTURE_FALLBACK,
+                    current_urls=cited, confidence='EVIDENCE_BOUND', as_of='2026-07-01')
+            with patch.object(final_guard, 'generic_sec_outlook_semantic_v10', side_effect=extractor), \
+                 patch.object(r.h6b, 'fetch_text', side_effect=transport), \
+                 patch.object(r, '_utc_now', side_effect=['2026-09-12T00:00:00Z', '2026-09-12T00:00:00.100Z', '2026-09-12T00:00:01Z']):
+                result = r.resolve_quantitative_sec_outlook('NEW', {})
+            self.assertEqual(result['retrieved_at'], '2026-09-12T00:00:00Z' if cited == [url] else None)
 
     def test_year_or_nearly_all_is_not_a_quantified_forward_amount(self):
         for future in ('官方語境延伸至2027', '幾乎全部於未來12個月認列', '未來訂單很多'):

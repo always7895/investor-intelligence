@@ -23,6 +23,7 @@ import json
 import re
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -32,6 +33,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v213_serenity_h6b_full_top20 as h6b
+from report_source_acquisition import utc_time
 
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 DEFAULT_BASELINE = ROOT / "data" / "bootstrap" / "v213-r15r-order-baseline.json"
@@ -89,13 +91,36 @@ def _sha(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+# These producers could copy a company/market clock into order rows. Their
+# output cannot serve as proof that any order source was actually acquired.
+UNBOUND_CLOCK_PRODUCERS = {
+    'R15R_PLUS_AUTOMATED_H6B_SEC_DELTA',
+    'R15R_PLUS_AUTOMATED_R15_QUANTITATIVE_SEC_DELTA',
+}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
 def resolve_quantitative_sec_outlook(ticker: str, cik_map: Mapping[str, str]) -> Mapping[str, Any]:
     # Do not call h6b.generic_sec_outlook: in a fresh process that is the retired
     # first-amount/same-sentence matcher; in a test suite its meaning can depend
     # on which historical patch modules happened to be imported earlier.
     from v213_serenity_h6b1_metric_semantic_guard_v10 import generic_sec_outlook_semantic_v10
+    acquired: dict[str, str] = {}
+
+    def source_text(url: str) -> str:
+        # Conservative acquisition START, not a refreshed market timestamp.
+        # Record successful source-text calls only; a generated/cited URL alone
+        # cannot acquire a clock. R15's metadata/XML lookups are not order text.
+        started = _utc_now()
+        text = h6b.fetch_text(url)
+        acquired[url] = min((started, acquired.get(url, started)), key=utc_time)
+        return text
+
     result = copy.deepcopy(generic_sec_outlook_semantic_v10(
-        ticker, cik_map, raw_fetcher=h6b.fetch_raw, text_fetcher=h6b.fetch_text))
+        ticker, cik_map, raw_fetcher=h6b.fetch_raw, text_fetcher=source_text))
     future = str(result.get('future_orders_estimate') or '')
     quantitative = re.search(r'\d+(?:\.\d+)?%|\$\s*\d[\d,]*(?:\.\d+)?\s*(?:million|billion|m|b)(?![A-Za-z])|三分之一', future, re.I)
     if future != h6b.FUTURE_FALLBACK and not quantitative:
@@ -104,6 +129,8 @@ def resolve_quantitative_sec_outlook(ticker: str, cik_map: Mapping[str, str]) ->
         result['future_orders_estimate'] = h6b.FUTURE_FALLBACK
         result['future_order_source_urls'] = []
         result['claim_grounding']['future_orders_estimate'] = 'UNAVAILABLE'
+    cited = set(result.get('current_order_source_urls') or []) | set(result.get('future_order_source_urls') or [])
+    result['retrieved_at'] = min((acquired[url] for url in cited), key=utc_time) if cited and cited <= acquired.keys() else None
     return result
 
 
@@ -127,7 +154,8 @@ def _baseline_row_from_outlook(rank: int, ticker: str, outlook: Mapping[str, Any
         "orders_confidence": confidence,
         "current_order_source_urls": current_urls,
         "future_order_source_urls": future_urls,
-        "reconciliation_source": "automated_r15_quantitative_sec_delta",
+        "reconciliation_source": "automated_r15_source_clock_sec_delta",
+        "retrieved_at": outlook.get("retrieved_at"),
     }
 
 
@@ -138,7 +166,6 @@ def reconcile(
     resolver: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     fresh = _records(v212, "2.1.2")
-    fresh_by_ticker = {row["ticker"]: row for row in fresh}
     old = _records(baseline, "2.1.3")
     old_by_ticker = {row["ticker"]: row for row in old}
     fresh_order = [row["ticker"] for row in fresh]
@@ -168,15 +195,13 @@ def reconcile(
             row["rank"] = rank
             row["ticker"] = ticker
             row["reconciliation_source"] = "accepted_r15r_preserved"
-            if not row.get("retrieved_at") and fresh_by_ticker.get(ticker, {}).get("retrieved_at"):
-                row["retrieved_at"] = fresh_by_ticker[ticker]["retrieved_at"]
+            if baseline.get('accepted_from') in UNBOUND_CLOCK_PRODUCERS:
+                row['retrieved_at'] = None
             rows.append(row)
             continue
         print(f"II_PROGRESS v2.1.3 order evidence delta {len(researched)+1}/{len(added)} | {ticker}", flush=True)
         outlook = resolver(ticker)
         row = _baseline_row_from_outlook(rank, ticker, outlook)
-        if not row.get("retrieved_at") and fresh_by_ticker.get(ticker, {}).get("retrieved_at"):
-            row["retrieved_at"] = fresh_by_ticker[ticker]["retrieved_at"]
         rows.append(row)
         researched.append(ticker)
         if str(outlook.get("evidence_status") or "") == "UNAVAILABLE":
@@ -187,7 +212,7 @@ def reconcile(
     document = {
         "schema_version": 2,
         "product_version": "2.1.3",
-        "accepted_from": "R15R_PLUS_AUTOMATED_R15_QUANTITATIVE_SEC_DELTA",
+        "accepted_from": "R15R_PLUS_AUTOMATED_R15_SOURCE_CLOCK_SEC_DELTA",
         "parent_baseline_sha256": _sha(baseline),
         "records": rows,
     }
@@ -206,6 +231,8 @@ def reconcile(
         "unavailable_new": unavailable_new,
         "numeric_total_order_estimate_prohibited": True,
         "local_model_used_for_order_totals": False,
+        "market_clock_inherited_for_orders": False,
+        "publication_qualified": False,
         "runtime_baseline_sha256": _sha(document),
     }
     return document, receipt

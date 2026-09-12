@@ -12,8 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -94,10 +94,19 @@ def _records(doc: Mapping[str, Any], version: str) -> list[dict[str, Any]]:
     return result
 
 
+def _completion_time() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
 def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Mapping[str, str], *,
           require_known_acquisition: bool = False) -> dict[str, Any]:
+    # Orders can be acquired AFTER the five-field report. This is a new artifact
+    # completion clock; it must never replace any operand's acquisition clock.
+    completed_at = _completion_time()
     try:
         validate_report_acquisition(v212, require_known=require_known_acquisition)
+        if utc_time(v212['generated_at']) > utc_time(completed_at):
+            raise SourceAcquisitionError('SOURCE_ACQUISITION_AFTER_COMPLETION')
     except SourceAcquisitionError as error:
         raise V213ScheduledReportError(str(error)) from None
     fresh = _records(v212, "2.1.2")
@@ -131,7 +140,7 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
                 if retained is None:
                     retrieved = None
                 else:
-                    if utc_time(retained) > utc_time(v212['generated_at']):
+                    if utc_time(retained) > utc_time(completed_at):
                         raise SourceAcquisitionError('SOURCE_ACQUISITION_AFTER_COMPLETION')
                     retrieved = min((retrieved, retained), key=utc_time) if retrieved is not None else None
             except SourceAcquisitionError:
@@ -170,7 +179,7 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
     return {
         "schema_version": 2,
         "product_version": "2.1.3",
-        "generated_at": v212.get("generated_at"),
+        "generated_at": completed_at,
         "display_columns": DISPLAY_COLUMNS,
         "long_term_definition": "trailing_2y_adjusted_close_cagr",
         "short_term_definition": "trailing_6m_adjusted_close_price_return",

@@ -241,6 +241,55 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             row['retrieved_at']=report['generated_at']+'suffix'
             with self.assertRaises(scheduled.V213ScheduledReportError):scheduled.build(report,baseline,names_for(report))
 
+    def test_seven_field_completion_can_follow_order_acquisition_without_renewing_operands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = actual_cli(Path(tmp), age_hours=.05)['report']
+        baseline = no_orders(report)
+        financial_done = acquisition.utc_time(report['generated_at'])
+        order_time = (financial_done + timedelta(seconds=2)).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+        done = (financial_done + timedelta(seconds=4)).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+        row = baseline['records'][19]
+        row.update(current_orders='合約證據待核對', orders_confidence='EVIDENCE_BOUND', orders_as_of='2026-07-01',
+                   current_order_source_urls=['https://www.sec.gov/example/current'], retrieved_at=order_time)
+        with patch.object(scheduled, '_completion_time', return_value=done):
+            seven = scheduled.build(report, baseline, names_for(report), require_known_acquisition=True)
+            self.assertEqual(seven['generated_at'], done)
+            self.assertEqual(seven['records'][19]['retrieved_at'], report['records'][19]['retrieved_at'])
+            self.assertNotEqual(seven['records'][19]['retrieved_at'], done)
+            row['retrieved_at'] = (financial_done + timedelta(seconds=5)).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+            with self.assertRaises(scheduled.V213ScheduledReportError):
+                scheduled.build(report, baseline, names_for(report), require_known_acquisition=True)
+        with patch.object(scheduled, '_completion_time', return_value='2000-01-01T00:00:00Z'):
+            with self.assertRaises(scheduled.V213ScheduledReportError):
+                scheduled.build(report, baseline, names_for(report))
+
+    def test_reconciliation_cli_cannot_launder_unknown_order_clock_into_strict_builder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = actual_cli(root / 'financial', age_hours=.05)['report']
+            baseline = no_orders(report)
+            baseline['records'][19].update(current_orders='合約證據待核對', orders_confidence='EVIDENCE_BOUND',
+                orders_as_of='2026-07-01', current_order_source_urls=['https://www.sec.gov/example/current'])
+            five = root / 'five.json'; old = root / 'old.json'; orders = root / 'orders.json'
+            top = root / 'top.json'; output = root / 'seven.json'; preview = root / 'seven.txt'
+            five.write_bytes(builder.json_bytes(report)); old.write_bytes(builder.json_bytes(baseline))
+            top.write_bytes(builder.json_bytes([{'ticker': ticker, 'name': name} for ticker, name in names_for(report).items()]))
+            output.write_text('SYNTHETIC_ORIGINAL'); preview.write_text('SYNTHETIC_PREVIEW')
+            # Run both real CLIs, not just the final formatter. Same membership
+            # must require no provider calls or live/default cache paths.
+            first = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/reconcile_v213_order_evidence.py'),
+                '--v212-report', str(five), '--baseline', str(old), '--output', str(orders),
+                '--receipt', str(root / 'receipt.json')], cwd=tmp, capture_output=True, timeout=30)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            second = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/build_v213_scheduled_top20_report.py'),
+                '--v212-report', str(five), '--baseline', str(orders), '--top20', str(top), '--output', str(output),
+                '--preview', str(preview), '--require-known-acquisition'], cwd=tmp, capture_output=True, timeout=30)
+            self.assertEqual(second.returncode, 1, second.stdout + second.stderr)
+            self.assertIn(b'SOURCE_ACQUISITION_UNKNOWN', second.stderr)
+            self.assertEqual(output.read_text(), 'SYNTHETIC_ORIGINAL')
+            self.assertEqual(preview.read_text(), 'SYNTHETIC_PREVIEW')
+            self.assertEqual(json.loads(old.read_bytes()), baseline)
+
     def test_clock_value_binding_omissions_and_future_or_coerced_times_refuse(self):
         with tempfile.TemporaryDirectory() as tmp:
             valid=actual_cli(Path(tmp))['report']

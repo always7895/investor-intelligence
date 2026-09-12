@@ -54,6 +54,14 @@ The actual reconciliation CLI is tested with synthetic SEC transports: unrelated
 
 The rich-menu route is deterministic navigation/industry aggregation, not full SKILL execution. Its exact capabilities and unfinished data are described in [LINE UI](LINE_TOP20_UI.md).
 
+### Order acquisition is not report assembly
+
+A later whole-caller check found that reconciliation could fill an absent order acquisition timestamp from the fresh five-field company report. That defeated the strict seven-field builder's unknown-clock refusal. The corrected caller does not inherit market/company clocks. The default R15 resolver records conservative acquisition-start times only for successful cited source-text reads; unvisited or failed citations remain unknown. Repeated reads retain the oldest clock, with UTC parsing rather than string sorting.
+
+Previously generated runtime baselines carrying either known clock-inheriting producer tag cannot recycle those unproven clocks. Original input artifacts remain untouched; missing clocks do not become current facts. A newly assembled seven-field artifact has its own completion timestamp, permitting order retrieval after the five-field report while retaining the oldest contributing acquisition time. Future timestamps still fail; missing clocks cannot be cured by a new generation date. The actual reconciliation→strict-builder CLI regression retains original output sentinels on refusal.
+
+These are clock provenance repairs, not original-passage/hash/rights qualification, a fresh20-company refresh or a complete per-order ledger. Live publication still requires all existing source/claim and freshness gates.
+
 ## Required order ledger — still not implemented in the seal
 
 Each item must carry company/security identity, contract/customer (or explicitly undisclosed), RPO/backlog/firm order/LOI/pipeline type, amount and/or quantity/unit/currency, original passage and URL, publication/financial-as-of/retrieval dates, hash, claim status and underlying disclosure lineage. Preserve cancellation terms, recognized vs remaining amounts and superseded revisions.
