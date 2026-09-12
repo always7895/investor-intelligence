@@ -3,7 +3,8 @@
 
 Existing R15R evidence is preserved byte-for-field for tickers that remain in the
 Top20. Newly admitted tickers are researched deterministically through the same
-SEC-only generic order extractor used by H6B1. Removed tickers are dropped.
+SEC-only R15 semantic extractor, explicitly selected rather than depending on
+historical modules' import-order monkey patches. Removed tickers are dropped.
 
 This is deliberately fail-closed:
 - no local model is allowed to invent order totals;
@@ -19,6 +20,7 @@ import argparse
 import copy
 import hashlib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -87,6 +89,24 @@ def _sha(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def resolve_quantitative_sec_outlook(ticker: str, cik_map: Mapping[str, str]) -> Mapping[str, Any]:
+    # Do not call h6b.generic_sec_outlook: in a fresh process that is the retired
+    # first-amount/same-sentence matcher; in a test suite its meaning can depend
+    # on which historical patch modules happened to be imported earlier.
+    from v213_serenity_h6b1_metric_semantic_guard_v10 import generic_sec_outlook_semantic_v10
+    result = copy.deepcopy(generic_sec_outlook_semantic_v10(
+        ticker, cik_map, raw_fetcher=h6b.fetch_raw, text_fetcher=h6b.fetch_text))
+    future = str(result.get('future_orders_estimate') or '')
+    quantitative = re.search(r'\d+(?:\.\d+)?%|\$\s*\d[\d,]*(?:\.\d+)?\s*(?:million|billion|m|b)(?![A-Za-z])|三分之一', future, re.I)
+    if future != h6b.FUTURE_FALLBACK and not quantitative:
+        # A year, "many", or "nearly all" is not a quantified forward amount.
+        # Current admitted amount/URLs remain intact; don't invent a percentage.
+        result['future_orders_estimate'] = h6b.FUTURE_FALLBACK
+        result['future_order_source_urls'] = []
+        result['claim_grounding']['future_orders_estimate'] = 'UNAVAILABLE'
+    return result
+
+
 def _baseline_row_from_outlook(rank: int, ticker: str, outlook: Mapping[str, Any]) -> dict[str, Any]:
     current = str(outlook.get("current_orders_summary") or "").strip()
     future = str(outlook.get("future_orders_estimate") or "").strip()
@@ -107,7 +127,7 @@ def _baseline_row_from_outlook(rank: int, ticker: str, outlook: Mapping[str, Any
         "orders_confidence": confidence,
         "current_order_source_urls": current_urls,
         "future_order_source_urls": future_urls,
-        "reconciliation_source": "automated_h6b_sec_delta",
+        "reconciliation_source": "automated_r15_quantitative_sec_delta",
     }
 
 
@@ -127,16 +147,16 @@ def reconcile(
     removed = [ticker for ticker in old_order if ticker not in set(fresh_order)]
 
     if resolver is None:
-        try:
-            cik_map = h6b.sec_ticker_map()
-        except Exception as exc:
-            if added:
+        cik_map = {}
+        if added:
+            try:
+                cik_map = h6b.sec_ticker_map()
+            except Exception as exc:
                 raise ReconciliationError("SEC ticker map unavailable while new Top20 members require order research") from exc
-            cik_map = {}
 
         def resolver(ticker: str) -> Mapping[str, Any]:
             print(f"II_PROGRESS v2.1.3 order evidence research | {ticker}", flush=True)
-            return h6b.generic_sec_outlook(ticker, cik_map)
+            return resolve_quantitative_sec_outlook(ticker, cik_map)
 
     rows: list[dict[str, Any]] = []
     researched: list[str] = []
@@ -167,7 +187,7 @@ def reconcile(
     document = {
         "schema_version": 2,
         "product_version": "2.1.3",
-        "accepted_from": "R15R_PLUS_AUTOMATED_H6B_SEC_DELTA",
+        "accepted_from": "R15R_PLUS_AUTOMATED_R15_QUANTITATIVE_SEC_DELTA",
         "parent_baseline_sha256": _sha(baseline),
         "records": rows,
     }
