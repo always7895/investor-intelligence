@@ -8,7 +8,7 @@ Updated: 2026-09-12. Release identity: [README](../README.md). Previous complete
 
 本輪從已fetch的 **`6ffe6c86877c220c28b67f712edb38ea125806ca`** 繼續，branch `fix/options-provenance-audit`，upstream `8178f72e1acb5d36cf51212a815a1097a28fdf3a`。一位writer在`_workspace/source`；新證據在`_workspace/audit-runtime/line-data-20260912`。原3個untracked安裝輸入`HOTFIX-REFS.json`、`InvestorIntelligence.exe`、`cloud/wrangler.v213.production.local.toml`未改且不提交。混合installed parent不是fixture。
 
-本輪修復與記錄的提交身分以`git log -3`及audit的`final-source-state.json`核對；本STATUS所在提交不是已安裝／已發布版本。
+本輪修復與記錄的提交身分以`git log -4`及audit的`final-source-state.json`核對；本STATUS所在提交不是已安裝／已發布版本。
 
 **未推送／dispatch、未安裝至實際runtime、未改Production Worker/KV/storage/排程、未送真實LINE、未切換實際模型／preset、未操作credentials/billing。** 既有批准不重播。測試使用隔離installer、原生EXE及合成transport；本機Edge只渲染合成HTML，不是第二個模型／HTTP伺服器。
 
@@ -64,4 +64,4 @@ Earlier authorized2026-09-12 work reportedly finalized snapshot`20260912T072732Z
 
 ## Next action
 
-Continue LINE-first with isolated fresh public acquisition and admitted bilingual identity/order operands, then reproducible scenario and macro/options products. Do not reuse synthetic/default cache or unproven order clocks. Validate source-bound negative cases and complete visual/device checks before concrete deployment/rollback authorization and fresh Windows/CI/archive/install qualification. Verify the actual installed EXE and approved model, then update the reviewed GitHub branch. No old activation replay, guessed data, replacement model stack or scoped-PASS-as-release claim.
+Fresh SEC collection is blocked here: `SEC_CONTACT_ENV_PRESENT=False` (presence only checked). Operator must set a valid contact locally or authorize field-only use of the existing runtime SEC contact; do not paste credentials/contact into chat. Then collect into isolation, admit bilingual identity/order operands and build scenario/macro/options products. Never reuse synthetic cache or unproven clocks. Deployment needs concrete scope/rollback plus fresh Windows/CI/archive/install and LINE-device proof; actual EXE/model/GitHub steps follow. No old activation replay or local-PASS-as-release claim.
