@@ -43,7 +43,7 @@ def actual_cli(root, *, progress=False, age_hours=3, market=None, http_status=20
         stack.enter_context(patch.object(builder,'build',side_effect=lambda **kw:original(top20_path=top,**kw)))
         stack.enter_context(patch.object(engine,'session',return_value=http))
         stack.enter_context(patch.object(engine,'sec_headers',side_effect=transport.headers))
-        policy={'sec_companyfacts_url':transport.SEC_URL.replace('0000000001','{cik}'),'sec_minimum_interval_seconds':0}
+        policy={'sec_companyfacts_url':transport.SEC_URL.replace('0000000001','{cik}'),'sec_minimum_interval_seconds':0,'sec_cache_hours':24}
         stack.enter_context(patch.object(engine,'validate_policy',return_value=(policy,{})))
         stack.enter_context(patch.object(progress_fixture.MODULE.preselection,'validate_v213_policy',return_value=(policy,{})))
         stack.enter_context(patch.object(engine,'sec_reference',return_value={f'T{i:02}':{'cik':'0000000001'} for i in range(20)}))
@@ -85,6 +85,45 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             with self.assertRaises(scheduled.V213ScheduledReportError):
                 scheduled.build(report,no_orders(report))
 
+
+    def test_default_two_hour_sec_cache_refetches_stale_cache_with_fresh_receipt(self):
+        # Production default (no sec_cache_hours in policy) is 2 hours: a 3h-old
+        # cache must be re-fetched so scheduled runs bind a fresh SEC receipt.
+        root=tempfile.mkdtemp()
+        try:
+            top=Path(root)/'top20.json';top.write_bytes(builder.json_bytes(progress_fixture.provisional_rows()))
+            output=Path(root)/'report.json';cache=Path(root)/'cache'
+            original=builder.build
+            helper=financial_fixture.V212Top20ReportTests()
+            body=builder.json_bytes(helper.wire_document([helper.fact(), helper.fact(tag='NetIncomeLoss',value=20)]))
+            source_time=(datetime.now(timezone.utc)-timedelta(hours=3)).replace(microsecond=0)
+            with ExitStack() as stack:
+                http=stack.enter_context(engine.session())
+                get=stack.enter_context(patch.object(http,'get',return_value=transport.Response(200,body)))
+                stack.enter_context(patch.object(engine,'CACHE_ROOT',cache))
+                with patch.object(engine,'utc_now',return_value=source_time):
+                    engine.get_json(http,transport.SEC_URL,headers=transport.headers(),cache_path=cache/'companyfacts/CIK0000000001.json',cache_hours=24)
+                before=get.call_count
+                stack.enter_context(patch.object(builder,'build',side_effect=lambda **kw:original(top20_path=top,**kw)))
+                stack.enter_context(patch.object(engine,'session',return_value=http))
+                stack.enter_context(patch.object(engine,'sec_headers',side_effect=transport.headers))
+                policy={'sec_companyfacts_url':transport.SEC_URL.replace('0000000001','{cik}'),'sec_minimum_interval_seconds':0}
+                stack.enter_context(patch.object(engine,'validate_policy',return_value=(policy,{})))
+                stack.enter_context(patch.object(progress_fixture.MODULE.preselection,'validate_v213_policy',return_value=(policy,{})))
+                stack.enter_context(patch.object(engine,'sec_reference',return_value={f'T{i:02d}':{'cik':'0000000001'} for i in range(20)}))
+                stack.enter_context(patch.object(builder.snapshot,'validate_top20',side_effect=progress_fixture.MODULE.validate_provisional_top20))
+                stack.enter_context(patch.object(builder,'_market_observation',side_effect=lambda *a,**kw:(None,None,'未分類')))
+                stack.enter_context(patch.object(sys,'argv',['build','--output',str(output)]))
+                with redirect_stdout(StringIO()):
+                    code=builder.main()
+            self.assertEqual(code,0)
+            self.assertGreaterEqual(get.call_count-before,1)
+            report=json.loads(output.read_bytes())
+            fetched=acquisition.utc_time(report['records'][0]['source_acquisition']['profit_summary']['retrieved_at'])
+            self.assertGreater(fetched,source_time)
+            self.assertLessEqual((datetime.now(timezone.utc)-fetched).total_seconds(),300)
+        finally:
+            import shutil;shutil.rmtree(root,ignore_errors=True)
 
     def test_actual_cli_old_cache_cannot_qualify_local_sealed_bundle(self):
         import build_v213_activation_bundle_v2 as seal

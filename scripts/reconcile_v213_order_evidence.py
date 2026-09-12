@@ -118,6 +118,7 @@ def reconcile(
     resolver: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     fresh = _records(v212, "2.1.2")
+    fresh_by_ticker = {row["ticker"]: row for row in fresh}
     old = _records(baseline, "2.1.3")
     old_by_ticker = {row["ticker"]: row for row in old}
     fresh_order = [row["ticker"] for row in fresh]
@@ -147,11 +148,15 @@ def reconcile(
             row["rank"] = rank
             row["ticker"] = ticker
             row["reconciliation_source"] = "accepted_r15r_preserved"
+            if not row.get("retrieved_at") and fresh_by_ticker.get(ticker, {}).get("retrieved_at"):
+                row["retrieved_at"] = fresh_by_ticker[ticker]["retrieved_at"]
             rows.append(row)
             continue
         print(f"II_PROGRESS v2.1.3 order evidence delta {len(researched)+1}/{len(added)} | {ticker}", flush=True)
         outlook = resolver(ticker)
         row = _baseline_row_from_outlook(rank, ticker, outlook)
+        if not row.get("retrieved_at") and fresh_by_ticker.get(ticker, {}).get("retrieved_at"):
+            row["retrieved_at"] = fresh_by_ticker[ticker]["retrieved_at"]
         rows.append(row)
         researched.append(ticker)
         if str(outlook.get("evidence_status") or "") == "UNAVAILABLE":

@@ -227,7 +227,8 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
 
 
 def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
-          financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None) -> dict[str, Any]:
+          financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None,
+          require_known_acquisition: bool = False) -> dict[str, Any]:
     from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
     precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
     precision_used = False
@@ -299,7 +300,15 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
         market_clocks = observation.get('source_acquisition', {})
         if not isinstance(market_clocks, dict) or not set(market_clocks) <= set(FIELDS[:3]):
             raise SourceAcquisitionError('SOURCE_ACQUISITION_INVALID')
-        clocks = {key: market_clocks[key] if key in market_clocks else field_clock(key, row[key]) for key in FIELDS[:3]}
+        clocks = {}
+        for key in FIELDS[:3]:
+            if key in market_clocks:
+                clocks[key] = market_clocks[key]
+            elif require_known_acquisition:
+                row[key] = '未分類' if key == 'industry' else None
+                clocks[key] = field_clock(key, row[key])
+            else:
+                clocks[key] = field_clock(key, row[key])
         clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'])
         if receipt and clocks['profit_summary']['status'] != 'UNAVAILABLE':
             clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'],
@@ -417,6 +426,7 @@ def main() -> int:
     parser.add_argument("--financial-evidence-output", type=Path, help="Local operand/basis candidate; not a complete or sealed research report")
     parser.add_argument("--financial-products-output", type=Path, help="Distinct local financial components only; not sealed or LINE eligible")
     parser.add_argument('--debt-precision-bundle', type=Path, help='Optional original-file bundle; conditional precision only, never debt reconciliation or publication')
+    parser.add_argument('--require-known-acquisition', action='store_true', help='Refuse unverified market clocks and fail closed to UNAVAILABLE')
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -433,7 +443,8 @@ def main() -> int:
         observations: dict[str, Any] = {}
         financials: dict[str, Any] = {}
         options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
-        document = build(return_evidence_sink=observations, financial_evidence_sink=financials, **options)
+        document = build(return_evidence_sink=observations, financial_evidence_sink=financials,
+                         require_known_acquisition=args.require_known_acquisition, **options)
         report_body = json_bytes(document)
         financial_document = {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",

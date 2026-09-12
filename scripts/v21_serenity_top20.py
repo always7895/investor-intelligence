@@ -805,7 +805,7 @@ def sec_companyfacts(
         url,
         headers=headers,
         cache_path=CACHE_ROOT / "companyfacts" / f"CIK{cik}.json",
-        cache_hours=24,
+        cache_hours=int(policy.get("sec_cache_hours", 2)),
         minimum_delay=float(policy["sec_minimum_interval_seconds"]),
         receipt_sink=received,
     )

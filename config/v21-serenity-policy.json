@@ -46,6 +46,7 @@
   "sec_candidate_limit": 50,
   "sec_companyfacts_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
   "sec_minimum_interval_seconds": 0.14,
+  "sec_cache_hours": 2,
   "sec_ticker_exchange_url": "https://www.sec.gov/files/company_tickers_exchange.json",
   "top_count": 20,
   "world_bank_url": "https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
