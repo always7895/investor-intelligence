@@ -127,19 +127,32 @@ def audit_kv_isolation(root: Path = ROOT) -> list[str]:
 
     if "privateJson" in storage or "putPrivateJson" in storage:
         findings.append("cloud/src/storage.ts: generic private JSON APIs are forbidden")
-    if "TENANT_PRIVATE_CACHE.get" in storage and "publicJson" in storage:
-        public_section = storage.split("export async function publicJson", 1)[1].split(
-            "function tenantEpochKey", 1
-        )[0]
-        if "TENANT_PRIVATE_CACHE" in public_section:
+    # Audit each public compatibility export, not a retired get<T> spelling.
+    # This is a bounded static guard, supplemented by actual Worker KV tests;
+    # it is not a general TypeScript information-flow proof.
+    for name in ("publicJson", "publicText", "snapshotStatus"):
+        sections = re.findall(r"^export async function " + name + r"\b.*?^\}", storage, re.M | re.S)
+        if len(sections) != 1:
+            findings.append(f"cloud/src/storage.ts: public export {name} is missing or ambiguous")
+            continue
+        section = sections[0]
+        if "TENANT_PRIVATE_CACHE" in section:
             findings.append("cloud/src/storage.ts: public read path touches tenant-private KV")
+        if re.search(r"EPHEMERAL_SECURITY_CACHE|env\.CACHE", section):
+            findings.append("cloud/src/storage.ts: public read path touches non-public KV")
+        if re.search(r"\.(?:put|delete)\s*\(", section):
+            findings.append("cloud/src/storage.ts: public read path must not write KV")
+        if 'from "./v213/public-snapshot"' in storage and "await pinPublicSnapshot(env)" not in section:
+            findings.append(f"cloud/src/storage.ts: {name} bypasses the pinned public reader")
     if "PUBLIC_CACHE" in line:
         findings.append("cloud/src/line.ts: dedupe/rate-limit code must not touch public KV")
 
-    # The retained v2 storage blob stays frozen. Audit the current report reader
-    # separately; older source-package fixtures may predate this module.
+    # storage.ts's reviewed migration forwards to this module. Older packages
+    # without that import may predate it; an imported-but-missing reader fails.
     public_reader = root / "cloud/src/v213/public-snapshot.ts"
-    if public_reader.exists():
+    if 'from "./v213/public-snapshot"' in storage and not public_reader.is_file():
+        findings.append("cloud/src/v213/public-snapshot.ts: imported public reader missing")
+    if public_reader.is_file():
         text = public_reader.read_text(encoding="utf-8")
         if re.search(r"TENANT_PRIVATE_CACHE|EPHEMERAL_SECURITY_CACHE|env\.CACHE|privateJson|putPrivateJson", text):
             findings.append("cloud/src/v213/public-snapshot.ts: public read path touches non-public KV")

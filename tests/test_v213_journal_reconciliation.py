@@ -77,6 +77,21 @@ if($env:FIXTURE_CASE-cin@('not_committed','rolled_back')){
 
 
 class JournalReconciliationTests(unittest.TestCase):
+    def _assert_original_archive(self, journal, original, recorded_path=None):
+        # Ordinary archives in this checkout already exceed MAX_PATH. Read only
+        # the generated owned fixture path, never a path from the response.
+        # No system policy changes or shortening of content-addressed names.
+        self.assertTrue(journal.is_relative_to(h.AUDIT_CASE_ROOT))
+        h.assert_plain_path(journal)
+        archive = journal.parent / 'reconciliation-history' / (hashlib.sha256(original).hexdigest() + '.original.json')
+        if recorded_path is not None:
+            self.assertEqual(Path(recorded_path), archive)
+        h.assert_plain_path(archive.parent)
+        native = Path('\\\\?\\' + str(archive))
+        h.assert_plain_path(native)
+        self.assertEqual(native.read_bytes(), original)
+        return archive
+
     def _fixture(self, executable, case, raw=None, *, minimum_archive_length=None):
         parent = h.new_case('r')
         project = parent / 'p'
@@ -167,7 +182,7 @@ class JournalReconciliationTests(unittest.TestCase):
                         self.assertEqual(value[name], json.loads(original.decode('utf-8-sig'))[name])
                     if case in ('not_committed', 'rolled_back'):
                         self.assertEqual(value['publication_state'], case.upper())
-                        self.assertEqual(Path(value['reconciliation']['original_archive']).read_bytes(), original)
+                        self._assert_original_archive(journal, original, value['reconciliation']['original_archive'])
                         self.assertEqual(value['reconciliation']['original_sha256'], hashlib.sha256(original).hexdigest())
                         self.assertEqual(value['production_mutation'], True if case == 'rolled_back' else None)
                     else:
@@ -214,7 +229,7 @@ class JournalReconciliationTests(unittest.TestCase):
                 self.assertEqual(observed['second_path_reads'], 0, 'JOURNAL_JSON_REOPENED_AFTER_BYTE_CAPTURE')
                 value = json.loads(journal.read_text('utf-8-sig'))
                 self.assertEqual(value['transaction_id'], original_record()['transaction_id'])
-                self.assertEqual(Path(value['reconciliation']['original_archive']).read_bytes(), original)
+                self._assert_original_archive(journal, original, value['reconciliation']['original_archive'])
                 self.assertEqual(value['reconciliation']['original_sha256'], hashlib.sha256(original).hexdigest())
 
     def test_actual_recovery_archives_at_and_beyond_260_characters_without_shortening(self):
@@ -266,8 +281,7 @@ class JournalReconciliationTests(unittest.TestCase):
                 self.assertEqual(actions, [], 'CHANGED_JOURNAL_ROLLBACK_BEFORE_CHANGE_REFUSAL')
                 self.assertEqual(observed['errors'], ['V213_RECONCILE_JOURNAL_CHANGED'])
                 self.assertEqual(journal.read_bytes(), (project / 'replacement.json').read_bytes())
-                archive = journal.parent / 'reconciliation-history' / (hashlib.sha256(original).hexdigest() + '.original.json')
-                self.assertEqual(archive.read_bytes(), original)
+                archive = self._assert_original_archive(journal, original)
                 self.assertEqual(list(archive.parent.glob('*.ack.json')), [])
 
 

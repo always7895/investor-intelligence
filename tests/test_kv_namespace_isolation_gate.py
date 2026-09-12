@@ -55,19 +55,49 @@ class KvNamespaceIsolationGateTests(unittest.TestCase):
         self.assertTrue(any("KV bindings must be exactly" in item for item in findings))
 
     def test_rejects_public_reads_from_private_namespace(self) -> None:
+        for operation in ('json<T>', 'text'):
+            for binding in ('TENANT_PRIVATE_CACHE', 'EPHEMERAL_SECURITY_CACHE'):
+                with self.subTest(operation=operation, binding=binding):
+                    temporary, root = self.fixture_root()
+                    try:
+                        path = root / 'cloud/src/storage.ts'
+                        text = path.read_text(encoding='utf-8')
+                        needle = f'return (await pinPublicSnapshot(env)).{operation}(logicalKeys);'
+                        self.assertEqual(text.count(needle), 1, 'MUTATION_SEAM_DRIFTED')
+                        path.write_text(text.replace(needle, f'return await env.{binding}.get(logicalKeys[0]);'), encoding='utf-8')
+                        findings = audit_kv_isolation(root)
+                    finally:
+                        temporary.cleanup()
+                    expected = 'tenant-private KV' if binding == 'TENANT_PRIVATE_CACHE' else 'non-public KV'
+                    self.assertTrue(any('public read path touches ' + expected in item for item in findings))
+
+    def test_public_adapter_rejects_write_bypass_missing_export_and_missing_reader(self):
+        needle = 'return (await pinPublicSnapshot(env)).text(logicalKeys);'
+        for replacement in (
+            'await env.PUBLIC_CACHE.put("synthetic", "synthetic"); ' + needle,
+            'return await env.PUBLIC_CACHE.get(logicalKeys[0]);',
+        ):
+            temporary, root = self.fixture_root()
+            try:
+                path = root / 'cloud/src/storage.ts'
+                text = path.read_text(encoding='utf-8')
+                self.assertEqual(text.count(needle), 1, 'MUTATION_SEAM_DRIFTED')
+                path.write_text(text.replace(needle, replacement), encoding='utf-8')
+                self.assertTrue(any('must not write KV' in x or 'bypasses the pinned' in x for x in audit_kv_isolation(root)))
+            finally:
+                temporary.cleanup()
         temporary, root = self.fixture_root()
         try:
-            path = root / "cloud/src/storage.ts"
-            text = path.read_text(encoding="utf-8")
-            text = text.replace(
-                "const value = await env.PUBLIC_CACHE.get<T>(key, \"json\");",
-                "const value = await env.TENANT_PRIVATE_CACHE.get<T>(key, \"json\");",
-            )
-            path.write_text(text, encoding="utf-8")
+            path = root / 'cloud/src/storage.ts'
+            text = path.read_text(encoding='utf-8')
+            self.assertEqual(text.count('export async function publicText('), 1)
+            path.write_text(text.replace('export async function publicText(', 'async function removedPublicText('), encoding='utf-8')
+            (root / 'cloud/src/v213/public-snapshot.ts').unlink()
             findings = audit_kv_isolation(root)
+            self.assertTrue(any('publicText is missing or ambiguous' in x for x in findings))
+            self.assertTrue(any('imported public reader missing' in x for x in findings))
         finally:
             temporary.cleanup()
-        self.assertTrue(any("public read path touches tenant-private KV" in item for item in findings))
 
     def test_current_snapshot_reader_cannot_use_non_public_kv_or_write(self) -> None:
         for replacement in ('TENANT_PRIVATE_CACHE', 'EPHEMERAL_SECURITY_CACHE'):

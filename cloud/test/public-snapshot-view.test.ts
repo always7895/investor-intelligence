@@ -16,6 +16,27 @@ function runtime() {
 }
 
 describe("public snapshot selection", () => {
+  it("keeps every compatibility read public-only when non-public KV access would throw", async () => {
+    class ForbiddenKv extends MemoryKv {
+      override async get<T = string>(_key: string, _type?: "text" | "json"): Promise<T | string | null> {
+        throw new Error("NON_PUBLIC_KV_MUST_NOT_BE_READ");
+      }
+    }
+    const { kv, env } = runtime();
+    const forbidden = new ForbiddenKv();
+    env.TENANT_PRIVATE_CACHE = asKv(forbidden);
+    env.EPHEMERAL_SECURITY_CACHE = asKv(forbidden);
+    kv.values.set("snapshot:current", '{"run_id":"run-a"}');
+    kv.values.set("snapshot:run-a:report", '{"public":true}');
+    kv.values.set("snapshot:run-a:note", "PUBLIC_TEXT");
+    const scoped = scopePublicSnapshot(env);
+    expect(await storageJson(scoped, ["report"])).toEqual({ public: true });
+    expect(await storageText(scoped, ["note"])).toBe("PUBLIC_TEXT");
+    expect(await snapshotStatus(scoped)).toEqual({ promoted_snapshot: "run-a", has_snapshot: true });
+    expect(forbidden.values.size).toBe(0);
+    expect(kv.reads.filter(key => key === "snapshot:current")).toHaveLength(1);
+  });
+
   it.each(["", " ", "{}", "[]", "null", "true", "42", '"run-a"', "{broken",
     '{"run_id":null}', '{"run_id":42}', '{"run_id":""}', '{"run_id":"run/a"}',
     '{"run_id":"a","runId":"b"}', '{"run_id":null,"runId":"b"}',
