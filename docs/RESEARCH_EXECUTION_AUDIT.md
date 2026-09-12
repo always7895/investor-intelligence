@@ -46,6 +46,26 @@ Recent public-source check:
 - [Community methodology archive](https://github.com/yan-labs/serenity-aleabitoreddit/blob/main/serenity-aleabitoreddit/references/methodology.md) is a discovery lead, not independent company corroboration or verified current Serenity advice.
 - Direct [discovered @aleabitoreddit post](https://x.com/aleabitoreddit/status/2088226398708338889) returned **HTTP403**. Content/current stance remains UNVERIFIED; no mirror count or search synthesis cures it. No authentication or paywall bypass.
 
+## Bounded 2026-09-11/12 public-source review / 有界公開來源檢視
+
+Recorded 2026-09-12 against working tree `b96167af` (then uncommitted code; that session was documentation-only); the recorded fixes are now committed at `9aeb3d4` and `a01358c` with their tests tracked. A bounded, dated, attributed-source review — not an exhaustive feed, a runtime cache update, a production refresh or a recommendation list.
+
+| Finding | Record |
+| --- | --- |
+| Discovery | Yahoo-only three-screener discovery; 120/50/20 are configured caps/target, not observed throughput |
+| Issuer facts | SEC-centric issuer facts only; macro/identity websites are not company-claim corroboration |
+| Leopold | No direct Leopold score bonus. The 2024 situational-awareness.ai essays and the June 30 13F (Situational Awareness LP, CIK 0002045724, filed 2026-08-14, table contains put/call rows; separate Schedule 13D on SharonAI Holdings) are not current holdings, orders or company corroboration |
+| Serenity skill | Full Serenity skill execution remains incomplete, with 4 deliberately zero structural factors; `company_research_skill_run_completed=false` |
+| LINE20 | No same-cutoff live LINE Top20 comparison (run ID/list not established in this audit); do not imitate social lists |
+| Sept 11/12 posts | Three dated @aleabitoreddit originals (one 09-12, two 09-11) are bounded attributed views with `ticker_recommendation=false`, `company_fact_authority=false`; not a complete recommendation feed. The KuCoin AAOI/ESMT item is MIRROR_ONLY_ORIGINAL_UNRESOLVED discovery lead only |
+| Archive health | Observed 2026-09-12 archive HEAD `b3784cb` (yan-labs/serenity-aleabitoreddit) recorded failure/`stale_unverified` (checked 2026-09-12T01:03:31Z; last cursor 2026-09-09); a fresh commit is not a fresh post |
+| Cache boundary | Public audit refresh is not a runtime cache update: `source_cache_used_for_market_claims=false`, `runtime_cache_updated=false`, `production_mutated=false`, `real_line_sent=false` |
+| Defaults | Six tainted synthetic defaults remain excluded from scoring/research |
+| Open work | Full per-claim lineage/identity/order/valuation/macro/options/device/release work remains open |
+| Authority | Generic authorization is not production/LINE/credential/installation authority; SEC contact scope still unresolved |
+
+Receipts (literal paths under the installed root, not repository links): `_workspace/audit-runtime/astra-qwen-20260912/public-view-refresh.json` (as-of 2026-09-12; skill/reference SHA256s match the list above), the erroneous `scoped-source-receipt.json` and its metadata-only `scoped-source-receipt-correction.json`. The correction's finding stands: the original receipt's creation time is UNKNOWN and was not converted to a measured clock.
+
 ## Follow-up: new-member order extraction
 
 `reconcile_v213_order_evidence.py` previously called the mutable `h6b.generic_sec_outlook` symbol. In a fresh process it could be the retired first-amount/same-sentence extractor; historical imports could silently replace it. The caller now explicitly selects the existing R15 semantic chain, preserving its unit, context and same-accession rules. A year or “幾乎全部／很多” alone is not admitted as a quantitative forward amount. Unchanged membership no longer fetches a needless SEC ticker map.
