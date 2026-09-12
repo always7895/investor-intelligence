@@ -46,6 +46,14 @@ Recent public-source check:
 - [Community methodology archive](https://github.com/yan-labs/serenity-aleabitoreddit/blob/main/serenity-aleabitoreddit/references/methodology.md) is a discovery lead, not independent company corroboration or verified current Serenity advice.
 - Direct [discovered @aleabitoreddit post](https://x.com/aleabitoreddit/status/2088226398708338889) returned **HTTP403**. Content/current stance remains UNVERIFIED; no mirror count or search synthesis cures it. No authentication or paywall bypass.
 
+## Follow-up: new-member order extraction
+
+`reconcile_v213_order_evidence.py` previously called the mutable `h6b.generic_sec_outlook` symbol. In a fresh process it could be the retired first-amount/same-sentence extractor; historical imports could silently replace it. The caller now explicitly selects the existing R15 semantic chain, preserving its unit, context and same-accession rules. A year or “幾乎全部／很多” alone is not admitted as a quantitative forward amount. Unchanged membership no longer fetches a needless SEC ticker map.
+
+The actual reconciliation CLI is tested with synthetic SEC transports: unrelated revenue is not an order, a filing year alone is not an outlook, and an explicit RPO amount plus a60% recognition window is retained. Existing baseline order text/as-of/URLs are retained; membership reconciliation is not a fresh order-source refresh. Inherited company-report retrieval stamps do not prove a new order-source retrieval. This correction does not validate old rows, refresh20 companies, create individual contracts or calculate share-price targets. Missing current/future values remain the canonical unavailable strings.
+
+The rich-menu route is deterministic navigation/industry aggregation, not full SKILL execution. Its exact capabilities and unfinished data are described in [LINE UI](LINE_TOP20_UI.md).
+
 ## Required order ledger — still not implemented in the seal
 
 Each item must carry company/security identity, contract/customer (or explicitly undisclosed), RPO/backlog/firm order/LOI/pipeline type, amount and/or quantity/unit/currency, original passage and URL, publication/financial-as-of/retrieval dates, hash, claim status and underlying disclosure lineage. Preserve cancellation terms, recognized vs remaining amounts and superseded revisions.

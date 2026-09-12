@@ -2,6 +2,7 @@ import type { ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
+import { LINE_THEME as T } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
@@ -12,10 +13,10 @@ import {
 
 type PresentationEnv = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / Historical returns, not forecasts. Public research, not investment advice.";
-const SCENARIO_STATUS = "6個月／1年／2年情境：尚缺逐筆訂單與估值依據；不是零成長。訂單時程與缺口見證據詳情。";
+const SCENARIO_STATUS = "6個月／1年／2年：實現、延遲及未實現訂單的目標價／漲跌幅，尚缺逐筆訂單與估值依據；不是零成長或零風險。時程見證據詳情。";
 const companyText = (record: V213Top20ReportRecord, labels: readonly string[]) =>
-  `── ${record.rank}/20 · ${record.ticker}｜${record.name} ──\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
-const text = (value: string, size = "sm", color = "#172B4D") => ({ type: "text", text: value, size, color, wrap: true });
+  `── ${record.rank}/20 · ${record.ticker}｜原文：${record.name} ──\n中文名稱：未完成來源核對（不猜譯）\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
+const text = (value: string, size = "sm", color: string = T.ink) => ({ type: "text", text: value, size, color, wrap: true });
 const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
 
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
@@ -45,30 +46,31 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   const bubbles = report.records.map(record => {
     const values = v213Top20DisplayValues(record);
     const field = (i: number, emphasis = false) => box([
-      text(labels[i]!, "xs", "#475569"),
+      text(labels[i]!, "xs", T.muted),
       { ...text(values[i]!, emphasis ? "xl" : "sm"), ...(emphasis ? { weight: "bold" } : {}) },
     ], { flex: 1 });
     return {
       type: "bubble", size: "mega",
       header: box([
-        text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#CBD5E1"),
-        text(labels[0]!, "xs", "#CBD5E1"),
-        { ...text(values[0]!, "xxl", "#FFFFFF"), weight: "bold" },
-        text(record.name, "sm", "#CBD5E1"),
-      ], { backgroundColor: "#142C47", paddingAll: "lg" }),
+        text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#D4D4D4"),
+        text(labels[0]!, "xs", "#D4D4D4"),
+        { ...text(values[0]!, "xxl", T.paper), weight: "bold" },
+        text(`原文：${record.name}`, "sm", T.paper),
+        text("中文：未完成來源核對", "xs", "#D4D4D4"),
+      ], { backgroundColor: T.ink, paddingAll: "lg" }),
       body: box([
-        box([field(1, true), field(2, true)], { layout: "horizontal", backgroundColor: "#F1F5F9", paddingAll: "md", cornerRadius: "md", spacing: "md" }),
-        field(3), { type: "separator", color: "#E2E8F0" }, field(4),
-        box([field(5), field(6)], { backgroundColor: "#EFF6FF", paddingAll: "md", cornerRadius: "md", spacing: "lg" }),
-      ], { paddingAll: "lg", spacing: "lg", backgroundColor: "#FFFFFF" }),
+        box([field(1, true), field(2, true)], { layout: "horizontal", backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "md" }),
+        field(3), { type: "separator", color: T.border }, field(4),
+        box([field(5), field(6)], { backgroundColor: T.paleGreen, paddingAll: "md", cornerRadius: "md", spacing: "lg" }),
+      ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
       footer: box([
-        text(SCENARIO_STATUS, "xs", "#475569"),
-        text(generated, "xs", "#475569"), text(NOTICE, "xs", "#475569"),
+        text(SCENARIO_STATUS, "xs", T.muted),
+        text(generated, "xs", T.muted), text(NOTICE, "xs", T.muted),
         ...(reference ? [["證據詳情", "證據詳情 / Evidence"], ["公司文字", "本公司七欄文字"]].map(([command, label]) => ({
-          type: "button", style: "link", height: "sm", action: { type: "message", label,
+          type: "button", style: "link", height: "sm", color: T.green, action: { type: "message", label,
             text: `Top20 ${command} ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}` },
-        })) : [text("詳情入口未綁定 / Unbound detail reference", "xs", "#475569")]),
-      ], { paddingAll: "md", backgroundColor: "#F8FAFC" }),
+        })) : [text("詳情入口未綁定 / Unbound detail reference", "xs", T.muted)]),
+      ], { paddingAll: "md", backgroundColor: T.soft }),
     };
   });
   const messages: LineOutboundMessage[] = [];

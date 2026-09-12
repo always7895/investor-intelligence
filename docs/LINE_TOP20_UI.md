@@ -15,6 +15,22 @@ The implementation uses the same renderer for authenticated interactive Top20 an
 - Taiwan timestamps, research-candidate labels and historical-return disclaimer; missing evidence stays missing. Presentation never upgrades LIMITED eligibility.
 - 台北時間、研究候選標籤與歷史報酬聲明；缺少證據仍明示缺少，UI 不會把 LIMITED 升級為已驗證論點。
 
+## Rich-menu commands / 三個圖文選單入口
+
+`cloud/src/v213/rich-menu.ts` handles the existing manager-configured message actions **TOP20**, **宏觀產業分析**, **期權** after real LINE admission and rate limiting. It reuses the request-pinned public view and does not send menu requests to the compact model. `選單` exposes the same three actions.
+
+| 入口 | 已實作來源功能 | 仍未完成，不冒充 |
+| --- | --- | --- |
+| TOP20 | 20家公司、原文名稱、七欄、同輪綁定證據／公司文字 | 中文名稱來源尚未核對；沒有可發布的6/12/24月估值產品 |
+| 宏觀產業分析 | 當輪20家產業分布、家數占比、完整文字與資料要求 | 家數不是市值權重／資產配置；`MACRO_PRODUCT_NOT_SEALED`，不使用候選GDP/CPI等數值 |
+| 期權 | 連到既有「最新期權」查詢及「期權試算說明」、每週／每月輸入提示 | 存在快照不等於報價合格；當輪封存payload缺口保留`OPTION_DATA_UNAVAILABLE` |
+
+完整資料／完整文字分析指令仍由獨立產品契約處理；不改送選單或產業摘要冒充。部分入口可操作，不表示三類研究產品均已完成。
+
+Visual tokens in `line-theme.ts` use the supplied black/white mascot artwork's monochrome direction with dark-green actions and pale-green data groups. The existing rich-menu artwork is not uploaded or rescheduled by source edits. Original names are labelled explicitly; Chinese names say unverified rather than guessing. Preserve seven-field values, historic-return warnings and the realized/delayed/not-realized scenario gap.
+
+`test/v213-rich-menu.test.ts` exercises the actual authorized caller with mocked LINE, including stale/invalid-pointer negatives and explicit deep-product refusal. Optional `V213_MENU_PREVIEW_OUT` exports **synthetic message objects only**, not tokens/recipients, for local approximate rendering. Exporting HTML is not a successful visual review or device acceptance; no additional server is required or authorized by that export.
+
 ## Limits and evidence / 限制與證據
 
 Product bounds: at most five outbound messages, text at most 4,900 UTF-16 code units, alt text at most 400, five bubbles per carousel, bubble JSON at most 28,000 bytes and carousel JSON at most 48,000 bytes. Size violations fail closed rather than truncate. These conservative product limits do not replace LINE's official API specification.
