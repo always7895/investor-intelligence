@@ -61,6 +61,26 @@ NON_CLAIM_TYPES = {
     "independent_market_corroboration",
     "macro_context",
 }
+# Author views and explicit context/portfolio-disclosure evidence stay
+# visible for display but never count as company-claim families, scored
+# evidence, or high-confidence eligibility. This is partial enforcement:
+# it does not establish full per-claim lineage independence.
+CONTEXT_ONLY_FAMILIES = {
+    "serenity_public_source",
+    "author_statement",
+    "situational_context",
+}
+CONTEXT_ONLY_CLAIM_TYPES = {
+    "author_view",
+    "author_statement",
+    "context_only",
+    "portfolio_disclosure",
+    "author_portfolio_context",
+}
+# Canonical author hosts recognized by exact registrable domain (or safe
+# subdomain), checked before source-id hints can mislead classification.
+AUTHOR_SOCIAL_DOMAINS = {"x.com", "twitter.com"}
+SITUATIONAL_CONTEXT_DOMAIN = "situational-awareness.ai"
 SENSITIVE_RE = re.compile(
     r"(?:chokepoint|bottleneck|scarcity|dependency|capacity|qualification|"
     r"backlog|remaining performance obligation|\brpo\b|order book|pricing|"
@@ -251,6 +271,13 @@ def normalize_url(url: str) -> str:
 def family_for(source_id: str, url: str) -> str:
     source = source_id.lower()
     domain = domain_of(url)
+    # Canonical author hosts win over source-id hints: a misleading id
+    # (e.g. sec_edgar_* on an X post) must not upgrade to regulator/issuer,
+    # and the situational-awareness.ai host is context-only by definition.
+    if domain in AUTHOR_SOCIAL_DOMAINS:
+        return "author_statement"
+    if domain == SITUATIONAL_CONTEXT_DOMAIN:
+        return "situational_context"
     lowered = url.lower()
 
     if domain == "sec.gov" or "edgar" in source or source.startswith("sec"):
@@ -332,6 +359,11 @@ def make_source(
 ) -> dict[str, Any]:
     normalized = normalize_url(url)
     family = family_for(source_id, normalized)
+    context_only = (
+        family in CONTEXT_ONLY_FAMILIES
+        or (claim_type or "unknown").strip().casefold()
+        in CONTEXT_ONLY_CLAIM_TYPES
+    )
     return {
         "source_id": source_id or "unknown",
         "claim_type": claim_type or "unknown",
@@ -342,6 +374,7 @@ def make_source(
         "as_of": as_of,
         "primary": family in PRIMARY_FAMILIES,
         "claim_primary": family in CLAIM_PRIMARY_FAMILIES,
+        "context_only": context_only,
     }
 
 
@@ -803,19 +836,26 @@ def build_record(
         units.setdefault(unit, source)
     sources = list(units.values())
 
-    families = sorted({str(item["family"]) for item in sources})
+    # Author views / context-only sources remain in `sources` for display
+    # but never feed scored or claim-eligibility metrics.
+    context_sources = [item for item in sources if item.get("context_only")]
+    scored_sources = [
+        item for item in sources if not item.get("context_only")
+    ]
+
+    families = sorted({str(item["family"]) for item in scored_sources})
     domains = sorted(
         {
             str(item["domain"])
-            for item in sources
+            for item in scored_sources
             if item["domain"] != "unknown"
         }
     )
-    all_primary = [item for item in sources if item["primary"]]
+    all_primary = [item for item in scored_sources if item["primary"]]
 
     claim_sources = [
         item
-        for item in sources
+        for item in scored_sources
         if item["claim_type"] not in NON_CLAIM_TYPES
         and item["family"] not in MARKET_FAMILIES
         and item["family"] != "official_macro"
@@ -838,10 +878,12 @@ def build_record(
 
     dated_count = sum(
         1
-        for item in sources
+        for item in scored_sources
         if parse_time(str(item.get("as_of") or "")) is not None
     )
-    dated_ratio = dated_count / len(sources) if sources else 0.0
+    dated_ratio = (
+        dated_count / len(scored_sources) if scored_sources else 0.0
+    )
     claim_dated_count = sum(
         1
         for item in claim_sources
@@ -853,9 +895,9 @@ def build_record(
         else 0.0
     )
 
-    family_counts = source_distribution(sources, "family")
+    family_counts = source_distribution(scored_sources, "family")
     claim_family_counts = source_distribution(claim_sources, "family")
-    max_family_share = maximum_share(family_counts, len(sources))
+    max_family_share = maximum_share(family_counts, len(scored_sources))
     max_claim_family_share = maximum_share(
         claim_family_counts,
         len(claim_sources),
@@ -902,10 +944,12 @@ def build_record(
         row["short_term_conflict"] = short_conflict
         market_rows.append(row)
 
+    # Sensitive-claim text is derived only from admitted non-context
+    # company-claim sources. Author views and context/portfolio rows never
+    # flip structural states; legitimate company order fields are preserved.
     evidence_text = " ".join(
         f"{item.get('claim_type', '')} {item.get('title', '')}"
-        for item in record.get("evidence", [])
-        if isinstance(item, dict)
+        for item in claim_sources
     )
     evidence_text += " " + str(report.get("current_orders") or "")
     evidence_text += " " + str(report.get("future_orders_estimate") or "")
@@ -979,8 +1023,17 @@ def build_record(
 
     public_logic = {
         "serenity_source_view": (
-            "SUPPORTED"
-            if "serenity_public_source" in claim_families
+            # An attached Serenity view is an author view: honest
+            # unverified-attachment status, never company-claim proof.
+            # Identified by the serenity source-id on a context-only
+            # source (canonical author hosts remap the family to
+            # author_statement, so the family alone is not sufficient).
+            "CONTEXT_ONLY_UNVERIFIED"
+            if any(
+                item.get("context_only")
+                and "serenity" in str(item["source_id"]).casefold()
+                for item in sources
+            )
             else "NOT_ATTACHED"
         ),
         "architecture": (
@@ -1026,7 +1079,12 @@ def build_record(
         "ticker": ticker,
         "evidence_independence_score": evidence_independence_score,
         "source_metrics": {
-            "unique_independent_units": len(sources),
+            "unique_independent_units": len(scored_sources),
+            "total_source_count": len(sources),
+            "context_only_source_count": len(context_sources),
+            "context_only_families": sorted(
+                {str(item["family"]) for item in context_sources}
+            ),
             "independent_families": len(families),
             "independent_domains": len(domains),
             "primary_or_official_sources": len(all_primary),
@@ -1207,21 +1265,27 @@ def build(
         for state in states
         for source in state["sources"]
     ]
+    all_context_sources = [
+        source for source in all_sources if source.get("context_only")
+    ]
+    all_scored_sources = [
+        source for source in all_sources if not source.get("context_only")
+    ]
     all_claim_sources = [
         source
-        for source in all_sources
+        for source in all_scored_sources
         if source["claim_type"] not in NON_CLAIM_TYPES
         and source["family"] not in MARKET_FAMILIES
         and source["family"] != "official_macro"
     ]
 
     families = sorted(
-        {str(source["family"]) for source in all_sources}
+        {str(source["family"]) for source in all_scored_sources}
     )
     domains = sorted(
         {
             str(source["domain"])
-            for source in all_sources
+            for source in all_scored_sources
             if source["domain"] != "unknown"
         }
     )
@@ -1236,10 +1300,10 @@ def build(
         }
     )
 
-    family_counts = source_distribution(all_sources, "family")
+    family_counts = source_distribution(all_scored_sources, "family")
     max_family_share = maximum_share(
         family_counts,
-        len(all_sources),
+        len(all_scored_sources),
     )
     market_covered = sum(
         1
@@ -1259,6 +1323,7 @@ def build(
 
     portfolio = {
         "ticker_count": 20,
+        "context_only_source_count": len(all_context_sources),
         "independent_source_families": len(families),
         "independent_domains": len(domains),
         "source_families": families,
@@ -1373,6 +1438,8 @@ def build(
             "conflicts_require_review": True,
             "official_macro_is_not_company_claim_evidence": True,
             "market_data_is_not_bottleneck_evidence": True,
+            "author_views_are_context_only_not_company_claims": True,
+            "serenity_source_view_is_never_company_claim_proof": True,
         },
     }
     return result, updated_cache
@@ -1459,6 +1526,14 @@ def self_test(policy: Mapping[str, Any]) -> None:
         "yfinance",
         "https://finance.yahoo.com/quote/NVDA/history",
     ) == "yahoo_market"
+    assert family_for(
+        "sec_edgar_verified",
+        "https://x.com/aleabitoreddit/status/1",
+    ) == "author_statement"
+    assert family_for(
+        "leopold_essay",
+        "https://situational-awareness.ai/essays/compute",
+    ) == "situational_context"
     assert domain_of("https://api.nasdaq.com/api/quote/NVDA/historical") == "nasdaq.com"
     print("V213_SOURCE_INDEPENDENCE_SELF_TEST = PASS")
 
