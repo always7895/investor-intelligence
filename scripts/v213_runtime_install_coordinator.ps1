@@ -9,11 +9,12 @@ $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 
 # Path segments outside manifest/ownership coverage. data/ is mutable
-# runtime state (refresh caches, activation bundles, publication journals)
-# written by scheduled runs; __pycache__ is an execution byproduct. Both can
-# change after install without changing the runtime payload, so ownership
-# attests the immutable payload only.
-$script:V213ManifestExcluded = @('.git', 'versions', 'node_modules', '.venv-v213-local', '.npm-cache', 'data', '__pycache__')
+# runtime state (refresh caches, activation bundles, publication journals),
+# reports/ is regenerated public output, .wrangler/ is a wrangler auth cache,
+# and __pycache__ is a Python execution byproduct. All can change after
+# install without changing the runtime payload, so ownership attests the
+# immutable payload only.
+$script:V213ManifestExcluded = @('.git', 'versions', 'node_modules', '.venv-v213-local', '.npm-cache', 'data', '__pycache__', 'reports', '.wrangler')
 
 function Test-V213PathExcluded([string]$Relative) {
     foreach ($segment in ($Relative -split '\\')) { if ($script:V213ManifestExcluded -contains $segment) { return $true } }
@@ -411,10 +412,16 @@ try {
     $stageCreated = $true
     [IO.File]::WriteAllText((Join-Path $stagePath $markerName), $markerValue, (New-Object Text.UTF8Encoding($false)))
     $robocopy = (Get-Command robocopy.exe -ErrorAction Stop).Source
+    # Exclusions are full paths (top level only). Name-based /XD would also
+    # exclude cloud/node_modules, but the runtime needs that pinned toolchain:
+    # the sealed refresh AUTH_CHECK invokes cloud/node_modules/.bin/wrangler.cmd
+    # before any production mutation.
     $robocopyArgs = @(
         $sourceIdentity, $stagePath, '/MIR', '/R:2', '/W:1',
         '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
-        '/XD', '.git', 'versions', 'node_modules', '.venv-v213-local', '.npm-cache',
+        '/XD', (Join-Path $sourceIdentity '.git'), (Join-Path $sourceIdentity 'versions'),
+              (Join-Path $sourceIdentity 'node_modules'), (Join-Path $sourceIdentity '.venv-v213-local'),
+              (Join-Path $sourceIdentity '.npm-cache'),
         '/XF', $markerName, 'V213-RUNTIME-MANIFEST.json'
     )
     & $robocopy @robocopyArgs
@@ -456,6 +463,11 @@ try {
             'config\v213-serenity-methodology-lineage-v1.json')
     }
     foreach ($item in $required) { if (-not (Test-Path -LiteralPath (Join-Path $stagePath $item) -PathType Leaf)) { throw 'RUNTIME_REQUIRED_FILE_MISSING' } }
+    # Publication toolchain: when the source ships wrangler (pinned by the
+    # cloud package-lock), the stage must carry it for AUTH_CHECK.
+    $wranglerSource = Join-Path $sourceIdentity 'cloud\node_modules\.bin\wrangler.cmd'
+    if ((Test-Path -LiteralPath $wranglerSource -PathType Leaf) -and
+        -not (Test-Path -LiteralPath (Join-Path $stagePath 'cloud\node_modules\.bin\wrangler.cmd') -PathType Leaf)) { throw 'RUNTIME_REQUIRED_FILE_MISSING' }
 
     $refresh = [IO.File]::ReadAllText((Join-Path $stagePath 'run-v213-local.ps1'), (New-Object Text.UTF8Encoding($false)))
     $orderedPipeline = @('v213_v21_progress_runner.py','v213_v212_progress_runner.py','reconcile_v213_order_evidence.py',

@@ -357,6 +357,29 @@ try {
                 self.assertTrue(any(marker in (rejected.stdout + rejected.stderr) for marker in ("RUNTIME_TOPOLOGY_UNOWNED_DATA", "RUNTIME_OWNERSHIP_DIGEST_MISMATCH")), rejected.stdout + rejected.stderr)
                 self.assertEqual(unknown.read_bytes(), b"MUST_SURVIVE_REJECT")
 
+    def test_install_carries_cloud_wrangler_and_excludes_root_node_modules(self):
+        """The runtime must receive cloud/node_modules (wrangler AUTH_CHECK)
+        while any top-level node_modules stays excluded."""
+        for shell, _ in self._required_native_hosts():
+            with self.subTest(shell=shell), harness.persistent_fixture("installer-wrangler") as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                runtime = parent / "runtime"
+                self._write_full_package_source(source)
+                wrangler = source / "cloud" / "node_modules" / ".bin" / "wrangler.cmd"
+                wrangler.parent.mkdir(parents=True)
+                harness.write_new(wrangler, b"@ECHO off\r\nnode wrangler.js\r\n")
+                root_node_modules = source / "node_modules" / "root-only-tool.js"
+                root_node_modules.parent.mkdir(parents=True)
+                harness.write_new(root_node_modules, b"NEVER_REACHES_RUNTIME")
+                result = self._run_minimal_installer(shell, source, runtime, parent / "local")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue((runtime / "cloud" / "node_modules" / ".bin" / "wrangler.cmd").exists(),
+                                result.stdout + result.stderr)
+                self.assertEqual((runtime / "cloud" / "node_modules" / ".bin" / "wrangler.cmd").read_bytes(),
+                                 b"@ECHO off\r\nnode wrangler.js\r\n")
+                self.assertFalse((runtime / "node_modules").exists())
+
     def test_failed_overlay_does_not_leave_partial_runtime_or_metadata(self):
         for shell, _ in self._required_native_hosts():
             with self.subTest(shell=shell), harness.persistent_fixture("installer-failure") as directory:
