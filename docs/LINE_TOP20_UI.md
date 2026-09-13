@@ -23,13 +23,13 @@ The implementation uses the same renderer for authenticated interactive Top20 an
 | --- | --- | --- |
 | TOP20 | 20家公司、原文名稱、七欄、同輪綁定證據／公司文字 | 中文名稱來源尚未核對；沒有可發布的6/12/24月估值產品 |
 | 宏觀產業分析 | 當輪20家產業分布、家數占比、完整文字與資料要求 | 家數不是市值權重／資產配置；`MACRO_PRODUCT_NOT_SEALED`，不使用候選GDP/CPI等數值 |
-| 期權 | 連到既有「最新期權」查詢及「期權試算說明」、每週／每月輸入提示 | 存在快照不等於報價合格；當輪封存payload缺口保留`OPTION_DATA_UNAVAILABLE` |
+| 期權 | 連到既有「最新期權」查詢（仍適用逐標的freshness門檻）及「期權試算說明」、每週／每月輸入提示 | 選單不依鍵存在宣稱快照；封存輪→`OPTION_DATA_NOT_ADMITTED`（契約物件集合無期權），未封存／舊鍵殘留→`OPTION_DATA_UNAVAILABLE` |
 
 完整資料／完整文字分析指令仍由獨立產品契約處理；不改送選單或產業摘要冒充。部分入口可操作，不表示三類研究產品均已完成。
 
 Visual tokens in `line-theme.ts` use the supplied black/white mascot artwork's monochrome direction with dark-green actions and pale-green data groups. The existing rich-menu artwork is not uploaded or rescheduled by source edits. Original names are labelled explicitly; Chinese names say unverified rather than guessing. Preserve seven-field values, historic-return warnings and the realized/delayed/not-realized scenario gap.
 
-`test/v213-rich-menu.test.ts` exercises the actual authorized caller with mocked LINE, including stale/invalid-pointer negatives and explicit deep-product refusal. Optional `V213_MENU_PREVIEW_OUT` exports **synthetic message objects only**, not tokens/recipients, for local approximate rendering. Exporting HTML is not a successful visual review or device acceptance; no additional server is required or authorized by that export.
+`test/v213-rich-menu.test.ts` exercises the actual authorized caller with mocked LINE, including stale/invalid-pointer negatives, options key-presence/carryover and sealed-round fixtures, and explicit deep-product refusal. Optional `V213_MENU_PREVIEW_OUT` exports **synthetic message objects only**, not tokens/recipients, for local approximate rendering. Exporting HTML is not a successful visual review or device acceptance; no additional server is required or authorized by that export.
 
 ## Limits and evidence / 限制與證據
 

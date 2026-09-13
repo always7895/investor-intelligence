@@ -65,15 +65,22 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     "Serenity是主要公開研究視角；Leopold為CONTEXT_ONLY。宏觀情境不能直接證明單一公司訂單、瓶頸或股價漲幅。",
   ], NAV);
   if (/^(?:期權|期权|選擇權|选择权|期權與個股快查|期权与个股快查|options?)$/i.test(command)) {
+    // Only the existing pinned sealed-snapshot validation may back an admitted
+    // options claim: the seal contract (v213-stored-snapshot-v1) verifies an
+    // exact object set that has no options member, so a byte-verified sealed
+    // round (integrity "sealed") admits none. Run-scoped legacy pointers and
+    // direct options:latest/latest_options keys are unsealed and may be
+    // old-run carryover; mere key presence is not qualified availability. No
+    // schema or TTL is invented here; the 最新期權 command still applies the
+    // existing per-ticker freshness gate.
     const view = await pinPublicSnapshot(env);
-    const rows = view.kind !== "invalid" ? await view.json<unknown>(["options:latest", "latest_options"]) : null;
-    const status = Array.isArray(rows) && rows.length > 0
-      ? "快照存在，但本頁未判定可用：進入報價查詢仍須逐標的freshness與報價門檻。"
-      : "OPTION_DATA_UNAVAILABLE：目前沒有當輪可讀取的公開期權快照，不代表權利金為0或沒有風險。";
+    const status = view.integrity === "sealed"
+      ? "OPTION_DATA_NOT_ADMITTED：當輪已封存快照的契約物件集合不含期權物件，沒有已封存的期權准入；未封存殘留鍵不構成可用報價，不代表權利金為0或沒有風險。"
+      : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
     return panel("期權與個股快查", "股票代號 → 每週／每月 → 報價與風險", [
       status,
       "查詢例：NVDA 每週期權、AAPL 每月期權（僅格式範例，不是推薦）。個股資訊請輸入股票代號；完整深度產品仍須封存驗收。",
-      "有合格資料才顯示到期日/DTE、Strike、Bid/Mid/Ask、Delta、OI/Volume及年化收益；限價與中間價不保證成交。",
+      "「最新期權」查詢仍適用既有逐標的freshness與報價門檻；有合格資料才顯示到期日/DTE、Strike、Bid/Mid/Ask、Delta、OI/Volume及年化收益；限價與中間價不保證成交。",
       "無自動報價時可用「期權試算說明」做本次輸入的算術試算；結果標示未驗證，不存持倉、不連IBKR、不下單。",
     ], [["查公開期權報價", "最新期權"], ["期權試算說明", "期權試算說明"], ["TOP20 個股入口", "TOP20"], ["回功能選單", "選單"]]);
   }

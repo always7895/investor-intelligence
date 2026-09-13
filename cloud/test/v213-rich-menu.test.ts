@@ -6,6 +6,8 @@ import { processAuthorizedLineEvent } from "../src/v211/worker";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
 import { RICH_MENU_ACTIONS, v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { V213_TOP20_DISPLAY_COLUMNS, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
+import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import contract from "../../config/v213-r75-publication-mode-v1.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
 function fixture() {
@@ -89,5 +91,86 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
   it("explicit deep-product requests do not silently receive a menu summary", async () => {
     const result = await v213PublicLineAnswer(fixture().env, parseQuery("宏觀 數據詳報"));
     expect(result).toContain("RESEARCH_PRODUCT_NOT_SEALED");
+  });
+});
+describe("options menu: key presence is not qualified availability", () => {
+  const NOW = () => new Date().toISOString();
+  const optionRow = (retrievedAt: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify([{ ticker: "NVDA", retrieved_at: retrievedAt, ...extra }]);
+
+  it.each([
+    ["fresh_carryover", "options:latest", optionRow(NOW())],
+    ["stale_carryover", "options:latest", optionRow("2000-01-01T00:00:00Z")],
+    ["future_carryover", "options:latest", optionRow(new Date(Date.now() + 86_400_000).toISOString())],
+    ["malformed_carryover", "options:latest", "not-json"],
+    ["non_array_carryover", "options:latest", JSON.stringify({ eligible: true })],
+    ["row_missing_timestamp", "options:latest", JSON.stringify([{ ticker: "NVDA" }])],
+    ["eligible_true_not_trusted", "options:latest", optionRow(NOW(), { eligible: true, bid: "9.99" })],
+    ["eligible_false", "options:latest", optionRow(NOW(), { eligible: false })],
+    ["old_key_name", "latest_options", optionRow(NOW())],
+  ])("never claims usability from %s", async (_label, key, payload) => {
+    const f = fixture();
+    f.publicKv.values.set(key, payload);
+    const body = JSON.stringify(await actualReply("期權", f));
+    expect(body).not.toContain("快照存在");
+    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).not.toContain("9.99");
+  });
+
+  it("run-scoped old-run carryover is not qualified availability", async () => {
+    const f = fixture();
+    f.publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "legacy-carryover-run" }));
+    f.publicKv.values.set("snapshot:legacy-carryover-run:options:latest", optionRow(NOW()));
+    const body = JSON.stringify(await actualReply("期權", f));
+    expect(body).not.toContain("快照存在");
+    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+  });
+
+  it("pinned reader is pointer-only for the options menu (no direct-key rescue, no private reads, one mocked reply)", async () => {
+    const f = fixture();
+    f.publicKv.values.set("options:latest", optionRow(NOW(), { bid: "9.99" }));
+    const readKeys: string[] = [];
+    const originalGet = f.publicKv.get.bind(f.publicKv);
+    vi.spyOn(f.publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+      readKeys.push(key);
+      return originalGet(key, type);
+    });
+    const body = JSON.stringify(await actualReply("期權", f));
+    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).not.toContain("9.99");
+    expect(readKeys).toContain("snapshot:current");
+    expect(readKeys.filter(key => /options:latest|latest_options/.test(key))).toEqual([]);
+  });
+
+  it("sealed round admits no options object even with fresh unsealed keys present", async () => {
+    const f = fixture();
+    const SEAL_RUN = "20260910T100000Z-123456789abc"; const TX = "1".repeat(32); const TIME = "2026-09-10T10:00:00Z";
+    const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
+    bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = TIME;
+    bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({
+      schema_version: 1, run_id: SEAL_RUN, transaction_id: TX,
+      payload_digests: Object.fromEntries(contract.payload_names.map(name => [name, "a".repeat(64)])), claimed_at: TIME,
+    });
+    const seal = await buildSnapshotSeal({ run_id: SEAL_RUN, transaction_id: TX, generated_at: TIME, public_data_as_of: TIME }, bodies);
+    const prefix = `snapshot:${SEAL_RUN}:`;
+    for (const [key, body] of bodies) f.publicKv.values.set(prefix + key, body);
+    f.publicKv.values.set(prefix + SNAPSHOT_SEAL_KEY, seal.text);
+    f.publicKv.values.set("snapshot:current", JSON.stringify({
+      schema_version: 2, run_id: SEAL_RUN, transaction_id: TX, seal_sha256: seal.sha256,
+      public_data_as_of: TIME, promoted_at: TIME, provider_scope: "public_only", owner_watchlist_inherited: false,
+    }));
+    f.publicKv.values.set("options:latest", optionRow(NOW(), { bid: "9.99" }));
+    f.publicKv.values.set(prefix + "options:latest", optionRow(NOW()));
+    const readKeys: string[] = [];
+    const originalGet = f.publicKv.get.bind(f.publicKv);
+    vi.spyOn(f.publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+      readKeys.push(key);
+      return originalGet(key, type);
+    });
+    const body = JSON.stringify(await actualReply("期權", f));
+    expect(body).not.toContain("快照存在");
+    expect(body).toContain("OPTION_DATA_NOT_ADMITTED");
+    expect(body).not.toContain("9.99");
+    expect(readKeys.filter(key => /options:latest|latest_options/.test(key))).toEqual([]);
   });
 });
