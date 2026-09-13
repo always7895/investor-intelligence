@@ -31,6 +31,12 @@ Visual tokens in `line-theme.ts` use the supplied black/white mascot artwork's m
 
 `test/v213-rich-menu.test.ts` exercises the actual authorized caller with mocked LINE, including stale/invalid-pointer negatives, options key-presence/carryover and sealed-round fixtures, and explicit deep-product refusal. Optional `V213_MENU_PREVIEW_OUT` exports **synthetic message objects only**, not tokens/recipients, for local approximate rendering. Exporting HTML is not a successful visual review or device acceptance; no additional server is required or authorized by that export.
 
+## Mobile hierarchy / 手機資訊層級
+
+Shared menu and Top20 detail actions use the existing green `md` button token; message commands and snapshot-bound references are unchanged. Top20 puts the historical-return warning in the header before prominent return figures. Macro Flex puts the unsealed-product and sample-weight limitations first, then explicitly shows at most five industry groups; `宏觀產業分析 文字` retains every industry and all 20 memberships. This disclosed preview limit is not a universe filter or a truncated Top20 report.
+
+Actual-caller regression, action snapshots and conservative message bounds cover these changes. Local synthetic 390×1900 previews are approximate layout checks only; no original mascot image is replaced, no LINE artwork is uploaded, and device/API visual acceptance remains open. Existing empty/stale/options-admission gates remain unchanged.
+
 ## Limits and evidence / 限制與證據
 
 Product bounds: at most five outbound messages, text at most 4,900 UTF-16 code units, alt text at most 400, five bubbles per carousel, bubble JSON at most 28,000 bytes and carousel JSON at most 48,000 bytes. Size violations fail closed rather than truncate. These conservative product limits do not replace LINE's official API specification.

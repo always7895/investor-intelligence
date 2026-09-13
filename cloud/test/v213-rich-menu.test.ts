@@ -54,6 +54,54 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     const actions = messages[0].contents.contents[0].footer.contents.map((b: any) => b.action.text);
     expect(actions).toEqual(["TOP20", "宏觀產業分析", "期權"]);
   });
+  it.each(RICH_MENU_ACTIONS)("uses shared mobile-sized actions for $text", async action => {
+    const messages = await actualReply(action.text);
+    const buttons: any[] = [];
+    const walk = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "button") buttons.push(node);
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) value.forEach(walk);
+        else if (value && typeof value === "object") walk(value);
+      }
+    };
+    messages.forEach(walk);
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(buttons.every(b => b.height === "md" && b.color === "#147D47")).toBe(true);
+    expect(buttons.map(b => ({ type: b.type, style: b.style, height: b.height, color: b.color, actionType: b.action.type }))[0])
+      .toMatchInlineSnapshot(`
+        {
+          "actionType": "message",
+          "color": "#147D47",
+          "height": "md",
+          "style": "link",
+          "type": "button",
+        }
+      `);
+  });
+  it("shows historical-return risk in the TOP20 header before prominent numbers", async () => {
+    const messages = await actualReply("TOP20");
+    for (const message of messages) for (const bubble of message.contents.contents) {
+      expect(JSON.stringify(bubble.header)).toContain("歷史報酬，非預測");
+    }
+  });
+  it("puts macro limitations before five-group summary and retains all groups in text", async () => {
+    const f = fixture();
+    f.report.records.forEach((row, i) => { row.industry = `產業${String(i).padStart(2, "0")}`; });
+    f.save();
+    const messages = await actualReply("宏觀產業分析", f);
+    const body = JSON.stringify(messages);
+    expect(body.indexOf("MACRO_PRODUCT_NOT_SEALED")).toBeLessThan(body.indexOf("產業00"));
+    expect(body).toContain("摘要顯示5/20類；其餘15類請看完整文字");
+    expect(body).toContain("產業04"); expect(body).not.toContain("產業05");
+    expect(body).toContain("宏觀產業分析 文字");
+    const complete = JSON.stringify(await actualReply("宏觀產業分析 文字", f));
+    for (const row of f.report.records) {
+      expect(complete).toContain(row.industry); expect(complete).toContain(row.ticker);
+    }
+    expect(complete).not.toContain("摘要顯示");
+    assertLineMessages(messages);
+  });
   it("computes all 20 industry memberships while withholding unsealed macro values", async () => {
     const f = fixture();
     f.publicKv.values.set("v213:source-federation:latest", JSON.stringify({ global_sources: [{ detail: { value: 999999, publication_eligible: false } }] }));

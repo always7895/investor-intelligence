@@ -45,14 +45,18 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const sectors = new Map<string, string[]>();
     for (const row of report.records) sectors.set(row.industry, [...(sectors.get(row.industry) ?? []), row.ticker]);
     const groups = [...sectors].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    const completeText = /文字$/.test(command);
+    const visibleGroups = completeText ? groups : groups.slice(0, 5);
     const lines = [
-      `當輪時間：${report.generated_at}；樣本20家公司。`,
-      ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
-      "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
       "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
+      "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
+      `當輪時間：${report.generated_at}；樣本20家公司。`,
+      ...(!completeText && groups.length > visibleGroups.length
+        ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
+      ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
       "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
     ];
-    if (/文字$/.test(command)) {
+    if (completeText) {
       const messages: LineOutboundMessage[] = [{ type: "text", text: "宏觀產業分析｜當輪產業分布（不是完整宏觀報告）\n\n" + lines.join("\n\n") }];
       assertLineMessages(messages); return messages;
     }

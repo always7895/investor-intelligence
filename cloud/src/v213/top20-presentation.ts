@@ -2,7 +2,7 @@ import type { ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
-import { LINE_THEME as T } from "./line-theme";
+import { LINE_THEME as T, menuAction } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
@@ -55,6 +55,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#D4D4D4"),
         text(labels[0]!, "xs", "#D4D4D4"),
         { ...text(values[0]!, "xxl", T.paper), weight: "bold" },
+        text("歷史報酬，非預測 / Not forecasts", "xs", "#D4D4D4"),
         text(`原文：${record.name}`, "sm", T.paper),
         text("中文：未完成來源核對", "xs", "#D4D4D4"),
       ], { backgroundColor: T.ink, paddingAll: "lg" }),
@@ -66,10 +67,9 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       footer: box([
         text(SCENARIO_STATUS, "xs", T.muted),
         text(generated, "xs", T.muted), text(NOTICE, "xs", T.muted),
-        ...(reference ? [["證據詳情", "證據詳情 / Evidence"], ["公司文字", "本公司七欄文字"]].map(([command, label]) => ({
-          type: "button", style: "link", height: "sm", color: T.green, action: { type: "message", label,
-            text: `Top20 ${command} ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}` },
-        })) : [text("詳情入口未綁定 / Unbound detail reference", "xs", T.muted)]),
+        ...(reference ? [["證據詳情", "證據詳情 / Evidence"], ["公司文字", "本公司七欄文字"]].map(([command, label]) => menuAction(label!,
+          `Top20 ${command} ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`
+        )) : [text("詳情入口未綁定 / Unbound detail reference", "xs", T.muted)]),
       ], { paddingAll: "md", backgroundColor: T.soft }),
     };
   });

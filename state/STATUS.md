@@ -1,6 +1,14 @@
 # Current state / 目前狀態
 
-## Active LINE launch autopilot / LINE 上線優先
+## INVESTOR_CONTINUOUS_AUTOPILOT / active
+
+Goal FINAL_RELEASE_COMPLETE: research → LINE → verified UI/UX → new EXE → private GitHub release; no slice/LINE_LIVE stop. Current owner authorization allows repo/build and existing-private-repo publication plus gated USD0 Production/LINE changes, never paid/overage/login bypass or secret persistence. Base/fetch `f418f370ab8b4d019d0d14193e4cdfb3e24b36d5` PASS.
+
+Evidence: `_workspace/audit-runtime/continuous-autopilot-20260913/HANDOFF.md`. P0 ECB public canary HTTP200/5 rows/0 warnings, NOT admitted. Health executor deferred after two shortened retries; Request aborted, no accepted edits. Router health/models HTTP200 is not executor completion. P1 AUTH_REQUIRED (prior receipt below, no login retry). P4 PRIVATE_REPOSITORY_REQUIRED: authenticated GitHub metadata reports private=false; no push/tag/release or visibility change.
+
+P2 bounded mobile slice: existing-palette md actions, Top20 header risk notice, risk-first five-industry macro preview plus complete text. Changed caller tests58 and typecheck PASS; original/corrected RED retained. Three 390×1900 synthetic layouts inspected, not LINE-device/artwork acceptance. Source admission, full UI, original artwork, EXE and final release remain open. NEXT_TASK: source-specific admission/rights mapping and a new unsigned EXE candidate using existing build chain; never overwrite original untracked EXE. Other safe lanes continue.
+
+### LINE entitlement evidence / prior actual probe
 
 HARD_BLOCKED_FREE_ONLY_PROOF; LINE_LIVE=false. Last check 2026-09-13T13:48:32Z, HEAD `82848f9`: normal project `wrangler.cmd whoami --json`, no permission wrapper; logs/metrics off, sanitization on. `NORMAL_WRANGLER_NOT_LOGGED_IN`; loggedIn unproven, accountCount=0, Billing Read=UNKNOWN. No token/subscriptions/LINE quota request or observed billing denial/paid plan. No secrets/identity/raw outputs saved. Receipt: runtime `_workspace/audit-runtime/free-only-subscriptions-normal-20260913/normal-context-evidence.json`; earlier guarded failures preserved.
 
@@ -26,11 +34,11 @@ Three LINE menus TOP20／宏觀產業／期權 still require sourced names, orde
 
 ## Astra scoped recheck / 限定複查
 
-Independent governance recheck: **SCOPED PASS** — author-context isolation and the repaired archive-health/cache-cursor/transport/canonical-order boundaries; blockers A (nested-cache cursor authority) and B (canonical-first ordering) closed. Not full research/product/release/install/publication acceptance; whole-product P0/P1/P2 totals remain unrecertified (no count invented). Recorded, not rerun (hashes not recomputed): 51/51 health + self-test + `git diff --check` PASS; 14 author-context prior scoped results only; full current-source regression NOT run. Consumer check: no incompatible active consumer of the singular `serenity_source_view` value; the legacy `v213_multi_source_fidelity.py` separate `SUPPORTED` producer for the same field name remains broader unqualified work (observation, not a blocker). source_research_qualified=false, product_qualified=false, release_qualified=false. Retained RED logs and the erroneous scoped receipt (metadata-only correction) preserved; its placeholder timestamp stays UNKNOWN, never a measured clock.
+Historical SCOPED PASS closed archive/cache-cursor/transport/canonical-order blockers A/B; not current research/product/release acceptance. Exact 51/14-test and consumer observations remain in `git show f418f37:state/STATUS.md` and immutable audit receipts, not rerun here. Broader legacy source-view work remains unqualified. source_research_qualified=false, product_qualified=false, release_qualified=false. Original RED and metadata-corrected receipt retained; placeholder timestamp remains UNKNOWN.
 
 ### SEC contact-header closeout (2026-09-13, HEAD `37b506a`)
 
-Independent recheck: **SCOPED PASS** (`sec-header-governance-recheck.txt`); original FAIL retained, not replaced. Tests: 68 post-F1 PASS recorded, not rerun (`header-encoding-green.log`, GUARD_EXIT=0); the SEC slice reran only the 6 `test_v21_serenity_engine.py` tests under the pinned deny-network-v2 guard: 6/6 OK, RC=0 (`header-docs-engine-tests.log`), justified (helper changed since; 68/61/23 and prior `1bd95af` closeout historical, not rerun; detail in `docs/RESEARCH_EXECUTION_AUDIT.md`). Qualifications: H6B contact is host-only: redirect refusal and the empty proxy map (`ProxyHandler({})`) belong to the H6B collector's per-call urllib opener alone (not a general fetch or redirect policy); non-SEC H6B requests use a generic User-Agent without SEC identity; federation uses a generic User-Agent with `session.trust_env=False` (a requests-session attribute, not urllib), its redirect behavior unchanged and not qualified by this repair; the mapping defines the loader, not proof a runtime contact file exists or is valid.
+Historical SCOPED PASS, original FAIL and 68+6 test details retained in `git show f418f37:state/STATUS.md` / `docs/RESEARCH_EXECUTION_AUDIT.md`, not rerun here. H6B contact stays host-only; its per-call urllib redirect refusal/empty proxy map is not a general fetch policy. Non-SEC H6B and federation use generic User-Agents; federation's `session.trust_env=False` does not qualify its redirect behavior. Loader mapping does not prove a current valid contact file.
 
 Historical audit chain, unknown SEC time, synthetic driver tests, corrected metadata and missing intermediate GREEN log remain in `docs/RESEARCH_EXECUTION_AUDIT.md` / Git. RED/error/abort evidence preserved; no live/installed/LINE/release qualification.
 
