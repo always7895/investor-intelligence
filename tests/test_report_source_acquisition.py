@@ -284,10 +284,22 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             second = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/build_v213_scheduled_top20_report.py'),
                 '--v212-report', str(five), '--baseline', str(orders), '--top20', str(top), '--output', str(output),
                 '--preview', str(preview), '--require-known-acquisition'], cwd=tmp, capture_output=True, timeout=30)
-            self.assertEqual(second.returncode, 1, second.stdout + second.stderr)
-            self.assertIn(b'SOURCE_ACQUISITION_UNKNOWN', second.stderr)
-            self.assertEqual(output.read_text(), 'SYNTHETIC_ORIGINAL')
-            self.assertEqual(preview.read_text(), 'SYNTHETIC_PREVIEW')
+            # The launch reconciler now withholds the unbound retained claim.
+            # A strict candidate with explicit UNAVAILABLE orders is legitimate;
+            # it must not publish the old value or invent an acquisition clock.
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            produced = json.loads(output.read_bytes())
+            row = produced['records'][19]
+            self.assertEqual(row['current_orders'], '未揭露（無可靠公開訂單數字）')
+            self.assertEqual(row['future_orders_estimate'], '無可靠公開預估')
+            self.assertEqual(row['orders_confidence'], 'UNAVAILABLE')
+            self.assertEqual(row['current_order_source_urls'], [])
+            self.assertEqual(row['future_order_source_urls'], [])
+            self.assertIsNone(json.loads(orders.read_bytes())['records'][19]['retrieved_at'])
+            self.assertEqual(row['retrieved_at'], report['records'][19]['retrieved_at'])
+            self.assertNotIn('合約證據待核對', preview.read_text(encoding='utf-8'))
+            self.assertIn(b'publication_qualified=false', second.stdout)
+            self.assertIn(row['ticker'], json.loads((root / 'receipt.json').read_bytes())['withheld_retained'])
             self.assertEqual(json.loads(old.read_bytes()), baseline)
 
     def test_clock_value_binding_omissions_and_future_or_coerced_times_refuse(self):

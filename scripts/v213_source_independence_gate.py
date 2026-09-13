@@ -29,6 +29,9 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from source_observation import reconcile_research_claims, research_audit_high_eligible
 DEFAULT_TOP20 = ROOT / "data" / "cache" / "top20_public_latest.json"
 DEFAULT_REPORT = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 DEFAULT_ORDER = ROOT / "data" / "cache" / "v213_order_evidence_runtime.json"
@@ -973,18 +976,27 @@ def build_record(
         )
     )
 
+    claim_audit = reconcile_research_claims(record, now=now_utc())
     independent_claim_evidence = (
         len(claim_families) >= required_claim_families
         and len(claim_primary) >= required_claim_primary
+        and claim_audit["all_material_claims_supported"] is True
     )
     high_confidence = (
         independent_claim_evidence
         and independent_market_count >= 1
         and claim_dated_ratio >= required_claim_dated_ratio
         and not conflicting
+        and research_audit_high_eligible(claim_audit)
     )
 
     missing: list[str] = []
+    if claim_audit["status"] == "CONFLICTED":
+        missing.append("MATERIAL_CLAIM_CONFLICT_REVIEW")
+    if not claim_audit["all_material_claims_supported"]:
+        missing.append("EXACT_CLAIM_CORROBORATION_REQUIRED")
+    if not claim_audit["full_research_eligible"]:
+        missing.append("FULL_RESEARCH_SOURCE_DIVERSITY_REQUIRED")
     if independent_market_count == 0:
         missing.append("NON_YAHOO_MARKET_CORROBORATION")
     if not claim_primary:
@@ -1118,6 +1130,7 @@ def build_record(
             "providers": market_rows,
         },
         "public_logic_state": public_logic,
+        "claim_evidence_audit": claim_audit,
         "missing_or_review": missing,
         "eligible_for_high_confidence_model_inference": high_confidence,
         "sensitive_claim_present": sensitive_claim,
@@ -1358,6 +1371,9 @@ def build(
             if state["market_corroboration"]["status"]
             == "CONFLICT_REVIEW"
         ),
+        "material_claim_conflict_ticker_count": sum(
+            state["claim_evidence_audit"]["status"] == "CONFLICTED" for state in states
+        ),
         "high_confidence_model_inference_eligible_count": sum(
             1
             for state in states
@@ -1372,6 +1388,8 @@ def build(
         else {}
     )
     violations: list[str] = []
+    if portfolio["material_claim_conflict_ticker_count"]:
+        violations.append("MATERIAL_CLAIM_CONFLICT_REVIEW")
     if not offline:
         if portfolio["independent_source_families"] < int(
             minimums.get("portfolio_independent_source_families", 3)
@@ -1515,7 +1533,9 @@ def self_test(policy: Mapping[str, Any]) -> None:
     first = result["records"][0]
     assert first["source_metrics"]["claim_relevant_independent_families"] == 2
     assert first["source_metrics"]["claim_relevant_primary_sources"] == 1
-    assert first["eligible_for_high_confidence_model_inference"] is True
+    # Coarse synthetic URL inventory is deliberately not an exact claim ledger.
+    assert first["eligible_for_high_confidence_model_inference"] is False
+    assert first["claim_evidence_audit"]["status"] == "UNAVAILABLE"
     assert result["methodology_notice"]["single_source_inference_allowed"] is False
     assert result["methodology_notice"]["official_serenity_formula"] is False
     assert family_for(

@@ -470,8 +470,10 @@ def _row_individually_high_eligible(
         if isinstance(core_policy.get("minimums"), Mapping)
         else {}
     )
+    claim_audit = record.get("claim_evidence_audit")
     return (
-        _integer(metrics.get("claim_relevant_independent_families"))
+        gate.research_audit_high_eligible(claim_audit)
+        and _integer(metrics.get("claim_relevant_independent_families"))
         >= _integer(minimums.get("high_confidence_claim_independent_families", 2))
         and _integer(metrics.get("claim_relevant_independent_domains"))
         >= _integer(minimums.get("high_confidence_claim_independent_domains", 2))
@@ -821,10 +823,11 @@ def self_test() -> None:
     )
     assert corroborated_adjusted["status"] == "PASS"
     assert corroborated_adjusted["quality_status"] == "PASS"
-    assert corroborated_adjusted["portfolio"]["high_confidence_model_inference_eligible_count"] == 20
+    # Market agreement cannot recreate missing company claim bindings.
+    assert corroborated_adjusted["portfolio"]["high_confidence_model_inference_eligible_count"] == 0
     assert all(
         row["market_corroboration"]["status"] == "CORROBORATED"
-        and row["eligible_for_high_confidence_model_inference"] is True
+        and row["eligible_for_high_confidence_model_inference"] is False
         for row in corroborated_adjusted["records"]
     )
 

@@ -394,9 +394,9 @@ class BuildRecordBoundaryTests(unittest.TestCase):
                 _portfolio_13f(),
             ],
         )
-        self.assertTrue(
+        self.assertFalse(
             baseline["eligible_for_high_confidence_model_inference"],
-            "positive baseline must be eligible with real independent evidence",
+            "legacy source inventory lacks exact current claim bindings",
         )
         self.assertEqual(
             baseline["evidence_independence_score"],
@@ -414,7 +414,7 @@ class BuildRecordBoundaryTests(unittest.TestCase):
         self.assertEqual(
             enriched["source_metrics"]["claim_relevant_independent_families"], 2
         )
-        self.assertTrue(
+        self.assertFalse(
             enriched["eligible_for_high_confidence_model_inference"]
         )
 
@@ -426,9 +426,9 @@ class BuildRecordBoundaryTests(unittest.TestCase):
         self.assertEqual(
             built["source_metrics"]["claim_relevant_primary_sources"], 2
         )
-        self.assertTrue(
+        self.assertFalse(
             built["eligible_for_high_confidence_model_inference"],
-            "real independent issuer/counterparty facts must remain eligible",
+            "issuer/counterparty inventory counts survive but cannot replace exact claim proof",
         )
         with_views = _build_one(
             "ABCK",
@@ -441,7 +441,7 @@ class BuildRecordBoundaryTests(unittest.TestCase):
         self.assertEqual(
             with_views["source_metrics"]["claim_relevant_independent_families"], 2
         )
-        self.assertTrue(
+        self.assertFalse(
             with_views["eligible_for_high_confidence_model_inference"]
         )
 
@@ -589,9 +589,9 @@ class StructuralStateBoundaryTests(unittest.TestCase):
             "ABCK",
             [_sec_filing(), _counterparty_ir(), _sensitive_serenity_row()],
         )
-        # Baseline: admitted independent claim evidence, no sensitive
-        # company claim -> structural fields UNPROVEN.
-        self.assertTrue(
+        # Legacy independent inventory is not an exact corroborated claim.
+        # No sensitive company claim -> structural fields UNPROVEN.
+        self.assertFalse(
             baseline["eligible_for_high_confidence_model_inference"]
         )
         self.assertFalse(baseline["sensitive_claim_present"])
@@ -623,7 +623,7 @@ class StructuralStateBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(_scored_metrics(baseline), _scored_metrics(padded))
 
-    def test_legitimate_company_sensitive_evidence_still_flips(self) -> None:
+    def test_company_sensitive_title_without_exact_claim_stays_unproven(self) -> None:
         row = {
             "source_id": "counterparty_ir_release",
             "claim_type": "counterparty_filing",
@@ -635,10 +635,10 @@ class StructuralStateBoundaryTests(unittest.TestCase):
         self.assertTrue(built["sensitive_claim_present"])
         self.assertEqual(
             built["public_logic_state"]["bottleneck_or_expansion"],
-            "EVIDENCE_FORMING",
+            "UNPROVEN",
         )
         self.assertEqual(
-            built["public_logic_state"]["architecture"], "EVIDENCE_FORMING"
+            built["public_logic_state"]["architecture"], "UNPROVEN"
         )
         self.assertEqual(
             built["source_metrics"]["claim_relevant_independent_families"], 2

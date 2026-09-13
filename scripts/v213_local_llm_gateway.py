@@ -65,6 +65,16 @@ official formula, or official score. Keep these layers separate:
 12. Leopold Aschenbrenner is CONTEXT_ONLY: dated macro/compute/power scenarios
     generate hypotheses, never company-order evidence, a Serenity score bonus,
     a current holding claim or a permanent AI-sector discovery filter.
+    Only evidence-tested scenario probabilities, sector regime and risk may be
+    adjusted; missing/currently contradicted thesis inputs mean no overlay.
+
+SERENITY IS THE PRIMARY DECISION FRAMEWORK:
+- Cover fundamentals, earnings/guidance, orders/backlog, valuation, price/market
+  structure, industry cycle, macro, catalysts, risks, source confidence and
+  scenario valuation. Missing dimensions remain UNAVAILABLE, not filled in.
+- Authority order: verified current evidence > Serenity company evidence >
+  current macro/industry evidence > dated Leopold thesis. Author opinions never
+  override facts. Old essays, interviews and 13F are not current holdings.
 
 ORDER TIMING AND VALUATION:
 - Preserve each disclosed order's amount/quantity, currency, counterparty,
@@ -170,6 +180,18 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _claim_audit_eligible(audit: Mapping[str, Any]) -> bool:
+    # Compact/transport-only bundles need not import the research collector.
+    # Missing research dependencies must cap confidence, not crash the gateway.
+    if not audit:
+        return False
+    try:
+        from source_observation import research_audit_high_eligible
+    except ImportError:
+        return False
+    return research_audit_high_eligible(audit)
+
+
 def _format_source_audit_context(
     document: Mapping[str, Any] | None,
     ticker: str,
@@ -240,7 +262,19 @@ def _format_source_audit_context(
     metrics = _as_dict(record.get("source_metrics"))
     market = _as_dict(record.get("market_corroboration"))
     public_logic = _as_dict(record.get("public_logic_state"))
-    eligible = status == "PASS" and record.get("eligible_for_high_confidence_model_inference") is True
+    claim_audit = _as_dict(record.get("claim_evidence_audit"))
+    eligible = (status == "PASS" and availability == "FRESH"
+                and record.get("eligible_for_high_confidence_model_inference") is True
+                and _claim_audit_eligible(claim_audit))
+    if not eligible:
+        public_logic = dict(public_logic, model_inference_confidence="LIMITED")
+    lines.append("exact_claim_audit_status=" + str(claim_audit.get("status", "UNAVAILABLE")))
+    lines.append("source_diversity=" + json.dumps(_as_dict(claim_audit.get("source_diversity")), ensure_ascii=False, sort_keys=True))
+    for claim in _as_list(claim_audit.get("claims"))[:40]:
+        if isinstance(claim, dict):
+            summary = {key: claim.get(key) for key in ("claim_id", "status", "confidence", "independent_evidence_families", "value", "conflict_set", "reasons")}
+            lines.append("exact_claim=" + json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    lines.append("Only exact SUPPORTED claim IDs may use high confidence; SINGLE_SOURCE is capped, CONFLICTED/STALE/UNAVAILABLE are withheld. Legacy inventory never supplies missing claim bindings.")
     lines.extend(
         [
             f"ticker={ticker}",
