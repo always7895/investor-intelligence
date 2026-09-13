@@ -94,6 +94,45 @@ class StagedGleifEcbAdapterTests(unittest.TestCase):
         self.assertEqual(evidence[0]["claim_type"], "official_indicator_value")
         self.assertEqual(evidence[0]["field_values"]["observation_value"], 3.75)
 
+    def test_ecb_evidence_revision_never_derived_from_retrieval_time(self) -> None:
+        adapter = EcbSdmxAdapter()
+        context = {
+            "request_url": (
+                "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.4F.KR.MRR_FR.LEV"
+                "?format=csvdata"
+            ),
+            "dataflow": "FM",
+        }
+        first = adapter.parse(
+            ecb_fixture(),
+            content_type="text/csv",
+            retrieved_at=RETRIEVED_AT,
+            context=dict(context),
+        )
+        second = adapter.parse(
+            ecb_fixture(),
+            content_type="text/csv",
+            retrieved_at="2026-08-25T12:00:00+00:00",
+            context=dict(context),
+        )
+        self.assertNotEqual(first.retrieved_at, second.retrieved_at)
+        evidence_first = ecb_evidence(first, registry_version="catalog-v1")
+        evidence_second = ecb_evidence(second, registry_version="catalog-v1")
+        self.assertEqual(len(evidence_first), 1)
+        self.assertEqual(len(evidence_second), 1)
+        item_first, item_second = evidence_first[0], evidence_second[0]
+        self.assertIsNone(item_first["published_at"])
+        self.assertIsNone(item_second["published_at"])
+        self.assertIsNone(item_first["revision_or_vintage"])
+        self.assertIsNone(item_second["revision_or_vintage"])
+        self.assertEqual(item_first["as_of"], item_second["as_of"])
+        self.assertEqual(item_first["claim_id"], item_second["claim_id"])
+        self.assertEqual(item_first["content_sha256"], item_second["content_sha256"])
+        self.assertEqual(item_first["retrieved_at"], RETRIEVED_AT)
+        self.assertEqual(
+            item_second["retrieved_at"], "2026-08-25T12:00:00+00:00"
+        )
+
     def test_ecb_rejects_legacy_wrong_host_path_type_and_nonfinite_values(self) -> None:
         adapter = EcbSdmxAdapter()
         cases = (
