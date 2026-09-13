@@ -85,16 +85,24 @@ def sec_companyfacts_fixture(value: float = 123456789.0) -> bytes:
     ).encode("utf-8")
 
 
-def world_bank_fixture(*, pages: int = 1, page: int = 1) -> bytes:
+def world_bank_fixture(
+    *,
+    pages: int = 1,
+    page: int = 1,
+    period: str = "2025",
+    lastupdated: str | None = "2026-07-01",
+) -> bytes:
+    metadata: dict = {
+        "page": page,
+        "pages": pages,
+        "per_page": 50,
+        "total": 1,
+    }
+    if lastupdated is not None:
+        metadata["lastupdated"] = lastupdated
     return json.dumps(
         [
-            {
-                "page": page,
-                "pages": pages,
-                "per_page": 50,
-                "total": 1,
-                "lastupdated": "2026-07-01",
-            },
+            metadata,
             [
                 {
                     "indicator": {
@@ -103,7 +111,7 @@ def world_bank_fixture(*, pages: int = 1, page: int = 1) -> bytes:
                     },
                     "country": {"id": "US", "value": "United States"},
                     "countryiso3code": "USA",
-                    "date": "2025",
+                    "date": period,
                     "value": 100.5,
                     "unit": "USD",
                     "obs_status": "",
@@ -181,6 +189,68 @@ class ReplayedAuthoritativeAdapterTests(unittest.TestCase):
         evidence = build_evidence_items(batch, registry_version="catalog-v1")
         self.assertEqual(evidence[0]["claim_type"], "official_indicator_value")
         self.assertEqual(evidence[0]["field_values"]["value"], 100.5)
+
+    def test_world_bank_missing_revision_and_unsupported_period_clocks_stay_none(self) -> None:
+        request_url = "https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.CD?format=json"
+        clocks = ("2026-08-24T12:00:00+00:00", "2026-09-01T08:30:00+00:00")
+        for period, expected_as_of in (("2025", "2025-12-31T00:00:00+00:00"), ("2025Q1", None)):
+            with self.subTest(period=period):
+                identity = None
+                for clock in clocks:
+                    batch = parse_source_payload(
+                        "world_bank_indicators",
+                        world_bank_fixture(period=period, lastupdated=None),
+                        content_type="application/json",
+                        retrieved_at=clock,
+                        context={"request_url": request_url},
+                    )
+                    self.assertIsNone(batch.records[0]["api_last_updated"])
+                    self.assertEqual(batch.records[0]["period_as_of"], expected_as_of)
+                    evidence = build_evidence_items(batch, registry_version="catalog-v1")
+                    self.assertEqual(len(evidence), 1)
+                    item = evidence[0]
+                    self.assertEqual(item["claim_type"], "official_indicator_value")
+                    self.assertEqual(item["claim_id"], f"world_bank:NY.GDP.MKTP.CD:US:{period}")
+                    self.assertEqual(
+                        item["field_values"],
+                        {
+                            "indicator_id": "NY.GDP.MKTP.CD",
+                            "country_id": "US",
+                            "period": period,
+                            "value": 100.5,
+                        },
+                    )
+                    self.assertEqual(item["canonical_url"], request_url)
+                    self.assertIsNone(item["published_at"])
+                    # Unknown source clocks stay None; retrieval never substitutes.
+                    self.assertEqual(item["as_of"], expected_as_of)
+                    self.assertNotEqual(item["as_of"], clock)
+                    self.assertIsNone(item["revision_or_vintage"])
+                    self.assertEqual(item["retrieved_at"], clock)
+                    signature = (
+                        item["claim_id"],
+                        tuple(sorted(item["field_values"].items())),
+                        item["content_sha256"],
+                        item["record_sha256"],
+                        item["adapter_schema_sha256"],
+                    )
+                    if identity is None:
+                        identity = signature
+                    else:
+                        # Same body and claim identities across retrieval clocks.
+                        self.assertEqual(signature, identity)
+        # Disclosed metadata lastupdated=2026-07-01 is retained when present.
+        batch = parse_source_payload(
+            "world_bank_indicators",
+            world_bank_fixture(),
+            content_type="application/json",
+            retrieved_at=clocks[0],
+            context={"request_url": request_url},
+        )
+        self.assertEqual(batch.records[0]["api_last_updated"], "2026-07-01")
+        evidence = build_evidence_items(batch, registry_version="catalog-v1")
+        self.assertEqual(evidence[0]["revision_or_vintage"], "2026-07-01")
+        self.assertEqual(evidence[0]["as_of"], "2025-12-31T00:00:00+00:00")
 
     def test_adapters_fail_closed_on_wrong_types_urls_and_shapes(self) -> None:
         cases = [

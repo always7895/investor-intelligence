@@ -178,7 +178,8 @@ class WorldBankIndicatorsAdapter:
 def evidence_items(batch: ParsedBatch, *, registry_version: str) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for record in batch.records:
-        as_of = record.get("period_as_of") or batch.retrieved_at
+        as_of = record.get("period_as_of")
+        revision_or_vintage = record.get("api_last_updated")
         result.append(
             build_evidence_item(
                 batch,
@@ -196,8 +197,8 @@ def evidence_items(batch: ParsedBatch, *, registry_version: str) -> list[dict[st
                     "value": record["value"],
                 },
                 registry_version=registry_version,
-                as_of=str(as_of),
-                revision_or_vintage=str(record.get("api_last_updated") or record["period"]),
+                as_of=as_of,
+                revision_or_vintage=revision_or_vintage,
             )
         )
     return result
