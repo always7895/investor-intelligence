@@ -43,6 +43,7 @@ from adapters import parse_source_payload
 from adapters.world_bank import AdapterError, US_REAL_GDP_URL, select_us_real_gdp_window
 from authoritative_source_catalog import inventory, load_catalog
 from report_source_acquisition import bind_company_receipt
+from sec_contact_headers import CONTACT_RE, SecContactError, sec_identity_headers
 
 POLICY_PATH = ROOT / "config" / "v21-serenity-policy.json"
 ACTIVATION_PATH = ROOT / "config" / "v21-source-activation.json"
@@ -75,27 +76,14 @@ DOMAIN_C = {"hbm", "memory", "optical", "photonics", "laser", "fiber", "foundry"
 LOGGER = logging.getLogger("v21-serenity")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-CONTACT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-
 def sec_headers() -> dict[str, str]:
-    contact = os.getenv("SEC_CONTACT_EMAIL", "").strip()
-    if not CONTACT_RE.fullmatch(contact):
-        raise PipelineError(
-            "SEC_CONTACT_EMAIL must be configured locally as a valid contact address"
-        )
-    value = os.getenv(
-        "SEC_USER_AGENT",
-        f"Investor Intelligence/2.1 {contact}",
-    ).strip()
-    if contact not in value:
-        raise PipelineError("SEC_USER_AGENT must include SEC_CONTACT_EMAIL")
-    return {
-        "User-Agent": value,
-        "From": contact,
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-    }
+    try:
+        headers = sec_identity_headers()
+    except SecContactError as exc:
+        raise PipelineError(str(exc)) from None
+    headers["Accept"] = "application/json"
+    headers["Accept-Encoding"] = "gzip, deflate"
+    return headers
 
 
 class PipelineError(RuntimeError):

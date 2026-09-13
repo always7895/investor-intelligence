@@ -59,6 +59,11 @@ BLS_URL = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
 ECB_URL = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=5&format=csvdata"
 GLEIF_URL = "https://api.gleif.org/api/v1/lei-records"
 ALPHA_URL = "https://www.alphavantage.co/query"
+# Fixed, non-sensitive public research identity for the federation's own
+# non-SEC public sources. The SEC contact environment must never become a
+# User-Agent here, and build_live sets trust_env=False so implicit netrc or
+# proxy credentials are not picked up by this session.
+FEDERATION_USER_AGENT = "Investor Intelligence 2.1.3 public research"
 
 
 class FederationError(RuntimeError):
@@ -415,8 +420,9 @@ def evaluate_gates(document: Mapping[str, Any], policy: Mapping[str, Any]) -> di
 def build_live(top20: list[dict[str, Any]], v212: Mapping[str, Mapping[str, Any]], policy: Mapping[str, Any]) -> dict[str, Any]:
     generated = utc_now()
     session = requests.Session()
+    session.trust_env = False
     session.headers.update({
-        "user-agent": os.getenv("SEC_CONTACT_EMAIL", "Investor Intelligence public research contact unavailable"),
+        "user-agent": FEDERATION_USER_AGENT,
         "accept-encoding": "gzip, deflate",
     })
 
