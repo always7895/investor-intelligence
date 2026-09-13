@@ -2,7 +2,9 @@
 """Reconcile v2.1.3 order evidence to the current v2.1.2 Top20 membership.
 
 Existing R15R evidence is preserved byte-for-field for tickers that remain in the
-Top20. Newly admitted tickers are researched deterministically through the same
+Top20; retained claims whose acquisition evidence is missing are withheld as
+retained_order_acquisition_unavailable, while acquisition-bound and
+already-unavailable evidence stays preserved. Newly admitted tickers are researched deterministically through the same
 SEC-only R15 semantic extractor, explicitly selected rather than depending on
 historical modules' import-order monkey patches. Removed tickers are dropped.
 
@@ -197,6 +199,13 @@ def reconcile(
             row["reconciliation_source"] = "accepted_r15r_preserved"
             if baseline.get('accepted_from') in UNBOUND_CLOCK_PRODUCERS:
                 row['retrieved_at'] = None
+            if row.get('retrieved_at') is None and (
+                row.get('current_orders') != h6b.CURRENT_FALLBACK
+                or row.get('future_orders_estimate') != h6b.FUTURE_FALLBACK
+            ):
+                row = _baseline_row_from_outlook(rank, ticker, h6b.unavailable_outlook())
+                row['orders_confidence'] = 'UNAVAILABLE'
+                row['reconciliation_source'] = 'retained_order_acquisition_unavailable'
             rows.append(row)
             continue
         print(f"II_PROGRESS v2.1.3 order evidence delta {len(researched)+1}/{len(added)} | {ticker}", flush=True)
@@ -208,6 +217,14 @@ def reconcile(
             unavailable_new.append(ticker)
         else:
             supported_new.append(ticker)
+
+    preserved_count = sum(
+        1 for row in rows if row.get("reconciliation_source") == "accepted_r15r_preserved"
+    )
+    withheld_retained = [
+        row["ticker"] for row in rows
+        if row.get("reconciliation_source") == "retained_order_acquisition_unavailable"
+    ]
 
     document = {
         "schema_version": 2,
@@ -225,7 +242,8 @@ def reconcile(
         "new_order": fresh_order,
         "added": added,
         "removed": removed,
-        "preserved_count": 20 - len(added),
+        "preserved_count": preserved_count,
+        "withheld_retained": withheld_retained,
         "researched_new": researched,
         "supported_new": supported_new,
         "unavailable_new": unavailable_new,

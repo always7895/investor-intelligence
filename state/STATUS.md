@@ -1,5 +1,11 @@
 # Current state / 目前狀態
 
+## Active LINE launch autopilot / LINE 上線優先
+
+HARD_BLOCKED_FREE_ONLY_PROOF / 零費用證據不足而停止。Existing Worker d3375fe3-55e4-436c-9d12-4cff360a6578 passed 3 read-only readiness checks; no new code deploy needed solely for compatibility. Inspected Wrangler OAuth whoami proves authentication, NOT free plan/quota. No approved billing-read evidence established; no API token/account selector env. This does NOT mean account is paid. No KV publication/Worker deployment/LINE send/paid CI/plan changes. Evidence: local runtime .pi/routing-evidence/investor-line-launch-autopilot-v1/current-worker-readiness.json and free-only-preflight.json. Resume only after current target-specific zero-cost entitlement/quota proof; no secret values in chat/artifacts. Code-release gates still pending.
+
+Withheld unbound orders; focused 7 tests + actual 20 LIMITED preflight PASS.
+
 Updated: 2026-09-13. Release identity: [README](../README.md). This slice (from `55edb2d9`): 期權 rich-menu status follows only the pinned sealed-snapshot validation (sealed → `OPTION_DATA_NOT_ADMITTED`, legacy/invalid → `OPTION_DATA_UNAVAILABLE`). Historical: reviewed code `37b506a` (frozen, branch `fix/options-provenance-audit`), above `1bd95af`, `9aeb3d4`, `a01358c`, on audit baseline `b96167af`; no current/future docs SHA invented. Immediate previous committed state: `git show 55edb2d9:state/STATUS.md`; earlier states: `git show 1bd95af:state/STATUS.md`, `git show b96167af:state/STATUS.md`, `git show 6ffe6c86877c220c28b67f712edb38ea125806ca:state/STATUS.md`, `git show 1ba1a97713f4b152ffcb3cae4950c17076c8d0d0:state/STATUS.md`; older lookup: `git show 38860e7:state/STATUS.md`. History is not current acceptance or authorization.
 
 ## Scope and authority / 範圍與依據
