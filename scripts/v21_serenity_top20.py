@@ -956,15 +956,16 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
     beta = market_value(market, "beta")
     short_float = ratio(market.get("shortPercentOfFloat"))
 
-    demand_fraction = (0.25 if contains(text, AI_WORDS) else 0.0)
+    # Discovery labels and an author's regime thesis cannot supply company
+    # evidence. Keep the existing revenue contribution, without a theme bonus.
+    demand_fraction = 0.0
     if rev is not None:
         demand_fraction += clamp((rev + 0.05) / 0.55, 0, 0.75)
     demand = round(int(weights["demand_wave"]) * clamp(demand_fraction, 0, 1))
 
-    choke_fraction = 0.60 if contains(text, CHOKE_WORDS) else 0.20 if contains(text, AI_WORDS) else 0.0
-    if gross is not None:
-        choke_fraction += clamp((gross - 0.25) / 0.50, 0, 0.25)
-    chokepoint = round(int(weights["chokepoint"]) * clamp(choke_fraction, 0, 1))
+    # This provisional caller has no admitted dependency/qualification graph.
+    # Margin and keyword proxies cannot establish scarcity before shortlisting.
+    chokepoint = 0
 
     pricing_fraction = 0.0
     if gross is not None:
@@ -973,12 +974,8 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
         pricing_fraction += clamp((operating + 0.05) / 0.40, 0, 0.35)
     pricing = round(int(weights["pricing_power"]) * clamp(pricing_fraction, 0, 1))
 
-    friction_fraction = 0.65 if contains(text, CHOKE_WORDS) else 0.20 if contains(text, AI_WORDS) else 0.0
-    if gross is not None and gross > 0.45:
-        friction_fraction += 0.20
-    if len(evidence) >= 3:
-        friction_fraction += 0.15
-    friction = round(int(weights["replacement_friction"]) * clamp(friction_fraction, 0, 1))
+    # Repetition and profitability are not switching/qualification evidence.
+    friction = 0
 
     capture_fraction = clamp(((rev or -0.05) + 0.05) / 0.55, 0, 1)
     tam = round(int(weights["tam_capture"]) * capture_fraction)
@@ -1040,6 +1037,11 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
         "fit_score": min(100, max(domains.values(), default=0) * 20),
         "included_in_serenity_score": False,
         "attribution": "system_operationalization_not_aschenbrenner_stock_score",
+        "status": "DISCOVERY_ONLY",
+        "company_fact_authority": False,
+        "current_holdings_verified": False,
+        "thesis_published_at": None,
+        "scenario_adjustment": "UNAVAILABLE",
     }
 
     return {
