@@ -324,8 +324,8 @@ def normalize_observation(
 # These are authority kinds, NOT a domain/publisher whitelist. New providers use
 # the extensible registry and the same free-access/adapter/provenance gates.
 RESEARCH_CLAIM_AUTHORITIES = {
-    "issuer_financial_statement": {"securities_regulator", "corporate_issuer", "company_ir"},
-    "issuer_guidance_or_contract": {"securities_regulator", "corporate_issuer", "company_ir", "procurement_authority"},
+    "issuer_financial_statement": {"securities_regulator", "corporate_issuer", "company_ir", "official_issuer"},
+    "issuer_guidance_or_contract": {"securities_regulator", "corporate_issuer", "company_ir", "procurement_authority", "official_issuer"},
     "macro_indicator": {"central_bank", "national_statistics_office", "intergovernmental_organization", "international_organization", "finance_ministry_or_treasury"},
     "market_observation": {"stock_exchange", "regulated_exchange", "market_infrastructure"},
     "regulatory_event": {"securities_regulator", "financial_regulator", "government_legal_authority", "court_or_legal_registry"},
@@ -361,7 +361,7 @@ def _research_class(observation: SourceObservation) -> str:
         return "market_exchange"
     if authority in {"central_bank", "national_statistics_office", "intergovernmental_organization", "international_organization", "industry_association", "public_sector_industry_body", "finance_ministry_or_treasury"}:
         return "macro_industry"
-    if authority in {"securities_regulator", "corporate_issuer", "company_ir", "procurement_authority", "financial_regulator", "government_legal_authority", "court_or_legal_registry"}:
+    if authority in {"securities_regulator", "corporate_issuer", "company_ir", "procurement_authority", "official_issuer", "financial_regulator", "government_legal_authority", "court_or_legal_registry"}:
         return "primary_company_regulatory"
     if authority in {"financial_journalism", "academic_research", "institutional_research", "academic_repository", "reputable_newswire", "reputable_financial_media", "public_service_media"}:
         return "independent_journalism_research"

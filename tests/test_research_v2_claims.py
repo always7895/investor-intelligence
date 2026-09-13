@@ -34,11 +34,13 @@ def source(name, authority, tier, roles):
 
 REGISTRY = Registry(1, (
     source('issuer', 'securities_regulator', 'T1_PRIMARY_OFFICIAL', ['financial_statements']),
-    source('news', 'reputable_newswire', 'T2_INSTITUTIONAL_CORROBORATION', ['financial_reporting', 'industry_research']),
+    source('news', 'reputable_newswire', 'T2_INSTITUTIONAL_CORROBORATION', ['financial_reporting', 'industry_research', 'macro_reporting']),
     source('news-two', 'reputable_newswire', 'T2_INSTITUTIONAL_CORROBORATION', ['financial_reporting', 'industry_research']),
     source('exchange', 'regulated_exchange', 'T1_PRIMARY_OFFICIAL', ['market_data']),
     source('macro', 'national_statistics_office', 'T1_PRIMARY_OFFICIAL', ['economic_data']),
     source('yahoo-like', 'reputable_financial_media', 'T3_REPUTABLE_SECONDARY_LEAD', ['financial_reporting']),
+    source('official', 'official_issuer', 'T1_PRIMARY_OFFICIAL', ['financial_statements', 'issuer_filings', 'guidance', 'economic_data']),
+    source('issuer-t3', 'official_issuer', 'T3_REPUTABLE_SECONDARY_LEAD', ['financial_statements']),
 ), ())
 
 
@@ -155,6 +157,46 @@ class ResearchClaimTests(unittest.TestCase):
         row = assess(document([evidence('macro'), evidence('news')]))['claims'][0]
         self.assertEqual(row['status'], 'UNAVAILABLE')
         self.assertIn('PRIMARY_AUTHORITY_REQUIRED', row['reasons'])
+
+    def test_official_issuer_is_primary_for_issuer_financial_and_guidance_claims(self):
+        rows = [evidence('official'), evidence('news')]
+        result = assess(document(rows))
+        official = next(row for row in result['evidence'] if row['source_id'] == 'official')
+        self.assertTrue(official['primary'])
+        self.assertEqual(official['source_class'], 'primary_company_regulatory')
+        row = result['claims'][0]
+        self.assertEqual(row['status'], 'SUPPORTED')
+        self.assertTrue(row['high_confidence_eligible'])
+        self.assertEqual(row['independent_evidence_families'], 2)
+        guidance = evidence('official', 'guidance', 'issuer_guidance_or_contract', value=50)
+        guidance['evidence_role'] = 'issuer_filings'
+        rows = [guidance, evidence('news', 'guidance', 'issuer_guidance_or_contract', value=50)]
+        result = assess(document(rows, [claim('guidance', 'issuer_guidance_or_contract')]))
+        official = next(row for row in result['evidence'] if row['source_id'] == 'official')
+        self.assertTrue(official['primary'])
+        self.assertEqual(official['source_class'], 'primary_company_regulatory')
+        self.assertEqual(result['claims'][0]['status'], 'SUPPORTED')
+        self.assertTrue(result['claims'][0]['high_confidence_eligible'])
+
+    def test_t3_official_issuer_cannot_qualify_and_official_issuer_does_not_authorize_macro(self):
+        rows = [evidence('issuer-t3'), evidence('news')]
+        result = assess(document(rows))
+        t3 = next(row for row in result['evidence'] if row['source_id'] == 'issuer-t3')
+        self.assertFalse(t3['admitted'])
+        self.assertFalse(t3['primary'])
+        self.assertEqual(t3['source_class'], 'discovery_only')
+        self.assertEqual(result['claims'][0]['status'], 'UNAVAILABLE')
+        self.assertIn('PRIMARY_AUTHORITY_REQUIRED', result['claims'][0]['reasons'])
+        macro = evidence('official', 'gdp', 'macro_indicator', value=3.1)
+        macro['evidence_role'] = 'economic_data'
+        news_macro = evidence('news', 'gdp', 'macro_indicator', value=3.1)
+        news_macro['evidence_role'] = 'macro_reporting'
+        rows = [macro, news_macro]
+        result = assess(document(rows, [claim('gdp', 'macro_indicator')]))
+        official = next(row for row in result['evidence'] if row['source_id'] == 'official')
+        self.assertFalse(official['primary'])
+        self.assertEqual(result['claims'][0]['status'], 'UNAVAILABLE')
+        self.assertIn('PRIMARY_AUTHORITY_REQUIRED', result['claims'][0]['reasons'])
 
     def test_missing_future_stale_times_are_not_refreshed_by_retrieval(self):
         for field, value, expected in (
