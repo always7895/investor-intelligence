@@ -22,16 +22,21 @@ class FormalReleaseToolTests(unittest.TestCase):
             candidate_commit=commit,
             version="2.0.0",
         )
-        self.assertTrue(value["release_ready"])
-        self.assertTrue(value["package_release_ready"])
+        self.assertFalse(value["release_ready"])
+        self.assertFalse(value["package_release_ready"])
         self.assertFalse(value["public_repository_publication_ready"])
         self.assertEqual(value["distribution_scope"], "private_direct_delivery")
         self.assertEqual(value["candidate_commit"], commit)
         self.assertEqual(value["candidate_version"], "2.0.0")
-        self.assertTrue(all(result == "PASS" for result in value["gates"].values()))
+        self.assertTrue(all(result == "UNVERIFIED" for result in value["gates"].values()))
+        self.assertEqual(
+            value["hard_blockers"], ["SOURCE_BOUND_RELEASE_EVIDENCE_REQUIRED"]
+        )
+        self.assertTrue(value["local_action_required"])
         self.assertFalse(value["deployed"])
         self.assertFalse(value["billing_enabled"])
         self.assertFalse(value["external_users_admitted"])
+        self.assertFalse(value["secrets_required_now"])
 
     def test_receipt_matches_closed_final_cleanup_contract(self) -> None:
         receipt = final_release_receipt.build_receipt(
@@ -52,7 +57,7 @@ class FormalReleaseToolTests(unittest.TestCase):
         self.assertFalse(receipt["billing_enabled"])
         self.assertFalse(receipt["external_users_admitted"])
 
-    def test_non_synthetic_package_accepts_exact_ephemeral_status(self) -> None:
+    def test_non_synthetic_package_fails_closed_without_release_evidence(self) -> None:
         head = subprocess.check_output(
             ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
             text=True,
@@ -69,20 +74,17 @@ class FormalReleaseToolTests(unittest.TestCase):
                 json.dumps(status, sort_keys=True),
                 encoding="utf-8",
             )
-            outputs = release_package.build_release_package(
-                output_dir=root / "package",
-                version="2.0.0-test.1",
-                synthetic=False,
-                release_status_path=status_path,
-            )
-            self.assertTrue(outputs.archive.is_file())
-            self.assertTrue(outputs.checksum.is_file())
-            self.assertTrue(outputs.manifest.is_file())
-            self.assertTrue(outputs.sbom.is_file())
-            self.assertEqual(outputs.source_commit, head)
-            manifest = json.loads(outputs.manifest.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["build_mode"], "final_release")
-            self.assertEqual(manifest["source_commit"], head)
+            package_dir = root / "package"
+            with self.assertRaises(release_package.ReleasePackageError) as context:
+                release_package.build_release_package(
+                    output_dir=package_dir,
+                    version="2.0.0-test.1",
+                    synthetic=False,
+                    release_status_path=status_path,
+                )
+            self.assertIn("release_ready", str(context.exception))
+            if package_dir.is_dir():
+                self.assertFalse(list(package_dir.glob("*.zip")))
 
     def test_invalid_status_and_receipt_identities_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
@@ -96,6 +98,20 @@ class FormalReleaseToolTests(unittest.TestCase):
                 completed_utc="2026-08-25T00:00:00Z",
                 cleanup_authorized=True,
             )
+
+    def test_release_ready_is_false_without_evidence(self) -> None:
+        # No evidence is supplied to build_status, so release_ready must be False.
+        value = formal_release_status.build_status(
+            candidate_commit="0" * 40,
+            version="99.0.0",
+        )
+        self.assertFalse(value["release_ready"])
+        self.assertFalse(value["package_release_ready"])
+        self.assertTrue(all(result == "UNVERIFIED" for result in value["gates"].values()))
+        self.assertEqual(
+            value["hard_blockers"], ["SOURCE_BOUND_RELEASE_EVIDENCE_REQUIRED"]
+        )
+        self.assertTrue(value["local_action_required"])
 
 
 if __name__ == "__main__":
