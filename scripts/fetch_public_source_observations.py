@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import socket
 import ssl
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
+from urllib.error import HTTPError, URLError
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 # The hash-verified embedded Python intentionally ignores cwd/PYTHONPATH.
@@ -33,6 +35,92 @@ MAX_BYTES = 8_000_000
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ValueError("NEWS_REDIRECT_REJECTED")
+
+
+REDIRECT_MARKER = "NEWS_REDIRECT_REJECTED"
+TLS_EXCEPTIONS = (ssl.SSLCertVerificationError, ssl.CertificateError, ssl.SSLError)
+DNS_EXCEPTIONS = (socket.gaierror, socket.herror)
+TIMEOUT_EXCEPTIONS = (TimeoutError, socket.timeout)
+CONNECTION_EXCEPTIONS = (ConnectionError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError)
+
+
+class TransportDiagnostic(NamedTuple):
+    failure_kind: str
+    failure_code: str
+    http_status: int | None = None
+
+
+def _extract_http_status(err: HTTPError) -> int | None:
+    for attr in ("code", "status"):
+        val = getattr(err, attr, None)
+        if type(val) is int and 100 <= val <= 599:
+            return val
+    return None
+
+
+def _unwrap_exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    if not isinstance(exc, BaseException):
+        return chain
+    visited: set[int] = set()
+    queue: list[BaseException] = [exc]
+    while queue and len(chain) < 8:
+        node = queue.pop(0)
+        if id(node) in visited:
+            continue
+        visited.add(id(node))
+        chain.append(node)
+        if len(chain) >= 8:
+            break
+        if isinstance(node, URLError) and isinstance(node.reason, BaseException) and id(node.reason) not in visited:
+            queue.append(node.reason)
+        cause = getattr(node, "__cause__", None)
+        if isinstance(cause, BaseException) and id(cause) not in visited:
+            queue.append(cause)
+    return chain
+
+
+def diagnose_transport_exception(exc: BaseException) -> TransportDiagnostic:
+    if isinstance(getattr(exc, "reason", exc), ssl.SSLCertVerificationError):
+        failure_kind = "TLS_VERIFICATION_FAILED"
+    elif isinstance(exc, AdapterError):
+        failure_kind = "INVALID_PAYLOAD"
+    else:
+        failure_kind = "REQUEST_FAILED"
+
+    chain = _unwrap_exception_chain(exc)
+
+    failure_code = "UNKNOWN_ERROR"
+    http_status: int | None = None
+
+    for node in chain:
+        if isinstance(node, AdapterError):
+            failure_code = "INVALID_PAYLOAD"
+            break
+        if isinstance(node, ValueError) and getattr(node, "args", None) == (REDIRECT_MARKER,):
+            failure_code = "REDIRECT_REJECTED"
+            break
+        if isinstance(node, HTTPError):
+            failure_code = "HTTP_ERROR"
+            http_status = _extract_http_status(node)
+            break
+        if isinstance(node, (ssl.SSLCertVerificationError, ssl.CertificateError)):
+            failure_code = "TLS_VERIFICATION_FAILED"
+            break
+        if isinstance(node, ssl.SSLError):
+            failure_code = "TLS_ERROR"
+            break
+        if isinstance(node, DNS_EXCEPTIONS):
+            failure_code = "DNS_RESOLUTION_FAILED"
+            break
+        if isinstance(node, TIMEOUT_EXCEPTIONS):
+            failure_code = "TIMEOUT"
+            break
+        if isinstance(node, CONNECTION_EXCEPTIONS):
+            failure_code = "CONNECTION_FAILED"
+            break
+
+    return TransportDiagnostic(failure_kind=failure_kind, failure_code=failure_code, http_status=http_status)
 
 
 def verified_tls_context() -> ssl.SSLContext:
@@ -83,10 +171,17 @@ def collect(sources: list[str], *, transport: Callable[[str], bytes] = fetch_byt
                               if source in EQUITY_FEEDS else {})})
         except Exception as exc:
             # Preserve failures, never dump provider exceptions/HTML into output.
-            tls_failure = isinstance(getattr(exc, "reason", exc), ssl.SSLCertVerificationError)
-            health.append({"source_id": source, "status": "FAILED", "record_count": 0,
-                           "failure_kind": "TLS_VERIFICATION_FAILED" if tls_failure else
-                           "INVALID_PAYLOAD" if isinstance(exc, AdapterError) else "REQUEST_FAILED"})
+            diagnostic = diagnose_transport_exception(exc)
+            health_row: dict = {
+                "source_id": source,
+                "status": "FAILED",
+                "record_count": 0,
+                "failure_kind": diagnostic.failure_kind,
+                "failure_code": diagnostic.failure_code,
+            }
+            if diagnostic.http_status is not None:
+                health_row["http_status"] = diagnostic.http_status
+            health.append(health_row)
     status = "OK" if all(row["status"] == "OK" for row in health) else "PARTIAL" if items else "FAILED"
     return {"schema_version": 1, "status": status, "mode": "LOCAL_PUBLIC_SOURCE_OBSERVATIONS",
             "runtime": {"python": platform.python_version(), "openssl": ssl.OPENSSL_VERSION,
