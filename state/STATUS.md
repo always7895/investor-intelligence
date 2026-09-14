@@ -41,9 +41,15 @@ Actual numeric2Y total return remains WITHHELD/UNAVAILABLE: correct endpoint ari
 
 ### Bottleneck ranking — unresolved product correctness blocker
 
-G/bottleneck-ranking-v1-evidence.json:23 focused/1FAIL, affected32 PASS; new config/system-bottleneck-explosion-v1.json, scripts/bottleneck_ranking.py and tests/test_bottleneck_ranking.py remain unreviewed/uncommitted. Claim-conflict handling failed; do not use this module as Production scoring authority. Its design doc is explicitly unaccepted.
+Ranking files remain uncommitted/unaccepted. Initial23focused/1FAIL and subsequent failed receipts retained. Review2 reports23focused+31admission/trust tests PASS after removing fixture-registry fallback, default HEALTHY/parser metadata and invalid-clock restamping; see G/bottleneck-ranking-v1-review2-evidence.json. Public CLI now reports0 admitted without trusted company acquisition. This is fail-closed testing, NOT implemented live scoring. Factor-to-specific-claim binding and complete typed company admission still require independent acceptance; exception serialization also requires privacy review. Do not integrate/deploy this draft; its policy remains unaccepted.
 
 Old20 had no positive core bottleneck factors after evidence withholding. Independent universe discovery and company-level admission must precede ranking; generic market screens/lexical ties are not bottleneck selection. No author ticker-copy/overlap bonus, no permanent AI-sector whitelist, no historical-return ranking influence. Admit structural scarcity/substitution friction, pricing power and company capture with independent claim-level evidence; preserve financing/valuation/killers/lifecycle and missing states. Qualified results may be fewer than20; never pad unsupported winners.
+
+## Independent public-universe discovery — identity only
+
+G/universe-discovery-v1-review1-evidence.json: real official Nasdaq/other-US/TWSE fetches returned5604/7616/1094 records (14314 total); immutable original projections reused, no repeat fetch. CLI produced8599 retained venue/security identities:7016 candidate-equity leads and1583 review-required;5715 excluded records. This is partial US/TWSE identity discovery, NOT full-market research, issuer admission or ranking; admitted companies0, score/ranknull. IEX has0 observed records; Europe/Japan/HK/Korea/Canada/China/OTC/TPEx remain explicit gaps.
+
+Discovery tests19 PASS after retained RED/initial failures. Review corrected name-similarity clusters to UNVERIFIED (not573 proven issuers), conflicting duplicate quarantine, observed-vs-configured venue coverage and path/privacy checks. Local receipt/payload hashes prove consistency only, not independent source authority or publication rights. Original executor review receipt mislabels provider as “Astra gemini”; actual guarded executor is Antigravity/Gemini, verified separately. No Production/LINE/credential mutations; new discovery module not a price/claim/health adapter.
 
 ## Research / release boundaries still open
 
@@ -55,8 +61,8 @@ Paused unrelated launcher credential edits and tests/test_v213_secure_credential
 
 ## Next action
 
-1. Record current TOP20 UI review/gates/commit without claiming numeric-return or ranking acceptance; preserve all failure receipts.
-2. Gemini full ranking-policy/admission correction slice, then independent universe and supply-chain research; no microtask substitution or author-copy list.
+1. TOP20 UI committed `e33e926941880179043bc217ada0d9e7ab1bd9f0`; numeric-return/ranking admission remains DEFER. Gates passed after STATUS-size rewrite; all failure receipts retained.
+2. Ranking draft DEFER after bounded reviews; independent US/TWSE discovery slice completed at identity-only scope. NEXT: source-bound company collector, actual supply-chain/dependency/price-capture claims and factor-to-claim admission; do not promote listing membership or name clusters into bottleneck proof.
 3. Qualify real industry/quote/2Y-return sources and coordinated sealed product contracts; never force metadata-only admission.
 4. Actual corrected TOP20/Macro/Options caller and device smoke, rich-menu/default/API/Flex checks and applicable channel/free-budget gates. Only then LINE_LIVE=true.
 5. After LINE live, resume deferred credentials/EXE/R75/Windows install/package/private release. Do not substitute these lanes for unresolved LINE product correctness.
