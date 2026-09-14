@@ -38,6 +38,17 @@ OVERLAY_KEYS = {
     "included_in_serenity_score",
     "attribution",
 }
+CURRENT_OVERLAY_KEYS = {
+    "domain",
+    "fit_score",
+    "included_in_serenity_score",
+    "attribution",
+    "status",
+    "company_fact_authority",
+    "current_holdings_verified",
+    "thesis_published_at",
+    "scenario_adjustment",
+}
 
 
 def _fail(message: str) -> None:
@@ -123,11 +134,25 @@ def validate_provisional_top20(records: Any) -> list[dict[str, Any]]:
         overlay = raw.get("aschenbrenner_overlay")
         if (
             not isinstance(overlay, dict)
-            or set(overlay) != OVERLAY_KEYS
             or overlay.get("included_in_serenity_score") is not False
             or overlay.get("attribution")
             != "system_operationalization_not_aschenbrenner_stock_score"
         ):
+            _fail(f"Provisional Top20 {ticker} overlay boundary is invalid")
+
+        overlay_keys = set(overlay)
+        if overlay_keys == OVERLAY_KEYS:
+            pass
+        elif overlay_keys == CURRENT_OVERLAY_KEYS:
+            if (
+                overlay.get("status") != "DISCOVERY_ONLY"
+                or overlay.get("company_fact_authority") is not False
+                or overlay.get("current_holdings_verified") is not False
+                or overlay.get("thesis_published_at") is not None
+                or overlay.get("scenario_adjustment") != "UNAVAILABLE"
+            ):
+                _fail(f"Provisional Top20 {ticker} overlay boundary is invalid")
+        else:
             _fail(f"Provisional Top20 {ticker} overlay boundary is invalid")
 
         evidence = raw.get("evidence")
