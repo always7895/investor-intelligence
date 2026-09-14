@@ -46,7 +46,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
   it.each(RICH_MENU_ACTIONS)("handles $text without a model/private fallback", async action => {
     const messages = await actualReply(action.text);
     const body = JSON.stringify(messages);
-    expect(body).toContain(action.text === "TOP20" ? "T00" : action.text === "期權" ? "期權與個股快查" : "宏觀產業分析");
+    expect(body).toContain(action.text === "TOP20" ? "T00" : action.text === "期權" ? "教學範例，非推薦" : "MACRO_TOP5_SHORTFALL");
     expect(body).not.toContain("LOCAL_MODEL_NOT_CONFIGURED");
   });
   it("menu actions exactly match the operator's configured text commands", async () => {
@@ -85,27 +85,34 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
       expect(JSON.stringify(bubble.header)).toContain("歷史報酬，非預測");
     }
   });
-  it("puts macro limitations before five-group summary and retains all groups in text", async () => {
+  it("main macro entry 宏觀產業分析 routes to TOP5 overview / shortfall report, never shallow company count as primary research", async () => {
+    const f = fixture();
+    const body = JSON.stringify(await actualReply("宏觀產業分析", f));
+    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).toContain("TOP5 准入門檻未達成");
+    expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
+  });
+  it("puts macro limitations before five-group summary and retains all groups in text for compatibility distribution", async () => {
     const f = fixture();
     f.report.records.forEach((row, i) => { row.industry = `產業${String(i).padStart(2, "0")}`; });
     f.save();
-    const messages = await actualReply("宏觀產業分析", f);
+    const messages = await actualReply("當輪產業分布", f);
     const body = JSON.stringify(messages);
     expect(body.indexOf("MACRO_PRODUCT_NOT_SEALED")).toBeLessThan(body.indexOf("產業00"));
     expect(body).toContain("摘要顯示5/20類；其餘15類請看完整文字");
     expect(body).toContain("產業04"); expect(body).not.toContain("產業05");
-    expect(body).toContain("宏觀產業分析 文字");
-    const complete = JSON.stringify(await actualReply("宏觀產業分析 文字", f));
+    expect(body).toContain("當輪產業分布 文字");
+    const complete = JSON.stringify(await actualReply("當輪產業分布 文字", f));
     for (const row of f.report.records) {
       expect(complete).toContain(row.industry); expect(complete).toContain(row.ticker);
     }
     expect(complete).not.toContain("摘要顯示");
     assertLineMessages(messages);
   });
-  it("computes all 20 industry memberships while withholding unsealed macro values", async () => {
+  it("computes all 20 industry memberships while withholding unsealed macro values for compatibility distribution", async () => {
     const f = fixture();
     f.publicKv.values.set("v213:source-federation:latest", JSON.stringify({ global_sources: [{ detail: { value: 999999, publication_eligible: false } }] }));
-    const body = JSON.stringify(await actualReply("宏觀產業分析 文字", f));
+    const body = JSON.stringify(await actualReply("當輪產業分布 文字", f));
     for (const row of f.report.records) expect(body).toContain(row.ticker);
     expect(body).toContain("10/20家（50%）"); expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
     expect(body).not.toContain("999999"); expect(body).toContain("不是市值／營收權重");
@@ -117,14 +124,14 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     if (state === "stale_row") f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
     if (state === "future_row") f.report.records[0]!.retrieved_at = new Date(Date.now() + 600_000).toISOString();
     f.save();
-    const body = JSON.stringify(await actualReply("宏觀產業分析", f));
+    const body = JSON.stringify(await actualReply("當輪產業分布", f));
     expect(body).not.toContain("10/20家"); expect(body).not.toContain("T00");
   });
   it("options entry has working quote/help navigation without inventing prices", async () => {
     const body = JSON.stringify(await actualReply("期權"));
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE"); expect(body).toContain("最新期權");
+    expect(body).toContain("教學範例，非推薦"); expect(body).toContain("Covered Call");
     const quote = JSON.stringify(await actualReply("最新期權"));
-    expect(quote).toContain("目前沒有可用的公開期權快照");
+    expect(quote).toContain("OPTION_DATA_UNAVAILABLE");
     const help = JSON.stringify(await actualReply("期權試算說明"));
     expect(help).toContain("期權試算 ticker=");
   });
@@ -159,7 +166,7 @@ describe("options menu: key presence is not qualified availability", () => {
   ])("never claims usability from %s", async (_label, key, payload) => {
     const f = fixture();
     f.publicKv.values.set(key, payload);
-    const body = JSON.stringify(await actualReply("期權", f));
+    const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
     expect(body).toContain("OPTION_DATA_UNAVAILABLE");
     expect(body).not.toContain("9.99");
@@ -169,7 +176,7 @@ describe("options menu: key presence is not qualified availability", () => {
     const f = fixture();
     f.publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "legacy-carryover-run" }));
     f.publicKv.values.set("snapshot:legacy-carryover-run:options:latest", optionRow(NOW()));
-    const body = JSON.stringify(await actualReply("期權", f));
+    const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
     expect(body).toContain("OPTION_DATA_UNAVAILABLE");
   });
@@ -183,7 +190,7 @@ describe("options menu: key presence is not qualified availability", () => {
       readKeys.push(key);
       return originalGet(key, type);
     });
-    const body = JSON.stringify(await actualReply("期權", f));
+    const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).toContain("OPTION_DATA_UNAVAILABLE");
     expect(body).not.toContain("9.99");
     expect(readKeys).toContain("snapshot:current");
@@ -215,7 +222,7 @@ describe("options menu: key presence is not qualified availability", () => {
       readKeys.push(key);
       return originalGet(key, type);
     });
-    const body = JSON.stringify(await actualReply("期權", f));
+    const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
     expect(body).toContain("OPTION_DATA_NOT_ADMITTED");
     expect(body).not.toContain("9.99");

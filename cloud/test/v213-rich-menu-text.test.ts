@@ -110,8 +110,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("v213 text presentation hotfix through actual authorized Line event caller", () => {
   it.each([
     ["選單", "TOP20"],
-    ["期權", "OPTION_DATA_UNAVAILABLE"],
+    ["期權", "教學範例，非推薦"],
     ["宏觀資料說明", "CONTEXT_ONLY"],
+    ["宏觀產業分析", "MACRO_TOP5_SHORTFALL"],
   ])("original RED equivalent reaches text output in text env: %s", async (command, required) => {
     const messages = await actualReply(command);
     expect(messages.length).toBeGreaterThan(0);
@@ -120,9 +121,18 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     expect(body).toContain(required);
   });
 
-  it("env text macro succeeds with >5 industries retaining all groups without silent slicing", async () => {
+  it("main macro entry 宏觀產業分析 in text env routes to shortfall report", async () => {
     const f = textFixture();
     const messages = await actualReply("宏觀產業分析", f);
+    expect(messages.every(m => m.type === "text")).toBe(true);
+    const body = JSON.stringify(messages);
+    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).not.toContain("當輪產業分布");
+  });
+
+  it("compatibility industry distribution command retains all groups without silent slicing", async () => {
+    const f = textFixture();
+    const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     for (const row of f.report.records) {
@@ -131,16 +141,13 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     }
     expect(body).not.toContain("摘要顯示");
     expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
-    expect(body).toContain("TOP20 公司證據：TOP20");
-    expect(body).toContain("宏觀數據要求：宏觀資料說明");
-    expect(body).toContain("回功能選單：選單");
   });
 
-  it("env text macro on unavailable returns bounded text messages with navigation", async () => {
+  it("compatibility industry distribution on unavailable returns bounded text messages with navigation", async () => {
     const f = textFixture();
     f.publicKv.values.set("snapshot:current", "{broken");
     f.save();
-    const messages = await actualReply("宏觀產業分析", f);
+    const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("當輪產業資料不可用");
@@ -149,11 +156,11 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     expect(body).toContain("回功能選單：選單");
   });
 
-  it("env text macro on stale returns bounded text messages with navigation", async () => {
+  it("compatibility industry distribution on stale returns bounded text messages with navigation", async () => {
     const f = textFixture();
     f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
     f.save();
-    const messages = await actualReply("宏觀產業分析", f);
+    const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("公司資料過期");
@@ -162,11 +169,11 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     expect(body).toContain("回功能選單：選單");
   });
 
-  it("explicit macro文字 on unavailable forces text output without env text", async () => {
+  it("explicit compatibility distribution 文字 on unavailable forces text output without env text", async () => {
     const f = textFixture({ V213_LINE_PRESENTATION: "" });
     f.publicKv.values.set("snapshot:current", "{broken");
     f.save();
-    const messages = await actualReply("宏觀產業分析 文字", f);
+    const messages = await actualReply("當輪產業分布 文字", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("當輪產業資料不可用");
@@ -175,11 +182,11 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     expect(body).toContain("回功能選單：選單");
   });
 
-  it("explicit macro文字 on stale forces text output without env text", async () => {
+  it("explicit compatibility distribution 文字 on stale forces text output without env text", async () => {
     const f = textFixture({ V213_LINE_PRESENTATION: "" });
     f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
     f.save();
-    const messages = await actualReply("宏觀產業分析 文字", f);
+    const messages = await actualReply("當輪產業分布 文字", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("公司資料過期");
@@ -196,8 +203,12 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
       expect(messages.every(m => m.type === "flex")).toBe(true);
       if (command === "宏觀產業分析") {
         const body = JSON.stringify(messages);
-        expect(body).toContain("摘要顯示5/20類；其餘15類請看完整文字");
-        expect(body).toContain("完整產業分布文字");
+        expect(body).toContain("TOP5");
+        expect(body).toContain("短缺通報");
+      }
+      if (command === "期權") {
+        const body = JSON.stringify(messages);
+        expect(body).toContain("教學範例，非推薦");
       }
     },
   );
@@ -230,11 +241,11 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
       provider_scope: "public_only",
       owner_watchlist_inherited: false,
     }));
-    const messages = await actualReply("期權", f);
+    const messages = await actualReply("最新期權", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("OPTION_DATA_NOT_ADMITTED");
-    expect(body).toContain("查公開期權報價：最新期權");
+    expect(body).toContain("期權策略教學：期權教學");
     expect(body).toContain("期權試算說明：期權試算說明");
     expect(body).toContain("TOP20 個股入口：TOP20");
     expect(body).toContain("回功能選單：選單");
