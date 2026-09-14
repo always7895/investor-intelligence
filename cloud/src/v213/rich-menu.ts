@@ -11,7 +11,53 @@ export const RICH_MENU_ACTIONS = Object.freeze([
   { label: "宏觀產業分析", text: "宏觀產業分析" },
   { label: "期權與個股快查", text: "期權" },
 ]);
-function panel(title: string, subtitle: string, paragraphs: readonly string[], actions: readonly (readonly [string, string])[]): LineOutboundMessage[] {
+
+function panelTextMessages(
+  title: string,
+  subtitle: string,
+  paragraphs: readonly string[],
+  actions: readonly (readonly [string, string])[],
+): LineOutboundMessage[] {
+  const header = `${title}｜${subtitle}`;
+  const actionText = actions.length > 0
+    ? "快捷指令：\n" + actions.map(([label, command]) => `• ${label}：${command}`).join("\n")
+    : "";
+  const blocks: string[] = [header, ...paragraphs, ...(actionText ? [actionText] : [])].filter(Boolean);
+
+  for (const block of blocks) {
+    if (block.length > 4900) throw new Error("V213_PANEL_BLOCK_TOO_LARGE");
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const block of blocks) {
+    if (!current) {
+      current = block;
+    } else if (current.length + 2 + block.length <= 4900) {
+      current += "\n\n" + block;
+    } else {
+      chunks.push(current);
+      current = block;
+    }
+  }
+  if (current) chunks.push(current);
+
+  if (chunks.length < 1 || chunks.length > 5) {
+    throw new Error("V213_PANEL_MESSAGE_COUNT_EXCEEDED");
+  }
+  const messages: LineOutboundMessage[] = chunks.map(text => ({ type: "text", text }));
+  assertLineMessages(messages);
+  return messages;
+}
+
+function panel(
+  title: string,
+  subtitle: string,
+  paragraphs: readonly string[],
+  actions: readonly (readonly [string, string])[],
+  isText = false,
+): LineOutboundMessage[] {
+  if (isText) return panelTextMessages(title, subtitle, paragraphs, actions);
   const messages: LineOutboundMessage[] = [{ type: "flex", altText: `${title}｜${subtitle}`, contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
     header: menuBox([menuText("韭菜守護者 · 公開研究", "xs", "#D4D4D4"),
@@ -29,45 +75,59 @@ const NAV = RICH_MENU_ACTIONS.map(a => [a.label, a.text] as const);
  * The industry panel is a portfolio-of-candidates count, not a macro forecast.
  */
 export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
+  const isEnvText = env.V213_LINE_PRESENTATION === "text";
   const command = query.normalized;
   if (/^(?:選單|菜单|menu|功能導覽|功能导航)$/i.test(command)) {
     return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
       "A｜TOP20：當輪20家公司、歷史報酬、量化訂單線索及同輪證據。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：先看當輪產業分布，再核對宏觀指標與產業傳導；未驗收的宏觀數值不輸出。",
       "C｜期權與個股快查：依股票代號查每週／每月公開報價；無報價不捏造Strike、Delta或收益。",
-    ], NAV);
+    ], NAV, isEnvText);
   }
   if (/^(?:宏觀產業分析|宏观产业分析)(?:\s*文字)?$/i.test(command)) {
+    const macroText = isEnvText || /文字\s*$/i.test(command);
     const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
     const actions = [["TOP20 公司證據", "TOP20"], ["宏觀數據要求", "宏觀資料說明"], ["回功能選單", "選單"]] as const;
-    if (!report || typeof report === "string") return panel("宏觀產業分析", "當輪產業資料不可用", [typeof report === "string" ? report : "TOP20_UNAVAILABLE", "不以舊快照、候選宏觀資料或模型猜測補齊。"], actions);
-    if (!v213TimesAreFresh(env, report.records.map(r => r.retrieved_at))) return panel("宏觀產業分析", "公司資料過期", [V213_STALE_RECORDS_MESSAGE], actions);
+    if (!report || typeof report === "string") {
+      return panel("宏觀產業分析", "當輪產業資料不可用", [
+        typeof report === "string" ? report : "TOP20_UNAVAILABLE",
+        "不以舊快照、候選宏觀資料或模型猜測補齊。",
+      ], actions, macroText);
+    }
+    if (!v213TimesAreFresh(env, report.records.map(r => r.retrieved_at))) {
+      return panel("宏觀產業分析", "公司資料過期", [V213_STALE_RECORDS_MESSAGE], actions, macroText);
+    }
     const sectors = new Map<string, string[]>();
     for (const row of report.records) sectors.set(row.industry, [...(sectors.get(row.industry) ?? []), row.ticker]);
     const groups = [...sectors].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-    const completeText = /文字$/.test(command);
-    const visibleGroups = completeText ? groups : groups.slice(0, 5);
+    if (macroText) {
+      const lines = [
+        "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
+        "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
+        `當輪時間：${report.generated_at}；樣本20家公司。`,
+        ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
+        "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
+      ];
+      return panel("宏觀產業分析", "當輪產業分布 · 宏觀深度報告待驗收", lines, actions, true);
+    }
+    const visibleGroups = groups.slice(0, 5);
     const lines = [
       "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
       "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
       `當輪時間：${report.generated_at}；樣本20家公司。`,
-      ...(!completeText && groups.length > visibleGroups.length
+      ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
       ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
       "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
     ];
-    if (completeText) {
-      const messages: LineOutboundMessage[] = [{ type: "text", text: "宏觀產業分析｜當輪產業分布（不是完整宏觀報告）\n\n" + lines.join("\n\n") }];
-      assertLineMessages(messages); return messages;
-    }
     return panel("宏觀產業分析", "當輪產業分布 · 宏觀深度報告待驗收", lines,
-      [["完整產業分布文字", "宏觀產業分析 文字"], ...actions]);
+      [["完整產業分布文字", "宏觀產業分析 文字"], ...actions], false);
   }
   if (/^(?:宏觀資料說明|宏观资料说明)$/.test(command)) return panel("宏觀數據要求", "數值、期間、單位、發布日期必須分開", [
     "GDP：實質／名目及年度／季度口徑；CPI：指數水準不能當年增率；利率：政策利率不能當公司融資成本；匯率：必須有貨幣對與報價方向。",
     "保留原始來源、資料期、修訂、取得時間與再散布資格；World Bank、BLS、ECB來源健康不代表最新數值已完成驗收。",
     "Serenity是主要公開研究視角；Leopold為CONTEXT_ONLY。宏觀情境不能直接證明單一公司訂單、瓶頸或股價漲幅。",
-  ], NAV);
+  ], NAV, isEnvText);
   if (/^(?:期權|期权|選擇權|选择权|期權與個股快查|期权与个股快查|options?)$/i.test(command)) {
     // Only the existing pinned sealed-snapshot validation may back an admitted
     // options claim: the seal contract (v213-stored-snapshot-v1) verifies an
@@ -86,7 +146,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       "查詢例：NVDA 每週期權、AAPL 每月期權（僅格式範例，不是推薦）。個股資訊請輸入股票代號；完整深度產品仍須封存驗收。",
       "「最新期權」查詢仍適用既有逐標的freshness與報價門檻；有合格資料才顯示到期日/DTE、Strike、Bid/Mid/Ask、Delta、OI/Volume及年化收益；限價與中間價不保證成交。",
       "無自動報價時可用「期權試算說明」做本次輸入的算術試算；結果標示未驗證，不存持倉、不連IBKR、不下單。",
-    ], [["查公開期權報價", "最新期權"], ["期權試算說明", "期權試算說明"], ["TOP20 個股入口", "TOP20"], ["回功能選單", "選單"]]);
+    ], [["查公開期權報價", "最新期權"], ["期權試算說明", "期權試算說明"], ["TOP20 個股入口", "TOP20"], ["回功能選單", "選單"]], isEnvText);
   }
   return v213Top20LineAnswer(env, query);
 }

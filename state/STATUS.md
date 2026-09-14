@@ -2,13 +2,13 @@
 
 ## INVESTOR_CONTINUOUS_AUTOPILOT / active
 
-FINAL_RELEASE_COMPLETE=false. Fetch/base `a03bda5330c90d7f140910c6288855ac17d0bd1e`. Astra/high orchestrates/reviews; Gemini executes via existing Antigravity Google AI Pro. Observed catalog `gemini-3.8-flash`, pinned runtime `gemini-3.8-flash-medium`; read/write/test PASS. No credential purchase/upgrade/public publication; external deployment remains USD0-gated.
+FINAL_RELEASE_COMPLETE=false. Fetch/base `e70d357c06e014334ae8a0d714dab6688633e57b`. Astra/high orchestrates/reviews; Gemini executes via existing Antigravity Google AI Pro. Observed catalog `gemini-3.8-flash`, pinned runtime `gemini-3.8-flash-medium`; read/write/test PASS. No credential purchase/upgrade/public publication; external deployment remains USD0-gated.
 
 Evidence: runtime `_workspace/audit-runtime/gemini-executor-20260914/`. Gemini receipt/cleanup hotfix: unsupported flags false, authorization refused, structural assertions cannot unlock CLI. Focused executor calls and independent8 caller checks PASS. Full Python hit180s timeout, no completion/PASS; log retained, DEFER. Product defect/P0 totals unrecertified.
 
 Investor Qwen dispatch/repair stopped; no Skyrim routing edits after migration request. Prior queue candidate64/FIFO/live-load/new local freeze evidence retained at runtime `.pi/routing-evidence/global-qwen-queue-port0-v2/`; actual parent activation/live answer unqualified, no longer this lane's prerequisite. That prior bootstrap did one local model load and local routing edits; not zero-mutation history.
 
-LINE text3 RED/header reflow remain OPEN. Prior UNSIGNED EXE is not install/release acceptance. Artwork/device and source admission/health unqualified; AUTH_REQUIRED and prior private=false gates remain. NEXT: receipt scoped acceptance→LINE3 RED→header→UI→health→gated LINE_LIVE→final EXE→private release. Historical Python1115/skip2, Worker538/typecheck, mobile58, ECB/GLEIF/WB and workflow PASS retained, not current whole-product acceptance. No new Production/LINE/GitHub/cleanup mutations; original failures/untracked inputs preserved.
+LINE text3 RED fixed; new actual-caller tests13, Worker551/typecheck PASS. Header reflow OPEN; prior UNSIGNED EXE not release acceptance. Artwork/device/admission/health unqualified; AUTH_REQUIRED and prior private=false gates remain. NEXT: header→UI→health→gated LINE_LIVE→final EXE→private release. Historical Python1115/skip2, Worker538/typecheck, mobile58, ECB/GLEIF/WB and workflow PASS retained, not current whole-product acceptance. No new Production/LINE/GitHub/cleanup mutations; original failures/untracked inputs preserved.
 
 ### LINE entitlement evidence / prior actual probe
 
