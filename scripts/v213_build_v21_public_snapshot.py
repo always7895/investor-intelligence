@@ -299,6 +299,7 @@ def apply_latest_evidence_factor_guard() -> dict[str, Any]:
     _atomic_json(V213_PATH, v213)
     _atomic_json(FEDERATION_PATH, federation)
     _atomic_json(SOURCE_AUDIT_PATH, audit)
+    base.REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     base.REPORT_PATH.write_text(
         scorer.markdown_report(guarded, federation) + "\n",
         encoding="utf-8",
