@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -948,6 +949,7 @@ namespace InvestorIntelligence
 
         sealed class MainForm : Form
         {
+            readonly Label headerLabel;
             readonly Label status;
             readonly Label endpointLabel;
             readonly ComboBox modelBox;
@@ -979,18 +981,26 @@ namespace InvestorIntelligence
                 FormBorderStyle = FormBorderStyle.FixedDialog;
                 MaximizeBox = false;
 
-                Controls.Add(new Label {
+                headerLabel = new Label {
                     Left = 24,
                     Top = 18,
                     Width = 650,
                     Height = 48,
                     Text = "Investor Intelligence v2.1.3 " + Revision +
                         "\n本地模型 + 七欄 LINE / Local Model + Seven-Field LINE",
-                    Font = new System.Drawing.Font(
+                    Font = new Font(
                         "Segoe UI",
                         13F,
-                        System.Drawing.FontStyle.Bold)
-                });
+                        FontStyle.Bold)
+                };
+                Controls.Add(headerLabel);
+                var headerMeasured = TextRenderer.MeasureText(
+                    headerLabel.Text,
+                    headerLabel.Font,
+                    new Size(headerLabel.Width, 32767),
+                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                int headerDelta = Math.Max(0, headerMeasured.Height - headerLabel.Height);
+                headerLabel.Height += headerDelta;
 
                 Controls.Add(new Label {
                     Left = 24,
@@ -1291,6 +1301,19 @@ namespace InvestorIntelligence
                     }, "本機固定回覆通過；THINK強度／發布未驗證 / Marker passed, not release-qualified",
                        "本機回覆測試失敗 / Local reply check failed");
                 };
+
+                if (headerDelta > 0)
+                {
+                    foreach (Control control in Controls)
+                    {
+                        if (control != headerLabel)
+                        {
+                            control.Top += headerDelta;
+                        }
+                    }
+                    Height += headerDelta;
+                }
+
                 if (discoverOnShow) Shown += async delegate { await RefreshModelsAsync(); };
             }
 
@@ -1301,6 +1324,85 @@ namespace InvestorIntelligence
                 foreach (var button in new[] { scanButton, checkModelButton, refreshButton, activateButton, bridgeButton,
                     folderButton, namedTunnelButton, freeRelayButton }) button.Enabled = false;
                 Show();
+
+                // Regression: validate measured header fits without clipping.
+                var measuredHeader = TextRenderer.MeasureText(
+                    headerLabel.Text,
+                    headerLabel.Font,
+                    new Size(headerLabel.Width, 32767),
+                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                if (headerLabel.Height < measuredHeader.Height) return 80;
+                if (!headerLabel.Text.Contains(Revision)) return 81;
+
+                // Validate header does not overlap subsequent controls.
+                foreach (Control control in Controls)
+                {
+                    if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        return 82;
+                }
+
+                // Validate all controls fit ClientRectangle.
+                foreach (Control control in Controls)
+                {
+                    if (!ClientRectangle.Contains(control.Bounds))
+                        return 83;
+                }
+
+                // Validate no unexpected control intersections.
+                for (int i = 0; i < Controls.Count; i++)
+                {
+                    for (int j = i + 1; j < Controls.Count; j++)
+                    {
+                        if (Controls[i].Bounds.IntersectsWith(Controls[j].Bounds))
+                            return 84;
+                    }
+                }
+
+                // Negative probe 1: too-short header must be rejected.
+                int originalHeight = headerLabel.Height;
+                try
+                {
+                    headerLabel.Height = Math.Max(0, measuredHeader.Height - 1);
+                    var tooShortProbe = TextRenderer.MeasureText(
+                        headerLabel.Text,
+                        headerLabel.Font,
+                        new Size(headerLabel.Width, 32767),
+                        TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                    if (headerLabel.Height >= tooShortProbe.Height) return 85;
+                }
+                finally
+                {
+                    headerLabel.Height = originalHeight;
+                }
+
+                // Negative probe 2: intentional header overlap must be detected.
+                try
+                {
+                    headerLabel.Height = originalHeight + 50;
+                    bool detectedOverlap = false;
+                    foreach (Control control in Controls)
+                    {
+                        if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        {
+                            detectedOverlap = true;
+                            break;
+                        }
+                    }
+                    if (!detectedOverlap) return 86;
+                }
+                finally
+                {
+                    headerLabel.Height = originalHeight;
+                }
+
+                // Verify restored geometry is completely valid.
+                if (headerLabel.Height < measuredHeader.Height) return 87;
+                foreach (Control control in Controls)
+                {
+                    if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        return 88;
+                }
+
                 if (!thinkingBox.Visible || !ClientRectangle.Contains(thinkingBox.Bounds) ||
                     thinkingBox.DropDownStyle != ComboBoxStyle.DropDownList) return 77;
                 foreach (string model in new[] { "synthetic-ui-a", "synthetic-ui-b" }) {
