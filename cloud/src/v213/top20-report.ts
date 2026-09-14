@@ -1,5 +1,6 @@
 import { fieldLabel, type FieldLocale } from "./field-labels";
 import { isPublicCitationUrl } from "./public-citation";
+import { validateTwoYearReturnCandidate, validateTwoYearReturnEvidence, type TwoYearReturnEvidence } from "./top20-return-evidence";
 import type { StorageEnv } from "../storage";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { ParsedQuery } from "../core";
@@ -38,6 +39,7 @@ export async function readV213Top20Report(view: PublicSnapshotView): Promise<V21
   const reportSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
   for (const row of report.records) {
     Object.freeze(row.current_order_source_urls); Object.freeze(row.future_order_source_urls);
+    if (row.two_year_return_evidence) Object.freeze(row.two_year_return_evidence);
     Object.freeze(row);
   }
   Object.freeze(report.records); Object.freeze(report.display_columns); Object.freeze(report);
@@ -87,6 +89,8 @@ export interface V213Top20ReportRecord {
   name: string;
   long_term_return_pct: number | null;
   short_term_return_pct: number | null;
+  two_year_total_return_pct?: number | null;
+  two_year_return_evidence?: TwoYearReturnEvidence | null;
   industry: string;
   profit_summary: string;
   current_orders: string;
@@ -158,7 +162,7 @@ export const V213_TOP20_DISPLAY_COLUMNS_BILINGUAL = [
 export const V213_NO_CURRENT_ORDERS = "未揭露（無可靠公開訂單數字）";
 export const V213_NO_FUTURE_ORDER_ESTIMATE = "無可靠公開預估";
 
-const RECORD_KEYS = new Set([
+const REQUIRED_RECORD_KEYS = new Set([
   "schema_version", "rank", "ticker", "name", "long_term_return_pct", "short_term_return_pct",
   "industry", "profit_summary", "current_orders", "future_orders_estimate",
   "long_term_window", "short_term_window", "market_source", "profit_source",
@@ -166,6 +170,13 @@ const RECORD_KEYS = new Set([
   "future_order_source_urls", "numeric_total_order_estimate_prohibited", "retrieved_at",
   "provider_scope", "owner_watchlist_inherited",
 ]);
+
+const OPTIONAL_RECORD_KEYS = new Set([
+  "two_year_total_return_pct",
+  "two_year_return_evidence",
+]);
+
+const RECORD_KEYS = REQUIRED_RECORD_KEYS;
 
 const DOCUMENT_KEYS = new Set([
   "schema_version", "product_version", "generated_at", "display_columns",
@@ -236,7 +247,9 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     const rawRecord = doc.records[index];
     if (!rawRecord || typeof rawRecord !== "object" || Array.isArray(rawRecord)) return null;
     const item = rawRecord as Record<string, unknown>;
-    if (!exactKeys(item, RECORD_KEYS)) return null;
+    const itemKeys = Object.keys(item);
+    if (!itemKeys.every(key => REQUIRED_RECORD_KEYS.has(key) || OPTIONAL_RECORD_KEYS.has(key))) return null;
+    if (![...REQUIRED_RECORD_KEYS].every(key => key in item)) return null;
     const ticker = typeof item.ticker === "string" ? item.ticker.toUpperCase() : "";
     if (
       item.schema_version !== 2 || item.rank !== index + 1 ||
@@ -253,8 +266,49 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
       item.provider_scope !== "public_only" || item.owner_watchlist_inherited !== false ||
       typeof item.retrieved_at !== "string" || !Number.isFinite(Date.parse(item.retrieved_at))
     ) return null;
+
+    let twoYearTotalReturnPct: number | null | undefined = undefined;
+    let twoYearReturnEvidence: TwoYearReturnEvidence | null | undefined = undefined;
+
+    if ("two_year_total_return_pct" in item || "two_year_return_evidence" in item) {
+      const rawPct = item.two_year_total_return_pct;
+      const rawEv = item.two_year_return_evidence;
+
+      // Reject scalar-only injected value without evidence and dates
+      if (rawPct !== undefined && rawPct !== null) {
+        if (!rawEv) return null;
+      }
+
+      if (rawEv !== undefined && rawEv !== null) {
+        const evValidation = validateTwoYearReturnCandidate(
+          rawEv,
+          ticker,
+          typeof item.retrieved_at === "string" ? item.retrieved_at : undefined,
+        );
+        if (!evValidation.valid) return null;
+        twoYearReturnEvidence = rawEv as TwoYearReturnEvidence;
+        if (rawPct !== undefined && rawPct !== null) {
+          if (typeof rawPct !== "number" || !Number.isFinite(rawPct) || rawPct < -100) return null;
+          if (Math.abs(rawPct - evValidation.totalReturnPct!) > 0.05) return null;
+          twoYearTotalReturnPct = rawPct;
+        } else {
+          twoYearTotalReturnPct = evValidation.totalReturnPct;
+        }
+      } else if (rawPct === null) {
+        if (rawEv !== null && rawEv !== undefined) return null;
+        twoYearTotalReturnPct = null;
+        twoYearReturnEvidence = null;
+      }
+    }
+
     seen.add(ticker);
-    records.push({ ...(item as unknown as V213Top20ReportRecord), ticker });
+    const cleanedRecord: V213Top20ReportRecord = {
+      ...(item as unknown as V213Top20ReportRecord),
+      ticker,
+    };
+    if (twoYearTotalReturnPct !== undefined) cleanedRecord.two_year_total_return_pct = twoYearTotalReturnPct;
+    if (twoYearReturnEvidence !== undefined) cleanedRecord.two_year_return_evidence = twoYearReturnEvidence;
+    records.push(cleanedRecord);
   }
   return { ...(doc as unknown as V213Top20Report), records };
 }

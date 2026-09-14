@@ -1,6 +1,24 @@
 """Calendar-window arithmetic for provider-adjusted closes, not a rights gate.
 
 No fetching, price interpolation, currency inference or publication authorization.
+
+ARCHITECTURAL RESOLUTION & ADMISSION BOUNDARY:
+- Status: Live 2Y numeric return admission is explicitly DEFERRED (DEFER).
+- Scope: The helpers `build_two_year_return_evidence` and `validate_two_year_return_evidence_dict`
+  are optional candidate arithmetic/schema validation utilities only. They do NOT confer
+  authoritative return admission or publication eligibility, and must NOT be automatically
+  propagated into legacy closed DTOs or sealed objects.
+- Existing qualified filtered stock returns continue using their qualified legacy return
+  fields (trailing 2Y CAGR and 6M price return).
+- Safe extension requirements for future authoritative 2Y total return admission:
+  1. Currency: explicit ISO-4217 currency specification and FX adjustment tracking.
+  2. Adjustment method: independently verified dividend reinvestment and split methodology.
+  3. Source body hash: SHA-256 digest of original provider payload/body for tamper-proofing.
+  4. Role & rights: verified acquisition role identity and publication rights binding.
+  5. Quote clocks: bar-level quote timestamp verification against market calendars.
+  6. Identity: authoritative security identifier binding (CIK, FIGI, LEI, ISIN) beyond ticker.
+  7. Run lineage: shared cryptographic trace linking raw observation receipt to pipeline run.
+  8. Shared canonical validator & schema: synchronized multi-runtime verification contracts.
 """
 from __future__ import annotations
 
@@ -169,3 +187,163 @@ def legacy_return_pair(evidence: dict) -> tuple[float | None, float | None]:
         long['annualized_return_pct'] / 100 if long['status'] == 'AVAILABLE' else None,
         short['cumulative_return_pct'] / 100 if short['status'] == 'AVAILABLE' else None,
     )
+
+
+def canonical_return_triplet(evidence: dict) -> tuple[float | None, float | None, float | None]:
+    """Derives (two_year_total_return_pct, two_year_annualized_cagr_pct, six_month_return_pct).
+    Percentages are returned directly in explicit percent units (e.g. 50.0 for 50.0%), NOT fractions.
+    Returns None for any unavailable/invalid window.
+    """
+    if not isinstance(evidence, dict) or 'windows' not in evidence:
+        return None, None, None
+    windows = evidence.get('windows', {})
+    if not isinstance(windows, dict):
+        return None, None, None
+    long = windows.get('two_year', {})
+    short = windows.get('six_month', {})
+
+    def _clean(val):
+        if val is None or isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val) or val < -100:
+            return None
+        return round(float(val), 2)
+
+    total_2y = _clean(long.get('cumulative_return_pct')) if long.get('status') == 'AVAILABLE' else None
+    cagr_2y = _clean(long.get('annualized_return_pct')) if long.get('status') == 'AVAILABLE' else None
+    ret_6m = _clean(short.get('cumulative_return_pct')) if short.get('status') == 'AVAILABLE' else None
+    return total_2y, cagr_2y, ret_6m
+
+
+def build_two_year_return_evidence(ticker: str, evidence: dict) -> dict | None:
+    """Builds candidate two-year return evidence envelope with bound ticker, endpoints,
+    and dividend/split adjusted semantics. Returns None if unavailable or invalid.
+
+    NOTE: Candidate only. Live 2Y numeric admission is DEFERRED. This object must not
+    be treated as independently admitted proof without coordinated producer contract.
+    """
+    if not isinstance(evidence, dict) or not isinstance(ticker, str) or not ticker:
+        return None
+    windows = evidence.get('windows', {})
+    if not isinstance(windows, dict):
+        return None
+    two_year = windows.get('two_year', {})
+    if not isinstance(two_year, dict) or two_year.get('status') != 'AVAILABLE':
+        return None
+    try:
+        start_price = float(two_year['start_adjusted_close'])
+        end_price = float(two_year['end_adjusted_close'])
+        cumulative = float(two_year['cumulative_return_pct'])
+        actual_start = str(two_year['actual_start'])
+        actual_end = str(two_year['actual_end'])
+        elapsed = int(two_year['elapsed_days'])
+        if not math.isfinite(start_price) or start_price <= 0 or not math.isfinite(end_price) or end_price <= 0:
+            return None
+        if not math.isfinite(cumulative) or cumulative < -100:
+            return None
+        calc = ((end_price / start_price) - 1) * 100
+        if abs(calc - cumulative) > 0.05:
+            return None
+        return {
+            'ticker': ticker.upper(),
+            'window': 'two_year',
+            'actual_start': actual_start,
+            'actual_end': actual_end,
+            'start_adjusted_close': start_price,
+            'end_adjusted_close': end_price,
+            'elapsed_days': elapsed,
+            'total_return_pct': round(cumulative, 2),
+            'market_source': 'yfinance',
+            'basis': 'adjusted_close',
+            'dividend_split_semantics': 'auto_adjusted',
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def validate_two_year_return_evidence_dict(evidence: Any, ticker: str, retrieved_at: str | None = None) -> bool:
+    """Validates candidate two_year_return_evidence dictionary structure, endpoints, dates,
+    freshness and math.
+
+    NOTE: Candidate math/schema validation only. Does NOT grant authoritative admission.
+    Live 2Y numeric admission remains DEFERRED.
+    """
+    if not isinstance(evidence, dict):
+        return False
+    required_keys = {
+        'ticker', 'window', 'actual_start', 'actual_end', 'start_adjusted_close',
+        'end_adjusted_close', 'elapsed_days', 'total_return_pct', 'market_source',
+        'basis', 'dividend_split_semantics'
+    }
+    optional_keys = {'currency'}
+    allowed_keys = required_keys | optional_keys
+    evidence_keys = set(evidence.keys())
+    if not required_keys.issubset(evidence_keys) or not evidence_keys.issubset(allowed_keys):
+        return False
+    if evidence.get('ticker') != ticker.upper():
+        return False
+    if evidence.get('window') != 'two_year':
+        return False
+    if evidence.get('market_source') != 'yfinance':
+        return False
+    if evidence.get('basis') != 'adjusted_close':
+        return False
+    if evidence.get('dividend_split_semantics') != 'auto_adjusted':
+        return False
+    if 'currency' in evidence and evidence['currency'] != 'USD':
+        return False
+    try:
+        raw_start = evidence['actual_start']
+        raw_end = evidence['actual_end']
+        if not isinstance(raw_start, str) or not isinstance(raw_end, str):
+            return False
+        start_d = date.fromisoformat(raw_start)
+        end_d = date.fromisoformat(raw_end)
+        if start_d.isoformat() != raw_start or end_d.isoformat() != raw_end:
+            return False
+        if start_d >= end_d:
+            return False
+
+        # Exact elapsed days derivation and check
+        derived_elapsed = (end_d - start_d).days
+        elapsed = evidence.get('elapsed_days')
+        if isinstance(elapsed, bool) or not isinstance(elapsed, int) or elapsed != derived_elapsed:
+            return False
+
+        # Two-calendar-year target check (24 calendar months before actual_end)
+        target_start = _months_before(end_d, 24)
+        alignment_gap = (target_start - start_d).days
+        if alignment_gap < 0 or alignment_gap > 7:
+            return False
+        if derived_elapsed < 720 or derived_elapsed > 740:
+            return False
+
+        sp = evidence.get('start_adjusted_close')
+        ep = evidence.get('end_adjusted_close')
+        tot = evidence.get('total_return_pct')
+        if isinstance(sp, bool) or isinstance(ep, bool) or isinstance(tot, bool):
+            return False
+        if not isinstance(sp, (int, float)) or not math.isfinite(sp) or sp <= 0:
+            return False
+        if not isinstance(ep, (int, float)) or not math.isfinite(ep) or ep <= 0:
+            return False
+        if not isinstance(tot, (int, float)) or not math.isfinite(tot) or tot < -100:
+            return False
+        if abs(((ep / sp) - 1) * 100 - tot) > 0.05:
+            return False
+
+        if retrieved_at is not None:
+            if not isinstance(retrieved_at, str):
+                return False
+            ret_dt = datetime.fromisoformat(retrieved_at.replace('Z', '+00:00'))
+            ret_d = ret_dt.date()
+            if end_d > ret_d:
+                return False
+            # Freshness policy: market observation max age is 7 days
+            if (ret_d - end_d).days > 7 or (ret_d - end_d).days < 0:
+                return False
+        else:
+            now_d = datetime.now(timezone.utc).date()
+            if end_d > now_d:
+                return False
+        return True
+    except (TypeError, ValueError, KeyError):
+        return False

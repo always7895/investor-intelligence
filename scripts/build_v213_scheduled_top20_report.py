@@ -151,7 +151,7 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
         if (not isinstance(name, str) or not name.strip() or len(name.strip()) > 120
                 or "\r" in name or "\n" in name or "｜" in name):
             raise V213ScheduledReportError(f"TOP20_NAME_MISSING_OR_INVALID:{ticker}")
-        rows.append({
+        record = {
             "schema_version": 2,
             "rank": rank,
             "ticker": ticker,
@@ -174,7 +174,12 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
             "retrieved_at": retrieved,
             "provider_scope": "public_only",
             "owner_watchlist_inherited": False,
-        })
+        }
+        if "two_year_total_return_pct" in fresh_row:
+            record["two_year_total_return_pct"] = fresh_row["two_year_total_return_pct"]
+        if "two_year_return_evidence" in fresh_row:
+            record["two_year_return_evidence"] = fresh_row["two_year_return_evidence"]
+        rows.append(record)
 
     return {
         "schema_version": 2,

@@ -35,7 +35,10 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
-from historical_return_evidence import calculate_return_evidence, legacy_return_pair, ReturnEvidenceError, validate_return_observation
+from historical_return_evidence import (
+    calculate_return_evidence, legacy_return_pair, canonical_return_triplet,
+    build_two_year_return_evidence, ReturnEvidenceError, validate_return_observation,
+)
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
 from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
@@ -272,9 +275,6 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
             evidence_sink.update(
                 status=("CALCULATED_NOT_QUALIFIED" if usable else "NO_COMPLETE_RETURN_WINDOW"),
                 observed_at=observed_at,
-                # Local fetch receipt: the moment this exact response was acquired
-                # from the provider, bound to the evidence below. Not a provider-side
-                # timestamp; the bar-age guard above is what makes minting safe.
                 retrieved_at=observed_at if usable else None,
                 acquisition_status=("LOCAL_FETCH_RECEIPT" if usable else "UNKNOWN_PROVIDER_ACQUISITION_TIME"),
                 request={"period": "3y", "interval": "1d", "auto_adjust": True},

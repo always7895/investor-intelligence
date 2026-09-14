@@ -17,7 +17,10 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import build_v212_top20_report as builder
-from historical_return_evidence import calculate_return_evidence, ReturnEvidenceError
+from historical_return_evidence import (
+    calculate_return_evidence, ReturnEvidenceError,
+    canonical_return_triplet, build_two_year_return_evidence,
+)
 
 
 class HistoricalReturnEvidenceTests(unittest.TestCase):

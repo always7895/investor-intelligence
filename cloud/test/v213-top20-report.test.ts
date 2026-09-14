@@ -155,9 +155,10 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(proof.header).toContain("公司現在訂單 / Current orders");
     expect(proof.header).toContain("未來訂單預估 / Future order outlook");
     const buttons = messages[0].contents.contents[0].footer.contents.filter((x: any) => x.type === "button");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(1);
     const command = buttons[0].action.text;
-    const fullTextCommand = buttons[1].action.text;
+    expect(command).toContain("Top20 深度化分析 T00");
+    const fullTextCommand = command.replace("深度化分析", "公司文字");
     expect(fullTextCommand).toContain("Top20 公司文字 T00");
     expect(JSON.stringify(messages)).toContain("6個月／1年／2年");
     expect(command).toContain("T00");
@@ -165,17 +166,20 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     messages.length = 0;
     await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY", source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: command }, timestamp: Date.now() }, "synthetic-report-tenant");
     const detail = messages.map(x => x.text ?? "").join("\n");
-    expect(detail).toContain("T00｜本輪 Top20");
+    expect(detail).toContain("T00｜深度化分析");
     expect(detail).toContain(`原文公司名稱：${data.records[0]!.name}`);
-    expect(detail).toContain("已載明的履約／認列展望");
-    expect(detail).toContain("文件日期不是交貨日");
+    expect(detail).toContain("供應鏈瓶頸定位與價值鏈角色");
+    expect(detail).toContain("未來結構性缺口");
+    expect(detail).toContain("需求／供給／定價權分析");
+    expect(detail).toContain("公司捕捉度與毛利槓桿");
+    expect(detail).toContain("合約、訂單、資本支出、產能與客戶證據");
+    expect(detail).toContain("6個月／1年／2年催化劑與情境分析");
+    expect(detail).toContain("假說殺手與下檔風險");
+    expect(detail).toContain("多軸證據信心與來源品質");
+    expect(detail).toContain("候選排位說明與為何為第N名");
+    expect(detail).toContain("明確未明與待查事項");
     expect(detail).not.toContain("T01");
     expect(detail).toContain("https://www.sec.gov/example/current");
-    expect(detail).toContain("6 個月情境");
-    expect(detail).toContain("1 年情境");
-    expect(detail).toContain("2 年情境");
-    expect(detail).toContain("尚非完整深度估值報告");
-    expect(detail).toContain("兩年累積報酬：缺少");
     expect(detail).not.toBe(formatV213Top20Report(parseV213Top20Report(data)!));
     assertLineMessages(messages);
     messages.length = 0;
@@ -210,7 +214,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     };
     await send("Top20");
     const commands = messages[0].contents.contents[0].footer.contents.filter((item: any) => item.type === "button").map((item: any) => item.action.text);
-    expect(commands).toHaveLength(2);
+    expect(commands).toHaveLength(1);
     for (const command of commands) expect(command).toContain(`s:run-a ${createHash("sha256").update(raw, "utf8").digest("hex")}`);
     if (mutation === "run") {
       save("run-b", raw); kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
@@ -234,7 +238,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(Object.isFrozen(loaded)).toBe(true);
     expect(Object.isFrozen(loaded.records[0]!.current_order_source_urls)).toBe(true);
     expect(() => { loaded.records[0]!.industry = "異動"; }).toThrow();
-    for (const action of ["證據詳情", "公司文字"]) {
+    for (const action of ["深度化分析", "證據詳情", "公司文字"]) {
       expect(await v213Top20LineAnswer(env, parseQuery(`Top20 ${action} T00 ${data.generated_at}`))).toContain("有效");
     }
     for (const raw of ["{broken", " ".repeat(2097153) + JSON.stringify(data)]) {
