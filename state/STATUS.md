@@ -2,13 +2,13 @@
 
 ## INVESTOR_CONTINUOUS_AUTOPILOT / active
 
-Goal FINAL_RELEASE_COMPLETE, not slice/LINE_LIVE. INVESTOR_FULL_AUTOPILOT_V2 current fetch/HEAD `f89eac177fd48ea8c082650e7f36a7915ad7d599` PASS. Current authorization: gated USD0 operations/private release and candidate-only queue compatibility upgrade; cloud/Astra implementation fallback still prohibited. No paid/public/secret persistence.
+FINAL_RELEASE_COMPLETE=false. Fetch/base `a03bda5330c90d7f140910c6288855ac17d0bd1e`. Astra/high orchestrates/reviews; Gemini executes via existing Antigravity Google AI Pro. Observed catalog `gemini-3.8-flash`, pinned runtime `gemini-3.8-flash-medium`; read/write/test PASS. No credential purchase/upgrade/public publication; external deployment remains USD0-gated.
 
-Latest: runtime `_workspace/audit-runtime/continuous-autopilot-20260913/session-20260914T023748Z/`; history in parent HANDOFF/Git. Astra/high; Qwen/medium. Sole model unloaded/port0; frozen cores reject pre-load. Upgrade design only: compliant bootstrap writer/reload unavailable; no bypass/new freeze/smoke. Python3.12.10 in-memory receipt producer→consumer probe accepted unsupported assertions (0 findings). Diagnostic only; receipt not persisted, cleanup blocked.
+Evidence: runtime `_workspace/audit-runtime/gemini-executor-20260914/`. Gemini receipt/cleanup hotfix: unsupported flags false, authorization refused, structural assertions cannot unlock CLI. Focused executor calls and independent8 caller checks PASS. Full Python hit180s timeout, no completion/PASS; log retained, DEFER. Product defect/P0 totals unrecertified.
 
-LINE text3 RED/header75px required vs48px remain OPEN; header needs reflow to prevent overlap. Prior `f89eac1` UNSIGNED candidate/integrity proof is not final EXE/install acceptance. UI/artwork/device and admission/health unqualified. AUTH_REQUIRED not retried; prior private=false still blocks release. No production/LINE/GitHub/model/cleanup mutations.
+Investor Qwen dispatch/repair stopped; no Skyrim routing edits after migration request. Prior queue candidate64/FIFO/live-load/new local freeze evidence retained at runtime `.pi/routing-evidence/global-qwen-queue-port0-v2/`; actual parent activation/live answer unqualified, no longer this lane's prerequisite. That prior bootstrap did one local model load and local routing edits; not zero-mutation history.
 
-Prior scoped PASS retained, not rerun: Python1115/skip2; Worker538/typecheck at `b6949f2`; mobile58; ECB6+5-row replay/GLEIF7/WB10+GDP17; workflow24/storage4. Original aborts/RED/invalid receipt and Taiwan/ECB failures preserved. NEXT_TASK: permitted controlled queue candidate→qualification→actual parent reload/live smoke; then receipt→LINE3 RED→header→UI→health→gated LINE_LIVE→final EXE→private release. All lanes reviewed; blockers DEFER, no completion claim. Full defect/P0 totals unrecertified.
+LINE text3 RED/header reflow remain OPEN. Prior UNSIGNED EXE is not install/release acceptance. Artwork/device and source admission/health unqualified; AUTH_REQUIRED and prior private=false gates remain. NEXT: receipt scoped acceptance→LINE3 RED→header→UI→health→gated LINE_LIVE→final EXE→private release. Historical Python1115/skip2, Worker538/typecheck, mobile58, ECB/GLEIF/WB and workflow PASS retained, not current whole-product acceptance. No new Production/LINE/GitHub/cleanup mutations; original failures/untracked inputs preserved.
 
 ### LINE entitlement evidence / prior actual probe
 
