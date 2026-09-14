@@ -687,6 +687,8 @@ def build_with_market_quality_degradation(
     core_policy: Mapping[str, Any],
     cache: Mapping[str, Any],
     offline: bool,
+    *,
+    acquisition_run: Any = None,
 ):
     result, updated_cache = _original_build(
         top20,
@@ -695,6 +697,7 @@ def build_with_market_quality_degradation(
         core_policy,
         cache,
         offline,
+        acquisition_run=acquisition_run,
     )
     return (
         apply_market_quality_policy(result, core_policy, _read_policy()),
