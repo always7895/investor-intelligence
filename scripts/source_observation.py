@@ -386,6 +386,7 @@ def _research_families(rows: list[dict[str, Any]]) -> int:
 def reconcile_research_claims(
     record: Mapping[str, Any], *, registry: Registry | None = None,
     now: datetime | None = None, health_states: Mapping[str, str] | None = None,
+    acquisition_run: Any = None,
 ) -> dict[str, Any]:
     """Offline exact-claim control plane using the existing observation boundary.
 
@@ -399,6 +400,14 @@ def reconcile_research_claims(
     clock = now or utc_now()
     if clock.tzinfo is None:
         raise SourceObservationError("Validation clock must include a timezone")
+    if acquisition_run is not None:
+        from source_acquisition import AcquisitionRun, compute_registry_digest
+        if type(acquisition_run) is not AcquisitionRun:
+            raise SourceObservationError("acquisition_run must be an AcquisitionRun instance")
+        if registry is not None:
+            if compute_registry_digest(registry) != compute_registry_digest(acquisition_run.registry):
+                raise SourceObservationError("Explicit registry does not match acquisition_run registry")
+        registry = acquisition_run.registry
     raw_claims = record.get("material_claims")
     raw_rows = record.get("source_observations")
     claims = raw_claims if isinstance(raw_claims, list) else []
@@ -413,12 +422,29 @@ def reconcile_research_claims(
             registry = load_registry()
         except (SourceRegistryError, OSError):
             registry = None
+    has_caller_ticker = acquisition_run is not None and "ticker" in record
+    valid_caller_ticker = False
+    canonical_caller_ticker = None
+    if has_caller_ticker:
+        caller_ticker = record.get("ticker")
+        if isinstance(caller_ticker, str) and caller_ticker.strip():
+            valid_caller_ticker = True
+            canonical_caller_ticker = caller_ticker.strip().upper()
     for raw in rows[:100]:
         try:
             if registry is None:
                 raise SourceObservationError("Registry unavailable")
             source_id = raw.get("source_id") if isinstance(raw, dict) else None
-            health = (health_states or {}).get(source_id, "DEGRADED")
+            if acquisition_run is not None:
+                health = acquisition_run.health_for(raw, now=clock)
+                if has_caller_ticker:
+                    raw_payload = raw.get("payload") if isinstance(raw, dict) else None
+                    raw_subject = raw_payload.get("subject") if isinstance(raw_payload, dict) else None
+                    if not (valid_caller_ticker and raw_subject == canonical_caller_ticker):
+                        if health == "HEALTHY":
+                            health = "DEGRADED"
+            else:
+                health = (health_states or {}).get(source_id, "DEGRADED")
             # A saved failure can reduce, but never promote, current health.
             recorded_health = (raw.get("source_health") if isinstance(raw, dict) else None) or "DEGRADED"
             severity = {"HEALTHY": 0, "DEGRADED": 1, "CIRCUIT_OPEN": 2, "QUARANTINED": 3}
