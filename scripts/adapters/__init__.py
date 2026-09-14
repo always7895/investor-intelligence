@@ -14,9 +14,13 @@ from .base import (  # noqa: F401
     ParsedBatch,
     adapter,
     parse_source_payload,
+    register_adapter,
 )
 from . import sec_edgar as _sec_edgar  # noqa: F401
 from . import world_bank as _world_bank  # noqa: F401
+from .ecb_fx_reference import ECBFxReferenceAdapter
+
+register_adapter(ECBFxReferenceAdapter())
 
 EVIDENCE_BUILDERS = {
     "sec_edgar": _sec_edgar.evidence_items,

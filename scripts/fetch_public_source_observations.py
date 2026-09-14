@@ -24,11 +24,15 @@ from adapters.official_rss import FEEDS
 from adapters.taiwan_equities import EQUITY_FEEDS
 from adapters.issuer_directory import ISSUER_FEEDS
 from adapters.taifex_options_eod import TAIFEX_EOD_FEEDS
+from adapters.ecb_fx_reference import ECBFxReferenceAdapter
 from source_observation import atomic_write_json
 
 ENDPOINTS = {**{key: value[0] for key, value in FEEDS.items()}, **EQUITY_FEEDS, **ISSUER_FEEDS}
 DEFAULT_SOURCES = tuple(ENDPOINTS)  # Preserve existing default collection; no implicit options activation.
 ENDPOINTS = {**ENDPOINTS, **TAIFEX_EOD_FEEDS}
+ACQUISITION_ONLY_ENDPOINTS = {
+    ECBFxReferenceAdapter.source_id: ECBFxReferenceAdapter.REQUEST_URL,
+}
 MAX_BYTES = 8_000_000
 
 
@@ -139,7 +143,7 @@ def verified_tls_context() -> ssl.SSLContext:
 
 
 def fetch_bytes(url: str) -> bytes:
-    if url not in set(ENDPOINTS.values()):
+    if url not in set(ENDPOINTS.values()) and url not in set(ACQUISITION_ONLY_ENDPOINTS.values()):
         raise ValueError("UNADMITTED_FEED")
     # No environment proxy credentials, cookie jar, authorization or redirects.
     opener = build_opener(ProxyHandler({}), NoRedirect(), HTTPSHandler(context=verified_tls_context()))

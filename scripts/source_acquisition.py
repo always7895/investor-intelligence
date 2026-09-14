@@ -26,6 +26,7 @@ from adapters import (
 )
 from adapters.base import canonical_json, schema_fingerprint, utc_iso
 from fetch_public_source_observations import (
+    ACQUISITION_ONLY_ENDPOINTS,
     ENDPOINTS,
     MAX_BYTES,
     diagnose_transport_exception,
@@ -56,6 +57,18 @@ MAX_RECORDS_PER_SOURCE = 100
 MAX_RUN_LIFETIME = timedelta(minutes=15)
 MAX_RUN_BUDGET_SECONDS = 15.0 * 60.0  # 900.0s run budget
 VALID_HEALTH_STATUSES = {HEALTHY, DEGRADED, CIRCUIT_OPEN, QUARANTINED, HALF_OPEN}
+ALLOWED_ADAPTER_CONTENT_TYPES = {
+    "application/json",
+    "application/rss+xml",
+    "application/xml",
+    "text/xml",
+}
+
+
+def _resolve_endpoint(source_id: str) -> str | None:
+    if source_id in ACQUISITION_ONLY_ENDPOINTS:
+        return ACQUISITION_ONLY_ENDPOINTS[source_id]
+    return ENDPOINTS.get(source_id)
 
 
 def safe_canonical_json(value: Any) -> str | None:
@@ -119,9 +132,9 @@ def _check_source_eligibility(source: SourceDefinition) -> str | None:
         return "PROVENANCE_NOT_REQUIRED"
     if source.trust_tier == "T4_QUARANTINED":
         return "QUARANTINED_TIER"
-    if source.source_id not in ENDPOINTS:
+    endpoint = _resolve_endpoint(source.source_id)
+    if endpoint is None:
         return "NO_REGISTERED_ENDPOINT"
-    endpoint = ENDPOINTS[source.source_id]
     try:
         clean_url = canonicalize_url(endpoint)
     except Exception:
@@ -137,6 +150,10 @@ def _check_source_eligibility(source: SourceDefinition) -> str | None:
         return "ADAPTER_ID_MISMATCH"
     if ad.source_id != source.source_id:
         return "ADAPTER_SOURCE_ID_MISMATCH"
+    declared_mime = getattr(ad, "content_type", None)
+    if declared_mime is not None:
+        if not isinstance(declared_mime, str) or declared_mime not in ALLOWED_ADAPTER_CONTENT_TYPES:
+            return "UNSUPPORTED_CONTENT_TYPE"
     return None
 
 
@@ -449,7 +466,9 @@ def acquire_runtime_sources(
             skipped_counts[reason] = skipped_counts.get(reason, 0) + 1
             continue
 
-        endpoint = ENDPOINTS[source.source_id]
+        endpoint = _resolve_endpoint(source.source_id)
+        if endpoint is None:
+            continue
         host = (urlsplit(endpoint).hostname or "").casefold()
         source_interval = float(source.minimum_request_interval_seconds)
 
@@ -508,11 +527,20 @@ def acquire_runtime_sources(
         retrieval_iso = utc_iso(current_time)
 
         # Step 3: Parser
-        content_type = (
-            "application/rss+xml"
-            if (endpoint.endswith(".rss") or endpoint.endswith(".xml") or "rss" in endpoint)
-            else "application/json"
-        )
+        ad = adapter(source.source_id)
+        declared_mime = getattr(ad, "content_type", None)
+        if (
+            declared_mime is not None
+            and isinstance(declared_mime, str)
+            and declared_mime in ALLOWED_ADAPTER_CONTENT_TYPES
+        ):
+            content_type = declared_mime
+        else:
+            content_type = (
+                "application/rss+xml"
+                if (endpoint.endswith(".rss") or endpoint.endswith(".xml") or "rss" in endpoint)
+                else "application/json"
+            )
         try:
             batch = parse_source_payload(
                 source.source_id,
@@ -531,7 +559,6 @@ def acquire_runtime_sources(
             source_failures[source.source_id] = code
             continue
 
-        ad = adapter(source.source_id)
         batch_err = None
 
         # Guard against malformed records BEFORE schema_fingerprint

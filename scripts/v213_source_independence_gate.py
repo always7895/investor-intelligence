@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 from source_observation import (
+    RESEARCH_COMPARABILITY,
     SourceObservationError,
     reconcile_research_claims,
     research_audit_high_eligible,
@@ -1508,6 +1509,41 @@ def build(
     }
     if acquisition_run is not None:
         result["acquisition_summary"] = acquisition_run.summary()
+        ecb_candidates = [
+            c for c in acquisition_run.candidates_for("EUR/USD")
+            if c.get("source_id") == "eu_ecb_fx_reference"
+        ]
+        if ecb_candidates:
+            seen_cids: set[str] = set()
+            material_claims: list[dict[str, Any]] = []
+            for cand in ecb_candidates:
+                p = cand.get("payload") or {}
+                for cid in p.get("claim_ids", []):
+                    if cid not in seen_cids:
+                        seen_cids.add(cid)
+                        claim = {
+                            "claim_id": cid,
+                            "claim_type": "macro_indicator",
+                        }
+                        for k in RESEARCH_COMPARABILITY:
+                            if k in p:
+                                claim[k] = p[k]
+                        material_claims.append(claim)
+            macro_record = {
+                "source_observations": ecb_candidates,
+                "material_claims": material_claims,
+            }
+            macro_audit = reconcile_research_claims(
+                macro_record,
+                acquisition_run=acquisition_run,
+                now=now_utc(),
+            )
+            result["macro_reference_context"] = {
+                "schema_version": 1,
+                "reference_only": True,
+                "reference_rows": ecb_candidates,
+                "claim_evidence_audit": macro_audit,
+            }
     return result, updated_cache
 
 

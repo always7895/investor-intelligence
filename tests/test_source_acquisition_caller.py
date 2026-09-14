@@ -277,14 +277,26 @@ class TestSourceAcquisitionCaller(unittest.TestCase):
                 mock_factory.assert_not_called()
                 self.assertNotIn("acquisition_summary", out)
 
-    def test_default_registry_zero_entries_enabled_unavailable(self) -> None:
-        """Default production registry has zero runtime-enabled sources and yields UNAVAILABLE."""
+    def test_explicit_disabled_registry_negative_unavailable(self) -> None:
+        """Explicit disabled registry negative asserts transport not called and yields UNAVAILABLE."""
         real_reg = load_registry()
+        disabled_sources = tuple(replace(s, runtime_enabled=False) for s in real_reg.sources)
+        disabled_reg = Registry(real_reg.schema_version, disabled_sources, real_reg.catalog_files)
         mock_transport = MagicMock()
-        run = acquire_runtime_sources(registry=real_reg, transport=mock_transport, clock=NOW)
+        run = acquire_runtime_sources(registry=disabled_reg, transport=mock_transport, clock=NOW)
         mock_transport.assert_not_called()
         self.assertEqual(run.summary()["status"], "UNAVAILABLE")
         self.assertEqual(run.summary()["candidate_count"], 0)
+
+    def test_default_registry_ecb_runtime_enabled(self) -> None:
+        """Default production registry has exactly eu_ecb_fx_reference enabled."""
+        real_reg = load_registry()
+        runtime_sources = [s for s in real_reg.sources if s.runtime_enabled]
+        self.assertEqual(len(runtime_sources), 1)
+        self.assertEqual(runtime_sources[0].source_id, "eu_ecb_fx_reference")
+        ecb_data = next(s for s in real_reg.sources if s.source_id == "eu_ecb_data")
+        self.assertFalse(ecb_data.runtime_enabled)
+        self.assertEqual(ecb_data.freshness_seconds, 1800)
 
     def test_captured_candidate_wrong_ticker_rejected_preserved_row(self) -> None:
         """Saved captured candidate bound to wrong ticker is preserved but not admitted."""

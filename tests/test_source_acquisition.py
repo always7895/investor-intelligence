@@ -373,14 +373,26 @@ class SourceAcquisitionTests(unittest.TestCase):
         )
         self.assertEqual(run_c.health_for({"source_id": "issuer"}), CIRCUIT_OPEN)
 
-    def test_13_current_real_registry_no_runtime_sources_unavailable(self) -> None:
+    def test_13_explicit_disabled_registry_negative_unavailable(self) -> None:
+        real_reg = load_registry()
+        disabled_sources = tuple(replace(s, runtime_enabled=False) for s in real_reg.sources)
+        disabled_reg = Registry(real_reg.schema_version, disabled_sources, real_reg.catalog_files)
         transport_mock = MagicMock()
-        run = acquire_runtime_sources(transport=transport_mock, clock=NOW)
+        run = acquire_runtime_sources(registry=disabled_reg, transport=transport_mock, clock=NOW)
         transport_mock.assert_not_called()
         self.assertEqual(len(run.candidates_for("SYN")), 0)
         self.assertEqual(run.summary()["status"], "UNAVAILABLE")
         self.assertEqual(run.summary()["candidate_count"], 0)
         self.assertEqual(run.summary()["successful_source_count"], 0)
+
+    def test_default_registry_ecb_runtime_enabled(self) -> None:
+        real_reg = load_registry()
+        runtime_sources = [s for s in real_reg.sources if s.runtime_enabled]
+        self.assertEqual(len(runtime_sources), 1)
+        self.assertEqual(runtime_sources[0].source_id, "eu_ecb_fx_reference")
+        ecb_data = next(s for s in real_reg.sources if s.source_id == "eu_ecb_data")
+        self.assertFalse(ecb_data.runtime_enabled)
+        self.assertEqual(ecb_data.freshness_seconds, 1800)
 
     def test_14_batch_overflow_fails_closed(self) -> None:
         base_record = {
