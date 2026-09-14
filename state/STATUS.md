@@ -2,13 +2,13 @@
 
 ## INVESTOR_CONTINUOUS_AUTOPILOT / active
 
-FINAL_RELEASE_COMPLETE=false. Fetch/base `b43fde3330f8a017ced47d520c50f37bda2a21a7`. Astra/high orchestrates/reviews; Gemini executes via existing Antigravity Google AI Pro. Observed catalog `gemini-3.8-flash`, pinned runtime `gemini-3.8-flash-medium`; read/write/test PASS. No credential purchase/upgrade/public publication; external deployment remains USD0-gated.
+FINAL_RELEASE_COMPLETE=false. Fetch/base `612e48a420d2159320992f04e5028f98a313f558`. Astra/high orchestrates/reviews; Gemini executes via existing Antigravity Google AI Pro. Observed catalog `gemini-3.8-flash`, pinned runtime `gemini-3.8-flash-medium`; read/write/test PASS. No credential purchase/upgrade/public publication; external deployment remains USD0-gated.
 
-Evidence: runtime `_workspace/audit-runtime/gemini-executor-20260914/`. Gemini receipt/cleanup hotfix: unsupported flags false, authorization refused, structural assertions cannot unlock CLI. Focused executor calls and independent8 caller checks PASS. Full Python hit180s timeout, no completion/PASS; log retained, DEFER. Product defect/P0 totals unrecertified.
+Evidence: runtime `_workspace/audit-runtime/gemini-executor-20260914/`. Gemini receipt/cleanup hotfix: unsupported flags false, authorization refused, structural assertions cannot unlock CLI. Focused executor calls and independent8 caller checks PASS. Full Python retry1121/skip2 PASS in285.653s, source unchanged; original180s timeout retained. Product defect/P0 totals unrecertified.
 
 Qwen dispatch/repair stopped; no Skyrim routing edits after migration. Prior64/FIFO/load/freeze evidence: runtime `.pi/routing-evidence/global-qwen-queue-port0-v2/`; activation/live answer unqualified. Earlier bootstrap changed routing and loaded once; no new Qwen work.
 
-LINE text3 RED fixed; new actual-caller tests13, Worker551/typecheck PASS. Header native75/75px, zero clip/overlap; six native checks/695-blob integrity PASS. UNSIGNED, not release. Artwork/device/admission/health unqualified; AUTH_REQUIRED and prior private=false gates remain. NEXT: UI→health→gated LINE_LIVE→final EXE→private release. Historical PASS/failures retained, not restamped. No new Production/LINE/GitHub/cleanup mutations; original untracked inputs preserved.
+LINE text3 RED fixed; new actual-caller tests13, Worker551/typecheck PASS. Header native75/75px, zero clip/overlap; six native checks/695-blob integrity PASS. UNSIGNED, not release. Local rich-menu proposal/12 negatives PASS; not original-art/device/API acceptance. Admission/health and AUTH_REQUIRED/private gates remain. NEXT: UI→health→gated LINE_LIVE→final EXE→private release. Historical PASS/failures retained, not restamped. No new Production/LINE/GitHub/cleanup mutations; original untracked inputs preserved.
 
 ### LINE entitlement evidence / prior actual probe
 
