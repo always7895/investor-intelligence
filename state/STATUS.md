@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `98f4a18` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `f297a43` (typecheck fix on top of `98f4a18` as of session 5), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts (InvestorIntelligence.exe, cloud/config/).
@@ -27,9 +27,12 @@ Committed HEAD: `98f4a18` (previous baseline `d15577d`), branch `fix/options-pro
 
 ### Milestones (2026-09-15 session 4: raw-view contract arbitration)
 - `98f4a18` fix(v213): unsealed pointerless raw-key seven-field writes now fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative; sealed-object-integrity + pointer-last mandatory). Ranking intent extended with 前20/排行 so every Top20 alias is policy-gated.
-- Test fixtures migrated to sealed run-bound snapshots (verbatim re-packaging via cloud/test/sealed-report-migration.ts) in 7 pre-migration suites incl. the 4 named. v213-bottleneck-takeover-review DEFECT 1 RED + ALL TOP20 aliases now PASS - the session-3 residual conflict ledger entry is RESOLVED by arbitration.
+- Test fixtures migrated to sealed run-bound snapshots (sealed-report-migration.ts helper) in 7 pre-migration suites incl. the 4 named; DEFECT 1 RED + ALL TOP20 aliases now PASS - session-3 residual RESOLVED.
 - Test state: vitest **786 passed / 0 failed / 1 skipped (787)**; pytest **1470 passed / 0 failed / 3 skipped**.
 - Invariants: cloud/src/worker.ts byte-frozen at reviewed blob 4e0f78af; cloud/src/qa.ts untouched; zero network to real providers; no production mutations.
+### Milestones (2026-09-15 session 5: typecheck cleanup)
+- `f297a43` types the 4 optional helper params (Awaited<ReturnType<typeof fixture/textFixture>>) -> tsc --noEmit 0 errors; vitest 786/0/1; frozen invariants intact.
+
 ### Supervisor & Routing Policy (Latest User Override)
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
