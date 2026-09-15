@@ -80,7 +80,7 @@ async function textFixture(overrides: Record<string, string> = {}) {
   };
 }
 
-async function actualReply(command: string, f?) {
+async function actualReply(command: string, f?: Awaited<ReturnType<typeof textFixture>>) {
   if (!f) f = (await textFixture());
   let messages: any[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {

@@ -34,7 +34,7 @@ async function fixture() {
   return { publicKv, report, save, env: { PUBLIC_CACHE: asKv(publicKv), TENANT_PRIVATE_CACHE: asKv(new NoPrivateReads()),
     EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_SECRET: "EXAMPLE_NOT_REAL", LINE_CHANNEL_ACCESS_TOKEN: "EXAMPLE_NOT_REAL", CURRENT_PUBLIC_DATA_ENABLED: "true" } };
 }
-async function actualReply(command: string, f?) {
+async function actualReply(command: string, f?: Awaited<ReturnType<typeof fixture>>) {
   if (!f) f = await fixture();
   let messages: any[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {

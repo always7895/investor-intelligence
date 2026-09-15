@@ -75,7 +75,7 @@ async function fixture(opts: { withReport?: boolean; overrides?: Record<string, 
   };
 }
 
-async function actualReply(command: string, f?) {
+async function actualReply(command: string, f?: Awaited<ReturnType<typeof fixture>>) {
   if (!f) f = await fixture();
 
   let messages: any[] = [];

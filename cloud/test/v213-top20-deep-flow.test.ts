@@ -115,7 +115,7 @@ async function fixture(opts: { withReturnEvidence?: boolean } = {}) {
   };
 }
 
-async function reply(command: string, f?) {
+async function reply(command: string, f?: Awaited<ReturnType<typeof fixture>>) {
   if (!f) f = await fixture();
 
   let messages: any[] = [];
