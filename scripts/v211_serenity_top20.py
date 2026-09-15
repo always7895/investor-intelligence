@@ -437,7 +437,7 @@ def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
 def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix='ii-v211-self-test-') as temporary:
         output = run(synthetic=True, output_root=Path(temporary))
-        if output["top20_count"] != 20 or output["catalog_count"] != 101:
+        if output["top20_count"] != 20 or output["catalog_count"] != 102:
             raise base.PipelineError("v2.1.1 synthetic acceptance failed")
         if output["research_universe_count"] < 20:
             raise base.PipelineError("v2.1.1 synthetic universe is incomplete")

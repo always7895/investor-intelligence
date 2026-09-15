@@ -805,6 +805,16 @@ namespace InvestorIntelligence
                     "Investor Intelligence " + Version + " " + Revision);
                 return 0;
             }
+            if (args.Contains("--credential-store-self-test"))
+            {
+                if (args.Length != 1) return 1;
+                System.Type storeType = System.Type.GetType("InvestorIntelligence.SecureCredentialManager");
+                if (storeType == null) return 3;
+                System.Reflection.MethodInfo storeMethod = storeType.GetMethod("RunSelfTest", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static, null, System.Type.EmptyTypes, null);
+                if (storeMethod == null) return 3;
+                object storeResult = storeMethod.Invoke(null, null);
+                return storeResult is int ? (int)storeResult : 3;
+            }
             // Read-only native transport check: no selection, model start or preset mutation.
             if (args.Length > 0 && args[0] == "--model-catalog-check") {
                 if (args.Length != 2 || !SafeLoopbackBase(args[1])) return 70;

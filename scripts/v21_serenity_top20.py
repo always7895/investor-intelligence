@@ -2,7 +2,7 @@
 """Investor Intelligence v2.1.0 Serenity-first automatic public Top 20.
 
 Design boundaries:
-- Load and report the full 101-source authoritative catalog every run.
+- Load and report the full 102-source authoritative catalog every run.
 - Do not claim catalog membership is live activation.
 - v2.1 reviewed source overlay: SEC EDGAR + World Bank only.
 - yfinance is T3 local candidate discovery / public-market observation only.
@@ -1142,7 +1142,7 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
         "",
         "> 此排名為專案自訂 Serenity-first operationalization，不是 Serenity 本人公布公式、背書、個人化投資建議或報酬保證。Aschenbrenner A/B/C 為獨立 overlay，不加入 Serenity 分數。",
         "",
-        f"101-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
+        f"102-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
         f"World Bank macro context：{macro.get('status', 'DEGRADED')}",
         "",
         "## Top 20",
@@ -1299,7 +1299,7 @@ def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
 def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix='ii-v21-self-test-') as temporary:
         output = run(synthetic=True, output_root=Path(temporary))
-        if output["top20_count"] != 20 or output["catalog_count"] != 101:
+        if output["top20_count"] != 20 or output["catalog_count"] != 102:
             raise PipelineError("Synthetic acceptance failed")
         top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
         if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):

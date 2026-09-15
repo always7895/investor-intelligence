@@ -22,7 +22,7 @@ class SerenityEngineV21Tests(unittest.TestCase):
     def test_synthetic_exact_top20_and_101_source_plan(self) -> None:
         output = v21.run(synthetic=True, output_root=self.output_root)
         self.assertEqual(output["top20_count"], 20)
-        self.assertEqual(output["catalog_count"], 101)
+        self.assertEqual(output["catalog_count"], 102)
         top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
         self.assertEqual([item["rank"] for item in top], list(range(1, 21)))
         self.assertEqual(
@@ -55,14 +55,14 @@ class SerenityEngineV21Tests(unittest.TestCase):
     def test_yfinance_is_discovery_only_and_all_101_sources_are_planned(self) -> None:
         policy, activation = v21.validate_policy()
         plan = v21.source_plan(policy, activation)
-        self.assertEqual(len(plan["members"]), 101)
+        self.assertEqual(len(plan["members"]), 102)
         states = {item["source_id"]: item["v21_state"] for item in plan["members"]}
         self.assertEqual(states["sec_edgar"], "v21_reviewed_live_overlay")
         self.assertEqual(states["world_bank_indicators"], "v21_reviewed_live_overlay")
         self.assertEqual(states["yahoo_finance_public_unofficial"], "t3_local_discovery_only")
         self.assertEqual(
             sum(state == "deferred_catalog_member" for state in states.values()),
-            93,
+            94,
         )
 
     def test_sec_contact_regex_accepts_normal_addresses(self) -> None:

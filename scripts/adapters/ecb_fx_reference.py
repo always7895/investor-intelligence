@@ -9,9 +9,9 @@ from urllib.parse import parse_qsl, urlsplit
 import xml.etree.ElementTree as ET
 
 try:
-    from .base import AdapterError, ParsedBatch, make_batch, utc_iso
+    from .base import AdapterError, ParsedBatch, build_evidence_item, make_batch, utc_iso
 except (ImportError, ValueError):
-    from adapters.base import AdapterError, ParsedBatch, make_batch, utc_iso
+    from adapters.base import AdapterError, ParsedBatch, build_evidence_item, make_batch, utc_iso
 
 REQUEST_URL = "https://www.ecb.europa.eu/rss/fxref-usd.html"
 MAX_BYTES = 8_000_000
@@ -373,3 +373,40 @@ class ECBFxReferenceAdapter:
             source_id=self.source_id, parser_version=self.parser_version,
             content=content, retrieved_at=retrieved_iso, records=[record],
         )
+
+
+def evidence_items(batch: ParsedBatch, *, registry_version: str) -> list[dict[str, Any]]:
+    """Materialize the reviewed ECB reference-rate records as evidence candidates.
+
+    Provenance performs final admission; records stay informational and are
+    never execution-eligible.
+    """
+    result: list[dict[str, Any]] = []
+    for record in batch.records:
+        payload = dict(record.get("payload") or {})
+        claim_ids = payload.get("claim_ids") or []
+        if not claim_ids or not isinstance(claim_ids[0], str):
+            raise AdapterError("ECB evidence record is missing a claim id")
+        value = payload.get("value")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise AdapterError("ECB evidence value must be a finite number")
+        result.append(
+            build_evidence_item(
+                batch,
+                record,
+                claim_id=claim_ids[0],
+                claim_type=str(record.get("claim_type") or "macro_indicator"),
+                canonical_url=str(payload.get("source_url") or record.get("canonical_url")),
+                field_values={
+                    "metric": str(payload["metric"]),
+                    "currency": str(payload["currency"]),
+                    "period": str(payload["period"]),
+                    "value": value,
+                },
+                registry_version=registry_version,
+                published_at=record.get("published_at"),
+                as_of=payload.get("as_of"),
+                revision_or_vintage=payload.get("source_published_timestamp"),
+            )
+        )
+    return result

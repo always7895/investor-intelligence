@@ -1,68 +1,60 @@
 # Current state / 目前狀態
 
-## INVESTOR_FULL_AUTOPILOT_V2
+## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-`LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Source base for current TOP20 UI work: `43464aa2753c11870af27406eaa5bca15b83d7e9`. Production code remains `306366e33eef3c85a43e7b68e8e560b27eec39dc`; later UI work is NOT deployed. Release identity belongs in README, not this acceptance register.
+Committed HEAD: `d15577d1f459d8e5ada70169da5c998cf8b64dd1`, branch `fix/options-provenance-audit`; origin fetched before component commit. Base commit remains `d15577d1f459d8e5ada70169da5c998cf8b64dd1`. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
-Latest user priority: correct TOP20 bottleneck ranking/UI → actual Macro/Options research products → rich menu/Flex/device acceptance → LINE live. Credential/EXE/install/package/private release remain paused. Gemini Flash via existing Antigravity `gemini-3.8-flash-medium` executes complete slices; Astra/high handles architecture/safety/review. Interim Qwen dispatch was refused (`BACKEND_MISSING_OR_CHANGED`); no route/server/model/FIFO changes. Skyrim untouched.
+### Supervisor & Routing Policy (Latest User Override)
+- **Primary Supervisor:** Gemini approved route.
+- **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
+- **Astra Role:** Irreversible architecture decisions, safety blocker, and final Production-deploy gate only while quota > 0; Gemini supervisor takes acceptance if exhausted. No ordinary research or implementation assigned to Astra.
+- **Local Route Status & Corrected Blocker Observation:**
+  - Blocker reference: `G/qwen-session-tool-registration-blocker-v1.json`.
+  - The retired helper `qwen_route_status` failed and current exposed Agent refuses dispatch.
+  - `qwen_routed: false`; reason: `CURRENT_SESSION_TOOL_ROUTING_NOT_BACKEND_HEALTH`.
+  - **Factual Correction:** Stale routing helper failures do **NOT** prove that the underlying Tabby backend model is missing, offline, or misconfigured. Rather, the current session tool registration cannot satisfy the project binding in `.pi/agents/qwen-executor.md`. Model binding configuration is distinct from live verification.
+  - No Qwen inference occurred, no task ID was created, 0 tokens consumed. No guard bypass, server spawning, model switching, or Pi configuration repair attempted.
+  - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
 
-## Evidence and retained history
+### Objectives Overview & Trust Invariants
+Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
 
-- A = `_workspace/audit-runtime/authorized-autopilot-20260914/`.
-- G = `_workspace/audit-runtime/gemini-executor-20260914/`.
-- Historical acceptance/failures: G/HANDOFF.md and immutable per-task receipts. The full preceding register is preserved in Git at `43464aa:state/STATUS.md`; this rewrite is not closure of its unresolved findings. Earlier open findings remain OPEN unless a source-bound receipt closes them. Historical Python1133/skip2, Worker/full-suite counts, compiler/archive and rejection-only install proofs are NOT current qualification.
-- Known scoped failures are recorded below; aggregate product P0/P1/P2 are UNKNOWN, not zero. A test-run completion marker is not independent acceptance; receipts contain executor claims that require scoped review.
+Priority: company evidence → typed admission → qualified ranking → one final semantic acceptance → sealed publication/new UI → Flex/rich menu/device → LINE_LIVE. Global identity/Macro/Options without Production evidence stay UNAVAILABLE and do NOT block safe LINE launch; preserve identity work. EXE/credentials/R75/private release deferred. Never deploy unaccepted ranking/candidate.
 
-## Existing Production / transport evidence — do not replay
+## Completed Supervisor Evaluation: STATUTORY_AUTHORITY_FACT_EVALUATION_V1
+- **Lane & Scope:** `INDEPENDENT_SUPERVISOR_STATUTORY_AUTHORITY_FACT_EVALUATION_V1`.
+- **Outputs:** `G/statutory-authority-facts-v1-{fetch.py,findings.json,evidence.json,acceptance-summary.txt}` and `G/statutory-authority-facts-v1-public/source-01.txt..source-05.txt`.
+- **Core Factual Findings:**
+  1. **CCR Publishing Body:** California Office of Administrative Law (OAL) is statutory publisher under Gov Code § 11344(a); contracts with Barclays (Thomson Reuters) for free online access. Mandate provides public access, NOT commercial redistribution licenses. Title 24 maintained by BSC and excluded from OAL CCR.
+  2. **Actual § 11344 Text:** Establishes 5 duties (compilation/free Internet access, pending filing links, weekly supplement, rapid printing, citations). Does NOT prove currency of specific regulations or resolve external citations.
+  3. **Copyright Scope (Facts vs Expression & Fair Use):** 17 U.S.C. § 102(b) confirms copyright does not protect raw facts/ideas (dates, kV thresholds, citations). Contractual terms remain binding. 17 U.S.C. § 107 requires 4-factor balancing; technical caps (200 words) are architectural limits, not automatic statutory allowances.
+  4. **Federal Works vs State/Private:** 17 U.S.C. § 105 applies strictly to federal government works. Edicts of government covers binding legal text, not agency web layouts or commentary.
 
-OAuth/keyring and account-bound free-plan checks succeeded at their recorded scope. OAuth subscriptions403 remains retained; browser200/default-Free supports Workers-plan only, not all-service usage/billing. LINE09:08 quota200/used23/remaining177 and Manager free-plan evidence are historical, not a current reservation or per-send authorization. Do not print credentials/LINE IDs or rerun unchanged quota checks.
+## Completed Objective B Subtask: CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1
+- **Lane & Scope:** `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1` (Gemini Primary Supervisor fallback execution; `qwen_routed: false`).
+- **Target Files:** `scripts/carb_typed_section_parser.py`, `tests/test_carb_statutory_citations.py`, `docs/CARB_TYPED_SECTION_PARSER.md`.
+- **Evidence Files:** `G/carb-statutory-cross-reference-typing-v1-{evidence.json,security-diff.md,acceptance-summary.txt,clock.json}`.
+- **Core Implementation:**
+  1. **Immutable Dataclass:** Added `@dataclass(frozen=True) class StatutoryCitation` with fields `citation_id`, `reference_class`, `statutory_body`, `title`, `section`, `source_anchor`, `span`, `unresolved_outside_corpus=True`, `limits_complete_interpretation=True`, `status="UNRESOLVED_OUTSIDE_CORPUS"`.
+  2. **Closed Taxonomy (`ReferenceClass`):** Strict taxonomy distinguishes `HealthSafetyCode` (3), `40CFR` (1), `17CCR` (2), `consensusstandards` (1), `OTHER` (0), `UNPARSEABLE` (0). Total exactly 7 legacy external references.
+  3. **Source Provenance:** All 7 citations bound to literal anchors in `carb-final-regulation.md` with exact character spans and SHA-256 hashes.
+  4. **Fail-Closed Malformed Input:** `classify_statutory_reference` maps unknown/malformed strings to `UNPARSEABLE` or `OTHER`, retaining unresolved/limits interpretation flags.
+  5. **Invariants Preserved:** `runtime_admitted=False`, `company_admissions=0`, 4 core factor gates `UNQUALIFIED`, Table 1 & 2 boundary equality intact, backward compatibility intended; prior21-test suite not rerun, so no fresh full-compatibility claim.
+- **Tests & Progression:**
+  - Initial RED log retained in `carb-statutory-cross-reference-typing-v1-python-red.log` (1 import error; NOT behavioral RED).
+  - INITIAL passed in `carb-statutory-cross-reference-typing-v1-python-initial.log` (8 focused tests, 0 failures, 0 errors, 0.116s).
+  - Documentation structure gate passed (106 markdown files, 618,861 bytes).
 
-Prior authorized mutations: Worker code deployed12:10/12:34; current version `fe3223f6-328f-49f9-9e3a-8d4557963c98`, exact-version edge3 PASS after409. Official webhook Verify12:14 HTTP200/Worker200. Free-only=true, paid fallback=false, scheduled push=false; secrets unchanged. A/line-worker-overlay-code-deploy.json, line-overlay-edge-convergence.json, line-webhook-verify-retry1.json retain evidence.
+## Triad Status Assessment
+- **A (Unknowns Narrowed vs Remain):** Factual non-protectability (17 U.S.C. § 102(b)) and OAL publication role (Gov Code § 11344) narrowed; 4 preserved HTTP error states, Meidensha Terms, and Barclays online CCR terms remain UNKNOWN.
+- **B (7 External References Typed & Unresolved):** Citations in `carb_typed_section_parser.py` are typed into structured immutable records but strictly remain `UNRESOLVED_OUTSIDE_CORPUS` (`limits_complete_interpretation: true`).
+- **C (Scoped Non-Admitting Hook):** Accepted scoped non-admitting hook (`G/provider-runtime-hook-supervisor-review-v1-review.md`) is NOT product ready. Runtime admitted companies strictly 0; overall source admission strictly `STILL_BLOCKED_NOT_PASS`.
 
-Sealed publication retry1 FINALIZED12:36 via existing object verification/pointer-last/readback/finalize. Run `20260914T122215Z-080c05b95a9b`, bundle SHA256 `247a463640af14dc8f388f9abb5a66f434d09e7ba032734294ff35b4f6613ace`; A/line-sealed-publication-retry1.json. Original NOT_COMMITTED/rollback journal remains retained. Published20 LIMITED/0 HIGH (7 families/6 official, market degraded) do NOT qualify the new bottleneck-ranking objective. Do not replay acquisition/publication/installer activation to manufacture acceptance.
+## Publication anchor
+- `publication_eligible=false` until source admission reaches PASS (triad B/C remain blocked).
+- Historical status snapshot for comparison: `git show 38860e7:state/STATUS.md`.
 
-User screenshots confirmed real menu/TOP20 replies and Flex rendering; prior device-message identity wait is superseded, not content/ranking acceptance. No new LINE sends or Production mutations in the subsequent ranking/UI slices. Rich menus0 at last bound API observation; original2500×843 PNG/payload local only, not uploaded/defaulted/device-accepted.
-
-## Source-only product work
-
-### Macro / Options — committed43464aa, not live data acceptance
-
-G/macro-options-product-v1-review2-evidence.json: focused72, Python12, affected115+typecheck PASS after retained initial/RED/retry failures. Main macro/options entries now use new navigation/explicit shortfall and4 SYNTHETIC EDUCATIONAL strategy cards. Protective Put alias/payoff corrected; bare quote cannot supply arbitrary strategy payoff/yield. Source/schema checks and educational/default UI are scoped proofs only.
-
-Real TOP5 industry shortfall5/5. IEA403 and OIC protective404 retained; WSTS/IFR retrieved leads are not automatically admitted claims. Candidate schema/score metadata is NOT evidence admission. Current sealed object contract excludes macro/options members, so actual market products remain UNAVAILABLE. Coordinated schema/producer/rights/source/clock/lineage/manifest qualification is still required. No fixed final-five industry list, company-count share as market growth, synthetic quote masquerade or broker execution.
-
-### TOP20 card / deep-analysis — current source-only slice
-
-G/top20-deep-ui-v1-review2-evidence.json: focused25, Python12+10, affected86+typecheck PASS. Earlier Python lane exhausted2 retries on fixture import failure; Astra fixed indentation only, preserving assertions and all3 failed logs. G/top20-deep-ui-v1-python-reviewer-unblock.log recorded the bounded repair. Subsequent arithmetic/admission and deep-content RED failures were retained and corrected by Gemini.
-
-Short card retains2Y CAGR/6M return and one 深度化分析 button; duplicate 本公司七欄文字 action removed. Generic AI/server-beneficiary claims and false SEC industry attribution removed. Missing graph/catalysts/rank evidence is labeled UNAVAILABLE or research questions, never fabricated company findings. Old display position is not System Bottleneck Explosion Rank.
-
-Actual numeric2Y total return remains WITHHELD/UNAVAILABLE: correct endpoint arithmetic and yfinance/adjusted-close labels alone do not establish source authority. Candidate validators are not admission. A reviewed producer/shared return contract must bind security/currency, adjustment method, original payload, source role/rights, bar clocks and run lineage before numeric presentation. This is deliberate data DEFER, not a completed total-return feature or current full company research.
-
-### Bottleneck ranking — unresolved product correctness blocker
-
-Ranking files remain uncommitted/unaccepted. Initial23focused/1FAIL and subsequent failed receipts retained. Review2 reports23focused+31admission/trust tests PASS after removing fixture-registry fallback, default HEALTHY/parser metadata and invalid-clock restamping; see G/bottleneck-ranking-v1-review2-evidence.json. Public CLI now reports0 admitted without trusted company acquisition. This is fail-closed testing, NOT implemented live scoring. Factor-to-specific-claim binding and complete typed company admission still require independent acceptance; exception serialization also requires privacy review. Do not integrate/deploy this draft; its policy remains unaccepted.
-
-Old20 had no positive core bottleneck factors after evidence withholding. Independent universe discovery and company-level admission must precede ranking; generic market screens/lexical ties are not bottleneck selection. No author ticker-copy/overlap bonus, no permanent AI-sector whitelist, no historical-return ranking influence. Admit structural scarcity/substitution friction, pricing power and company capture with independent claim-level evidence; preserve financing/valuation/killers/lifecycle and missing states. Qualified results may be fewer than20; never pad unsupported winners.
-
-## Independent public-universe discovery — identity only
-
-G/universe-discovery-v1-review1-evidence.json: real official Nasdaq/other-US/TWSE fetches returned5604/7616/1094 records (14314 total); immutable original projections reused, no repeat fetch. CLI produced8599 retained venue/security identities:7016 candidate-equity leads and1583 review-required;5715 excluded records. This is partial US/TWSE identity discovery, NOT full-market research, issuer admission or ranking; admitted companies0, score/ranknull. IEX has0 observed records; Europe/Japan/HK/Korea/Canada/China/OTC/TPEx remain explicit gaps.
-
-Discovery tests19 PASS after retained RED/initial failures. Review corrected name-similarity clusters to UNVERIFIED (not573 proven issuers), conflicting duplicate quarantine, observed-vs-configured venue coverage and path/privacy checks. Local receipt/payload hashes prove consistency only, not independent source authority or publication rights. Original executor review receipt mislabels provider as “Astra gemini”; actual guarded executor is Antigravity/Gemini, verified separately. No Production/LINE/credential mutations; new discovery module not a price/claim/health adapter.
-
-## Research / release boundaries still open
-
-ECB scoped parser/acquisition/live-factory proof remains macro SINGLE_SOURCE/reference-only, not company/order/quote/HIGH/full CLI/publication acceptance. See [ECB contract](../docs/ECB_REFERENCE_SOURCE_ADMISSION.md). Existing process-local acquisition/caller/claim reconciliation proofs remain source-bound historical tests, not activation of all registry adapters or full market coverage. Company/customer relationship evidence alone cannot establish scarcity.
-
-Do not alter certified cloud/src/qa.ts without recertification. Preserve privacy/IBKR separation, source/claim independence, freshness, failed evidence and sealed transaction gates. Public research/publication preflight is not formal model activation/live QA/free-relay/R75 acceptance. Current-source full regression, fresh model-bound live proof, self-hosted Windows R75, isolated transaction replay/rollback/finalize, positive installation and independent immutable archive/receipt/install verification remain unperformed or unqualified. Unsigned local candidates and rejection-only tests do not qualify shipping.
-
-Paused unrelated launcher credential edits and tests/test_v213_secure_credentials.py, HOTFIX-REFS.json, InvestorIntelligence.exe and local Wrangler config must remain isolated; no credentials inspection/packaging. No GitHub push/visibility/tag/private release writes have been reported. Historical approvals or repository files do not authorize new Production/credentials/billing/LINE mutations.
-
-## Next action
-
-1. TOP20 UI committed `e33e926941880179043bc217ada0d9e7ab1bd9f0`; numeric-return/ranking admission remains DEFER. Gates passed after STATUS-size rewrite; all failure receipts retained.
-2. Ranking draft DEFER after bounded reviews; independent US/TWSE discovery slice completed at identity-only scope. NEXT: source-bound company collector, actual supply-chain/dependency/price-capture claims and factor-to-claim admission; do not promote listing membership or name clusters into bottleneck proof.
-3. Qualify real industry/quote/2Y-return sources and coordinated sealed product contracts; never force metadata-only admission.
-4. Actual corrected TOP20/Macro/Options caller and device smoke, rich-menu/default/API/Flex checks and applicable channel/free-budget gates. Only then LINE_LIVE=true.
-5. After LINE live, resume deferred credentials/EXE/R75/Windows install/package/private release. Do not substitute these lanes for unresolved LINE product correctness.
+## Next runnable action
+- **Session Tool Registration:** Update session tool registration to honor `.pi/agents/qwen-executor.md` so local Qwen executor can be dispatched without error.
+- **Do not replay C:** Its scoped non-admitting implementation and supervisor review already completed. Prior handoff requesting C again is stale. Qwen dispatch awaits current-session Agent registration; no repeated route checks or alternate-model dispatch.
+- **Supervisor Action:** Continue independent semantic auditing without bypass; source admission remains `STILL_BLOCKED_NOT_PASS`.

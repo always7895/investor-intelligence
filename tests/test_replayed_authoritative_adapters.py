@@ -127,7 +127,7 @@ def world_bank_fixture(
 
 class ReplayedAuthoritativeAdapterTests(unittest.TestCase):
     def test_static_registry_contains_only_replayed_reviewed_adapters(self) -> None:
-        self.assertEqual(set(ADAPTERS), {"sec_edgar", "world_bank_indicators"})
+        self.assertEqual(set(ADAPTERS), {"sec_edgar", "world_bank_indicators", "eu_ecb_fx_reference"})
 
     def test_sec_submissions_normalization_and_evidence(self) -> None:
         content = sec_submissions_fixture()
@@ -320,9 +320,9 @@ class ReplayedAuthoritativeAdapterTests(unittest.TestCase):
         self.assertEqual(findings, [])
         summary = audit_adapter_routes.last_summary
         self.assertGreaterEqual(summary["catalog_count"], 90)
-        self.assertEqual(summary["reviewed_route_count"], 2)
+        self.assertEqual(summary["reviewed_route_count"], 3)
         self.assertEqual(summary["pending_replay_count"], 2)
-        self.assertEqual(summary["static_adapter_count"], 2)
+        self.assertEqual(summary["static_adapter_count"], 3)
         self.assertEqual(summary["runtime_enabled_count"], 0)
 
     def test_route_gate_rejects_dynamic_loading_and_unknown_route_fields(self) -> None:

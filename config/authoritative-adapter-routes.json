@@ -4,6 +4,15 @@
   "automatic_adapter_activation": false,
   "routes": [
     {
+      "source_id": "eu_ecb_fx_reference",
+      "adapter_id": "eu_ecb_fx_reference",
+      "adapter_status": "adapter_reviewed",
+      "runtime_enabled": false,
+      "fixture_tests_required": true,
+      "claim_types": ["macro_indicator"],
+      "notes": "Opt-in ECB EUR/USD daily reference-rate admission (opt-in macro context only; informational, non-execution-eligible). Statically registered with evidence builder after replay review; live runtime remains disabled."
+    },
+    {
       "source_id": "sec_edgar",
       "adapter_id": "sec_edgar",
       "adapter_status": "adapter_reviewed",
