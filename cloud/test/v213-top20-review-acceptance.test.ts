@@ -17,6 +17,8 @@ import {
 } from "../src/v213/top20-return-evidence";
 import { buildTop20DeepAnalysisMessages } from "../src/v213/deep-analysis";
 import { asKv, MemoryKv } from "./fake-kv";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
+import sealContract from "../../config/v213-r75-publication-mode-v1.json";
 
 function makeSyntheticReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   return {
@@ -35,7 +37,7 @@ function makeSyntheticReturnEvidence(ticker: string, overrides: Partial<TwoYearR
   };
 }
 
-function fixtureWithNonAICompany() {
+async function fixtureWithNonAICompany() {
   const publicKv = new MemoryKv();
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
@@ -89,8 +91,17 @@ function fixtureWithNonAICompany() {
     }),
   };
 
-  publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
-  publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
+  const RUN_ID = "20260910T100000Z-123456789abc";
+  const TX_ID = "1".repeat(32);
+  const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
+  bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = report.generated_at;
+  bodies.find(([key]) => key === "v213:top20-report:latest")![1] = JSON.stringify(report);
+  bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({ schema_version: 1, transaction_id: TX_ID, run_id: RUN_ID, payload_digests: Object.fromEntries(sealContract.payload_names.map((name) => [name, "a".repeat(64)])), claimed_at: report.generated_at });
+  const seal = await buildSnapshotSeal({ run_id: RUN_ID, transaction_id: TX_ID, generated_at: report.generated_at, public_data_as_of: report.generated_at }, bodies);
+  for (const [key, body] of bodies) publicKv.values.set(`snapshot:${RUN_ID}:${key}`, body);
+  publicKv.values.set(`snapshot:${RUN_ID}:${SNAPSHOT_SEAL_KEY}`, seal.text);
+  publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 2, run_id: RUN_ID, transaction_id: TX_ID, seal_sha256: seal.sha256, public_data_as_of: report.generated_at, promoted_at: report.generated_at, provider_scope: "public_only", owner_watchlist_inherited: false }));
+
 
   class NoPrivateKv extends MemoryKv {
     override async get<T = string>(): Promise<T | null> {
@@ -117,7 +128,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
   describe("Finding 1: Return evidence strict calendar, elapsed derive, and freshness checks", () => {
-    it("rejects one-day price change masquerading as 730 days", () => {
+    it("rejects one-day price change masquerading as 730 days", async () => {
       // 1-day difference between actual_start and actual_end, but claiming elapsed_days = 730
       const masquerade = makeSyntheticReturnEvidence("NVDA", {
         actual_start: "2026-09-08",
@@ -129,7 +140,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(result.display).toBe("UNAVAILABLE");
     });
 
-    it("rejects impossible calendar dates such as Feb 30 and Apr 31", () => {
+    it("rejects impossible calendar dates such as Feb 30 and Apr 31", async () => {
       const feb30 = makeSyntheticReturnEvidence("NVDA", {
         actual_start: "2024-02-30",
         actual_end: "2026-03-01",
@@ -152,7 +163,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(validateTwoYearReturnEvidence(feb29NonLeap, "NVDA", "2026-09-10T00:00:00Z").valid).toBe(false);
     });
 
-    it("rejects future end dates relative to retrieval clock", () => {
+    it("rejects future end dates relative to retrieval clock", async () => {
       const futureEnd = makeSyntheticReturnEvidence("NVDA", {
         actual_start: "2024-09-15",
         actual_end: "2026-09-15",
@@ -163,7 +174,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(res.valid).toBe(false);
     });
 
-    it("rejects stale end dates years ago under freshness policy", () => {
+    it("rejects stale end dates years ago under freshness policy", async () => {
       const staleEnd = makeSyntheticReturnEvidence("NVDA", {
         actual_start: "2022-09-09",
         actual_end: "2024-09-09",
@@ -174,13 +185,13 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(res.valid).toBe(false);
     });
 
-    it("rejects invalid or malformed retrievedAt clock instead of silently skipping", () => {
+    it("rejects invalid or malformed retrievedAt clock instead of silently skipping", async () => {
       const ev = makeSyntheticReturnEvidence("NVDA");
       expect(validateTwoYearReturnEvidence(ev, "NVDA", "NOT_A_VALID_DATE").valid).toBe(false);
       expect(validateTwoYearReturnEvidence(ev, "NVDA", "2026-99-99T99:99:99Z").valid).toBe(false);
     });
 
-    it("rejects quote/basis/currency/price/key tampering", () => {
+    it("rejects quote/basis/currency/price/key tampering", async () => {
       // Wrong basis
       expect(validateTwoYearReturnEvidence(makeSyntheticReturnEvidence("NVDA", { basis: "raw_close" as any }), "NVDA").valid).toBe(false);
       // Wrong semantics
@@ -194,7 +205,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(validateTwoYearReturnEvidence(tampered, "NVDA").valid).toBe(false);
     });
 
-    it("accepts valid zero and negative return cases with exact endpoints", () => {
+    it("accepts valid zero and negative return cases with exact endpoints", async () => {
       const flat = makeSyntheticReturnEvidence("NVDA", {
         start_adjusted_close: 100.0,
         end_adjusted_close: 100.0,
@@ -216,8 +227,8 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
   });
 
   describe("Finding 2: Source authority and scalar+envelope consistency", () => {
-    it("rejects scalar return in parseV213Top20Report when envelope is missing or mismatched", () => {
-      const f = fixtureWithNonAICompany();
+    it("rejects scalar return in parseV213Top20Report when envelope is missing or mismatched", async () => {
+      const f = await fixtureWithNonAICompany();
       const reportWithoutEvidence = JSON.parse(JSON.stringify(f.report));
       // Forged scalar with no envelope
       reportWithoutEvidence.records[1].two_year_total_return_pct = 50.0;
@@ -229,7 +240,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(parseV213Top20Report(reportWithMismatch)).toBeNull();
     });
 
-    it("displays UNAVAILABLE when two-year return evidence is missing, and withholds numeric 2Y total when candidate evidence is present", () => {
+    it("displays UNAVAILABLE when two-year return evidence is missing, and withholds numeric 2Y total when candidate evidence is present", async () => {
       const recordWithoutEvidence = {
         ticker: "T01",
         retrieved_at: "2026-09-10T00:00:00Z",
@@ -248,8 +259,8 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
   });
 
   describe("Finding 3: Removing fabricated company claims from deep analysis", () => {
-    it("does NOT write generic AI beneficiary thesis for non-AI company ACGL/BBY", () => {
-      const f = fixtureWithNonAICompany();
+    it("does NOT write generic AI beneficiary thesis for non-AI company ACGL/BBY", async () => {
+      const f = await fixtureWithNonAICompany();
       const report = parseV213Top20Report(f.report)!;
       const messages = buildTop20DeepAnalysisMessages(report, "ACGL");
       const text = messages.map(m => (m as any).text).join("\n\n");
@@ -262,8 +273,8 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(text).not.toContain("[INFERENCE] 市場將其視為整體 AI/伺服器擴張受惠者");
     });
 
-    it("does NOT falsely claim industry source is SEC EDGAR", () => {
-      const f = fixtureWithNonAICompany();
+    it("does NOT falsely claim industry source is SEC EDGAR", async () => {
+      const f = await fixtureWithNonAICompany();
       const report = parseV213Top20Report(f.report)!;
       const messages = buildTop20DeepAnalysisMessages(report, "ACGL");
       const text = messages.map(m => (m as any).text).join("\n\n");
@@ -275,8 +286,8 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
   });
 
   describe("Finding 4 & 5: Honest ranking, LINE mobile UX limits, and card actions", () => {
-    it("preserves honesty on display position vs System Bottleneck Explosion Rank and Score", () => {
-      const f = fixtureWithNonAICompany();
+    it("preserves honesty on display position vs System Bottleneck Explosion Rank and Score", async () => {
+      const f = await fixtureWithNonAICompany();
       const report = parseV213Top20Report(f.report)!;
       const messages = buildTop20DeepAnalysisMessages(report, "ACGL");
       const text = messages.map(m => (m as any).text).join("\n\n");
@@ -289,7 +300,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
     });
 
     it("formats card with short return labels (2Y 總報酬, 2Y 年化, 6M 報酬), no duplicate card action, and adheres to LINE limits", async () => {
-      const f = fixtureWithNonAICompany();
+      const f = await fixtureWithNonAICompany();
       const answer = await v213PublicLineAnswer(f.env, parseQuery("Top20"));
       expect(Array.isArray(answer)).toBe(true);
       const messages = answer as any[];
@@ -332,7 +343,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
     });
 
     it("bounds foreign/unknown ticker cleanly without model or network fallback", async () => {
-      const f = fixtureWithNonAICompany();
+      const f = await fixtureWithNonAICompany();
       const unknownQuery = parseQuery("Top20 深度化分析 UNKNOWN " + f.stamp + " legacy " + "0".repeat(64));
       const res = await v213PublicLineAnswer(f.env, unknownQuery);
       expect(typeof res).toBe("string");

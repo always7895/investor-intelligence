@@ -101,8 +101,12 @@ export async function loadV213FreshTop20Report(
   }
 
   // Sealed views without qualified bottleneck authority still allow the
-  // certified seven-field sealed report; legacy views keep their flow.
+  // certified seven-field sealed report; pointerless unsealed single-report
+  // writes carry no publication authority under the takeover policy.
   const report = await readV213Top20Report(view);
+  if (view.integrity === "legacy" && view.runId === null && report) {
+    return INSUFFICIENT_EVIDENCE_MESSAGE;
+  }
   if (!report) {
     if (view.integrity === "sealed") return INSUFFICIENT_EVIDENCE_MESSAGE;
     return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";

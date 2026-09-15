@@ -8,6 +8,8 @@ import {
   V213_NO_FUTURE_ORDER_ESTIMATE,
 } from "../src/v213/top20-report";
 import { asKv, MemoryKv } from "./fake-kv";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
+import sealContract from "../../config/v213-r75-publication-mode-v1.json";
 
 const SENTINEL = "UNADMITTED_ACQUISITION_SENTINEL_999999";
 const SYNTHETIC_FORGED_ACQUISITION = JSON.stringify({
@@ -30,7 +32,7 @@ function applyForgedAcquisitionMetadata(publicKv: MemoryKv) {
   publicKv.values.set("v213:acquisition-summary:latest", SYNTHETIC_FORGED_ACQUISITION);
 }
 
-function fixture(opts: { withReport?: boolean; overrides?: Record<string, string> } = {}) {
+async function fixture(opts: { withReport?: boolean; overrides?: Record<string, string> } = {}) {
   const publicKv = new MemoryKv();
   const privateKv = new MemoryKv();
   const privateSpy = vi.spyOn(privateKv, "get");
@@ -50,8 +52,17 @@ function fixture(opts: { withReport?: boolean; overrides?: Record<string, string
         retrieved_at: stamp, provider_scope: "public_only", owner_watchlist_inherited: false,
       })),
     };
-    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
-    publicKv.values.set("last_successful_pipeline_timestamp", stamp);
+    const RUN_ID = "20260910T100000Z-123456789abc";
+    const TX_ID = "1".repeat(32);
+    const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
+    bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = stamp;
+    bodies.find(([key]) => key === "v213:top20-report:latest")![1] = JSON.stringify(report);
+    bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({ schema_version: 1, transaction_id: TX_ID, run_id: RUN_ID, payload_digests: Object.fromEntries(sealContract.payload_names.map((name) => [name, "a".repeat(64)])), claimed_at: stamp });
+    const seal = await buildSnapshotSeal({ run_id: RUN_ID, transaction_id: TX_ID, generated_at: stamp, public_data_as_of: stamp }, bodies);
+    for (const [key, body] of bodies) publicKv.values.set(`snapshot:${RUN_ID}:${key}`, body);
+    publicKv.values.set(`snapshot:${RUN_ID}:${SNAPSHOT_SEAL_KEY}`, seal.text);
+    publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 2, run_id: RUN_ID, transaction_id: TX_ID, seal_sha256: seal.sha256, public_data_as_of: stamp, promoted_at: stamp, provider_scope: "public_only", owner_watchlist_inherited: false }));
+
   }
   return {
     publicKv, privateKv, privateSpy,
@@ -64,7 +75,9 @@ function fixture(opts: { withReport?: boolean; overrides?: Record<string, string
   };
 }
 
-async function actualReply(command: string, f = fixture()) {
+async function actualReply(command: string, f?) {
+  if (!f) f = await fixture();
+
   let messages: any[] = [];
   const fetchSpy = vi.fn(async (url: string, init: RequestInit) => {
     expect(url).toBe("https://api.line.me/v2/bot/message/reply");
@@ -93,7 +106,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("LINE caller acquisition metadata isolation and publication refusal", () => {
   it("TOP20 default flex rejects forged acquisition metadata without valid report", async () => {
-    const f = fixture();
+    const f = await fixture();
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("TOP20", f);
     expect(messages.length).toBeGreaterThan(0);
@@ -105,7 +118,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("TOP20 text presentation rejects forged acquisition metadata without valid report", async () => {
-    const f = fixture({ overrides: { V213_LINE_PRESENTATION: "text" } });
+    const f = await fixture({ overrides: { V213_LINE_PRESENTATION: "text" } });
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("TOP20", f);
     expect(messages.length).toBeGreaterThan(0);
@@ -117,7 +130,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("宏觀產業分析 default flex presents unavailable panel with navigation and no forged facts", async () => {
-    const f = fixture();
+    const f = await fixture();
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("宏觀產業分析", f);
     expect(messages.length).toBeGreaterThan(0);
@@ -134,7 +147,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("宏觀產業分析 text presentation presents unavailable text with navigation and no forged facts", async () => {
-    const f = fixture({ overrides: { V213_LINE_PRESENTATION: "text" } });
+    const f = await fixture({ overrides: { V213_LINE_PRESENTATION: "text" } });
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("宏觀產業分析", f);
     expect(messages.length).toBeGreaterThan(0);
@@ -148,7 +161,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("options entry remains OPTION_DATA_UNAVAILABLE despite forged acquisition flags", async () => {
-    const f = fixture();
+    const f = await fixture();
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("期權", f);
     const body = JSON.stringify(messages);
@@ -161,7 +174,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it.each(["宏觀產業分析", "TOP20"])("corrupted pinned snapshot cannot be rescued by direct report or forged metadata for %s", async cmd => {
-    const f = fixture({ withReport: true });
+    const f = await fixture({ withReport: true });
     applyForgedAcquisitionMetadata(f.publicKv);
     f.publicKv.values.set("snapshot:current", "{broken");
     const messages = await actualReply(cmd, f);
@@ -176,7 +189,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("legitimate TOP20 displays genuine tickers and ignores unadmitted candidate sentinel", async () => {
-    const f = fixture({ withReport: true });
+    const f = await fixture({ withReport: true });
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("TOP20", f);
     expect(messages.length).toBeGreaterThan(0);
@@ -189,7 +202,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
   });
 
   it("legitimate macro analysis computes real distribution and withholds forged macro sentinel", async () => {
-    const f = fixture({ withReport: true });
+    const f = await fixture({ withReport: true });
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("宏觀產業分析", f);
     const body = JSON.stringify(messages);

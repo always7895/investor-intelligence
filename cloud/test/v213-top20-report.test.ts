@@ -8,6 +8,7 @@ import { buildV213Top20Messages, v213Top20LineAnswer } from "../src/v213/top20-p
 import { assertLineMessages } from "../src/line-messages";
 import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 import { asKv, MemoryKv } from "./fake-kv";
+import { sealUnboundReport } from "./sealed-report-migration";
 import {
   formatV213Top20Report,
   loadV213FreshTop20Report,
@@ -120,6 +121,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    await sealUnboundReport(kv);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_TOKEN", LINE_CHANNEL_SECRET: "SYNTHETIC_SECRET" } as any);
     const messages: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url, init) => {
@@ -141,6 +143,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     const data = freshReport();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    await sealUnboundReport(kv);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_TOKEN_NOT_REAL", LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_SECRET_NOT_REAL" } as any);
     const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
     const messages: any[] = [];
@@ -233,6 +236,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    await sealUnboundReport(kv);
     const loaded = await loadV213FreshTop20Report(env, parseQuery("Top20"));
     if (!loaded || typeof loaded === "string") throw new Error("EXPECTED_REPORT");
     expect(Object.isFrozen(loaded)).toBe(true);
@@ -242,6 +246,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
       expect(await v213Top20LineAnswer(env, parseQuery(`Top20 ${action} T00 ${data.generated_at}`))).toContain("有效");
     }
     for (const raw of ["{broken", " ".repeat(2097153) + JSON.stringify(data)]) {
+      kv.values.delete("snapshot:current");
       kv.values.set("v213:top20-report:latest", raw);
       expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("未通過驗證");
     }
@@ -251,17 +256,21 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     const data = freshReport();
     const kv = new MemoryKv();
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
-    const save = () => { kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at); };
-    save();
+    const save = async () => {
+      kv.values.set("v213:top20-report:latest", JSON.stringify(data));
+      kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+      await sealUnboundReport(kv);
+    };
+    await save();
     const command = (await evidenceCommand(env)).replace("證據詳情", action);
     expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
-    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; save();
+    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; await save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("內容不符");
     expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("取得時間已過期");
     // Even a correctly hashed manual reference cannot bypass row freshness.
     const staleRowCommand = command.replace(/[a-f0-9]{64}$/, createHash("sha256").update(JSON.stringify(data), "utf8").digest("hex"));
     expect(await v213Top20LineAnswer(env, parseQuery(staleRowCommand))).toContain("取得時間已過期");
-    data.generated_at = new Date(Date.now() + 1000).toISOString(); save();
+    data.generated_at = new Date(Date.now() + 1000).toISOString(); await save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
   });
 
@@ -308,6 +317,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     data.records[0]!.current_order_source_urls = urls;
     data.records[0]!.future_order_source_urls = urls.map(url => `${url}/future`);
     const kv = new MemoryKv(); kv.values.set("v213:top20-report:latest", JSON.stringify(data)); kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    await sealUnboundReport(kv);
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     const result = await v213Top20LineAnswer(env, parseQuery(await evidenceCommand(env)));
     expect(Array.isArray(result)).toBe(true);
@@ -362,6 +372,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     const kv = new MemoryKv(); const data = freshReport();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
+    await sealUnboundReport(kv);
     const env = await freeRelayRequestEnv({ PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_TOKEN", LINE_CHANNEL_SECRET: "SYNTHETIC_SECRET" } as any);
     const calls: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => { calls.push(JSON.parse(String(init.body))); return new Response("{}"); }));
@@ -390,6 +401,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("no five-field fallback");
     kv.values.set("v213:top20-report:latest", JSON.stringify(report()));
     kv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    await sealUnboundReport(kv);
     expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("stale");
     expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("stale");
     expect(await v213Top20ReportAnswer(env, parseQuery("什麼是自由現金流？"))).toBeNull();

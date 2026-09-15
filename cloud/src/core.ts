@@ -217,7 +217,7 @@ export function parseQuery(text: string): ParsedQuery {
     intent = "options";
   } else if (/(持倉|持仓|部位|portfolio|position|我持有|資產配置|资产配置)/i.test(lowered)) {
     intent = "portfolio";
-  } else if (/(排名|評分|评分|score|ranking|top\s*\d*)/i.test(lowered)) {
+  } else if (/(排名|評分|评分|score|ranking|top\s*\d*|前\s*20|排行)/i.test(lowered)) {
     intent = "ranking";
   } else if (/(serenity|aschenbrenner|leopold|來源觀點|来源观点|原始觀點|原始观点)/i.test(lowered)) {
     intent = "source_views";

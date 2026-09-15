@@ -13,6 +13,8 @@ import {
 import { validateTwoYearReturnEvidence, type TwoYearReturnEvidence } from "../src/v213/top20-return-evidence";
 import { buildTop20DeepAnalysisMessages } from "../src/v213/deep-analysis";
 import { asKv, MemoryKv } from "./fake-kv";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
+import sealContract from "../../config/v213-r75-publication-mode-v1.json";
 
 function makeReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   return {
@@ -31,7 +33,7 @@ function makeReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvid
   };
 }
 
-function fixture(opts: { withReturnEvidence?: boolean } = {}) {
+async function fixture(opts: { withReturnEvidence?: boolean } = {}) {
   const publicKv = new MemoryKv();
   const stamp = new Date().toISOString();
   const report = {
@@ -77,11 +79,20 @@ function fixture(opts: { withReturnEvidence?: boolean } = {}) {
     }),
   };
 
-  const save = () => {
-    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
-    publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
+  const save = async () => {
+    const RUN_ID = "20260910T100000Z-123456789abc";
+    const TX_ID = "1".repeat(32);
+    const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
+    bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = report.generated_at;
+    bodies.find(([key]) => key === "v213:top20-report:latest")![1] = JSON.stringify(report);
+    bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({ schema_version: 1, transaction_id: TX_ID, run_id: RUN_ID, payload_digests: Object.fromEntries(sealContract.payload_names.map((name) => [name, "a".repeat(64)])), claimed_at: report.generated_at });
+    const seal = await buildSnapshotSeal({ run_id: RUN_ID, transaction_id: TX_ID, generated_at: report.generated_at, public_data_as_of: report.generated_at }, bodies);
+    for (const [key, body] of bodies) publicKv.values.set(`snapshot:${RUN_ID}:${key}`, body);
+    publicKv.values.set(`snapshot:${RUN_ID}:${SNAPSHOT_SEAL_KEY}`, seal.text);
+    publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 2, run_id: RUN_ID, transaction_id: TX_ID, seal_sha256: seal.sha256, public_data_as_of: report.generated_at, promoted_at: report.generated_at, provider_scope: "public_only", owner_watchlist_inherited: false }));
+
   };
-  save();
+  await save();
 
   class NoPrivateKv extends MemoryKv {
     override async get<T = string>(): Promise<T | null> {
@@ -104,7 +115,9 @@ function fixture(opts: { withReturnEvidence?: boolean } = {}) {
   };
 }
 
-async function reply(command: string, f = fixture()) {
+async function reply(command: string, f?) {
+  if (!f) f = await fixture();
+
   let messages: any[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     expect(url).toBe("https://api.line.me/v2/bot/message/reply");
@@ -134,7 +147,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
   it("renders mobile Flex with 3 readable return boxes, exactly 1 deep button, and no redundant card action", async () => {
-    const f = fixture({ withReturnEvidence: true });
+    const f = await fixture({ withReturnEvidence: true });
     const messages = await reply("Top20", f);
     expect(messages.length).toBe(4); // 4 carousels (20 cards)
 
@@ -169,7 +182,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
   });
 
   it("triggers deep flow from button command with at least 10 sections and explicit bottleneck boundaries", async () => {
-    const f = fixture({ withReturnEvidence: true });
+    const f = await fixture({ withReturnEvidence: true });
     const cards = await reply("Top20", f);
     const deepCommand = cards[0].contents.contents[0].footer.contents.find((c: any) => c.type === "button").action.text;
     expect(deepCommand).toMatch(/^Top20\s+深度化分析\s+T00\s+/);
@@ -221,7 +234,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
   });
 
   it("preserves compatibility commands for direct text queries without card link", async () => {
-    const f = fixture({ withReturnEvidence: true });
+    const f = await fixture({ withReturnEvidence: true });
     const cards = await reply("Top20", f);
     const deepCommand = cards[0].contents.contents[0].footer.contents.find((c: any) => c.type === "button").action.text;
 
@@ -246,7 +259,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     expect(fullSummary).toContain("T19");
   });
 
-  it("validates two-year return candidate evidence and rejects forged/scalar-only/stale values", () => {
+  it("validates two-year return candidate evidence and rejects forged/scalar-only/stale values", async () => {
     const valid = makeReturnEvidence("NVDA");
     const res = validateTwoYearReturnEvidence(valid, "NVDA", "2026-09-10T00:00:00Z");
     expect(res.valid).toBe(true);
@@ -285,8 +298,8 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     expect(negRes.display).toBe("-30.0%");
   });
 
-  it("rejects scalar-only injected return in parseV213Top20Report without evidence", () => {
-    const f = fixture();
+  it("rejects scalar-only injected return in parseV213Top20Report without evidence", async () => {
+    const f = await fixture();
     const badReport = JSON.parse(JSON.stringify(f.report));
     badReport.records[0].two_year_total_return_pct = 50.0;
     // Missing two_year_return_evidence
@@ -294,7 +307,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
   });
 
   it("fails closed on stale data or altered snapshot reference", async () => {
-    const f = fixture();
+    const f = await fixture();
     const cards = await reply("Top20", f);
     const deepCommand = cards[0].contents.contents[0].footer.contents.find((c: any) => c.type === "button").action.text;
 

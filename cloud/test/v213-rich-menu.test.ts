@@ -1,3 +1,4 @@
+import { sealUnboundReport } from "./sealed-report-migration";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { parseQuery } from "../src/core";
@@ -10,7 +11,7 @@ import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../s
 import contract from "../../config/v213-r75-publication-mode-v1.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
-function fixture() {
+async function fixture() {
   const publicKv = new MemoryKv(); const stamp = new Date().toISOString();
   const report = { schema_version: 2, product_version: "2.1.3", generated_at: stamp,
     display_columns: V213_TOP20_DISPLAY_COLUMNS, long_term_definition: "trailing_2y_adjusted_close_cagr",
@@ -22,13 +23,19 @@ function fixture() {
       market_source: "yfinance", profit_source: "sec_edgar", orders_as_of: stamp, orders_confidence: "UNAVAILABLE",
       current_order_source_urls: [], future_order_source_urls: [], numeric_total_order_estimate_prohibited: true,
       retrieved_at: stamp, provider_scope: "public_only", owner_watchlist_inherited: false })) };
-  const save = () => { publicKv.values.set("v213:top20-report:latest", JSON.stringify(report)); publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at); };
-  save();
+  const save = async (opts: { pointer?: false } = {}) => {
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
+    publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
+    await sealUnboundReport(publicKv);
+    if (opts.pointer === false) publicKv.values.set("snapshot:current", "{broken");
+  };
+  await save();
   class NoPrivateReads extends MemoryKv { override async get<T = string>(): Promise<T | null> { throw new Error("PRIVATE_READ_FORBIDDEN"); } }
   return { publicKv, report, save, env: { PUBLIC_CACHE: asKv(publicKv), TENANT_PRIVATE_CACHE: asKv(new NoPrivateReads()),
     EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_SECRET: "EXAMPLE_NOT_REAL", LINE_CHANNEL_ACCESS_TOKEN: "EXAMPLE_NOT_REAL", CURRENT_PUBLIC_DATA_ENABLED: "true" } };
 }
-async function actualReply(command: string, f = fixture()) {
+async function actualReply(command: string, f?) {
+  if (!f) f = await fixture();
   let messages: any[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     expect(url).toBe("https://api.line.me/v2/bot/message/reply");
@@ -86,16 +93,16 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     }
   });
   it("main macro entry 宏觀產業分析 routes to TOP5 overview / shortfall report, never shallow company count as primary research", async () => {
-    const f = fixture();
+    const f = await fixture();
     const body = JSON.stringify(await actualReply("宏觀產業分析", f));
     expect(body).toContain("MACRO_TOP5_SHORTFALL");
     expect(body).toContain("TOP5 准入門檻未達成");
     expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
   });
   it("puts macro limitations before five-group summary and retains all groups in text for compatibility distribution", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.report.records.forEach((row, i) => { row.industry = `產業${String(i).padStart(2, "0")}`; });
-    f.save();
+    await f.save();
     const messages = await actualReply("當輪產業分布", f);
     const body = JSON.stringify(messages);
     expect(body.indexOf("MACRO_PRODUCT_NOT_SEALED")).toBeLessThan(body.indexOf("產業00"));
@@ -110,7 +117,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     assertLineMessages(messages);
   });
   it("computes all 20 industry memberships while withholding unsealed macro values for compatibility distribution", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.publicKv.values.set("v213:source-federation:latest", JSON.stringify({ global_sources: [{ detail: { value: 999999, publication_eligible: false } }] }));
     const body = JSON.stringify(await actualReply("當輪產業分布 文字", f));
     for (const row of f.report.records) expect(body).toContain(row.ticker);
@@ -118,12 +125,12 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     expect(body).not.toContain("999999"); expect(body).toContain("不是市值／營收權重");
   });
   it.each(["bad_pointer", "stale_report", "stale_row", "future_row"])("does not use fresh direct keys to rescue %s", async state => {
-    const f = fixture();
-    if (state === "bad_pointer") f.publicKv.values.set("snapshot:current", "{broken");
+    const f = await fixture();
     if (state === "stale_report") f.report.generated_at = "2000-01-01T00:00:00Z";
     if (state === "stale_row") f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
     if (state === "future_row") f.report.records[0]!.retrieved_at = new Date(Date.now() + 600_000).toISOString();
-    f.save();
+        if (state === "bad_pointer") await f.save({ pointer: false });
+    else await f.save();
     const body = JSON.stringify(await actualReply("當輪產業分布", f));
     expect(body).not.toContain("10/20家"); expect(body).not.toContain("T00");
   });
@@ -144,7 +151,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     expect(replies).toHaveLength(3);
   });
   it("explicit deep-product requests do not silently receive a menu summary", async () => {
-    const result = await v213PublicLineAnswer(fixture().env, parseQuery("宏觀 數據詳報"));
+    const result = await v213PublicLineAnswer((await fixture()).env, parseQuery("宏觀 數據詳報"));
     expect(result).toContain("RESEARCH_PRODUCT_NOT_SEALED");
   });
 });
@@ -164,7 +171,7 @@ describe("options menu: key presence is not qualified availability", () => {
     ["eligible_false", "options:latest", optionRow(NOW(), { eligible: false })],
     ["old_key_name", "latest_options", optionRow(NOW())],
   ])("never claims usability from %s", async (_label, key, payload) => {
-    const f = fixture();
+    const f = await fixture();
     f.publicKv.values.set(key, payload);
     const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
@@ -173,7 +180,7 @@ describe("options menu: key presence is not qualified availability", () => {
   });
 
   it("run-scoped old-run carryover is not qualified availability", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "legacy-carryover-run" }));
     f.publicKv.values.set("snapshot:legacy-carryover-run:options:latest", optionRow(NOW()));
     const body = JSON.stringify(await actualReply("最新期權", f));
@@ -182,7 +189,7 @@ describe("options menu: key presence is not qualified availability", () => {
   });
 
   it("pinned reader is pointer-only for the options menu (no direct-key rescue, no private reads, one mocked reply)", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.publicKv.values.set("options:latest", optionRow(NOW(), { bid: "9.99" }));
     const readKeys: string[] = [];
     const originalGet = f.publicKv.get.bind(f.publicKv);
@@ -198,7 +205,7 @@ describe("options menu: key presence is not qualified availability", () => {
   });
 
   it("sealed round admits no options object even with fresh unsealed keys present", async () => {
-    const f = fixture();
+    const f = await fixture();
     const SEAL_RUN = "20260910T100000Z-123456789abc"; const TX = "1".repeat(32); const TIME = "2026-09-10T10:00:00Z";
     const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
     bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = TIME;

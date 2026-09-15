@@ -1,3 +1,4 @@
+import { sealUnboundReport } from "./sealed-report-migration";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
 import { processAuthorizedLineEvent } from "../src/v211/worker";
@@ -12,7 +13,7 @@ import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../s
 import contract from "../../config/v213-r75-publication-mode-v1.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
-function textFixture(overrides: Record<string, string> = {}) {
+async function textFixture(overrides: Record<string, string> = {}) {
   const publicKv = new MemoryKv();
   const stamp = new Date().toISOString();
   const report = {
@@ -49,11 +50,12 @@ function textFixture(overrides: Record<string, string> = {}) {
       owner_watchlist_inherited: false,
     })),
   };
-  const save = () => {
+  const save = async () => {
     publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
     publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
+    await sealUnboundReport(publicKv);
   };
-  save();
+  await save();
 
   class PrivateForbidden extends MemoryKv {
     override async get<T = string>(): Promise<T | null> {
@@ -78,7 +80,8 @@ function textFixture(overrides: Record<string, string> = {}) {
   };
 }
 
-async function actualReply(command: string, f = textFixture()) {
+async function actualReply(command: string, f?) {
+  if (!f) f = (await textFixture());
   let messages: any[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     expect(url).toBe("https://api.line.me/v2/bot/message/reply");
@@ -122,7 +125,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("main macro entry 宏觀產業分析 in text env routes to shortfall report", async () => {
-    const f = textFixture();
+    const f = await textFixture();
     const messages = await actualReply("宏觀產業分析", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -131,7 +134,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("compatibility industry distribution command retains all groups without silent slicing", async () => {
-    const f = textFixture();
+    const f = await textFixture();
     const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -144,9 +147,9 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("compatibility industry distribution on unavailable returns bounded text messages with navigation", async () => {
-    const f = textFixture();
+    const f = await textFixture();
+    await f.save();
     f.publicKv.values.set("snapshot:current", "{broken");
-    f.save();
     const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -157,9 +160,9 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("compatibility industry distribution on stale returns bounded text messages with navigation", async () => {
-    const f = textFixture();
+    const f = await textFixture();
     f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
-    f.save();
+    await f.save();
     const messages = await actualReply("當輪產業分布", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -170,9 +173,9 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("explicit compatibility distribution 文字 on unavailable forces text output without env text", async () => {
-    const f = textFixture({ V213_LINE_PRESENTATION: "" });
+    const f = await textFixture({ V213_LINE_PRESENTATION: "" });
+    await f.save();
     f.publicKv.values.set("snapshot:current", "{broken");
-    f.save();
     const messages = await actualReply("當輪產業分布 文字", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -183,9 +186,9 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   });
 
   it("explicit compatibility distribution 文字 on stale forces text output without env text", async () => {
-    const f = textFixture({ V213_LINE_PRESENTATION: "" });
+    const f = await textFixture({ V213_LINE_PRESENTATION: "" });
     f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
-    f.save();
+    await f.save();
     const messages = await actualReply("當輪產業分布 文字", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
@@ -198,7 +201,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   it.each(["選單", "期權", "宏觀資料說明", "宏觀產業分析"])(
     "default Flex mode is retained for %s without env text",
     async command => {
-      const f = textFixture({ V213_LINE_PRESENTATION: "" });
+      const f = await textFixture({ V213_LINE_PRESENTATION: "" });
       const messages = await actualReply(command, f);
       expect(messages.every(m => m.type === "flex")).toBe(true);
       if (command === "宏觀產業分析") {
@@ -214,7 +217,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
   );
 
   it("sealed snapshot options in text env preserves OPTION_DATA_NOT_ADMITTED disclosure in text", async () => {
-    const f = textFixture();
+    const f = await textFixture();
     const SEAL_RUN = "20260910T100000Z-123456789abc";
     const TX = "1".repeat(32);
     const TIME = "2026-09-10T10:00:00Z";

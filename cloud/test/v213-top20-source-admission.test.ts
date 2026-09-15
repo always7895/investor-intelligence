@@ -15,6 +15,8 @@ import {
   type TwoYearReturnEvidence,
 } from "../src/v213/top20-return-evidence";
 import { asKv, MemoryKv } from "./fake-kv";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
+import sealContract from "../../config/v213-r75-publication-mode-v1.json";
 
 function makeCandidateReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   return {
@@ -34,7 +36,7 @@ function makeCandidateReturnEvidence(ticker: string, overrides: Partial<TwoYearR
   };
 }
 
-function fixtureWithCandidateEvidence() {
+async function fixtureWithCandidateEvidence() {
   const publicKv = new MemoryKv();
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
@@ -87,8 +89,17 @@ function fixtureWithCandidateEvidence() {
     }),
   };
 
-  publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
-  publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
+  const RUN_ID = "20260910T100000Z-123456789abc";
+  const TX_ID = "1".repeat(32);
+  const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic: key })]);
+  bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = report.generated_at;
+  bodies.find(([key]) => key === "v213:top20-report:latest")![1] = JSON.stringify(report);
+  bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({ schema_version: 1, transaction_id: TX_ID, run_id: RUN_ID, payload_digests: Object.fromEntries(sealContract.payload_names.map((name) => [name, "a".repeat(64)])), claimed_at: report.generated_at });
+  const seal = await buildSnapshotSeal({ run_id: RUN_ID, transaction_id: TX_ID, generated_at: report.generated_at, public_data_as_of: report.generated_at }, bodies);
+  for (const [key, body] of bodies) publicKv.values.set(`snapshot:${RUN_ID}:${key}`, body);
+  publicKv.values.set(`snapshot:${RUN_ID}:${SNAPSHOT_SEAL_KEY}`, seal.text);
+  publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 2, run_id: RUN_ID, transaction_id: TX_ID, seal_sha256: seal.sha256, public_data_as_of: report.generated_at, promoted_at: report.generated_at, provider_scope: "public_only", owner_watchlist_inherited: false }));
+
 
   class NoPrivateKv extends MemoryKv {
     override async get<T = string>(): Promise<T | null> {
@@ -115,7 +126,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptance)", () => {
   it("withholds numeric 2Y total through actual v213PublicLineAnswer card AND deep callers even with well-formed candidate evidence", async () => {
-    const f = fixtureWithCandidateEvidence();
+    const f = await fixtureWithCandidateEvidence();
 
     // 1. Check LINE card answer
     const answer = await v213PublicLineAnswer(f.env, parseQuery("Top20"));
@@ -164,7 +175,7 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
     expect(fullDeepText).toContain("近六個月 +5.0%");
   });
 
-  it("distinguishes candidate arithmetic validation from admission capability", () => {
+  it("distinguishes candidate arithmetic validation from admission capability", async () => {
     const candidate = makeCandidateReturnEvidence("NVDA");
     // Candidate pure math validator returns valid arithmetic
     const mathResult = validateTwoYearReturnCandidate(candidate, "NVDA", "2026-09-10T00:00:00Z");
@@ -183,7 +194,7 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
     expect(display).toBe("UNAVAILABLE");
   });
 
-  it("plain matching digest, health, or status fields do not promote candidate to admitted", () => {
+  it("plain matching digest, health, or status fields do not promote candidate to admitted", async () => {
     // Injecting fake authority fields into candidate evidence
     const pseudoAuthoritative = makeCandidateReturnEvidence("NVDA", {
       ...({
@@ -200,8 +211,8 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
     expect(res.display).toBe("UNAVAILABLE");
   });
 
-  it("rejects unknown/new fields and malformed inputs with bounded UNAVAILABLE without leaking errors", () => {
-    const f = fixtureWithCandidateEvidence();
+  it("rejects unknown/new fields and malformed inputs with bounded UNAVAILABLE without leaking errors", async () => {
+    const f = await fixtureWithCandidateEvidence();
     const badReport = JSON.parse(JSON.stringify(f.report));
     badReport.records[0].unknown_injected_field = "exploit";
     expect(parseV213Top20Report(badReport)).toBeNull();
@@ -214,7 +225,7 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
   });
 
   it("routes button strictly with pinned snapshot reference; no view/pointer race or fallback", async () => {
-    const f = fixtureWithCandidateEvidence();
+    const f = await fixtureWithCandidateEvidence();
     const answer = await v213PublicLineAnswer(f.env, parseQuery("Top20"));
     const button = (answer as any)[0].contents.contents[0].footer.contents.find((c: any) => c.type === "button");
     const cmd = button.action.text;
