@@ -86,13 +86,13 @@ describe("v213 Market Product Financial Safety Suite", () => {
       expect(validated.maxloss).toBeNull();
       expect(validated.annualized_yield).toBeNull();
 
-      const flex = buildOptionContractFlex(validated);
+      const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
       assertLineMessages(flex);
       const flexBody = JSON.stringify(flex);
       expect(flexBody).toContain("UNAVAILABLE（無定義策略）");
       expect(flexBody).not.toContain("129.35");
 
-      const text = buildOptionContractText(validated);
+      const text = buildOptionContractText(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
       assertLineMessages(text);
       const textBody = JSON.stringify(text);
       expect(textBody).toContain("UNAVAILABLE（無定義策略）");
@@ -176,11 +176,11 @@ describe("v213 Market Product Financial Safety Suite", () => {
 
     it("clearly labels delayed and as-of-close quotes as non-executable", () => {
       const delayedQuote = createValidBareQuote({ quote_basis: "delayed" });
-      const text = JSON.stringify(buildOptionContractText(delayedQuote));
+      const text = JSON.stringify(buildOptionContractText(delayedQuote, { evaluatedAt: "2026-09-14T12:00:00Z" }));
       expect(text).toContain("非即時可執行報價");
 
       const asofCloseQuote = createValidBareQuote({ quote_basis: "asof_close" });
-      const flex = JSON.stringify(buildOptionContractFlex(asofCloseQuote));
+      const flex = JSON.stringify(buildOptionContractFlex(asofCloseQuote, { evaluatedAt: "2026-09-14T12:00:00Z" }));
       expect(flex).toContain("非即時可執行報價");
     });
   });

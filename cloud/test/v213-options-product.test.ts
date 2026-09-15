@@ -95,7 +95,7 @@ describe("Options Product Contract and Validation", () => {
     expect(validated.oi).toBeNull();
     expect(validated.volume).toBeNull();
 
-    const flex = buildOptionContractFlex(validated);
+    const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
     const bodyStr = JSON.stringify(flex);
     expect(bodyStr).toContain("Delta: UNAVAILABLE");
@@ -119,14 +119,14 @@ describe("Options Product Contract and Validation", () => {
   });
 
   it("renders valid Flex and text contracts with payoff unavailable on bare quotes", () => {
-    const flex = buildOptionContractFlex(validQuote);
+    const flex = buildOptionContractFlex(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);
     expect(flexStr).toContain("NVDA 2026-09-25 125CALL");
     expect(flexStr).toContain("UNAVAILABLE（無定義策略）");
     expect(flexStr).toContain("Bid $4.20");
 
-    const text = buildOptionContractText(validQuote);
+    const text = buildOptionContractText(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(text);
     const textStr = JSON.stringify(text);
     expect(textStr).toContain("【公開期權合約報價】NVDA");

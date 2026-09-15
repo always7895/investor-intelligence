@@ -48,7 +48,7 @@ describe("actual CLI acquisition metadata at pinned readers", () => {
     expect(await v212Top20ReportAnswer(env, query)).toContain("T19");
     expect(await v213Top20ReportAnswer(env, query)).toContain("T19");
     const cards = await v213Top20LineAnswer(env, query);
-    expect(Array.isArray(cards)).toBe(true); expect(JSON.stringify(cards)).toContain("Top20 證據詳情");
+    expect(Array.isArray(cards)).toBe(true); expect(JSON.stringify(cards)).toContain("深度化分析");
   });
   it.each(["row_clock", "value", "missing", "digest", "status", "future", "calendar", "coercion", "private"])("rejects %s metadata mutation on the last displayed row", mode => {
     const doc = structuredClone(vectors.cases.fresh!.v212); const row = doc.records[19]!;

@@ -78,8 +78,8 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
   };
 }
 
-export function buildOptionContractFlex(quote: OptionContractQuote): LineOutboundMessage[] {
-  const validated = validateOptionContractQuote(quote);
+export function buildOptionContractFlex(quote: OptionContractQuote, validationOptions?: Parameters<typeof validateOptionContractQuote>[1]): LineOutboundMessage[] {
+  const validated = validateOptionContractQuote(quote, validationOptions);
   const bubble = buildOptionContractBubble(validated);
   const messages: LineOutboundMessage[] = [{
     type: "flex",
@@ -93,8 +93,8 @@ export function buildOptionContractFlex(quote: OptionContractQuote): LineOutboun
   return messages;
 }
 
-export function buildOptionContractText(quote: OptionContractQuote): LineOutboundMessage[] {
-  const validated = validateOptionContractQuote(quote);
+export function buildOptionContractText(quote: OptionContractQuote, validationOptions?: Parameters<typeof validateOptionContractQuote>[1]): LineOutboundMessage[] {
+  const validated = validateOptionContractQuote(quote, validationOptions);
   const nonexecTag = validated.quote_basis !== "realtime"
     ? "【非即時可執行報價 · 僅供參考】"
     : "【即時參考報價】";
