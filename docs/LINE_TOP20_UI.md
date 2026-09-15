@@ -43,6 +43,7 @@ The implementation uses the same renderer for authenticated interactive Top20 an
 - 深度化分析移除通用捏造論點（非 AI 公司如 ACGL、BBY 不套用 AI 受惠論點；行業不假冒來自 SEC EDGAR；框架問題標註為「研究待辦 / NOT_A_COMPANY_FINDING」）。
 - 包含至少 10 個獨立區塊與主張層級標記（SUPPORTED / INFERENCE / WITHHELD / 研究待辦），恪守「客戶不等於稀缺、毛利不等於定價權、資本支出不等於瓶頸、社群觀點不等於公司證明」之邊界。
 - 20 LIMITED 候選集之系統瓶頸爆發分數（System Bottleneck Explosion Score）維持 UNAVAILABLE / UNRANKED；目前排位明確標示為舊版候選展示序位，非合格瓶頸排行。
+- 系統瓶頸接管政策（TOP20_BOTTLENECK_TAKEOVER_V1）：當輪快照若核心瓶頸證據不足（INSUFFICIENT_EVIDENCE）或准入標的數為 0，系統直接回傳專屬診斷說明，嚴格禁止回退發布舊版 20 LIMITED 名單，亦不補零至 20 檔。
 - Taiwan timestamps, research-candidate labels and historical-return disclaimer; missing evidence stays missing. Presentation never upgrades LIMITED eligibility.
 - 台北時間、研究候選標籤與歷史報酬聲明；缺少證據仍明示缺少，UI 不會把 LIMITED 升級為已驗證論點。
 

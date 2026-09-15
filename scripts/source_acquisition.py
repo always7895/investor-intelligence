@@ -45,8 +45,12 @@ from source_health import (
     record_success,
 )
 from source_observation import (
+    CompanyFactorBinding,
+    RESEARCH_CLAIM_AUTHORITIES,
+    RESEARCH_CLAIM_ROLES,
     SourceObservationError,
     _hostname_allowed,
+    compute_independent_lineages,
     normalize_observation,
     utc_now,
 )
@@ -144,7 +148,12 @@ def _check_source_eligibility(source: SourceDefinition) -> str | None:
     try:
         ad = adapter(source.source_id)
     except Exception:
-        return "UNREGISTERED_ADAPTER"
+        from provider_runtime_hook import get_provider_capability
+        cap = get_provider_capability(source.source_id)
+        if cap is not None and cap.adapter_factory is not None:
+            ad = cap.adapter_factory()
+        else:
+            return "UNREGISTERED_ADAPTER"
     ad_adapter_id = getattr(ad, "adapter_id", ad.source_id)
     if ad_adapter_id != source.adapter_id:
         return "ADAPTER_ID_MISMATCH"
@@ -184,6 +193,7 @@ class AcquisitionRun:
         source_parsed_hashes: dict[str, list[str]],
         is_synthetic: bool = False,
         synthetic_clock: bool = False,
+        company_factor_bindings: Sequence[CompanyFactorBinding] | None = None,
     ) -> None:
         if _sentinel is not _SENTINEL:
             raise TypeError(
@@ -209,6 +219,7 @@ class AcquisitionRun:
         self._source_parsed_hashes = source_parsed_hashes
         self._is_synthetic = is_synthetic
         self._synthetic_clock = synthetic_clock
+        self._company_factor_bindings = tuple(company_factor_bindings or ())
 
     @property
     def registry(self) -> Registry:
@@ -221,6 +232,30 @@ class AcquisitionRun:
     @property
     def health_states(self) -> dict[str, SourceHealthState]:
         return dict(self._health_states)
+
+    @property
+    def successful_sources(self) -> frozenset[str]:
+        return frozenset(self._successful_sources)
+
+    @property
+    def company_factor_bindings(self) -> tuple[CompanyFactorBinding, ...]:
+        return self._company_factor_bindings
+
+    def company_bindings_for(self, subject: str) -> list[CompanyFactorBinding]:
+        target = str(subject or "").strip().upper()
+        return [
+            b
+            for b in self._company_factor_bindings
+            if str(b.subject or "").strip().upper() == target
+        ]
+
+    def binding_for_factor(self, subject: str, factor: str) -> CompanyFactorBinding | None:
+        target_sub = str(subject or "").strip().upper()
+        target_fac = str(factor or "").strip().lower()
+        for b in self._company_factor_bindings:
+            if str(b.subject or "").strip().upper() == target_sub and str(b.factor or "").strip().lower() == target_fac:
+                return b
+        return None
 
     def candidates_for(self, subject: str) -> list[dict[str, Any]]:
         target = str(subject or "").strip()
@@ -321,6 +356,7 @@ class AcquisitionRun:
                 "completed_at": self._completed_at.isoformat(),
                 "registry_sha256": self._registry_sha256,
                 "candidate_count": len(self._candidates),
+                "company_factor_binding_count": len(self._company_factor_bindings),
                 "successful_source_count": len(self._successful_sources),
                 "skipped_source_counts": dict(self._skipped_counts),
                 "skipped_sources": dict(self._skipped_sources),
@@ -441,6 +477,7 @@ def acquire_runtime_sources(
     successful_sources: set[str] = set()
     verified_hashes: dict[str, set[str]] = {}
     all_candidates: list[dict[str, Any]] = []
+    raw_factor_bindings: list[tuple[Any, dict[str, Any], SourceDefinition]] = []
 
     source_body_hashes: dict[str, str] = {}
     source_schema_hashes: dict[str, str] = {}
@@ -459,6 +496,18 @@ def acquire_runtime_sources(
         if health_state is None:
             health_state = SourceHealthState.initial(source.source_id, now=current_time)
             working_states[source.source_id] = health_state
+
+        from provider_runtime_hook import get_provider_capability
+        cap = get_provider_capability(source.source_id)
+        if cap is not None and not is_synthetic and not cap.is_live_enabled:
+            reason = "CAPABILITY_DISABLED_FOR_LIVE_USE"
+            skipped_sources[source.source_id] = reason
+            skipped_counts[reason] = skipped_counts.get(reason, 0) + 1
+            attempted_sources.append(source.source_id)
+            source_failures[source.source_id] = reason
+            health_state = record_failure(health_state, error_code=reason, now=current_time)
+            working_states[source.source_id] = health_state
+            continue
 
         if not probe_allowed(health_state, now=current_time):
             reason = f"PROBE_DISALLOWED_{health_state.status}"
@@ -527,7 +576,11 @@ def acquire_runtime_sources(
         retrieval_iso = utc_iso(current_time)
 
         # Step 3: Parser
-        ad = adapter(source.source_id)
+        cap = get_provider_capability(source.source_id)
+        if cap is not None and cap.adapter_factory is not None:
+            ad = cap.adapter_factory()
+        else:
+            ad = adapter(source.source_id)
         declared_mime = getattr(ad, "content_type", None)
         if (
             declared_mime is not None
@@ -542,13 +595,21 @@ def acquire_runtime_sources(
                 else "application/json"
             )
         try:
-            batch = parse_source_payload(
-                source.source_id,
-                raw_bytes,
-                content_type=content_type,
-                retrieved_at=retrieval_iso,
-                context={"request_url": endpoint},
-            )
+            if cap is not None and cap.adapter_factory is not None:
+                batch = ad.parse(
+                    raw_bytes,
+                    content_type=content_type,
+                    retrieved_at=retrieval_iso,
+                    context={"request_url": endpoint, "canonical_url": endpoint},
+                )
+            else:
+                batch = parse_source_payload(
+                    source.source_id,
+                    raw_bytes,
+                    content_type=content_type,
+                    retrieved_at=retrieval_iso,
+                    context={"request_url": endpoint},
+                )
         except Exception as exc:
             diag = diagnose_transport_exception(exc)
             code = diag.failure_code if diag.failure_code != "UNKNOWN_ERROR" else "INVALID_PAYLOAD"
@@ -609,6 +670,12 @@ def acquire_runtime_sources(
             working_states[source.source_id] = health_state
             source_failures[source.source_id] = batch_err
             continue
+
+        if cap is not None and cap.evidence_builder is not None:
+            try:
+                cap.evidence_builder(batch, registry_version=str(reg.schema_version))
+            except Exception:
+                pass
 
         # Compute parsed record hashes
         parsed_hashes: list[str] = []
@@ -672,6 +739,10 @@ def acquire_runtime_sources(
             candidate_rows.append(row_dict)
             candidate_hashes.append(row_hash)
 
+            raw_b = record.get("factor_binding") or (record.get("payload") or {}).get("factor_binding")
+            if isinstance(raw_b, Mapping):
+                raw_factor_bindings.append((obs, dict(raw_b), source))
+
         if norm_failed or not candidate_rows:
             health_state = record_failure(
                 health_state,
@@ -690,6 +761,80 @@ def acquire_runtime_sources(
         all_candidates.extend(candidate_rows)
 
     completed_at = _safe_clock(clock_fn, current_time)
+
+    # Build typed company factor bindings from validated observation records
+    company_bindings: list[CompanyFactorBinding] = []
+    bindings_by_key: dict[tuple[str, str], list[tuple[Any, dict[str, Any], SourceDefinition]]] = {}
+    for obs, decl, src in raw_factor_bindings:
+        subj = str(decl.get("subject") or (obs.payload or {}).get("subject") or "").strip().upper()
+        factor = str(decl.get("factor") or "").strip().lower()
+        if subj and factor in {"dependency", "scarcity", "pricing", "capture"}:
+            bindings_by_key.setdefault((subj, factor), []).append((obs, decl, src))
+
+    for (subj, factor), group in bindings_by_key.items():
+        valid_group_items = []
+        for obs, decl, src in group:
+            auth_ok = src.authority_class in RESEARCH_CLAIM_AUTHORITIES.get(obs.claim_type, set())
+            role_ok = obs.evidence_role in RESEARCH_CLAIM_ROLES.get(obs.claim_type, set())
+            obs_payload = obs.payload or {}
+            rights_st = str(obs_payload.get("rights_status") or decl.get("rights_status") or "").strip().upper()
+            terms_st = str(obs_payload.get("terms_review_status") or decl.get("terms_review_status") or src.terms_review_status or "").strip().upper()
+            rights_ok = (
+                rights_st in {"LICENSED_FREE_ACCESS", "PUBLIC_DOMAIN"}
+                and terms_st == "APPROVED"
+            ) or (
+                not rights_st and src.terms_review_status == "approved"
+            )
+            if auth_ok and role_ok and obs.source_health == HEALTHY and obs.freshness_status == "CURRENT" and rights_ok:
+                valid_group_items.append((obs, decl))
+
+        if not valid_group_items:
+            continue
+
+        first_obs, first_decl = valid_group_items[0]
+        cid = str(first_decl.get("claim_id") or (first_obs.payload.get("claim_ids") or [""])[0]).strip()
+        metric = str(first_decl.get("metric") or first_obs.payload.get("metric") or "").strip()
+        unit = str(first_decl.get("unit") or first_obs.payload.get("unit") or "").strip()
+        period = str(first_decl.get("period") or first_obs.payload.get("period") or "").strip()
+        period_type = str(first_decl.get("period_type") or "REALIZED").strip().upper()
+        spec = str(first_decl.get("product_or_spec") or first_obs.payload.get("product_or_spec") or "").strip().upper()
+        region = str(first_decl.get("region") or first_obs.jurisdiction or "GLOBAL").strip().upper()
+        entity = str(first_decl.get("entity") or "").strip() or None
+        security = str(first_decl.get("security") or "").strip() or None
+
+        if period_type in {"FORWARD_GUIDANCE", "TARGET_LONG_TERM", "CONDITIONAL_FORECAST"}:
+            continue
+
+        obs_dicts = [obs.as_json() for obs, _ in valid_group_items]
+        indep_count = compute_independent_lineages(obs_dicts)
+
+        b_id = hashlib.sha256(f"{run_id}:{subj}:{factor}:{cid}".encode("utf-8")).hexdigest()
+        binding = CompanyFactorBinding(
+            schema_version=1,
+            acquisition_run_id=run_id,
+            binding_id=b_id,
+            claim_id=cid,
+            subject=subj,
+            factor=factor,
+            metric=metric,
+            product_or_spec=spec,
+            region=region,
+            unit=unit,
+            period=period,
+            period_type=period_type,
+            entity=entity,
+            security=security,
+            evidence_role=first_obs.evidence_role,
+            source_clock=first_obs.published_at,
+            event_clock=first_obs.payload.get("as_of") or first_obs.published_at,
+            retrieval_clock=first_obs.retrieved_at,
+            canonical_observation_ids=tuple(obs.observation_id for obs, _ in valid_group_items),
+            lineage_ids=tuple(str(obs.payload.get("origin_group") or obs.source_id) for obs, _ in valid_group_items),
+            independent_lineage_count=indep_count,
+            is_test_binding=is_synthetic,
+            comparability=dict(first_decl.get("comparability") or {}),
+        )
+        company_bindings.append(binding)
 
     return AcquisitionRun(
         _sentinel=_SENTINEL,
@@ -713,4 +858,5 @@ def acquire_runtime_sources(
         source_parsed_hashes=source_parsed_hashes,
         is_synthetic=is_synthetic,
         synthetic_clock=synthetic_clock,
+        company_factor_bindings=company_bindings,
     )

@@ -92,6 +92,75 @@ class SourceObservation:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class CompanyFactorBinding:
+    schema_version: int
+    acquisition_run_id: str
+    binding_id: str
+    claim_id: str
+    subject: str
+    factor: str
+    metric: str
+    product_or_spec: str
+    region: str
+    unit: str
+    period: str
+    period_type: str
+    entity: str | None
+    security: str | None
+    evidence_role: str
+    source_clock: str
+    event_clock: str
+    retrieval_clock: str
+    canonical_observation_ids: tuple[str, ...]
+    lineage_ids: tuple[str, ...]
+    independent_lineage_count: int
+    is_test_binding: bool = False
+    comparability: dict[str, Any] = None
+
+    def as_json(self) -> dict[str, Any]:
+        d = asdict(self)
+        if self.comparability is None:
+            d["comparability"] = {}
+        return d
+
+
+def compute_independent_lineages(observations: Iterable[Mapping[str, Any]]) -> int:
+    """Compute connected components of observations to deduplicate same-issuer families.
+
+    Observations sharing origin_group, independence_group, or content_sha256 collapse
+    transitively into a single evidence family.
+    """
+    components: list[set[str]] = []
+    for obs in observations:
+        if not isinstance(obs, Mapping):
+            continue
+        indep = str(obs.get("independence_group") or "").strip()
+        origin = str(obs.get("origin_group") or (obs.get("payload") or {}).get("origin_group") or "").strip()
+        sha = str(obs.get("content_sha256") or "").strip()
+
+        keys: set[str] = set()
+        if indep:
+            keys.add(f"publisher:{indep}")
+        if origin:
+            keys.add(f"origin:{origin}")
+        if sha:
+            keys.add(f"hash:{sha}")
+
+        if not keys:
+            keys.add(f"anon:{id(obs)}")
+
+        matched = [comp for comp in components if comp & keys]
+        for comp in matched:
+            keys.update(comp)
+            components.remove(comp)
+        components.append(keys)
+
+    return len(components)
+
+
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
