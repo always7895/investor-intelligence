@@ -2,7 +2,15 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `d15577d1f459d8e5ada70169da5c998cf8b64dd1`, branch `fix/options-provenance-audit`; origin fetched before component commit. Base commit remains `d15577d1f459d8e5ada70169da5c998cf8b64dd1`. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `dce6d73` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+
+### Milestones (2026-09-15 verified-green baseline session)
+- `cd39599` chore: ignore local build artifacts (InvestorIntelligence.exe, cloud/config/).
+- `7d2a9f9` fix: restore reviewed baseline gates - STATUS publication anchors; ECB fx-reference replay admission completed atomically (registration + evidence builder, reviewed route, catalog row, count pins 101->102 / 116->117); credential store extracted to launcher/SecureCredentialStore.cs (launcher = bridge + reflection stub); worker.ts holds reviewed blob 4e0f78af.
+- `f031c36` fix(cloud): deterministic option-contract test clocks (evaluatedAt pass-through, pinned fixtures) + reader card-label alignment.
+- `dce6d73` feat: bounded statutory and claim-admission modules (carb_typed_section_parser, company_claim_admission_bridge + adapters/company_public_document, provider_runtime_hook) with docs and passing tests.
+- Test state verified at every commit: pytest 1470 passed / 0 failed / 3 skipped; cloud vitest 759 passed / 0 failed / 1 skipped.
+- Uncommitted by policy: unaccepted WIP (bottleneck takeover, global identity/lookup) incl. 4 quarantined test files and WIP diff parked at D:\AI-Handoffs\investor-intelligence\wip-cloud\; WIP-modified docs (BOTTLENECK_RANKING_V1, LINE_TOP20_UI, README) and in-flight scripts (source_acquisition, source_observation, nasdaq_symbol_directory, bottleneck_ranking, bottleneck_claim_admission, global_identity_index) remain in the worktree pending acceptance.
 
 ### Supervisor & Routing Policy (Latest User Override)
 - **Primary Supervisor:** Gemini approved route.
