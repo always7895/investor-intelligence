@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `fc2b99b` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `98f4a18` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts (InvestorIntelligence.exe, cloud/config/).
@@ -23,7 +23,13 @@ Committed HEAD: `fc2b99b` (previous baseline `d15577d`), branch `fix/options-pro
 ### Milestones (2026-09-15 session 3: bottleneck takeover & global lookup re-integration)
 - `fc2b99b` feat(v213): sealed bottleneck-policy lane (qualified sealed report -> bounded 1..20 projection with bound reference; sealed view without qualified authority -> certified seven-field sealed report, else INSUFFICIENT_EVIDENCE; legacy views keep certified flow); strict two-variant deep-analysis admission; non-hijacking global_equity_lookup intent + v211 worker intercept (worker.ts/qa.ts untouched); 4 quarantined tests restored (checksum-verified); gitignore += cloud/*.local.toml, HOTFIX-REFS.json.
 - Test state: vitest 784 passed / 2 residual / 1 skipped (787); pytest 1470 passed / 0 failed / 3 skipped.
-- Residual (blocked on arbitration, FAIL-CLOSED by design): v213-bottleneck-takeover-review "DEFECT 1 RED (authorized caller, raw legacy-20, no new key)" and "ALL TOP20 aliases" demand INSUFFICIENT_EVIDENCE on pointerless raw-key legacy views; committed pre-migration suites (v213-acquisition-isolation "legitimate TOP20", v213-top20-source-admission "Top20" card, v213-top20-review-acceptance, v213-top20-deep-flow) demand SERVE on the identical raw-key view shape (same entry, same fixture class). Both cannot simultaneously hold; committed suites protected per "no breakage of the 759" intolerance, so the 2 new raw-view assertions remain red pending acceptance decision (update pre-migration suites or prioritize takeover). Sealed-bundle semantics are fully green for both sides.
+- Residual (session-3 ledger, RESOLVED by session-4 `98f4a18`): 2 raw-view takeover assertions conflicted with committed pre-migration serve semantics; arbitrator ruled takeover authoritative - pointerless raw writes now fail closed, pre-migration fixtures migrated to sealed bundles, both assertions green.
+
+### Milestones (2026-09-15 session 4: raw-view contract arbitration)
+- `98f4a18` fix(v213): unsealed pointerless raw-key seven-field writes now fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative; sealed-object-integrity + pointer-last mandatory). Ranking intent extended with 前20/排行 so every Top20 alias is policy-gated.
+- Test fixtures migrated to sealed run-bound snapshots (verbatim re-packaging via cloud/test/sealed-report-migration.ts) in 7 pre-migration suites incl. the 4 named. v213-bottleneck-takeover-review DEFECT 1 RED + ALL TOP20 aliases now PASS - the session-3 residual conflict ledger entry is RESOLVED by arbitration.
+- Test state: vitest **786 passed / 0 failed / 1 skipped (787)**; pytest **1470 passed / 0 failed / 3 skipped**.
+- Invariants: cloud/src/worker.ts byte-frozen at reviewed blob 4e0f78af; cloud/src/qa.ts untouched; zero network to real providers; no production mutations.
 ### Supervisor & Routing Policy (Latest User Override)
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
