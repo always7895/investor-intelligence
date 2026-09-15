@@ -1,6 +1,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { requirePublicCitation as safeCitation } from "./public-citation";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
+import { parseV213BottleneckReport, type V213BottleneckReport } from "./bottleneck-report";
 import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
 
 /**
@@ -12,22 +13,26 @@ import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
  * Never inherits generic AI beneficiary, pricing or customer claims onto individual companies.
  */
 export function buildTop20DeepAnalysisMessages(
-  report: V213Top20Report,
+  report: V213Top20Report | V213BottleneckReport,
   ticker: string,
 ): LineOutboundMessage[] {
-  const validated = parseV213Top20Report(report);
-  const row = validated?.records.find(item => item.ticker === ticker.toUpperCase());
+  // Strict two-variant admission: certified top20 report first, then the
+  // bottleneck policy report; anything else still throws REPORT_CONTEXT_INVALID.
+  const top20 = parseV213Top20Report(report as unknown);
+  const bottleneck = top20 ? null : parseV213BottleneckReport(report as unknown);
+  const validated = top20 ?? bottleneck;
+  const row: any = validated?.records?.find((item: any) => item.ticker === ticker.toUpperCase());
   if (!validated || !row) throw new Error("REPORT_CONTEXT_INVALID");
 
-  const currentUrls = [...new Set(row.current_order_source_urls.map(safeCitation))];
-  const futureUrls = [...new Set(row.future_order_source_urls.map(safeCitation))];
+  const currentUrls = [...new Set(((row.current_order_source_urls ?? []) as string[]).map(safeCitation))];
+  const futureUrls = [...new Set(((row.future_order_source_urls ?? []) as string[]).map(safeCitation))];
 
   // Return evidence audit: candidate arithmetic is distinguished from authoritative return admission.
   // Numeric 2Y total return is WITHHELD in actual deep callers; shows explicit UNAVAILABLE until authoritative
   // source authority, currency, original body digest, and identity/role bindings are coordinated and reviewed.
   const returnDisplay = "UNAVAILABLE（2年總報酬來源權威與核驗契約待協調驗收，依政策扣留數值；不逆推年化、不用未還原收盤價冒充）";
 
-  const percent = (value: number | null) => (value === null ? "未提供" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`);
+  const percent = (value: number | null | undefined) => (value === null || value === undefined ? "未提供" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`);
 
   const blocks: string[] = [
     // Header & Meta
@@ -44,7 +49,7 @@ export function buildTop20DeepAnalysisMessages(
     `• 價值鏈層級：依具體標的之實際業務為準；不預設特定概念或伺服器模組層級\n` +
     `• 瓶頸角色分類：【UNPROVEN / 未證實瓶頸】（非單一供應商 SINGLE_SOURCE 或實質半寡占 SEMI_MONOPOLY）\n` +
     `• 主張核對（Claim Audit）：\n` +
-    `  - [SUPPORTED] 公司代號 ${row.ticker}、名稱「${row.name}」為當輪快照記錄之公開研究標的；財務資料來源為 ${row.profit_source}。\n` +
+    `  - [SUPPORTED] 公司代號 ${row.ticker}、名稱「${row.name}」為當輪快照記錄之公開研究標的；財務資料來源為 ${row.profit_source ?? "未標註（候選快照口徑）"}。\n` +
     `  - [WITHHELD] 核心供應鏈瓶頸地位：未通過多來源獨立驗證。現有 20 LIMITED 候選集之核心瓶頸優勢因子均為 0 或已扣留；有客戶關係或供貨不等於具備不可替代之稀缺性（Customers aren't scarcity）。\n` +
     `  - [研究待辦 / NOT_A_COMPANY_FINDING] 個股價值鏈定位與瓶頸卡位假說：需具備逐標的專屬價值鏈研究與獨立一級佐證，不從行業標籤逕行推論。`,
 
@@ -81,11 +86,11 @@ export function buildTop20DeepAnalysisMessages(
     `五、合約、訂單、資本支出、產能與客戶證據 / Contracts, Orders, CapEx, Capacity & Customer Evidence\n` +
     `• 快照記載現有訂單：${row.current_orders}\n` +
     `• 快照記載未來展望：${row.future_orders_estimate}\n` +
-    `• 訂單基準日期：${row.orders_as_of || "未揭露"}｜來源信心：${row.orders_confidence}\n` +
+    `• 訂單基準日期：${row.orders_as_of || "未揭露"}｜來源信心：${row.orders_confidence ?? "未標註（候選快照口徑）"}\n` +
     `• 主張核對（Claim Audit）：\n` +
     `  - 客戶名單不等於稀缺性（Customers aren't scarcity）。供貨予特定客戶僅代表已獲供應商代碼，不代表供貨份額具排他性。\n` +
     `  - 合約約束力缺口：缺少逐筆訂單條款、取消與退單條件、交付驗收期程及違約罰則；剩餘履約義務（RPO）不等於未來必然落袋利潤，亦不得與已認列營收重複相加。\n` +
-    `  - 禁止推估訂單總額規則：${row.numeric_total_order_estimate_prohibited ? "已啟用嚴格禁止任意推估總額門檻，不以模型生成假想訂單池。" : "未啟用。"}\n` +
+    `  - 禁止推估訂單總額規則：已啟用嚴格禁止任意推估總額門檻，不以模型生成假想訂單池。\n` +
     `  - [研究待辦 / NOT_A_COMPANY_FINDING] 逐季訂單履約與客戶集中度拆解：尚待公開審計資料補齊。`,
 
     // URL citations broken into fine-grained blocks to ensure no section overflows

@@ -4,6 +4,11 @@ import { validateTwoYearReturnCandidate, validateTwoYearReturnEvidence, type Two
 import type { StorageEnv } from "../storage";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { ParsedQuery } from "../core";
+import {
+  INSUFFICIENT_EVIDENCE_MESSAGE,
+  bottleneckReportToTop20Report,
+  readV213BottleneckReport,
+} from "./bottleneck-report";
 
 export function v213FieldLocale(value?: string): FieldLocale {
   const locale = (value ?? "bilingual").trim().toLowerCase();
@@ -67,8 +72,41 @@ export async function loadV213FreshTop20Report(
 ): Promise<V213Top20Report | string | null> {
   if (query.ticker || query.intent !== "ranking" || !/(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized)) return null;
   const view = await pinPublicSnapshot(env);
+
+  // Sealed run-bound views are governed by the bottleneck policy: a qualified
+  // sealed bottleneck report is the only publication authority; legacy rows are
+  // never borrowed, and missing or evidence-lacking payloads fail closed.
+  if (view.integrity === "sealed") {
+    const bottleneck = await readV213BottleneckReport(view);
+    if (bottleneck && bottleneck.status === "QUALIFIED" && bottleneck.records.length > 0) {
+    const sealStamp = await view.text(["last_successful_pipeline_timestamp"]);
+    if (!v213TimesAreFresh(env, [sealStamp, bottleneck.generated_at])) {
+      return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+    }
+    if (!v213TimesAreFresh(env, bottleneck.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
+    const sealedReport = bottleneckReportToTop20Report(bottleneck);
+    const sealedRaw = await view.text(["v213:top20-report:latest", "v213:bottleneck-report:latest"]);
+    const sealBytes = new TextEncoder().encode(sealedRaw ?? "");
+    const sealDigest = await crypto.subtle.digest("SHA-256", sealBytes);
+    const sealedSha = Array.from(new Uint8Array(sealDigest), byte => byte.toString(16).padStart(2, "0")).join("");
+    for (const row of sealedReport.records) {
+      Object.freeze(row.current_order_source_urls); Object.freeze(row.future_order_source_urls);
+      if (row.two_year_return_evidence) Object.freeze(row.two_year_return_evidence);
+      Object.freeze(row);
+    }
+    Object.freeze(sealedReport.records); Object.freeze(sealedReport.display_columns); Object.freeze(sealedReport);
+      reportReferences.set(sealedReport, Object.freeze({ snapshot: `s:${view.runId}`, reportSha256: sealedSha }));
+      return sealedReport;
+    }
+  }
+
+  // Sealed views without qualified bottleneck authority still allow the
+  // certified seven-field sealed report; legacy views keep their flow.
   const report = await readV213Top20Report(view);
-  if (!report) return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
+  if (!report) {
+    if (view.integrity === "sealed") return INSUFFICIENT_EVIDENCE_MESSAGE;
+    return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
+  }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   if (!v213TimesAreFresh(env, [stamp, report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
   return report;
@@ -223,7 +261,7 @@ function orderEvidenceSemantics(item: Record<string, unknown>): boolean {
   return Number.isFinite(Date.parse(item.orders_as_of));
 }
 
-export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
+function parseTop20ReportWithBounds(raw: unknown, exactTwenty: boolean): V213Top20Report | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const doc = raw as Record<string, unknown>;
   if (!exactKeys(doc, DOCUMENT_KEYS)) return null;
@@ -238,7 +276,8 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     !Array.isArray(doc.display_columns) ||
     doc.display_columns.length !== V213_TOP20_DISPLAY_COLUMNS.length ||
     doc.display_columns.some((value, index) => value !== V213_TOP20_DISPLAY_COLUMNS[index]) ||
-    !Array.isArray(doc.records) || doc.records.length !== 20
+    !Array.isArray(doc.records) ||
+    (exactTwenty ? doc.records.length !== 20 : doc.records.length < 1 || doc.records.length > 20)
   ) return null;
 
   const records: V213Top20ReportRecord[] = [];
@@ -311,6 +350,16 @@ export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
     records.push(cleanedRecord);
   }
   return { ...(doc as unknown as V213Top20Report), records };
+}
+
+export function parseV213Top20Report(raw: unknown): V213Top20Report | null {
+  return parseTop20ReportWithBounds(raw, true);
+}
+
+// Sealed bottleneck-policy projections may carry 1..20 records; the strict
+// twenty-record contract remains the default entry point.
+export function parseV213BoundedTop20Report(raw: unknown): V213Top20Report | null {
+  return parseTop20ReportWithBounds(raw, false);
 }
 
 function percent(value: number | null): string {

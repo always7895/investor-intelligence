@@ -7,7 +7,7 @@ import { LINE_THEME as T, menuAction } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
-  getV213ReportReference, loadV213FreshTop20Report, parseV213Top20Report, v213FieldLocale,
+  getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
   v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE,
   v213Top20DisplayHeader, v213Top20DisplayValues,
   type V213Top20Env, type V213Top20Report, type V213Top20ReportRecord,
@@ -23,7 +23,11 @@ const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ typ
 
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
 export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLocale = "bilingual", style: "flex" | "text" = "flex"): LineOutboundMessage[] {
-  if (!parseV213Top20Report(report)) throw new Error("V213_PRESENTATION_REPORT_INVALID");
+  // Strict twenty-record contract first; sealed bottleneck-policy projections
+  // (report reference bound) additionally accept 1..20 record payloads.
+  const parsed = parseV213Top20Report(report) ??
+    (getV213ReportReference(report) !== null ? parseV213BoundedTop20Report(report) : null);
+  if (!parsed) throw new Error("V213_PRESENTATION_REPORT_INVALID");
   const reference = getV213ReportReference(report);
   const labels = v213Top20DisplayHeader(locale);
   const localTime = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(report.generated_at));

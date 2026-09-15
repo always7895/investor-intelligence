@@ -13,6 +13,7 @@ import {
   type LineTextMessage,
 } from "../line";
 import { manualOptionQuoteAnswer } from "../manual-options";
+import { handleGlobalEquityLookup } from "../v213/global-equity-lookup";
 import {
   deterministicAnswer,
   generalAnswer,
@@ -210,6 +211,15 @@ export async function processAuthorizedLineEvent(
   // One lazy public view for this authorized question, including asynchronous
   // QA completion. Never memoize on the Worker env shared by other events.
   env = scopePublicSnapshot(env);
+
+  // Global equity quick lookup intercepts well-formed equity queries before the
+  // QA/research lane; the module itself gates intent and shape.
+  const equityLookup = await handleGlobalEquityLookup(env as any, query);
+  if (equityLookup !== null) {
+    if (typeof equityLookup === "string") await replyText(env, event.replyToken, equityLookup);
+    else await replyMessages(env, event.replyToken, equityLookup);
+    return;
+  }
 
   // v213's published report must win over all legacy five-field routes.
   const currentReport = await env[V211_TOP20_REPORT]?.(env, query);

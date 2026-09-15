@@ -83,3 +83,7 @@ Desktop.ini
 # Local build artifacts (never tracked; not release payloads)
 InvestorIntelligence.exe
 cloud/config/
+
+# Local ops and drafts (never tracked)
+cloud/*.local.toml
+HOTFIX-REFS.json
