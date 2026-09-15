@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `0c0a8f3` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `fc2b99b` (previous baseline `d15577d`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts (InvestorIntelligence.exe, cloud/config/).
@@ -19,6 +19,11 @@ Committed HEAD: `0c0a8f3` (previous baseline `d15577d`), branch `fix/options-pro
 - Test state verified at every commit: pytest 1470 passed / 0 failed / 3 skipped; cloud vitest 759 passed / 0 failed / 1 skipped.
 - Uncommitted by policy: unaccepted WIP (bottleneck takeover, global identity/lookup) incl. 4 quarantined test files and WIP diff parked at D:\AI-Handoffs\investor-intelligence\wip-cloud\; WIP-modified docs (BOTTLENECK_RANKING_V1, LINE_TOP20_UI, README) and in-flight scripts (source_acquisition, source_observation, nasdaq_symbol_directory, bottleneck_ranking, bottleneck_claim_admission, global_identity_index) remain in the worktree pending acceptance.
 
+
+### Milestones (2026-09-15 session 3: bottleneck takeover & global lookup re-integration)
+- `fc2b99b` feat(v213): sealed bottleneck-policy lane (qualified sealed report -> bounded 1..20 projection with bound reference; sealed view without qualified authority -> certified seven-field sealed report, else INSUFFICIENT_EVIDENCE; legacy views keep certified flow); strict two-variant deep-analysis admission; non-hijacking global_equity_lookup intent + v211 worker intercept (worker.ts/qa.ts untouched); 4 quarantined tests restored (checksum-verified); gitignore += cloud/*.local.toml, HOTFIX-REFS.json.
+- Test state: vitest 784 passed / 2 residual / 1 skipped (787); pytest 1470 passed / 0 failed / 3 skipped.
+- Residual (blocked on arbitration, FAIL-CLOSED by design): v213-bottleneck-takeover-review "DEFECT 1 RED (authorized caller, raw legacy-20, no new key)" and "ALL TOP20 aliases" demand INSUFFICIENT_EVIDENCE on pointerless raw-key legacy views; committed pre-migration suites (v213-acquisition-isolation "legitimate TOP20", v213-top20-source-admission "Top20" card, v213-top20-review-acceptance, v213-top20-deep-flow) demand SERVE on the identical raw-key view shape (same entry, same fixture class). Both cannot simultaneously hold; committed suites protected per "no breakage of the 759" intolerance, so the 2 new raw-view assertions remain red pending acceptance decision (update pre-migration suites or prioritize takeover). Sealed-bundle semantics are fully green for both sides.
 ### Supervisor & Routing Policy (Latest User Override)
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
