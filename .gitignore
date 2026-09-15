@@ -79,3 +79,7 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Local build artifacts (never tracked; not release payloads)
+InvestorIntelligence.exe
+cloud/config/
