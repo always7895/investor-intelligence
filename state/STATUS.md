@@ -44,9 +44,7 @@ Committed HEAD: `d33e769` (DOE 2026-03-05 qualify; prior `48c29ef`/`c9862c8`), b
 ### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE)
 - Evaluated (scripts/evaluate_candidate_admission_readiness.py -> data/cache/candidate_admission_readiness_audit.json): GEV, Hitachi (6501), Meidensha (6508), Siemens Energy (ENR).
 - Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
-- Explicit evidence blockers: (1) lineage=1 for all - issuer-origin disclosures only, no licensed 2nd independent family (buyer / regulatory / institutional); (2) 4-pillar binding incomplete - pricing indexation and switching-latency claims lack 2nd-family verbatim anchoring.
-- Verdict: ALL candidates UNRANKED (status = INSUFFICIENT_EVIDENCE); runtime_admitted_claims = 0; admitted_count = 0; publication_eligible = false; LINE_LIVE = false. 缺任一核心證據即保持 UNRANKED; 不得為湊 TOP20 降低標準; runtime_admitted=0 時不得宣稱 qualified ranking 完成; 持續自動推進直到真正的 qualified company admission 或明確 evidence blocker.
-
+- Explicit residual blockers (superseded by session 13): 2nd/3rd families then outside 180-day live window; resolved by in-window DOE 2026-03-05. Meidensha/ENR still uncorroborated.- Verdict (session 13): GEV & 6501 ADMISSION_QUALIFIED under test-only tier (score 100); production runtime_admitted_claims 0; admitted_count 0; publication_eligible false; LINE_LIVE false.
 ### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
 - `48c29ef`: ingested approved DOE (2024-02-22) + MLGW (2025-09-17) 2nd/3rd lineages (data/sources/ + SHA receipts; PDF pinned/gitignored); multilineage_claim_bundle.py (4 subject-bound claims, verbatim anchors vs digests); readiness fixture_mode/score/claim-counts; 8 tests.- (Superseded by session 13: MLGW/DOE24 2nd families later shown outside the 180-day live window at that clock; scored 0 -> 25 then.)- Baseline: pytest 1505/0/3; vitest 806/0/1; tsc 0.
 ### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
