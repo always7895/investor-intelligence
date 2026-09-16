@@ -8,7 +8,107 @@ import {
   INSUFFICIENT_EVIDENCE_MESSAGE,
   bottleneckReportToTop20Report,
   readV213BottleneckReport,
+  type V213BottleneckReport,
+  type V213BottleneckRecord,
 } from "./bottleneck-report";
+import evidencePolicy from "../../../config/v213-serenity-evidence-freshness-policy.json";
+
+/** Trusted ALLOWLIST (PRO review 2A/B): evidence class -> freshness-policy key.
+ * The worker re-verifies the report policy binding against its OWN config
+ * copy; reports are never trusted for a self-reported hash.
+ */
+export const EVIDENCE_CLASS_POLICY_KEY: Readonly<Record<string, string>> = {
+  current_state_claim: "current_state_claim_max_age_days",
+  market_observation: "market_observation_max_age_days",
+  market_high_confidence: "market_high_confidence_freshest_max_age_days",
+  structural_claim: "structural_claim_max_age_days",
+};
+
+function canonicalJson(node: unknown): string {
+  if (node === null || typeof node !== "object") return JSON.stringify(node) ?? "null";
+  if (Array.isArray(node)) return `[${node.map(canonicalJson).join(",")}]`;
+  const record = node as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+async function sha256Hex(raw: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Re-verify the report's freshness-policy binding against the trusted
+ * in-worker policy digest (any drift => reject; fail closed).
+ * Exposed for test fixtures that must construct a compliant binding.
+ */
+export async function v213PolicyBindingMatches(
+  binding: { policy_id?: unknown; policy_sha256?: unknown } | null | undefined,
+): Promise<boolean> {
+  if (!binding || typeof binding !== "object") return false;
+  const trusted = evidencePolicy as { policy_id: string };
+  if (binding.policy_id !== trusted.policy_id) return false;
+  if (typeof binding.policy_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(binding.policy_sha256)) return false;
+  return (await sha256Hex(canonicalJson(evidencePolicy))) === binding.policy_sha256;
+}
+
+/** Canonical digest of the trusted freshness-policy config (test fixtures).
+ */
+export async function v213EvidencePolicyDigest(): Promise<string> {
+  return sha256Hex(canonicalJson(evidencePolicy));
+}
+
+export interface EvidenceObservation {
+  /** Source-state date the record's claim describes (never the retrieval time). */
+  freshAsOf: string;
+  /** Corpus capture time of the bundled corpus. */
+  retrievedAt?: string | null;
+  /** Allowlisted evidence class name (see EVIDENCE_CLASS_POLICY_KEY). */
+  evidenceClass?: string;
+  /** Seal time: captures may not be claimed later than assembly. */
+  sealTime?: string | null;
+}
+
+/** Per-record EVIDENCE anchor gate (trusted policy windows). generated_at /
+ * promoted_at / pointer as-of NEVER serve as evidence freshness.
+ */
+export async function v213EvidenceWithinWindow(
+  observations: readonly EvidenceObservation[],
+  observedAt: number = Date.now(),
+): Promise<boolean> {
+  if (observations.length === 0) return false;
+  const trusted = evidencePolicy as Record<string, unknown>;
+  for (const observation of observations) {
+    const policyKey = observation.evidenceClass ? EVIDENCE_CLASS_POLICY_KEY[observation.evidenceClass] : undefined;
+    if (!policyKey) return false;
+    const windowDays = trusted[policyKey];
+    if (typeof windowDays !== "number" || !Number.isFinite(windowDays) || windowDays <= 0) return false;
+    if (typeof observation.freshAsOf !== "string" || !Number.isFinite(Date.parse(observation.freshAsOf))) return false;
+    const asOfMs = Date.parse(observation.freshAsOf);
+    const ageSeconds = (observedAt - asOfMs) / 1000;
+    if (!Number.isFinite(ageSeconds) || ageSeconds < -300 || ageSeconds > windowDays * 86400) return false;
+    const retrievedRaw = observation.retrievedAt ?? "";
+    if (!retrievedRaw || !Number.isFinite(Date.parse(retrievedRaw))) return false;
+    const retrievedMs = Date.parse(retrievedRaw);
+    const retrievedAge = (observedAt - retrievedMs) / 1000;
+    if (Number.isFinite(retrievedAge) && retrievedAge < -300) return false;
+    const sealMs = observation.sealTime ? Date.parse(observation.sealTime) : NaN;
+    if (Number.isFinite(sealMs) && retrievedMs > sealMs + 300_000) return false;
+  }
+  return true;
+}
+
+/** TEST-ONLY evidence disclosure (PRO review C: honesty only, no admission
+ * change; rankings are not production-qualified live evidence).
+ */
+export function v213TestOnlyDisclosure(captureAt: string | null | undefined, locale: FieldLocale = "bilingual"): string {
+  const stamp = captureAt ?? "-";
+  if (locale === "en") {
+    return `[TEST-ONLY display] Rankings below were produced by the licensed test-qualification path; data captured ${stamp} UTC; parts of the original disclosures date from 2025 and have not undergone formal current-state verification.`;
+  }
+  if (locale === "zh-TW") {
+    return `【TEST-ONLY 測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
+  }
+  return `【TEST-ONLY 測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [TEST-ONLY display] Rankings produced by the licensed test-qualification path; captured ${stamp} UTC; parts of the original disclosures date from 2025, formal current-state verification pending.`;
+}
 
 export function v213FieldLocale(value?: string): FieldLocale {
   const locale = (value ?? "bilingual").trim().toLowerCase();
@@ -38,6 +138,7 @@ export async function readV213Top20Report(view: PublicSnapshotView): Promise<V21
   try { value = JSON.parse(raw); } catch { return null; }
   const report = parseV213Top20Report(value);
   if (!report) return null;
+  if (!(await v213PolicyBindingMatches(report.freshness_policy))) return null;
   const bytes = new TextEncoder().encode(raw);
   if (bytes.byteLength > 2097152) return null;
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -83,7 +184,13 @@ export async function loadV213FreshTop20Report(
     if (!v213TimesAreFresh(env, [sealStamp, bottleneck.generated_at])) {
       return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
     }
-    if (!v213TimesAreFresh(env, bottleneck.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
+    if (!(await v213PolicyBindingMatches(bottleneck.freshness_policy))) return V213_STALE_RECORDS_MESSAGE;
+    if (!(await v213EvidenceWithinWindow(bottleneck.records.map(row => ({
+      freshAsOf: row.orders_state_as_of,
+      retrievedAt: row.retrieved_at,
+      evidenceClass: row.evidence_class,
+      sealTime: bottleneck.generated_at,
+    }))))) return V213_STALE_RECORDS_MESSAGE;
     const sealedReport = bottleneckReportToTop20Report(bottleneck);
     const sealedRaw = await view.text(["v213:top20-report:latest", "v213:bottleneck-report:latest"]);
     const sealBytes = new TextEncoder().encode(sealedRaw ?? "");
@@ -116,14 +223,26 @@ export async function loadV213FreshTop20Report(
   }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   if (!v213TimesAreFresh(env, [stamp, report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+  if (!(await v213EvidenceWithinWindow(report.records.map(row => ({
+    freshAsOf: row.orders_state_as_of,
+    retrievedAt: row.retrieved_at,
+    evidenceClass: row.evidence_class,
+    sealTime: report.generated_at,
+  }))))) return V213_STALE_RECORDS_MESSAGE;
   return report;
 }
 
 export async function v213Top20ReportAnswer(env: V213Top20Env, query: ParsedQuery): Promise<string | null> {
   const result = await loadV213FreshTop20Report(env, query);
   if (!result || typeof result === "string") return result;
-  if (!v213TimesAreFresh(env, result.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
-  return formatV213Top20Report(result, v213FieldLocale(env.V213_FIELD_LOCALE));
+  if (!(await v213EvidenceWithinWindow(result.records.map(row => ({
+    freshAsOf: row.orders_state_as_of,
+    retrievedAt: row.retrieved_at,
+    evidenceClass: row.evidence_class,
+    sealTime: result.generated_at,
+  }))))) return V213_STALE_RECORDS_MESSAGE;
+  const locale = v213FieldLocale(env.V213_FIELD_LOCALE);
+  return [v213TestOnlyDisclosure(result.evidence_capture_at, locale), formatV213Top20Report(result, locale)].join("\n");
 }
 
 export interface V213Top20ReportRecord {
@@ -150,6 +269,14 @@ export interface V213Top20ReportRecord {
   future_order_source_urls: string[];
   numeric_total_order_estimate_prohibited: true;
   retrieved_at: string;
+  /** Source-state date the cited disclosure describes (never retrieval time). */
+  orders_state_as_of: string;
+  /** Allowlisted evidence class (EVIDENCE_CLASS_POLICY_KEY). */
+  evidence_class: string;
+  /** Freshness-policy key the class maps to; re-validated against the allowlist. */
+  freshness_policy_key: string;
+  /** Licensed test-only qualification provenance (honesty, not admission). */
+  test_only_admission: true;
   provider_scope: "public_only";
   owner_watchlist_inherited: false;
 }
@@ -158,6 +285,10 @@ export interface V213Top20Report {
   schema_version: 2;
   product_version: "2.1.3";
   generated_at: string;
+  /** Binds the exact freshness-policy bytes (digest), not the filename. */
+  freshness_policy: { policy_id: string; policy_sha256: string };
+  /** Real offline corpus capture time; never re-labelled to the live clock. */
+  evidence_capture_at: string;
   display_columns: [
     "股票",
     "長期投資報酬率（近2年年化）",
@@ -213,6 +344,7 @@ const REQUIRED_RECORD_KEYS = new Set([
   "long_term_window", "short_term_window", "market_source", "profit_source",
   "orders_as_of", "orders_confidence", "current_order_source_urls",
   "future_order_source_urls", "numeric_total_order_estimate_prohibited", "retrieved_at",
+  "orders_state_as_of", "evidence_class", "freshness_policy_key", "test_only_admission",
   "provider_scope", "owner_watchlist_inherited",
 ]);
 
@@ -224,7 +356,8 @@ const OPTIONAL_RECORD_KEYS = new Set([
 const RECORD_KEYS = REQUIRED_RECORD_KEYS;
 
 const DOCUMENT_KEYS = new Set([
-  "schema_version", "product_version", "generated_at", "display_columns",
+  "schema_version", "product_version", "generated_at", "freshness_policy",
+  "evidence_capture_at", "display_columns",
   "long_term_definition", "short_term_definition", "records", "provider_scope",
   "owner_watchlist_inherited",
 ]);
@@ -280,6 +413,11 @@ function parseTop20ReportWithBounds(raw: unknown, exactTwenty: boolean): V213Top
     doc.long_term_definition !== "trailing_2y_adjusted_close_cagr" ||
     doc.short_term_definition !== "trailing_6m_adjusted_close_price_return" ||
     typeof doc.generated_at !== "string" || !Number.isFinite(Date.parse(doc.generated_at)) ||
+    !doc.freshness_policy || typeof doc.freshness_policy !== "object" || Array.isArray(doc.freshness_policy) ||
+    typeof (doc.freshness_policy as { policy_id?: unknown }).policy_id !== "string" ||
+    typeof (doc.freshness_policy as { policy_sha256?: unknown }).policy_sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test((doc.freshness_policy as { policy_sha256: string }).policy_sha256) ||
+    typeof doc.evidence_capture_at !== "string" || !Number.isFinite(Date.parse(doc.evidence_capture_at)) ||
     !Array.isArray(doc.display_columns) ||
     doc.display_columns.length !== V213_TOP20_DISPLAY_COLUMNS.length ||
     doc.display_columns.some((value, index) => value !== V213_TOP20_DISPLAY_COLUMNS[index]) ||
@@ -310,7 +448,11 @@ function parseTop20ReportWithBounds(raw: unknown, exactTwenty: boolean): V213Top
       !orderEvidenceSemantics(item) ||
       item.numeric_total_order_estimate_prohibited !== true ||
       item.provider_scope !== "public_only" || item.owner_watchlist_inherited !== false ||
-      typeof item.retrieved_at !== "string" || !Number.isFinite(Date.parse(item.retrieved_at))
+      typeof item.retrieved_at !== "string" || !Number.isFinite(Date.parse(item.retrieved_at)) ||
+      typeof item.orders_state_as_of !== "string" || !Number.isFinite(Date.parse(item.orders_state_as_of)) ||
+      typeof item.evidence_class !== "string" || EVIDENCE_CLASS_POLICY_KEY[item.evidence_class] === undefined ||
+      item.freshness_policy_key !== EVIDENCE_CLASS_POLICY_KEY[item.evidence_class] ||
+      item.test_only_admission !== true
     ) return null;
 
     let twoYearTotalReturnPct: number | null | undefined = undefined;

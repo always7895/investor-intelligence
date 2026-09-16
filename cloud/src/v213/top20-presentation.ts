@@ -8,7 +8,7 @@ import { parseResearchProductRequest, unavailableResearchProduct } from "./resea
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
-  v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE,
+  v213TimesAreFresh, v213EvidenceWithinWindow, v213TestOnlyDisclosure, V213_STALE_RECORDS_MESSAGE,
   v213Top20DisplayHeader, v213Top20DisplayValues,
   type V213Top20Env, type V213Top20Report, type V213Top20ReportRecord,
 } from "./top20-report";
@@ -113,18 +113,18 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
     if (!reference || detail[2] !== new Date(result.generated_at).toISOString() || detail[3] !== reference.snapshot || detail[4]!.toLowerCase() !== reference.reportSha256) return "Top20 已更新或內容不符，請重新取得卡片；不把另一份報告冒充舊卡片的詳情。";
     const row = result.records.find(record => record.ticker === detail[1]!.toUpperCase());
     if (!row) return "該公司不在本輪 Top20 快照，沒有改用舊資料或其他公司的報告。";
-    if (!v213TimesAreFresh(env, [row.retrieved_at])) return V213_STALE_RECORDS_MESSAGE;
+    if (!(await v213EvidenceWithinWindow([{ freshAsOf: row.orders_state_as_of, retrievedAt: row.retrieved_at, evidenceClass: row.evidence_class, sealTime: result.generated_at }]))) return V213_STALE_RECORDS_MESSAGE;
     try {
       if (companyOnly) {
         const messages: LineOutboundMessage[] = [{ type: "text", text:
-          `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
+          `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${v213TestOnlyDisclosure(result.evidence_capture_at, v213FieldLocale(env.V213_FIELD_LOCALE))}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
         assertLineMessages(messages);
         return messages;
       }
       return buildTop20DeepAnalysisMessages(result, row.ticker);
     } catch { return "公司深度化分析未通過來源或訊息完整性檢查，已拒絕顯示。"; }
   }
-  if (!v213TimesAreFresh(env, result.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
+  if (!(await v213EvidenceWithinWindow(result.records.map(row => ({ freshAsOf: row.orders_state_as_of, retrievedAt: row.retrieved_at, evidenceClass: row.evidence_class, sealTime: result.generated_at }))))) return V213_STALE_RECORDS_MESSAGE;
   const style = /文字|text/i.test(query.normalized) || env.V213_LINE_PRESENTATION === "text" ? "text" : "flex";
   return buildV213Top20Messages(result, v213FieldLocale(env.V213_FIELD_LOCALE), style);
 }

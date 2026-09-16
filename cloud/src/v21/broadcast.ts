@@ -1,6 +1,6 @@
 import type { StorageEnv } from "../storage";
 import { pinPublicSnapshot } from "../v213/public-snapshot";
-import { v213TimesAreFresh } from "../v213/top20-report";
+import { v213TimesAreFresh, v213EvidenceWithinWindow } from "../v213/top20-report";
 import { formatV212Top20Report, parseV212Top20Report } from "../v212/top20-report";
 import { getOwnerPushTarget } from "./owner-storage";
 import { pushText, type V21LinePushEnv } from "./line-push";
@@ -49,8 +49,13 @@ export async function broadcastV21Top20(
   }
 
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
-  if (!v213TimesAreFresh(env, [stamp, report.generated_at,
-    ...report.records.map(row => row.retrieved_at), ...records.map(row => row.generated_at)])) {
+  if (!v213TimesAreFresh(env, [stamp, report.generated_at, ...records.map(row => row.generated_at)])) {
+    return { status: "stale" };
+  }
+  if (!(await v213EvidenceWithinWindow(report.records.map(row => {
+    const withClass = row as { orders_state_as_of?: string; evidence_class?: string };
+    return { freshAsOf: withClass.orders_state_as_of ?? row.retrieved_at, retrievedAt: row.retrieved_at, evidenceClass: withClass.evidence_class, sealTime: report.generated_at };
+  })))) {
     return { status: "stale" };
   }
 

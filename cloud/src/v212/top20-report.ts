@@ -171,6 +171,8 @@ export async function v212Top20ReportAnswer(env: StorageEnv & { V21_TOP20_MAX_AG
     return "目前五欄 Top 20 報告尚未通過本輪 freshness / validation gate，系統不會退回舊欄位格式。";
   }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
+  // Five-field legacy lane keeps its own assembly + retrieval contract; the
+  // persisted-class evidence gate governs V213+ records only.
   if (!v213TimesAreFresh(env, [stamp, report.generated_at, ...report.records.map(row => row.retrieved_at)])) return V213_STALE_RECORDS_MESSAGE;
   return formatV212Top20Report(report);
 }

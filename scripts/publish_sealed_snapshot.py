@@ -41,6 +41,25 @@ LIVE_NOW = None
 LIVE_STAMP = None
 CONTRACT_ID = "v213-stored-snapshot-v1"
 
+# Evidence honesty (P0 freshness incident repair; two-anchor contract):
+#   * EVIDENCE_CAPTURE_AT is the real offline capture time of the bundled corpus.
+#     It is NEVER re-labelled to the live clock.
+#   * orders_state_as_of is the SOURCE-STATE date the cited disclosure describes
+#     (MLGW board packet for GEV; DOE-26 / FY2025-era window for 6501), not the
+#     retrieval time.
+#   * generated_at / promoted_at / pointer anchors keep the real seal (assembly)
+#     time. Pipeline-health freshness and evidence freshness are different gates.
+# The bundled qualification runs the licensed TEST-ONLY fixture path; the report
+# bytes carry that provenance so every reader can disclose it.
+EVIDENCE_CAPTURE_AT = "2026-09-15T11:00:00Z"
+EVIDENCE_POLICY_PATH = ROOT / "config" / "v213-serenity-evidence-freshness-policy.json"
+EVIDENCE_CLASS = "structural_claim"
+EVIDENCE_POLICY_KEY = "structural_claim_max_age_days"
+ORDERS_STATE_AS_OF = {
+    "GEV": "2025-09-17T00:00:00Z",   # MLGW Board of Commissioners packet, sixty-month PO program
+    "6501": "2026-04-03T00:00:00Z",  # DOE-26 demand webinar text + FY2025 reporting window
+}
+
 SEAL_KEY = "v213:snapshot-seal:v1"
 OBJECT_KEYS = [
     "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
@@ -88,6 +107,22 @@ SOURCE_URLS = {
     "GEV": [mlb.MLGW_URL, mlb.DOE26_URL],
     "6501": [mlb.DOE26_URL],
 }
+
+
+def evidence_policy_binding() -> "dict":
+    """Bind the exact freshness-policy bytes (not the filename) into the report.
+
+    Canonical digest mirrors the worker's canonical stringify: sorted keys,
+    minimal separators, unescaped non-ASCII. Readers compare against their own
+    trusted in-worker policy copy; any drift rejects the report.
+    """
+    raw = (ROOT / "config" / "v213-serenity-evidence-freshness-policy.json").read_text(encoding="utf-8")
+    parsed = json.loads(raw)
+    canonical = json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return {
+        "policy_id": parsed["policy_id"],
+        "policy_sha256": _sha(canonical),
+    }
 
 
 def _sha(raw: str) -> str:
@@ -146,6 +181,10 @@ def bottleneck_report(result: dict) -> dict:
             "admission_status": "ADMITTED",
             "score_qualified": True,
             "candidate_assessment_mode": "RANKING_QUALIFIED",
+            "evidence_class": EVIDENCE_CLASS,
+            "freshness_policy_key": EVIDENCE_POLICY_KEY,
+            "orders_state_as_of": ORDERS_STATE_AS_OF[tk],
+            "test_only_admission": True,
             "claims_audit": {
                 "supported_claim_count": int(audit.get("supported_claim_count", 4)),
                 "conflicted_claim_count": int(audit.get("conflicted_claim_count", 0)),
@@ -160,6 +199,8 @@ def bottleneck_report(result: dict) -> dict:
         "publication_status": "NOT_PUBLICATION_QUALIFIED",
         "live_qualification": "DEFERRED",
         "generated_at": GENERATED_AT,
+        "freshness_policy": evidence_policy_binding(),
+        "evidence_capture_at": EVIDENCE_CAPTURE_AT,
         "admitted_count": result["admitted_count"],
         "ranked_count": result["ranked_count"],
         "total_evaluated": result["total_evaluated"],
@@ -195,8 +236,12 @@ def top20_projection(report: dict) -> dict:
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": row["retrieved_at"],
+            "orders_as_of": row["orders_state_as_of"],
+            "orders_state_as_of": row["orders_state_as_of"],
             "orders_confidence": "EVIDENCE_BOUND" if (current_orders and not unavailable) else "UNAVAILABLE",
+            "evidence_class": row["evidence_class"],
+            "freshness_policy_key": row["freshness_policy_key"],
+            "test_only_admission": row["test_only_admission"],
             "current_order_source_urls": row["current_order_source_urls"],
             "future_order_source_urls": row["future_order_source_urls"],
             "numeric_total_order_estimate_prohibited": True,
@@ -208,6 +253,8 @@ def top20_projection(report: dict) -> dict:
         "schema_version": 2,
         "product_version": PRODUCT_VERSION,
         "generated_at": report["generated_at"],
+        "freshness_policy": report["freshness_policy"],
+        "evidence_capture_at": report["evidence_capture_at"],
         "display_columns": display_columns,
         "long_term_definition": "trailing_2y_adjusted_close_cagr",
         "short_term_definition": "trailing_6m_adjusted_close_price_return",
@@ -294,14 +341,17 @@ def main(argv=None) -> None:
         now = datetime.now(timezone.utc).replace(microsecond=0)
         iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         g = globals()
+        # Two-anchor contract: the EVIDENCE anchors (retrieved_at, capture and
+        # source-state dates) are NEVER re-labelled to the live clock. Only the
+        # assembly anchors below (evaluation/seal/promotion) follow the wall clock.
         g["LIVE_NOW"] = now
         g["LIVE_STAMP"] = now.strftime("%Y%m%dT%H%M%SZ")
         g["EVALUATED_AT"] = iso
-        g["RETRIEVED_AT"] = (now - timedelta(seconds=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
         g["GENERATED_AT"] = iso
         g["CLAIMED_AT"] = iso
         g["PROMOTED_AT"] = iso
         g["PUBLISHED_DATA_AS_OF"] = iso
+        assert RETRIEVED_AT == EVIDENCE_CAPTURE_AT, "evidence capture time must stay pinned"
     bodies, meta = build_bodies()
     seal_text, seal_sha = build_seal(bodies, meta)
     pointer = pointer_text(meta, seal_sha)

@@ -33,6 +33,14 @@ export interface V213BottleneckRecord {
   current_order_source_urls?: string[];
   future_order_source_urls?: string[];
   retrieved_at: string;
+  /** Source-state date the cited disclosure describes (never retrieval time). */
+  orders_state_as_of: string;
+  /** Allowlisted evidence class (top20-report EVIDENCE_CLASS_POLICY_KEY). */
+  evidence_class: string;
+  /** Freshness-policy key bound by the class. */
+  freshness_policy_key: string;
+  /** Licensed test-only qualification provenance (honesty, not admission). */
+  test_only_admission: true;
   admission_status: string;
   score_qualified: boolean | null;
   candidate_assessment_mode: string;
@@ -47,6 +55,10 @@ export interface V213BottleneckReport {
   publication_status: "NOT_PUBLICATION_QUALIFIED" | "PUBLICATION_QUALIFIED";
   live_qualification: "DEFERRED" | "ACTIVE";
   generated_at: string;
+  /** Exact freshness-policy binding (digest), re-verified against worker config. */
+  freshness_policy: { policy_id: string; policy_sha256: string };
+  /** Real offline corpus capture time; never re-labelled to the live clock. */
+  evidence_capture_at: string;
   admitted_count: number;
   ranked_count: number;
   total_evaluated: number;
@@ -80,6 +92,11 @@ export function parseV213BottleneckReport(raw: unknown): V213BottleneckReport | 
     doc.product_version !== "2.1.3" ||
     doc.provider_scope !== "public_only" ||
     !isValidIsoDate(doc.generated_at) ||
+    !doc.freshness_policy || typeof doc.freshness_policy !== "object" || Array.isArray(doc.freshness_policy) ||
+    typeof (doc.freshness_policy as { policy_id?: unknown }).policy_id !== "string" ||
+    typeof (doc.freshness_policy as { policy_sha256?: unknown }).policy_sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test((doc.freshness_policy as { policy_sha256: string }).policy_sha256) ||
+    !isValidIsoDate(doc.evidence_capture_at) ||
     !Array.isArray(doc.records) ||
     doc.records.length > 20
   ) {
@@ -153,6 +170,10 @@ export function parseV213BottleneckReport(raw: unknown): V213BottleneckReport | 
       !lineSafeText(r.current_orders, 150) ||
       !lineSafeText(r.future_orders_estimate, 170) ||
       !isValidIsoDate(r.retrieved_at) ||
+      !isValidIsoDate(r.orders_state_as_of) ||
+      typeof r.evidence_class !== "string" ||
+      typeof r.freshness_policy_key !== "string" ||
+      r.test_only_admission !== true ||
       r.admission_status !== "ADMITTED" ||
       r.score_qualified !== true ||
       r.candidate_assessment_mode !== "RANKING_QUALIFIED"
@@ -199,6 +220,10 @@ export function parseV213BottleneckReport(raw: unknown): V213BottleneckReport | 
       current_order_source_urls: Array.isArray(r.current_order_source_urls) ? (r.current_order_source_urls as string[]) : [],
       future_order_source_urls: Array.isArray(r.future_order_source_urls) ? (r.future_order_source_urls as string[]) : [],
       retrieved_at: r.retrieved_at as string,
+      orders_state_as_of: r.orders_state_as_of as string,
+      evidence_class: r.evidence_class as string,
+      freshness_policy_key: r.freshness_policy_key as string,
+      test_only_admission: true,
       admission_status: r.admission_status as string,
       score_qualified: true,
       candidate_assessment_mode: "RANKING_QUALIFIED",
@@ -218,6 +243,8 @@ export function parseV213BottleneckReport(raw: unknown): V213BottleneckReport | 
     publication_status: pubStatus as "NOT_PUBLICATION_QUALIFIED" | "PUBLICATION_QUALIFIED",
     live_qualification: liveQual as "DEFERRED" | "ACTIVE",
     generated_at: doc.generated_at as string,
+    freshness_policy: doc.freshness_policy as { policy_id: string; policy_sha256: string },
+    evidence_capture_at: doc.evidence_capture_at as string,
     admitted_count: admittedCount,
     ranked_count: records.length,
     total_evaluated: totalEvaluated,
@@ -244,12 +271,16 @@ export function bottleneckReportToTop20Report(report: V213BottleneckReport): V21
     short_term_window: "6m_price_return",
     market_source: "yfinance",
     profit_source: "sec_edgar",
-    orders_as_of: r.retrieved_at,
+    orders_as_of: r.orders_state_as_of,
+    orders_state_as_of: r.orders_state_as_of,
     orders_confidence: r.current_orders && r.current_orders !== "未揭露（無可靠公開訂單數字）" ? "EVIDENCE_BOUND" : "UNAVAILABLE",
     current_order_source_urls: Array.isArray(r.current_order_source_urls) ? r.current_order_source_urls : [],
     future_order_source_urls: Array.isArray(r.future_order_source_urls) ? r.future_order_source_urls : [],
     numeric_total_order_estimate_prohibited: true,
     retrieved_at: r.retrieved_at,
+    evidence_class: r.evidence_class,
+    freshness_policy_key: r.freshness_policy_key,
+    test_only_admission: r.test_only_admission,
     provider_scope: "public_only",
     owner_watchlist_inherited: false,
   }));
@@ -258,6 +289,8 @@ export function bottleneckReportToTop20Report(report: V213BottleneckReport): V21
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: report.generated_at,
+    freshness_policy: report.freshness_policy,
+    evidence_capture_at: report.evidence_capture_at,
     display_columns: [
       "股票",
       "長期投資報酬率（近2年年化）",

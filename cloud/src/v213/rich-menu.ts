@@ -2,7 +2,7 @@ import { parseQuery, type ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
-import { loadV213FreshTop20Report, v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
+import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
 import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
 import {
   buildEducationalStrategyFlex,
@@ -169,7 +169,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       return panel("宏觀產業分析", "當輪產業資料不可用 · 短缺通報", errLines, navActions, isText);
     }
 
-    if (!v213TimesAreFresh(env, report.records.map(r => r.retrieved_at))) {
+    if (!(await v213EvidenceWithinWindow(report.records.map(r => ({ freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at }))))) {
       const staleLines = [
         "MACRO_TOP5_SHORTFALL：目前尚無已驗收封存之 TOP5 宏觀產業報告（短缺通報：5/5）。",
         "公司資料過期：" + V213_STALE_RECORDS_MESSAGE,
@@ -237,7 +237,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         "不以舊快照、候選宏觀資料或模型猜測補齊。",
       ], actions, macroText);
     }
-    if (!v213TimesAreFresh(env, report.records.map(r => r.retrieved_at))) {
+    if (!(await v213EvidenceWithinWindow(report.records.map(r => ({ freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at }))))) {
       return panel("當輪產業分布", "公司資料過期", [V213_STALE_RECORDS_MESSAGE], actions, macroText);
     }
     const sectors = new Map<string, string[]>();
