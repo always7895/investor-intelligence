@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `bba00fa` (statutory authority resolution; prior `78d4dee`/`e43be26`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `a78a502` (bottleneck case study; prior `bba00fa`/`78d4dee`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -29,7 +29,7 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 - `f297a43`: 4 optional helper params typed (Awaited<ReturnType<typeof ...>>); tsc --noEmit 0. vitest 786/0/1.
 
 ### Milestones (2026-09-15 session 6: routing resolution & evidence bridge)
-- ROUTING RESOLVED: blocker `qwen-session-tool-registration-blocker-v1.json` (sha 6e7bfe9a) superseded by dedicated Herdr worker `qwen-worker` w4:p2 (tabby-local / Qwen3.8-27B-EXL3-SC5-H6-V6); no SKYRIM context sharing; GLOBAL_QWEN_ACTIVE<=1 task-boundary lock; record state/qwen-routing-resolution-v1.json.
+- ROUTING RESOLVED: blocker (sha 6e7bfe9a) superseded by dedicated Herdr `qwen-worker` w4:p2 (tabby-local / Qwen3.8-27B-EXL3-SC5-H6-V6); no SKYRIM sharing; GLOBAL_QWEN_ACTIVE<=1 lock; record state/qwen-routing-resolution-v1.json.
 - Company Evidence bridge: 12/12; fail-closed (INVALID_JSON / schema / record-count rejects); empty canonical run -> 0 candidates, 0 runtime_admitted_claims, scope RESEARCH_CANDIDATES_ONLY_NOT_ADMITTED, zero network.
 - `da57db6` test(Options): evaluatedAt pinned on validator call sites (16 wall-clock DTE drift failures eliminated).
 - Baseline: pytest 1470/0/3; vitest 786/0/1; tsc 0.
@@ -39,8 +39,8 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 
 
 ### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
-- `78d4dee` feat(v213): options order guidance + Serenity position sizing engine (delta band 0.20-0.30, LIMIT-only mid band, exact yield, liquidity gates, caps 12/4/2%, 20% reserve); 20 tests; no broker mutation. vitest 806/0/1, tsc 0.
-- `bba00fa` docs+test: docs/STATUTORY_AUTHORITY_RESOLUTION_V1.md (11344(a) OAL duties; 17 U.S.C. 102(b) + Georgia v. PUBLIC.RESOURCE.ORG edicts; CCR Title 17 95350-95359.1 approved 2021-12-30 / effective 2022-01-01; 7 typed citations; preserved 404/301 states) + tests/test_statutory_authority_resolution.py (anchors/spans/SHA-256, fail-closed UNPARSEABLE/OTHER, runtime_admitted False, company_admissions 0) + docs/README gate link.
+- `78d4dee` feat(v213): options order guidance + Serenity sizing (delta 0.20-0.30 band, LIMIT-only mid band, exact yield, liquidity gates, caps 12/4/2%, 20% reserve); 20 tests.
+- `bba00fa` docs+test: STATUTORY_AUTHORITY_RESOLUTION_V1 (11344(a); 102(b) + Georgia v. PRO; CCR 17 95350-95359.1 timeline; 7 citations; 404/301 preserved) + enforcement tests.
 - Baseline: pytest 1477/0/3 (1470 + 7); vitest 806/0/1; tsc 0.
 
 - **Primary Supervisor:** Gemini approved route.
@@ -53,6 +53,10 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
   - **Factual Correction:** Stale routing helper failures do **NOT** prove that the underlying Tabby backend model is missing, offline, or misconfigured. Rather, the current session tool registration cannot satisfy the project binding in `.pi/agents/qwen-executor.md`. Model binding configuration is distinct from live verification.
   - No Qwen inference occurred, no task ID was created, 0 tokens consumed. No guard bypass, server spawning, model switching, or Pi configuration repair attempted.
   - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
+
+### Milestones (2026-09-15 session 10: Hitachi Energy bottleneck case study)
+- `a78a502` docs+test: docs/BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md (EHV transformer / bushing / core-steel chokepoint; ~80% US import dependence; 128-144 wk lead times; D1-D5 primary disclosures enumerated incl. Hitachi Energy Sept 2025 $1B NA expansion, Nikkei, US DOE; 4-pillar mapping with business-mix vs shareholder dilution separation (invariant: runtime admitted 0)) + tests/test_bottleneck_case_study_hitachi.py (10 tests: archetype ADMITTED / positive score; mix-dilution does not trigger DESTROYED while real DESTROYED does; switching >=12mo required; each missing pillar -> UNRANKED_INSUFFICIENT_EVIDENCE; real-host obs not runtime-admitted outside fixtures) + docs/README gate link.
+- Baseline: pytest 1487/0/3; vitest 806/0/1; tsc 0; security PASS
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
