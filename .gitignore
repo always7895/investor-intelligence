@@ -91,3 +91,6 @@ HOTFIX-REFS.json
 
 # Vitest cache
 .vitest/
+
+# Sealed-snapshot upload staging (never tracked)
+.kv-stage/
