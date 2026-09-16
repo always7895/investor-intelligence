@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `78d4dee` (options guidance engine; prior `e43be26`/`da57db6`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `bba00fa` (statutory authority resolution; prior `78d4dee`/`e43be26`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -37,6 +37,11 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 ### Milestones (2026-09-15 session 7: security gate placeholder fix)
 - `e43be26` test(claim-bridge): token_urls vector now uses ALLOWED_VALUE_PATTERNS-compliant EXAMPLE_* prefixes (EXAMPLE_TOKEN_123 / EXAMPLE_API_KEY_456 / EXAMPLE_AUTH_789) with matching assertNotIn leak checks. `python scripts/security_check.py` -> SECURITY CHECK PASSED (exit 0). No behavior change; pytest 1470/0/3, vitest 786/0/1 re-confirmed.
 
+
+### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
+- `78d4dee` feat(v213): options order guidance + Serenity position sizing engine (delta band 0.20-0.30, LIMIT-only mid band, exact yield, liquidity gates, caps 12/4/2%, 20% reserve); 20 tests; no broker mutation. vitest 806/0/1, tsc 0.
+- `bba00fa` docs+test: docs/STATUTORY_AUTHORITY_RESOLUTION_V1.md (11344(a) OAL duties; 17 U.S.C. 102(b) + Georgia v. PUBLIC.RESOURCE.ORG edicts; CCR Title 17 95350-95359.1 approved 2021-12-30 / effective 2022-01-01; 7 typed citations; preserved 404/301 states) + tests/test_statutory_authority_resolution.py (anchors/spans/SHA-256, fail-closed UNPARSEABLE/OTHER, runtime_admitted False, company_admissions 0) + docs/README gate link.
+- Baseline: pytest 1477/0/3 (1470 + 7); vitest 806/0/1; tsc 0.
 
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
