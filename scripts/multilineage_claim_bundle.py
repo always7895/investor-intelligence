@@ -380,6 +380,58 @@ def _bundle_for(subject: str, issuer_note: str, issuer_value: Any, *, issuer_url
     }
     dossier["ticker"] = subject
     dossier["as_of"] = "2026-09-15T12:00:00Z"
+    cid_dep, cid_scar, cid_price, cid_cap = (
+        "ML-%s-DEP-01" % subject,
+        "ML-%s-SCAR-01" % subject,
+        "ML-%s-PRICE-01" % subject,
+        "ML-%s-CAP-01" % subject,
+    )
+    dossier["dependency_evidence"]["claim_ids"] = [cid_dep]
+    dossier["scarcity_evidence"]["claim_ids"] = [cid_scar]
+    dossier["pricing_evidence"]["claim_ids"] = [cid_price]
+    dossier["company_capture_evidence"]["claim_ids"] = [cid_cap]
+
+    if subject == "GEV":
+        dossier["supply_constraint_evidence"] = {
+            "lead_time_weeks": 132, "binding_scarcity_proven": True,
+            "binding_constraint": "EHV transformer + bushing manufacturing capacity (Prolec-GE Waukesha).",
+            "assessment": "DOE 2026-03-05: large-transformer lead times 3 -> up to 4 years.",
+        }
+        dossier["backlog_orders_evidence"] = {
+            "current_orders": "Sixty-month power-transformer purchase orders from US utilities (MLGW).",
+            "future_orders_estimate": "$18B grid-modernization demand pipeline (October 2025 segment outlook).",
+            "order_support_type": "BINDING_CONTRACT",
+        }
+        dossier["catalysts_6_12_24m"] = [
+            {"timing": "6M", "catalyst": "Q3-2026 ER grid & poles segment results", "status": "DATED"},
+            {"timing": "12M", "catalyst": "2027 power-transformer capacity expansion completion", "status": "DATED"},
+            {"timing": "24M", "catalyst": "DOE 2025 transformer modernization program awards", "status": "DATED"},
+        ]
+        dossier["thesis_killers"] = [
+            "US trade / tariff policy erodes transformer pricing",
+            "Severe grid-capex recession outdrag of pricing power",
+        ]
+    else:
+        dossier["supply_constraint_evidence"] = {
+            "lead_time_weeks": 132, "binding_scarcity_proven": True,
+            "binding_constraint": "EHV transformer core-steel + bushing capacity, North American demand.",
+            "assessment": "Hitachi Energy: expansion cadence; DOE lead-times 1-4 years.",
+        }
+        dossier["backlog_orders_evidence"] = {
+            "current_orders": "October 2025 segment outlook: FY2025 reporting: order margins for multi-year backlog carry-through.",
+            "future_orders_estimate": "~$2.8B US-dollar expansion program committed (October 2025).",
+            "order_support_type": "BACKLOG",
+        }
+        dossier["catalysts_6_12_24m"] = [
+            {"timing": "6M", "catalyst": "Q3-2026 Hitachi Energy segment results", "status": "DATED"},
+            {"timing": "12M", "catalyst": "North America US-dollar expansion groundbreaking (2026-2027)", "status": "DATED"},
+            {"timing": "24M", "catalyst": "Additional ~$18B US transformer-capacity program", "status": "DATED"},
+        ]
+        dossier["thesis_killers"] = [
+            "FX (yen) headwind persists on grid-transformer revenue",
+            "Core-steel / bushing cost inflation > pricing",
+        ]
+
     return dossier
 
 

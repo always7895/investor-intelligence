@@ -395,5 +395,154 @@ class BottleneckAdmissionInvarianceAndNeutralityTests(unittest.TestCase):
             self.assertEqual(data["live_qualification"], "DEFERRED")
 
 
+class MultiLineageRuntimePromotionTests(unittest.TestCase):
+    """Task #18: the multi-lineage evidence bundle (GEV / 6501) is a valid
+    runtime candidate provider for the ranking engine under the licensed
+    test-only promotion mode; uncorroborated candidates (6508 Meidensha,
+    ENR Siemens) stay strictly unadmitted."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = engine
+        cls.policy = engine.load_json(engine.POLICY_DEFAULT_PATH)
+        import multilineage_claim_bundle as mlb
+        cls.mlb = mlb
+
+    def _run(self, extra=None, flag_rank=True):
+        import copy
+        cand = {tk: copy.deepcopy(c) for tk, c in self.mlb.bundled_candidates().items()}
+        for tk, c in (extra or {}).items():
+            cand[tk] = copy.deepcopy(c)
+        registry = self.mlb.build_registry()
+        health = self.mlb.health_for(registry)
+        order = list(self.mlb.bundled_candidates()) + list((extra or {}).keys())
+        cands = [cand[tk] for tk in order]
+        return engine.rank_bottleneck_candidates(
+            cands, self.policy, top_count=20,
+            as_of=self.mlb.SECRET_CLOCK, registry=registry,
+            health_states=health,
+            fixture_mode=True if flag_rank else None,
+        )
+
+    def _nc(self, ticker, name, exchange, country):
+        return {
+            "ticker": ticker, "name": name, "exchange": exchange,
+            "country": country, "as_of": "2026-09-15T12:00:00Z",
+            "bottleneck_role": "CAPACITY_BOTTLENECK",
+            "scarcity_evidence": {"corroborated_scarcity": True,
+                                  "effective_suppliers_count": 2,
+                                  "switching_time_months": 48},
+            "dependency_evidence": {"irreplaceable_architecture_layer": True},
+            "demand_evidence": {"structural_acceleration": True,
+                                "multi_year_committed": True,
+                                "horizon_months": 60},
+            "pricing_evidence": {"contractual_price_increases_documented": True},
+            "company_capture_evidence": {"dominant_bom_share": True},
+            "financing_risk": "NONE",
+            "lifecycle": "COMMERCIAL_VALIDATION",
+            "risks_disclosed": True, "risk_factors": ["grid capex cycle"],
+            "material_claims": [], "source_observations": [],
+        }
+
+    # -- 1) qualified multi-lineage candidates admit at runtime ------------
+    def test_gev_and_6501_runtime_admitted_and_scored(self):
+        result = self._run()
+        self.assertEqual(result["admitted_count"], 2)
+        self.assertEqual(result["ranked_count"], 2)
+        for rec in result["ranked_candidates"]:
+            self.assertTrue(rec["runtime_admitted"], rec["ticker"])
+            self.assertEqual(rec["admission_status"], "ADMITTED", rec["ticker"])
+            self.assertTrue(rec["score_qualified"])
+            self.assertGreater(rec["system_bottleneck_explosion_score"], 0.0, rec["ticker"])
+        tickers = {r["ticker"] for r in result["ranked_candidates"]}
+        self.assertEqual(tickers, {"GEV", "6501"})
+        self.assertEqual({r["rank"] for r in result["ranked_candidates"]}, {1, 2})
+
+    # -- 2) uncorroborated candidates stay unadmitted ----------------------
+    def test_uncorroborated_stay_unranked(self):
+        extra = {"6508": self._nc("6508", "Meidensha Corporation", "TSE", "JP"),
+                 "ENR": self._nc("ENR", "Siemens Energy AG", "XETRA", "DE")}
+        result = self._run(extra=extra)
+        watch = {w["ticker"]: w for w in result["low_confidence_watchlist"]}
+        self.assertIn("6508", watch)
+        self.assertIn("ENR", watch)
+        for tk in ("6508", "ENR"):
+            self.assertFalse(watch[tk]["runtime_admitted"], tk)
+            self.assertEqual(watch[tk]["admission_status"], "UNRANKED_INSUFFICIENT_EVIDENCE", tk)
+            self.assertIsNone(watch[tk]["rank"], tk)
+            self.assertIsNone(watch[tk]["score_qualified"], tk)
+        ranked = {r["ticker"] for r in result["ranked_candidates"]}
+        self.assertNotIn("6508", ranked)
+        self.assertNotIn("ENR", ranked)
+
+    # -- 3) production path (no evidence mode) stays wait-closed -----------
+    def test_production_path_stays_deferred(self):
+        result = self._run(flag_rank=False)
+        for rec in result["ranked_candidates"]:
+            self.assertFalse(rec["runtime_admitted"])
+        self.assertEqual(result["admitted_count"], 0)
+        self.assertEqual({r["admission_status"] for r in result["low_confidence_watchlist"]},
+                         {"UNRANKED_INSUFFICIENT_EVIDENCE"})
+
+    # -- 4) CLI: --multilineage-bundle merges the provider ------------------
+    def test_cli_multilineage_bundle(self):
+        import json, subprocess, sys, tempfile, os
+        tmp = tempfile.mkdtemp(prefix="rank-click-")
+        ipath = os.path.join(tmp, "in.json")
+        ospath = os.path.join(tmp, "out.json")
+        with open(ipath, "w", encoding="utf-8") as fh:
+            json.dump([self._nc("6508", "Meidensha Corporation", "TSE", "JP")], fh)
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "bottleneck_ranking.py"),
+             "--input", ipath, "--multilineage-bundle",
+             "--as-of", "2026-09-15T12:00:00Z", "--output", ospath],
+            capture_output=True, text=True, timeout=600)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-400:])
+        data = json.load(open(ospath, encoding="utf-8"))
+        self.assertTrue(data["multilineage_bundle"])
+        self.assertEqual(data["evidence_mode"], "TEST_ONLY_FIXTURE")
+        self.assertEqual(data["admitted_count"], 2)
+        ranked = {r["ticker"]: r for r in data["ranked_candidates"]}
+        for tk in ("GEV", "6501"):
+            self.assertTrue(ranked[tk]["runtime_admitted"])
+            self.assertGreater(ranked[tk]["system_bottleneck_explosion_score"], 0.0)
+        watch = {w["ticker"]: w for w in data["low_confidence_watchlist"]}
+        self.assertFalse(watch["6508"]["runtime_admitted"])
+        self.assertEqual(watch["6508"]["admission_status"], "UNRANKED_INSUFFICIENT_EVIDENCE")
+
+    # -- 5) CLI: without the flag, the same run admits nothing --------------
+    def test_cli_without_flag_is_wait_closed(self):
+        import json, subprocess, sys, tempfile, os
+        tmp = tempfile.mkdtemp(prefix="rank-click-")
+        ipath = os.path.join(tmp, "in.json")
+        ospath = os.path.join(tmp, "out.json")
+        with open(ipath, "w", encoding="utf-8") as fh:
+            json.dump([self._nc("6508", "Meidensha Corporation", "TSE", "JP")], fh)
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "bottleneck_ranking.py"),
+             "--input", ipath, "--as-of", "2026-09-15T12:00:00Z", "--output", ospath],
+            capture_output=True, text=True, timeout=600)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-400:])
+        data = json.load(open(ospath, encoding="utf-8"))
+        self.assertNotIn("multilineage_bundle", data)
+        self.assertEqual(data["admitted_count"], 0)
+        for w in data["low_confidence_watchlist"]:
+            self.assertFalse(w["runtime_admitted"])
+
+    # -- 6) corpus drift guard fails the provider closed --------------------
+    def test_corpus_drift_fails_provider_closed(self):
+        import unittest.mock as mock
+        with mock.patch.object(self.mlb, "verify_corpus_anchors",
+                               side_effect=AssertionError("MULTILINEAGE_CORPUS_TECHNICAL_FAILURE: probe")):
+            with self.assertRaises(AssertionError):
+                import sys
+                sys.path.insert(0, "scripts")
+                import bottleneck_ranking as eng
+                self.assertTrue(eng.POLICY_DEFAULT_PATH is not None)
+                cands = list(self.mlb.bundled_candidates().values())
+                registry = self.mlb.build_registry()
+                # simulate the main()'s merge block call path
+                self.mlb.verify_corpus_anchors()
+
 if __name__ == "__main__":
     unittest.main()

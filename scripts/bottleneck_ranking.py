@@ -230,6 +230,7 @@ def evaluate_candidate(
     health_states: Mapping[str, str] | None = None,
     registry: Any = None,
     acquisition_run: Any = None,
+    fixture_mode: bool | None = None,
 ) -> dict[str, Any]:
     """Evaluate one candidate with strict input immutability and fail-closed gates."""
     # Ensure input immutability: deepcopy
@@ -414,6 +415,7 @@ def evaluate_candidate(
         candidate,
         claims_check.get("claims", []),
         ticker,
+        fixture_mode=fixture_mode,
     )
     enforce_factor_claims = bool(policy.get("factor_claim_authority", {}).get("enforce_factor_claim_bindings", False))
     if enforce_factor_claims:
@@ -695,8 +697,15 @@ def rank_bottleneck_candidates(
     health_states: Mapping[str, str] | None = None,
     registry: Any = None,
     acquisition_run: Any = None,
+    fixture_mode: bool | None = None,
 ) -> dict[str, Any]:
-    """Rank candidates with deterministic cardinality, fail-closed admission, and no lexical/zero backfill."""
+    """Rank candidates with deterministic cardinality, fail-closed admission, and no lexical/zero backfill.
+
+    Evidence mode: ``fixture_mode`` is threaded into the claim-admission
+    bridge so licensed test-only promotion can be requested explicitly.
+    The production path (None) keeps the bridge auto-detect rule and defers
+    all real-host candidates with no signed acquisition context.
+    """
     active_policy = policy if policy is not None else load_json(POLICY_DEFAULT_PATH)
     clock = None
     if as_of is not None:
@@ -713,9 +722,16 @@ def rank_bottleneck_candidates(
             health_states=health_states,
             registry=registry,
             acquisition_run=acquisition_run,
+            fixture_mode=fixture_mode,
         )
         for c in candidates
     ]
+
+    # Additive runtime-promotion visibility (no gate or score change):
+    # every evaluated record exposes whether the candidate is an admitted,
+    # runtime-advancing company record under the evidence mode in force.
+    for item in evaluated:
+        item["runtime_admitted"] = item["admission_status"] == "ADMITTED"
 
     admitted = [e for e in evaluated if e["admission_status"] == "ADMITTED"]
     unranked = [e for e in evaluated if e["admission_status"] != "ADMITTED"]
@@ -779,6 +795,9 @@ def main() -> None:
     parser.add_argument("--output", help="Path to output JSON")
     parser.add_argument("--as-of", help="Evaluation clock timestamp")
     parser.add_argument("--top-count", type=int, default=20, help="Max ranked candidates (default 20)")
+    parser.add_argument(
+        "--multilineage-bundle", action="store_true",
+        help="merge the verified multi-lineage evidence bundle as runtime candidates (test-only evidence mode)")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -793,12 +812,31 @@ def main() -> None:
     policy_obj = load_json(policy_path)
     clock = parse_clock(args.as_of) if args.as_of else None
 
+    multilineage = bool(args.multilineage_bundle)
+    registry_obj = None
+    bundle_health = None
+    bundle_candidates: list = []
+    if multilineage:
+        import multilineage_claim_bundle as mlb
+        mlb.verify_corpus_anchors()  # fail closed on corpus drift
+        registry_obj = mlb.build_registry()
+        bundle_health = mlb.health_for(registry_obj)
+        bundle_candidates = list(mlb.bundled_candidates().values())
+
     result = rank_bottleneck_candidates(
-        raw_candidates,
+        list(raw_candidates) + bundle_candidates,
         policy=policy_obj,
         top_count=args.top_count,
         as_of=clock,
+        registry=registry_obj,
+        health_states=bundle_health,
+        fixture_mode=True if multilineage else None,
     )
+    result["evidence_mode"] = "TEST_ONLY_FIXTURE" if multilineage else "PRODUCTION"
+    if multilineage:
+        result["multilineage_bundle"] = True
+        result["multilineage_bundle_candidates"] = [c["ticker"] for c in bundle_candidates]
+        result["promotion_basis"] = "TEST_ONLY_FIXTURE" if result["admitted_count"] else "NONE"
 
     output_str = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
