@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `ad619fe` (runtime promotion path; prior `5706ee2`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `5e42584` (v213 signed-snapshot pointer-last; objects `1331ff8`; code `1c3cfa4`; prior `cb6d5c1`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -39,7 +39,7 @@ Committed HEAD: `ad619fe` (runtime promotion path; prior `5706ee2`), branch `fix
 - `a78a502`: BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1 (EHV / bushings / core steel; 10 tests) + README link.
 
 ### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
-- `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
+- `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.
 
 ### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE)
 - Evaluated (scripts/evaluate_candidate_admission_readiness.py -> data/cache/candidate_admission_readiness_audit.json): GEV, Hitachi (6501), Meidensha (6508), Siemens Energy (ENR).
@@ -48,13 +48,15 @@ Committed HEAD: `ad619fe` (runtime promotion path; prior `5706ee2`), branch `fix
 ### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
 - `48c29ef`: DOE (2024-02) + MLGW (2025-09) 2nd/3rd lineages ingested (data/sources/ + SHA receipts); multilineage_claim_bundle.py (subject-bound claims, digest-anchored); +8 tests.
 ### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
-- `d33e769`: in-window DOE 2026-03-05 webinar ingested + bound (ending the 180-day blocker); roles/values/hashes metrics reconciled; GEV & 6501 ADMISSION_QUALIFIED (test-only, score 100); prod path ADMISSION_DEFER / 0.
+- `d33e769`: in-window DOE 2026-03-05 ingested + bound (180-day blocker ended); roles/values/hashes reconciled; GEV & 6501 ADMISSION_QUALIFIED (test-only, 100); prod DEFER / 0.
 
 
 ### Milestones (2026-09-16 session 14: runtime promotion path)
-- `ad619fe` feat(admission): multilineage bundle -> bottleneck ranking engine. Engine: optional fixture_mode threaded to the claim bridge; additive runtime_admitted flag on every record; CLI --multilineage-bundle (offline corpus re-verify, bundle registry/health, TEST_ONLY_FIXTURE evidence mode; no flag = production, 0 admitted).
-- Result: GEV rank 1 (96.0), 6501 rank 2 (93.0), runtime_admitted True; 6508/ENR UNRANKED, runtime_admitted False; production path (no flag) admits 0. 6 new tests.
-- Baseline: pytest 1511/0/3; vitest 806/0/1; tsc 0; security + canonical gates PASSED.
+- `ad619fe`: multi-lineage bundle -> ranking engine (fixture_mode to bridge; runtime_admitted flag; --multilineage-bundle w/ TEST_ONLY_FIXTURE evidence mode; production admits 0). GEV 96.0 #1 / 6501 93.0 #2 admitted; 6508/ENR UNRANKED. 6 tests.
+
+### Milestones (2026-09-16 session 15: v213 signed snapshot promotion)
+- `1c3cfa4` +7 tests: publish_sealed_snapshot.py generator (offline, fail-closed on drift); the qualified bottleneck report (GEV 96.0 #1 / 6501 93.0 #2, admitted 2, no zero padding) is the authoritative v213:top20-report:latest value + 13-object seal + schema-v2 pointer; loader now fails a PRESENT-but-rejected pointer closed to INSUFFICIENT_EVIDENCE (2 pins tightened).
+- `1331ff8` sealed objects committed pointer-pending; `5e42584` pointer LAST (run 20260915T120000Z-f2a9ea873960, seal d64b21be). Real-loader service (loadV213FreshTop20Report / readV213BottleneckReport) + tamper/pointerless fail-closed verified by 7 tests; vitest 813/0/1, tsc 0, pytest 1511/0/3.
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
