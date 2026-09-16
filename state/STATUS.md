@@ -1,8 +1,21 @@
 # Current state / 目前狀態
 
-## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
+## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS (Continue from Committed-HEAD §1; Local-Only)
 
-Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=true`; `FINAL_RELEASE_COMPLETE=false`.
+CHAPTER 20 — Anchor: pre-prod_local §1 (Committed-HEAD)
+
+Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), branch `fix/options-provenance-audit`, no push. Prior anchor `f287ba0` superseded; range `f287ba0..HEAD` (8 commits, old→new): `6f36323` final release readiness ledger (Task #20, 51/51 PASS); `082d37e` ignore .vitest/; `d61778f` PRODUCTION DEPLOY record (Task #22, operator-authorized, p0=0/p1=0); `5022a91` live-clock sealed rebuild + fail-closed KV sync (14 objects first, `snapshot:current` pointer LAST after live readback sha verify) + 60-min refresh task `InvestorIntelligenceSealedFreshness`; `4d83c1c` sealed objects of run `20260916T092839Z-2873c2ff6316` (seal `dab755d6d32f…`, inert until pointer); `6328d93` pointer-last activation of `2873c2ff` (live PUBLIC_CACHE re-pointed pre-commit); `9f87437` Task #23 freshness repair record (live re-publish + pointer-last re-point; STATUS-only line, no new artifact in git); `bb75aaf` ignore .kv-stage/. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
+
+(M1-sealed-audit complete; NO PULL/REBASE/BRANCH)
+- VERDICT: `HEAD_RESOLVED_SEALED_OK` (Qwen local audit; Pro-route review; single-branch local, no remote).
+- HEAD root authority: latest committed live pointer = run `20260916T092839Z-2873c2ff6316` (sealed commit order: `4d83c1c` objects → `6328d93` pointer activation; `9f87437` added a STATUS line only — no new pointer artifact in git).
+- Seal re-verification (local-only, zero network): committed runs `20260915T120000Z-f2a9ea873960` (seal `d64b21bee620…`) and `20260916T092839Z-2873c2ff6316` (seal `dab755d6d32f…`) both PASS the full chain: 13 data objects per-key sha256 + utf8_bytes match; manifest serialization byte-exact; sha256(manifest) == pointer `seal_sha256`; 14 KV keys all `snapshot:<run>:`-scoped (14th = `v213:snapshot-seal:v1` manifest); claim / `last_successful_pipeline_timestamp` invariants pass; total payload 3867 bytes ≤ 8 MiB. Working-tree tracked files == HEAD blobs (4× `git hash-object` IDENTICAL).
+- Untracked snapshot dirs `20260916T103001Z-20956be0eeca` / `20260916T113001Z-c60285be279e`: local-dirty tally only — each self-consistent, 14 run-scoped keys (seals `782952…` / `68c150…`); zero tracked references ⇒ not HEAD-referenced (no P0 trigger on current evidence).
+- cloud/ untracked tally (no verdict applied): 9 Task #23 live-debug outputs (card.txt; fixed/inspect/live-kv/tickers result dumps; trace.json; seal-error.json; test-parse.js / test-parse.mjs — hardcoded paths, pinned to `2873c2ff`) = candidate-scratch; 7 one-shot `cloud/test/test-*.test.ts` — `test-live-kv` hardcodes the live pointer length (weak as a regression test), `test-seal-error` asserts the exact seal error code (candidate regression value), rest unevaluated. No deletions executed.
+- LIVE pointer / KV: PENDING-LIVE-AUDIT — no live read of `snapshot:current` performed under M1 (no current-session authorization); one authorized read is the next live step.
+- Local-only scope honored: git status / git diff / git show reads only; production surface untouched this session (0 KV writes, 0 deploys, 0 LINE sends, 0 re-points); single writer = local Qwen (Pro route = read-only controller).
+
+> Historical anchor retained (not a new claim): `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code).
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599`/. `7d2a9f9`/. `f031c36`/. `dce6d73`: build-artifact ignore; baseline gates restored (STATUS anchors; worker.ts blob 4e0f78af); deterministic option test clocks; statutory/claim-admission modules.
