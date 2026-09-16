@@ -113,6 +113,8 @@ Preserve these original observations and technical rationale. Their older deploy
 - [SERENITY_PUBLIC_LOGIC_REAUDIT_2](SERENITY_PUBLIC_LOGIC_REAUDIT_2.md)
 - [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — Objective A/B statutory authority & external citation typing resolution (GOV/CCR provenance, 17 U.S.C. 102(b) edicts doctrine, CCR 17 95350-95359.1 timeline, 7 typed citations, preserved 404/301 states)
 - [LINE_GAP_LEDGER](LINE_GAP_LEDGER.md) — 31-item gap ledger across 8 scopes (Messaging, Rich Menu/UX, Investor Intelligence, Production, Security, Reliability, Tests, Latest Specs), format ID/AREA/ISSUE/SEVERITY/CURRENT_STATE/EVIDENCE/ACTION/TEST/RESULT per item; P0s closed at worker `928539bd…` / run `131939Z-897a86efa733`
+- [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health/readiness checks, sealed-snapshot rollback (`scripts/rollback_sealed_snapshot.py`), worker rollback, refresh-task recreation, emergency incident response, secret rotation
+- [PROJECT_GAP_LEDGER](PROJECT_GAP_LEDGER.md) — project-wide gap audit, 13 required areas (PG-01…PG-13), P0s closed; companion to LINE_GAP_LEDGER
 - [V213_ALL_IN_ONE.en](V213_ALL_IN_ONE.en.md)
 - [V213_ALL_IN_ONE.zh-TW](V213_ALL_IN_ONE.zh-TW.md)
 - [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)

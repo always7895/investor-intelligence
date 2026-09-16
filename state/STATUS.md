@@ -8,9 +8,9 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 (M1-sealed-audit complete; NO PULL/REBASE/BRANCH)
 - VERDICT: `HEAD_RESOLVED_SEALED_OK` (local audit; Pro-route read-only review; single local branch).
 - HEAD authority: latest committed live pointer = `20260916T092839Z-2873c2ff6316` (objects `4d83c1c` -> pointer `6328d93`; `9f87437` is STATUS-only).
-- Seal re-verify (zero network): runs `f2a9ea873960` and `2873c2ff6316` PASS the full chain gate (per-key sha256 + utf8 sizes, byte-precise manifest, sha256(manifest) equals pointer, 14 run-scoped keys, claim/timestamp invariants); tracked files == HEAD blobs.
-- Untracked: 3 refresh-task run dirs (103001Z-2095..., 113001Z-c602..., 123001Z-b97a...) self-consistent, not HEAD-referenced; cloud/ 9 debug dumps + 7 one-shot test files = scratch candidates (no verdict, none deleted).
-- LIVE pointer/KV: PENDING-LIVE-AUDIT (no live read under M1).
+- Seal re-verify (zero network): runs `f2a9ea873960` and `2873c2ff6316` PASS the full chain gate (per-key sha + sizes, exact manifest, seal == pointer, claim/timestamp invariants); tracked files == HEAD blobs.
+- Scratch/untracked runs: cleaned 2026-09-16 (Task #27); future run dirs ignored via `state/v213-snapshots/*/`.
+- LIVE pointer/KV: verified by live read under Tasks #26/#27 (sealed chain re-checked; re-pointed by the 60-min refresh task).
 - Local scope: git reads only; 0 KV writes, 0 deploys, 0 LINE sends, 0 re-points.
 
 > Historical anchor retained (not a new claim): `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code).
@@ -31,8 +31,7 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 - `48c29ef` DOE 2024 + MLGW 2025 lineages; `d33e769` in-window DOE 2026-03-05 -> GEV/6501 ADMISSION_QUALIFIED (test-only 100); `ad619fe` ranking promotion path (runtime-admitted flag); `1c3cfa4`/`1331ff8`/`5e42584` v213 signed-snapshot promotion (rejected-pointer -> INSUFFICIENT fail-closed; THEN pointer is LAST).
 
 ### RELEASE READINESS LEDGER (Task #20, 2026-09-16)
-- Full regression: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0.
-- Gates all PASSED: security; canonical RC v2; LINE public boundary; clean-install policy; actions storage policy; final cleanup (no deletion).
+- Full regression at close: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0; security/canonical RC/LINE-boundary/clean-install/actions-storage/final-cleanup all PASSED.
 - Invariants: worker.ts blob == `4e0f78af…` (exact); qa.ts diff 0; snapshot intact (pointer-last `1331ff8`->`5e42584`); Top20 = GEV 96.0 #1 / 6501 93.0 #2, admitted 2, zero padding.
 - Verdict (pre-deploy): evidence sealed + fail-closed COMPLETE; DEPLOYMENT_READY (this lane) = TRUE; superseded by the PRODUCTION DEPLOY block below.
 
@@ -42,6 +41,12 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 - Deployed via `wrangler.v213.production.local.toml`; **worker version 26454143-0acc-4396-a81c-be40d33c6da1** at https://investor-intelligence-v21-owner-line.moon951753.workers.dev.
 - Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
 - Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
+### CURRENT TRUE PRODUCTION ARCHITECTURE (source of truth, 2026-09-16, Task #28)
+- Primary Supervisor: Gemini. Local Writer: Qwen (Herdr persistent `qwen-worker`), single-writer discipline; all lanes local-only, no push.
+- Production live: Cloudflare Worker `investor-intelligence-v21-owner-line` (v `928539bd…`; worker.ts/qa.ts certified) + KV: PUBLIC_CACHE `96142af4…` / TENANT_PRIVATE_CACHE / EPHEMERAL_SECURITY_CACHE (isolated).
+- Active snapshot: run-bound sealed pointer `snapshot:current` in PUBLIC_CACHE; 60-min refresh re-points; committed integrity-proof runs: `897a86efa733` / `2873c2ff6316` / `f2a9ea873960`.
+- Operations: fresh rebuild `publish_sealed_snapshot.py --live-clock`; sync `sync_sealed_snapshot_kv.py` (pointer-last, fail-closed); rollback `rollback_sealed_snapshot.py`; operator runbook `docs/OPERATOR_RUNBOOK.md`; gap ledgers `docs/LINE_GAP_LEDGER.md` / `docs/PROJECT_GAP_LEDGER.md`.
+
 ### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
 - Deployed worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A fixes + options-guidance in production); re-pointed live run `20260916T131939Z-897a86efa733` (seal c9b19102; sync log: objects 14 -> readback 14/14 -> pointer LAST).
 - Live probe (data/cache/probe-live-26.json): fresh Top20 GEV #1 / 6501 #2, no stale notice; SIVE & AAOI -> sealed_snapshot:unadmitted_symbol; ZZZZNOTEXIST -> general_qa, no hijack.
@@ -62,7 +67,7 @@ Priority: company evidence → typed admission → qualified ranking → final a
   4. **Federal Works vs State/Private:** 17 U.S.C. § 105 applies strictly to federal government works. Edicts of government covers binding legal text, not agency web layouts or commentary.
 
 ## Completed Objective B Subtask: CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1
-- **Lane & Scope:** `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1` (Gemini Primary Supervisor fallback execution; `qwen_routed: false`).
+- **Lane & Scope:** `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1` (Gemini Primary Supervisor fallback execution).
 - **Target Files:** `scripts/carb_typed_section_parser.py`, `tests/test_carb_statutory_citations.py`, `docs/CARB_TYPED_SECTION_PARSER.md`.
 - **Evidence Files:** `G/carb-statutory-cross-reference-typing-v1-{evidence.json,security-diff.md,acceptance-summary.txt,clock.json}`.
 - **Core Implementation:**
@@ -86,6 +91,8 @@ Priority: company evidence → typed admission → qualified ranking → final a
 - Historical status snapshot for comparison: `git show 38860e7:state/STATUS.md`.
 
 ## Next runnable action
-- **Session Tool Registration:** Update session tool registration to honor `.pi/agents/qwen-executor.md` so local Qwen executor can be dispatched without error.
-- **Do not replay C:** Its scoped non-admitting implementation and supervisor review already completed. Prior handoff requesting C again is stale. Qwen dispatch awaits current-session Agent registration; no repeated route checks or alternate-model dispatch.
-- **Supervisor Action:** Continue independent semantic auditing without bypass; source admission remains `STILL_BLOCKED_NOT_PASS`.
+- Re-point cadence: 60-min refresh task `InvestorIntelligenceSealedFreshness` (auto; run ids logged in `data/cache`).
+- Evidence residuals: 6508/ENR 2nd-family sources (G-10); DOE 2026-03-05 before its 180-day window closes (G-11).
+- Deferred lanes: R75 production certification chain; device broadcast testing (G-25).
+- No outstanding routing/registration fixes (old session-tool routing text retired as stale 2026-09-16).
+
