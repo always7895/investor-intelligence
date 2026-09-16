@@ -57,25 +57,25 @@ describe("v213 Market Product Financial Safety Suite", () => {
   describe("Review Finding A: Payoff and Strategy Metric Separation", () => {
     it("rejects caller-supplied breakeven on bare option quote", () => {
       const quote = createValidBareQuote({ breakeven: 129.35 });
-      expect(() => validateOptionContractQuote(quote)).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote(quote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
     });
 
     it("rejects caller-supplied maxprofit on bare option quote", () => {
       const quote = createValidBareQuote({ maxprofit: "UNBOUNDED" });
-      expect(() => validateOptionContractQuote(quote)).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote(quote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
 
       const quoteNumeric = createValidBareQuote({ maxprofit: 500.0 });
-      expect(() => validateOptionContractQuote(quoteNumeric)).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote(quoteNumeric, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
     });
 
     it("rejects caller-supplied maxloss on bare option quote", () => {
       const quote = createValidBareQuote({ maxloss: 4.35 });
-      expect(() => validateOptionContractQuote(quote)).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote(quote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
     });
 
     it("rejects caller-supplied annualized_yield on bare option quote", () => {
       const quote = createValidBareQuote({ annualized_yield: 18.5 });
-      expect(() => validateOptionContractQuote(quote)).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote(quote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
     });
 
     it("normalizes absent/null strategy metrics to explicitly UNAVAILABLE in renderer without leaking raw numbers", () => {
@@ -103,10 +103,10 @@ describe("v213 Market Product Financial Safety Suite", () => {
   describe("Review Finding B: Quote Freshness, Calendar DTE & Nonexecutable Markers", () => {
     it("rejects non-strict ISO timestamps or timestamps missing UTC offset", () => {
       const missingOffset = createValidBareQuote({ timestamp: "2026-09-14 12:00:00" });
-      expect(() => validateOptionContractQuote(missingOffset)).toThrow("INVALID_QUOTE_TIMESTAMP");
+      expect(() => validateOptionContractQuote(missingOffset, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_QUOTE_TIMESTAMP");
 
       const dateOnly = createValidBareQuote({ timestamp: "2026-09-14" });
-      expect(() => validateOptionContractQuote(dateOnly)).toThrow("INVALID_QUOTE_TIMESTAMP");
+      expect(() => validateOptionContractQuote(dateOnly, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_QUOTE_TIMESTAMP");
     });
 
     it("rejects invalid evaluatedAt clock instead of silently skipping validation checks", () => {
@@ -189,18 +189,18 @@ describe("v213 Market Product Financial Safety Suite", () => {
   describe("Review Finding C: Source Provenance, Currency, Multiplier & Rights Status", () => {
     it("rejects empty or whitespace-only source and provenance", () => {
       const emptySource = createValidBareQuote({ source: "   " });
-      expect(() => validateOptionContractQuote(emptySource)).toThrow("MISSING_QUOTE_SOURCE");
+      expect(() => validateOptionContractQuote(emptySource, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("MISSING_QUOTE_SOURCE");
 
       const emptyProvenance = createValidBareQuote({ provenance: "" });
-      expect(() => validateOptionContractQuote(emptyProvenance)).toThrow("MISSING_QUOTE_PROVENANCE");
+      expect(() => validateOptionContractQuote(emptyProvenance, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("MISSING_QUOTE_PROVENANCE");
     });
 
     it("enforces explicit currency and multiplier binding", () => {
       const badCurrency = createValidBareQuote({ currency: "EUR" as any });
-      expect(() => validateOptionContractQuote(badCurrency)).toThrow("INVALID_CURRENCY");
+      expect(() => validateOptionContractQuote(badCurrency, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_CURRENCY");
 
       const badMultiplier = createValidBareQuote({ multiplier: 50 as any });
-      expect(() => validateOptionContractQuote(badMultiplier)).toThrow("INVALID_MULTIPLIER");
+      expect(() => validateOptionContractQuote(badMultiplier, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_MULTIPLIER");
     });
 
     it("validates rights_status and flags unadmitted rights", () => {
@@ -209,7 +209,7 @@ describe("v213 Market Product Financial Safety Suite", () => {
       expect(validated.admission_status).toBe("NOT_ADMITTED");
 
       const invalidRights = createValidBareQuote({ rights_status: "bogus_rights" as any });
-      expect(() => validateOptionContractQuote(invalidRights)).toThrow("INVALID_RIGHTS_STATUS");
+      expect(() => validateOptionContractQuote(invalidRights, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_RIGHTS_STATUS");
     });
   });
 

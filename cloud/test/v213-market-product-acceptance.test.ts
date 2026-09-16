@@ -196,16 +196,16 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
 
     it("rejects non-numeric string types and coercions", () => {
       // String instead of finite number
-      expect(() => validateOptionContractQuote({ ...baseQuote, strike: "125.0" as any })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
-      expect(() => validateOptionContractQuote({ ...baseQuote, bid: "" as any })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
-      expect(() => validateOptionContractQuote({ ...baseQuote, dte: null as any })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, strike: "125.0" as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, bid: "" as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, dte: null as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
     });
 
     it("rejects caller-supplied payoff metrics on bare quotes", () => {
-      expect(() => validateOptionContractQuote({ ...baseQuote, breakeven: 129.35 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-      expect(() => validateOptionContractQuote({ ...baseQuote, maxprofit: "UNBOUNDED" as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-      expect(() => validateOptionContractQuote({ ...baseQuote, maxloss: 4.35 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-      expect(() => validateOptionContractQuote({ ...baseQuote, annualized_yield: 12.5 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, breakeven: 129.35 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, maxprofit: "UNBOUNDED" as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, maxloss: 4.35 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+      expect(() => validateOptionContractQuote({ ...baseQuote, annualized_yield: 12.5 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
     });
 
     it("rejects stale timestamps older than allowable freshness policy", () => {

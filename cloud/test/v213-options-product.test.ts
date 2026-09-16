@@ -52,33 +52,33 @@ describe("Options Product Contract and Validation", () => {
   });
 
   it("rejects caller-supplied payoff metrics on bare quotes", () => {
-    expect(() => validateOptionContractQuote({ ...validQuote, maxprofit: "UNBOUNDED" as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-    expect(() => validateOptionContractQuote({ ...validQuote, breakeven: 129.35 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-    expect(() => validateOptionContractQuote({ ...validQuote, maxloss: 4.35 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
-    expect(() => validateOptionContractQuote({ ...validQuote, annualized_yield: 12.0 as any })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+    expect(() => validateOptionContractQuote({ ...validQuote, maxprofit: "UNBOUNDED" as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+    expect(() => validateOptionContractQuote({ ...validQuote, breakeven: 129.35 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+    expect(() => validateOptionContractQuote({ ...validQuote, maxloss: 4.35 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
+    expect(() => validateOptionContractQuote({ ...validQuote, annualized_yield: 12.0 as any }, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED");
   });
 
   it("rejects non-numeric string types without numeric coercion", () => {
     const stringStrike = { ...validQuote, strike: "125.0" as any };
-    expect(() => validateOptionContractQuote(stringStrike)).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
+    expect(() => validateOptionContractQuote(stringStrike, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
 
     const nullBid = { ...validQuote, bid: null as any };
-    expect(() => validateOptionContractQuote(nullBid)).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
+    expect(() => validateOptionContractQuote(nullBid, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STRICT_FINITE_NUMBER_REQUIRED");
   });
 
   it("rejects crossed market quotes where bid exceeds ask", () => {
     const crossed = { ...validQuote, bid: 5.00, ask: 4.00, mid: 4.50 };
-    expect(() => validateOptionContractQuote(crossed)).toThrow("CROSSED_MARKET_QUOTE_BID_EXCEEDS_ASK");
+    expect(() => validateOptionContractQuote(crossed, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("CROSSED_MARKET_QUOTE_BID_EXCEEDS_ASK");
   });
 
   it("rejects negative bid or ask", () => {
     const negativeBid = { ...validQuote, bid: -1.00, ask: 2.00, mid: 0.50 };
-    expect(() => validateOptionContractQuote(negativeBid)).toThrow("INVALID_BID");
+    expect(() => validateOptionContractQuote(negativeBid, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_BID");
   });
 
   it("rejects mid quote that deviates from bid/ask average", () => {
     const badMid = { ...validQuote, mid: 99.00 };
-    expect(() => validateOptionContractQuote(badMid)).toThrow("INVALID_MID_QUOTE_MUST_MATCH_BID_ASK_AVERAGE");
+    expect(() => validateOptionContractQuote(badMid, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("INVALID_MID_QUOTE_MUST_MATCH_BID_ASK_AVERAGE");
   });
 
   it("retains missing Greeks and volume as null without zero coercion", () => {
@@ -105,7 +105,7 @@ describe("Options Product Contract and Validation", () => {
   it("rejects future timestamps beyond allowable tolerance", () => {
     const futureTime = new Date(Date.now() + 600_000).toISOString();
     const futureQuote = { ...validQuote, timestamp: futureTime };
-    expect(() => validateOptionContractQuote(futureQuote)).toThrow("FUTURE_TIMESTAMP_REJECTED");
+    expect(() => validateOptionContractQuote(futureQuote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("FUTURE_TIMESTAMP_REJECTED");
   });
 
   it("rejects stale timestamps older than allowable policy", () => {
