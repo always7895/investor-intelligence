@@ -183,16 +183,15 @@ class CandidateAdmissionReadinessTests(unittest.TestCase):
 # Multi-lineage (task #16): approved DOE + MLGW sources bound alongside issuer
 # ============================================================================
 class MultiLineageBundleReadinessTests(unittest.TestCase):
-    """Approved 2nd/3rd lineages (US_DOE_OFFICE_OF_ELECTRICITY,
-    MLGW_MUNICIPAL_UTILITY_BUYER) for GEV and Hitachi (6501).
+    """Approved 2nd/3rd lineages (US_DOE_OFFICE_OF_ELECTRICITY incl. the
+    2026-03-05 in-window webinar verdict; MLGW_MUNICIPAL_UTILITY_BUYER) for
+    GEV and Hitachi (6501), bound alongside Lineage 1 issuer filings.
 
-    The pipeline's live-corroboration model requires >= 2 independent
-    LIVE-aging families. The approved sources are retained, digested, and
-    claim-bound here; at the pinned evaluation clock the 2nd families are
-    inside the archival window, so the honest status is claims bound
-    (multi-lineage) but corroboration not yet live - readiness ADVANCES
-    (0 -> 25), the lineage requirement (>= 2 families registered) is
-    structurally satisfied, and admission stays closed (runtime admitted 0).
+    At the pinned evaluation clock every claim now has >= 2 LIVE independent
+    families (issuer + DOE 2026-03-05), so under the authorized test-only
+    promotion (fixture mode) the candidates advance to ADMISSION_QUALIFIED;
+    the production caller path (no fixture, no signed snapshot promotion)
+    stays strictly ADMISSION_DEFER with runtime_admitted_claims == 0.
     """
 
     @classmethod
@@ -208,12 +207,32 @@ class MultiLineageBundleReadinessTests(unittest.TestCase):
             cand, registry=self.registry, health_states=self.health,
             now=self.now, fixture_mode=fixture_mode)
 
-    # -- 1) corpus digests hold the verbatim anchors -----------------------
+    def _base_cand(self, ticker, name, exchange, country, *obs):
+        return {
+            "ticker": ticker, "name": name, "exchange": exchange,
+            "country": country, "as_of": "2026-09-15T12:00:00Z",
+            "bottleneck_role": "CAPACITY_BOTTLENECK",
+            "scarcity_evidence": {"corroborated_scarcity": True,
+                                  "effective_suppliers_count": 2,
+                                  "switching_time_months": 48},
+            "dependency_evidence": {"irreplaceable_architecture_layer": True},
+            "demand_evidence": {"structural_acceleration": True},
+            "pricing_evidence": {"contractual_price_increases_documented": True},
+            "company_capture_evidence": {"dominant_bom_share": True},
+            "financing_risk": "NONE",
+            "lifecycle": "COMMERCIAL_VALIDATION",
+            "risks_disclosed": True, "risk_factors": ["grid capex cycle"],
+            "material_claims": [], "source_observations": list(obs),
+        }
+
+    # -- 1) all corpus digests hold the verbatim anchors ------------------
     def test_corpus_anchors_verified(self):
         res = self.mlb.verify_corpus_anchors()
         self.assertTrue(all(res.values()), res)
+        self.assertIn("doe26_demand", res)
+        self.assertIn("doe26_price", res)
 
-    # -- 2) >= 2 independent lineage families registered and bound ---------
+    # -- 2) >= 2 independent live lineage families -------------------------
     def test_lineage_independence_requirement_satisfied(self):
         for ticker in ("GEV", "6501"):
             ev = self._ev(self.mlb.bundled_candidates()[ticker], True)
@@ -226,62 +245,78 @@ class MultiLineageBundleReadinessTests(unittest.TestCase):
             self.assertIn("US_DOE_OFFICE_OF_ELECTRICITY", ids)
             self.assertIn("MLGW_MUNICIPAL_UTILITY_BUYER", ids)
 
-    # -- 3) multi-lineage binding strictly advances readiness ---------------
-    def test_readiness_score_advances_with_multi_lineage(self):
+    # -- 3) multi-lineage binding qualifies GEV and Hitachi ----------------
+    def test_multi_lineage_qualifies_gev_and_hitachi(self):
         for ticker in ("GEV", "6501"):
             pre = self._ev(self.mlb.single_lineage_baseline(ticker), True)
             post = self._ev(self.mlb.bundled_candidates()[ticker], True)
-            self.assertLess(pre["readiness_score"], post["readiness_score"], ticker)
-            self.assertEqual(pre["lineage_count"], 1)
-            self.assertNotIn([b for b in pre["blockers"] if b.startswith("single_lineage")],
-                             post["blockers"])
-            self.assertEqual(post["admission"], BLOCKED,
-                             "advancement must not manufacture admission")
+            self.assertEqual(pre["admission"], BLOCKED)
+            self.assertEqual(post["admission"], QUALIFIED,
+                             "qualification failed: " + repr(post["blockers"]))
+            self.assertLess(pre["readiness_score"], post["readiness_score"])
+            self.assertEqual(post["readiness_score"], 100)
+            self.assertEqual(post["satisfied_pillars"],
+                             ["dependency", "scarcity", "pricing_power", "company_capture"])
+            self.assertEqual(post["claims_status_counts"], {"SUPPORTED": 4})
+            self.assertEqual(post["bridge"]["admission_tier"], "TEST_ONLY")
+            self.assertEqual(post["promotion_basis"], "TEST_ONLY_FIXTURE")
 
-    # -- 4) approved sources are bound by canonical URL + verbatim claim ----
+    # -- 4) approved sources bound by canonical URL + verbatim claims ------
     def test_approved_sources_bound_with_verbatim_claims(self):
         for ticker in ("GEV", "6501"):
             cand = self.mlb.bundled_candidates()[ticker]
             urls = {o["canonical_url"] for o in cand["source_observations"]}
-            self.assertIn(self.mlb.DOE_URL, urls)
+            self.assertIn(self.mlb.DOE_URL, urls)      # 2024-02 archive
+            self.assertIn(self.mlb.DOE26_URL, urls)    # 2026-03-05 in-window
             self.assertIn(self.mlb.MLGW_URL, urls)
             passages = " ".join(o["payload"]["passage"] for o in cand["source_observations"])
-            # scarcity pillar: DOE 443% + MLGW primary partners verbatim
             self.assertIn("443%", passages)
             self.assertIn("primary partners", passages)
-            claims = {c["claim_id"]: c for c in cand["material_claims"]}
-            self.assertEqual(len(claims), 4)
+            self.assertIn("41% since 2019", passages)
+            self.assertIn("single suppliers", passages)
+            self.assertIn("so did the price", passages)
+            self.assertEqual(len(cand["material_claims"]), 4)
+            doe26 = [o for o in cand["source_observations"]
+                     if o["canonical_url"] == self.mlb.DOE26_URL]
+            self.assertGreaterEqual(len(doe26), 4)
 
-    # -- 5) remaining blocker is the explicit live-window corroboration -----
-    def test_2nd_family_stale_at_eval_clock_is_the_remaining_blocker(self):
+    # -- 5) in-window freshness satisfied -> no conflict/unsupported -------
+    def test_in_window_freshness_satisfied(self):
         for ticker in ("GEV", "6501"):
-            ev = self._ev(self.mlb.bundled_candidates()[ticker], True)
-            self.assertEqual(ev["claims_status_counts"], {"SINGLE_SOURCE": 4})
-            self.assertIn("claims_unsupported", ev["blockers"])
-            self.assertFalse(ev["bridge"]["core_admitted"])
-            self.assertEqual(ev["bridge"]["admission_tier"], "UNADMITTED")
+            post = self._ev(self.mlb.bundled_candidates()[ticker], True)
+            self.assertEqual(post["claims_status_counts"], {"SUPPORTED": 4})
+            self.assertNotIn("claims_unsupported", post["blockers"])
+            self.assertNotIn("claims_conflicted", post["blockers"])
+            self.assertEqual(post["admission"], QUALIFIED)
 
-    # -- 6) fixture flag cannot promote without live corroboration ----------
-    def test_fixture_mode_cannot_promote_without_live_corroboration(self):
-        for ticker in ("GEV", "6501"):
-            ev = self._ev(self.mlb.bundled_candidates()[ticker], True)
-            self.assertEqual(ev["admission"], BLOCKED)
-            self.assertEqual(ev["bridge"]["admission_tier"], "UNADMITTED")
-            self.assertEqual(ev["promotion_basis"], "NONE")
-
-    # -- 7) real caller path stays deferred ---------------------------------
-    def test_real_caller_path_stays_deferred(self):
+    # -- 6) production path stays DEFER (no signed snapshot promotion) -----
+    def test_production_caller_path_stays_deferred(self):
         for ticker in ("GEV", "6501"):
             ev = self._ev(self.mlb.bundled_candidates()[ticker], False)
             self.assertEqual(ev["bridge"]["admission_tier"], "ADMISSION_DEFER")
             self.assertEqual(ev["admission"], BLOCKED)
+            self.assertFalse(ev["bridge"]["core_admitted"])
+            self.assertEqual(ev["promotion_basis"], "NONE")
 
-    # -- 8) runtime admitted claims strictly 0 everywhere --------------------
+    # -- 7) Meidensha & Siemens remain UNRANKED (missing pillars) ----------
+    def test_meiden_and_siemens_remain_unranked_insufficient(self):
+        cand_6508 = self._base_cand("6508", "Meidensha Corporation", "TSE", "JP")
+        ev6508 = self._ev(cand_6508, True)
+        self.assertEqual(ev6508["admission"], BLOCKED)
+        self.assertEqual(ev6508["lineage_count"], 0)
+        self.assertIn("no_claims", ev6508["blockers"])
+        self.assertEqual(ev6508["satisfied_pillars"], [])
+        cand_enr = self._base_cand("ENR", "Siemens Energy AG", "XETRA", "DE")
+        ev_enr = self._ev(cand_enr, True)
+        self.assertEqual(ev_enr["admission"], BLOCKED)
+        self.assertIn("no_claims", ev_enr["blockers"])
+        self.assertEqual(ev_enr["satisfied_pillars"], [])    # -- 8) runtime admitted claims strictly 0 everywhere --------------------
     def test_runtime_admitted_strictly_zero_bundle(self):
         for ticker in ("GEV", "6501"):
             for fixture in (False, True):
                 ev = self._ev(self.mlb.bundled_candidates()[ticker], fixture)
                 self.assertEqual(ev["runtime_admitted_claims"], 0)
+
 
 
 if __name__ == "__main__":

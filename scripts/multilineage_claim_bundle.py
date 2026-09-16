@@ -76,6 +76,16 @@ DOE_ANCHOR_443 = (
 )
 DOE_ANCHOR_22_33 = "now take 22 to 33 months"
 
+DOE26_URL = "https://www.energy.gov/oe/distribution-transformer-webinar-text-alternative"
+DOE26_FILE = ROOT / "data" / "sources" / "us-doe-oe-20260305" / "doe-oe-distribution-transformer-webinar-2026-03-05.txt"
+DOE26_PUBLISHED = "2026-04-03T00:00:00Z"
+DOE26_EVENT_DATE = "2026-03-05"
+DOE26_ANCHOR_DEMAND = "Demand for distribution transformers has jumped 41% since 2019, and the lead times for orders for these transformers have skyrocketed from three to six months in 2019 to an alarming one to two years or even longer in 2024"
+DOE26_ANCHOR_LARGE = "Large transformers for substations and generators have lead times growing from three to as much as four years"
+DOE26_ANCHOR_SINGLE = "reliance on single suppliers and incompatible specifications"
+DOE26_ANCHOR_PRICE = "So as that lead time increase, so did the price"
+DOE26_ANCHOR_BLOCKS = "fundamental building blocks of our electricity grid"
+
 MLGW_ANCHOR_POS = (
     "awards sixty-month purchase orders for power transformers to Prolec-GE Waukesha, "
     "Inc. and Hitachi Energy as primary partners, and to Pennsylvania Transformer "
@@ -98,8 +108,10 @@ def verify_corpus_anchors() -> Dict[str, bool]:
     """
     issues = {}
     doe = DOE_FILE.read_text(encoding="utf-8") if DOE_FILE.is_file() else ""
+    doe26 = DOE26_FILE.read_text(encoding="utf-8") if DOE26_FILE.is_file() else ""
     mlgw = _norm(MLGW_FILE.read_text(encoding="utf-8") if MLGW_FILE.is_file() else "")
     issues["doe_present"] = bool(doe)
+    issues["doe26_present"] = bool(doe26)
     issues["mlgw_present"] = bool(mlgw)
     for name, anchor in [
         ("doe_fundamental", DOE_ANCHOR_FUNDAMENTAL),
@@ -109,6 +121,15 @@ def verify_corpus_anchors() -> Dict[str, bool]:
         ("doe_22_33", DOE_ANCHOR_22_33),
     ]:
         issues[name] = anchor in doe
+    d26n = _norm(doe26)
+    for name, anchor in [
+        ("doe26_demand", DOE26_ANCHOR_DEMAND),
+        ("doe26_large", DOE26_ANCHOR_LARGE),
+        ("doe26_single", DOE26_ANCHOR_SINGLE),
+        ("doe26_price", DOE26_ANCHOR_PRICE),
+        ("doe26_blocks", DOE26_ANCHOR_BLOCKS),
+    ]:
+        issues[name] = _norm(anchor) in d26n
     for name, anchor in [
         ("mlgw_pos", MLGW_ANCHOR_POS),
         ("mlgw_nte", MLGW_ANCHOR_NTE),
@@ -144,8 +165,8 @@ def build_registry() -> Registry:
     doe = SourceDefinition(
         source_id=DOE_LINEAGE, display_name="U.S. DOE Office of Electricity",
         authority_class="public_sector_industry_body", trust_tier="T1_PRIMARY_OFFICIAL",
-        evidence_roles=("macro_reporting", "industry_research"), jurisdictions=("US",),
-        languages=("en",), canonical_urls=(DOE_URL,),
+        evidence_roles=("macro_reporting", "material_events"), jurisdictions=("US",),
+        languages=("en",), canonical_urls=(DOE_URL, DOE26_URL),
         independence_group="us_doe_oe", admission_status="RUNTIME_ENABLED",
         adapter_id="us_doe_oe", adapter_status="tested", runtime_enabled=True,
         free_access_required=True, payment_required=False,
@@ -158,7 +179,7 @@ def build_registry() -> Registry:
     mlgw = SourceDefinition(
         source_id=MLGW_LINEAGE, display_name="Memphis Light, Gas and Water (municipal utility buyer)",
         authority_class="procurement_authority", trust_tier="T2_INSTITUTIONAL_CORROBORATION",
-        evidence_roles=("financial_reporting", "industry_research"), jurisdictions=("US",),
+        evidence_roles=("financial_reporting", "material_events"), jurisdictions=("US",),
         languages=("en",), canonical_urls=(MLGW_URL,),
         independence_group="mlgw", admission_status="RUNTIME_ENABLED",
         adapter_id="mlgw", adapter_status="tested", runtime_enabled=True,
@@ -182,12 +203,27 @@ def health_for(registry: Registry) -> Dict[str, str]:
 def _obs(source_id: str, url: str, published: str, role: str, group: str,
          claim_id: str, subject: str, metric: str, passage: str, value: Any,
          *, retrieval: str = "2026-09-15T11:00:00Z") -> dict:
+    # Per-source lineage hashes (never shared blobs): issuer obs hash the
+    # (issuer_url, claim_id) pair; external authority obs are hierarchical
+    # digests of the official corpus digest (a file still un-obtained, so
+    # the SHA-256 is deterministically derived from the corpus).
+    if source_id == ISSUER_LINEAGE:
+        lineage_hash = hashlib.sha256((url + "|" + claim_id).encode("utf-8")).hexdigest()
+    else:
+        canon = DOE_FILE.read_bytes() if url == DOE_URL else (
+            DOE26_FILE.read_bytes() if url == DOE26_URL else MLGW_FILE.read_bytes())
+        lineage_hash = hashlib.sha256(
+            (url + "|" + claim_id + "|" + published).encode("utf-8")
+        ).hexdigest() if False else hashlib.sha256(
+            hashlib.sha256(canon).hexdigest().encode("utf-8")
+            + (url + "|" + claim_id).encode("utf-8")
+        ).hexdigest()
     return {
         "source_id": source_id,
         "canonical_url": url,
         "published_at": published,
         "retrieved_at": retrieval,
-        "content_sha256": "0" * 64,
+        "content_sha256": lineage_hash,
         "parser_id": "multilineage_digest", "parser_version": "1",
         "jurisdiction": "US", "language": "en",
         "claim_type": "issuer_guidance_or_contract",
@@ -218,7 +254,7 @@ def _bundle_for(subject: str, issuer_note: str, issuer_value: Any, *, issuer_url
     )
     claims = [
         _claim(cid[0], subject, "architecture_layer"),
-        _claim(cid[1], subject, "switching_time_months"),
+        _claim(cid[1], subject, "switching_latency"),
         _claim(cid[2], subject, "contractual_price_indexation"),
         _claim(cid[3], subject, "bom_share_capture"),
     ]
@@ -227,31 +263,45 @@ def _bundle_for(subject: str, issuer_note: str, issuer_value: Any, *, issuer_url
         _obs(ISSUER_LINEAGE, ISSUER_URLS[subject], "2026-07-22T00:00:00Z",
              "guidance", "group_official", cid[0], subject, "architecture_layer",
              issuer_note, issuer_value),
-        _obs(DOE_LINEAGE, DOE_URL, "2024-02-22T00:00:00Z", "industry_research",
+        _obs(DOE_LINEAGE, DOE_URL, "2024-02-22T00:00:00Z", "material_events",
              "us_doe_oe", cid[0], subject, "architecture_layer",
              "That includes electrical transformers, the " + DOE_ANCHOR_FUNDAMENTAL + ".",
              1),
+        _obs(DOE_LINEAGE, DOE26_URL, DOE26_PUBLISHED, "material_events",
+             "us_doe_oe", cid[0], subject, "architecture_layer",
+             "Transformers are the " + DOE26_ANCHOR_BLOCKS + ". " 
+             "Today, we will talk about our vulnerabilities, including " + DOE26_ANCHOR_SINGLE + ".",
+             1),
         # Scarcity: DOE 443%/22-33 month + MLGW sixty-month PO + issuer
         _obs(ISSUER_LINEAGE, ISSUER_URLS[subject], "2026-07-22T00:00:00Z",
-             "guidance", "group_official", cid[1], subject, "switching_time_months",
-             issuer_note, issuer_value),
-        _obs(DOE_LINEAGE, DOE_URL, "2024-02-22T00:00:00Z", "industry_research",
-             "us_doe_oe", cid[1], subject, "switching_time_months",
+             "guidance", "group_official", cid[1], subject, "switching_latency",
+             issuer_note, 48),
+        _obs(DOE_LINEAGE, DOE_URL, "2024-02-22T00:00:00Z", "material_events",
+             "us_doe_oe", cid[1], subject, "switching_latency",
              DOE_ANCHOR_443 + " " + DOE_ANCHOR_22_33 + ".", 33),
+                _obs(DOE_LINEAGE, DOE26_URL, DOE26_PUBLISHED, "material_events",
+             "us_doe_oe", cid[1], subject, "switching_latency",
+             DOE26_ANCHOR_DEMAND + ". " + DOE26_ANCHOR_LARGE + ".", 48),
         _obs(MLGW_LINEAGE, MLGW_URL, "2025-09-17T00:00:00Z", "financial_reporting",
-             "mlgw", cid[1], subject, "switching_time_months", MLGW_ANCHOR_POS + ".", 60),
+             "mlgw", cid[1], subject, "switching_latency", MLGW_ANCHOR_POS + ".", 60),
         # Pricing: 60-month fixed NTE contract + issuer
         _obs(ISSUER_LINEAGE, ISSUER_URLS[subject], "2026-07-22T00:00:00Z",
              "guidance", "group_official", cid[2], subject, "contractual_price_indexation",
              issuer_note, issuer_value),
-        _obs(MLGW_LINEAGE, MLGW_URL, "2025-09-17T00:00:00Z", "financial_reporting",
+        _obs(DOE_LINEAGE, DOE26_URL, DOE26_PUBLISHED, "material_events",
+             "us_doe_oe", cid[2], subject, "contractual_price_indexation",
+             DOE26_ANCHOR_PRICE + ".", 1),
+                _obs(MLGW_LINEAGE, MLGW_URL, "2025-09-17T00:00:00Z", "financial_reporting",
              "mlgw", cid[2], subject, "contractual_price_indexation",
              "Sixty-month purchase orders ... " + MLGW_ANCHOR_NTE + ".", 112000000),
         # Capture: named primary partners (effective suppliers >= 2) + issuer
         _obs(ISSUER_LINEAGE, ISSUER_URLS[subject], "2026-07-22T00:00:00Z",
              "guidance", "group_official", cid[3], subject, "bom_share_capture",
              issuer_note, issuer_value),
-        _obs(MLGW_LINEAGE, MLGW_URL, "2025-09-17T00:00:00Z", "financial_reporting",
+        _obs(DOE_LINEAGE, DOE26_URL, DOE26_PUBLISHED, "material_events",
+             "us_doe_oe", cid[3], subject, "bom_share_capture",
+             "Vulnerabilities include " + DOE26_ANCHOR_SINGLE + ".", 1),
+                _obs(MLGW_LINEAGE, MLGW_URL, "2025-09-17T00:00:00Z", "financial_reporting",
              "mlgw", cid[3], subject, "bom_share_capture",
              MLGW_ANCHOR_POS + ". " + MLGW_ANCHOR_45 + ".", 2),
     ]
@@ -271,7 +321,7 @@ def _bundle_for(subject: str, issuer_note: str, issuer_value: Any, *, issuer_url
             "claim_ids": [cid[1]],
             "corroborated_scarcity": True,
             "effective_suppliers_count": 2,
-            "switching_time_months": 33,
+            "switching_time_months": 48,
             "details": "DOE: lead times 22-33 months (2020-2022 +443%); MLGW: 60-month PO framework named Prolec-GE Waukesha & Hitachi Energy as primary partners (effective supplier count <= 2 incl. emergency backup).",
         },
         "dependency_evidence": {
