@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `da57db6` (options clock-pin; prior `f297a43`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `e43be26` (security-gate placeholders; prior `da57db6`/`f297a43`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -34,7 +34,10 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 - `da57db6` test(Options): evaluatedAt pinned on validator call sites (16 wall-clock DTE drift failures eliminated).
 - Baseline: pytest 1470/0/3; vitest 786/0/1; tsc 0.
 
-### Supervisor & Routing Policy (Latest User Override)
+### Milestones (2026-09-15 session 7: security gate placeholder fix)
+- `e43be26` test(claim-bridge): token_urls vector now uses ALLOWED_VALUE_PATTERNS-compliant EXAMPLE_* prefixes (EXAMPLE_TOKEN_123 / EXAMPLE_API_KEY_456 / EXAMPLE_AUTH_789) with matching assertNotIn leak checks. `python scripts/security_check.py` -> SECURITY CHECK PASSED (exit 0). No behavior change; pytest 1470/0/3, vitest 786/0/1 re-confirmed.
+
+
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
 - **Astra Role:** Irreversible architecture decisions, safety blocker, and final Production-deploy gate only while quota > 0; Gemini supervisor takes acceptance if exhausted. No ordinary research or implementation assigned to Astra.
