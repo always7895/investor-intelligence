@@ -88,3 +88,6 @@ cloud/config/
 # Local ops and drafts (never tracked)
 cloud/*.local.toml
 HOTFIX-REFS.json
+
+# Vitest cache
+.vitest/
