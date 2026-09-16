@@ -15,6 +15,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [CURRENT_STATUS_BILINGUAL](CURRENT_STATUS_BILINGUAL.md)
 - [RESEARCH_EXECUTION_AUDIT](RESEARCH_EXECUTION_AUDIT.md)
 - [BOTTLENECK_RANKING_V1 — 未驗收設計草案](BOTTLENECK_RANKING_V1.md)
+- [BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1](BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md) - Power Transformer chokepoint canonical archetype (Hitachi Energy / TSE: 6501): 4-pillar factor-to-claim reference, business-mix vs shareholder dilution separation, runtime admitted stays 0
 - [TOP20_BOTTLENECK_TAKEOVER_V1](TOP20_BOTTLENECK_TAKEOVER_V1.md) — 系統瓶頸接管 v1 規格、四核心門檻與實體呼叫路徑
 
 ## How-to and maintenance / 操作與維護
