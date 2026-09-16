@@ -109,6 +109,7 @@ Preserve these original observations and technical rationale. Their older deploy
 - [SERENITY_PUBLIC_LOGIC_FIDELITY](SERENITY_PUBLIC_LOGIC_FIDELITY.md)
 - [SERENITY_PUBLIC_LOGIC_REAUDIT](SERENITY_PUBLIC_LOGIC_REAUDIT.md)
 - [SERENITY_PUBLIC_LOGIC_REAUDIT_2](SERENITY_PUBLIC_LOGIC_REAUDIT_2.md)
+- [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — Objective A/B statutory authority & external citation typing resolution (GOV/CCR provenance, 17 U.S.C. 102(b) edicts doctrine, CCR 17 95350-95359.1 timeline, 7 typed citations, preserved 404/301 states)
 - [V213_ALL_IN_ONE.en](V213_ALL_IN_ONE.en.md)
 - [V213_ALL_IN_ONE.zh-TW](V213_ALL_IN_ONE.zh-TW.md)
 - [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)
