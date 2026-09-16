@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `265e54f` (admission inventory; prior `a78a502`/`bba00fa`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `265e54f` (admission inventory; prior `a78a502`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -28,15 +28,12 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 ### Milestones (2026-09-15 session 5: typecheck cleanup)
 - `f297a43`: 4 optional helper params typed (Awaited<ReturnType<typeof ...>>); tsc --noEmit 0. vitest 786/0/1.
 
-### Milestones (2026-09-15 session 6: routing resolution & evidence bridge)
-- ROUTING RESOLVED: blocker (sha 6e7bfe9a) superseded by dedicated Herdr `qwen-worker` w4:p2 (tabby-local / Qwen3.8-27B-EXL3-SC5-H6-V6); no SKYRIM sharing; GLOBAL_QWEN_ACTIVE<=1 lock; record state/qwen-routing-resolution-v1.json.
-- Company Evidence bridge: 12/12; fail-closed (INVALID_JSON / schema / record-count rejects); empty canonical run -> 0 candidates, 0 runtime_admitted_claims, scope RESEARCH_CANDIDATES_ONLY_NOT_ADMITTED, zero network.
-- `da57db6` test(Options): evaluatedAt pinned on validator call sites (16 wall-clock DTE drift failures eliminated).
-- Baseline: pytest 1470/0/3; vitest 786/0/1; tsc 0.
+### Milestones (2026-09-15 session 6)
+- `da57db6` deterministic option clocks (16 wall-clock DTE drift fixes); `1725eca` routing resolution (state/qwen-routing-resolution-v1.json).
+- Baseline: pytest 1470/0/3; vitest 786/0/1.
 
 ### Milestones (2026-09-15 session 7: security gate placeholder fix)
-- `e43be26` test(claim-bridge): token_urls vector now uses ALLOWED_VALUE_PATTERNS-compliant EXAMPLE_* prefixes (EXAMPLE_TOKEN_123 / EXAMPLE_API_KEY_456 / EXAMPLE_AUTH_789) with matching assertNotIn leak checks. `python scripts/security_check.py` -> SECURITY CHECK PASSED (exit 0). No behavior change; pytest 1470/0/3, vitest 786/0/1 re-confirmed.
-
+- `e43be26` test(claim-bridge): token_urls via EXAMPLE_* placeholders (security gate cleared).
 
 ### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
 - `78d4dee` feat(v213): options order guidance + Serenity sizing engine; 20 tests.
@@ -59,8 +56,13 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 - Baseline: pytest 1487/0/3; vitest 806/0/1; tsc 0
 
 ### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
-- `265e54f` feat(admission): COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md (GEV / 6501 Hitachi / 6508 Meiden / ENR Siemens; 4-pillar distance + single-family lineage status; GEV & Hitachi closest; explicit blockers; runtime admitted 0) + scripts/evaluate_candidate_admission_readiness.py (CANDIDATE_ADMISSION_READINESS_V1, deterministic fail-closed JSON via the claim-admission bridge; QUALIFIED only at 4/4 licensed + >=2 lineages) + tests/test_candidate_admission_readiness.py (10) + README gate link.
-- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
+- `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
+
+### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE, 2026-09-15)
+- Evaluated (scripts/evaluate_candidate_admission_readiness.py -> data/cache/candidate_admission_readiness_audit.json): GEV, Hitachi (6501), Meidensha (6508), Siemens Energy (ENR).
+- Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
+- Explicit evidence blockers: (1) lineage=1 for all - issuer-origin disclosures only, no licensed 2nd independent family (buyer / regulatory / institutional); (2) 4-pillar binding incomplete - pricing indexation and switching-latency claims lack 2nd-family verbatim anchoring.
+- Verdict: ALL candidates UNRANKED (status = INSUFFICIENT_EVIDENCE); runtime_admitted_claims = 0; admitted_count = 0; publication_eligible = false; LINE_LIVE = false. 缺任一核心證據即保持 UNRANKED; 不得為湊 TOP20 降低標準; runtime_admitted=0 時不得宣稱 qualified ranking 完成; 持續自動推進直到真正的 qualified company admission 或明確 evidence blocker.
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
