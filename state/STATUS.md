@@ -41,7 +41,7 @@ Committed HEAD: `d33e769` (DOE 2026-03-05 qualify; prior `48c29ef`/`c9862c8`), b
 ### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
 - `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
 
-### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE, 2026-09-15)
+### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE)
 - Evaluated (scripts/evaluate_candidate_admission_readiness.py -> data/cache/candidate_admission_readiness_audit.json): GEV, Hitachi (6501), Meidensha (6508), Siemens Energy (ENR).
 - Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
 - Explicit evidence blockers: (1) lineage=1 for all - issuer-origin disclosures only, no licensed 2nd independent family (buyer / regulatory / institutional); (2) 4-pillar binding incomplete - pricing indexation and switching-latency claims lack 2nd-family verbatim anchoring.
