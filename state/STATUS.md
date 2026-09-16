@@ -6,10 +6,10 @@ CHAPTER 20 — Anchor: pre-prod_local §1 (Committed-HEAD)
 
 Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit, no push. Range `f287ba0..HEAD` (8): readiness ledger `6f36323`; .vitest `082d37e`; PROD_DEPLOY `d61778f`; live rebuild + refresh task `5022a91`; objects `4d83c1c` / pointer `6328d93` (run `2873c2ff6316`); #23 record `9f87437`; .kv-stage `bb75aaf`. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
 (M1-sealed-audit complete; NO PULL/REBASE/BRANCH)
-- VERDICT: `HEAD_RESOLVED_SEALED_OK` (local audit; Pro-route read-only review; single local branch).
+- VERDICT: `HEAD_RESOLVED_SEALED_OK` (local audit; Pro read-only review; single branch, no remote).
 - HEAD authority: latest committed live pointer = `20260916T092839Z-2873c2ff6316` (objects `4d83c1c` -> pointer `6328d93`; `9f87437` is STATUS-only).
-- Seal re-verify (zero network): runs `f2a9ea873960` and `2873c2ff6316` PASS the full chain gate (per-key sha + sizes, exact manifest, seal == pointer, claim/timestamp invariants); tracked files == HEAD blobs.
-- Scratch/untracked runs: cleaned 2026-09-16 (Task #27); future run dirs ignored via `state/v213-snapshots/*/`.
+- Seal re-verify (zero network): runs `f2a9ea873960` and `2873c2ff6316` PASS the full chain gate (per-key sha, exact manifest, seal == pointer, invariants); tracked files == HEAD blobs.
+- Scratch runs cleaned (Task #27); future run dirs ignored via `state/v213-snapshots/*/`.
 - LIVE pointer/KV: verified by live read under Tasks #26/#27 (sealed chain re-checked; re-pointed by the 60-min refresh task).
 - Local scope: git reads only; 0 KV writes, 0 deploys, 0 LINE sends, 0 re-points.
 
@@ -38,13 +38,13 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 ### PRODUCTION DEPLOY (2026-09-16, Task #22; explicit operator authorization, this session)
 - KV `PUBLIC_CACHE` (96142af4…): 14 sealed objects of run `20260915T120000Z-f2a9ea873960` + `snapshot:current` pointer LAST; all 14 read back and byte-verified (seal sha d64b21be == pointer).
 - Flag delta: pre-deploy baseline `publication_eligible=false` (Task #20) -> lifted to true by this session; the literal baseline marker is preserved verbatim as the audit anchor.
-- Deployed via `wrangler.v213.production.local.toml`; **worker version 26454143-0acc-4396-a81c-be40d33c6da1** at https://investor-intelligence-v21-owner-line.moon951753.workers.dev.
+- Deployed via `wrangler.v213.production.local.toml`; **worker 26454143… / then 928539bd…** at the workers.dev owner-line URL.
 - Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
 - Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
 ### CURRENT TRUE PRODUCTION ARCHITECTURE (source of truth, 2026-09-16, Task #28)
 - Primary Supervisor: Gemini. Local Writer: Qwen (Herdr persistent `qwen-worker`), single-writer discipline; all lanes local-only, no push.
 - Production live: Cloudflare Worker `investor-intelligence-v21-owner-line` (v `928539bd…`; worker.ts/qa.ts certified) + KV: PUBLIC_CACHE `96142af4…` / TENANT_PRIVATE_CACHE / EPHEMERAL_SECURITY_CACHE (isolated).
-- Active snapshot: run-bound sealed pointer `snapshot:current` in PUBLIC_CACHE; 60-min refresh re-points; committed integrity-proof runs: `897a86efa733` / `2873c2ff6316` / `f2a9ea873960`.
+- Active snapshot: run-bound sealed pointer `snapshot:current`; 60-min re-point; committed integrity runs: `897a86efa733` / `2873c2ff6316` / `f2a9ea873960`.
 - Operations: fresh rebuild `publish_sealed_snapshot.py --live-clock`; sync `sync_sealed_snapshot_kv.py` (pointer-last, fail-closed); rollback `rollback_sealed_snapshot.py`; operator runbook `docs/OPERATOR_RUNBOOK.md`; gap ledgers `docs/LINE_GAP_LEDGER.md` / `docs/PROJECT_GAP_LEDGER.md`.
 
 ### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
@@ -53,9 +53,12 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 - docs/LINE_GAP_LEDGER.md: 31 items / 8 scopes, format-gated; P0s all closed with live evidence. Gates: npm 816/0/1, tsc 0, pytest 1511/0/3, security/canonical/line-boundary PASSED.
 
 ### Objectives Overview & Trust Invariants
-Objective A UNKNOWN rights remain; Objective B: 7 references typed, unresolved outside corpus; Objective C: scoped non-admitting hook. Source admission still capped (TEST_ONLY tier).
+Objectives: A = UNKNOWN rights; B = 7 references typed (unresolved outside corpus); C = scoped non-admitting hook; admission still capped TEST_ONLY tier.
 
-Priority: company evidence → typed admission → qualified ranking → final acceptance → sealed publication → LINE. Identity/Macro/Options stay UNAVAILABLE without Production evidence (do NOT block LINE). Never deploy unaccepted ranking/candidate.
+Priority: evidence → admission → ranking → acceptance → sealed publication → LINE; identity/macro/options stay UNAVAILABLE (do NOT block LINE); never deploy unaccepted ranking/candidate.
+
+## PROJECT-WIDE GAP AUDIT (Task #29, 2026-09-16)
+- **PROJECT_WIDE_GAP_AUDIT = PASS** — `docs/PROJECT_GAP_LEDGER.md`: P0 = 0, P1 = 0; all P2 PASS or reasonably DEFERRED (PG-11 = research-lane DEFER; GEV/6501 admitted; 6508/ENR unadmitted).
 
 ## Completed Supervisor Evaluation: STATUTORY_AUTHORITY_FACT_EVALUATION_V1
 - **Lane & Scope:** `INDEPENDENT_SUPERVISOR_STATUTORY_AUTHORITY_FACT_EVALUATION_V1`.
@@ -91,7 +94,7 @@ Priority: company evidence → typed admission → qualified ranking → final a
 - Historical status snapshot for comparison: `git show 38860e7:state/STATUS.md`.
 
 ## Next runnable action
-- Re-point cadence: 60-min refresh task `InvestorIntelligenceSealedFreshness` (auto; run ids logged in `data/cache`).
+- Re-point: 60-min task `InvestorIntelligenceSealedFreshness` (auto).
 - Evidence residuals: 6508/ENR 2nd-family sources (G-10); DOE 2026-03-05 before its 180-day window closes (G-11).
 - Deferred lanes: R75 production certification chain; device broadcast testing (G-25).
 - No outstanding routing/registration fixes (old session-tool routing text retired as stale 2026-09-16).
