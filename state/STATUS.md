@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `265e54f` (admission inventory; prior `a78a502`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `48c29ef` (multi-lineage ingest; prior `c9862c8`/`265e54f`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -10,27 +10,11 @@ Committed HEAD: `265e54f` (admission inventory; prior `a78a502`), branch `fix/op
 - `f031c36` fix(cloud): deterministic option-contract test clocks (evaluatedAt pass-through) + reader label alignment.
 - `dce6d73` feat: bounded statutory & claim-admission modules (carb parser, company claim bridge, provider hook) + tests.
 
-### Milestones (2026-09-15 session 2: module integration slices)
-- `fc145e1` feat: source acquisition & symbol directory (conflict quarantine; typed CompanyFactorBinding + authority gating; lineage dedupe).
-- `96fdc1e` feat: bounded bottleneck ranking (factors, evidence, resolution, answer) + bounded claim-admission bridge.
-- `0c0a8f3` feat: global equity lookup + sealed global identity index (module layer; NO worker/rich-menu/core call-side wiring - defers to acceptance lane).
-Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
-
-### Milestones (2026-09-15 session 3: bottleneck takeover & global lookup re-integration)
-- `fc2b99b` feat(v213): sealed bottleneck-policy lane; strict two-variant deep-analysis admission; non-hijacking global_equity_lookup intent + v211 intercept; 4 quarantined tests restored (checksum-verified); worker.ts/qa.ts untouched.
-- Residual ledger: 2 raw-view takeover assertions conflicted with committed pre-migration serve suites; resolved by session-4 arbitration.
-
-### Milestones (2026-09-15 session 4: raw-view arbitration)
-- `98f4a18`: pointerless raw 7-field writes fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative); ranking intent now gates every Top20 alias (incl. 2H20/hai-power forms).
-- 7 pre-migration fixtures (incl. named 4) migrated to sealed run-bound bundles (sealed-report-migration.ts); DEFECT-1 RED + ALL TOP20 aliases PASS.
-- vitest 786/0/1; pytest 1470/0/3.
-
-### Milestones (2026-09-15 session 5: typecheck cleanup)
-- `f297a43`: 4 optional helper params typed (Awaited<ReturnType<typeof ...>>); tsc --noEmit 0. vitest 786/0/1.
-
-### Milestones (2026-09-15 session 6)
-- `da57db6` deterministic option clocks (16 wall-clock DTE drift fixes); `1725eca` routing resolution (state/qwen-routing-resolution-v1.json).
-- Baseline: pytest 1470/0/3; vitest 786/0/1.
+### Milestones (sessions 2-6, 2026-09-15; compacted)
+- `fc145e1`/`96fdc1e`/`0c0a8f3`: source acquisition & symbol directory; bounded bottleneck ranking + claim bridge; global equity lookup / sealed identity index (module layer only).
+- `fc2b99b`/`6412214` (reverted by `98f4a18`): sealed bottleneck lane + global lookup re-integration; 4 quarantined tests preserved at wip-cloud/.
+- `98f4a18`: pointerless raw Top20 writes fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative); ranking intent gates every Top20 alias; 7 pre-migration fixtures -> sealed run-bound bundles. vitest 786/0/1.
+- `f297a43`: 4 type fixes (Awaited types); tsc 0. `da57db6`: deterministic option clocks; `1725eca`: routing resolution (state/qwen-routing-resolution-v1.json). Baseline pytest 1470/0/3; vitest 786/0/1.
 
 ### Milestones (2026-09-15 session 7: security gate placeholder fix)
 - `e43be26` test(claim-bridge): token_urls via EXAMPLE_* placeholders (security gate cleared).
@@ -38,7 +22,7 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 ### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
 - `78d4dee` feat(v213): options order guidance + Serenity sizing engine; 20 tests.
 - `bba00fa` docs+test: STATUTORY_AUTHORITY_RESOLUTION_V1 (11344(a); 102(b) + Georgia v. PRO; CCR 17 95350-95359.1; 7 citations) + tests.
-- Baseline: pytest 1477/0/3 (1470 + 7); vitest 806/0/1; tsc 0.
+
 
 - **Primary Supervisor:** Gemini approved route.
 - **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
@@ -52,8 +36,7 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
   - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
 
 ### Milestones (2026-09-15 session 10: Hitachi Energy bottleneck case study)
-- `a78a502` docs+test: BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1 (EHV / bushings / core steel; 128-144 wk leads; D1-D5 disclosures; mix-vs-shareholder dilution separation; 10 tests) + README link.
-- Baseline: pytest 1487/0/3; vitest 806/0/1; tsc 0
+- `a78a502`: BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1 (EHV / bushings / core steel; 10 tests) + README link.
 
 ### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
 - `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
@@ -63,6 +46,11 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 - Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
 - Explicit evidence blockers: (1) lineage=1 for all - issuer-origin disclosures only, no licensed 2nd independent family (buyer / regulatory / institutional); (2) 4-pillar binding incomplete - pricing indexation and switching-latency claims lack 2nd-family verbatim anchoring.
 - Verdict: ALL candidates UNRANKED (status = INSUFFICIENT_EVIDENCE); runtime_admitted_claims = 0; admitted_count = 0; publication_eligible = false; LINE_LIVE = false. 缺任一核心證據即保持 UNRANKED; 不得為湊 TOP20 降低標準; runtime_admitted=0 時不得宣稱 qualified ranking 完成; 持續自動推進直到真正的 qualified company admission 或明確 evidence blocker.
+
+### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
+- `48c29ef` feat(admission): ingested approved 2nd/3rd lineages (DOE Office of Electricity 2024-02-22 public-domain article; MLGW 2025-09-17 board packet - 13,345,828 B PDF SHA-pinned, pdf gitignored) into data/sources/ + receipts + scripts/multilineage_claim_bundle.py (4 subject-bound claims, verbatim anchors re-verified vs digests, fail-closed drift guard; registry + single-lineage baseline); readiness gains fixture_mode passthrough, readiness_score (0-100), claims_status_counts.
+- Outcome (honest): lineage 1 -> 3 (independence structurally satisfied); readiness 0 -> 25 (GEV & 6501); single-lineage blocker cleared; remaining EXPLICIT blocker: approved 2nd/3rd families outside the 180-day live-corroboration window at the pinned clock (claims SINGLE_SOURCE); all stay UNRANKED / INSUFFICIENT_EVIDENCE; ADMISSION_DEFER on real caller path; runtime_admitted_claims 0.
+- Baseline: pytest 1505/0/3 (1497+8); vitest 806/0/1; tsc 0; security PASS; canonical gate PASS.
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
