@@ -42,6 +42,11 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 - Deployed via `wrangler.v213.production.local.toml`; **worker version 26454143-0acc-4396-a81c-be40d33c6da1** at https://investor-intelligence-v21-owner-line.moon951753.workers.dev.
 - Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
 - Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
+### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
+- Deployed worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A fixes + options-guidance in production); re-pointed live run `20260916T131939Z-897a86efa733` (seal c9b19102; sync log: objects 14 -> readback 14/14 -> pointer LAST).
+- Live probe (data/cache/probe-live-26.json): fresh Top20 GEV #1 / 6501 #2, no stale notice; SIVE & AAOI -> sealed_snapshot:unadmitted_symbol; ZZZZNOTEXIST -> general_qa, no hijack.
+- docs/LINE_GAP_LEDGER.md: 31 items / 8 scopes, format-gated; P0s all closed with live evidence. Gates: npm 816/0/1, tsc 0, pytest 1511/0/3, security/canonical/line-boundary PASSED.
+
 ### Objectives Overview & Trust Invariants
 Objective A UNKNOWN rights remain; Objective B: 7 references typed, unresolved outside corpus; Objective C: scoped non-admitting hook. Source admission still capped (TEST_ONLY tier).
 
