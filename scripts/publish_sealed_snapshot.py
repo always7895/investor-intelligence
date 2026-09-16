@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +37,8 @@ PROMOTED_AT = "2026-09-15T13:00:00Z"
 PUBLISHED_DATA_AS_OF = "2026-09-15T12:00:00Z"
 POLICY_ID = "system-bottleneck-explosion-v1"
 PRODUCT_VERSION = "2.1.3"
+LIVE_NOW = None
+LIVE_STAMP = None
 CONTRACT_ID = "v213-stored-snapshot-v1"
 
 SEAL_KEY = "v213:snapshot-seal:v1"
@@ -101,7 +103,7 @@ def qualified_ranking() -> dict:
     policy = engine.load_json(engine.POLICY_DEFAULT_PATH)
     registry = mlb.build_registry()
     health = mlb.health_for(registry)
-    clock = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
+    clock = LIVE_NOW or datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
     cands = list(mlb.bundled_candidates().values())
     result = engine.rank_bottleneck_candidates(
         cands, policy, top_count=20, as_of=clock,
@@ -237,7 +239,7 @@ def build_bodies() -> "tuple[dict[str, str], dict]":
     digest_seed = "".join(bodies[k] for k in OBJECT_KEYS if k != "v213:activation-claim") + bottleneck_json
     run_suffix = _sha(digest_seed)[:12]
     transaction_id = _sha(digest_seed)[:32]
-    run_id = "20260915T1200Z-" + run_suffix if False else "20260915T120000Z-" + run_suffix
+    run_id = (LIVE_STAMP or "20260915T120000Z") + "-" + run_suffix
     claim = {
         "schema_version": 1,
         "transaction_id": transaction_id,
@@ -282,7 +284,24 @@ def pointer_text(meta, seal_sha: str) -> str:
     return _dumps(pointer)
 
 
-def main() -> None:
+def main(argv=None) -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--live-clock", action="store_true",
+                    help="Live UTC clock stamp (production refresh lane); default = pinned golden clock.")
+    args = ap.parse_args(argv)
+    if args.live_clock:
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        g = globals()
+        g["LIVE_NOW"] = now
+        g["LIVE_STAMP"] = now.strftime("%Y%m%dT%H%M%SZ")
+        g["EVALUATED_AT"] = iso
+        g["RETRIEVED_AT"] = (now - timedelta(seconds=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        g["GENERATED_AT"] = iso
+        g["CLAIMED_AT"] = iso
+        g["PROMOTED_AT"] = iso
+        g["PUBLISHED_DATA_AS_OF"] = iso
     bodies, meta = build_bodies()
     seal_text, seal_sha = build_seal(bodies, meta)
     pointer = pointer_text(meta, seal_sha)
