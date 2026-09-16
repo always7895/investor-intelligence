@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `5e42584` (v213 signed-snapshot pointer-last; objects `1331ff8`; code `1c3cfa4`; prior `cb6d5c1`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -35,16 +35,13 @@ Committed HEAD: `5e42584` (v213 signed-snapshot pointer-last; objects `1331ff8`;
   - No Qwen inference occurred, no task ID was created, 0 tokens consumed. No guard bypass, server spawning, model switching, or Pi configuration repair attempted.
   - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
 
-### Milestones (2026-09-15 session 10: Hitachi Energy bottleneck case study)
-- `a78a502`: BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1 (EHV / bushings / core steel; 10 tests) + README link.
+### Milestones (2026-09-15 sessions 10-11: case study + inventory)
+- `a78a502`: HItachi Energy bottleneck case study doc + 10 tests; `265e54f`: candidate inventory (GEV/6501/6508/ENR) + evaluate_candidate_admission_readiness.py + 10 tests.
 
-### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
-- `265e54f` feat(admission): candidate inventory doc (GEV/6501/6508/ENR: pillars, lineage, blockers) + evaluate_candidate_admission_readiness.py + 10 tests + README link.
+### ADMISSION PIPELINE CHECKPOINT
+- Verdict (session 13): GEV & 6501 ADMISSION_QUALIFIED under test-only tier (score 100; in-window DOE 2026-03-05 ended the 180-day blocker); 6508/ENR uncorroborated (evidence-blocked, no ranking manufactured).
+- Production: runtime_admitted_claims 0; publication_eligible false; LINE_LIVE false.
 
-### ADMISSION PIPELINE CHECKPOINT (INVESTOR_HERDR_ADMISSION_PIPELINE)
-- Evaluated (scripts/evaluate_candidate_admission_readiness.py -> data/cache/candidate_admission_readiness_audit.json): GEV, Hitachi (6501), Meidensha (6508), Siemens Energy (ENR).
-- Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
-- Explicit residual blockers (superseded by session 13): 2nd/3rd families then outside 180-day live window; resolved by in-window DOE 2026-03-05. Meidensha/ENR still uncorroborated.- Verdict (session 13): GEV & 6501 ADMISSION_QUALIFIED under test-only tier (score 100); production runtime_admitted_claims 0; admitted_count 0; publication_eligible false; LINE_LIVE false.
 ### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
 - `48c29ef`: DOE (2024-02) + MLGW (2025-09) 2nd/3rd lineages ingested (data/sources/ + SHA receipts); multilineage_claim_bundle.py (subject-bound claims, digest-anchored); +8 tests.
 ### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
@@ -52,11 +49,16 @@ Committed HEAD: `5e42584` (v213 signed-snapshot pointer-last; objects `1331ff8`;
 
 
 ### Milestones (2026-09-16 session 14: runtime promotion path)
-- `ad619fe`: multi-lineage bundle -> ranking engine (fixture_mode to bridge; runtime_admitted flag; --multilineage-bundle w/ TEST_ONLY_FIXTURE evidence mode; production admits 0). GEV 96.0 #1 / 6501 93.0 #2 admitted; 6508/ENR UNRANKED. 6 tests.
+- `ad619fe`: multi-lineage bundle -> ranking engine (fixture_mode to bridge, runtime_admitted flag, --multilineage-bundle). GEV 96.0 #1 / 6501 93.0 #2 admitted; 6508/ENR UNRANKED; production admits 0.
 
 ### Milestones (2026-09-16 session 15: v213 signed snapshot promotion)
-- `1c3cfa4` +7 tests: publish_sealed_snapshot.py generator (offline, fail-closed on drift); the qualified bottleneck report (GEV 96.0 #1 / 6501 93.0 #2, admitted 2, no zero padding) is the authoritative v213:top20-report:latest value + 13-object seal + schema-v2 pointer; loader now fails a PRESENT-but-rejected pointer closed to INSUFFICIENT_EVIDENCE (2 pins tightened).
-- `1331ff8` sealed objects committed pointer-pending; `5e42584` pointer LAST (run 20260915T120000Z-f2a9ea873960, seal d64b21be). Real-loader service (loadV213FreshTop20Report / readV213BottleneckReport) + tamper/pointerless fail-closed verified by 7 tests; vitest 813/0/1, tsc 0, pytest 1511/0/3.
+- `1c3cfa4` +7 tests: publish_sealed_snapshot.py (offline, fail-closed on drift) -> qualified bottleneck report (GEV 96.0 #1 / 6501 93.0 #2, admitted 2, no zero padding) + 13-object seal + schema-v2 pointer; loader fails present-but-rejected pointer closed to INSUFFICIENT_EVIDENCE (2 pins tightened).- `1331ff8` sealed objects committed pointer-pending; `5e42584` pointer LAST (run 20260915T120000Z-f2a9ea873960, seal d64b21be). real-loader service + tamper/pointerless fail-closed verified (7 tests).
+
+### FINAL RELEASE READINESS LEDGER (session 16 / Task #20, 2026-09-16)
+- Full regression at HEAD `f287ba0`: pytest **1511/0/3** (1174 subtests); `npm test` **813/0/1** (54 files); `tsc --noEmit` 0.
+- Gates all PASSED: security_check; canonical_release_candidate_gate_v2; line_public_boundary_gate; clean_install_gate_policy (exit 0); actions_storage_policy_gate; final_cleanup_gate (no deletion).
+- Invariants: worker.ts blob == `4e0f78af…` (exact); qa.ts diff 0; worktree clean; snapshot intact (seal sha == pointer; pointer-last `1331ff8`->`5e42584` proven in history); Top20 = GEV 96.0 #1 / 6501 93.0 #2, admitted 2, zero padding; runtime_admitted_claims 0.
+- Verdict: evidence sealed + fail-closed COMPLETE; production lane NOT authorized (R75 certification chain pending); no push, no wrangler mutation, zero network. DEPLOYMENT_READY (this lane) = TRUE; FINAL_RELEASE_COMPLETE = false.
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
