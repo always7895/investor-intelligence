@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `d33e769` (DOE 2026-03-05 qualify; prior `48c29ef`/`c9862c8`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `ad619fe` (runtime promotion path; prior `5706ee2`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -46,11 +46,15 @@ Committed HEAD: `d33e769` (DOE 2026-03-05 qualify; prior `48c29ef`/`c9862c8`), b
 - Proximity: Hitachi & GEV closest; Meidensha & ENR uncorroborated.
 - Explicit residual blockers (superseded by session 13): 2nd/3rd families then outside 180-day live window; resolved by in-window DOE 2026-03-05. Meidensha/ENR still uncorroborated.- Verdict (session 13): GEV & 6501 ADMISSION_QUALIFIED under test-only tier (score 100); production runtime_admitted_claims 0; admitted_count 0; publication_eligible false; LINE_LIVE false.
 ### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
-- `48c29ef`: ingested approved DOE (2024-02-22) + MLGW (2025-09-17) 2nd/3rd lineages (data/sources/ + SHA receipts; PDF pinned/gitignored); multilineage_claim_bundle.py (4 subject-bound claims, verbatim anchors vs digests); readiness fixture_mode/score/claim-counts; 8 tests.- (Superseded by session 13: MLGW/DOE24 2nd families later shown outside the 180-day live window at that clock; scored 0 -> 25 then.)- Baseline: pytest 1505/0/3; vitest 806/0/1; tsc 0.
+- `48c29ef`: DOE (2024-02) + MLGW (2025-09) 2nd/3rd lineages ingested (data/sources/ + SHA receipts); multilineage_claim_bundle.py (subject-bound claims, digest-anchored); +8 tests.
 ### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
-- `d33e769` feat(admission): ingested DOE Office of Electricity Distribution Transformer Webinar (2026-03-05, Jereza; posted 2026-04-03; public domain) -> data/sources/us-doe-oe-20260305/ digest + SHA receipt; bundled in-window DOE26 obs on all 4 claims (GEV/6501); claims {SUPPORTED: 4} (issuer + DOE26 = 2 LIVE families; DOE24/MLGW retained as archived lineages).
-- Result: TEST-ONLY promotion (multi-lineage evidence mode): GEV & 6501 ADMISSION_QUALIFIED (score 0 -> 100, 4 pillars). Production caller path: ADMISSION_DEFER, BLOCKED, runtime_admitted_claims 0 (no signed snapshot promotion). 6508/ENR remain UNRANKED (no licensed 2-family proof).
-- Baseline: pytest 1505/0/3; vitest 806/0/1; tsc 0.
+- `d33e769`: in-window DOE 2026-03-05 webinar ingested + bound (ending the 180-day blocker); roles/values/hashes metrics reconciled; GEV & 6501 ADMISSION_QUALIFIED (test-only, score 100); prod path ADMISSION_DEFER / 0.
+
+
+### Milestones (2026-09-16 session 14: runtime promotion path)
+- `ad619fe` feat(admission): multilineage bundle -> bottleneck ranking engine. Engine: optional fixture_mode threaded to the claim bridge; additive runtime_admitted flag on every record; CLI --multilineage-bundle (offline corpus re-verify, bundle registry/health, TEST_ONLY_FIXTURE evidence mode; no flag = production, 0 admitted).
+- Result: GEV rank 1 (96.0), 6501 rank 2 (93.0), runtime_admitted True; 6508/ENR UNRANKED, runtime_admitted False; production path (no flag) admits 0. 6 new tests.
+- Baseline: pytest 1511/0/3; vitest 806/0/1; tsc 0; security + canonical gates PASSED.
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
