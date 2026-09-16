@@ -695,7 +695,7 @@ describe("v2.1.3 atomic activation transaction", () => {
     publicKv.values.set(key, JSON.stringify(changed));
     const answer = await v213Top20ReportAnswer(env, parseQuery("Top20 文字"));
     expect(answer).not.toContain("SYNTHETIC_ALTERED_AFTER_SEAL");
-    expect(answer).toContain("尚未通過驗證");
+    expect(answer).toContain("INSUFFICIENT_EVIDENCE");
   });
   it("binds actual normalized storage bytes separately from differently encoded upload digests", async () => {
     const { env, publicKv } = runtime(); const value = await bundle();

@@ -182,7 +182,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     if (cmd === "宏觀產業分析") {
       expect(body).toContain("當輪產業資料不可用");
     } else {
-      expect(body).toContain("七欄 Top20 報告尚未通過驗證；不退回五欄");
+      expect(body).toContain("INSUFFICIENT_EVIDENCE");
     }
     expect(body).not.toContain("T00");
     expect(body).not.toContain(SENTINEL);

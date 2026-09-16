@@ -108,7 +108,10 @@ export async function loadV213FreshTop20Report(
     return INSUFFICIENT_EVIDENCE_MESSAGE;
   }
   if (!report) {
-    if (view.integrity === "sealed") return INSUFFICIENT_EVIDENCE_MESSAGE;
+    // A present-but-rejected pointer (tampered seal / broken manifest) is a
+    // liveness failure, not a bootstrap state: fail closed to INSUFFICIENT.
+    // Only an absent-pointer bootstrap keeps the pre-publication message.
+    if (view.integrity === "sealed" || view.kind === "invalid") return INSUFFICIENT_EVIDENCE_MESSAGE;
     return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
   }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
