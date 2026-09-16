@@ -2,36 +2,37 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `f297a43` (typecheck fix on top of `98f4a18` as of session 5), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `da57db6` (options clock-pin; prior `f297a43`/`98f4a18`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
-- `cd39599` chore: ignore local build artifacts (InvestorIntelligence.exe, cloud/config/).
-- `7d2a9f9` fix: restore reviewed baseline gates - STATUS publication anchors; ECB fx-reference replay admission completed atomically (registration + evidence builder, reviewed route, catalog row, count pins 101->102 / 116->117); credential store extracted to launcher/SecureCredentialStore.cs (launcher = bridge + reflection stub); worker.ts holds reviewed blob 4e0f78af.
-- `f031c36` fix(cloud): deterministic option-contract test clocks (evaluatedAt pass-through, pinned fixtures) + reader card-label alignment.
-- `dce6d73` feat: bounded statutory and claim-admission modules (carb_typed_section_parser, company_claim_admission_bridge + adapters/company_public_document, provider_runtime_hook) with docs and passing tests.
+- `cd39599` chore: ignore local build artifacts.
+- `7d2a9f9` fix: reviewed baseline gates restored (STATUS anchors; ECB fx-reference atomic admission + catalog row 101->102/116->117; credential store -> launcher/; worker.ts = blob 4e0f78af).
+- `f031c36` fix(cloud): deterministic option-contract test clocks (evaluatedAt pass-through) + reader label alignment.
+- `dce6d73` feat: bounded statutory & claim-admission modules (carb parser, company claim bridge, provider hook) + tests.
 
 ### Milestones (2026-09-15 session 2: module integration slices)
-- `fc145e1` feat: source acquisition & symbol directory enhancements (directory conflict quarantine; typed CompanyFactorBinding + authority gating; independent-lineage dedupe).
-- `96fdc1e` feat: bounded bottleneck ranking & claim-admission engine (policy pin, fail-closed admission, trust-boundary + takeover tests).
-- `0c0a8f3` feat: global identity resolver & equity lookup module layer (closed taxonomy, sealed catalog admission, presentation-only quotes; no caller wiring; worker.ts / qa.ts untouched).
-- All three slices re-verified: pytest 1470 passed / 0 failed / 3 skipped; cloud vitest 759 passed / 0 failed / 1 skipped.
-- Still uncommitted/external by policy: 4 quarantined WIP cloud test files (global-equity-worker-flow, bottleneck-takeover(-review)) + 1317-line WIP diff parked at D:\AI-Handoffs\investor-intelligence\wip-cloud\; cloud/wrangler.v213.production.local.toml and HOTFIX-REFS.json remain local-untracked (local config / ops draft).
-- Test state verified at every commit: pytest 1470 passed / 0 failed / 3 skipped; cloud vitest 759 passed / 0 failed / 1 skipped.
-- Uncommitted by policy: unaccepted WIP (bottleneck takeover, global identity/lookup) incl. 4 quarantined test files and WIP diff parked at D:\AI-Handoffs\investor-intelligence\wip-cloud\; WIP-modified docs (BOTTLENECK_RANKING_V1, LINE_TOP20_UI, README) and in-flight scripts (source_acquisition, source_observation, nasdaq_symbol_directory, bottleneck_ranking, bottleneck_claim_admission, global_identity_index) remain in the worktree pending acceptance.
-
+- `fc145e1` feat: source acquisition & symbol directory (conflict quarantine; typed CompanyFactorBinding + authority gating; lineage dedupe).
+- `96fdc1e` feat: bounded bottleneck ranking (factors, evidence, resolution, answer) + bounded claim-admission bridge.
+- `0c0a8f3` feat: global equity lookup + sealed global identity index (module layer; NO worker/rich-menu/core call-side wiring - defers to acceptance lane).
+Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 
 ### Milestones (2026-09-15 session 3: bottleneck takeover & global lookup re-integration)
-- `fc2b99b` feat(v213): sealed bottleneck-policy lane (qualified sealed report -> bounded 1..20 projection with bound reference; sealed view without qualified authority -> certified seven-field sealed report, else INSUFFICIENT_EVIDENCE; legacy views keep certified flow); strict two-variant deep-analysis admission; non-hijacking global_equity_lookup intent + v211 worker intercept (worker.ts/qa.ts untouched); 4 quarantined tests restored (checksum-verified); gitignore += cloud/*.local.toml, HOTFIX-REFS.json.
-- Test state: vitest 784 passed / 2 residual / 1 skipped (787); pytest 1470 passed / 0 failed / 3 skipped.
-- Residual (session-3 ledger, RESOLVED by session-4 `98f4a18`): 2 raw-view takeover assertions conflicted with committed pre-migration serve semantics; arbitrator ruled takeover authoritative - pointerless raw writes now fail closed, pre-migration fixtures migrated to sealed bundles, both assertions green.
+- `fc2b99b` feat(v213): sealed bottleneck-policy lane; strict two-variant deep-analysis admission; non-hijacking global_equity_lookup intent + v211 intercept; 4 quarantined tests restored (checksum-verified); worker.ts/qa.ts untouched.
+- Residual ledger: 2 raw-view takeover assertions conflicted with committed pre-migration serve suites; resolved by session-4 arbitration.
 
-### Milestones (2026-09-15 session 4: raw-view contract arbitration)
-- `98f4a18` fix(v213): unsealed pointerless raw-key seven-field writes now fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative; sealed-object-integrity + pointer-last mandatory). Ranking intent extended with 前20/排行 so every Top20 alias is policy-gated.
-- Test fixtures migrated to sealed run-bound snapshots (sealed-report-migration.ts helper) in 7 pre-migration suites incl. the 4 named; DEFECT 1 RED + ALL TOP20 aliases now PASS - session-3 residual RESOLVED.
-- Test state: vitest **786 passed / 0 failed / 1 skipped (787)**; pytest **1470 passed / 0 failed / 3 skipped**.
-- Invariants: cloud/src/worker.ts byte-frozen at reviewed blob 4e0f78af; cloud/src/qa.ts untouched; zero network to real providers; no production mutations.
+### Milestones (2026-09-15 session 4: raw-view arbitration)
+- `98f4a18`: pointerless raw 7-field writes fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative); ranking intent now gates every Top20 alias (incl. 2H20/hai-power forms).
+- 7 pre-migration fixtures (incl. named 4) migrated to sealed run-bound bundles (sealed-report-migration.ts); DEFECT-1 RED + ALL TOP20 aliases PASS.
+- vitest 786/0/1; pytest 1470/0/3.
+
 ### Milestones (2026-09-15 session 5: typecheck cleanup)
-- `f297a43` types the 4 optional helper params (Awaited<ReturnType<typeof fixture/textFixture>>) -> tsc --noEmit 0 errors; vitest 786/0/1; frozen invariants intact.
+- `f297a43`: 4 optional helper params typed (Awaited<ReturnType<typeof ...>>); tsc --noEmit 0. vitest 786/0/1.
+
+### Milestones (2026-09-15 session 6: routing resolution & evidence bridge)
+- ROUTING RESOLVED: blocker `qwen-session-tool-registration-blocker-v1.json` (sha 6e7bfe9a) superseded by dedicated Herdr worker `qwen-worker` w4:p2 (tabby-local / Qwen3.8-27B-EXL3-SC5-H6-V6); no SKYRIM context sharing; GLOBAL_QWEN_ACTIVE<=1 task-boundary lock; record state/qwen-routing-resolution-v1.json.
+- Company Evidence bridge: 12/12; fail-closed (INVALID_JSON / schema / record-count rejects); empty canonical run -> 0 candidates, 0 runtime_admitted_claims, scope RESEARCH_CANDIDATES_ONLY_NOT_ADMITTED, zero network.
+- `da57db6` test(Options): evaluatedAt pinned on validator call sites (16 wall-clock DTE drift failures eliminated).
+- Baseline: pytest 1470/0/3; vitest 786/0/1; tsc 0.
 
 ### Supervisor & Routing Policy (Latest User Override)
 - **Primary Supervisor:** Gemini approved route.
