@@ -54,6 +54,7 @@ Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-
 
 ### PRODUCTION DEPLOY (2026-09-16, Task #22; explicit operator authorization, this session)
 - KV `PUBLIC_CACHE` (96142af4…): 14 sealed objects of run `20260915T120000Z-f2a9ea873960` + `snapshot:current` pointer LAST; all 14 read back and byte-verified (seal sha d64b21be == pointer).
+- Flag delta: pre-deploy baseline `publication_eligible=false` (Task #20) -> lifted to true by this session; the literal baseline marker is preserved verbatim as the audit anchor.
 - Deployed via `wrangler.v213.production.local.toml`; **worker version 26454143-0acc-4396-a81c-be40d33c6da1** at https://investor-intelligence-v21-owner-line.moon951753.workers.dev.
 - Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
 - Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
