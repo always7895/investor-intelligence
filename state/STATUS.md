@@ -2,7 +2,7 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `a78a502` (bottleneck case study; prior `bba00fa`/`78d4dee`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
+Committed HEAD: `265e54f` (admission inventory; prior `a78a502`/`bba00fa`), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`. Aggregate P0/P1/P2 counts UNKNOWN, not zero. Release identity belongs in README.
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599` chore: ignore local build artifacts.
@@ -39,8 +39,8 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
 
 
 ### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
-- `78d4dee` feat(v213): options order guidance + Serenity sizing (delta 0.20-0.30 band, LIMIT-only mid band, exact yield, liquidity gates, caps 12/4/2%, 20% reserve); 20 tests.
-- `bba00fa` docs+test: STATUTORY_AUTHORITY_RESOLUTION_V1 (11344(a); 102(b) + Georgia v. PRO; CCR 17 95350-95359.1 timeline; 7 citations; 404/301 preserved) + enforcement tests.
+- `78d4dee` feat(v213): options order guidance + Serenity sizing engine; 20 tests.
+- `bba00fa` docs+test: STATUTORY_AUTHORITY_RESOLUTION_V1 (11344(a); 102(b) + Georgia v. PRO; CCR 17 95350-95359.1; 7 citations) + tests.
 - Baseline: pytest 1477/0/3 (1470 + 7); vitest 806/0/1; tsc 0.
 
 - **Primary Supervisor:** Gemini approved route.
@@ -55,8 +55,12 @@ Each step: pytest 1470/0/3 green; vitest 759/0/1 green.
   - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
 
 ### Milestones (2026-09-15 session 10: Hitachi Energy bottleneck case study)
-- `a78a502` docs+test: docs/BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md (EHV transformer / bushing / core-steel chokepoint; ~80% US import dependence; 128-144 wk lead times; D1-D5 primary disclosures enumerated incl. Hitachi Energy Sept 2025 $1B NA expansion, Nikkei, US DOE; 4-pillar mapping with business-mix vs shareholder dilution separation (invariant: runtime admitted 0)) + tests/test_bottleneck_case_study_hitachi.py (10 tests: archetype ADMITTED / positive score; mix-dilution does not trigger DESTROYED while real DESTROYED does; switching >=12mo required; each missing pillar -> UNRANKED_INSUFFICIENT_EVIDENCE; real-host obs not runtime-admitted outside fixtures) + docs/README gate link.
-- Baseline: pytest 1487/0/3; vitest 806/0/1; tsc 0; security PASS
+- `a78a502` docs+test: BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1 (EHV / bushings / core steel; 128-144 wk leads; D1-D5 disclosures; mix-vs-shareholder dilution separation; 10 tests) + README link.
+- Baseline: pytest 1487/0/3; vitest 806/0/1; tsc 0
+
+### Milestones (2026-09-15 session 11: admission-pipeline candidate inventory)
+- `265e54f` feat(admission): COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md (GEV / 6501 Hitachi / 6508 Meiden / ENR Siemens; 4-pillar distance + single-family lineage status; GEV & Hitachi closest; explicit blockers; runtime admitted 0) + scripts/evaluate_candidate_admission_readiness.py (CANDIDATE_ADMISSION_READINESS_V1, deterministic fail-closed JSON via the claim-admission bridge; QUALIFIED only at 4/4 licensed + >=2 lineages) + tests/test_candidate_admission_readiness.py (10) + README gate link.
+- Baseline: pytest 1497/0/3; vitest 806/0/1; tsc 0; security PASS
 
 ### Objectives Overview & Trust Invariants
 Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
