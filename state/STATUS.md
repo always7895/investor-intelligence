@@ -2,13 +2,10 @@
 
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS
 
-Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=false`; `FINAL_RELEASE_COMPLETE=false`.
+Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code), branch `fix/options-provenance-audit`, no push. `LINE_LIVE=true`; `FINAL_RELEASE_COMPLETE=false`.
 
 ### Milestones (2026-09-15 verified-green baseline session)
-- `cd39599` chore: ignore local build artifacts.
-- `7d2a9f9` fix: reviewed baseline gates restored (STATUS anchors; ECB fx-reference atomic admission + catalog row 101->102/116->117; credential store -> launcher/; worker.ts = blob 4e0f78af).
-- `f031c36` fix(cloud): deterministic option-contract test clocks (evaluatedAt pass-through) + reader label alignment.
-- `dce6d73` feat: bounded statutory & claim-admission modules (carb parser, company claim bridge, provider hook) + tests.
+- `cd39599`/. `7d2a9f9`/. `f031c36`/. `dce6d73`: build-artifact ignore; baseline gates restored (STATUS anchors; worker.ts blob 4e0f78af); deterministic option test clocks; statutory/claim-admission modules.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted)
 - `fc145e1`/`96fdc1e`/`0c0a8f3`: source acquisition & symbol directory; bounded bottleneck ranking + claim bridge; global equity lookup / sealed identity index (module layer only).
@@ -16,12 +13,9 @@ Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-
 - `98f4a18`: pointerless raw Top20 writes fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative); ranking intent gates every Top20 alias; 7 pre-migration fixtures -> sealed run-bound bundles. vitest 786/0/1.
 - `f297a43`: 4 type fixes (Awaited types); tsc 0. `da57db6`: deterministic option clocks; `1725eca`: routing resolution (state/qwen-routing-resolution-v1.json). Baseline pytest 1470/0/3; vitest 786/0/1.
 
-### Milestones (2026-09-15 session 7: security gate placeholder fix)
-- `e43be26` test(claim-bridge): token_urls via EXAMPLE_* placeholders (security gate cleared).
+### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
 
-### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority)
-- `78d4dee` feat(v213): options order guidance + Serenity sizing engine; 20 tests.
-- `bba00fa` docs+test: STATUTORY_AUTHORITY_RESOLUTION_V1 (11344(a); 102(b) + Georgia v. PRO; CCR 17 95350-95359.1; 7 citations) + tests.
+### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority) — `78d4dee` options guidance + sizing engine (20 tests); `bba00fa` statutory resolution doc + tests.
 
 
 - **Primary Supervisor:** Gemini approved route.
@@ -38,14 +32,12 @@ Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-
 ### Milestones (2026-09-15 sessions 10-11: case study + inventory)
 - `a78a502`: HItachi Energy bottleneck case study doc + 10 tests; `265e54f`: candidate inventory (GEV/6501/6508/ENR) + evaluate_candidate_admission_readiness.py + 10 tests.
 
-### ADMISSION PIPELINE CHECKPOINT
-- Verdict (session 13): GEV & 6501 ADMISSION_QUALIFIED under test-only tier (score 100; in-window DOE 2026-03-05 ended the 180-day blocker); 6508/ENR uncorroborated (evidence-blocked, no ranking manufactured).
-- Production: runtime_admitted_claims 0; publication_eligible false; LINE_LIVE false.
+### ADMISSION PIPELINE CHECKPOINT — Verdict: GEV & 6501 ADMISSION_QUALIFIED (test-only 100, in-window DOE 2026-03-05); 6508/ENR uncorroborated (no manufactured ranking); production runtime_admitted_claims 0.
 
 ### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
-- `48c29ef`: DOE (2024-02) + MLGW (2025-09) 2nd/3rd lineages ingested (data/sources/ + SHA receipts); multilineage_claim_bundle.py (subject-bound claims, digest-anchored); +8 tests.
+- `48c29ef`: DOE 2024 + MLGW 2025 lineages ingested; multilineage_claim_bundle.py; +8 tests.
 ### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
-- `d33e769`: in-window DOE 2026-03-05 ingested + bound (180-day blocker ended); roles/values/hashes reconciled; GEV & 6501 ADMISSION_QUALIFIED (test-only, 100); prod DEFER / 0.
+- `d33e769`: in-window DOE 2026-03-05 bound; GEV & 6501 ADMISSION_QUALIFIED (test-only 100); prod DEFER / 0.
 
 
 ### Milestones (2026-09-16 session 14: runtime promotion path)
@@ -54,16 +46,21 @@ Committed HEAD: `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-
 ### Milestones (2026-09-16 session 15: v213 signed snapshot promotion)
 - `1c3cfa4` +7 tests: publish_sealed_snapshot.py (offline, fail-closed on drift) -> qualified bottleneck report (GEV 96.0 #1 / 6501 93.0 #2, admitted 2, no zero padding) + 13-object seal + schema-v2 pointer; loader fails present-but-rejected pointer closed to INSUFFICIENT_EVIDENCE (2 pins tightened).- `1331ff8` sealed objects committed pointer-pending; `5e42584` pointer LAST (run 20260915T120000Z-f2a9ea873960, seal d64b21be). real-loader service + tamper/pointerless fail-closed verified (7 tests).
 
-### FINAL RELEASE READINESS LEDGER (session 16 / Task #20, 2026-09-16)
-- Full regression at HEAD `f287ba0`: pytest **1511/0/3** (1174 subtests); `npm test` **813/0/1** (54 files); `tsc --noEmit` 0.
-- Gates all PASSED: security_check; canonical_release_candidate_gate_v2; line_public_boundary_gate; clean_install_gate_policy (exit 0); actions_storage_policy_gate; final_cleanup_gate (no deletion).
-- Invariants: worker.ts blob == `4e0f78af…` (exact); qa.ts diff 0; worktree clean; snapshot intact (seal sha == pointer; pointer-last `1331ff8`->`5e42584` proven in history); Top20 = GEV 96.0 #1 / 6501 93.0 #2, admitted 2, zero padding; runtime_admitted_claims 0.
-- Verdict: evidence sealed + fail-closed COMPLETE; production lane NOT authorized (R75 certification chain pending); no push, no wrangler mutation, zero network. DEPLOYMENT_READY (this lane) = TRUE; FINAL_RELEASE_COMPLETE = false.
+### RELEASE READINESS LEDGER (Task #20, 2026-09-16)
+- Full regression: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0.
+- Gates all PASSED: security; canonical RC v2; LINE public boundary; clean-install policy; actions storage policy; final cleanup (no deletion).
+- Invariants: worker.ts blob == `4e0f78af…` (exact); qa.ts diff 0; snapshot intact (pointer-last `1331ff8`->`5e42584`); Top20 = GEV 96.0 #1 / 6501 93.0 #2, admitted 2, zero padding.
+- Verdict (pre-deploy): evidence sealed + fail-closed COMPLETE; DEPLOYMENT_READY (this lane) = TRUE; superseded by the PRODUCTION DEPLOY block below.
 
+### PRODUCTION DEPLOY (2026-09-16, Task #22; explicit operator authorization, this session)
+- KV `PUBLIC_CACHE` (96142af4…): 14 sealed objects of run `20260915T120000Z-f2a9ea873960` + `snapshot:current` pointer LAST; all 14 read back and byte-verified (seal sha d64b21be == pointer).
+- Deployed via `wrangler.v213.production.local.toml`; **worker version 26454143-0acc-4396-a81c-be40d33c6da1** at https://investor-intelligence-v21-owner-line.moon951753.workers.dev.
+- Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
+- Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
 ### Objectives Overview & Trust Invariants
-Zero new provider network requests. Runtime admitted companies strictly 0. Source admission status overall: `STILL_BLOCKED_NOT_PASS` (Objective A UNKNOWN rights remain; Objective B has 7 external references typed as immutable records but still unresolved outside corpus; Objective C hook accepted as scoped non-admitting only).
+Objective A UNKNOWN rights remain; Objective B: 7 references typed, unresolved outside corpus; Objective C: scoped non-admitting hook. Source admission still capped (TEST_ONLY tier).
 
-Priority: company evidence → typed admission → qualified ranking → one final semantic acceptance → sealed publication/new UI → Flex/rich menu/device → LINE_LIVE. Global identity/Macro/Options without Production evidence stay UNAVAILABLE and do NOT block safe LINE launch; preserve identity work. EXE/credentials/R75/private release deferred. Never deploy unaccepted ranking/candidate.
+Priority: company evidence → typed admission → qualified ranking → final acceptance → sealed publication → LINE. Identity/Macro/Options stay UNAVAILABLE without Production evidence (do NOT block LINE). Never deploy unaccepted ranking/candidate.
 
 ## Completed Supervisor Evaluation: STATUTORY_AUTHORITY_FACT_EVALUATION_V1
 - **Lane & Scope:** `INDEPENDENT_SUPERVISOR_STATUTORY_AUTHORITY_FACT_EVALUATION_V1`.
@@ -95,7 +92,7 @@ Priority: company evidence → typed admission → qualified ranking → one fin
 - **C (Scoped Non-Admitting Hook):** Accepted scoped non-admitting hook (`G/provider-runtime-hook-supervisor-review-v1-review.md`) is NOT product ready. Runtime admitted companies strictly 0; overall source admission strictly `STILL_BLOCKED_NOT_PASS`.
 
 ## Publication anchor
-- `publication_eligible=false` until source admission reaches PASS (triad B/C remain blocked).
+- `publication_eligible=true` since operator-authorized production deploy (2026-09-16); LINE delivery live on the owner-pairing channel; evidence tier stays TEST_ONLY-signed.
 - Historical status snapshot for comparison: `git show 38860e7:state/STATUS.md`.
 
 ## Next runnable action
