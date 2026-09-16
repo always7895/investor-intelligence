@@ -251,16 +251,16 @@ class TestCompanyClaimAdmissionBridgeSecurity(unittest.TestCase):
     def test_query_tokens_and_secrets_rejected(self):
         """URLs containing sensitive query parameters (token, apiKey, etc.) must be rejected."""
         token_urls = [
-            "https://example.com/api?token=sensitive_token_123",
-            "https://example.com/api?apiKey=private_api_key_456",
-            "https://example.com/api?auth=secret_auth_789",
+            "https://example.com/api?token=EXAMPLE_TOKEN_123",
+            "https://example.com/api?apiKey=EXAMPLE_API_KEY_456",
+            "https://example.com/api?auth=EXAMPLE_AUTH_789",
         ]
         for url in token_urls:
             with self.assertRaises(bridge.BridgeValidationError) as ctx:
                 bridge.validate_source_url(url)
             err = str(ctx.exception)
             self.assertIn("INVALID_SOURCE_URL", err)
-            self.assertNotIn("sensitive_token_123", err)
+            self.assertNotIn("EXAMPLE_TOKEN_123", err)
 
     def test_private_ip_loopback_and_trailing_dot_hostnames_rejected(self):
         """Rejects RFC1918 private IPs, cloud metadata, IPv6-mapped IPv4, and trailing dot hostnames."""
