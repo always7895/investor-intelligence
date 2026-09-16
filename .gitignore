@@ -94,3 +94,6 @@ HOTFIX-REFS.json
 
 # Sealed-snapshot upload staging (never tracked)
 .kv-stage/
+
+# Uncommitted hourly refresh-task snapshot runs (committed tracked runs remain fully tracked; new run dirs stay audit-on-KV only)
+state/v213-snapshots/*/
