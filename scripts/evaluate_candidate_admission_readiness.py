@@ -115,6 +115,7 @@ def evaluate_readiness(
     registry: Any = None,
     health_states: Optional[Mapping[str, str]] = None,
     now: Optional[datetime] = None,
+    fixture_mode: Optional[bool] = None,  # None -> bridge auto-detects synthetic .example fixtures
 ) -> dict[str, Any]:
     """Deterministic scarcity->admission audit for ONE candidate. Fail-closed."""
     cand = copy.deepcopy(dict(candidate))
@@ -174,6 +175,7 @@ def evaluate_readiness(
             claims_check.get("claims", []),
             ticker,
             now=now,
+            fixture_mode=fixture_mode,
         )
 
     pillars: dict[str, dict[str, Any]] = {}
@@ -206,6 +208,22 @@ def evaluate_readiness(
         and financing not in {"DESTROYED", "STRUCTURAL_DISQUALIFIER"}
     )
 
+    claim_statuses = {}
+    for c in claims_check.get("claims", []) or []:
+        st = str(c.get("status") or "UNAVAILABLE") if isinstance(c, Mapping) else "UNAVAILABLE"
+        claim_statuses[st] = claim_statuses.get(st, 0) + 1
+
+    # Deterministic, additive proximity score (0-100; informational only - it
+    # never confers admission on its own):
+    #   +25 per satisfied pillar (max 100 -> capped below), +25 lineage >= 2,
+    #   +25 core admitted. Cap at 100.
+    readiness_score = min(
+        100,
+        25 * len(satisfied)
+        + (25 if lines >= 2 else 0)
+        + (25 if bool(bridge.get("core_admitted", False)) else 0),
+    )
+
     out = {
         "schema": SCHEMA,
         "ticker": ticker,
@@ -217,6 +235,9 @@ def evaluate_readiness(
         "lineage_count": lines,
         "financing_state": financing,
         "runtime_admitted_claims": 0,  # STRICT invariant: never ghost-allow
+        "readiness_score": readiness_score,
+        "claims_status_counts": claim_statuses,
+        "promotion_basis": "TEST_ONLY_FIXTURE" if (qualified and fixture_mode) else "NONE",
         "fail_closed": True,
         "blockers": sorted(set(blockers)),
         "bridge": {

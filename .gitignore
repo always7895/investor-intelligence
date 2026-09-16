@@ -19,6 +19,7 @@ cloud/dist/
 
 # Generated public data and reports
 data/cache/
+data/sources/**/*.pdf
 data/history/
 reports/
 

@@ -1,0 +1,13 @@
+{
+  "schema": "SOURCE_INGEST_RECEIPT_V1",
+  "lineage": "US_DOE_OFFICE_OF_ELECTRICITY",
+  "canonical_url": "https://www.energy.gov/oe/articles/doe-and-industry-team-keep-lights-america",
+  "published": "2024-02-22",
+  "author": "Michael Pesin, Chief Engineer, U.S. DOE Office of Electricity",
+  "rights": "U.S. federal government work; public domain (17 U.S.C. 105)",
+  "file": "doe-oe-transformer-supply-chain-article.txt",
+  "byte_length": 14362,
+  "content_sha256": "c0f34f7d089815079796ef2dfecfa780b9bccc84d43f443531538249fd461507",
+  "ingested_at": "2026-09-16",
+  "ingest_mode": "one-time authorized acquisition per Gemini Controller approval (task #16); zero provider calls inside tests"
+}
