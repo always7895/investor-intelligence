@@ -311,10 +311,10 @@ def main(argv=None) -> None:
     objects = {prefix + key: bodies[key] for key in OBJECT_KEYS}
     objects[prefix + SEAL_KEY] = seal_text
     objects_path = out_dir / "objects.json"
-    objects_path.write_text(_dumps(objects) + "\n", encoding="utf-8")
+    objects_path.write_bytes(_dumps(objects).encode("utf-8"))
     pointer_path = out_dir / "pointer.raw.json"
-    pointer_path.write_text(pointer + "\n", encoding="utf-8")
-    (out_dir / "seven-field-projection.json").write_text(_dumps(meta["top20"]), encoding="utf-8")
+    pointer_path.write_bytes(pointer.encode("utf-8"))
+    (out_dir / "seven-field-projection.json").write_bytes(_dumps(meta["top20"]).encode("utf-8"))
 
     summary = {
         "run_id": meta["run_id"],
@@ -328,7 +328,7 @@ def main(argv=None) -> None:
         "objects_json": str(objects_path.relative_to(ROOT)),
         "pointer_raw_json": str(pointer_path.relative_to(ROOT)),
     }
-    out_dir.write_text if False else (out_dir / "summary.json").write_text(_dumps(summary) + "\n", encoding="utf-8")
+    (out_dir / "summary.json").write_bytes(_dumps(summary).encode("utf-8"))
     print(json.dumps(summary, indent=2))
 
 

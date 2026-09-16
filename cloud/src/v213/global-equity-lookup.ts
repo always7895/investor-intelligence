@@ -382,7 +382,7 @@ export async function handleGlobalEquityLookup(
     admittedInSealedSnapshot: false,
     nameUnverified: true,
     quoteStatus: "UNAVAILABLE",
-    source: "unsealed_or_missing",
+    source: view.integrity === "sealed" ? "sealed_snapshot:unadmitted_symbol" : "unsealed_or_missing",
     disclaimer: "公開研究資訊，非投資建議；無合格封存紀錄時維持不可用，絕不使用模型猜測。",
     resolution,
   };

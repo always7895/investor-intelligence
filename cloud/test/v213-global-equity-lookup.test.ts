@@ -5,6 +5,10 @@ import {
   type EquityLookupResult,
 } from "../src/v213/global-equity-lookup";
 import { assertLineMessages } from "../src/line-messages";
+import { readFileSync } from "node:fs";
+import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
+import { asKv, MemoryKv } from "./fake-kv";
+import type { ParsedQuery } from "../src/core";
 
 describe("Global Equity Lookup Parser & Presentation", () => {
   describe("Matrix of market symbols with explicit suffix scheme hints", () => {
@@ -249,5 +253,36 @@ describe("Global Equity Lookup Parser & Presentation", () => {
       expect(text).toContain("未完成來源核對（不猜譯）");
       expect(text).not.toContain("蘋果公司（假定）");
     });
+  });
+});
+
+describe("Unadmitted symbol source label (TASK 025A)", () => {
+  const RUN = "20260915T120000Z-f2a9ea873960";
+  const objectsPath = new URL(`../../state/v213-snapshots/${RUN}/objects.json`, import.meta.url);
+  const pointerPath = new URL(`../../state/v213-snapshots/${RUN}/pointer.raw.json`, import.meta.url);
+  const query: ParsedQuery = { intent: "global_equity_lookup", ticker: null, period: "weekly", referenceId: null, normalized: "AAPL" };
+
+  function sealedEnv() {
+    const objects = JSON.parse(readFileSync(objectsPath, "utf-8")) as Record<string, string>;
+    const kv = new MemoryKv();
+    for (const [key, body] of Object.entries(objects)) kv.values.set(key, body);
+    kv.values.set("snapshot:current", readFileSync(pointerPath, "utf-8").trim());
+    return { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), V213_LINE_PRESENTATION: "text" } as unknown as Parameters<typeof handleGlobalEquityLookup>[0];
+  }
+  function unsealedEnv() {
+    return { PUBLIC_CACHE: asKv(new MemoryKv()), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), V213_LINE_PRESENTATION: "text" } as unknown as Parameters<typeof handleGlobalEquityLookup>[0];
+  }
+
+  it("sealed view -> sealed_snapshot:unadmitted_symbol", async () => {
+    const out = await handleGlobalEquityLookup(sealedEnv(), query);
+    expect(out).toBeTruthy();
+    expect(JSON.stringify(out)).toContain("sealed_snapshot:unadmitted_symbol");
+    expect(JSON.stringify(out)).not.toContain("unsealed_or_missing");
+  });
+  it("non-sealed view -> unsealed_or_missing (only when view is not sealed)", async () => {
+    const out = await handleGlobalEquityLookup(unsealedEnv(), query);
+    expect(out).toBeTruthy();
+    expect(JSON.stringify(out)).toContain("unsealed_or_missing");
+    expect(JSON.stringify(out)).not.toContain("unadmitted_symbol");
   });
 });

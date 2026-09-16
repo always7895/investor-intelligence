@@ -73,11 +73,11 @@ def main() -> int:
     for key, body in entries:
         safe = key.rstrip(":").replace("snapshot:", "").replace(":", "_")[:80]
         fp = staged / (safe + ".bin")
-        fp.write_text(body, encoding="utf-8")
+        fp.write_bytes(body.encode("utf-8"))
         staged_files[key] = fp
     ptr_raw = pointer_file.read_text(encoding="utf-8").strip()
     ptr_fp = staged / "__pointer.bin"
-    ptr_fp.write_text(ptr_raw, encoding="utf-8")
+    ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
 
     # 1) objects FIRST (pointer must never lead).
     for key, fp in staged_files.items():

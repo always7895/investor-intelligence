@@ -4,16 +4,14 @@
 
 CHAPTER 20 — Anchor: pre-prod_local §1 (Committed-HEAD)
 
-Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), branch `fix/options-provenance-audit`, no push. Prior anchor `f287ba0` superseded; range `f287ba0..HEAD` (8 commits, old→new): `6f36323` final release readiness ledger (Task #20, 51/51 PASS); `082d37e` ignore .vitest/; `d61778f` PRODUCTION DEPLOY record (Task #22, operator-authorized, p0=0/p1=0); `5022a91` live-clock sealed rebuild + fail-closed KV sync (14 objects first, `snapshot:current` pointer LAST after live readback sha verify) + 60-min refresh task `InvestorIntelligenceSealedFreshness`; `4d83c1c` sealed objects of run `20260916T092839Z-2873c2ff6316` (seal `dab755d6d32f…`, inert until pointer); `6328d93` pointer-last activation of `2873c2ff` (live PUBLIC_CACHE re-pointed pre-commit); `9f87437` Task #23 freshness repair record (live re-publish + pointer-last re-point; STATUS-only line, no new artifact in git); `bb75aaf` ignore .kv-stage/. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
-
+Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit, no push. Range `f287ba0..HEAD` (8): readiness ledger `6f36323`; .vitest `082d37e`; PROD_DEPLOY `d61778f`; live rebuild + refresh task `5022a91`; objects `4d83c1c` / pointer `6328d93` (run `2873c2ff6316`); #23 record `9f87437`; .kv-stage `bb75aaf`. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
 (M1-sealed-audit complete; NO PULL/REBASE/BRANCH)
-- VERDICT: `HEAD_RESOLVED_SEALED_OK` (Qwen local audit; Pro-route review; single-branch local, no remote).
-- HEAD root authority: latest committed live pointer = run `20260916T092839Z-2873c2ff6316` (sealed commit order: `4d83c1c` objects → `6328d93` pointer activation; `9f87437` added a STATUS line only — no new pointer artifact in git).
-- Seal re-verification (local-only, zero network): committed runs `20260915T120000Z-f2a9ea873960` (seal `d64b21bee620…`) and `20260916T092839Z-2873c2ff6316` (seal `dab755d6d32f…`) both PASS the full chain: 13 data objects per-key sha256 + utf8_bytes match; manifest serialization byte-exact; sha256(manifest) == pointer `seal_sha256`; 14 KV keys all `snapshot:<run>:`-scoped (14th = `v213:snapshot-seal:v1` manifest); claim / `last_successful_pipeline_timestamp` invariants pass; total payload 3867 bytes ≤ 8 MiB. Working-tree tracked files == HEAD blobs (4× `git hash-object` IDENTICAL).
-- Untracked snapshot dirs `20260916T103001Z-20956be0eeca` / `20260916T113001Z-c60285be279e`: local-dirty tally only — each self-consistent, 14 run-scoped keys (seals `782952…` / `68c150…`); zero tracked references ⇒ not HEAD-referenced (no P0 trigger on current evidence).
-- cloud/ untracked tally (no verdict applied): 9 Task #23 live-debug outputs (card.txt; fixed/inspect/live-kv/tickers result dumps; trace.json; seal-error.json; test-parse.js / test-parse.mjs — hardcoded paths, pinned to `2873c2ff`) = candidate-scratch; 7 one-shot `cloud/test/test-*.test.ts` — `test-live-kv` hardcodes the live pointer length (weak as a regression test), `test-seal-error` asserts the exact seal error code (candidate regression value), rest unevaluated. No deletions executed.
-- LIVE pointer / KV: PENDING-LIVE-AUDIT — no live read of `snapshot:current` performed under M1 (no current-session authorization); one authorized read is the next live step.
-- Local-only scope honored: git status / git diff / git show reads only; production surface untouched this session (0 KV writes, 0 deploys, 0 LINE sends, 0 re-points); single writer = local Qwen (Pro route = read-only controller).
+- VERDICT: `HEAD_RESOLVED_SEALED_OK` (local audit; Pro-route read-only review; single local branch).
+- HEAD authority: latest committed live pointer = `20260916T092839Z-2873c2ff6316` (objects `4d83c1c` -> pointer `6328d93`; `9f87437` is STATUS-only).
+- Seal re-verify (zero network): runs `f2a9ea873960` and `2873c2ff6316` PASS the full chain gate (per-key sha256 + utf8 sizes, byte-precise manifest, sha256(manifest) equals pointer, 14 run-scoped keys, claim/timestamp invariants); tracked files == HEAD blobs.
+- Untracked: 3 refresh-task run dirs (103001Z-2095..., 113001Z-c602..., 123001Z-b97a...) self-consistent, not HEAD-referenced; cloud/ 9 debug dumps + 7 one-shot test files = scratch candidates (no verdict, none deleted).
+- LIVE pointer/KV: PENDING-LIVE-AUDIT (no live read under M1).
+- Local scope: git reads only; 0 KV writes, 0 deploys, 0 LINE sends, 0 re-points.
 
 > Historical anchor retained (not a new claim): `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code).
 
@@ -28,36 +26,9 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), branch `fix/options-provenan
 
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
 
-### Milestones (2026-09-15 sessions 8-9: options guidance & statutory authority) — `78d4dee` options guidance + sizing engine (20 tests); `bba00fa` statutory resolution doc + tests.
-
-
-- **Primary Supervisor:** Gemini approved route.
-- **Requested Primary Executor:** `tabby-local/Qwen3.8-27B-EXL3-SC5-H6-V6` (no llama.cpp cached fallback; no second server).
-- **Astra Role:** Irreversible architecture decisions, safety blocker, and final Production-deploy gate only while quota > 0; Gemini supervisor takes acceptance if exhausted. No ordinary research or implementation assigned to Astra.
-- **Local Route Status & Corrected Blocker Observation:**
-  - Blocker reference: `G/qwen-session-tool-registration-blocker-v1.json`.
-  - The retired helper `qwen_route_status` failed and current exposed Agent refuses dispatch.
-  - `qwen_routed: false`; reason: `CURRENT_SESSION_TOOL_ROUTING_NOT_BACKEND_HEALTH`.
-  - **Factual Correction:** Stale routing helper failures do **NOT** prove that the underlying Tabby backend model is missing, offline, or misconfigured. Rather, the current session tool registration cannot satisfy the project binding in `.pi/agents/qwen-executor.md`. Model binding configuration is distinct from live verification.
-  - No Qwen inference occurred, no task ID was created, 0 tokens consumed. No guard bypass, server spawning, model switching, or Pi configuration repair attempted.
-  - Gemini mechanical fallback executed for bounded task `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1`.
-
-### Milestones (2026-09-15 sessions 10-11: case study + inventory)
-- `a78a502`: HItachi Energy bottleneck case study doc + 10 tests; `265e54f`: candidate inventory (GEV/6501/6508/ENR) + evaluate_candidate_admission_readiness.py + 10 tests.
-
-### ADMISSION PIPELINE CHECKPOINT — Verdict: GEV & 6501 ADMISSION_QUALIFIED (test-only 100, in-window DOE 2026-03-05); 6508/ENR uncorroborated (no manufactured ranking); production runtime_admitted_claims 0.
-
-### Milestones (2026-09-15 session 12: DOE + MLGW multi-lineage ingest)
-- `48c29ef`: DOE 2024 + MLGW 2025 lineages ingested; multilineage_claim_bundle.py; +8 tests.
-### Milestones (2026-09-15 session 13: in-window DOE 2026-03-05 -> GEV/6501 qualified)
-- `d33e769`: in-window DOE 2026-03-05 bound; GEV & 6501 ADMISSION_QUALIFIED (test-only 100); prod DEFER / 0.
-
-
-### Milestones (2026-09-16 session 14: runtime promotion path)
-- `ad619fe`: multi-lineage bundle -> ranking engine (fixture_mode to bridge, runtime_admitted flag, --multilineage-bundle). GEV 96.0 #1 / 6501 93.0 #2 admitted; 6508/ENR UNRANKED; production admits 0.
-
-### Milestones (2026-09-16 session 15: v213 signed snapshot promotion)
-- `1c3cfa4` +7 tests: publish_sealed_snapshot.py (offline, fail-closed on drift) -> qualified bottleneck report (GEV 96.0 #1 / 6501 93.0 #2, admitted 2, no zero padding) + 13-object seal + schema-v2 pointer; loader fails present-but-rejected pointer closed to INSUFFICIENT_EVIDENCE (2 pins tightened).- `1331ff8` sealed objects committed pointer-pending; `5e42584` pointer LAST (run 20260915T120000Z-f2a9ea873960, seal d64b21be). real-loader service + tamper/pointerless fail-closed verified (7 tests).
+### Archive milestones (sessions 7-15, 2026-09-15; details in git log)
+- `e43be26` security-gate placeholders; `78d4dee` options guidance + sizing engine; `bba00fa` statutory resolution; `a78a502` Hitachi Energy case study; `265e54f` candidate inventory.
+- `48c29ef` DOE 2024 + MLGW 2025 lineages; `d33e769` in-window DOE 2026-03-05 -> GEV/6501 ADMISSION_QUALIFIED (test-only 100); `ad619fe` ranking promotion path (runtime-admitted flag); `1c3cfa4`/`1331ff8`/`5e42584` v213 signed-snapshot promotion (rejected-pointer -> INSUFFICIENT fail-closed; THEN pointer is LAST).
 
 ### RELEASE READINESS LEDGER (Task #20, 2026-09-16)
 - Full regression: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0.

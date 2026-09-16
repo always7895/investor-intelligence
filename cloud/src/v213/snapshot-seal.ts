@@ -61,9 +61,12 @@ function control(raw: string, limit: number): Record<string, unknown> {
   bytes(raw, limit);
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error("V213_SNAPSHOT_SEAL_INVALID"); }
-  // Controls are emitted by JSON.stringify in this Worker. Exact spelling also
-  // rejects duplicate/escaped duplicate keys, BOM, numeric coercion and overflow.
-  requireSeal(raw === JSON.stringify(value));
+  // Controls are emitted by JSON.stringify in this Worker. Trimmed exact
+  // spelling tolerates transport-level leading/trailing whitespace (e.g.
+  // CRLF from a local writer's put) while STILL rejecting duplicate/escaped
+  // duplicate keys, BOM, numeric coercion, overflow, extra keys and any inner
+  // reordering: whitespace may only exist OUTSIDE the serialized object.
+  requireSeal(raw.trim() === JSON.stringify(value));
   return object(value);
 }
 function meta(value: Record<string, unknown>): void {
