@@ -248,7 +248,15 @@ export async function updateFreeRelayRoute(body: string, env: FreeRelayEnv): Pro
 export async function currentFreeRelayRoute(env: FreeRelayEnv): Promise<FreeRelayRouteRecord | null> {
   const stub = routeStub(env);
   if (!stub) return null;
-  const response = await stub.fetch("https://free-relay.internal/current", { method: "GET" });
+  let response: Response;
+  try {
+    response = await stub.fetch("https://free-relay.internal/current", { method: "GET" });
+  } catch {
+    // A relay read fault must not abort the whole request: only the lease
+    // path degrades (treated as no current route); data paths keep working.
+    console.warn("V213_FREE_RELAY_CURRENT_READ_FAILED");
+    return null;
+  }
   if (!response.ok) return null;
   const route = await response.json<StoredRoute>().catch(() => null);
   if (!route || Date.parse(route.expires_at) <= Date.now() || route.model !== expectedModel(env) || !routeUrl(route.public_url)) return null;

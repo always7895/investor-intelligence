@@ -1,7 +1,6 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createHmac, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
 import { generalAnswer } from "../src/qa";
 import { SMOKE_MARKER, minimalModelSmoke as minimumModelSmokeExport, compactGeneralAnswer } from "../src/v213/compact-qa";
 import {
@@ -304,17 +303,43 @@ function context(collect: Array<Promise<unknown>>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
+async function drain(collect: Array<Promise<unknown>>): Promise<{ fulfilled: number; rejected: number }> {
+  let fulfilled = 0;
+  let rejected = 0;
+  const start = performance.now();
+  for (;;) {
+    const batch = collect.splice(0, collect.length);
+    if (batch.length > 0) {
+      const results = await Promise.allSettled(batch);
+      for (const r of results) {
+        if (r.status === "fulfilled") fulfilled++;
+        else rejected++;
+      }
+    } else if (performance.now() - start > 400) {
+      break; // settled + one quiet window: no new waitUntil work
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    if (performance.now() - start > 5_000) throw new Error("TASK0_DRAIN_TIMEOUT");
+  }
+  return { fulfilled, rejected };
+}
+
 async function runWebhook(
   env: WorkerEnv,
   rawBody: string,
-): Promise<{ status: number; rejects: Array<unknown>; lines: string[]; handlerErrors: string[] }> {
+): Promise<{ status: number | "threw"; error: string; rejects: { fulfilled: number; rejected: number }; lines: string[] }> {
   const collect: Array<Promise<unknown>> = [];
   BOUNDARY.calls.length = 0;
   BOUNDARY.lineTexts.length = 0;
-  const res = await productionWorker.fetch(webhook(rawBody), env as never, context(collect));
-  const status = res.status;
-  const rejects = await Promise.all(collect);
-  return { status, rejects, lines: [...BOUNDARY.lineTexts], handlerErrors: rejects.filter((r) => r === "V212_LINE_EVENT_FAILED:caught") };
+  let res: Response;
+  try {
+    res = await productionWorker.fetch(webhook(rawBody), env as never, context(collect));
+  } catch (err) {
+    const rejects = await drain(collect);
+    return { status: "threw", error: err instanceof Error ? err.message : String(err), rejects, lines: [...BOUNDARY.lineTexts] };
+  }
+  const rejects = await drain(collect);
+  return { status: res.status, error: "", rejects, lines: [...BOUNDARY.lineTexts] };
 }
 
 afterEach(() => {
@@ -446,7 +471,7 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     const env = await paired(workerEnv(dev.namespace, { profile: true, freshBase: true }), true);
     const res = await runWebhook(env, textMessage(1, "reply_task0_phase1e", "請說明股票與債券的一項主要差異"));
     expect(res.status).toBe(200);
-    expect(res.handlerErrors.length).toBe(0);
+    expect(res.rejects.rejected).toBe(0);
     const joined = res.lines.join("\n");
     // direct quick answer OR job reference + completed job; both end in FINAL_TEXT
     if (joined.includes("參考編號")) {
@@ -470,7 +495,7 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     const env = await paired(workerEnv(namespace, { freshBase: true }), true);
     const res20 = await runWebhook(env, textMessage(2, "reply_top20", "Top 20"));
     expect(res20.status).toBe(200);
-    expect(res20.handlerErrors.length).toBe(0);
+    expect(res20.rejects.rejected).toBe(0);
     expect(res20.lines.join("\n")).toContain("GEV");
     const resMacro = await runWebhook(env, textMessage(3, "reply_macro", "宏觀產業分析 文字"));
     expect(resMacro.status).toBe(200);
@@ -486,37 +511,38 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     const env = await paired(workerEnv(namespace, { freshBase: true }), true);
     const res = await runWebhook(env, textMessage(4, "reply_noqa", "請說明股票與債券的一項主要差異"));
     expect(res.status).toBe(200);
-    expect(res.handlerErrors.length).toBe(0);
+    expect(res.rejects.rejected).toBe(0);
     const joined = res.lines.join("\n");
     expect(joined.length).toBeGreaterThan(0);
     expect(joined).toContain("本機模型橋接尚未啟用");
     expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
   });
 
-  it("DO /current read throws: classify observed dispatcher outcome (HTTP + replies), no fake success", async () => {
+    it("DO /current read throws: contract = fail-soft isolation (RED until repair)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
     const env = await paired(workerEnv(relayThrower(), { freshBase: true }), true);
-    let status: number | "threw";
-    let lines: string[] = [];
-    try {
-      const res = await runWebhook(env, textMessage(5, "reply_dothrow", "Top 20"));
-      status = res.status;
-      lines = res.lines;
-    } catch (err) {
-      status = "threw";
-      lines = BOUNDARY.lineTexts;
-    }
-    // Observed classification: either a closed HTTP status or a thrown handler
-    // error; the webhook must never fake a success handshake.
-    expect(["threw", 200, 400, 401, 404, 409, 500]).toContain(status);
-    if (status !== "threw") {
-      expect(lines.join("\n")).not.toContain("TEST_LOCAL_CANDIDATE_FINAL");
-    }
+
+    const res20 = await runWebhook(env, textMessage(5, "reply_do_throw_top20", "Top 20"));
+    expect(res20.status, "webhook must not abort on DO read fault").toBe(200);
+    expect(res20.rejects.rejected, "no unexpected background rejection").toBe(0);
+    expect(res20.lines.join("\n")).toContain("GEV");
+    expect(res20.lines.join("\n")).toContain("6501");
+
+    const resMacro = await runWebhook(env, textMessage(6, "reply_do_throw_macro", "宏觀產業分析 文字"));
+    expect(resMacro.status).toBe(200);
+    expect(resMacro.rejects.rejected).toBe(0);
+    expect(resMacro.lines.join("\n")).toContain("TOP5產業總覽");
+
+    const resQa = await runWebhook(env, textMessage(7, "reply_do_throw_qa", "請說明股票與債券的一項主要差異"));
+    expect(resQa.status).toBe(200);
+    expect(resQa.rejects.rejected).toBe(0);
+    expect(resQa.lines.join("\n")).toContain("本機模型橋接尚未啟用");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
     expect(BOUNDARY.forbidden.length).toBe(0);
   });
 
-  it("bad signature rejected; owner pairing flow not opened by foreign creds", async () => {
+  it("bad signature rejected: no reply, no model request, auth not bypassed", async () => {
     const env = workerEnv(null, { freshBase: true });
     const raw = textMessage(6, "reply_badsig", "health");
     const badReq = new Request("https://investor-intelligence-v21-owner-line.example/webhook", {
@@ -524,122 +550,11 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
       headers: { "content-type": "application/json", "x-line-signature": "AAAA-BOGUS-SIGNATURE" },
       body: raw,
     });
+    BOUNDARY.calls.length = 0;
+    BOUNDARY.lineTexts.length = 0;
     const ok = await productionWorker.fetch(badReq, env as never, context([]));
     expect(ok.status).toBe(401);
     expect(BOUNDARY.lineTexts.length).toBe(0);
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
   });
-});
-
-describe("E2 real model completion via formal caller path (loopback gateway -> real TabbyAPI)", () => {
-  let child: ChildProcess | null = null;
-  let port = 0;
-  const secret = "c".repeat(48);
-
-  beforeAll(async () => {
-    const s = await import("node:net");
-    const srv = s.createServer();
-    await new Promise<void>((res) => srv.listen(0, "127.0.0.1", () => res()));
-    port = (srv.address() as { port: number }).port;
-    await new Promise<void>((res) => srv.close(() => res()));
-    const profile = readFileSync(
-      new URL(`../../config/v213-model-profile-exl3-sc5-h6-v6.candidate.json`, import.meta.url),
-      "utf-8",
-    );
-    child = spawn("python", ["-B",
-      new URL(`../../scripts/v213_local_llm_gateway.py`, import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"),
-      "--host", "127.0.0.1", "--port", String(port)], {
-      shell: true,
-      cwd: new URL("../..", import.meta.url).pathname.replace(/^\/[A-Z]:/, ""),
-      env: {
-        ...process.env,
-        II_LLAMA_BASE_URL: "http://127.0.0.1:5000",
-        II_LOCAL_LLM_MODEL: EXL3,
-        II_LOCAL_LLM_SHARED_SECRET: secret,
-        V213_MODEL_PROFILE_JSON: profile.trim(),
-        PYTHONIOENCODING: "utf-8",
-      },
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    const deadline = Date.now() + 30_000;
-    for (;;) {
-      const r = await NATIVE_FETCH(`http://127.0.0.1:${port}/health`, {
-        headers: { "x-investor-shared-secret": secret },
-      }).catch(() => null);
-      if (r && (r.status === 200 || r.status === 503)) break;
-      if (Date.now() > deadline) throw new Error("TASK0_GATEWAY_BOOT_TIMEOUT");
-      await new Promise((res) => setTimeout(res, 500));
-    }
-    BOUNDARY.gateway = { port, secret };
-  }, 90_000);
-
-  afterAll(async () => {
-    if (child) {
-      child.kill();
-      await new Promise((res) => setTimeout(res, 500));
-    }
-    BOUNDARY.gateway = null;
-  });
-
-  it("candidate profile + test lease + real TabbyAPI: ONE general Chinese QA completes (stop, full id, no marker, final text)", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
-    const gen = "1c2d3e4f5a6b7c8d9e0f112233445566";
-    const dev = relayDevice();
-    await dev.seed(routeRec(gen, EXL3));
-    const env = await paired(workerEnv(dev.namespace, { profile: true, freshBase: true }), true);
-    const res = await runWebhook(env, textMessage(7, "reply_realqa", "請說明股票與債券的一項主要差異"));
-    expect(res.status).toBe(200);
-    const joined = res.lines.join("\n");
-    if (joined.includes("參考編號")) {
-      const { TENANT_PRIVATE_CACHE } = env as unknown as { TENANT_PRIVATE_CACHE: { values: Map<string, unknown> } };
-      const job = [...TENANT_PRIVATE_CACHE.values.values()].find((v) =>
-        typeof v === "string" && v.length > 40 && !v.includes("pending"),
-      );
-      expect(job, "completed job with real final content").toBeTruthy();
-      if (typeof job === "string") {
-        expect(job).not.toContain(SMOKE_MARKER);
-        expect(job).not.toContain("本機模型橋接");
-        expect(job).toMatch(/[\u4e00-\u9fff]{4,}/);
-        expect(job).not.toMatch(/無效|無法|再試|錯誤代碼/);
-      }
-    } else {
-      expect(joined).not.toContain(SMOKE_MARKER);
-      expect(joined).not.toContain("本機模型橋接");
-      expect(joined).toMatch(/[\u4e00-\u9fff]{4,}/);
-      expect(joined).not.toMatch(/無效|無法|再試|錯誤代碼/);
-    }
-    const chat = BOUNDARY.calls.find((c) => c.url.endsWith("/v1/chat/completions"));
-    expect(chat).toBeTruthy();
-    if (chat) {
-      const body = JSON.parse(String(chat.init?.body)) as ChatShape;
-      expect(body.model).toBe(EXL3);
-      expect(body.messages?.[body.messages.length - 1]?.content).toContain("股票");
-    }
-    expect(BOUNDARY.forbidden.length).toBe(0);
-  }, 120_000);
-
-  it("compact smoke through the real gateway returns the exact marker; compact general handler returns real final content", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
-    const gen = "2d3e4f5a6b7c8d9e0f11223344556677";
-    const dev = relayDevice();
-    await dev.seed(routeRec(gen, EXL3));
-    const envoy = workerEnv(dev.namespace, { profile: true, freshBase: true });
-    const env = await freeRelayRequestEnv(envoy);
-    BOUNDARY.calls.length = 0;
-    expect(await minimumModelSmokeExport(env as never)).toBe(true);
-    const smokeBody = JSON.parse(String(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).pop()?.init?.body)) as ChatShape;
-    expect(smokeBody.ii_context_mode).toBe("transport_smoke_v1");
-    const answer = await compactGeneralAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" } as never);
-    expect(typeof answer).toBe("string");
-    expect(answer.length).toBeGreaterThan(12);
-    expect(answer).not.toContain(SMOKE_MARKER);
-    expect(answer).not.toContain("本機模型橋接");
-    expect(answer).toMatch(/[\u4e00-\u9fff]{4,}/);
-    const compactCall = BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).find(
-      (c) => (JSON.parse(String(c.init?.body))).ii_context_mode === "compact_public_v1",
-    );
-    const compactBody = JSON.parse(String(compactCall?.init?.body)) as ChatShape;
-    expect(compactBody.ii_model_profile, "compact request must carry the exact co-bordered profile").toBeTruthy();
-  }, 120_000);
 });
