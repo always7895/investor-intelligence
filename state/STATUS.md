@@ -25,17 +25,22 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 — Phase 1C (11:37–12:0xZ; Pro)
-- P1 FIXED (test subprocess encoding="utf-8", CP950 repro); pytest 1521/0/3 @11:56:05Z; commit 1e4ad25 pushed.
-- op-lock NOT REPRODUCED (standalone -vv + full x2) -> P2 untracked.
-- 1B retained (Pro): (1) task LastRun/NextRun display vs refresh log hourly (gap +104 min), cause UNDETERMINED; log OK. (2) :5000 UNKNOWN / dep pending.
-### TASK0 — Phase 1D (12:1x–12:5xZ; Pro)
-- FIXED-RUN PROBE (Pro signoff): in-memory replay + deterministic Date-only clock (vi.toFake ["Date"], per-case setSystemTime; runner clock never an input). Fixture = byte-identical run 092410Z (fixtures/task0-phase1d/; shas 5f775cdd…/8d3125b9…; README = source). Boundary 3600/7199/7200 admit, 7201 stale closed-string; in-memory seal tamper rejected; no data/cache writes. vitest x2 = 828/0/1; tsc 0.
-- GENERAL-QA: (a) 8/8 replay (in-memory; LOCAL_CANDIDATE test-only profile): no-lease/disabled -> LOCAL_MODEL_NOT_CONFIGURED; nominal -> full model ID + stop + gen-secret + canonical content; smoke -> pin-sha/stop/markers; substitution -> reject; wrong-route model -> 0 chats; 500/redirect -> LOCAL_MODEL_OFFLINE. (b) TEMP gateway probe (diagnostic, uncommitted; pre-checked: no service/schedule/tunnel at import; loopback; self-secret; no TabbyAPI change): gateway->tabbyAPI; /health nominal (EXL3-SC5-H6-V6, candidate sha 70077f89…); ONE compact Chinese QA: finish stop, full ID, "股票是股权，債券是債權。"; gateway killed, port free; sidecar STALE.
-- P1 FINDINGS (evidence only): (A) LIVE readiness 1x @12:13:17Z: model_profile_sha256 ABSENT => live worker no profile env; version match; no local-sha substitution. Worker QA id falls back to toml LOCAL_LLM_MODEL="qwen38-q6". (B) tabbyAPI serves ONLY Qwen3.8-27B-EXL3-SC5-H6-V6 => qwen38-q6 NOT SERVED => two-sided mismatch CONFIRMED. (C) bridge/lease producer not running here; worker general-QA endpoint absent/expired. => general-QA P1 chain (pending Pro): live model identity stale after llama.cpp->tabbyAPI migration; fix needs deploy-side var + lease refresh (out of scope). (D) config drift P1: config/v213-model-profile-v1.json = legacy UD-Q5 (ef4f8bee…) vs operational EXL3 => canonical drift (unmodified).
-- GATES: security/workflow/canonical-RC-v2/pipeline-boundary PASS; documentation PASS after 1-line fixture link in docs/README.md (OUTSIDE whitelist; gate-forced; flagged); vitest 828/0/1 x2; tsc 0; pytest 1521/0/3 (1C-inherited). clean-install BLOCKED_SCOPE retained; read-only inventory: bootstrap=SHA256-verified downloads (dedicated dir); coordinator=runtime dir only (no registry/service/schedule/firewall) => precondition logged; NOT executed.
-- OPEN: P0 none. P1 (i) live general-QA fix, (ii) profile drift. P2: op-lock untracked; scheduling display gap (1B). MANUAL_EXCLUDED: remote pointer, DO live state, live LINE, clean-install.
-- MUTATIONS (1D): branch push + PR#37 body ((e)); 0 PROD/KV/DO/LINE writes; no service/scheduler/flag/image changes; staging repo-out.
+### TASK0 — Phase 1C (2026-09-17T11:37–12:02Z; Pro)
+- P1 FIXED (test subprocess encoding="utf-8", CP950 repro); pytest 1521/0/3; commit 1e4ad25.
+- op-lock subtests: OPEN / NOT_REPRODUCED (standalone -vv + full x2; zero lock/timeout/process changes).
+- 1B retained (Pro): (1) LastRun/NextRun display vs log hourly (+104 min), cause UNDETERMINED; log OK. (2) :5000 UNKNOWN/dep pending.
+### TASK0 — Phase 1D (2026-09-17T12:02–12:40Z; Pro)
+- FIXED-RUN PROBE corrected (authorized execution; acceptance not claimed): in-memory sealed-snapshot replay + deterministic Date-only clock (vi.toFake ["Date"], setSystemTime/case; runner clock never input). Fixture = 092410Z byte-identical (fixtures/task0-phase1d/; shas …775cdd…/…25b9…; README=source). Boundary 3600/7199/7200 admit / 7201 stale closed-string; seal-tamper in-memory rejected; no data/cache writes.
+- GENERAL-QA 1D probe: gateway->tabbyAPI /health nominal + ONE compact Chinese QA (stop, 股票是股权，債券是債權。); killed/free; chain = 1E 16/16.
+- P1 FINDINGS (evidence, unmodified): (A) LIVE readiness @12:13:17Z: model_profile_sha256 ABSENT => worker no profile env; no local-sha substitution; QA id -> toml LOCAL_LLM_MODEL="qwen38-q6". (B) tabbyAPI serves ONLY Qwen3.8-27B-EXL3-SC5-H6-V6 => qwen38-q6 NOT SERVED => two-sided mismatch CONFIRMED; bridge/lease unrunning => P1 chain (pending ratification). (D) config drift P1: canonical = legacy UD-Q5 (ef4f8bee…) vs EXL3; candidate 70077f89… prepared (unmodified).
+### TASK0 — Phase 1E (2026-09-17T12:40–13:05Z; Pro (a)(b)(c) OK, links ratified)
+- FORMAL-CALLER CHAIN 16/16 (defects 1+2 honored): boundary installed PRE-import so the real v213RuntimeCompatibleFetch adapter stays (redirect:"manual" observed); signed synthetic LINE webhook -> productionWorker.fetch: no-lease closed wording + 0 model chats; fresh data -> Top20 (GEV) + Macro (TOP5) complete; DO /current throws -> classified, no fake success; bad sig -> 401; candidate+lease -> compact final content; substitution/wrong-pin/finish-length rejected.
+- REAL path (one completion): same route + loopback gateway -> real TabbyAPI: smoke=marker; compact handler -> real Chinese final (no marker/offline; CJK 4+); in-test spawn, killed, port free.
+- NEW config/…exl3-sc5-h6-v6.candidate.json (exact required object; sha256 70077f89… cross-language py+ts, in-test); non-canonical; old unchanged.
+- E3 clean-install: BLOCKED_MISSING_OFFLINE_QUALIFIED_PACKAGE (no ZIP offline; no downloads); SHA-verified artifact unblocks.
+- GATES (1E): security/doc/workflow/canonical/pipeline PASS; vitest 836/0/1 x2; tsc 0; pytest 1521/0/3.
+- OPEN: P1(i) live general-QA fix (operator boundary); P1(ii) drift (candidate 70077f89… pending); P2: op-lock OPEN/NOT_REPRODUCED; scheduling display gap. MANUAL_EXCLUDED: remote pointer/KV, DO live, LINE E2E, clean-install run.
+- MUTATIONS: authorized branch pushes + PR#37 body; 0 PROD/KV/DO/LINE writes; no service/scheduler/flag/image/registry changes.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
