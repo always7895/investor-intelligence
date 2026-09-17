@@ -97,3 +97,6 @@ HOTFIX-REFS.json
 
 # Uncommitted hourly refresh-task snapshot runs (committed tracked runs remain fully tracked; new run dirs stay audit-on-KV only)
 state/v213-snapshots/*/
+state/records/
+state/sealed-freshness-tasks.json
+cloud/test-live-replay-result.json

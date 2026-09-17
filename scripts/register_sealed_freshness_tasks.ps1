@@ -75,8 +75,9 @@ try {
         else { $backup[$Definition.Name] = $null }
     }
 
+    $logonType = 'Interactive'
     foreach ($Definition in $definitions) {
-        $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType S4U -RunLevel Limited
+        $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType $logonType -RunLevel Limited
         $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Definition.RepetitionMinutes) -RepetitionDuration (New-TimeSpan -Days 10000)
         Register-ScheduledTask -TaskName $Definition.Name -Action (Build-Action $Definition) -Trigger $trigger -Settings $settings -Principal $principal -Description $Definition.Description -Force | Out-Null
@@ -84,12 +85,14 @@ try {
 
     foreach ($Definition in $definitions) {
         $Task = Get-ScheduledTask -TaskName $Definition.Name -ErrorAction Stop
-        if ([string]$Task.Principal.LogonType -ne 'S4U') { throw "LOGON_TYPE_INVALID: $($Definition.Name)" }
+        if ([string]$Task.Principal.LogonType -ne $logonType) { throw "LOGON_TYPE_INVALID: $($Definition.Name)" }
         $TaskSettings = $Task.Settings
         if (-not $TaskSettings.StartWhenAvailable) { throw "START_WHEN_AVAILABLE_MISSING: $($Definition.Name)" }
-        if ([TimeSpan]$TaskSettings.ExecutionTimeLimit -ne (New-TimeSpan -Hours 1)) { throw "EXECUTION_TIME_LIMIT_INVALID: $($Definition.Name)" }
+        $limitSpan = if ($TaskSettings.ExecutionTimeLimit -is [TimeSpan]) { $TaskSettings.ExecutionTimeLimit } else { [System.Xml.XmlConvert]::ToTimeSpan([string]$TaskSettings.ExecutionTimeLimit) }
+        if ($limitSpan -ne (New-TimeSpan -Hours 1)) { throw "EXECUTION_TIME_LIMIT_INVALID: $($Definition.Name)" }
         $repetition = $Task.Triggers[0].Repetition
-        if (-not $repetition -or [TimeSpan]$repetition.Interval -ne (New-TimeSpan -Minutes $Definition.RepetitionMinutes)) {
+        $repSpan = if ($repetition -and $repetition.Interval -is [TimeSpan]) { $repetition.Interval } elseif ($repetition) { [System.Xml.XmlConvert]::ToTimeSpan([string]$repetition.Interval) } else { $null }
+        if (-not $repSpan -or $repSpan -ne (New-TimeSpan -Minutes $Definition.RepetitionMinutes)) {
             throw "REPETITION_INTERVAL_INVALID: $($Definition.Name)"
         }
     }
@@ -119,7 +122,7 @@ catch {
     tasks = $definitions | ForEach-Object { @{ name = $_.Name; intervalMinutes = $_.RepetitionMinutes } }
     startWhenAvailable = $true
     executionTimeLimitMinutes = 60
-    logonType = 'S4U'
+    logonType = $logonType
     ownerLoggedInRequired = $false
     productionMutation = $false
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $ScriptRoot 'state\sealed-freshness-tasks.json') -Encoding utf8

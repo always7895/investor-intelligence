@@ -37,7 +37,7 @@ $NamespaceId = '96142af40b5d4213862d5483fe3a66da'
 if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
 
 function Read-LivePointer {
-    $bytes = & npx --yes Wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --cwd $CloudDir 2>$null
+    $bytes = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --cwd $CloudDir 2>$null
     $text = (($bytes -join '')).Trim()
     if ($text -notmatch '\{') { throw 'NO_LIVE_POINTER' }
     return ($text | ConvertFrom-Json)
@@ -98,8 +98,7 @@ try {
         }
         # Real reader replay over live KV bytes: run the in-repo probe (exits
         # non-zero on ANY stale path) and capture its immutable result artifact.
-        $ReplayTag = ('DEPLOYP' + (Get-Date -Format 'yyyyMMddHHmmss'))
-        $replayLog = & npx --yes vitest run test/live-production-replay.test.ts -t $ReplayTag --passWithNoTests --root $CloudDir 2>&1 | Out-String
+        $replayLog = & npx --yes vitest run test/live-production-replay.test.ts --root $CloudDir 2>&1 | Out-String
         $replayExit = $LASTEXITCODE
         $replayArtifact = Join-Path $CloudDir 'test-live-replay-result.json'
         $replayFresh = $false

@@ -18,24 +18,37 @@ if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out
 $log = Join-Path $logDir "sealed-refresh.log"
 $stamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssK"
 
-Write-Host "[$stamp] sealed refresh start (cwd=$repo)"
-Set-Location $repo
+. (Join-Path $repo "scripts\v213_operation_lock.ps1")
+try {
+    Enter-V213OperationLock -Owner "SealedRefresh" -TimeoutSeconds 0 | Out-Null
+} catch {
+    Write-Host "[$stamp] LOCK_BUSY — another refresh or operation is running; exiting cleanly"
+    Add-Content -Path $log -Value "[$stamp] LOCK_BUSY — collision skipped"
+    exit 0
+}
 
-$py = "python"
-& $py "scripts\publish_sealed_snapshot.py" --live-clock 2>&1 | Tee-Object -FilePath $log -Append
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[$stamp] GENERATE FAILED — pointer untouched, previous run still serving"
-    Add-Content -Path $log -Value "[$stamp] GENERATE FAILED exit=$LASTEXITCODE (pointer untouched)"
-    exit $LASTEXITCODE
+try {
+    Write-Host "[$stamp] sealed refresh start (cwd=$repo)"
+    Set-Location $repo
+
+    $py = "python"
+    & $py "scripts\publish_sealed_snapshot.py" --live-clock 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[$stamp] GENERATE FAILED — pointer untouched, previous run still serving"
+        Add-Content -Path $log -Value "[$stamp] GENERATE FAILED exit=$LASTEXITCODE (pointer untouched)"
+        exit $LASTEXITCODE
+    }
+    $sumDir = Get-ChildItem (Join-Path $repo "state\v213-snapshots") -Directory |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    & $py "scripts\sync_sealed_snapshot_kv.py" --run-dir $sumDir.FullName 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[$stamp] SYNC FAILED — pointer untouched, previous run still serving"
+        Add-Content -Path $log -Value "[$stamp] SYNC FAILED exit=$LASTEXITCODE (pointer untouched)"
+        exit $LASTEXITCODE
+    }
+    Add-Content -Path $log -Value "[$stamp] REFRESH OK run=$($sumDir.Name) pointer last"
+    Write-Host "[$stamp] sealed refresh OK"
+} finally {
+    Exit-V213OperationLock
 }
-$sumDir = Get-ChildItem (Join-Path $repo "state\v213-snapshots") -Directory |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-& $py "scripts\sync_sealed_snapshot_kv.py" --run-dir $sumDir.FullName 2>&1 | Tee-Object -FilePath $log -Append
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[$stamp] SYNC FAILED — pointer untouched, previous run still serving"
-    Add-Content -Path $log -Value "[$stamp] SYNC FAILED exit=$LASTEXITCODE (pointer untouched)"
-    exit $LASTEXITCODE
-}
-Add-Content -Path $log -Value "[$stamp] REFRESH OK run=$($sumDir.Name) pointer last"
-Write-Host "[$stamp] sealed refresh OK"
 exit 0

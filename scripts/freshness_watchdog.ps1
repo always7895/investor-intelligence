@@ -43,7 +43,7 @@ $entry = [ordered]@{
 }
 
 try {
-    $raw = & npx --yes Wrangler kv key get 'snapshot:current' --namespace-id $namespaceId --cwd (Join-Path $RepoRoot 'cloud') 2>$null
+    $raw = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $namespaceId --cwd (Join-Path $RepoRoot 'cloud') 2>$null
     if ($null -eq $raw -or $raw -is [string] -and -not $raw) { $raw = $null }
 } catch {
     $entry.note = 'WRANGLER_READ_FAILED'

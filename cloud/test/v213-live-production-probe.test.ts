@@ -7,7 +7,7 @@ import { parseQuery } from "../src/core";
 import { asKv, MemoryKv } from "./fake-kv";
 import type { ParsedQuery } from "../src/core";
 
-const RUN = "20260916T131939Z-897a86efa733";
+const RUN = "20260917T055736Z-3bf287ab34fd";
 const P = `../../state/v213-snapshots/${RUN}`;
 
 function env() {
