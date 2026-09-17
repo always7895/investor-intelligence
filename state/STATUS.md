@@ -15,11 +15,12 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 
 > Historical anchor retained (not a new claim): `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code).
 
-### PRODUCTION FINAL ACCEPTANCE (2026-09-17, Task #30; ChatGPT Pro Accepted; Macro TOP5 Resolved)
-- **Acceptance Tuple:** HEAD `461a072` / Worker `f3287281-33eb-4f20-acff-941773b4eb68` / Pointer `20260917T083454Z-37bd9d27e3ef` / Seal `4cd9c3bb7fb7090787d28f961ea174f3e5926eab051fb2438019c26d88dfe1d7`.
-- **Verdict:** `FINAL_ACCEPT` signed off by ChatGPT Pro (conv: `6aab83bf-d1cc-83ee-b96e-c8088e11c134`); Macro TOP5 Shortfall resolved.
+### PRODUCTION FINAL ACCEPTANCE (2026-09-17, Task #30; ChatGPT Pro Accepted; Macro TOP5 & Top20 Resolved)
+- **Acceptance Tuple:** HEAD `3c7497e` / Worker `c7abe74d-0cd9-4e06-9e96-906690038a24` / Pointer `20260917T092410Z-d9f86bda2053` / Seal `891b671a67cfe08a47622f09c5c11fa54fe9b7ab07a4aa9db0427fe172391c0a`.
+- **Verdict:** `FINAL_ACCEPT` signed off by ChatGPT Pro (conv: `6aab83bf-d1cc-83ee-b96e-c8088e11c134`); Macro TOP5 & Top20 presentation fully verified.
+- **Top20 Presentation Root Cause:** `parseTop20ReportWithBounds` required `TRADITIONAL_CHINESE_RE` on `industry`; relaxed to `lineSafeText(100)` and supplied bilingual labels (`重電與綠能設備` / `重電與電網設備`). Both GEV and 6501 render cleanly.
 - **Macro TOP5 Admission:** `v213:macro-industry:latest` sealed in 15-object snapshot; 5 verified public-only independent evidence industries (WSTS Packaging & HBM, LightCounting Optical, FERC/DOE Grid, SEMI Equipment, Omdia Cooling); shortfall = 0; `MACRO_TOP5_SHORTFALL` cleared.
-- **Freshness & Contract:** Assembly anchor (2026-09-17T08:34:54Z) separated from evidence anchor (2026-09-15T11:00:00Z); zero restamping. Admitted Top20: GEV 96.0 #1, 6501 93.0 #2; 0 padding.
+- **Freshness & Contract:** Assembly anchor (2026-09-17T09:24:10Z) separated from evidence anchor (2026-09-15T11:00:00Z); zero restamping. Admitted Top20: GEV 96.0 #1, 6501 93.0 #2; 0 padding.
 - **Fail-Closed Verified:** SIVE, AAOI, 6508, ENR fail-closed (`sealed_snapshot:unadmitted_symbol`); invalid tickers route to `general_qa` without equity hijack.
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
