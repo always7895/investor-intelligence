@@ -117,6 +117,32 @@ The system should preserve the essay's broader scope by tracking:
 
 Contrary evidence must be reported, not suppressed to protect a thesis.
 
+### Dated supplement - 2026-09-17/18 re-read (CONTEXT_ONLY; zero score/filter/threshold changes)
+
+Boundary reaffirmed: everything below is context. No content here may enter the approval chain, the ranking
+ranking, or a permanent industry filter. Loose ends counter-evidence are kept verbatim-ish and dated - flagged,
+never suppressed.
+
+**Entity (primary, direct read of forourposterity.com on 2026-09-17):** founder of "an investment firm focused on
+AGI, with anchor investments from Patrick Collison, John Collison, Nat Friedman, and Daniel Gross"; prior OpenAI
+super-alignment team; Oxford Global Priorities Institute (economic growth research); Columbia valedictorian (19);
+originally German; based in San Francisco. Site name = *For Our Posterity*.
+
+**2026 context set (secondary until primary cross-check = UNTIL_DIRECT; conflicts held as a set, never averaged):**
+- 13F: Q1 2026 filing disclosure approx. $13.7B (S2, davemanuel.com 2026-05-19, UNTIL_DIRECT); Q2 13F filed
+  2026-08-14 (S2).
+- AUM conflict set (S2, contradictory - keep all): "> $20B pre-Citadel" vs "~$10B post-Citadel" (briefs.co);
+  CNBC 2026-07-30 forced-sale report (S2); ~67% July fund-loss allegation + AI-position rebuild + de-leveraging +
+  JPMorgan lending cutoff (S2, 2026-09 outlets incl. startupfortune/lookonchain - no primary source).
+- a16z "Machine Age Fund" ~$1.1B anchor participation (S2, eneregabs.com, no primary).
+- Power-constraint tracking (context yardstick only): GE Vernova 116GW gas-turbine backlog (Q2'26, reservations to
+  2031); Siemens Energy 69GW / 3+ yr; Reuters 2026-07-09 transformer shortage; grid interconnects 3-4 yr -> 10+ yr.
+- **No new 2026 primary essay established** as of 2026-09-17 (multi-round search, 2026-09-17/18; re-verify
+  quarterly or on-body-event).
+
+These items are *context memory* for the main logic's bottleneck theses (power/grid pacing, decade-scale capital
+goods) and MUST re-derive to primary or registry evidence before ever touching a ranking.
+
 ## Time-horizon rule
 
 Aschenbrenner's essay is a scenario for the decade ahead. It is not a statement that every infrastructure security should be held for at least two years.

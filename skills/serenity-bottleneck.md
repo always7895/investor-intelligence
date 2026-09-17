@@ -23,17 +23,39 @@ The public record supports a research style with these recurring characteristics
 
 ### Primary-source registry used by this skill
 
-- short-term entry points / recap context: https://x.com/aleabitoreddit/status/2045965735386820934
-- discretionary AXTI/InP thesis: https://x.com/aleabitoreddit/status/2063465386960736396
-- company-specific long-term revenue/operating-income thesis: https://x.com/aleabitoreddit/status/2075496116481884524
-- financing/ATM weakening support: https://x.com/aleabitoreddit/status/2090903631793127644
-- semi-monopoly preference, AXTI/SOI/TSEM/COHR/SIVE/AAOI context: https://x.com/aleabitoreddit/status/2033889361801175094
-- photonics and memory supercycle framing: https://x.com/aleabitoreddit/status/2034752613246542215
-- information-synthesis / SOI monopoly framing: https://x.com/aleabitoreddit/status/2044491122161160517
-- bottleneck-game-theory vs expansion-thesis framing: https://x.com/aleabitoreddit/status/2038101004252753959
-- infrastructure bottleneck example (transformers/switchgear): https://x.com/aleabitoreddit/status/2041168871168545115
-- European/strategic chokepoint context: https://x.com/aleabitoreddit/status/2047110496999137730
-- financing-structure warning example: https://x.com/aleabitoreddit/status/2013947011490615486
+Registry (verification status as of 2026-09-17/18; channel = `publish.twitter.com/oembed?url=...` direct read with author_name = `Serenity`):
+
+**OEMBED-DIRECT verified (P1a; verbatim-quoted content permitted):**
+- 2026-04-19 dual-axis: 30-stock universe up 2 weeks; long-term unchanged (MRVL/AMD/ARM); entry axis shifts (AAOI first, AEHR etc. later): https://x.com/aleabitoreddit/status/2045965735386820934
+- 2026-06-16 superintelligence framing (AI as most disruptive technology class): https://x.com/aleabitoreddit/status/2066868456457416871
+- 2026-06-20 AXTI early-call backlash + Reuters/epiwafer validation thread: https://x.com/aleabitoreddit/status/2068301039946887269
+- 2026-06-22 AAOI growth model (800%+ Y/Y; $5.6B annualized off $12.8B MC; $471m/month scaling toward 2028): https://x.com/aleabitoreddit/status/2069062745308254434
+- 2026-07-10 photonics/Nvidia roadmap; Bloomberg Meta-delay items denied by Nvidia (x2); retail capitulation window: https://x.com/aleabitoreddit/status/2075496116481884524
+- 2026-07-17 self-disclosed -49.4% monthly drawdown; high-beta AI-chokepoint book on margin; leverage reduced: https://x.com/aleabitoreddit/status/2078150537074373117
+- 2026-07-26 CXMT/SHKY IPO; Samsung FC-BGA (Ibiden LTA, SEMI prepayment); Samsung+AVGO memory: https://x.com/aleabitoreddit/status/2081472671129501729
+- 2026-08-14 "memory bottleneck never changed" (SHKY/Samsung/SNDK/MU): https://x.com/aleabitoreddit/status/2088226398708338889
+- 2026-08-15 zh post debunking zeroed rumor; self-reported YTD +2,411.84% (unaudited): https://x.com/aleabitoreddit/status/2088501133543407959
+- 2026-08-21 AAOI ATM $500-600M; financing/shareholder diffidence, both axes, company-scoped wording preserved: https://x.com/aleabitoreddit/status/2090903631793127644
+
+**Lead-only (status not yet oembed-verified at this refresh; re-verify before promotion):**
+discretionary AXTI/InP 2063465386960736396 / semi-monopoly 2033889361801175094 / supercycle 2034752613246542215 / SOI 2044491122161160517 / bottleneck game-theory 2038101004252753959 / transformers-switchgear 2041168871168545115 / European chokepoint 2047110496999137730 / financing-structure 2013947011490615486.
+
+**DELETED (oembed 404 at 2026-09-17; negative evidence; never reconstruct):** 2065547964606462282, 2063379724428992964.
+
+### 2026-09-17/18 verification addendum (method)
+- Dual-axis rule: keep the long-term thesis axis (position worth) separate from the short-term entry axis; a financing event (ATM/placement/buyback) de-grades BOTH axes only within its stated company scope - "harder to support $AAOI" stays an AAOI-scoped claim; any generalization ("financing = support melter") must be scoped-labeled.
+- Rumor -> denial -> capitulation: treat authoritative denials vs retail frenzy as a recognized market mechanic (bilingual post cycle is native behavior; translation loss is NOT a defect).
+- New admitted evidence classes (company-fact tier preserved): IPO supply shock (CXMT/SHKY), LTA/prepayment as demand aggregate (Ibiden LTA, SEMI prepayment), margin-drawdown disclosures as sizing-behavior signals (never fundamentals).
+- Oembed = verified DIRECT first-class channel for X posts (publish.twitter.com/oembed, 2026-09-17); mirrors/archives (yan-labs github, topicdigg, twiscan, semiconstocks tracker) = single corpus lineage, leads only, never independent corroboration.
+- Self-reported P&L figures (+122%, +3,612%, -49.4%, +2,411.84%) = always labeled self-reported + unaudited; never rank inputs.
+
+### 2026-09 architecture state (context backing for the stack; secondary-sourced unless noted)
+Power: GE Vernova 116GW gas-turbine backlog (Q2'26; reservations to 2031); Siemens Energy 69GW / 3+ yr; Reuters 2026-07-09 transformer shortage; grid interconnects 3-4 yr -> 10+ yr.
+HBM4: Micron ~100K wpm year-end (vs 40-50K prior yr); SK hynix 12L volume / 16L qualifying; TrendForce MP end Q1'26.
+CPO: TrendForce 2026-07-27 initial NVDA Spectrum-X CPO shipments (select partners); Broadcom 51.2T Bailly limited;
+optical yield + advanced packaging binding; TSMC COUPE roadmap. Exports: Federal Register 2026-01-15 doc 2026-00789
+(H200-class case-by-case, not blanket). Capex '26: ~$695-750B hyperscaler guidance; Goldman ~$800B US / ~$1T world.
+Photonics vendors: Sivers $30M Glasgow (announced 2026-09-03); Coherent FY26 Q4 DC+Comm +59% YoY (record bookings).
 
 The system must preserve each post's date, company-specific scope, and uncertainty. If a post cannot be retrieved or independently verified during a run, the system may retain the URL as a lead but must not invent its contents.
 
@@ -253,7 +275,7 @@ The quantitative score may not override a `BROKEN` fidelity state.
 2. **Corroborating** — adjacent-company calls, government documents, credible technical/industry publications, reputable institutional research where redistributable.
 3. **Lead only** — social posts, search snippets, price action, unnamed rumors, community summaries.
 
-Serenity posts are primary evidence for **what Serenity publicly said**, but not primary evidence that the underlying company fact is true. Company facts should be independently corroborated whenever possible.
+Serenity posts are primary evidence for **what Serenity publicly said** (content verified via the oembed direct channel with dated receipts), but not primary evidence that the underlying company fact is true. Company facts should be independently corroborated whenever possible. Self-reported returns/drawdowns are always labeled self-reported + unaudited and are never ranking inputs.
 
 # 6. Required output labels
 

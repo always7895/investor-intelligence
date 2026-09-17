@@ -75,6 +75,36 @@ Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, d
 - Search proposed a new fund-portfolio story at `https://www.axios.com/2026/07/30/ai-hedge-fund-situational-awareness-citadel`; direct retrieval returned HTTP403. Do not repeat the search synthesis as a verified transaction or current holding change. No authentication/paywall bypass attempted.
 - Public-source rights and actual adapter coverage are separately documented in the repository source review. This research refresh neither enables a provider nor proves live scheduling, global coverage or a functioning screen.
 
+## Direct refresh check - 2026-09-17/18 (oembed channel established)
+
+**Channel discovery (method upgrade):** `https://publish.twitter.com/oembed?url=https://x.com/aleabitoreddit/status/<ID>`
+returns primary X post content (author_name, html, date) directly, where x.com direct fetch 403s.
+Author-name match on `Serenity` = P1a verification class. This channel is now the mandatory first attempt for any
+registry post in `skills/serenity-bottleneck.md`.
+
+**Verified via oembed (2026-09-17/18):** 10 posts (IDs/dates/content in the skill registry) - 2045965735386820934
+(04-19), 2066868456457416871 (06-16), 2068301039946887269 (06-20), 2069062745308254434 (06-22), 2075496116481884524
+(07-10), 2078150537074373117 (07-17), 2081472671129501729 (07-26), 2088226398708338889 (08-14),
+2088501133543407959 (08-15, zh), 2090903631793127644 (08-21).
+
+**Deleted (oembed 404 = negative evidence; never reconstruct):** 2065547964606462282, 2063379724428992964.
+
+**Remaining lead-only IDs (re-verify at next refresh):** 2013947011490615486, 2033889361801175094,
+2034752613246542215, 2038101004252753959, 2041168871168545115, 2044491122161160517, 2047110496999137730,
+2063465386960736396.
+
+**Mirror lineage note:** github/yan-labs/serenity-aleabitoreddit, topicdigg.com, twiscan.com, semiconstocks.com
+tracker = single corpus lineages of the same X posts (fan/secondary). They are leads for *discovery* only; they
+never count as independent corroboration and their paraphrased "track record" numbers (e.g. +3,612% YTD, +122%
+1Y, three-phase rotation, Strait-of-AXTI stack) stay TR-tagged unless individually oembed-verified. Serenity's
+self-reported P&L (including the 07-17 -49.4% month and 08-15 YTD +2,411.84%) is self-reported + unaudited.
+
+**2026-09 architecture state refresh (S2-sourced where noted):** CPO (TrendForce 2026-07-27 initial NVDA
+Spectrum-X shipments; Broadcom 51.2T Bailly limited; yield+packaging binding), HBM4 (Micron ~100K wpm year-end;
+SK hynix 12L volume/16L qualifying), power (GEV 116GW / SE 69GW backlogs; Reuters 2026-07-09 transformer
+shortage), exports (FR 2026-00789 case-by-case), capex (~$695-750B hyperscaler '26 guidance). Full context in
+`docs/PERSONA_LOGIC_FULL.md`.
+
 ## External review evidence / 外部查閱紀錄
 
 Reviewed on 2026-09-05 UTC:

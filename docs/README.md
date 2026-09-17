@@ -14,6 +14,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [POST_LAUNCH_BACKLOG / 上線後待辦](../state/POST_LAUNCH_BACKLOG.md)
 - [CURRENT_STATUS_BILINGUAL](CURRENT_STATUS_BILINGUAL.md)
 - [RESEARCH_EXECUTION_AUDIT](RESEARCH_EXECUTION_AUDIT.md)
+- [PERSONA_LOGIC_FULL](PERSONA_LOGIC_FULL.md)
 - [BOTTLENECK_RANKING_V1 — 未驗收設計草案](BOTTLENECK_RANKING_V1.md)
 - [BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1](BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md)
 - [COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1](COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md) - admission-pipeline candidate inventory (GEV / Hitachi 6501 / Meiden 6508 / Siemens Energy ENR): 4-pillar distance to typed admission, lineage corroboration status, explicit blockers; runtime admitted 0 - Power Transformer chokepoint canonical archetype (Hitachi Energy / TSE: 6501): 4-pillar factor-to-claim reference, business-mix vs shareholder dilution separation, runtime admitted stays 0
