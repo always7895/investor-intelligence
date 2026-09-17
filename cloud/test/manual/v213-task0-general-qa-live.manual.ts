@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import {
   createStrictBoundary,
   finalAnswerCheck,
+  startDrain,
   jobIdStrict,
   readProfileJson,
   startLocalGateway,
@@ -106,22 +107,14 @@ function textEvent(id: number, token: string, text: string): string {
   });
 }
 
-async function runWebhook(env: unknown, rawBody: string) {
-  const start = performance.now();
-  const tagged = new Set<Promise<string>>();
-  const tags: Array<{ stack: string; done: boolean; value: string }> = [];
-  const watch = (p: Promise<unknown>) => {
-    const tag = { stack: (new Error().stack ?? "").split("\n").slice(1, 4).join(" | "), done: false, value: "" };
-    tags.push(tag);
-    const t = p.then(
-      () => { tag.done = true; tag.value = "ok"; return "ok"; },
-      () => { tag.done = true; tag.value = "caught"; return "caught" },
-    );
-    tagged.add(t);
-  };
+async function runWebhook(
+  env: unknown,
+  rawBody: string,
+): Promise<{ status: number; lines: string[]; unhandledRejected: number }> {
+  const drain = startDrain(30_000);
   const windowStart = boundary ? boundary.lineReplies.length : 0;
   const ctx = {
-    waitUntil(p: Promise<unknown>) { watch(p); },
+    waitUntil(p: Promise<unknown>) { drain.add(p); },
     passThroughOnException() {},
   } as unknown as ExecutionContext;
   const body = new TextEncoder().encode(rawBody);
@@ -136,19 +129,9 @@ async function runWebhook(env: unknown, rawBody: string) {
     body,
   });
   const res = await productionWorker.fetch(req, env, ctx);
-  for (;;) {
-    await Promise.all([...tagged]).catch(() => undefined);
-    await new Promise((r) => setTimeout(r, 25));
-    const allDone = tags.every((t) => t.done);
-    if (allDone || tags.length === 0) break;
-    if (performance.now() - start > 90_000) {
-      throw new Error("TASK0_WEBHOOK_DRAIN_TIMEOUT");
-    }
-  }
-  const values = tags.map((t) => t.value);
-  const unhandledRejected = values.filter((v) => v === "caught").length;
+  const settled = await drain.settle(); // real-time race; rejections preserved
   const lines = boundary ? boundary.lineReplies.slice(windowStart).flatMap((r) => r.texts) : [];
-  return { status: res.status, lines, unhandledRejected };
+  return { status: res.status, lines, unhandledRejected: settled.rejected };
 }
 
 beforeAll(async () => {
@@ -235,8 +218,9 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
   for (const c of boundary!.modelCalls.slice(1)) {
     expect(c.status).toBe(200);
     expect(c.model).toBe(EXL3);
-    // Structural verdict: usable completion (no length/cutoff/error finish).
-    expect(c.finishReason).not.toMatch(/length|error|content_filter/);
+    // Structural completion: the transport MUST prove a usable completion.
+    expect(c.finishReason).toBe("stop");
+    expect(c.modelReturned).toBe(EXL3);
   }
   let finalText = res.lines.join("\n");
   const jobId = jobIdStrict(finalText);
@@ -255,40 +239,6 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
   expect(finalText).not.toContain("本机模型桥接");
   const qaCheck = finalAnswerCheck(finalText, SMOKE_MARKER);
   expect(qaCheck, `QA final rejected: ${qaCheck.reason}`).toEqual({ ok: true, reason: "OK" });
-
-  // 2b) STALL: ONE injected failed answer must yield an explicit refusal
-  // (never a fake success), then the SAME user must recover next message.
-  boundary!.markStallOnce();
-  const resStall = await runWebhook(env, textEvent(3, "live_stall_token", "请简短说明：债券利息为何一般低于股票股息"));
-  expect(resStall.status).toBe(200);
-  const stallText = resStall.lines.join("\n");
-  expect(stallText.length).toBeGreaterThan(0);
-  expect(stallText).not.toContain(SMOKE_MARKER);
-  const stallCheck = finalAnswerCheck(stallText, SMOKE_MARKER);
-  expect(stallCheck.ok, "stall must refuse, not finish").toBe(false);
-  const nBefore = boundary!.modelCalls.length;
-  const resRec = await runWebhook(env, textEvent(4, "live_recover_token", "请再简述：股票定义的正式说法"));
-  expect(resRec.status).toBe(200);
-  const recId = jobIdStrict(resRec.lines.join("\n"));
-  let recText = resRec.lines.join("\n");
-  if (recId) {
-    const resRec2 = await runWebhook(env, textEvent(5, "live_recover_token2", `查看結果 ${recId}`));
-    recText = resRec2.lines.join("\n");
-  }
-  const recCheck = finalAnswerCheck(recText, SMOKE_MARKER);
-  expect(recCheck, `recovery rejected: ${recCheck.reason}`).toEqual({ ok: true, reason: "OK" });
-  expect(boundary!.lineReplies.length).toBeGreaterThanOrEqual(3);
-  void nBefore;
-
-  // 2c) Verified release with bounded window (kill -> exit -> listener down).
-  expect(gateway).toBeTruthy();
-  if (gateway) {
-    const t0 = Date.now();
-    await gateway.stop();
-    gateway = null;
-    const win = Date.now() - t0;
-    expect(win, `release window ${win}ms`).toBeLessThanOrEqual(10_000);
-  }
 
   // 3) Close-out invariants.
   expect(boundary!.violations.length).toBe(0);

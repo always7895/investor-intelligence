@@ -11,6 +11,7 @@ import {
 } from "../src/v213/free-relay";
 import { modelProfileSha256, validateModelProfile, type ModelProfile } from "../src/v213/model-profile";
 import { parseQuery } from "../src/core";
+import { startDrain } from "./helpers/task0-general-qa-harness";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
@@ -294,52 +295,31 @@ function textMessage(id: number, replyToken: string, text: string): string {
   });
 }
 
-function context(collect: Array<Promise<unknown>>): ExecutionContext {
+function context(addWork: (p: Promise<unknown>) => void): ExecutionContext {
   return {
     waitUntil(p: Promise<unknown>) {
-      collect.push(p.catch(() => "V212_LINE_EVENT_FAILED:caught"));
+      addWork(p); // raw promise: rejections stay rejections (shared real-time drain)
     },
     passThroughOnException() {},
   } as unknown as ExecutionContext;
-}
-
-async function drain(collect: Array<Promise<unknown>>): Promise<{ fulfilled: number; rejected: number }> {
-  let fulfilled = 0;
-  let rejected = 0;
-  const start = performance.now();
-  for (;;) {
-    const batch = collect.splice(0, collect.length);
-    if (batch.length > 0) {
-      const results = await Promise.allSettled(batch);
-      for (const r of results) {
-        if (r.status === "fulfilled") fulfilled++;
-        else rejected++;
-      }
-    } else if (performance.now() - start > 400) {
-      break; // settled + one quiet window: no new waitUntil work
-    }
-    await new Promise((r) => setTimeout(r, 20));
-    if (performance.now() - start > 5_000) throw new Error("TASK0_DRAIN_TIMEOUT");
-  }
-  return { fulfilled, rejected };
 }
 
 async function runWebhook(
   env: WorkerEnv,
   rawBody: string,
 ): Promise<{ status: number | "threw"; error: string; rejects: { fulfilled: number; rejected: number }; lines: string[] }> {
-  const collect: Array<Promise<unknown>> = [];
+  const drain = startDrain(30_000);
   BOUNDARY.calls.length = 0;
   BOUNDARY.lineTexts.length = 0;
   let res: Response;
   try {
-    res = await productionWorker.fetch(webhook(rawBody), env as never, context(collect));
+    res = await productionWorker.fetch(webhook(rawBody), env as never, context(drain.add));
   } catch (err) {
-    const rejects = await drain(collect);
-    return { status: "threw", error: err instanceof Error ? err.message : String(err), rejects, lines: [...BOUNDARY.lineTexts] };
+    const settled = await drain.settle();
+    return { status: "threw", error: err instanceof Error ? err.message : String(err), rejects: { fulfilled: settled.fulfilled, rejected: settled.rejected }, lines: [...BOUNDARY.lineTexts] };
   }
-  const rejects = await drain(collect);
-  return { status: res.status, error: "", rejects, lines: [...BOUNDARY.lineTexts] };
+  const settled = await drain.settle();
+  return { status: res.status, error: "", rejects: { fulfilled: settled.fulfilled, rejected: settled.rejected }, lines: [...BOUNDARY.lineTexts] };
 }
 
 afterEach(() => {
@@ -552,7 +532,7 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     });
     BOUNDARY.calls.length = 0;
     BOUNDARY.lineTexts.length = 0;
-    const ok = await productionWorker.fetch(badReq, env as never, context([]));
+    const ok = await productionWorker.fetch(badReq, env as never, context(() => {}));
     expect(ok.status).toBe(401);
     expect(BOUNDARY.lineTexts.length).toBe(0);
     expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);

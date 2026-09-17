@@ -71,10 +71,12 @@ export function startDrain(
         const settledPromise = Promise.all(
           fresh.map((p) => Promise.allSettled([p]).then((rs) => ({ p, rs }))),
         );
+        let roundTimer: ReturnType<typeof setTimeout> | undefined;
         const timer = new Promise<never>((_res, rej) => {
-          const h = setTimeout(() => { clearTimeout(h); rej(new Error("TASK0_DRAIN_TIMEOUT")); }, remaining);
+          roundTimer = setTimeout(() => { rej(new Error("TASK0_DRAIN_TIMEOUT")); }, remaining);
         });
         const batch = await Promise.race([settledPromise, timer]);
+        if (roundTimer !== undefined) clearTimeout(roundTimer);
         for (const { rs } of batch) {
           const r = rs[0];
           if (r.status === "fulfilled") {
@@ -122,6 +124,76 @@ export type StrictBoundary = {
 export type FinalAnswerCheck = { ok: boolean; reason: string };
 
 /**
+ * Phase-1G REPAIR: structural completion verdict for a raw gateway response
+ * body. Only finish_reason === "stop" AND returned model === expected model
+ * AND non-trivial/acceptable content is a usable success. "length", empty
+ * finishes, wrong/absent model and non-JSON bodies are explicit failures.
+ */
+export function completionVerdict(body: string, expectedModel: string, marker: string): FinalAnswerCheck {
+  let j: { choices?: Array<{ finish_reason?: string; message?: { content?: string } }>; model?: string };
+  try {
+    j = JSON.parse(body) as typeof j;
+  } catch {
+    return { ok: false, reason: "NO_STRUCTURE" };
+  }
+  const fr = String(j.choices?.[0]?.finish_reason ?? "");
+  if (fr === "") return { ok: false, reason: "FINISH_EMPTY" };
+  if (fr !== "stop") return { ok: false, reason: "FINISH_NOT_STOP" };
+  const m = String(j.model ?? "");
+  if (m === "" || m !== expectedModel) return { ok: false, reason: "MODEL_MISMATCH" };
+  const content = String(j.choices?.[0]?.message?.content ?? "");
+  if (marker && content.includes(marker)) return { ok: true, reason: "OK" };
+  if (content.trim().length < 4) return { ok: false, reason: "THIN_CONTENT" };
+  const gate = finalAnswerCheck(content, marker);
+  if (!gate.ok) return { ok: false, reason: gate.reason };
+  return { ok: true, reason: "OK" };
+}
+
+/**
+ * Phase-1G REPAIR: bounded gateway release. Covers: alive (kill -> exit ->
+ * listener verified down), already-exited (no kill, verify only), stuck
+ * (bounded deadline fail), and reentrant calls. probeAlive() must observe
+ * the loopback port; release resolves only after the port stops answering.
+ */
+export function releaseGateway(
+  child: {
+    exitCode: number | null;
+    kill: (s?: NodeJS.Signals) => boolean;
+    once: (ev: string, fn: (...a: unknown[]) => void) => unknown;
+  },
+  probeAlive: () => Promise<boolean>,
+  deadlineMs = 10_000,
+): Promise<void> {
+  const releaseStartAt = performance.now();
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const hard = setTimeout(() => finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")), deadlineMs);
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hard);
+      if (err) reject(err);
+      else resolve();
+    };
+    const verify = async () => {
+      for (let i = 0; i < 24; i++) {
+        const up = await probeAlive().catch(() => false);
+        if (!up) { finish(); return; }
+        await new Promise((r) => setTimeout(r, 200));
+        if (performance.now() > releaseStartAt + deadlineMs) { finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")); return; }
+      }
+      finish(new Error("TASK0_GATEWAY_LISTENER_STILL_UP"));
+    };
+    if (child.exitCode !== null) {
+      void verify();
+      return;
+    }
+    child.once("exit", () => { void verify(); });
+    child.kill();
+  });
+}
+
+/**
  * Phase-1G: final answer gate. Structural acceptance of a completed model
  * answer for the manual suite; a job placeholder, offline/closed wording
  * (traditional AND simplified), a smoke marker, processing hints, or
@@ -143,6 +215,23 @@ export function finalAnswerCheck(text: string, marker: string): FinalAnswerCheck
 export function jobIdStrict(text: string): string | null {
   const m = (text ?? "").match(/(?:參考編號|参考编号)\s*([A-Za-z0-9_-]{4,64})/);
   return m && m[1] ? m[1] : null;
+}
+
+function combinedSignal(caller: AbortSignal | undefined, capMs: number): AbortSignal {
+  const anySig = (AbortSignal as unknown as { any?(signals: Iterable<AbortSignal>, ms?: number): AbortSignal }).any;
+  const cap = AbortSignal.timeout(capMs);
+  if (typeof anySig === "function") {
+    if (caller) return anySig.call(AbortSignal, [caller, cap]);
+    return cap;
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => { ctrl.abort(new Error("TASK0_FORWARD_DEADLINE")); }, capMs);
+  if (caller) {
+    if (caller.aborted) { ctrl.abort(caller.reason); return ctrl.signal; }
+    caller.addEventListener("abort", () => ctrl.abort(caller.reason), { once: true });
+  }
+  ctrl.signal.addEventListener("abort", () => clearTimeout(t), { once: true });
+  return ctrl.signal;
 }
 
 export function createStrictBoundary(evidenceHost: string, gate: { port: number; channelValue: string }, nativeFetch: typeof fetch): StrictBoundary {
@@ -178,7 +267,7 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
         method: "POST",
         headers: { "content-type": "application/json", "x-investor-shared-secret": gate.channelValue },
         body,
-        signal: AbortSignal.timeout(90_000),
+        signal: combinedSignal(init?.signal as AbortSignal | undefined, 90_000),
       });
       const text = await fwd.text();
       let finishReason = "";
@@ -258,16 +347,16 @@ export async function startLocalGateway(opts: {
   const deadline = Date.now() + 120_000;
   const probeStats = { refused: 0, timeout: false };
   let probeN = 0;
+  const realFetch: typeof fetch = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
   for (;;) {
     if (child.exitCode !== null) throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
     const url = `http://127.0.0.1:${port}/health`;
     const t0 = Date.now();
     let r: Response | null;
-    const real = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
     if (opts.onProbe) {
       r = await opts.onProbe(url, probeN);
     } else {
-      r = await real(url, {
+      r = await realFetch(url, {
         headers: { "x-investor-shared-secret": channelValue },
         signal: AbortSignal.timeout(2_500),
       }).catch(() => null);
@@ -297,21 +386,10 @@ export async function startLocalGateway(opts: {
           channelValue,
           child,
           probeStats,
-          stop: () => new Promise<void>((resolve, reject) => {
-            child.once("exit", async () => {
-              for (let i = 0; i < 24; i++) {
-                const up = await real(`http://127.0.0.1:${port}/health`, {
-                  headers: { "x-investor-shared-secret": channelValue },
-                }).then(() => true).catch(() => false);
-                if (!up) { resolve(); return; }
-                await new Promise((r) => setTimeout(r, 250));
-              }
-              reject(new Error("TASK0_GATEWAY_LISTENER_STILL_UP"));
-            });
-            if (child.exitCode === null) child.kill();
-            const guard = setTimeout(() => { child.kill(); }, 8_000);
-            guard.unref();
-          }),
+          stop: () => releaseGateway(child, () =>
+            realFetch(`http://127.0.0.1:${port}/health`, { headers: { "x-investor-shared-secret": channelValue } })
+              .then((r) => r.status === 200)
+              .catch(() => false), 10_000),
         };
       }
     }

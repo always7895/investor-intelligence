@@ -25,20 +25,18 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 — 1C–1E (2026-09-17; Pro)
-- 1C: P1 utf-8 test fix (commit 1e4ad25; pytest 1521/0/3); op-lock OPEN/NOT_REPRODUCED; 1B display gap cause UNDETERMINED.
-- 1D: P1 two-sided observation (live no profile field -> literal toml qwen38-q6; tabbyAPI serves only EXL3-SC5-H6-V6); 8-case chain GREEN; TEMP real probe = one compact QA via real gateway; canonical profile drift (candidate 70077f89… unmodified).
-- 1E: formal-caller rewrite (16/16; boundary preserves real adapter); no-lease must not warp normal 401 report; commits 734a3b1 + b353298.
-### TASK0 — 1F (2026-09-17T13:05–14:05Z; Pro)
-- TRUE-RED then W2: currentFreeRelayRoute DO-read guard -> WARN + null; contract GREEN 14/14. Manual split: opt-in config + hardened harness + formal job-query flow. default suite 0 gateway/0 model.
-- Package source: BOTH approved endpoints 404-dead (107B evidence out-repo) -> no acceptance run. GATES(1F) pass; commits 8d5fb3f + b227d32; PR body one-shot synced (1C-1F, two-sided, no online-health claim). W1 corrections noted (nonce EPHEMERAL only; rollback needs pre-state).
-### TASK0 — 1G (2026-09-17T14:10–14:45Z; Pro)
-- W2 ACCEPTED; harness fixed per gap list: drain = real-time race (fail-not-hang, Date-only fake proven), late work included, rejects preserved non-fulfillment; job = strict ID + formal query (no KV); final gate rejects both-script closed words / placeholder / process / thin; finish_reason + returned-model asserted (not length); caller cancel preserved; default excludes *.manual.ts (negative test, 2-direction); no opt-in = explicit FAIL.
-- NEW cloud/test/task0-general-qa-harness.test.ts (11 tests, offline). Offline x2 = 845/0/1; tsc 0; 5 gates PASS.
-- Live integration (1 run, real TabbyAPI): 1/1 PASS, 0 violations, release <= 10s, 4 model HTTP (smoke, QA, 504-stall inject, recovery); stall = explicit refusal then recovered; wall ~10s.
-- PACKAGE (pre-authorized single hop-by-hop GET; github origin verified): release asset Investor-Intelligence-v2.1.3-R75-final.zip size = 1784534 (approved) BUT sha256 = 270344c6a32e… vs approved 270344c62497… (first 8 hex only) AND byte0 = 0x80 (not PK0304) => BLOCKED_PACKAGE_SHA_MISMATCH_AND_BAD_MAGIC; no secondary-cert guess; acceptance NOT executed. CP950-repack suspicion (1C-class artifacts). Evidence (ZIP/headers/107B) staged .tmp/task0-1g-zip (out-repo).
-- PREFLIGHT (no writes): W2 live = operator deploys branch 8d5fb3f (rollback = prior worker version). W1 = worker var V213_MODEL_PROFILE_JSON (candidate 70077f89…) + lease herald-UNKNOWN AFTER pre-state var readout; rollback = restore pre-state (W1 still pre-state-UNKNOWN). 0 PROD/KV/DO/LINE/registry/schedule/flag/image.
-- MUTATIONS (1G): code commit 4337e67 + STATUS commit (this) on approved branch; PR#37 body synced once; 0 PROD/KV/DO/LINE/registry/schedule/flag/image.
+### TASK0 — 1C–1F (2026-09-17; Pro; condensed)
+- 1C: P1 utf-8 test fix (1e4ad25; pytest 1521/0/3; op-lock NOT_REPRODUCED; 1B gap UNDETERMINED).
+- 1D/1E: two-sided MODEL MISMATCH (live worker env literal `qwen38-q6`; tabbyAPI serves EXL3-SC5-H6-V6 only); 16/16 chain rewrite on minimalModelSmoke + strict 2-endpoint boundary (adapter identity + real reply evidence); commits 734a3b1+b353298.
+- 1F: W2 DO-read guard (warn + null) TRUE-RED->GREEN 14/14; opt-in harness/manual split (hardened spawn, 2-endpoint boundary, verified release); live 13:57:32Z 1/1; package endpoints 404-dead; commits 8d5fb3f+b227d32.
+### TASK0 — 1G-REPAIR (2026-09-17T14:50–15:05Z; Pro)
+- Corrigan: approved digest = 270344c6**a32e**… (my 2497… cite = error, retracted); byte0 = 80 DEC = 0x50 (hex misreport corrected); CP950 hypothesis discarded.
+- Initial check (Pro verbatim script): IDENTITY_AND_DIRECTORY_READABLE (size 1784534, sha ok, PK0304, 637 entries, 5.2MB). Structure: 0 pathwalk / 0 case-dup / 0 absolute. Internal qualification = BLOCKED_PACKAGE_EVIDENCE_INCOMPLETE (clean_install_acceptance needs checksum+manifest+sbom+policy; production-final release ships the ZIP alone) -> no isolation acceptance this round.
+- Verifier repair RED(8 fail/19) -> GREEN: chain+manual now share startDrain (rejections stay rejections, real-time race, round timers cleared); abort path completed (AbortSignal.any + fallback, caller abort = fast failure, 0 forwarded model HTTP, 0 violation); new releaseGateway = 4 states (alive->exit->listener-verified, already-exited no-kill, stuck bounded-fail, reentrant); manual timing = performance.now; stall/recovery MOVED OFFLINE (mock-native 504 -> explicit refusal class); positive QA finishReason==="stop" + modelReturned===EXL3 + completionVerdict (length/empty/mismatch/no-structure all rejected, offline repeatable); opt-in runner measured NON-ZERO exit with 0 python spawn + 0 network; 2 false-positive negative assertions corrected.
+- OFFLINE: vitest 853/0/1 x2 (gate set +19), tsc 0, 5 gates PASS. 0 gateway / 0 model this round; 14:34:55Z live remains the archived integration proof (attempt arithmetic recorded: 3 real model forwards [smoke+QA+recovery] + 1 synthetic 504 per run; recovery was over the "2 model" cap -> categorical error documented; recovery removed, capped at smoke+QA).
+- Preflight unchanged: W2 deploy = operator build of approved branch (rollback = prior worker). W1 = worker var V213_MODEL_PROFILE_JSON (70077f89…) AFTER pre-state var readout; rollback = restore readout.
+- MUTATIONS: 2 commits (code + STATUS) on approved branch; PR#37 body corrected once; 0 PROD/KV/DO/LINE/registry/schedule/flag/image writes.
+- OPEN: package companion 4 files (checksum/manifest/sbom/policy) for internal qualification + isolation acceptance; W1 pre-state; P1 DO-excursion rating; scheduling gap.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
