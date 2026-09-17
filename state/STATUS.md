@@ -15,6 +15,14 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 
 > Historical anchor retained (not a new claim): `f287ba0` (final readiness ledger; prior `5e42584` v213 pointer-last, `1331ff8` objects, `1c3cfa4` code).
 
+### PRODUCTION FINAL ACCEPTANCE (2026-09-17, Task #30; ChatGPT Pro Accepted)
+- **Acceptance Tuple:** HEAD `2206665` / Worker `e2fe374b-3bc0-4903-8a55-30f22576fe2e` / Pointer `20260917T055736Z-3bf287ab34fd` / Seal `73a63b25db8e6621b107cad2dc440e0a2e4d0db6c18324384ec2d86743080504`.
+- **Verdict:** `FINAL_ACCEPT` signed off by ChatGPT Pro (conv: `6aab83bf-d1cc-83ee-b96e-c8088e11c134`).
+- **Freshness & Contract:** Assembly anchor (2026-09-17T05:57:36Z) separated from evidence anchor (2026-09-15T11:00:00Z); zero restamping. Admitted: GEV 96.0 #1, 6501 93.0 #2; 0 padding.
+- **Fail-Closed Verified:** SIVE, AAOI, 6508, ENR fail-closed (`sealed_snapshot:unadmitted_symbol`); invalid tickers route to `general_qa` without equity hijack.
+- **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
+- **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
+
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599`/. `7d2a9f9`/. `f031c36`/. `dce6d73`: build-artifact ignore; baseline gates restored (STATUS anchors; worker.ts blob 4e0f78af); deterministic option test clocks; statutory/claim-admission modules.
 
@@ -61,28 +69,10 @@ Priority: evidence → admission → ranking → acceptance → sealed publicati
 - **PROJECT_WIDE_GAP_AUDIT = PASS** — `docs/PROJECT_GAP_LEDGER.md`: P0 = 0, P1 = 0; all P2 PASS or reasonably DEFERRED (PG-11 = research-lane DEFER; GEV/6501 admitted; 6508/ENR unadmitted).
 
 ## Completed Supervisor Evaluation: STATUTORY_AUTHORITY_FACT_EVALUATION_V1
-- **Lane & Scope:** `INDEPENDENT_SUPERVISOR_STATUTORY_AUTHORITY_FACT_EVALUATION_V1`.
-- **Outputs:** `G/statutory-authority-facts-v1-{fetch.py,findings.json,evidence.json,acceptance-summary.txt}` and `G/statutory-authority-facts-v1-public/source-01.txt..source-05.txt`.
-- **Core Factual Findings:**
-  1. **CCR Publishing Body:** California Office of Administrative Law (OAL) is statutory publisher under Gov Code § 11344(a); contracts with Barclays (Thomson Reuters) for free online access. Mandate provides public access, NOT commercial redistribution licenses. Title 24 maintained by BSC and excluded from OAL CCR.
-  2. **Actual § 11344 Text:** Establishes 5 duties (compilation/free Internet access, pending filing links, weekly supplement, rapid printing, citations). Does NOT prove currency of specific regulations or resolve external citations.
-  3. **Copyright Scope (Facts vs Expression & Fair Use):** 17 U.S.C. § 102(b) confirms copyright does not protect raw facts/ideas (dates, kV thresholds, citations). Contractual terms remain binding. 17 U.S.C. § 107 requires 4-factor balancing; technical caps (200 words) are architectural limits, not automatic statutory allowances.
-  4. **Federal Works vs State/Private:** 17 U.S.C. § 105 applies strictly to federal government works. Edicts of government covers binding legal text, not agency web layouts or commentary.
+- Factual non-protectability (17 U.S.C. § 102(b)) and OAL publication role (Gov Code § 11344) narrowed; terms remain binding; artifacts in `G/statutory-authority-facts-v1-*`.
 
 ## Completed Objective B Subtask: CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1
-- **Lane & Scope:** `CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1` (Gemini Primary Supervisor fallback execution).
-- **Target Files:** `scripts/carb_typed_section_parser.py`, `tests/test_carb_statutory_citations.py`, `docs/CARB_TYPED_SECTION_PARSER.md`.
-- **Evidence Files:** `G/carb-statutory-cross-reference-typing-v1-{evidence.json,security-diff.md,acceptance-summary.txt,clock.json}`.
-- **Core Implementation:**
-  1. **Immutable Dataclass:** Added `@dataclass(frozen=True) class StatutoryCitation` with fields `citation_id`, `reference_class`, `statutory_body`, `title`, `section`, `source_anchor`, `span`, `unresolved_outside_corpus=True`, `limits_complete_interpretation=True`, `status="UNRESOLVED_OUTSIDE_CORPUS"`.
-  2. **Closed Taxonomy (`ReferenceClass`):** Strict taxonomy distinguishes `HealthSafetyCode` (3), `40CFR` (1), `17CCR` (2), `consensusstandards` (1), `OTHER` (0), `UNPARSEABLE` (0). Total exactly 7 legacy external references.
-  3. **Source Provenance:** All 7 citations bound to literal anchors in `carb-final-regulation.md` with exact character spans and SHA-256 hashes.
-  4. **Fail-Closed Malformed Input:** `classify_statutory_reference` maps unknown/malformed strings to `UNPARSEABLE` or `OTHER`, retaining unresolved/limits interpretation flags.
-  5. **Invariants Preserved:** `runtime_admitted=False`, `company_admissions=0`, 4 core factor gates `UNQUALIFIED`, Table 1 & 2 boundary equality intact, backward compatibility intended; prior21-test suite not rerun, so no fresh full-compatibility claim.
-- **Tests & Progression:**
-  - Initial RED log retained in `carb-statutory-cross-reference-typing-v1-python-red.log` (1 import error; NOT behavioral RED).
-  - INITIAL passed in `carb-statutory-cross-reference-typing-v1-python-initial.log` (8 focused tests, 0 failures, 0 errors, 0.116s).
-  - Documentation structure gate passed (106 markdown files, 618,861 bytes).
+- 7 legacy external references typed into structured immutable dataclass in `carb_typed_section_parser.py` (strict taxonomy, source-provenance-bound, `UNRESOLVED_OUTSIDE_CORPUS`); artifacts in `G/carb-statutory-cross-reference-typing-v1-*`.
 
 ## Triad Status Assessment
 - **A (Unknowns Narrowed vs Remain):** Factual non-protectability (17 U.S.C. § 102(b)) and OAL publication role (Gov Code § 11344) narrowed; 4 preserved HTTP error states, Meidensha Terms, and Barclays online CCR terms remain UNKNOWN.
