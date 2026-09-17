@@ -360,7 +360,7 @@ class TestV213MarketProducts(unittest.TestCase):
             str(ROOT / "scripts" / "build_v213_macro_industry_research.py"),
             "--synthetic-fixture",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="strict", check=True)
         data = json.loads(res.stdout)
         self.assertEqual(data["title"], "TOP5產業總覽")
         self.assertEqual(data["qualified_count"], 5)
