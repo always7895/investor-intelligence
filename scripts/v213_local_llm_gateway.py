@@ -705,6 +705,48 @@ def _self_test() -> None:
             }
         ],
     }
+    import datetime as _dt
+    from source_observation import utc_now as _utc_now, parse_timestamp as _pt  # noqa: E402
+    _now = _utc_now()
+    _vts = _now - _dt.timedelta(minutes=1)
+    _vus = _now + _dt.timedelta(minutes=90)
+    _claim = {
+        "claim_id": "CT-TEST-1",
+        "status": "SUPPORTED",
+        "high_confidence_eligible": True,
+        "conflict_set": [],
+        "evidence_ids": ["OBS-1", "OBS-2", "OBS-3", "OBS-4"],
+    }
+    _classes = (
+        "primary_company_regulatory",
+        "market_exchange",
+        "macro_industry",
+        "independent_journalism_research",
+    )
+    _evidence = []
+    for _k, _cls in enumerate(_classes, start=1):
+        _evidence.append({
+            "observation_id": f"OBS-{_k}",
+            "claim_ids": ["CT-TEST-1"],
+            "source_class": _cls,
+            "admitted": True,
+            "freshness": "CURRENT",
+            "value": "1.0",
+            "claim_type": "industry_event",
+            "independence_group": f"grp-{_k}",
+            "origin_group": f"org-{_k}",
+            "content_sha256": f"{'%064x' % _k}",
+            "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+        })
+    sample["records"][0]["claim_evidence_audit"] = {
+        "schema_version": 2,
+        "full_research_eligible": True,
+        "all_material_claims_supported": True,
+        "claims": [_claim],
+        "evidence": _evidence,
+        "validated_at": _vts.isoformat().replace("+00:00", "Z"),
+        "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+    }
     context, eligible = _format_source_audit_context(sample, "TEST", "FRESH", 10)
     assert eligible is True
     assert "claim_relevant_primary_sources=1" in context
@@ -727,11 +769,45 @@ def _self_test() -> None:
     print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS; exact_model_pin=true; bounded_generation=true; health_slot_independent=true")
 
 
+def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
+    """Fail-closed startup gate (TASK0 2J-B1): the EXACT pinned model id must be
+    served by the tabbyAPI / list endpoint before the gateway accepts traffic.
+    A name that is never served (e.g. a stale LOCAL_LLM_MODEL) must refuse to
+    start instead of silencing every request downstream. Zero secrets in any
+    output; model IDs only."""
+    import time
+    model = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+    url = base.llama_base_url() + "/v1/models"
+    started = time.monotonic()
+    last_seen: list[str] = []
+    while True:
+        try:
+            response = requests.get(url, timeout=(2, 6), allow_redirects=False)
+            ids = [str(item.get("id") or "") for item in response.json().get("data", [])]
+            last_seen = ids
+            if model in ids:
+                print("V213_LOCAL_LLM_GATEWAY_MODEL_PIN = PASS; model served by list", flush=True)
+                return
+        except Exception as exc:  # noqa: BLE001 - bounded retry window
+            last_seen = [f"(list unreachable: {type(exc).__name__})"]
+        if time.monotonic() - started >= deadline_seconds:
+            shown = ", ".join(last_seen[:8]) or "(none)"
+            print(
+                "V213_LOCAL_LLM_GATEWAY_MODEL_PIN = FAIL; MODEL_NOT_SERVED; "
+                f"requested_model={model}; served_ids=[{shown}] "
+                "(exact model pin violated; refusing to start)",
+                flush=True,
+            )
+            raise SystemExit(3)
+        time.sleep(3)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=base.HOST)
     parser.add_argument("--port", type=int, default=base.PORT)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--skip-model-pin", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         _self_test()
@@ -742,6 +818,13 @@ def main() -> int:
         raise SystemExit("II_LOCAL_LLM_SHARED_SECRET must be configured")
     if not os.getenv("II_LOCAL_LLM_MODEL", "").strip():
         raise SystemExit("II_LOCAL_LLM_MODEL must be configured")
+    if not args.skip_model_pin:
+        pin_deadline = 30.0
+        try:
+            pin_deadline = max(6.0, float(os.getenv("II_MODEL_PIN_TIMEOUT_S", "30") or "30"))
+        except ValueError:
+            pin_deadline = 30.0
+        verify_served_model(args.host, pin_deadline)
     base.enrich_messages = enrich_messages
     server = ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)
     print(

@@ -37,11 +37,16 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - SCHEDULE (local read-only; 5 tasks): Morning 07:20+08 rc=0 (on time); Evening 20:20+08 rc=1 (09-17 failed; cause unknown); sealed-freshness PT1H + watchdog PT30M rc=0; FreeRelay no trigger (manual) 09-15 rc=1. launches = trigger+1s => +104min display gap NOT explained by local delay (UNDETERMINED; display/data chain suspect).
 - OPEN: final-mode native test (packager scope, unauthorized); W1 pre-state = above; W2 deploy window; contract 4-file emission (historical remains CONTRACT_MISMATCH).
 - MV (1H): commits a99b4bd + push + PR sync; verification extracts under `.tmp/task0-1h-valid`; 0 PROD/KV/DO/LINE/registry/schedule/flag writes.
-### TASK0 - 1I (2026-09-17/18; Pro; offline + read-only)
-- EVENING DIAG: 09-17 evening FAIL exit 1 / NOT_COMMITTED / journal failed_phase=COMMIT_REQUEST; stages 1-7 (generation) all PASS; first break = stage-8 handoff (sealed-publish commit moment); NOT re-gen/lock/-NoSync/model. Commit-time detail absent from readable logs (evidence gap; private exploration next). Action script byte-identical to worktree; day = FINALIZED+publication; launches trigger+1s => +104min not local; display-gap flagged only.
-- HARNESS (RED to MIN-FIX to GREEN): 6/8 negative RED first; MIN-FIX = release stops leaving 15ms (stop on terminate; 0 kills pre-ready), probe definitive (REFUSED=down; RESET/timeout/error=unknown; round timers cleared), success = gone AND down, one shared cleanup, forward budget pre-await (failed forwards consume; separate counters; modelCalls=responses). GREEN x2: 59 files 864p|1s; tsc 0; gates PASS; 0 new P0; opt-in still throws (0-gw).
-- W1 preSTATE: no gateway/heartbeat; LOCAL_LLM_MODEL=qwen38-q6; V213_MODEL_PROFILE_JSON absent. W2 rollback basis = c7abe74d-0cd9-4e06-9e96-906690038a24 (pre-deploy 100%; not f3287281). Identity = operator read; deployed bundle digest NOT_OBTAINED, src-to-bundle NOT_BYTE_VERIFIED => egress provisionally verified.
-- W2 NOT ordered (pending approval); 0 writes this batch; historical ZIP remains BLOCKED_PACKAGE_CONTRACT_MISMATCH.
+### TASK0 - E2 (2026-09-18/; Pro+operator; order: full LINE repair until clean + persona ultimate)
+- 3 roots (read-only proof): (1) every local-model path dead: live env LOCAL_LLM_MODEL=qwen38-q6 + profile JSON absent vs served model = ONLY Qwen3.8-27B-EXL3-SC5-H6-V6 (localhost:5000 /v1/models) -> every call rejected; FIX = ENV only (operator window) + profile promotion; rollback = restore env; no code deploy. (2) Top20 "insufficient evidence" = CORRECT fail-closed (evidence_qualified=0; full withhold; no legacy/zero-pad) - defect = evidence lanes: stooq.com JS-challenge (0 rows back), nasdaq API 400 params, HF seed stale>7d; avail=free Yahoo v8 chart (probed OK) -> FIX = v8-chart cross-check family (policy-labelled, ack, then build+gate+deploy). (3) nightly FAIL = commit-stage (above); verification = next slot + capture.
+- Local hardening: gateway exact-model pinned boot (exit 3 MODEL_NOT_SERVED if exact id not served; 30s bounded; env override; both CLI RED/GREEN evidence); selftest fixture vs claim-audit v2 (pre-existing RED closed); persona lane: documents/PERSONA_LOGIC_FULL.md (both persons' full logic; P1a/P1b/S2/TR stratified source) + skill refresh (10 X posts oembed-DIRECT verification; 2 deleted-404 vs negatives; Aschenbrenner CONTEXT_ONLY suppl 0 scoring/filter changes; oembed channel documented).
+- F-UNTRACKED-LOST x2 (1G/2J shared worktree: worker-logger.ts; uncommitted skill edits) - no tracked losses; response = edit->gate->commit->push immediately (align with operator's new standing rule: all changes sync to GitHub); identity attribution undetermined->ops.
+- PENDING CANON: Env+profile (window), v8-chart family (ack), W2 deploy, W1 heatmap, capture; 0 live writes this batch; base c7abe74d unchanged.
+
+### TASK0 - 1I (2026-09-17/18; Pro) - pointer
+- EVENING DIAG: 09-17 evening refresh rc=1 = journal failed_phase=COMMIT_REQUEST (stage 7-8 seal/commit seam); stages 1-7 ALL PASS; not lock/no-sync/model; commit-stage detail has no readable trace (private capture pending). +104min display gap = display-chain suspect (launches at trigger+1s).
+- HARNESS close (RED->MIN-FIX->GREEN): released 15-ms wait gating, terminal 503/404 live vs ECONN-reset/etc unknown gate, 1 shared cleanup, pre-reserved internal forward budget; GREEN x2 = 59 files 864p|1s; tsc 0; gate pass; commit 04d86a4. Detail: `git show 04d86a4` / PR #37.
+
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
@@ -66,22 +71,6 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 ### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
 - Worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A + options-guidance live; run `20260916T131939Z-897a86efa733` seal `c9b19102`, pointer LAST 14/14); LINE live; `docs/LINE_GAP_LEDGER.md` 31 items / 8 scopes, P0s closed live (full text in git history).
 
-## Objectives Overview & Trust Invariants
-Objectives: A = UNKNOWN rights; B = 7 references typed (unresolved outside corpus); C = scoped non-admitting hook; admission still capped TEST_ONLY tier.
-
-Priority: evidence → admission → ranking → acceptance → sealed publication → LINE; identity/macro/options stay UNAVAILABLE (do NOT block LINE); never deploy unaccepted ranking/candidate.
-
-## Completed, pre-TASK0 (full text in `git show` STATUS history)
-- PROJECT_WIDE_GAP_AUDIT = PASS (P0 = 0, P1 = 0; PG-11 DEFER; GEV/6501 admitted) - `docs/PROJECT_GAP_LEDGER.md`.
-- Statutory evaluation + Objective-B citation typing done (`G/`); references still `UNRESOLVED_OUTSIDE_CORPUS`; C-hook not product-ready; evidence stays TEST_ONLY tier.
-
-## Publication anchor
-- `publication_eligible=true` since operator-authorized production deploy (2026-09-16); LINE delivery live on the owner-pairing channel; evidence tier stays TEST_ONLY-signed.
-- Historical status snapshot for comparison: `git show 38860e7:state/STATUS.md`.
-
-## Next runnable action
-- Re-point: 60-min task `InvestorIntelligenceSealedFreshness` (auto).
-- Evidence residuals: 6508/ENR 2nd-family sources (G-10); DOE 2026-03-05 before its 180-day window closes (G-11).
-- Deferred lanes: R75 production certification chain; device broadcast testing (G-25).
-- No outstanding routing/registration fixes (old session-tool routing text retired as stale 2026-09-16).
+## Pre-TASK0 history (full text in `git show` STATUS revisions)
+- Objectives A/B/C completed per history; admission stays `TEST_ONLY` tier; `publication_eligible=true` since 2026-09-16; LINE live on owner channel; 60-min freshen task `InvestorIntelligenceSealedFreshness` (auto).
 
