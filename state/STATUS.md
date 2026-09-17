@@ -25,31 +25,24 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 Operability Audit — Phase 1B (2026-09-17T10:5x–11:0xZ; Pro-supervised; read-only replay + local gates)
-- Live worker: health 200 / readiness 200 `worker_version=c7abe74d…` (echo OK, `no_write`) → LIVE code = Gen-2; Gen-1 hypothesis **DISPROVEN**.
-- In-memory replay (fixed run `092410Z`, 0 net writes): Macro/TOP5/Top20 (GEV 96.0, 6501 93.0) admitted; SIVE&AAOI fail-closed; invalid→null. 1/1 PASS.
-- Gates: vitest 818/0/1 (2.6s); tsc 0; pytest **1520/3F**/3 skip. F: (1) `test_cli_builder_synthetic_fixture` — text pipe decodes cp950, UTF-8 CLI output choke (byte-identical at base 3c7497e → env/robustness gap, P1); (2/3) lock subtests fail full-suite-load-only (standalone PASS) — P2 flake (0s lock timeout under load).
-- Tuple reconciliation: Gen-2 = `3c7497e`/`c7abe74d…`/`092410Z`/`891b671a…` (15 objects); Gen-1 `928539bd…`/14 objects superseded; PR #37 body mixed (fix deferred by instruction).
-- Remote: KV CLI 401 (no local creds; sealing holds) — live `snapshot:current` UNVERIFIED; best local = `095616Z` (17:56+08, 15/15 readback). Task display lag ≠ stall (disk runs); cause undetermined.
-- Local model chain: `127.0.0.1:5000` = tabbyAPI (health 200; live oneshot exact echo, finish=stop). No 8080 relay on host (contract residue).
-- Phase 2 pending: (P1) UTF-8 pin min-fix; (P2) ops-lock flake rerun; base rerun moot (no delta).
+### TASK0 Operability Audit — Phase 1B (2026-09-17T10:55–11:05Z; Pro-supervised)
+- AUDITED_CODE_SHA `ab1bcca`; BASE_CHECKOUT_SHA at 1B close = `ea07194` (docs-only delta over audited code); docs commits `4c57264`→`ea07194` pushed to branch (CI inert: workflow eval vs branch+PR#37 verified; Draft).
+- REMOTE (1× per endpoint): /health 200 @10:55:12Z (v2.1.3, owner_only); /v213/readiness 200 `worker_version=c7abe74d…`, challenge echo matches, no_write=true, ready=true → version/readiness checkpoint passed (synthetic probe, not a functional test). KV CLI read 401 → **BLOCKED_READ_ACCESS** (no local CLI creds; sealing holds). Remote pointer = UNVERIFIED; newest **local refresh record (not an observation)** = `095616Z` (17:56+08, 15/15 readback, REFRESH OK).
+- Scheduling mismatch (task display vs hourly disk runs): cause undetermined (task path / dup task / other process / TZ conversion unexcluded); display-only.
+- CALLERS (LOCAL_FULL_CALLER_REPLAY; exported fetch → fixed run `092410Z` MemoryKv → memory LINE transport; 0 net writes; waits concluded):
+  PASS (in-memory scope only): Macro TOP5 / TOP5 / Top20 (GEV 96.0 #1, 6501 93.0 #2, 7-field + anchor + TEST_ONLY disclosures), SIVE/AAOI/6508/ENR unadmitted fail-closed with correct closed reason, invalid ticker fallback + answer-after verified, stale/seal-mismatch in-memory negatives rejected.
+  Suite: vitest 818/0/1; tsc 0; pytest 1520 passed / **3 FAIL** / 3 skip (local suite scope, not live E2E).
+- TOP_DEFECTS: (1) **reproduced P1** `test_cli_builder_synthetic_fixture` — subprocess text pipe cp950 vs UTF-8 CLI output (byte 43/0xE7) → stdout None → json.loads None; file byte-identical at 3c7497e (not a version regression); min fix = pin that call `encoding="utf-8"` (CLI-side hardening scope pending Pro sign-off). (2) **P2 pending** operation-lock subtests fail full-suite load only (standalone PASS); 0s lock-timeout race hypothesis; discriminator = full-suite rerun + subtest -v. (3) **P1 suspect (unverified)**: worker local model chain — free-relay DurableObject `current-local-route` lease (TTL 300s, generation-guarded; expiry → `FREE_RELAY_UNAVAILABLE`) + model profile pin (`model_profile_sha256`, `selected_model`, substitution forbidden); toml name `qwen38-q6` vs tabbyAPI served `Qwen3.8-27B-EXL3-SC5-H6-V6` — lease expiry / name mismatch = top general-QA candidate; route producer unverified; report only, no refresh.
+- LOCAL_CHAIN: `127.0.0.1:5000` = **UNKNOWN / dependency pending confirmation** (operational identity: PID exe `D:\tabbyAPI\venv\python.exe start.py`, OpenAI-compatible /v1 shape, /health 200 ⇒ serving tabbyAPI locally); 8080 relay absent (contract residue). Direct tabby oneshot: finish=stop + exact echo = PASS direct only; worker-route chain unverified (see P1 lease).
+- SCOPE caveat: any FAIL-0 claim is limited to the executed in-memory scope; live E2E / LINE delivery / remote pointer NOT covered (BLOCKED_*).
 
-### Milestones (2026-09-15 verified-green baseline session; detail in git log: worker.ts blob `4e0f78af`, deterministic option test clocks, statutory/claim-admission modules, STATUS anchors)
-
-### Milestones (sessions 2-6, 2026-09-15; compacted)
-- `fc145e1`/`96fdc1e`/`0c0a8f3`: source acquisition & symbol directory; bounded bottleneck ranking + claim bridge; global equity lookup / sealed identity index (module layer only).
-- `fc2b99b`/`6412214` (reverted by `98f4a18`): sealed bottleneck lane + global lookup re-integration; 4 quarantined tests preserved at wip-cloud/.
-- `98f4a18`: pointerless raw Top20 writes fail closed to INSUFFICIENT_EVIDENCE (takeover authoritative); ranking intent gates every Top20 alias; 7 pre-migration fixtures -> sealed run-bound bundles. vitest 786/0/1.
-- `f297a43`: 4 type fixes (Awaited types); tsc 0. `da57db6`: deterministic option clocks; `1725eca`: routing resolution (state/qwen-routing-resolution-v1.json). Baseline pytest 1470/0/3; vitest 786/0/1.
-
+### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
 
 ### Archive milestones (sessions 7-15, 2026-09-15; details in git log)
 
-### RELEASE READINESS LEDGER (Task #20, 2026-09-16)
-- Full regression at close: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0; security/canonical RC/LINE-boundary/clean-install/actions-storage/final-cleanup all PASSED.
-- Invariants: worker.ts blob == `4e0f78af…` (exact); qa.ts diff 0; snapshot intact (pointer-last `1331ff8`->`5e42584`); Top20 = GEV 96.0 #1 / 6501 93.0 #2, admitted 2, zero padding.
-- Verdict (pre-deploy): evidence sealed + fail-closed COMPLETE; DEPLOYMENT_READY (this lane) = TRUE; superseded by the PRODUCTION DEPLOY block below.
+### RELEASE READINESS LEDGER (Task #20, 2026-09-16; superseded by the PRODUCTION DEPLOY block below) — close-of-lane regression + budget invariants + DEPLOYMENT_READY=TRUE; detail in git log.
+
 
 ### PRODUCTION DEPLOY (2026-09-16, Task #22; explicit operator authorization, this session)
 - KV `PUBLIC_CACHE` (96142af4…): 14 sealed objects of run `20260915T120000Z-f2a9ea873960` + `snapshot:current` pointer LAST; all 14 read back and byte-verified (seal sha d64b21be == pointer).
