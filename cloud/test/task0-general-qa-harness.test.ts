@@ -73,6 +73,7 @@ describe("TASK0 1G-R: drain collector semantics (offline)", () => {
 describe("TASK0 1G-R: structure, strictness and cleanup (offline)", () => {
   const MARKER = "TASK0_LOCAL_MODEL_OK";
   const EXL3 = "Qwen3.8-27B-EXL3-SC5-H6-V6";
+  const probeStateRef: Array<() => Promise<never>> = [];
 
   it("both live callers use the shared real-time drain (no .catch('caught') reclassification)", () => {
     const chain = readFileSync(fileURLToPath(new URL("./v213-task0-general-qa-chain.test.ts", import.meta.url)), "utf-8");
@@ -85,22 +86,26 @@ describe("TASK0 1G-R: structure, strictness and cleanup (offline)", () => {
     }
   });
 
-  it("structural completion verdict: only finish=stop + correct model + real content pass", () => {
-    const ok = JSON.stringify({
-      id: "chatcmpl-t1",
-      model: EXL3,
-      choices: [{ index: 0, message: { role: "assistant", content: MARKER }, finish_reason: "stop" }],
-    });
-    expect(completionVerdict(ok, EXL3, MARKER)).toEqual({ ok: true, reason: "OK" });
-    const length = ok.replace('"stop"', '"length"');
-    expect(completionVerdict(length, EXL3, MARKER).reason).toBe("FINISH_NOT_STOP");
-    const wrong = ok.replace(EXL3, "some-other-model");
-    expect(completionVerdict(wrong, EXL3, MARKER).reason).toBe("MODEL_MISMATCH");
-    const emptyFinish = JSON.stringify({ model: EXL3, choices: [{ message: { role: "assistant", content: MARKER }, finish_reason: "" }] });
-    expect(completionVerdict(emptyFinish, EXL3, MARKER).reason).toBe("FINISH_EMPTY");
+  it("structural completion verdict: H3 rules (structure, finish, model, marker isolation)", () => {
+    const base = (content: string, finish = "stop", model = EXL3) =>
+      JSON.stringify({ id: "chatcmpl-t1", model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finish }] });
+    const ANSWER = "股票是公司所有權的憑證，結構風險高於債券，但收益不固定。";
+    expect(completionVerdict(base(ANSWER), EXL3, MARKER, "answer")).toEqual({ ok: true, reason: "OK" });
+    expect(completionVerdict(base(MARKER), EXL3, MARKER, "answer").reason).toBe("FORBIDDEN_MARKER_IN_ANSWER");
+    expect(completionVerdict(base(MARKER), EXL3, MARKER, "smoke")).toEqual({ ok: true, reason: "OK" });
+    expect(completionVerdict(base(MARKER + "!"), EXL3, MARKER, "smoke").reason).toBe("SMOKE_NOT_EXACT");
+    expect(completionVerdict(base(ANSWER, "length"), EXL3, MARKER).reason).toBe("FINISH_LENGTH");
+    expect(completionVerdict(base(ANSWER, "content_filter"), EXL3, MARKER).ok).toBe(false);
+    expect(completionVerdict(base(ANSWER, ""), EXL3, MARKER).reason).toBe("FINISH_EMPTY");
+    expect(completionVerdict(base(ANSWER, "stop", "some-other-model"), EXL3, MARKER).reason).toBe("MODEL_MISMATCH");
+    expect(completionVerdict(base(ANSWER, "stop", ""), EXL3, MARKER).reason).toBe("MODEL_MISMATCH");
+    expect(completionVerdict("null", EXL3, MARKER).reason).toBe("NO_STRUCTURE");
+    expect(completionVerdict("[1,2]", EXL3, MARKER).reason).toBe("NO_STRUCTURE");
     expect(completionVerdict("not json at all", EXL3, MARKER).reason).toBe("NO_STRUCTURE");
-    const thin = JSON.stringify({ model: EXL3, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
-    expect(completionVerdict(thin, EXL3, MARKER).ok).toBe(false);
+    expect(completionVerdict(JSON.stringify({ model: EXL3, choices: [] }), EXL3, MARKER).reason).toBe("NO_STRUCTURE");
+    expect(completionVerdict(JSON.stringify({ model: EXL3 }), EXL3, MARKER).reason).toBe("NO_STRUCTURE");
+    expect(completionVerdict(base("ok"), EXL3, MARKER).reason).toBe("THIN_CONTENT");
+    expect(completionVerdict(base("問題已收到，參考編號 a1b2c3d4e5f60987。稍後輸入「查看結果 a1b2c3d4e5f60987」。"), EXL3, MARKER).ok).toBe(false);
   });
 
   it("caller abort propagates fast, no model call is recorded, no boundary violation", async () => {
@@ -137,62 +142,108 @@ describe("TASK0 1G-R: structure, strictness and cleanup (offline)", () => {
     expect(b.violations.length).toBe(0);
   });
 
-  it("gateway release: alive->kill->exit->listener-down resolves (verified, bounded)", async () => {
-    let alive = true;
-    const listeners: Record<string, Array<(...a: unknown[]) => void>> = {};
-    const child = {
-      exitCode: null as number | null,
-      once(ev: string, fn: (...a: unknown[]) => void) { (listeners[ev] ??= []).push(fn); return child; },
-      on(ev: string, fn: (...a: unknown[]) => void) { (listeners[ev] ??= []).push(fn); return child; },
-      kill(signal?: NodeJS.Signals) { void signal; alive = false; queueMicrotask(() => { child.exitCode = 0; (listeners["exit"] ?? []).forEach((f) => f()); }); return true; },
-    };
-    let up = true;
-    const probe = async () => up;
-    const t = setTimeout(() => { up = false; }, 120);
-    const r = releaseGateway(child as never, probe, 8_000);
-    await r.then(
-      () => expect(alive).toBe(false),
-      (e) => { throw e; },
-    );
-    clearTimeout(t);
-  });
-
-  it("gateway release: child ALREADY exited before stop() resolves without kill (no dangling wait)", async () => {
+  it("release: 404/503-style replies stay LIVE; release waits for exit + a non-live probe (503 class cannot pass)", async () => {
     let killed = false;
-    const child = {
-      exitCode: -2 as number | null,
-      once() { return child; },
-      on() { return child; },
-      kill() { killed = true; return true; },
-    };
-    await expect(releaseGateway(child as never, async () => false, 4_000)).resolves.toBeUndefined();
-    expect(killed).toBe(false);
-  });
-
-  it("gateway release: kill that never emits exit must NOT wait 1h (bounded failure)", async () => {
-    const child = {
-      exitCode: null as number | null,
-      once() { return child; },
-      on() { return child; },
-      kill() { return true; },
-    };
-    const t0 = performance.now();
-    await expect(releaseGateway(child as never, async () => true, 900)).rejects.toThrow(/TIMEOUT|RELEASE/);
-    expect(performance.now() - t0).toBeLessThan(5_000);
-  });
-
-  it("release is reentrant-safe: calling stop twice does not hang or double-emit violations", async () => {
-    let exited = false;
     const listeners: Array<(...a: unknown[]) => void> = [];
     const child = {
       exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      spawnError: null as Error | null,
       once(_ev: string, fn: (...a: unknown[]) => void) { listeners.push(fn); return child; },
-      on(_ev: string, fn: (...a: unknown[]) => void) { listeners.push(fn); return child; },
-      kill() { if (!exited) { exited = true; queueMicrotask(() => { child.exitCode = 0; listeners.forEach((f) => f()); }); } return true; },
+      kill() {
+        killed = true;
+        setTimeout(() => { child.exitCode = 0; listeners.forEach((f) => f()); }, 80);
+        return true;
+      },
     };
-    const p1 = releaseGateway(child as never, async () => false, 4_000);
-    const p2 = releaseGateway(child as never, async () => false, 4_000);
-    await expect(Promise.allSettled([p1, p2]).then((rs) => rs.every((x) => x.status === "fulfilled"))).resolves.toBe(true);
+    let liveProbes = 0;
+    const probe = async (): Promise<"live" | "down" | "unknown"> => {
+      if (child.exitCode !== null) return "down";
+      liveProbes++;
+      return "live"; // 404/503/200-style: still answering before the process exits
+    };
+    await releaseGateway(child, probe, 8_000);
+    expect(killed).toBe(true);
+    expect(liveProbes).toBeGreaterThanOrEqual(1); // a live (503/404) probe did NOT close the release
+  });
+
+  it("release: child gone by SIGNAL (no exitCode) + down probe resolves WITHOUT kill", async () => {
+    let killed = false;
+    const child = {
+      exitCode: null as number | null,
+      signalCode: "SIGTERM" as NodeJS.Signals | null,
+      spawnError: null as Error | null,
+      once() { return child; },
+      kill() { killed = true; return true; },
+    };
+    await expect(releaseGateway(child, async () => "down", 4_000)).resolves.toBeUndefined();
+    expect(killed).toBe(false);
+  });
+
+  it("release: child gone by SPAWN ERROR resolves WITHOUT kill", async () => {
+    let killed = false;
+    const child = {
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      spawnError: new Error("spawn ENOENT"),
+      once() { return child; },
+      kill() { killed = true; return true; },
+    };
+    await expect(releaseGateway(child, async () => "down", 4_000)).resolves.toBeUndefined();
+    expect(killed).toBe(false);
+  });
+
+  it("release: probe errors/timeouts are UNKNOWN, never 'down' (stuck child = bounded failure, not hang)", async () => {
+    let kills = 0;
+    const child = {
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      spawnError: null as Error | null,
+      once() { return child; },
+      kill() { kills++; return true; },
+    };
+    let probes = 0;
+    const t0 = performance.now();
+    await expect(
+      releaseGateway(child, async () => {
+        probes++;
+        throw new Error("probe timeout");
+      }, 900),
+    ).rejects.toThrow(/RELEASE_TIMEOUT/);
+    expect(performance.now() - t0).toBeLessThan(6_000);
+    expect(probes).toBeGreaterThanOrEqual(1);
+    expect(kills).toBeGreaterThanOrEqual(1);
+  });
+
+  it("release: calling it twice on the same (dead) child settles both, with one kill at most", async () => {
+    let kills = 0;
+    const child = {
+      exitCode: 0 as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      spawnError: null as Error | null,
+      once() { return child; },
+      kill() { kills++; return true; },
+    };
+    const p1 = releaseGateway(child, async () => "down", 4_000);
+    const p2 = releaseGateway(child, async () => "down", 4_000);
+    await Promise.all([p1, p2]);
+    expect(kills).toBe(0);
+  });
+
+  it("model call cap: a forward beyond the cap is rejected BEFORE any backend I/O", async () => {
+    let nativeHits = 0;
+    const fakeNative = async (): Promise<Response> => {
+      nativeHits++;
+      return new Response(JSON.stringify({ model: EXL3, choices: [{ finish_reason: "stop", message: { role: "assistant", content: MARKER } }] }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const b = createStrictBoundary("task0-phase1f-live.trycloudflare.com", { port: 9, channelValue: "deadbeef" }, fakeNative, 1);
+    const first = await b.fetch(`https://task0-phase1f-live.trycloudflare.com/v1/chat/completions`, { method: "POST", body: JSON.stringify({ model: EXL3, messages: [] }) });
+    expect(first.status).toBe(200);
+    expect(nativeHits).toBe(1);
+    await expect(b.fetch(`https://task0-phase1f-live.trycloudflare.com/v1/chat/completions`, { method: "POST", body: JSON.stringify({ model: EXL3, messages: [] }) })).rejects.toThrow("TASK0_MODEL_CALL_CAP");
+    expect(nativeHits, "capped forward must never reach the backend").toBe(1);
+    expect(b.modelCalls.length).toBe(1);
+    expect(b.violations.length).toBe(0);
   });
 
   it("job reference is extracted strictly from the worker's exact reply", () => {

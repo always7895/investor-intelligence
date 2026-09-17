@@ -111,7 +111,7 @@ async function freeLoopbackPort(): Promise<number> {
 
 export type StrictBoundary = {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  modelCalls: Array<{ method: string; status: number; model: string; finishReason: string; modelReturned: string }>;
+  modelCalls: Array<{ method: string; status: number; model: string; finishReason: string; modelReturned: string; body: string }>;
   lineReplies: Array<{ replyTokenPrefix: string; textCount: number; sawBearer: boolean; texts: string[] }>;
   violations: string[];
   /** Queue one-off artificial latency (ms) applied to the NEXT model forward. */
@@ -129,67 +129,112 @@ export type FinalAnswerCheck = { ok: boolean; reason: string };
  * AND non-trivial/acceptable content is a usable success. "length", empty
  * finishes, wrong/absent model and non-JSON bodies are explicit failures.
  */
-export function completionVerdict(body: string, expectedModel: string, marker: string): FinalAnswerCheck {
-  let j: { choices?: Array<{ finish_reason?: string; message?: { content?: string } }>; model?: string };
+export type CompletionKind = "smoke" | "answer";
+
+/**
+ * Phase-1H: structural completion verdict. Rules (corrigendum):
+ * - unparseable / null / array / missing-choices / wrong shape -> NO_STRUCTURE
+ * - finish "" -> FINISH_EMPTY; finish != stop -> FINISH_<REASON>
+ * - returned model != expected (incl. empty) -> MODEL_MISMATCH
+ * - kind "smoke": content must EXACTLY equal the marker
+ * - kind "answer": marker is FORBIDDEN, thin or gated text is rejected
+ */
+export function completionVerdict(body: string, expectedModel: string, marker: string, kind: CompletionKind = "answer"): FinalAnswerCheck {
+  let parsed: unknown;
   try {
-    j = JSON.parse(body) as typeof j;
+    parsed = JSON.parse(body);
   } catch {
     return { ok: false, reason: "NO_STRUCTURE" };
   }
-  const fr = String(j.choices?.[0]?.finish_reason ?? "");
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ok: false, reason: "NO_STRUCTURE" };
+  const o = parsed as { choices?: unknown; model?: unknown };
+  if (!Array.isArray(o.choices) || o.choices.length === 0) return { ok: false, reason: "NO_STRUCTURE" };
+  const ch = o.choices[0] as { finish_reason?: unknown; message?: { content?: unknown } } | null;
+  if (ch === null || typeof ch !== "object") return { ok: false, reason: "NO_STRUCTURE" };
+  const fr = typeof ch.finish_reason === "string" ? ch.finish_reason : "";
   if (fr === "") return { ok: false, reason: "FINISH_EMPTY" };
-  if (fr !== "stop") return { ok: false, reason: "FINISH_NOT_STOP" };
-  const m = String(j.model ?? "");
+  if (fr !== "stop") return { ok: false, reason: `FINISH_${fr.toUpperCase().replace(/[^A-Z0-9]/g, "_")}` };
+  const m = typeof o.model === "string" ? o.model : "";
   if (m === "" || m !== expectedModel) return { ok: false, reason: "MODEL_MISMATCH" };
-  const content = String(j.choices?.[0]?.message?.content ?? "");
-  if (marker && content.includes(marker)) return { ok: true, reason: "OK" };
+  const content = typeof ch.message?.content === "string" ? ch.message.content : "";
+  if (kind === "smoke") {
+    if (content.trim() !== marker) return { ok: false, reason: "SMOKE_NOT_EXACT" };
+    return { ok: true, reason: "OK" };
+  }
+  if (marker && content.includes(marker)) return { ok: false, reason: "FORBIDDEN_MARKER_IN_ANSWER" };
   if (content.trim().length < 4) return { ok: false, reason: "THIN_CONTENT" };
   const gate = finalAnswerCheck(content, marker);
   if (!gate.ok) return { ok: false, reason: gate.reason };
   return { ok: true, reason: "OK" };
 }
 
+export type GatewayProbeState = "live" | "down" | "unknown";
+
+export interface GatewayChildLike {
+  exitCode: number | null;
+  signalCode?: NodeJS.Signals | null;
+  spawnError?: Error | null;
+  kill: (s?: NodeJS.Signals) => boolean;
+  once: (ev: string, fn: (...a: unknown[]) => void) => unknown;
+}
+
 /**
- * Phase-1G REPAIR: bounded gateway release. Covers: alive (kill -> exit ->
- * listener verified down), already-exited (no kill, verify only), stuck
- * (bounded deadline fail), and reentrant calls. probeAlive() must observe
- * the loopback port; release resolves only after the port stops answering.
+ * Phase-1H: bounded gateway release.
+ * - "gone" = exitCode !== null OR signalCode != null OR spawnError set.
+ * - probeState: "live" (200/503/404 still answering), "down" (connection
+ *   refused/reset), "unknown" (timeout/any probe error — NEVER treated as
+ *   closed). Resolves only when the child is gone AND the latest probe was
+ *   not "live". Reentrant-safe; its timers clear on settle.
  */
 export function releaseGateway(
-  child: {
-    exitCode: number | null;
-    kill: (s?: NodeJS.Signals) => boolean;
-    once: (ev: string, fn: (...a: unknown[]) => void) => unknown;
-  },
-  probeAlive: () => Promise<boolean>,
+  child: GatewayChildLike,
+  probeState: () => Promise<GatewayProbeState>,
   deadlineMs = 10_000,
 ): Promise<void> {
-  const releaseStartAt = performance.now();
+  const startedAt = performance.now();
   return new Promise<void>((resolve, reject) => {
     let settled = false;
-    const hard = setTimeout(() => finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")), deadlineMs);
+    let hard: ReturnType<typeof setTimeout> | undefined;
     const finish = (err?: Error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(hard);
+      if (hard) clearTimeout(hard);
       if (err) reject(err);
       else resolve();
     };
+    hard = setTimeout(() => finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")), deadlineMs);
+    const gone = () => child.exitCode !== null || child.signalCode != null || child.spawnError != null;
     const verify = async () => {
-      for (let i = 0; i < 24; i++) {
-        const up = await probeAlive().catch(() => false);
-        if (!up) { finish(); return; }
-        await new Promise((r) => setTimeout(r, 200));
-        if (performance.now() > releaseStartAt + deadlineMs) { finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")); return; }
+      while (!settled) {
+        if (performance.now() - startedAt > deadlineMs) {
+          finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT"));
+          return;
+        }
+        let st: GatewayProbeState;
+        try {
+          st = await probeState();
+        } catch {
+          st = "unknown";
+        }
+        if (gone() && st !== "live") {
+          finish();
+          return;
+        }
+        if (!gone()) child.kill();
+        await new Promise<void>((res) => setTimeout(res, 150));
       }
-      finish(new Error("TASK0_GATEWAY_LISTENER_STILL_UP"));
     };
-    if (child.exitCode !== null) {
+    if (gone()) {
       void verify();
       return;
     }
     child.once("exit", () => { void verify(); });
-    child.kill();
+    try {
+      child.kill();
+    } catch {
+      /* kill refused: the verify loop remains deadline-bounded */
+    }
+    void verify(); // unconditional: stuck children are probed + deadline-bounded
   });
 }
 
@@ -234,7 +279,12 @@ function combinedSignal(caller: AbortSignal | undefined, capMs: number): AbortSi
   return ctrl.signal;
 }
 
-export function createStrictBoundary(evidenceHost: string, gate: { port: number; channelValue: string }, nativeFetch: typeof fetch): StrictBoundary {
+export function createStrictBoundary(
+  evidenceHost: string,
+  gate: { port: number; channelValue: string },
+  nativeFetch: typeof fetch,
+  maxModelCalls?: number,
+): StrictBoundary {
   const modelUrl = `https://${evidenceHost}/v1/chat/completions`;
   const lineReplyUrl = "https://api.line.me/v2/bot/message/reply";
   let stallPending = false;
@@ -251,6 +301,9 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
     const url = String(input);
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     if (url === modelUrl && method === "POST") {
+      if (maxModelCalls != null && b.modelCalls.length >= maxModelCalls) {
+        throw new Error("TASK0_MODEL_CALL_CAP"); // rejected BEFORE any backend I/O
+      }
       const body = String(init?.body ?? "");
       let model = "";
       try { model = String((JSON.parse(body) as { model?: unknown }).model ?? ""); } catch { /* body kept */ }
@@ -259,7 +312,7 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
       if (stallPending) {
         stallPending = false;
         await new Promise((rr) => setTimeout(rr, 8_000));
-        b.modelCalls.push({ method: "POST", status: 504, model, finishReason: "", modelReturned: "" });
+        b.modelCalls.push({ method: "POST", status: 504, model, finishReason: "", modelReturned: "", body: "SYNTH_504" });
         return new Response(JSON.stringify({ error: { message: "local inference timeout", type: "local_model_timeout" } }),
           { status: 504, headers: { "content-type": "application/json" } });
       }
@@ -277,7 +330,7 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
         finishReason = String(j.choices?.[0]?.finish_reason ?? "");
         modelReturned = String(j.model ?? "");
       } catch { /* non-JSON body is not a usable answer either */ }
-      b.modelCalls.push({ method: "POST", status: fwd.status, model, finishReason, modelReturned });
+      b.modelCalls.push({ method: "POST", status: fwd.status, model, finishReason, modelReturned, body: text.slice(0, 8_000) });
       return new Response(text, { status: fwd.status, headers: { "content-type": "application/json" } });
     }
     if (url === lineReplyUrl && method === "POST") {
@@ -343,13 +396,39 @@ export async function startLocalGateway(opts: {
       V213_MODEL_PROFILE_JSON: opts.profileJson,
     } as NodeJS.ProcessEnv,
   });
+  const childExt = child as unknown as GatewayChildLike;
+  childExt.signalCode = null;
+  childExt.spawnError = null;
+  child.once("error", (err: unknown) => {
+    childExt.spawnError = err instanceof Error ? err : new Error(String(err));
+  });
+  child.once("exit", (_c: unknown, sig: unknown) => {
+    if (childExt.signalCode == null) childExt.signalCode = (sig as NodeJS.Signals | null) ?? null;
+  });
   const startAt = Date.now();
   const deadline = Date.now() + 120_000;
   const probeStats = { refused: 0, timeout: false };
   let probeN = 0;
   const realFetch: typeof fetch = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
+  // Probe verdicts: 200/503/404 = still answering; ECONNREFUSED/ECONNRESET =
+  // down; everything else (incl. probe timeout) = unknown, never "down".
+  const probeState = (): Promise<GatewayProbeState> =>
+    realFetch(`http://127.0.0.1:${port}/health`, {
+      headers: { "x-investor-shared-secret": channelValue },
+    })
+      .then((res) => (res.status === 200 || res.status === 503 || res.status === 404 ? "live" : "unknown"))
+      .catch((e: unknown) => {
+        const code = (e as { cause?: { code?: string } })?.cause?.code ?? "";
+        return code === "ECONNREFUSED" || code === "ECONNRESET" ? "down" : "unknown";
+      });
+  // ONE shared bounded cleanup: ready-path stop(), every failure path and
+  // any repeated stop() all await the same release.
+  const cleanupPromise = releaseGateway(childExt, probeState, 8_000);
   for (;;) {
-    if (child.exitCode !== null) throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
+    if (child.exitCode !== null) {
+      await cleanupPromise;
+      throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
+    }
     const url = `http://127.0.0.1:${port}/health`;
     const t0 = Date.now();
     let r: Response | null;
@@ -386,15 +465,12 @@ export async function startLocalGateway(opts: {
           channelValue,
           child,
           probeStats,
-          stop: () => releaseGateway(child, () =>
-            realFetch(`http://127.0.0.1:${port}/health`, { headers: { "x-investor-shared-secret": channelValue } })
-              .then((r) => r.status === 200)
-              .catch(() => false), 10_000),
+          stop: () => cleanupPromise,
         };
       }
     }
     if (Date.now() > deadline) {
-      child.kill();
+      await cleanupPromise;
       throw new Error(`TASK0_GATEWAY_NOT_READY:last=${r ? r.status : "unreachable"}`);
     }
     await new Promise((r) => setTimeout(r, 500));

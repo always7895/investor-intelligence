@@ -11,7 +11,7 @@ import {
 } from "../src/v213/free-relay";
 import { modelProfileSha256, validateModelProfile, type ModelProfile } from "../src/v213/model-profile";
 import { parseQuery } from "../src/core";
-import { startDrain } from "./helpers/task0-general-qa-harness";
+import { jobIdStrict, startDrain } from "./helpers/task0-general-qa-harness";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
@@ -69,7 +69,8 @@ const BOUNDARY: {
   forbidden: Array<{ url: string; method: string }>;
   mode: "ok" | "http500" | "redirect-307" | "substitution" | "wrongpin" | "finish-length";
   gateway: { port: number; secret: string } | null;
-} = { calls: [], lineTexts: [], forbidden: [], mode: "ok", gateway: null };
+  modelLatencyMs: number;
+} = { calls: [], lineTexts: [], forbidden: [], mode: "ok", gateway: null, modelLatencyMs: 0 };
 
 async function boundaryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = String(input);
@@ -103,6 +104,9 @@ async function boundaryFetch(input: RequestInfo | URL, init?: RequestInit): Prom
       );
     }
     if (url.endsWith("/v1/chat/completions")) {
+      if (BOUNDARY.modelLatencyMs > 0) {
+        await new Promise((r) => setTimeout(r, BOUNDARY.modelLatencyMs));
+      }
       const chat = (init?.body ? (JSON.parse(String(init.body)) as ChatShape) : {}) as ChatShape;
       if (BOUNDARY.mode === "http500") return new Response("synthetic down", { status: 500 });
       if (BOUNDARY.mode === "redirect-307") {
@@ -326,6 +330,7 @@ afterEach(() => {
   BOUNDARY.mode = "ok";
   BOUNDARY.calls.length = 0;
   BOUNDARY.lineTexts.length = 0;
+  BOUNDARY.modelLatencyMs = 0;
   vi.useRealTimers();
 });
 
@@ -453,15 +458,11 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     expect(res.status).toBe(200);
     expect(res.rejects.rejected).toBe(0);
     const joined = res.lines.join("\n");
-    // direct quick answer OR job reference + completed job; both end in FINAL_TEXT
-    if (joined.includes("參考編號")) {
-      const { TENANT_PRIVATE_CACHE } = env as unknown as { TENANT_PRIVATE_CACHE: { values: Map<string, unknown> } };
-      const jobRaw = [...TENANT_PRIVATE_CACHE.values.values()].find((v) => String(v).includes("TEST_LOCAL_CANDIDATE_FINAL"));
-      expect(jobRaw, "job must carry the completed final content").toBeTruthy();
-      expect(String(jobRaw)).toContain("TEST_LOCAL_CANDIDATE_FINAL");
-    } else {
-      expect(joined, "reply must contain the canonical final content").toContain("TEST_LOCAL_CANDIDATE_FINAL");
-    }
+    // Quick path: the quick winner arrives within the 7s race, so the reply
+    // itself carries the canonical final content. The job path is asserted
+    // ONLY through the formal result query in the dedicated case below — no
+    // KV scanning anywhere in this suite.
+    expect(joined, "quick-path reply must contain the canonical final content").toContain("TEST_LOCAL_CANDIDATE_FINAL");
     const chat = BOUNDARY.calls.find((c) => c.url.endsWith("/v1/chat/completions"));
     expect(chat).toBeTruthy();
     if (chat) expect((chat.init as { redirect?: string }).redirect).toBe("manual");
@@ -537,4 +538,46 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     expect(BOUNDARY.lineTexts.length).toBe(0);
     expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
   });
+
+  it("job flow: reference reply, FORMAL result query delivers the final (query adds NO model calls; missing id = distinct failure)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const gen = "a7c2e91b4d805f3645d2e7a09c1b84f3";
+    const dev = relayDevice();
+    await dev.seed(routeRec(gen, EXL3));
+    const env = await paired(workerEnv(dev.namespace, { profile: true, freshBase: true }), true);
+    // 1) Slow synthetic model -> quick-race timeout -> job reference reply.
+    BOUNDARY.modelLatencyMs = 7_200;
+    const first = await runWebhook(env, textMessage(201, "job_a", "請說明股票與債券的一項主要差異"));
+    expect(first.status).toBe(200);
+    expect(first.rejects.rejected).toBe(0);
+    const referenceReply = first.lines.find((l) => l.includes("參考編號"));
+    expect(referenceReply, `first reply must be the job reference; got: ${first.lines.join(" | ").slice(0, 220)}`).toBeTruthy();
+    const jobId = jobIdStrict(String(referenceReply));
+    expect(jobId, `reference must be strictly extractable: ${referenceReply}`).not.toBeNull();
+    const modelBase = BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length;
+    expect(modelBase, "job flow model calls capped at smoke+QA").toBeLessThanOrEqual(2);
+    // 2) Let the async job settle — observed ONLY via formal queries.
+    BOUNDARY.modelLatencyMs = 0;
+    let last = "";
+    let gotFinal = false;
+    for (let i = 0; i < 24 && !gotFinal; i++) {
+      const q = await runWebhook(env, textMessage(202, `job_q${i}`, `查看结果 ${jobId}`));
+      expect(q.status).toBe(200);
+      expect(q.lines.length).toBeGreaterThanOrEqual(1);
+      expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length, `result query ${i} must add zero model calls`).toBe(0);
+      last = q.lines.join("\n");
+      gotFinal = last.includes("TEST_LOCAL_CANDIDATE_FINAL");
+      if (!gotFinal) await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(gotFinal, `formal result query must deliver the final answer; last reply: ${last.slice(0, 220)}`).toBe(true);
+    expect(last).not.toContain("參考編號");
+    // 3) Missing id -> distinct formal failure, never a final answer.
+    const miss = await runWebhook(env, textMessage(203, "job_m", "查看结果 ZZ99ZZ99ZZ"));
+    expect(miss.status).toBe(200);
+    const missText = miss.lines.join("\n");
+    expect(missText).toContain("找不到該結果，可能已過期或不屬於此租戶。");
+    expect(missText).not.toContain("TEST_LOCAL_CANDIDATE_FINAL");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length, "missing-id query adds zero model calls").toBe(0);
+  }, 40_000);
 });

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createHmac } from "node:crypto";
 import {
+  completionVerdict,
   createStrictBoundary,
   finalAnswerCheck,
   startDrain,
@@ -146,7 +147,7 @@ beforeAll(async () => {
     profileJson: readProfileJson(),
     nativeFetch: REAL_FETCH,
   });
-  boundary = createStrictBoundary(EVIDENCE_HOST, gateway, REAL_FETCH);
+  boundary = createStrictBoundary(EVIDENCE_HOST, gateway, REAL_FETCH, 2);
   globalThis.fetch = boundary.fetch as typeof fetch;
   const workerMod = await import("../../src/v213/production-worker");
   productionWorker = workerMod.default;
@@ -206,6 +207,7 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
   expect(boundary!.modelCalls.length).toBe(1);
   expect(boundary!.modelCalls[0]?.status).toBe(200);
   expect(boundary!.modelCalls[0]?.model).toBe(EXL3);
+  expect(completionVerdict(String(boundary!.modelCalls[0]?.body ?? ""), EXL3, SMOKE_MARKER, "smoke")).toEqual({ ok: true, reason: "OK" });
   expect(boundary!.lineReplies.length).toBe(0);
 
   // 2) ONE Chinese general QA through the formal webhook caller.
@@ -221,6 +223,8 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
     // Structural completion: the transport MUST prove a usable completion.
     expect(c.finishReason).toBe("stop");
     expect(c.modelReturned).toBe(EXL3);
+    // caller-side verdict: stop + EXL3 + marker-free, gate-clean content
+    expect(completionVerdict(c.body ?? "", EXL3, SMOKE_MARKER, "answer")).toEqual({ ok: true, reason: "OK" });
   }
   let finalText = res.lines.join("\n");
   const jobId = jobIdStrict(finalText);
@@ -236,6 +240,7 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
   }
   expect(finalText.length).toBeGreaterThan(0);
   expect(finalText).not.toContain(SMOKE_MARKER);
+  expect(boundary!.modelCalls.length, "exactly smoke(1) + QA(1); result query contributes 0").toBe(2);
   expect(finalText).not.toContain("本机模型桥接");
   const qaCheck = finalAnswerCheck(finalText, SMOKE_MARKER);
   expect(qaCheck, `QA final rejected: ${qaCheck.reason}`).toEqual({ ok: true, reason: "OK" });
