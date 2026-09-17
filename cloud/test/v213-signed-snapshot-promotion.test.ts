@@ -18,8 +18,8 @@ import type { ParsedQuery } from "../src/core";
 // exercise the REAL loader path (pinPublicSnapshot -> sealed view -> reporter)
 // against the committed sealed objects and the committed pointer, plus the
 // fail-closed tamper and pointerless cases.
-const RUN = "20260915T120000Z-f2a9ea873960";
-const SEAL = "d64b21bee62008b4bc6c1e5924eb6a301139b4a51840c7f820b10da960628115";
+const RUN = "20260915T120000Z-accb1715706b";
+const SEAL = "38c7b06a1468ca945e80894a7fa6bc94214011b27cc767938d53f1b5fe9cd390";
 
 const objectsPath = new URL(`../../state/v213-snapshots/${RUN}/objects.json`, import.meta.url);
 const pointerPath = new URL(`../../state/v213-snapshots/${RUN}/pointer.raw.json`, import.meta.url);

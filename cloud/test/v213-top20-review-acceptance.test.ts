@@ -46,6 +46,8 @@ async function fixtureWithNonAICompany() {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: stamp,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: V213_TOP20_DISPLAY_COLUMNS,
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
@@ -76,6 +78,10 @@ async function fixtureWithNonAICompany() {
         future_order_source_urls: [],
         numeric_total_order_estimate_prohibited: true,
         retrieved_at: stamp,
+        orders_state_as_of: stamp,
+        evidence_class: "structural_claim",
+        freshness_policy_key: "structural_claim_max_age_days",
+        test_only_admission: true,
         provider_scope: "public_only",
         owner_watchlist_inherited: false,
       };
@@ -244,12 +250,20 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       const recordWithoutEvidence = {
         ticker: "T01",
         retrieved_at: "2026-09-10T00:00:00Z",
+        orders_state_as_of: "2026-09-10T00:00:00Z",
+        evidence_class: "structural_claim",
+        freshness_policy_key: "structural_claim_max_age_days",
+        test_only_admission: true,
       };
       expect(getTwoYearTotalReturnDisplay(recordWithoutEvidence)).toBe("UNAVAILABLE");
 
       const recordWithCandidateEvidence = {
         ticker: "NVDA",
         retrieved_at: "2026-09-10T00:00:00Z",
+        orders_state_as_of: "2026-09-10T00:00:00Z",
+        evidence_class: "structural_claim",
+        freshness_policy_key: "structural_claim_max_age_days",
+        test_only_admission: true,
         two_year_total_return_pct: 50.0,
         two_year_return_evidence: makeSyntheticReturnEvidence("NVDA"),
       };

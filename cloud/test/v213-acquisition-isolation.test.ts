@@ -40,6 +40,7 @@ async function fixture(opts: { withReport?: boolean; overrides?: Record<string, 
   if (opts.withReport) {
     const report = {
       schema_version: 2, product_version: "2.1.3", generated_at: stamp,
+      freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" }, evidence_capture_at: stamp,
       display_columns: V213_TOP20_DISPLAY_COLUMNS, long_term_definition: "trailing_2y_adjusted_close_cagr",
       short_term_definition: "trailing_6m_adjusted_close_price_return", provider_scope: "public_only", owner_watchlist_inherited: false,
       records: Array.from({ length: 20 }, (_, i) => ({
@@ -49,7 +50,7 @@ async function fixture(opts: { withReport?: boolean; overrides?: Record<string, 
         long_term_return_pct: null, short_term_return_pct: null, long_term_window: "2y_cagr", short_term_window: "6m_price_return",
         market_source: "yfinance", profit_source: "sec_edgar", orders_as_of: stamp, orders_confidence: "UNAVAILABLE",
         current_order_source_urls: [], future_order_source_urls: [], numeric_total_order_estimate_prohibited: true,
-        retrieved_at: stamp, provider_scope: "public_only", owner_watchlist_inherited: false,
+        retrieved_at: stamp, orders_state_as_of: stamp, evidence_class: "structural_claim", freshness_policy_key: "structural_claim_max_age_days", test_only_admission: true, provider_scope: "public_only", owner_watchlist_inherited: false,
       })),
     };
     const RUN_ID = "20260910T100000Z-123456789abc";

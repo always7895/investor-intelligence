@@ -14,6 +14,7 @@ import { MemoryKv, asKv } from "./fake-kv";
 async function fixture() {
   const publicKv = new MemoryKv(); const stamp = new Date().toISOString();
   const report = { schema_version: 2, product_version: "2.1.3", generated_at: stamp,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" }, evidence_capture_at: stamp,
     display_columns: V213_TOP20_DISPLAY_COLUMNS, long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return", provider_scope: "public_only", owner_watchlist_inherited: false,
     records: Array.from({ length: 20 }, (_, i) => ({ schema_version: 2, rank: i + 1, ticker: `T${i.toString().padStart(2, "0")}`,
@@ -22,7 +23,7 @@ async function fixture() {
       long_term_return_pct: null, short_term_return_pct: null, long_term_window: "2y_cagr", short_term_window: "6m_price_return",
       market_source: "yfinance", profit_source: "sec_edgar", orders_as_of: stamp, orders_confidence: "UNAVAILABLE",
       current_order_source_urls: [], future_order_source_urls: [], numeric_total_order_estimate_prohibited: true,
-      retrieved_at: stamp, provider_scope: "public_only", owner_watchlist_inherited: false })) };
+      retrieved_at: stamp, orders_state_as_of: stamp, evidence_class: "structural_claim", freshness_policy_key: "structural_claim_max_age_days", test_only_admission: true, provider_scope: "public_only", owner_watchlist_inherited: false })) };
   const save = async (opts: { pointer?: false } = {}) => {
     publicKv.values.set("v213:top20-report:latest", JSON.stringify(report));
     publicKv.values.set("last_successful_pipeline_timestamp", report.generated_at);
@@ -127,7 +128,10 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
   it.each(["bad_pointer", "stale_report", "stale_row", "future_row"])("does not use fresh direct keys to rescue %s", async state => {
     const f = await fixture();
     if (state === "stale_report") f.report.generated_at = "2000-01-01T00:00:00Z";
-    if (state === "stale_row") f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z";
+    // Two-anchor evidence contract (v213EvidenceWithinWindow): row state freshness
+    // is keyed on orders_state_as_of (source-state date); retrieved_at only bounds
+    // future/seal drift. staling a row therefore stales BOTH anchors.
+    if (state === "stale_row") { f.report.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; f.report.records[0]!.orders_state_as_of = "2000-01-01T00:00:00Z"; }
     if (state === "future_row") f.report.records[0]!.retrieved_at = new Date(Date.now() + 600_000).toISOString();
         if (state === "bad_pointer") await f.save({ pointer: false });
     else await f.save();

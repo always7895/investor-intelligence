@@ -23,6 +23,8 @@ function report() {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: "2026-09-01T00:00:00Z",
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: [
       "股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）",
       "行業別", "獲利簡述", "公司現在訂單", "未來訂單預估",
@@ -50,6 +52,10 @@ function report() {
       future_order_source_urls: index === 0 ? ["https://www.sec.gov/example/future"] : [],
       numeric_total_order_estimate_prohibited: true,
       retrieved_at: "2026-09-01T00:00:00Z",
+      orders_state_as_of: "2026-09-01T00:00:00Z",
+      evidence_class: "structural_claim",
+      freshness_policy_key: "structural_claim_max_age_days",
+      test_only_admission: true,
       provider_scope: "public_only",
       owner_watchlist_inherited: false,
     })),
@@ -119,6 +125,10 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it.each([-3 * 3600_000, 6 * 60_000])("refuses stale/future rows in actual card/text replies with a fresh envelope (%s)", async offset => {
     const kv = new MemoryKv(); const data = freshReport();
     data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
+    // Stale direction must breach the evidence window itself (structural_claim
+    // is 550d); retrieved_at is never the row freshness anchor. Future offset
+    // stays retrieval-future only.
+    if (offset < 0) data.records[19]!.orders_state_as_of = "2000-01-01T00:00:00Z";
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     await sealUnboundReport(kv);
@@ -264,13 +274,23 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     await save();
     const command = (await evidenceCommand(env)).replace("證據詳情", action);
     expect(await v213Top20LineAnswer(env, parseQuery(command.replace("T00 ", "ZZZZ ")))).toContain("不在本輪");
-    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; await save();
-    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("內容不符");
+    data.records[0]!.retrieved_at = "2000-01-01T00:00:00Z"; data.records[0]!.orders_state_as_of = "2000-01-01T00:00:00Z"; // two-anchor staleness
+    await save();
+    // Under the two-anchor contract, row staleness outranks command-hash
+    // matching: a command carrying an old row's reference is refused as stale,
+    // not as a content mismatch.
+    expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("取得時間已過期");
     expect(await v213Top20LineAnswer(env, parseQuery("Top20"))).toContain("取得時間已過期");
     // Even a correctly hashed manual reference cannot bypass row freshness.
     const staleRowCommand = command.replace(/[a-f0-9]{64}$/, createHash("sha256").update(JSON.stringify(data), "utf8").digest("hex"));
     expect(await v213Top20LineAnswer(env, parseQuery(staleRowCommand))).toContain("取得時間已過期");
-    data.generated_at = new Date(Date.now() + 1000).toISOString(); await save();
+    // Envelope-fresh-up also requires the staled row to be re-freshed on BOTH
+    // anchors (freshReport binding pattern), else the report stays rejected as stale.
+    const freshStamp = new Date(Date.now() + 1000).toISOString();
+    data.generated_at = freshStamp;
+    data.records[0]!.retrieved_at = freshStamp;
+    data.records[0]!.orders_state_as_of = freshStamp;
+    await save();
     expect(await v213Top20LineAnswer(env, parseQuery(command))).toContain("Top20 已更新");
   });
 
