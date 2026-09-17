@@ -132,3 +132,4 @@ Preserve these original observations and technical rationale. Their older deploy
 - [FINAL_DELIVERY_REPORT_R75_FREE_RELAY](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
 - [PHASE3_SOURCE_FEDERATION_STATUS](../state/PHASE3_SOURCE_FEDERATION_STATUS.md)
 - [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — snapshot pointer pre-honesty back-up container (archive of retired pointer bytes; operational, not an artifact)
+- [TASK0_PHASE1D_SEALED_SNAPSHOT_FIXTURE](../cloud/test/fixtures/task0-phase1d/README.md) — byte-identical fixed sealed-snapshot fixture for deterministic-clock tests (test fixture, not a product artifact)
