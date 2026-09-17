@@ -67,6 +67,8 @@ function report() {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: generated,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: [
       "股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）",
       "行業別", "獲利簡述", "公司現在訂單", "未來訂單預估",
@@ -94,6 +96,10 @@ function report() {
       future_order_source_urls: [],
       numeric_total_order_estimate_prohibited: true,
       retrieved_at: generated,
+      orders_state_as_of: generated,
+      evidence_class: "structural_claim",
+      freshness_policy_key: "structural_claim_max_age_days",
+      test_only_admission: true,
       provider_scope: "public_only",
       owner_watchlist_inherited: false,
     })),
@@ -202,6 +208,9 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
     const data = report(); data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
+    // Two-anchor contract: the stale direction must breach the source-state window
+    // (structural_claim = 550d); retrieved_at alone only bounds future/seal drift.
+    if (offset < 0) data.records[19]!.orders_state_as_of = "2000-01-01T00:00:00Z";
     publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
     publicKv.values.set("v213:top20-report:latest", JSON.stringify(data));
     publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());

@@ -17,11 +17,16 @@ import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../s
 import sealContract from "../../config/v213-r75-publication-mode-v1.json";
 
 function makeReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
+  // Calendar-relative window: actual_end must remain inside the 7-day market
+  // observation-age limit (vs retrieved_at / evaluation clock); literal dates rot.
+  const endMs = Date.now();
+  const actualEnd = new Date(endMs).toISOString().slice(0, 10);
+  const actualStart = new Date(endMs - 730 * 86400000).toISOString().slice(0, 10);
   return {
     ticker,
     window: "two_year",
-    actual_start: "2024-09-09",
-    actual_end: "2026-09-09",
+    actual_start: actualStart,
+    actual_end: actualEnd,
     start_adjusted_close: 80.0,
     end_adjusted_close: 120.0,
     elapsed_days: 730,
@@ -40,6 +45,8 @@ async function fixture(opts: { withReturnEvidence?: boolean } = {}) {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: stamp,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: V213_TOP20_DISPLAY_COLUMNS,
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
@@ -68,6 +75,10 @@ async function fixture(opts: { withReturnEvidence?: boolean } = {}) {
         future_order_source_urls: i === 0 ? ["https://www.sec.gov/Archives/edgar/data/example/future"] : [],
         numeric_total_order_estimate_prohibited: true,
         retrieved_at: stamp,
+        orders_state_as_of: stamp,
+        evidence_class: "structural_claim",
+        freshness_policy_key: "structural_claim_max_age_days",
+        test_only_admission: true,
         provider_scope: "public_only",
         owner_watchlist_inherited: false,
       };
@@ -261,7 +272,10 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
 
   it("validates two-year return candidate evidence and rejects forged/scalar-only/stale values", async () => {
     const valid = makeReturnEvidence("NVDA");
-    const res = validateTwoYearReturnEvidence(valid, "NVDA", "2026-09-10T00:00:00Z");
+    // Retrieval dated one day AFTER the evidence end: end must not be future and
+    // must be at most 7 market-days old as of the retrieval stamp.
+    const vettedAt = new Date(Date.parse(valid.actual_end) + 86400000).toISOString();
+    const res = validateTwoYearReturnEvidence(valid, "NVDA", vettedAt);
     expect(res.valid).toBe(true);
     expect(res.totalReturnPct).toBe(50.0);
     expect(res.display).toBe("+50.0%");
