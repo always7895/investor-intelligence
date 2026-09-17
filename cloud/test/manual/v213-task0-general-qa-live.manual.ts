@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createHmac } from "node:crypto";
 import {
   createStrictBoundary,
+  finalAnswerCheck,
+  jobIdStrict,
   readProfileJson,
   startLocalGateway,
   type LocalGatewayHandle,
@@ -105,7 +107,7 @@ function textEvent(id: number, token: string, text: string): string {
 }
 
 async function runWebhook(env: unknown, rawBody: string) {
-  const start = Date.now();
+  const start = performance.now();
   const tagged = new Set<Promise<string>>();
   const tags: Array<{ stack: string; done: boolean; value: string }> = [];
   const watch = (p: Promise<unknown>) => {
@@ -139,8 +141,7 @@ async function runWebhook(env: unknown, rawBody: string) {
     await new Promise((r) => setTimeout(r, 25));
     const allDone = tags.every((t) => t.done);
     if (allDone || tags.length === 0) break;
-    if (Date.now() - start > 90_000) {
-      console.error(`DIAG_WEB PENDING_STUCK=${JSON.stringify(tags.filter((t) => !t.done).map((t) => t.stack.slice(0, 300)))}`);
+    if (performance.now() - start > 90_000) {
       throw new Error("TASK0_WEBHOOK_DRAIN_TIMEOUT");
     }
   }
@@ -152,13 +153,15 @@ async function runWebhook(env: unknown, rawBody: string) {
 
 beforeAll(async () => {
   if (process.env.II_TASK0_LIVE_OPTIN !== OPTIN) {
-    console.error(`TASK0 LIVE MANUAL INERT: II_TASK0_LIVE_OPTIN=${OPTIN} required. No model call was made; the suite is inert.`);
-    return;
+    // Hard gate (1G): running the live-only runner without opt-in MUST fail
+    // (never a silent inert pass); zero spawns / zero model work in that case.
+    throw new Error(`TASK0_LIVE_OPTIN_REQUIRED: set II_TASK0_LIVE_OPTIN=${OPTIN} (opt-in is REQUIRED); no gateway spawn or model call was made`);
   }
   gateway = await startLocalGateway({
     model: EXL3,
     llamaBaseUrl: "http://127.0.0.1:5000",
     profileJson: readProfileJson(),
+    nativeFetch: REAL_FETCH,
   });
   boundary = createStrictBoundary(EVIDENCE_HOST, gateway, REAL_FETCH);
   globalThis.fetch = boundary.fetch as typeof fetch;
@@ -189,8 +192,7 @@ afterAll(async () => {
 
 it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the formal caller and the runtime adapter", async () => {
   if (process.env.II_TASK0_LIVE_OPTIN !== OPTIN) {
-    console.error("TASK0 LIVE MANUAL SKIPPED (opt-in not set). No model call was made.");
-    return; // inert in the default discovery path; enable with II_TASK0_LIVE_OPTIN
+    throw new Error("TASK0_LIVE_OPTIN_REQUIRED: this live-only runner must not run without opt-in (opt-in is REQUIRED)");
   }
   expect(process.env.II_TASK0_LIVE_OPTIN).toBe(OPTIN);
   // Align the worker's execution clock to the committed fixture so the
@@ -230,23 +232,67 @@ it("opt-in live: exact smoke marker + ONE Chinese general QA completion via the 
   const qaCalls = boundary!.modelCalls.length - 1;
   expect(qaCalls).toBeGreaterThanOrEqual(1);
   expect(qaCalls).toBeLessThanOrEqual(3);
-  for (const c of boundary!.modelCalls.slice(1)) expect(c.status).toBe(200);
+  for (const c of boundary!.modelCalls.slice(1)) {
+    expect(c.status).toBe(200);
+    expect(c.model).toBe(EXL3);
+    // Structural verdict: usable completion (no length/cutoff/error finish).
+    expect(c.finishReason).not.toMatch(/length|error|content_filter/);
+  }
   let finalText = res.lines.join("\n");
-  const refMatch = finalText.match(/查看结果 ([A-Za-z0-9_-]{6,})/);
-  if (refMatch) {
-    // Job flow: follow the formal result query, never a raw KV read.
-    const res2 = await runWebhook(env, textEvent(2, "live_result_token", `查看结果 ${refMatch[1]}`));
+  const jobId = jobIdStrict(finalText);
+  if (jobId) {
+    // JO (reference issued): the first reply is NOT the answer. Follow ONLY
+    // the formal result query path（不读 KV）and assert the final answer.
+    const beforeCalls = boundary!.modelCalls.length;
+    const res2 = await runWebhook(env, textEvent(2, "live_result_token", `查看結果 ${jobId}`));
     expect(res2.status).toBe(200);
+    expect(res2.unhandledRejected).toBe(0);
+    expect(boundary!.modelCalls.length).toBe(beforeCalls); // result query re-runs no model
     finalText = res2.lines.join("\n");
   }
   expect(finalText.length).toBeGreaterThan(0);
   expect(finalText).not.toContain(SMOKE_MARKER);
   expect(finalText).not.toContain("本机模型桥接");
-  expect(finalText).toMatch(/[\u4e00-\u9fff]{4,}/);
+  const qaCheck = finalAnswerCheck(finalText, SMOKE_MARKER);
+  expect(qaCheck, `QA final rejected: ${qaCheck.reason}`).toEqual({ ok: true, reason: "OK" });
+
+  // 2b) STALL: ONE injected failed answer must yield an explicit refusal
+  // (never a fake success), then the SAME user must recover next message.
+  boundary!.markStallOnce();
+  const resStall = await runWebhook(env, textEvent(3, "live_stall_token", "请简短说明：债券利息为何一般低于股票股息"));
+  expect(resStall.status).toBe(200);
+  const stallText = resStall.lines.join("\n");
+  expect(stallText.length).toBeGreaterThan(0);
+  expect(stallText).not.toContain(SMOKE_MARKER);
+  const stallCheck = finalAnswerCheck(stallText, SMOKE_MARKER);
+  expect(stallCheck.ok, "stall must refuse, not finish").toBe(false);
+  const nBefore = boundary!.modelCalls.length;
+  const resRec = await runWebhook(env, textEvent(4, "live_recover_token", "请再简述：股票定义的正式说法"));
+  expect(resRec.status).toBe(200);
+  const recId = jobIdStrict(resRec.lines.join("\n"));
+  let recText = resRec.lines.join("\n");
+  if (recId) {
+    const resRec2 = await runWebhook(env, textEvent(5, "live_recover_token2", `查看結果 ${recId}`));
+    recText = resRec2.lines.join("\n");
+  }
+  const recCheck = finalAnswerCheck(recText, SMOKE_MARKER);
+  expect(recCheck, `recovery rejected: ${recCheck.reason}`).toEqual({ ok: true, reason: "OK" });
+  expect(boundary!.lineReplies.length).toBeGreaterThanOrEqual(3);
+  void nBefore;
+
+  // 2c) Verified release with bounded window (kill -> exit -> listener down).
+  expect(gateway).toBeTruthy();
+  if (gateway) {
+    const t0 = Date.now();
+    await gateway.stop();
+    gateway = null;
+    const win = Date.now() - t0;
+    expect(win, `release window ${win}ms`).toBeLessThanOrEqual(10_000);
+  }
 
   // 3) Close-out invariants.
   expect(boundary!.violations.length).toBe(0);
   if (boundary!.lineReplies.length > 0) {
     expect(boundary!.lineReplies.every((r) => r.sawBearer && r.textCount > 0)).toBe(true);
   }
-}, 300_000);
+}, 600_000);

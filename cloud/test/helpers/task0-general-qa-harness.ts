@@ -38,6 +38,57 @@ export type GatewayChild = {
  *   Any other origin/path/method is recorded as a violation and fails the
  *   run immediately.
  */
+export interface DrainHandle {
+  add: (p: Promise<unknown>) => void;
+  settle: () => Promise<{ fulfilled: number; rejected: number; rejects: unknown[] }>;
+}
+
+/**
+ * Phase-1G drain: follows an ever-growing set of waitUntil work. The wait
+ * itself races a REAL-TIME deadline (performance.now, unaffected by a
+ * Date-only fake), so a stuck promise fails instead of hanging; work added
+ * after an earlier batch is awaited too; every unexpected rejection is
+ * preserved and reported (never reclassified as fulfillment).
+ */
+export function startDrain(
+  deadlineMs: number,
+  now: () => number = () => (globalThis as unknown as { performance?: { now(): number } }).performance?.now() ?? Date.now(),
+): DrainHandle {
+  const jobs = new Set<Promise<unknown>>();
+  const consumed = new Set<Promise<unknown>>();
+  const rejects: unknown[] = [];
+  const limitAt = now() + deadlineMs;
+  return {
+    add: (p) => { jobs.add(p); },
+    settle: async () => {
+      let fulfilled = 0;
+      for (;;) {
+        const remaining = limitAt - now();
+        if (remaining <= 0) throw new Error("TASK0_DRAIN_TIMEOUT");
+        const fresh = [...jobs].filter((p) => !consumed.has(p));
+        if (fresh.length === 0) break;
+        for (const p of fresh) consumed.add(p);
+        const settledPromise = Promise.all(
+          fresh.map((p) => Promise.allSettled([p]).then((rs) => ({ p, rs }))),
+        );
+        const timer = new Promise<never>((_res, rej) => {
+          const h = setTimeout(() => { clearTimeout(h); rej(new Error("TASK0_DRAIN_TIMEOUT")); }, remaining);
+        });
+        const batch = await Promise.race([settledPromise, timer]);
+        for (const { rs } of batch) {
+          const r = rs[0];
+          if (r.status === "fulfilled") {
+            fulfilled++;
+          } else {
+            rejects.push(r.reason);
+          }
+        }
+      }
+      return { fulfilled, rejected: rejects.length, rejects };
+    },
+  };
+}
+
 export const APPROVED_PYTHON_DEFAULT = "C:\\Users\\moon9\\AppData\\Local\\Programs\\Python\\Python312\\python.exe";
 
 export function resolveApprovedPython(): string {
@@ -58,18 +109,53 @@ async function freeLoopbackPort(): Promise<number> {
 
 export type StrictBoundary = {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  modelCalls: Array<{ method: string; status: number; model: string }>;
+  modelCalls: Array<{ method: string; status: number; model: string; finishReason: string; modelReturned: string }>;
   lineReplies: Array<{ replyTokenPrefix: string; textCount: number; sawBearer: boolean; texts: string[] }>;
   violations: string[];
+  /** Queue one-off artificial latency (ms) applied to the NEXT model forward. */
+  delayMs: number[];
+  /** Next model forward returns a 504 timeout body exactly once. */
+  markStallOnce: () => void;
+  stallArmed: () => boolean;
 };
 
-export function createStrictBoundary(evidenceHost: string, gate: { port: number; secret: string }, nativeFetch: typeof fetch): StrictBoundary {
+export type FinalAnswerCheck = { ok: boolean; reason: string };
+
+/**
+ * Phase-1G: final answer gate. Structural acceptance of a completed model
+ * answer for the manual suite; a job placeholder, offline/closed wording
+ * (traditional AND simplified), a smoke marker, processing hints, or
+ * non-usable language is NEVER a final answer.
+ */
+export function finalAnswerCheck(text: string, marker: string): FinalAnswerCheck {
+  const t = (text ?? "").trim();
+  if (t.length === 0) return { ok: false, reason: "EMPTY" };
+  if (marker && t.includes(marker)) return { ok: false, reason: "SMOKE_MARKER" };
+  if (t.includes("本机模型桥接尚未启用") || t.includes("本機模型橋接尚未啟用")) return { ok: false, reason: "OFFLINE_CLOSED" };
+  if (/問題已收到|问题已收到/.test(t)) return { ok: false, reason: "JOB_PLACEHOLDER" };
+  if (/查看結果\s+[A-Za-z0-9_-]{4,}|查看结果\s+[A-Za-z0-9_-]{4,}/.test(t)) return { ok: false, reason: "JOB_PLACEHOLDER" };
+  if (/已提交|正在處理|处理中|稍後再試|稍后再试/.test(t)) return { ok: false, reason: "PROCESSING_ONLY" };
+  if (!/[\u4e00-\u9fff]{4,}/.test(t)) return { ok: false, reason: "NOT_USABLE_LANGUAGE" };
+  return { ok: true, reason: "OK" };
+}
+
+/** Strict job reference extraction (first request -> second formal query). */
+export function jobIdStrict(text: string): string | null {
+  const m = (text ?? "").match(/(?:參考編號|参考编号)\s*([A-Za-z0-9_-]{4,64})/);
+  return m && m[1] ? m[1] : null;
+}
+
+export function createStrictBoundary(evidenceHost: string, gate: { port: number; channelValue: string }, nativeFetch: typeof fetch): StrictBoundary {
   const modelUrl = `https://${evidenceHost}/v1/chat/completions`;
   const lineReplyUrl = "https://api.line.me/v2/bot/message/reply";
+  let stallPending = false;
   const b = {
     modelCalls: [] as StrictBoundary["modelCalls"],
     lineReplies: [] as StrictBoundary["lineReplies"],
     violations: [] as string[],
+    delayMs: [] as number[],
+    markStallOnce: () => { stallPending = true; },
+    stallArmed: () => stallPending,
     fetch: null as unknown as StrictBoundary["fetch"],
   };
   b.fetch = async (input, init) => {
@@ -79,14 +165,30 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
       const body = String(init?.body ?? "");
       let model = "";
       try { model = String((JSON.parse(body) as { model?: unknown }).model ?? ""); } catch { /* body kept */ }
+      const oneShotDelay = b.delayMs.shift();
+      if (oneShotDelay) await new Promise((rr) => setTimeout(rr, oneShotDelay));
+      if (stallPending) {
+        stallPending = false;
+        await new Promise((rr) => setTimeout(rr, 8_000));
+        b.modelCalls.push({ method: "POST", status: 504, model, finishReason: "", modelReturned: "" });
+        return new Response(JSON.stringify({ error: { message: "local inference timeout", type: "local_model_timeout" } }),
+          { status: 504, headers: { "content-type": "application/json" } });
+      }
       const fwd = await nativeFetch(`http://127.0.0.1:${gate.port}/v1/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-investor-shared-secret": gate.secret },
+        headers: { "content-type": "application/json", "x-investor-shared-secret": gate.channelValue },
         body,
         signal: AbortSignal.timeout(90_000),
       });
       const text = await fwd.text();
-      b.modelCalls.push({ method: "POST", status: fwd.status, model });
+      let finishReason = "";
+      let modelReturned = "";
+      try {
+        const j = JSON.parse(text) as { choices?: Array<{ finish_reason?: string }>; model?: string };
+        finishReason = String(j.choices?.[0]?.finish_reason ?? "");
+        modelReturned = String(j.model ?? "");
+      } catch { /* non-JSON body is not a usable answer either */ }
+      b.modelCalls.push({ method: "POST", status: fwd.status, model, finishReason, modelReturned });
       return new Response(text, { status: fwd.status, headers: { "content-type": "application/json" } });
     }
     if (url === lineReplyUrl && method === "POST") {
@@ -113,8 +215,9 @@ export function createStrictBoundary(evidenceHost: string, gate: { port: number;
 
 export type LocalGatewayHandle = {
   port: number;
-  secret: string;
+  channelValue: string;
   child: GatewayChild;
+  probeStats: { refused: number; timeout: boolean };
   stop: () => Promise<void>;
 };
 
@@ -123,13 +226,15 @@ export async function startLocalGateway(opts: {
   llamaBaseUrl: string;
   profileJson: string;
   timeoutMs?: number;
+  onProbe?: (url: string, i: number) => Promise<Response | null>;
+  nativeFetch?: typeof fetch;
 }): Promise<LocalGatewayHandle> {
   const exe = resolveApprovedPython();
   const port = await freeLoopbackPort();
   const script = fileURLToPath(new URL("../../../scripts/v213_local_llm_gateway.py", import.meta.url));
   const cwd = fileURLToPath(new URL("../../..", import.meta.url));
   const random = new Uint8Array(randomBytes(24));
-  const secret = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const channelValue = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
   const child = (_spawn as unknown as (cmd: string, args: string[], options: Record<string, unknown>) => GatewayChild)(
     exe,
     ["-B", script, "--host", "127.0.0.1", "--port", String(port)],
@@ -145,16 +250,36 @@ export async function startLocalGateway(opts: {
       PYTHONIOENCODING: "utf-8",
       II_LLAMA_BASE_URL: opts.llamaBaseUrl,
       II_LOCAL_LLM_MODEL: opts.model,
-      II_LOCAL_LLM_SHARED_SECRET: secret,
+      II_LOCAL_LLM_SHARED_SECRET: channelValue,
       V213_MODEL_PROFILE_JSON: opts.profileJson,
     } as NodeJS.ProcessEnv,
   });
+  const startAt = Date.now();
   const deadline = Date.now() + 120_000;
+  const probeStats = { refused: 0, timeout: false };
+  let probeN = 0;
   for (;;) {
     if (child.exitCode !== null) throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
-    const r = await fetch(`http://127.0.0.1:${port}/health`, {
-      headers: { "x-investor-shared-secret": secret },
-    }).catch(() => null);
+    const url = `http://127.0.0.1:${port}/health`;
+    const t0 = Date.now();
+    let r: Response | null;
+    const real = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
+    if (opts.onProbe) {
+      r = await opts.onProbe(url, probeN);
+    } else {
+      r = await real(url, {
+        headers: { "x-investor-shared-secret": channelValue },
+        signal: AbortSignal.timeout(2_500),
+      }).catch(() => null);
+    }
+    probeN++;
+    const elapsed = Date.now() - t0;
+    if (r === null) {
+      probeStats.refused++;
+      if (elapsed >= 7_000 && elapsed < 20_000) probeStats.timeout = true;
+    } else if (elapsed >= 7_000 && elapsed < 20_000) {
+      probeStats.timeout = true;
+    }
     if (r) {
       const body = (await r.json().catch(() => null)) as Record<string, unknown> | null;
       if (
@@ -169,13 +294,14 @@ export async function startLocalGateway(opts: {
       ) {
         return {
           port,
-          secret,
+          channelValue,
           child,
+          probeStats,
           stop: () => new Promise<void>((resolve, reject) => {
             child.once("exit", async () => {
               for (let i = 0; i < 24; i++) {
-                const up = await fetch(`http://127.0.0.1:${port}/health`, {
-                  headers: { "x-investor-shared-secret": secret },
+                const up = await real(`http://127.0.0.1:${port}/health`, {
+                  headers: { "x-investor-shared-secret": channelValue },
                 }).then(() => true).catch(() => false);
                 if (!up) { resolve(); return; }
                 await new Promise((r) => setTimeout(r, 250));
