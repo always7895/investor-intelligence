@@ -32,7 +32,7 @@ NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [NPX, "--yes", "wrangler", *args],
-        cwd=str(CLOUD_DIR), capture_output=True, text=True, errors="replace", timeout=300,
+        cwd=str(CLOUD_DIR), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
     )
 
 
