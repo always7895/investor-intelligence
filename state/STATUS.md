@@ -4,7 +4,7 @@
 
 CHAPTER 20 — Anchor: pre-prod_local §1 (Committed-HEAD)
 
-Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit, no push. Range `f287ba0..HEAD` (8): readiness ledger `6f36323`; .vitest `082d37e`; PROD_DEPLOY `d61778f`; live rebuild + refresh task `5022a91`; objects `4d83c1c` / pointer `6328d93` (run `2873c2ff6316`); #23 record `9f87437`; .kv-stage `bb75aaf`. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
+Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit, pushed to origin (open draft PR #37). Prior head `bb75aaf` (2026-09-16; from `f287ba0`; run `2873c2ff6316`) = superseded history. `LINE_LIVE=true` (top20-only, fresh-evidence gated); `FINAL_RELEASE_COMPLETE=false`.
 (M1-sealed-audit complete; NO PULL/REBASE/BRANCH)
 - VERDICT: `HEAD_RESOLVED_SEALED_OK` (local audit; Pro read-only review; single branch, no remote).
 - HEAD authority: latest committed live pointer = `20260916T092839Z-2873c2ff6316` (objects `4d83c1c` -> pointer `6328d93`; `9f87437` is STATUS-only).
@@ -24,6 +24,12 @@ Committed HEAD: `bb75aaf` (2026-09-16 17:48 +0800), fix/options-provenance-audit
 - **Fail-Closed Verified:** SIVE, AAOI, 6508, ENR fail-closed (`sealed_snapshot:unadmitted_symbol`); invalid tickers route to `general_qa` without equity hijack.
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
+
+### TASK0 Operability Audit — Phase 1 (2026-09-17 19:0x +08; Pro-supervised, read-only)
+- Recon: audited SHA `ab1bcca`; LIVE pointer now `20260917T095616Z-8846e971005f` (seal `7213e75ee…`, 15 objects incl. macro, REFRESH OK 17:56+08, readback 15/15); accepted `092410Z-d9f86bda2053` run: 15 objects + seal `891b671a…` re-verified.
+- TUPLE_RECONCILIATION: `928539bd…` worker-v + runs `897a86efa733`/`2873c2ff6316`/`f2a9ea873960` = Gen-1 (09-16) records; Gen-2 authority = `3c7497e`/`c7abe74d…`/`092410Z-d9f86bda2053`/`891b671a…` (15 objects). Earlier PR #37 body mixed both generations — superseded.
+- Freshness pipeline: PASS (hourly REFRESH OK, pointer-last after 15/15 readback; log `data/cache/sealed-refresh.log`). LastRun/NextRun display lag = P2 display observation (runs evidenced on disk); engine stall not concluded.
+- PENDING (BLOCKED_READONLY / next round): worker live-endpoint real caller (external read not executed), local `127.0.0.1:5000` `python start.py` identity, tabby live answer check, remaining entry coverage (15 of 18 not yet run).
 
 ### Milestones (2026-09-15 verified-green baseline session)
 - `cd39599`/. `7d2a9f9`/. `f031c36`/. `dce6d73`: build-artifact ignore; baseline gates restored (STATUS anchors; worker.ts blob 4e0f78af); deterministic option test clocks; statutory/claim-admission modules.
