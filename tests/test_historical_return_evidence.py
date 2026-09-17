@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import ExitStack, redirect_stdout
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,12 +25,16 @@ from historical_return_evidence import (
 
 class HistoricalReturnEvidenceTests(unittest.TestCase):
     def history(self):
-        return pd.DataFrame({'Close': [80.0, 100.0, 120.0]}, index=pd.to_datetime(['2024-09-09', '2026-03-09', '2026-09-09']))
+        # Calendar-relative bars: the market freshness gate (7d) rejects literal
+        # dates that have aged past the window relative to the evaluation clock.
+        end = datetime.utcnow().date()
+        frames = [end - timedelta(730), end - timedelta(190), end]
+        return pd.DataFrame({'Close': [80.0, 100.0, 120.0]}, index=pd.to_datetime(frames))
 
     def test_actual_endpoint_cumulative_and_annualized_are_separate(self):
         evidence = builder._history_return_evidence(self.history())
         long = evidence['windows']['two_year']
-        self.assertEqual(long['actual_start'], '2024-09-09')
+        self.assertEqual(long['actual_start'], (datetime.utcnow().date() - timedelta(730)).isoformat())
         self.assertEqual(long['elapsed_days'], 730)
         self.assertEqual(long['cumulative_return_pct'], 50)
         self.assertAlmostEqual(long['annualized_return_pct'], ((120 / 80) ** (365.25 / 730) - 1) * 100)

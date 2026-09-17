@@ -8,7 +8,7 @@ import tempfile
 import types
 import unittest
 from contextlib import redirect_stdout
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +25,8 @@ def prepare(root, *, rich=False, prices=None):
     original_market = builder._market_observation
     class Prices:
         def items(self):
-            return iter(prices if prices is not None else [(datetime(2024,9,9),100.0),(datetime(2026,3,9),120.0),(datetime(2026,9,9),144.0)])
+            now=datetime.utcnow()
+            return iter(prices if prices is not None else [(now-timedelta(730),100.0),(now-timedelta(190),120.0),(now,144.0)])
     fake = types.SimpleNamespace(Ticker=lambda _:types.SimpleNamespace(
         history=lambda **kw:{'Close':Prices()}, info={'industry':'Semiconductors'}))
     cls = fixture.financial_fixture.V212Top20ReportTests

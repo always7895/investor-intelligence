@@ -131,3 +131,4 @@ Preserve these original observations and technical rationale. Their older deploy
 - [TSEM-20260909](research/TSEM-20260909.md)
 - [FINAL_DELIVERY_REPORT_R75_FREE_RELAY](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
 - [PHASE3_SOURCE_FEDERATION_STATUS](../state/PHASE3_SOURCE_FEDERATION_STATUS.md)
+- [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — snapshot pointer pre-honesty back-up container (archive of retired pointer bytes; operational, not an artifact)
