@@ -87,8 +87,8 @@ PAYLOAD_OBJECT = {
 }
 
 INDUSTRY = {
-    "GEV": "Electrical equipment & renewable energy (power & grid; Prolec-GE Waukesha)",
-    "6501": "Electrical equipment (grid solutions; Hitachi Energy, TSE)",
+    "GEV": "重電與綠能設備 (Electrical equipment & grid; Prolec-GE)",
+    "6501": "重電與電網設備 (Electrical equipment / grid solutions; Hitachi Energy)",
 }
 NAME = {
     "GEV": "GE Vernova Inc. (incl. Prolec-GE Waukesha, Inc.)",

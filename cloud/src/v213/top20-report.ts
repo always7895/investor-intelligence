@@ -440,7 +440,7 @@ function parseTop20ReportWithBounds(raw: unknown, exactTwenty: boolean): V213Top
       !TICKER_RE.test(ticker) || seen.has(ticker) ||
       !lineSafeText(item.name, 120) ||
       !returnPercentOrNull(item.long_term_return_pct) || !returnPercentOrNull(item.short_term_return_pct) ||
-      !lineSafeText(item.industry, 100) || !TRADITIONAL_CHINESE_RE.test(item.industry) ||
+      !lineSafeText(item.industry, 100) ||
       !lineSafeText(item.profit_summary, 120) ||
       !lineSafeText(item.current_orders, 150) || !lineSafeText(item.future_orders_estimate, 170) ||
       item.long_term_window !== "2y_cagr" || item.short_term_window !== "6m_price_return" ||

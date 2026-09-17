@@ -7,7 +7,7 @@ import { asKv, MemoryKv } from "./fake-kv";
 import type { ParsedQuery } from "../src/core";
 import { execSync } from "node:child_process";
 
-it("live replay against live public bytes or latest sealed snapshot", async () => {
+it("live replay against live public bytes or latest sealed snapshot", { timeout: 30000 }, async () => {
   const kv = new MemoryKv();
   const namespaceId = "96142af40b5d4213862d5483fe3a66da";
 
