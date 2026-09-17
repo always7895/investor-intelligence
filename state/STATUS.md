@@ -25,22 +25,21 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 — Phase 1C (2026-09-17T11:37–12:02Z; Pro)
-- P1 FIXED (test subprocess encoding="utf-8", CP950 repro); pytest 1521/0/3; commit 1e4ad25.
-- op-lock subtests: OPEN / NOT_REPRODUCED (standalone -vv + full x2; zero lock/timeout/process changes).
-- 1B retained (Pro): (1) LastRun/NextRun display vs log hourly (+104 min), cause UNDETERMINED; log OK. (2) :5000 UNKNOWN/dep pending.
-### TASK0 — Phase 1D (2026-09-17T12:02–12:40Z; Pro)
-- FIXED-RUN PROBE corrected (authorized execution; acceptance not claimed): in-memory sealed-snapshot replay + deterministic Date-only clock (vi.toFake ["Date"], setSystemTime/case; runner clock never input). Fixture = 092410Z byte-identical (fixtures/task0-phase1d/; shas …775cdd…/…25b9…; README=source). Boundary 3600/7199/7200 admit / 7201 stale closed-string; seal-tamper in-memory rejected; no data/cache writes.
-- GENERAL-QA 1D probe: gateway->tabbyAPI /health nominal + ONE compact Chinese QA (stop, 股票是股权，債券是債權。); killed/free; chain = 1E 16/16.
-- P1 FINDINGS (evidence, unmodified): (A) LIVE readiness @12:13:17Z: model_profile_sha256 ABSENT => worker no profile env; no local-sha substitution; QA id -> toml LOCAL_LLM_MODEL="qwen38-q6". (B) tabbyAPI serves ONLY Qwen3.8-27B-EXL3-SC5-H6-V6 => qwen38-q6 NOT SERVED => two-sided mismatch CONFIRMED; bridge/lease unrunning => P1 chain (pending ratification). (D) config drift P1: canonical = legacy UD-Q5 (ef4f8bee…) vs EXL3; candidate 70077f89… prepared (unmodified).
-### TASK0 — Phase 1E (2026-09-17T12:40–13:05Z; Pro (a)(b)(c) OK, links ratified)
-- FORMAL-CALLER CHAIN 16/16 (defects 1+2 honored): boundary installed PRE-import so the real v213RuntimeCompatibleFetch adapter stays (redirect:"manual" observed); signed synthetic LINE webhook -> productionWorker.fetch: no-lease closed wording + 0 model chats; fresh data -> Top20 (GEV) + Macro (TOP5) complete; DO /current throws -> classified, no fake success; bad sig -> 401; candidate+lease -> compact final content; substitution/wrong-pin/finish-length rejected.
-- REAL path (one completion): same route + loopback gateway -> real TabbyAPI: smoke=marker; compact handler -> real Chinese final (no marker/offline; CJK 4+); in-test spawn, killed, port free.
-- NEW config/…exl3-sc5-h6-v6.candidate.json (exact required object; sha256 70077f89… cross-language py+ts, in-test); non-canonical; old unchanged.
-- E3 clean-install: BLOCKED_MISSING_OFFLINE_QUALIFIED_PACKAGE (no ZIP offline; no downloads); SHA-verified artifact unblocks.
-- GATES (1E): security/doc/workflow/canonical/pipeline PASS; vitest 836/0/1 x2; tsc 0; pytest 1521/0/3.
-- OPEN: P1(i) live general-QA fix (operator boundary); P1(ii) drift (candidate 70077f89… pending); P2: op-lock OPEN/NOT_REPRODUCED; scheduling display gap. MANUAL_EXCLUDED: remote pointer/KV, DO live, LINE E2E, clean-install run.
-- MUTATIONS: authorized branch pushes + PR#37 body; 0 PROD/KV/DO/LINE writes; no service/scheduler/flag/image/registry changes.
+### TASK0 — 1C (2026-09-17T11:37–12:02Z; Pro)
+- P1 FIXED (test utf-8 pin; CP950 repro); pytest 1521/0/3; commit 1e4ad25; op-lock OPEN/NOT_REPRODUCED; 1B retained: display +104 min gap cause UNDETERMINED; :5000 UNKNOWN.
+### TASK0 — 1D (2026-09-17T12:02–12:40Z; Pro)
+- FIXED-RUN corrected (authorized execution; acceptance not claimed): in-memory sealed replay + Date-only deterministic clock; 092410Z byte-identical fixture; 3600/7199/7200 admit, 7201 stale closed-string; seal-tamper rejected; no data/cache writes.
+- P1 FINDINGS (evidence): (A) LIVE @12:13:17Z: profile field ABSENT -> literal toml fallback qwen38-q6 (live values unconfirmed). (B) served model only EXL3-SC5-H6-V6 (two-sided observation). (C) no local observed producer; DO lease unknown. (D) candidate 70077f89… prepared, unmodified. => general-QA P1 pending; not online root-cause claim.
+### TASK0 — 1E (2026-09-17T12:40–13:05Z; Pro abc OK)
+- 16/16 chain: boundary PRE-import, real adapter (redirect manual); signed synthetic LINE; no-lease closed + 0 chats; Top20 GEV / Macro TOP5; substitution/wrong-pin/length rejected; real path once: real TabbyAPI marker + Chinese final; NEW config exl3 candidate (cross-language py+ts).
+### TASK0 — 1F (2026-09-17T13:05–14:05Z; Pro)
+- (1) TRUE-RED: DO-throw case = fixed contract; pre-repair = "expected threw to be 200" (1F/13 pass). (2) W2: currentFreeRelayRoute DO-read guard -> WARN + null; Green 14/14.
+- (3) manual split: vitest.task0-live.config.ts (opt-in) + harness (approved python, shell:false, minimal env, full-contract health 503!=ready, exit+listener-down release, strict forward both approved endpoints + fail-fast, 90s abort) + manual (opt-in; marker-exact + 1 Chinese; job via "查看结果 <id>", no KV read). default 0 gateway/0 model: vitest x2 834/0/1, tsc 0. live opt-in run 13:57:32Z: 1/1 (marker + real Chinese, clean release, violations 0).
+- (4) Package: BLOCKED_PACKAGE_SOURCE_UNAVAILABLE — DEPLOYMENT_NOT_FOUND (107B sha256 59678987…; expected 1784534B/270344c6…); internal checks not executed; no isolation acceptance run.
+- W1 noted: nonce = EPHEMERAL_SECURITY_CACHE; rollback = restore pre-existing values (else W1 BLOCKED). 0 remote writes.
+- GATES (1F): 5 safety PASS; vitest 834/0/1 x2; tsc 0; pytest 1C carry (python tree untouched).
+- OPEN: P1 DO-read excursion (local repro), live general-QA fix (auth + W1 pre-state pending), drift (candidate ready); P2 op-lock, schedule gap (1B); package source BLOCK; MANUAL_EXCLUDED unchanged.
+- MUTATIONS: authorized pushes + PR#37 body (one shot); PROD/KV/DO/LINE/registry/service/schedule/flag/image = 0.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
