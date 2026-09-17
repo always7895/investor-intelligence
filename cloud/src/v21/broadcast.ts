@@ -49,12 +49,22 @@ export async function broadcastV21Top20(
   }
 
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
-  if (!v213TimesAreFresh(env, [stamp, report.generated_at, ...records.map(row => row.generated_at)])) {
+  // Row source-state freshness: rows carrying orders_state_as_of are judged on
+  // that source-state stamp; V212 rows fall back to retrieved_at, which must then
+  // satisfy the product max-age cap (not a 550d evidence window).
+  if (!v213TimesAreFresh(env, [
+    stamp,
+    report.generated_at,
+    ...records.map(row => row.generated_at),
+    ...report.records.map(row => (row as { orders_state_as_of?: string }).orders_state_as_of ?? row.retrieved_at),
+  ])) {
     return { status: "stale" };
   }
   if (!(await v213EvidenceWithinWindow(report.records.map(row => {
     const withClass = row as { orders_state_as_of?: string; evidence_class?: string };
-    return { freshAsOf: withClass.orders_state_as_of ?? row.retrieved_at, retrievedAt: row.retrieved_at, evidenceClass: withClass.evidence_class, sealTime: report.generated_at };
+    // V212 schema has no evidence_class: fall back to the structural (550d) class so
+    // v213EvidenceWithinWindow can resolve a policy key instead of failing on undefined.
+    return { freshAsOf: withClass.orders_state_as_of ?? row.retrieved_at, retrievedAt: row.retrieved_at, evidenceClass: withClass.evidence_class ?? "structural_claim", sealTime: report.generated_at };
   })))) {
     return { status: "stale" };
   }

@@ -899,7 +899,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -923,7 +927,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -947,7 +955,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -971,7 +983,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -995,7 +1011,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1019,7 +1039,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1043,7 +1067,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1067,7 +1095,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1091,7 +1123,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1115,7 +1151,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1139,7 +1179,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1163,7 +1207,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1187,7 +1235,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1211,7 +1263,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1235,7 +1291,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1259,7 +1319,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1283,7 +1347,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1307,7 +1375,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1331,7 +1403,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -1355,11 +1431,20 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": "2026-09-12T07:01:55Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-12T07:01:55Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           }
         ],
         "provider_scope": "public_only",
-        "owner_watchlist_inherited": false
+        "owner_watchlist_inherited": false,
+        "freshness_policy": {
+          "policy_id": "v213-serenity-fresh-independent-evidence-v2",
+          "policy_sha256": "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8"
+        },
+        "evidence_capture_at": "2026-09-12T07:04:55Z"
       },
       "source_time": "2026-09-12T07:01:55Z",
       "cli_http_calls": 0
@@ -1390,7 +1475,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 1,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1409,7 +1494,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1432,7 +1517,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 2,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1451,7 +1536,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1474,7 +1559,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 3,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1493,7 +1578,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1516,7 +1601,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 4,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1535,7 +1620,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1558,7 +1643,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 5,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1577,7 +1662,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1600,7 +1685,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 6,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1619,7 +1704,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1642,7 +1727,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 7,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1661,7 +1746,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1684,7 +1769,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 8,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1703,7 +1788,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1726,7 +1811,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 9,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1745,7 +1830,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1768,7 +1853,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 10,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1787,7 +1872,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1810,7 +1895,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 11,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1829,7 +1914,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1852,7 +1937,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 12,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1871,7 +1956,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1894,7 +1979,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 13,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1913,7 +1998,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1936,7 +2021,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 14,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1955,7 +2040,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -1978,7 +2063,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 15,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -1997,7 +2082,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2020,7 +2105,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 16,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -2039,7 +2124,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2062,7 +2147,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 17,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -2081,7 +2166,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2104,7 +2189,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 18,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -2123,7 +2208,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2146,7 +2231,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 19,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -2165,7 +2250,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2188,7 +2273,7 @@
             "profit_summary": "獲利；淨利率 20.0%",
             "provider_scope": "public_only",
             "rank": 20,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "schema_version": 2,
             "short_term_return_pct": null,
             "short_term_window": "6m_price_return",
@@ -2207,7 +2292,7 @@
               },
               "profit_summary": {
                 "evidence_sha256": "c6a2609947b13c43e601920962347b1fec625b3376f193d6ff4c4c7cfc08da74",
-                "retrieved_at": "2026-09-12T04:04:55Z",
+                "retrieved_at": "2024-01-01T00:00:00Z",
                 "status": "KNOWN",
                 "value": "獲利；淨利率 20.0%"
               },
@@ -2255,14 +2340,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2279,14 +2368,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2303,14 +2396,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2327,14 +2424,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2351,14 +2452,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2375,14 +2480,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2399,14 +2508,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2423,14 +2536,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2447,14 +2564,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2471,14 +2592,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2495,14 +2620,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2519,14 +2648,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2543,14 +2676,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2567,14 +2704,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2591,14 +2732,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2615,14 +2760,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2639,14 +2788,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2663,14 +2816,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2687,14 +2844,18 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -2711,20 +2872,29 @@
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "orders_as_of": "",
+            "orders_as_of": "2024-01-01T00:00:00Z",
             "orders_confidence": "UNAVAILABLE",
             "current_order_source_urls": [],
             "future_order_source_urls": [],
             "numeric_total_order_estimate_prohibited": true,
-            "retrieved_at": "2026-09-12T04:04:55Z",
+            "retrieved_at": "2024-01-01T00:00:00Z",
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2024-01-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           }
         ],
         "provider_scope": "public_only",
-        "owner_watchlist_inherited": false
+        "owner_watchlist_inherited": false,
+        "freshness_policy": {
+          "policy_id": "v213-serenity-fresh-independent-evidence-v2",
+          "policy_sha256": "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8"
+        },
+        "evidence_capture_at": "2026-09-12T07:04:55Z"
       },
-      "source_time": "2026-09-12T04:04:55Z",
+      "source_time": "2024-01-01T00:00:00Z",
       "cli_http_calls": 0
     },
     "unknown": {
@@ -3625,7 +3795,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3649,7 +3823,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3673,7 +3851,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3697,7 +3879,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3721,7 +3907,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3745,7 +3935,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3769,7 +3963,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3793,7 +3991,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3817,7 +4019,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3841,7 +4047,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3865,7 +4075,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3889,7 +4103,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3913,7 +4131,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3937,7 +4159,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3961,7 +4187,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -3985,7 +4215,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -4009,7 +4243,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -4033,7 +4271,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -4057,7 +4299,11 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           },
           {
             "schema_version": 2,
@@ -4081,11 +4327,20 @@
             "numeric_total_order_estimate_prohibited": true,
             "retrieved_at": null,
             "provider_scope": "public_only",
-            "owner_watchlist_inherited": false
+            "owner_watchlist_inherited": false,
+            "orders_state_as_of": "2026-09-01T00:00:00Z",
+            "evidence_class": "structural_claim",
+            "freshness_policy_key": "structural_claim_max_age_days",
+            "test_only_admission": true
           }
         ],
         "provider_scope": "public_only",
-        "owner_watchlist_inherited": false
+        "owner_watchlist_inherited": false,
+        "freshness_policy": {
+          "policy_id": "v213-serenity-fresh-independent-evidence-v2",
+          "policy_sha256": "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8"
+        },
+        "evidence_capture_at": "2026-09-12T07:04:55Z"
       },
       "source_time": "2026-09-12T04:04:55Z",
       "cli_http_calls": 0
