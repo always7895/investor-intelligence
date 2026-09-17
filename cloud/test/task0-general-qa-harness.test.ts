@@ -1,6 +1,10 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+vi.mock("node:child_process", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("node:child_process")>();
+  return { ...orig, spawn: vi.fn() };
+});
 import { fileURLToPath } from "node:url";
 import {
   startDrain,
@@ -9,7 +13,10 @@ import {
   completionVerdict,
   createStrictBoundary,
   releaseGateway,
+  startLocalGateway,
 } from "./helpers/task0-general-qa-harness";
+import { spawn } from "node:child_process";
+
 
 /**
  * TASK0 Phase-1G REPAIR — offline negative gates for the general-QA live
@@ -318,4 +325,171 @@ describe("TASK0 1G-R: suite separation + opt-in gate (offline)", () => {
     expect(out).not.toContain("v213-local-llm-gateway");
     expect(out).not.toMatch(/127\.0\.0\.1:\d+\/health/);
   }, 150_000);
+});
+
+describe("TASK0 1I: bounded release + forward budget (mandatory offline cases)", () => {
+  beforeEach(() => { vi.useRealTimers(); });
+  type FakeChild = {
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
+    spawnError: Error | null;
+    killCalls: number;
+    kill: () => boolean;
+    once: (ev: string, cb: (...a: unknown[]) => void) => unknown;
+    on: (ev: string, cb: (...a: unknown[]) => void) => unknown;
+    emitExit: (code?: number | null, sig?: NodeJS.Signals | null) => void;
+  };
+  const makeFakeChild = (autoExit: boolean): FakeChild => {
+    const listeners: Record<string, Array<(v?: number, s?: NodeJS.Signals) => void>> = {};
+    const c: FakeChild = {
+      exitCode: null,
+      signalCode: null,
+      spawnError: null,
+      killCalls: 0,
+      kill: () => { c.killCalls++; if (c.exitCode === null && c.signalCode === null) c.exitCode = 0; return true; },
+      once: (ev, cb) => { (listeners[ev] ??= []).push((v, sgn) => { if (ev === "exit") { c.exitCode = v === undefined ? 0 : v; c.signalCode = sgn ?? null; } }); return c; },
+      on: (ev, cb) => { (listeners[ev] ??= []).push((v, sgn) => { if (ev === "exit") { c.exitCode = v === undefined ? 0 : v; c.signalCode = sgn ?? null; } }); return c; },
+      emitExit: (code = 0, sig: NodeJS.Signals | null = null) => { c.exitCode = code; c.signalCode = sig; for (const cb of listeners["exit"] ?? []) cb(code === null ? undefined : code, sig ?? undefined); },
+    };
+    if (autoExit) setTimeout(() => c.emitExit(0), 20);
+    return c;
+  };
+
+  it("CASE3: gone child + UNKNOWN probe (probe throws) is a BOUNDED FAILURE, never a success", async () => {
+    const child = makeFakeChild(false);
+    child.emitExit(0);
+    await expect(
+      releaseGateway(child as never, () => { throw new Error("PROBE_444"); }, 300).then(
+        () => "RESOLVED",
+        (e: Error) => "REJECTED:" + e.message,
+      ),
+    ).resolves.toMatch(/^REJECTED:TASK0_GATEWAY_RELEASE_TIMEOUT$/);
+  });
+
+  it("CASE1: child gone but the loopback answers 503 (live) — release must NOT resolve; bounded failure", async () => {
+    const child = makeFakeChild(false);
+    child.emitExit(0);
+    await expect(
+      releaseGateway(child as never, async () => "live", 300).then(
+        () => "RESOLVED",
+        (e: Error) => "REJECTED:" + e.message,
+      ),
+    ).resolves.toMatch(/^REJECTED:TASK0_GATEWAY_RELEASE_TIMEOUT$/);
+  });
+
+  it("CASE2(E): child gone + probe classification: ECONNRESET must be UNKNOWN (release then times out)", async () => {
+    const child = makeFakeChild(false);
+    child.emitExit(1);
+    await expect(
+      releaseGateway(child as never, async () => "unknown", 300).then(
+        () => "RESOLVED",
+        (e: Error) => "REJECTED:" + e.message,
+      ),
+    ).resolves.toMatch(/^REJECTED:TASK0_GATEWAY_RELEASE_TIMEOUT$/);
+  });
+
+  it("CASE2: normal death — gone + ECONNREFUSED (down) resolves; resolved inside deadline, kill attempted once", async () => {
+    const child = makeFakeChild(false);
+    child.emitExit(1); // normal death: process exits on its own
+    const t0 = Date.now();
+    const releaseP = releaseGateway(child as never, async () => "down", 4_000);
+    await releaseP;
+    expect(Date.now() - t0).toBeLessThan(3_500);
+    expect(child.killCalls).toBe(0); // died before the release signal was ever needed
+  });
+
+  it("CASE5: startLocalGateway integration — ready BEFORE stop means ZERO kills; repeated stop() shares one release", async () => {
+    (spawn as unknown as { mockClear: () => void }).mockClear?.();
+    const child = makeFakeChild(false) as never as ReturnType<typeof spawn>;
+    (spawn as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(child);
+    let probeRound = 0;
+    const handleP = startLocalGateway({
+      model: "EXL3",
+      llamaBaseUrl: "http://127.0.0.1:9",
+      profileJson: "{}",
+      onProbe: async () => {
+        probeRound++;
+        if (probeRound < 2) return new Response(JSON.stringify({ ok: false }), { status: 503 });
+        return new Response(JSON.stringify({
+          ok: true,
+          service: "v213-local-llm-gateway",
+          health_schema_version: 2,
+          llama_reachable: true,
+          selected_model_available: true,
+          selected_model: "EXL3",
+        }), { status: 200 });
+      },
+    });
+    const handle = await handleP;
+    expect((child as unknown as FakeChild).killCalls).toBe(0); // no release attempted before ready
+    const fake = child as unknown as FakeChild;
+    const stop1 = handle.stop();
+    const stop2 = handle.stop();
+    expect(stop1).toBe(stop2); // same shared cleanup promise
+    await stop1;
+    expect(stop2 === stop1).toBeTypeOf("boolean");
+    expect(fake.killCalls).toBeLessThanOrEqual(1);
+  });
+
+  it("CASE4: startup exits BEFORE readiness — failure path performs the same bounded cleanup (single release, no hang)", async () => {
+    const fake = makeFakeChild(false) as never as ReturnType<typeof spawn>;
+    (spawn as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(fake);
+    setTimeout(() => { (fake as unknown as FakeChild).emitExit(3); }, 20);
+    await expect(startLocalGateway({
+      model: "EXL3",
+      llamaBaseUrl: "http://127.0.0.1:9",
+      profileJson: "{}",
+      onProbe: async () => new Response(JSON.stringify({ ok: false }), { status: 503 }),
+    })).rejects.toThrow(/TASK0_GATEWAY_CHILD_EXITED:3/);
+    // release performed: child is gone; a follow-up release settles fast
+    await expect(releaseGateway(fake as never, async () => "down", 3_000)).resolves.toBeUndefined();
+  });
+
+  it("CASE6: forward budget is reserved BEFORE any await — parallel cap: 2 accepted, 3rd rejected, native hit exactly 2", async () => {
+    let nativeHits = 0;
+    const b = createStrictBoundary(
+      "h.test",
+      { port: 1, channelValue: "x" },
+      (async () => {
+        nativeHits++;
+        await new Promise((r) => setTimeout(r, 80));
+        return new Response(JSON.stringify({ choices: [{ finish_reason: "stop" }], model: "EXL3" }), { status: 200 });
+      }) as typeof fetch,
+      2,
+    );
+    const r1 = b.fetch("https://h.test/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "EXL3" }) }) as Promise<Response>;
+    const r2 = b.fetch("https://h.test/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "EXL3" }) }) as Promise<Response>;
+    const r3p = b.fetch("https://h.test/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "EXL3" }) }).then(
+      () => "OK",
+      (e: unknown) => "CAP:" + String(e),
+    );
+    expect(await r1).toBeInstanceOf(Response);
+    expect(await r2).toBeInstanceOf(Response);
+    expect(await r3p).toBe("CAP:Error: TASK0_MODEL_CALL_CAP");
+    expect(nativeHits).toBe(2);
+  });
+
+  it("CASE7: a forward whose backend call ERRORS still consumes its budget unit", async () => {
+    let nativeHits = 0;
+    const b = createStrictBoundary(
+      "h.test",
+      { port: 1, channelValue: "x" },
+      (async () => {
+        nativeHits++;
+        throw new Error("ECONNREFUSED");
+      }) as typeof fetch,
+      1,
+    );
+    const r1 = b.fetch("https://h.test/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "EXL3" }) }).then(
+      () => "OK",
+      (e: unknown) => "ERR:" + String(e),
+    );
+    const r2 = b.fetch("https://h.test/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "EXL3" }) }).then(
+      () => "OK",
+      (e: unknown) => "CAP:" + String(e),
+    );
+    expect(await r1).toBe("ERR:Error: ECONNREFUSED");
+    expect(await r2).toBe("CAP:Error: TASK0_MODEL_CALL_CAP");
+    expect(nativeHits).toBe(1);
+  });
 });

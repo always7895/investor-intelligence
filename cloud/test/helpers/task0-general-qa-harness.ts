@@ -112,6 +112,11 @@ async function freeLoopbackPort(): Promise<number> {
 export type StrictBoundary = {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   modelCalls: Array<{ method: string; status: number; model: string; finishReason: string; modelReturned: string; body: string }>;
+  /** Every fetch call through this boundary (model + LINE + any other). */
+  boundaryRequests: number;
+  /** Distinct model forwards ATTEMPTED (budget units; reserved BEFORE any await;
+   *  a forward whose backend call errors STILL consumes its unit). */
+  forwardAttempts: number;
   lineReplies: Array<{ replyTokenPrefix: string; textCount: number; sawBearer: boolean; texts: string[] }>;
   violations: string[];
   /** Queue one-off artificial latency (ms) applied to the NEXT model forward. */
@@ -183,8 +188,9 @@ export interface GatewayChildLike {
  * - "gone" = exitCode !== null OR signalCode != null OR spawnError set.
  * - probeState: "live" (200/503/404 still answering), "down" (connection
  *   refused/reset), "unknown" (timeout/any probe error — NEVER treated as
- *   closed). Resolves only when the child is gone AND the latest probe was
- *   not "live". Reentrant-safe; its timers clear on settle.
+ *   closed). Resolves ONLY when the child is gone AND the latest probe was
+ *   definitively "down" (Phase-1I: unknown/live never pass). Reentrant-safe;
+ *   its timers clear on settle.
  */
 export function releaseGateway(
   child: GatewayChildLike,
@@ -203,38 +209,56 @@ export function releaseGateway(
       else resolve();
     };
     hard = setTimeout(() => finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")), deadlineMs);
+    const remainingMs = () => deadlineMs - (performance.now() - startedAt);
     const gone = () => child.exitCode !== null || child.signalCode != null || child.spawnError != null;
+    // ONE verify loop; no exit-listener loop (would double-verify).
     const verify = async () => {
       while (!settled) {
-        if (performance.now() - startedAt > deadlineMs) {
+        if (remainingMs() <= 0) {
           finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT"));
           return;
         }
         let st: GatewayProbeState;
+        let roundTimer: ReturnType<typeof setTimeout> | undefined;
         try {
-          st = await probeState();
+          // Race the in-flight probe against the remaining deadline so a
+          // deadline expiry stops this round (timer cleared, no re-assert).
+          st = await Promise.race([
+            probeState(),
+            new Promise<GatewayProbeState>((_, rej) => {
+              roundTimer = setTimeout(() => rej(new Error("PROBE_ROUND_DEADLINE")), Math.max(1, remainingMs()));
+            }),
+          ]);
         } catch {
           st = "unknown";
+        } finally {
+          if (roundTimer) clearTimeout(roundTimer);
         }
-        if (gone() && st !== "live") {
+        if (settled) return;
+        // Phase-1I gate: success requires the child to be GONE and a
+        // definitive DOWN probe. "unknown" or "live" must never pass.
+        if (gone() && st === "down") {
           finish();
           return;
         }
-        if (!gone()) child.kill();
+        if (!gone()) {
+          try {
+            child.kill();
+          } catch {
+            /* kill refused: deadline-bounded */
+          }
+        }
         await new Promise<void>((res) => setTimeout(res, 150));
       }
     };
-    if (gone()) {
-      void verify();
-      return;
+    if (!gone()) {
+      try {
+        child.kill();
+      } catch {
+        /* kill refused: deadline-bounded */
+      }
     }
-    child.once("exit", () => { void verify(); });
-    try {
-      child.kill();
-    } catch {
-      /* kill refused: the verify loop remains deadline-bounded */
-    }
-    void verify(); // unconditional: stuck children are probed + deadline-bounded
+    void verify(); // unconditional single loop: stuck children are deadline-bounded
   });
 }
 
@@ -290,6 +314,8 @@ export function createStrictBoundary(
   let stallPending = false;
   const b = {
     modelCalls: [] as StrictBoundary["modelCalls"],
+    boundaryRequests: 0,
+    forwardAttempts: 0,
     lineReplies: [] as StrictBoundary["lineReplies"],
     violations: [] as string[],
     delayMs: [] as number[],
@@ -298,10 +324,14 @@ export function createStrictBoundary(
     fetch: null as unknown as StrictBoundary["fetch"],
   };
   b.fetch = async (input, init) => {
+    b.boundaryRequests += 1;
     const url = String(input);
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     if (url === modelUrl && method === "POST") {
-      if (maxModelCalls != null && b.modelCalls.length >= maxModelCalls) {
+      // Phase-1I: the forward BUDGET unit is reserved BEFORE any await/IO.
+      // A forward that later errors still consumed its unit.
+      b.forwardAttempts += 1;
+      if (maxModelCalls != null && b.forwardAttempts > maxModelCalls) {
         throw new Error("TASK0_MODEL_CALL_CAP"); // rejected BEFORE any backend I/O
       }
       const body = String(init?.body ?? "");
@@ -410,8 +440,9 @@ export async function startLocalGateway(opts: {
   const probeStats = { refused: 0, timeout: false };
   let probeN = 0;
   const realFetch: typeof fetch = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
-  // Probe verdicts: 200/503/404 = still answering; ECONNREFUSED/ECONNRESET =
-  // down; everything else (incl. probe timeout) = unknown, never "down".
+  // Probe verdicts (Phase-1I): 200/503/404 = still answering ("live");
+  // ONLY a connection REFUSED to the exact loopback port = "down".
+  // ECONNRESET and every other probe error/timeout = "unknown" (never down).
   const probeState = (): Promise<GatewayProbeState> =>
     realFetch(`http://127.0.0.1:${port}/health`, {
       headers: { "x-investor-shared-secret": channelValue },
@@ -419,14 +450,20 @@ export async function startLocalGateway(opts: {
       .then((res) => (res.status === 200 || res.status === 503 || res.status === 404 ? "live" : "unknown"))
       .catch((e: unknown) => {
         const code = (e as { cause?: { code?: string } })?.cause?.code ?? "";
-        return code === "ECONNREFUSED" || code === "ECONNRESET" ? "down" : "unknown";
+        return code === "ECONNREFUSED" ? "down" : "unknown";
       });
-  // ONE shared bounded cleanup: ready-path stop(), every failure path and
-  // any repeated stop() all await the same release.
-  const cleanupPromise = releaseGateway(childExt, probeState, 8_000);
+  // Phase-1I: ONE shared bounded cleanup created LAZILY. startCleanup() is
+  // invoked only when release is actually needed: ready-path stop(), the
+  // child-exit failure path, or the not-ready deadline path. Repeated calls
+  // (incl. repeated stop()) return the same promise => at most one release.
+  let cleanupPromise: Promise<void> | undefined;
+  const startCleanup = (): Promise<void> => {
+    if (!cleanupPromise) cleanupPromise = releaseGateway(childExt, probeState, 8_000);
+    return cleanupPromise;
+  };
   for (;;) {
     if (child.exitCode !== null) {
-      await cleanupPromise;
+      await startCleanup();
       throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
     }
     const url = `http://127.0.0.1:${port}/health`;
@@ -465,12 +502,12 @@ export async function startLocalGateway(opts: {
           channelValue,
           child,
           probeStats,
-          stop: () => cleanupPromise,
+          stop: () => startCleanup(),
         };
       }
     }
     if (Date.now() > deadline) {
-      await cleanupPromise;
+      await startCleanup();
       throw new Error(`TASK0_GATEWAY_NOT_READY:last=${r ? r.status : "unreachable"}`);
     }
     await new Promise((r) => setTimeout(r, 500));

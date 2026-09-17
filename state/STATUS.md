@@ -36,7 +36,12 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - PRESTATE (wrangler read-only; sealed OAuth; 0 writes): ACTIVE deploy 09-17T09:24:19.430Z = version c7abe74d-0cd9… (100%; = authoritative tuple); rollback = f3287281-33eb… (08:41:04) exists. vars: LOCAL_LLM_MODEL=qwen38-q6 (live literal); V213_MODEL_PROFILE_JSON ABSENT; FREE_RELAY/GENERAL_QA/V213_COMPACT_QA=true; KVs = EPHEMERAL_SECURITY/PUBLIC/TENANT_PRIVATE; DOs = BROADCAST_DEDUPE/FREE_RELAY_ROUTE; secrets = 7 names only. version rollback does not cover KV/DO runtime state.
 - SCHEDULE (local read-only; 5 tasks): Morning 07:20+08 rc=0 (on time); Evening 20:20+08 rc=1 (09-17 failed; cause unknown); sealed-freshness PT1H + watchdog PT30M rc=0; FreeRelay no trigger (manual) 09-15 rc=1. launches = trigger+1s => +104min display gap NOT explained by local delay (UNDETERMINED; display/data chain suspect).
 - OPEN: final-mode native test (packager scope, unauthorized); W1 pre-state = above; W2 deploy window; contract 4-file emission (historical remains CONTRACT_MISMATCH).
-- MV (1H): commits a99b4bd + push + PR sync; worktree/build repo-out; 0 PROD/KV/DO/LINE/registry/schedule/flag writes.
+- MV (1H): commits a99b4bd + push + PR sync; verification extracts under `.tmp/task0-1h-valid`; 0 PROD/KV/DO/LINE/registry/schedule/flag writes.
+### TASK0 - 1I (2026-09-17/18; Pro; offline + read-only)
+- EVENING DIAG: 09-17 evening FAIL exit 1 / NOT_COMMITTED / journal failed_phase=COMMIT_REQUEST; stages 1-7 (generation) all PASS; first break = stage-8 handoff (sealed-publish commit moment); NOT re-gen/lock/-NoSync/model. Commit-time detail absent from readable logs (evidence gap; private exploration next). Action script byte-identical to worktree; day = FINALIZED+publication; launches trigger+1s => +104min not local; display-gap flagged only.
+- HARNESS (RED to MIN-FIX to GREEN): 6/8 negative RED first; MIN-FIX = release stops leaving 15ms (stop on terminate; 0 kills pre-ready), probe definitive (REFUSED=down; RESET/timeout/error=unknown; round timers cleared), success = gone AND down, one shared cleanup, forward budget pre-await (failed forwards consume; separate counters; modelCalls=responses). GREEN x2: 59 files 864p|1s; tsc 0; gates PASS; 0 new P0; opt-in still throws (0-gw).
+- W1 preSTATE: no gateway/heartbeat; LOCAL_LLM_MODEL=qwen38-q6; V213_MODEL_PROFILE_JSON absent. W2 rollback basis = c7abe74d-0cd9-4e06-9e96-906690038a24 (pre-deploy 100%; not f3287281). Identity = operator read; deployed bundle digest NOT_OBTAINED, src-to-bundle NOT_BYTE_VERIFIED => egress provisionally verified.
+- W2 NOT ordered (pending approval); 0 writes this batch; historical ZIP remains BLOCKED_PACKAGE_CONTRACT_MISMATCH.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
@@ -59,28 +64,16 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - Operations: fresh rebuild `publish_sealed_snapshot.py --live-clock`; sync `sync_sealed_snapshot_kv.py` (pointer-last, fail-closed); rollback `rollback_sealed_snapshot.py`; operator runbook `docs/OPERATOR_RUNBOOK.md`; gap ledgers `docs/LINE_GAP_LEDGER.md` / `docs/PROJECT_GAP_LEDGER.md`.
 
 ### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
-- Deployed worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A fixes + options-guidance in production); re-pointed live run `20260916T131939Z-897a86efa733` (seal c9b19102; sync log: objects 14 -> readback 14/14 -> pointer LAST).
-- Live probe (data/cache/probe-live-26.json): fresh Top20 GEV #1 / 6501 #2, no stale notice; SIVE & AAOI -> sealed_snapshot:unadmitted_symbol; ZZZZNOTEXIST -> general_qa, no hijack.
-- docs/LINE_GAP_LEDGER.md: 31 items / 8 scopes, format-gated; P0s all closed with live evidence. Gates: npm 816/0/1, tsc 0, pytest 1511/0/3, security/canonical/line-boundary PASSED.
+- Worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A + options-guidance live; run `20260916T131939Z-897a86efa733` seal `c9b19102`, pointer LAST 14/14); LINE live; `docs/LINE_GAP_LEDGER.md` 31 items / 8 scopes, P0s closed live (full text in git history).
 
-### Objectives Overview & Trust Invariants
+## Objectives Overview & Trust Invariants
 Objectives: A = UNKNOWN rights; B = 7 references typed (unresolved outside corpus); C = scoped non-admitting hook; admission still capped TEST_ONLY tier.
 
 Priority: evidence → admission → ranking → acceptance → sealed publication → LINE; identity/macro/options stay UNAVAILABLE (do NOT block LINE); never deploy unaccepted ranking/candidate.
 
-## PROJECT-WIDE GAP AUDIT (Task #29, 2026-09-16)
-- **PROJECT_WIDE_GAP_AUDIT = PASS** — `docs/PROJECT_GAP_LEDGER.md`: P0 = 0, P1 = 0; all P2 PASS or reasonably DEFERRED (PG-11 = research-lane DEFER; GEV/6501 admitted; 6508/ENR unadmitted).
-
-## Completed Supervisor Evaluation: STATUTORY_AUTHORITY_FACT_EVALUATION_V1
-- Factual non-protectability (17 U.S.C. § 102(b)) and OAL publication role (Gov Code § 11344) narrowed; terms remain binding; artifacts in `G/statutory-authority-facts-v1-*`.
-
-## Completed Objective B Subtask: CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1
-- 7 legacy external references typed into structured immutable dataclass in `carb_typed_section_parser.py` (strict taxonomy, source-provenance-bound, `UNRESOLVED_OUTSIDE_CORPUS`); artifacts in `G/carb-statutory-cross-reference-typing-v1-*`.
-
-## Triad Status Assessment
-- **A (Unknowns Narrowed vs Remain):** Factual non-protectability (17 U.S.C. § 102(b)) and OAL publication role (Gov Code § 11344) narrowed; 4 preserved HTTP error states, Meidensha Terms, and Barclays online CCR terms remain UNKNOWN.
-- **B (7 External References Typed & Unresolved):** Citations in `carb_typed_section_parser.py` are typed into structured immutable records but strictly remain `UNRESOLVED_OUTSIDE_CORPUS` (`limits_complete_interpretation: true`).
-- **C (Scoped Non-Admitting Hook):** Accepted scoped non-admitting hook (`G/provider-runtime-hook-supervisor-review-v1-review.md`) is NOT product ready. Runtime admitted companies strictly 0; overall source admission strictly `STILL_BLOCKED_NOT_PASS`.
+## Completed, pre-TASK0 (full text in `git show` STATUS history)
+- PROJECT_WIDE_GAP_AUDIT = PASS (P0 = 0, P1 = 0; PG-11 DEFER; GEV/6501 admitted) - `docs/PROJECT_GAP_LEDGER.md`.
+- Statutory evaluation + Objective-B citation typing done (`G/`); references still `UNRESOLVED_OUTSIDE_CORPUS`; C-hook not product-ready; evidence stays TEST_ONLY tier.
 
 ## Publication anchor
 - `publication_eligible=true` since operator-authorized production deploy (2026-09-16); LINE delivery live on the owner-pairing channel; evidence tier stays TEST_ONLY-signed.
