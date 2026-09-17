@@ -25,14 +25,16 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 Operability Audit — Phase 1 (2026-09-17 19:0x +08; Pro-supervised, read-only)
-- Recon: audited SHA `ab1bcca`; LIVE pointer now `20260917T095616Z-8846e971005f` (seal `7213e75ee…`, 15 objects incl. macro, REFRESH OK 17:56+08, readback 15/15); accepted `092410Z-d9f86bda2053` run: 15 objects + seal `891b671a…` re-verified.
-- TUPLE_RECONCILIATION: `928539bd…` worker-v + runs `897a86efa733`/`2873c2ff6316`/`f2a9ea873960` = Gen-1 (09-16) records; Gen-2 authority = `3c7497e`/`c7abe74d…`/`092410Z-d9f86bda2053`/`891b671a…` (15 objects). Earlier PR #37 body mixed both generations — superseded.
-- Freshness pipeline: PASS (hourly REFRESH OK, pointer-last after 15/15 readback; log `data/cache/sealed-refresh.log`). LastRun/NextRun display lag = P2 display observation (runs evidenced on disk); engine stall not concluded.
-- PENDING (BLOCKED_READONLY / next round): worker live-endpoint real caller (external read not executed), local `127.0.0.1:5000` `python start.py` identity, tabby live answer check, remaining entry coverage (15 of 18 not yet run).
+### TASK0 Operability Audit — Phase 1B (2026-09-17T10:5x–11:0xZ; Pro-supervised; read-only replay + local gates)
+- Live worker: health 200 / readiness 200 `worker_version=c7abe74d…` (echo OK, `no_write`) → LIVE code = Gen-2; Gen-1 hypothesis **DISPROVEN**.
+- In-memory replay (fixed run `092410Z`, 0 net writes): Macro/TOP5/Top20 (GEV 96.0, 6501 93.0) admitted; SIVE&AAOI fail-closed; invalid→null. 1/1 PASS.
+- Gates: vitest 818/0/1 (2.6s); tsc 0; pytest **1520/3F**/3 skip. F: (1) `test_cli_builder_synthetic_fixture` — text pipe decodes cp950, UTF-8 CLI output choke (byte-identical at base 3c7497e → env/robustness gap, P1); (2/3) lock subtests fail full-suite-load-only (standalone PASS) — P2 flake (0s lock timeout under load).
+- Tuple reconciliation: Gen-2 = `3c7497e`/`c7abe74d…`/`092410Z`/`891b671a…` (15 objects); Gen-1 `928539bd…`/14 objects superseded; PR #37 body mixed (fix deferred by instruction).
+- Remote: KV CLI 401 (no local creds; sealing holds) — live `snapshot:current` UNVERIFIED; best local = `095616Z` (17:56+08, 15/15 readback). Task display lag ≠ stall (disk runs); cause undetermined.
+- Local model chain: `127.0.0.1:5000` = tabbyAPI (health 200; live oneshot exact echo, finish=stop). No 8080 relay on host (contract residue).
+- Phase 2 pending: (P1) UTF-8 pin min-fix; (P2) ops-lock flake rerun; base rerun moot (no delta).
 
-### Milestones (2026-09-15 verified-green baseline session)
-- `cd39599`/. `7d2a9f9`/. `f031c36`/. `dce6d73`: build-artifact ignore; baseline gates restored (STATUS anchors; worker.ts blob 4e0f78af); deterministic option test clocks; statutory/claim-admission modules.
+### Milestones (2026-09-15 verified-green baseline session; detail in git log: worker.ts blob `4e0f78af`, deterministic option test clocks, statutory/claim-admission modules, STATUS anchors)
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted)
 - `fc145e1`/`96fdc1e`/`0c0a8f3`: source acquisition & symbol directory; bounded bottleneck ranking + claim bridge; global equity lookup / sealed identity index (module layer only).
@@ -43,8 +45,6 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
 
 ### Archive milestones (sessions 7-15, 2026-09-15; details in git log)
-- `e43be26` security-gate placeholders; `78d4dee` options guidance + sizing engine; `bba00fa` statutory resolution; `a78a502` Hitachi Energy case study; `265e54f` candidate inventory.
-- `48c29ef` DOE 2024 + MLGW 2025 lineages; `d33e769` in-window DOE 2026-03-05 -> GEV/6501 ADMISSION_QUALIFIED (test-only 100); `ad619fe` ranking promotion path (runtime-admitted flag); `1c3cfa4`/`1331ff8`/`5e42584` v213 signed-snapshot promotion (rejected-pointer -> INSUFFICIENT fail-closed; THEN pointer is LAST).
 
 ### RELEASE READINESS LEDGER (Task #20, 2026-09-16)
 - Full regression at close: pytest **1511/0/3**; `npm test` **813/0/1**; `tsc` 0; security/canonical RC/LINE-boundary/clean-install/actions-storage/final-cleanup all PASSED.
