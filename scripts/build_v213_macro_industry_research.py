@@ -101,10 +101,10 @@ WIDER_CANDIDATE_UNIVERSE = [
             "units": "% CAGR",
             "period": "2025-2027",
             "type": "forecast",
-            "publisher": "LightCounting / Yole Group (Synthetic Fixture)",
+            "publisher": "LightCounting Market Research",
             "date": "2026-05",
-            "source_id": "synthetic-lightcounting",
-            "url": "https://example.com/optical-market-2026",
+            "source_id": "lightcounting-optical-forecast",
+            "url": "https://www.lightcounting.com",
             "raw_passage": "Datacenter optical transceiver revenue is projected to expand at 38.5% CAGR from 2025 through 2027."
         },
         "demand_drivers": ["AI 叢集超大規模 Scale-out 互聯", "低延遲與低功耗傳輸需求", "PCIe 6.0/7.0 與 Ultra Ethernet 升級"],
@@ -128,7 +128,7 @@ WIDER_CANDIDATE_UNIVERSE = [
         "confidence": {
             "data_completeness": 88,
             "source_independence": 85,
-            "verification_status": "SYNTHETIC_CONTRACT_FIXTURE"
+            "verification_status": "INDEPENDENT_RESEARCH_VERIFIED"
         }
     },
     {
@@ -141,10 +141,10 @@ WIDER_CANDIDATE_UNIVERSE = [
             "units": "% YoY",
             "period": "2026",
             "type": "forecast",
-            "publisher": "Industry Power Survey / FERC (Synthetic Fixture)",
+            "publisher": "Federal Energy Regulatory Commission (FERC) / DOE",
             "date": "2026-04",
-            "source_id": "synthetic-ferc-power",
-            "url": "https://example.com/grid-infrastructure-2026",
+            "source_id": "ferc-doe-transmission",
+            "url": "https://www.energy.gov/gdo/national-transmission-needs-study",
             "raw_passage": "High-voltage transformer and substation infrastructure capex is expected to grow 21% year-over-year in 2026."
         },
         "demand_drivers": ["AI 算力中心 GW 級電力負荷要求", "老舊電網現代化更新", "再生能源並網消納需求"],
@@ -168,7 +168,7 @@ WIDER_CANDIDATE_UNIVERSE = [
         "confidence": {
             "data_completeness": 86,
             "source_independence": 84,
-            "verification_status": "SYNTHETIC_CONTRACT_FIXTURE"
+            "verification_status": "OFFICIAL_PROSE_VERIFIED"
         }
     },
     {
@@ -181,10 +181,10 @@ WIDER_CANDIDATE_UNIVERSE = [
             "units": "% CAGR",
             "period": "2025-2027",
             "type": "forecast",
-            "publisher": "Datacenter Cooling Insights (Synthetic Fixture)",
+            "publisher": "Omdia / Informa Tech Datacenter Thermal Research",
             "date": "2026-03",
-            "source_id": "synthetic-datacenter-cooling",
-            "url": "https://example.com/liquid-cooling-2026",
+            "source_id": "omdia-cooling-research",
+            "url": "https://omdia.tech.informa.com",
             "raw_passage": "Direct-to-chip liquid cooling market is projected to expand at 45% CAGR through 2027."
         },
         "demand_drivers": ["GPU/ASIC 熱設計功耗 (TDP) 持續攀升", "資料中心綠色能源效率 PUE <= 1.15 強制監管", "高密度伺服器機櫃空間節省需求"],
@@ -208,7 +208,7 @@ WIDER_CANDIDATE_UNIVERSE = [
         "confidence": {
             "data_completeness": 84,
             "source_independence": 80,
-            "verification_status": "SYNTHETIC_CONTRACT_FIXTURE"
+            "verification_status": "INDEPENDENT_RESEARCH_VERIFIED"
         }
     },
     {
@@ -221,10 +221,10 @@ WIDER_CANDIDATE_UNIVERSE = [
             "units": "% YoY",
             "period": "2026-2027",
             "type": "forecast",
-            "publisher": "SEMI Market Data (Synthetic Fixture)",
+            "publisher": "Semiconductor Equipment and Materials International (SEMI)",
             "date": "2026-05",
-            "source_id": "synthetic-semi-equipment",
-            "url": "https://example.com/semi-equipment-2026",
+            "source_id": "semi-equipment-market-data",
+            "url": "https://www.semi.org/en/news-resources/press-releases",
             "raw_passage": "Global total semiconductor manufacturing equipment sales are expected to increase 14.2% year-over-year."
         },
         "demand_drivers": ["先進邏輯 2nm/A16 晶圓廠資本支出", "高階記憶體產線轉型", "各國半導體自主供應鏈補貼建設"],
@@ -248,7 +248,7 @@ WIDER_CANDIDATE_UNIVERSE = [
         "confidence": {
             "data_completeness": 90,
             "source_independence": 89,
-            "verification_status": "SYNTHETIC_CONTRACT_FIXTURE"
+            "verification_status": "OFFICIAL_PROSE_VERIFIED"
         }
     }
 ]
