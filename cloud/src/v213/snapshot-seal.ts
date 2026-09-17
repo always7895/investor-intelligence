@@ -12,6 +12,10 @@ export const SNAPSHOT_OBJECT_KEYS = [
   "last_successful_pipeline_timestamp", "v212:top20-report:latest", "v213:top20-report:latest",
   "v213:source-federation:latest", "v213:source-independence:latest", "v213:activation-claim",
 ] as const;
+
+/** Optional sealed payloads added after the 13-key core; manifests may carry
+ *  the core alone (historical runs) or core + the macro industry artifact. */
+export const SNAPSHOT_OPTIONAL_KEYS = ["v213:macro-industry:latest"] as const;
 const ENCODER = new TextEncoder();
 const HEX = /^[0-9a-f]{64}$/;
 const TRANSACTION = /^[0-9a-f]{32}$/;
@@ -97,13 +101,17 @@ export async function buildSnapshotSeal(metadata: SnapshotSealMeta, supplied: re
   const expected = { ...metadata };
   keys(expected, ["run_id", "transaction_id", "generated_at", "public_data_as_of"]); meta(expected);
   const entries = supplied.map(([key, body]) => [key, body] as [string, string]);
-  requireSeal(entries.length === SNAPSHOT_OBJECT_KEYS.length);
+  const allowed: string[] = [...SNAPSHOT_OBJECT_KEYS, ...SNAPSHOT_OPTIONAL_KEYS];
+  requireSeal(entries.length === SNAPSHOT_OBJECT_KEYS.length || entries.length === allowed.length);
+  requireSeal(entries.every(([key]) => allowed.includes(key)));
   const bodies = Object.fromEntries(entries); keys(bodies, SNAPSHOT_OBJECT_KEYS);
   claim(bodies["v213:activation-claim"]!, expected);
   requireSeal(bodies.last_successful_pipeline_timestamp === expected.public_data_as_of);
+  const manifestKeys = SNAPSHOT_OPTIONAL_KEYS.filter((key) => key in bodies);
+  requireSeal(manifestKeys.length === 0 || manifestKeys.length === SNAPSHOT_OPTIONAL_KEYS.length);
   let total = 0;
   const digests: Record<string, ObjectDigest> = {};
-  for (const key of SNAPSHOT_OBJECT_KEYS) {
+  for (const key of [...SNAPSHOT_OBJECT_KEYS, ...manifestKeys]) {
     const raw = bodies[key]!; const size = bytes(raw, MAX_OBJECT).byteLength;
     total += size; requireSeal(total <= MAX_TOTAL);
     digests[key] = { sha256: await sha(raw), utf8_bytes: size };
@@ -127,9 +135,17 @@ export async function readSealedSnapshot(rawPointer: string, get: (key: string) 
     && manifest.run_id === pointer.run_id && manifest.transaction_id === pointer.transaction_id
     && manifest.public_data_as_of === pointer.public_data_as_of
     && manifest.provider_scope === "public_only" && manifest.owner_watchlist_inherited === false);
-  const definitions = object(manifest.objects); keys(definitions, SNAPSHOT_OBJECT_KEYS);
+  const definitions = object(manifest.objects);
+  const definedKeys = Object.keys(definitions);
+  const allowedDef = SNAPSHOT_OPTIONAL_KEYS.every((k) => typeof k === "string");
+  requireSeal(allowedDef);
+  requireSeal(definedKeys.length === SNAPSHOT_OBJECT_KEYS.length || definedKeys.length === SNAPSHOT_OBJECT_KEYS.length + SNAPSHOT_OPTIONAL_KEYS.length);
+  requireSeal(definedKeys.every((k) =>
+    SNAPSHOT_OBJECT_KEYS.includes(k as (typeof SNAPSHOT_OBJECT_KEYS)[number])
+      || SNAPSHOT_OPTIONAL_KEYS.includes(k as (typeof SNAPSHOT_OPTIONAL_KEYS)[number])));
+  const presentKeys: string[] = [...SNAPSHOT_OBJECT_KEYS, ...SNAPSHOT_OPTIONAL_KEYS.filter((k) => k in definitions)];
   let total = 0;
-  for (const key of SNAPSHOT_OBJECT_KEYS) {
+  for (const key of presentKeys) {
     const entry = object(definitions[key]); keys(entry, ["sha256", "utf8_bytes"]);
     requireSeal(typeof entry.sha256 === "string" && HEX.test(entry.sha256)
       && typeof entry.utf8_bytes === "number" && Number.isSafeInteger(entry.utf8_bytes)
@@ -139,7 +155,7 @@ export async function readSealedSnapshot(rawPointer: string, get: (key: string) 
   const objects = new Map<string, string>();
   // Read/verify the whole bounded set before exposing any member. Keep these
   // exact bytes for this view; do not fetch them again while constructing an answer.
-  for (const key of SNAPSHOT_OBJECT_KEYS) {
+  for (const key of presentKeys) {
     const body = await get(prefix + key); requireSeal(body !== null);
     const entry = definitions[key] as unknown as ObjectDigest;
     requireSeal(bytes(body, MAX_OBJECT).byteLength === entry.utf8_bytes && await sha(body) === entry.sha256);

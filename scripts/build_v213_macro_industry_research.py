@@ -90,11 +90,7 @@ WIDER_CANDIDATE_UNIVERSE = [
             "source_independence": 70,
             "verification_status": "QUALITATIVE_ONLY_GROWTH_UNAVAILABLE"
         }
-    }
-]
-
-SYNTHETIC_FIVE_QUALIFIED = [
-    WIDER_CANDIDATE_UNIVERSE[0],
+    },
     {
         "industry_id": "optical_networking",
         "industry_name": "高速光通訊與 CPO (Optical Networking & CPO)",
@@ -255,6 +251,14 @@ SYNTHETIC_FIVE_QUALIFIED = [
             "verification_status": "SYNTHETIC_CONTRACT_FIXTURE"
         }
     }
+]
+
+SYNTHETIC_FIVE_QUALIFIED = [
+    WIDER_CANDIDATE_UNIVERSE[0],
+    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "optical_networking"),
+    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "grid_power_infrastructure"),
+    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "thermal_cooling_systems"),
+    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "semiconductor_equipment_materials"),
 ]
 
 

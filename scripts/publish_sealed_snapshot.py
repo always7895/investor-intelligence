@@ -9,7 +9,7 @@ Builds, from OFFLINE assets only (no provider calls):
   4. the schema-v2 sealed pointer.
 
 Artifacts (pointer is committed LAST, in its own commit):
-  state/v213-snapshots/<run_id>/objects.json   (14 store keys: 13 bodies + seal)
+  state/v213-snapshots/<run_id>/objects.json   (15 store keys: 14 bodies + seal)
   state/v213-snapshots/<run_id>/pointer.raw.json   (exact pointer text)
 
 Deterministic for a fixed evaluation clock; fails closed on any engine or
@@ -28,6 +28,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import bottleneck_ranking as engine  # noqa: E402
 import multilineage_claim_bundle as mlb  # noqa: E402
+import build_v213_macro_industry_research as macro_builder  # noqa: E402
+
+MACRO_KEY = "v213:macro-industry:latest"
 
 EVALUATED_AT = "2026-09-15T12:00:00Z"
 RETRIEVED_AT = "2026-09-15T11:00:00Z"
@@ -295,13 +298,19 @@ def build_bodies() -> "tuple[dict[str, str], dict]":
         "claimed_at": CLAIMED_AT,
     }
     bodies["v213:bottleneck-report:latest"] = bottleneck_json
+    # Macro TOP5 artifact: built from the evidenced candidate pool. The pipeline
+    # stays fail-closed on builder drift; a SHORTFALL_NOT_QUALIFIED document is
+    # published honestly (the reader gate still refuses to rank under 5).
+    macro_doc = macro_builder.build_macro_overview_output(
+        *macro_builder.evaluate_candidates(macro_builder.WIDER_CANDIDATE_UNIVERSE))
+    bodies[MACRO_KEY] = _dumps(macro_doc)
     bodies["v213:activation-claim"] = _dumps(claim)
     return bodies, {"report": report, "top20": top20, "run_id": run_id, "transaction_id": transaction_id}
 
 
 def build_seal(bodies: "dict[str, str]", meta: "dict") -> "tuple[str, str]":
     digest_rows = {key: {"sha256": _sha(bodies[key]), "utf8_bytes": len(bodies[key].encode("utf-8"))}
-                   for key in OBJECT_KEYS}
+                   for key in [*OBJECT_KEYS, MACRO_KEY]}
     manifest = {
         "schema_version": 1,
         "contract_id": CONTRACT_ID,
@@ -358,7 +367,7 @@ def main(argv=None) -> None:
     out_dir = ROOT / "state" / "v213-snapshots" / meta["run_id"]
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"snapshot:{meta['run_id']}:"
-    objects = {prefix + key: bodies[key] for key in OBJECT_KEYS}
+    objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
     objects_path = out_dir / "objects.json"
     objects_path.write_bytes(_dumps(objects).encode("utf-8"))
