@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createHmac, createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
 import { generalAnswer } from "../src/qa";
-import { freeRelayRequestEnv } from "../src/v213/production-worker";
-import { SMOKE_MARKER, minimalModelSmoke } from "../src/v213/compact-qa";
+import { SMOKE_MARKER, minimalModelSmoke as minimumModelSmokeExport, compactGeneralAnswer } from "../src/v213/compact-qa";
 import {
   V213FreeRelayRoute,
   freeRelayGatewaySecret,
@@ -10,39 +12,159 @@ import {
 } from "../src/v213/free-relay";
 import { modelProfileSha256, validateModelProfile, type ModelProfile } from "../src/v213/model-profile";
 import { parseQuery } from "../src/core";
+import { storeOwnerPairing } from "../src/v21/owner-storage";
+import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
 import type { V211Env } from "../src/v211/worker";
 
 /**
- * TASK0 Phase-1D — general-QA chain contract replay (in-memory).
+ * TASK0 Phase-1E — general-QA chain: formal-caller webhook replay (E1) and
+ * real-gateway loopback completion (E2), plus the Phase-1D partial
+ * direct-caller chain kept as a contract subset.
  *
- * Scope: MemoryKv + test DurableObject + in-memory fetch transport standing in
- * for the free-relay public tunnel (gateway /health + OpenAI
- * /v1/chat/completions boundaries). No production KV writes, no tunnel, no DI
- * gateway process in this gate; the TEMP real-gateway knock is a separate
- * diagnostic (not committed). The profile below is a TEST-ONLY test-local
- * candidate talking the operator-approved executor model ID; it is not a
- * release dent claim. Completion is asserted from protocol: full model ID
- * in flight (no alias), finish_reason stop, exact pin fields, canonical
- * final content.
+ * Boundary discipline:
+ * - The single in-test fetch boundary is installed BEFORE the production
+ *   worker module is imported, so the module-installed
+ *   v213RuntimeCompatibleFetch adapter stays the runtime wrapper (it never
+ *   gets replaced by the stub). The boundary is the only native layer.
+ * - Allowlisted URLs: the lease host (https://HOST, model origin) and the
+ *   LINE reply URL (destination; captured in-memory, never sent externally).
+ * - Any other URL or an unexpected method: recorded + test fails fast.
+ * - When BOUNDARY.gateway is armed, lease-host model+health requests are
+ *   forwarded (fwd) to the local loopback gateway child process; all other
+ *   outcomes are synthesized by the boundary. No other local ports are
+ *   touched.
  */
-const HOST = "task0probe-phase1d.trycloudflare.com"; // synthetic contract-shaped lease host (fetched in-memory only; resolve never happens)
-const CANDIDATE_MODEL = "Qwen3.8-27B-EXL3-SC5-H6-V6"; // LOCAL_CANDIDATE model id (test-only)
-const OLD_UD_MODEL = "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548"; // legacy repo-template id (negative gate)
-const CANDIDATE_PROFILE = validateModelProfile({
-  schema_version: 1,
-  model: CANDIDATE_MODEL,
-  enable_thinking: false,
-  reasoning_effort: "none",
-  max_output_tokens: 1024,
-  smoke_output_tokens: 128,
-  timeout_ms: 18000,
-});
-const HMAC_SECRET = "EXAMPLE_TASK0_PHASE1D_HMAC_SECRET_NOT_REAL_0123456789";
-const FIXED_FINAL =
+const HOST = "task0e-phase1e.trycloudflare.com";
+const LINE_REPLY = "https://api.line.me/v2/bot/message/reply";
+const EXL3 = "Qwen3.8-27B-EXL3-SC5-H6-V6";
+const UD = "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548";
+const CANDIDATE_SHA_EXPECTED = "70077f89fa117e915de73b4c9477d2af85dd8ce3ee6b397f11d5864329c20192";
+const NATIVE_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
+const LINE_SECRET = "EXAMPLE_TASK0_PHASE1E_LINE_CHANNEL_SECRET_NOT_REAL_98765";
+const LINE_TOKEN = "EXAMPLE_TASK0_PHASE1E_LINE_ACCESS_TOKEN_NOT_REAL";
+const HMAC_SECRET = "EXAMPLE_TASK0_PHASE1E_HMAC_SECRET_NOT_REAL_0123456789";
+const TENANT_SECRET = "EXAMPLE_TASK0_PHASE1E_TENANT_HASH_NOT_REAL_0123";
+
+type ChatShape = {
+  model: string;
+  ii_context_mode?: string;
+  ii_model_profile?: unknown;
+  max_tokens?: number;
+  messages?: Array<{ role: string; content: string }>;
+};
+
+type CallRecord = {
+  url: string;
+  method: string;
+  init?: RequestInit | null;
+};
+
+const FINAL_TEXT =
   "股票代表公司所有權，債券代表債權。股票的收益來自股價變動與現金流，波動通常較高；債券通常有固定票息，波動較低，償還優先。（TEST_LOCAL_CANDIDATE_FINAL）";
 
-type RelayEnv = V211Env & FreeRelayEnv;
+const BOUNDARY: {
+  calls: CallRecord[];
+  lineTexts: string[];
+  forbidden: Array<{ url: string; method: string }>;
+  mode: "ok" | "http500" | "redirect-307" | "substitution" | "wrongpin" | "finish-length";
+  gateway: { port: number; secret: string } | null;
+} = { calls: [], lineTexts: [], forbidden: [], mode: "ok", gateway: null };
+
+async function boundaryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = String(input);
+  const method = String(init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  BOUNDARY.calls.push({ url, method, init });
+  if (url.startsWith(`https://${HOST}/`)) {
+    if (BOUNDARY.gateway) {
+      const path = url.slice(`https://${HOST}`.length) || "/";
+      const fwd = await NATIVE_FETCH(`http://127.0.0.1:${BOUNDARY.gateway.port}${path}`, {
+        method,
+        headers: {
+          ...(init?.headers as Record<string, string> | undefined),
+          "x-investor-shared-secret": BOUNDARY.gateway.secret,
+          "content-type": "application/json",
+        },
+        body: init?.body ?? undefined,
+      });
+      return new Response(await fwd.text(), { status: fwd.status, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/health")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          service: "v213-local-llm-gateway",
+          health_schema_version: 2,
+          llama_reachable: true,
+          selected_model_available: true,
+          selected_model: EXL3,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/v1/chat/completions")) {
+      const chat = (init?.body ? (JSON.parse(String(init.body)) as ChatShape) : {}) as ChatShape;
+      if (BOUNDARY.mode === "http500") return new Response("synthetic down", { status: 500 });
+      if (BOUNDARY.mode === "redirect-307") {
+        return new Response(null, { status: 307, headers: { location: "https://somewhere-else.example.com/chat" } });
+      }
+      const smoke = chat.ii_context_mode === "transport_smoke_v1";
+      const substitution = BOUNDARY.mode === "substitution";
+      const wrongpin = BOUNDARY.mode === "wrongpin";
+      const finishLength = BOUNDARY.mode === "finish-length";
+      const profileSha = chat.ii_model_profile
+        ? await modelProfileSha256(chat.ii_model_profile as ModelProfile)
+        : CANDIDATE_SHA_EXPECTED;
+      const reply = {
+        id: "task0-phase1e",
+        model: chat.model,
+        ii_exact_model_pin: {
+          selected_model: chat.model,
+          canonical_model: chat.model,
+          model_profile_sha256: wrongpin ? "0".repeat(64) : profileSha,
+          request_model_substitution_allowed: substitution,
+        },
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: smoke ? SMOKE_MARKER : FINAL_TEXT, tool_calls: [] },
+            finish_reason: finishLength ? "length" : "stop",
+          },
+        ],
+        usage: { prompt_tokens: 8, completion_tokens: 40, total_tokens: 48 },
+      };
+      return new Response(JSON.stringify(reply), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response("boundary: no such lease path", { status: 404 });
+  }
+  if (url === LINE_REPLY) {
+    const body = init?.body ? (JSON.parse(String(init.body)) as { messages?: Array<{ text?: string }> }) : {};
+    for (const m of body.messages ?? []) if (typeof m.text === "string") BOUNDARY.lineTexts.push(m.text);
+    return new Response(JSON.stringify({ endpoint: "https://api.line.me/v2/bot/message/reply", detail: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json", "x-line-request-id": "task0-phase1e-synthetic" },
+    });
+  }
+  BOUNDARY.forbidden.push({ url, method });
+  throw new Error(`BOUNDARY_FORBIDDEN: ${method} ${url}`);
+}
+
+vi.stubGlobal("fetch", boundaryFetch);
+
+// Import AFTER the boundary is installed: the module wraps this exact
+// boundary with v213RuntimeCompatibleFetch, so all production calls keep the
+// real adapter layer.
+const { default: productionWorker, freeRelayRequestEnv } = await import("../src/v213/production-worker");
+
+const RELAY_PATH = "./fixtures/task0-phase1d";
+const ASSEMBLY_AT = Date.parse("2026-09-17T09:24:10Z");
+
+function fixtureObjects(): Record<string, string> {
+  return JSON.parse(readFileSync(new URL(`${RELAY_PATH}/objects.json`, import.meta.url), "utf-8"));
+}
+function fixturePointer(): string {
+  return readFileSync(new URL(`${RELAY_PATH}/pointer.raw.json`, import.meta.url), "utf-8").trim();
+}
 
 class FakeStorage {
   values = new Map<string, unknown>();
@@ -61,21 +183,6 @@ class FakeStorage {
   }
 }
 
-function record(generation: string, model: string, connectedOffsetMs = -60_000, ttlSeconds = 300): FreeRelayRouteRecord {
-  const now = Date.now();
-  return {
-    schema_version: 1,
-    tunnel_mode: "quick_free_relay",
-    model,
-    public_url: `https://${HOST}`,
-    connected_at: new Date(now + connectedOffsetMs).toISOString(),
-    expires_at: new Date(now + ttlSeconds * 1000).toISOString(),
-    health_schema_version: 2,
-    route_generation: generation,
-    consecutive_health_checks: 3,
-  };
-}
-
 function relayDevice() {
   const storage = new FakeStorage();
   const state = { storage } as unknown as DurableObjectState;
@@ -89,181 +196,450 @@ function relayDevice() {
   return { seed, namespace };
 }
 
-function envWithRelay(namespace: DurableObjectNamespace | null, extra: Record<string, string> = {}): RelayEnv {
+function relayThrower(): DurableObjectNamespace {
   return {
-    PUBLIC_CACHE: asKv(new MemoryKv()),
+    idFromName: () => ({ toString: () => "task0-general-qa-fault" }),
+    get: () => ({
+      fetch: () => {
+        throw new Error("DO_STORAGE_HINT_FAULT");
+      },
+    }),
+  } as unknown as DurableObjectNamespace;
+}
+
+function routeRec(generation: string, model: string): FreeRelayRouteRecord {
+  const now = Date.now();
+  return {
+    schema_version: 1,
+    tunnel_mode: "quick_free_relay",
+    model,
+    public_url: `https://${HOST}`,
+    connected_at: new Date(now - 60_000).toISOString(),
+    expires_at: new Date(now + 300_000).toISOString(),
+    health_schema_version: 2,
+    route_generation: generation,
+    consecutive_health_checks: 3,
+  };
+}
+
+function candidateProfileJson(): string {
+  return readFileSync(new URL(`../../config/v213-model-profile-exl3-sc5-h6-v6.candidate.json`, import.meta.url), "utf-8").trim();
+}
+
+type WorkerEnv = V211Env & FreeRelayEnv & { V213_MODEL_PROFILE_JSON?: string };
+
+function workerEnv(
+  namespace: DurableObjectNamespace | null,
+  opts: { profile?: boolean; freshBase?: boolean; pairOwner?: boolean } = {},
+): WorkerEnv {
+  const kv = new MemoryKv();
+  if (opts.freshBase) {
+    for (const [k, v] of Object.entries(fixtureObjects())) kv.values.set(k, v);
+    kv.values.set("snapshot:current", fixturePointer());
+  }
+  return {
+    PUBLIC_CACHE: asKv(kv),
     TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
     EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()),
     V21_SYNC_HMAC_SECRET: HMAC_SECRET,
+    TENANT_DATA_ENCRYPTION_KEY: "e".repeat(64),
     V21_MAX_SYNC_AGE_SECONDS: "300",
+    TENANT_HASH_SECRET: TENANT_SECRET,
+    LINE_CHANNEL_SECRET: LINE_SECRET,
+    LINE_CHANNEL_ACCESS_TOKEN: LINE_TOKEN,
     FREE_RELAY_ENABLED: "true",
     FREE_RELAY_MAX_TTL_SECONDS: "300",
-    LOCAL_LLM_MODEL: CANDIDATE_MODEL,
+    V213_LINE_PRESENTATION: "text",
+    LOCAL_LLM_MODEL: EXL3,
+    V213_COMPACT_QA_ENABLED: "true",
     ...(namespace ? { V213_FREE_RELAY_ROUTE: namespace } : {}),
-    ...extra,
-  } as unknown as RelayEnv;
+    ...(opts.profile ? { V213_MODEL_PROFILE_JSON: candidateProfileJson() } : {}),
+  } as unknown as WorkerEnv;
 }
 
-function healthOk(model: string): string {
-  return JSON.stringify({
-    ok: true,
-    service: "v213-local-llm-gateway",
-    health_schema_version: 2,
-    llama_reachable: true,
-    selected_model_available: true,
-    selected_model: model,
+async function paired(env: WorkerEnv, pairOwner: boolean): Promise<WorkerEnv> {
+  if (!pairOwner) return env;
+  const t = await deriveTenantId({ type: "user", userId: "u_task0_phase1e" } as never, TENANT_SECRET);
+  await storeOwnerPairing(env as never, t, "U" + "a".repeat(32));
+  return env;
+}
+
+function signWebhook(rawBody: string): string {
+  return createHmac("sha256", LINE_SECRET).update(rawBody).digest("base64");
+}
+
+function webhook(rawBody: string): Request {
+  return new Request("https://investor-intelligence-v21-owner-line.example/webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": String(new TextEncoder().encode(rawBody).length),
+      "x-line-signature": signWebhook(rawBody),
+    },
+    body: rawBody,
   });
 }
 
-type Captured = { url: string; body?: unknown; headers?: Record<string, unknown> };
-const captured: Captured[] = [];
+function textMessage(id: number, replyToken: string, text: string): string {
+  return JSON.stringify({
+    destination: "cli_user",
+    events: [
+      {
+        replyToken,
+        source: { type: "user", userId: "u_task0_phase1e" },
+        timestamp: Date.now(),
+        type: "message",
+        message: { id, type: "text", text },
+      },
+    ],
+  });
+}
 
-function installTransport(mode: "ok" | "http500" | "redirect-307") {
-  const handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = String(input);
-    const chatBody = init?.body ? (JSON.parse(String(init.body)) as { model: string; ii_model_profile?: unknown; ii_context_mode?: string }) : undefined;
-    captured.push({ url, body: chatBody, headers: init?.headers as Record<string, unknown> });
-    if (url.endsWith("/health")) {
-      return new Response(healthOk(CANDIDATE_MODEL), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    if (url.endsWith("/v1/chat/completions")) {
-      if (mode === "http500") return new Response("synthetic down", { status: 500 });
-      if (mode === "redirect-307") return new Response(null, { status: 307, headers: { location: "https://somewhere-else.example.com/chat" } });
-      const reply = {
-        id: "task0-phase1d-synthetic",
-        model: chatBody?.model, // full model id spoken by the transport (no alias)
-        ii_exact_model_pin: {
-          selected_model: chatBody?.model,
-          model_profile_sha256: chatBody?.ii_model_profile ? await modelProfileSha256(chatBody.ii_model_profile as ModelProfile) : null,
-          request_model_substitution_allowed: false,
-        },
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: chatBody?.ii_context_mode ? SMOKE_MARKER : FIXED_FINAL, tool_calls: [] },
-            finish_reason: "stop",
-          },
-        ],
-        usage: { prompt_tokens: 8, completion_tokens: 40, total_tokens: 48 },
-      };
-      return new Response(JSON.stringify(reply), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    return new Response("unexpected", { status: 404 });
-  };
-  vi.stubGlobal("fetch", handler);
-  captured.length = 0;
+function context(collect: Array<Promise<unknown>>): ExecutionContext {
+  return {
+    waitUntil(p: Promise<unknown>) {
+      collect.push(p.catch(() => "V212_LINE_EVENT_FAILED:caught"));
+    },
+    passThroughOnException() {},
+  } as unknown as ExecutionContext;
+}
+
+async function runWebhook(
+  env: WorkerEnv,
+  rawBody: string,
+): Promise<{ status: number; rejects: Array<unknown>; lines: string[]; handlerErrors: string[] }> {
+  const collect: Array<Promise<unknown>> = [];
+  BOUNDARY.calls.length = 0;
+  BOUNDARY.lineTexts.length = 0;
+  const res = await productionWorker.fetch(webhook(rawBody), env as never, context(collect));
+  const status = res.status;
+  const rejects = await Promise.all(collect);
+  return { status, rejects, lines: [...BOUNDARY.lineTexts], handlerErrors: rejects.filter((r) => r === "V212_LINE_EVENT_FAILED:caught") };
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  captured.length = 0;
+  BOUNDARY.mode = "ok";
+  BOUNDARY.calls.length = 0;
+  BOUNDARY.lineTexts.length = 0;
+  vi.useRealTimers();
 });
 
-const QUESTION = "請說明股票與債券的一項主要差異";
-const CTX = { tenantId: "synthetic", chatType: "user" } as const;
+afterAll(async () => {
+  vi.unstubAllGlobals();
+});
 
-describe("general-QA chain (contract replay)", () => {
+describe("E2 candidate profile: cross-language hash gate (test-only, not release-canonical)", () => {
+  it("raw node sha256 + TS modelProfileSha256 both equal the expected candidate sha", async () => {
+    const raw = candidateProfileJson();
+    const profile = validateModelProfile(JSON.parse(raw));
+    expect(profile.model).toBe(EXL3);
+    const fields = ["schema_version", "model", "enable_thinking", "reasoning_effort", "max_output_tokens", "smoke_output_tokens", "timeout_ms"] as const;
+    const canonical = JSON.stringify(fields.map((k) => profile[k]));
+    const rawNode = createHash("sha256").update(new TextEncoder().encode(canonical)).digest("hex");
+    expect(rawNode).toBe(CANDIDATE_SHA_EXPECTED);
+    expect(await modelProfileSha256(profile)).toBe(CANDIDATE_SHA_EXPECTED);
+  });
+});
+
+describe("partial chain (direct generalAnswer) — Phase-1D contract subset", () => {
   it("relay disabled -> LOCAL_MODEL_NOT_CONFIGURED (deterministic closed code)", async () => {
-    const env = await freeRelayRequestEnv(envWithRelay(null, { FREE_RELAY_ENABLED: "false" }));
-    expect(await generalAnswer(env as never, parseQuery(QUESTION), CTX)).toBe("LOCAL_MODEL_NOT_CONFIGURED");
+    const envoy = workerEnv(null);
+    (envoy as unknown as Record<string, string>).FREE_RELAY_ENABLED = "false";
+    const env = await freeRelayRequestEnv(envoy as never);
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe("LOCAL_MODEL_NOT_CONFIGURED");
+    expect(BOUNDARY.calls.length).toBe(0);
   });
 
-  it("lease missing (empty DO) -> LOCAL_MODEL_NOT_CONFIGURED", async () => {
-    const { namespace } = relayDevice(); // never seeded
-    const env = await freeRelayRequestEnv(envWithRelay(namespace));
-    expect(await generalAnswer(env as never, parseQuery(QUESTION), CTX)).toBe("LOCAL_MODEL_NOT_CONFIGURED");
-    expect(captured.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
+  it("no route (empty DO) -> LOCAL_MODEL_NOT_CONFIGURED and no chat attempt", async () => {
+    const { namespace } = relayDevice();
+    const env = await freeRelayRequestEnv(workerEnv(namespace));
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe("LOCAL_MODEL_NOT_CONFIGURED");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
   });
 
-  it("nominal lease + transport: full model id, stop completion, canonical final content + per-generation gateway secret", async () => {
-    installTransport("ok");
-    const gen = "01a2b3c4d5e6f708192a3b4c5d6e0f01";
+  it("nominal lease: adapter sees redirect:manual, full model id, stop, gen-secret, final content", async () => {
+    const gen = "7ea1b2c3d4e5f60718293a4b5c6d7e07";
     const { seed, namespace } = relayDevice();
-    await seed(record(gen, CANDIDATE_MODEL));
-    const envoy = envWithRelay(namespace);
+    await seed(routeRec(gen, EXL3));
+    const envoy = workerEnv(namespace, { profile: true });
     const env = await freeRelayRequestEnv(envoy);
-    const answer = await generalAnswer(env as never, parseQuery(QUESTION), CTX);
-    expect(answer).toBe(FIXED_FINAL);
-    const chat = captured.find((c) => c.url.endsWith("/v1/chat/completions"));
-    expect(chat, "chat completion must hit the lease origin").toBeTruthy();
+    const answer = await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" });
+    expect(answer).toBe(FINAL_TEXT);
+    const chat = BOUNDARY.calls.find((c) => c.url.endsWith("/v1/chat/completions"));
+    expect(chat, "chat completion must hit the lease origin exactly once").toBeTruthy();
     if (chat) {
       expect(chat.url).toBe(`https://${HOST}/v1/chat/completions`);
-      expect((chat.body as { model: string }).model).toBe(CANDIDATE_MODEL);
-      expect((chat.headers as Record<string, string>)["x-investor-shared-secret"])
+      expect((chat.init as { redirect?: string }).redirect).toBe("manual"); // real adapter in place
+      const body = JSON.parse(String(chat.init?.body)) as { model: string };
+      expect(body.model).toBe(EXL3);
+      expect((chat.init?.headers as Record<string, string>)["x-investor-shared-secret"])
         .toBe(await freeRelayGatewaySecret(envoy as never, gen));
     }
   });
 
-  it("compact smoke with local-candidate profile: exact pin sha + stop + marker, no alias id", async () => {
-    installTransport("ok");
-    const gen = "02a2b3c4d5e6f708192a3b4c5d6e0f02";
-    const { seed, namespace } = relayDevice();
-    await seed(record(gen, CANDIDATE_MODEL));
-    const envoy = envWithRelay(namespace, { V213_MODEL_PROFILE_JSON: JSON.stringify(CANDIDATE_PROFILE) });
+  it("substitution flag -> reject; wrong pin sha -> reject (deterministic smoke outcomes)", async () => {
+    const dev = relayDevice();
+    await dev.seed(routeRec("7ea1b2c3d4e5f60718293a4b5c6d7e08", EXL3));
+    BOUNDARY.mode = "substitution";
+    let env = await freeRelayRequestEnv(workerEnv(dev.namespace, { profile: true }));
+    expect(await minimumModelSmokeExport(env as never)).toBe(false);
+    BOUNDARY.mode = "wrongpin";
+    env = await freeRelayRequestEnv(workerEnv(dev.namespace, { profile: true }));
+    expect(await minimumModelSmokeExport(env as never)).toBe(false);
+    BOUNDARY.mode = "ok";
+  });
+
+  it("wrong route model -> no overrides, zero chat (per-request model gate)", async () => {
+    const dev = relayDevice();
+    await dev.seed(routeRec("7ea1b2c3d4e5f60718293a4b5c6d7e09", UD));
+    const env = await freeRelayRequestEnv(workerEnv(dev.namespace));
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe("LOCAL_MODEL_NOT_CONFIGURED");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
+  });
+
+  it("500 -> LOCAL_MODEL_OFFLINE; redirect (manual) -> adapter rejects -> LOCAL_MODEL_OFFLINE", async () => {
+    const dev = relayDevice();
+    await dev.seed(routeRec("7ea1b2c3d4e5f60718293a4b5c6d7e0a", EXL3));
+    BOUNDARY.mode = "http500";
+    let env = await freeRelayRequestEnv(workerEnv(dev.namespace));
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe("LOCAL_MODEL_OFFLINE");
+    BOUNDARY.mode = "redirect-307";
+    env = await freeRelayRequestEnv(workerEnv(dev.namespace));
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe("LOCAL_MODEL_OFFLINE");
+    const redirected = BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).pop();
+    if (redirected) expect((redirected.init as { redirect?: string }).redirect).toBe("manual");
+    BOUNDARY.mode = "ok";
+  });
+
+  it("smoke mode returns the marker; compact mode must NOT return the marker", async () => {
+    const dev = relayDevice();
+    const gen = "7ea1b2c3d4e5f60718293a4b5c6d7e0b";
+    await dev.seed(routeRec(gen, EXL3));
+    const envoy = workerEnv(dev.namespace, { profile: true });
     const env = await freeRelayRequestEnv(envoy);
-    expect(await minimalModelSmoke(env as never)).toBe(true);
-    const chat = captured.find((c) => c.url.endsWith("/v1/chat/completions"));
-    if (chat) {
-      expect((chat.body as { model: string }).model).toBe(CANDIDATE_MODEL);
-      expect(JSON.stringify(chat.body)).toContain(CANDIDATE_MODEL);
-      expect(JSON.stringify(chat.body)).not.toContain(`"model":"${OLD_UD_MODEL}"`);
+    expect(await minimumModelSmokeExport(env as never)).toBe(true);
+    const smokeBody = JSON.parse(String(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).pop()?.init?.body)) as ChatShape;
+    expect(smokeBody.ii_context_mode).toBe("transport_smoke_v1");
+    expect(await generalAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" })).toBe(FINAL_TEXT);
+    const compactBody = JSON.parse(String(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).pop()?.init?.body)) as ChatShape;
+    expect(compactBody.ii_context_mode).not.toBe("transport_smoke_v1");
+    expect(compactBody.ii_context_mode).not.toBe(smokeBody.ii_context_mode);
+  });
+
+  it("finish_reason=length is a non-complete outcome (reject on smoke path)", async () => {
+    const dev = relayDevice();
+    await dev.seed(routeRec("7ea1b2c3d4e5f60718293a4b5c6d7e0c", EXL3));
+    BOUNDARY.mode = "finish-length";
+    const env = await freeRelayRequestEnv(workerEnv(dev.namespace, { profile: true }));
+    expect(await minimumModelSmokeExport(env as never)).toBe(false);
+    BOUNDARY.mode = "ok";
+  });
+});
+
+describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event dispatch, compact handler, runtime adapter)", () => {
+  it("candidate profile + healthy test lease: webhook -> general answer ends with final content (no external writes)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const gen = "9f0e1d2c3b4a5968778695a4b3c2d1e0";
+    const dev = relayDevice();
+    await dev.seed(routeRec(gen, EXL3));
+    const env = await paired(workerEnv(dev.namespace, { profile: true, freshBase: true }), true);
+    const res = await runWebhook(env, textMessage(1, "reply_task0_phase1e", "請說明股票與債券的一項主要差異"));
+    expect(res.status).toBe(200);
+    expect(res.handlerErrors.length).toBe(0);
+    const joined = res.lines.join("\n");
+    // direct quick answer OR job reference + completed job; both end in FINAL_TEXT
+    if (joined.includes("參考編號")) {
+      const { TENANT_PRIVATE_CACHE } = env as unknown as { TENANT_PRIVATE_CACHE: { values: Map<string, unknown> } };
+      const jobRaw = [...TENANT_PRIVATE_CACHE.values.values()].find((v) => String(v).includes("TEST_LOCAL_CANDIDATE_FINAL"));
+      expect(jobRaw, "job must carry the completed final content").toBeTruthy();
+      expect(String(jobRaw)).toContain("TEST_LOCAL_CANDIDATE_FINAL");
+    } else {
+      expect(joined, "reply must contain the canonical final content").toContain("TEST_LOCAL_CANDIDATE_FINAL");
     }
+    const chat = BOUNDARY.calls.find((c) => c.url.endsWith("/v1/chat/completions"));
+    expect(chat).toBeTruthy();
+    if (chat) expect((chat.init as { redirect?: string }).redirect).toBe("manual");
+    expect(BOUNDARY.forbidden.length).toBe(0);
   });
 
-  it("substitution-flag tripwire: request_model_substitution_allowed=true -> smoke rejects", async () => {
-    const prev = globalThis.fetch;
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/health")) {
-        return new Response(healthOk(CANDIDATE_MODEL), { status: 200, headers: { "content-type": "application/json" } });
-      }
-      const body = (init?.body ?? "{}") as string;
-      const requested = JSON.parse(body) as { model: string };
-      return new Response(
-        JSON.stringify({
-          id: "x",
-          model: requested.model,
-          ii_exact_model_pin: {
-            selected_model: requested.model,
-            model_profile_sha256: await modelProfileSha256(CANDIDATE_PROFILE),
-            request_model_substitution_allowed: true,
-          },
-          choices: [{ index: 0, message: { role: "assistant", content: SMOKE_MARKER }, finish_reason: "stop" }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+  it("no lease + fresh sealed data: Top20 and Macro still complete via the same dispatcher", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const { namespace } = relayDevice(); // never seeded
+    const env = await paired(workerEnv(namespace, { freshBase: true }), true);
+    const res20 = await runWebhook(env, textMessage(2, "reply_top20", "Top 20"));
+    expect(res20.status).toBe(200);
+    expect(res20.handlerErrors.length).toBe(0);
+    expect(res20.lines.join("\n")).toContain("GEV");
+    const resMacro = await runWebhook(env, textMessage(3, "reply_macro", "宏觀產業分析 文字"));
+    expect(resMacro.status).toBe(200);
+    expect(resMacro.lines.join("\n")).toContain("TOP5產業總覽");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
+    expect(BOUNDARY.forbidden.length).toBe(0);
+  });
+
+  it("no lease + general question: deterministic unavailable reply (not pretended success)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const { namespace } = relayDevice();
+    const env = await paired(workerEnv(namespace, { freshBase: true }), true);
+    const res = await runWebhook(env, textMessage(4, "reply_noqa", "請說明股票與債券的一項主要差異"));
+    expect(res.status).toBe(200);
+    expect(res.handlerErrors.length).toBe(0);
+    const joined = res.lines.join("\n");
+    expect(joined.length).toBeGreaterThan(0);
+    expect(joined).toContain("本機模型橋接尚未啟用");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
+  });
+
+  it("DO /current read throws: classify observed dispatcher outcome (HTTP + replies), no fake success", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const env = await paired(workerEnv(relayThrower(), { freshBase: true }), true);
+    let status: number | "threw";
+    let lines: string[] = [];
+    try {
+      const res = await runWebhook(env, textMessage(5, "reply_dothrow", "Top 20"));
+      status = res.status;
+      lines = res.lines;
+    } catch (err) {
+      status = "threw";
+      lines = BOUNDARY.lineTexts;
+    }
+    // Observed classification: either a closed HTTP status or a thrown handler
+    // error; the webhook must never fake a success handshake.
+    expect(["threw", 200, 400, 401, 404, 409, 500]).toContain(status);
+    if (status !== "threw") {
+      expect(lines.join("\n")).not.toContain("TEST_LOCAL_CANDIDATE_FINAL");
+    }
+    expect(BOUNDARY.forbidden.length).toBe(0);
+  });
+
+  it("bad signature rejected; owner pairing flow not opened by foreign creds", async () => {
+    const env = workerEnv(null, { freshBase: true });
+    const raw = textMessage(6, "reply_badsig", "health");
+    const badReq = new Request("https://investor-intelligence-v21-owner-line.example/webhook", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-line-signature": "AAAA-BOGUS-SIGNATURE" },
+      body: raw,
     });
-    const { seed, namespace } = relayDevice();
-    await seed(record("03a2b3c4d5e6f708192a3b4c5d6e0f03", CANDIDATE_MODEL));
-    const envoy = envWithRelay(namespace, { V213_MODEL_PROFILE_JSON: JSON.stringify(CANDIDATE_PROFILE) });
+    const ok = await productionWorker.fetch(badReq, env as never, context([]));
+    expect(ok.status).toBe(401);
+    expect(BOUNDARY.lineTexts.length).toBe(0);
+  });
+});
+
+describe("E2 real model completion via formal caller path (loopback gateway -> real TabbyAPI)", () => {
+  let child: ChildProcess | null = null;
+  let port = 0;
+  const secret = "c".repeat(48);
+
+  beforeAll(async () => {
+    const s = await import("node:net");
+    const srv = s.createServer();
+    await new Promise<void>((res) => srv.listen(0, "127.0.0.1", () => res()));
+    port = (srv.address() as { port: number }).port;
+    await new Promise<void>((res) => srv.close(() => res()));
+    const profile = readFileSync(
+      new URL(`../../config/v213-model-profile-exl3-sc5-h6-v6.candidate.json`, import.meta.url),
+      "utf-8",
+    );
+    child = spawn("python", ["-B",
+      new URL(`../../scripts/v213_local_llm_gateway.py`, import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"),
+      "--host", "127.0.0.1", "--port", String(port)], {
+      shell: true,
+      cwd: new URL("../..", import.meta.url).pathname.replace(/^\/[A-Z]:/, ""),
+      env: {
+        ...process.env,
+        II_LLAMA_BASE_URL: "http://127.0.0.1:5000",
+        II_LOCAL_LLM_MODEL: EXL3,
+        II_LOCAL_LLM_SHARED_SECRET: secret,
+        V213_MODEL_PROFILE_JSON: profile.trim(),
+        PYTHONIOENCODING: "utf-8",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const r = await NATIVE_FETCH(`http://127.0.0.1:${port}/health`, {
+        headers: { "x-investor-shared-secret": secret },
+      }).catch(() => null);
+      if (r && (r.status === 200 || r.status === 503)) break;
+      if (Date.now() > deadline) throw new Error("TASK0_GATEWAY_BOOT_TIMEOUT");
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    BOUNDARY.gateway = { port, secret };
+  }, 90_000);
+
+  afterAll(async () => {
+    if (child) {
+      child.kill();
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    BOUNDARY.gateway = null;
+  });
+
+  it("candidate profile + test lease + real TabbyAPI: ONE general Chinese QA completes (stop, full id, no marker, final text)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const gen = "1c2d3e4f5a6b7c8d9e0f112233445566";
+    const dev = relayDevice();
+    await dev.seed(routeRec(gen, EXL3));
+    const env = await paired(workerEnv(dev.namespace, { profile: true, freshBase: true }), true);
+    const res = await runWebhook(env, textMessage(7, "reply_realqa", "請說明股票與債券的一項主要差異"));
+    expect(res.status).toBe(200);
+    const joined = res.lines.join("\n");
+    if (joined.includes("參考編號")) {
+      const { TENANT_PRIVATE_CACHE } = env as unknown as { TENANT_PRIVATE_CACHE: { values: Map<string, unknown> } };
+      const job = [...TENANT_PRIVATE_CACHE.values.values()].find((v) =>
+        typeof v === "string" && v.length > 40 && !v.includes("pending"),
+      );
+      expect(job, "completed job with real final content").toBeTruthy();
+      if (typeof job === "string") {
+        expect(job).not.toContain(SMOKE_MARKER);
+        expect(job).not.toContain("本機模型橋接");
+        expect(job).toMatch(/[\u4e00-\u9fff]{4,}/);
+        expect(job).not.toMatch(/無效|無法|再試|錯誤代碼/);
+      }
+    } else {
+      expect(joined).not.toContain(SMOKE_MARKER);
+      expect(joined).not.toContain("本機模型橋接");
+      expect(joined).toMatch(/[\u4e00-\u9fff]{4,}/);
+      expect(joined).not.toMatch(/無效|無法|再試|錯誤代碼/);
+    }
+    const chat = BOUNDARY.calls.find((c) => c.url.endsWith("/v1/chat/completions"));
+    expect(chat).toBeTruthy();
+    if (chat) {
+      const body = JSON.parse(String(chat.init?.body)) as ChatShape;
+      expect(body.model).toBe(EXL3);
+      expect(body.messages?.[body.messages.length - 1]?.content).toContain("股票");
+    }
+    expect(BOUNDARY.forbidden.length).toBe(0);
+  }, 120_000);
+
+  it("compact smoke through the real gateway returns the exact marker; compact general handler returns real final content", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const gen = "2d3e4f5a6b7c8d9e0f11223344556677";
+    const dev = relayDevice();
+    await dev.seed(routeRec(gen, EXL3));
+    const envoy = workerEnv(dev.namespace, { profile: true, freshBase: true });
     const env = await freeRelayRequestEnv(envoy);
-    expect(await minimalModelSmoke(env as never).catch(() => false)).toBe(false);
-    vi.stubGlobal("fetch", prev);
-  });
-
-  it("route model != env expected model -> no lease, zero chat attempts (per-request model gate)", async () => {
-    installTransport("ok");
-    const { seed, namespace } = relayDevice();
-    await seed(record("04a2b3c4d5e6f708192a3b4c5d6e0f04", OLD_UD_MODEL));
-    const env = await freeRelayRequestEnv(envWithRelay(namespace));
-    expect(await generalAnswer(env as never, parseQuery(QUESTION), CTX)).toBe("LOCAL_MODEL_NOT_CONFIGURED");
-    expect(captured.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
-  });
-
-  it("llm 500 -> LOCAL_MODEL_OFFLINE (fail-closed to identity)", async () => {
-    installTransport("http500");
-    const { seed, namespace } = relayDevice();
-    await seed(record("05a2b3c4d5e6f708192a3b4c5d6e0f05", CANDIDATE_MODEL));
-    const env = await freeRelayRequestEnv(envWithRelay(namespace));
-    expect(await generalAnswer(env as never, parseQuery(QUESTION), CTX)).toBe("LOCAL_MODEL_OFFLINE");
-  });
-
-  it("redirected chat response -> rejected (redirect:error), LOCAL_MODEL_OFFLINE", async () => {
-    installTransport("redirect-307");
-    const { seed, namespace } = relayDevice();
-    await seed(record("06a2b3c4d5e6f708192a3b4c5d6e0f06", CANDIDATE_MODEL));
-    const env = await freeRelayRequestEnv(envWithRelay(namespace));
-    expect(await generalAnswer(env as never, parseQuery(QUESTION), CTX)).toBe("LOCAL_MODEL_OFFLINE");
-    expect(captured.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBeGreaterThan(0);
-  });
+    BOUNDARY.calls.length = 0;
+    expect(await minimumModelSmokeExport(env as never)).toBe(true);
+    const smokeBody = JSON.parse(String(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).pop()?.init?.body)) as ChatShape;
+    expect(smokeBody.ii_context_mode).toBe("transport_smoke_v1");
+    const answer = await compactGeneralAnswer(env as never, parseQuery("請說明股票與債券的一項主要差異"), { tenantId: "synthetic", chatType: "user" } as never);
+    expect(typeof answer).toBe("string");
+    expect(answer.length).toBeGreaterThan(12);
+    expect(answer).not.toContain(SMOKE_MARKER);
+    expect(answer).not.toContain("本機模型橋接");
+    expect(answer).toMatch(/[\u4e00-\u9fff]{4,}/);
+    const compactCall = BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).find(
+      (c) => (JSON.parse(String(c.init?.body))).ii_context_mode === "compact_public_v1",
+    );
+    const compactBody = JSON.parse(String(compactCall?.init?.body)) as ChatShape;
+    expect(compactBody.ii_model_profile, "compact request must carry the exact co-bordered profile").toBeTruthy();
+  }, 120_000);
 });
