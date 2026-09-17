@@ -25,21 +25,20 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - **Durability Hardening:** Hourly scheduled refresh (`InvestorIntelligenceSealedFreshness`) + 30-min read-only watchdog (`InvestorIntelligenceFreshnessWatchdog`) registered with `StartWhenAvailable`, `PT1H` limit, `IgnoreNew` concurrency guard, and mutex lock (`Local\InvestorIntelligence_V213_R75_OPERATION`).
 - **Full Verification Suite:** Vitest 818/0/1, Pytest 1521/0/3, TypeScript clean (0 errors), security_check PASS, canonical_release_candidate_gate_v2 PASS, deploy_production_gate post PASS.
 
-### TASK0 — 1C (2026-09-17T11:37–12:02Z; Pro)
-- P1 FIXED (test utf-8 pin; CP950 repro); pytest 1521/0/3; commit 1e4ad25; op-lock OPEN/NOT_REPRODUCED; 1B retained: display +104 min gap cause UNDETERMINED; :5000 UNKNOWN.
-### TASK0 — 1D (2026-09-17T12:02–12:40Z; Pro)
-- FIXED-RUN corrected (authorized execution; acceptance not claimed): in-memory sealed replay + Date-only deterministic clock; 092410Z byte-identical fixture; 3600/7199/7200 admit, 7201 stale closed-string; seal-tamper rejected; no data/cache writes.
-- P1 FINDINGS (evidence): (A) LIVE @12:13:17Z: profile field ABSENT -> literal toml fallback qwen38-q6 (live values unconfirmed). (B) served model only EXL3-SC5-H6-V6 (two-sided observation). (C) no local observed producer; DO lease unknown. (D) candidate 70077f89… prepared, unmodified. => general-QA P1 pending; not online root-cause claim.
-### TASK0 — 1E (2026-09-17T12:40–13:05Z; Pro abc OK)
-- 16/16 chain: boundary PRE-import, real adapter (redirect manual); signed synthetic LINE; no-lease closed + 0 chats; Top20 GEV / Macro TOP5; substitution/wrong-pin/length rejected; real path once: real TabbyAPI marker + Chinese final; NEW config exl3 candidate (cross-language py+ts).
+### TASK0 — 1C–1E (2026-09-17; Pro)
+- 1C: P1 utf-8 test fix (commit 1e4ad25; pytest 1521/0/3); op-lock OPEN/NOT_REPRODUCED; 1B display gap cause UNDETERMINED.
+- 1D: P1 two-sided observation (live no profile field -> literal toml qwen38-q6; tabbyAPI serves only EXL3-SC5-H6-V6); 8-case chain GREEN; TEMP real probe = one compact QA via real gateway; canonical profile drift (candidate 70077f89… unmodified).
+- 1E: formal-caller rewrite (16/16; boundary preserves real adapter); no-lease must not warp normal 401 report; commits 734a3b1 + b353298.
 ### TASK0 — 1F (2026-09-17T13:05–14:05Z; Pro)
-- (1) TRUE-RED: DO-throw case = fixed contract; pre-repair = "expected threw to be 200" (1F/13 pass). (2) W2: currentFreeRelayRoute DO-read guard -> WARN + null; Green 14/14.
-- (3) manual split: vitest.task0-live.config.ts (opt-in) + harness (approved python, shell:false, minimal env, full-contract health 503!=ready, exit+listener-down release, strict forward both approved endpoints + fail-fast, 90s abort) + manual (opt-in; marker-exact + 1 Chinese; job via "查看结果 <id>", no KV read). default 0 gateway/0 model: vitest x2 834/0/1, tsc 0. live opt-in run 13:57:32Z: 1/1 (marker + real Chinese, clean release, violations 0).
-- (4) Package: BLOCKED_PACKAGE_SOURCE_UNAVAILABLE — DEPLOYMENT_NOT_FOUND (107B sha256 59678987…; expected 1784534B/270344c6…); internal checks not executed; no isolation acceptance run.
-- W1 noted: nonce = EPHEMERAL_SECURITY_CACHE; rollback = restore pre-existing values (else W1 BLOCKED). 0 remote writes.
-- GATES (1F): 5 safety PASS; vitest 834/0/1 x2; tsc 0; pytest 1C carry (python tree untouched).
-- OPEN: P1 DO-read excursion (local repro), live general-QA fix (auth + W1 pre-state pending), drift (candidate ready); P2 op-lock, schedule gap (1B); package source BLOCK; MANUAL_EXCLUDED unchanged.
-- MUTATIONS: authorized pushes + PR#37 body (one shot); PROD/KV/DO/LINE/registry/service/schedule/flag/image = 0.
+- TRUE-RED then W2: currentFreeRelayRoute DO-read guard -> WARN + null; contract GREEN 14/14. Manual split: opt-in config + hardened harness + formal job-query flow. default suite 0 gateway/0 model.
+- Package source: BOTH approved endpoints 404-dead (107B evidence out-repo) -> no acceptance run. GATES(1F) pass; commits 8d5fb3f + b227d32; PR body one-shot synced (1C-1F, two-sided, no online-health claim). W1 corrections noted (nonce EPHEMERAL only; rollback needs pre-state).
+### TASK0 — 1G (2026-09-17T14:10–14:45Z; Pro)
+- W2 ACCEPTED; harness fixed per gap list: drain = real-time race (fail-not-hang, Date-only fake proven), late work included, rejects preserved non-fulfillment; job = strict ID + formal query (no KV); final gate rejects both-script closed words / placeholder / process / thin; finish_reason + returned-model asserted (not length); caller cancel preserved; default excludes *.manual.ts (negative test, 2-direction); no opt-in = explicit FAIL.
+- NEW cloud/test/task0-general-qa-harness.test.ts (11 tests, offline). Offline x2 = 845/0/1; tsc 0; 5 gates PASS.
+- Live integration (1 run, real TabbyAPI): 1/1 PASS, 0 violations, release <= 10s, 4 model HTTP (smoke, QA, 504-stall inject, recovery); stall = explicit refusal then recovered; wall ~10s.
+- PACKAGE (pre-authorized single hop-by-hop GET; github origin verified): release asset Investor-Intelligence-v2.1.3-R75-final.zip size = 1784534 (approved) BUT sha256 = 270344c6a32e… vs approved 270344c62497… (first 8 hex only) AND byte0 = 0x80 (not PK0304) => BLOCKED_PACKAGE_SHA_MISMATCH_AND_BAD_MAGIC; no secondary-cert guess; acceptance NOT executed. CP950-repack suspicion (1C-class artifacts). Evidence (ZIP/headers/107B) staged .tmp/task0-1g-zip (out-repo).
+- PREFLIGHT (no writes): W2 live = operator deploys branch 8d5fb3f (rollback = prior worker version). W1 = worker var V213_MODEL_PROFILE_JSON (candidate 70077f89…) + lease herald-UNKNOWN AFTER pre-state var readout; rollback = restore pre-state (W1 still pre-state-UNKNOWN). 0 PROD/KV/DO/LINE/registry/schedule/flag/image.
+- MUTATIONS (1G): code commit 4337e67 + STATUS commit (this) on approved branch; PR#37 body synced once; 0 PROD/KV/DO/LINE/registry/schedule/flag/image.
 
 ### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
 ### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
