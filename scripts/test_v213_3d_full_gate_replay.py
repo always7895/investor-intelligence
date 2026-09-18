@@ -206,7 +206,7 @@ def main() -> int:
             print(f"NETWORK_ISOLATION = REPLAY_INPUT_MISS (replay_misses={len(guard.replay_misses)}; market data not in recorded cache; transport denied, no external connection)")
         else:
             print(f"NETWORK_ISOLATION = REPLAY_COMPLETE (all requests replayed from recorded cache; 0 external connections)")
-        print(f"UNDERLYING_NETWORK_IO = {guard.underlying_io} (actual succeeded connections; 0 expected)")
+        print(f"RAW_RESOLVER_CALLS = {guard.raw_resolver_calls}; RAW_CONNECTOR_CALLS = {guard.raw_connector_calls}; RAW_SPAWN_CALLS = {guard.raw_spawn_calls} (measured; 0 expected)")
         print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}; DENIED_ATTEMPTS = {len(guard.denied_attempts)}")
         outer_verdict = guard.verdict()
         print(f"OUTER_REPLAY_VERDICT = {outer_verdict} (replay completeness is separate from the gate policy result)")

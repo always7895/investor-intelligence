@@ -1,223 +1,196 @@
 #!/usr/bin/env python3
-"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: replay/deny transport guard + 4 controls.
+"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: replay/deny guard controls (R1-R4 fixed).
 
-Per Pro 3D step B ruling: install a transport interceptor BEFORE loading the
-application. The interceptor covers the actual HTTP transport (urllib.request
-urlopen + socket.create_connection) and:
-  - recorded HIT: registered request gets a byte-identical recorded response
-    (full SHA-256 matches; zero underlying external connections)
-  - recorded MISS: unregistered request produces a fixed REPLAY_INPUT_MISS
-    (no DNS/connect/HTTP fallback; outer state blocked)
-  - unregistered transport / early call: rejected before actual I/O
-  - inner swallowed exception: the application catches the miss and returns
-    "success", but the outer replay ledger still judges BLOCKED
+Per Pro 3D step B ruling (R1-R4 fixes):
+- R1: import the ACTUAL helper (ii_v213_replay_guard.py), NOT a duplicate
+  implementation. Each control uses an INDEPENDENT guard/clean ledger. Verify
+  the helper file path + full SHA-256.
+- R2: verdict() returns explicit mutually-exclusive results (in the helper).
+- R3: supports string URL + standard Request. Add a positive control: actual
+  core.fetch_text() -> real helper -> synthetic recorded response.
+- R4: patches DNS (socket.getaddrinfo), direct socket (socket.socket.connect/
+  connect_ex), and subprocess (subprocess.Popen). Reports measured
+  RAW_RESOLVER_CALLS / RAW_CONNECTOR_CALLS / RAW_SPAWN_CALLS.
 
-The guard is installed in a fresh, isolated test process BEFORE any application
-module loads. If guard init fails, the process terminates (no application).
-
-The 4 control groups use explicitly-marked SYNTHETIC HTTP responses (to verify
-the replay/deny mechanism only); they are NOT added to the real audit's recorded
-inputs and do NOT fill company/market evidence.
+The 4 controls (hit/miss/unregistered_transport/swallowed_miss) + the R3
+fetch_text positive control, each with an independent guard.
 
 Read-only source; 0 network; 0 credentials; 0 formal KV/DO; 0 schedules; 0 LINE.
-Exit 0 when all 4 controls pass.
+Exit 0 when all controls pass.
 """
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
-import socket
 import sys
-import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 TMP = SCRIPT_DIR.parent / ".tmp"
+HELPER_PATH = SCRIPT_DIR / "ii_v213_replay_guard.py"
+GATE_PATH = SCRIPT_DIR / "v213_source_independence_gate.py"
 
 
-class ReplayMiss(Exception):
-    """Fixed REPLAY_INPUT_MISS: the request is not in the replay registry."""
+def _sha256_full(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-class TransportGuard:
-    """Replay/deny transport guard. Installed BEFORE the application loads."""
-
-    def __init__(self) -> None:
-        self.registry: dict[str, dict[str, Any]] = {}  # url -> {status, body, sha256, metadata}
-        self.replay_hits: list[str] = []
-        self.replay_misses: list[str] = []
-        self.denied_attempts: list[str] = []
-        self.underlying_io: int = 0  # count of actual socket connections made
-        self._orig_urlopen = urllib.request.urlopen
-        self._orig_create_connection = socket.create_connection
-        self._installed = False
-
-    def register(self, url: str, status: int, body: bytes, metadata: dict[str, Any] | None = None) -> None:
-        self.registry[url] = {
-            "status": status,
-            "body": body,
-            "sha256": hashlib.sha256(body).hexdigest(),
-            "metadata": metadata or {},
-        }
-
-    def install(self) -> None:
-        """Patch the actual HTTP transport namespaces. Call BEFORE the app loads."""
-        if self._installed:
-            return
-        # Patch urllib.request.urlopen (the main HTTP transport).
-        guard = self
-
-        def guarded_urlopen(url, *args, **kwargs):
-            key = str(url)
-            if key in guard.registry:
-                entry = guard.registry[key]
-                guard.replay_hits.append(key)
-                # Return a byte-identical recorded response (no external connection).
-                resp = _FakeResponse(entry["status"], entry["body"])
-                return resp
-            else:
-                guard.replay_misses.append(key)
-                raise ReplayMiss(f"REPLAY_INPUT_MISS: {key} is not in the replay registry")
-
-        # Patch socket.create_connection (deny path for DNS/connect).
-        # underlying_io tracks ACTUAL network I/O (succeeded connections); since the
-        # guard denies all connections, underlying_io stays 0. denied_attempts tracks
-        # the denied attempts.
-        def guarded_create_connection(address, *args, **kwargs):
-            guard.denied_attempts.append(f"socket.create_connection({address})")
-            raise ReplayMiss(f"REPLAY_INPUT_MISS: socket connection denied at {address}")
-
-        urllib.request.urlopen = guarded_urlopen
-        socket.create_connection = guarded_create_connection
-        self._installed = True
-
-    def uninstall(self) -> None:
-        if not self._installed:
-            return
-        urllib.request.urlopen = self._orig_urlopen
-        socket.create_connection = self._orig_create_connection
-        self._installed = False
-
-    def verdict(self) -> str:
-        """Outer replay ledger verdict: blocked if any miss (even if inner swallowed)."""
-        if self.replay_misses:
-            return "BLOCKED_REPLAY_INPUT_MISS"
-        return "REPLAY_COMPLETE"
+def _load_helper():
+    """R1: import the ACTUAL helper (NOT a duplicate)."""
+    spec = importlib.util.spec_from_file_location("ii_v213_replay_guard_actual", HELPER_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load helper {HELPER_PATH}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
-class _FakeResponse:
-    """A minimal response object for a recorded replay hit (no external connection)."""
-
-    def __init__(self, status: int, body: bytes) -> None:
-        self.status = status
-        self._body = body
-
-    def read(self) -> bytes:
-        return self._body
-
-    def getcode(self) -> int:
-        return self.status
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-
-def _make_guard() -> TransportGuard:
-    """Guard init: if it fails, terminate (no application)."""
-    try:
-        g = TransportGuard()
-        g.install()
-        return g
-    except Exception as exc:
-        print(f"GUARD_INIT_FAILED = {type(exc).__name__}: {exc} (terminating, no application)")
-        raise SystemExit(1)
+def _load_fetch_text():
+    """R3: load the actual core.fetch_text() from the gate module."""
+    spec = importlib.util.spec_from_file_location("ii_v213_gate_fetch_text", GATE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load gate {GATE_PATH}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod.fetch_text
 
 
 def main() -> int:
-    print("=== TASK0-3D STEP B: REPLAY/DENY TRANSPORT GUARD + 4 CONTROLS ===")
-    guard = _make_guard()
-    print(f"GUARD_INSTALLED_BEFORE_APPLICATION_IMPORT = True (fresh isolated process)")
+    print("=== TASK0-3D STEP B: REPLAY/DENY GUARD CONTROLS (R1-R4 fixed) ===")
+    helper = _load_helper()
+    helper_sha = _sha256_full(HELPER_PATH)
+    print(f"REAL_HELPER_IMPORTED = {HELPER_PATH} (SHA256={helper_sha})")
+    TransportGuard = helper.TransportGuard
+    ReplayMiss = helper.ReplayMiss
 
-    # --- Control 1: recorded HIT ---
-    hit_url = "https://recorded.example.com/data.json"
-    hit_body = b'{"ticker":"TEST","price":1.0}'
-    guard.register(hit_url, 200, hit_body, {"source": "recorded"})
-    hit_ok = False
-    hit_sha_ok = False
-    try:
-        resp = urllib.request.urlopen(hit_url)
-        body = resp.read()
-        hit_ok = (body == hit_body)
-        hit_sha_ok = (hashlib.sha256(body).hexdigest() == guard.registry[hit_url]["sha256"])
-    except Exception as exc:
-        print(f"CONTROL_HIT_FAILED = {type(exc).__name__}: {exc}")
-    hit_io = guard.underlying_io
-    print(f"CONTROL_HIT = {'PASS' if hit_ok and hit_sha_ok else 'FAIL'} (byte-identical={hit_ok}, sha256={hit_sha_ok}, underlying_io={hit_io})")
+    all_pass = True
 
-    # --- Control 2: recorded MISS ---
-    miss_url = "https://unregistered.example.com/missing.json"
-    miss_raised = False
-    miss_io_before = guard.underlying_io
-    try:
-        urllib.request.urlopen(miss_url)
-    except ReplayMiss:
-        miss_raised = True
-    except Exception as exc:
-        print(f"CONTROL_MISS_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-    miss_io_after = guard.underlying_io
-    miss_no_fallback = (miss_io_after == miss_io_before)  # no socket connection made
-    print(f"CONTROL_MISS = {'PASS' if miss_raised and miss_no_fallback else 'FAIL'} (ReplayMiss={miss_raised}, no_dns/connect/HTTP_fallback={miss_no_fallback})")
-
-    # --- Control 3: unregistered transport / early call (socket.create_connection) ---
-    denied_raised = False
-    try:
-        socket.create_connection(("unregistered.example.com", 443))
-    except ReplayMiss:
-        denied_raised = True
-    except Exception as exc:
-        print(f"CONTROL_UNREGISTERED_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-    print(f"CONTROL_UNREGISTERED_TRANSPORT = {'PASS' if denied_raised else 'FAIL'} (socket.create_connection denied before I/O={denied_raised})")
-
-    # --- Control 4: inner swallowed exception (app catches miss, returns "success") ---
-    swallowed_url = "https://swallowed.example.com/missing.json"
-    inner_success = False
-    try:
+    # --- Control 1: recorded HIT (independent guard) ---
+    with TransportGuard() as g:
+        hit_url = "https://recorded.example.com/data.json"
+        hit_body = b'{"ticker":"TEST","price":1.0}'
+        g.register(hit_url, 200, hit_body, {"source": "recorded"})
+        hit_ok = hit_sha_ok = False
         try:
-            urllib.request.urlopen(swallowed_url)
+            import urllib.request
+            resp = urllib.request.urlopen(hit_url)
+            body = resp.read()
+            hit_ok = (body == hit_body)
+            hit_sha_ok = (hashlib.sha256(body).hexdigest() == g.registry[helper._request_key(hit_url)]["sha256"])
+        except Exception as exc:
+            print(f"CONTROL_HIT_FAILED = {type(exc).__name__}: {exc}")
+        hit_pass = hit_ok and hit_sha_ok and g.raw_connector_calls == 0 and g.raw_resolver_calls == 0
+        all_pass = all_pass and hit_pass
+        print(f"CONTROL_HIT = {'PASS' if hit_pass else 'FAIL'} (byte-identical={hit_ok}, sha256={hit_sha_ok}, raw_connector={g.raw_connector_calls}, raw_resolver={g.raw_resolver_calls})")
+
+    # --- Control 2: recorded MISS (independent guard, clean ledger) ---
+    with TransportGuard() as g:
+        miss_url = "https://unregistered.example.com/missing.json"
+        miss_raised = False
+        try:
+            import urllib.request
+            urllib.request.urlopen(miss_url)
         except ReplayMiss:
-            # The application catches the miss and degrades to "success".
-            inner_success = True  # inner layer says "success"
-    except Exception:
-        pass
-    outer_verdict = guard.verdict()
-    swallowed_blocked = (outer_verdict == "BLOCKED_REPLAY_INPUT_MISS")
-    print(f"CONTROL_SWALLOWED_MISS = {'PASS' if inner_success and swallowed_blocked else 'FAIL'} (inner_returned_success={inner_success}, outer_verdict={outer_verdict})")
+            miss_raised = True
+        except Exception as exc:
+            print(f"CONTROL_MISS_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        miss_fresh = (len(g.replay_misses) == 1)  # this case's miss count is correct
+        miss_no_fallback = (g.raw_connector_calls == 0 and g.raw_resolver_calls == 0 and g.raw_spawn_calls == 0)
+        miss_verdict = g.verdict()
+        miss_pass = miss_raised and miss_fresh and miss_no_fallback and miss_verdict == "BLOCKED_REPLAY_INPUT_MISS"
+        all_pass = all_pass and miss_pass
+        print(f"CONTROL_MISS = {'PASS' if miss_pass else 'FAIL'} (ReplayMiss={miss_raised}, fresh_miss_count={len(g.replay_misses)}, no_fallback={miss_no_fallback}, verdict={miss_verdict})")
+
+    # --- Control 3: unregistered transport (independent guard, blocked even with no replay miss) ---
+    with TransportGuard() as g:
+        import socket
+        denied_raised = False
+        try:
+            socket.create_connection(("unregistered.example.com", 443))
+        except ReplayMiss:
+            denied_raised = True
+        except Exception as exc:
+            print(f"CONTROL_UNREGISTERED_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        # R2 fix: blocked even with no replay miss + only a denied attempt.
+        no_replay_miss = (len(g.replay_misses) == 0)
+        only_denied = (len(g.denied_attempts) == 1)
+        verdict = g.verdict()
+        # Also test DNS + direct socket + subprocess deny entries (R4).
+        dns_raised = conn_raised = spawn_raised = False
+        try:
+            socket.getaddrinfo("unregistered.example.com", 443)
+        except ReplayMiss:
+            dns_raised = True
+        try:
+            import socket as _s
+            sock = _s.socket()
+            sock.connect(("unregistered.example.com", 443))
+        except ReplayMiss:
+            conn_raised = True
+        except Exception as exc:
+            print(f"CONTROL_DIRECT_SOCKET_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        try:
+            import subprocess
+            subprocess.Popen(["curl", "https://unregistered.example.com"])
+        except ReplayMiss:
+            spawn_raised = True
+        r4_all_denied = dns_raised and conn_raised and spawn_raised
+        unreg_pass = denied_raised and no_replay_miss and only_denied and verdict == "BLOCKED_TRANSPORT_DENIED" and r4_all_denied
+        all_pass = all_pass and unreg_pass
+        print(f"CONTROL_UNREGISTERED_TRANSPORT = {'PASS' if unreg_pass else 'FAIL'} (create_connection_denied={denied_raised}, no_replay_miss={no_replay_miss}, only_denied={only_denied}, verdict={verdict}, R4_dns={dns_raised} R4_connect={conn_raised} R4_spawn={spawn_raised})")
+
+    # --- Control 4: swallowed miss (independent guard, this case's inner swallows + returns success) ---
+    with TransportGuard() as g:
+        swallowed_url = "https://swallowed.example.com/missing.json"
+        inner_success = False
+        try:
+            import urllib.request
+            try:
+                urllib.request.urlopen(swallowed_url)
+            except ReplayMiss:
+                inner_success = True  # inner layer catches the miss and returns "success"
+        except Exception:
+            pass
+        fresh_miss = (len(g.replay_misses) == 1)  # this case's miss
+        outer_verdict = g.verdict()
+        swallowed_pass = inner_success and fresh_miss and outer_verdict == "BLOCKED_REPLAY_INPUT_MISS"
+        all_pass = all_pass and swallowed_pass
+        print(f"CONTROL_SWALLOWED_MISS = {'PASS' if swallowed_pass else 'FAIL'} (inner_success={inner_success}, fresh_miss_count={len(g.replay_misses)}, outer_verdict={outer_verdict})")
+
+    # --- R3 positive control: actual core.fetch_text() -> real helper -> synthetic recorded response ---
+    fetch_text = _load_fetch_text()
+    with TransportGuard() as g:
+        ft_url = "https://recorded.example.com/fetch.json"
+        ft_body = b'{"fetch":"ok"}'
+        g.register(ft_url, 200, ft_body, {"source": "recorded"})
+        ft_ok = False
+        ft_bytes = None
+        try:
+            result = fetch_text(ft_url)
+            ft_bytes = result.encode("utf-8")
+            ft_ok = (ft_bytes == ft_body)
+        except Exception as exc:
+            print(f"CONTROL_FETCH_TEXT_FAILED = {type(exc).__name__}: {exc}")
+        ft_hit = (len(g.replay_hits) == 1)
+        ft_no_io = (g.raw_connector_calls == 0 and g.raw_resolver_calls == 0)
+        ft_pass = ft_ok and ft_hit and ft_no_io
+        all_pass = all_pass and ft_pass
+        print(f"CONTROL_FETCH_TEXT (R3) = {'PASS' if ft_pass else 'FAIL'} (byte-identical={ft_ok}, replay_hit={ft_hit}, no_io={ft_no_io})")
 
     # --- Summary ---
-    requests_total = len(guard.replay_hits) + len(guard.replay_misses) + len(guard.denied_attempts)
     control_manifest = {
-        "replay_hits": guard.replay_hits,
-        "replay_misses": guard.replay_misses,
-        "denied_attempts": guard.denied_attempts,
-        "underlying_io": guard.underlying_io,
-        "verdict": guard.verdict(),
+        "helper_path": str(HELPER_PATH),
+        "helper_sha256": helper_sha,
+        "controls": ["hit", "miss", "unregistered_transport", "swallowed_miss", "fetch_text_r3"],
     }
     manifest_bytes = json.dumps(control_manifest, sort_keys=True).encode("utf-8")
     manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-    all_pass = (hit_ok and hit_sha_ok and miss_raised and miss_no_fallback and denied_raised and swallowed_blocked)
-    print(f"\nREQUESTS={requests_total} REPLAY_HITS={len(guard.replay_hits)} REPLAY_MISSES={len(guard.replay_misses)} DENIED_ATTEMPTS={len(guard.denied_attempts)}")
-    print(f"UNDERLYING_NETWORK_IO={guard.underlying_io} (0 expected for the controls)")
-    print(f"OUTER_VERDICT_ON_SWALLOWED_MISS={outer_verdict}")
-    print(f"CONTROL_MANIFEST_SHA256={manifest_sha}")
-    guard.uninstall()
+    print(f"\nCONTROL_MANIFEST_SHA256={manifest_sha}")
     if all_pass:
-        print("V213_3D_STEP_B = PASS (4/4 controls: hit, miss, unregistered_transport, swallowed_miss)")
+        print("V213_3D_STEP_B = PASS (5/5 controls: hit, miss, unregistered_transport, swallowed_miss, fetch_text_r3)")
         print("FULL_MARKET_REPLAY = NOT_RERUN_INPUTS_STILL_MISSING (market recorded data still missing; doesn't affect harness acceptance)")
         print("APPLICATION_SOURCE_UNCHANGED = true; PRODUCTION_TOUCHED = false")
         raise SystemExit(0)
