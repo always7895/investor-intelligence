@@ -255,36 +255,62 @@ def main() -> int:
     print(f"SENTINEL_INDEPENDENT_LOWER_LAYER = {'PASS' if sentinel_lower_pass else 'FAIL'} (ledger_identity={ledger_identity}, sentinel_denied={sentinel_denied}, ledger_zero={ledger_zero}, verdict_not_harness={verdict_not_harness})")
 
     # --- SENTINEL: actual sentinel call -> shared ledger -> HARNESS_ERROR (not manual assignment) ---
+    # Test resolver, connector, and spawn each verified with actual sentinel calls.
     shared_ledger2 = {"resolver": 0, "connector": 0, "spawn": 0}
 
     def sentinel_getaddrinfo2(host, port, *args, **kwargs):
         shared_ledger2["resolver"] += 1
         raise ReplayMiss(f"SENTINEL: raw DNS delegation at {host}")
 
-    # Install the test sentinel FIRST (replacing the real originals).
+    def sentinel_create_connection2(address, *args, **kwargs):
+        shared_ledger2["connector"] += 1
+        raise ReplayMiss(f"SENTINEL: raw connector delegation at {address}")
+
+    def sentinel_popen2(*args, **kwargs):
+        shared_ledger2["spawn"] += 1
+        raise ReplayMiss(f"SENTINEL: raw spawn delegation {args[:1]}")
+
+    # Install the test sentinels FIRST (replacing the real originals).
     orig_getaddrinfo2 = socket.getaddrinfo
+    orig_create_connection2 = socket.create_connection
+    orig_popen2 = subprocess.Popen
     socket.getaddrinfo = sentinel_getaddrinfo2
-    # Save the sentinel BEFORE installing the guard (so we can call it directly).
-    saved_sentinel = socket.getaddrinfo
+    socket.create_connection = sentinel_create_connection2
+    subprocess.Popen = sentinel_popen2
+    # Save the sentinels BEFORE installing the guard (so we can call them directly).
+    saved_sentinel_resolver = socket.getaddrinfo
+    saved_sentinel_connector = socket.create_connection
+    saved_sentinel_spawn = subprocess.Popen
     # Now create the TransportGuard with the shared ledger (the guard holds the same object).
     with TransportGuard(raw_delegation_ledger=shared_ledger2) as g4:
-        # Directly call the SAVED sentinel (not through the guard) to simulate
-        # the guard erroneously delegating to the sentinel.
-        actual_delegation = False
+        # Directly call the SAVED sentinels (not through the guard) to simulate
+        # the guard erroneously delegating to the sentinels.
+        resolver_delegation = connector_delegation = spawn_delegation = False
         try:
-            saved_sentinel("actual-delegation-test.example.com", 443)
+            saved_sentinel_resolver("actual-delegation-test.example.com", 443)
         except ReplayMiss:
-            actual_delegation = True  # the sentinel was called (delegation happened)
-        # The shared ledger should be incremented (resolver=1).
-        ledger_incremented = (shared_ledger2["resolver"] == 1)
+            resolver_delegation = True
+        try:
+            saved_sentinel_connector(("actual-delegation-test.example.com", 443))
+        except ReplayMiss:
+            connector_delegation = True
+        try:
+            saved_sentinel_spawn(["curl", "https://actual-delegation-test.example.com"])
+        except ReplayMiss:
+            spawn_delegation = True
+        # The shared ledger should be incremented (resolver=1, connector=1, spawn=1).
+        ledger_incremented = (shared_ledger2["resolver"] == 1 and shared_ledger2["connector"] == 1 and shared_ledger2["spawn"] == 1)
         # The verdict should be HARNESS_ERROR (raw delegation non-zero).
         verdict_harness = (g4.verdict() == "HARNESS_ERROR")
     socket.getaddrinfo = orig_getaddrinfo2
-    sentinel_actual_pass = actual_delegation and ledger_incremented and verdict_harness
+    socket.create_connection = orig_create_connection2
+    subprocess.Popen = orig_popen2
+    sentinel_actual_pass = resolver_delegation and connector_delegation and spawn_delegation and ledger_incremented and verdict_harness
     all_pass = all_pass and sentinel_actual_pass
-    outcomes["sentinel_actual_delegation"] = {"pass": sentinel_actual_pass, "actual_delegation": actual_delegation,
+    outcomes["sentinel_actual_delegation"] = {"pass": sentinel_actual_pass, "resolver": resolver_delegation,
+                                              "connector": connector_delegation, "spawn": spawn_delegation,
                                               "ledger_incremented": ledger_incremented, "verdict_harness": verdict_harness}
-    print(f"SENTINEL_ACTUAL_DELEGATION = {'PASS' if sentinel_actual_pass else 'FAIL'} (actual_delegation={actual_delegation}, ledger_incremented={ledger_incremented}, verdict_harness={verdict_harness})")
+    print(f"SENTINEL_ACTUAL_DELEGATION = {'PASS' if sentinel_actual_pass else 'FAIL'} (resolver={resolver_delegation}, connector={connector_delegation}, spawn={spawn_delegation}, ledger_incremented={ledger_incremented}, verdict_harness={verdict_harness})")
 
     # --- Manifest: save the actual outcomes/counts to the unique run directory ---
     manifest = {
