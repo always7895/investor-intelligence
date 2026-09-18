@@ -222,16 +222,26 @@ $canaryThrow=$false
 $canaryMarker=$false
 $pubCount=0
 $scalarOk=$true
+$recordTotal=0
+$errorTotal=0
+$payloadTotal=0
+$payloadSeen=0
+$payloadList=@()
+if($env:OBSERVE_PAYLOADS){$payloadList=@($env:OBSERVE_PAYLOADS -split '\|');$payloadTotal=$payloadList.Count}
 try {
     Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only' 2>&1 | ForEach-Object {
         $t=$_.ToString()
+        $recordTotal++
         if($t -like '*SYNTHETIC_CANARY_STDOUT_NOISY*'){$canaryStdout=$true}
         if($t -like '*SYNTHETIC_CANARY_STDERR_NOISY*'){$canaryStderr=$true}
         if($t -like '*SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK*'){$canaryThrow=$true}
         if($t -like '*OVERSIZED_MARKER_MUST_NOT_LEAK*'){$canaryMarker=$true}
+        foreach($p in $payloadList){if($t -like "*$p*"){$payloadSeen++}}
         if($_ -isnot [System.Management.Automation.ErrorRecord]){
             $pubCount++
             if($_ -isnot [pscustomobject] -or $_.status -isnot [string] -or $_.publication_state -isnot [string] -or $_.real_line_sent -isnot [bool]){$scalarOk=$false}
+        } else {
+            $errorTotal++
         }
     }
 } catch {
@@ -245,6 +255,10 @@ try {
     canary_marker_at_stream_boundary=$canaryMarker
     publication_record_count=$pubCount
     scalar_types_valid=$scalarOk
+    record_total=$recordTotal
+    error_record_count=$errorTotal
+    payload_total=$payloadTotal
+    payload_seen_count=$payloadSeen
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'noisy-stream-observation.json') -Encoding utf8
 exit 0
 """
@@ -338,20 +352,143 @@ try {
 }
 "diag_inject_threw=$threw"
 # Lock release proof while this runner is still alive: measure the fixture
-# lock state, then a separate process must be able to acquire the same mutex.
+# lock state, then a separate process probes the same mutex with a direct
+# WaitOne and 4-way classification (only NORMAL_ACQUIRED passes; ABANDONED is
+# classified distinctly and released as cleanup).
 $lockStateCleared=($script:V213OperationLockDepth-eq0)-and($null-eq$script:V213OperationLock)
 "lock_state_cleared=$lockStateCleared"
-$probeScript=Join-Path $PSScriptRoot 'lock-probe.ps1'
-$probeText=@'
-. (Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1')
-$acquired=$false
-try { [void](Enter-V213OperationLock -Owner 'probe' -TimeoutSeconds 3); $acquired=$true } catch {}
-finally { if($acquired){Exit-V213OperationLock} }
-"probe_acquired=$acquired"
-'@
-Set-Content -LiteralPath $probeScript -Value $probeText
-$probeOut=& (Get-Process -Id $PID).Path -NoProfile -NonInteractive -File $probeScript
+$probeOut=& (Get-Process -Id $PID).Path -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'lock-probe.ps1')
 "lock_probe: $probeOut"
+exit 0
+"""
+
+
+LOCK_PROBE_PS = r"""$lockScript=Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1'
+$text=Get-Content -LiteralPath $lockScript -Raw
+if($text -notmatch 'Threading\.Mutex\(\$false,\s*''Local\\([^'']+)''\)'){ "probe_status=ERROR"; exit 0 }
+$mutexName='Local\' + $Matches[1]
+$mutex=New-Object Threading.Mutex($false,$mutexName)
+$status='ERROR'
+try{
+    $acquired=$mutex.WaitOne([TimeSpan]::FromSeconds(3))
+    if($acquired){$status='NORMAL_ACQUIRED';$mutex.ReleaseMutex()}else{$status='BUSY'}
+}catch [Threading.AbandonedMutexException]{
+    # The caller now owns the mutex: classify ABANDONED (not PASS) and release
+    # separately so cleanup is never skipped.
+    $status='ABANDONED'
+    try{$mutex.ReleaseMutex()}catch{}
+}catch{
+    $status='ERROR'
+}
+$mutex.Dispose()
+"probe_status=$status"
+"""
+
+
+LOCK_ABANDON_PS = r"""$readyPath=Join-Path $PSScriptRoot 'lock-abandon-ready.txt'
+$resultPath=Join-Path $PSScriptRoot 'lock-abandon-result.txt'
+. (Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1')
+$lockScript=Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1'
+$text=Get-Content -LiteralPath $lockScript -Raw
+if($text -notmatch 'Threading\.Mutex\(\$false,\s*''Local\\([^'']+)''\)'){ "probe_status=ERROR" | Set-Content -LiteralPath $resultPath -Encoding ascii; exit 0 }
+$mutex=New-Object Threading.Mutex($false,('Local\' + $Matches[1]))
+# All preparation is done before the ready signal: the holder exits as soon
+# as it sees ready, so WaitOne must start immediately after the signal to be
+# blocked at the moment of abandonment (.NET only signals abandonment to a
+# waiter already waiting).
+"ready" | Set-Content -LiteralPath $readyPath -Encoding ascii
+$status='ERROR'
+try{
+    $acquired=$mutex.WaitOne([TimeSpan]::FromSeconds(10))
+    if($acquired){$status='NORMAL_ACQUIRED';$mutex.ReleaseMutex()}else{$status='BUSY'}
+}catch [Threading.AbandonedMutexException]{
+    # The caller now owns the mutex: classify ABANDONED (not PASS) and release
+    # separately so cleanup is never skipped.
+    $status='ABANDONED'
+    try{$mutex.ReleaseMutex()}catch{}
+}catch{
+    $status='ERROR'
+}
+$mutex.Dispose()
+"probe_status=$status" | Set-Content -LiteralPath $resultPath -Encoding ascii
+"""
+
+
+RUNNER_LOCK_CONTROLS = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1')
+$hostExe=(Get-Process -Id $PID).Path
+function Invoke-LockProbe {
+    $out=& $hostExe -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'lock-probe.ps1')
+    return (($out | Out-String).Trim())
+}
+# control 1: BUSY - this runner holds the fixture lock; a new waiter must
+# time out (BUSY), never acquire.
+[void](Enter-V213OperationLock -Owner 'lock-controls' -TimeoutSeconds 3)
+$busy=Invoke-LockProbe
+Exit-V213OperationLock
+# control 2: NORMAL - the lock is free; a new waiter acquires (NORMAL_ACQUIRED).
+$normal=Invoke-LockProbe
+[ordered]@{
+    control_busy=$busy
+    control_normal=$normal
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'lock-controls-observation.json') -Encoding utf8
+# control 3: ABANDONED - hold the lock, start the waiter, wait for ready,
+# then exit without releasing (process death abandons the mutex while the
+# waiter is blocked). The waiter classifies and writes its own result file.
+Remove-Item (Join-Path $PSScriptRoot 'lock-abandon-ready.txt'),(Join-Path $PSScriptRoot 'lock-abandon-result.txt') -ErrorAction SilentlyContinue
+[void](Enter-V213OperationLock -Owner 'lock-abandon-holder' -TimeoutSeconds 3)
+$abandonPath='"' + (Join-Path $PSScriptRoot 'lock-abandon.ps1') + '"'
+Start-Process -FilePath $hostExe -ArgumentList '-NoProfile','-NonInteractive','-File',$abandonPath -WindowStyle Hidden
+$deadline=(Get-Date).AddSeconds(15)
+while(-not(Test-Path (Join-Path $PSScriptRoot 'lock-abandon-ready.txt')) -and (Get-Date) -lt $deadline){ Start-Sleep -Milliseconds 100 }
+if(-not(Test-Path (Join-Path $PSScriptRoot 'lock-abandon-ready.txt'))){
+    Exit-V213OperationLock
+    'ready timeout' | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'lock-abandon-result.txt') -Encoding ascii
+}
+# Deliberately do NOT exit the lock: this process's death abandons the mutex
+# while the waiter is blocked.
+exit 0
+"""
+
+
+RUNNER_LOCK_ABANDON = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+# The holder (runner-lock-controls) exits without releasing; this process's
+# only job is to observe the waiter's classification file after the holder
+# death, then report it. The waiter is lock-abandon.ps1 (started by the
+# holder). Wait for its result file, then copy the observation.
+$deadline=(Get-Date).AddSeconds(20)
+while(-not(Test-Path (Join-Path $PSScriptRoot 'lock-abandon-result.txt')) -and (Get-Date) -lt $deadline){ Start-Sleep -Milliseconds 100 }
+$result=''
+if(Test-Path (Join-Path $PSScriptRoot 'lock-abandon-result.txt')){
+    $result=((Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lock-abandon-result.txt') -Raw) -replace "\s+",'').Trim()
+}
+[ordered]@{
+    control_abandoned=$result
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'lock-abandon-observation.json') -Encoding utf8
+exit 0
+"""
+
+
+RUNNER_AUX_STREAM = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+$auxCanaries=@('SYNTHETIC_CANARY_WARNING_AUX','SYNTHETIC_CANARY_VERBOSE_AUX','SYNTHETIC_CANARY_DEBUG_AUX','SYNTHETIC_CANARY_INFORMATION_AUX','SYNTHETIC_CANARY_HOST_AUX')
+$streamLeak=$false
+$threw=$false
+try {
+    Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only' 2>&1 | ForEach-Object {
+        $t=$_.ToString()
+        foreach($c in $auxCanaries){if($t -like "*$c*"){$streamLeak=$true}}
+    }
+} catch {
+    $threw=$true
+}
+[ordered]@{
+    aux_leak_at_stream_boundary=$streamLeak
+    threw=$threw
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'aux-stream-observation.json') -Encoding utf8
 exit 0
 """
 
@@ -405,6 +542,11 @@ class SealedRefreshTests(unittest.TestCase):
             'runner-noisy-plain.ps1': RUNNER_NOISY_PLAIN,
             'runner-diag-inject.ps1': RUNNER_DIAG_INJECT,
             'runner-aux.ps1': RUNNER_AUX,
+            'runner-aux-stream.ps1': RUNNER_AUX_STREAM,
+            'runner-lock-controls.ps1': RUNNER_LOCK_CONTROLS,
+            'runner-lock-abandon.ps1': RUNNER_LOCK_ABANDON,
+            'lock-probe.ps1': LOCK_PROBE_PS,
+            'lock-abandon.ps1': LOCK_ABANDON_PS,
             'run-v213-local.ps1': DATA_JOB,
         }
         for name, text in files.items():
@@ -646,12 +788,27 @@ class SealedRefreshTests(unittest.TestCase):
             for case, records in cases.items():
                 with self.subTest(host=host, case=case):
                     parent, folder, env, bindings = self._fixture(executable, case)
+                    payloads = self._cap_payloads(case, records)
+                    env = dict(env)
+                    env['OBSERVE_PAYLOADS'] = '|'.join(payloads)
                     result = self._run(executable, folder, env, bindings, 'cap', 'runner-noisy-stream.ps1')
                     self.assertEqual(result.returncode, 0, 'CAP_DRIVER_FAILED')
                     console = result.stdout + result.stderr
                     stream_obs = json.loads((folder / 'noisy-stream-observation.json').read_text('utf-8-sig'))
                     self.assertFalse(stream_obs['canary_marker_at_stream_boundary'],
                                      'CAP_MARKER_CROSSED_STREAM_BOUNDARY')
+                    # All cap cases end non-zero: the function must emit no
+                    # success records and no error records at the stream
+                    # boundary; none of the expected synthetic payloads may be
+                    # seen by the per-record consumer (late stderr included).
+                    self.assertEqual(stream_obs['publication_record_count'], 0,
+                                     'CAP_UNEXPECTED_SUCCESS_RECORDS')
+                    self.assertEqual(stream_obs['error_record_count'], 0,
+                                     'CAP_UNEXPECTED_ERROR_RECORDS')
+                    self.assertEqual(stream_obs['record_total'], 0, 'CAP_UNEXPECTED_RECORDS')
+                    self.assertEqual(stream_obs['payload_total'], len(payloads))
+                    self.assertEqual(stream_obs['payload_seen_count'], 0,
+                                     'CAP_PAYLOAD_AT_STREAM_BOUNDARY')
                     self.assertNotIn('OVERSIZED_MARKER_MUST_NOT_LEAK', console)
                     for _, text in records:
                         if text and len(text) < 40:
@@ -677,7 +834,23 @@ class SealedRefreshTests(unittest.TestCase):
                     h.write_json(parent / ('cap-observation-' + case + '.json'), dict(
                         host=host, case=case, **expected, diagnostic_bytes=len(raw),
                         marker_at_stream_boundary=stream_obs['canary_marker_at_stream_boundary'],
+                        unexpected_success_records=stream_obs['publication_record_count'],
+                        payload_seen=stream_obs['payload_seen_count'],
+                        payload_total=stream_obs['payload_total'],
+                        late_stderr_seen=bool(stream_obs['payload_seen_count'] > 0
+                                              and 'LATE_STDERR_AFTER_TRUNCATION' in payloads),
                         raw_output_retained=False, release_qualified=False))
+
+    @staticmethod
+    def _cap_payloads(case, records):
+        # Expected synthetic payloads checked by the per-record stream
+        # consumer. Representative subset for the 2000-record case; late
+        # stderr and the oversized marker are always included when present.
+        if case == 'cap_many_short':
+            return ['R%04d' % i for i in range(0, 2000, 50)] + ['LATE_STDERR_AFTER_TRUNCATION']
+        if case == 'cap_oversized_single':
+            return ['OVERSIZED_MARKER_MUST_NOT_LEAK']
+        return [text for _, text in records if text and len(text) < 40]
 
     def test_commit_diagnostic_failure_injection(self):
         # Phase B/C: diagnostic persistence failure (write, rename, oversize)
@@ -696,9 +869,11 @@ class SealedRefreshTests(unittest.TestCase):
                                        'runner-diag-inject.ps1')
                     self.assertEqual(result.returncode, 0, 'DIAG_INJECT_DRIVER_FAILED')
                     self.assertIn('diag_inject_threw=True', result.stdout)
-                    # Lock release measured while the runner process is alive.
+                    # Lock release measured while the runner process is alive:
+                    # state cleared + 4-way probe classifies NORMAL_ACQUIRED
+                    # (busy/abandoned/error are distinct and would fail).
                     self.assertIn('lock_state_cleared=True', result.stdout)
-                    self.assertIn('probe_acquired=True', result.stdout)
+                    self.assertIn('probe_status=NORMAL_ACQUIRED', result.stdout)
                     records = self._journals(env)
                     self.assertEqual(len(records), 1)
                     record = records[0]
@@ -728,8 +903,37 @@ class SealedRefreshTests(unittest.TestCase):
                         host=host, inject=inject, failed_phase=record['failed_phase'],
                         publication_state=record['publication_state'],
                         actions=self._actions(folder),
-                        lock_state_cleared=True, cross_process_acquire=True,
+                        lock_state_cleared=True, probe_status='NORMAL_ACQUIRED',
                         raw_output_retained=False, release_qualified=False))
+
+    def test_lock_probe_controls(self):
+        # Phase C1: the 4-way lock probe classification must be live, not a
+        # constant. BUSY (holder alive), ABANDONED (holder died while the
+        # waiter was blocked; .NET only signals abandonment to a waiter
+        # already waiting) and NORMAL_ACQUIRED (lock free) are each produced
+        # by their control scenario on both hosts.
+        for host, executable in h.required_hosts():
+            with self.subTest(host=host):
+                parent, folder, env, bindings = self._fixture(executable, 'pass')
+                # holder: BUSY + NORMAL controls, then dies while holding
+                # (abandon) after the waiter signals ready.
+                result = self._run(executable, folder, env, bindings, 'lock-controls',
+                                   'runner-lock-controls.ps1')
+                self.assertEqual(result.returncode, 0, 'LOCK_CONTROLS_DRIVER_FAILED')
+                obs = json.loads((folder / 'lock-controls-observation.json').read_text('utf-8-sig'))
+                self.assertEqual(obs['control_busy'], 'probe_status=BUSY')
+                self.assertEqual(obs['control_normal'], 'probe_status=NORMAL_ACQUIRED')
+                # observer: collects the waiter's ABANDONED classification.
+                result2 = self._run(executable, folder, env, bindings, 'lock-abandon',
+                                    'runner-lock-abandon.ps1')
+                self.assertEqual(result2.returncode, 0, 'LOCK_ABANDON_DRIVER_FAILED')
+                obs2 = json.loads((folder / 'lock-abandon-observation.json').read_text('utf-8-sig'))
+                self.assertEqual(obs2['control_abandoned'], 'probe_status=ABANDONED')
+                h.write_json(parent / 'lock-controls-observation-summary.json', dict(
+                    host=host, control_busy=obs['control_busy'],
+                    control_normal=obs['control_normal'],
+                    control_abandoned=obs2['control_abandoned'],
+                    raw_output_retained=False, release_qualified=False))
 
     def test_commit_aux_streams_discarded(self):
         # Phase C: Warning/Verbose/Debug/Information/Write-Host canaries are
@@ -763,6 +967,27 @@ class SealedRefreshTests(unittest.TestCase):
                     aux_leak_at_assignment_boundary=obs['aux_leak_at_assignment_boundary'],
                     aux_in_console=any(c in console for c in aux_canaries),
                     publication_state=record['publication_state'],
+                    raw_output_retained=False, release_qualified=False))
+                # Independent per-record stream form (Phase C2): the same five
+                # canaries must not be seen by the stream consumer.
+                parent2, folder2, env2, bindings2 = self._fixture(executable, 'aux_streams')
+                result2 = self._run(executable, folder2, env2, bindings2, 'aux-stream',
+                                    'runner-aux-stream.ps1')
+                self.assertEqual(result2.returncode, 0, 'AUX_STREAM_DRIVER_FAILED')
+                obs2 = json.loads((folder2 / 'aux-stream-observation.json').read_text('utf-8-sig'))
+                self.assertFalse(obs2['aux_leak_at_stream_boundary'],
+                                 'AUX_LEAKED_AT_STREAM_BOUNDARY')
+                console2 = result2.stdout + result2.stderr
+                for c in aux_canaries:
+                    self.assertNotIn(c, console2)
+                record2 = self._journals(env2)[0]
+                self.assertEqual(record2['status'], 'PASS')
+                self.assertEqual(record2['publication_state'], 'FINALIZED')
+                self.assertEqual(self._actions(folder2), ['Commit', 'Finalize'])
+                h.write_json(parent2 / 'aux-stream-observation-summary.json', dict(
+                    host=host, aux_leak_at_stream_boundary=obs2['aux_leak_at_stream_boundary'],
+                    aux_in_console=any(c in console2 for c in aux_canaries),
+                    publication_state=record2['publication_state'],
                     raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_noisy_integration(self):
