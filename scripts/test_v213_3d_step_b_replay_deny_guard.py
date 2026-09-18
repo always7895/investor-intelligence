@@ -132,18 +132,28 @@ def main() -> int:
             neg_header_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_HEADER_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        # Negative: method (single variable) -> reject (POST to the same URL).
+        neg_method_req = urllib.request.Request(base_url, data=b"POST_BODY", method="POST")
+        neg_method_rejected = False
+        try:
+            urllib.request.urlopen(neg_method_req)
+        except ReplayMiss:
+            neg_method_rejected = True
+        except Exception as exc:
+            print(f"CONTROL_NEG_METHOD_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
         # Ledger + verdict: rejections enter the ledger; verdict is blocked.
-        # pos_data, empty_body, req_data are denied (non-None body); neg_query, neg_header are replay_misses (not in registry).
-        ledger_incremented = (g.denied_connect_attempts >= 3) and (len(g.replay_misses) >= 2)
+        # pos_data, empty_body, req_data, neg_method are denied (non-None body or non-GET); neg_query, neg_header are replay_misses (not in registry).
+        ledger_incremented = (g.denied_connect_attempts >= 4) and (len(g.replay_misses) >= 2)
         blocked_verdict = g.verdict() in ("BLOCKED_TRANSPORT_DENIED", "BLOCKED_REPLAY_INPUT_MISS")
         req_pass = (hit_ok and pos_data_rejected and empty_body_rejected and req_data_rejected
-                    and neg_query_rejected and neg_header_rejected and ledger_incremented and blocked_verdict)
+                    and neg_query_rejected and neg_header_rejected and neg_method_rejected and ledger_incremented and blocked_verdict)
         all_pass = all_pass and req_pass
         outcomes["request_contract"] = {"pass": req_pass, "hit": hit_ok, "pos_data_rejected": pos_data_rejected,
                                         "empty_body_rejected": empty_body_rejected, "req_data_rejected": req_data_rejected,
                                         "neg_query_rejected": neg_query_rejected, "neg_header_rejected": neg_header_rejected,
+                                        "neg_method_rejected": neg_method_rejected,
                                         "ledger_incremented": ledger_incremented, "verdict": blocked_verdict}
-        print(f"REQUEST_CONTRACT = {'PASS' if req_pass else 'FAIL'} (hit={hit_ok}, pos_data={pos_data_rejected}, empty_body={empty_body_rejected}, req_data={req_data_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, ledger={ledger_incremented}, verdict={blocked_verdict})")
+        print(f"REQUEST_CONTRACT = {'PASS' if req_pass else 'FAIL'} (hit={hit_ok}, pos_data={pos_data_rejected}, empty_body={empty_body_rejected}, req_data={req_data_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, neg_method={neg_method_rejected}, ledger={ledger_incremented}, verdict={blocked_verdict})")
 
     # --- LIFECYCLE: partial_install_failure restore ---
     # Inject a failure mid-install by making one of the patch targets raise.
@@ -261,6 +271,35 @@ def main() -> int:
     outcomes["sentinel_positive_controls"] = {"pass": sentinel_positive_pass, "resolver_count": sentinel_counts["resolver"]}
     print(f"SENTINEL_POSITIVE_CONTROLS = {'PASS' if sentinel_positive_pass else 'FAIL'} (resolver_count={sentinel_counts['resolver']})")
 
+    # --- LIFECYCLE: workers_joined_before_uninstall ---
+    with TransportGuard() as g4:
+        wt_hit_url = "https://wt-recorded.example.com/hit.json"
+        wt_hit_body = b'{"wt":"hit"}'
+        g4.register(wt_hit_url, 200, wt_hit_body, {"source": "recorded"})
+        wt_results: dict[str, bool] = {}
+
+        def worker():
+            try:
+                resp = urllib.request.urlopen(wt_hit_url)
+                wt_results["hit"] = (resp.read() == wt_hit_body)
+            except Exception:
+                wt_results["hit"] = False
+            try:
+                urllib.request.urlopen("https://wt-unregistered.example.com/miss.json")
+                wt_results["miss_denied"] = False
+            except ReplayMiss:
+                wt_results["miss_denied"] = True
+            except Exception:
+                wt_results["miss_denied"] = False
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()  # all workers complete and join BEFORE uninstalling the guard
+        wt_pass = wt_results.get("hit", False) and wt_results.get("miss_denied", False)
+        all_pass = all_pass and wt_pass
+        outcomes["lifecycle_workers_joined"] = {"pass": wt_pass, "hit": wt_results.get("hit", False), "miss_denied": wt_results.get("miss_denied", False)}
+        print(f"LIFECYCLE_WORKERS_JOINED = {'PASS' if wt_pass else 'FAIL'} (hit={wt_results.get('hit', False)}, miss_denied={wt_results.get('miss_denied', False)})")
+
     # --- Manifest: save the actual outcomes/counts to the unique run directory ---
     manifest = {
         "helper_path": str(HELPER_PATH),
@@ -273,7 +312,7 @@ def main() -> int:
     manifest_path.write_bytes(manifest_bytes)
     print(f"\nCONTROL_MANIFEST_SHA256={manifest_sha} (saved to {manifest_path})")
     if all_pass:
-        print("V213_3D_STEP_B = PASS (all controls: request_contract, lifecycle_partial_install, lifecycle_app_exception, sentinel_independent_lower_layer, sentinel_raw_nonzero_harness_error, sentinel_positive_controls)")
+        print("V213_3D_STEP_B = PASS (all controls: request_contract, lifecycle_partial_install, lifecycle_app_exception, lifecycle_workers_joined, sentinel_independent_lower_layer, sentinel_raw_nonzero_harness_error, sentinel_positive_controls)")
         print("FULL_MARKET_REPLAY = NOT_RERUN_INPUTS_STILL_MISSING (market recorded data still missing; doesn't affect harness acceptance)")
         print("APPLICATION_SOURCE_UNCHANGED = true; PRODUCTION_TOUCHED = false")
         raise SystemExit(0)
