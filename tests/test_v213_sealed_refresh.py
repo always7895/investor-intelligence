@@ -20,6 +20,11 @@ if($Action-eq'Commit'){
  if((Get-FileHash -LiteralPath $BundlePath).Hash.ToLowerInvariant()-cne$ExpectedBundleSha256){throw 'wrong sealed bytes'}
  $r=@{transaction_id=$b.transaction_id;run_id=$b.run_id;status='accepted';pointer_written_last=$true;object_count=14;objects_read_back=14;rollback_available=$true;idempotent_replay=$false}
  switch($env:FIXTURE_CASE){
+  'commit_transport_error' {
+   Write-Output "transport prelude`r`nSYNTHETIC_SECRET_MUST_NOT_PERSIST"
+   Write-Error -Message 'https://fixture.invalid Authorization Bearer token cookie LINE_CHANNEL LOCAL_LLM_SHARED_SECRET' -ErrorAction Continue
+   throw 'SYNTHETIC_SECRET_MUST_NOT_PERSIST'
+  }
   'readback' {$r.objects_read_back=13}
   'boolean' {$r.pointer_written_last='True'}
   'identity_boolean' {$r.transaction_id=$true;$r.run_id=$true}
@@ -187,6 +192,63 @@ class SealedRefreshTests(unittest.TestCase):
                             self.assertEqual(receipt['publication_state'], 'FINALIZED' if enabled else 'NOT_ATTEMPTED')
                             self.assertFalse(receipt['model_bridge_started'])
                         self.assertEqual(self._actions(folder), ['Commit', 'Finalize', 'Commit', 'Finalize'])
+
+    def test_commit_transport_diagnostic_is_private_and_reproducible(self):
+        allowed = {'schema_version', 'phase', 'captured_utc', 'exit_code', 'exception_type',
+                   'fully_qualified_error_id', 'category', 'hresult', 'stdout_present',
+                   'stderr_present', 'output_bytes', 'output_lines', 'output_sha256', 'truncated'}
+        # Canonical output: UTF-8, LF-normalized, one LF appended per emitted record.
+        # The terminating exception contributes metadata, not its message, to the artifact.
+        output = ('transport prelude\nSYNTHETIC_SECRET_MUST_NOT_PERSIST\n'
+                  'https://fixture.invalid Authorization Bearer token cookie LINE_CHANNEL LOCAL_LLM_SHARED_SECRET\n').encode()
+        for host, executable in h.required_hosts():
+            for repeat in range(2):
+                with self.subTest(host=host, repeat=repeat):
+                    parent, folder, env, bindings = self._fixture(executable, 'commit_transport_error')
+                    original = (folder / 'data/cache/v213_activation_bundle_upload.json').read_bytes()
+                    result = self._run(executable, folder, env, bindings, 'direct-diagnostic', 'runner.ps1')
+                    self.assertEqual(result.returncode, 0, 'FIXTURE_DRIVER_FAILED')
+                    records = self._journals(env)
+                    self.assertEqual(len(records), 1)
+                    record = records[0]
+                    self.assertEqual(record['status'], 'FAIL')
+                    self.assertEqual(record['failed_phase'], 'COMMIT_REQUEST')
+                    self.assertEqual(record['publication_state'], 'ROLLED_BACK')
+                    self.assertTrue(record['production_mutation'])  # Synthetic rollback acknowledgement only.
+                    self.assertEqual(record['rollback_failed_phase'], '')
+                    self.assertEqual(self._actions(folder), ['Commit', 'Rollback'])
+                    self.assertEqual((folder / 'data/cache/v213_activation_bundle_upload.json').read_bytes(), original)
+                    root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+                    journal = next(root.glob('*.json'))
+                    diagnostic = Path(str(journal) + '.details') / 'COMMIT_REQUEST-diagnostic.json'
+                    self.assertTrue(diagnostic.is_file(), 'PRIVACY_SAFE_COMMIT_DIAGNOSTIC_MISSING')
+                    raw = diagnostic.read_bytes()
+                    self.assertLessEqual(len(raw), 8192)
+                    data = json.loads(raw.decode('utf-8-sig'))
+                    self.assertEqual(set(data), allowed)
+                    self.assertEqual(data['schema_version'], 1)
+                    self.assertEqual(data['phase'], 'COMMIT_REQUEST')
+                    self.assertEqual(data['exception_type'], 'RuntimeException')
+                    self.assertEqual(data['category'], 'OperationStopped')
+                    self.assertEqual(data['fully_qualified_error_id'], 'UNAVAILABLE')
+                    self.assertIsNone(data['exit_code'])  # No completed transport exit, not stale whoami=0.
+                    self.assertIsInstance(data['hresult'], int)
+                    self.assertTrue(data['stdout_present'])
+                    self.assertTrue(data['stderr_present'])
+                    self.assertEqual(data['output_bytes'], len(output))
+                    self.assertEqual(data['output_lines'], 3)
+                    self.assertEqual(data['output_sha256'], hashlib.sha256(output).hexdigest())
+                    self.assertFalse(data['truncated'])
+                    persisted = (raw + journal.read_bytes()).decode('utf-8-sig').lower()
+                    for forbidden in ('SYNTHETIC_SECRET_MUST_NOT_PERSIST', 'http://', 'https://',
+                                      'Authorization', 'Bearer', 'token', 'secret', 'cookie',
+                                      'LINE_CHANNEL', 'LOCAL_LLM_SHARED_SECRET', str(folder), 'synthetic-only'):
+                        self.assertNotIn(forbidden.lower(), persisted)
+                    self.assertNotIn('SYNTHETIC_SECRET_MUST_NOT_PERSIST', result.stdout + result.stderr)
+                    h.write_json(parent / 'diagnostic-observation.json', dict(host=host, repeat=repeat,
+                        status=record['status'], failed_phase=record['failed_phase'],
+                        diagnostic_bytes=len(raw), output_sha256=data['output_sha256'],
+                        bundle_unchanged=True, raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_does_not_ignore_an_unadmitted_terminal_journal(self):
         for host, executable in h.required_hosts():

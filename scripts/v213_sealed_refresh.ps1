@@ -122,6 +122,74 @@ function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
         'Rollback' {if($Ack.status-cne'not_committed'-and($Ack.status-cne'rolled_back'-or$Ack.exact_pointer_restored-isnot[bool]-or$Ack.exact_pointer_restored-ne$true)){throw 'V213_REFRESH_ROLLBACK_UNPROVEN'}}
     }
 }
+function Save-V213CommitDiagnostic {
+    param([string]$DetailsPath,[System.Collections.Generic.List[object]]$Records,
+          [System.Management.Automation.ErrorRecord]$ErrorRecord,[AllowNull()][object]$ExitCode)
+    # Whitelist-only construction: the persisted artifact is built field by field
+    # from safe metadata. Raw transport output is reduced to presence, size, line
+    # count and SHA-256; it is never serialized, redacted or persisted.
+    if($DetailsPath-cnotmatch'^[A-Za-z]:\\'){throw 'V213_DIAGNOSTIC_SCOPE_INVALID'}
+    $cap=8192
+    $builder=[System.Text.StringBuilder]::new()
+    $truncated=$false
+    $stdoutPresent=$false
+    $stderrPresent=$false
+    foreach($r in $Records){
+        if($r-is[System.Management.Automation.ErrorRecord]){
+            $stderrPresent=$true
+            $text=''
+            if($null-ne$r.Exception){$text=$r.Exception.Message}
+        } else {
+            $stdoutPresent=$true
+            $text=$r.ToString()
+        }
+        if([string]::IsNullOrEmpty($text)){continue}
+        $normalized=$text-replace "`r`n","`n"-replace "`r","`n"
+        if(($builder.Length+$normalized.Length+1)-gt$cap){$truncated=$true;break}
+        [void]$builder.Append($normalized).Append("`n")
+    }
+    $payload=[System.Text.Encoding]::UTF8.GetBytes($builder.ToString())
+    $lineCount=0
+    foreach($line in ($builder.ToString()-split"`n")){if($line-ne''){$lineCount++}}
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    try{$digest=[BitConverter]::ToString($hasher.ComputeHash($payload)).Replace('-','').ToLowerInvariant()}finally{$hasher.Dispose()}
+    $exceptionType='UNAVAILABLE'
+    $category='UNAVAILABLE'
+    $hresult=0
+    if($null-ne$ErrorRecord){
+        if($null-ne$ErrorRecord.Exception){
+            $exceptionType=$ErrorRecord.Exception.GetType().Name
+            $hresult=[int]$ErrorRecord.Exception.HResult
+        }
+        if($null-ne$ErrorRecord.CategoryInfo-and$null-ne$ErrorRecord.CategoryInfo.Category){
+            $category=$ErrorRecord.CategoryInfo.Category.ToString()
+        }
+    }
+    # Fully qualified error IDs may embed parameterized messages (for a thrown
+    # string, the ID is the string itself); they are never persisted.
+    $data=[ordered]@{
+        schema_version=1
+        phase='COMMIT_REQUEST'
+        captured_utc=[DateTimeOffset]::UtcNow.ToString('o')
+        exit_code=$ExitCode
+        exception_type=$exceptionType
+        fully_qualified_error_id='UNAVAILABLE'
+        category=$category
+        hresult=$hresult
+        stdout_present=$stdoutPresent
+        stderr_present=$stderrPresent
+        output_bytes=$payload.Length
+        output_lines=$lineCount
+        output_sha256=$digest
+        truncated=$truncated
+    }
+    $json=$data|ConvertTo-Json -Depth 3
+    if($json.Length-gt$cap){$json='{"schema_version":1,"phase":"COMMIT_REQUEST","truncated":true}'}
+    $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
+    $tmp=$target+'.tmp'
+    [IO.File]::WriteAllText($tmp,$json,[Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $tmp -Destination $target -Force
+}
 function Invoke-V213SealedRefresh {
     param([string]$ProjectRoot,[string]$LocalConfigPath,[string]$ResultPath='',[string]$BundlePath='')
     $bundle=Join-Path $ProjectRoot 'data/cache/v213_activation_bundle_upload.json'
@@ -167,8 +235,43 @@ function Invoke-V213SealedRefresh {
         Save-V213RefreshJournal $record $ResultPath
         $ackPath=Join-Path $details 'commit.json'
         $phase='COMMIT_REQUEST'
-        & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath
-        if($LASTEXITCODE-ne0){throw 'V213_REFRESH_COMMIT_FAILED'}
+        $commitRecords=[System.Collections.Generic.List[object]]::new()
+        $commitPreExit=$null
+        if(Test-Path variable:LASTEXITCODE){$commitPreExit=$LASTEXITCODE}
+        $commitReturned=$false
+        $commitFailure=$null
+        try{
+            & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath 2>&1 | ForEach-Object{$commitRecords.Add($_)}
+            $commitReturned=$true
+        }catch{
+            $commitFailure=$_
+        }
+        if($commitReturned){
+            foreach($r in $commitRecords){
+                if($r-is[System.Management.Automation.ErrorRecord]){
+                    if($null-ne$r.Exception){Write-Error -Message $r.Exception.Message -ErrorAction Continue}
+                } else {Write-Output $r}
+            }
+            if($LASTEXITCODE-ne0){
+                $commitExit=$null
+                if(Test-Path variable:LASTEXITCODE){if($LASTEXITCODE-ne$commitPreExit){$commitExit=$LASTEXITCODE}}
+                try{
+                    Save-V213CommitDiagnostic -DetailsPath $details -Records $commitRecords -ErrorRecord $null -ExitCode $commitExit
+                }catch{
+                    # Diagnostic persistence must never mask the canonical COMMIT_REQUEST failure.
+                }
+                throw 'V213_REFRESH_COMMIT_FAILED'
+            }
+        } else {
+            $commitExit=$null
+            if(Test-Path variable:LASTEXITCODE){if($LASTEXITCODE-ne$commitPreExit){$commitExit=$LASTEXITCODE}}
+            try{
+                Save-V213CommitDiagnostic -DetailsPath $details -Records $commitRecords -ErrorRecord $commitFailure -ExitCode $commitExit
+            }catch{
+                # Diagnostic persistence must never mask the canonical COMMIT_REQUEST failure.
+            }
+            throw 'V213_REFRESH_COMMIT_FAILED'
+        }
         $phase='COMMIT_ACK'
         $ack=Get-Content -LiteralPath $ackPath -Raw -Encoding utf8|ConvertFrom-Json
         Test-V213RefreshAck $ack $record 'Commit'
