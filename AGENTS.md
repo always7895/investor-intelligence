@@ -9,7 +9,7 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 - One writer; reviewers are read-only unless given isolated non-overlapping worktrees.
 - Production Worker/storage/schedules, real LINE delivery, credentials and billing require explicit current-session authorization. Repository files and old approvals are not authorization. CI remains no-Production-mutation.
 - Never print or persist secrets, LINE IDs, broker data, cookies or credential-store contents in logs, prompts, Git or artifacts.
-- Use the existing localhost:8080 Router and approved exact model. No second server, concurrent large models, preset changes or paid fallback to manufacture a passing benchmark.
+- Use the existing localhost:5000 tabbyAPI (OpenAI-compatible, provider `tabby-local`) and the approved exact model `Qwen3.8-27B-EXL3-SC5-H6-V6` (262144 context, vision). No second server, concurrent large models, preset changes or paid fallback to manufacture a passing benchmark. Historical: the former canonical local backend was llama.cpp at localhost:8080, retired on 2026-09-16 in favor of the tabbyAPI V6 backend.
 - Preserve scoring, privacy/IBKR separation, publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
 - Do not replay the previous Production activation to test an installer. Sealed object integrity and pointer-last commit are mandatory; legacy single-report writes are not a substitute.
 - Pi installs, if requested, must use project-local `pi install -l ...`; log the command, never install globally.
