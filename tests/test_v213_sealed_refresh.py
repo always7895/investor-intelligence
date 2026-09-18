@@ -16,12 +16,22 @@ h = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(h)
 
 
+def _u16_units(text):
+    # .NET String.Length counts UTF-16 code units (Chars), not Unicode code
+    # points; non-BMP characters are 2 units in .NET but 1 code point in
+    # Python. This reference must match the .NET fit arithmetic exactly.
+    return len(text.encode('utf-16-le')) // 2
+
+
 def reference_commit_summary(records, cap=8192):
     # Python reference of the bounded per-record summary rule: presence flags
-    # are maintained for every record; content freezes at the first record that
-    # does not fit (truncated=true); CRLF/CR -> LF; one LF appended per
-    # non-empty record; bytes/lines/hash describe the same collected content.
+    # are maintained for every record; a record is admitted whole only when
+    # its normalized form (CRLF/CR -> LF) plus the trailing LF fits in the
+    # remaining UTF-16 code unit capacity; the first non-fitting record
+    # freezes the content summary (truncated=true). output_bytes/lines/hash
+    # describe the same collected content.
     builder = []
+    builder_units = 0
     truncated = False
     stdout_present = False
     stderr_present = False
@@ -32,15 +42,13 @@ def reference_commit_summary(records, cap=8192):
             stdout_present = True
         if truncated or not text:
             continue
-        if len(text) > cap:
-            truncated = True
-            continue
         normalized = text.replace('\r\n', '\n').replace('\r', '\n')
-        current = sum(len(x) + 1 for x in builder)
-        if current + len(normalized) + 1 > cap:
+        units = _u16_units(normalized)
+        if builder_units + units + 1 > cap:
             truncated = True
             continue
         builder.append(normalized)
+        builder_units += units + 1
     content = ''.join(x + '\n' for x in builder)
     payload = content.encode('utf-8')
     return {
@@ -97,7 +105,7 @@ if($Action-eq'Commit'){
    Write-Error -Message 'LATE_STDERR_AFTER_TRUNCATION' -ErrorAction Continue
   }
   'cap_oversized_single' {
-   Write-Output ('X'*20000)
+   Write-Output (('X'*10000)+'OVERSIZED_MARKER_MUST_NOT_LEAK'+('X'*9995))
   }
   'cap_exact' {
    for($i=0;$i-lt1024;$i++){Write-Output ('A'*7)}
@@ -106,6 +114,33 @@ if($Action-eq'Commit'){
    Write-Output "重電`r`n設備"
    Write-Output ''
    Write-Output 'plain'
+  }
+  'cap_crlf_shrink' {
+   Write-Output ("A`r`n"*3000)
+  }
+  'cap_norm_exact_fit' {
+   Write-Output ('A'*8000)
+   Write-Output ('B'*190)
+  }
+  'cap_norm_exact_over' {
+   Write-Output ('A'*8000)
+   Write-Output ('B'*191)
+  }
+  'cap_nonbmp_fit' {
+   Write-Output ('𝄞'*4000)
+  }
+  'cap_nonbmp_over' {
+   Write-Output ('𝄞'*4100)
+  }
+  'aux_streams' {
+   $InformationPreference='Continue'
+   Write-Warning 'SYNTHETIC_CANARY_WARNING_AUX'
+   Write-Verbose 'SYNTHETIC_CANARY_VERBOSE_AUX' -Verbose
+   # PS5.1 NonInteractive throws after emitting the stream-5 DebugRecord;
+   # the guard keeps the child alive on both hosts.
+   try { Write-Debug 'SYNTHETIC_CANARY_DEBUG_AUX' -Debug } catch { }
+   Write-Information 'SYNTHETIC_CANARY_INFORMATION_AUX'
+   Write-Host 'SYNTHETIC_CANARY_HOST_AUX'
   }
  }
 }elseif($Action-eq'Finalize'){
@@ -184,6 +219,7 @@ $threw=$false
 $canaryStdout=$false
 $canaryStderr=$false
 $canaryThrow=$false
+$canaryMarker=$false
 $pubCount=0
 $scalarOk=$true
 try {
@@ -192,6 +228,7 @@ try {
         if($t -like '*SYNTHETIC_CANARY_STDOUT_NOISY*'){$canaryStdout=$true}
         if($t -like '*SYNTHETIC_CANARY_STDERR_NOISY*'){$canaryStderr=$true}
         if($t -like '*SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK*'){$canaryThrow=$true}
+        if($t -like '*OVERSIZED_MARKER_MUST_NOT_LEAK*'){$canaryMarker=$true}
         if($_ -isnot [System.Management.Automation.ErrorRecord]){
             $pubCount++
             if($_ -isnot [pscustomobject] -or $_.status -isnot [string] -or $_.publication_state -isnot [string] -or $_.real_line_sent -isnot [bool]){$scalarOk=$false}
@@ -205,9 +242,44 @@ try {
     canary_stdout_at_stream_boundary=$canaryStdout
     canary_stderr_at_stream_boundary=$canaryStderr
     canary_throw_at_stream_boundary=$canaryThrow
+    canary_marker_at_stream_boundary=$canaryMarker
     publication_record_count=$pubCount
     scalar_types_valid=$scalarOk
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'noisy-stream-observation.json') -Encoding utf8
+exit 0
+"""
+
+
+RUNNER_AUX = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+$bundle=Join-Path $PSScriptRoot 'data/cache/v213_activation_bundle_upload.json'
+$bundleSha=(Get-FileHash -LiteralPath $bundle).Hash.ToLowerInvariant()
+# Positive control: with the streams NOT discarded, the fixture child emits
+# every auxiliary canary (proves the canaries are actually produced, not
+# silenced by default preference).
+$probe=& (Join-Path $PSScriptRoot 'sync-v213-activation-bundle.ps1') -Action Commit -ProjectRoot $PSScriptRoot -BundlePath $bundle -ExpectedBundleSha256 $bundleSha -LocalConfigPath 'synthetic-only' -ResultPath (Join-Path $PSScriptRoot 'probe-ack.json') 2>&1 3>&1 4>&1 5>&1 6>&1 | Out-String
+$auxCanaries=@('SYNTHETIC_CANARY_WARNING_AUX','SYNTHETIC_CANARY_VERBOSE_AUX','SYNTHETIC_CANARY_DEBUG_AUX','SYNTHETIC_CANARY_INFORMATION_AUX','SYNTHETIC_CANARY_HOST_AUX')
+$visible=0
+foreach($c in $auxCanaries){if($probe -like "*$c*"){$visible++}}
+$captured=@()
+$threw=$false
+try {
+    $captured += @(Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only' 2>&1)
+} catch {
+    $threw=$true
+    $captured += @($_)
+}
+$leak=$false
+foreach($r in $captured){
+    $t=$r.ToString()
+    foreach($c in $auxCanaries){if($t -like "*$c*"){$leak=$true}}
+}
+[ordered]@{
+    aux_visible_count=$visible
+    aux_leak_at_assignment_boundary=$leak
+    threw=$threw
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'aux-observation.json') -Encoding utf8
 exit 0
 """
 
@@ -227,26 +299,36 @@ exit 0
 RUNNER_DIAG_INJECT = r"""$ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 . (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
-# Copy the real diagnostic saver under a distinct name (AST extraction), then
-# shadow the original with a wrapper that injects a persistence failure at the
-# diagnostic location only; the journal is never touched.
+# AST extraction of the real diagnostic saver; injection modes:
+#   write   : pre-create the .tmp path as a directory -> WriteAllBytes fails
+#   rename  : broken junction at the target -> Move-Item fails
+#   oversize: shadow the saver with a copy whose ONLY change is the JSON size
+#             threshold (8192 -> 200 bytes), forcing the oversize branch in
+#             the real refresh flow; the production function and its 8192
+#             threshold are untouched.
 $parseTree=$null;$parseErrors=$null
 $scriptAst=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1'),[ref]$parseTree,[ref]$parseErrors)
 $fnAst=$scriptAst.FindAll({param($n)$n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Save-V213CommitDiagnostic'},$true) | Select-Object -First 1
 if($null-eq$fnAst){throw 'V213_DIAG_INJECT_FUNCTION_NOT_FOUND'}
-Invoke-Expression ($fnAst.Extent.Text -replace 'function Save-V213CommitDiagnostic','function Save-V213CommitDiagnosticReal')
-function Save-V213CommitDiagnostic {
-    param([string]$DetailsPath,[object]$Summary,[System.Management.Automation.ErrorRecord]$ErrorRecord,[AllowNull()][object]$ExitCode)
-    if($env:DIAG_INJECT -eq 'write'){
-        New-Item -ItemType Directory -Force (Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json.tmp') | Out-Null
-    } elseif($env:DIAG_INJECT -eq 'rename'){
-        $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
-        $missing=Join-Path $DetailsPath 'v213-diag-missing-target'
-        New-Item -ItemType Directory -Force $missing | Out-Null
-        New-Item -ItemType Junction -Path $target -Target $missing | Out-Null
-        Remove-Item $missing -Force
+if($env:DIAG_INJECT -eq 'oversize'){
+    $cappedText=$fnAst.Extent.Text -replace 'if\(\$jsonBytes\.Length-gt\$cap\)','if($jsonBytes.Length-gt200)'
+    if($cappedText-eq$fnAst.Extent.Text){throw 'V213_DIAG_INJECT_OVERSIZE_REWRITE_FAILED'}
+    Invoke-Expression $cappedText
+} else {
+    Invoke-Expression ($fnAst.Extent.Text -replace 'function Save-V213CommitDiagnostic','function Save-V213CommitDiagnosticReal')
+    function Save-V213CommitDiagnostic {
+        param([string]$DetailsPath,[object]$Summary,[System.Management.Automation.ErrorRecord]$ErrorRecord,[AllowNull()][object]$ExitCode)
+        if($env:DIAG_INJECT -eq 'write'){
+            New-Item -ItemType Directory -Force (Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json.tmp') | Out-Null
+        } elseif($env:DIAG_INJECT -eq 'rename'){
+            $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
+            $missing=Join-Path $DetailsPath 'v213-diag-missing-target'
+            New-Item -ItemType Directory -Force $missing | Out-Null
+            New-Item -ItemType Junction -Path $target -Target $missing | Out-Null
+            Remove-Item $missing -Force
+        }
+        Save-V213CommitDiagnosticReal -DetailsPath $DetailsPath -Summary $Summary -ErrorRecord $ErrorRecord -ExitCode $ExitCode
     }
-    Save-V213CommitDiagnosticReal -DetailsPath $DetailsPath -Summary $Summary -ErrorRecord $ErrorRecord -ExitCode $ExitCode
 }
 $threw=$false
 try {
@@ -255,6 +337,21 @@ try {
     $threw=$true
 }
 "diag_inject_threw=$threw"
+# Lock release proof while this runner is still alive: measure the fixture
+# lock state, then a separate process must be able to acquire the same mutex.
+$lockStateCleared=($script:V213OperationLockDepth-eq0)-and($null-eq$script:V213OperationLock)
+"lock_state_cleared=$lockStateCleared"
+$probeScript=Join-Path $PSScriptRoot 'lock-probe.ps1'
+$probeText=@'
+. (Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1')
+$acquired=$false
+try { [void](Enter-V213OperationLock -Owner 'probe' -TimeoutSeconds 3); $acquired=$true } catch {}
+finally { if($acquired){Exit-V213OperationLock} }
+"probe_acquired=$acquired"
+'@
+Set-Content -LiteralPath $probeScript -Value $probeText
+$probeOut=& (Get-Process -Id $PID).Path -NoProfile -NonInteractive -File $probeScript
+"lock_probe: $probeOut"
 exit 0
 """
 
@@ -307,6 +404,7 @@ class SealedRefreshTests(unittest.TestCase):
             'runner-noisy-stream.ps1': RUNNER_NOISY_STREAM,
             'runner-noisy-plain.ps1': RUNNER_NOISY_PLAIN,
             'runner-diag-inject.ps1': RUNNER_DIAG_INJECT,
+            'runner-aux.ps1': RUNNER_AUX,
             'run-v213-local.ps1': DATA_JOB,
         }
         for name, text in files.items():
@@ -523,26 +621,38 @@ class SealedRefreshTests(unittest.TestCase):
                             self.assertFalse(leak, 'CANARY_CROSSED_' + form.upper() + '_BOUNDARY')
 
     def test_commit_cap_summary_reproducibility(self):
-        # Phase B: bounded summary reproducibility. The persisted diagnostic
-        # must match the reference bounded rule exactly: presence flags survive
-        # truncation (late stderr), content freezes at the first non-fitting
-        # record, and UTF-8 bytes/lines/hash describe the same collected
-        # content. No record content may reach the caller console.
+        # Phase B/C: bounded summary reproducibility. The persisted diagnostic
+        # must match the independent UTF-16 reference exactly: presence flags
+        # survive truncation (late stderr), a record is admitted whole only
+        # when its normalized form fits the remaining code unit capacity
+        # (raw length above the cap can still fit after CRLF shrink), and
+        # UTF-8 bytes/lines/hash describe the same collected content. Output
+        # is observed per record at the stream boundary; the oversized record
+        # carries an identifiable marker (no length-based exemption).
         cases = {
             'cap_no_output': [],
             'cap_many_short': [(False, 'R%04d' % i) for i in range(2000)]
                                + [(True, 'LATE_STDERR_AFTER_TRUNCATION')],
-            'cap_oversized_single': [(False, 'X' * 20000)],
+            'cap_oversized_single': [(False, 'X' * 10000 + 'OVERSIZED_MARKER_MUST_NOT_LEAK' + 'X' * 9995)],
             'cap_exact': [(False, 'A' * 7)] * 1024,
             'cap_cjk_crlf': [(False, '重電\r\n設備'), (False, ''), (False, 'plain')],
+            'cap_crlf_shrink': [(False, 'A\r\n' * 3000)],
+            'cap_norm_exact_fit': [(False, 'A' * 8000), (False, 'B' * 190)],
+            'cap_norm_exact_over': [(False, 'A' * 8000), (False, 'B' * 191)],
+            'cap_nonbmp_fit': [(False, '\U0001D11E' * 4000)],
+            'cap_nonbmp_over': [(False, '\U0001D11E' * 4100)],
         }
         for host, executable in h.required_hosts():
             for case, records in cases.items():
                 with self.subTest(host=host, case=case):
                     parent, folder, env, bindings = self._fixture(executable, case)
-                    result = self._run(executable, folder, env, bindings, 'cap', 'runner-noisy.ps1')
+                    result = self._run(executable, folder, env, bindings, 'cap', 'runner-noisy-stream.ps1')
                     self.assertEqual(result.returncode, 0, 'CAP_DRIVER_FAILED')
                     console = result.stdout + result.stderr
+                    stream_obs = json.loads((folder / 'noisy-stream-observation.json').read_text('utf-8-sig'))
+                    self.assertFalse(stream_obs['canary_marker_at_stream_boundary'],
+                                     'CAP_MARKER_CROSSED_STREAM_BOUNDARY')
+                    self.assertNotIn('OVERSIZED_MARKER_MUST_NOT_LEAK', console)
                     for _, text in records:
                         if text and len(text) < 40:
                             self.assertNotIn(text, console)
@@ -566,15 +676,18 @@ class SealedRefreshTests(unittest.TestCase):
                     self.assertEqual(data['exit_code'], 3)
                     h.write_json(parent / ('cap-observation-' + case + '.json'), dict(
                         host=host, case=case, **expected, diagnostic_bytes=len(raw),
+                        marker_at_stream_boundary=stream_obs['canary_marker_at_stream_boundary'],
                         raw_output_retained=False, release_qualified=False))
 
     def test_commit_diagnostic_failure_injection(self):
-        # Phase B: diagnostic persistence failure (write or rename) must not
-        # mask the canonical COMMIT_REQUEST failure, must not block rollback,
-        # and must release the lock. Injection targets the diagnostic location
-        # only; the journal stays intact.
+        # Phase B/C: diagnostic persistence failure (write, rename, oversize)
+        # must not mask the canonical COMMIT_REQUEST failure, must not block
+        # rollback, and must release the lock. Injection targets the diagnostic
+        # location only; the journal stays intact. Lock release is measured
+        # while the runner is still alive: the fixture lock state must be
+        # cleared and a separate process must acquire the same mutex.
         for host, executable in h.required_hosts():
-            for inject in ('write', 'rename'):
+            for inject in ('write', 'rename', 'oversize'):
                 with self.subTest(host=host, inject=inject):
                     parent, folder, env, bindings = self._fixture(executable, 'commit_noisy_nonzero')
                     env = dict(env)
@@ -583,6 +696,9 @@ class SealedRefreshTests(unittest.TestCase):
                                        'runner-diag-inject.ps1')
                     self.assertEqual(result.returncode, 0, 'DIAG_INJECT_DRIVER_FAILED')
                     self.assertIn('diag_inject_threw=True', result.stdout)
+                    # Lock release measured while the runner process is alive.
+                    self.assertIn('lock_state_cleared=True', result.stdout)
+                    self.assertIn('probe_acquired=True', result.stdout)
                     records = self._journals(env)
                     self.assertEqual(len(records), 1)
                     record = records[0]
@@ -599,16 +715,55 @@ class SealedRefreshTests(unittest.TestCase):
                     target = details / 'COMMIT_REQUEST-diagnostic.json'
                     if inject == 'write':
                         self.assertTrue((details / 'COMMIT_REQUEST-diagnostic.json.tmp').is_dir())
-                    else:
+                    elif inject == 'rename':
                         # Broken junction: lexists checks the reparse point itself
                         # (Path.exists() would follow the missing target).
                         self.assertTrue(os.path.lexists(target))
+                    # oversize: the branch throws before any write; nothing
+                    # partial or shrunk may be persisted.
                     self.assertFalse(target.is_file(), 'DIAGNOSTIC_MUST_NOT_PERSIST_UNDER_INJECTION')
+                    if inject == 'oversize':
+                        self.assertFalse(Path(str(target) + '.tmp').exists())
                     h.write_json(parent / ('diag-inject-observation-' + inject + '.json'), dict(
                         host=host, inject=inject, failed_phase=record['failed_phase'],
                         publication_state=record['publication_state'],
-                        actions=self._actions(folder), lock_released=True,
+                        actions=self._actions(folder),
+                        lock_state_cleared=True, cross_process_acquire=True,
                         raw_output_retained=False, release_qualified=False))
+
+    def test_commit_aux_streams_discarded(self):
+        # Phase C: Warning/Verbose/Debug/Information/Write-Host canaries are
+        # explicitly enabled in the fixture child (positive control proves they
+        # are actually emitted), then the commit call's local streams 3-6
+        # discard must keep them out of every observation surface.
+        aux_canaries = ('SYNTHETIC_CANARY_WARNING_AUX', 'SYNTHETIC_CANARY_VERBOSE_AUX',
+                        'SYNTHETIC_CANARY_DEBUG_AUX', 'SYNTHETIC_CANARY_INFORMATION_AUX',
+                        'SYNTHETIC_CANARY_HOST_AUX')
+        for host, executable in h.required_hosts():
+            with self.subTest(host=host):
+                parent, folder, env, bindings = self._fixture(executable, 'aux_streams')
+                result = self._run(executable, folder, env, bindings, 'aux', 'runner-aux.ps1')
+                self.assertEqual(result.returncode, 0, 'AUX_DRIVER_FAILED')
+                obs = json.loads((folder / 'aux-observation.json').read_text('utf-8-sig'))
+                console = result.stdout + result.stderr
+                # Positive control: all five canaries are emitted when the
+                # streams are not discarded (no false PASS from default silence).
+                self.assertEqual(obs['aux_visible_count'], 5, 'AUX_POSITIVE_CONTROL_FAILED')
+                self.assertFalse(obs['aux_leak_at_assignment_boundary'],
+                                 'AUX_LEAKED_AT_ASSIGNMENT_BOUNDARY')
+                for c in aux_canaries:
+                    self.assertNotIn(c, console)
+                record = self._journals(env)[0]
+                self.assertEqual(record['status'], 'PASS')
+                self.assertEqual(record['publication_state'], 'FINALIZED')
+                # actions: probe Commit + refresh Commit + Finalize
+                self.assertEqual(self._actions(folder), ['Commit', 'Commit', 'Finalize'])
+                h.write_json(parent / 'aux-observation-summary.json', dict(
+                    host=host, aux_visible_count=obs['aux_visible_count'],
+                    aux_leak_at_assignment_boundary=obs['aux_leak_at_assignment_boundary'],
+                    aux_in_console=any(c in console for c in aux_canaries),
+                    publication_state=record['publication_state'],
+                    raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_noisy_integration(self):
         # Phase B: the original scheduled caller (fixture copy) under noisy
@@ -637,6 +792,16 @@ class SealedRefreshTests(unittest.TestCase):
                         self.assertNotIn(canary, receipt_raw)
                         self.assertNotIn(canary, log_text)
                         self.assertNotIn(canary, console)
+                    # Scheduled artifact scan: journal + diagnostic + any
+                    # diagnostic .tmp (booleans and counts only).
+                    pub_root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+                    artifact_files = [p for p in pub_root.glob('*.json') if p.is_file()]
+                    for det in pub_root.glob('*.details'):
+                        artifact_files.extend(p for p in det.rglob('*') if p.is_file())
+                    artifact_blob = ''.join(p.read_text('utf-8-sig', errors='replace')
+                                            for p in artifact_files)
+                    canary_in_artifacts = any(c in artifact_blob for c in CANARIES)
+                    self.assertFalse(canary_in_artifacts, 'CANARY_IN_SCHEDULED_ARTIFACTS')
                     self.assertEqual(receipt['status'], status)
                     self.assertEqual(receipt['publication_state'], pstate)
                     self.assertIsInstance(receipt['publication_state'], str)
@@ -652,6 +817,7 @@ class SealedRefreshTests(unittest.TestCase):
                         publication_state=receipt['publication_state'],
                         actions=self._actions(folder),
                         canary_in_receipt=False, canary_in_log=False, canary_in_console=False,
+                        canary_in_artifacts=False, artifact_count=len(artifact_files),
                         raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_does_not_ignore_an_unadmitted_terminal_journal(self):

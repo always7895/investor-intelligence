@@ -138,26 +138,48 @@ function New-V213CommitSummary {
 function Add-V213CommitSummaryRecord {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][object]$Summary,[Parameter(Mandatory=$true)][object]$Record)
-    # Per-record bounded update. Presence flags are maintained for every record,
-    # including records arriving after the content summary is frozen; content is
-    # frozen at the first record that does not fit (truncated=true). Nothing is
-    # emitted from this helper.
+    # Per-record bounded update. Presence flags are maintained for every
+    # record, including records arriving after the content summary is frozen;
+    # when frozen, presence is updated and nothing else is extracted. Content
+    # is frozen at the first record whose normalized form does not fit
+    # (truncated=true); no partial record is retained. Nothing is emitted from
+    # this helper.
     if($Record-is[System.Management.Automation.ErrorRecord]){
         $Summary.StderrPresent=$true
+        if($Summary.Truncated){return}
         $text=''
         if($null-ne$Record.Exception){$text=$Record.Exception.Message}
     } else {
         $Summary.StdoutPresent=$true
+        if($Summary.Truncated){return}
         $text=$Record.ToString()
     }
-    if($Summary.Truncated){return}
     if([string]::IsNullOrEmpty($text)){return}
-    # Normalization (CRLF/CR -> LF) never increases length, so a raw length above
-    # the cap proves non-fit without materializing a full normalized copy.
-    if($text.Length-gt$Summary.Cap){$Summary.Truncated=$true;return}
-    $normalized=$text-replace "`r`n","`n"-replace "`r","`n"
-    if(($Summary.Builder.Length+$normalized.Length+1)-gt$Summary.Cap){$Summary.Truncated=$true;return}
-    [void]$Summary.Builder.Append($normalized).Append("`n")
+    # Bounded candidate normalization: CRLF/CR -> LF processed code unit by
+    # code unit. The candidate never grows past the remaining capacity (plus
+    # the trailing LF), so a record whose raw length exceeds the cap can still
+    # be admitted when normalization shrinks it below the remaining capacity.
+    # Only a record whose normalized form fits is appended whole; an oversized
+    # record is discarded whole and freezes the content summary.
+    $remaining=$Summary.Cap-$Summary.Builder.Length-1
+    if($remaining-lt0){$Summary.Truncated=$true;return}
+    $candidate=[System.Text.StringBuilder]::new()
+    $length=$text.Length
+    $index=0
+    $fits=$true
+    while($index-lt$length){
+        $char=$text[$index]
+        if($char-eq[char]13){
+            if($index+1-lt$length-and$text[$index+1]-eq[char]10){$index++}
+            [void]$candidate.Append([char]10)
+        } else {
+            [void]$candidate.Append($char)
+        }
+        $index++
+        if($candidate.Length-gt$remaining){$fits=$false;break}
+    }
+    if(-not$fits){$Summary.Truncated=$true;return}
+    [void]$Summary.Builder.Append($candidate.ToString()).Append("`n")
 }
 function Save-V213CommitDiagnostic {
     param([string]$DetailsPath,[object]$Summary,
@@ -209,7 +231,11 @@ function Save-V213CommitDiagnostic {
     }
     $json=$data|ConvertTo-Json -Depth 3
     $jsonBytes=[System.Text.Encoding]::UTF8.GetBytes($json)
-    if($jsonBytes.Length-gt$cap){$json='{"schema_version":1,"phase":"COMMIT_REQUEST","truncated":true}';$jsonBytes=[System.Text.Encoding]::UTF8.GetBytes($json)}
+    # A persisted diagnostic must carry the complete whitelist schema. An
+    # oversized serialization is rejected with a fixed safe code before any
+    # write; the caller's diagnostic-failure tolerance path handles it. No
+    # partial or shrunk JSON is ever written.
+    if($jsonBytes.Length-gt$cap){throw 'V213_DIAGNOSTIC_OVERSIZE_REJECTED'}
     $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
     $tmp=$target+'.tmp'
     [IO.File]::WriteAllBytes($tmp,$jsonBytes)
