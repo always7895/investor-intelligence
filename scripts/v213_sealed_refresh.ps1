@@ -122,32 +122,56 @@ function Test-V213RefreshAck($Ack,$Record,[string]$Action) {
         'Rollback' {if($Ack.status-cne'not_committed'-and($Ack.status-cne'rolled_back'-or$Ack.exact_pointer_restored-isnot[bool]-or$Ack.exact_pointer_restored-ne$true)){throw 'V213_REFRESH_ROLLBACK_UNPROVEN'}}
     }
 }
+function New-V213CommitSummary {
+    [CmdletBinding()]
+    param()
+    # Bounded per-record collection state. The summary is updated as transport
+    # records stream through the pipeline; the full record list is never retained.
+    return [pscustomobject]@{
+        Builder=[System.Text.StringBuilder]::new()
+        Cap=8192
+        Truncated=$false
+        StdoutPresent=$false
+        StderrPresent=$false
+    }
+}
+function Add-V213CommitSummaryRecord {
+    [CmdletBinding()]
+    param([Parameter(Mandatory=$true)][object]$Summary,[Parameter(Mandatory=$true)][object]$Record)
+    # Per-record bounded update. Presence flags are maintained for every record,
+    # including records arriving after the content summary is frozen; content is
+    # frozen at the first record that does not fit (truncated=true). Nothing is
+    # emitted from this helper.
+    if($Record-is[System.Management.Automation.ErrorRecord]){
+        $Summary.StderrPresent=$true
+        $text=''
+        if($null-ne$Record.Exception){$text=$Record.Exception.Message}
+    } else {
+        $Summary.StdoutPresent=$true
+        $text=$Record.ToString()
+    }
+    if($Summary.Truncated){return}
+    if([string]::IsNullOrEmpty($text)){return}
+    # Normalization (CRLF/CR -> LF) never increases length, so a raw length above
+    # the cap proves non-fit without materializing a full normalized copy.
+    if($text.Length-gt$Summary.Cap){$Summary.Truncated=$true;return}
+    $normalized=$text-replace "`r`n","`n"-replace "`r","`n"
+    if(($Summary.Builder.Length+$normalized.Length+1)-gt$Summary.Cap){$Summary.Truncated=$true;return}
+    [void]$Summary.Builder.Append($normalized).Append("`n")
+}
 function Save-V213CommitDiagnostic {
-    param([string]$DetailsPath,[System.Collections.Generic.List[object]]$Records,
+    param([string]$DetailsPath,[object]$Summary,
           [System.Management.Automation.ErrorRecord]$ErrorRecord,[AllowNull()][object]$ExitCode)
     # Whitelist-only construction: the persisted artifact is built field by field
     # from safe metadata. Raw transport output is reduced to presence, size, line
-    # count and SHA-256; it is never serialized, redacted or persisted.
+    # count and SHA-256 of the bounded collected summary; it is never serialized,
+    # redacted or persisted.
     if($DetailsPath-cnotmatch'^[A-Za-z]:\\'){throw 'V213_DIAGNOSTIC_SCOPE_INVALID'}
     $cap=8192
-    $builder=[System.Text.StringBuilder]::new()
-    $truncated=$false
-    $stdoutPresent=$false
-    $stderrPresent=$false
-    foreach($r in $Records){
-        if($r-is[System.Management.Automation.ErrorRecord]){
-            $stderrPresent=$true
-            $text=''
-            if($null-ne$r.Exception){$text=$r.Exception.Message}
-        } else {
-            $stdoutPresent=$true
-            $text=$r.ToString()
-        }
-        if([string]::IsNullOrEmpty($text)){continue}
-        $normalized=$text-replace "`r`n","`n"-replace "`r","`n"
-        if(($builder.Length+$normalized.Length+1)-gt$cap){$truncated=$true;break}
-        [void]$builder.Append($normalized).Append("`n")
-    }
+    $truncated=$Summary.Truncated
+    $stdoutPresent=$Summary.StdoutPresent
+    $stderrPresent=$Summary.StderrPresent
+    $builder=$Summary.Builder
     $payload=[System.Text.Encoding]::UTF8.GetBytes($builder.ToString())
     $lineCount=0
     foreach($line in ($builder.ToString()-split"`n")){if($line-ne''){$lineCount++}}
@@ -184,10 +208,11 @@ function Save-V213CommitDiagnostic {
         truncated=$truncated
     }
     $json=$data|ConvertTo-Json -Depth 3
-    if($json.Length-gt$cap){$json='{"schema_version":1,"phase":"COMMIT_REQUEST","truncated":true}'}
+    $jsonBytes=[System.Text.Encoding]::UTF8.GetBytes($json)
+    if($jsonBytes.Length-gt$cap){$json='{"schema_version":1,"phase":"COMMIT_REQUEST","truncated":true}';$jsonBytes=[System.Text.Encoding]::UTF8.GetBytes($json)}
     $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
     $tmp=$target+'.tmp'
-    [IO.File]::WriteAllText($tmp,$json,[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllBytes($tmp,$jsonBytes)
     Move-Item -LiteralPath $tmp -Destination $target -Force
 }
 function Invoke-V213SealedRefresh {
@@ -235,28 +260,25 @@ function Invoke-V213SealedRefresh {
         Save-V213RefreshJournal $record $ResultPath
         $ackPath=Join-Path $details 'commit.json'
         $phase='COMMIT_REQUEST'
-        $commitRecords=[System.Collections.Generic.List[object]]::new()
+        $commitSummary=New-V213CommitSummary
         $commitPreExit=$null
         if(Test-Path variable:LASTEXITCODE){$commitPreExit=$LASTEXITCODE}
         $commitReturned=$false
         $commitFailure=$null
         try{
-            & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath 2>&1 | ForEach-Object{$commitRecords.Add($_)}
+            # Streams 1-2 feed the bounded summary; streams 3-6 are discarded for
+            # this call only (2>&1 does not cover Warning/Verbose/Debug/Information).
+            & $sync -Action Commit -ProjectRoot $ProjectRoot -BundlePath $sealed -ExpectedBundleSha256 $record.bundle_sha256 -LocalConfigPath $LocalConfigPath -ResultPath $ackPath 2>&1 3>$null 4>$null 5>$null 6>$null | ForEach-Object{Add-V213CommitSummaryRecord -Summary $commitSummary -Record $_}
             $commitReturned=$true
         }catch{
             $commitFailure=$_
         }
         if($commitReturned){
-            foreach($r in $commitRecords){
-                if($r-is[System.Management.Automation.ErrorRecord]){
-                    if($null-ne$r.Exception){Write-Error -Message $r.Exception.Message -ErrorAction Continue}
-                } else {Write-Output $r}
-            }
             if($LASTEXITCODE-ne0){
                 $commitExit=$null
                 if(Test-Path variable:LASTEXITCODE){if($LASTEXITCODE-ne$commitPreExit){$commitExit=$LASTEXITCODE}}
                 try{
-                    Save-V213CommitDiagnostic -DetailsPath $details -Records $commitRecords -ErrorRecord $null -ExitCode $commitExit
+                    Save-V213CommitDiagnostic -DetailsPath $details -Summary $commitSummary -ErrorRecord $null -ExitCode $commitExit
                 }catch{
                     # Diagnostic persistence must never mask the canonical COMMIT_REQUEST failure.
                 }
@@ -266,7 +288,7 @@ function Invoke-V213SealedRefresh {
             $commitExit=$null
             if(Test-Path variable:LASTEXITCODE){if($LASTEXITCODE-ne$commitPreExit){$commitExit=$LASTEXITCODE}}
             try{
-                Save-V213CommitDiagnostic -DetailsPath $details -Records $commitRecords -ErrorRecord $commitFailure -ExitCode $commitExit
+                Save-V213CommitDiagnostic -DetailsPath $details -Summary $commitSummary -ErrorRecord $commitFailure -ExitCode $commitExit
             }catch{
                 # Diagnostic persistence must never mask the canonical COMMIT_REQUEST failure.
             }

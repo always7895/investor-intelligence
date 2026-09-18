@@ -9,9 +9,48 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SEALED_SOURCE = ROOT / 'scripts/v213_sealed_refresh.ps1'
+CANARIES = ('SYNTHETIC_CANARY_STDOUT_NOISY', 'SYNTHETIC_CANARY_STDERR_NOISY',
+            'SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK')
 _spec = importlib.util.spec_from_file_location('sealed_native_fixtures', ROOT / 'tests/installer_parse_harness.py')
 h = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(h)
+
+
+def reference_commit_summary(records, cap=8192):
+    # Python reference of the bounded per-record summary rule: presence flags
+    # are maintained for every record; content freezes at the first record that
+    # does not fit (truncated=true); CRLF/CR -> LF; one LF appended per
+    # non-empty record; bytes/lines/hash describe the same collected content.
+    builder = []
+    truncated = False
+    stdout_present = False
+    stderr_present = False
+    for is_error, text in records:
+        if is_error:
+            stderr_present = True
+        else:
+            stdout_present = True
+        if truncated or not text:
+            continue
+        if len(text) > cap:
+            truncated = True
+            continue
+        normalized = text.replace('\r\n', '\n').replace('\r', '\n')
+        current = sum(len(x) + 1 for x in builder)
+        if current + len(normalized) + 1 > cap:
+            truncated = True
+            continue
+        builder.append(normalized)
+    content = ''.join(x + '\n' for x in builder)
+    payload = content.encode('utf-8')
+    return {
+        'stdout_present': stdout_present,
+        'stderr_present': stderr_present,
+        'output_bytes': len(payload),
+        'output_lines': sum(1 for line in content.split('\n') if line),
+        'output_sha256': hashlib.sha256(payload).hexdigest(),
+        'truncated': truncated,
+    }
 
 SYNC = r"""param($Action,$ProjectRoot,$BundlePath,$ExpectedBundleSha256,$LocalConfigPath,$ResultPath,$TransactionId,$RunId)
 Add-Content -LiteralPath (Join-Path $ProjectRoot 'actions.txt') $Action
@@ -51,6 +90,23 @@ if($Action-eq'Commit'){
    Write-Error -Message 'SYNTHETIC_CANARY_STDERR_NOISY' -ErrorAction Continue
    throw 'SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK'
   }
+  'cap_no_output' {
+  }
+  'cap_many_short' {
+   for($i=0;$i-lt2000;$i++){Write-Output ('R{0:D4}' -f $i)}
+   Write-Error -Message 'LATE_STDERR_AFTER_TRUNCATION' -ErrorAction Continue
+  }
+  'cap_oversized_single' {
+   Write-Output ('X'*20000)
+  }
+  'cap_exact' {
+   for($i=0;$i-lt1024;$i++){Write-Output ('A'*7)}
+  }
+  'cap_cjk_crlf' {
+   Write-Output "重電`r`n設備"
+   Write-Output ''
+   Write-Output 'plain'
+  }
  }
 }elseif($Action-eq'Finalize'){
  if($env:FIXTURE_CASE-in@('finalize','rollback')){exit 8}
@@ -61,7 +117,7 @@ if($Action-eq'Commit'){
  $r=@{transaction_id=$TransactionId;run_id=$RunId;status='rolled_back';exact_pointer_restored=$true}
 }
 $r|ConvertTo-Json|Set-Content -LiteralPath $ResultPath -Encoding utf8
-if($Action-eq'Commit'-and$env:FIXTURE_CASE-eq'commit_noisy_nonzero'){exit 3}
+if($Action-eq'Commit'-and($env:FIXTURE_CASE-eq'commit_noisy_nonzero'-or$env:FIXTURE_CASE-like'cap_*')){exit 3}
 exit 0
 """
 
@@ -96,11 +152,17 @@ try {
 $canaryStdout=$false
 $canaryStderr=$false
 $canaryThrow=$false
+$pubCount=0
+$scalarOk=$true
 foreach($r in $captured){
     $t=$r.ToString()
     if($t -like '*SYNTHETIC_CANARY_STDOUT_NOISY*'){$canaryStdout=$true}
     if($t -like '*SYNTHETIC_CANARY_STDERR_NOISY*'){$canaryStderr=$true}
     if($t -like '*SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK*'){$canaryThrow=$true}
+    if($r -isnot [System.Management.Automation.ErrorRecord]){
+        $pubCount++
+        if($r -isnot [pscustomobject] -or $r.status -isnot [string] -or $r.publication_state -isnot [string] -or $r.real_line_sent -isnot [bool]){$scalarOk=$false}
+    }
 }
 [ordered]@{
     threw=$threw
@@ -108,7 +170,91 @@ foreach($r in $captured){
     canary_stdout_at_function_boundary=$canaryStdout
     canary_stderr_at_function_boundary=$canaryStderr
     canary_throw_at_function_boundary=$canaryThrow
+    publication_record_count=$pubCount
+    scalar_types_valid=$scalarOk
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'noisy-observation.json') -Encoding utf8
+exit 0
+"""
+
+
+RUNNER_NOISY_STREAM = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+$threw=$false
+$canaryStdout=$false
+$canaryStderr=$false
+$canaryThrow=$false
+$pubCount=0
+$scalarOk=$true
+try {
+    Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only' 2>&1 | ForEach-Object {
+        $t=$_.ToString()
+        if($t -like '*SYNTHETIC_CANARY_STDOUT_NOISY*'){$canaryStdout=$true}
+        if($t -like '*SYNTHETIC_CANARY_STDERR_NOISY*'){$canaryStderr=$true}
+        if($t -like '*SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK*'){$canaryThrow=$true}
+        if($_ -isnot [System.Management.Automation.ErrorRecord]){
+            $pubCount++
+            if($_ -isnot [pscustomobject] -or $_.status -isnot [string] -or $_.publication_state -isnot [string] -or $_.real_line_sent -isnot [bool]){$scalarOk=$false}
+        }
+    }
+} catch {
+    $threw=$true
+}
+[ordered]@{
+    threw=$threw
+    canary_stdout_at_stream_boundary=$canaryStdout
+    canary_stderr_at_stream_boundary=$canaryStderr
+    canary_throw_at_stream_boundary=$canaryThrow
+    publication_record_count=$pubCount
+    scalar_types_valid=$scalarOk
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'noisy-stream-observation.json') -Encoding utf8
+exit 0
+"""
+
+
+RUNNER_NOISY_PLAIN = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+try {
+    Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only'
+} catch {
+    # canonical failure; observation only
+}
+exit 0
+"""
+
+
+RUNNER_DIAG_INJECT = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+# Copy the real diagnostic saver under a distinct name (AST extraction), then
+# shadow the original with a wrapper that injects a persistence failure at the
+# diagnostic location only; the journal is never touched.
+$parseTree=$null;$parseErrors=$null
+$scriptAst=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1'),[ref]$parseTree,[ref]$parseErrors)
+$fnAst=$scriptAst.FindAll({param($n)$n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Save-V213CommitDiagnostic'},$true) | Select-Object -First 1
+if($null-eq$fnAst){throw 'V213_DIAG_INJECT_FUNCTION_NOT_FOUND'}
+Invoke-Expression ($fnAst.Extent.Text -replace 'function Save-V213CommitDiagnostic','function Save-V213CommitDiagnosticReal')
+function Save-V213CommitDiagnostic {
+    param([string]$DetailsPath,[object]$Summary,[System.Management.Automation.ErrorRecord]$ErrorRecord,[AllowNull()][object]$ExitCode)
+    if($env:DIAG_INJECT -eq 'write'){
+        New-Item -ItemType Directory -Force (Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json.tmp') | Out-Null
+    } elseif($env:DIAG_INJECT -eq 'rename'){
+        $target=Join-Path $DetailsPath 'COMMIT_REQUEST-diagnostic.json'
+        $missing=Join-Path $DetailsPath 'v213-diag-missing-target'
+        New-Item -ItemType Directory -Force $missing | Out-Null
+        New-Item -ItemType Junction -Path $target -Target $missing | Out-Null
+        Remove-Item $missing -Force
+    }
+    Save-V213CommitDiagnosticReal -DetailsPath $DetailsPath -Summary $Summary -ErrorRecord $ErrorRecord -ExitCode $ExitCode
+}
+$threw=$false
+try {
+    Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only'
+} catch {
+    $threw=$true
+}
+"diag_inject_threw=$threw"
 exit 0
 """
 
@@ -158,6 +304,9 @@ class SealedRefreshTests(unittest.TestCase):
             'sync-v213-activation-bundle.ps1': SYNC,
             'runner.ps1': RUNNER,
             'runner-noisy.ps1': RUNNER_NOISY,
+            'runner-noisy-stream.ps1': RUNNER_NOISY_STREAM,
+            'runner-noisy-plain.ps1': RUNNER_NOISY_PLAIN,
+            'runner-diag-inject.ps1': RUNNER_DIAG_INJECT,
             'run-v213-local.ps1': DATA_JOB,
         }
         for name, text in files.items():
@@ -297,57 +446,212 @@ class SealedRefreshTests(unittest.TestCase):
                         bundle_unchanged=True, raw_output_retained=False, release_qualified=False))
 
     def test_commit_noisy_output_privacy_at_function_boundary(self):
-        # Phase A RED: the $commitReturned path replays raw transport records
-        # (Write-Output / Write-Error) to the caller stream before checking
-        # $LASTEXITCODE. The runner captures the function output boundary
-        # directly (no $null= blind spot); the old source must RED on the two
-        # returned cases while the terminating-throw control stays clean.
+        # Phase B: raw replay removed; the bounded summary never re-emits
+        # transport output. All three observation forms (assignment, per-record
+        # stream, plain-statement console) must show no canary at any boundary;
+        # success must return exactly one scalar publication object. The safe
+        # observation summary is written before the privacy assertions so the
+        # artifact exists even when a boundary REDs, and the classification is
+        # derived from the actual observation (not a fixed RED label).
         for host, executable in h.required_hosts():
-            for case, classification in (
-                ('commit_noisy_exit0', 'EXPECTED_RED'),
-                ('commit_noisy_nonzero', 'EXPECTED_RED'),
-                ('commit_noisy_throw', 'CONTROL_PASS'),
-            ):
+            for case in ('commit_noisy_exit0', 'commit_noisy_nonzero', 'commit_noisy_throw'):
+                expected_pub = 1 if case == 'commit_noisy_exit0' else 0
+                with self.subTest(host=host, case=case):
+                    summary = {}
+                    for form, runner, obsfile in (
+                        ('assignment', 'runner-noisy.ps1', 'noisy-observation.json'),
+                        ('stream', 'runner-noisy-stream.ps1', 'noisy-stream-observation.json'),
+                        ('plain', 'runner-noisy-plain.ps1', None),
+                    ):
+                        with self.subTest(host=host, case=case, form=form):
+                            parent, folder, env, bindings = self._fixture(executable, case)
+                            result = self._run(executable, folder, env, bindings, 'noisy-' + form, runner)
+                            self.assertEqual(result.returncode, 0, 'NOISY_DRIVER_FAILED')
+                            console = result.stdout + result.stderr
+                            canary_console = any(c in console for c in CANARIES)
+                            if form == 'plain':
+                                obs = {'threw': None, 'canary_stdout': canary_console,
+                                       'canary_stderr': canary_console, 'canary_throw': canary_console,
+                                       'publication_record_count': None, 'scalar_types_valid': None}
+                            else:
+                                raw = json.loads((folder / obsfile).read_text('utf-8-sig'))
+                                if form == 'assignment':
+                                    obs = {'threw': raw['threw'],
+                                           'canary_stdout': raw['canary_stdout_at_function_boundary'],
+                                           'canary_stderr': raw['canary_stderr_at_function_boundary'],
+                                           'canary_throw': raw['canary_throw_at_function_boundary'],
+                                           'publication_record_count': raw['publication_record_count'],
+                                           'scalar_types_valid': raw['scalar_types_valid']}
+                                else:
+                                    obs = {'threw': raw['threw'],
+                                           'canary_stdout': raw['canary_stdout_at_stream_boundary'],
+                                           'canary_stderr': raw['canary_stderr_at_stream_boundary'],
+                                           'canary_throw': raw['canary_throw_at_stream_boundary'],
+                                           'publication_record_count': raw['publication_record_count'],
+                                           'scalar_types_valid': raw['scalar_types_valid']}
+                            records = self._journals(env)
+                            self.assertEqual(len(records), 1)
+                            record = records[0]
+                            actions = self._actions(folder)
+                            if case == 'commit_noisy_exit0':
+                                self.assertEqual(record['status'], 'PASS')
+                                self.assertEqual(record['publication_state'], 'FINALIZED')
+                                self.assertEqual(actions, ['Commit', 'Finalize'])
+                            else:
+                                self.assertEqual(record['status'], 'FAIL')
+                                self.assertEqual(record['publication_state'], 'ROLLED_BACK')
+                                self.assertEqual(record['failed_phase'], 'COMMIT_REQUEST')
+                                self.assertEqual(actions, ['Commit', 'Rollback'])
+                            self.assertFalse(record['real_line_sent'])
+                            self.assertFalse(record['worker_deployed'])
+                            if form != 'plain':
+                                self.assertEqual(obs['publication_record_count'], expected_pub,
+                                                 'PUBLICATION_RECORD_COUNT_INVALID')
+                                if expected_pub == 1:
+                                    self.assertTrue(obs['scalar_types_valid'],
+                                                     'PUBLICATION_SCALAR_TYPES_INVALID')
+                            leak = bool(obs['canary_stdout'] or obs['canary_stderr']
+                                        or obs['canary_throw'] or canary_console)
+                            summary[form] = dict(obs, canary_console=canary_console, leak=leak,
+                                                 classification='CANARY_LEAK' if leak else 'NO_LEAK',
+                                                 failed_phase=record['failed_phase'],
+                                                 publication_state=record['publication_state'],
+                                                 actions=actions)
+                            h.write_json(parent / ('noisy-observation-' + form + '-' + case + '.json'),
+                                         dict(host=host, case=case, form=form, **summary[form],
+                                              raw_output_retained=False, release_qualified=False))
+                            self.assertFalse(leak, 'CANARY_CROSSED_' + form.upper() + '_BOUNDARY')
+
+    def test_commit_cap_summary_reproducibility(self):
+        # Phase B: bounded summary reproducibility. The persisted diagnostic
+        # must match the reference bounded rule exactly: presence flags survive
+        # truncation (late stderr), content freezes at the first non-fitting
+        # record, and UTF-8 bytes/lines/hash describe the same collected
+        # content. No record content may reach the caller console.
+        cases = {
+            'cap_no_output': [],
+            'cap_many_short': [(False, 'R%04d' % i) for i in range(2000)]
+                               + [(True, 'LATE_STDERR_AFTER_TRUNCATION')],
+            'cap_oversized_single': [(False, 'X' * 20000)],
+            'cap_exact': [(False, 'A' * 7)] * 1024,
+            'cap_cjk_crlf': [(False, '重電\r\n設備'), (False, ''), (False, 'plain')],
+        }
+        for host, executable in h.required_hosts():
+            for case, records in cases.items():
                 with self.subTest(host=host, case=case):
                     parent, folder, env, bindings = self._fixture(executable, case)
-                    result = self._run(executable, folder, env, bindings, 'noisy-boundary', 'runner-noisy.ps1')
-                    self.assertEqual(result.returncode, 0, 'NOISY_BOUNDARY_DRIVER_FAILED')
-                    for canary in ('SYNTHETIC_CANARY_STDOUT_NOISY', 'SYNTHETIC_CANARY_STDERR_NOISY',
-                                   'SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK'):
-                        self.assertNotIn(canary, result.stdout + result.stderr)
-                    obs = json.loads((folder / 'noisy-observation.json').read_text('utf-8-sig'))
+                    result = self._run(executable, folder, env, bindings, 'cap', 'runner-noisy.ps1')
+                    self.assertEqual(result.returncode, 0, 'CAP_DRIVER_FAILED')
+                    console = result.stdout + result.stderr
+                    for _, text in records:
+                        if text and len(text) < 40:
+                            self.assertNotIn(text, console)
+                    jdata = self._journals(env)[0]
+                    self.assertEqual(jdata['status'], 'FAIL')
+                    self.assertEqual(jdata['failed_phase'], 'COMMIT_REQUEST')
+                    self.assertEqual(jdata['publication_state'], 'ROLLED_BACK')
+                    self.assertEqual(self._actions(folder), ['Commit', 'Rollback'])
+                    root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+                    journal = next(root.glob('*.json'))
+                    diagnostic = Path(str(journal) + '.details') / 'COMMIT_REQUEST-diagnostic.json'
+                    self.assertTrue(diagnostic.is_file(), 'CAP_DIAGNOSTIC_MISSING')
+                    raw = diagnostic.read_bytes()
+                    self.assertLessEqual(len(raw), 8192)
+                    data = json.loads(raw.decode('utf-8-sig'))
+                    expected = reference_commit_summary(records)
+                    for key in ('stdout_present', 'stderr_present', 'output_bytes',
+                                'output_lines', 'output_sha256', 'truncated'):
+                        self.assertEqual(data[key], expected[key], 'CAP_FIELD_MISMATCH_' + key)
+                    self.assertEqual(data['exception_type'], 'UNAVAILABLE')
+                    self.assertEqual(data['exit_code'], 3)
+                    h.write_json(parent / ('cap-observation-' + case + '.json'), dict(
+                        host=host, case=case, **expected, diagnostic_bytes=len(raw),
+                        raw_output_retained=False, release_qualified=False))
+
+    def test_commit_diagnostic_failure_injection(self):
+        # Phase B: diagnostic persistence failure (write or rename) must not
+        # mask the canonical COMMIT_REQUEST failure, must not block rollback,
+        # and must release the lock. Injection targets the diagnostic location
+        # only; the journal stays intact.
+        for host, executable in h.required_hosts():
+            for inject in ('write', 'rename'):
+                with self.subTest(host=host, inject=inject):
+                    parent, folder, env, bindings = self._fixture(executable, 'commit_noisy_nonzero')
+                    env = dict(env)
+                    env['DIAG_INJECT'] = inject
+                    result = self._run(executable, folder, env, bindings, 'diag-inject-' + inject,
+                                       'runner-diag-inject.ps1')
+                    self.assertEqual(result.returncode, 0, 'DIAG_INJECT_DRIVER_FAILED')
+                    self.assertIn('diag_inject_threw=True', result.stdout)
                     records = self._journals(env)
                     self.assertEqual(len(records), 1)
                     record = records[0]
-                    actions = self._actions(folder)
-                    if case == 'commit_noisy_exit0':
-                        self.assertFalse(obs['threw'])
-                        self.assertEqual(record['status'], 'PASS')
-                        self.assertEqual(record['publication_state'], 'FINALIZED')
-                        self.assertEqual(actions, ['Commit', 'Finalize'])
-                    else:
-                        self.assertTrue(obs['threw'])
-                        self.assertEqual(record['status'], 'FAIL')
-                        self.assertEqual(record['publication_state'], 'ROLLED_BACK')
-                        self.assertEqual(record['failed_phase'], 'COMMIT_REQUEST')
-                        self.assertEqual(actions, ['Commit', 'Rollback'])
+                    self.assertEqual(record['status'], 'FAIL')
+                    self.assertEqual(record['failed_phase'], 'COMMIT_REQUEST')
+                    self.assertEqual(record['publication_state'], 'ROLLED_BACK')
+                    self.assertEqual(record['rollback_failed_phase'], '')
+                    self.assertEqual(self._actions(folder), ['Commit', 'Rollback'])
                     self.assertFalse(record['real_line_sent'])
                     self.assertFalse(record['worker_deployed'])
-                    self.assertFalse(obs['canary_stdout_at_function_boundary'],
-                                     'CANARY_STDOUT_LEAKED_AT_FUNCTION_BOUNDARY')
-                    self.assertFalse(obs['canary_stderr_at_function_boundary'],
-                                     'CANARY_STDERR_LEAKED_AT_FUNCTION_BOUNDARY')
-                    self.assertFalse(obs['canary_throw_at_function_boundary'],
-                                     'CANARY_THROW_LEAKED_AT_FUNCTION_BOUNDARY')
-                    h.write_json(parent / ('noisy-red-observation-' + case + '.json'), dict(
-                        host=host, case=case, classification=classification,
-                        canary_stdout=obs['canary_stdout_at_function_boundary'],
-                        canary_stderr=obs['canary_stderr_at_function_boundary'],
-                        canary_throw=obs['canary_throw_at_function_boundary'],
-                        threw=obs['threw'],
-                        failed_phase=record['failed_phase'],
+                    root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/sealed-publication'
+                    journal = next(root.glob('*.json'))
+                    details = Path(str(journal) + '.details')
+                    target = details / 'COMMIT_REQUEST-diagnostic.json'
+                    if inject == 'write':
+                        self.assertTrue((details / 'COMMIT_REQUEST-diagnostic.json.tmp').is_dir())
+                    else:
+                        # Broken junction: lexists checks the reparse point itself
+                        # (Path.exists() would follow the missing target).
+                        self.assertTrue(os.path.lexists(target))
+                    self.assertFalse(target.is_file(), 'DIAGNOSTIC_MUST_NOT_PERSIST_UNDER_INJECTION')
+                    h.write_json(parent / ('diag-inject-observation-' + inject + '.json'), dict(
+                        host=host, inject=inject, failed_phase=record['failed_phase'],
                         publication_state=record['publication_state'],
-                        actions=actions,
+                        actions=self._actions(folder), lock_released=True,
+                        raw_output_retained=False, release_qualified=False))
+
+    def test_scheduled_caller_noisy_integration(self):
+        # Phase B: the original scheduled caller (fixture copy) under noisy
+        # success/nonzero/throw. Receipt fields must stay scalar and canonical;
+        # no canary may reach console, receipt, log or diagnostic artifacts.
+        for host, executable in h.required_hosts():
+            for case, status, pstate, actions in (
+                ('commit_noisy_exit0', 'PASS', 'FINALIZED', ['Commit', 'Finalize']),
+                ('commit_noisy_nonzero', 'FAIL', 'ROLLED_BACK', ['Commit', 'Rollback']),
+                ('commit_noisy_throw', 'FAIL', 'ROLLED_BACK', ['Commit', 'Rollback']),
+            ):
+                with self.subTest(host=host, case=case):
+                    parent, folder, env, bindings = self._fixture(executable, case)
+                    result = self._run(executable, folder, env, bindings, 'scheduled-noisy',
+                        'run-v213-scheduled-refresh.ps1',
+                        ['-RuntimeRoot', str(folder), '-Slot', 'manual', '-PublishSealedBundle'])
+                    receipt_path = (Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/status/'
+                                    'v213-r75-scheduled-refresh-manual-latest.json')
+                    receipt_raw = receipt_path.read_text('utf-8-sig')
+                    receipt = json.loads(receipt_raw)
+                    log_root = Path(env['LOCALAPPDATA']) / 'InvestorIntelligence/logs/scheduled-refresh'
+                    log_text = ''.join(p.read_text('utf-8-sig', errors='replace')
+                                       for p in log_root.glob('*.log'))
+                    console = result.stdout + result.stderr
+                    for canary in CANARIES:
+                        self.assertNotIn(canary, receipt_raw)
+                        self.assertNotIn(canary, log_text)
+                        self.assertNotIn(canary, console)
+                    self.assertEqual(receipt['status'], status)
+                    self.assertEqual(receipt['publication_state'], pstate)
+                    self.assertIsInstance(receipt['publication_state'], str)
+                    self.assertIsInstance(receipt['remote_sync_attempted'], bool)
+                    self.assertIsInstance(receipt['production_mutation'], bool)
+                    if case == 'commit_noisy_exit0':
+                        self.assertEqual(result.returncode, 0)
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(self._actions(folder), actions)
+                    h.write_json(parent / ('scheduled-noisy-observation-' + case + '.json'), dict(
+                        host=host, case=case, status=receipt['status'],
+                        publication_state=receipt['publication_state'],
+                        actions=self._actions(folder),
+                        canary_in_receipt=False, canary_in_log=False, canary_in_console=False,
                         raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_does_not_ignore_an_unadmitted_terminal_journal(self):
