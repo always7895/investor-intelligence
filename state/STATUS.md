@@ -118,6 +118,22 @@
 - REPORT FIELDS: BASE_HEAD=040199d71e9024a9de82f5910dbac74410a00893; REQUEST_IDENTITY_CONTROLS=hit/miss/fetch_text + neg_query/neg_body; IMPORT_TIME_CONTROL=PASS; WORKER_THREAD_CONTROL=PASS; WORKERS_JOINED_BEFORE_UNINSTALL=true; DENIED_ATTEMPTS_BY_PATH=connect=2/resolver=1/spawn=1; RAW_DELEGATIONS_BY_PATH=0/0/0; SENTINEL_POSITIVE_CONTROLS=PASS (raw_resolver_delegations=1); OUTER_VERDICT_MATRIX=4 verdicts unified; EXCEPTION_CLEANUP=guard uninstall via context manager; FULL_GATE_RERUN_THIS_ROUND=true (the full gate test was re-run once with the guard; no new market data fetch); APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
 - NEXT: report to ChatGPT web (via decider-system-one routing); step B deltas (R4/R3 + import/thread) complete (8/8 controls); await ruling on step B acceptance + next step.
 
+## TASK0-3D_RECORDED_AUDIT_REPLAY (step B final deltas: REQUEST_CONTRACT + LIFECYCLE + SENTINEL; 2026-09-18)
+- Pro ruling (conv 6aacd52f): STEP_B_REPAIR_REQUIRED (continued) — import-time/worker-thread/4-verdict done, but 3 concrete errors: (1) REQUEST_CONTRACT: 3 mis-hits (positional data, empty body, Request data override); (2) LIFECYCLE: exception cleanup not wired into full-gate; with can't auto-handle mid-install failure; (3) SENTINEL: doesn't form an independent bottom-layer delegation observation; verdict() doesn't check raw_*_delegations.
+- ii_v213_replay_guard.py (final deltas): REQUEST_CONTRACT — support GET/no-body/200; reject non-GET, any non-None body (including b""), unsupported response status; positional data, keyword data, and Request.data ALL checked; `data is None` (not truthiness) determines no-body. LIFECYCLE — install() applies patches via a tracked patch list; partial-install failure -> _restore_applied() reverses applied patches; mid-install failure records HARNESS_ERROR + application NOT loaded. SENTINEL — verdict() checks raw_*_delegations: any non-zero -> HARNESS_ERROR (not COMPLETE).
+- test_v213_3d_step_b_replay_deny_guard.py (6 controls): **ALL PASS**.
+  - REQUEST_CONTRACT = PASS (hit, pos_data, empty_body, req_data, neg_query, neg_header, ledger, verdict)
+  - LIFECYCLE_PARTIAL_INSTALL = PASS (partial_failed, restored, harness_error, not_installed)
+  - LIFECYCLE_APP_EXCEPTION = PASS (app_exception_raised, restored)
+  - SENTINEL_INDEPENDENT_LOWER_LAYER = PASS (sentinel_denied, sentinel_zero, guard_raw_zero, verdict_not_harness)
+  - SENTINEL_RAW_NONZERO_HARNESS_ERROR = PASS (verdict=HARNESS_ERROR)
+  - SENTINEL_POSITIVE_CONTROLS = PASS (resolver_count=1)
+- test_v213_3d_full_gate_replay.py (LIFECYCLE): use try/finally to manage the guard (covers the whole execution; if an exception occurs, the guard is uninstalled via finally). Re-run: NETWORK_ISOLATION=BLOCKED_REPLAY_INPUT_MISS (replay_misses=44); DENIED_*_ATTEMPTS=0; RAW_*_DELEGATIONS=0; OUTER_REPLAY_VERDICT=BLOCKED_REPLAY_INPUT_MISS.
+- ARTIFACTS: unique_run_directory (no overwrite); manifest saved to the unique run directory (actual outcomes/counts, full SHA-256).
+- CONTROL_MANIFEST_SHA256: 38ee1a20bc39c53fe0feb854916f242acd69ab5575421c4dd510476a139836a1
+- REPORT FIELDS: BASE_HEAD=061cc78; REQUEST_CONTRACT=GET/no-body/200 + positional_data/empty_body/Request_data_override rejected + method/query/header negative controls + unexpected exception can't count as PASS; LIFECYCLE=partial_install_failure restore + application_exception restore + application_not_loaded_on_install_failure + workers_joined_before_uninstall; SENTINEL=independent_lower_layer + resolver/connector/spawn positive controls + guarded_paths_raw_delegations=0 + raw_delegation_nonzero -> HARNESS_ERROR; ARTIFACTS=unique_run_directory/no_overwrite/manifest_sha256; FULL_GATE_RERUN_THIS_ROUND=true (re-run once with the guard; no new market data fetch); APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
+- NEXT: report to ChatGPT web (via decider-system-one routing); step B final deltas (REQUEST_CONTRACT + LIFECYCLE + SENTINEL) complete (6/6 controls); await ruling on step B acceptance + next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
