@@ -23,10 +23,16 @@ The public record supports a research style with these recurring characteristics
 
 ### Primary-source registry used by this skill
 
-Registry (verification status as of 2026-09-17/18; channel = `publish.twitter.com/oembed?url=...` direct read with author_name = `Serenity`):
+Registry (verification status: round 1 = 2026-09-17, round 2 = 2026-09-18; channel = `publish.twitter.com/oembed?url=...` direct read with author_name = `Serenity`):
 
 **OEMBED-DIRECT verified (P1a; verbatim-quoted content permitted):**
 - 2026-04-19 dual-axis: 30-stock universe up 2 weeks; long-term unchanged (MRVL/AMD/ARM); entry axis shifts (AAOI first, AEHR etc. later): https://x.com/aleabitoreddit/status/2045965735386820934
+- 2026-03-17 semi-monopoly preference (substrate-level AXTI/SOI favorites; TSEM/COHR steady compounders; SIVE = next-LITE candidate, AAOI second, AXTI third as highest upside): https://x.com/aleabitoreddit/status/2033889361801175094
+- 2026-03-19 photonics + memory supercycle framing ("riding the Photonics and Memory Supercycles from AXTI to SNDK"; index outperformance self-claim): https://x.com/aleabitoreddit/status/2034752613246542215
+- 2026-03-29 bottleneck game-theory vs finite/steady-compounding TAM ("wrong approach" for bottleneck names; SIVE/LITE analogy elaborated; AXTI named as steady-compounding contrast): https://x.com/aleabitoreddit/status/2038101004252753959
+- 2026-04-06 infrastructure-bottleneck example: current bottleneck = Transformers/Switchgear; public trade idea Long Hammond (entry ~ 184 CAD, cap ~ 2.2B CAD; market share claims: dry-transformers ~ 23%, switchgear 2-3 yr bottleneck): https://x.com/aleabitoreddit/status/2041168871168545115
+- 2026-04-15 retail-first positioning + IQE "most latent merchant capacity" (institutional follow-through expectation: Point72/Apollo classes; explicit anti-BS framing): https://x.com/aleabitoreddit/status/2044491122161160517
+- 2026-06-07 discretionary-style self-description (inherently discretionary, bets "on stuff markets don't know yet"; AXTI/RPI/SIVE/IQE named as the portfolio pattern; life-experience framing): https://x.com/aleabitoreddit/status/2063465386960736396
 - 2026-06-16 superintelligence framing (AI as most disruptive technology class): https://x.com/aleabitoreddit/status/2066868456457416871
 - 2026-06-20 AXTI early-call backlash + Reuters/epiwafer validation thread: https://x.com/aleabitoreddit/status/2068301039946887269
 - 2026-06-22 AAOI growth model (800%+ Y/Y; $5.6B annualized off $12.8B MC; $471m/month scaling toward 2028): https://x.com/aleabitoreddit/status/2069062745308254434
@@ -37,10 +43,9 @@ Registry (verification status as of 2026-09-17/18; channel = `publish.twitter.co
 - 2026-08-15 zh post debunking zeroed rumor; self-reported YTD +2,411.84% (unaudited): https://x.com/aleabitoreddit/status/2088501133543407959
 - 2026-08-21 AAOI ATM $500-600M; financing/shareholder diffidence, both axes, company-scoped wording preserved: https://x.com/aleabitoreddit/status/2090903631793127644
 
-**Lead-only (status not yet oembed-verified at this refresh; re-verify before promotion):**
-discretionary AXTI/InP 2063465386960736396 / semi-monopoly 2033889361801175094 / supercycle 2034752613246542215 / SOI 2044491122161160517 / bottleneck game-theory 2038101004252753959 / transformers-switchgear 2041168871168545115 / European chokepoint 2047110496999137730 / financing-structure 2013947011490615486.
+Round 2 (2026-09-18): every legacy lead ID resolved by oembed direct read - 6 promoted to P1a above; 2 more confirmed deleted (see DELETED below). No lead-only registry posts remain as of 2026-09-18.
 
-**DELETED (oembed 404 at 2026-09-17; negative evidence; never reconstruct):** 2065547964606462282, 2063379724428992964.
+**DELETED (oembed 404 at 2026-09-17/18; negative evidence; never reconstruct):** 2065547964606462282, 2063379724428992964, 2013947011490615486 (registry label was 'financing-structure warning example'), 2047110496999137730 (registry label was 'European/strategic chokepoint context').
 
 ### 2026-09-17/18 verification addendum (method)
 - Dual-axis rule: keep the long-term thesis axis (position worth) separate from the short-term entry axis; a financing event (ATM/placement/buyback) de-grades BOTH axes only within its stated company scope - "harder to support $AAOI" stays an AAOI-scoped claim; any generalization ("financing = support melter") must be scoped-labeled.
