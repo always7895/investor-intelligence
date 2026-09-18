@@ -175,13 +175,21 @@ describe("TASK0-3A-0B offline fixture matrix (items 1,2,3,5)", () => {
     expect(out).toBe(INSUFFICIENT_EVIDENCE_MESSAGE);
   });
 
-  it("5b: policy binding invalid -> attributed separately (not stale, not insufficient)", async () => {
+  it("5b: policy binding invalid -> attributed separately (not stale, not insufficient); view is LEGACY (non-sealed) branch", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-18T00:00:00Z"));
     const report = validReport({ policySha: "f".repeat(64) });
     expect(await v213PolicyBindingMatches(report.freshness_policy)).toBe(false);
     const kv = new MemoryKv();
     legacyView(kv, report, "2026-09-18T00:00:00Z");
+    // Explicit view state: this is the LEGACY (non-sealed, non-invalid) branch.
+    // A sealed/invalid view with a policy-binding-rejected report would instead
+    // return INSUFFICIENT_EVIDENCE_MESSAGE; the "not yet accepted" message is
+    // specific to this legacy view (runId set, integrity legacy, kind snapshot).
+    const view = await pinPublicSnapshot(makeEnv(kv));
+    expect(view.integrity).toBe("legacy");
+    expect(view.kind).toBe("snapshot");
+    expect(view.runId).toBe("20260918T000000Z-aaaaaaaaaaaaaaaa");
     const out = await loadV213FreshTop20Report(makeEnv(kv), rankingQuery);
     expect(out).toBe(NOT_ACCEPTED_MESSAGE);
     expect(out).not.toBe(V213_STALE_RECORDS_MESSAGE);
