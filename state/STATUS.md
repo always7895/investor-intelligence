@@ -41,35 +41,17 @@ Committed HEAD: `ab1bcca` (2026-09-17 17:33 +0800), fix/options-provenance-audit
 - 3 roots (read-only proof): (1) every local-model path dead: live env LOCAL_LLM_MODEL=qwen38-q6 + profile JSON absent vs served model = ONLY Qwen3.8-27B-EXL3-SC5-H6-V6 (localhost:5000 /v1/models) -> every call rejected; FIX = ENV only (operator window) + profile promotion; rollback = restore env; no code deploy. (2) Top20 "insufficient evidence" = CORRECT fail-closed (evidence_qualified=0; full withhold; no legacy/zero-pad) - defect = evidence lanes: stooq.com JS-challenge (0 rows back), nasdaq API 400 params, HF seed stale>7d; avail=free Yahoo v8 chart (probed OK) -> FIX = v8-chart cross-check family (policy-labelled, ack, then build+gate+deploy). (3) nightly FAIL = commit-stage (above); verification = next slot + capture.
 - Local hardening: gateway exact-model pinned boot (exit 3 MODEL_NOT_SERVED if exact id not served; 30s bounded; env override; both CLI RED/GREEN evidence); selftest fixture vs claim-audit v2 (pre-existing RED closed); persona lane: documents/PERSONA_LOGIC_FULL.md (both persons' full logic; P1a/P1b/S2/TR stratified source) + skill refresh (10 X posts oembed-DIRECT verification; 2 deleted-404 vs negatives; Aschenbrenner CONTEXT_ONLY suppl 0 scoring/filter changes; oembed channel documented).
 - F-UNTRACKED-LOST x2 (1G/2J shared worktree: worker-logger.ts; uncommitted skill edits) - no tracked losses; response = edit->gate->commit->push immediately (align with operator's new standing rule: all changes sync to GitHub); identity attribution undetermined->ops.
+- COMMIT-LANE ISOLATION (read-only, 0 mutations; sync -SelfTest = PASS): version parity CONFIRMED: control-plane latest = edge self-intro = 70dd7e15 (secret-change deploy 09-17 23:19Z = our profile write; code base c7abe74d deployed 09-17 09:24Z; f3287281 08:41Z pre-state). Edge responsive (readiness contract reply, no_write=true); DNS both hosts OK via proxy (earlier blank = transient); local config valid (endpoint + non-empty HMAC, never printed); installed sync script = byte-identical to source 8580cb6f. Underlying live text = InvalidOperation null-valued at sync line-200 (the signed-POST call) logged only in task console at 09-18 07:20 = 41s after the secret-change deploy => leading candidate = PS5.1 HttpWebRequest transport fault inside the deploy-propagation window; next natural samples = 20:20 tonight + 07:20 tomorrow. Persistent paired defect = sync stderr never persisted (journal = phase + which-exception-name only) => capture patch (1 file, tested, no schedule change) AWAIT PRO A-OK.
+- REPRO: twin signatures at 09-17 12:20Z (evening) + 09-17 23:20Z (morning); passes = 09-16 + 09-17 pre-0924Z (full log + journal retained). Candidate set = c7abe74d deploy effect and/or PS-transport state; NO version/discrepancy, NO DNS, NO config, NO script checksum, NO worker faults.
+- Top20 latent chain (07:20 log): 20/20 withhold pre-snapshot (factor guard; unsupported-positive zeroed) + nasdaq_hist UNAVAILABLE + hfmarketdata 502 + non_yahoo 0.0% => 'insufficient evidence' = CORRECT fail-closed (latent) of a WITHHOLD-ALL cycle; repair = evidence lanes (stooq JS challenge / nasdaq 400 param / hf stale) => mapped to Yahoo-v8 family awaiting ack.
+- COMMIT-LANE isolate (read-only, 0 mutations; sync -SelfTest PASS): parity OK - control-plane latest = edge self = 70dd7e15 (secret-change deploy 09-17 23:19Z = profile write; code c7abe74d at 09-24Z). Edge alive (readiness reply, no_write=true); DNS ok via proxy; config valid (endpoint + non-empty HMAC, unprinted); install byte-identical 8580cb6f. Live text = InvalidOperation null-valued @ sync:200 (signed POST call), 09-18 07:20 = 41s post-secret-deploy => candidate = PS5.1 transport inside deploy window; samples = 20:20 + 07:20. Pair defect = sync stderr not persisted => capture patch (1 file, tested) AWAIT A-OK.
+- REPRO: twin signatures 09-17 12:20Z + 23:20Z; passes = 09-16 + 09-17 pre-0924Z. No version/DNS/config/checksum/worker faults.
+- Top20 chain (07:20): 20/20 withhold + nasdaq UNAVAILABLE + hfmkt 502 + non_yahoo 0.0% => 'insufficient evidence' = correct fail-closed of withhold-all; fix = evidence lanes => yahoo-v8 queued.
 - PENDING CANON: Env+profile (window), v8-chart family (ack), W2 deploy, W1 heatmap, capture; 0 live writes this batch; base c7abe74d unchanged.
 
 ### TASK0 - 1I (2026-09-17/18; Pro) - pointer
-- EVENING DIAG: 09-17 evening refresh rc=1 = journal failed_phase=COMMIT_REQUEST (stage 7-8 seal/commit seam); stages 1-7 ALL PASS; not lock/no-sync/model; commit-stage detail has no readable trace (private capture pending). +104min display gap = display-chain suspect (launches at trigger+1s).
-- HARNESS close (RED->MIN-FIX->GREEN): released 15-ms wait gating, terminal 503/404 live vs ECONN-reset/etc unknown gate, 1 shared cleanup, pre-reserved internal forward budget; GREEN x2 = 59 files 864p|1s; tsc 0; gate pass; commit 04d86a4. Detail: `git show 04d86a4` / PR #37.
+- 09-17 20:20 rc=1 = journal failed_phase=COMMIT_REQUEST (stage 7-8 seam); stages 1-7 ALL PASS; not lock/sync/model; capture queued. Harness close RED->FIX->GREEN x2: 864p|1s, tsc 0, gates pass, 04d86a4 + PR#37 synced.
 
-
-### Milestones (sessions 2-6, 2026-09-15; compacted) — full detail in git log
-### Milestones (2026-09-15 session 7: security gate placeholder fix) — `e43be26` EXAMPLE_* token_urls (gate cleared).
-
-### Archive milestones (sessions 7-15, 2026-09-15; details in git log)
-
-### RELEASE READINESS LEDGER (Task #20, 2026-09-16; superseded by the PRODUCTION DEPLOY block below) — close-of-lane regression + budget invariants + DEPLOYMENT_READY=TRUE; detail in git log.
-
-
-### PRODUCTION DEPLOY (2026-09-16, Task #22; explicit operator authorization, this session)
-- KV `PUBLIC_CACHE` (96142af4…): 14 sealed objects of run `20260915T120000Z-f2a9ea873960` + `snapshot:current` pointer LAST; all 14 read back and byte-verified (seal sha d64b21be == pointer).
-- Flag delta: pre-deploy baseline `publication_eligible=false` (Task #20) -> lifted to true by this session; the literal baseline marker is preserved verbatim as the audit anchor.
-- Deployed via `wrangler.v213.production.local.toml`; **worker 26454143… / then 928539bd…** at the workers.dev owner-line URL.
-- Smoke: /health 200 (v213 2.1.3); /v213/readiness 409 challenge (echoes deployed version); retired /v213/admin/top20-report 410 SEALED_PUBLICATION_REQUIRED; unknown path 404; qualified Top20 (GEV 96.0 #1 / 6501 93.0 #2) served by the verified sealed pointer view.
-- Flags: publication_eligible=true; LINE_LIVE=true. Freshness: seal stamp 2026-09-15T12:00Z -> ranking mandatory-latest wall-clock 2026-09-16T12:00Z (86400s cap); re-promote after.
-### CURRENT TRUE PRODUCTION ARCHITECTURE (source of truth, 2026-09-16, Task #28)
-- Primary Supervisor: Gemini. Local Writer: Qwen (Herdr persistent `qwen-worker`), single-writer discipline; all lanes local-only, no push.
-- Production live: Cloudflare Worker `investor-intelligence-v21-owner-line` (v `928539bd…`; worker.ts/qa.ts certified) + KV: PUBLIC_CACHE `96142af4…` / TENANT_PRIVATE_CACHE / EPHEMERAL_SECURITY_CACHE (isolated).
-- Active snapshot: run-bound sealed pointer `snapshot:current`; 60-min re-point; committed integrity runs: `897a86efa733` / `2873c2ff6316` / `f2a9ea873960`.
-- Operations: fresh rebuild `publish_sealed_snapshot.py --live-clock`; sync `sync_sealed_snapshot_kv.py` (pointer-last, fail-closed); rollback `rollback_sealed_snapshot.py`; operator runbook `docs/OPERATOR_RUNBOOK.md`; gap ledgers `docs/LINE_GAP_LEDGER.md` / `docs/PROJECT_GAP_LEDGER.md`.
-
-### PRODUCTION P0 + GAP LEDGER (Task #26, operator-authorized, 2026-09-16)
-- Worker `928539bd-e351-4832-9ad7-cebaeae7be37` (Task 025A + options-guidance live; run `20260916T131939Z-897a86efa733` seal `c9b19102`, pointer LAST 14/14); LINE live; `docs/LINE_GAP_LEDGER.md` 31 items / 8 scopes, P0s closed live (full text in git history).
 
 ## Pre-TASK0 history (full text in `git show` STATUS revisions)
 - Objectives A/B/C completed per history; admission stays `TEST_ONLY` tier; `publication_eligible=true` since 2026-09-16; LINE live on owner channel; 60-min freshen task `InvestorIntelligenceSealedFreshness` (auto).
