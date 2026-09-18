@@ -393,9 +393,10 @@ $text=Get-Content -LiteralPath $lockScript -Raw
 if($text -notmatch 'Threading\.Mutex\(\$false,\s*''Local\\([^'']+)''\)'){ "probe_status=ERROR" | Set-Content -LiteralPath $resultPath -Encoding ascii; exit 0 }
 $mutex=New-Object Threading.Mutex($false,('Local\' + $Matches[1]))
 # All preparation is done before the ready signal: the holder exits as soon
-# as it sees ready, so WaitOne must start immediately after the signal to be
-# blocked at the moment of abandonment (.NET only signals abandonment to a
-# waiter already waiting).
+# as it sees ready, so WaitOne starts immediately after the signal. This
+# ready coordination is this fixture's reproduction arrangement for the
+# ABANDONED classification (the next acquirer of an abandoned mutex may be
+# an already-waiting thread or a later one; not a .NET requirement).
 "ready" | Set-Content -LiteralPath $readyPath -Encoding ascii
 $status='ERROR'
 try{
@@ -908,10 +909,10 @@ class SealedRefreshTests(unittest.TestCase):
 
     def test_lock_probe_controls(self):
         # Phase C1: the 4-way lock probe classification must be live, not a
-        # constant. BUSY (holder alive), ABANDONED (holder died while the
-        # waiter was blocked; .NET only signals abandonment to a waiter
-        # already waiting) and NORMAL_ACQUIRED (lock free) are each produced
-        # by their control scenario on both hosts.
+        # constant. BUSY (holder alive), ABANDONED (holder dies while the
+        # waiter is blocked - this fixture's ready-coordination reproduction
+        # arrangement, not a .NET requirement) and NORMAL_ACQUIRED (lock
+        # free) are each produced by their control scenario on both hosts.
         for host, executable in h.required_hosts():
             with self.subTest(host=host):
                 parent, folder, env, bindings = self._fixture(executable, 'pass')
