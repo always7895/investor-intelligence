@@ -161,6 +161,16 @@ def main() -> int:
     div = load_module("ii_v213_3c_div", DIV_PATH)
     # Use the REAL standard config (has standard_id + claim_thresholds the writer needs).
     real_standard = json.loads((SCRIPT_DIR.parent / "config" / "v213-serenity-evidence-standard-v3.json").read_text(encoding="utf-8"))
+    # STATIC DATA-FLOW CHECK: the source-audit builder must read the SAME top20 file
+    # the diversified writer overwrites (proves the audit consumes the writer's output,
+    # not a stale top20). This is a path-identity check, independent of the audit
+    # builder's offline input completeness.
+    audit_builder = load_module("ii_v213_3c_audit_builder", SCRIPT_DIR / "v213_source_independence_gate_v3.py")
+    div_top20 = Path(div.TOP20_PATH)
+    audit_top20 = Path(audit_builder.TOP20_PATH)
+    assert div_top20 == audit_top20, \
+        f"STATIC DATA-FLOW: diversified writer top20 {div_top20} != audit builder top20 {audit_top20}"
+    print(f"STATIC_DATA_FLOW = diversified writer and source-audit builder share the SAME top20 path: {div_top20}")
     import tempfile
     with tempfile.TemporaryDirectory(prefix="v213_3c_") as tmp:
         tmp = Path(tmp)
