@@ -143,6 +143,13 @@ def main() -> int:
             "federation": sha256(replay_root / "data/cache/v213_source_federation_latest.json"),
             "audit": sha256(replay_root / "data/cache/v213_source_independence_latest.json"),
         }
+        # Save the round's normalized top20 + audit to a persistent location for the
+        # per-ticker claim-gap analysis (Pro 3D step A: hash-bound input).
+        save_dir = SCRIPT_DIR.parent / ".tmp"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(replay_root / "data/cache/top20_public_latest.json", save_dir / "3d_fullgate_normalized_top20.json")
+        shutil.copy2(replay_root / "data/cache/v213_source_independence_latest.json", save_dir / "3d_fullgate_audit.json")
+        print(f"SAVED_ROUND_INPUTS = .tmp/3d_fullgate_normalized_top20.json + .tmp/3d_fullgate_audit.json (hash-bound)")
         print(f"REAL_GATE_EXECUTED = True; GATE_EXIT = {gate_exit}; GATE_ERROR = {gate_error}")
         print(f"POST_HASH = {post}")
         audit_changed = pre["audit"] != post["audit"]
