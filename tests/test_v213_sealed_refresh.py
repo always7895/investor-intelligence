@@ -38,6 +38,19 @@ if($Action-eq'Commit'){
   'positive_replay' {$r.idempotent_replay=$true}
   'string_replay' {$r.idempotent_replay='false'}
   'missing_replay' {$r.Remove('idempotent_replay')}
+  'commit_noisy_exit0' {
+   Write-Output 'SYNTHETIC_CANARY_STDOUT_NOISY'
+   Write-Error -Message 'SYNTHETIC_CANARY_STDERR_NOISY' -ErrorAction Continue
+  }
+  'commit_noisy_nonzero' {
+   Write-Output 'SYNTHETIC_CANARY_STDOUT_NOISY'
+   Write-Error -Message 'SYNTHETIC_CANARY_STDERR_NOISY' -ErrorAction Continue
+  }
+  'commit_noisy_throw' {
+   Write-Output 'SYNTHETIC_CANARY_STDOUT_NOISY'
+   Write-Error -Message 'SYNTHETIC_CANARY_STDERR_NOISY' -ErrorAction Continue
+   throw 'SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK'
+  }
  }
 }elseif($Action-eq'Finalize'){
  if($env:FIXTURE_CASE-in@('finalize','rollback')){exit 8}
@@ -48,6 +61,7 @@ if($Action-eq'Commit'){
  $r=@{transaction_id=$TransactionId;run_id=$RunId;status='rolled_back';exact_pointer_restored=$true}
 }
 $r|ConvertTo-Json|Set-Content -LiteralPath $ResultPath -Encoding utf8
+if($Action-eq'Commit'-and$env:FIXTURE_CASE-eq'commit_noisy_nonzero'){exit 3}
 exit 0
 """
 
@@ -67,6 +81,37 @@ if($env:FIXTURE_CASE-eq'rollback'){
  try{$null=Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only';throw 'unresolved journal accepted'}catch{if($_.Exception.Message-eq'unresolved journal accepted'){throw}}
 }
 """
+
+RUNNER_NOISY = r"""$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'scripts/v213_sealed_refresh.ps1')
+$captured=@()
+$threw=$false
+try {
+    $captured += @(Invoke-V213SealedRefresh -ProjectRoot $PSScriptRoot -LocalConfigPath 'synthetic-only' 2>&1)
+} catch {
+    $threw=$true
+    $captured += @($_)
+}
+$canaryStdout=$false
+$canaryStderr=$false
+$canaryThrow=$false
+foreach($r in $captured){
+    $t=$r.ToString()
+    if($t -like '*SYNTHETIC_CANARY_STDOUT_NOISY*'){$canaryStdout=$true}
+    if($t -like '*SYNTHETIC_CANARY_STDERR_NOISY*'){$canaryStderr=$true}
+    if($t -like '*SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK*'){$canaryThrow=$true}
+}
+[ordered]@{
+    threw=$threw
+    captured_records=$captured.Count
+    canary_stdout_at_function_boundary=$canaryStdout
+    canary_stderr_at_function_boundary=$canaryStderr
+    canary_throw_at_function_boundary=$canaryThrow
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'noisy-observation.json') -Encoding utf8
+exit 0
+"""
+
 
 DATA_JOB = r"""param($ProjectRoot,[switch]$NoModelBridge,[switch]$NoTunnel,[switch]$NoSync,[switch]$NoAutoActivation)
 if(-not($NoModelBridge-and$NoTunnel-and$NoSync-and$NoAutoActivation)){throw 'unsafe data job arguments'}
@@ -112,6 +157,7 @@ class SealedRefreshTests(unittest.TestCase):
             'activate-v213-seven-field-schedule.ps1': "param($ProjectRoot,[switch]$PreflightOnly,$FieldLocale)\nif(-not$PreflightOnly){throw 'mutation requested'}\nif($env:FIXTURE_CASE-eq'preflight'){exit 7}\nexit 0\n",
             'sync-v213-activation-bundle.ps1': SYNC,
             'runner.ps1': RUNNER,
+            'runner-noisy.ps1': RUNNER_NOISY,
             'run-v213-local.ps1': DATA_JOB,
         }
         for name, text in files.items():
@@ -249,6 +295,60 @@ class SealedRefreshTests(unittest.TestCase):
                         status=record['status'], failed_phase=record['failed_phase'],
                         diagnostic_bytes=len(raw), output_sha256=data['output_sha256'],
                         bundle_unchanged=True, raw_output_retained=False, release_qualified=False))
+
+    def test_commit_noisy_output_privacy_at_function_boundary(self):
+        # Phase A RED: the $commitReturned path replays raw transport records
+        # (Write-Output / Write-Error) to the caller stream before checking
+        # $LASTEXITCODE. The runner captures the function output boundary
+        # directly (no $null= blind spot); the old source must RED on the two
+        # returned cases while the terminating-throw control stays clean.
+        for host, executable in h.required_hosts():
+            for case, classification in (
+                ('commit_noisy_exit0', 'EXPECTED_RED'),
+                ('commit_noisy_nonzero', 'EXPECTED_RED'),
+                ('commit_noisy_throw', 'CONTROL_PASS'),
+            ):
+                with self.subTest(host=host, case=case):
+                    parent, folder, env, bindings = self._fixture(executable, case)
+                    result = self._run(executable, folder, env, bindings, 'noisy-boundary', 'runner-noisy.ps1')
+                    self.assertEqual(result.returncode, 0, 'NOISY_BOUNDARY_DRIVER_FAILED')
+                    for canary in ('SYNTHETIC_CANARY_STDOUT_NOISY', 'SYNTHETIC_CANARY_STDERR_NOISY',
+                                   'SYNTHETIC_CANARY_THROW_MUST_NOT_LEAK'):
+                        self.assertNotIn(canary, result.stdout + result.stderr)
+                    obs = json.loads((folder / 'noisy-observation.json').read_text('utf-8-sig'))
+                    records = self._journals(env)
+                    self.assertEqual(len(records), 1)
+                    record = records[0]
+                    actions = self._actions(folder)
+                    if case == 'commit_noisy_exit0':
+                        self.assertFalse(obs['threw'])
+                        self.assertEqual(record['status'], 'PASS')
+                        self.assertEqual(record['publication_state'], 'FINALIZED')
+                        self.assertEqual(actions, ['Commit', 'Finalize'])
+                    else:
+                        self.assertTrue(obs['threw'])
+                        self.assertEqual(record['status'], 'FAIL')
+                        self.assertEqual(record['publication_state'], 'ROLLED_BACK')
+                        self.assertEqual(record['failed_phase'], 'COMMIT_REQUEST')
+                        self.assertEqual(actions, ['Commit', 'Rollback'])
+                    self.assertFalse(record['real_line_sent'])
+                    self.assertFalse(record['worker_deployed'])
+                    self.assertFalse(obs['canary_stdout_at_function_boundary'],
+                                     'CANARY_STDOUT_LEAKED_AT_FUNCTION_BOUNDARY')
+                    self.assertFalse(obs['canary_stderr_at_function_boundary'],
+                                     'CANARY_STDERR_LEAKED_AT_FUNCTION_BOUNDARY')
+                    self.assertFalse(obs['canary_throw_at_function_boundary'],
+                                     'CANARY_THROW_LEAKED_AT_FUNCTION_BOUNDARY')
+                    h.write_json(parent / ('noisy-red-observation-' + case + '.json'), dict(
+                        host=host, case=case, classification=classification,
+                        canary_stdout=obs['canary_stdout_at_function_boundary'],
+                        canary_stderr=obs['canary_stderr_at_function_boundary'],
+                        canary_throw=obs['canary_throw_at_function_boundary'],
+                        threw=obs['threw'],
+                        failed_phase=record['failed_phase'],
+                        publication_state=record['publication_state'],
+                        actions=actions,
+                        raw_output_retained=False, release_qualified=False))
 
     def test_scheduled_caller_does_not_ignore_an_unadmitted_terminal_journal(self):
         for host, executable in h.required_hosts():

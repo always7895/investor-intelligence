@@ -1,5 +1,15 @@
 # Current state / 目前狀態
 
+## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
+- ACTUAL HEAD: `6f8296e` (fix(v213): persist safe commit-request diagnostics) on fix/options-provenance-audit, synced to origin; the `ab1bcca` anchor below is superseded history.
+- Pro verdict (conv 6aacd52f): `SOURCE_REPAIR_REQUIRED` — three-phase acceptance: A = RED test only (this round), B = minimal repair, C = regression. Scope: source/offline fixtures only; Production/KV/DO/schedules/real LINE/credentials/billing remain unauthorized; cloud/src/qa.ts, scoring and evidence gates untouched.
+- Phase A (done): tests/test_v213_sealed_refresh.py — new runner-noisy.ps1 captures the Invoke-V213SealedRefresh output boundary directly (no `$null=` blind spot); SYNC fixture cases: commit_noisy_exit0 (valid ACK, exit 0), commit_noisy_nonzero (valid ACK, exit 3), commit_noisy_throw (terminating-throw control); distinct stdout/stderr/throw canaries checked at function boundary + subprocess stream.
+- RESULT (local, source unchanged): `test_commit_noisy_output_privacy_at_function_boundary` RED on both hosts for commit_noisy_exit0 — canary reached the function output boundary (state machine canonical: PASS/FINALIZED, actions Commit+Finalize). commit_noisy_nonzero: replay proven executed (diagnostic exit_code=3, stdout/stderr present) but collected output is discarded on throw (PowerShell semantics verified by minimal repro on both hosts) → no function-boundary leak; state canonical FAIL/ROLLED_BACK/COMMIT_REQUEST. commit_noisy_throw: CONTROL_PASS. Full file: 5 tests, 2 failures (the RED pair), all others OK (68.2s).
+- SOURCE_SHA256_UNCHANGED: scripts/v213_sealed_refresh.ps1 = 3064c7c53c730b081a365bad7abe16f0af2570478cce9d29ba4501f7d041427e.
+- NEXT (Phase B, pending Pro review of this RED evidence): remove raw replay; per-record bounded summarization that keeps consuming output (presence flags survive truncation); keep canonical failure/rollback/UNKNOWN guards. Phase C: no output, oversized single record, many short records, late stderr after truncation, diagnostic write failure, scheduled caller dynamic success/failure.
+- OPEN DOC: source AGENTS.md still says localhost:8080 Router; approved backend is localhost:5000 tabbyAPI exact Qwen3.8-27B-EXL3-SC5-H6-V6 — docs-only alignment pending.
+- SCOPE: 0 Production/KV/DO/schedule/LINE/credential writes; real operation lock not used; no release claim; diagnostic implemented, privacy regression pending (not accepted).
+
 ## INVESTOR_FULL_AUTOPILOT_V2 — UNATTENDED_CONTINUOUS (Continue from Committed-HEAD §1; Local-Only)
 
 CHAPTER 20 — Anchor: pre-prod_local §1 (Committed-HEAD)
