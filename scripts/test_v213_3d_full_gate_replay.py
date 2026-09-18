@@ -201,24 +201,34 @@ def main() -> int:
             print(f"GUARD_EXECUTED = False (front stage gate_exit={gate_exit} error={gate_error}; normal flow does not run guard)")
 
         print(f"EVALUATION_UTC = {now_utc} (clock not moved earlier)")
-        # Network isolation verdict (based on actual guard results, NOT hard-coded).
-        if guard.replay_misses:
-            print(f"NETWORK_ISOLATION = REPLAY_INPUT_MISS (replay_misses={len(guard.replay_misses)}; market data not in recorded cache; transport denied, no external connection)")
+        # R2 wiring: unify all summaries to use the same verdict (guard.verdict()).
+        outer_verdict = guard.verdict()
+        # NETWORK_ISOLATION based on the unified verdict (NOT just replay_misses).
+        if outer_verdict == "HARNESS_ERROR":
+            print(f"NETWORK_ISOLATION = HARNESS_ERROR (guard init/internal error; must NOT claim completion)")
+        elif outer_verdict == "BLOCKED_TRANSPORT_DENIED":
+            print(f"NETWORK_ISOLATION = BLOCKED_TRANSPORT_DENIED (unregistered transport denied; must NOT claim data complete)")
+        elif outer_verdict == "BLOCKED_REPLAY_INPUT_MISS":
+            print(f"NETWORK_ISOLATION = BLOCKED_REPLAY_INPUT_MISS (replay_misses={len(guard.replay_misses)}; market data not in recorded cache; transport denied; must NOT claim data complete)")
         else:
             print(f"NETWORK_ISOLATION = REPLAY_COMPLETE (all requests replayed from recorded cache; 0 external connections)")
-        print(f"RAW_RESOLVER_CALLS = {guard.raw_resolver_calls}; RAW_CONNECTOR_CALLS = {guard.raw_connector_calls}; RAW_SPAWN_CALLS = {guard.raw_spawn_calls} (measured; 0 expected)")
-        print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}; DENIED_ATTEMPTS = {len(guard.denied_attempts)}")
-        outer_verdict = guard.verdict()
+        print(f"DENIED_RESOLVER_ATTEMPTS = {guard.denied_resolver_attempts}; DENIED_CONNECT_ATTEMPTS = {guard.denied_connect_attempts}; DENIED_SPAWN_ATTEMPTS = {guard.denied_spawn_attempts}")
+        print(f"RAW_RESOLVER_DELEGATIONS = {guard.raw_resolver_delegations}; RAW_CONNECTOR_DELEGATIONS = {guard.raw_connector_delegations}; RAW_SPAWN_DELEGATIONS = {guard.raw_spawn_delegations} (bottom-layer sentinel; 0 expected)")
+        print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}")
         print(f"OUTER_REPLAY_VERDICT = {outer_verdict} (replay completeness is separate from the gate policy result)")
         print(f"POLICY = formal branches kept (no --offline)")
         print(f"APPLICATION_SOURCE_UNCHANGED = true (replay root is a byte-identical copy; source untouched)")
         print(f"PRODUCTION_TOUCHED = false")
         guard.uninstall()
-        # The completion message is based on the actual results (NOT hard-coded).
-        if outer_verdict == "BLOCKED_REPLAY_INPUT_MISS":
-            print("V213_3D_FULL_GATE_REPLAY = COMPLETED_WITH_REPLAY_INPUT_MISS (gate ran; market recorded inputs missing; transport denied; policy result is separate from replay completeness)")
+        # The completion message is based on the unified verdict (NOT hard-coded).
+        if outer_verdict == "HARNESS_ERROR":
+            print("V213_3D_FULL_GATE_REPLAY = ERROR (harness error; must NOT claim completion)")
+        elif outer_verdict == "BLOCKED_TRANSPORT_DENIED":
+            print("V213_3D_FULL_GATE_REPLAY = BLOCKED_TRANSPORT_DENIED (gate ran; unregistered transport denied; must NOT claim data complete; policy result separate from replay completeness)")
+        elif outer_verdict == "BLOCKED_REPLAY_INPUT_MISS":
+            print("V213_3D_FULL_GATE_REPLAY = BLOCKED_REPLAY_INPUT_MISS (gate ran; market recorded inputs missing; transport denied; must NOT claim data complete; policy result separate from replay completeness)")
         else:
-            print("V213_3D_FULL_GATE_REPLAY = COMPLETED (provable result reached; all inputs replayed from recorded cache)")
+            print("V213_3D_FULL_GATE_REPLAY = REPLAY_COMPLETE (provable result reached; all inputs replayed from recorded cache; REPLAY_COMPLETE != gate PASS / claim qualified / publication passed)")
     raise SystemExit(0)
 
 

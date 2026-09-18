@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
-"""Test-only replay/deny transport guard helper (TASK0-3D step B, R1-R4 fixed).
+"""Test-only replay/deny transport guard helper (TASK0-3D step B, R4/R3 deltas).
 
-Provides TransportGuard + ReplayMiss + _FakeResponse for the replay/deny
-transport boundary. Installed BEFORE the application loads. NOT an application
-source change; used only by the test-only replay tests.
+R4 delta: separate DENIED_*_ATTEMPTS (from the real guard, can be > 0 when
+testing denials) from RAW_*_DELEGATIONS (measured by a bottom-layer sentinel
+installed BEFORE the real guard; must be 0). The bottom-layer sentinel counts
+on call, immediately raises a fixed error, and does NOT enter real I/O.
 
-R2 fix: verdict() returns explicit mutually-exclusive results:
-  - guard init/internal error -> HARNESS_ERROR
-  - any unregistered transport denied -> BLOCKED_TRANSPORT_DENIED
-  - any recorded input miss -> BLOCKED_REPLAY_INPUT_MISS
-  - none -> REPLAY_COMPLETE
+R3 delta: the request identity key includes method, full URL/query, body digest
+(when present), and the relevant headers (Accept, Content-type) that affect the
+response in the existing path. urlopen(url, data=...) is NOT treated as a
+no-body GET hit (the data is in the key). Unsupported forms are rejected.
 
-R3 fix: supports string URL + standard urllib.request.Request. The identity key
-includes method, full URL/query, body digest (when present), and relevant
-headers. Unsupported request forms are rejected (not default to GET).
-
-R4 fix: patches the actual transport namespaces including DNS
-(socket.getaddrinfo), direct socket (socket.socket.connect/connect_ex), and
-subprocess (subprocess.Popen). Each raw path has a sentinel that records the
-call then raises a fixed error (no real network I/O). Reports
-RAW_RESOLVER_CALLS / RAW_CONNECTOR_CALLS / RAW_SPAWN_CALLS (measured, not the
-forever-0 underlying_io).
+Provides TransportGuard + ReplayMiss + _FakeResponse. Installed BEFORE the
+application loads. NOT an application source change.
 """
 from __future__ import annotations
 
@@ -55,24 +47,26 @@ class _FakeResponse:
         return False
 
 
-def _request_key(url: Any) -> str | None:
-    """Build the identity key for a string URL or urllib.request.Request.
+def _request_key(url: Any, data: bytes | None = None) -> str | None:
+    """Build the identity key for a string URL (+ data) or urllib.request.Request.
 
-    R3: supports string URL + standard Request. The key includes method, full
-    URL/query, and body digest (when present). A string URL is treated as a GET
-    with no body. Unsupported request forms return None (rejected, not default
-    to GET). The headers are NOT in the key (so a string URL and a Request with
-    the same URL produce the same key; the actual fetch_text() can hit the
-    registry when the URL is registered as a string).
+    R3: supports string URL (+ data) + standard Request. The key includes method,
+    full URL/query, body digest (when present), and the relevant headers (Accept,
+    Content-type) that affect the response. urlopen(url, data=...) is NOT treated
+    as a no-body GET hit (the data is in the key). Unsupported forms return None.
     """
     if isinstance(url, str):
-        return f"GET|{url}|"
+        method = "POST" if data else "GET"
+        body_digest = hashlib.sha256(data).hexdigest()[:16] if data else ""
+        return f"{method}|{url}|{body_digest}|"
     if isinstance(url, urllib.request.Request):
         method = (url.get_method() or "GET").upper()
         full_url = url.full_url
         body = url.data
         body_digest = hashlib.sha256(body).hexdigest()[:16] if body else ""
-        return f"{method}|{full_url}|{body_digest}"
+        accept = url.get_header("Accept") or ""
+        content_type = url.get_header("Content-type") or ""
+        return f"{method}|{full_url}|{body_digest}|{accept}|{content_type}"
     return None  # unsupported form -> rejected
 
 
@@ -83,10 +77,14 @@ class TransportGuard:
         self.registry: dict[str, dict[str, Any]] = {}
         self.replay_hits: list[str] = []
         self.replay_misses: list[str] = []
-        self.denied_attempts: list[str] = []
-        self.raw_resolver_calls: int = 0  # measured: socket.getaddrinfo calls
-        self.raw_connector_calls: int = 0  # measured: socket.socket.connect/connect_ex calls
-        self.raw_spawn_calls: int = 0  # measured: subprocess.Popen calls
+        # R4: DENIED_*_ATTEMPTS (from the real guard, can be > 0 when testing denials).
+        self.denied_resolver_attempts: int = 0
+        self.denied_connect_attempts: int = 0
+        self.denied_spawn_attempts: int = 0
+        # R4: RAW_*_DELEGATIONS (measured by the bottom-layer sentinel; must be 0).
+        self.raw_resolver_delegations: int = 0
+        self.raw_connector_delegations: int = 0
+        self.raw_spawn_delegations: int = 0
         self.harness_error: str | None = None
         self._orig_urlopen = urllib.request.urlopen
         self._orig_create_connection = socket.create_connection
@@ -95,8 +93,9 @@ class TransportGuard:
         self._orig_popen = subprocess.Popen
         self._installed = False
 
-    def register(self, url: Any, status: int, body: bytes, metadata: dict[str, Any] | None = None) -> None:
-        key = _request_key(url)
+    def register(self, url: Any, status: int, body: bytes, metadata: dict[str, Any] | None = None,
+                 data: bytes | None = None) -> None:
+        key = _request_key(url, data)
         if key is None:
             raise ValueError(f"unsupported request form: {type(url)}")
         self.registry[key] = {
@@ -111,10 +110,37 @@ class TransportGuard:
             return
         guard = self
 
+        # R4: install the bottom-layer sentinel FIRST (counts on call, immediately
+        # raises a fixed error, does NOT enter real I/O). This measures
+        # RAW_*_DELEGATIONS (must be 0 if the real guard denies before delegating).
+        def sentinel_getaddrinfo(host, port, *args, **kwargs):
+            guard.raw_resolver_delegations += 1
+            raise ReplayMiss(f"SENTINEL: raw DNS delegation at {host}")
+
+        def sentinel_create_connection(address, *args, **kwargs):
+            guard.raw_connector_delegations += 1
+            raise ReplayMiss(f"SENTINEL: raw connector delegation at {address}")
+
+        def sentinel_popen(*args, **kwargs):
+            guard.raw_spawn_delegations += 1
+            raise ReplayMiss(f"SENTINEL: raw spawn delegation {args[:1]}")
+
+        # Save the ORIGINAL functions (for uninstall); the sentinel replaces them
+        # first, then the real guard replaces the sentinel.
+        self._sentinel_getaddrinfo = sentinel_getaddrinfo
+        self._sentinel_create_connection = sentinel_create_connection
+        self._sentinel_popen = sentinel_popen
+        socket.getaddrinfo = sentinel_getaddrinfo
+        socket.create_connection = sentinel_create_connection
+        subprocess.Popen = sentinel_popen
+
+        # Now install the real guard (denies unregistered requests; does NOT
+        # delegate to the sentinel, so RAW_*_DELEGATIONS stays 0).
         def guarded_urlopen(url, *args, **kwargs):
-            key = _request_key(url)
+            data = kwargs.get("data")
+            key = _request_key(url, data)
             if key is None:
-                guard.denied_attempts.append(f"urlopen unsupported form: {type(url)}")
+                guard.denied_connect_attempts += 1
                 raise ReplayMiss(f"REPLAY_INPUT_MISS: unsupported request form {type(url)}")
             if key in guard.registry:
                 entry = guard.registry[key]
@@ -125,31 +151,26 @@ class TransportGuard:
                 raise ReplayMiss(f"REPLAY_INPUT_MISS: {key} is not in the replay registry")
 
         def guarded_create_connection(address, *args, **kwargs):
-            guard.denied_attempts.append(f"socket.create_connection({address})")
+            guard.denied_connect_attempts += 1
             raise ReplayMiss(f"REPLAY_INPUT_MISS: socket connection denied at {address}")
 
         def guarded_getaddrinfo(host, port, *args, **kwargs):
-            guard.raw_resolver_calls += 1
-            guard.denied_attempts.append(f"socket.getaddrinfo({host},{port})")
+            guard.denied_resolver_attempts += 1
             raise ReplayMiss(f"REPLAY_INPUT_MISS: DNS resolution denied for {host}")
 
-        # R4: patch socket.socket.connect/connect_ex (direct socket, not via create_connection).
         orig_socket_class = self._orig_socket_class
 
         class _GuardedSocket(orig_socket_class):
             def connect(self, address):
-                guard.raw_connector_calls += 1
-                guard.denied_attempts.append(f"socket.connect({address})")
+                guard.denied_connect_attempts += 1
                 raise ReplayMiss(f"REPLAY_INPUT_MISS: socket.connect denied at {address}")
 
             def connect_ex(self, address):
-                guard.raw_connector_calls += 1
-                guard.denied_attempts.append(f"socket.connect_ex({address})")
+                guard.denied_connect_attempts += 1
                 raise ReplayMiss(f"REPLAY_INPUT_MISS: socket.connect_ex denied at {address}")
 
         def guarded_popen(*args, **kwargs):
-            guard.raw_spawn_calls += 1
-            guard.denied_attempts.append(f"subprocess.Popen({args[:1]})")
+            guard.denied_spawn_attempts += 1
             raise ReplayMiss(f"REPLAY_INPUT_MISS: subprocess spawn denied: {args[:1]}")
 
         urllib.request.urlopen = guarded_urlopen
@@ -173,7 +194,7 @@ class TransportGuard:
         """R2: explicit mutually-exclusive results."""
         if self.harness_error:
             return "HARNESS_ERROR"
-        if self.denied_attempts:
+        if (self.denied_resolver_attempts or self.denied_connect_attempts or self.denied_spawn_attempts):
             return "BLOCKED_TRANSPORT_DENIED"
         if self.replay_misses:
             return "BLOCKED_REPLAY_INPUT_MISS"
