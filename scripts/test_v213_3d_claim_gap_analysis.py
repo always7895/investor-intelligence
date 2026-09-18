@@ -50,6 +50,11 @@ def main() -> int:
     top20 = json.loads(TOP20_PATH.read_text(encoding="utf-8-sig"))
     top20_rows = top20 if isinstance(top20, list) else top20.get("records", [])
     records = audit.get("records", [])
+    # Index the input top20 evidence per ticker (for the input-to-audit mapping).
+    input_evidence_by_ticker: dict[str, list] = {}
+    for row in top20_rows:
+        tk = str(row.get("ticker") or "").upper()
+        input_evidence_by_ticker[tk] = row.get("evidence") or []
 
     print("=== TASK0-3D STEP A: PER-TICKER CLAIM-GAP ANALYSIS ===")
     print(f"BOUND_INPUT_HASHES: audit={sha256(AUDIT_PATH)} normalized_top20={sha256(TOP20_PATH)}")
@@ -66,6 +71,25 @@ def main() -> int:
         claim_primary = sm.get("claim_relevant_primary_sources")
         missing = rec.get("missing_or_review") or []
         sources = rec.get("sources") or []
+
+        # INPUT-TO-AUDIT MAPPING (Pro 3D step A correction): compare the input
+        # top20 evidence (per ticker) vs the audit sources. Determine if any
+        # input source was lost in the audit (mapping_loss) or preserved.
+        input_ev = input_evidence_by_ticker.get(tk, [])
+        input_claim_types = [str(e.get("claim_type") or "") for e in input_ev if isinstance(e, dict)]
+        audit_claim_types = [str(s.get("claim_type") or "") for s in sources if isinstance(s, dict)]
+        input_source_count = len(input_ev)
+        audit_source_count = len(sources)
+        # A mapping_loss is present if the input had MORE distinct claim_types than
+        # the audit preserved (some input sources were not carried into the audit).
+        input_distinct_ct = set(input_claim_types)
+        audit_distinct_ct = set(audit_claim_types)
+        lost_ct = input_distinct_ct - audit_distinct_ct  # input claim_types not in audit
+        mapping_status = "mapping_loss" if lost_ct else "preserved_or_deduped"
+        if mapping_status == "mapping_loss":
+            classifications["mapping_loss"] = classifications.get("mapping_loss", 0) + 1
+        else:
+            classifications["preserved_or_deduped"] = classifications.get("preserved_or_deduped", 0) + 1
 
         # Classify each source: provenance-only / listing-identity / market-macro / real-company-claim
         prov_only = 0
@@ -110,11 +134,15 @@ def main() -> int:
             "actual_claim_primary_count": claim_primary,
             "claim_families": claim_families,
             "claim_domains": claim_domains,
-            "claim_audit_status": "INSUFFICIENT" if distinct_claim_domains <= 1 else "REVIEW",
+            "claim_audit_status": "NOT_ASSESSED_BY_ANALYSIS (domain-count heuristic only)",
             "missing_or_review": missing,
             "source_classification": {"provenance_only": prov_only, "market_macro": market_macro, "real_claim": real_claim},
             "claim_sources": claim_src_detail,
             "gap_classification": cls,
+            "input_source_count": input_source_count,
+            "audit_source_count": audit_source_count,
+            "input_to_audit_mapping": mapping_status,
+            "lost_claim_types": sorted(lost_ct),
         })
 
     # Print the matrix
@@ -126,26 +154,26 @@ def main() -> int:
               f"{sc['real_claim']:>5d}  {g['gap_classification']}")
 
     print(f"\nGAP_CLASSIFICATION = {classifications}")
+    # Input-to-audit mapping summary (Pro 3D step A correction).
+    mapping_summary = {g["ticker"]: g["input_to_audit_mapping"] for g in gap_matrix}
+    mapping_loss_count = sum(1 for v in mapping_summary.values() if v == "mapping_loss")
+    print(f"INPUT_TO_AUDIT_MAPPING = {mapping_loss_count} mapping_loss / {len(mapping_summary) - mapping_loss_count} preserved_or_deduped")
+    for g in gap_matrix[:3]:
+        print(f"  {g['ticker']}: input={g['input_source_count']} audit={g['audit_source_count']} mapping={g['input_to_audit_mapping']} lost_ct={g['lost_claim_types']}")
     # Sample missing_or_review (common flags)
     all_missing = set()
     for g in gap_matrix:
         all_missing.update(g["missing_or_review"])
     print(f"COMMON_MISSING_OR_REVIEW = {sorted(all_missing)}")
 
-    # Verdict
-    absent = classifications.get("absent_input", 0)
-    excluded = classifications.get("excluded_by_policy", 0)
-    mapping = classifications.get("mapping_loss", 0)
-    unresolved = classifications.get("unresolved", 0)
-    if mapping == 0 and (absent + excluded) > 0:
-        print(f"\nVERDICT = input-origin gap (NOT a mapping defect): {absent} absent_input + {excluded} excluded_by_policy (market source excluded from claim set); 0 mapping_loss")
-        print("The input ORIGINALLY LACKED a second qualified claim source per ticker (only sec.gov present as a claim domain).")
-        print("The market source (yahoo) is excluded from the claim set (market corroboration, not a company claim).")
-        print("The filing_publication_provenance (enrich stage) is provenance-only (can_prove_positive_serenity_factor=false), not a company advantage claim.")
-        print("FIXING THIS REQUIRES ACQUIRING A SECOND QUALIFIED CLAIM SOURCE PER TICKER (or a reproducible mapping defect, which is NOT present here).")
-    else:
-        print(f"\nVERDICT = mixed (absent={absent} excluded={excluded} mapping_loss={mapping} unresolved={unresolved}); further investigation needed")
-
+    # Verdict (Pro 3D step A correction: retract the hard-coded root-cause conclusion).
+    print(f"\nSTEP_A_MAPPING_VERDICT = NOT_ASSESSED (the input-to-audit mapping is now computed above, but the root-cause conclusion is NOT established)")
+    print(f"AUDIT_SOURCE_INVENTORY = OPERATOR_REPORTED (the audit only has regulator_filing/sec.gov as claim sources — this inventory is valid)")
+    print(f"INPUT_TO_AUDIT_MAPPING = {'MAPPING_LOSS_PRESENT' if mapping_loss_count > 0 else 'PRESERVED_OR_DEDUPED'} ({mapping_loss_count} tickers with lost claim_types)")
+    print(f"MAPPING_LOSS = {'UNKNOWN' if mapping_loss_count == 0 else 'PRESENT'} (the mapping is now computed; a lost claim_type may be deduplication, not loss)")
+    print(f"INPUT_ORIGIN_GAP = NOT_ESTABLISHED (requires the input-to-audit mapping to be fully interpreted; 'audit sees one domain' != 'input lacked a second source')")
+    print(f"SECOND_SOURCE_ACQUISITION_REQUIRED = NOT_YET_DETERMINED")
+    print(f"cl_prim=2 is the gate-reported primary metric (separately: {gap_matrix[0]['source_classification']['provenance_only']} provenance-only); NOT 'two independent company advantage supports'")
     print(f"APPLICATION_SOURCE_UNCHANGED = true; ACTUAL_NETWORK_IO = 0; PRODUCTION_TOUCHED = false")
     raise SystemExit(0)
 

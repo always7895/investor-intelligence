@@ -96,6 +96,12 @@ def load_v3_from_replay_root(replay_root: Path):
 
 def main() -> int:
     now_utc = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Install the transport guard BEFORE loading the application (Pro 3D step B).
+    # This prevents the full-gate test from external-connecting by default.
+    sys.path.insert(0, str(SCRIPT_DIR))
+    from ii_v213_replay_guard import TransportGuard
+    guard = TransportGuard()
+    guard.install()
     with tempfile.TemporaryDirectory(prefix="v213_3d_fullgate_") as tmp:
         replay_root = build_replay_root(Path(tmp))
         v3 = load_v3_from_replay_root(replay_root)
@@ -195,11 +201,24 @@ def main() -> int:
             print(f"GUARD_EXECUTED = False (front stage gate_exit={gate_exit} error={gate_error}; normal flow does not run guard)")
 
         print(f"EVALUATION_UTC = {now_utc} (clock not moved earlier)")
-        print(f"NETWORK = DENIED (transport replays existing recorded cache; 0 external calls)")
+        # Network isolation verdict (based on actual guard results, NOT hard-coded).
+        if guard.replay_misses:
+            print(f"NETWORK_ISOLATION = REPLAY_INPUT_MISS (replay_misses={len(guard.replay_misses)}; market data not in recorded cache; transport denied, no external connection)")
+        else:
+            print(f"NETWORK_ISOLATION = REPLAY_COMPLETE (all requests replayed from recorded cache; 0 external connections)")
+        print(f"UNDERLYING_NETWORK_IO = {guard.underlying_io} (actual succeeded connections; 0 expected)")
+        print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}; DENIED_ATTEMPTS = {len(guard.denied_attempts)}")
+        outer_verdict = guard.verdict()
+        print(f"OUTER_REPLAY_VERDICT = {outer_verdict} (replay completeness is separate from the gate policy result)")
         print(f"POLICY = formal branches kept (no --offline)")
         print(f"APPLICATION_SOURCE_UNCHANGED = true (replay root is a byte-identical copy; source untouched)")
         print(f"PRODUCTION_TOUCHED = false")
-        print("V213_3D_FULL_GATE_REPLAY = COMPLETED (provable result reached)")
+        guard.uninstall()
+        # The completion message is based on the actual results (NOT hard-coded).
+        if outer_verdict == "BLOCKED_REPLAY_INPUT_MISS":
+            print("V213_3D_FULL_GATE_REPLAY = COMPLETED_WITH_REPLAY_INPUT_MISS (gate ran; market recorded inputs missing; transport denied; policy result is separate from replay completeness)")
+        else:
+            print("V213_3D_FULL_GATE_REPLAY = COMPLETED (provable result reached; all inputs replayed from recorded cache)")
     raise SystemExit(0)
 
 
