@@ -68,13 +68,15 @@ def _request_key(url: Any, data: bytes | None = None) -> str | None:
     REQUEST_CONTRACT: support GET/no-body/200. Reject non-GET, any non-None body
     (including b""), unsupported response status. Positional data, keyword data,
     and Request.data are ALL checked. `data is None` (not truthiness) determines
-    no-body. String and Request use the same structured key.
+    no-body. String and Request use the SAME structured key (same number of
+    fields: method|url|body_digest|accept|content_type).
     """
     if isinstance(url, str):
         # data is None -> GET no-body; data is not None (including b"") -> reject.
         if data is not None:
             return None  # reject: non-None body (including b"")
-        return f"GET|{url}||"
+        # 5 fields: method|url|body_digest|accept|content_type (all empty for string).
+        return f"GET|{url}|||"
     if isinstance(url, urllib.request.Request):
         # If an explicit data is passed, it overrides Request.data.
         effective_data = data if data is not None else url.data
@@ -86,23 +88,33 @@ def _request_key(url: Any, data: bytes | None = None) -> str | None:
         full_url = url.full_url
         accept = url.get_header("Accept") or ""
         content_type = url.get_header("Content-type") or ""
+        # 5 fields: method|url|body_digest|accept|content_type (same as string).
         return f"GET|{full_url}||{accept}|{content_type}"
     return None  # unsupported form -> rejected
 
 
 class TransportGuard:
-    """Replay/deny transport guard. Installed BEFORE the application loads."""
+    """Replay/deny transport guard. Installed BEFORE the application loads.
 
-    def __init__(self) -> None:
+    SENTINEL: accepts a shared raw-delegation ledger (a dict with keys
+    "resolver", "connector", "spawn"). The bottom-layer sentinel updates this
+    ledger when actually called; TransportGuard holds the same object (doesn't
+    copy a separate count); verdict() reads this ledger.
+    """
+
+    def __init__(self, raw_delegation_ledger: dict[str, int] | None = None) -> None:
         self.registry: dict[str, dict[str, Any]] = {}
         self.replay_hits: list[str] = []
         self.replay_misses: list[str] = []
         self.denied_resolver_attempts: int = 0
         self.denied_connect_attempts: int = 0
         self.denied_spawn_attempts: int = 0
-        self.raw_resolver_delegations: int = 0
-        self.raw_connector_delegations: int = 0
-        self.raw_spawn_delegations: int = 0
+        # SENTINEL: shared raw-delegation ledger (the test creates it; the
+        # bottom-layer sentinel updates it; verdict() reads it).
+        self.raw_delegation_ledger: dict[str, int] = (
+            raw_delegation_ledger if raw_delegation_ledger is not None
+            else {"resolver": 0, "connector": 0, "spawn": 0}
+        )
         self.harness_error: str | None = None
         # LIFECYCLE: tracked patch list for partial-install restore.
         self._applied_patches: list[tuple[Any, str, Any]] = []  # (obj, attr, original)
@@ -213,11 +225,14 @@ class TransportGuard:
     def verdict(self) -> str:
         """R2 + SENTINEL: explicit mutually-exclusive results.
 
-        SENTINEL: any non-zero raw delegation -> HARNESS_ERROR (not COMPLETE).
+        SENTINEL: any non-zero raw delegation (in the shared ledger) ->
+        HARNESS_ERROR (not COMPLETE).
         """
         if self.harness_error:
             return "HARNESS_ERROR"
-        if (self.raw_resolver_delegations or self.raw_connector_delegations or self.raw_spawn_delegations):
+        # SENTINEL: read the shared raw-delegation ledger (not a separate count).
+        ledger = self.raw_delegation_ledger
+        if (ledger.get("resolver", 0) or ledger.get("connector", 0) or ledger.get("spawn", 0)):
             return "HARNESS_ERROR"  # raw delegation non-zero -> the guard delegated (harness error)
         if (self.denied_resolver_attempts or self.denied_connect_attempts or self.denied_spawn_attempts):
             return "BLOCKED_TRANSPORT_DENIED"

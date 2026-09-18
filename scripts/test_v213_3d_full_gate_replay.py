@@ -216,7 +216,8 @@ def main() -> int:
             else:
                 print(f"NETWORK_ISOLATION = REPLAY_COMPLETE (all requests replayed from recorded cache; 0 external connections)")
             print(f"DENIED_RESOLVER_ATTEMPTS = {guard.denied_resolver_attempts}; DENIED_CONNECT_ATTEMPTS = {guard.denied_connect_attempts}; DENIED_SPAWN_ATTEMPTS = {guard.denied_spawn_attempts}")
-            print(f"RAW_RESOLVER_DELEGATIONS = {guard.raw_resolver_delegations}; RAW_CONNECTOR_DELEGATIONS = {guard.raw_connector_delegations}; RAW_SPAWN_DELEGATIONS = {guard.raw_spawn_delegations} (bottom-layer sentinel; 0 expected)")
+            ledger = guard.raw_delegation_ledger
+            print(f"RAW_RESOLVER_DELEGATIONS = {ledger.get('resolver', 0)}; RAW_CONNECTOR_DELEGATIONS = {ledger.get('connector', 0)}; RAW_SPAWN_DELEGATIONS = {ledger.get('spawn', 0)} (shared ledger; 0 expected)")
             print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}")
             print(f"OUTER_REPLAY_VERDICT = {outer_verdict} (replay completeness is separate from the gate policy result)")
             print(f"POLICY = formal branches kept (no --offline)")

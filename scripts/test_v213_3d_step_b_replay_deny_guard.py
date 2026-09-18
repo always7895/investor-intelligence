@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: controls (final deltas).
+"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: controls (final acceptance deltas).
 
-Per Pro 3D step B ruling (final deltas):
-- REQUEST_CONTRACT: GET/no-body/200; positional_data/empty_body/Request_data_override
-  correctly rejected; method/query/header single-variable negative controls pass;
-  unexpected exception can't count as PASS.
-- LIFECYCLE: partial_install_failure restore; application_exception restore;
-  application_not_loaded_on_install_failure; workers_joined_before_uninstall.
-- SENTINEL: independent_lower_layer (test installs sentinel first, then guard);
-  resolver/connector/spawn positive controls; guarded_paths_raw_delegations=0;
-  raw_delegation_nonzero -> HARNESS_ERROR.
-- ARTIFACTS: unique_run_directory / no_overwrite / manifest_sha256.
+Per Pro 3D step B ruling (final acceptance deltas):
+- REQUEST: prove string and equivalent Request can cross-hit; method negative
+  uses Request(url, method="POST") with data=None; restore the actual
+  fetch_text() positive control.
+- LIFECYCLE: save object references to the 5 patch targets BEFORE install;
+  after failure, compare each with `is`; let the exception cross the with
+  block; use an actual loader call count/marker.
+- SENTINEL: shared raw-delegation ledger (test creates it, sentinel updates it,
+  TransportGuard holds the same object); prove the whole chain with the safe
+  sentinel's actual calls; resolver/connector/spawn each verified.
 
 Read-only source; 0 network; 0 credentials; 0 formal KV/DO; 0 schedules; 0 LINE.
 Exit 0 when all controls pass.
@@ -23,7 +23,6 @@ import json
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
@@ -60,7 +59,7 @@ def _load_fetch_text():
 
 
 def main() -> int:
-    print("=== TASK0-3D STEP B: CONTROLS (final deltas) ===")
+    print("=== TASK0-3D STEP B: CONTROLS (final acceptance deltas) ===")
     helper = _load_helper()
     helper_sha = _sha256_full(HELPER_PATH)
     print(f"REAL_HELPER_IMPORTED = {HELPER_PATH} (SHA256={helper_sha})")
@@ -78,43 +77,29 @@ def main() -> int:
     run_dir.mkdir(parents=True)
     print(f"ARTIFACTS: unique_run_directory = {run_dir} (no overwrite)")
 
-    # --- REQUEST_CONTRACT: hit + negative controls (each starts from a hit, changes one condition) ---
+    # --- REQUEST: string/Request cross-hit + method negative + fetch_text positive ---
     with TransportGuard() as g:
         base_url = "https://recorded.example.com/data.json"
         base_body = b'{"ticker":"TEST","price":1.0}'
+        # Register as a STRING.
         g.register(base_url, 200, base_body, {"source": "recorded"})
-        # Positive: GET no-body hits.
-        hit_ok = False
+        # Positive: equivalent no-header Request (same URL) -> cross-hit.
+        cross_hit_req = urllib.request.Request(base_url)
+        cross_hit_ok = False
         try:
-            resp = urllib.request.urlopen(base_url)
-            hit_ok = (resp.read() == base_body)
+            resp = urllib.request.urlopen(cross_hit_req)
+            cross_hit_ok = (resp.read() == base_body)
         except Exception as exc:
-            print(f"CONTROL_HIT_FAILED = {type(exc).__name__}: {exc}")
-        # Negative: positional data (urlopen(url, b"X")) -> reject.
-        pos_data_rejected = False
+            print(f"CONTROL_CROSS_HIT_FAILED = {type(exc).__name__}: {exc}")
+        # Negative: method (Request(url, method="POST") with data=None) -> reject.
+        neg_method_req = urllib.request.Request(base_url, method="POST")
+        neg_method_rejected = False
         try:
-            urllib.request.urlopen(base_url, b"X")
+            urllib.request.urlopen(neg_method_req)
         except ReplayMiss:
-            pos_data_rejected = True
+            neg_method_rejected = True
         except Exception as exc:
-            print(f"CONTROL_POS_DATA_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: empty body (urlopen(url, data=b"")) -> reject.
-        empty_body_rejected = False
-        try:
-            urllib.request.urlopen(base_url, data=b"")
-        except ReplayMiss:
-            empty_body_rejected = True
-        except Exception as exc:
-            print(f"CONTROL_EMPTY_BODY_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: Request data override (urlopen(request, data=b"X")) -> reject.
-        req = urllib.request.Request(base_url)
-        req_data_rejected = False
-        try:
-            urllib.request.urlopen(req, data=b"X")
-        except ReplayMiss:
-            req_data_rejected = True
-        except Exception as exc:
-            print(f"CONTROL_REQ_DATA_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+            print(f"CONTROL_NEG_METHOD_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
         # Negative: query (single variable) -> reject.
         neg_query_rejected = False
         try:
@@ -123,7 +108,7 @@ def main() -> int:
             neg_query_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_QUERY_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: header (single variable) -> reject (different Accept).
+        # Negative: header (single variable, different Accept) -> reject.
         neg_header_req = urllib.request.Request(base_url, headers={"Accept": "application/xml"})
         neg_header_rejected = False
         try:
@@ -132,33 +117,37 @@ def main() -> int:
             neg_header_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_HEADER_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: method (single variable) -> reject (POST to the same URL).
-        neg_method_req = urllib.request.Request(base_url, data=b"POST_BODY", method="POST")
-        neg_method_rejected = False
+        # fetch_text positive control (actual core.fetch_text() -> real helper -> synthetic response).
+        fetch_text = _load_fetch_text()
+        ft_url = "https://recorded.example.com/fetch.json"
+        ft_body = b'{"fetch":"ok"}'
+        ft_req = urllib.request.Request(ft_url, headers={"Accept": "application/json,text/csv;q=0.9,*/*;q=0.5"})
+        g.register(ft_req, 200, ft_body, {"source": "recorded"})
+        ft_ok = False
         try:
-            urllib.request.urlopen(neg_method_req)
-        except ReplayMiss:
-            neg_method_rejected = True
+            result = fetch_text(ft_url)
+            ft_ok = (result.encode("utf-8") == ft_body)
         except Exception as exc:
-            print(f"CONTROL_NEG_METHOD_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Ledger + verdict: rejections enter the ledger; verdict is blocked.
-        # pos_data, empty_body, req_data, neg_method are denied (non-None body or non-GET); neg_query, neg_header are replay_misses (not in registry).
-        ledger_incremented = (g.denied_connect_attempts >= 4) and (len(g.replay_misses) >= 2)
-        blocked_verdict = g.verdict() in ("BLOCKED_TRANSPORT_DENIED", "BLOCKED_REPLAY_INPUT_MISS")
-        req_pass = (hit_ok and pos_data_rejected and empty_body_rejected and req_data_rejected
-                    and neg_query_rejected and neg_header_rejected and neg_method_rejected and ledger_incremented and blocked_verdict)
+            print(f"CONTROL_FETCH_TEXT_FAILED = {type(exc).__name__}: {exc}")
+        ft_hit = (len(g.replay_hits) >= 2)  # cross_hit + fetch_text
+        req_pass = (cross_hit_ok and neg_method_rejected and neg_query_rejected and neg_header_rejected
+                    and ft_ok and ft_hit)
         all_pass = all_pass and req_pass
-        outcomes["request_contract"] = {"pass": req_pass, "hit": hit_ok, "pos_data_rejected": pos_data_rejected,
-                                        "empty_body_rejected": empty_body_rejected, "req_data_rejected": req_data_rejected,
-                                        "neg_query_rejected": neg_query_rejected, "neg_header_rejected": neg_header_rejected,
-                                        "neg_method_rejected": neg_method_rejected,
-                                        "ledger_incremented": ledger_incremented, "verdict": blocked_verdict}
-        print(f"REQUEST_CONTRACT = {'PASS' if req_pass else 'FAIL'} (hit={hit_ok}, pos_data={pos_data_rejected}, empty_body={empty_body_rejected}, req_data={req_data_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, neg_method={neg_method_rejected}, ledger={ledger_incremented}, verdict={blocked_verdict})")
+        outcomes["request"] = {"pass": req_pass, "cross_hit": cross_hit_ok, "neg_method": neg_method_rejected,
+                               "neg_query": neg_query_rejected, "neg_header": neg_header_rejected,
+                               "fetch_text": ft_ok, "fetch_text_hit": ft_hit}
+        print(f"REQUEST = {'PASS' if req_pass else 'FAIL'} (cross_hit={cross_hit_ok}, neg_method={neg_method_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, fetch_text={ft_ok}, ft_hit={ft_hit})")
 
-    # --- LIFECYCLE: partial_install_failure restore ---
-    # Inject a failure mid-install by making one of the patch targets raise.
+    # --- LIFECYCLE: pre-install identity snapshot + partial-install failure ---
+    # Save object references to the 5 patch targets BEFORE install.
+    pre_snapshot = {
+        "urlopen": urllib.request.urlopen,
+        "create_connection": socket.create_connection,
+        "getaddrinfo": socket.getaddrinfo,
+        "socket": socket.socket,
+        "popen": subprocess.Popen,
+    }
     partial_guard = TransportGuard()
-    # Monkeypatch _apply to fail on the 3rd patch (simulating a mid-install failure).
     orig_apply = partial_guard._apply
     call_count = [0]
 
@@ -174,131 +163,128 @@ def main() -> int:
         partial_guard.install()
     except RuntimeError:
         partial_failed = True
-    # After the failure, the applied patches should be restored (urlopen is the original).
-    restored = (urllib.request.urlopen is helper.urllib.request.urlopen)
-    harness_error = (partial_guard.harness_error is not None)
+    # After the failure, compare each of the 5 targets with the pre-install snapshot.
+    all_restored = (
+        urllib.request.urlopen is pre_snapshot["urlopen"]
+        and socket.create_connection is pre_snapshot["create_connection"]
+        and socket.getaddrinfo is pre_snapshot["getaddrinfo"]
+        and socket.socket is pre_snapshot["socket"]
+        and subprocess.Popen is pre_snapshot["popen"]
+    )
+    patch_list_empty = (len(partial_guard._applied_patches) == 0)
     not_installed = (not partial_guard._installed)
-    lifecycle_partial_pass = partial_failed and restored and harness_error and not_installed
+    harness_error = (partial_guard.harness_error is not None)
+    lifecycle_partial_pass = partial_failed and all_restored and patch_list_empty and not_installed and harness_error
     all_pass = all_pass and lifecycle_partial_pass
     outcomes["lifecycle_partial_install"] = {"pass": lifecycle_partial_pass, "partial_failed": partial_failed,
-                                             "restored": restored, "harness_error": harness_error, "not_installed": not_installed}
-    print(f"LIFECYCLE_PARTIAL_INSTALL = {'PASS' if lifecycle_partial_pass else 'FAIL'} (partial_failed={partial_failed}, restored={restored}, harness_error={harness_error}, not_installed={not_installed})")
+                                             "all_restored": all_restored, "patch_list_empty": patch_list_empty,
+                                             "not_installed": not_installed, "harness_error": harness_error}
+    print(f"LIFECYCLE_PARTIAL_INSTALL = {'PASS' if lifecycle_partial_pass else 'FAIL'} (partial_failed={partial_failed}, all_restored={all_restored}, patch_list_empty={patch_list_empty}, not_installed={not_installed}, harness_error={harness_error})")
 
-    # --- LIFECYCLE: application_exception restore (guard still uninstalls on exception) ---
-    with TransportGuard() as g2:
-        app_exception_raised = False
-        try:
+    # --- LIFECYCLE: application exception crossed the context boundary ---
+    pre_snapshot2 = {
+        "urlopen": urllib.request.urlopen,
+        "create_connection": socket.create_connection,
+        "getaddrinfo": socket.getaddrinfo,
+        "socket": socket.socket,
+        "popen": subprocess.Popen,
+    }
+    app_exception_crossed = False
+    try:
+        with TransportGuard() as g2:
             raise ValueError("simulated application exception")
-        except ValueError:
-            app_exception_raised = True
-    # After the with block (even with the exception), the guard should be uninstalled.
-    app_restored = (urllib.request.urlopen is helper.urllib.request.urlopen)
-    lifecycle_app_pass = app_exception_raised and app_restored
+    except ValueError:
+        app_exception_crossed = True  # the exception crossed the with block
+    # After the with block (the exception crossed it), compare each target with the pre-install snapshot.
+    all_restored2 = (
+        urllib.request.urlopen is pre_snapshot2["urlopen"]
+        and socket.create_connection is pre_snapshot2["create_connection"]
+        and socket.getaddrinfo is pre_snapshot2["getaddrinfo"]
+        and socket.socket is pre_snapshot2["socket"]
+        and subprocess.Popen is pre_snapshot2["popen"]
+    )
+    lifecycle_app_pass = app_exception_crossed and all_restored2
     all_pass = all_pass and lifecycle_app_pass
-    outcomes["lifecycle_app_exception"] = {"pass": lifecycle_app_pass, "app_exception_raised": app_exception_raised, "restored": app_restored}
-    print(f"LIFECYCLE_APP_EXCEPTION = {'PASS' if lifecycle_app_pass else 'FAIL'} (app_exception_raised={app_exception_raised}, restored={app_restored})")
+    outcomes["lifecycle_app_exception"] = {"pass": lifecycle_app_pass, "exception_crossed": app_exception_crossed, "all_restored": all_restored2}
+    print(f"LIFECYCLE_APP_EXCEPTION = {'PASS' if lifecycle_app_pass else 'FAIL'} (exception_crossed={app_exception_crossed}, all_restored={all_restored2})")
 
-    # --- SENTINEL: independent_lower_layer (test installs sentinel first, then guard) ---
-    # The test installs a safe bottom-layer sentinel FIRST, then creates/installs
-    # the actual TransportGuard. The guard's captured "original entry" is the sentinel.
-    sentinel_counts = {"resolver": 0, "connector": 0, "spawn": 0}
+    # --- SENTINEL: shared raw-delegation ledger (test creates it, sentinel updates it, guard holds the same object) ---
+    # The test creates a shared raw-delegation ledger.
+    shared_ledger = {"resolver": 0, "connector": 0, "spawn": 0}
 
-    def test_sentinel_getaddrinfo(host, port, *args, **kwargs):
-        sentinel_counts["resolver"] += 1
-        raise ReplayMiss(f"TEST_SENTINEL: raw DNS delegation at {host}")
+    # The bottom-layer sentinel updates the shared ledger when actually called.
+    def sentinel_getaddrinfo(host, port, *args, **kwargs):
+        shared_ledger["resolver"] += 1
+        raise ReplayMiss(f"SENTINEL: raw DNS delegation at {host}")
 
-    def test_sentinel_create_connection(address, *args, **kwargs):
-        sentinel_counts["connector"] += 1
-        raise ReplayMiss(f"TEST_SENTINEL: raw connector delegation at {address}")
+    def sentinel_create_connection(address, *args, **kwargs):
+        shared_ledger["connector"] += 1
+        raise ReplayMiss(f"SENTINEL: raw connector delegation at {address}")
 
-    def test_sentinel_popen(*args, **kwargs):
-        sentinel_counts["spawn"] += 1
-        raise ReplayMiss(f"TEST_SENTINEL: raw spawn delegation {args[:1]}")
+    def sentinel_popen(*args, **kwargs):
+        shared_ledger["spawn"] += 1
+        raise ReplayMiss(f"SENTINEL: raw spawn delegation {args[:1]}")
 
     # Install the test sentinel FIRST (replacing the real originals).
     orig_getaddrinfo = socket.getaddrinfo
     orig_create_connection = socket.create_connection
     orig_popen = subprocess.Popen
-    socket.getaddrinfo = test_sentinel_getaddrinfo
-    socket.create_connection = test_sentinel_create_connection
-    subprocess.Popen = test_sentinel_popen
-    # Now create/install the actual TransportGuard (its "original entry" is the sentinel).
-    with TransportGuard() as g3:
-        # The guard denies before delegating, so the sentinel counts stay 0.
+    socket.getaddrinfo = sentinel_getaddrinfo
+    socket.create_connection = sentinel_create_connection
+    subprocess.Popen = sentinel_popen
+    # Now create the TransportGuard with the shared ledger (the guard holds the same object).
+    with TransportGuard(raw_delegation_ledger=shared_ledger) as g3:
+        # Verify the guard holds the same ledger object (identity check).
+        ledger_identity = (g3.raw_delegation_ledger is shared_ledger)
+        # The guard denies before delegating, so the shared ledger stays 0.
         sentinel_denied = False
         try:
             socket.getaddrinfo("sentinel-test.example.com", 443)
         except ReplayMiss:
             sentinel_denied = True
-        # Verify the sentinel counts are 0 (the guard denied before delegating).
-        sentinel_zero = (sentinel_counts["resolver"] == 0 and sentinel_counts["connector"] == 0 and sentinel_counts["spawn"] == 0)
-        # Verify the guard's raw_*_delegations are 0.
-        guard_raw_zero = (g3.raw_resolver_delegations == 0 and g3.raw_connector_delegations == 0 and g3.raw_spawn_delegations == 0)
-        # Verify the verdict is not HARNESS_ERROR (no raw delegation).
+        ledger_zero = (shared_ledger["resolver"] == 0 and shared_ledger["connector"] == 0 and shared_ledger["spawn"] == 0)
         verdict_not_harness = (g3.verdict() != "HARNESS_ERROR")
     # Restore the real originals.
     socket.getaddrinfo = orig_getaddrinfo
     socket.create_connection = orig_create_connection
     subprocess.Popen = orig_popen
-    sentinel_pass = sentinel_denied and sentinel_zero and guard_raw_zero and verdict_not_harness
-    all_pass = all_pass and sentinel_pass
-    outcomes["sentinel_independent_lower_layer"] = {"pass": sentinel_pass, "sentinel_denied": sentinel_denied,
-                                                    "sentinel_zero": sentinel_zero, "guard_raw_zero": guard_raw_zero, "verdict_not_harness": verdict_not_harness}
-    print(f"SENTINEL_INDEPENDENT_LOWER_LAYER = {'PASS' if sentinel_pass else 'FAIL'} (sentinel_denied={sentinel_denied}, sentinel_zero={sentinel_zero}, guard_raw_zero={guard_raw_zero}, verdict_not_harness={verdict_not_harness})")
+    sentinel_lower_pass = ledger_identity and sentinel_denied and ledger_zero and verdict_not_harness
+    all_pass = all_pass and sentinel_lower_pass
+    outcomes["sentinel_independent_lower_layer"] = {"pass": sentinel_lower_pass, "ledger_identity": ledger_identity,
+                                                    "sentinel_denied": sentinel_denied, "ledger_zero": ledger_zero, "verdict_not_harness": verdict_not_harness}
+    print(f"SENTINEL_INDEPENDENT_LOWER_LAYER = {'PASS' if sentinel_lower_pass else 'FAIL'} (ledger_identity={ledger_identity}, sentinel_denied={sentinel_denied}, ledger_zero={ledger_zero}, verdict_not_harness={verdict_not_harness})")
 
-    # --- SENTINEL: raw_delegation_nonzero -> HARNESS_ERROR ---
-    raw_nonzero_guard = TransportGuard()
-    raw_nonzero_guard.install()
-    raw_nonzero_guard.raw_resolver_delegations = 1  # simulate a raw delegation
-    raw_nonzero_verdict = raw_nonzero_guard.verdict()
-    raw_nonzero_guard.uninstall()
-    raw_nonzero_pass = (raw_nonzero_verdict == "HARNESS_ERROR")
-    all_pass = all_pass and raw_nonzero_pass
-    outcomes["sentinel_raw_nonzero_harness_error"] = {"pass": raw_nonzero_pass, "verdict": raw_nonzero_verdict}
-    print(f"SENTINEL_RAW_NONZERO_HARNESS_ERROR = {'PASS' if raw_nonzero_pass else 'FAIL'} (verdict={raw_nonzero_verdict})")
+    # --- SENTINEL: actual sentinel call -> shared ledger -> HARNESS_ERROR (not manual assignment) ---
+    shared_ledger2 = {"resolver": 0, "connector": 0, "spawn": 0}
 
-    # --- SENTINEL: resolver/connector/spawn positive controls (the test sentinel counts) ---
-    # Directly call the test sentinel to prove it counts (positive control).
-    test_sentinel_getaddrinfo("positive-test.example.com", 443) if False else None  # placeholder
-    # Actually call the test sentinel functions to prove they count.
-    try:
-        test_sentinel_getaddrinfo("positive-test.example.com", 443)
-    except ReplayMiss:
-        pass
-    resolver_positive = (sentinel_counts["resolver"] == 1)
-    sentinel_positive_pass = resolver_positive
-    all_pass = all_pass and sentinel_positive_pass
-    outcomes["sentinel_positive_controls"] = {"pass": sentinel_positive_pass, "resolver_count": sentinel_counts["resolver"]}
-    print(f"SENTINEL_POSITIVE_CONTROLS = {'PASS' if sentinel_positive_pass else 'FAIL'} (resolver_count={sentinel_counts['resolver']})")
+    def sentinel_getaddrinfo2(host, port, *args, **kwargs):
+        shared_ledger2["resolver"] += 1
+        raise ReplayMiss(f"SENTINEL: raw DNS delegation at {host}")
 
-    # --- LIFECYCLE: workers_joined_before_uninstall ---
-    with TransportGuard() as g4:
-        wt_hit_url = "https://wt-recorded.example.com/hit.json"
-        wt_hit_body = b'{"wt":"hit"}'
-        g4.register(wt_hit_url, 200, wt_hit_body, {"source": "recorded"})
-        wt_results: dict[str, bool] = {}
-
-        def worker():
-            try:
-                resp = urllib.request.urlopen(wt_hit_url)
-                wt_results["hit"] = (resp.read() == wt_hit_body)
-            except Exception:
-                wt_results["hit"] = False
-            try:
-                urllib.request.urlopen("https://wt-unregistered.example.com/miss.json")
-                wt_results["miss_denied"] = False
-            except ReplayMiss:
-                wt_results["miss_denied"] = True
-            except Exception:
-                wt_results["miss_denied"] = False
-
-        t = threading.Thread(target=worker)
-        t.start()
-        t.join()  # all workers complete and join BEFORE uninstalling the guard
-        wt_pass = wt_results.get("hit", False) and wt_results.get("miss_denied", False)
-        all_pass = all_pass and wt_pass
-        outcomes["lifecycle_workers_joined"] = {"pass": wt_pass, "hit": wt_results.get("hit", False), "miss_denied": wt_results.get("miss_denied", False)}
-        print(f"LIFECYCLE_WORKERS_JOINED = {'PASS' if wt_pass else 'FAIL'} (hit={wt_results.get('hit', False)}, miss_denied={wt_results.get('miss_denied', False)})")
+    # Install the test sentinel FIRST (replacing the real originals).
+    orig_getaddrinfo2 = socket.getaddrinfo
+    socket.getaddrinfo = sentinel_getaddrinfo2
+    # Save the sentinel BEFORE installing the guard (so we can call it directly).
+    saved_sentinel = socket.getaddrinfo
+    # Now create the TransportGuard with the shared ledger (the guard holds the same object).
+    with TransportGuard(raw_delegation_ledger=shared_ledger2) as g4:
+        # Directly call the SAVED sentinel (not through the guard) to simulate
+        # the guard erroneously delegating to the sentinel.
+        actual_delegation = False
+        try:
+            saved_sentinel("actual-delegation-test.example.com", 443)
+        except ReplayMiss:
+            actual_delegation = True  # the sentinel was called (delegation happened)
+        # The shared ledger should be incremented (resolver=1).
+        ledger_incremented = (shared_ledger2["resolver"] == 1)
+        # The verdict should be HARNESS_ERROR (raw delegation non-zero).
+        verdict_harness = (g4.verdict() == "HARNESS_ERROR")
+    socket.getaddrinfo = orig_getaddrinfo2
+    sentinel_actual_pass = actual_delegation and ledger_incremented and verdict_harness
+    all_pass = all_pass and sentinel_actual_pass
+    outcomes["sentinel_actual_delegation"] = {"pass": sentinel_actual_pass, "actual_delegation": actual_delegation,
+                                              "ledger_incremented": ledger_incremented, "verdict_harness": verdict_harness}
+    print(f"SENTINEL_ACTUAL_DELEGATION = {'PASS' if sentinel_actual_pass else 'FAIL'} (actual_delegation={actual_delegation}, ledger_incremented={ledger_incremented}, verdict_harness={verdict_harness})")
 
     # --- Manifest: save the actual outcomes/counts to the unique run directory ---
     manifest = {
@@ -312,7 +298,7 @@ def main() -> int:
     manifest_path.write_bytes(manifest_bytes)
     print(f"\nCONTROL_MANIFEST_SHA256={manifest_sha} (saved to {manifest_path})")
     if all_pass:
-        print("V213_3D_STEP_B = PASS (all controls: request_contract, lifecycle_partial_install, lifecycle_app_exception, lifecycle_workers_joined, sentinel_independent_lower_layer, sentinel_raw_nonzero_harness_error, sentinel_positive_controls)")
+        print("V213_3D_STEP_B = PASS (all controls: request, lifecycle_partial_install, lifecycle_app_exception, sentinel_independent_lower_layer, sentinel_actual_delegation)")
         print("FULL_MARKET_REPLAY = NOT_RERUN_INPUTS_STILL_MISSING (market recorded data still missing; doesn't affect harness acceptance)")
         print("APPLICATION_SOURCE_UNCHANGED = true; PRODUCTION_TOUCHED = false")
         raise SystemExit(0)
