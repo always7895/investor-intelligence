@@ -154,11 +154,13 @@ def main() -> int:
             }
             # Save the round's normalized top20 + audit to a persistent location for the
             # per-ticker claim-gap analysis (Pro 3D step A: hash-bound input).
-            save_dir = SCRIPT_DIR.parent / ".tmp"
-            save_dir.mkdir(parents=True, exist_ok=True)
+            # Unique run directory for artifacts (no overwrite; keep the old artifact as-is).
+            import time as _time
+            save_dir = SCRIPT_DIR.parent / ".tmp" / f"3d_fullgate_run_{int(_time.time() * 1_000_000)}"
+            save_dir.mkdir(parents=True, exist_ok=False)
             shutil.copy2(replay_root / "data/cache/top20_public_latest.json", save_dir / "3d_fullgate_normalized_top20.json")
             shutil.copy2(replay_root / "data/cache/v213_source_independence_latest.json", save_dir / "3d_fullgate_audit.json")
-            print(f"SAVED_ROUND_INPUTS = .tmp/3d_fullgate_normalized_top20.json + .tmp/3d_fullgate_audit.json (hash-bound)")
+            print(f"SAVED_ROUND_INPUTS = {save_dir} (unique run directory, no overwrite)")
             print(f"REAL_GATE_EXECUTED = True; GATE_EXIT = {gate_exit}; GATE_ERROR = {gate_error}")
             print(f"POST_HASH = {post}")
             audit_changed = pre["audit"] != post["audit"]
@@ -216,8 +218,13 @@ def main() -> int:
             else:
                 print(f"NETWORK_ISOLATION = REPLAY_COMPLETE (all requests replayed from recorded cache; 0 external connections)")
             print(f"DENIED_RESOLVER_ATTEMPTS = {guard.denied_resolver_attempts}; DENIED_CONNECT_ATTEMPTS = {guard.denied_connect_attempts}; DENIED_SPAWN_ATTEMPTS = {guard.denied_spawn_attempts}")
-            ledger = guard.raw_delegation_ledger
-            print(f"RAW_RESOLVER_DELEGATIONS = {ledger.get('resolver', 0)}; RAW_CONNECTOR_DELEGATIONS = {ledger.get('connector', 0)}; RAW_SPAWN_DELEGATIONS = {ledger.get('spawn', 0)} (shared ledger; 0 expected)")
+            # NOT_MEASURED when no measurement source attached (the full-gate uses
+            # TransportGuard() without providing an actual sentinel ledger).
+            if hasattr(guard, "_measurement_source_attached") and guard._measurement_source_attached:
+                ledger = guard.raw_delegation_ledger
+                print(f"RAW_RESOLVER_DELEGATIONS = {ledger.get('resolver', 0)}; RAW_CONNECTOR_DELEGATIONS = {ledger.get('connector', 0)}; RAW_SPAWN_DELEGATIONS = {ledger.get('spawn', 0)} (shared ledger; 0 expected)")
+            else:
+                print(f"RAW_RESOLVER_DELEGATIONS = NOT_MEASURED; RAW_CONNECTOR_DELEGATIONS = NOT_MEASURED; RAW_SPAWN_DELEGATIONS = NOT_MEASURED (no measurement source attached; NOT_MEASURED, not default zero)")
             print(f"REPLAY_HITS = {len(guard.replay_hits)}; REPLAY_MISSES = {len(guard.replay_misses)}")
             print(f"OUTER_REPLAY_VERDICT = {outer_verdict} (replay completeness is separate from the gate policy result)")
             print(f"POLICY = formal branches kept (no --offline)")

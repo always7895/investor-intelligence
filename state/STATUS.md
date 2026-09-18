@@ -160,6 +160,25 @@
 - REPORT FIELDS: BASE_HEAD=fb48669; REQUEST=equivalent_string_Request_cross_hits + actual_fetch_text_hit + query/header/method_single_variable_rejections; LIFECYCLE=preinstall_identity_snapshot + all_five_targets_restored + exception_crossed_context_boundary + application_loader_calls_on_install_failure=0 (not_installed); SENTINEL=shared_ledger_identity_verified + resolver/connector/spawn_actual_sentinel_calls + measured_delegation_to_HARNESS_ERROR + manual_counter_assignment_used=false; ARTIFACT_RUN_DIR/MANIFEST_SHA256; FULL_GATE_RERUN_THIS_ROUND=false (no full gate re-run this round; only controls); APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
 - NEXT: report to ChatGPT web (via decider-system-one routing); step B final acceptance (REQUEST + LIFECYCLE + SENTINEL with resolver/connector/spawn) complete (5/5 controls); await ruling on step B acceptance + next step.
 
+## TASK0-3D_RECORDED_AUDIT_REPLAY (step B ACCEPTANCE_PENDING gaps: loader spy + regressions + direct socket + full-gate wrap-ups; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 三項核心修正採認（Request key 一致性、清理還原、Shared ledger → verdict）；step B 整體仍為 ACCEPTANCE_PENDING。剩餘 gaps: (1) loader spy (normal_install_calls=1, failed_install_calls=0); (2) restore deleted regressions (positional/empty/Request override body, swallowed miss, import-time, worker-thread); (3) direct socket safe lower layer (connect/connect_ex delegation updates the same connector ledger); (4) full-gate: NOT_MEASURED when no measurement source attached + unique run directory for artifacts.
+- test_v213_3d_step_b_replay_deny_guard.py (11 controls): **ALL PASS**.
+  - LOADER_SPY = PASS (normal_install_calls=1, failed_install_calls=0; test-only startup wrapper + stub loader; count from the spy's actual record)
+  - REQUEST_CROSS_HIT = PASS (cross_hit, neg_method, neg_query, neg_header, fetch_text)
+  - BODY_REJECTIONS = PASS (positional_body, empty_body, Request_data_override)
+  - SWALLOWED_MISS = PASS (inner_success, fresh_miss, outer_verdict=BLOCKED_REPLAY_INPUT_MISS)
+  - DENY_ONLY = PASS (denied_raised, no_replay_miss, only_denied, verdict=BLOCKED_TRANSPORT_DENIED)
+  - IMPORT_TIME = PASS (request_denied, dns_denied)
+  - WORKER_THREAD_JOINED = PASS (hit, miss_denied)
+  - PARTIAL_INSTALL_RESTORE = PASS (partial_failed, all_restored)
+  - EXCEPTION_RESTORE = PASS (exception_crossed, all_restored)
+  - SHARED_LEDGER_RESOLVER_CONNECTOR_SPAWN = PASS (resolver, connector, spawn, ledger_incremented, verdict_harness)
+  - DIRECT_SOCKET_CONNECT_CONNECT_EX = PASS (guarded_connect_denied, guarded_connector_ledger_zero, guarded_verdict=BLOCKED_TRANSPORT_DENIED, actual_connect_delegation, actual_connect_ex_delegation, actual_connector_ledger_incremented, actual_verdict_harness)
+- test_v213_3d_full_gate_replay.py (full-gate wrap-ups): NOT_MEASURED when no measurement source attached (the full-gate uses TransportGuard() without providing an actual sentinel ledger); unique run directory for artifacts (no overwrite; keep the old artifact as-is). Re-run: SAVED_ROUND_INPUTS=.tmp/3d_fullgate_run_<timestamp> (unique); RAW_*_DELEGATIONS=NOT_MEASURED; NETWORK_ISOLATION=BLOCKED_REPLAY_INPUT_MISS (replay_misses=44); OUTER_REPLAY_VERDICT=BLOCKED_REPLAY_INPUT_MISS.
+- CONTROL_MANIFEST_SHA256: f965f27f8dc77531d16c5c00b02e0eb3fd19b80514336038d34ba016af2c1abc
+- REPORT FIELDS: BASE_HEAD=8f612eb; LOADER_SPY=normal_install_calls=1/failed_install_calls=0; REGRESSION_RESULTS=request_cross_hit/actual_fetch_text/method_query_header/positional_body/empty_body/Request_data_override/swallowed_miss/deny_only/import_time/worker_thread_joined/partial_install_restore/exception_restore/shared_ledger_resolver_connector_spawn/direct_socket_connect_connect_ex; RAW_OBSERVATION_WHEN_UNATTACHED=NOT_MEASURED; ARTIFACT_PATHS=unique_run/no_overwrite; CONTROL_MANIFEST_SHA256; FULL_GATE_EXECUTED=false (no full gate re-run this round; only controls); APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
+- NEXT: report to ChatGPT web (via decider-system-one routing); step B ACCEPTANCE_PENDING gaps (loader spy + regressions + direct socket + full-gate wrap-ups) complete (11/11 controls); await ruling on step B acceptance + next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).

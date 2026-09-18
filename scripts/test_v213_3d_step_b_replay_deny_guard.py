@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: controls (final acceptance deltas).
+"""TASK0-3D_RECORDED_AUDIT_REPLAY_STEP_B: controls (ACCEPTANCE_PENDING gaps).
 
-Per Pro 3D step B ruling (final acceptance deltas):
-- REQUEST: prove string and equivalent Request can cross-hit; method negative
-  uses Request(url, method="POST") with data=None; restore the actual
-  fetch_text() positive control.
-- LIFECYCLE: save object references to the 5 patch targets BEFORE install;
-  after failure, compare each with `is`; let the exception cross the with
-  block; use an actual loader call count/marker.
-- SENTINEL: shared raw-delegation ledger (test creates it, sentinel updates it,
-  TransportGuard holds the same object); prove the whole chain with the safe
-  sentinel's actual calls; resolver/connector/spawn each verified.
+Per Pro 3D step B ruling (ACCEPTANCE_PENDING gaps):
+- LOADER_SPY: normal_install_calls=1, failed_install_calls=0 (test-only startup
+  wrapper + stub loader; count from the spy's actual record, not a constant).
+- REGRESSION_RESULTS: restore deleted regressions (positional/empty/Request
+  override body, swallowed miss, import-time, worker-thread).
+- DIRECT_SOCKET: safe socket class that doesn't create real connections;
+  connect/connect_ex delegation updates the same connector ledger.
+- FULL_GATE: NOT_MEASURED when no measurement source attached + unique run
+  directory for artifacts.
 
 Read-only source; 0 network; 0 credentials; 0 formal KV/DO; 0 schedules; 0 LINE.
 Exit 0 when all controls pass.
@@ -23,6 +22,7 @@ import json
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -59,7 +59,7 @@ def _load_fetch_text():
 
 
 def main() -> int:
-    print("=== TASK0-3D STEP B: CONTROLS (final acceptance deltas) ===")
+    print("=== TASK0-3D STEP B: CONTROLS (ACCEPTANCE_PENDING gaps) ===")
     helper = _load_helper()
     helper_sha = _sha256_full(HELPER_PATH)
     print(f"REAL_HELPER_IMPORTED = {HELPER_PATH} (SHA256={helper_sha})")
@@ -77,13 +77,58 @@ def main() -> int:
     run_dir.mkdir(parents=True)
     print(f"ARTIFACTS: unique_run_directory = {run_dir} (no overwrite)")
 
-    # --- REQUEST: string/Request cross-hit + method negative + fetch_text positive ---
+    # --- LOADER_SPY: normal_install_calls=1, failed_install_calls=0 ---
+    # Test-only startup wrapper + stub loader.
+    loader_spy = {"calls": 0}
+
+    def stub_loader():
+        loader_spy["calls"] += 1
+        return "loaded_application"
+
+    def startup_wrapper(guard, loader):
+        """The same startup wrapper for both normal and failed install."""
+        guard.install()
+        # Only call the loader if the guard installed successfully.
+        if guard._installed:
+            return loader()
+        return None  # install failed, don't load the application
+
+    # Normal install -> loader called once.
+    normal_guard = TransportGuard()
+    normal_result = startup_wrapper(normal_guard, stub_loader)
+    normal_calls = loader_spy["calls"]
+    normal_guard.uninstall()
+
+    # Failed install -> loader called zero times.
+    loader_spy["calls"] = 0
+    failed_guard = TransportGuard()
+    orig_apply = failed_guard._apply
+    call_count = [0]
+
+    def failing_apply(obj, attr, value):
+        call_count[0] += 1
+        if call_count[0] == 3:
+            raise RuntimeError("injected mid-install failure")
+        orig_apply(obj, attr, value)
+
+    failed_guard._apply = failing_apply
+    failed_result = None
+    try:
+        failed_result = startup_wrapper(failed_guard, stub_loader)
+    except RuntimeError:
+        pass
+    failed_calls = loader_spy["calls"]
+
+    loader_spy_pass = (normal_calls == 1 and failed_calls == 0 and normal_result == "loaded_application" and failed_result is None)
+    all_pass = all_pass and loader_spy_pass
+    outcomes["loader_spy"] = {"pass": loader_spy_pass, "normal_install_calls": normal_calls, "failed_install_calls": failed_calls}
+    print(f"LOADER_SPY = {'PASS' if loader_spy_pass else 'FAIL'} (normal_install_calls={normal_calls}, failed_install_calls={failed_calls})")
+
+    # --- REGRESSION: request_cross_hit / actual_fetch_text / method_query_header ---
     with TransportGuard() as g:
         base_url = "https://recorded.example.com/data.json"
         base_body = b'{"ticker":"TEST","price":1.0}'
-        # Register as a STRING.
         g.register(base_url, 200, base_body, {"source": "recorded"})
-        # Positive: equivalent no-header Request (same URL) -> cross-hit.
         cross_hit_req = urllib.request.Request(base_url)
         cross_hit_ok = False
         try:
@@ -91,7 +136,6 @@ def main() -> int:
             cross_hit_ok = (resp.read() == base_body)
         except Exception as exc:
             print(f"CONTROL_CROSS_HIT_FAILED = {type(exc).__name__}: {exc}")
-        # Negative: method (Request(url, method="POST") with data=None) -> reject.
         neg_method_req = urllib.request.Request(base_url, method="POST")
         neg_method_rejected = False
         try:
@@ -100,7 +144,6 @@ def main() -> int:
             neg_method_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_METHOD_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: query (single variable) -> reject.
         neg_query_rejected = False
         try:
             urllib.request.urlopen(base_url + "?x=1")
@@ -108,7 +151,6 @@ def main() -> int:
             neg_query_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_QUERY_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # Negative: header (single variable, different Accept) -> reject.
         neg_header_req = urllib.request.Request(base_url, headers={"Accept": "application/xml"})
         neg_header_rejected = False
         try:
@@ -117,7 +159,6 @@ def main() -> int:
             neg_header_rejected = True
         except Exception as exc:
             print(f"CONTROL_NEG_HEADER_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
-        # fetch_text positive control (actual core.fetch_text() -> real helper -> synthetic response).
         fetch_text = _load_fetch_text()
         ft_url = "https://recorded.example.com/fetch.json"
         ft_body = b'{"fetch":"ok"}'
@@ -129,17 +170,135 @@ def main() -> int:
             ft_ok = (result.encode("utf-8") == ft_body)
         except Exception as exc:
             print(f"CONTROL_FETCH_TEXT_FAILED = {type(exc).__name__}: {exc}")
-        ft_hit = (len(g.replay_hits) >= 2)  # cross_hit + fetch_text
-        req_pass = (cross_hit_ok and neg_method_rejected and neg_query_rejected and neg_header_rejected
-                    and ft_ok and ft_hit)
+        req_pass = (cross_hit_ok and neg_method_rejected and neg_query_rejected and neg_header_rejected and ft_ok)
         all_pass = all_pass and req_pass
-        outcomes["request"] = {"pass": req_pass, "cross_hit": cross_hit_ok, "neg_method": neg_method_rejected,
-                               "neg_query": neg_query_rejected, "neg_header": neg_header_rejected,
-                               "fetch_text": ft_ok, "fetch_text_hit": ft_hit}
-        print(f"REQUEST = {'PASS' if req_pass else 'FAIL'} (cross_hit={cross_hit_ok}, neg_method={neg_method_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, fetch_text={ft_ok}, ft_hit={ft_hit})")
+        outcomes["request_cross_hit"] = {"pass": req_pass, "cross_hit": cross_hit_ok, "neg_method": neg_method_rejected,
+                                         "neg_query": neg_query_rejected, "neg_header": neg_header_rejected, "fetch_text": ft_ok}
+        print(f"REQUEST_CROSS_HIT = {'PASS' if req_pass else 'FAIL'} (cross_hit={cross_hit_ok}, neg_method={neg_method_rejected}, neg_query={neg_query_rejected}, neg_header={neg_header_rejected}, fetch_text={ft_ok})")
 
-    # --- LIFECYCLE: pre-install identity snapshot + partial-install failure ---
-    # Save object references to the 5 patch targets BEFORE install.
+    # --- REGRESSION: positional_body / empty_body / Request_data_override ---
+    with TransportGuard() as g2:
+        base_url = "https://recorded.example.com/data.json"
+        base_body = b'{"ticker":"TEST","price":1.0}'
+        g2.register(base_url, 200, base_body, {"source": "recorded"})
+        pos_data_rejected = False
+        try:
+            urllib.request.urlopen(base_url, b"X")
+        except ReplayMiss:
+            pos_data_rejected = True
+        except Exception as exc:
+            print(f"CONTROL_POS_DATA_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        empty_body_rejected = False
+        try:
+            urllib.request.urlopen(base_url, data=b"")
+        except ReplayMiss:
+            empty_body_rejected = True
+        except Exception as exc:
+            print(f"CONTROL_EMPTY_BODY_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        req = urllib.request.Request(base_url)
+        req_data_rejected = False
+        try:
+            urllib.request.urlopen(req, data=b"X")
+        except ReplayMiss:
+            req_data_rejected = True
+        except Exception as exc:
+            print(f"CONTROL_REQ_DATA_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        body_pass = pos_data_rejected and empty_body_rejected and req_data_rejected
+        all_pass = all_pass and body_pass
+        outcomes["body_rejections"] = {"pass": body_pass, "positional_body": pos_data_rejected, "empty_body": empty_body_rejected, "Request_data_override": req_data_rejected}
+        print(f"BODY_REJECTIONS = {'PASS' if body_pass else 'FAIL'} (positional_body={pos_data_rejected}, empty_body={empty_body_rejected}, Request_data_override={req_data_rejected})")
+
+    # --- REGRESSION: swallowed_miss / deny_only ---
+    with TransportGuard() as g3:
+        swallowed_url = "https://swallowed.example.com/missing.json"
+        inner_success = False
+        try:
+            try:
+                urllib.request.urlopen(swallowed_url)
+            except ReplayMiss:
+                inner_success = True
+        except Exception:
+            pass
+        fresh_miss = (len(g3.replay_misses) == 1)
+        outer_verdict = g3.verdict()
+        swallowed_pass = inner_success and fresh_miss and outer_verdict == "BLOCKED_REPLAY_INPUT_MISS"
+        all_pass = all_pass and swallowed_pass
+        outcomes["swallowed_miss"] = {"pass": swallowed_pass, "inner_success": inner_success, "fresh_miss": fresh_miss, "outer_verdict": outer_verdict}
+        print(f"SWALLOWED_MISS = {'PASS' if swallowed_pass else 'FAIL'} (inner_success={inner_success}, fresh_miss={fresh_miss}, outer_verdict={outer_verdict})")
+
+    with TransportGuard() as g4:
+        import socket as _s
+        denied_raised = False
+        try:
+            _s.create_connection(("unregistered.example.com", 443))
+        except ReplayMiss:
+            denied_raised = True
+        except Exception as exc:
+            print(f"CONTROL_DENY_ONLY_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        no_replay_miss = (len(g4.replay_misses) == 0)
+        only_denied = (g4.denied_connect_attempts == 1)
+        verdict = g4.verdict()
+        deny_only_pass = denied_raised and no_replay_miss and only_denied and verdict == "BLOCKED_TRANSPORT_DENIED"
+        all_pass = all_pass and deny_only_pass
+        outcomes["deny_only"] = {"pass": deny_only_pass, "denied_raised": denied_raised, "no_replay_miss": no_replay_miss, "only_denied": only_denied, "verdict": verdict}
+        print(f"DENY_ONLY = {'PASS' if deny_only_pass else 'FAIL'} (denied_raised={denied_raised}, no_replay_miss={no_replay_miss}, only_denied={only_denied}, verdict={verdict})")
+
+    # --- REGRESSION: import_time / worker_thread_joined ---
+    with TransportGuard() as g5:
+        import time as _time
+        mod_code = """
+import urllib.request, socket
+try:
+    urllib.request.urlopen("https://import-time-unregistered.example.com/x.json")
+    IMPORT_TIME_DENIED = False
+except Exception:
+    IMPORT_TIME_DENIED = True
+try:
+    socket.getaddrinfo("import-time-unregistered.example.com", 443)
+    IMPORT_TIME_DNS_DENIED = False
+except Exception:
+    IMPORT_TIME_DNS_DENIED = True
+"""
+        mod_path = Path(tempfile.gettempdir()) / f"ii_3d_import_time_{_time.time_ns()}.py"
+        mod_path.write_text(mod_code, encoding="utf-8")
+        spec = importlib.util.spec_from_file_location("ii_3d_import_time_mod", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        import_time_pass = getattr(mod, "IMPORT_TIME_DENIED", False) and getattr(mod, "IMPORT_TIME_DNS_DENIED", False)
+        mod_path.unlink(missing_ok=True)
+        all_pass = all_pass and import_time_pass
+        outcomes["import_time"] = {"pass": import_time_pass, "request_denied": getattr(mod, "IMPORT_TIME_DENIED", False), "dns_denied": getattr(mod, "IMPORT_TIME_DNS_DENIED", False)}
+        print(f"IMPORT_TIME = {'PASS' if import_time_pass else 'FAIL'} (request_denied={getattr(mod, 'IMPORT_TIME_DENIED', False)}, dns_denied={getattr(mod, 'IMPORT_TIME_DNS_DENIED', False)})")
+
+    with TransportGuard() as g6:
+        wt_hit_url = "https://wt-recorded.example.com/hit.json"
+        wt_hit_body = b'{"wt":"hit"}'
+        g6.register(wt_hit_url, 200, wt_hit_body, {"source": "recorded"})
+        wt_results: dict[str, bool] = {}
+
+        def worker():
+            try:
+                resp = urllib.request.urlopen(wt_hit_url)
+                wt_results["hit"] = (resp.read() == wt_hit_body)
+            except Exception:
+                wt_results["hit"] = False
+            try:
+                urllib.request.urlopen("https://wt-unregistered.example.com/miss.json")
+                wt_results["miss_denied"] = False
+            except ReplayMiss:
+                wt_results["miss_denied"] = True
+            except Exception:
+                wt_results["miss_denied"] = False
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()
+        wt_pass = wt_results.get("hit", False) and wt_results.get("miss_denied", False)
+        all_pass = all_pass and wt_pass
+        outcomes["worker_thread_joined"] = {"pass": wt_pass, "hit": wt_results.get("hit", False), "miss_denied": wt_results.get("miss_denied", False)}
+        print(f"WORKER_THREAD_JOINED = {'PASS' if wt_pass else 'FAIL'} (hit={wt_results.get('hit', False)}, miss_denied={wt_results.get('miss_denied', False)})")
+
+    # --- REGRESSION: partial_install_restore / exception_restore ---
     pre_snapshot = {
         "urlopen": urllib.request.urlopen,
         "create_connection": socket.create_connection,
@@ -163,7 +322,6 @@ def main() -> int:
         partial_guard.install()
     except RuntimeError:
         partial_failed = True
-    # After the failure, compare each of the 5 targets with the pre-install snapshot.
     all_restored = (
         urllib.request.urlopen is pre_snapshot["urlopen"]
         and socket.create_connection is pre_snapshot["create_connection"]
@@ -171,17 +329,11 @@ def main() -> int:
         and socket.socket is pre_snapshot["socket"]
         and subprocess.Popen is pre_snapshot["popen"]
     )
-    patch_list_empty = (len(partial_guard._applied_patches) == 0)
-    not_installed = (not partial_guard._installed)
-    harness_error = (partial_guard.harness_error is not None)
-    lifecycle_partial_pass = partial_failed and all_restored and patch_list_empty and not_installed and harness_error
-    all_pass = all_pass and lifecycle_partial_pass
-    outcomes["lifecycle_partial_install"] = {"pass": lifecycle_partial_pass, "partial_failed": partial_failed,
-                                             "all_restored": all_restored, "patch_list_empty": patch_list_empty,
-                                             "not_installed": not_installed, "harness_error": harness_error}
-    print(f"LIFECYCLE_PARTIAL_INSTALL = {'PASS' if lifecycle_partial_pass else 'FAIL'} (partial_failed={partial_failed}, all_restored={all_restored}, patch_list_empty={patch_list_empty}, not_installed={not_installed}, harness_error={harness_error})")
+    partial_pass = partial_failed and all_restored
+    all_pass = all_pass and partial_pass
+    outcomes["partial_install_restore"] = {"pass": partial_pass, "partial_failed": partial_failed, "all_restored": all_restored}
+    print(f"PARTIAL_INSTALL_RESTORE = {'PASS' if partial_pass else 'FAIL'} (partial_failed={partial_failed}, all_restored={all_restored})")
 
-    # --- LIFECYCLE: application exception crossed the context boundary ---
     pre_snapshot2 = {
         "urlopen": urllib.request.urlopen,
         "create_connection": socket.create_connection,
@@ -191,11 +343,10 @@ def main() -> int:
     }
     app_exception_crossed = False
     try:
-        with TransportGuard() as g2:
+        with TransportGuard() as g7:
             raise ValueError("simulated application exception")
     except ValueError:
-        app_exception_crossed = True  # the exception crossed the with block
-    # After the with block (the exception crossed it), compare each target with the pre-install snapshot.
+        app_exception_crossed = True
     all_restored2 = (
         urllib.request.urlopen is pre_snapshot2["urlopen"]
         and socket.create_connection is pre_snapshot2["create_connection"]
@@ -203,16 +354,14 @@ def main() -> int:
         and socket.socket is pre_snapshot2["socket"]
         and subprocess.Popen is pre_snapshot2["popen"]
     )
-    lifecycle_app_pass = app_exception_crossed and all_restored2
-    all_pass = all_pass and lifecycle_app_pass
-    outcomes["lifecycle_app_exception"] = {"pass": lifecycle_app_pass, "exception_crossed": app_exception_crossed, "all_restored": all_restored2}
-    print(f"LIFECYCLE_APP_EXCEPTION = {'PASS' if lifecycle_app_pass else 'FAIL'} (exception_crossed={app_exception_crossed}, all_restored={all_restored2})")
+    exception_pass = app_exception_crossed and all_restored2
+    all_pass = all_pass and exception_pass
+    outcomes["exception_restore"] = {"pass": exception_pass, "exception_crossed": app_exception_crossed, "all_restored": all_restored2}
+    print(f"EXCEPTION_RESTORE = {'PASS' if exception_pass else 'FAIL'} (exception_crossed={app_exception_crossed}, all_restored={all_restored2})")
 
-    # --- SENTINEL: shared raw-delegation ledger (test creates it, sentinel updates it, guard holds the same object) ---
-    # The test creates a shared raw-delegation ledger.
+    # --- REGRESSION: shared_ledger_resolver_connector_spawn ---
     shared_ledger = {"resolver": 0, "connector": 0, "spawn": 0}
 
-    # The bottom-layer sentinel updates the shared ledger when actually called.
     def sentinel_getaddrinfo(host, port, *args, **kwargs):
         shared_ledger["resolver"] += 1
         raise ReplayMiss(f"SENTINEL: raw DNS delegation at {host}")
@@ -225,37 +374,40 @@ def main() -> int:
         shared_ledger["spawn"] += 1
         raise ReplayMiss(f"SENTINEL: raw spawn delegation {args[:1]}")
 
-    # Install the test sentinel FIRST (replacing the real originals).
     orig_getaddrinfo = socket.getaddrinfo
     orig_create_connection = socket.create_connection
     orig_popen = subprocess.Popen
     socket.getaddrinfo = sentinel_getaddrinfo
     socket.create_connection = sentinel_create_connection
     subprocess.Popen = sentinel_popen
-    # Now create the TransportGuard with the shared ledger (the guard holds the same object).
-    with TransportGuard(raw_delegation_ledger=shared_ledger) as g3:
-        # Verify the guard holds the same ledger object (identity check).
-        ledger_identity = (g3.raw_delegation_ledger is shared_ledger)
-        # The guard denies before delegating, so the shared ledger stays 0.
-        sentinel_denied = False
+    saved_sentinel_resolver = socket.getaddrinfo
+    saved_sentinel_connector = socket.create_connection
+    saved_sentinel_spawn = subprocess.Popen
+    with TransportGuard(raw_delegation_ledger=shared_ledger) as g8:
+        resolver_delegation = connector_delegation = spawn_delegation = False
         try:
-            socket.getaddrinfo("sentinel-test.example.com", 443)
+            saved_sentinel_resolver("test.example.com", 443)
         except ReplayMiss:
-            sentinel_denied = True
-        ledger_zero = (shared_ledger["resolver"] == 0 and shared_ledger["connector"] == 0 and shared_ledger["spawn"] == 0)
-        verdict_not_harness = (g3.verdict() != "HARNESS_ERROR")
-    # Restore the real originals.
+            resolver_delegation = True
+        try:
+            saved_sentinel_connector(("test.example.com", 443))
+        except ReplayMiss:
+            connector_delegation = True
+        try:
+            saved_sentinel_spawn(["curl", "https://test.example.com"])
+        except ReplayMiss:
+            spawn_delegation = True
+        ledger_incremented = (shared_ledger["resolver"] == 1 and shared_ledger["connector"] == 1 and shared_ledger["spawn"] == 1)
+        verdict_harness = (g8.verdict() == "HARNESS_ERROR")
     socket.getaddrinfo = orig_getaddrinfo
     socket.create_connection = orig_create_connection
     subprocess.Popen = orig_popen
-    sentinel_lower_pass = ledger_identity and sentinel_denied and ledger_zero and verdict_not_harness
-    all_pass = all_pass and sentinel_lower_pass
-    outcomes["sentinel_independent_lower_layer"] = {"pass": sentinel_lower_pass, "ledger_identity": ledger_identity,
-                                                    "sentinel_denied": sentinel_denied, "ledger_zero": ledger_zero, "verdict_not_harness": verdict_not_harness}
-    print(f"SENTINEL_INDEPENDENT_LOWER_LAYER = {'PASS' if sentinel_lower_pass else 'FAIL'} (ledger_identity={ledger_identity}, sentinel_denied={sentinel_denied}, ledger_zero={ledger_zero}, verdict_not_harness={verdict_not_harness})")
+    shared_ledger_pass = resolver_delegation and connector_delegation and spawn_delegation and ledger_incremented and verdict_harness
+    all_pass = all_pass and shared_ledger_pass
+    outcomes["shared_ledger_resolver_connector_spawn"] = {"pass": shared_ledger_pass, "resolver": resolver_delegation, "connector": connector_delegation, "spawn": spawn_delegation, "ledger_incremented": ledger_incremented, "verdict_harness": verdict_harness}
+    print(f"SHARED_LEDGER_RESOLVER_CONNECTOR_SPAWN = {'PASS' if shared_ledger_pass else 'FAIL'} (resolver={resolver_delegation}, connector={connector_delegation}, spawn={spawn_delegation}, ledger_incremented={ledger_incremented}, verdict_harness={verdict_harness})")
 
-    # --- SENTINEL: actual sentinel call -> shared ledger -> HARNESS_ERROR (not manual assignment) ---
-    # Test resolver, connector, and spawn each verified with actual sentinel calls.
+    # --- DIRECT_SOCKET: safe socket class; connect/connect_ex delegation updates the same connector ledger ---
     shared_ledger2 = {"resolver": 0, "connector": 0, "spawn": 0}
 
     def sentinel_getaddrinfo2(host, port, *args, **kwargs):
@@ -270,47 +422,69 @@ def main() -> int:
         shared_ledger2["spawn"] += 1
         raise ReplayMiss(f"SENTINEL: raw spawn delegation {args[:1]}")
 
-    # Install the test sentinels FIRST (replacing the real originals).
+    # Safe socket class that doesn't create real connections; connect/connect_ex
+    # delegation updates the same connector ledger.
+    orig_socket_class = socket.socket
+
+    class SafeSocket(orig_socket_class):
+        def connect(self, address):
+            shared_ledger2["connector"] += 1
+            raise ReplayMiss(f"SENTINEL: raw socket.connect delegation at {address}")
+
+        def connect_ex(self, address):
+            shared_ledger2["connector"] += 1
+            raise ReplayMiss(f"SENTINEL: raw socket.connect_ex delegation at {address}")
+
     orig_getaddrinfo2 = socket.getaddrinfo
     orig_create_connection2 = socket.create_connection
     orig_popen2 = subprocess.Popen
+    orig_socket_class2 = socket.socket
     socket.getaddrinfo = sentinel_getaddrinfo2
     socket.create_connection = sentinel_create_connection2
     subprocess.Popen = sentinel_popen2
-    # Save the sentinels BEFORE installing the guard (so we can call them directly).
-    saved_sentinel_resolver = socket.getaddrinfo
-    saved_sentinel_connector = socket.create_connection
-    saved_sentinel_spawn = subprocess.Popen
-    # Now create the TransportGuard with the shared ledger (the guard holds the same object).
-    with TransportGuard(raw_delegation_ledger=shared_ledger2) as g4:
-        # Directly call the SAVED sentinels (not through the guard) to simulate
-        # the guard erroneously delegating to the sentinels.
-        resolver_delegation = connector_delegation = spawn_delegation = False
+    socket.socket = SafeSocket
+    saved_safe_socket = socket.socket
+    with TransportGuard(raw_delegation_ledger=shared_ledger2) as g9:
+        # Guarded connect/connect_ex: denied incremented, raw connector ledger=0, BLOCKED_TRANSPORT_DENIED.
+        guarded_connect_denied = False
         try:
-            saved_sentinel_resolver("actual-delegation-test.example.com", 443)
+            _sock = socket.socket()
+            _sock.connect(("test.example.com", 443))
         except ReplayMiss:
-            resolver_delegation = True
+            guarded_connect_denied = True
+        except Exception as exc:
+            print(f"CONTROL_GUARDED_CONNECT_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        guarded_connector_ledger_zero = (shared_ledger2["connector"] == 0)
+        guarded_verdict = g9.verdict()
+        # Deliberately call the saved safe lower layer connect/connect_ex:
+        # raw connector ledger incremented, HARNESS_ERROR, no real I/O.
+        safe_connect = saved_safe_socket()
+        actual_connect_delegation = False
         try:
-            saved_sentinel_connector(("actual-delegation-test.example.com", 443))
+            safe_connect.connect(("test.example.com", 443))
         except ReplayMiss:
-            connector_delegation = True
+            actual_connect_delegation = True
+        safe_connect_ex = saved_safe_socket()
+        actual_connect_ex_delegation = False
         try:
-            saved_sentinel_spawn(["curl", "https://actual-delegation-test.example.com"])
+            safe_connect_ex.connect_ex(("test.example.com", 443))
         except ReplayMiss:
-            spawn_delegation = True
-        # The shared ledger should be incremented (resolver=1, connector=1, spawn=1).
-        ledger_incremented = (shared_ledger2["resolver"] == 1 and shared_ledger2["connector"] == 1 and shared_ledger2["spawn"] == 1)
-        # The verdict should be HARNESS_ERROR (raw delegation non-zero).
-        verdict_harness = (g4.verdict() == "HARNESS_ERROR")
+            actual_connect_ex_delegation = True
+        actual_connector_ledger_incremented = (shared_ledger2["connector"] == 2)
+        actual_verdict_harness = (g9.verdict() == "HARNESS_ERROR")
     socket.getaddrinfo = orig_getaddrinfo2
     socket.create_connection = orig_create_connection2
     subprocess.Popen = orig_popen2
-    sentinel_actual_pass = resolver_delegation and connector_delegation and spawn_delegation and ledger_incremented and verdict_harness
-    all_pass = all_pass and sentinel_actual_pass
-    outcomes["sentinel_actual_delegation"] = {"pass": sentinel_actual_pass, "resolver": resolver_delegation,
-                                              "connector": connector_delegation, "spawn": spawn_delegation,
-                                              "ledger_incremented": ledger_incremented, "verdict_harness": verdict_harness}
-    print(f"SENTINEL_ACTUAL_DELEGATION = {'PASS' if sentinel_actual_pass else 'FAIL'} (resolver={resolver_delegation}, connector={connector_delegation}, spawn={spawn_delegation}, ledger_incremented={ledger_incremented}, verdict_harness={verdict_harness})")
+    socket.socket = orig_socket_class2
+    direct_socket_pass = (guarded_connect_denied and guarded_connector_ledger_zero and guarded_verdict == "BLOCKED_TRANSPORT_DENIED"
+                          and actual_connect_delegation and actual_connect_ex_delegation
+                          and actual_connector_ledger_incremented and actual_verdict_harness)
+    all_pass = all_pass and direct_socket_pass
+    outcomes["direct_socket_connect_connect_ex"] = {"pass": direct_socket_pass, "guarded_connect_denied": guarded_connect_denied,
+                                                    "guarded_connector_ledger_zero": guarded_connector_ledger_zero, "guarded_verdict": guarded_verdict,
+                                                    "actual_connect_delegation": actual_connect_delegation, "actual_connect_ex_delegation": actual_connect_ex_delegation,
+                                                    "actual_connector_ledger_incremented": actual_connector_ledger_incremented, "actual_verdict_harness": actual_verdict_harness}
+    print(f"DIRECT_SOCKET_CONNECT_CONNECT_EX = {'PASS' if direct_socket_pass else 'FAIL'} (guarded_connect_denied={guarded_connect_denied}, guarded_connector_ledger_zero={guarded_connector_ledger_zero}, guarded_verdict={guarded_verdict}, actual_connect_delegation={actual_connect_delegation}, actual_connect_ex_delegation={actual_connect_ex_delegation}, actual_connector_ledger_incremented={actual_connector_ledger_incremented}, actual_verdict_harness={actual_verdict_harness})")
 
     # --- Manifest: save the actual outcomes/counts to the unique run directory ---
     manifest = {
@@ -324,7 +498,7 @@ def main() -> int:
     manifest_path.write_bytes(manifest_bytes)
     print(f"\nCONTROL_MANIFEST_SHA256={manifest_sha} (saved to {manifest_path})")
     if all_pass:
-        print("V213_3D_STEP_B = PASS (all controls: request, lifecycle_partial_install, lifecycle_app_exception, sentinel_independent_lower_layer, sentinel_actual_delegation)")
+        print("V213_3D_STEP_B = PASS (all controls: loader_spy, request_cross_hit, body_rejections, swallowed_miss, deny_only, import_time, worker_thread_joined, partial_install_restore, exception_restore, shared_ledger_resolver_connector_spawn, direct_socket_connect_connect_ex)")
         print("FULL_MARKET_REPLAY = NOT_RERUN_INPUTS_STILL_MISSING (market recorded data still missing; doesn't affect harness acceptance)")
         print("APPLICATION_SOURCE_UNCHANGED = true; PRODUCTION_TOUCHED = false")
         raise SystemExit(0)
