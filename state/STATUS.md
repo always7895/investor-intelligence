@@ -412,6 +412,18 @@
 - documents/TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS.md: COMPLETE
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3H COMPLETE; await ruling on next step.
 
+## TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL (COMPLETE; 2026-09-19)
+- Pro ruling (conv 6aacd52f): TASK0-3H COMPLETE / CLOSED；下一步批准單檔 runtime 安裝（TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL）
+- 唯一允許替換的檔案: C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
+- 3I-0 (固定新舊 bytes): COMPLETE (Prestate: CAN_CONTINUE, Candidate hash match: True, Other 4 files unchanged: True)
+- 3I-1 (取得共用鎖): COMPLETE (All tasks idle: True, Lock acquired: True, Lock released: True)
+- 3I-2 (同磁碟區備份與替換): COMPLETE (File.Replace completed: True, Installed hash match: True, Backup hash: 7FF67125... (expected old hash))
+- 3I-3 (讀回與受限回復): COMPLETE (All checks pass: True, **Install verdict: INSTALLED_HASH_VERIFIED**)
+- **NEXT_PUBLICATION_OUTCOME: NOT_TESTED**（本輪不觸發新的 publication）
+- **不是 COMMIT_FAILURE_FIXED，也不是 Production FINAL_ACCEPT**
+- documents/TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL.md: COMPLETE
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3I COMPLETE; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
