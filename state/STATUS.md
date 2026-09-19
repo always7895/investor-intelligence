@@ -401,6 +401,17 @@
 - documents/TASK0-3G_CURRENT_PUBLICATION_TRIAGE.md: COMPLETE (corrected)
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3G PARTIAL_ACCEPTED corrections complete; await ruling on next step.
 
+## TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS (COMPLETE; 2026-09-19)
+- Pro ruling (conv 6aacd52f): TASK0-3G COMPLETE / CLOSED；下一步 TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS
+- 候選檔案: scripts/v213_sealed_refresh.ps1 (accepted SHA-256: 66b25c0b0ed0732f...)
+- 3H-0 (確認差異): COMPLETE (4 IDENTICAL, 1 DIFFERENT; candidate hash match: True; EXPECTED_DIAGNOSTIC_PATCH_DIFF)
+- 3H-1 (唯讀核對 rollback ACK): COMPLETE (ACK_VERIFIED: True, status: not_committed, transaction_id/run_id matches journal)
+- 3H-2 (staging fixture 驗證): COMPLETE (10 passed, 100 subtests passed in 103.44s)
+- **READINESS_VERDICT: CANDIDATE_STAGED_AND_FIXTURE_VERIFIED**
+- **RUNTIME_INSTALL_AUTHORIZED: false**（候選通過不等於已獲安裝授權）
+- documents/TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS.md: COMPLETE
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3H COMPLETE; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
