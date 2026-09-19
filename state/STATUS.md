@@ -386,6 +386,21 @@
 - documents/TASK0-3G_CURRENT_PUBLICATION_TRIAGE.md: COMPLETE
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3G COMPLETE; await ruling on next step.
 
+## TASK0-3G_CURRENT_PUBLICATION_TRIAGE (PARTIAL_ACCEPTED corrections; 2026-09-19)
+- Pro ruling (conv 6aacd52f): 3G PARTIAL_ACCEPTED；先補正查找目標，目前不執行 runtime 更新
+- 2 項更正:
+  1. 查錯了 3 個排程名稱（正確: EveningRefresh, SealedFreshness, FreshnessWatchdog；查錯: EODRefresh, ActivationBundleSync, ActivationBundleReconcile）
+  2. 查錯了發布紀錄位置（正確: %LOCALAPPDATA%\InvestorIntelligence\status\ + logs\；查錯: runtime 的 data 子目錄）
+- 4 個排程全部存在: MorningRefresh (LastTaskResult=1), EveningRefresh (LastTaskResult=1), SealedFreshness (LastTaskResult=0), FreshnessWatchdog (LastTaskResult=0)
+- Receipt: FOUND (FAIL, NOT_COMMITTED, V213_SEALED_REFRESH_FAILED)
+- Publication journal: FOUND (FAIL, **failed_phase: COMMIT_REQUEST**, RuntimeException)
+- COMMIT_REQUEST diagnostic: **MISSING**
+- **PRIMARY_NEXT_ACTION: INSUFFICIENT_CURRENT_EVIDENCE**
+- **RUNTIME_UPDATE_CANDIDATE: RETAINED** (DIFFERENT_REPORTED, CAUSE_OF_LATEST_TASK_FAILURE: NOT_ESTABLISHED)
+- **RUNTIME_INSTALL_AUTHORIZED: false**
+- documents/TASK0-3G_CURRENT_PUBLICATION_TRIAGE.md: COMPLETE (corrected)
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3G PARTIAL_ACCEPTED corrections complete; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).

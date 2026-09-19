@@ -32,44 +32,59 @@
 
 **關鍵發現**: runtime v213_sealed_refresh.ps1 是舊版本（284 行 vs source 435 行）。source 有新增的 commit summary 函式（New-V213CommitSummary, Add-V213CommitSummaryRecord）在 runtime 中不存在。
 
-## 3G-1: 讀取四個排程的當前資訊
-| Task | State | LastRunTime | LastTaskResult | NextRunTime |
-|------|-------|-------------|----------------|-------------|
-| InvestorIntelligence-v21-MorningRefresh | Ready | 09/19/2026 07:20:01 | **1 (failure)** | 09/20/2026 07:20:00 |
-| InvestorIntelligence-v21-EODRefresh | **NOT FOUND** | N/A | N/A | N/A |
-| InvestorIntelligence-v21-ActivationBundleSync | **NOT FOUND** | N/A | N/A | N/A |
-| InvestorIntelligence-v21-ActivationBundleReconcile | **NOT FOUND** | N/A | N/A | N/A |
+## 3G-1: 讀取四個排程的當前資訊（更正）
+| Task | State | LastRunTime | LastTaskResult | NextRunTime | RuntimeRoot | Slot |
+|------|-------|-------------|----------------|-------------|-------------|------|
+| InvestorIntelligence-v21-MorningRefresh | Ready | 09/19/2026 07:20:01 | **1 (failure)** | 09/20/2026 07:20:00 | V213Runtime | morning |
+| InvestorIntelligence-v21-EveningRefresh | Ready | 09/18/2026 20:20:01 | **1 (failure)** | 09/19/2026 20:20:00 | V213Runtime | evening |
+| InvestorIntelligenceSealedFreshness | Ready | 09/19/2026 09:56:15 | 0 (success) | 09/19/2026 10:56:14 | N/A | N/A |
+| InvestorIntelligenceFreshnessWatchdog | Ready | 09/19/2026 10:26:15 | 0 (success) | 09/19/2026 10:56:14 | N/A | N/A |
 
-**關鍵發現**: 只有 MorningRefresh 存在，且 LastTaskResult=1（failure）。其他 3 個排程 NOT FOUND。
+**更正**: 之前查錯的名稱（EODRefresh, ActivationBundleSync, ActivationBundleReconcile）全部 NOT FOUND。正確名稱: MorningRefresh, EveningRefresh, SealedFreshness, FreshnessWatchdog。4 個排程全部存在。
 
-## 3G-2: 綁定最近執行的 receipt → journal → diagnostic
-- 最近一次 completed 執行: MorningRefresh, 09/19/2026 07:20:01, LastTaskResult=1 (failure)
-- Receipt: **MISSING**（runtime data 目錄沒有 receipts 子目錄）
-- Publication journal: **MISSING**（runtime data 目錄沒有 publication 子目錄）
-- Diagnostic: **MISSING**（runtime data 目錄沒有 diagnostics 子目錄）
-- v213_order_evidence_reconciliation.json: status=PASS（但這是 reconciliation 結果，不是 publication journal）
-- v213_activation_bundle_upload.json: 存在（有 generated_at, payloads, run_id, sha256, transaction_id）
+## 3G-2: 綁定最近執行的 receipt → journal → diagnostic（更正）
+- **正確位置**: %LOCALAPPDATA%\InvestorIntelligence\status\ + logs\
+- **Receipt**: FOUND (status/v213-r75-scheduled-refresh-morning-latest.json)
+  - status: FAIL, exit_code: 1
+  - started_utc: 2026-09-18T23:20:01Z, finished_utc: 2026-09-18T23:23:15Z (193s)
+  - publication_state: **NOT_COMMITTED**
+  - error: **V213_SEALED_REFRESH_FAILED; inspect_local_publication_journal=true**
+- **Publication journal**: FOUND (status/sealed-publication/872dd25211a046ac92c302fea819cc42.json)
+  - status: FAIL, **failed_phase: COMMIT_REQUEST**, error_type: RuntimeException
+  - run_id: 20260918T232303Z-b4affce4563a
+  - transaction_id: 5fcf9e91571ff5f95ce4c458680174eb
+  - bundle_sha256: 8c11a3490cd9185b608ecf1bec4b7d62ba4499d23c2a6d2acbc40ff94ee8db89
+  - remote_sync_attempted: True, production_mutation: None, real_line_sent: False, worker_deployed: False
+- **COMMIT_REQUEST diagnostic**: **MISSING**（journal details 只有 rollback.json + sealed-bundle.json，沒有 COMMIT_REQUEST-diagnostic.json）
 
-**關鍵發現**: receipt、publication journal、diagnostic 全部 MISSING。無法綁定最近執行的 receipt → journal → diagnostic。
+**更正**: 之前查錯的位置（runtime 的 data 子目錄）全部 MISSING。正確位置: %LOCALAPPDATA%\InvestorIntelligence\status\ + logs\。receipt 和 journal 都 FOUND，但 COMMIT_REQUEST diagnostic MISSING。
 
-## 3G-3: 依實際結果選定下一個修補位置
-- LATEST_FAILURE_PHASE: **UNKNOWN**（receipt/journal/diagnostic 全部 MISSING，無法確定失敗階段）
-- DIAGNOSTIC_PRESENT: **false**
+## 3G-3: 依實際結果選定下一個修補位置（更正）
+- LATEST_FAILURE_PHASE: **COMMIT_REQUEST**
+- DIAGNOSTIC_PRESENT: **false**（COMMIT_REQUEST diagnostic MISSING）
 - RUNTIME_DIAGNOSTIC_PARITY: **NOT_ASSESSED**
-- UNRESOLVED_TRANSACTION_OBSERVED: **NOT_ASSESSED**
-- SCAN_COMPLETENESS: **PARTIAL**（排程資訊已讀取，但 receipt/journal/diagnostic MISSING）
+- UNRESOLVED_TRANSACTION_OBSERVED: **NOT_ASSESSED**（no rollback_failed_phase, no rollback_error_type）
+- SCAN_COMPLETENESS: **COMPLETE**（4 tasks read, receipt/journal found, COMMIT_REQUEST diagnostic MISSING）
 
-### PRIMARY_NEXT_ACTION: **RUNTIME_PARITY_REPAIR_CANDIDATE**
-- 理由: runtime v213_sealed_refresh.ps1 是舊版本（284 行 vs source 435 行），source 有新增的 commit summary 函式在 runtime 中不存在。這可能是導致 MorningRefresh LastTaskResult=1（failure）的原因。
-- MINIMAL_REPAIR_TARGET: 更新 runtime v213_sealed_refresh.ps1 到 source 版本（435 行）
-- EVIDENCE: source/runtime SHA-256 差異（source: 66b25c0b..., runtime: 7ff67125...）；source 有 New-V213CommitSummary, Add-V213CommitSummaryRecord 函式在 runtime 中不存在
+### PRIMARY_NEXT_ACTION: **INSUFFICIENT_CURRENT_EVIDENCE**
+- 理由: COMMIT_REQUEST diagnostic MISSING，無法確定失敗原因。runtime v213_sealed_refresh.ps1 是舊版本（DIFFERENT_REPORTED），但 CAUSE_OF_LATEST_TASK_FAILURE: NOT_ESTABLISHED。
+- NEXT_EXECUTION: CORRECT_TARGET_READ_AND_RUN_BINDING
+- SECONDARY_CANDIDATE: RUNTIME_PARITY_REPAIR_CANDIDATE（RETAINED）
+- RUNTIME_INSTALL_AUTHORIZED: **false**
 
-## 結論
-- **PRIMARY_NEXT_ACTION: RUNTIME_PARITY_REPAIR_CANDIDATE**
-- runtime v213_sealed_refresh.ps1 是舊版本，source 有新增的 commit summary 函式在 runtime 中不存在
-- MorningRefresh LastTaskResult=1（failure），但 receipt/journal/diagnostic 全部 MISSING，無法確定失敗階段
-- 最小修補目標: 更新 runtime v213_sealed_refresh.ps1 到 source 版本
+## 結論（更正）
+- **PRIMARY_NEXT_ACTION: INSUFFICIENT_CURRENT_EVIDENCE**
+- **LATEST_FAILURE_PHASE: COMMIT_REQUEST**
+- **COMMIT_REQUEST diagnostic: MISSING**
+- **RUNTIME_UPDATE_CANDIDATE: RETAINED**（DIFFERENT_REPORTED, CAUSE_OF_LATEST_TASK_FAILURE: NOT_ESTABLISHED）
+- **RUNTIME_INSTALL_AUTHORIZED: false**
+- 4 個排程全部存在（MorningRefresh, EveningRefresh, SealedFreshness, FreshnessWatchdog）
+- MorningRefresh 和 EveningRefresh 都 LastTaskResult=1（failure）
+- receipt 和 journal 都 FOUND，但 COMMIT_REQUEST diagnostic MISSING
 - 本輪不執行修補（只建立 triage 報告）
+
+## ARTIFACT_RUN_DIR: _workspace/audit-runtime/task0-3g/3g_20260919T105724Z/
+## MANIFEST_SHA256: 9090fc01b90acdd34d3a4f98d4a43be4c4b28d085f34a34173112421b833e5ea
 
 ## 未做
 - 未啟動／停止／修改排程
