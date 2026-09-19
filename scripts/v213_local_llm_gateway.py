@@ -9,6 +9,7 @@ score.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -29,6 +30,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import v212_local_llm_gateway as base
 from v213_compact_qa_gateway import compact_upstream, complete_compact_response, resolve_model_id
+from v213_model_profile import parse_profile, profile_sha256
 
 ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
@@ -38,7 +40,7 @@ MAX_CONCURRENT_GENERATIONS = max(1, min(8, int(os.getenv("II_GATEWAY_MAX_CONCURR
 GENERATION_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_GENERATIONS)
 RETRY_AFTER_SECONDS = max(1, min(60, int(os.getenv("II_GATEWAY_RETRY_AFTER_SECONDS", "2"))))
 METHODOLOGY_RE = re.compile(
-    r"(?:serenity|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
+    r"(?:serenity|leopold|aschenbrenner|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
     r"supply\s*chain|source|來源|来源|evidence|證據|证据|thesis|投資邏輯)",
     re.I,
 )
@@ -60,6 +62,30 @@ official formula, or official score. Keep these layers separate:
    operationalization and never as a Serenity score.
 10. Explicitly labelled model inference with uncertainty.
 11. The user's long-term preference as a separate overlay.
+12. Leopold Aschenbrenner is CONTEXT_ONLY: dated macro/compute/power scenarios
+    generate hypotheses, never company-order evidence, a Serenity score bonus,
+    a current holding claim or a permanent AI-sector discovery filter.
+    Only evidence-tested scenario probabilities, sector regime and risk may be
+    adjusted; missing/currently contradicted thesis inputs mean no overlay.
+
+SERENITY IS THE PRIMARY DECISION FRAMEWORK:
+- Cover fundamentals, earnings/guidance, orders/backlog, valuation, price/market
+  structure, industry cycle, macro, catalysts, risks, source confidence and
+  scenario valuation. Missing dimensions remain UNAVAILABLE, not filled in.
+- Authority order: verified current evidence > Serenity company evidence >
+  current macro/industry evidence > dated Leopold thesis. Author opinions never
+  override facts. Old essays, interviews and 13F are not current holdings.
+
+ORDER TIMING AND VALUATION:
+- Preserve each disclosed order's amount/quantity, currency, counterparty,
+  contract type, source passage/date, fulfillment window and cancellation terms.
+  Report exact dates only when disclosed; a filing/retrieval date is not delivery.
+- RPO, backlog, prepayments, pipeline and recognized revenue are distinct;
+  overlapping commitments must not be summed. "Large" is not numerical evidence.
+- Separate 6/12/24-month on-time, delay/partial and failure scenarios from past
+  returns. Numeric price upside requires a reproducible revenue/profit/cash-flow,
+  financing/diluted-share and valuation bridge with dated inputs. Missing inputs
+  mean UNAVAILABLE, never a hard-coded percentage or a guarantee.
 
 SOURCE-INDEPENDENCE RULES:
 - v213_source_independence_latest.json is the claim-level control plane. If it is
@@ -154,6 +180,18 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _claim_audit_eligible(audit: Mapping[str, Any]) -> bool:
+    # Compact/transport-only bundles need not import the research collector.
+    # Missing research dependencies must cap confidence, not crash the gateway.
+    if not audit:
+        return False
+    try:
+        from source_observation import research_audit_high_eligible
+    except ImportError:
+        return False
+    return research_audit_high_eligible(audit)
+
+
 def _format_source_audit_context(
     document: Mapping[str, Any] | None,
     ticker: str,
@@ -224,7 +262,19 @@ def _format_source_audit_context(
     metrics = _as_dict(record.get("source_metrics"))
     market = _as_dict(record.get("market_corroboration"))
     public_logic = _as_dict(record.get("public_logic_state"))
-    eligible = status == "PASS" and record.get("eligible_for_high_confidence_model_inference") is True
+    claim_audit = _as_dict(record.get("claim_evidence_audit"))
+    eligible = (status == "PASS" and availability == "FRESH"
+                and record.get("eligible_for_high_confidence_model_inference") is True
+                and _claim_audit_eligible(claim_audit))
+    if not eligible:
+        public_logic = dict(public_logic, model_inference_confidence="LIMITED")
+    lines.append("exact_claim_audit_status=" + str(claim_audit.get("status", "UNAVAILABLE")))
+    lines.append("source_diversity=" + json.dumps(_as_dict(claim_audit.get("source_diversity")), ensure_ascii=False, sort_keys=True))
+    for claim in _as_list(claim_audit.get("claims"))[:40]:
+        if isinstance(claim, dict):
+            summary = {key: claim.get(key) for key in ("claim_id", "status", "confidence", "independent_evidence_families", "value", "conflict_set", "reasons")}
+            lines.append("exact_claim=" + json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    lines.append("Only exact SUPPORTED claim IDs may use high confidence; SINGLE_SOURCE is capped, CONFLICTED/STALE/UNAVAILABLE are withheld. Legacy inventory never supplies missing claim bindings.")
     lines.extend(
         [
             f"ticker={ticker}",
@@ -351,6 +401,8 @@ def enrich_messages(messages: list[dict[str, Any]]):
             enriched.insert(0, {"role": "system", "content": directive})
         context = dict(context) if isinstance(context, dict) else {}
         context["serenity_public_logic_fidelity"] = "2.1.3-source-independence-v3"
+        context["methodology_directive_sha256"] = hashlib.sha256(PUBLIC_LOGIC_DIRECTIVE.encode("utf-8")).hexdigest()
+        context["aschenbrenner_role"] = "CONTEXT_ONLY"
         context["legacy_quantitative_overlay_label"] = "System operationalization score"
         context["private_process_reproduction_claimed"] = False
         context["official_serenity_formula_claimed"] = False
@@ -358,6 +410,27 @@ def enrich_messages(messages: list[dict[str, Any]]):
         context["source_independence_high_confidence_eligible"] = eligible
         context["model_confidence_cap"] = "HIGH_ELIGIBLE" if eligible else "LIMITED"
     return enriched, context
+
+
+def methodology_execution_evidence(mode: object, context: Mapping[str, Any]) -> dict[str, Any]:
+    """Report actual routing, not skill-file presence as research execution.
+
+    Compact traffic deliberately bypasses legacy enrichment. Neither path loads
+    the complete Pi skill/references or proves model adherence/research quality.
+    Do not echo a prompt, source payload, user text or model reasoning here.
+    """
+    injected = mode is None and "methodology_directive_sha256" in context
+    lane = ("TRANSPORT_SMOKE" if mode == "transport_smoke_v1" else
+            "COMPACT_POLICY_ONLY" if mode is not None else
+            "LEGACY_SYSTEM_DIRECTIVE" if injected else "NO_RESEARCH_ENRICHMENT")
+    return {
+        "lane": lane,
+        "full_skill_executed": False,
+        "reference_files_loaded": [],
+        "model_adherence_verified": False,
+        "directive_sha256": context["methodology_directive_sha256"] if injected else None,
+        "aschenbrenner_role": "CONTEXT_ONLY" if injected else "NOT_EVALUATED",
+    }
 
 
 def _available_model_catalog() -> list[dict[str, Any]]:
@@ -437,7 +510,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if self.path.split("?", 1)[0] != "/health":
             super().do_GET()
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID', 'llama_reachable': False})
+            return
+        selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         try:
             response = requests.get(
                 base.llama_base_url() + "/health",
@@ -448,12 +527,12 @@ class V213GatewayHandler(base.GatewayHandler):
             upstream_health = False
         self._json(
             200,
-            _build_health_payload(
+            {**_build_health_payload(
                 selected,
                 _available_model_catalog(),
                 upstream_health,
                 _source_audit_health(),
-            ),
+            ), **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {})},
         )
 
 
@@ -481,7 +560,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
             self._json(400, {"error": "MESSAGES_REQUIRED"})
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID'})
+            return
+        selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         requested = str(body.get("model") or "").strip()
         if not selected:
             self._json(503, {"error": "SELECTED_MODEL_NOT_CONFIGURED"})
@@ -498,7 +583,7 @@ class V213GatewayHandler(base.GatewayHandler):
             return
         try:
             try:
-                upstream = compact_upstream(body, selected)
+                upstream = compact_upstream(body, selected, runtime_profile)
             except (ValueError, TypeError, KeyError):
                 self._json(400, {"error": "COMPACT_REQUEST_INVALID"})
                 return
@@ -524,14 +609,16 @@ class V213GatewayHandler(base.GatewayHandler):
                 return
             response = requests.post(
                 base.llama_url(), json=upstream,
-                headers={"content-type": "application/json"}, timeout=(2, 18) if is_compact else (5, 180),
+                headers={"content-type": "application/json"},
+                timeout=(2, runtime_profile['timeout_ms'] / 1000) if runtime_profile else ((2, 18) if is_compact else (5, 180)),
             )
             if not response.ok:
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
             if not isinstance(result, dict) or result.get("model") != canonical or (is_compact and not complete_compact_response(result, selected, catalog)):
-                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH"})
+                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH",
+                                 **({'failure_kind': 'MODEL_MISMATCH' if not isinstance(result, dict) or result.get('model') != canonical else 'INCOMPLETE'} if runtime_profile else {})})
                 return
             if isinstance(result, dict):
                 result["ii_exact_model_pin"] = {
@@ -539,13 +626,20 @@ class V213GatewayHandler(base.GatewayHandler):
                     "canonical_model": canonical,
                     "identity_proof": "unique_router_catalog",
                     "request_model_substitution_allowed": False,
+                    **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {}),
                 }
+                result["ii_methodology_execution"] = methodology_execution_evidence(body.get("ii_context_mode"), context)
                 result["ii_source_ensemble"] = {
                     "successful_source_families": context.get("successful_source_families", []) if isinstance(context, dict) else [],
                     "source_diversity_status": context.get("source_diversity_status", "UNKNOWN") if isinstance(context, dict) else "UNKNOWN",
                     "model_confidence_cap": context.get("model_confidence_cap", "LIMITED") if isinstance(context, dict) else "LIMITED",
                 }
             self._json(200, result)
+        except requests.Timeout as exc:
+            if runtime_profile:
+                self._json(504, {'error': 'MODEL_PROFILE_TIMEOUT'})
+            else:
+                self._json(502, {'error': 'LOCAL_GATEWAY_FAILED', 'detail': type(exc).__name__})
         except Exception as exc:
             self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
         finally:
@@ -611,6 +705,48 @@ def _self_test() -> None:
             }
         ],
     }
+    import datetime as _dt
+    from source_observation import utc_now as _utc_now, parse_timestamp as _pt  # noqa: E402
+    _now = _utc_now()
+    _vts = _now - _dt.timedelta(minutes=1)
+    _vus = _now + _dt.timedelta(minutes=90)
+    _claim = {
+        "claim_id": "CT-TEST-1",
+        "status": "SUPPORTED",
+        "high_confidence_eligible": True,
+        "conflict_set": [],
+        "evidence_ids": ["OBS-1", "OBS-2", "OBS-3", "OBS-4"],
+    }
+    _classes = (
+        "primary_company_regulatory",
+        "market_exchange",
+        "macro_industry",
+        "independent_journalism_research",
+    )
+    _evidence = []
+    for _k, _cls in enumerate(_classes, start=1):
+        _evidence.append({
+            "observation_id": f"OBS-{_k}",
+            "claim_ids": ["CT-TEST-1"],
+            "source_class": _cls,
+            "admitted": True,
+            "freshness": "CURRENT",
+            "value": "1.0",
+            "claim_type": "industry_event",
+            "independence_group": f"grp-{_k}",
+            "origin_group": f"org-{_k}",
+            "content_sha256": f"{'%064x' % _k}",
+            "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+        })
+    sample["records"][0]["claim_evidence_audit"] = {
+        "schema_version": 2,
+        "full_research_eligible": True,
+        "all_material_claims_supported": True,
+        "claims": [_claim],
+        "evidence": _evidence,
+        "validated_at": _vts.isoformat().replace("+00:00", "Z"),
+        "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+    }
     context, eligible = _format_source_audit_context(sample, "TEST", "FRESH", 10)
     assert eligible is True
     assert "claim_relevant_primary_sources=1" in context
@@ -633,11 +769,53 @@ def _self_test() -> None:
     print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS; exact_model_pin=true; bounded_generation=true; health_slot_independent=true")
 
 
+def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
+    """Fail-closed startup gate (TASK0 2J-B1): the EXACT pinned model id must be
+    served by the tabbyAPI / list endpoint before the gateway accepts traffic.
+    A name that is never served (e.g. a stale LOCAL_LLM_MODEL) must refuse to
+    start instead of silencing every request downstream. Zero secrets in any
+    output; model IDs only."""
+    import time
+    model = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+    url = base.llama_base_url() + "/v1/models"
+    started = time.monotonic()
+    last_seen: list[str] = []
+    while True:
+        try:
+            response = requests.get(url, timeout=(2, 6), allow_redirects=False)
+            rows = response.json().get("data", [])
+            rows = rows if isinstance(rows, list) else []
+            last_seen = [
+                item if isinstance(item, str) else str(item.get("id") or "")
+                for item in rows if isinstance(item, (str, dict))
+            ]
+            # Accept the exact pinned id or a unique catalog alias, matching the
+            # alias-aware identity resolution used by the health and response
+            # paths. resolve_model_id stays fail-closed: a collision, a
+            # malformed row, or a name that is never served all resolve to None.
+            if resolve_model_id(model, rows):
+                print("V213_LOCAL_LLM_GATEWAY_MODEL_PIN = PASS; model served by list", flush=True)
+                return
+        except Exception as exc:  # noqa: BLE001 - bounded retry window
+            last_seen = [f"(list unreachable: {type(exc).__name__})"]
+        if time.monotonic() - started >= deadline_seconds:
+            shown = ", ".join(last_seen[:8]) or "(none)"
+            print(
+                "V213_LOCAL_LLM_GATEWAY_MODEL_PIN = FAIL; MODEL_NOT_SERVED; "
+                f"requested_model={model}; served_ids=[{shown}] "
+                "(exact model pin violated; refusing to start)",
+                flush=True,
+            )
+            raise SystemExit(3)
+        time.sleep(3)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=base.HOST)
     parser.add_argument("--port", type=int, default=base.PORT)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--skip-model-pin", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         _self_test()
@@ -648,6 +826,13 @@ def main() -> int:
         raise SystemExit("II_LOCAL_LLM_SHARED_SECRET must be configured")
     if not os.getenv("II_LOCAL_LLM_MODEL", "").strip():
         raise SystemExit("II_LOCAL_LLM_MODEL must be configured")
+    if not args.skip_model_pin:
+        pin_deadline = 30.0
+        try:
+            pin_deadline = max(6.0, float(os.getenv("II_MODEL_PIN_TIMEOUT_S", "30") or "30"))
+        except ValueError:
+            pin_deadline = 30.0
+        verify_served_model(args.host, pin_deadline)
     base.enrich_messages = enrich_messages
     server = ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)
     print(

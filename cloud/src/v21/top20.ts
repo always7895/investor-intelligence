@@ -14,6 +14,25 @@ export interface V21Evidence {
   as_of: string;
 }
 
+export type V21AschenbrennerOverlay =
+  | {
+      domain: "A" | "B" | "C" | null;
+      fit_score: number;
+      included_in_serenity_score: false;
+      attribution: string;
+    }
+  | {
+      domain: "A" | "B" | "C" | null;
+      fit_score: number;
+      included_in_serenity_score: false;
+      attribution: string;
+      status: "DISCOVERY_ONLY";
+      company_fact_authority: false;
+      current_holdings_verified: false;
+      thesis_published_at: null;
+      scenario_adjustment: "UNAVAILABLE";
+    };
+
 export interface V21Top20Record {
   ticker: string;
   name: string;
@@ -25,12 +44,7 @@ export interface V21Top20Record {
   category: string;
   serenity_factors: Record<string, number>;
   risk_flags: string[];
-  aschenbrenner_overlay: {
-    domain: "A" | "B" | "C" | null;
-    fit_score: number;
-    included_in_serenity_score: false;
-    attribution: string;
-  };
+  aschenbrenner_overlay: V21AschenbrennerOverlay;
   evidence: V21Evidence[];
   evidence_count: number;
   source_count: number;
@@ -70,6 +84,12 @@ const FILING_EVIDENCE_KEYS = new Set([
 
 const OVERLAY_KEYS = new Set([
   "domain", "fit_score", "included_in_serenity_score", "attribution",
+]);
+
+const DISCOVERY_OVERLAY_KEYS = new Set([
+  "domain", "fit_score", "included_in_serenity_score", "attribution",
+  "status", "company_fact_authority", "current_holdings_verified",
+  "thesis_published_at", "scenario_adjustment",
 ]);
 
 const SCORING_VERSIONS = new Set<V21ScoringVersion>([
@@ -184,12 +204,24 @@ export function parseV21Top20(raw: unknown): V21Top20Record[] | null {
 
     if (!item.aschenbrenner_overlay || typeof item.aschenbrenner_overlay !== "object" || Array.isArray(item.aschenbrenner_overlay)) return null;
     const overlay = item.aschenbrenner_overlay as Record<string, unknown>;
+    const isOld4 = exactKeys(overlay, OVERLAY_KEYS);
+    const isSafe9 = exactKeys(overlay, DISCOVERY_OVERLAY_KEYS);
+    if (!isOld4 && !isSafe9) return null;
+
     if (
-      !exactKeys(overlay, OVERLAY_KEYS) ||
       !["A", "B", "C", null].includes(overlay.domain as string | null) ||
       !finite(overlay.fit_score) || overlay.fit_score < 0 || overlay.fit_score > 100 ||
       overlay.included_in_serenity_score !== false ||
       overlay.attribution !== "system_operationalization_not_aschenbrenner_stock_score"
+    ) return null;
+
+    if (
+      isSafe9 &&
+      (overlay.status !== "DISCOVERY_ONLY" ||
+        overlay.company_fact_authority !== false ||
+        overlay.current_holdings_verified !== false ||
+        overlay.thesis_published_at !== null ||
+        overlay.scenario_adjustment !== "UNAVAILABLE")
     ) return null;
 
     result.push({ ...(item as unknown as V21Top20Record), ticker });

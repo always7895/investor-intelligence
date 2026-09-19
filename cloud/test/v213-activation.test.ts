@@ -1,14 +1,27 @@
 /// <reference types="node" />
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
+import productionWorker from "../src/v213/production-worker";
+import { publicJson } from "../src/storage";
+import { parseQuery } from "../src/core";
+import { deterministicAnswer } from "../src/qa";
+import { compactPublicContext } from "../src/v213/compact-qa";
 import { parseV21Top20 } from "../src/v21/top20";
+import { v213Top20ReportAnswer, readV213Top20Report } from "../src/v213/top20-report";
+import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import { broadcastV213Top20 } from "../src/v213/broadcast";
+import { storeOwnerPairing } from "../src/v21/owner-storage";
+import { deriveTenantId } from "../src/security";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
+import approvedProfile from "../../config/v213-model-profile-v1.json";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "../src/v213/activation-v2";
+} from "../src/v213/activation-v3";
 
 const SCORING_VERSION = "system-operationalization-v2.1.3-diversified";
 const MARKET_DEGRADATION = "INSUFFICIENT_NON_YAHOO_MARKET_COVERAGE";
@@ -90,7 +103,8 @@ function top20(generated: string) {
 
 function v212(generated: string) {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    calculation_cutoff: generated,
     product_version: "2.1.2",
     generated_at: generated,
     display_columns: [
@@ -100,7 +114,12 @@ function v212(generated: string) {
     long_term_definition: "trailing_2y_adjusted_close_cagr",
     short_term_definition: "trailing_6m_adjusted_close_price_return",
     records: Array.from({ length: 20 }, (_, index) => ({
-      schema_version: 1,
+      schema_version: 2,
+      // Explicit synthetic clock control, not a source HTTP certification.
+      source_acquisition: Object.fromEntries(Object.entries({
+        long_term_return_pct: 40 - index, short_term_return_pct: 20 - index, industry: "半導體",
+        profit_summary: "獲利；營收年增 +20.0%；營益率 15.0%；淨利率 10.0%",
+      }).map(([key, value]) => [key, { status: "KNOWN", value, retrieved_at: generated, evidence_sha256: "1".repeat(64) }])),
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
       long_term_return_pct: 40 - index,
@@ -125,6 +144,8 @@ function v213(generated: string) {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: generated,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: [
       "股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）",
       "行業別", "獲利簡述", "公司現在訂單", "未來訂單預估",
@@ -135,6 +156,7 @@ function v213(generated: string) {
       schema_version: 2,
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
+      name: `Synthetic ${index}`,
       long_term_return_pct: 40 - index,
       short_term_return_pct: 20 - index,
       industry: "半導體",
@@ -151,6 +173,10 @@ function v213(generated: string) {
       future_order_source_urls: [],
       numeric_total_order_estimate_prohibited: true,
       retrieved_at: generated,
+      orders_state_as_of: generated,
+      evidence_class: "structural_claim",
+      freshness_policy_key: "structural_claim_max_age_days",
+      test_only_admission: true,
       provider_scope: "public_only",
       owner_watchlist_inherited: false,
     })),
@@ -381,7 +407,500 @@ function withFilingProvenance(rows: ReturnType<typeof top20>) {
   }) }));
 }
 
+async function qaWebhookFixture(compact = true) {
+  const fixture = runtime();
+  const env = { ...fixture.env, LINE_CHANNEL_SECRET: "SYNTHETIC_QA_SIGNATURE_NOT_REAL", LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_QA_REPLY_NOT_REAL",
+    TENANT_HASH_SECRET: "SYNTHETIC_QA_TENANT_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_QA_DATA_NOT_REAL", MEMORY_FEATURE_AVAILABLE: "false",
+    CURRENT_PUBLIC_DATA_ENABLED: "true", GENERAL_QA_ENABLED: "true", V213_COMPACT_QA_ENABLED: compact ? "true" : "false",
+    LOCAL_LLM_BASE_URL: "https://synthetic-qa.example.test", LOCAL_LLM_ALLOWED_HOSTS: "synthetic-qa.example.test",
+    LOCAL_LLM_SHARED_SECRET: "SYNTHETIC_QA_MODEL_NOT_REAL", LOCAL_LLM_MODEL: approvedProfile.model,
+    V213_MODEL_PROFILE_JSON: JSON.stringify(approvedProfile) };
+  const target = String.fromCharCode(85) + "1".repeat(32);
+  await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: target }, env.TENANT_HASH_SECRET), target);
+  const prompts: string[] = []; const replies: string[] = [];
+  const network = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input)); const body = JSON.parse(String(init?.body));
+    if (url.origin === "https://synthetic-qa.example.test" && url.pathname === "/v1/chat/completions") {
+      prompts.push(JSON.stringify(body.messages));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "SYNTHETIC_QA_ANSWER_NOT_LIVE" } }] }));
+    }
+    if (url.origin === "https://api.line.me" && url.pathname === "/v2/bot/message/reply") {
+      replies.push(JSON.stringify(body.messages)); return new Response("{}");
+    }
+    throw new Error("UNEXPECTED_SYNTHETIC_QA_TRANSPORT");
+  });
+  let sequence = 0;
+  async function deliver(text: string) {
+    const body = JSON.stringify({ events: [{ type: "message", timestamp: Date.now(), webhookEventId: `synthetic-qa-event-${++sequence}`,
+      replyToken: "synthetic-qa-reply", source: { type: "user", userId: target }, message: { type: "text", text } }] });
+    const signature = createHmac("sha256", env.LINE_CHANNEL_SECRET).update(body).digest("base64");
+    const tasks: Promise<unknown>[] = [];
+    const response = await productionWorker.fetch(new Request("https://synthetic-worker.example.test/webhook", {
+      method: "POST", headers: { "x-line-signature": signature }, body,
+    }), env, { waitUntil(task: Promise<unknown>) { tasks.push(task); } } as ExecutionContext);
+    expect(response.status).toBe(200); await Promise.all(tasks);
+  }
+  return { ...fixture, env, prompts, replies, deliver, restore: () => network.mockRestore() };
+}
+
 describe("v2.1.3 atomic activation transaction", () => {
+  it.each(["missing", "malformed"])("preserves pairing after a %s target read in the signed webhook", async failure => {
+    const f = await qaWebhookFixture();
+    const before = [...f.privateKv.values];
+    const originalGet = f.privateKv.get.bind(f.privateKv);
+    const remove = vi.spyOn(f.privateKv, "delete");
+    const put = vi.spyOn(f.privateKv, "put");
+    let interrupted = false;
+    vi.spyOn(f.privateKv, "get").mockImplementation(async (key, type) => {
+      if (!interrupted && key.endsWith(":v21:owner-line:push-target")) {
+        interrupted = true;
+        return failure === "missing" ? null : '{"v":99}';
+      }
+      return originalGet(key, type);
+    });
+    try {
+      await f.deliver("通知狀態");
+      expect(interrupted).toBe(true); expect(f.replies).toHaveLength(0);
+      // A later successful read must recover without a new pairing or repair write.
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("PAIRED（已配對）");
+      expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+      expect([...f.privateKv.values]).toEqual(before); expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it.each(["missing", "malformed"])("refuses the push but preserves pairing after a %s target read", async failure => {
+    const f = await qaWebhookFixture();
+    const before = [...f.privateKv.values];
+    const originalGet = f.privateKv.get.bind(f.privateKv);
+    const remove = vi.spyOn(f.privateKv, "delete");
+    const put = vi.spyOn(f.privateKv, "put");
+    let interrupted = false;
+    vi.spyOn(f.privateKv, "get").mockImplementation(async (key, type) => {
+      if (!interrupted && key.endsWith(":v21:owner-line:push-target")) {
+        interrupted = true;
+        return failure === "missing" ? null : '{"v":99}';
+      }
+      return originalGet(key, type);
+    });
+    try {
+      expect(await broadcastV213Top20(f.env, "test")).toEqual({ status: "owner_not_paired" });
+      expect(interrupted).toBe(true);
+      // No public report was installed: recovered pairing must reach, not bypass, that gate.
+      expect(await broadcastV213Top20(f.env, "test")).toEqual({ status: "top20_unavailable" });
+      expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+      expect([...f.privateKv.values]).toEqual(before);
+      expect(f.replies).toHaveLength(0); expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it("still deletes pairing only for the explicit authorized unpair command", async () => {
+    const f = await qaWebhookFixture();
+    const remove = vi.spyOn(f.privateKv, "delete");
+    try {
+      await f.deliver("取消配對");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("配對已取消");
+      expect(f.privateKv.values.has("v21:owner-line:tenant")).toBe(false);
+      expect([...f.privateKv.values.keys()].some(key => key.endsWith(":v21:owner-line:push-target"))).toBe(false);
+      expect(remove).toHaveBeenCalledTimes(2); expect(f.prompts).toHaveLength(0);
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1); // Unpaired messages remain unauthorized.
+    } finally { f.restore(); }
+  });
+  it.each(["false", "true"])("does not certify delivery from pairing in the signed webhook (schedule=%s)", async enabled => {
+    const f = await qaWebhookFixture();
+    Object.assign(f.env, { V21_SCHEDULED_PUSH_ENABLED: enabled });
+    const get = vi.spyOn(f.publicKv, "get");
+    try {
+      await f.deliver("通知狀態");
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("PAIRED");
+      expect(f.replies[0]).toContain("本指令只確認配對");
+      expect(f.replies[0]).toContain("不代表排程已啟用、資料已通過發布驗收或 LINE 已送達");
+      expect(f.replies[0]).not.toContain("排程為 08:00／21:00");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled();
+    } finally { f.restore(); }
+  });
+  it.each(["help", "說明", "说明"])("qualifies notification and product availability in signed LINE help (%s)", async text => {
+    const f = await qaWebhookFixture();
+    Object.assign(f.env, { V21_SCHEDULED_PUSH_ENABLED: "false" });
+    const get = vi.spyOn(f.publicKv, "get");
+    try {
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("配對不代表推送已上線");
+      expect(f.replies[0]).toContain("完整數據報告／深入分析須另經當輪資料與發布驗收");
+      expect(f.replies[0]).not.toContain("Top 20 固定只顯示");
+      expect(f.replies[0]).not.toContain("通知：每天 08:00");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled();
+      expect(f.replies[0]).not.toContain("SYNTHETIC_QA_REPLY_NOT_REAL");
+    } finally { f.restore(); }
+  });
+  it("does not turn explanatory questions into standalone help commands", () => {
+    for (const text of ["說明 CPI 對航運的影響", "说明 ALPHA 每週期權", "期權試算說明", "如何閱讀完整文字分析"]) {
+      expect(parseQuery(text).intent).not.toBe("help");
+    }
+    for (const text of [" 說明 ", "说明\n", "ＨＥＬＰ"]) expect(parseQuery(text).intent).toBe("help");
+  });
+  it.each(["Top20 數據詳報", "Top20 深入分析", "宏觀 數據詳報", "T00 期權 數據詳報", "股票 T00 narrative_analysis", "Top20 card_summary"])("does not downgrade the explicit product request %s in the actual signed webhook", async text => {
+    const f = await qaWebhookFixture();
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(1);
+      expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(f.replies[0]).not.toContain('"type":"flex"');
+      expect(f.replies[0]).not.toContain("SYNTHETIC_QA_ANSWER_NOT_LIVE");
+      expect(f.prompts).toHaveLength(0);
+    } finally { f.restore(); }
+  });
+  it.each(["Top20", "Top20 文字"])("retains the separately requested seven-field %s after refusing an unsealed kind", async text => {
+    const f = await qaWebhookFixture();
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      const get = vi.spyOn(f.publicKv, "get");
+      await f.deliver("Top20 data_report");
+      expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED"); expect(get).not.toHaveBeenCalled();
+      await f.deliver(text);
+      expect(f.replies).toHaveLength(2); expect(f.prompts).toHaveLength(0);
+      const messages = JSON.parse(f.replies[1]!) as { type: string }[];
+      expect(messages.length).toBeGreaterThan(0); expect(messages.length).toBeLessThanOrEqual(5);
+      expect(messages.every(message => message.type === (text.includes("文字") ? "text" : "flex"))).toBe(true);
+      for (let i = 0; i < 20; i++) expect(f.replies[1]).toContain(`T${String(i).padStart(2, "0")}`);
+      expect(f.replies[1]).not.toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(get.mock.calls.filter(([key]) => key === "snapshot:current")).toHaveLength(1);
+    } finally { f.restore(); }
+  });
+  it("does not make planted direct or unlisted candidate products actionable in the signed webhook", async () => {
+    const f = await qaWebhookFixture(false);
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      const forged = JSON.stringify({ schema_version: 1, complete: true, publication_eligible: true,
+        content_utf8: "SYNTHETIC_UNSEALED_PRODUCT_MUST_NOT_LEAK" });
+      for (const key of ["v213:research-products:latest", `snapshot:${RUN_ID}:v213:research-products:latest`, "financial-products-candidate.json"])
+        f.publicKv.values.set(key, forged);
+      const before = [...f.publicKv.values]; const get = vi.spyOn(f.publicKv, "get");
+      await f.deliver("T00 data_report");
+      expect(f.replies).toHaveLength(1); expect(f.replies[0]).toContain("RESEARCH_PRODUCT_NOT_SEALED");
+      expect(f.replies[0]).not.toContain("SYNTHETIC_UNSEALED_PRODUCT_MUST_NOT_LEAK");
+      expect(f.prompts).toHaveLength(0); expect(get).not.toHaveBeenCalled(); expect([...f.publicKv.values]).toEqual(before);
+    } finally { f.restore(); }
+  });
+  it.each([true, false])("blocks corrupt context in the actual signed direct-chat webhook before model transport (compact=%s)", async compact => {
+    const f = await qaWebhookFixture(compact);
+    try {
+      await ingestV213ActivationBundle(JSON.stringify(await bundle()), f.env);
+      await f.deliver("目前景氣循環如何影響企業融資？");
+      expect(f.prompts).toHaveLength(1); expect(f.replies).toHaveLength(1);
+      const key = `snapshot:${RUN_ID}:v213:source-independence:latest`; const audit = JSON.parse(f.publicKv.values.get(key)!);
+      audit.portfolio.evidence_qualified_candidate_count = 20; f.publicKv.values.set(key, JSON.stringify(audit));
+      await f.deliver("目前景氣循環如何影響企業融資？");
+      expect(f.prompts).toHaveLength(1);
+      expect(f.replies).toHaveLength(2); expect(f.replies[1]).toContain("CURRENT_DATA_TIMESTAMP_MISSING");
+    } finally { f.restore(); }
+  });
+  it("pins one signed webhook question across certified QA reads but not across later questions", async () => {
+    const f = await qaWebhookFixture(false); const second = runtime();
+    try {
+      const a = await bundle(TRANSACTION_ID, "SYNTHETIC_ROUND_A"); await ingestV213ActivationBundle(JSON.stringify(a), f.env);
+      const b = await bundle("b".repeat(32), "SYNTHETIC_ROUND_B"); b.run_id = "20260902T150001Z-abcdef123456";
+      await ingestV213ActivationBundle(JSON.stringify(b), second.env);
+      for (const [key, value] of second.publicKv.values) if (key !== "snapshot:current") f.publicKv.values.set(key, value);
+      const get = f.publicKv.get.bind(f.publicKv); let pointers = 0;
+      const reads = vi.spyOn(f.publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+        const result = await get(key, type); if (key === "snapshot:current") pointers += 1;
+        if (key === `snapshot:${RUN_ID}:reports:latest`) f.publicKv.values.set("snapshot:current", second.publicKv.values.get("snapshot:current")!);
+        return result;
+      });
+      try {
+        await f.deliver("目前景氣循環如何影響企業融資？");
+        expect(f.replies).toHaveLength(1); expect(f.prompts).toHaveLength(1);
+        expect(pointers).toBe(1);
+        expect(f.prompts[0]).toContain("SYNTHETIC_ROUND_A"); expect(f.prompts[0]).not.toContain("SYNTHETIC_ROUND_B");
+        await f.deliver("目前景氣循環如何影響企業融資？");
+        expect(pointers).toBe(2); expect(f.prompts[1]).toContain("SYNTHETIC_ROUND_B");
+      } finally { reads.mockRestore(); }
+    } finally { f.restore(); }
+  });
+  it("uses post-verification execution time for compact freshness without renewing the source stamp", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-09-10T16:00:00.000Z"));
+    const { env, publicKv } = runtime(); let reads: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const b = await bundle(); await ingestV213ActivationBundle(JSON.stringify(b), env);
+      const get = publicKv.get.bind(publicKv);
+      reads = vi.spyOn(publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+        const result = await get(key, type);
+        if (key === `snapshot:${RUN_ID}:v213:activation-claim`) vi.setSystemTime(new Date("2026-09-10T16:01:01.000Z"));
+        return result;
+      });
+      const data = await compactPublicContext({ ...env, CURRENT_PUBLIC_DATA_ENABLED: "true", PUBLIC_DATA_MAX_AGE_SECONDS: "60" }, parseQuery("景氣如何？"));
+      expect(data.freshness).toBe("STALE"); expect(data.as_of).toBe(b.public_data_as_of);
+      expect(data.evidence_qualified).toBeUndefined();
+    } finally { reads?.mockRestore(); vi.useRealTimers(); }
+  });
+  it("does not pin public data or run a model for an invalid webhook signature", async () => {
+    const f = await qaWebhookFixture(); const get = vi.spyOn(f.publicKv, "get");
+    try {
+      const response = await productionWorker.fetch(new Request("https://synthetic-worker.example.test/webhook", {
+        method: "POST", headers: { "x-line-signature": "invalid" }, body: '{"events":[]}',
+      }), f.env, { waitUntil() { throw new Error("UNAUTHENTICATED_TASK"); } } as unknown as ExecutionContext);
+      expect(response.status).toBe(401); expect(get).not.toHaveBeenCalled();
+      expect(f.prompts).toHaveLength(0); expect(f.replies).toHaveLength(0);
+    } finally { get.mockRestore(); f.restore(); }
+  });
+  it("does not fall back to direct compact facts for malformed or referenced unsealed pointers", async () => {
+    const { env, publicKv } = runtime(); const b = await bundle(); await ingestV213ActivationBundle(JSON.stringify(b), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" };
+    publicKv.values.set("last_successful_pipeline_timestamp", b.public_data_as_of);
+    publicKv.values.set("v213:source-independence:latest", b.payloads.source_independence_json);
+    publicKv.values.set("snapshot:legacy-test:last_successful_pipeline_timestamp", b.public_data_as_of);
+    publicKv.values.set("snapshot:legacy-test:v213:source-independence:latest", b.payloads.source_independence_json);
+    for (const pointer of ["", "null", "{}", '{"run_id":null}', JSON.stringify({ run_id: RUN_ID }), '{"run_id":"legacy-test"}']) {
+      publicKv.values.set("snapshot:current", pointer);
+      const data = await compactPublicContext(qa, parseQuery("目前景氣如何？"));
+      expect(data.freshness).toBe("UNAVAILABLE"); expect(data.as_of).toBeNull(); expect(data.evidence_qualified).toBeUndefined();
+    }
+  });
+  it("does not expose unlisted injected options or universe through compatibility storage", async () => {
+    const { env, publicKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    for (const key of ["options:latest", "v211:universe:latest"]) {
+      publicKv.values.set(`snapshot:${RUN_ID}:${key}`, JSON.stringify([{ ticker: "T00", source: "UNCOMMITTED_MEMBER" }]));
+      publicKv.values.set(key, JSON.stringify([{ ticker: "T00", source: "UNCOMMITTED_DIRECT_FALLBACK" }]));
+      expect(await publicJson(env, [key])).toBeNull();
+    }
+    expect(await deterministicAnswer(env, parseQuery("T00 期權"), { tenantId: "synthetic", chatType: "group" })).toBe("OPTION_DATA_UNAVAILABLE");
+    expect((await pinPublicSnapshot(env)).integrity).toBe("sealed");
+  });
+  it("does not serve changed sealed report text through the certified legacy QA caller", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" };
+    const context = { tenantId: "synthetic-only", chatType: "group" as const };
+    expect(await deterministicAnswer(qa, parseQuery("最新報告"), context)).toContain("Synthetic public report");
+    publicKv.values.set(`snapshot:${RUN_ID}:reports:latest`, "SYNTHETIC_CHANGED_QA_REPORT");
+    expect(await deterministicAnswer(qa, parseQuery("最新報告"), context)).toBe("CURRENT_DATA_TIMESTAMP_MISSING");
+  });
+  it("does not promote altered LIMITED audit flags through the actual compact context caller", async () => {
+    const { env, publicKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const qa = { ...env, CURRENT_PUBLIC_DATA_ENABLED: "true" }; const query = parseQuery("T00 風險分析");
+    expect(query.ticker).toBe("T00");
+    expect(await compactPublicContext(qa, query)).toMatchObject({ mode: "LIMITED_RESEARCH_CANDIDATE", high_eligible: false });
+    const key = `snapshot:${RUN_ID}:v213:source-independence:latest`; const audit = JSON.parse(publicKv.values.get(key)!);
+    audit.records[0].publication_evidence_mode = "EVIDENCE_QUALIFIED";
+    audit.records[0].eligible_for_high_confidence_model_inference = true;
+    publicKv.values.set(key, JSON.stringify(audit));
+    const data = await compactPublicContext(qa, query);
+    expect(data.high_eligible).not.toBe(true);
+    expect(data.freshness).toBe("UNAVAILABLE");
+  });
+  it("does not turn altered sealed bytes into a newly identified Top20 answer", async () => {
+    const { env, publicKv } = runtime();
+    const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const key = `snapshot:${RUN_ID}:v213:top20-report:latest`;
+    const changed = JSON.parse(publicKv.values.get(key)!);
+    changed.records[19].profit_summary = "SYNTHETIC_ALTERED_AFTER_SEAL";
+    publicKv.values.set(key, JSON.stringify(changed));
+    const answer = await v213Top20ReportAnswer(env, parseQuery("Top20 文字"));
+    expect(answer).not.toContain("SYNTHETIC_ALTERED_AFTER_SEAL");
+    expect(answer).toContain("INSUFFICIENT_EVIDENCE");
+  });
+  it("binds actual normalized storage bytes separately from differently encoded upload digests", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle();
+    for (const key of Object.keys(value.payloads) as Array<keyof typeof value.payloads>) {
+      if (key === "report_text") continue;
+      value.payloads[key] = JSON.stringify(JSON.parse(value.payloads[key]), null, 2);
+      value.sha256[key] = await digest(value.payloads[key]);
+    }
+    const result = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    expect(result.object_count).toBe(14);
+    const prefix = `snapshot:${RUN_ID}:`; const pointer = JSON.parse(publicKv.values.get("snapshot:current")!);
+    const raw = publicKv.values.get(prefix + SNAPSHOT_SEAL_KEY)!; const manifest = JSON.parse(raw);
+    expect(pointer.schema_version).toBe(2); expect(pointer.seal_sha256).toBe(await digest(raw));
+    for (const key of SNAPSHOT_OBJECT_KEYS) {
+      const body = publicKv.values.get(prefix + key)!;
+      expect(manifest.objects[key]).toEqual({ sha256: await digest(body), utf8_bytes: new TextEncoder().encode(body).byteLength });
+    }
+    expect(manifest.objects["v213:top20-report:latest"].sha256).not.toBe(value.sha256.v213_top20_report_json);
+    const view = await pinPublicSnapshot(env); expect(view.integrity).toBe("sealed");
+    const report = await readV213Top20Report(view); expect(report!.records[19]!.profit_summary).toContain("淨利率");
+    expect((await v213Top20ReportAnswer(env, parseQuery("Top20 文字")))).toContain("T19");
+  });
+  it("keeps normal replay read-only and refuses replay after finalize without recreating a rollback journal", async () => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const pub = vi.spyOn(publicKv, "put"); const priv = vi.spyOn(privateKv, "put");
+    expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).idempotent_replay).toBe(true);
+    expect(pub).not.toHaveBeenCalled(); expect(priv).not.toHaveBeenCalled();
+    await finalizeV213Activation(control(), env);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_FINALIZED_OR_UNOWNED_REPLAY");
+    expect(pub).not.toHaveBeenCalled(); expect(priv).not.toHaveBeenCalled();
+    expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
+  });
+  it.each(["missing_manifest", "legacy_pointer", "corrupt_manifest", "corrupt_claim"])("never synthesizes a promoted seal on %s replay", async mode => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    await ingestV213ActivationBundle(JSON.stringify(value), env); const prefix = `snapshot:${RUN_ID}:`;
+    if (mode === "missing_manifest") publicKv.values.delete(prefix + SNAPSHOT_SEAL_KEY);
+    if (mode === "legacy_pointer") publicKv.values.set("snapshot:current", JSON.stringify({ schema_version: 1, run_id: RUN_ID }));
+    if (mode === "corrupt_manifest") publicKv.values.set(prefix + SNAPSHOT_SEAL_KEY, "{}");
+    if (mode === "corrupt_claim") publicKv.values.set(prefix + "v213:activation-claim", "");
+    const pub = new Map(publicKv.values); const priv = new Map(privateKv.values);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow();
+    expect(publicKv.values).toEqual(pub); expect(privateKv.values).toEqual(priv);
+    expect((await pinPublicSnapshot(env)).kind).toBe("invalid");
+  });
+  it.each(["reports:evening:latest", "scores:latest", "v213:activation-claim", SNAPSHOT_SEAL_KEY])("does not finalize a corrupt %s or delete its recovery journal", async key => {
+    const { env, publicKv, privateKv } = runtime();
+    await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    publicKv.values.set(`snapshot:${RUN_ID}:${key}`, "SYNTHETIC_CORRUPTION");
+    const before = new Map(privateKv.values); const pointer = publicKv.values.get("snapshot:current");
+    await expect(finalizeV213Activation(control(), env)).rejects.toThrow("V213_SNAPSHOT_SEAL_INVALID");
+    expect(privateKv.values).toEqual(before); expect(publicKv.values.get("snapshot:current")).toBe(pointer);
+    expect((await pinPublicSnapshot(env)).kind).toBe("invalid");
+  });
+  it("rechecks the exact current pointer after finalize object verification", async () => {
+    const { env, publicKv, privateKv } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const before = new Map(privateKv.values); const get = publicKv.get.bind(publicKv);
+    vi.spyOn(publicKv, "get").mockImplementation(async (key: string, type?: "text" | "json") => {
+      const result = await get(key,type);
+      if (key.endsWith("source_views:latest")) publicKv.values.set("snapshot:current", "SYNTHETIC_CONCURRENT_POINTER");
+      return result;
+    });
+    await expect(finalizeV213Activation(control(), env)).rejects.toThrow("V213_ACTIVATION_FINALIZE_POINTER_MISMATCH");
+    expect(privateKv.values).toEqual(before);
+  });
+  it("bounds stored objects and rejects malformed UTF-16 before any journal/claim write", async () => {
+    for (const mode of ["oversized", "surrogate"]) {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      if (mode === "oversized") {
+        const doc = JSON.parse(value.payloads.source_federation_json); doc.synthetic_padding = "x".repeat(2097153);
+        await replacePayload(value, "source_federation_json", doc);
+      } else {
+        value.payloads.report_text += "\ud800"; value.sha256.report_text = await digest(value.payloads.report_text);
+      }
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_SNAPSHOT_SEAL_INVALID");
+      expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+    }
+  });
+  it("refuses altered sealed data in the paired actual push caller before LINE/quota transport", async () => {
+    const { env, publicKv } = runtime(); const value = await bundle(); await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const e = { ...env, TENANT_HASH_SECRET: "SYNTHETIC_SEAL_HASH_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_SEAL_DATA_NOT_REAL",
+      LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_SEAL_LINE_NOT_REAL" };
+    const target = String.fromCharCode(85) + "0".repeat(32);
+    await storeOwnerPairing(e, await deriveTenantId({ type: "user", userId: target }, e.TENANT_HASH_SECRET), target);
+    const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("NETWORK_FORBIDDEN"));
+    try {
+      // Positive reader control reaches the existing free-plan gate, not a sender bypass.
+      await expect(broadcastV213Top20(e, "test")).rejects.toThrow("LINE_FREE_PLAN_REVIEW_REQUIRED");
+      publicKv.values.set(`snapshot:${RUN_ID}:reports:evening:latest`, "SYNTHETIC_ALTERED_OTHER_MEMBER");
+      expect((await broadcastV213Top20(e, "test")).status).toBe("top20_unavailable");
+      expect(network).not.toHaveBeenCalled();
+    } finally { network.mockRestore(); }
+  });
+  it.each(["morning", "evening"] as const)("passes the actual admitted synthetic seal through the %s caller and mocked free sender once", async slot => {
+    const { env } = runtime(); await ingestV213ActivationBundle(JSON.stringify(await bundle()), env);
+    const e = { ...env, TENANT_HASH_SECRET: "SYNTHETIC_SEALED_HASH_NOT_REAL", TENANT_DATA_ENCRYPTION_KEY: "SYNTHETIC_SEALED_DATA_NOT_REAL",
+      LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_SEALED_LINE_NOT_REAL", LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+      V21_SCHEDULED_PUSH_ENABLED: "true", V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace };
+    const target = String.fromCharCode(85) + "0".repeat(32);
+    await storeOwnerPairing(e, await deriveTenantId({ type: "user", userId: target }, e.TENANT_HASH_SECRET), target);
+    const messages: unknown[] = [];
+    const network = vi.spyOn(globalThis, "fetch").mockImplementation(withPushPreflight(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      messages.push(JSON.parse(String(init?.body)).messages); return new Response("{}", { status: 200 });
+    }));
+    try {
+      expect(await broadcastV213Top20(e, slot)).toMatchObject({ status: "sent", run_id: RUN_ID, count: 20 });
+      expect((await broadcastV213Top20(e, slot)).status).toBe("duplicate");
+      expect(messages).toHaveLength(1); expect(JSON.stringify(messages[0])).toContain("T19");
+    } finally { network.mockRestore(); }
+    // Mock provider acceptance is NOT a real free-plan review or phone receipt.
+  });
+  it("refuses actual CLI cached source time before sealed writes despite fresh outer clocks", async () => {
+    const vectors = JSON.parse(readFileSync(new URL("../../tests/fixtures/source-acquisition-reports.json", import.meta.url), "utf8"));
+    const data = vectors.cases.stale;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(data.v212.generated_at));
+    try {
+      const { env, publicKv, privateKv } = runtime();
+      const value = await bundle();
+      await replacePayload(value, "v212_top20_report_json", data.v212);
+      await replacePayload(value, "v213_top20_report_json", data.v213);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_SOURCE_ACQUISITION_STALE");
+      expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(["fresh", "unknown"])("checks actual CLI %s clock metadata in sealed admission and readback", async name => {
+    const vectors = JSON.parse(readFileSync(new URL("../../tests/fixtures/source-acquisition-reports.json", import.meta.url), "utf8"));
+    const data = vectors.cases[name];
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(data.v212.generated_at));
+    try {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      await replacePayload(value, "v212_top20_report_json", data.v212);
+      await replacePayload(value, "v213_top20_report_json", data.v213);
+      if (name === "unknown") {
+        await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+        expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+      } else {
+        expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).status).toBe("accepted");
+        const stored = JSON.parse(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)!);
+        expect(stored.records[19].retrieved_at).toBe(data.source_time);
+        expect(stored.records[19].source_acquisition).toEqual(data.v212.records[19].source_acquisition);
+        const view = await pinPublicSnapshot(env); expect(view.integrity).toBe("sealed");
+        expect((await readV213Top20Report(view))!.records[19]!.retrieved_at).toBe(data.source_time);
+        expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).idempotent_replay).toBe(true);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(["legacy_downgrade", "changed_profit", "renewed_seven_clock", "old_last_row"])("refuses %s with valid hashes before any sealed write", async mode => {
+    const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+    const five = JSON.parse(value.payloads.v212_top20_report_json); const seven = JSON.parse(value.payloads.v213_top20_report_json);
+    let code = "V213_ACTIVATION_REPORT_ACQUISITION_MISMATCH";
+    if (mode === "legacy_downgrade") {
+      five.schema_version = 1; delete five.calculation_cutoff;
+      for (const row of five.records) { row.schema_version = 1; delete row.source_acquisition; }
+      await replacePayload(value, "v212_top20_report_json", five); code = "V213_ACTIVATION_REPORT_SCHEMA_INVALID";
+    } else {
+      if (mode === "changed_profit") seven.records[19].profit_summary = "獲利；淨利率 99.0%";
+      if (mode === "renewed_seven_clock") seven.records[19].retrieved_at = new Date(Date.parse(value.generated_at) + 1000).toISOString();
+      if (mode === "old_last_row") { seven.records[19].retrieved_at = new Date(Date.parse(value.generated_at) - 3 * 3600_000).toISOString(); code = "V213_ACTIVATION_SOURCE_ACQUISITION_STALE"; }
+      await replacePayload(value, "v213_top20_report_json", seven);
+    }
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow(code);
+    expect(publicKv.values.size).toBe(0); expect(privateKv.values.size).toBe(0);
+  });
+
+  it("rechecks execution-clock freshness before pointer-last commit and retains failed transaction history", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { env, publicKv, privateKv } = runtime(); const value = await bundle();
+      const prior = JSON.stringify({ run_id: "20260901T000000Z-aaaaaaaaaaaa" }); publicKv.values.set("snapshot:current", prior);
+      const original = publicKv.put.bind(publicKv); let advanced = false;
+      const write = vi.spyOn(publicKv, "put").mockImplementation(async (key, body) => {
+        await original(key, body);
+        if (!advanced && key.startsWith(`snapshot:${RUN_ID}:`)) { advanced = true; vi.setSystemTime(Date.now() + 3 * 3600_000); }
+      });
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_SOURCE_ACQUISITION_STALE");
+      expect(advanced).toBe(true); expect(publicKv.values.get("snapshot:current")).toBe(prior);
+      expect(write.mock.calls.some(call => call[0] === "snapshot:current")).toBe(false);
+      expect(privateKv.values.size).toBeGreaterThan(0); // retained journal, no pretend rollback
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("rejects credential citations even with valid payload digests before any KV write", async () => {
+    const { env, publicKv, privateKv, securityKv } = runtime();
+    const value = await bundle();
+    const report = JSON.parse(value.payloads.v213_top20_report_json);
+    report.records[0].orders_confidence = "PRIMARY_ONLY";
+    report.records[0].orders_as_of = value.generated_at;
+    report.records[0].current_order_source_urls = ["https://example.com/report?access%255ftoken=synthetic"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    await expect(ingestV213ActivationBundle(JSON.stringify(value), env)).rejects.toThrow("V213_ACTIVATION_REPORT_SCHEMA_INVALID");
+    expect(publicKv.values.size).toBe(0);
+    expect(privateKv.values.size).toBe(0);
+    expect(securityKv.values.size).toBe(0);
+    report.records[0].current_order_source_urls = ["https://example.com/report"];
+    await replacePayload(value, "v213_top20_report_json", report);
+    expect((await ingestV213ActivationBundle(JSON.stringify(value), env)).status).toBe("accepted");
+  });
   it("preflights the exact supplied sealed bundle through Worker commit/readback/replay/rollback/finalize without network", async () => {
     const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OFFLINE_PREFLIGHT_NETWORK_FORBIDDEN"));
     try {
@@ -464,7 +983,21 @@ describe("v2.1.3 atomic activation transaction", () => {
     publicKv.values.set("snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest", "old-options");
 
     const value = await bundle();
-    const accepted = await ingestV213ActivationBundle(JSON.stringify(value), env);
+    const body = JSON.stringify(value);
+    const key = "synthetic-test-only-key-".repeat(3);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = "a".repeat(32);
+    const version = "12345678-1234-1234-1234-123456789abc";
+    const response = await productionWorker.fetch(new Request("https://synthetic.invalid/v213/admin/activation-bundle", {
+      method: "POST", body, headers: {
+        "x-ii-expected-worker-version": version, "x-ii-v21-timestamp": timestamp,
+        "x-ii-v21-nonce": nonce,
+        "x-ii-v21-signature": createHmac("sha256", key).update(`${timestamp}.${nonce}.${body}`).digest("hex"),
+      },
+    }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version } } as any,
+    { waitUntil: () => undefined } as unknown as ExecutionContext);
+    expect(response.status).toBe(200);
+    const accepted = await response.json<Record<string, unknown>>();
     expect(accepted.status).toBe("accepted");
     expect(accepted.pointer_written_last).toBe(true);
     expect(accepted.rollback_available).toBe(true);
@@ -474,8 +1007,15 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v212:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:top20-report:latest`)).toBeTruthy();
     expect(publicKv.values.get(`snapshot:${RUN_ID}:v213:source-independence:latest`)).toBeTruthy();
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe("old-universe");
-    expect(publicKv.values.get(`snapshot:${RUN_ID}:options:latest`)).toBe("old-options");
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:v211:universe:latest`)).toBe(false);
+    expect(publicKv.values.has(`snapshot:${RUN_ID}:options:latest`)).toBe(false);
+    publicKv.values.set('options:latest', JSON.stringify([{ source: 'stale-direct-key' }]));
+    publicKv.values.set('v211:universe:latest', JSON.stringify({ source: 'stale-direct-key' }));
+    expect(await publicJson(env, ['options:latest', 'latest_options'])).toBeNull();
+    expect(await publicJson(env, ['v211:universe:latest'])).toBeNull();
+    expect(await deterministicAnswer(env, parseQuery('AAOI options'), {
+      tenantId: 'synthetic-public-only', chatType: 'user',
+    })).toBe('OPTION_DATA_UNAVAILABLE');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(true);
 
     const replay = await ingestV213ActivationBundle(JSON.stringify(value), env);
@@ -486,6 +1026,8 @@ describe("v2.1.3 atomic activation transaction", () => {
     expect(rolledBack.status).toBe("rolled_back");
     expect(rolledBack.exact_pointer_restored).toBe(true);
     expect(publicKv.values.get("snapshot:current")).toBe(oldPointer);
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:options:latest')).toBe('old-options');
+    expect(publicKv.values.get('snapshot:20260901T000000Z-aaaaaaaaaaaa:v211:universe:latest')).toBe('old-universe');
     expect(privateKv.values.has(`v213:activation-rollback:${TRANSACTION_ID}`)).toBe(false);
   });
 

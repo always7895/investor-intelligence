@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Create an ephemeral exact-head status for the verified v2.0.0 delivery.
+"""Create an unverified legacy release-status template.
 
-The generated document is intentionally not committed. It lets the deterministic
-package builder consume post-validation evidence without introducing an
-impossible self-referential commit-SHA field into the source tree.
+The ephemeral document preserves the legacy schema, not release authority.
+No evidence is supplied to build_status: ready flags remain False and gates
+UNVERIFIED. Non-synthetic packaging must reject this template; qualification
+belongs to the authoritative source-bound release pipeline.
 """
 from __future__ import annotations
 
@@ -56,8 +57,8 @@ def build_status(*, candidate_commit: str, version: str) -> dict[str, Any]:
         raise ValueError("version must be SemVer-compatible without a leading v")
     return {
         "schema_version": 2,
-        "release_ready": True,
-        "package_release_ready": True,
+        "release_ready": False,
+        "package_release_ready": False,
         "public_repository_publication_ready": False,
         "distribution_scope": "private_direct_delivery",
         "deployed": False,
@@ -65,16 +66,16 @@ def build_status(*, candidate_commit: str, version: str) -> dict[str, Any]:
         "external_users_admitted": False,
         "candidate_commit": candidate_commit,
         "candidate_version": version,
-        "gates": {name: "PASS" for name in GATE_NAMES},
-        "hard_blockers": [],
+        "gates": {name: "UNVERIFIED" for name in GATE_NAMES},
+        "hard_blockers": ["SOURCE_BOUND_RELEASE_EVIDENCE_REQUIRED"],
         "public_repository_blockers": [],
-        "local_action_required": False,
+        "local_action_required": True,
         "secrets_required_now": False,
         "notes": (
-            "Exact-head final status for a clean no-Git-history package delivered privately after "
-            "GitHub Support removed the platform-managed pull references and unreferenced commits. "
+            "Fail-closed exact-head status: build_status receives no source-bound release "
+            "evidence, so no ready flag is asserted and every gate remains UNVERIFIED. "
             "It does not authorize deployment, LINE activation, IBKR connectivity, billing, "
-            "external-user admission, or publication of the private development repository."
+            "external-user admission, or publication of the development repository."
         ),
     }
 

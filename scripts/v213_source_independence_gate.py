@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import io
 import json
 import math
@@ -29,6 +30,15 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from source_observation import (
+    RESEARCH_COMPARABILITY,
+    SourceObservationError,
+    reconcile_research_claims,
+    research_audit_high_eligible,
+)
+from source_acquisition import AcquisitionRun, acquire_runtime_sources
 DEFAULT_TOP20 = ROOT / "data" / "cache" / "top20_public_latest.json"
 DEFAULT_REPORT = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 DEFAULT_ORDER = ROOT / "data" / "cache" / "v213_order_evidence_runtime.json"
@@ -61,6 +71,26 @@ NON_CLAIM_TYPES = {
     "independent_market_corroboration",
     "macro_context",
 }
+# Author views and explicit context/portfolio-disclosure evidence stay
+# visible for display but never count as company-claim families, scored
+# evidence, or high-confidence eligibility. This is partial enforcement:
+# it does not establish full per-claim lineage independence.
+CONTEXT_ONLY_FAMILIES = {
+    "serenity_public_source",
+    "author_statement",
+    "situational_context",
+}
+CONTEXT_ONLY_CLAIM_TYPES = {
+    "author_view",
+    "author_statement",
+    "context_only",
+    "portfolio_disclosure",
+    "author_portfolio_context",
+}
+# Canonical author hosts recognized by exact registrable domain (or safe
+# subdomain), checked before source-id hints can mislead classification.
+AUTHOR_SOCIAL_DOMAINS = {"x.com", "twitter.com"}
+SITUATIONAL_CONTEXT_DOMAIN = "situational-awareness.ai"
 SENSITIVE_RE = re.compile(
     r"(?:chokepoint|bottleneck|scarcity|dependency|capacity|qualification|"
     r"backlog|remaining performance obligation|\brpo\b|order book|pricing|"
@@ -251,6 +281,13 @@ def normalize_url(url: str) -> str:
 def family_for(source_id: str, url: str) -> str:
     source = source_id.lower()
     domain = domain_of(url)
+    # Canonical author hosts win over source-id hints: a misleading id
+    # (e.g. sec_edgar_* on an X post) must not upgrade to regulator/issuer,
+    # and the situational-awareness.ai host is context-only by definition.
+    if domain in AUTHOR_SOCIAL_DOMAINS:
+        return "author_statement"
+    if domain == SITUATIONAL_CONTEXT_DOMAIN:
+        return "situational_context"
     lowered = url.lower()
 
     if domain == "sec.gov" or "edgar" in source or source.startswith("sec"):
@@ -332,6 +369,11 @@ def make_source(
 ) -> dict[str, Any]:
     normalized = normalize_url(url)
     family = family_for(source_id, normalized)
+    context_only = (
+        family in CONTEXT_ONLY_FAMILIES
+        or (claim_type or "unknown").strip().casefold()
+        in CONTEXT_ONLY_CLAIM_TYPES
+    )
     return {
         "source_id": source_id or "unknown",
         "claim_type": claim_type or "unknown",
@@ -342,6 +384,7 @@ def make_source(
         "as_of": as_of,
         "primary": family in PRIMARY_FAMILIES,
         "claim_primary": family in CLAIM_PRIMARY_FAMILIES,
+        "context_only": context_only,
     }
 
 
@@ -750,6 +793,15 @@ def maximum_share(distribution: Mapping[str, int], total: int) -> float:
     return max(distribution.values()) / total if distribution and total else 1.0
 
 
+def _row_signature(row: Any) -> str:
+    try:
+        return hashlib.sha256(
+            json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    except Exception:
+        return ""
+
+
 def build_record(
     record: Mapping[str, Any],
     report: Mapping[str, Any],
@@ -757,8 +809,31 @@ def build_record(
     observations: list[Observation],
     policy: Mapping[str, Any],
     macro: Mapping[str, Any],
+    *,
+    acquisition_run: AcquisitionRun | None = None,
 ) -> dict[str, Any]:
+    if acquisition_run is not None and type(acquisition_run) is not AcquisitionRun:
+        raise SourceObservationError("acquisition_run must be an AcquisitionRun instance")
     ticker = str(record.get("ticker") or "").upper()
+    local_record = dict(record)
+    raw_obs = record.get("source_observations")
+    original_obs = list(raw_obs) if isinstance(raw_obs, list) else []
+
+    if acquisition_run is not None and ticker:
+        acquired_candidates = acquisition_run.candidates_for(ticker)
+        seen_signatures = {
+            _row_signature(row)
+            for row in original_obs
+            if isinstance(row, dict)
+        }
+        merged_obs = list(original_obs)
+        for cand in acquired_candidates:
+            sig = _row_signature(cand)
+            if sig and sig not in seen_signatures:
+                seen_signatures.add(sig)
+                merged_obs.append(cand)
+        local_record["source_observations"] = merged_obs
+
     sources = collect_evidence_sources(record, order)
 
     sources.append(
@@ -803,19 +878,26 @@ def build_record(
         units.setdefault(unit, source)
     sources = list(units.values())
 
-    families = sorted({str(item["family"]) for item in sources})
+    # Author views / context-only sources remain in `sources` for display
+    # but never feed scored or claim-eligibility metrics.
+    context_sources = [item for item in sources if item.get("context_only")]
+    scored_sources = [
+        item for item in sources if not item.get("context_only")
+    ]
+
+    families = sorted({str(item["family"]) for item in scored_sources})
     domains = sorted(
         {
             str(item["domain"])
-            for item in sources
+            for item in scored_sources
             if item["domain"] != "unknown"
         }
     )
-    all_primary = [item for item in sources if item["primary"]]
+    all_primary = [item for item in scored_sources if item["primary"]]
 
     claim_sources = [
         item
-        for item in sources
+        for item in scored_sources
         if item["claim_type"] not in NON_CLAIM_TYPES
         and item["family"] not in MARKET_FAMILIES
         and item["family"] != "official_macro"
@@ -838,10 +920,12 @@ def build_record(
 
     dated_count = sum(
         1
-        for item in sources
+        for item in scored_sources
         if parse_time(str(item.get("as_of") or "")) is not None
     )
-    dated_ratio = dated_count / len(sources) if sources else 0.0
+    dated_ratio = (
+        dated_count / len(scored_sources) if scored_sources else 0.0
+    )
     claim_dated_count = sum(
         1
         for item in claim_sources
@@ -853,9 +937,9 @@ def build_record(
         else 0.0
     )
 
-    family_counts = source_distribution(sources, "family")
+    family_counts = source_distribution(scored_sources, "family")
     claim_family_counts = source_distribution(claim_sources, "family")
-    max_family_share = maximum_share(family_counts, len(sources))
+    max_family_share = maximum_share(family_counts, len(scored_sources))
     max_claim_family_share = maximum_share(
         claim_family_counts,
         len(claim_sources),
@@ -902,10 +986,12 @@ def build_record(
         row["short_term_conflict"] = short_conflict
         market_rows.append(row)
 
+    # Sensitive-claim text is derived only from admitted non-context
+    # company-claim sources. Author views and context/portfolio rows never
+    # flip structural states; legitimate company order fields are preserved.
     evidence_text = " ".join(
         f"{item.get('claim_type', '')} {item.get('title', '')}"
-        for item in record.get("evidence", [])
-        if isinstance(item, dict)
+        for item in claim_sources
     )
     evidence_text += " " + str(report.get("current_orders") or "")
     evidence_text += " " + str(report.get("future_orders_estimate") or "")
@@ -929,18 +1015,30 @@ def build_record(
         )
     )
 
+    reconcile_kwargs: dict[str, Any] = {"now": now_utc()}
+    if acquisition_run is not None:
+        reconcile_kwargs["acquisition_run"] = acquisition_run
+    claim_audit = reconcile_research_claims(local_record, **reconcile_kwargs)
     independent_claim_evidence = (
         len(claim_families) >= required_claim_families
         and len(claim_primary) >= required_claim_primary
+        and claim_audit["all_material_claims_supported"] is True
     )
     high_confidence = (
         independent_claim_evidence
         and independent_market_count >= 1
         and claim_dated_ratio >= required_claim_dated_ratio
         and not conflicting
+        and research_audit_high_eligible(claim_audit)
     )
 
     missing: list[str] = []
+    if claim_audit["status"] == "CONFLICTED":
+        missing.append("MATERIAL_CLAIM_CONFLICT_REVIEW")
+    if not claim_audit["all_material_claims_supported"]:
+        missing.append("EXACT_CLAIM_CORROBORATION_REQUIRED")
+    if not claim_audit["full_research_eligible"]:
+        missing.append("FULL_RESEARCH_SOURCE_DIVERSITY_REQUIRED")
     if independent_market_count == 0:
         missing.append("NON_YAHOO_MARKET_CORROBORATION")
     if not claim_primary:
@@ -979,8 +1077,17 @@ def build_record(
 
     public_logic = {
         "serenity_source_view": (
-            "SUPPORTED"
-            if "serenity_public_source" in claim_families
+            # An attached Serenity view is an author view: honest
+            # unverified-attachment status, never company-claim proof.
+            # Identified by the serenity source-id on a context-only
+            # source (canonical author hosts remap the family to
+            # author_statement, so the family alone is not sufficient).
+            "CONTEXT_ONLY_UNVERIFIED"
+            if any(
+                item.get("context_only")
+                and "serenity" in str(item["source_id"]).casefold()
+                for item in sources
+            )
             else "NOT_ATTACHED"
         ),
         "architecture": (
@@ -1026,7 +1133,12 @@ def build_record(
         "ticker": ticker,
         "evidence_independence_score": evidence_independence_score,
         "source_metrics": {
-            "unique_independent_units": len(sources),
+            "unique_independent_units": len(scored_sources),
+            "total_source_count": len(sources),
+            "context_only_source_count": len(context_sources),
+            "context_only_families": sorted(
+                {str(item["family"]) for item in context_sources}
+            ),
             "independent_families": len(families),
             "independent_domains": len(domains),
             "primary_or_official_sources": len(all_primary),
@@ -1060,6 +1172,7 @@ def build_record(
             "providers": market_rows,
         },
         "public_logic_state": public_logic,
+        "claim_evidence_audit": claim_audit,
         "missing_or_review": missing,
         "eligible_for_high_confidence_model_inference": high_confidence,
         "sensitive_claim_present": sensitive_claim,
@@ -1121,7 +1234,11 @@ def build(
     policy: Mapping[str, Any],
     cache: Mapping[str, Any],
     offline: bool,
+    *,
+    acquisition_run: AcquisitionRun | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    if acquisition_run is not None and type(acquisition_run) is not AcquisitionRun:
+        raise SourceObservationError("acquisition_run must be an AcquisitionRun instance")
     tickers = [
         str(item.get("ticker") or "").upper()
         for item in top20
@@ -1198,6 +1315,7 @@ def build(
             ),
             policy,
             macro,
+            acquisition_run=acquisition_run,
         )
         for record in top20
     ]
@@ -1207,21 +1325,27 @@ def build(
         for state in states
         for source in state["sources"]
     ]
+    all_context_sources = [
+        source for source in all_sources if source.get("context_only")
+    ]
+    all_scored_sources = [
+        source for source in all_sources if not source.get("context_only")
+    ]
     all_claim_sources = [
         source
-        for source in all_sources
+        for source in all_scored_sources
         if source["claim_type"] not in NON_CLAIM_TYPES
         and source["family"] not in MARKET_FAMILIES
         and source["family"] != "official_macro"
     ]
 
     families = sorted(
-        {str(source["family"]) for source in all_sources}
+        {str(source["family"]) for source in all_scored_sources}
     )
     domains = sorted(
         {
             str(source["domain"])
-            for source in all_sources
+            for source in all_scored_sources
             if source["domain"] != "unknown"
         }
     )
@@ -1236,10 +1360,10 @@ def build(
         }
     )
 
-    family_counts = source_distribution(all_sources, "family")
+    family_counts = source_distribution(all_scored_sources, "family")
     max_family_share = maximum_share(
         family_counts,
-        len(all_sources),
+        len(all_scored_sources),
     )
     market_covered = sum(
         1
@@ -1259,6 +1383,7 @@ def build(
 
     portfolio = {
         "ticker_count": 20,
+        "context_only_source_count": len(all_context_sources),
         "independent_source_families": len(families),
         "independent_domains": len(domains),
         "source_families": families,
@@ -1293,6 +1418,9 @@ def build(
             if state["market_corroboration"]["status"]
             == "CONFLICT_REVIEW"
         ),
+        "material_claim_conflict_ticker_count": sum(
+            state["claim_evidence_audit"]["status"] == "CONFLICTED" for state in states
+        ),
         "high_confidence_model_inference_eligible_count": sum(
             1
             for state in states
@@ -1307,6 +1435,8 @@ def build(
         else {}
     )
     violations: list[str] = []
+    if portfolio["material_claim_conflict_ticker_count"]:
+        violations.append("MATERIAL_CLAIM_CONFLICT_REVIEW")
     if not offline:
         if portfolio["independent_source_families"] < int(
             minimums.get("portfolio_independent_source_families", 3)
@@ -1373,8 +1503,47 @@ def build(
             "conflicts_require_review": True,
             "official_macro_is_not_company_claim_evidence": True,
             "market_data_is_not_bottleneck_evidence": True,
+            "author_views_are_context_only_not_company_claims": True,
+            "serenity_source_view_is_never_company_claim_proof": True,
         },
     }
+    if acquisition_run is not None:
+        result["acquisition_summary"] = acquisition_run.summary()
+        ecb_candidates = [
+            c for c in acquisition_run.candidates_for("EUR/USD")
+            if c.get("source_id") == "eu_ecb_fx_reference"
+        ]
+        if ecb_candidates:
+            seen_cids: set[str] = set()
+            material_claims: list[dict[str, Any]] = []
+            for cand in ecb_candidates:
+                p = cand.get("payload") or {}
+                for cid in p.get("claim_ids", []):
+                    if cid not in seen_cids:
+                        seen_cids.add(cid)
+                        claim = {
+                            "claim_id": cid,
+                            "claim_type": "macro_indicator",
+                        }
+                        for k in RESEARCH_COMPARABILITY:
+                            if k in p:
+                                claim[k] = p[k]
+                        material_claims.append(claim)
+            macro_record = {
+                "source_observations": ecb_candidates,
+                "material_claims": material_claims,
+            }
+            macro_audit = reconcile_research_claims(
+                macro_record,
+                acquisition_run=acquisition_run,
+                now=now_utc(),
+            )
+            result["macro_reference_context"] = {
+                "schema_version": 1,
+                "reference_only": True,
+                "reference_rows": ecb_candidates,
+                "claim_evidence_audit": macro_audit,
+            }
     return result, updated_cache
 
 
@@ -1448,7 +1617,9 @@ def self_test(policy: Mapping[str, Any]) -> None:
     first = result["records"][0]
     assert first["source_metrics"]["claim_relevant_independent_families"] == 2
     assert first["source_metrics"]["claim_relevant_primary_sources"] == 1
-    assert first["eligible_for_high_confidence_model_inference"] is True
+    # Coarse synthetic URL inventory is deliberately not an exact claim ledger.
+    assert first["eligible_for_high_confidence_model_inference"] is False
+    assert first["claim_evidence_audit"]["status"] == "UNAVAILABLE"
     assert result["methodology_notice"]["single_source_inference_allowed"] is False
     assert result["methodology_notice"]["official_serenity_formula"] is False
     assert family_for(
@@ -1459,6 +1630,14 @@ def self_test(policy: Mapping[str, Any]) -> None:
         "yfinance",
         "https://finance.yahoo.com/quote/NVDA/history",
     ) == "yahoo_market"
+    assert family_for(
+        "sec_edgar_verified",
+        "https://x.com/aleabitoreddit/status/1",
+    ) == "author_statement"
+    assert family_for(
+        "leopold_essay",
+        "https://situational-awareness.ai/essays/compute",
+    ) == "situational_context"
     assert domain_of("https://api.nasdaq.com/api/quote/NVDA/historical") == "nasdaq.com"
     print("V213_SOURCE_INDEPENDENCE_SELF_TEST = PASS")
 
@@ -1476,9 +1655,13 @@ def main() -> int:
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--acquire-public", action="store_true")
     parser.add_argument("--enforce", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+
+    if args.offline and args.acquire_public:
+        parser.error("Cannot combine --offline and --acquire-public")
 
     policy = read_json(args.policy)
     if args.self_test:
@@ -1492,6 +1675,10 @@ def main() -> int:
     if not isinstance(cache, dict):
         cache = {}
 
+    acquisition_run = None
+    if args.acquire_public:
+        acquisition_run = acquire_runtime_sources()
+
     result, updated_cache = build(
         top20,
         reports,
@@ -1499,6 +1686,7 @@ def main() -> int:
         policy,
         cache,
         args.offline,
+        acquisition_run=acquisition_run,
     )
     write_json(args.cache, updated_cache)
     write_json(args.output, result)

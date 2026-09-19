@@ -29,6 +29,11 @@ foreach($name in @('schema_version','parser_schema','publication_contract_id','p
     $bad.$name=if($name-eq'no_write'){$false}elseif($name-eq'schema_version'){99}else{'INVALID'}
     Must-Fail {Test-V213EdgeReadinessResponse $bad $version $nonce $policy} $name
 }
+foreach($name in @('no_write','ready','challenge','schema_version')){
+    $bad=Proof $nonce;$bad.$name=@($bad.$name)
+    Must-Fail {Test-V213EdgeReadinessResponse $bad $version $nonce $policy} 'scalar array must not unwrap'
+}
+Must-Fail {Get-V213IsolatedTransportDiagnostic 'https://production.synthetic.workers.dev' $version $nonce} 'diagnostic cannot probe production'
 $script:calls=0
 $script:nonces=@{}
 $transport={param($uri)

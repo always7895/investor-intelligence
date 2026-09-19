@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build a LINE-only option snapshot through an explicit public DTO.
+"""Build a public-only development option snapshot through an explicit DTO.
+
+Privacy projection does not grant quote redistribution rights. This Yahoo
+adapter is development-only; its records are never LINE-public eligible.
 
 This command does not import the IBKR provider, does not load PORTFOLIO_JSON or
 ``portfolio.local.json``, and does not inherit ``config/watchlist.json``. Symbols
@@ -310,7 +313,7 @@ def to_public_record(raw: dict[str, Any], currency: str = "USD") -> dict[str, An
         "quote_source": "yfinance",
         "quote_delay_status": raw.get("quote_delay_status", "THIRD_PARTY_DELAY_UNKNOWN"),
         "provider_scope": "public_only",
-        "line_public_eligible": True,
+        "line_public_eligible": False,  # not a reviewed production quote provider
         "ibkr_connected": False,
         "brokerage_data_included": False,
         "account_data_included": False,
@@ -356,7 +359,7 @@ def build_public_options(
                     "quote_source": "yfinance",
                     "quote_delay_status": "THIRD_PARTY_DELAY_UNKNOWN",
                     "provider_scope": "public_only",
-                    "line_public_eligible": True,
+                    "line_public_eligible": False,
                     "ibkr_connected": False,
                     "brokerage_data_included": False,
                     "account_data_included": False,
@@ -380,7 +383,7 @@ def build_public_options(
             time.sleep(sleep_seconds)
 
     atomic_write_json(output_path, results)
-    logger.info("Wrote %d public-only LINE option records to %s", len(results), output_path)
+    logger.info("Wrote %d development-only option records to %s; line_public_eligible=false", len(results), output_path)
     return results
 
 
@@ -409,6 +412,7 @@ def main() -> int:
                 "records": len(records),
                 "output": str(args.output),
                 "provider_scope": "public_only",
+                "line_public_eligible": False,
                 "ibkr_connected": False,
                 "owner_watchlist_inherited": False,
             },

@@ -1,0 +1,15 @@
+{
+  "schema": "SOURCE_INGEST_RECEIPT_V1",
+  "lineage": "MLGW_MUNICIPAL_UTILITY_BUYER",
+  "canonical_url": "https://www.mlgw.com/images/content/files/board_meeting/boardpacket91725.pdf",
+  "published": "2025-09-17",
+  "rights": "Municipal public records (FOIA-equivalent); public domain for factual content",
+  "file": "boardpacket91725.pdf",
+  "byte_length": 13345828,
+  "content_sha256": "c26e5f163625ff55ac18f4f5fdddba5e8e93d41c8a1a8b0ecac27c46d96504d2",
+  "ingested_at": "2026-09-16",
+  "ingest_mode": "one-time authorized acquisition per Gemini Controller approval (task #16); zero provider calls inside tests",
+  "excerpt_file": "boardpacket91725-excerpt.txt",
+  "excerpt_byte_length": 5364,
+  "excerpt_sha256": "ff1bbaa1c7c2f6ebe74084c47e279cfdd32e56012a5a1add15bc0b5bebec24c0"
+}

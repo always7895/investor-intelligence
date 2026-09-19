@@ -129,16 +129,20 @@ def coverage_gated_validate_candidates(
 impl.validate_candidates = coverage_gated_validate_candidates
 
 
-def coverage_gated_run(*, synthetic: bool) -> dict[str, Any]:
-    result = _ORIGINAL_RUN(synthetic=synthetic)
-    plan = base.load_object(base.PLAN_PATH)
+def coverage_gated_run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
+    paths = base.public_output_paths(synthetic=synthetic, output_root=output_root)
+    result = _ORIGINAL_RUN(synthetic=synthetic, output_root=output_root)
+    supplied = result.get('source_plan_path')
+    if not isinstance(supplied, str) or Path(supplied).resolve() != paths['plan'].resolve():
+        raise base.PipelineError('SYNTHETIC_OR_LIVE_OUTPUT_PATH_MISMATCH')
+    plan = base.load_object(paths['plan'])
     discovery = plan.get("v211_discovery")
     if isinstance(discovery, dict):
         discovery["authoritative_sec_name_optical_photonics_lane"] = True
         discovery["authoritative_name_priority_is_discovery_only"] = True
         discovery["scoring_factor_weights_changed"] = False
         discovery["owner_specific_tickers_hardcoded"] = False
-        base.atomic_json(base.PLAN_PATH, plan)
+        base.atomic_json(paths['plan'], plan)
     return result
 
 

@@ -19,8 +19,6 @@ try {
     if ([string]$windows.status -ne 'PASS' -or [string]$windows.source_commit -ne $sha -or [string]$windows.workflow_run_id -ne $runId -or $windows.production_mutation_by_ci -ne $false -or $windows.custom_domain_required -ne $false) { throw 'FREE_RELAY Windows receipt identity, cost, or no-mutation gate failed.' }
     . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
     Assert-V213QaReleaseQualification $windows
-    $liveProof = Join-Path $ProjectRoot 'state/r75-qa-live-qualification.json'
-    if ((Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $windows.qa_live_receipt_sha256) { throw 'Live Q&A receipt digest mismatch.' }
     foreach ($protected in @('config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts','scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py')) {
         git diff --quiet $r75Commit -- $protected
         if ($LASTEXITCODE -ne 0) { throw "Protected R75 release source changed: $protected" }
@@ -34,10 +32,26 @@ try {
             $env:PROJECT_PYTHON = $python.Source
         }
     }
+    $qaInputRaw = & $env:PROJECT_PYTHON scripts/r75_release_inputs.py --project-root $ProjectRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Committed QA input selection failed.' }
+    $qaInput = $qaInputRaw | ConvertFrom-Json
+    if ($qaInput.source_commit -cne $sha) { throw 'QA input source commit mismatch.' }
+    $liveProof = Join-Path $ProjectRoot $qaInput.receipt_path
+    if (-not $windows.PSObject.Properties['qa_live_receipt_path'] -or $windows.qa_live_receipt_path -cne $qaInput.receipt_path -or
+        $windows.qa_live_receipt_sha256 -cne $qaInput.receipt_sha256) { throw 'Windows/QA input binding mismatch.' }
+    $profileArgs=@()
+    $profilePath=Join-Path $ProjectRoot 'config/v213-model-profile-v1.json'
+    if(Test-Path -LiteralPath $profilePath -PathType Leaf){$profileArgs=@('--model-profile',$profilePath)}
+    $qaRaw = & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof @profileArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Fresh source-bound live proof required before packaging.' }
+    $qa=$qaRaw|ConvertFrom-Json
+    if($profileArgs.Count-and($windows.exact_model-cne$qa.exact_model-or$windows.model_profile_sha256-cne$qa.model_profile_sha256)){throw 'Windows/model profile receipt mismatch.'}
     if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $env:RUNNER_TEMP "ii-v213-r75-FREE_RELAY-$sha-$runId-$attempt" }
     $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
-    Remove-Item -LiteralPath $OutputRoot -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
+    # Preserve prior attempts and operator data; never clear a supplied directory.
+    if (Test-Path -LiteralPath $OutputRoot) { throw 'PACKAGE_OUTPUT_ROOT_ALREADY_EXISTS' }
+    if ($OutputRoot.StartsWith($ProjectRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'PACKAGE_OUTPUT_ROOT_IN_SOURCE' }
+    New-Item -ItemType Directory -Path $OutputRoot -ErrorAction Stop | Out-Null
     $stage = Join-Path $OutputRoot 'stage'; $sourceArchive = Join-Path $OutputRoot 'source.zip'
     git archive --format=zip --output="$sourceArchive" HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Unable to archive exact hotfix source.' }
@@ -77,7 +91,7 @@ try {
     & $csc /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$launcher" $temporarySource
     if ($LASTEXITCODE -ne 0) { throw 'FREE_RELAY launcher compilation failed.' }
     Remove-Item -LiteralPath $temporarySource -Force
-    foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test')) {
+    foreach ($argument in @('--self-test','--pipe-hold-self-test','--model-selection-self-test','--model-profile-self-test','--model-thinking-ui-self-test')) {
         $process = Start-Process -FilePath $launcher -ArgumentList $argument -PassThru
         if (-not $process.WaitForExit(30000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; throw "Packaged launcher test timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Packaged launcher test failed: $argument" }
@@ -88,19 +102,20 @@ try {
         schema_version = 1; artifact_kind = 'R75_FREE_WORKERS_RELAY_HOTFIX'; package_version = '2.1.3'
         base_named_tunnel_commit = $baseCommit; source_commit = $sha; workflow_run_id = $runId; workflow_run_attempt = $attempt
         launcher_revision = $revision; publication_contract_sha256 = $contractSha
+        qa_live_receipt_path = $qaInput.receipt_path; qa_live_receipt_sha256 = $qaInput.receipt_sha256
         worker_test_payload = $workerTestPayload; packaged_worker_test_count = [int]$windows.worker_tests
         normal_production_tunnel_mode = 'quick_free_relay'; workers_dev_stable_entrypoint = $true; custom_domain_required = $false
-        trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = 'qwen38-q6'; health_schema_version = 2
+        trycloudflare_hostname_stable = $false; consecutive_public_health_required = 3; exact_model = $qa.exact_model; model_profile_sha256 = $qa.model_profile_sha256; health_schema_version = 2
         signed_route_registration = $true; route_generation_required = $true; heartbeat_lease_required = $true; stale_and_replay_rejected = $true
         blue_green_startup = $true; verified_rollback = $true; allow_test_tunnel_exception_used = $false; named_tunnel_optional = $true
-        protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $false
+        protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $true; live_proof_max_age_seconds = 86400
         production_mutation_by_ci = $false; worker_deployed = $false; production_kv_or_do_written = $false; line_message_sent = $false; schedules_registered = $false
     }
     [IO.File]::WriteAllText((Join-Path $stage 'HOTFIX-REFS.json'), (($refs | ConvertTo-Json -Depth 8) + "`n"), [Text.UTF8Encoding]::new($false))
     $sbom = [ordered]@{
         spdxVersion='SPDX-2.3'; dataLicense='CC0-1.0'; SPDXID='SPDXRef-DOCUMENT'; name="Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-$sha-$runId"
         documentNamespace="https://github.com/always7895/investor-intelligence/spdx/R75-Free-Relay-Hotfix/$sha/$runId"
-        creationInfo=[ordered]@{creators=@('Tool: scripts/ci_v213_r75_free_relay_package.ps1');created='2026-09-04T00:00:00Z'}
+        creationInfo=[ordered]@{creators=@('Tool: scripts/ci_v213_r75_free_relay_package.ps1');created=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')}
         packages=@([ordered]@{name='Investor Intelligence';SPDXID='SPDXRef-Package-Investor-Intelligence';versionInfo='2.1.3-R75-Free-Relay-Hotfix';downloadLocation='NOASSERTION';filesAnalyzed=$false;licenseConcluded='NOASSERTION';licenseDeclared='NOASSERTION';copyrightText='NOASSERTION'})
         relationships=@([ordered]@{spdxElementId='SPDXRef-DOCUMENT';relationshipType='DESCRIBES';relatedSpdxElement='SPDXRef-Package-Investor-Intelligence'})
     }
@@ -153,30 +168,47 @@ try {
                     throw "Installed runtime test dependency missing or changed: $relative"
                 }
             }
-            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; production_mutation=false'
+            foreach($metadataPath in @((Join-Path $env:LOCALAPPDATA 'InvestorIntelligence/v213-runtime-state.json'),(Join-Path $installProbe 'runtime/V213-SOURCE-DIVERSE-RUNTIME.json'))){
+                $metadata=Get-Content -LiteralPath $metadataPath -Raw -Encoding utf8|ConvertFrom-Json
+                if($null-ne$metadata.preferred_model -or $metadata.model_selection_authority -isnot [string] -or
+                   $metadata.model_selection_authority-cne'runtime_model_profile' -or
+                   $metadata.model_profile_qualified -isnot [bool] -or $metadata.model_profile_qualified-ne$false){
+                    throw 'Installed metadata incorrectly selects or qualifies a model.'
+                }
+            }
+            Write-Host 'V213_PACKAGED_RUNTIME_INSTALL = PASS; isolated_localappdata=true; model_selection=runtime_profile_only; production_mutation=false'
         } finally {
             $env:LOCALAPPDATA = $savedLocalAppData
             Remove-Item -LiteralPath $installProbe -Recurse -Force -ErrorAction SilentlyContinue
         }
     } finally { Remove-Item -LiteralPath $zipProbe -Recurse -Force -ErrorAction SilentlyContinue }
+    # A proof can expire while ZIP/install tests run; recheck before receipts.
+    & $env:PROJECT_PYTHON scripts/verify_r75_qa_evidence.py --receipt $liveProof @profileArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Live proof expired or changed during packaging.' }
+    if ((Get-FileHash $liveProof -Algorithm SHA256).Hash.ToLowerInvariant() -cne $windows.qa_live_receipt_sha256) { throw 'Live proof digest changed during packaging.' }
+    $finalSha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+    $finalStatus = @(git status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $finalSha -cne $sha -or $finalStatus.Count -ne 0) { throw 'Exact checkout changed during packaging.' }
     $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     $shaPath = Join-Path $OutputRoot "$stem.zip.sha256"
     [IO.File]::WriteAllText($shaPath,"$zipSha  $stem.zip`n",[Text.Encoding]::ASCII)
     Copy-Item $manifestPath (Join-Path $OutputRoot "$stem.MANIFEST.json")
     Copy-Item $sumsPath (Join-Path $OutputRoot "$stem.SHA256SUMS.txt")
     Copy-Item (Join-Path $stage 'SBOM.spdx.json') (Join-Path $OutputRoot "$stem.SBOM.spdx.json")
-    Copy-Item $liveProof (Join-Path $OutputRoot "$stem.QA-Live-Receipt.json")
+    $qaReceipt = Join-Path $OutputRoot "$stem.QA-Live-Receipt.json"
+    Copy-Item -LiteralPath $liveProof -Destination $qaReceipt
+    if ((Get-FileHash -LiteralPath $qaReceipt -Algorithm SHA256).Hash.ToLowerInvariant() -cne $qaInput.receipt_sha256) { throw 'Copied QA receipt digest mismatch.' }
     $windowsReceipt = Join-Path $OutputRoot "$stem.Windows-Receipt.json"; Copy-Item $env:R75_FREE_RELAY_WINDOWS_RECEIPT $windowsReceipt
     $deploymentReceipt = Join-Path $OutputRoot "$stem.Deployment-Receipt.json"
-    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model='qwen38-q6';health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
+    $deployment = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;free_relay_setup='PASS';packaged_worker_typecheck='PASS';packaged_worker_tests=$packagedWorkerTests;extracted_zip_worker_gate='PASS';extracted_zip_runtime_install='PASS';workers_dev_stable_entrypoint=$true;custom_domain_required=$false;powershell_51='PASS';powershell_7='PASS';special_path='PASS';negative_tests='PASS';consecutive_public_health_required=3;exact_model=$qa.exact_model;model_profile_sha256=$qa.model_profile_sha256;health_schema_version=2;stale_route_rejection='PASS';replay_rejection='PASS';concurrent_update='PASS';heartbeat_lease='PASS';reboot_reconnect='PASS';blue_green_rollback='PASS';production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deploymentReceipt,(($deployment|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $deliveryReceipt = Join-Path $OutputRoot "$stem.Delivery-Receipt.json"
     $delivery = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;package="$stem.zip";zip_sha256=$zipSha;bytes=(Get-Item $zip).Length;immutable_identity="$sha-$runId";zero_cost=$true;custom_domain_required=$false;production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deliveryReceipt,(($delivery|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $verificationReceipt = Join-Path $OutputRoot "$stem.Independent-Verification.json"
-    & $env:PROJECT_PYTHON scripts\verify_v213_r75_free_relay_hotfix.py --archive $zip --checksum $shaPath --source-commit $sha --workflow-run-id $runId --receipt $windowsReceipt --receipt $deploymentReceipt --receipt $deliveryReceipt --output $verificationReceipt
+    & $env:PROJECT_PYTHON scripts\verify_v213_r75_free_relay_hotfix.py --archive $zip --checksum $shaPath --source-commit $sha --workflow-run-id $runId --receipt $windowsReceipt --receipt $deploymentReceipt --receipt $deliveryReceipt --qa-live-receipt $qaReceipt --output $verificationReceipt
     if ($LASTEXITCODE -ne 0) { throw 'Independent FREE_RELAY hotfix artifact verification failed.' }
-    $artifacts = @($zip,$shaPath,(Join-Path $OutputRoot "$stem.MANIFEST.json"),(Join-Path $OutputRoot "$stem.SHA256SUMS.txt"),(Join-Path $OutputRoot "$stem.SBOM.spdx.json"),$windowsReceipt,$deploymentReceipt,$deliveryReceipt,$verificationReceipt)
+    $artifacts = @($zip,$shaPath,(Join-Path $OutputRoot "$stem.MANIFEST.json"),(Join-Path $OutputRoot "$stem.SHA256SUMS.txt"),(Join-Path $OutputRoot "$stem.SBOM.spdx.json"),$qaReceipt,$windowsReceipt,$deploymentReceipt,$deliveryReceipt,$verificationReceipt)
     foreach ($path in $artifacts) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Hotfix evidence missing: $path" } }
     $env:R75_FREE_RELAY_PACKAGE_ROOT=$OutputRoot; $env:R75_FREE_RELAY_ZIP=$zip; $env:R75_FREE_RELAY_ZIP_SHA256=$zipSha
     if ($env:GITHUB_ENV) { "R75_FREE_RELAY_PACKAGE_ROOT=$OutputRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8; "R75_FREE_RELAY_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8; "R75_FREE_RELAY_ZIP_SHA256=$zipSha" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }

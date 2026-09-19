@@ -1,0 +1,534 @@
+import { spawn as _spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
+import { createHash, randomBytes } from "node:crypto";
+
+export type GatewayChild = {
+  kill: (signal?: NodeJS.Signals) => boolean;
+  once: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  on: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  exitCode: number | null;
+};
+
+/**
+ * TASK0 Phase-1F — hardened harness for the opt-in live-gateway runner only.
+ * Default offline `vitest run` never imports the manual suite; this file is
+ * imported exclusively by test/manual/v213-task0-general-qa-live.manual.ts.
+ *
+ * Hard rules (no caller can relax):
+ * - Approved Python executable only (II_TASK0_PYTHON_EXE override or the
+ *   operator host interpreter); shell: false; explicit minimal env only —
+ *   the full process.env is never inherited by the gateway child.
+ * - fileURLToPath for every URL->OS path (Windows-safe; no manual
+ *   pathname mangling).
+ * - Health readiness = HTTP 200 AND ok AND service AND health_schema_version
+ *   =2 AND llama_reachable AND selected_model_available AND selected_model
+ *   equals the expected model string. 503 / missing / wrong field = not
+ *   ready (never treated as readiness).
+ * - Port from a throwaway net-0 listener.
+ * - Release waits for child "exit" AND verifies the loopback listener stops
+ *   answering (connection failure), not a fixed post-kill sleep.
+ * - The strict boundary forwards ONLY:
+ *     POST https://<host>/v1/chat/completions  ->  http://127.0.0.1:<port>
+ *       (origin/path rewritten to loopback; method POST; body pass-through;
+ *        AbortSignal.timeout(90s) arrival boundary)
+ *     POST https://api.line.me/v2/bot/message/reply -> captured reply, 200
+ *       served locally, never sent externally.
+ *   Any other origin/path/method is recorded as a violation and fails the
+ *   run immediately.
+ */
+export interface DrainHandle {
+  add: (p: Promise<unknown>) => void;
+  settle: () => Promise<{ fulfilled: number; rejected: number; rejects: unknown[] }>;
+}
+
+/**
+ * Phase-1G drain: follows an ever-growing set of waitUntil work. The wait
+ * itself races a REAL-TIME deadline (performance.now, unaffected by a
+ * Date-only fake), so a stuck promise fails instead of hanging; work added
+ * after an earlier batch is awaited too; every unexpected rejection is
+ * preserved and reported (never reclassified as fulfillment).
+ */
+export function startDrain(
+  deadlineMs: number,
+  now: () => number = () => (globalThis as unknown as { performance?: { now(): number } }).performance?.now() ?? Date.now(),
+): DrainHandle {
+  const jobs = new Set<Promise<unknown>>();
+  const consumed = new Set<Promise<unknown>>();
+  const rejects: unknown[] = [];
+  const limitAt = now() + deadlineMs;
+  return {
+    add: (p) => { jobs.add(p); },
+    settle: async () => {
+      let fulfilled = 0;
+      for (;;) {
+        const remaining = limitAt - now();
+        if (remaining <= 0) throw new Error("TASK0_DRAIN_TIMEOUT");
+        const fresh = [...jobs].filter((p) => !consumed.has(p));
+        if (fresh.length === 0) break;
+        for (const p of fresh) consumed.add(p);
+        const settledPromise = Promise.all(
+          fresh.map((p) => Promise.allSettled([p]).then((rs) => ({ p, rs }))),
+        );
+        let roundTimer: ReturnType<typeof setTimeout> | undefined;
+        const timer = new Promise<never>((_res, rej) => {
+          roundTimer = setTimeout(() => { rej(new Error("TASK0_DRAIN_TIMEOUT")); }, remaining);
+        });
+        const batch = await Promise.race([settledPromise, timer]);
+        if (roundTimer !== undefined) clearTimeout(roundTimer);
+        for (const { rs } of batch) {
+          const r = rs[0];
+          if (r.status === "fulfilled") {
+            fulfilled++;
+          } else {
+            rejects.push(r.reason);
+          }
+        }
+      }
+      return { fulfilled, rejected: rejects.length, rejects };
+    },
+  };
+}
+
+export const APPROVED_PYTHON_DEFAULT = "C:\\Users\\moon9\\AppData\\Local\\Programs\\Python\\Python312\\python.exe";
+
+export function resolveApprovedPython(): string {
+  const exe = process.env.II_TASK0_PYTHON_EXE ?? APPROVED_PYTHON_DEFAULT;
+  if (!existsSync(exe)) throw new Error(`TASK0_APPROVED_PYTHON_MISSING:${exe}`);
+  return exe;
+}
+
+async function freeLoopbackPort(): Promise<number> {
+  const srv = createServer();
+  await new Promise<void>((res) => srv.listen(0, "127.0.0.1", () => res()));
+  const addr = srv.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  if (!port) throw new Error("TASK0_GATEWAY_PORT_UNAVAILABLE");
+  await new Promise<void>((res) => srv.close(() => res()));
+  return port;
+}
+
+export type StrictBoundary = {
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  modelCalls: Array<{ method: string; status: number; model: string; finishReason: string; modelReturned: string; body: string }>;
+  /** Every fetch call through this boundary (model + LINE + any other). */
+  boundaryRequests: number;
+  /** Distinct model forwards ATTEMPTED (budget units; reserved BEFORE any await;
+   *  a forward whose backend call errors STILL consumes its unit). */
+  forwardAttempts: number;
+  lineReplies: Array<{ replyTokenPrefix: string; textCount: number; sawBearer: boolean; texts: string[] }>;
+  violations: string[];
+  /** Queue one-off artificial latency (ms) applied to the NEXT model forward. */
+  delayMs: number[];
+  /** Next model forward returns a 504 timeout body exactly once. */
+  markStallOnce: () => void;
+  stallArmed: () => boolean;
+};
+
+export type FinalAnswerCheck = { ok: boolean; reason: string };
+
+/**
+ * Phase-1G REPAIR: structural completion verdict for a raw gateway response
+ * body. Only finish_reason === "stop" AND returned model === expected model
+ * AND non-trivial/acceptable content is a usable success. "length", empty
+ * finishes, wrong/absent model and non-JSON bodies are explicit failures.
+ */
+export type CompletionKind = "smoke" | "answer";
+
+/**
+ * Phase-1H: structural completion verdict. Rules (corrigendum):
+ * - unparseable / null / array / missing-choices / wrong shape -> NO_STRUCTURE
+ * - finish "" -> FINISH_EMPTY; finish != stop -> FINISH_<REASON>
+ * - returned model != expected (incl. empty) -> MODEL_MISMATCH
+ * - kind "smoke": content must EXACTLY equal the marker
+ * - kind "answer": marker is FORBIDDEN, thin or gated text is rejected
+ */
+export function completionVerdict(body: string, expectedModel: string, marker: string, kind: CompletionKind = "answer"): FinalAnswerCheck {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return { ok: false, reason: "NO_STRUCTURE" };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ok: false, reason: "NO_STRUCTURE" };
+  const o = parsed as { choices?: unknown; model?: unknown };
+  if (!Array.isArray(o.choices) || o.choices.length === 0) return { ok: false, reason: "NO_STRUCTURE" };
+  const ch = o.choices[0] as { finish_reason?: unknown; message?: { content?: unknown } } | null;
+  if (ch === null || typeof ch !== "object") return { ok: false, reason: "NO_STRUCTURE" };
+  const fr = typeof ch.finish_reason === "string" ? ch.finish_reason : "";
+  if (fr === "") return { ok: false, reason: "FINISH_EMPTY" };
+  if (fr !== "stop") return { ok: false, reason: `FINISH_${fr.toUpperCase().replace(/[^A-Z0-9]/g, "_")}` };
+  const m = typeof o.model === "string" ? o.model : "";
+  if (m === "" || m !== expectedModel) return { ok: false, reason: "MODEL_MISMATCH" };
+  const content = typeof ch.message?.content === "string" ? ch.message.content : "";
+  if (kind === "smoke") {
+    if (content.trim() !== marker) return { ok: false, reason: "SMOKE_NOT_EXACT" };
+    return { ok: true, reason: "OK" };
+  }
+  if (marker && content.includes(marker)) return { ok: false, reason: "FORBIDDEN_MARKER_IN_ANSWER" };
+  if (content.trim().length < 4) return { ok: false, reason: "THIN_CONTENT" };
+  const gate = finalAnswerCheck(content, marker);
+  if (!gate.ok) return { ok: false, reason: gate.reason };
+  return { ok: true, reason: "OK" };
+}
+
+export type GatewayProbeState = "live" | "down" | "unknown";
+
+export interface GatewayChildLike {
+  exitCode: number | null;
+  signalCode?: NodeJS.Signals | null;
+  spawnError?: Error | null;
+  kill: (s?: NodeJS.Signals) => boolean;
+  once: (ev: string, fn: (...a: unknown[]) => void) => unknown;
+}
+
+/**
+ * Phase-1H: bounded gateway release.
+ * - "gone" = exitCode !== null OR signalCode != null OR spawnError set.
+ * - probeState: "live" (200/503/404 still answering), "down" (connection
+ *   refused/reset), "unknown" (timeout/any probe error — NEVER treated as
+ *   closed). Resolves ONLY when the child is gone AND the latest probe was
+ *   definitively "down" (Phase-1I: unknown/live never pass). Reentrant-safe;
+ *   its timers clear on settle.
+ */
+export function releaseGateway(
+  child: GatewayChildLike,
+  probeState: () => Promise<GatewayProbeState>,
+  deadlineMs = 10_000,
+): Promise<void> {
+  const startedAt = performance.now();
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let hard: ReturnType<typeof setTimeout> | undefined;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (hard) clearTimeout(hard);
+      if (err) reject(err);
+      else resolve();
+    };
+    hard = setTimeout(() => finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT")), deadlineMs);
+    const remainingMs = () => deadlineMs - (performance.now() - startedAt);
+    const gone = () => child.exitCode !== null || child.signalCode != null || child.spawnError != null;
+    // ONE verify loop; no exit-listener loop (would double-verify).
+    const verify = async () => {
+      while (!settled) {
+        if (remainingMs() <= 0) {
+          finish(new Error("TASK0_GATEWAY_RELEASE_TIMEOUT"));
+          return;
+        }
+        let st: GatewayProbeState;
+        let roundTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          // Race the in-flight probe against the remaining deadline so a
+          // deadline expiry stops this round (timer cleared, no re-assert).
+          st = await Promise.race([
+            probeState(),
+            new Promise<GatewayProbeState>((_, rej) => {
+              roundTimer = setTimeout(() => rej(new Error("PROBE_ROUND_DEADLINE")), Math.max(1, remainingMs()));
+            }),
+          ]);
+        } catch {
+          st = "unknown";
+        } finally {
+          if (roundTimer) clearTimeout(roundTimer);
+        }
+        if (settled) return;
+        // Phase-1I gate: success requires the child to be GONE and a
+        // definitive DOWN probe. "unknown" or "live" must never pass.
+        if (gone() && st === "down") {
+          finish();
+          return;
+        }
+        if (!gone()) {
+          try {
+            child.kill();
+          } catch {
+            /* kill refused: deadline-bounded */
+          }
+        }
+        await new Promise<void>((res) => setTimeout(res, 150));
+      }
+    };
+    if (!gone()) {
+      try {
+        child.kill();
+      } catch {
+        /* kill refused: deadline-bounded */
+      }
+    }
+    void verify(); // unconditional single loop: stuck children are deadline-bounded
+  });
+}
+
+/**
+ * Phase-1G: final answer gate. Structural acceptance of a completed model
+ * answer for the manual suite; a job placeholder, offline/closed wording
+ * (traditional AND simplified), a smoke marker, processing hints, or
+ * non-usable language is NEVER a final answer.
+ */
+export function finalAnswerCheck(text: string, marker: string): FinalAnswerCheck {
+  const t = (text ?? "").trim();
+  if (t.length === 0) return { ok: false, reason: "EMPTY" };
+  if (marker && t.includes(marker)) return { ok: false, reason: "SMOKE_MARKER" };
+  if (t.includes("本机模型桥接尚未启用") || t.includes("本機模型橋接尚未啟用")) return { ok: false, reason: "OFFLINE_CLOSED" };
+  if (/問題已收到|问题已收到/.test(t)) return { ok: false, reason: "JOB_PLACEHOLDER" };
+  if (/查看結果\s+[A-Za-z0-9_-]{4,}|查看结果\s+[A-Za-z0-9_-]{4,}/.test(t)) return { ok: false, reason: "JOB_PLACEHOLDER" };
+  if (/已提交|正在處理|处理中|稍後再試|稍后再试/.test(t)) return { ok: false, reason: "PROCESSING_ONLY" };
+  if (!/[\u4e00-\u9fff]{4,}/.test(t)) return { ok: false, reason: "NOT_USABLE_LANGUAGE" };
+  return { ok: true, reason: "OK" };
+}
+
+/** Strict job reference extraction (first request -> second formal query). */
+export function jobIdStrict(text: string): string | null {
+  const m = (text ?? "").match(/(?:參考編號|参考编号)\s*([A-Za-z0-9_-]{4,64})/);
+  return m && m[1] ? m[1] : null;
+}
+
+function combinedSignal(caller: AbortSignal | undefined, capMs: number): AbortSignal {
+  const anySig = (AbortSignal as unknown as { any?(signals: Iterable<AbortSignal>, ms?: number): AbortSignal }).any;
+  const cap = AbortSignal.timeout(capMs);
+  if (typeof anySig === "function") {
+    if (caller) return anySig.call(AbortSignal, [caller, cap]);
+    return cap;
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => { ctrl.abort(new Error("TASK0_FORWARD_DEADLINE")); }, capMs);
+  if (caller) {
+    if (caller.aborted) { ctrl.abort(caller.reason); return ctrl.signal; }
+    caller.addEventListener("abort", () => ctrl.abort(caller.reason), { once: true });
+  }
+  ctrl.signal.addEventListener("abort", () => clearTimeout(t), { once: true });
+  return ctrl.signal;
+}
+
+export function createStrictBoundary(
+  evidenceHost: string,
+  gate: { port: number; channelValue: string },
+  nativeFetch: typeof fetch,
+  maxModelCalls?: number,
+): StrictBoundary {
+  const modelUrl = `https://${evidenceHost}/v1/chat/completions`;
+  const lineReplyUrl = "https://api.line.me/v2/bot/message/reply";
+  let stallPending = false;
+  const b = {
+    modelCalls: [] as StrictBoundary["modelCalls"],
+    boundaryRequests: 0,
+    forwardAttempts: 0,
+    lineReplies: [] as StrictBoundary["lineReplies"],
+    violations: [] as string[],
+    delayMs: [] as number[],
+    markStallOnce: () => { stallPending = true; },
+    stallArmed: () => stallPending,
+    fetch: null as unknown as StrictBoundary["fetch"],
+  };
+  b.fetch = async (input, init) => {
+    b.boundaryRequests += 1;
+    const url = String(input);
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (url === modelUrl && method === "POST") {
+      // Phase-1I: the forward BUDGET unit is reserved BEFORE any await/IO.
+      // A forward that later errors still consumed its unit.
+      b.forwardAttempts += 1;
+      if (maxModelCalls != null && b.forwardAttempts > maxModelCalls) {
+        throw new Error("TASK0_MODEL_CALL_CAP"); // rejected BEFORE any backend I/O
+      }
+      const body = String(init?.body ?? "");
+      let model = "";
+      try { model = String((JSON.parse(body) as { model?: unknown }).model ?? ""); } catch { /* body kept */ }
+      const oneShotDelay = b.delayMs.shift();
+      if (oneShotDelay) await new Promise((rr) => setTimeout(rr, oneShotDelay));
+      if (stallPending) {
+        stallPending = false;
+        await new Promise((rr) => setTimeout(rr, 8_000));
+        b.modelCalls.push({ method: "POST", status: 504, model, finishReason: "", modelReturned: "", body: "SYNTH_504" });
+        return new Response(JSON.stringify({ error: { message: "local inference timeout", type: "local_model_timeout" } }),
+          { status: 504, headers: { "content-type": "application/json" } });
+      }
+      const fwd = await nativeFetch(`http://127.0.0.1:${gate.port}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-investor-shared-secret": gate.channelValue },
+        body,
+        signal: combinedSignal(init?.signal as AbortSignal | undefined, 90_000),
+      });
+      const text = await fwd.text();
+      let finishReason = "";
+      let modelReturned = "";
+      try {
+        const j = JSON.parse(text) as { choices?: Array<{ finish_reason?: string }>; model?: string };
+        finishReason = String(j.choices?.[0]?.finish_reason ?? "");
+        modelReturned = String(j.model ?? "");
+      } catch { /* non-JSON body is not a usable answer either */ }
+      b.modelCalls.push({ method: "POST", status: fwd.status, model, finishReason, modelReturned, body: text.slice(0, 8_000) });
+      return new Response(text, { status: fwd.status, headers: { "content-type": "application/json" } });
+    }
+    if (url === lineReplyUrl && method === "POST") {
+      const body = String(init?.body ?? "");
+      const headers = String(JSON.stringify(init?.headers ?? {}));
+      let replyTokenPrefix = "";
+      let textCount = 0;
+      const texts: string[] = [];
+      try {
+        const parsed = JSON.parse(body) as { replyToken?: string; messages?: Array<{ text?: string }> };
+        replyTokenPrefix = (parsed.replyToken ?? "").slice(0, 8);
+        for (const m of parsed.messages ?? []) if (typeof m.text === "string") texts.push(m.text);
+        textCount = texts.length;
+      } catch { /* counted as zero */ }
+      b.lineReplies.push({ replyTokenPrefix, textCount, sawBearer: headers.includes('"authorization"'), texts });
+      return new Response(JSON.stringify({ endpoint: "https://api.line.me/v2/bot/message/reply", detail: [] }),
+        { status: 200, headers: { "content-type": "application/json", "x-line-request-id": "task0-phase1f-synthetic" } });
+    }
+    b.violations.push(`${method} ${url}`);
+    throw new Error(`TASK0_BOUNDARY_VIOLATION:${method}:${url}`);
+  };
+  return b;
+}
+
+export type LocalGatewayHandle = {
+  port: number;
+  channelValue: string;
+  child: GatewayChild;
+  probeStats: { refused: number; timeout: boolean };
+  stop: () => Promise<void>;
+};
+
+export async function startLocalGateway(opts: {
+  model: string;
+  llamaBaseUrl: string;
+  profileJson: string;
+  timeoutMs?: number;
+  onProbe?: (url: string, i: number) => Promise<Response | null>;
+  nativeFetch?: typeof fetch;
+}): Promise<LocalGatewayHandle> {
+  const exe = resolveApprovedPython();
+  const port = await freeLoopbackPort();
+  const script = fileURLToPath(new URL("../../../scripts/v213_local_llm_gateway.py", import.meta.url));
+  const cwd = fileURLToPath(new URL("../../..", import.meta.url));
+  const random = new Uint8Array(randomBytes(24));
+  const channelValue = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const child = (_spawn as unknown as (cmd: string, args: string[], options: Record<string, unknown>) => GatewayChild)(
+    exe,
+    ["-B", script, "--host", "127.0.0.1", "--port", String(port)],
+    {
+    shell: false,
+    cwd,
+    stdio: ["ignore", "ignore", "pipe"],
+    env: {
+      PATH: process.env.PATH ?? "",
+      SystemRoot: process.env.SystemRoot ?? "C:\\Windows",
+      TEMP: process.env.TEMP ?? "",
+      TMP: process.env.TMP ?? "",
+      PYTHONIOENCODING: "utf-8",
+      II_LLAMA_BASE_URL: opts.llamaBaseUrl,
+      II_LOCAL_LLM_MODEL: opts.model,
+      II_LOCAL_LLM_SHARED_SECRET: channelValue,
+      V213_MODEL_PROFILE_JSON: opts.profileJson,
+    } as NodeJS.ProcessEnv,
+  });
+  const childExt = child as unknown as GatewayChildLike;
+  childExt.signalCode = null;
+  childExt.spawnError = null;
+  child.once("error", (err: unknown) => {
+    childExt.spawnError = err instanceof Error ? err : new Error(String(err));
+  });
+  child.once("exit", (_c: unknown, sig: unknown) => {
+    if (childExt.signalCode == null) childExt.signalCode = (sig as NodeJS.Signals | null) ?? null;
+  });
+  const startAt = Date.now();
+  const deadline = Date.now() + 120_000;
+  const probeStats = { refused: 0, timeout: false };
+  let probeN = 0;
+  const realFetch: typeof fetch = opts.nativeFetch ?? ((globalThis as unknown as { fetch: typeof fetch }).fetch.bind(globalThis));
+  // Probe verdicts (Phase-1I): 200/503/404 = still answering ("live");
+  // ONLY a connection REFUSED to the exact loopback port = "down".
+  // ECONNRESET and every other probe error/timeout = "unknown" (never down).
+  const probeState = (): Promise<GatewayProbeState> =>
+    realFetch(`http://127.0.0.1:${port}/health`, {
+      headers: { "x-investor-shared-secret": channelValue },
+    })
+      .then((res) => (res.status === 200 || res.status === 503 || res.status === 404 ? "live" : "unknown"))
+      .catch((e: unknown) => {
+        const code = (e as { cause?: { code?: string } })?.cause?.code ?? "";
+        return code === "ECONNREFUSED" ? "down" : "unknown";
+      });
+  // Phase-1I: ONE shared bounded cleanup created LAZILY. startCleanup() is
+  // invoked only when release is actually needed: ready-path stop(), the
+  // child-exit failure path, or the not-ready deadline path. Repeated calls
+  // (incl. repeated stop()) return the same promise => at most one release.
+  let cleanupPromise: Promise<void> | undefined;
+  const startCleanup = (): Promise<void> => {
+    if (!cleanupPromise) cleanupPromise = releaseGateway(childExt, probeState, 8_000);
+    return cleanupPromise;
+  };
+  for (;;) {
+    if (child.exitCode !== null) {
+      await startCleanup();
+      throw new Error(`TASK0_GATEWAY_CHILD_EXITED:${child.exitCode}`);
+    }
+    const url = `http://127.0.0.1:${port}/health`;
+    const t0 = Date.now();
+    let r: Response | null;
+    if (opts.onProbe) {
+      r = await opts.onProbe(url, probeN);
+    } else {
+      r = await realFetch(url, {
+        headers: { "x-investor-shared-secret": channelValue },
+        signal: AbortSignal.timeout(2_500),
+      }).catch(() => null);
+    }
+    probeN++;
+    const elapsed = Date.now() - t0;
+    if (r === null) {
+      probeStats.refused++;
+      if (elapsed >= 7_000 && elapsed < 20_000) probeStats.timeout = true;
+    } else if (elapsed >= 7_000 && elapsed < 20_000) {
+      probeStats.timeout = true;
+    }
+    if (r) {
+      const body = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        r.status === 200 &&
+        body != null &&
+        body.ok === true &&
+        (body as { service?: unknown }).service === "v213-local-llm-gateway" &&
+        (body as { health_schema_version?: unknown }).health_schema_version === 2 &&
+        (body as { llama_reachable?: unknown }).llama_reachable === true &&
+        (body as { selected_model_available?: unknown }).selected_model_available === true &&
+        (body as { selected_model?: unknown }).selected_model === opts.model
+      ) {
+        return {
+          port,
+          channelValue,
+          child,
+          probeStats,
+          stop: () => startCleanup(),
+        };
+      }
+    }
+    if (Date.now() > deadline) {
+      await startCleanup();
+      throw new Error(`TASK0_GATEWAY_NOT_READY:last=${r ? r.status : "unreachable"}`);
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+export function profileJsonPath(): string {
+  return fileURLToPath(new URL("../../../config/v213-model-profile-exl3-sc5-h6-v6.candidate.json", import.meta.url));
+}
+
+export function readProfileJson(): string {
+  return readFileSync(profileJsonPath(), "utf-8").trim();
+}
+
+export function sha256Hex(text: string): string {
+  return createHash("sha256").update(new TextEncoder().encode(text)).digest("hex");
+}
+
+export async function waitChildExit(c: GatewayChild, ms: number): Promise<number | null> {
+  if (c.exitCode !== null) return c.exitCode;
+  const exited = new Promise<number>((res) => { c.once("exit", () => res(c.exitCode ?? -1)); });
+  const timeout = new Promise<null>((res) => setTimeout(() => res(null), ms));
+  return Promise.race([exited, timeout]);
+}

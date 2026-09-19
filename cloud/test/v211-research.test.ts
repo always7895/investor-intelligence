@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { freeRelayRequestEnv } from "../src/v213/production-worker";
+import { processAuthorizedLineEvent, V211_GENERAL_QA } from "../src/v211/worker";
 import { parseQuery } from "../src/core";
 import type { StorageEnv } from "../src/storage";
 import { humanizeFallback, parseV211ResearchUniverse, v211ResearchAnswer } from "../src/v211/research";
@@ -56,11 +58,93 @@ async function envWithUniverse(): Promise<StorageEnv> {
   };
 }
 
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+
 describe("v2.1.3 signed-universe + attribution-safe local-research routing", () => {
+  it.each([
+    "宏觀產業分析",
+    "分析 CPI 與 FOMC 對航運的影響",
+    "分析利率變化對航運與能源的影響",
+    "醫療產業的供需與監管風險",
+    "比較農業與工業的成本傳導",
+    "Serenity 如何分析非科技產業",
+  ])("does not require or read a stock universe for %s", async text => {
+    const kv = new MemoryKv();
+    kv.values.set("snapshot:current", "malformed-pointer");
+    const get = vi.spyOn(kv, "get");
+    const env = { PUBLIC_CACHE: asKv(kv) } as StorageEnv;
+    const query = parseQuery(text);
+    expect(query.ticker).toBeNull();
+    expect(await v211ResearchAnswer(env, query)).toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it.each(["T20 我持有，分析部位", "T20 每週期權", "最新報告"])("leaves non-research intent %s to its own guarded handler", async text => {
+    const kv = new MemoryKv();
+    const get = vi.spyOn(kv, "get");
+    expect(await v211ResearchAnswer({ PUBLIC_CACHE: asKv(kv) } as StorageEnv, parseQuery(text))).toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it.each(["T20 怎麼看", "T20 vs T21 比較", "研究範圍"])("still rejects an unavailable stock universe for %s", async text => {
+    const env = { PUBLIC_CACHE: asKv(new MemoryKv()) } as StorageEnv;
+    expect(await v211ResearchAnswer(env, parseQuery(text))).toContain("沒有通過驗證");
+  });
+
+  it.each([
+    ["SYNTHETIC_MACRO_RESPONSE", "SYNTHETIC_MACRO_RESPONSE"],
+    ["LOCAL_MODEL_OFFLINE", "本機模型橋接目前離線"],
+    ["CURRENT_DATA_UNAVAILABLE", "沒有通過 freshness / evidence gate"],
+  ])("routes actual authorized LINE macro requests to QA and preserves %s", async (answer, expected) => {
+    vi.useFakeTimers();
+    const env = await freeRelayRequestEnv({
+      PUBLIC_CACHE: asKv(new MemoryKv()), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
+      EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_NOT_REAL",
+    } as any);
+    const qa = vi.fn(async () => answer);
+    env[V211_GENERAL_QA] = qa;
+    const messages: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      expect(String(url)).toBe("https://api.line.me/v2/bot/message/reply");
+      messages.push(...JSON.parse(String(init.body)).messages);
+      return new Response("{}");
+    }));
+    const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+    await processAuthorizedLineEvent(env, ctx, { type: "message", replyToken: "SYNTHETIC_REPLY",
+      source: { type: "user", userId: "SYNTHETIC_USER" }, message: { type: "text", text: "分析 CPI 與 FOMC 對航運的影響" }, timestamp: Date.now() }, "synthetic-macro-tenant");
+    expect(qa).toHaveBeenCalledOnce();
+    expect(qa).toHaveBeenCalledWith(env, expect.objectContaining({ intent: "general_qa", ticker: null }), expect.objectContaining({ chatType: "user" }));
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toContain(expected);
+    expect(messages[0].text).not.toContain("沒有通過驗證的公開系統量化 universe");
+  });
   it("accepts a ranked research universe larger than Top 20", () => {
     const parsed = parseV211ResearchUniverse(Array.from({ length: 25 }, (_, index) => record(index)));
     expect(parsed).not.toBeNull();
     expect(parsed?.[20]?.rank).toBe(21);
+  });
+
+  it("accepts the R75 v2.1.3-diversified scoring universe", () => {
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    const parsed = parseV211ResearchUniverse(rows);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.[0]?.ticker).toBe("T00");
+  });
+
+  it("serves ticker research from the sealed v21:top20:latest object", async () => {
+    const publicKv = new MemoryKv();
+    await publicKv.put("snapshot:current", JSON.stringify({ run_id: "run-1" }));
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    await publicKv.put("snapshot:run-1:v21:top20:latest", JSON.stringify(rows));
+    const env = {
+      PUBLIC_CACHE: asKv(publicKv),
+      TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
+      EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()),
+    };
+    const answer = await v211ResearchAnswer(env as StorageEnv, parseQuery("T00 怎麼看"));
+    expect(answer).toContain("T00");
+    expect(answer).toContain("#1/20");
+    expect(answer).toContain("系統量化 Top 20");
   });
 
   it("answers greetings without exposing LOCAL_MODEL_NOT_CONFIGURED", async () => {

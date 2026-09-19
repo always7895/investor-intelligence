@@ -19,6 +19,7 @@ cloud/dist/
 
 # Generated public data and reports
 data/cache/
+data/sources/**/*.pdf
 data/history/
 reports/
 
@@ -79,3 +80,23 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Local build artifacts (never tracked; not release payloads)
+InvestorIntelligence.exe
+cloud/config/
+
+# Local ops and drafts (never tracked)
+cloud/*.local.toml
+HOTFIX-REFS.json
+
+# Vitest cache
+.vitest/
+
+# Sealed-snapshot upload staging (never tracked)
+.kv-stage/
+
+# Uncommitted hourly refresh-task snapshot runs (committed tracked runs remain fully tracked; new run dirs stay audit-on-KV only)
+state/v213-snapshots/*/
+state/records/
+state/sealed-freshness-tasks.json
+cloud/test-live-replay-result.json

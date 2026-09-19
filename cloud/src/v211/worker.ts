@@ -13,6 +13,7 @@ import {
   type LineTextMessage,
 } from "../line";
 import { manualOptionQuoteAnswer } from "../manual-options";
+import { handleGlobalEquityLookup } from "../v213/global-equity-lookup";
 import {
   deterministicAnswer,
   generalAnswer,
@@ -28,6 +29,7 @@ import {
   type LineSourceIdentity,
 } from "../security";
 import { deleteTenantData, putJob, tenantWriteEpoch } from "../storage";
+import { scopePublicSnapshot } from "../v213/public-snapshot";
 import {
   authenticateV21AdminRequest,
   ingestV21PublicSnapshot,
@@ -83,9 +85,9 @@ function lineHelpText(): string {
     "",
     v211HelpText(),
     "",
-    "通知：每天 08:00 與 21:00（Asia/Taipei）只在 freshness gate 通過後推送公開 Top 20。",
-    "Top 20 固定只顯示：股票／長期投資報酬率／短期投資報酬率／行業別／獲利簡述。",
-    "Serenity 是主評分框架；Aschenbrenner 只作獨立 overlay。101 個來源是受審查目錄，未啟用來源不會被冒充為已取用。",
+    "通知：輸入「通知狀態」查詢配對；配對不代表推送已上線。排程啟用、當輪資料／發布驗收、免費額度及送達狀態須分別確認。",
+    "Top 20 依已通過驗收的報告展示；完整數據報告／深入分析須另經當輪資料與發布驗收，未就緒時不以摘要或模型文字代替。",
+    "Serenity 是主要研究視角；Aschenbrenner 僅作背景，不加分或限制研究產業。來源目錄不代表已取用或已有獨立證據。",
   ].join("\n");
 }
 
@@ -177,7 +179,7 @@ export async function processAuthorizedLineEvent(
       env,
       event.replyToken,
       (await isOwnerTenant(env, tenantId))
-        ? "通知狀態：PAIRED；排程為 08:00／21:00 Asia/Taipei；資料過期時 fail closed。"
+        ? "通知狀態：PAIRED（已配對）。本指令只確認配對；不代表排程已啟用、資料已通過發布驗收或 LINE 已送達。"
         : "通知狀態：NOT_PAIRED。",
     );
     return;
@@ -203,6 +205,19 @@ export async function processAuthorizedLineEvent(
       event.replyToken,
       `你的 tenant-scoped 對話／工作與通知配對資料已刪除（${deleted} 個項目）。重新啟用通知需要本機產生新的單次配對碼。`,
     );
+    return;
+  }
+
+  // One lazy public view for this authorized question, including asynchronous
+  // QA completion. Never memoize on the Worker env shared by other events.
+  env = scopePublicSnapshot(env);
+
+  // Global equity quick lookup intercepts well-formed equity queries before the
+  // QA/research lane; the module itself gates intent and shape.
+  const equityLookup = await handleGlobalEquityLookup(env as any, query);
+  if (equityLookup !== null) {
+    if (typeof equityLookup === "string") await replyText(env, event.replyToken, equityLookup);
+    else await replyMessages(env, event.replyToken, equityLookup);
     return;
   }
 

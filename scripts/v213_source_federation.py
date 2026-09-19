@@ -40,6 +40,8 @@ ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import v21_serenity_top20 as public_engine  # noqa: E402
+
 from adapters.nasdaq_symbol_directory import (  # noqa: E402
     NASDAQ_LISTED_URL,
     OTHER_LISTED_URL,
@@ -52,11 +54,16 @@ TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
 V212_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
 CACHE_ROOT = ROOT / "data" / "cache" / "v213-source-federation"
-WORLD_BANK_URL = "https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
+WORLD_BANK_URL = public_engine.WORLD_BANK_JSON_URL
 BLS_URL = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
 ECB_URL = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=5&format=csvdata"
 GLEIF_URL = "https://api.gleif.org/api/v1/lei-records"
 ALPHA_URL = "https://www.alphavantage.co/query"
+# Fixed, non-sensitive public research identity for the federation's own
+# non-SEC public sources. The SEC contact environment must never become a
+# User-Agent here, and build_live sets trust_env=False so implicit netrc or
+# proxy credentials are not picked up by this session.
+FEDERATION_USER_AGENT = "Investor Intelligence 2.1.3 public research"
 
 
 class FederationError(RuntimeError):
@@ -189,17 +196,19 @@ def observation(
 
 
 def fetch_world_bank(session: requests.Session) -> dict[str, Any]:
-    body, final_url, cached = cached_request(session, "GET", WORLD_BANK_URL, cache_hours=24)
-    value = json.loads(body.decode("utf-8-sig"))
-    rows = value[1] if isinstance(value, list) and len(value) > 1 and isinstance(value[1], list) else []
-    latest = next((item for item in rows if isinstance(item, dict) and item.get("value") is not None), None)
-    if not latest:
-        raise FederationError("World Bank returned no usable GDP observation")
+    # Do not inherit the federation session's SEC/contact/other-provider state.
+    # Reuse the existing bounded JSON transport and source-bound cache; legacy
+    # mtime/hex cache remains untouched and cannot establish acquisition time.
+    with public_engine.session() as public_http:
+        context = public_engine.world_bank_context({'world_bank_url': WORLD_BANK_URL}, public_http,
+            cache_path=CACHE_ROOT / 'world_bank_gdp_growth.json')
     return observation(
-        "world_bank_indicators", "world_bank", "T1", "World Bank",
-        "official_macro_context", "HEALTHY", final_url,
-        as_of=str(latest.get("date") or ""),
-        detail={"series": "NY.GDP.MKTP.KD.ZG", "value": latest.get("value"), "cache_hit": cached},
+        'world_bank_indicators', 'world_bank', 'T1', 'World Bank',
+        'official_macro_context', context['status'], WORLD_BANK_URL,
+        as_of=context.get('period') or '',
+        detail={'series': 'NY.GDP.MKTP.KD.ZG', 'value': context.get('value'),
+                'cache_hit': context.get('source_acquisition', {}).get('retrieval_mode') == 'BOUND_CACHE',
+                'context': context},
     )
 
 
@@ -411,8 +420,9 @@ def evaluate_gates(document: Mapping[str, Any], policy: Mapping[str, Any]) -> di
 def build_live(top20: list[dict[str, Any]], v212: Mapping[str, Mapping[str, Any]], policy: Mapping[str, Any]) -> dict[str, Any]:
     generated = utc_now()
     session = requests.Session()
+    session.trust_env = False
     session.headers.update({
-        "user-agent": os.getenv("SEC_CONTACT_EMAIL", "Investor Intelligence public research contact unavailable"),
+        "user-agent": FEDERATION_USER_AGENT,
         "accept-encoding": "gzip, deflate",
     })
 

@@ -2,7 +2,7 @@
 """Investor Intelligence v2.1.0 Serenity-first automatic public Top 20.
 
 Design boundaries:
-- Load and report the full 101-source authoritative catalog every run.
+- Load and report the full 102-source authoritative catalog every run.
 - Do not claim catalog membership is live activation.
 - v2.1 reviewed source overlay: SEC EDGAR + World Bank only.
 - yfinance is T3 local candidate discovery / public-market observation only.
@@ -26,12 +26,13 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, localcontext
+from http.cookiejar import DefaultCookiePolicy
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -39,7 +40,10 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from adapters import parse_source_payload
+from adapters.world_bank import AdapterError, US_REAL_GDP_URL, select_us_real_gdp_window
 from authoritative_source_catalog import inventory, load_catalog
+from report_source_acquisition import bind_company_receipt
+from sec_contact_headers import CONTACT_RE, SecContactError, sec_identity_headers
 
 POLICY_PATH = ROOT / "config" / "v21-serenity-policy.json"
 ACTIVATION_PATH = ROOT / "config" / "v21-source-activation.json"
@@ -72,27 +76,14 @@ DOMAIN_C = {"hbm", "memory", "optical", "photonics", "laser", "fiber", "foundry"
 LOGGER = logging.getLogger("v21-serenity")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-CONTACT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-
 def sec_headers() -> dict[str, str]:
-    contact = os.getenv("SEC_CONTACT_EMAIL", "").strip()
-    if not CONTACT_RE.fullmatch(contact):
-        raise PipelineError(
-            "SEC_CONTACT_EMAIL must be configured locally as a valid contact address"
-        )
-    value = os.getenv(
-        "SEC_USER_AGENT",
-        f"Investor Intelligence/2.1 {contact}",
-    ).strip()
-    if contact not in value:
-        raise PipelineError("SEC_USER_AGENT must include SEC_CONTACT_EMAIL")
-    return {
-        "User-Agent": value,
-        "From": contact,
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-    }
+    try:
+        headers = sec_identity_headers()
+    except SecContactError as exc:
+        raise PipelineError(str(exc)) from None
+    headers["Accept"] = "application/json"
+    headers["Accept-Encoding"] = "gzip, deflate"
+    return headers
 
 
 class PipelineError(RuntimeError):
@@ -180,17 +171,23 @@ def ticker(value: Any) -> str:
     return text
 
 
+class _NoPublicCookies(DefaultCookiePolicy):
+    def set_ok(self, cookie, request):
+        return False
+
+    def return_ok(self, cookie, request):
+        return False
+
+
 def session() -> requests.Session:
-    retry = Retry(
-        total=3, connect=3, read=3, status=3,
-        backoff_factor=0.8,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=frozenset({"GET"}),
-        respect_retry_after_header=True,
-        raise_on_status=False,
-    )
+    # These three reviewed public JSON callers need no cookies, proxy/netrc
+    # credentials, ambient headers or transport retries. LINE is separate.
     value = requests.Session()
-    value.mount("https://", HTTPAdapter(max_retries=retry))
+    value.trust_env = False
+    value.headers.clear()
+    value.cookies.set_policy(_NoPublicCookies())
+    value.mount('https://', HTTPAdapter(max_retries=0))
+    value._public_json_blocked_sources = set()
     return value
 
 
@@ -206,6 +203,188 @@ def cached(path: Path, hours: int) -> Any | None:
         return None
 
 
+PUBLIC_JSON_MAX_BYTES = 20_000_000
+SEC_REFERENCE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
+WORLD_BANK_JSON_URL = US_REAL_GDP_URL
+
+
+def public_json_cache_path(path: Path) -> Path:
+    # Keep legacy raw caches untouched for compatibility/history. Their mtime
+    # alone cannot authenticate which URL/body was obtained, or a failed refresh.
+    return path.with_name(path.name + '.source-v1.json')
+
+
+def _json_source(url: str) -> str:
+    if url == SEC_REFERENCE_URL:
+        return 'sec'
+    match = re.fullmatch(r'https://data\.sec\.gov/api/xbrl/companyfacts/CIK([0-9]{10})\.json', url) if isinstance(url, str) else None
+    if match and int(match[1]) != 0:
+        return 'sec'
+    if url == WORLD_BANK_JSON_URL:
+        return 'world_bank'
+    raise PipelineError('PUBLIC_JSON_URL_UNADMITTED')
+
+
+def _strict_public_json(body: bytes) -> Any:
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError()
+            value[key] = item
+        return value
+    def constant(_):
+        raise ValueError()
+    def integer(token):
+        if len(token) > 1024:
+            raise ValueError()
+        return int(token)  # Exact; field-specific safe-value bounds remain downstream.
+    def number(token):
+        if len(token) > 1024:
+            raise ValueError()
+        parsed = float(token)
+        if not math.isfinite(parsed):
+            raise ValueError()
+        # Check the original decimal numeric value before losing its spelling.
+        # Decimal construction/comparison is exact, not binary-float expansion;
+        # 0.1/0.1000/1e-1 agree, while 1e-400 must not silently become zero.
+        # Invalid extreme exponents may signal: confine flags/traps locally.
+        with localcontext() as context:
+            context.traps[InvalidOperation] = True
+            try:
+                if Decimal(token) != Decimal(str(parsed)):
+                    raise PipelineError('PUBLIC_JSON_NUMBER_PRECISION_LOSS')
+            except InvalidOperation:
+                raise ValueError() from None
+        return parsed
+    try:
+        value = json.loads(body.decode('utf-8-sig'), object_pairs_hook=pairs, parse_constant=constant,
+                           parse_int=integer, parse_float=number)
+        json.dumps(value, allow_nan=False)
+        if not isinstance(value, (dict, list)):
+            raise ValueError()
+        return value
+    except (ValueError, UnicodeError, RecursionError):
+        raise PipelineError('PUBLIC_JSON_PAYLOAD_INVALID') from None
+
+
+def _source_time(text):
+    try:
+        if not isinstance(text, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z', text):
+            raise ValueError()
+        return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        raise PipelineError('PUBLIC_JSON_CACHE_INVALID') from None
+
+
+def _source_cache(path: Path, url: str, hours: int):
+    if not path.exists():
+        return None, None
+    try:
+        if not path.is_file() or path.stat().st_size > PUBLIC_JSON_MAX_BYTES * 2 + 8192:
+            raise ValueError()
+        doc = _strict_public_json(path.read_bytes())
+        if (not isinstance(doc, dict) or set(doc) != {'schema_version', 'url', 'attempt', 'last_success'}
+                or type(doc['schema_version']) is not int or doc['schema_version'] != 1 or doc['url'] != url):
+            raise ValueError()
+        attempt, success = doc['attempt'], doc['last_success']
+        if (not isinstance(attempt, dict) or set(attempt) != {'status', 'at', 'failure_code'}
+                or attempt['status'] not in ('PENDING', 'AVAILABLE', 'FAILED')):
+            raise ValueError()
+        stamp = _source_time(attempt['at']); now = utc_now()
+        if stamp > now:
+            raise ValueError()
+        code = attempt['failure_code']
+        if (attempt['status'] == 'FAILED' and (not isinstance(code, str) or not re.fullmatch(r'PUBLIC_JSON_[A-Z0-9_]{1,60}', code))
+                or attempt['status'] != 'FAILED' and code is not None):
+            raise ValueError()
+        value = None
+        if success is not None:
+            if (not isinstance(success, dict) or set(success) != {'retrieved_at', 'body_sha256', 'body_utf8'}
+                    or not isinstance(success['body_utf8'], str)):
+                raise ValueError()
+            raw = success['body_utf8'].encode('utf-8'); retrieved = _source_time(success['retrieved_at'])
+            if not 0 < len(raw) <= PUBLIC_JSON_MAX_BYTES or hashlib.sha256(raw).hexdigest() != success['body_sha256'] or retrieved > stamp:
+                raise ValueError()
+            value = _strict_public_json(raw)
+        if attempt['status'] == 'AVAILABLE':
+            if success is None or success['retrieved_at'] != attempt['at']:
+                raise ValueError()
+            if hours > 0 and 0 <= (now - stamp).total_seconds() <= hours * 3600:
+                return doc, value
+        # Pending/failed attempts never reuse the retained older success.
+        return doc, None
+    except (OSError, ValueError, TypeError, KeyError, PipelineError):
+        raise PipelineError('PUBLIC_JSON_CACHE_INVALID') from None
+
+
+def _save_source_cache(path: Path, value: dict) -> None:
+    try:
+        atomic_json(path, value)
+        if _strict_public_json(path.read_bytes()) != value:
+            raise ValueError()
+    except (OSError, ValueError, PipelineError):
+        raise PipelineError('PUBLIC_JSON_CACHE_WRITE_FAILED') from None
+
+
+def _public_request_headers(source: str, headers: Mapping[str, str]) -> dict[str, str]:
+    allowed = {'User-Agent', 'Accept', 'Accept-Encoding'} | ({'From'} if source == 'sec' else set())
+    if (not isinstance(headers, Mapping) or not set(headers) <= allowed
+            or not isinstance(headers.get('User-Agent'), str) or not headers['User-Agent']
+            or any(not isinstance(v, str) or not 0 < len(v) <= 512 or re.search(r'[^\x20-\x7e]', v) for v in headers.values())):
+        raise PipelineError('PUBLIC_JSON_HEADERS_UNADMITTED')
+    if source == 'sec':
+        contact = headers.get('From', '')
+        if not CONTACT_RE.fullmatch(contact) or contact not in headers['User-Agent']:
+            raise PipelineError('PUBLIC_JSON_SEC_CONTACT_REQUIRED')
+    return dict(headers)
+
+
+def _companyfacts_has_no_skipped_observations(value: Any) -> bool:
+    """Reject shapes the compatibility adapter would silently skip, not certify facts."""
+    if not isinstance(value, dict) or not isinstance(value.get('facts'), dict):
+        return False
+    for taxonomy in value['facts'].values():
+        if not isinstance(taxonomy, dict):
+            return False
+        for fact in taxonomy.values():
+            if not isinstance(fact, dict) or not isinstance(fact.get('units'), dict):
+                return False
+            for observations in fact['units'].values():
+                if not isinstance(observations, list):
+                    return False
+                for observation in observations:
+                    if not isinstance(observation, dict) or any(
+                        not isinstance(observation.get(key), str) or not observation[key].strip()
+                        for key in ('filed', 'end', 'accn', 'form')
+                    ):
+                        return False
+    return True
+
+
+def _public_payload(value, raw: bytes, url: str, contact: str) -> None:
+    if contact and (contact.casefold() in raw.decode('utf-8-sig').casefold()
+                    or contact.casefold() in json.dumps(value, ensure_ascii=False).casefold()):
+        raise PipelineError('PUBLIC_JSON_SENSITIVE_RESPONSE')
+    if url == SEC_REFERENCE_URL:
+        valid = (isinstance(value, dict) and set(value) == {'fields', 'data'}
+                 and value['fields'] == ['cik', 'name', 'ticker', 'exchange'] and isinstance(value['data'], list))
+    elif url == WORLD_BANK_JSON_URL:
+        try:
+            select_us_real_gdp_window(value, as_of_day=datetime.now(timezone.utc).date().isoformat())
+            valid = True
+        except AdapterError:
+            valid = False
+    else:
+        cik = value.get('cik') if isinstance(value, dict) else None
+        valid = (isinstance(value, dict) and set(value) == {'cik', 'entityName', 'facts'}
+                 and type(cik) in (str, int) and bool(re.fullmatch(r'[0-9]{1,10}', str(cik)))
+                 and str(cik).zfill(10) == url.rsplit('CIK', 1)[1][:-5]
+                 and isinstance(value['entityName'], str) and _companyfacts_has_no_skipped_observations(value))
+    if not valid:
+        raise PipelineError('PUBLIC_JSON_SOURCE_SHAPE_INVALID')
+
+
 def get_json(
     http: requests.Session,
     url: str,
@@ -214,33 +393,106 @@ def get_json(
     cache_path: Path,
     cache_hours: int,
     minimum_delay: float = 0.0,
+    receipt_sink: dict | None = None,
 ) -> Any:
-    value = cached(cache_path, cache_hours)
+    if receipt_sink is not None:
+        if type(receipt_sink) is not dict:
+            raise PipelineError('PUBLIC_JSON_RECEIPT_SINK_INVALID')
+        receipt_sink.clear()
+    source = _json_source(url)
+    outgoing = _public_request_headers(source, headers)
+    if (http.trust_env is not False or http.verify is not True or http.auth is not None
+            or http.proxies or http.headers or not isinstance(http.cookies.get_policy(), _NoPublicCookies)
+            or http.get_adapter(url).max_retries.total != 0
+            or type(getattr(http, '_public_json_blocked_sources', None)) is not set):
+        raise PipelineError('PUBLIC_JSON_SESSION_UNSAFE')
+    if source in http._public_json_blocked_sources:
+        raise PipelineError('PUBLIC_JSON_SOURCE_BLOCKED')
+    if (type(cache_hours) is not int or not 0 <= cache_hours <= 168
+            or type(minimum_delay) not in (int, float) or not 0 <= minimum_delay <= 10):
+        raise PipelineError('PUBLIC_JSON_POLICY_INVALID')
+    bound_path = public_json_cache_path(cache_path)
+    prior, value = _source_cache(bound_path, url, cache_hours)
+    if prior and prior['last_success']:
+        previous_raw = prior['last_success']['body_utf8'].encode('utf-8')
+        _public_payload(_strict_public_json(previous_raw), previous_raw, url, outgoing.get('From', ''))
     if value is not None:
+        if receipt_sink is not None:
+            receipt_sink.update(schema_version=1, request_url=url,
+                                body_sha256=prior['last_success']['body_sha256'],
+                                retrieved_at=prior['last_success']['retrieved_at'], retrieval_mode='BOUND_CACHE')
         return value
     if minimum_delay:
         time.sleep(minimum_delay)
-    response = http.get(url, headers=dict(headers), timeout=(10, 45))
-    if not 200 <= response.status_code < 300:
-        if response.status_code == 403 and "sec.gov" in url:
-            LOGGER.error(
-                "SEC fair-access request was rejected with HTTP 403; "
-                "no bypass will be attempted"
-            )
-        if cache_path.is_file():
-            try:
-                stale = json.loads(cache_path.read_text(encoding="utf-8"))
-                LOGGER.warning("HTTP %s; using stale cache for %s", response.status_code, url)
-                return stale
-            except (OSError, json.JSONDecodeError):
-                pass
-        raise PipelineError(f"HTTP {response.status_code}: {url}")
+    envelope = {'schema_version': 1, 'url': url,
+                'attempt': {'status': 'PENDING', 'at': iso_now(), 'failure_code': None},
+                'last_success': prior['last_success'] if prior else None}
+    # One mutable local envelope: pending before HTTP, available only after a
+    # successful bounded response. It is not a sealed/publication transaction.
+    _save_source_cache(bound_path, envelope)
+    response = None
+    http.cookies.clear()
     try:
-        value = response.json()
-    except ValueError as exc:
-        raise PipelineError(f"Non-JSON response: {url}") from exc
-    atomic_json(cache_path, value)
-    return value
+        response = http.get(url, headers=outgoing, timeout=(5, 20), allow_redirects=False, stream=True)
+        status = response.status_code
+        if type(status) is not int or not 100 <= status <= 599:
+            raise PipelineError('PUBLIC_JSON_HTTP_INVALID')
+        if status != 200:
+            if status in (403, 429):
+                http._public_json_blocked_sources.add(source)
+            raise PipelineError(f'PUBLIC_JSON_HTTP_{status}')
+        if response.url != url or response.history:
+            raise PipelineError('PUBLIC_JSON_REDIRECT_REJECTED')
+        if response.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':
+            raise PipelineError('PUBLIC_JSON_CONTENT_TYPE_INVALID')
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            if type(chunk) is not bytes:
+                raise PipelineError('PUBLIC_JSON_BODY_INVALID')
+            if len(body) + len(chunk) > PUBLIC_JSON_MAX_BYTES:
+                raise PipelineError('PUBLIC_JSON_TOO_LARGE')
+            body.extend(chunk)
+        raw = bytes(body)
+        if not raw:
+            raise PipelineError('PUBLIC_JSON_EMPTY')
+        value = _strict_public_json(raw)
+        _public_payload(value, raw, url, outgoing.get('From', ''))
+        received = iso_now()
+        envelope.update(attempt={'status': 'AVAILABLE', 'at': received, 'failure_code': None},
+                        last_success={'retrieved_at': received, 'body_sha256': hashlib.sha256(raw).hexdigest(), 'body_utf8': raw.decode('utf-8')})
+        _save_source_cache(bound_path, envelope)
+        if receipt_sink is not None:
+            receipt_sink.update(schema_version=1, request_url=url,
+                                body_sha256=envelope['last_success']['body_sha256'],
+                                retrieved_at=received, retrieval_mode='DIRECT_HTTP')
+        return value
+    except Exception as error:
+        known = {'PUBLIC_JSON_HTTP_INVALID', 'PUBLIC_JSON_REDIRECT_REJECTED',
+                 'PUBLIC_JSON_CONTENT_TYPE_INVALID', 'PUBLIC_JSON_BODY_INVALID', 'PUBLIC_JSON_TOO_LARGE',
+                 'PUBLIC_JSON_EMPTY', 'PUBLIC_JSON_PAYLOAD_INVALID', 'PUBLIC_JSON_NUMBER_PRECISION_LOSS',
+                 'PUBLIC_JSON_SENSITIVE_RESPONSE', 'PUBLIC_JSON_SOURCE_SHAPE_INVALID', 'PUBLIC_JSON_CACHE_WRITE_FAILED'}
+        candidate = error.args[0] if isinstance(error, PipelineError) and error.args else None
+        is_http = isinstance(candidate, str) and bool(re.fullmatch(r'PUBLIC_JSON_HTTP_[1-5][0-9]{2}', candidate))
+        code = candidate if isinstance(candidate, str) and (candidate in known or is_http) else 'PUBLIC_JSON_REQUEST_FAILED'
+        if code == 'PUBLIC_JSON_CACHE_WRITE_FAILED':
+            http._public_json_blocked_sources.add(source)
+        # Retain the prior success only as history, never as this attempt's value.
+        failed = {'schema_version': 1, 'url': url,
+                  'attempt': {'status': 'FAILED', 'at': iso_now(), 'failure_code': code},
+                  'last_success': prior['last_success'] if prior else None}
+        try:
+            _save_source_cache(bound_path, failed)
+        except PipelineError:
+            pass  # Do not mask the primary failure with a cache-write error.
+        raise PipelineError(code) from None
+    finally:
+        outgoing.clear()
+        http.cookies.clear()
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
 
 
 def validate_policy() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -341,7 +593,17 @@ def source_plan(policy: Mapping[str, Any], activation: Mapping[str, Any]) -> dic
     }
 
 
+def discovery_cache_path(policy: Mapping[str, Any]) -> Path:
+    # Never reuse a prior sector-biased seed list after changing discovery policy.
+    # Preserve legacy cache files; this is policy isolation, not source qualification.
+    basis = {"schema_version": 1, "candidate_screeners": policy["candidate_screeners"],
+             "per_screener_count": policy["per_screener_count"], "candidate_seed_limit": policy["candidate_seed_limit"]}
+    digest = hashlib.sha256(json.dumps(basis, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    return CACHE_ROOT / f"candidate_seed.{digest}.json"
+
+
 def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
+    cache_path = discovery_cache_path(policy)
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -376,7 +638,7 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
                 entry["market"] = dict(raw)
 
     if not merged:
-        value = cached(CACHE_ROOT / "candidate_seed.json", int(policy["candidate_cache_hours"]))
+        value = cached(cache_path, int(policy["candidate_cache_hours"]))
         if isinstance(value, list) and value:
             return [item for item in value if isinstance(item, dict)]
         raise PipelineError("All T3 candidate screeners failed: " + ", ".join(failures))
@@ -386,7 +648,7 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
         key=lambda item: (-float(item["screen_weight"]), str(item["ticker"])),
     )
     ranked = ranked[: int(policy["candidate_seed_limit"])]
-    atomic_json(CACHE_ROOT / "candidate_seed.json", ranked)
+    atomic_json(cache_path, ranked)
     return ranked
 
 
@@ -472,6 +734,10 @@ def validate_candidates(
 
 
 def validate_sec_adapter(raw: Any, url: str) -> list[dict[str, Any]]:
+    # The generic replay adapter stays compatible; this financial caller cannot
+    # turn an omitted malformed latest observation into an older valid cohort.
+    if not _companyfacts_has_no_skipped_observations(raw):
+        raise PipelineError('PUBLIC_JSON_SOURCE_SHAPE_INVALID')
     payload = (
         json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         + "\n"
@@ -483,7 +749,29 @@ def validate_sec_adapter(raw: Any, url: str) -> list[dict[str, Any]]:
         retrieved_at=iso_now(),
         context={"request_url": url},
     )
-    return [dict(x) for x in batch.records]
+    records = [dict(x) for x in batch.records]
+    for row in records:
+        if row.get('record_type') != 'company_fact':
+            continue
+        # The shared adapter emits canonical UTC-midnight instants from SEC's
+        # date-only wire values. Restore those dates at this metric boundary,
+        # not by clipping arbitrary timestamps or weakening the metric guard.
+        for field in ('start', 'end', 'filed'):
+            value = row.get(field)
+            if field == 'start' and value is None:
+                continue
+            if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T00:00:00\+00:00', value):
+                raise PipelineError('SEC_ADAPTER_METRIC_DATE_INVALID')
+            row[field] = value.removesuffix('T00:00:00+00:00')
+        # A Companyfacts URL is a collection, not one document: repeated
+        # periods in different accessions must not collapse to a false filing-
+        # date conflict. Keep source_request_url (the actual API) unchanged.
+        cik, accession = row.get('cik'), row.get('accession_number')
+        if (not isinstance(cik, str) or not re.fullmatch(r'[0-9]{10}', cik) or int(cik) == 0
+                or not isinstance(accession, str) or not re.fullmatch(r'[0-9]{10}-[0-9]{2}-[0-9]{6}', accession)):
+            raise PipelineError('SEC_ADAPTER_METRIC_LOCATOR_INVALID')
+        row['record_url'] = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/"
+    return records
 
 
 def sec_companyfacts(
@@ -491,7 +779,13 @@ def sec_companyfacts(
     policy: Mapping[str, Any],
     http: requests.Session,
     headers: Mapping[str, str],
+    *, receipt_sink: dict | None = None,
 ) -> list[dict[str, Any]]:
+    if receipt_sink is not None:
+        if type(receipt_sink) is not dict:
+            raise PipelineError('PUBLIC_JSON_RECEIPT_SINK_INVALID')
+        receipt_sink.clear()
+    received: dict[str, Any] = {}
     cik = str(candidate["official"]["cik"])
     url = str(policy["sec_companyfacts_url"]).format(cik=cik)
     raw = get_json(
@@ -499,12 +793,16 @@ def sec_companyfacts(
         url,
         headers=headers,
         cache_path=CACHE_ROOT / "companyfacts" / f"CIK{cik}.json",
-        cache_hours=24,
+        cache_hours=int(policy.get("sec_cache_hours", 2)),
         minimum_delay=float(policy["sec_minimum_interval_seconds"]),
+        receipt_sink=received,
     )
     if not isinstance(raw, dict):
         raise PipelineError(f"SEC companyfacts invalid for {candidate['ticker']}")
-    return validate_sec_adapter(raw, url)
+    records = validate_sec_adapter(raw, url)
+    if receipt_sink is not None and received:
+        receipt_sink.update(bind_company_receipt(received, cik=cik, records=records))
+    return records
 
 
 def latest_records(records: Sequence[Mapping[str, Any]], tag_names: Sequence[str]) -> list[dict[str, Any]]:
@@ -658,15 +956,16 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
     beta = market_value(market, "beta")
     short_float = ratio(market.get("shortPercentOfFloat"))
 
-    demand_fraction = (0.25 if contains(text, AI_WORDS) else 0.0)
+    # Discovery labels and an author's regime thesis cannot supply company
+    # evidence. Keep the existing revenue contribution, without a theme bonus.
+    demand_fraction = 0.0
     if rev is not None:
         demand_fraction += clamp((rev + 0.05) / 0.55, 0, 0.75)
     demand = round(int(weights["demand_wave"]) * clamp(demand_fraction, 0, 1))
 
-    choke_fraction = 0.60 if contains(text, CHOKE_WORDS) else 0.20 if contains(text, AI_WORDS) else 0.0
-    if gross is not None:
-        choke_fraction += clamp((gross - 0.25) / 0.50, 0, 0.25)
-    chokepoint = round(int(weights["chokepoint"]) * clamp(choke_fraction, 0, 1))
+    # This provisional caller has no admitted dependency/qualification graph.
+    # Margin and keyword proxies cannot establish scarcity before shortlisting.
+    chokepoint = 0
 
     pricing_fraction = 0.0
     if gross is not None:
@@ -675,12 +974,8 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
         pricing_fraction += clamp((operating + 0.05) / 0.40, 0, 0.35)
     pricing = round(int(weights["pricing_power"]) * clamp(pricing_fraction, 0, 1))
 
-    friction_fraction = 0.65 if contains(text, CHOKE_WORDS) else 0.20 if contains(text, AI_WORDS) else 0.0
-    if gross is not None and gross > 0.45:
-        friction_fraction += 0.20
-    if len(evidence) >= 3:
-        friction_fraction += 0.15
-    friction = round(int(weights["replacement_friction"]) * clamp(friction_fraction, 0, 1))
+    # Repetition and profitability are not switching/qualification evidence.
+    friction = 0
 
     capture_fraction = clamp(((rev or -0.05) + 0.05) / 0.55, 0, 1)
     tam = round(int(weights["tam_capture"]) * capture_fraction)
@@ -742,6 +1037,11 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
         "fit_score": min(100, max(domains.values(), default=0) * 20),
         "included_in_serenity_score": False,
         "attribution": "system_operationalization_not_aschenbrenner_stock_score",
+        "status": "DISCOVERY_ONLY",
+        "company_fact_authority": False,
+        "current_holdings_verified": False,
+        "thesis_published_at": None,
+        "scenario_adjustment": "UNAVAILABLE",
     }
 
     return {
@@ -812,32 +1112,23 @@ def synthetic_candidates() -> list[tuple[dict[str, Any], dict[str, Any], list[Ev
     return result
 
 
-def world_bank_context(policy: Mapping[str, Any], http: requests.Session) -> dict[str, Any]:
-    url = str(policy["world_bank_url"])
+def world_bank_context(policy: Mapping[str, Any], http: requests.Session, *, cache_path: Path | None = None) -> dict[str, Any]:
+    url = str(policy['world_bank_url'])
+    scope = {'schema_version': 1, 'source_id': 'world_bank_indicators', 'provider_scope': 'public_only',
+             'publication_eligible': False, 'source_lineage': 'world_bank_wdi_national_accounts_compilation'}
+    receipt = {}
     try:
-        raw = get_json(
-            http,
-            url,
-            headers={"User-Agent": "Investor Intelligence 2.1 public research"},
-            cache_path=CACHE_ROOT / "world_bank_gdp_growth.json",
-            cache_hours=24,
-        )
-    except PipelineError:
-        return {"source_id": "world_bank_indicators", "status": "DEGRADED"}
-    observations = raw[1] if isinstance(raw, list) and len(raw) >= 2 and isinstance(raw[1], list) else []
-    latest = next(
-        (item for item in observations if isinstance(item, dict) and finite(item.get("value")) is not None),
-        None,
-    )
-    if latest is None:
-        return {"source_id": "world_bank_indicators", "status": "DEGRADED"}
-    return {
-        "source_id": "world_bank_indicators",
-        "status": "HEALTHY",
-        "period": str(latest.get("date") or ""),
-        "value": finite(latest.get("value")),
-        "url": url,
-    }
+        raw = get_json(http, url, headers={'User-Agent': 'Investor Intelligence 2.1 public research'},
+                       cache_path=cache_path if cache_path is not None else CACHE_ROOT / 'world_bank_gdp_growth.json',
+                       cache_hours=24, receipt_sink=receipt)
+        selected = select_us_real_gdp_window(raw, as_of_day=datetime.now(timezone.utc).date().isoformat())
+    except (PipelineError, AdapterError) as error:
+        code = error.args[0] if error.args else None
+        safe = code if isinstance(code, str) and re.fullmatch(r'(?:PUBLIC_JSON_[A-Z0-9_]{1,60}|WORLD_BANK_US_GDP_WINDOW_INVALID)', code) else 'WORLD_BANK_CONTEXT_INVALID'
+        return {**scope, 'status': 'DEGRADED', 'failure_code': safe}
+    return {**scope, **selected, 'status': 'HEALTHY' if selected['value'] is not None else 'DEGRADED',
+            'url': url, 'source_acquisition': receipt}
+
 
 
 def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], macro: Mapping[str, Any], generated: str) -> str:
@@ -851,7 +1142,7 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
         "",
         "> 此排名為專案自訂 Serenity-first operationalization，不是 Serenity 本人公布公式、背書、個人化投資建議或報酬保證。Aschenbrenner A/B/C 為獨立 overlay，不加入 Serenity 分數。",
         "",
-        f"101-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
+        f"102-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
         f"World Bank macro context：{macro.get('status', 'DEGRADED')}",
         "",
         "## Top 20",
@@ -906,7 +1197,23 @@ def validate_top20(records: Sequence[Mapping[str, Any]]) -> None:
             raise PipelineError(f"Forbidden public field: {forbidden}")
 
 
-def run(*, synthetic: bool) -> dict[str, Any]:
+def public_output_paths(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Path]:
+    defaults = {'top20': TOP20_PATH, 'plan': PLAN_PATH, 'metadata': METADATA_PATH, 'report': REPORT_PATH}
+    if synthetic and output_root is None:
+        raise PipelineError('SYNTHETIC_OUTPUT_ROOT_REQUIRED')
+    if not synthetic and output_root is not None:
+        raise PipelineError('OUTPUT_ROOT_ONLY_FOR_SYNTHETIC')
+    if output_root is None:
+        return defaults
+    root = Path(output_root).resolve()
+    targets = {key: root / path.name for key, path in defaults.items()}
+    if any(target.resolve() == original.resolve() for target in targets.values() for original in defaults.values()):
+        raise PipelineError('SYNTHETIC_DEFAULT_OUTPUT_FORBIDDEN')
+    return targets
+
+
+def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
+    paths = public_output_paths(synthetic=synthetic, output_root=output_root)
     policy, activation = validate_policy()
     plan = source_plan(policy, activation)
     generated = iso_now()
@@ -974,41 +1281,43 @@ def run(*, synthetic: bool) -> dict[str, Any]:
     }
     report = build_report(top20, plan, macro, generated)
 
-    atomic_json(TOP20_PATH, top20)
-    atomic_json(PLAN_PATH, plan)
-    atomic_json(METADATA_PATH, metadata)
-    atomic_text(REPORT_PATH, report)
+    atomic_json(paths['top20'], top20)
+    atomic_json(paths['plan'], plan)
+    atomic_json(paths['metadata'], metadata)
+    atomic_text(paths['report'], report)
 
     return {
         "top20_count": len(top20),
         "catalog_count": plan["catalog_count"],
-        "top20_path": str(TOP20_PATH),
-        "source_plan_path": str(PLAN_PATH),
-        "report_path": str(REPORT_PATH),
+        "top20_path": str(paths['top20']),
+        "source_plan_path": str(paths['plan']),
+        "report_path": str(paths['report']),
         "macro_status": macro.get("status"),
     }
 
 
 def self_test() -> None:
-    output = run(synthetic=True)
-    if output["top20_count"] != 20 or output["catalog_count"] != 101:
-        raise PipelineError("Synthetic acceptance failed")
-    top = json.loads(TOP20_PATH.read_text(encoding="utf-8"))
-    if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):
-        raise PipelineError("Aschenbrenner overlay leaked into Serenity score")
+    with tempfile.TemporaryDirectory(prefix='ii-v21-self-test-') as temporary:
+        output = run(synthetic=True, output_root=Path(temporary))
+        if output["top20_count"] != 20 or output["catalog_count"] != 102:
+            raise PipelineError("Synthetic acceptance failed")
+        top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
+        if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):
+            raise PipelineError("Aschenbrenner overlay leaked into Serenity score")
     print("V21_SERENITY_ENGINE_SELF_TEST = PASS")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic", action="store_true")
+    parser.add_argument("--output-root", type=Path, help="Required non-default output directory for synthetic data only")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
         else:
-            print(json.dumps(run(synthetic=args.synthetic), ensure_ascii=False, indent=2))
+            print(json.dumps(run(synthetic=args.synthetic, output_root=args.output_root), ensure_ascii=False, indent=2))
         return 0
     except (PipelineError, OSError, ValueError, requests.RequestException) as exc:
         LOGGER.error("V2.1 Serenity engine failed: %s", exc)

@@ -190,9 +190,9 @@ def evidence_items(batch: ParsedBatch, *, registry_version: str) -> list[dict[st
                 canonical_url=str(record["record_url"]),
                 field_values=fields,
                 registry_version=registry_version,
-                published_at=str(record.get("last_update_date") or batch.retrieved_at),
-                as_of=str(record.get("last_update_date") or batch.retrieved_at),
-                revision_or_vintage=str(record.get("last_update_date") or batch.retrieved_at),
+                published_at=record.get("last_update_date"),
+                as_of=record.get("last_update_date"),
+                revision_or_vintage=record.get("last_update_date"),
             )
         )
     return result

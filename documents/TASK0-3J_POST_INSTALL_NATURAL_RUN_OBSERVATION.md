@@ -1,0 +1,56 @@
+# TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION
+
+## 目標
+讀取安裝後第一次合適的自然排程結果。只觀察，不製造新的執行。
+
+## 前置工作
+- OBSERVED_AT_UTC: 2026-09-19T03:54:47Z
+- OBSERVED_AT_TAIPEI: 2026-09-19T11:54:47+08:00
+- BACKUP_NAME_TIMESTAMP: 2026-09-19T03:41:31Z (保留為名稱資訊，不拿它證明安裝時序)
+- INSTALL_COMPLETED_AT: NOT_ESTABLISHED_FROM_AVAILABLE_RECORD
+- **POST_INSTALL_TIME_BOUND: 2026-09-19T03:54:47Z** (使用本次已讀回新 hash 的觀測時間作為保守篩選下界)
+- TIME_BOUND_BASIS: OBSERVED_INSTALLED_HASH_MATCH
+- OBSERVED_INSTALLED_SHA256: 66B25C0B0ED0732F6D28642C04D2B178249B1CE7E174DBF3BA434767D197F1F7 (matches accepted hash)
+
+## 排程狀態
+| Task | State | LastRunTime | LastTaskResult | NextRunTime |
+|------|-------|-------------|----------------|-------------|
+| MorningRefresh | Ready | 09/19/2026 07:20:01 | 1 (failure) | 09/20/2026 07:20:00 |
+| EveningRefresh | Ready | 09/18/2026 20:20:01 | 1 (failure) | **09/19/2026 20:20:00** (Taipei) = 12:20 UTC |
+
+## 分析
+- 安裝完成時間: NOT_ESTABLISHED_FROM_AVAILABLE_RECORD（備份檔名時間保留為名稱資訊，不拿它證明安裝時序）
+- POST_INSTALL_TIME_BOUND: 2026-09-19T03:54:47Z（使用本次已讀回新 hash 的觀測時間作為保守篩選下界）
+- EveningRefresh LastRunTime: 09/18/2026 20:20:01 (Taipei) = 2026-09-18T12:20:01Z (BEFORE install)
+- EveningRefresh NextRunTime: 09/19/2026 20:20:00 (Taipei) = 2026-09-19T12:20:00Z (AFTER install, **8 小時 25 分 13 秒** from observation time)
+- MorningRefresh LastRunTime: 09/19/2026 07:20:01 (Taipei) = 2026-09-18T23:20:01Z (BEFORE install)
+- MorningRefresh NextRunTime: 09/20/2026 07:20:00 (Taipei) = 2026-09-19T23:20:00Z (AFTER install, **19 小時 25 分 13 秒** from observation time)
+- 後續文件優先保留絕對時間，避免反覆使用會過期的「距現在多久」
+- NextRunTime 只是預定觸發時間，不是完成時間，也不保證屆時一定已有可讀的完成紀錄
+
+## 結論
+- **STATUS: WAITING_FOR_NATURAL_RUN**
+- 安裝後尚無新 run（EveningRefresh 和 MorningRefresh 的 LastRunTime 都在安裝之前）
+- 下一個自然 run: EveningRefresh at 2026-09-19T20:20:00 Taipei (12:20 UTC), **8 小時 25 分 13 秒** from observation time
+- 這是等待外部事件，不是需要再加一項研究或再問授權
+- 不新增 Windows 排程、不啟動背景監控、不忙等輪詢，也不為了保持工作進行而再次跑 full gate
+- 如果屆時仍在執行，記 RUNNING_AT_OBSERVATION；如果尚無新的完成紀錄，記 NO_NEW_COMPLETED_RUN_OBSERVED
+- 不能在 20:20 剛到時就因 receipt 尚未更新，立即判定發布故障或 diagnostic 缺失
+- 不停止 task、不手動重試，也不忙等輪詢
+
+## 未做
+- 未觸發新的 publication
+- 未啟動／停止／修改排程
+- 未觸 Cloudflare／KV／DO API
+- 未觸真 LINE、credentials、部署、rollback／reconcile
+- 未執行 production path
+- 未修改 fixture 或測試斷言
+- 未觸及其他 runtime 檔案
+- 未新增 Windows 排程
+- 未啟動背景監控
+- 未忙等輪詢
+
+## TASK_TRIGGERED_BY_THIS_TASK: false
+## RUNTIME_CHANGED_BY_THIS_TASK: false
+## CLOUD_API_CALLS_BY_THIS_TASK: 0
+## RAW_OUTPUT_PERSISTED: false

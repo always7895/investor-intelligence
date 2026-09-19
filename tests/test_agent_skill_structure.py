@@ -42,6 +42,28 @@ class AgentSkillStructureTests(unittest.TestCase):
                        'No third-party executable code installed or copied', 'HTTP 403'):
             self.assertIn(marker, text)
 
+    def test_dynamic_research_and_auxiliary_context_are_explicit(self):
+        skill = SKILL.read_text(encoding='utf-8')
+        self.assertIn('Serenity is the primary', skill)
+        self.assertIn('Leopold Aschenbrenner', skill)
+        self.assertIn('CONTEXT_ONLY', skill)
+        cross = (SKILL.parent / 'references/CROSS_VALIDATION.md').read_text(encoding='utf-8')
+        for marker in ('Do not reserve permanent capacity', 'point-in-time universes',
+                       'per-claim lineage counts', 'must not advance last-success time',
+                       'not an executed', 'HTTP403'):
+            self.assertIn(marker, skill + cross)
+
+    def test_entrypoints_and_current_status_stay_bounded(self):
+        for name, maximum in [('AGENTS.md', 6000),
+                              ('skills/serenity-public-research/SKILL.md', 4000),
+                              ('state/STATUS.md', 12000)]:
+            with self.subTest(name=name):
+                self.assertLessEqual((ROOT / name).stat().st_size, maximum)
+        self.assertTrue((ROOT / 'docs/WORKSPACE_MAINTENANCE.md').is_file())
+        status = (ROOT / 'state/STATUS.md').read_text(encoding='utf-8')
+        self.assertIn('git show 38860e7:state/STATUS.md', status)
+        self.assertIn('publication_eligible=false', status)
+
     def test_standalone_repository_has_safety_and_evidence_instructions(self):
         text = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
         for marker in ('explicit current-session authorization', 'no-Production-mutation',

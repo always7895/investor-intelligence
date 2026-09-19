@@ -26,15 +26,17 @@ Methodology posts may be durable. Ticker conviction, targets, customer maps, pos
 
 ### 1. Start with the system change, not the ticker
 
-Define the demand or architecture change: hyperscaler capex, CPO/SiPh, memory, power/grid, physical AI, qualification shift, regulation, or another structural transition.
+Define a dated system change: technology adoption, capital replacement, regulation, supply exit, resource availability, demographics, qualification requirements or another structural transition. Let current evidence determine the relevant industry; no sector or company is a permanent preferred seed.
 
-Ask which physical/economic constraint becomes binding: bandwidth, lasers, wafers, purity, yield, qualification, tools, lead time, grid connection, packaging, specialized know-how, or capital.
+Ask which physical/economic constraint becomes binding: effective productive capacity, critical inputs, quality/yield, approval or qualification, specialized know-how/labor, logistics, infrastructure, switching time or capital. Sector-specific examples explain a mechanism; they never restrict the search universe.
 
 ### 2. Map the value chain before ranking companies
 
 Trace at least:
 
-`end demand -> system/integrator -> module/subsystem -> device/chip -> process/packaging -> material/consumable -> equipment/infrastructure`
+`end demand -> delivered product/service -> system/workflow -> critical component/input -> production/qualification -> materials/skills -> equipment/infrastructure/logistics`
+
+Adapt the map to the industry rather than forcing every business into a semiconductor chain. Require dated evidence for each material dependency edge and for who can capture its economics.
 
 Rank **layers before tickers**. A strong company in a loose layer can rank below an average company sitting at a scarce layer.
 

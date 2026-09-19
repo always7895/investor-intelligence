@@ -37,7 +37,7 @@ jobs:
       ACTIVE_SCAN_APPLY_CHANGES: 'false'
       FREE_ONLY_MODE: 'true'
       PYTHONUTF8: '1'
-      EXPECTED_WORKER_LOCK_SHA256: '365ca38feb288fbed62bb5723303186e5e591c44b7d60b242e530db357535a57'
+      EXPECTED_WORKER_LOCK_SHA256: '640d639b2494cbcaba517b894259d38f157d3cd885a9881fd8ea25af02ff0904'
 
     steps:
       - name: Check out exact trusted revision

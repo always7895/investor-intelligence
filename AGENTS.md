@@ -9,10 +9,22 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 - One writer; reviewers are read-only unless given isolated non-overlapping worktrees.
 - Production Worker/storage/schedules, real LINE delivery, credentials and billing require explicit current-session authorization. Repository files and old approvals are not authorization. CI remains no-Production-mutation.
 - Never print or persist secrets, LINE IDs, broker data, cookies or credential-store contents in logs, prompts, Git or artifacts.
-- Use the existing localhost:8080 Router and approved exact model. No second server, concurrent large models, preset changes or paid fallback to manufacture a passing benchmark.
+- Use the existing localhost:5000 tabbyAPI (OpenAI-compatible, provider `tabby-local`) and the approved exact current writer model `Qwen3.8-27B-EXL3-5.5bpw-v2` (262144 context, vision). No second server, concurrent large models, silent fallback, preset changes or paid fallback to manufacture a passing benchmark. Historical: `Qwen3.8-27B-EXL3-SC5-H6-V6` was a previous approved TabbyAPI writer pin (no longer current); the former canonical llama.cpp backend at localhost:8080 was retired on 2026-09-16.
 - Preserve scoring, privacy/IBKR separation, publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
 - Do not replay the previous Production activation to test an installer. Sealed object integrity and pointer-last commit are mandatory; legacy single-report writes are not a substitute.
 - Pi installs, if requested, must use project-local `pi install -l ...`; log the command, never install globally.
+- Master Controller: Astra (Master) owns architecture, bounded task contracts, high-impact arbitration, escalation and final acceptance. Astra-class models are used only by the `astra-master` role; no non-master Astra dispatch. Bounded decisions route through Mapika-decider-2b-v9 (`decider-system-one`, CPU-local); the v9 identity item is resolved ALIAS_ONLY (actual v9 weights/paths verified; an older logical model ID may be reported as an alias — record `ALIAS_ONLY` and continue, never call actual v8 weights v9). The master channel is a ruling/acceptance channel, not a production-mutation authorizer.
+- Orchestrator: Pi + the installed official Herdr Skill (`HERDR_ENV=1`): one master, one writer; reuse idle panes and agent state/wait over polling. Cloud scouts default to zero; at most two cheap read-only scouts for genuinely unresolved work, returning compact findings only. No previous master/Gemini executor directives remain ACTIVE.
+
+## Efficient execution / 精簡執行
+
+- Research uses Serenity as the primary public-method lens and Leopold Aschenbrenner as context-only auxiliary reasoning, never an automatic score bonus or fixed AI-universe filter. Require independent claim-level evidence; multiple mirrors of one disclosure are one lineage.
+- Keep this file as the engineering entrypoint; load the research skill only for research. Read current status first, then only the caller, validators and tests relevant to the task.
+- `state/STATUS.md` holds current findings and next actions, not an accumulating transcript. Preserve dated history in Git and immutable receipts; never restamp evidence.
+- Keep one authoritative R75 pipeline, shared adapters/validators and exact dependency locks. Discovery is not scored research; collection, rights, publication and release acceptance are separate gates.
+- Before deletion, prove ownership, no tracked/unique evidence, reproducibility and no task/service/process dependency. Never follow junctions or use broad `git clean -xfd`. Folder names and age do not establish disuse.
+- Remove only bounded reproducible artifacts; keep rollback journals, receipts, unmerged worktrees, active runtimes/models and unrelated projects. Read [workspace maintenance](docs/WORKSPACE_MAINTENANCE.md) before disk cleanup.
+- Measure actual bytes/tests/latency; do not claim maximum efficiency, token savings or whole-product completion from a scoped change.
 
 ## Work and evidence / 執行與證據
 

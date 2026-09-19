@@ -62,17 +62,15 @@ export async function getOwnerPushTarget(env: StorageEnv): Promise<OwnerPushTarg
   if (!TENANT_ID_RE.test(tenantId)) return null;
   const epoch = await tenantWriteEpoch(env, tenantId);
   const encrypted = await env.TENANT_PRIVATE_CACHE.get(targetKey(tenantId, epoch));
-  if (!encrypted) {
-    await env.TENANT_PRIVATE_CACHE.delete(OWNER_POINTER_KEY);
-    return null;
-  }
+  // A lookup failure is not an unpair instruction. A stale/missing read must
+  // not erase the binding, including a pointer changed by another operation.
+  if (!encrypted) return null;
   const target = await decryptTenantJson<EncryptedOwnerTarget>(
     tenantId,
     encrypted,
     tenantDataEncryptionKey(env),
   );
   if (!target || !LINE_USER_ID_RE.test(target.lineUserId) || !Number.isFinite(Date.parse(target.pairedAt))) {
-    await env.TENANT_PRIVATE_CACHE.delete(OWNER_POINTER_KEY);
     return null;
   }
   return { tenantId, lineUserId: target.lineUserId, pairedAt: target.pairedAt };

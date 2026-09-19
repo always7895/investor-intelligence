@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,16 @@ class V21OwnerLineDeliveryTests(unittest.TestCase):
     def test_repository_passes_v21_delivery_gate(self) -> None:
         gate = load("scripts/v21_owner_line_delivery_gate.py", "v21_owner_line_gate")
         self.assertEqual(gate.audit_repository(), [])
+
+    def test_reviewed_storage_migration_never_admits_legacy_reader_or_arbitrary_drift(self):
+        gate = load('scripts/v21_owner_line_delivery_gate.py', 'reviewed_owner_storage_gate')
+        self.assertEqual(gate.LEGACY_GIT_BLOBS['cloud/src/storage.ts'], '5dac013712df2bea6dfcea9edecb71d31f22e43d')
+        actual = gate.git_blob
+        for changed in ('cloud/src/storage.ts', 'cloud/src/qa.ts', 'cloud/src/worker.ts'):
+            for digest in ('ac4d67ed800e95bf4003c072f2c4def21603b013', '0' * 40):
+                with self.subTest(changed=changed, digest=digest):
+                    with patch.object(gate, 'git_blob', side_effect=lambda path: digest if path == changed else actual(path)):
+                        self.assertTrue(any(changed + ': reviewed compatibility blob changed' in x for x in gate.audit_repository()))
 
     def test_snapshot_builder_self_test(self) -> None:
         builder = load("scripts/build_v21_public_snapshot.py", "v21_public_snapshot_builder")
