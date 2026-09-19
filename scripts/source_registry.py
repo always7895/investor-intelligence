@@ -12,17 +12,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import tempfile
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from adapters.base import ParsedBatch, canonical_json, schema_fingerprint
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_DIR = BASE_DIR / "config" / "sources"
 DEFAULT_POLICY_PATH = DEFAULT_SOURCE_DIR / "registry-policy.json"
+DEFAULT_CLAIM_POLICY_PATH = BASE_DIR / "config" / "source-claim-coverage-policy.json"
+DEFAULT_FEDERATION_POLICY_PATH = BASE_DIR / "config" / "v213-source-federation-policy.json"
 DEFAULT_OUTPUT_PATH = BASE_DIR / "data" / "cache" / "source_registry_latest.json"
 
 SOURCE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
@@ -582,6 +588,589 @@ def coverage_ledger(registry: Registry) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Semantic core: capability states, claim routing, evidence qualification,
+# and derived lane coverage. Pure helpers over the existing registry and
+# additive policy descriptors; no new pipeline, no scoring/rank changes.
+# ---------------------------------------------------------------------------
+
+CAPABILITY_STATES = (
+    "PUBLIC",
+    "PUBLIC_LIMITED",
+    "OPTIONAL_KEY",
+    "AUTH_REQUIRED",
+    "PREMIUM_ONLY",
+    "RATE_LIMITED",
+    "TEMP_UNAVAILABLE",
+    "UNSUPPORTED",
+)
+
+DECLARED_ACCESS_STATES = ("free", "key", "auth", "premium")
+OBSERVED_HEALTH_STATES = (
+    "ok",
+    "http_429",
+    "transport_failure",
+    "forbidden",
+    "payment_prompted",
+)
+_FETCHABLE_ADAPTER_STATUSES = {"implemented"}
+
+
+def _utc_datetime(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise SourceRegistryError(f"invalid UTC timestamp: {value!r}") from exc
+    if parsed.tzinfo is None:
+        raise SourceRegistryError(f"timestamp must carry a UTC offset: {value!r}")
+    return parsed.astimezone(timezone.utc)
+
+
+def classify_capability(
+    source: SourceDefinition,
+    *,
+    declared_access: str | None = None,
+    observed_health: str | None = None,
+) -> str:
+    """Map one source to an exact capability state.
+
+    Declared access (catalog/metadata) and observed health (live signal) are
+    separate strict inputs. ``free_access_required`` is an admission policy
+    flag, NOT evidence that authentication is required; trust tier is not
+    public availability; request budgets are not observed 429s.
+    """
+    if declared_access is not None and declared_access not in DECLARED_ACCESS_STATES:
+        raise SourceRegistryError(f"unknown declared_access state: {declared_access!r}")
+    if observed_health is not None and observed_health not in OBSERVED_HEALTH_STATES:
+        raise SourceRegistryError(f"unknown observed_health state: {observed_health!r}")
+    if observed_health == "http_429":
+        return "RATE_LIMITED"
+    if observed_health == "transport_failure":
+        return "TEMP_UNAVAILABLE"
+    if observed_health == "forbidden":
+        # Forbidden stays unavailable; never silently downgrade to PUBLIC.
+        return "AUTH_REQUIRED"
+    if observed_health == "payment_prompted":
+        return "PREMIUM_ONLY"
+    if source.payment_required:
+        return "PREMIUM_ONLY"
+    if source.adapter_status not in _FETCHABLE_ADAPTER_STATUSES:
+        return "UNSUPPORTED"
+    if declared_access == "premium":
+        return "PREMIUM_ONLY"
+    if declared_access == "auth":
+        return "AUTH_REQUIRED"
+    if declared_access == "key":
+        # Metadata only: never read the key itself.
+        return "OPTIONAL_KEY"
+    # Free public source: bounded by design when the catalog declares a
+    # per-host request budget (declared limit, not an observed 429).
+    if source.per_host_concurrency <= 1 or source.minimum_request_interval_seconds > 0:
+        return "PUBLIC_LIMITED"
+    return "PUBLIC"
+
+
+def _policy_object(policy: Mapping[str, Any], key: str) -> dict[str, Any]:
+    value = policy.get(key)
+    if not isinstance(value, dict):
+        raise SourceRegistryError(f"policy must define an object for {key!r}")
+    return value
+
+
+def _authority_order(sources: Iterable[SourceDefinition]) -> list[SourceDefinition]:
+    return sorted(
+        sources,
+        key=lambda source: (TRUST_RANK[source.trust_tier], -source.priority, source.source_id),
+    )
+
+
+def _strict_int(value: Any, name: str) -> int:
+    # Centralized minima validation: type int (not bool) AND >= 1. Missing
+    # fields (None) fail closed; permissive minima are never manufactured.
+    if type(value) is not int or value < 1:
+        raise SourceRegistryError(f"{name} must be an int >= 1 (bool/float/missing rejected)")
+    return value
+
+
+def route_claim(
+    registry: Registry,
+    claim_kind: str,
+    policy: Mapping[str, Any],
+    *,
+    runtime_only: bool = True,
+    federation_policy: Mapping[str, Any] | None = None,
+    capability_facts: Mapping[str, Mapping[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Route one claim kind to candidate sources and requirements.
+
+    Reuses ``select_sources`` and ``TRUST_RANK`` with a deterministic
+    source-id tiebreak. Candidate count is evidence coverage, never a
+    score/rank boost. Catalog inspection (``runtime_only=False``) lists
+    disabled providers but does not qualify them.
+    """
+    families = _policy_object(policy, "claim_families")
+    if claim_kind not in families:
+        raise SourceRegistryError(f"unknown claim kind: {claim_kind!r}")
+    family = families[claim_kind]
+    if not isinstance(family, dict):
+        raise SourceRegistryError(f"claim family {claim_kind!r} must be an object")
+    semantics_map = _policy_object(policy, "claim_family_semantics")
+    semantics = semantics_map.get(claim_kind)
+    if not isinstance(semantics, dict):
+        raise SourceRegistryError(f"claim family {claim_kind!r} lacks semantic descriptors")
+    if not semantics.get("evidence_roles") and not semantics.get("authority_classes"):
+        raise SourceRegistryError(
+            f"claim family {claim_kind!r} descriptor filters are blank; refusing to match all sources"
+        )
+    candidates = _authority_order(
+        select_sources(
+            registry,
+            evidence_roles=tuple(semantics.get("evidence_roles") or ()),
+            authority_classes=tuple(semantics.get("authority_classes") or ()),
+            runtime_only=runtime_only,
+        )
+    )
+    # Declared capability per candidate (metadata only; no live probing, no keys).
+    # Optional per-source capability facts (strict declared/observed inputs, same
+    # classifier, no string-state bypass) may refine the declared state.
+    available: list[str] = []
+    unavailable: dict[str, str] = {}
+    for source in candidates:
+        fact: Mapping[str, str] = {}
+        if capability_facts is not None:
+            raw_fact = capability_facts.get(source.source_id)
+            if raw_fact is not None and not isinstance(raw_fact, Mapping):
+                raise SourceRegistryError(f"capability fact for {source.source_id!r} must be a mapping")
+            fact = raw_fact if isinstance(raw_fact, Mapping) else {}
+        declared = fact.get("declared_access")
+        if declared is not None and declared not in DECLARED_ACCESS_STATES:
+            raise SourceRegistryError(f"malformed declared_access fact: {declared!r}")
+        health = fact.get("observed_health")
+        if health is not None and health not in OBSERVED_HEALTH_STATES:
+            raise SourceRegistryError(f"malformed observed_health fact: {health!r}")
+        state = classify_capability(source, declared_access=declared, observed_health=health)
+        if state in ("PUBLIC", "PUBLIC_LIMITED"):
+            available.append(source.source_id)
+        else:
+            unavailable[source.source_id] = state
+    retrieval_bounds = [
+        value
+        for value in (activation_max_age(federation_policy) if federation_policy is not None else None,)
+        if value is not None
+    ]
+    source_bounds = [s.freshness_seconds for s in candidates if s.freshness_seconds is not None]
+    applicable = retrieval_bounds + source_bounds
+    return {
+        "claim_kind": claim_kind,
+        "catalog_inspection_only": not runtime_only,
+        "candidate_sources": [s.source_id for s in candidates],
+        "authority_order": [s.source_id for s in candidates],
+        "freshness_requirement": {
+            # Retrieval TTL ceiling: the stricter applicable bound (federation
+            # activation-gate ceiling vs per-source catalog freshness). This is
+            # a retrieval-freshness bound, not the source observation clock or
+            # its expected publication period.
+            "retrieval_max_age_seconds": min(applicable) if applicable else None,
+            "activation_gate_ceiling_seconds": (
+                activation_max_age(federation_policy) if federation_policy is not None else None
+            ),
+            "per_source_freshness_seconds": {
+                s.source_id: s.freshness_seconds for s in candidates if s.freshness_seconds is not None
+            },
+            "source_observation_clock": "catalog freshness_seconds describes source cadence, not a retrieval TTL",
+        },
+        "minimum_lineages": {
+            "minimum_primary_sources": _strict_int(
+                family.get("minimum_primary_sources"), "minimum_primary_sources"
+            ),
+            "minimum_independent_groups": _strict_int(
+                family.get("minimum_independent_groups"), "minimum_independent_groups"
+            ),
+        },
+        "fallback_chain": {
+            # Derived from healthy route candidates in authority order (not a
+            # second hardcoded list); unavailable candidates are reported as
+            # diagnostics and excluded.
+            "source_ids": available,
+            "unavailable_diagnostics": unavailable,
+            "governed_by": "v213-source-federation-policy.json required_live_sources",
+        },
+    }
+
+
+def activation_max_age(policy: Mapping[str, Any]) -> int | None:
+    gate = policy.get("activation_gate")
+    if not isinstance(gate, dict):
+        return None
+    value = gate.get("federation_snapshot_max_age_seconds")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def coverage_lanes(registry: Registry, policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive the nine advertised lanes from CURRENT registry metadata.
+
+    Inventory projection only: presence here is NOT proof of lane
+    availability or publication eligibility.
+    """
+    lanes = _policy_object(policy, "lane_semantics")
+    result: dict[str, Any] = {}
+    for lane in sorted(lanes):
+        spec = lanes[lane]
+        if not isinstance(spec, dict):
+            raise SourceRegistryError(f"lane {lane!r} must be an object")
+        sources = select_sources(
+            registry,
+            evidence_roles=tuple(spec.get("evidence_roles") or ()),
+            authority_classes=tuple(spec.get("authority_classes") or ()),
+            runtime_only=False,
+        )
+        present = bool(sources)
+        result[lane] = {
+            "present": present,
+            "explicit_missing": not present,
+            "source_count": len(sources),
+            "source_ids": sorted(s.source_id for s in sources),
+        }
+    return result
+
+
+def _finite_value(value: Any) -> bool:
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (int, float)):
+        return math.isfinite(value)
+    return False
+
+
+def qualify_claim_evidence(
+    registry: Registry,
+    claim_kind: str,
+    policy: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    now: str,
+    expected_subject: Mapping[str, Any] | None = None,
+    federation_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Qualify explicit original observations for one claim kind.
+
+    Accepts validated ``ParsedBatch`` instances (existing adapter contract,
+    reused unchanged) plus explicit ``data_origin_lineage`` / ``transport_lineage``
+    metadata. Only fully valid origins are counted; mirror equivalence is the
+    union of same origin publisher group / same disclosure id / same content
+    hash (order-independent); transport is recorded but never counted.
+    ``publication_eligible`` is always False.
+    """
+    if not isinstance(expected_subject, Mapping) or not expected_subject:
+        raise SourceRegistryError("expected_subject is mandatory (non-empty mapping)")
+    now_dt = _utc_datetime(now)
+    families = _policy_object(policy, "claim_families")
+    if claim_kind not in families:
+        raise SourceRegistryError(f"unknown claim kind: {claim_kind!r}")
+    family = families[claim_kind]
+    required_fields = tuple(family.get("required_fields") or ())
+    if "period" in required_fields and "period" not in expected_subject:
+        raise SourceRegistryError("expected_subject must bind the required period")
+    semantics_map = _policy_object(policy, "claim_family_semantics")
+    semantics = semantics_map.get(claim_kind)
+    if not isinstance(semantics, dict):
+        raise SourceRegistryError(f"claim family {claim_kind!r} lacks semantic descriptors")
+    binding_fields = tuple(semantics.get("subject_binding_fields") or ())
+    for binding_field in binding_fields:
+        if binding_field not in expected_subject:
+            raise SourceRegistryError(
+                f"expected_subject must bind the family subject field {binding_field!r}"
+            )
+    by_id = registry.by_id()
+    ceiling = activation_max_age(federation_policy) if federation_policy is not None else None
+    route = route_claim(
+        registry, claim_kind, policy, runtime_only=True, federation_policy=federation_policy
+    )
+    candidate_ids = set(route["candidate_sources"])
+
+    valid: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+
+    def reject(index: int, reason: str) -> None:
+        rejected.append({"observation_index": index, "reason": reason})
+
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, Mapping):
+            reject(index, "observation must be a mapping")
+            continue
+        batch = observation.get("parsed_batch")
+        if not isinstance(batch, ParsedBatch):
+            reject(index, "parsed_batch must be a validated ParsedBatch")
+            continue
+        if not isinstance(batch.records, tuple) or not batch.records or not all(
+            isinstance(record, Mapping) for record in batch.records
+        ):
+            reject(index, "batch records must be a non-empty tuple of mappings")
+            continue
+        if type(batch.record_count) is not int or batch.record_count != len(batch.records):
+            reject(index, "batch record_count must be an int matching the record count")
+            continue
+        if not isinstance(batch.content_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", batch.content_sha256):
+            reject(index, "content_sha256 must be a 64-hex hash")
+            continue
+        if not isinstance(batch.schema_sha256, str) or batch.schema_sha256 != schema_fingerprint(batch.records):
+            reject(index, "schema_sha256 does not match the recomputed schema fingerprint")
+            continue
+        source = by_id.get(batch.source_id)
+        if source is None:
+            reject(index, "unknown or unregistered source_id")
+            continue
+        if not source.runtime_enabled:
+            reject(index, "source is not runtime-enabled (registration is not success)")
+            continue
+        if source.source_id not in candidate_ids:
+            reject(index, "source is not a route candidate for this claim")
+            continue
+        origin = observation.get("data_origin_lineage")
+        if not isinstance(origin, Mapping):
+            reject(index, "missing data_origin_lineage lineage")
+            continue
+        publisher = origin.get("publisher_identity")
+        # The origin publisher IS the batch source; transport describes the
+        # fetch path only and never re-attributes origin authority.
+        if publisher != batch.source_id:
+            reject(index, "origin publisher does not match the batch source")
+            continue
+        if publisher not in by_id:
+            reject(index, "origin publisher does not resolve to a registered source")
+            continue
+        group = origin.get("independence_group")
+        if not isinstance(group, str) or group != by_id[publisher].independence_group:
+            reject(index, "origin group contradicts the registered publisher identity")
+            continue
+        disclosure_id = origin.get("original_disclosure_id")
+        if not isinstance(disclosure_id, str) or not disclosure_id.strip():
+            reject(index, "missing original disclosure/event id")
+            continue
+        transport = observation.get("transport_lineage")
+        if not isinstance(transport, Mapping):
+            reject(index, "missing transport_lineage")
+            continue
+        if transport.get("fetch_source") != batch.source_id:
+            reject(index, "transport fetch_source does not match the batch source")
+            continue
+        path = transport.get("path")
+        if not isinstance(path, str):
+            reject(index, "transport path must be a valid HTTPS path")
+            continue
+        try:
+            canonical_path = canonicalize_url(path)
+        except SourceRegistryError:
+            reject(index, "transport path failed canonical URL validation")
+            continue
+        if urlsplit(canonical_path).scheme != "https" or not urlsplit(canonical_path).netloc:
+            reject(index, "transport path must be a host-bound HTTPS URL")
+            continue
+        http_status = observation.get("http_status")
+        if type(http_status) is not int or http_status != 200:
+            reject(index, "no actual HTTP 200 (bool or non-200 is not success)")
+            continue
+        declared_access = observation.get("declared_access")
+        if declared_access not in DECLARED_ACCESS_STATES:
+            reject(index, f"malformed declared_access state: {declared_access!r}")
+            continue
+        observed_health = observation.get("observed_health")
+        if observed_health is not None and observed_health not in OBSERVED_HEALTH_STATES:
+            reject(index, f"malformed observed_health state: {observed_health!r}")
+            continue
+        capability = classify_capability(
+            source, declared_access=declared_access, observed_health=observed_health
+        )
+        if capability not in ("PUBLIC", "PUBLIC_LIMITED"):
+            reject(index, f"capability {capability} does not qualify")
+            continue
+        records_ok = True
+        for record in batch.records:
+            for field in required_fields:
+                if not _finite_value(record.get(field)):
+                    reject(index, f"missing or non-finite required field: {field}")
+                    records_ok = False
+                    break
+            if not records_ok:
+                break
+        if not records_ok:
+            continue
+        as_of = observation.get("as_of")
+        if not isinstance(as_of, str):
+            reject(index, "missing as_of clock")
+            continue
+        try:
+            as_of_dt = _utc_datetime(as_of)
+        except SourceRegistryError:
+            reject(index, "invalid as_of clock (UTC timezone required)")
+            continue
+        try:
+            retrieved_dt = _utc_datetime(batch.retrieved_at)
+        except SourceRegistryError:
+            reject(index, "invalid batch.retrieved_at clock (UTC timezone required)")
+            continue
+        if as_of_dt > now_dt:
+            reject(index, "as_of is in the future")
+            continue
+        if retrieved_dt > now_dt:
+            reject(index, "batch.retrieved_at is in the future")
+            continue
+        bounds = [value for value in (source.freshness_seconds, ceiling) if value is not None]
+        if not bounds:
+            reject(index, "no applicable TTL bound; refusing unbounded age")
+            continue
+        ttl = min(bounds)
+        if (now_dt - as_of_dt).total_seconds() > ttl:
+            reject(index, "as_of is stale beyond the applicable TTL")
+            continue
+        if (now_dt - retrieved_dt).total_seconds() > ttl:
+            reject(index, "batch.retrieved_at is stale beyond the applicable TTL")
+            continue
+        subject = observation.get("subject")
+        if not isinstance(subject, Mapping) or not subject:
+            reject(index, "missing subject binding")
+            continue
+        subject_ok = True
+        for key, expected in expected_subject.items():
+            if subject.get(key) != expected:
+                reject(index, f"subject binding mismatch for {key!r}")
+                subject_ok = False
+                break
+        if not subject_ok:
+            continue
+        # Every expected binding key must be present in EACH record with the
+        # expected value; metadata alone never qualifies. Records must be
+        # finite canonical JSON.
+        for record in batch.records:
+            try:
+                canonical_json(record)
+            except (ValueError, TypeError, RecursionError):
+                reject(index, "record is not finite canonical JSON")
+                subject_ok = False
+                break
+            for key, expected in expected_subject.items():
+                if key not in record or record[key] != expected:
+                    reject(index, f"record does not bind expected subject {key!r}")
+                    subject_ok = False
+                    break
+            if not subject_ok:
+                break
+        if not subject_ok:
+            continue
+        valid.append(
+            {
+                "observation_index": index,
+                "source_id": batch.source_id,
+                "trust_tier": source.trust_tier,
+                "independence_group": group,
+                "original_disclosure_id": disclosure_id,
+                "content_sha256": batch.content_sha256,
+                # Transport describes the fetch source/path only; it is never
+                # counted as independence.
+                "transport": {"fetch_source": transport.get("fetch_source"), "path": path},
+                "records": batch.records,
+            }
+        )
+
+    # Mirror equivalence: union of same origin publisher group / same
+    # publisher-qualified disclosure id / same content hash, independent of
+    # input order. A bare local disclosure id is never cross-publisher.
+    parent = list(range(len(valid)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        root_i, root_j = find(i), find(j)
+        if root_i != root_j:
+            parent[root_j] = root_i
+
+    for key in ("independence_group", "content_sha256"):
+        buckets: dict[Any, list[int]] = {}
+        for i, entry in enumerate(valid):
+            buckets.setdefault(entry[key], []).append(i)
+        for indices in buckets.values():
+            for other in indices[1:]:
+                union(indices[0], other)
+    disclosure_buckets: dict[Any, list[int]] = {}
+    for i, entry in enumerate(valid):
+        disclosure_buckets.setdefault(
+            (entry["independence_group"], entry["original_disclosure_id"]), []
+        ).append(i)
+    for indices in disclosure_buckets.values():
+        for other in indices[1:]:
+            union(indices[0], other)
+
+    classes = {find(i) for i in range(len(valid))}
+    primary_classes = {
+        find(i) for i, entry in enumerate(valid) if entry["trust_tier"] == "T1_PRIMARY_OFFICIAL"
+    }
+    # Minima use mirror-collapsed classes, not raw group counts; at least one
+    # fully valid observation is an explicit invariant (empty evidence denies).
+    minimum_primary = _strict_int(family.get("minimum_primary_sources"), "minimum_primary_sources")
+    minimum_groups = _strict_int(family.get("minimum_independent_groups"), "minimum_independent_groups")
+    conflict = _material_conflict(valid, required_fields)
+    qualified = (
+        not conflict
+        and len(valid) >= 1
+        and len(primary_classes) >= minimum_primary
+        and len(classes) >= minimum_groups
+    )
+    return {
+        "qualified": qualified,
+        "evidence_qualified": qualified,
+        "claim_kind": claim_kind,
+        "valid_origins": len(classes),
+        "primary_origins": len(primary_classes),
+        "independent_groups": len(classes),
+        "independent_group_ids": sorted({entry["independence_group"] for entry in valid}),
+        "material_conflict": conflict,
+        "minimum_primary_sources": minimum_primary,
+        "minimum_independent_groups": minimum_groups,
+        "rejected": rejected,
+        "valid": [
+            {
+                "observation_index": entry["observation_index"],
+                "source_id": entry["source_id"],
+                "independence_group": entry["independence_group"],
+                "original_disclosure_id": entry["original_disclosure_id"],
+                "content_sha256": entry["content_sha256"],
+                "transport": entry["transport"],
+            }
+            for entry in valid
+        ],
+        # Local semantic evidence assessment only; downstream admission gates
+        # still apply. Never flip to True here.
+        "publication_eligible": False,
+    }
+
+
+def _material_conflict(valid: Sequence[Mapping[str, Any]], required_fields: tuple[str, ...]) -> bool:
+    """Any conflicting material scalar values across independent groups in the
+    same claim scope conflict; a shared value cannot mask the conflict. One
+    group holding multiple values (e.g. multiple periods) is not by itself a
+    cross-group conflict."""
+    if len(valid) < 2:
+        return False
+    for field in required_fields:
+        value_groups: dict[Any, set[str]] = {}
+        for entry in valid:
+            for record in entry["records"]:
+                value = record.get(field)
+                if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+                    value_groups.setdefault(value, set()).add(entry["independence_group"])
+        if len(value_groups) >= 2 and len(set().union(*value_groups.values())) >= 2:
+            return True
+    return False
+
+
 def atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -612,11 +1201,14 @@ def main() -> int:
         description="Validate and query the unbounded authoritative source registry"
     )
     parser.add_argument(
-        "command", choices=("validate", "summary", "coverage", "write-normalized")
+        "command", choices=("validate", "summary", "coverage", "route", "write-normalized")
     )
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
+    parser.add_argument("--claim-kind", default=None)
+    parser.add_argument("--include-catalog", action="store_true")
+    parser.add_argument("--lanes", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -640,7 +1232,38 @@ def main() -> int:
     elif args.command == "summary":
         print(json.dumps(registry.summary(), ensure_ascii=False, indent=2))
     elif args.command == "coverage":
-        print(json.dumps(coverage_ledger(registry), ensure_ascii=False, indent=2))
+        if args.lanes:
+            claim_policy = load_json(DEFAULT_CLAIM_POLICY_PATH)
+            print(
+                json.dumps(
+                    {
+                        "ledger": coverage_ledger(registry),
+                        "lanes": coverage_lanes(registry, claim_policy),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(json.dumps(coverage_ledger(registry), ensure_ascii=False, indent=2))
+    elif args.command == "route":
+        if not args.claim_kind:
+            print("SOURCE_REGISTRY_INVALID: route requires --claim-kind")
+            return 1
+        claim_policy = load_json(DEFAULT_CLAIM_POLICY_PATH)
+        federation_policy = load_json(DEFAULT_FEDERATION_POLICY_PATH)
+        try:
+            envelope = route_claim(
+                registry,
+                args.claim_kind,
+                claim_policy,
+                runtime_only=not args.include_catalog,
+                federation_policy=federation_policy,
+            )
+        except SourceRegistryError as exc:
+            print(f"SOURCE_REGISTRY_INVALID: {exc}")
+            return 1
+        print(json.dumps(envelope, ensure_ascii=False, indent=2))
     elif args.command == "write-normalized":
         atomic_write_json(args.output, registry_document(registry))
         print(str(args.output))

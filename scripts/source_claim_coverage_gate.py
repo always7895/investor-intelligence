@@ -131,6 +131,9 @@ def audit_claim_policy(
         "same_content_hash_counts_once",
         "conflicting_material_values_fail_closed",
         "claim_families",
+        # Explicit optional descriptor sections (strictly validated below).
+        "claim_family_semantics",
+        "lane_semantics",
     }
     unknown = sorted(set(policy).difference(expected_top))
     if unknown:
@@ -206,6 +209,74 @@ def audit_claim_policy(
             broker_forbidden_families.append(str(name))
         elif "option" in str(name).casefold():
             findings.append(f"{label} must explicitly forbid broker/account-derived public evidence")
+
+    # Strict validation of the two explicit optional descriptor sections.
+    semantics = policy.get("claim_family_semantics")
+    if semantics is not None:
+        if not isinstance(semantics, dict):
+            findings.append("claim_family_semantics must be an object")
+        else:
+            allowed_semantics_keys = {
+                "authority_classes",
+                "evidence_roles",
+                "fallback_sources",
+                "subject_binding_fields",
+            }
+            for name, value in semantics.items():
+                label = f"claim_family_semantics.{name}"
+                if name not in families:
+                    findings.append(f"{label} references an unknown claim family")
+                    continue
+                if not isinstance(value, dict):
+                    findings.append(f"{label} must be an object")
+                    continue
+                unknown_keys = sorted(set(value).difference(allowed_semantics_keys))
+                if unknown_keys:
+                    findings.append(f"{label} contains unknown fields: {', '.join(unknown_keys)}")
+                classes = value.get("authority_classes")
+                roles = value.get("evidence_roles")
+                for key, items in (("authority_classes", classes), ("evidence_roles", roles)):
+                    if items is None:
+                        continue
+                    if not isinstance(items, list) or not all(
+                        isinstance(item, str) and item.strip() for item in items
+                    ):
+                        findings.append(f"{label}.{key} must be a string array")
+                if not classes and not roles:
+                    findings.append(f"{label} must declare authority_classes or evidence_roles")
+                for key in ("fallback_sources", "subject_binding_fields"):
+                    items = value.get(key)
+                    if items is None:
+                        continue
+                    if not isinstance(items, list) or not all(
+                        isinstance(item, str) and item.strip() for item in items
+                    ):
+                        findings.append(f"{label}.{key} must be a string array")
+    lanes = policy.get("lane_semantics")
+    if lanes is not None:
+        if not isinstance(lanes, dict):
+            findings.append("lane_semantics must be an object")
+        else:
+            allowed_lane_keys = {"authority_classes", "evidence_roles"}
+            for name, value in lanes.items():
+                label = f"lane_semantics.{name}"
+                if not isinstance(value, dict):
+                    findings.append(f"{label} must be an object")
+                    continue
+                unknown_keys = sorted(set(value).difference(allowed_lane_keys))
+                if unknown_keys:
+                    findings.append(f"{label} contains unknown fields: {', '.join(unknown_keys)}")
+                classes = value.get("authority_classes")
+                roles = value.get("evidence_roles")
+                for key, items in (("authority_classes", classes), ("evidence_roles", roles)):
+                    if items is None:
+                        continue
+                    if not isinstance(items, list) or not all(
+                        isinstance(item, str) and item.strip() for item in items
+                    ):
+                        findings.append(f"{label}.{key} must be a string array")
+                if not classes and not roles:
+                    findings.append(f"{label} must declare authority_classes or evidence_roles")
 
     required_families = {
         "issuer_identity",
