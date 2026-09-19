@@ -243,32 +243,81 @@ def main() -> int:
         outcomes["deny_only"] = {"pass": deny_only_pass, "denied_raised": denied_raised, "no_replay_miss": no_replay_miss, "only_denied": only_denied, "verdict": verdict}
         print(f"DENY_ONLY = {'PASS' if deny_only_pass else 'FAIL'} (denied_raised={denied_raised}, no_replay_miss={no_replay_miss}, only_denied={only_denied}, verdict={verdict})")
 
-    # --- REGRESSION: import_time / worker_thread_joined ---
+    # --- REGRESSION: import_time (expected_exception_only + unexpected_exception_cannot_pass) ---
     with TransportGuard() as g5:
         import time as _time
+        # Pass the actual helper's ReplayMiss class into the tested module; only
+        # catch that expected class; other exceptions must make the control FAIL.
         mod_code = """
 import urllib.request, socket
 try:
     urllib.request.urlopen("https://import-time-unregistered.example.com/x.json")
     IMPORT_TIME_DENIED = False
-except Exception:
+except REPLAY_MISS_CLASS:
     IMPORT_TIME_DENIED = True
+except Exception:
+    IMPORT_TIME_DENIED = "UNEXPECTED_EXCEPTION"
 try:
     socket.getaddrinfo("import-time-unregistered.example.com", 443)
     IMPORT_TIME_DNS_DENIED = False
-except Exception:
+except REPLAY_MISS_CLASS:
     IMPORT_TIME_DNS_DENIED = True
+except Exception:
+    IMPORT_TIME_DNS_DENIED = "UNEXPECTED_EXCEPTION"
 """
         mod_path = Path(tempfile.gettempdir()) / f"ii_3d_import_time_{_time.time_ns()}.py"
         mod_path.write_text(mod_code, encoding="utf-8")
         spec = importlib.util.spec_from_file_location("ii_3d_import_time_mod", mod_path)
         mod = importlib.util.module_from_spec(spec)
+        # Set the ReplayMiss class in the module before executing it.
+        mod.REPLAY_MISS_CLASS = ReplayMiss
         spec.loader.exec_module(mod)
-        import_time_pass = getattr(mod, "IMPORT_TIME_DENIED", False) and getattr(mod, "IMPORT_TIME_DNS_DENIED", False)
+        request_denied = getattr(mod, "IMPORT_TIME_DENIED", False)
+        dns_denied = getattr(mod, "IMPORT_TIME_DNS_DENIED", False)
+        # Check the clean guard's actual results:
+        # replay_misses = 1 (the unregistered request), denied_resolver_attempts = 1 (the DNS),
+        # outer_verdict = BLOCKED_TRANSPORT_DENIED.
+        replay_misses_count = len(g5.replay_misses)
+        denied_resolver_count = g5.denied_resolver_attempts
+        outer_verdict = g5.verdict()
+        expected_exception_only = (request_denied is True and dns_denied is True)
+        ledger_correct = (replay_misses_count == 1 and denied_resolver_count == 1)
+        verdict_correct = (outer_verdict == "BLOCKED_TRANSPORT_DENIED")
+        import_time_pass = expected_exception_only and ledger_correct and verdict_correct
         mod_path.unlink(missing_ok=True)
         all_pass = all_pass and import_time_pass
-        outcomes["import_time"] = {"pass": import_time_pass, "request_denied": getattr(mod, "IMPORT_TIME_DENIED", False), "dns_denied": getattr(mod, "IMPORT_TIME_DNS_DENIED", False)}
-        print(f"IMPORT_TIME = {'PASS' if import_time_pass else 'FAIL'} (request_denied={getattr(mod, 'IMPORT_TIME_DENIED', False)}, dns_denied={getattr(mod, 'IMPORT_TIME_DNS_DENIED', False)})")
+        outcomes["import_time"] = {"pass": import_time_pass, "expected_exception_only": expected_exception_only,
+                                    "replay_misses": replay_misses_count, "denied_resolver_attempts": denied_resolver_count,
+                                    "verdict": outer_verdict}
+        print(f"IMPORT_TIME = {'PASS' if import_time_pass else 'FAIL'} (expected_exception_only={expected_exception_only}, replay_misses={replay_misses_count}, denied_resolver_attempts={denied_resolver_count}, verdict={outer_verdict})")
+
+    # --- import_time: unexpected_exception_cannot_pass (fully local unexpected exception injection) ---
+    with TransportGuard() as g5b:
+        import time as _time
+        # Inject a fully local unexpected exception (not ReplayMiss) to confirm it
+        # can't be judged as successful rejection.
+        mod_code2 = """
+try:
+    raise ValueError("fully local unexpected exception")
+    IMPORT_TIME_UNEXPECTED = False
+except REPLAY_MISS_CLASS:
+    IMPORT_TIME_UNEXPECTED = True
+except Exception:
+    IMPORT_TIME_UNEXPECTED = "UNEXPECTED_EXCEPTION"
+"""
+        mod_path2 = Path(tempfile.gettempdir()) / f"ii_3d_import_time_unexpected_{_time.time_ns()}.py"
+        mod_path2.write_text(mod_code2, encoding="utf-8")
+        spec2 = importlib.util.spec_from_file_location("ii_3d_import_time_unexpected_mod", mod_path2)
+        mod2 = importlib.util.module_from_spec(spec2)
+        mod2.REPLAY_MISS_CLASS = ReplayMiss
+        spec2.loader.exec_module(mod2)
+        unexpected_result = getattr(mod2, "IMPORT_TIME_UNEXPECTED", False)
+        # The unexpected exception must NOT be judged as successful rejection.
+        unexpected_cannot_pass = (unexpected_result == "UNEXPECTED_EXCEPTION")
+        mod_path2.unlink(missing_ok=True)
+        all_pass = all_pass and unexpected_cannot_pass
+        outcomes["import_time_unexpected"] = {"pass": unexpected_cannot_pass, "unexpected_result": unexpected_result}
+        print(f"IMPORT_TIME_UNEXPECTED = {'PASS' if unexpected_cannot_pass else 'FAIL'} (unexpected_result={unexpected_result})")
 
     with TransportGuard() as g6:
         wt_hit_url = "https://wt-recorded.example.com/hit.json"
@@ -454,6 +503,16 @@ except Exception:
             guarded_connect_denied = True
         except Exception as exc:
             print(f"CONTROL_GUARDED_CONNECT_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        # Add guarded socket.socket().connect_ex(...) (independent boolean + expected exception assertion).
+        guarded_connect_ex_denied = False
+        try:
+            _sock_ex = socket.socket()
+            _sock_ex.connect_ex(("test.example.com", 443))
+        except ReplayMiss:
+            guarded_connect_ex_denied = True
+        except Exception as exc:
+            print(f"CONTROL_GUARDED_CONNECT_EX_WRONG_EXCEPTION = {type(exc).__name__}: {exc}")
+        guarded_denied_connect_attempts = g9.denied_connect_attempts
         guarded_connector_ledger_zero = (shared_ledger2["connector"] == 0)
         guarded_verdict = g9.verdict()
         # Deliberately call the saved safe lower layer connect/connect_ex:
@@ -476,15 +535,19 @@ except Exception:
     socket.create_connection = orig_create_connection2
     subprocess.Popen = orig_popen2
     socket.socket = orig_socket_class2
-    direct_socket_pass = (guarded_connect_denied and guarded_connector_ledger_zero and guarded_verdict == "BLOCKED_TRANSPORT_DENIED"
+    direct_socket_pass = (guarded_connect_denied and guarded_connect_ex_denied
+                          and guarded_denied_connect_attempts == 2
+                          and guarded_connector_ledger_zero and guarded_verdict == "BLOCKED_TRANSPORT_DENIED"
                           and actual_connect_delegation and actual_connect_ex_delegation
                           and actual_connector_ledger_incremented and actual_verdict_harness)
     all_pass = all_pass and direct_socket_pass
     outcomes["direct_socket_connect_connect_ex"] = {"pass": direct_socket_pass, "guarded_connect_denied": guarded_connect_denied,
+                                                    "guarded_connect_ex_denied": guarded_connect_ex_denied,
+                                                    "denied_connect_attempts": guarded_denied_connect_attempts,
                                                     "guarded_connector_ledger_zero": guarded_connector_ledger_zero, "guarded_verdict": guarded_verdict,
                                                     "actual_connect_delegation": actual_connect_delegation, "actual_connect_ex_delegation": actual_connect_ex_delegation,
                                                     "actual_connector_ledger_incremented": actual_connector_ledger_incremented, "actual_verdict_harness": actual_verdict_harness}
-    print(f"DIRECT_SOCKET_CONNECT_CONNECT_EX = {'PASS' if direct_socket_pass else 'FAIL'} (guarded_connect_denied={guarded_connect_denied}, guarded_connector_ledger_zero={guarded_connector_ledger_zero}, guarded_verdict={guarded_verdict}, actual_connect_delegation={actual_connect_delegation}, actual_connect_ex_delegation={actual_connect_ex_delegation}, actual_connector_ledger_incremented={actual_connector_ledger_incremented}, actual_verdict_harness={actual_verdict_harness})")
+    print(f"DIRECT_SOCKET_CONNECT_CONNECT_EX = {'PASS' if direct_socket_pass else 'FAIL'} (guarded_connect_denied={guarded_connect_denied}, guarded_connect_ex_denied={guarded_connect_ex_denied}, denied_connect_attempts={guarded_denied_connect_attempts}, guarded_connector_ledger_zero={guarded_connector_ledger_zero}, guarded_verdict={guarded_verdict}, actual_connect_delegation={actual_connect_delegation}, actual_connect_ex_delegation={actual_connect_ex_delegation}, actual_connector_ledger_incremented={actual_connector_ledger_incremented}, actual_verdict_harness={actual_verdict_harness})")
 
     # --- Manifest: save the actual outcomes/counts to the unique run directory ---
     manifest = {

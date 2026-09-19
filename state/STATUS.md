@@ -179,6 +179,25 @@
 - REPORT FIELDS: BASE_HEAD=8f612eb; LOADER_SPY=normal_install_calls=1/failed_install_calls=0; REGRESSION_RESULTS=request_cross_hit/actual_fetch_text/method_query_header/positional_body/empty_body/Request_data_override/swallowed_miss/deny_only/import_time/worker_thread_joined/partial_install_restore/exception_restore/shared_ledger_resolver_connector_spawn/direct_socket_connect_connect_ex; RAW_OBSERVATION_WHEN_UNATTACHED=NOT_MEASURED; ARTIFACT_PATHS=unique_run/no_overwrite; CONTROL_MANIFEST_SHA256; FULL_GATE_EXECUTED=false (no full gate re-run this round; only controls); APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
 - NEXT: report to ChatGPT web (via decider-system-one routing); step B ACCEPTANCE_PENDING gaps (loader spy + regressions + direct socket + full-gate wrap-ups) complete (11/11 controls); await ruling on step B acceptance + next step.
 
+## TASK0-3D_RECORDED_AUDIT_REPLAY (step B ACCEPTANCE_PENDING_TEST_ONLY: import_time + direct_socket deltas; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 核心實作與主要收尾採認（loader spy、回歸補回、shared ledger、full-gate 收尾）；step B 為 ACCEPTANCE_PENDING_TEST_ONLY。剩餘 2 個 deltas: (1) import-time 仍把任意例外當成功拒絕（需只捕捉 ReplayMiss + 檢查 ledger + 本機非預期例外注入）; (2) direct-socket 只測了 guarded connect，沒測 guarded connect_ex（需補上 guarded socket.socket().connect_ex(...)）。
+- test_v213_3d_step_b_replay_deny_guard.py (12 controls): **ALL PASS**.
+  - IMPORT_TIME = PASS (expected_exception_only=True, replay_misses=1, denied_resolver_attempts=1, verdict=BLOCKED_TRANSPORT_DENIED; pass the actual helper's ReplayMiss class into the tested module; only catch that expected class; other exceptions must make the control FAIL)
+  - IMPORT_TIME_UNEXPECTED = PASS (unexpected_result=UNEXPECTED_EXCEPTION; fully local unexpected exception injection confirms it can't be judged as successful rejection)
+  - DIRECT_SOCKET_CONNECT_CONNECT_EX = PASS (guarded_connect_denied=True, guarded_connect_ex_denied=True, denied_connect_attempts=2, guarded_connector_ledger_zero=True, guarded_verdict=BLOCKED_TRANSPORT_DENIED, actual_connect_delegation=True, actual_connect_ex_delegation=True, actual_connector_ledger_incremented=True, actual_verdict_harness=True; add guarded socket.socket().connect_ex(...) before deliberately calling the safe lower layer)
+  - LOADER_SPY = PASS (normal_install_calls=1, failed_install_calls=0)
+  - REQUEST_CROSS_HIT = PASS (cross_hit, neg_method, neg_query, neg_header, fetch_text)
+  - BODY_REJECTIONS = PASS (positional_body, empty_body, Request_data_override)
+  - SWALLOWED_MISS = PASS (inner_success, fresh_miss, outer_verdict)
+  - DENY_ONLY = PASS (denied_raised, no_replay_miss, only_denied, verdict)
+  - WORKER_THREAD_JOINED = PASS (hit, miss_denied)
+  - PARTIAL_INSTALL_RESTORE = PASS (partial_failed, all_restored)
+  - EXCEPTION_RESTORE = PASS (exception_crossed, all_restored)
+  - SHARED_LEDGER_RESOLVER_CONNECTOR_SPAWN = PASS (resolver, connector, spawn, ledger_incremented, verdict_harness)
+- CONTROL_MANIFEST_SHA256: d8297cad1290bf613ade0ddf84563da7965af719385b3c2b11746f7d50c60ebe
+- REPORT FIELDS: BASE_HEAD=11ed36b; IMPORT_TIME=expected_exception_only/unexpected_exception_cannot_pass/replay_misses=1/denied_resolver_attempts=1/verdict=BLOCKED_TRANSPORT_DENIED; DIRECT_SOCKET=guarded_connect_denied/guarded_connect_ex_denied/denied_connect_attempts=2/raw_connector_before_deliberate_delegation=0/raw_connector_after_deliberate_delegation=2/final_verdict=HARNESS_ERROR; EXISTING_CONTROLS_RETAINED=true; CONTROL_MANIFEST_SHA256; HELPER_AND_FULL_GATE_UNCHANGED=true; FULL_GATE_EXECUTED=false; APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
+- NEXT: report to ChatGPT web (via decider-system-one routing); step B ACCEPTANCE_PENDING_TEST_ONLY (import_time + direct_socket deltas) complete (12/12 controls); await ruling on step B acceptance + next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
