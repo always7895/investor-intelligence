@@ -32,11 +32,11 @@ FEDERATION_POLICY = load_json(DEFAULT_FEDERATION_POLICY_PATH)
 REGISTRY = load_registry()
 REGISTRY_BY_ID = REGISTRY.by_id()
 
-_OFFICIAL_ID = "us_sec_edgar"
+_OFFICIAL_ID = "jp_fsa_edinet"
 _EXCHANGE_ID = "tw_mops"
 _T3_ID = "reuters_public"
 _PLANNED_ID = "kr_dart"
-_NO_FRESHNESS_ID = "us_sec_freshness_none"
+_NO_FRESHNESS_ID = "jp_fsa_freshness_none"
 
 NOW = "2026-09-19T00:00:00Z"
 CLAIM = "issuer_financial_statement"

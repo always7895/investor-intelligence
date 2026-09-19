@@ -23,6 +23,11 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from adapters.base import ParsedBatch, canonical_json, schema_fingerprint
+from adapters.sec_edgar import (
+    SEC_REGISTRY_SOURCE_ID,
+    SecClaimBinding,
+    project_sec_records,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_DIR = BASE_DIR / "config" / "sources"
@@ -846,6 +851,68 @@ def _finite_value(value: Any) -> bool:
     return False
 
 
+def _sec_binding_guard(
+    registry: Registry,
+    claim_kind: str,
+    batch: ParsedBatch,
+    expected_subject: Mapping[str, Any],
+    sec_binding: Any,
+) -> None:
+    """SEC-bound observations require a valid typed fetch receipt + binding
+    integrity proof even if the caller supplies http_status=200. Generic
+    providers are unchanged."""
+    if batch.source_id != SEC_REGISTRY_SOURCE_ID:
+        if sec_binding is not None:
+            raise SourceRegistryError("sec_binding is only valid for SEC-bound observations")
+        return
+    if not isinstance(sec_binding, SecClaimBinding):
+        raise SourceRegistryError("SEC-bound observations require a valid SecClaimBinding")
+    if sec_binding.claim_kind != claim_kind:
+        raise SourceRegistryError("sec binding claim kind does not match")
+    if sec_binding.source_id != batch.source_id:
+        raise SourceRegistryError("sec binding source does not match the batch source")
+    if sec_binding.raw_content_sha256 != batch.content_sha256:
+        raise SourceRegistryError("sec binding raw content hash does not match the batch")
+    if sec_binding.receipt.content_sha256 != batch.content_sha256:
+        raise SourceRegistryError("sec receipt hash does not match the batch content hash")
+    from adapters.base import validate_fetch_receipt
+
+    validate_fetch_receipt(
+        sec_binding.receipt,
+        source_id=SEC_REGISTRY_SOURCE_ID,
+        expected_urls=(sec_binding.canonical_url,),
+    )
+    by_id = registry.by_id()
+    source = by_id.get(SEC_REGISTRY_SOURCE_ID)
+    if source is None:
+        raise SourceRegistryError("canonical SEC registry source is missing")
+    if "US" not in tuple(source.jurisdictions):
+        raise SourceRegistryError("canonical SEC registry source jurisdiction is not US")
+    if source.adapter_id != "sec_edgar":
+        raise SourceRegistryError("canonical SEC registry adapter mapping changed")
+    expected_cik = expected_subject.get("entity")
+    if sec_binding.expected_cik != expected_cik:
+        raise SourceRegistryError("sec binding CIK does not match the expected subject")
+    expected_period = expected_subject.get("period")
+    if claim_kind == "issuer_financial_statement" and sec_binding.expected_period != expected_period:
+        raise SourceRegistryError("sec binding period does not match the expected subject")
+    recomputed = project_sec_records(
+        batch.records,
+        claim_kind=claim_kind,
+        expected_cik=sec_binding.expected_cik,
+        expected_period=sec_binding.expected_period,
+        resolved_symbol_alias=None,
+        jurisdiction="US",
+    )
+    projected = sec_binding.projected_records
+    if sec_binding.resolved_symbol is not None:
+        projected = tuple({**record, "symbol": sec_binding.resolved_symbol} for record in projected)
+    if canonical_json(projected) != sec_binding.projected_record_digest:
+        raise SourceRegistryError("sec binding projected record digest does not verify")
+    if canonical_json(projected) != canonical_json(recomputed):
+        raise SourceRegistryError("sec binding projection does not verify against the raw batch")
+
+
 def qualify_claim_evidence(
     registry: Registry,
     claim_kind: str,
@@ -855,6 +922,7 @@ def qualify_claim_evidence(
     now: str,
     expected_subject: Mapping[str, Any] | None = None,
     federation_policy: Mapping[str, Any] | None = None,
+    sec_binding: Any = None,
 ) -> dict[str, Any]:
     """Qualify explicit original observations for one claim kind.
 
@@ -906,11 +974,21 @@ def qualify_claim_evidence(
         if not isinstance(batch, ParsedBatch):
             reject(index, "parsed_batch must be a validated ParsedBatch")
             continue
+        try:
+            _sec_binding_guard(registry, claim_kind, batch, expected_subject, sec_binding)
+        except SourceRegistryError as exc:
+            reject(index, f"sec binding rejected: {exc}")
+            continue
         if not isinstance(batch.records, tuple) or not batch.records or not all(
             isinstance(record, Mapping) for record in batch.records
         ):
             reject(index, "batch records must be a non-empty tuple of mappings")
             continue
+        # SEC-bound observations carry raw records; field/subject checks run
+        # on the binding's projected records (the guard verified the digest).
+        check_records = batch.records
+        if batch.source_id == SEC_REGISTRY_SOURCE_ID:
+            check_records = sec_binding.projected_records
         if type(batch.record_count) is not int or batch.record_count != len(batch.records):
             reject(index, "batch record_count must be an int matching the record count")
             continue
@@ -970,6 +1048,9 @@ def qualify_claim_evidence(
         if urlsplit(canonical_path).scheme != "https" or not urlsplit(canonical_path).netloc:
             reject(index, "transport path must be a host-bound HTTPS URL")
             continue
+        if batch.source_id == SEC_REGISTRY_SOURCE_ID and path != sec_binding.receipt.canonical_url:
+            reject(index, "sec transport path must match the receipt canonical URL")
+            continue
         http_status = observation.get("http_status")
         if type(http_status) is not int or http_status != 200:
             reject(index, "no actual HTTP 200 (bool or non-200 is not success)")
@@ -989,7 +1070,7 @@ def qualify_claim_evidence(
             reject(index, f"capability {capability} does not qualify")
             continue
         records_ok = True
-        for record in batch.records:
+        for record in check_records:
             for field in required_fields:
                 if not _finite_value(record.get(field)):
                     reject(index, f"missing or non-finite required field: {field}")
@@ -1007,6 +1088,9 @@ def qualify_claim_evidence(
             as_of_dt = _utc_datetime(as_of)
         except SourceRegistryError:
             reject(index, "invalid as_of clock (UTC timezone required)")
+            continue
+        if batch.source_id == SEC_REGISTRY_SOURCE_ID and as_of != sec_binding.evidence_as_of.split("|")[0]:
+            reject(index, "sec as_of must equal the bound-derived clock")
             continue
         try:
             retrieved_dt = _utc_datetime(batch.retrieved_at)
@@ -1045,7 +1129,7 @@ def qualify_claim_evidence(
         # Every expected binding key must be present in EACH record with the
         # expected value; metadata alone never qualifies. Records must be
         # finite canonical JSON.
-        for record in batch.records:
+        for record in check_records:
             try:
                 canonical_json(record)
             except (ValueError, TypeError, RecursionError):
@@ -1072,7 +1156,7 @@ def qualify_claim_evidence(
                 # Transport describes the fetch source/path only; it is never
                 # counted as independence.
                 "transport": {"fetch_source": transport.get("fetch_source"), "path": path},
-                "records": batch.records,
+                "records": check_records,
             }
         )
 

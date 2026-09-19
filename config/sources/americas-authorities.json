@@ -14,7 +14,7 @@
       "canonical_urls": ["https://www.sec.gov/edgar"],
       "independence_group": "us_sec",
       "admission_status": "IDENTITY_VERIFIED",
-      "adapter": {"id": "us_sec_edgar", "status": "planned"},
+      "adapter": {"id": "sec_edgar", "status": "planned"},
       "access": {"free_access_required": true, "payment_required": false, "terms_review_status": "pending"},
       "runtime": {"enabled": false, "per_host_concurrency": 1, "minimum_request_interval_seconds": 0.2, "maximum_retries": 3, "freshness_seconds": 3600},
       "provenance": {"required": true, "correction_tracking": true},

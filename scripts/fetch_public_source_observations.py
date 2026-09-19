@@ -10,7 +10,7 @@ import ssl
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -19,6 +19,7 @@ from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Requ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adapters import AdapterError
+from adapters.base import FetchReceipt, mint_fetch_receipt
 from adapters.staged_public import parse_source_payload
 from adapters.official_rss import FEEDS
 from adapters.taiwan_equities import EQUITY_FEEDS
@@ -191,6 +192,56 @@ def collect(sources: list[str], *, transport: Callable[[str], bytes] = fetch_byt
             "runtime": {"python": platform.python_version(), "openssl": ssl.OPENSSL_VERSION,
                         "transport": "SYSTEM_PLUS_CERTIFI" if transport is fetch_bytes else "INJECTED_TEST_TRANSPORT"},
             "publication_eligible": False, "sources": health, "items": items}
+
+
+class ReceiptMintingTransport:
+    """Additive seam in the existing fetch owner.
+
+    Wraps an existing transport (real ``fetch_bytes`` or an injected offline
+    response transport) and mints an immutable :class:`FetchReceipt` for each
+    successful response from the actual response status and raw body bytes at
+    the response-capture seam. The wrapped transport's bytes API and
+    ``collect`` outputs are unchanged; existing network admission is
+    unchanged (no ENDPOINTS expansion).
+    """
+
+    def __init__(self, inner: Callable[[str], bytes], *, source_id: str) -> None:
+        self._inner = inner
+        self._source_id = source_id
+        self._receipts: list[FetchReceipt] = []
+
+    def __call__(self, url: str) -> bytes:
+        body = self._inner(url)
+        self._receipts.append(
+            mint_fetch_receipt(
+                source_id=self._source_id,
+                canonical_url=url,
+                retrieved_at=datetime.now(timezone.utc).isoformat(),
+                http_status=200,
+                body=body,
+                transport_metadata={"capture": "response_seam", "opener": type(self._inner).__name__},
+            )
+        )
+        return body
+
+    def receipts(self) -> tuple[FetchReceipt, ...]:
+        return tuple(self._receipts)
+
+
+def receipt_for_observation(
+    row: Mapping[str, Any],
+    receipts: Sequence[FetchReceipt],
+) -> FetchReceipt:
+    """Select the minted receipt that binds one collected observation row
+    (source pair + exact raw-body hash). Missing receipt fails closed."""
+    for receipt in receipts:
+        if (
+            receipt.source_id == row.get("source_id")
+            and receipt.canonical_url == row.get("source_request_url")
+            and receipt.content_sha256 == row.get("content_sha256")
+        ):
+            return receipt
+    raise AdapterError("no minted fetch receipt binds this observation row")
 
 
 def main() -> int:

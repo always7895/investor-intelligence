@@ -4,13 +4,152 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field as _dc_field
 from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol
+from urllib.parse import urlsplit
 
 
 class AdapterError(ValueError):
     """Raised when an official source payload fails structural validation."""
+
+
+# In-process integrity marker for minted receipts. It protects data integrity
+# inside the process; it is NOT cryptographic claim proof and carries no
+# secrets/keys. Only the existing fetch owner mints receipts.
+@dataclass(frozen=True)
+class _MintedReceiptMarker:
+    minted_by: str = "fetch_public_source_observations"
+
+
+@dataclass(frozen=True)
+class FetchReceipt:
+    """Immutable fetch-layer receipt for one admitted response.
+
+    Minted ONLY by the existing fetch owner from the actual response status
+    and raw body bytes at the response-capture seam. There is no public
+    from-dict auto-attestation and no default status; direct or fake
+    construction is invalid for qualification.
+    """
+
+    source_id: str
+    canonical_url: str
+    retrieved_at: str
+    http_status: int
+    content_sha256: str
+    _mint_marker: _MintedReceiptMarker
+    transport_metadata: Mapping[str, Any] = _dc_field(default_factory=dict)
+
+
+def _freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise AdapterError("transport_metadata must be a mapping")
+    frozen: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise AdapterError("transport_metadata keys must be strings")
+        if isinstance(item, Mapping):
+            frozen[key] = _freeze_mapping(item)
+        elif isinstance(item, (list, tuple)):
+            frozen[key] = tuple(
+                _freeze_mapping(v) if isinstance(v, Mapping) else v for v in item
+            )
+        else:
+            frozen[key] = item
+    return _FrozenMapping(frozen)
+
+
+class _FrozenMapping(Mapping[str, Any]):
+    def __init__(self, data: dict[str, Any]) -> None:
+        self._data = data
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"_FrozenMapping({self._data!r})"
+
+
+def mint_fetch_receipt(
+    *,
+    source_id: str,
+    canonical_url: str,
+    retrieved_at: str,
+    http_status: int,
+    body: bytes,
+    transport_metadata: Mapping[str, Any] | None = None,
+) -> FetchReceipt:
+    """Private minting entry used only by the existing fetch owner.
+
+    The status is validated as an actual int (bool rejected); the body hash
+    binds the exact raw bytes. No default status is ever substituted.
+    """
+    if type(http_status) is not int or not 100 <= http_status <= 599:
+        raise AdapterError("receipt http_status must be an actual int status")
+    if not isinstance(source_id, str) or not source_id.strip():
+        raise AdapterError("receipt source_id must be a non-empty string")
+    if not isinstance(canonical_url, str) or not isinstance(retrieved_at, str):
+        raise AdapterError("receipt canonical_url/retrieved_at must be strings")
+    _validate_receipt_url(canonical_url)
+    datetime.fromisoformat(retrieved_at.replace("Z", "+00:00"))
+    return FetchReceipt(
+        source_id=source_id,
+        canonical_url=canonical_url,
+        retrieved_at=retrieved_at,
+        http_status=http_status,
+        content_sha256=sha256_bytes(body),
+        _mint_marker=_MintedReceiptMarker(),
+        transport_metadata=_freeze_mapping(transport_metadata or {}),
+    )
+
+
+def _validate_receipt_url(url: str) -> None:
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.netloc:
+        raise AdapterError("receipt canonical_url must be a host-bound HTTPS URL")
+    if parts.username is not None or parts.password is not None:
+        raise AdapterError("receipt canonical_url must be credential-free")
+
+
+def validate_fetch_receipt(
+    receipt: Any,
+    *,
+    source_id: str,
+    content: bytes | None = None,
+    expected_urls: tuple[str, ...] | None = None,
+) -> FetchReceipt:
+    """Strict qualification-time receipt validation.
+
+    A receipt is valid only when it is a minted FetchReceipt (in-process
+    marker present), carries the exact int 200 status, and a strict HTTPS
+    credential-free canonical URL matching the expected source pair. When
+    ``content`` is supplied, the 64-hex hash must bind the exact raw bytes.
+    Direct/string/bool status fakes are invalid.
+    """
+    if not isinstance(receipt, FetchReceipt):
+        raise AdapterError("fetch receipt must be a minted FetchReceipt")
+    if receipt._mint_marker.minted_by != "fetch_public_source_observations":
+        raise AdapterError("fetch receipt was not minted by the fetch owner")
+    if type(receipt.http_status) is not int or receipt.http_status != 200:
+        raise AdapterError("fetch receipt must carry the actual int 200 status")
+    if not isinstance(receipt.content_sha256, str) or not (
+        len(receipt.content_sha256) == 64
+    ):
+        raise AdapterError("fetch receipt content hash must be 64-hex")
+    if content is not None and receipt.content_sha256 != sha256_bytes(content):
+        raise AdapterError("fetch receipt hash does not bind the raw content")
+    if receipt.source_id != source_id:
+        raise AdapterError("fetch receipt source_id does not match the canonical source")
+    _validate_receipt_url(receipt.canonical_url)
+    if expected_urls is not None and receipt.canonical_url not in expected_urls:
+        raise AdapterError("fetch receipt canonical_url does not match the expected source pair")
+    return receipt
 
 
 @dataclass(frozen=True)
