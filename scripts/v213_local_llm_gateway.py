@@ -783,9 +783,17 @@ def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
     while True:
         try:
             response = requests.get(url, timeout=(2, 6), allow_redirects=False)
-            ids = [str(item.get("id") or "") for item in response.json().get("data", [])]
-            last_seen = ids
-            if model in ids:
+            rows = response.json().get("data", [])
+            rows = rows if isinstance(rows, list) else []
+            last_seen = [
+                item if isinstance(item, str) else str(item.get("id") or "")
+                for item in rows if isinstance(item, (str, dict))
+            ]
+            # Accept the exact pinned id or a unique catalog alias, matching the
+            # alias-aware identity resolution used by the health and response
+            # paths. resolve_model_id stays fail-closed: a collision, a
+            # malformed row, or a name that is never served all resolve to None.
+            if resolve_model_id(model, rows):
                 print("V213_LOCAL_LLM_GATEWAY_MODEL_PIN = PASS; model served by list", flush=True)
                 return
         except Exception as exc:  # noqa: BLE001 - bounded retry window
