@@ -4,7 +4,7 @@
 把已驗證的候選 script 安裝到 runtime，完成單檔 runtime 更新。
 
 ## 唯一允許替換的檔案
-- C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
+- %LOCALAPPDATA%\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
 - 唯一允許的新內容: SHA-256: 66b25c0b0ed0732f6d28642c04d2b178249b1ce7e174dbf3ba434767d197f1f7
 
 ## 3I-0: 固定新舊 bytes
@@ -25,8 +25,8 @@
 - **Lock released: True**
 
 ## 3I-2: 同磁碟區備份與替換
-- Target: C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
-- Backup: C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1.task0-3i-20260919T034131Z.bak
+- Target: %LOCALAPPDATA%\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
+- Backup: %LOCALAPPDATA%\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1.task0-3i-20260919T034131Z.bak
 - Temp hash match: True
 - **File.Replace completed: True**
 - **Installed hash match: True**

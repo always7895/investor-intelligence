@@ -16,7 +16,7 @@
 - Workspace HEAD: 3c4a811f4e85e2fb68091dc65b5c5bd0add030ff
 - OBSERVED_AT_UTC: 2026-09-19T02:37:23Z
 - OBSERVED_AT_TAIPEI: 2026-09-19T10:37:23+08:00
-- ACTUAL_RUNTIME_ROOT: C:\Users\moon9\AppData\Local\InvestorIntelligence\V213Runtime
+- ACTUAL_RUNTIME_ROOT: %LOCALAPPDATA%\InvestorIntelligence\V213Runtime
 - Runtime source_commit: 2b9e14396766e4883771a7c452a02bcfebb3c46f（與 workspace HEAD 不同）
 - Runtime transaction_id: d6a03b9456c4482b860051581c853172
 - Runtime profile: SOURCE_DIVERSE
