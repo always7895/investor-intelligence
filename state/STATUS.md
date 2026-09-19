@@ -198,6 +198,43 @@
 - REPORT FIELDS: BASE_HEAD=11ed36b; IMPORT_TIME=expected_exception_only/unexpected_exception_cannot_pass/replay_misses=1/denied_resolver_attempts=1/verdict=BLOCKED_TRANSPORT_DENIED; DIRECT_SOCKET=guarded_connect_denied/guarded_connect_ex_denied/denied_connect_attempts=2/raw_connector_before_deliberate_delegation=0/raw_connector_after_deliberate_delegation=2/final_verdict=HARNESS_ERROR; EXISTING_CONTROLS_RETAINED=true; CONTROL_MANIFEST_SHA256; HELPER_AND_FULL_GATE_UNCHANGED=true; FULL_GATE_EXECUTED=false; APPLICATION_SOURCE_UNCHANGED=true; PRODUCTION_TOUCHED=false.
 - NEXT: report to ChatGPT web (via decider-system-one routing); step B ACCEPTANCE_PENDING_TEST_ONLY (import_time + direct_socket deltas) complete (12/12 controls); await ruling on step B acceptance + next step.
 
+## TASK0-3D_RECORDED_AUDIT_REPLAY (step B ACCEPTED_TEST_HARNESS_OFFLINE / CLOSED; 2026-09-18)
+- Pro ruling (conv 6aacd52f): **STEP_B_ACCEPTED_TEST_HARNESS_OFFLINE / CLOSED** — step B 正式 ACCEPTED。前輪剩餘的 import-time 與 guarded connect_ex 兩個測試缺口均已閉合；本驗收範圍內沒有待修阻擋，不再追加 harness 驗收階段。
+- AUDITED_HEAD: fdc393b84236ea1e61a8272c433d2cd6c27be913; BRANCH: fix/options-provenance-audit
+- 驗收項: Import-time 預期例外=CLOSED; 非預期例外負向控制=CLOSED; Guarded connect/connect_ex=CLOSED; 既有回歸與變更邊界=ACCEPTED
+- EVIDENCE_BASIS: OPERATOR_LOCAL_CONTROL_RESULTS + CONTROLLER_READ_ONLY_GITHUB_REVIEW; REPORTED_CONTROLS: 12/12 PASS; REPORTED_CONTROL_MANIFEST_SHA256: d8297cad1290bf613ade0ddf84563da7965af719385b3c2b11746f7d50c60ebe
+- FULL_GATE_EXECUTED_THIS_ROUND: false; FULL_RECORDED_AUDIT_REPLAY_ACCEPTED: false; PRODUCTION_STATUS: NOT_ASSESSED; DEPLOYMENT_AUTHORIZED: false
+- **這次結案的是 test harness，不是完整 recorded-data replay，也不是 Top20 證據已合格**。市場錄製輸入缺失、真實 source-identity mapping 尚未完成，以及目前 Production 狀態，仍各自保留原有的未證範圍；它們不再拿來重開 step B。
+- NEXT: TASK0-3E_CLAIM_SOURCE_FEASIBILITY (approved to start now).
+
+## TASK0-3E_CLAIM_SOURCE_FEASIBILITY (started; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 批准現在直接開始。目標是找出「哪些具體公司主張需要什麼獨立佐證，以及現有資料是否已包含它」，不是機械式替每個 ticker 補第二個 URL。
+- 研究順序與交付:
+  1. 固定資料基準與來源身分：使用一組明確的既有 normalized Top20、audit、policy，登錄完整 SHA-256 與 artifact 路徑。依 ticker 比對 input evidence 與 audit source 的 URL、source ID、family、domain、claim type、日期；不能再只比較 claim-type 集合就宣稱沒有 mapping loss。
+  2. 選最多三個代表案例深查：從該組 20-ticker 輸入選取，不借用歷史兩筆 sealed report 的准入資格。優先涵蓋不同缺口類型；若實際只有一種，就明確記錄，不製造三種分類。每案聚焦一至兩個 material claims。
+  3. 提出來源補取可行性表：對每個 claim 說明已有佐證、缺少哪一種獨立支持、候選來源類型／既有已知 URL、是否已有 recorded body、是否需要新取得，以及現有 parser／資料結構能否承接。尚未查證的候選只能標 CANDIDATE_UNVERIFIED。
+- 來源判定規則固定：來源身分與主張支持要分開；對照必須落在具體 claim；Portfolio 多樣性、逐 ticker 支持、高信心資格與最終 admission 不合併。
+- 缺口分類：EXISTING_INPUT_NOT_MAPPED / EXISTING_SOURCE_EXCLUDED_WITH_REASON / ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED / CANDIDATE_UNVERIFIED / UNRESOLVED。
+- 本輪權限：允許唯讀 repo source/既有 source registry、已批准的非敏感專案 artifact、現有 recorded responses；允許寫入 documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md 與 state/STATUS.md；不包含新市場/SEC/公司網站抓取、provider probe、批次下載、登入、credentials、付費來源或 collector 實作。
+- NEXT: step 1 (固定資料基準與來源身分) → step 2 (選最多三個代表案例深查) → step 3 (提出來源補取可行性表)。
+
+## TASK0-3E_CLAIM_SOURCE_FEASIBILITY (COMPLETE; 2026-09-18)
+- step 1 (固定資料基準與來源身分): COMPLETE
+  - BOUND_INPUTS: normalized_top20 (SHA256=eed85d11...), audit (SHA256=89d46207...), policy (SHA256=c5de9faf...)
+  - SOURCE_IDENTITY_MAPPING: claim_type_set_equal=0/20; input_not_in_audit=75; audit_not_in_input=60; claim-type 集合比較不充分
+  - scripts/test_v213_3e_step1_source_identity.py: COMPLETE (exit 0)
+- step 2 (選最多三個代表案例深查): COMPLETE
+  - GAP TYPE: 只有一種缺口類型（所有 20 tickers: claim_domains=['sec.gov'], claim_families=['regulator_filing'], eligible=False）
+  - REPRESENTATIVE_TICKERS: TAL (Revenue/GrossProfit/OperatingIncomeLoss/NetIncomeLoss, 20-F), SMCI (RevenueFromContractWithCustomer/GrossProfit/OperatingIncomeLoss/NetIncomeLoss, 10-K), GAP (Revenues/GrossProfit/OperatingIncomeLoss, 10-Q)
+  - 每案聚焦一至兩個 material claims（財務指標來自 SEC filings）
+- step 3 (提出來源補取可行性表): COMPLETE
+  - GAP_CLASSIFICATION: ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED + CANDIDATE_UNVERIFIED
+  - CANDIDATE_SOURCES: (1) 公司 IR 網站 (CANDIDATE_UNVERIFIED, 同源但不同 domain); (2) 行業分析師報告 (CANDIDATE_UNVERIFIED, 不同源但可能沒有具體財務指標); (3) 新聞文章 (CANDIDATE_UNVERIFIED, 不同源但通常不與 SEC filing 完全一致); (4) 其他 SEC filings (EXISTING_SOURCE_EXCLUDED_WITH_REASON, sec.gov 同 domain)
+  - NEW_ACQUISITION_NEEDED: 第二個獨立 claim source（不同 domain/family）提供相同財務指標; 本輪不執行
+  - documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE
+- REPORT FIELDS: BASE_HEAD=fdc393b; BOUND_INPUTS=paths + full SHA256; REPRESENTATIVE_TICKERS/MATERIAL_CLAIMS=TAL/SMCI/GAP (財務指標); SOURCE_IDENTITY_MAPPING=claim_type_set_equal=0/20; GAP_CLASSIFICATION=ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED + CANDIDATE_UNVERIFIED; CANDIDATE_SOURCES=existing_recorded/known_url_unverified/not_identified; NEW_ACQUISITION_NEEDED=exact scope, not executed; RECOMMENDED_NEXT_ACTION=評估公司 IR 網站/行業分析師報告作為第二個獨立 claim source 的可行性; POLICY_OR_APPLICATION_CHANGED=false; NEW_SOURCE_FETCHES=0; PRODUCTION_TOUCHED=false.
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E COMPLETE; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
