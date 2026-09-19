@@ -29,8 +29,15 @@
 - 3f1_original_disclosure_comparison_sha256: 30910472a25c3785fd4edc670e1bb0bd96b7a9d88d15ea1a3c22e7573d1a5c3d
 
 ## 3F-2: 公開候選探索
-- 候選清單: 7 份（2 SUCCESS, 1 FAILED_401, 4 NOT_FETCHED）
-- INDEPENDENT_SUPPORT_CANDIDATE: NOT_FOUND (all are SAME_ORIGIN_REPUBLICATION)
+- 候選清單: 7 份（統計以逐項候選清單為準）
+  - 公開搜尋: 4
+  - 候選清單: 7
+  - 成功取得內容的候選: 3（SEC 10-K、公司公告、Macrotrends）
+  - 取得失敗的候選: 1（Reuters 401 Forbidden）
+  - 未嘗試取得正文的候選: 3（last10k、capedge、CNBC）
+  - 內容不足以比較的候選: 4（一個失敗＋三個未抓取）
+- DOCUMENT_FETCHES=3 應明確解釋為「成功取得數」，不是全部 HTTP 嘗試次數
+- INDEPENDENT_SUPPORT_CANDIDATE: NOT_FOUND
 - 3f2_public_candidate_list_sha256: 1ef162e04e48359a5f3c167e49f94aaba5037b99522080f8bb48b2aabbb3ec25
 
 ## 3F-3: 來源與可比性判定
@@ -38,19 +45,25 @@
 - ROUNDING_COMPATIBLE: 2 (公司 press release, macrotrends.net)
 - INSUFFICIENT_CONTENT: 4 (Reuters, last10k.com, capedge.com, CNBC)
 - SAME_ORIGIN_CROSSCHECK: 1 (SEC 10-K)
-- SAME_ORIGIN_REPUBLICATION: 2 (公司 press release, macrotrends.net)
+- SAME_ORIGIN_CROSSCHECK (preliminary issuer disclosure): 1 (公司 press release, 2026-08-11, 早於 SEC 10-K 申報日期 2026-08-31)
+- ORIGIN_UNVERIFIED: 1 (macrotrends.net, 無明確 attribution)
 - INDEPENDENT_SUPPORT_CANDIDATE: 0
-- ORIGIN_UNVERIFIED: 4 (Reuters, last10k.com, capedge.com, CNBC)
+- ORIGIN_UNVERIFIED (content): 4 (Reuters, last10k.com, capedge.com, CNBC)
 - 3f3_source_comparability_judgments_sha256: 244406b5a51ba2e0b651b5d6ba0c9b087eaa5606bcffa36aa87f2e27c857a596
+
+**更正**：
+- 公司公告與 SEC 申報可作為同一發行人的不同發布階段來核對，但不宜寫成「公司公告轉載後來的 SEC 10-K」：公告日期為 2026 年 8 月 11 日，早於記錄的 8 月 31 日申報日期。將其關係記為 SAME_ORIGIN_CROSSCHECK，preliminary issuer disclosure。
+- 對 Macrotrends，目前可覆核的 repo 報告沒有列出其數字的引用來源或歸因位置。沒有明確 attribution 就降為 ORIGIN_UNVERIFIED，不需要重新抓取。數值一致或四捨五入相容，不能單獨證明 origin 相同。
+- 「未建立獨立性」不等於「已證明全部同源」。ADDITIONAL_INDEPENDENT_LINEAGE=NOT_ESTABLISHED 接受；「所有成功抓取來源都是 SAME_ORIGIN」則須保留來源依據。
 
 ## 結論
 - **ADDITIONAL_INDEPENDENT_LINEAGE: NOT_ESTABLISHED**
+- **CONFLICT_STATUS: NO_CONFLICT_OBSERVED_IN_COMPARED_CONTENT**（無衝突結論限定在已比較的內容；Reuters 沒有足夠內容，另外三個候選沒有取得正文；它們是尚未評估，不是已確認相容）
+- **UNFETCHED_OR_INACCESSIBLE_CONTENT: NOT_ASSESSED**
 - 本輪公開探索未找到 INDEPENDENT_SUPPORT_CANDIDATE
-- 所有成功抓取的來源都是 SAME_ORIGIN（報告相同的 SEC 10-K 數據）
-- SEC 10-K 是主要披露（EXACT_MATCH, SAME_ORIGIN_CROSSCHECK）
-- 公司 press release 和 macrotrends.net 是 SAME_ORIGIN_REPUBLICATION（ROUNDING_COMPATIBLE）
-- Reuters、last10k.com、capedge.com 和 CNBC 是 ORIGIN_UNVERIFIED（INSUFFICIENT_CONTENT）
-- 是否需要新增獨立佐證、哪些候選真的具有不同 origin、能否影響高信心或 admission，仍是未定事項
+- 已取得支持目標營收數值的原始披露核對；在本輪已取得、可評估的內容中，沒有建立對該 claim 的新增獨立佐證
+- 這不表示公開世界不存在獨立資料、不表示 Reuters 等未取得內容一定同源，也不表示原有 evidence gate 應被放寬
+- 候選是否值得另案取得，可留待具體用途出現時決定；現在不繼續為同一營收數字增加搜尋輪次
 
 ## 保存位置
 - _workspace/audit-runtime/task0-3f/3f_20260919T095701Z/
