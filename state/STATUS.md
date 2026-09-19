@@ -253,6 +253,27 @@
 - documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE (3 張 claim card + source mappings + 3 個具體請求)
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E PARTIAL_ACCEPTED corrections complete; await ruling on next step.
 
+## TASK0-3E_CLAIM_SOURCE_FEASIBILITY (修正版 Request 1: 本機 recorded-data 核對; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 3E 維持 PARTIAL_ACCEPTED；先執行修正版 Request 1（本機 recorded-data 核對），Request 2 暫緩。3 項具體交付:
+  1. 3 張 claim card 補內容定位（recorded_file_path, recorded_file_sha256, hash_basis, JSON locator, namespace/tag + units, observation selector, selected value）
+  2. 3 個來源對照（TAL/SMCI/GAP 實際結果，非分析方法）
+  3. Source-independence policy SHA-256（實際政策檔 hash，非 freshness policy）
+- 概念修正: domain ≠ 獨立資訊來源（同一份公司披露在 IR 與 SEC 出現，可以位於不同 domain，但仍可能具有相同資訊 origin）
+- SOURCE_INDEPENDENCE_POLICY_SHA256: config/v213-serenity-public-logic-policy.json (SHA256=421d70b2bbaa7929832f2108decda9d8fd3bc185292ef88c7cedfe6ad7f3476e)
+- 3 張 claim card (recorded hashes + observation locators + verification result):
+  - TAL-REV-2026: recorded_file_sha256=81fa0727..., saved_body_sha256=2cf3cee3..., json_locator=facts.us-gaap.Revenues.units.USD, observation_selector=accession=0001104659-26-073410/start=2025-03-01/end=2026-02-28/filed=2026-06-12/form=20-F, matches_count=1, selected_value=3,008,908,000, verification=PASS
+  - SMCI-REV-2026: recorded_file_sha256=144790d1..., saved_body_sha256=039172a7..., json_locator=facts.us-gaap.RevenueFromContractWithCustomerExcludingAssessedTax.units.USD, observation_selector=accession=0001375365-26-000022/start=2025-07-01/end=2026-06-30/filed=2026-08-31/form=10-K, matches_count=1, selected_value=39,063,072,000, verification=PASS
+  - GAP-REV-2026Q2: recorded_file_sha256=8e4c4e80..., saved_body_sha256=683ad2f5..., json_locator=facts.us-gaap.Revenues.units.USD, observation_selector=accession=0001628280-26-059345/start=2026-05-03/end=2026-08-01/filed=2026-08-28/form=10-Q, matches_count=1, selected_value=3,651,000,000, verification=PASS
+- 3 個來源對照 (TAL/SMCI/GAP 實際結果):
+  - TAL: 5 MATCHED + 1 UNEXPLAINED (evidence[5] 前一年營收觀察值無對應 audit source)
+  - SMCI: 5 MATCHED + 1 UNEXPLAINED (evidence[5] 前一年營收觀察值無對應 audit source)
+  - GAP: 4 MATCHED + 2 UNEXPLAINED (evidence[4] 10-K 2026-01-31, evidence[5] 10-K 2025-02-01 無對應 audit source)
+- UNRESOLVED_ITEMS: 4 個 UNEXPLAINED 項目（前一年營收觀察值無對應 audit source）
+- REQUEST_STATUS: Request 1=LOCAL_RECORDED_EXTRACTION (已執行); Request 2=PROPOSED_NOT_EXECUTED (本輪不執行); Request 3=NO_CANDIDATE_IDENTIFIED_IN_REVIEWED_MATERIALS (有限範圍的研究結果)
+- scripts/test_v213_3e_request1_local_verification.py: COMPLETE (exit 0)
+- documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE (3 張 claim card + 3 個來源對照 + policy hash + domain/lineage 措辭修正)
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E 修正版 Request 1 complete; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).

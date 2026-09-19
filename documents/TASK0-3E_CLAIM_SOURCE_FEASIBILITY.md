@@ -3,11 +3,125 @@
 ## 目標
 找出「哪些具體公司主張需要什麼獨立佐證，以及現有資料是否已包含它」，不是機械式替每個 ticker 補第二個 URL。
 
-## BOUND_INPUTS
-- normalized_top20: .tmp/3d_fullgate_normalized_top20.json (SHA256=eed85d11582deeb61f782fe6ce61f1cc6a3a3d799ce5dd2b5e84e99b6a056109)
-- audit: .tmp/3d_fullgate_audit.json (SHA256=89d46207b849ea1c35a510cf1aa9db5ebd55ce4b779c525184774d60bee67327)
-- policy: config/v213-serenity-evidence-freshness-policy.json (SHA256=c5de9faf09b16f3f79b1969db9b95b6cb5600d347554455be8610def10720195)
-- **實際 source-independence policy**: config/v213-serenity-public-logic-policy.json（本次 audit 顯示來源多樣性不足；該 policy 分別定義 portfolio source diversity 與逐筆 high-confidence eligibility，不是一條「每個 ticker 找到兩個 domain/family 就全部通過」的規則）
+## SOURCE_INDEPENDENCE_POLICY_SHA256
+- config/v213-serenity-public-logic-policy.json (SHA256=421d70b2bbaa7929832f2108decda9d8fd3bc185292ef88c7cedfe6ad7f3476e)
+- 該 policy 分別定義 portfolio source diversity 與逐筆 high-confidence eligibility，不是一條「每個 ticker 找到兩個 domain/family 就全部通過」的規則
+
+## DOMAIN ≠ 獨立資訊來源 (概念修正)
+- 同一份公司披露在 IR 與 SEC 出現，可以位於不同 domain，但仍可能具有相同資訊 origin，不能僅因此增加獨立佐證
+- 新聞轉述也一樣：它可能增加一個出版網域，卻沒有增加新的資訊來源
+- repo 的 lineage 計算本來就會依 origin_group、independence_group 或內容 hash 合併 observations，並非只數 domain
+- 因此，「每個 ticker 需要第二個獨立 claim source 才能通過 gate」應撤回
+- 本輪統一記為:
+  - OBSERVED_AUDIT_SOURCE_DIVERSITY: LIMITED
+  - SOURCE_MAPPING_FOR_REPRESENTATIVES: PENDING_RESULTS → COMPLETE (本次)
+  - ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED: TO_BE_DETERMINED_PER_CLAIM
+  - ADMISSION_OR_HIGH_CONFIDENCE_UPLIFT: NOT_ESTABLISHED
+
+## CLAIM_CARDS (3 張卡，recorded hashes + observation locators + verification result)
+
+### Claim Card 1: TAL (TAL Education Group)
+- claim_id: TAL-REV-2026
+- recorded_file_path: data/cache/v21/companyfacts/CIK0001499620.json.source-v1.json
+- recorded_file_sha256: 81fa07273395a8865199999a9e9035267c7ed5894cba3fb6f17cc41ab5e16a75
+- saved_body_sha256: 2cf3cee36c550e20279fe31e0f7f4f94e59ff4a5f28f19525cbc2796bcdf2297
+- hash_basis: wrapper bytes
+- json_locator: facts.us-gaap.Revenues.units.USD
+- namespace_tag: us-gaap:Revenues
+- units: USD
+- observation_selector: accession=0001104659-26-073410, start=2025-03-01, end=2026-02-28, filed=2026-06-12, form=20-F
+- matches_count: 1
+- selected_value: 3,008,908,000
+- expected_value: 3,008,908,000
+- verification: **PASS**
+- 該主張支持的用途: 財務事實（營收）
+- 未被該主張證明的事項: 成長率、訂單、市場份額、產能、供應關係
+
+### Claim Card 2: SMCI (Super Micro Computer, Inc.)
+- claim_id: SMCI-REV-2026
+- recorded_file_path: data/cache/v21/companyfacts/CIK0001375365.json.source-v1.json
+- recorded_file_sha256: 144790d14acbaff4b2da3cb8a24218451969e3bf23e2a4ce8658f58e953dff4b
+- saved_body_sha256: 039172a7eec0fe46077ce444eb12280a0e625f5cec313c058903ec7016d82794
+- hash_basis: wrapper bytes
+- json_locator: facts.us-gaap.RevenueFromContractWithCustomerExcludingAssessedTax.units.USD
+- namespace_tag: us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+- units: USD
+- observation_selector: accession=0001375365-26-000022, start=2025-07-01, end=2026-06-30, filed=2026-08-31, form=10-K
+- matches_count: 1
+- selected_value: 39,063,072,000
+- expected_value: 39,063,072,000
+- verification: **PASS**
+- 該主張支持的用途: 財務事實（營收）
+- 未被該主張證明的事項: 成長率、訂單、市場份額、產能、供應關係
+
+### Claim Card 3: GAP (GAP INC)
+- claim_id: GAP-REV-2026Q2
+- recorded_file_path: data/cache/v21/companyfacts/CIK0000039911.json.source-v1.json
+- recorded_file_sha256: 8e4c4e80cdc926ee949f7eaab422658d4fb54e5617ece8924dbd0efa13f2204a
+- saved_body_sha256: 683ad2f5c630e295244e8d68c36b213e39a2107a6d4d8c164a8bd10f9c82d139
+- hash_basis: wrapper bytes
+- json_locator: facts.us-gaap.Revenues.units.USD
+- namespace_tag: us-gaap:Revenues
+- units: USD
+- observation_selector: accession=0001628280-26-059345, start=2026-05-03, end=2026-08-01, filed=2026-08-28, form=10-Q
+- matches_count: 1
+- selected_value: 3,651,000,000
+- expected_value: 3,651,000,000
+- verification: **PASS**
+- 該主張支持的用途: 財務事實（營收）
+- 未被該主張證明的事項: 成長率、訂單、市場份額、產能、供應關係
+
+## SOURCE_MAPPINGS (TAL / SMCI / GAP 實際結果)
+
+### TAL source mapping
+- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
+- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[4]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/1499620/000141057825001415/, claim_type=xbrl_fact) has no matching audit source)
+
+### SMCI source mapping
+- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
+- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[4]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/1375365/000137536525000014/, claim_type=xbrl_fact) has no matching audit source)
+
+### GAP source mapping
+- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
+- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
+- evidence[4]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[4]] (url=https://www.sec.gov/Archives/edgar/data/39911/000162828026059345/, claim_type=xbrl_fact) has no matching audit source)
+- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/39911/000162828025001415/, claim_type=xbrl_fact) has no matching audit source)
+
+## UNRESOLVED_ITEMS (exact rows / fields / missing evidence)
+- TAL evidence[5]: UNEXPLAINED (前一年營收觀察值 2025-02-28 無對應 audit source)
+- SMCI evidence[5]: UNEXPLAINED (前一年營收觀察值 2025-06-30 無對應 audit source)
+- GAP evidence[4]: UNEXPLAINED (10-K 2026-01-31 營收觀察值無對應 audit source)
+- GAP evidence[5]: UNEXPLAINED (10-K 2025-02-01 營收觀察值無對應 audit source)
+- 共 4 個 UNEXPLAINED 項目（前一年營收觀察值無對應 audit source）
+
+## REQUEST_STATUS (Request 1、2、3 執行狀態分開)
+- Request 1: TAL-REV-2026 → **LOCAL_RECORDED_EXTRACTION** (本機 recorded-data 核對，已執行；3 張卡全部驗證通過)
+- Request 2: SMCI-REV-2026 → **PROPOSED_NOT_EXECUTED** (PUBLIC_DISCOVERY 提案，本輪不執行)
+- Request 3: GAP-REV-2026Q2 → **NO_CANDIDATE_IDENTIFIED_IN_REVIEWED_MATERIALS** (有限範圍的研究結果，不是 acquisition request，也不代表外部世界不存在合適來源)
+
+## POLICY_OR_APPLICATION_CHANGED: false
+## NEW_SOURCE_FETCHES: 0
+## PRODUCTION_TOUCHED: false
+
+## 結論
+- 3 張 claim card 可由既有 recorded input 重現（3/3 驗證通過）
+- 3 個代表案例有實際來源對照（TAL 5 MATCHED + 1 UNEXPLAINED, SMCI 5 MATCHED + 1 UNEXPLAINED, GAP 4 MATCHED + 2 UNEXPLAINED）
+- 4 個 UNEXPLAINED 項目（前一年營收觀察值無對應 audit source）
+- domain ≠ 獨立資訊來源（同一份公司披露在 IR 與 SEC 出現，可以位於不同 domain，但仍可能具有相同資訊 origin）
+- OBSERVED_AUDIT_SOURCE_DIVERSITY: LIMITED; ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED: TO_BE_DETERMINED_PER_CLAIM; ADMISSION_OR_HIGH_CONFIDENCE_UPLIFT: NOT_ESTABLISHED
+- 請求類型、用途、已知資料與外連需求一致；不宣稱第二來源會自動帶來 gate/admission 通過
+- 本輪不執行新來源抓取；不跑 gate；不改 application/policy；不重開已結案的 step B
+- 完成不要求找到新來源，也不要求所有 mapping 都沒有未解項
 
 ## SOURCE_IDENTITY_MAPPING (step 1 修正)
 - 75/60 是原始欄位差集，**不是來源遺失/新增的分類結果**（兩側採用不同表示方式：domain、family、URL、日期）
