@@ -73,6 +73,8 @@
 
 ## SOURCE_MAPPINGS (TAL / SMCI / GAP 實際結果，canonical/dedup)
 
+**解讀邊界**: MATCHED 應讀成 **MATCHED_DEDUP_UNIT**，不是「每筆原始 observation 已完整保留」。目前程式用 (domain, family, claim_type) 對應 audit unit；雖然計算了 canonical URL，也記錄了輸入代表項，但最終 match 條件沒有逐項比較代表與 audit 的 URL、日期、數值或完整內容。因此，本次可以接受的是去重單位的對應結果，不能延伸為完整來源身分或逐筆 material claim 的保全證明。原四個 UNEXPLAINED 現在可以從「找不到相同 URL」收斂成「在既有去重單位下已有對應」；它們不再構成本研究的未匹配 unit，但也不能因此宣稱前一年營收資料已在 audit 中逐筆重建。
+
 ### TAL source mapping (canonical/dedup)
 - evidence[0]: MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance), representative=evidence[0], matched_audit=sources[0])
 - evidence[1]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
