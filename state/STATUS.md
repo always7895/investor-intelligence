@@ -321,6 +321,18 @@
 - 本輪到此結案；不要求再回報一次只有文件完成的確認；後續如啟動 Request 2，須另定公開探索範圍，不能從本次結案推導出抓取授權
 - step B 保持 CLOSED；3A-1、capture patch、guard 強續與 Production/KV/DO/排程/真 LINE/credentials 操作均維持未執行
 
+## TASK0-3F_SMCI_PUBLIC_DISCOVERY (COMPLETE; 2026-09-19)
+- Pro ruling (conv 6aacd52f): 立即啟動 TASK0-3F_SMCI_PUBLIC_DISCOVERY，明確授權公開搜尋與有限抓取
+- 目標: SMCI-REV-2026 (us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax, 2025-07-01 至 2026-06-30, USD 39,063,072,000)
+- 3F-0 (固定比較基準): COMPLETE (baseline_manifest_sha256=f9902de5...)
+- 3F-1 (原始披露核對): COMPLETE (SEC 10-K: EXACT_MATCH, 公司 press release: ROUNDING_COMPATIBLE, SAME_ORIGIN_CROSSCHECK/SAME_ORIGIN_REPUBLICATION)
+- 3F-2 (公開候選探索): COMPLETE (7 候選, 2 SUCCESS, 1 FAILED_401, 4 NOT_FETCHED; INDEPENDENT_SUPPORT_CANDIDATE: NOT_FOUND)
+- 3F-3 (來源與可比性判定): COMPLETE (EXACT_MATCH: 1, ROUNDING_COMPATIBLE: 2, INSUFFICIENT_CONTENT: 4; INDEPENDENT_SUPPORT_CANDIDATE: 0)
+- 3F-4 (整理與同步): COMPLETE (研究文件 + STATUS + commit + push)
+- **ADDITIONAL_INDEPENDENT_LINEAGE: NOT_ESTABLISHED** (本輪公開探索未找到 INDEPENDENT_SUPPORT_CANDIDATE；所有成功抓取的來源都是 SAME_ORIGIN)
+- documents/TASK0-3F_SMCI_PUBLIC_DISCOVERY.md: COMPLETE
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3F COMPLETE; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
