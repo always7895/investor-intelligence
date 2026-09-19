@@ -71,43 +71,56 @@
 - 該主張支持的用途: 財務事實（營收）
 - 未被該主張證明的事項: 成長率、訂單、市場份額、產能、供應關係
 
-## SOURCE_MAPPINGS (TAL / SMCI / GAP 實際結果)
+## SOURCE_MAPPINGS (TAL / SMCI / GAP 實際結果，canonical/dedup)
 
-### TAL source mapping
-- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
-- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[4]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/1499620/000141057825001415/, claim_type=xbrl_fact) has no matching audit source)
+### TAL source mapping (canonical/dedup)
+- evidence[0]: MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance), representative=evidence[0], matched_audit=sources[0])
+- evidence[1]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[2]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[3]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[4]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[5]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
 
-### SMCI source mapping
-- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
-- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[4]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/1375365/000137536525000014/, claim_type=xbrl_fact) has no matching audit source)
+### SMCI source mapping (canonical/dedup)
+- evidence[0]: MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance), representative=evidence[0], matched_audit=sources[0])
+- evidence[1]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[2]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[3]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[4]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[5]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
 
-### GAP source mapping
-- evidence[0]: MATCHED (matched_audit=sources[0], reason=URL + claim_type match)
-- evidence[1]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[2]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[3]: MATCHED (matched_audit=sources[1], reason=URL + claim_type match)
-- evidence[4]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[4]] (url=https://www.sec.gov/Archives/edgar/data/39911/000162828026059345/, claim_type=xbrl_fact) has no matching audit source)
-- evidence[5]: UNEXPLAINED (matched_audit=None, reason=UNEXPLAINED: input evidence [evidence[5]] (url=https://www.sec.gov/Archives/edgar/data/39911/000162828025001415/, claim_type=xbrl_fact) has no matching audit source)
+### GAP source mapping (canonical/dedup)
+- evidence[0]: MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance), representative=evidence[0], matched_audit=sources[0])
+- evidence[1]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[2]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[3]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[4]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
+- evidence[5]: MATCHED (dedup_unit=(sec.gov, regulator_filing, xbrl_fact), representative=evidence[1], matched_audit=sources[1])
 
 ## UNRESOLVED_ITEMS (exact rows / fields / missing evidence)
-- TAL evidence[5]: UNEXPLAINED (前一年營收觀察值 2025-02-28 無對應 audit source)
-- SMCI evidence[5]: UNEXPLAINED (前一年營收觀察值 2025-06-30 無對應 audit source)
-- GAP evidence[4]: UNEXPLAINED (10-K 2026-01-31 營收觀察值無對應 audit source)
-- GAP evidence[5]: UNEXPLAINED (10-K 2025-02-01 營收觀察值無對應 audit source)
-- 共 4 個 UNEXPLAINED 項目（前一年營收觀察值無對應 audit source）
+- 無 UNEXPLAINED 項目（canonical/dedup 規則下，所有 evidence 項目都 MATCHED）
+- 前一年營收觀察值（TAL evidence[5], SMCI evidence[5], GAP evidence[4]/[5]）與當年營收觀察值有相同的 dedup_unit (sec.gov, regulator_filing, xbrl_fact)，所以 MATCHED 到同一個 audit source
+
+## EVIDENCE_LABEL_CORRECTION
+- saved_body_sha256: RECORDED_METADATA_NOT_INDEPENDENTLY_REHASHED（直接讀取 last_success.body_sha256，沒有重新對 body_utf8 計算並比對）
 
 ## REQUEST_STATUS (Request 1、2、3 執行狀態分開)
-- Request 1: TAL-REV-2026 → **LOCAL_RECORDED_EXTRACTION** (本機 recorded-data 核對，已執行；3 張卡全部驗證通過)
+- Request 1: TAL-REV-2026 → **ACCEPTED_RECORDED_VALUE_CHECK** (本機 recorded-data 核對，已執行；3 張卡全部驗證通過)
 - Request 2: SMCI-REV-2026 → **PROPOSED_NOT_EXECUTED** (PUBLIC_DISCOVERY 提案，本輪不執行)
 - Request 3: GAP-REV-2026Q2 → **NO_CANDIDATE_IDENTIFIED_IN_REVIEWED_MATERIALS** (有限範圍的研究結果，不是 acquisition request，也不代表外部世界不存在合適來源)
+
+## 單一現行狀態
+- REQUEST_1_VALUE_CHECK: ACCEPTED_RECORDED_VALUE_CHECK
+- REPRESENTATIVE_SOURCE_MAPPING: COMPLETE (canonical/dedup，全部 MATCHED)
+- REQUEST_2: PROPOSED_NOT_EXECUTED
+- GAP_CANDIDATE_RESULT: NO_CANDIDATE_IDENTIFIED_IN_REVIEWED_MATERIALS
+- ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED: TO_BE_DETERMINED_PER_CLAIM
+- ADMISSION_OR_HIGH_CONFIDENCE_UPLIFT: NOT_ESTABLISHED
+
+## NEW_MAPPING_MANIFEST_SHA256
+- ce02f71f652a0ea7a3bc2ba6ae994e160bde8c7b82014589f96679642eeb9a97
+- normalized_top20_sha256: eed85d11582deeb61f782fe6ce61f1cc6a3a3d799ce5dd2b5e84e99b6a056109
+- audit_sha256: 89d46207b849ea1c35a510cf1aa9db5ebd55ce4b779c525184774d60bee67327
 
 ## POLICY_OR_APPLICATION_CHANGED: false
 ## NEW_SOURCE_FETCHES: 0
@@ -115,13 +128,18 @@
 
 ## 結論
 - 3 張 claim card 可由既有 recorded input 重現（3/3 驗證通過）
-- 3 個代表案例有實際來源對照（TAL 5 MATCHED + 1 UNEXPLAINED, SMCI 5 MATCHED + 1 UNEXPLAINED, GAP 4 MATCHED + 2 UNEXPLAINED）
-- 4 個 UNEXPLAINED 項目（前一年營收觀察值無對應 audit source）
+- 3 個代表案例有實際來源對照（canonical/dedup 規則下，全部 MATCHED，無 UNEXPLAINED）
 - domain ≠ 獨立資訊來源（同一份公司披露在 IR 與 SEC 出現，可以位於不同 domain，但仍可能具有相同資訊 origin）
 - OBSERVED_AUDIT_SOURCE_DIVERSITY: LIMITED; ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED: TO_BE_DETERMINED_PER_CLAIM; ADMISSION_OR_HIGH_CONFIDENCE_UPLIFT: NOT_ESTABLISHED
 - 請求類型、用途、已知資料與外連需求一致；不宣稱第二來源會自動帶來 gate/admission 通過
 - 本輪不執行新來源抓取；不跑 gate；不改 application/policy；不重開已結案的 step B
 - 完成不要求找到新來源，也不要求所有 mapping 都沒有未解項
+
+## HISTORICAL_SUPERSEDED (舊章，已取代)
+- 舊 claim card 的 content SHA256: (需計算) → 已取代為 recorded_file_sha256 + saved_body_sha256
+- 「每個 ticker 需要第二個獨立來源才能通過 gate」→ 已撤回（domain ≠ 獨立資訊來源）
+- Request 1 仍是未執行的 IR 交叉檢查 → 已取代為 ACCEPTED_RECORDED_VALUE_CHECK
+- RECOMMENDED_NEXT_ACTION 仍要求執行 IR/新聞探索 → 已取代為 PROPOSED_NOT_EXECUTED
 
 ## SOURCE_IDENTITY_MAPPING (step 1 修正)
 - 75/60 是原始欄位差集，**不是來源遺失/新增的分類結果**（兩側採用不同表示方式：domain、family、URL、日期）

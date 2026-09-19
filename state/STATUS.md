@@ -274,6 +274,22 @@
 - documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE (3 張 claim card + 3 個來源對照 + policy hash + domain/lineage 措辭修正)
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E 修正版 Request 1 complete; await ruling on next step.
 
+## TASK0-3E_CLAIM_SOURCE_FEASIBILITY (canonical/dedup source mapping + 文件一致性收尾; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 三張 claim card 的本機數值核對 ACCEPTED；3E 尚待來源對照與文件一致性收尾。2 項剩餘:
+  1. 來源對照：目前仍是 exact-match，非 canonical/dedup mapping（需用受審 collector 的 URL/domain/family 規則計算 dedup unit + 找第一筆保留代表）
+  2. 研究文件：必須只保留一套現行結論（刪除重複舊章，或標 HISTORICAL_SUPERSEDED）
+- 來源對照 (canonical/dedup，用 collector 的 normalize_url/domain_of/make_source 規則):
+  - TAL: 6 MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance) + (sec.gov, regulator_filing, xbrl_fact)，全部 MATCHED，無 UNEXPLAINED)
+  - SMCI: 6 MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance) + (sec.gov, regulator_filing, xbrl_fact)，全部 MATCHED，無 UNEXPLAINED)
+  - GAP: 6 MATCHED (dedup_unit=(sec.gov, regulator_filing, filing_publication_provenance) + (sec.gov, regulator_filing, xbrl_fact)，全部 MATCHED，無 UNEXPLAINED)
+- 前一年營收觀察值（TAL evidence[5], SMCI evidence[5], GAP evidence[4]/[5]）與當年營收觀察值有相同的 dedup_unit (sec.gov, regulator_filing, xbrl_fact)，所以 MATCHED 到同一個 audit source
+- EVIDENCE_LABEL_CORRECTION: saved_body_sha256: RECORDED_METADATA_NOT_INDEPENDENTLY_REHASHED（直接讀取 last_success.body_sha256，沒有重新對 body_utf8 計算並比對）
+- NEW_MAPPING_MANIFEST_SHA256: ce02f71f652a0ea7a3bc2ba6ae994e160bde8c7b82014589f96679642eeb9a97
+- 單一現行狀態: REQUEST_1_VALUE_CHECK=ACCEPTED_RECORDED_VALUE_CHECK; REPRESENTATIVE_SOURCE_MAPPING=COMPLETE (canonical/dedup，全部 MATCHED); REQUEST_2=PROPOSED_NOT_EXECUTED; GAP_CANDIDATE_RESULT=NO_CANDIDATE_IDENTIFIED_IN_REVIEWED_MATERIALS; ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED=TO_BE_DETERMINED_PER_CLAIM; ADMISSION_OR_HIGH_CONFIDENCE_UPLIFT=NOT_ESTABLISHED
+- documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE (canonical/dedup source mapping + 文件一致性收尾 + HISTORICAL_SUPERSEDED 舊章)
+- scripts/test_v213_3e_request1_local_verification.py: COMPLETE (canonical/dedup source mapping，用 collector 的 normalize_url/domain_of/make_source 規則)
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E canonical/dedup source mapping + 文件一致性收尾 complete; await ruling on 3E 結案.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).

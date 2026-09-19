@@ -27,7 +27,9 @@ Exit 0 when the verification completes.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -36,6 +38,18 @@ TMP = SCRIPT_DIR.parent / ".tmp"
 NORMALIZED_TOP20 = TMP / "3d_fullgate_normalized_top20.json"
 AUDIT = TMP / "3d_fullgate_audit.json"
 SOURCE_INDEPENDENCE_POLICY = SCRIPT_DIR.parent / "config" / "v213-serenity-public-logic-policy.json"
+COLLECTOR_PATH = SCRIPT_DIR / "v213_source_independence_gate.py"
+
+
+def _load_collector():
+    """Load the audited collector's pure functions (normalize_url, domain_of, make_source)."""
+    spec = importlib.util.spec_from_file_location("ii_v213_collector", COLLECTOR_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load collector {COLLECTOR_PATH}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _sha256_full(p: Path) -> str:
@@ -60,9 +74,19 @@ def main() -> int:
         raise SystemExit(1)
     run_dir.mkdir(parents=True)
 
+    # Load the audited collector's pure functions.
+    collector = _load_collector()
+    normalize_url = collector.normalize_url
+    domain_of = collector.domain_of
+    make_source = collector.make_source
+
     # Load the data.
-    top20 = json.load(open(NORMALIZED_TOP20, encoding="utf-8"))
-    audit = json.load(open(AUDIT, encoding="utf-8"))
+    top20_bytes = NORMALIZED_TOP20.read_bytes()
+    top20_sha = _sha256_bytes(top20_bytes)
+    audit_bytes = AUDIT.read_bytes()
+    audit_sha = _sha256_bytes(audit_bytes)
+    top20 = json.loads(top20_bytes)
+    audit = json.loads(audit_bytes)
     audit_records = {r["ticker"]: r for r in audit.get("records", [])}
 
     # 3 claim cards (using actual tag and value from recorded input).
@@ -160,87 +184,105 @@ def main() -> int:
         print(f"  expected_value: {card['expected_value']}")
         print(f"  verification: {verification}")
 
-    # Step 2: 三個來源對照 (source mapping).
+    # Step 2: 三個來源對照 (source mapping) using the audited collector's rules.
     source_mapping = {}
     for ticker in claim_cards:
         item = next((x for x in top20 if x.get("ticker") == ticker), {})
         input_evidence = item.get("evidence", [])
         audit_record = audit_records.get(ticker, {})
         audit_sources = audit_record.get("sources", [])
-        # Build the input evidence rows.
+        # Build the input evidence rows using the collector's make_source rules.
         input_rows = []
         for i, e in enumerate(input_evidence):
             url = e.get("url", "")
             source_id = e.get("source_id", "")
-            family = e.get("family", "")
-            domain = url.split("/")[2] if "://" in url else ""
             claim_type = e.get("claim_type", "")
-            date = e.get("publication_date", e.get("as_of", ""))
+            title = e.get("title", "")
+            as_of = e.get("publication_date", e.get("as_of", ""))
+            # Use the collector's make_source to create the canonical source identity.
+            canonical = make_source(source_id, claim_type, title, url, as_of)
             input_rows.append({
                 "input_evidence_locator": f"evidence[{i}]",
-                "raw_source_identity": f"domain={domain}, family={family}, claim_type={claim_type}",
+                "raw_source_identity": f"domain={e.get('domain', url.split('/')[2] if '://' in url else '')}, family={e.get('family', '')}, claim_type={claim_type}",
+                "canonical_source_identity": f"domain={canonical['domain']}, family={canonical['family']}, claim_type={canonical['claim_type']}",
+                "canonical_url": canonical["url"],
+                "canonical_domain": canonical["domain"],
+                "canonical_family": canonical["family"],
+                "canonical_claim_type": canonical["claim_type"],
                 "url": url,
                 "source_id": source_id,
-                "family": family,
-                "domain": domain,
                 "claim_type": claim_type,
-                "date": date,
             })
-        # Build the audit source rows.
+        # Build the audit source rows using the collector's make_source rules.
         audit_rows = []
         for i, s in enumerate(audit_sources):
             url = s.get("url", "")
             source_id = s.get("source_id", "")
-            family = s.get("family", "")
-            domain = s.get("domain", "")
             claim_type = s.get("claim_type", "")
-            date = s.get("as_of", "")
+            title = s.get("title", "")
+            as_of = s.get("as_of", "")
+            canonical = make_source(source_id, claim_type, title, url, as_of)
             audit_rows.append({
                 "audit_locator": f"sources[{i}]",
+                "canonical_url": canonical["url"],
+                "canonical_domain": canonical["domain"],
+                "canonical_family": canonical["family"],
+                "canonical_claim_type": canonical["claim_type"],
                 "url": url,
                 "source_id": source_id,
-                "family": family,
-                "domain": domain,
                 "claim_type": claim_type,
-                "date": date,
             })
-        # Match input rows to audit rows (by URL + claim_type).
+        # Compute the dedup unit (domain, family, claim_type) and find the first retained representative.
+        dedup_representatives: dict[tuple[str, str, str], dict] = {}
+        for ir in input_rows:
+            unit = (ir["canonical_domain"], ir["canonical_family"], ir["canonical_claim_type"])
+            dedup_representatives.setdefault(unit, ir)
+        # Match input rows to audit rows (by canonical domain + family + claim_type).
         matched = []
         for ir in input_rows:
+            unit = (ir["canonical_domain"], ir["canonical_family"], ir["canonical_claim_type"])
+            representative = dedup_representatives.get(unit)
             matched_audit = None
             for ar in audit_rows:
-                if ir["url"] == ar["url"] and ir["claim_type"] == ar["claim_type"]:
+                ar_unit = (ar["canonical_domain"], ar["canonical_family"], ar["canonical_claim_type"])
+                if ar_unit == unit:
                     matched_audit = ar
                     break
             if matched_audit:
                 matched.append({
                     "input_evidence_locator": ir["input_evidence_locator"],
                     "raw_source_identity": ir["raw_source_identity"],
-                    "canonical_source_identity": f"domain={ir['domain']}, family={ir['family']}, claim_type={ir['claim_type']}",
+                    "canonical_source_identity": ir["canonical_source_identity"],
+                    "dedup_unit": f"({ir['canonical_domain']}, {ir['canonical_family']}, {ir['canonical_claim_type']})",
+                    "dedup_representative": representative["input_evidence_locator"] if representative else None,
                     "matched_audit_locator": matched_audit["audit_locator"],
                     "classification": "MATCHED",
-                    "dedup_representative": None,
-                    "reason": "URL + claim_type match",
+                    "reason": f"canonical (domain, family, claim_type) match: {ir['canonical_source_identity']}",
                 })
             else:
                 matched.append({
                     "input_evidence_locator": ir["input_evidence_locator"],
                     "raw_source_identity": ir["raw_source_identity"],
-                    "canonical_source_identity": f"domain={ir['domain']}, family={ir['family']}, claim_type={ir['claim_type']}",
+                    "canonical_source_identity": ir["canonical_source_identity"],
+                    "dedup_unit": f"({ir['canonical_domain']}, {ir['canonical_family']}, {ir['canonical_claim_type']})",
+                    "dedup_representative": representative["input_evidence_locator"] if representative else None,
                     "matched_audit_locator": None,
                     "classification": "UNEXPLAINED",
-                    "dedup_representative": None,
-                    "reason": f"UNEXPLAINED: input evidence [{ir['input_evidence_locator']}] (url={ir['url']}, claim_type={ir['claim_type']}) has no matching audit source",
+                    "reason": f"UNEXPLAINED: input evidence [{ir['input_evidence_locator']}] (canonical={ir['canonical_source_identity']}) has no matching audit source",
                 })
         source_mapping[ticker] = matched
-        print(f"\n{ticker} source mapping:")
+        print(f"\n{ticker} source mapping (canonical/dedup):")
         for m in matched:
-            print(f"  {m['input_evidence_locator']}: {m['classification']} (matched_audit={m['matched_audit_locator']})")
+            print(f"  {m['input_evidence_locator']}: {m['classification']} (dedup_unit={m['dedup_unit']}, representative={m['dedup_representative']}, matched_audit={m['matched_audit_locator']})")
 
     # Save the results to the unique run directory.
     manifest = {
         "source_independence_policy": str(SOURCE_INDEPENDENCE_POLICY),
         "source_independence_policy_sha256": policy_sha,
+        "normalized_top20": str(NORMALIZED_TOP20),
+        "normalized_top20_sha256": top20_sha,
+        "audit": str(AUDIT),
+        "audit_sha256": audit_sha,
         "content_localization": content_localization,
         "source_mapping": source_mapping,
     }
