@@ -43,6 +43,17 @@ No provider failure (timeout/403/404/429/JS challenge/schema change/API key/prem
 12. atomic commit + push — DONE (this change; SHA in git log)
 13. auto-continue into TASK0-3M — PENDING (next Mapika contract; next lane: policy-descriptor referential consistency)
 
+### NEXT lane: SEC EDGAR adapter integration — DEFERRED_WITH_REASON (2026-09-19)
+Read-only mapping completed at base `37a76b6` (no adapter implementation; mapping + blockers below).
+- Record fields (two types) mapped in `scripts/adapters/sec_edgar.py`; origin anchors available (`cik`/`entity_name`/`accession_number`/`record_url`); transport partial (`source_request_url`; parse layer has no HTTP receipt). Minimal seam: existing `evidence_items(batch, registry_version)` — no new function required.
+- Exact blockers (deferred pending an explicit ID/projection/time/fetch-provenance architecture contract):
+  1. source-ID mismatch: adapter registers `sec_edgar` (replay test pins the `ADAPTERS` set) vs registry `us_sec_edgar` (`adapter_id` `us_sec_edgar`, planned/disabled).
+  2. subject binding: `entity` must be the CIK (stable identifier), not the entity name.
+  3. `unit` is not always currency (XBRL units vary) — field projection required.
+  4. period/source event clocks (`end`/`filed`/`report_date`) are not fresh retrieval — time semantics required.
+  5. parse layer has no HTTP receipt — cannot fabricate int-200 or jurisdiction; fetch provenance required.
+- Semantic core (`1a26739`) + policy consistency (`37a76b6`) remain ACCEPTED; this lane entered/mapped, DEFERRED_WITH_REASON. No provider activation/ranking/admission change.
+
 ### SOURCE INVENTORY (DONE)
 - Registry files: 7 (config/sources/*.json)
 - Total registered sources: 158
