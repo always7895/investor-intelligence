@@ -424,6 +424,18 @@
 - documents/TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL.md: COMPLETE
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3I COMPLETE; await ruling on next step.
 
+## TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION (WAITING_FOR_NATURAL_RUN; 2026-09-19)
+- Pro ruling (conv 6aacd52f): TASK0-3I COMPLETE / CLOSED；下一步 TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION
+- 前置工作: COMPLETE
+  - OBSERVED_AT_UTC: 2026-09-19T03:54:47Z
+  - POST_INSTALL_TIME_BOUND: 2026-09-19T03:41:31Z (from backup filename)
+  - OBSERVED_INSTALLED_SHA256: 66B25C0B... (matches accepted hash)
+  - EveningRefresh: LastRunTime=09/18/2026 20:20:01 (BEFORE install), NextRunTime=09/19/2026 20:20:00 (AFTER install, about 2.5 hours from now)
+  - MorningRefresh: LastRunTime=09/19/2026 07:20:01 (BEFORE install), NextRunTime=09/20/2026 07:20:00 (AFTER install, about 19.5 hours from now)
+- **STATUS: WAITING_FOR_NATURAL_RUN**（安裝後尚無新 run；下一個自然 run: EveningRefresh at 2026-09-19T20:20:00 Taipei）
+- documents/TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION.md: COMPLETE
+- NEXT: 等待 EveningRefresh 自然執行（2026-09-19T20:20:00 Taipei）；不新增排程、不啟動背景監控、不忙等輪詢。
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
