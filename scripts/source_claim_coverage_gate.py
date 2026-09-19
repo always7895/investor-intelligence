@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -20,6 +21,8 @@ from authoritative_source_catalog import (  # noqa: E402
     SourceRecord,
     load_catalog as load_authoritative_catalog,
 )
+
+from source_registry import load_registry  # noqa: E402
 
 DEFAULT_POLICY = ROOT / "config" / "source-claim-coverage-policy.json"
 DEFAULT_CATALOG = ROOT / "config" / "authoritative-source-catalog.json"
@@ -121,6 +124,13 @@ def audit_claim_policy(
     catalog: Mapping[str, Any],
 ) -> tuple[list[str], dict[str, Any]]:
     findings: list[str] = []
+    # Single source of truth for referential checks: the existing registry
+    # loader (no second enum list).
+    registry = load_registry()
+    known_classes = {source.authority_class for source in registry.sources}
+    known_roles: set[str] = set()
+    for source in registry.sources:
+        known_roles.update(source.evidence_roles)
     expected_top = {
         "schema_version",
         "automatic_source_activation",
@@ -219,7 +229,6 @@ def audit_claim_policy(
             allowed_semantics_keys = {
                 "authority_classes",
                 "evidence_roles",
-                "fallback_sources",
                 "subject_binding_fields",
             }
             for name, value in semantics.items():
@@ -244,14 +253,15 @@ def audit_claim_policy(
                         findings.append(f"{label}.{key} must be a string array")
                 if not classes and not roles:
                     findings.append(f"{label} must declare authority_classes or evidence_roles")
-                for key in ("fallback_sources", "subject_binding_fields"):
-                    items = value.get(key)
-                    if items is None:
-                        continue
-                    if not isinstance(items, list) or not all(
-                        isinstance(item, str) and item.strip() for item in items
-                    ):
-                        findings.append(f"{label}.{key} must be a string array")
+                for item in classes or []:
+                    if isinstance(item, str) and item not in known_classes:
+                        findings.append(f"{label}.authority_classes references unknown class: {item}")
+                for item in roles or []:
+                    if isinstance(item, str) and item not in known_roles:
+                        findings.append(f"{label}.evidence_roles references unknown role: {item}")
+                for item in value.get("subject_binding_fields") or []:
+                    if not isinstance(item, str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", item):
+                        findings.append(f"{label}.subject_binding_fields contains an invalid identifier: {item!r}")
     lanes = policy.get("lane_semantics")
     if lanes is not None:
         if not isinstance(lanes, dict):
@@ -277,6 +287,17 @@ def audit_claim_policy(
                         findings.append(f"{label}.{key} must be a string array")
                 if not classes and not roles:
                     findings.append(f"{label} must declare authority_classes or evidence_roles")
+                # Exact intentional gap: only lane_semantics.clearing may reference
+                # the not-yet-cataloged clearing_house class; nowhere else.
+                clearing_exception = name == "clearing"
+                for item in classes or []:
+                    if not isinstance(item, str):
+                        continue
+                    if item not in known_classes and not (clearing_exception and item == "clearing_house"):
+                        findings.append(f"{label}.authority_classes references unknown class: {item}")
+                for item in roles or []:
+                    if isinstance(item, str) and item not in known_roles:
+                        findings.append(f"{label}.evidence_roles references unknown role: {item}")
 
     required_families = {
         "issuer_identity",

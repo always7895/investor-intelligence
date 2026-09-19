@@ -173,11 +173,6 @@
         "legal_status",
         "issuer_information"
       ],
-      "fallback_sources": [
-        "us_sec",
-        "nasdaq",
-        "gleif_lei"
-      ],
       "subject_binding_fields": [
         "entity"
       ]
@@ -191,10 +186,6 @@
         "issuer_filings",
         "financial_statements",
         "company_filings"
-      ],
-      "fallback_sources": [
-        "us_sec",
-        "nasdaq"
       ],
       "subject_binding_fields": [
         "entity"
@@ -212,10 +203,6 @@
         "exchange_announcements",
         "public_procurement",
         "material_events"
-      ],
-      "fallback_sources": [
-        "us_sec",
-        "nasdaq"
       ],
       "subject_binding_fields": [
         "entity"
@@ -237,11 +224,6 @@
         "trade",
         "balance_of_payments"
       ],
-      "fallback_sources": [
-        "world_bank",
-        "us_bls",
-        "ecb"
-      ],
       "subject_binding_fields": []
     },
     "monetary_policy": {
@@ -253,10 +235,6 @@
         "monetary_system",
         "rates",
         "treasury_yields"
-      ],
-      "fallback_sources": [
-        "ecb",
-        "us_federal_reserve"
       ],
       "subject_binding_fields": []
     },
@@ -273,9 +251,6 @@
         "insolvency",
         "legal_status"
       ],
-      "fallback_sources": [
-        "us_sec"
-      ],
       "subject_binding_fields": []
     },
     "market_or_exchange_event": {
@@ -289,9 +264,6 @@
         "listed_companies",
         "market_structure"
       ],
-      "fallback_sources": [
-        "nasdaq"
-      ],
       "subject_binding_fields": []
     },
     "public_option_quote": {
@@ -303,9 +275,6 @@
         "derivatives",
         "market_statistics",
         "securities"
-      ],
-      "fallback_sources": [
-        "nasdaq"
       ],
       "subject_binding_fields": [
         "symbol"
@@ -323,7 +292,6 @@
         "research_metadata",
         "trademarks"
       ],
-      "fallback_sources": [],
       "subject_binding_fields": [
         "entity"
       ]
@@ -343,9 +311,6 @@
         "natural_gas",
         "oil",
         "gas"
-      ],
-      "fallback_sources": [
-        "world_bank"
       ],
       "subject_binding_fields": []
     }

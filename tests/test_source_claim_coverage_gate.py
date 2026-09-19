@@ -123,6 +123,48 @@ class SourceClaimCoverageGateTests(unittest.TestCase):
         findings, _summary = audit_claim_policy(policy, self.catalog)
         self.assertEqual(findings, [])
 
+    def test_inert_fallback_sources_removed_and_referential_checks(self) -> None:
+        # The removed inert fallback_sources field is now rejected as unknown.
+        policy = copy.deepcopy(self.policy)
+        policy["claim_family_semantics"]["macro_indicator"]["fallback_sources"] = ["us_sec"]
+        findings, _summary = audit_claim_policy(policy, self.catalog)
+        self.assertTrue(any("fallback_sources" in item for item in findings))
+
+        # Unknown class/role typos fail against registry-derived metadata.
+        policy = copy.deepcopy(self.policy)
+        policy["claim_family_semantics"]["macro_indicator"]["authority_classes"] = ["centreal_bank_typo"]
+        findings, _summary = audit_claim_policy(policy, self.catalog)
+        self.assertTrue(any("centreal_bank_typo" in item for item in findings))
+
+        policy = copy.deepcopy(self.policy)
+        policy["claim_family_semantics"]["macro_indicator"]["evidence_roles"] = ["macro_typo_role"]
+        findings, _summary = audit_claim_policy(policy, self.catalog)
+        self.assertTrue(any("macro_typo_role" in item for item in findings))
+
+        # The exact clearing gap is allowed in lane_semantics.clearing only.
+        findings, _summary = audit_claim_policy(self.policy, self.catalog)
+        self.assertEqual(findings, [])
+        self.assertEqual(self.policy["lane_semantics"]["clearing"]["authority_classes"], ["clearing_house"])
+
+        policy = copy.deepcopy(self.policy)
+        policy["lane_semantics"]["regulator"]["authority_classes"] = ["clearing_house"]
+        findings, _summary = audit_claim_policy(policy, self.catalog)
+        self.assertTrue(any("lane_semantics.regulator" in item and "clearing_house" in item for item in findings))
+
+        # Other missing roles fail (no arbitrary bypass).
+        policy = copy.deepcopy(self.policy)
+        policy["lane_semantics"]["regulator"]["evidence_roles"] = ["nonexistent_role_xyz"]
+        findings, _summary = audit_claim_policy(policy, self.catalog)
+        self.assertTrue(any("nonexistent_role_xyz" in item for item in findings))
+
+        # Binding identifier syntax: no second field enum, stable identifiers only.
+        for bad_name in ("Entity", "e" * 70, "9lead", "has space"):
+            policy = copy.deepcopy(self.policy)
+            policy["claim_family_semantics"]["issuer_financial_statement"]["subject_binding_fields"] = [bad_name]
+            findings, _summary = audit_claim_policy(policy, self.catalog)
+            with self.subTest(bad_name=bad_name):
+                self.assertTrue(any("subject_binding_fields" in item for item in findings))
+
 
 if __name__ == "__main__":
     unittest.main()
