@@ -1,5 +1,13 @@
 # Current state / 目前狀態
 
+## TASK0-3L_RECONCILE_BASELINE (test-only/doc reconciliation; ACCEPTED scoped; 2026-09-19)
+- Source base: `aac388e08480cca87cdee21aa9dbb91af1d648cc` (pushed; this baseline is uncommitted on top).
+- Baseline reconciliation (evidence + docs/test reconcile; no product runtime/policy/schema changes): **158 sources / 7 catalog files** verified via `load_registry()`; **10 current claim families** (`config/source-claim-coverage-policy.json` `claim_families`) recorded versus the unimplemented 22-class/17-lane plan as requirements, not observed completion.
+- Deliverables 5–9 reconciled in the source-federation handoff as REUSED/partial gaps (routing skeleton REUSED, not new); coverage matrix **GAP/NOT_PRESENT** at the advertised path (origin UNKNOWN); reproducible inventory = `python scripts/source_registry.py coverage` (registry inventory only, not 17-lane proof).
+- `tests/test_source_registry.py`: +3 coverage-CLI subprocess regressions (fixture ledger equality, fixture-only ids, malformed/missing fail-closed, deterministic two runs; no registry/runtime writes, fixture writes allowed in a handle-owned `.tmp/` fixture created under an always-created shared scratch root, never removed; cleanup registered via `addClassCleanup` so setUpClass failure also cleans only the owned fixture; clean-checkout portable; no network). Verification scope: focused 17/17 OK + 4 gates + `git diff --check`.
+- Independent full suite (Master, 2026-09-19): Python **1534 tests 354.522s OK skipped 3** — full-suite PASS proven for this baseline.
+- Scope: this baseline is test-only/doc reconciliation **ACCEPTED scoped** (Master ACCEPT, Mapika .9723) — **NOT** TASK0-3L complete. Broader TASK0-3L (17-lane projection / 22-class claim mapping / generic capability-state implementation) remains incomplete and **DEFERRED_WITH_REASON** to separately bounded semantic contracts: current routing recovery authorizes no claim-admissibility expansion; existing gates/policy unchanged; no new schemas implemented automatically. Accepted routing recovery and TASK0-3K are not reopened.
+
 ## ROUTING_RECOVERY_V1 / SOL_GUARD (ACCEPTED scoped; 2026-09-19)
 - Source HEAD `9cd22fe2c737a7088002941b10b8226128af8084` (branch `fix/options-provenance-audit`, ahead origin 5, fetched, tracked clean, untracked `.tmp/` preserved).
 - SoL-Pi small-session compaction guard implemented in the active project-local runtime `D:\Investor-Intelligence-LINE-Pi\.pi\git\github.com\NVlabs\SoL-Pi` (base `bd005888`); no upstream Pi patch, no reinstall, no global registration; runtime dirty lock preserved. See `documents/SOL_GUARD.md` (receipt, hashes, apply recipe) and `patches/sol-pi-small-session-guard.patch` (SHA `7E1F9831…45F59D`).

@@ -32,12 +32,12 @@ No provider failure (timeout/403/404/429/JS challenge/schema change/API key/prem
 1. repository/source inventory — DONE
 2. Mapika-v9 actual pin verification — RESOLVED ALIAS_ONLY (2026-09-19: startup loads D:/Models/Mapika-decider-2b-v9, load_ms2124 matches live health2124.2; API id decider-v8 is ALIAS_ONLY, Mapika .9693; no migration/schema-debug needed)
 3. authoritative Source Registry — EXISTS (158 sources in config/sources/; see below)
-4. mandatory institution coverage matrix — DONE (config/source-federation/source-coverage-matrix.json)
-5. claim taxonomy — PENDING
-6. origin/transport lineage schema — PENDING
-7. source capability probe framework — PENDING
-8. source router skeleton — PENDING
-9. deterministic tests — PENDING
+4. mandatory institution coverage matrix — GAP/NOT_PRESENT at the advertised path (`config/source-federation/source-coverage-matrix.json`; origin of the earlier DONE claim UNKNOWN, not asserted). Reproducible inventory: `python scripts/source_registry.py coverage` (coverage_ledger over the live registry) — registry inventory dimensions only, NOT proof of mandatory 17-lane coverage/availability/publication. The 17-lane view remains an unimplemented requirement.
+5. claim taxonomy — REUSED/partial: live authoritative taxonomy = `claim_families` in `config/source-claim-coverage-policy.json` (10 current families with min primary/independent groups, preferred kinds, required fields). The 22-class list is an unimplemented requirement, not observed completion.
+6. origin/transport lineage schema — PARTIAL GAP: origin dedup rules exist (`same_publisher_mirrors_count_once`, `same_content_hash_counts_once`, `independence_group_deduplication`, registry-validated `independence_group`, `scripts/multilineage_claim_bundle.py`); a named two-dimension (data_origin vs transport) schema is not implemented.
+7. source capability probe framework — REUSED/partial: `scripts/v213_source_federation.py` fetchers + `safe_source()` + `observation()` + deterministic `self_test()`; a generic capability-state classifier (AVAILABLE_PUBLIC... enum) is not implemented.
+8. source router skeleton — REUSED (not new implementation): `scripts/source_registry.py` `select_sources()` + `assess_claim_evidence()` + `coverage_ledger()`.
+9. deterministic tests — REUSED/partial: `tests/test_source_registry.py` incl. subprocess regression for the coverage CLI (fixture ledger equality, fixture-only source ids, malformed/missing fail-closed, deterministic two runs; no network/writes); no dedicated `tests/` file for `v213_source_federation_gate.py` (in-script `self_test()` only).
 10. Mapika review — PENDING
 11. full gates — PENDING
 12. atomic commit + push — PENDING
@@ -69,7 +69,7 @@ No provider failure (timeout/403/404/429/JS challenge/schema change/API key/prem
 - Catalog policy (config/authoritative-source-catalog.json): no_fixed_source_count_limit, automatic_activation, free_only, public_data_only, paywall_bypass_forbidden, runtime_enable_requires_all_gates, unknown_fields_fail_closed
 - Registry policy (config/sources/registry-policy.json): unbounded source count, trust tiers T1-T4, authority classes list
 
-### COVERAGE MATRIX (DONE)
+### COVERAGE MATRIX (NOT_PRESENT at advertised path; plan retained below; origin of earlier DONE claim UNKNOWN)
 File: config/source-federation/source-coverage-matrix.json
 - 17 mandatory lanes; 12 COVERED, 4 PARTIAL, 1 MISSING
 - COVERED (12): B_US_REGULATORY, E_US_MACRO, F_INTL_MACRO, G_JAPAN, H_TAIWAN, I_HK_CHINA, J_SOUTH_KOREA, K_EUROPE_UK, L_CANADA, M_AUSTRALIA, N_SINGAPORE, P_MEDIA
