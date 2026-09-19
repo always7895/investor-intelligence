@@ -3,10 +3,10 @@
 ## META
 - PROJECT: INVESTOR_INTELLIGENCE_SOURCE_FEDERATION_FULL_AUTOPILOT
 - MODE: AUTONOMOUS=true, CONTINUOUS_EXECUTION=true, HUMAN_CONFIRMATION_REQUIRED=false, FAIL_CLOSED=true, SINGLE_WRITER=true
-- MASTER: ChatGPT Web / Pro
-- DECIDER: Mapika-decider-2b-v9
-- EXECUTOR_WRITER: Qwen3.8-27B
-- ORCHESTRATOR: Pi
+- MASTER: Astra (Master)
+- DECIDER: Mapika-decider-2b-v9 (ALIAS_ONLY identity resolved 2026-09-19)
+- EXECUTOR_WRITER: Qwen3.8-27B-EXL3-5.5bpw-v2 (exact, tabby-local localhost:5000)
+- ORCHESTRATOR: Pi + official Herdr Skill
 - WORKSPACE: D:\Investor-Intelligence-LINE-Pi\_workspace\source
 - BRANCH: fix/options-provenance-audit
 - HANDOFF_DATE: 2026-09-19
@@ -16,12 +16,12 @@
 Upgrade Investor Intelligence from a single/few-source evidence system to a multi-institution Source Federation. Yahoo Finance is only one source; no single provider (Yahoo/Stooq/Nasdaq) is the global evidence backbone. The system must auto-integrate official regulators, issuer IR/filings, exchanges, options/futures institutions, government statistics, central banks, international organizations, global markets, public institutional research, reputable financial news, and public market-data aggregators — while preserving provenance, lineage, freshness, claim-specific evidence, fail-closed, publication gates, privacy, and ranking/scoring integrity.
 
 ## GOVERNANCE (3-LAYER)
-- ChatGPT Web: sole Master Controller (architecture, task contracts, production authorization, final acceptance). Reasoning strength default Pro; fallback 極高 only when Pro quota unavailable.
-- Mapika-decider-2b-v9: bounded decision, evidence sufficiency, source routing, diff review, risk classification, escalation routing. Does NOT write source code or modify Production.
-- Qwen3.8-27B: sole Writer (discovery, adapter implementation, fixtures, tests, refactor within approved scope, gates, git commit/push, deploy only after Master gate).
-- Pi: orchestration, tool execution, evidence collection, calls Mapika, calls ChatGPT Web, state machine progression.
-- ANTI_LOOP: same hypothesis without new evidence max 2 restatements. 3 consecutive read-only ops without decision-grade evidence → STOP → Mapika DECIDE. Mapika LOW/UNKNOWN → auto-send ChatGPT Web Pro → continue (no human wait).
-- MCP ops: decider first → ChatGPT Web requestPro=true. On Pro quota unavailable → fallback 極高. On MCP timeout → check get_latest_response/status first (no duplicate resend).
+- Astra (Master): sole Master Controller (architecture, task contracts, final acceptance). Astra-class models only for the `astra-master` role; no non-master Astra dispatch. Production authorization is OPERATOR-only (explicit current-session operator authorization); Master technical approval alone is insufficient.
+- Mapika-decider-2b-v9: bounded decision, evidence sufficiency, source routing, diff review, risk classification, escalation routing. Does NOT write source code or modify Production. Identity item resolved ALIAS_ONLY (actual v9 weights/paths verified; older logical model ID reported as alias).
+- Qwen3.8-27B-EXL3-5.5bpw-v2 (exact): sole Writer (discovery, adapter implementation, fixtures, tests, refactor within approved scope, gates, git commit/push, deploy only after Master gate).
+- Pi + official Herdr Skill: orchestration, tool execution, evidence collection, calls Mapika, calls the Master, state machine progression; one master, one writer; cloud scouts default zero, max two cheap only for unresolved work.
+- ANTI_LOOP: same hypothesis without new evidence max 2 restatements. 3 consecutive read-only ops without decision-grade evidence → STOP → Mapika DECIDE. Mapika LOW/UNKNOWN → auto-send Master ruling → continue (no human wait).
+- Master ops: decider first → Astra master ruling. On timeout → check status first (no duplicate resend).
 
 ## GLOBAL AUTONOMY LAW
 No provider failure (timeout/403/404/429/JS challenge/schema change/API key/premium/region block/robots-ToS/auth/temp outage) may stop the project. Classify each provider: AVAILABLE_PUBLIC, AVAILABLE_PUBLIC_LIMITED, AVAILABLE_KEYLESS, OPTIONAL_FREE_KEY, AUTH_REQUIRED, PREMIUM_ONLY, JS_ONLY, RATE_LIMITED, REGION_BLOCKED, LEGAL_RESTRICTED, TEMP_UNAVAILABLE, SCHEMA_BROKEN, UNSUPPORTED. AVAILABLE_* → build/use adapter. OPTIONAL_FREE_KEY → no auto account/key entry → OPTIONAL_DEFERRED → continue. AUTH_REQUIRED/PREMIUM_ONLY → no purchase/login/bypass → record capability → continue. JS_ONLY → bounded adapter only if repo has legal public browser/web adapter, else DEFER. RATE_LIMITED → backoff/cache → no evidence gate reduction. REGION_BLOCKED/TEMP_UNAVAILABLE → quarantine → pipeline continues. Single source failure NEVER = PROJECT_STOP. Only repository integrity/security/secret leak/corrupt provenance contract = HARD STOP.
@@ -30,7 +30,7 @@ No provider failure (timeout/403/404/429/JS challenge/schema change/API key/prem
 
 ### Deliverables (13)
 1. repository/source inventory — DONE
-2. Mapika-v9 actual pin verification — PENDING (NOTE: system_one_decide reports model "decider-v8"; directive says "Mapika-decider-2b-v9" — needs reconciliation)
+2. Mapika-v9 actual pin verification — RESOLVED ALIAS_ONLY (2026-09-19: startup loads D:/Models/Mapika-decider-2b-v9, load_ms2124 matches live health2124.2; API id decider-v8 is ALIAS_ONLY, Mapika .9693; no migration/schema-debug needed)
 3. authoritative Source Registry — EXISTS (158 sources in config/sources/; see below)
 4. mandatory institution coverage matrix — DONE (config/source-federation/source-coverage-matrix.json)
 5. claim taxonomy — PENDING
@@ -179,7 +179,7 @@ Bounded source cache. Cache key: institution, endpoint, entity, claim, as_of. Re
 Within existing scheduler architecture. Only: availability, parse health, age, schema fingerprint. NOT: restart credentials, purchase service, bypass rate limit. Health failure → quarantine lane → fallback → retry later.
 
 ## DECIDER CHECKPOINTS (per batch)
-Mapika PRE/POST review. Schema: questions = {"verdict": {"instructions": "...", "options": ["ACCEPT", "REWORK", "ESCALATE_MASTER", "STOP"]}}. ACCEPT >=0.70 → continue. REWORK → Qwen auto minimal rework → review again. ESCALATE_MASTER → auto call ChatGPT Web Pro → ingest → continue. LOW confidence → ChatGPT Web Pro → continue. No user ask.
+Mapika PRE/POST review. Schema (known working type): questions = {"verdict": {"type": "choice", "instructions": "...", "criteria": {"ACCEPT": "meaning", "REWORK": "meaning", "ESCALATE_MASTER": "meaning", "STOP": "meaning"}}}. ACCEPT >=0.70 → continue. REWORK → Qwen auto minimal rework → review again. ESCALATE_MASTER → auto call Master ruling → ingest → continue. LOW confidence → Master ruling → continue. No user ask.
 
 ## ADAPTER IMPLEMENTATION ORDER
 - BATCH A — Primary corporate evidence: SEC, issuer IR, current JPX/EDINET/TWSE/MOPS needed by ranked universe
@@ -195,16 +195,16 @@ New source != ticker bonus. Source federation only improves: evidence coverage, 
 Do not auto-change historical admission. Any originally FAIL-CLOSED ticker stays FAIL-CLOSED until new qualified evidence truly satisfies existing admission policy. FORBIDDEN: zero padding, synthetic evidence, source-count inflation, same-lineage duplication.
 
 ## PRODUCTION POLICY
-Local implementation/test/commit/push: auto. Production source-federation deploy: needs ChatGPT Master explicit DEPLOY_APPROVED (no human confirmation). Master DEPLOY_APPROVED → Qwen deploy normal pipeline → readback → smoke test → auto rollback if gate fails. Master LOCAL_ACCEPT_ONLY → no production deploy → continue next local task. FORBIDDEN: create paid account, rotate credentials, purchase data, expose secrets, alter brokerage integration, enable trading, weaken LINE privacy, bypass existing production seal/pointer-last.
+Local implementation/test/commit/push: auto. Production source-federation deploy: requires explicit current-session OPERATOR authorization; Master technical approval (DEPLOY_APPROVED) alone is insufficient, and no deploy is authorized by this document. Operator-authorized deploy → Qwen deploy normal pipeline → readback → smoke test → auto rollback if gate fails. No operator authorization → no production deploy → continue next local task. FORBIDDEN: create paid account, rotate credentials, purchase data, expose secrets, alter brokerage integration, enable trading, weaken LINE privacy, bypass existing production seal/pointer-last.
 
 ## PRODUCTION CANARY (deployment order)
 1. source adapters → 2. registry → 3. router → 4. evidence engine → 5. local replay → 6. sealed fixture replay → 7. production canary → 8. readback → 9. live product smoke test → 10. final promotion. Any step fail: auto rollback → evidence receipt → Mapika → Master → next repair cycle. No user wait.
 
 ## CANONICAL GATES
-Python targeted tests, Python full suite, cloud npm test, cloud npm run typecheck, security_check, documentation_structure_gate, agent_skill_structure, JSON validation, supply-chain gate, git diff --check. Any gate fail: Qwen repair → Mapika → rerun. Max 2 repair cycles. 3rd fail → ChatGPT Master Pro → ingest ruling → continue.
+Python targeted tests, Python full suite, cloud npm test, cloud npm run typecheck, security_check, documentation_structure_gate, agent_skill_structure, JSON validation, supply-chain gate, git diff --check. Any gate fail: Qwen repair → Mapika → rerun. Max 2 repair cycles. 3rd fail → Master ruling → ingest → continue.
 
 ## PROJECT LOOP
-REPO_PREFLIGHT → DECIDER_PIN_CHECK → SOURCE_REGISTRY_DISCOVERY → CAPABILITY_PROBES → CLAIM_TAXONOMY → SOURCE_ROUTER → BATCH_IMPLEMENT → TARGETED_TESTS → MAPIKA_REVIEW → FULL_GATES → COMMIT_PUSH → CHATGPT_MASTER_PRO_REVIEW → IF DEPLOY_APPROVED: PRODUCTION_CANARY/READBACK/LIVE_TESTS/FINALIZE_OR_ROLLBACK ELSE: CONTINUE_LOCAL_NEXT_BATCH → NEXT_BATCH → LOOP. Until SOURCE_FEDERATION_COMPLETE=true AND PROJECT_RELEASE_COMPLETE=true.
+REPO_PREFLIGHT → DECIDER_PIN_CHECK → SOURCE_REGISTRY_DISCOVERY → CAPABILITY_PROBES → CLAIM_TAXONOMY → SOURCE_ROUTER → BATCH_IMPLEMENT → TARGETED_TESTS → MAPIKA_REVIEW → FULL_GATES → COMMIT_PUSH → MASTER_REVIEW → IF DEPLOY_APPROVED: PRODUCTION_CANARY/READBACK/LIVE_TESTS/FINALIZE_OR_ROLLBACK ELSE: CONTINUE_LOCAL_NEXT_BATCH → NEXT_BATCH → LOOP. Until SOURCE_FEDERATION_COMPLETE=true AND PROJECT_RELEASE_COMPLETE=true.
 
 ## TASK SEQUENCE
 - TASK0-3L_SOURCE_FEDERATION_FOUNDATION (CURRENT, IN PROGRESS)
@@ -224,10 +224,10 @@ REPO_PREFLIGHT → DECIDER_PIN_CHECK → SOURCE_REGISTRY_DISCOVERY → CAPABILIT
 6. requested action requires payment/account creation and no free fallback exists
 7. security boundary violation
 8. Git state cannot be reconciled safely
-Normal source/API failure is NOT HARD STOP. On HARD STOP: save evidence → Mapika → ChatGPT Master Pro → if Master provides safe repair, auto continue → only Master explicit STOP_PROJECT truly stops.
+Normal source/API failure is NOT HARD STOP. On HARD STOP: save evidence → Mapika → Master → if Master provides safe repair, auto continue → only Master explicit STOP_PROJECT truly stops.
 
 ## NEXT ACTIONS (for new session)
-1. Reconcile Mapika-v9 pin (system_one_decide reports "decider-v8"; directive says "Mapika-decider-2b-v9") — verify actual decider model version.
+1. Mapika-v9 pin — RESOLVED ALIAS_ONLY (2026-09-19): actual v9 weights/paths verified (D:/Models/Mapika-decider-2b-v9, load_ms2124 = live health); reported API id decider-v8 is an alias only; no migration needed.
 2. Complete TASK0-3L pending deliverables:
    - claim taxonomy (config/source-federation/claim-taxonomy.json)
    - origin/transport lineage schema (config/source-federation/lineage-schema.json)

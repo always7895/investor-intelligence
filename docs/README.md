@@ -140,3 +140,5 @@ Preserve these original observations and technical rationale. Their older deploy
 - [TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS](../documents/TASK0-3H_RUNTIME_DIAGNOSTIC_READINESS.md) — runtime diagnostic readiness pre-install (3H)
 - [TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL](../documents/TASK0-3I_RUNTIME_DIAGNOSTIC_INSTALL.md) — single-file runtime install receipt (3I)
 - [TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION](../documents/TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION.md) — post-install natural-run observation prework (3J)
+- [HANDOFF_SOURCE_FEDERATION](../documents/HANDOFF_SOURCE_FEDERATION.md) — TASK0-3L source-federation full-autopilot handoff (current roles reconciled 2026-09-19)
+- [SOL_GUARD](../documents/SOL_GUARD.md) — SoL-Pi small-session compaction guard source-bound receipt (hashes, apply recipe, verification record)

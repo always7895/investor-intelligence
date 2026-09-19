@@ -1,5 +1,14 @@
 # Current state / 目前狀態
 
+## ROUTING_RECOVERY_V1 / SOL_GUARD (ACCEPTED scoped; 2026-09-19)
+- Source HEAD `9cd22fe2c737a7088002941b10b8226128af8084` (branch `fix/options-provenance-audit`, ahead origin 5, fetched, tracked clean, untracked `.tmp/` preserved).
+- SoL-Pi small-session compaction guard implemented in the active project-local runtime `D:\Investor-Intelligence-LINE-Pi\.pi\git\github.com\NVlabs\SoL-Pi` (base `bd005888`); no upstream Pi patch, no reinstall, no global registration; runtime dirty lock preserved. See `documents/SOL_GUARD.md` (receipt, hashes, apply recipe) and `patches/sol-pi-small-session-guard.patch` (SHA `7E1F9831…45F59D`).
+- Acceptance: Master ACCEPT scoped ROUTING_RECOVERY_V1 (Mapika ACCEPT .9228); pre-commit base recorded as source HEAD `9cd22fe2c737a7088002941b10b8226128af8084`; acceptance gate counts use the same evidence below; no invented final SHA.
+- Verification (pre-commit evidence; no final SHA claimed): 27/27 targeted vitest (5 online-context-compact files) + `tsc --noEmit` + `git diff --check` + post-reload runtime regression master 4/4 (small-session no-noise + live compaction/resume). Independent full gates: Python full retry 1531 tests 354.932s OK skipped 3 (initial 300s tool timeout retained as a non-pass attempt), compile PASS, Worker 869 PASS / 1 skip, typecheck PASS, PS5.1/7 parse included. No deployment, no QA recertification, no release claim. Scratch evidence preserved in runtime tree (not committed). No remaining known ROUTING-scoped defect after the guards; unrelated findings retained in their own sections.
+- Routing roles reconciled to current policy: Astra master (architecture/escalation/acceptance only; no non-master Astra); Mapika CPU v9 ALIAS_ONLY (actual path verified); Qwen exact `Qwen3.8-27B-EXL3-5.5bpw-v2` sole writer at existing localhost:5000; Pi + official Herdr (1 master 1 writer); zero cloud scouts default, max 2 cheap only unresolved. Previous master/Gemini executor directives no longer ACTIVE (history preserved).
+- TASK0-3K CLOSED (never reopened). TASK0-3L pending items retained (claim taxonomy, lineage schema, capability probe, router skeleton, deterministic tests, reviews, gates, commit); deliverable 2 (Mapika-v9 pin) resolved ALIAS_ONLY.
+- Next: TASK0-3L bounded foundation verification (claim taxonomy, lineage schema, capability probe, router skeleton, deterministic tests) per the source-federation handoff.
+
 ## TASK0-3K_AUTOMATIC_TRIGGER_OBSERVATION (COMPLETE / ACCEPT; 2026-09-19)
 - Final ruling (master ChatGPT, conv 6aae32f7): ACCEPT / COMPLETE. AUTOMATIC_RUN=PASS; PRODUCTION_PATH_EQUIVALENCE=PROVEN; GATES=PASS; RETEST_REQUIRED=NO.
 - Evidence: repetition trigger fired 2026-09-19T14:56:14+08:00 (automatic, not manual control). LastRunTime 14:56:15, LastTaskResult=0, State Ready, NextRunTime 15:56:14. New run 20260919T065615Z-e4b97a289055. Full sync terminal evidence: OBJECTS_UPLOADED=15, READBACK_VERIFIED=15, POINTER_LAST, REFRESH OK [14:56:15]. Production pointer advanced 20260919T060857Z (14:08 manual) -> 20260919T065615Z (14:56 automatic); promoted_at 06:56:15Z, age 110s (fresh); seal 7a52e4c57fac consistent.
@@ -24,7 +33,7 @@
 - Branch: fix/options-provenance-audit. HEAD before this session's fixes: d5af746.
 - Schedules (all Ready): InvestorIntelligence-v21-EveningRefresh (20:20), InvestorIntelligence-v21-MorningRefresh (07:20), InvestorIntelligenceSealedFreshness (60-min), InvestorIntelligenceFreshnessWatchdog (30-min).
 - Freshness: FRESH (last watch 2026-09-19 ~05:26Z); 60-min SealedFreshness is producing fresh sealed runs using the newly installed script (latest REFRESH OK run 20260919T045615Z, pointer last; ranked GEV 96.0, 6501 93.0).
-- Backend: localhost:5000 tabbyAPI, exact model Qwen3.8-27B-EXL3-SC5-H6-V6 (unchanged).
+- Backend: localhost:5000 tabbyAPI (provider `tabby-local`), exact current writer model `Qwen3.8-27B-EXL3-5.5bpw-v2` (the former `Qwen3.8-27B-EXL3-SC5-H6-V6` pin is historical).
 - Admission: publication_eligible=false (all public-source adapters emit publication_eligible: False; TEST_ONLY tier, no authenticated public publication).
 
 ## Open findings — fixed this session (2026-09-19)
