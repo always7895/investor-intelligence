@@ -235,6 +235,24 @@
 - REPORT FIELDS: BASE_HEAD=fdc393b; BOUND_INPUTS=paths + full SHA256; REPRESENTATIVE_TICKERS/MATERIAL_CLAIMS=TAL/SMCI/GAP (財務指標); SOURCE_IDENTITY_MAPPING=claim_type_set_equal=0/20; GAP_CLASSIFICATION=ADDITIONAL_INDEPENDENT_SUPPORT_NEEDED + CANDIDATE_UNVERIFIED; CANDIDATE_SOURCES=existing_recorded/known_url_unverified/not_identified; NEW_ACQUISITION_NEEDED=exact scope, not executed; RECOMMENDED_NEXT_ACTION=評估公司 IR 網站/行業分析師報告作為第二個獨立 claim source 的可行性; POLICY_OR_APPLICATION_CHANGED=false; NEW_SOURCE_FETCHES=0; PRODUCTION_TOUCHED=false.
 - NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E COMPLETE; await ruling on next step.
 
+## TASK0-3E_CLAIM_SOURCE_FEASIBILITY (PARTIAL_ACCEPTED corrections; 2026-09-18)
+- Pro ruling (conv 6aacd52f): 3E PARTIAL_ACCEPTED，尚未 COMPLETE。5 項修正:
+  1. 75/60 是原始欄位差集，非來源遺失/新增分類（需用 audit 的正規化、分類、去重規則；標記 CANONICALIZED / DEDUPED_WITH_IDENTIFIED_REPRESENTATIVE / ADDED_BY_BUILDER / UNEXPLAINED）
+  2. 目前列的是 metric 名稱，非可比對 material claims（需 3 張 claim card，用實際 tag 與數值）
+  3. 來源可行性不能從品牌/domain 判定（新聞/分析師 ≠ SEC 僅因出版機構名稱不同；公司 IR ≠ 獨立僅因 domain 不同；其他 SEC filings ≠ 排除僅因 CIK cache 存在）
+  4. 不要把「補第二來源」寫成 gate 通過保證（綁定實際 policy: config/v213-serenity-public-logic-policy.json）
+  5. 下一步：完成 3 張 claim card + 最多 3 個具體請求
+- 3 張 claim card (用實際 tag 與數值):
+  - TAL-REV-2026: us-gaap:Revenues, val=3,008,908,000 USD, period=2025-03-01 to 2026-02-28, filed=2026-06-12, form=20-F
+  - SMCI-REV-2026: us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax, val=39,063,072,000 USD, period=2025-07-01 to 2026-06-30, filed=2026-08-31, form=10-K
+  - GAP-REV-2026Q2: us-gaap:Revenues, val=3,651,000,000 USD, period=2026-05-03 to 2026-08-01, filed=2026-08-28, form=10-Q
+- 最多 3 個具體請求:
+  - Request 1: TAL-REV-2026 (EXISTING_DATA_EXTRACTION, same_origin_crosscheck, 公司 IR/財報原文交叉檢查)
+  - Request 2: SMCI-REV-2026 (PUBLIC_DISCOVERY, independent_support_candidate, 新聞/分析師資料探索)
+  - Request 3: GAP-REV-2026Q2 (NO_SUITABLE_CANDIDATE_IDENTIFIED, 本次沒有找到具體合格的第二個獨立 claim source)
+- documents/TASK0-3E_CLAIM_SOURCE_FEASIBILITY.md: COMPLETE (3 張 claim card + source mappings + 3 個具體請求)
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3E PARTIAL_ACCEPTED corrections complete; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
