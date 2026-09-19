@@ -367,6 +367,25 @@
   3. 無衝突結論限定在已比較內容（NO_CONFLICT_OBSERVED_IN_COMPARED_CONTENT）
 - step B、3E、3F 均按各自限定範圍保持結案；3A-1、capture patch、guard 強續與 Production/KV/DO/排程/真 LINE/credentials 操作全部維持未執行；本次結案不自動授權下一輪抓取或發布
 
+## TASK0-3G_CURRENT_PUBLICATION_TRIAGE (COMPLETE; 2026-09-19)
+- Pro ruling (conv 6aacd52f): 選 4，立即啟動 TASK0-3G_CURRENT_PUBLICATION_TRIAGE
+- 3G-0 (固定 source 與實際 runtime): COMPLETE
+  - Workspace HEAD: 3c4a811; Runtime source_commit: 2b9e14396766e4883771a7c452a02bcfebb3c46f（不同）
+  - scripts/v213_sealed_refresh.ps1: **DIFFERENT** (source: 435 lines, runtime: 284 lines)
+  - 其他 4 個檔案: IDENTICAL
+- 3G-1 (讀取四個排程資訊): COMPLETE
+  - MorningRefresh: State=Ready, LastRunTime=09/19/2026 07:20:01, **LastTaskResult=1 (failure)**
+  - EODRefresh, ActivationBundleSync, ActivationBundleReconcile: **NOT FOUND**
+- 3G-2 (綁定 receipt → journal → diagnostic): COMPLETE
+  - Receipt: **MISSING**; Publication journal: **MISSING**; Diagnostic: **MISSING**
+  - v213_order_evidence_reconciliation.json: status=PASS
+- 3G-3 (選定修補位置): COMPLETE
+  - **PRIMARY_NEXT_ACTION: RUNTIME_PARITY_REPAIR_CANDIDATE**
+  - 理由: runtime v213_sealed_refresh.ps1 是舊版本，source 有新增的 commit summary 函式在 runtime 中不存在
+  - MINIMAL_REPAIR_TARGET: 更新 runtime v213_sealed_refresh.ps1 到 source 版本
+- documents/TASK0-3G_CURRENT_PUBLICATION_TRIAGE.md: COMPLETE
+- NEXT: report to ChatGPT web (via decider-system-one routing); TASK0-3G COMPLETE; await ruling on next step.
+
 ## TASK0 - 2K (2026-09-18; ChatGPT Pro controller; COMMIT_REQUEST privacy boundary)
 - HEADS: Phase A RED `7274d00`; Phase B `1c783a7`; B1_C_DELTA `40083e1`; C1/C2 closure; `6f8296e` = historical reviewed baseline; `ab1bcca` superseded.
 - Pro verdicts (conv 6aacd52f): Phase A `ACCEPTED_FOR_REPAIR`; Phase B `AUTHORIZED` -> first pass `REPAIR_REQUIRED` (R1/R2 + Phase C gaps) -> B1_C_DELTA `AUTHORIZED` -> **Phase B source ACCEPTED** -> C1/C2 closed -> FINAL ACCEPTED (below).
