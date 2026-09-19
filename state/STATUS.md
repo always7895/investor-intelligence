@@ -1,20 +1,24 @@
 # Current state / 目前狀態
 
-## TASK0-3J_POST_INSTALL_NATURAL_RUN_OBSERVATION (WAITING_FOR_NATURAL_RUN; 2026-09-19)
-- Current task: 3J — observe the next natural scheduled run after the 3I single-file runtime install. No forced/synthetic run, no manual trigger, no new schedule, no background monitor, no busy-wait polling.
-- Pro ruling (conv 6aacd52f): prework ACCEPTED; 3J stays WAITING_FOR_NATURAL_RUN, not closed.
-- Install state (3I, COMPLETE/CLOSED):
-  - Installed file: %LOCALAPPDATA%\InvestorIntelligence\V213Runtime\scripts\v213_sealed_refresh.ps1
-  - Installed SHA-256: 66b25c0b0ed0732f6d28642c04d2b178249b1ce7e174dbf3ba434767d197f1f7 (matches accepted hash)
-  - Old hash (backup .task0-3i-20260919T034131Z.bak): 7ff671257ba94874521937e8fc2915089c4091c3606c072b2d21585cbb87f897
-  - Time bound: OBSERVED_AT_UTC 2026-09-19T03:54:47Z; basis = observed installed hash match (INSTALL_COMPLETED_AT not established from available records)
-- Observation target:
-  - NEXT_EXPECTED_TASK: InvestorIntelligence-v21-EveningRefresh
-  - NEXT_SCHEDULED_TIME_AS_OBSERVED: 2026-09-19T20:20:00+08:00
-  - POST_INSTALL_COMPLETED_RUN: NOT_OBSERVED (as of prework snapshot); PUBLICATION_RESULT: NOT_TESTED
-- Constraints: MANUAL_TASK_TRIGGER_AUTHORIZED=false; RUNTIME_CHANGE_AUTHORIZED=false; CLOUD_API_CALLS_AUTHORIZED=false.
-- STATUS: WAITING_FOR_NATURAL_RUN; TASK_COMPLETE=false
-- NEXT: after the EveningRefresh natural run, capture schedule state + sealed-refresh.log + freshness-watch + latest snapshot pointer + report mtime, record the result, then report to controller.
+## TASK0-3K_AUTOMATIC_TRIGGER_OBSERVATION (COMPLETE / ACCEPT; 2026-09-19)
+- Final ruling (master ChatGPT, conv 6aae32f7): ACCEPT / COMPLETE. AUTOMATIC_RUN=PASS; PRODUCTION_PATH_EQUIVALENCE=PROVEN; GATES=PASS; RETEST_REQUIRED=NO.
+- Evidence: repetition trigger fired 2026-09-19T14:56:14+08:00 (automatic, not manual control). LastRunTime 14:56:15, LastTaskResult=0, State Ready, NextRunTime 15:56:14. New run 20260919T065615Z-e4b97a289055. Full sync terminal evidence: OBJECTS_UPLOADED=15, READBACK_VERIFIED=15, POINTER_LAST, REFRESH OK [14:56:15]. Production pointer advanced 20260919T060857Z (14:08 manual) -> 20260919T065615Z (14:56 automatic); promoted_at 06:56:15Z, age 110s (fresh); seal 7a52e4c57fac consistent.
+- Mapika-decider verdict: GO (confidence 0.86, certainty 0.67).
+- Gates: live-production-replay.test.ts PASS (fresh pointer resolved prior failure); security_check / compileall / JSON / supply-chain all PASS.
+- Read-only observation; 0 code/task/trigger/registry/env/credential mutations.
+- NON_BLOCKING_RESIDUAL: historical 12:56 / 13:56 automatic runs contain local snapshots but lack retained full-sync terminal evidence; root cause UNDETERMINED. Do NOT infer or record a failure mode without evidence. Preserve as a separate observability/retention-hardening follow-up only if within a future task's scope; do not re-open 3K.
+- Note: Task Scheduler Operational log was enabled this session but captured no events (empty); Master ruled this not a blocker given the independent LastRunTime/NextRunTime/pointer/run-ID/terminal-evidence chain.
+
+## Prior: TASK0-3J publication-path diagnosis (superseded by 3K; 2026-09-19)
+- 3J authorized narrow publication-path diagnosis. During 3J, manual full-script run and Start-ScheduledTask both SUCCEEDED (proving the script + task action are sound); the live pointer was advanced via authorized controlled publications. 3K then proved the automatic repetition path reaches the same success terminal. The stale-pointer symptom is resolved; the 12:56/13:56 historical incomplete-sync runs remain an UNDETERMINED observability gap (see 3K residual).
+- (Original 3J scope, retained for reference):
+- Supervisor verdict (master ChatGPT, conv 6aae2585): 選 (a) — authorized narrow production publication-path diagnosis and repair. Do NOT wait for 20:20 EveningRefresh (systemic: >=2 consecutive 60-min cycles failed KV promotion).
+- TASK0-3J status: FINAL_REPAIR / PRODUCTION_FRESHNESS_BLOCKED. Not PASS until the production freshness path is repaired and revalidated.
+- Blocker: live KV snapshot:current stuck on run 20260919T035616Z (11:56 local); local sealed snapshots advanced through 20260919T055615Z (13:56 local). 60-min SealedFreshness sync-to-KV not completing since 12:56 (no REFRESH OK / SYNC FAILED / LOCK_BUSY in log = pre-terminal/unhandled path suspected).
+- AUTHORIZED: read production KV/task state; inspect scheduled tasks + execution history; inspect logs; diagnose lock/subprocess/env/scheduler/wrapper/KV-sync; minimal publication/scheduling fix if evidence proves cause; ONE controlled publication of an existing valid sealed snapshot via normal fail-closed sync.
+- NOT AUTHORIZED: product/admission/claim changes; payload/schema changes; direct hand-edit of snapshot:current as first repair; bypass seal/pointer-last; weaken freshness; disable/skip live-production-replay; credential rotation/disclosure; LINE changes; unrelated Worker deploy; destructive KV cleanup; evidence restamping.
+- PHASES: A root-cause diagnosis (evidence first) -> B minimal repair -> C controlled production recovery -> D validation. Final handoff per supervisor template.
+- Prior fixes this session (committed 6cf8912, 4ea6071): gateway alias-aware model-pin; security profile paths; STATUS.md trim + docs index links. Python 1531 OK; Worker typecheck PASS; Worker 1 fail = live-production-replay (symptom of stale pointer).
 
 ## Current operational state (2026-09-19)
 - Branch: fix/options-provenance-audit. HEAD before this session's fixes: d5af746.
