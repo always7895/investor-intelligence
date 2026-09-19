@@ -13,6 +13,7 @@ Fetch Git, record actual HEAD and inspect tests/current CI before editing. Read 
 - Preserve scoring, privacy/IBKR separation, publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
 - Do not replay the previous Production activation to test an installer. Sealed object integrity and pointer-last commit are mandatory; legacy single-report writes are not a substitute.
 - Pi installs, if requested, must use project-local `pi install -l ...`; log the command, never install globally.
+- ChatGPT Web MCP (Master Controller): default reasoning strength is Pro (`requestPro=true` + identity probe); use the default "極高" tier only when the Pro quota is exhausted or the Pro probe fails. Before any MCP operation that needs a bounded decision (whether to send, payload, tier, whether to escalate), route it through Mapika-decider-2b-v9 (`system_one_decide`); on ESCALATE or LOW confidence, stop and report to the Master. The MCP is a reporting/ruling channel, not a production-mutation authorizer.
 
 ## Efficient execution / 精簡執行
 
