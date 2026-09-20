@@ -351,10 +351,13 @@ def _verify_backup_binding(journal, state_dir) -> None:
     normalization. Rejects any current resolution inconsistent with the
     sealed backup path."""
     state_dir = Path(state_dir)
+    current_state_root = state_dir.resolve()
     for name, record in journal.get("targets", {}).items():
         sealed_backup = record.get("backup", "")
         expected_backup = (state_dir / f"{name}-settings.json.orig").resolve()
         _verify_sealed_path(sealed_backup, expected_backup)
+        historical_root = Path(sealed_backup).parent
+        _verify_sealed_path(str(historical_root), current_state_root)
 
 
 def _validate_terminal_claim(journal, targets, state_dir) -> None:
@@ -424,6 +427,12 @@ def _prepare_plan(*, targets, documents, policy, state_dir, profile="bootstrap",
     # Pending/interrupted transaction must be inspected/recovered BEFORE a
     # new apply. Requires independently supplied PRIOR checkpoint.
     _recover_pending(targets=targets, state_dir=state_dir, prior_checkpoint_digest=prior_checkpoint_digest)
+    # Capture post-recovery journal state for nested-transaction detection.
+    _jpath_after_recovery = _journal_path(state_dir)
+    if _jpath_after_recovery.exists():
+        _jbytes_after_recovery = _jpath_after_recovery.read_bytes()
+    else:
+        _jbytes_after_recovery = None  # absent sentinel
     candidates = build_candidate_documents(documents, policy, profile=profile)
     # Require absolute target paths (H8: prevent relative-path rebinding).
     for name, path in targets.items():
@@ -529,6 +538,29 @@ def _prepare_plan(*, targets, documents, policy, state_dir, profile="bootstrap",
     # caller-mutated mapping). Closes stable callback-time parent rebinding.
     _verify_binding(journal, captured_targets)
     _verify_backup_binding(journal, state_dir)
+    # Nested-transaction detection: re-read journal and compare to
+    # post-recovery expectation. Appearance/change/disappearance of the
+    # journal file indicates a concurrent nested transaction was
+    # established under inferred authority; refuse fail-closed.
+    _jpath_check = _journal_path(state_dir)
+    if _jpath_check.exists():
+        _jbytes_check = _jpath_check.read_bytes()
+    else:
+        _jbytes_check = None
+    if _jbytes_check != _jbytes_after_recovery:
+        raise GuardError("BLG-E033: nested transaction detected: journal state changed after authorized recovery; refusing to overwrite under inferred authority")
+    # Preflight: verify every captured target is at original or applied
+    # hash (third-state or missing/unreadable fails closed before any
+    # filesystem persistence). Uses private captured targets; never
+    # re-reads caller mappings or reseals.
+    for name, target_path in captured_targets.items():
+        rec = journal["targets"][name]
+        try:
+            current_hash = _sha256_file(target_path)
+        except OSError:
+            raise GuardError("BLG-E034: preflight failed: target unreadable or missing; refusing to proceed") from None
+        if current_hash != rec["original_sha256"] and current_hash != rec["applied_sha256"]:
+            raise GuardError("BLG-E034: preflight hash conflict: target state is neither original nor applied; refusing to proceed")
     # NOW: Create state directory and write backups (after sink succeeded,
     # before journal/target writes).
     state_dir.mkdir(parents=True, exist_ok=True)

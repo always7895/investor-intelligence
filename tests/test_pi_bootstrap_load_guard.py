@@ -1754,6 +1754,484 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                     self.assertEqual(other.read_bytes(), pre_other_bytes)
                     self.assertEqual(jpath.read_bytes(), pre_journal_bytes)
 
+    def test_r4_backup_links_do_not_authorize_relocated_state(self):
+        """R4: Relocating a sealed journal into a distinct directory T whose
+        backup entries are FILE symlinks to the genuine S backups must NOT
+        authorize rollback/recover. A per-file backup link is not valid
+        authority (a backup path must be a regular file under the bound state
+        dir). Public rollback/recover invoked with state_dir=T + the genuine
+        retained digest must raise GuardError with ZERO atomic writes and no
+        mutation of targets, S state, or T state/links. Baseline fails because
+        rollback succeeds and recover accepts the terminal relocated journal.
+        Positive control: a DIRECTORY symlink alias to the genuine state dir S
+        IS valid authority and rolls back cleanly."""
+        # Probe file symlink (skip only on genuine platform inability; never
+        # catch operation/assertion/call failures as skips).
+        with tempfile.TemporaryDirectory() as probe_td:
+            probe_target = Path(probe_td) / "probe-file.txt"
+            probe_target.write_text("probe\n", encoding="utf-8")
+            probe_link = Path(probe_td) / "probe-file-link.txt"
+            try:
+                probe_link.symlink_to(probe_target)
+            except (OSError, NotImplementedError):
+                self.skipTest("platform cannot create file symlinks; R4 backup-link unproved on this host")
+            self.assertTrue(probe_link.is_symlink(), "probe: file symlink not created")
+        # Probe directory symlink (skip only on genuine platform inability).
+        with tempfile.TemporaryDirectory() as probe_td:
+            probe_dir = Path(probe_td) / "probe-dir"
+            probe_dir.mkdir()
+            probe_dlink = Path(probe_td) / "probe-dir-link"
+            try:
+                os.symlink(str(probe_dir), str(probe_dlink), target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("platform cannot create directory symlinks; R4 alias unproved on this host")
+            self.assertTrue(probe_dlink.is_symlink(), "probe: directory symlink not created")
+
+        def _build_relocated_fixture():
+            """Fresh owned fixture: genuine apply into state dir S, then a
+            distinct relocated dir T holding an UNCHANGED copy of S's journal
+            plus FILE symlinks for each backup entry -> S's genuine backups.
+            Returns handles + pre-operation snapshots."""
+            owned = tempfile.TemporaryDirectory(prefix="blg-r4-reloc-")
+            self.addCleanup(owned.cleanup)
+            base = Path(owned.name)
+            documents = json.loads(json.dumps(self.documents))
+            policy = json.loads(json.dumps(self.policy))
+            targets = {}
+            for name, doc in documents.items():
+                path = base / f"{name}-settings.json"
+                path.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                targets[name] = path
+            s_state = base / "state"
+            s_state.mkdir()
+            # Genuine public apply with independent sink + retained digest.
+            self.blg.apply_transaction(
+                targets=targets, documents=documents, policy=policy,
+                state_dir=s_state, checkpoint_sink=self._make_sink(),
+            )
+            retained_digest = self._digest()
+            # Snapshot applied target bytes + complete S state files/bytes.
+            target_snap = {name: p.read_bytes() for name, p in targets.items()}
+            s_state_snap = {p.name: p.read_bytes() for p in sorted(s_state.iterdir())}
+            # Distinct owned directory T; copy journal bytes UNCHANGED.
+            t_state = base / "state-relocated"
+            t_state.mkdir()
+            (t_state / "apply-journal.json").write_bytes(
+                (s_state / "apply-journal.json").read_bytes()
+            )
+            # FILE symlinks T/<name>-settings.json.orig -> S's genuine backups.
+            for name in targets:
+                (t_state / f"{name}-settings.json.orig").symlink_to(
+                    s_state / f"{name}-settings.json.orig"
+                )
+            # Prove T.resolve differs S.resolve; links resolve to referents.
+            self.assertNotEqual(t_state.resolve(), s_state.resolve())
+            for name in targets:
+                t_link = t_state / f"{name}-settings.json.orig"
+                s_backup = s_state / f"{name}-settings.json.orig"
+                self.assertTrue(t_link.is_symlink(), f"T backup link {name} must be a symlink")
+                self.assertEqual(t_link.resolve(), s_backup.resolve(),
+                                 f"T backup link {name} must resolve to S's genuine backup")
+            # Snapshot T files/bytes + link identities.
+            t_state_snap = {p.name: p.read_bytes() for p in sorted(t_state.iterdir())}
+            t_link_snap = {name: (t_state / f"{name}-settings.json.orig").is_symlink()
+                           for name in targets}
+            t_readlink_snap = {name: os.readlink(str(t_state / f"{name}-settings.json.orig"))
+                               for name in targets}
+            return {
+                "targets": targets, "retained_digest": retained_digest,
+                "target_snap": target_snap, "s_state": s_state,
+                "s_state_snap": s_state_snap, "t_state": t_state,
+                "t_state_snap": t_state_snap, "t_link_snap": t_link_snap,
+                "t_readlink_snap": t_readlink_snap,
+            }
+
+        def _assert_no_mutation(fx):
+            targets = fx["targets"]
+            for name, p in targets.items():
+                self.assertEqual(p.read_bytes(), fx["target_snap"][name],
+                                 f"target {name} bytes must be unchanged")
+            # Entry-name set comparison: no new files/entries may appear.
+            self.assertEqual(
+                {p.name for p in fx["s_state"].iterdir()},
+                set(fx["s_state_snap"].keys()),
+                "S state entry-name set must match snapshot (no new files)")
+            self.assertEqual(
+                {p.name for p in fx["t_state"].iterdir()},
+                set(fx["t_state_snap"].keys()),
+                "T state entry-name set must match snapshot (no new files)")
+            for fname, fbytes in fx["s_state_snap"].items():
+                self.assertEqual((fx["s_state"] / fname).read_bytes(), fbytes,
+                                 f"S state {fname} must be unchanged")
+            for fname, fbytes in fx["t_state_snap"].items():
+                self.assertEqual((fx["t_state"] / fname).read_bytes(), fbytes,
+                                 f"T state {fname} must be unchanged")
+            for name, is_link in fx["t_link_snap"].items():
+                self.assertEqual(
+                    (fx["t_state"] / f"{name}-settings.json.orig").is_symlink(),
+                    is_link, f"T backup link {name} identity must be unchanged")
+            for name, link_target in fx["t_readlink_snap"].items():
+                self.assertEqual(
+                    os.readlink(str(fx["t_state"] / f"{name}-settings.json.orig")),
+                    link_target, f"T backup link {name} raw readlink target must be unchanged")
+
+        for case, public_fn in (("rollback", self.blg.rollback_transaction),
+                                ("recover", self.blg.recover_transaction)):
+            with self.subTest(r4_relocated=case):
+                fx = _build_relocated_fixture()
+                real_aw = self.blg._atomic_write
+                aw_calls = []
+                def spy_aw(path, data):
+                    aw_calls.append((str(path), data))
+                    real_aw(path, data)
+                with mock.patch.object(self.blg, "_atomic_write", spy_aw):
+                    with self.assertRaises(self.blg.GuardError):
+                        public_fn(
+                            targets=fx["targets"], state_dir=fx["t_state"],
+                            checkpoint_digest=fx["retained_digest"],
+                        )
+                self.assertEqual(aw_calls, [], f"{case}: zero atomic writes expected")
+                _assert_no_mutation(fx)
+
+        # Positive control: DIRECTORY symlink alias to genuine state dir S is
+        # valid authority (not a per-file backup link). Fresh fixture.
+        with self.subTest(r4_relocated="positive_directory_alias"):
+            owned = tempfile.TemporaryDirectory(prefix="blg-r4-alias-")
+            self.addCleanup(owned.cleanup)
+            base = Path(owned.name)
+            documents = json.loads(json.dumps(self.documents))
+            policy = json.loads(json.dumps(self.policy))
+            targets = {}
+            for name, doc in documents.items():
+                path = base / f"{name}-settings.json"
+                path.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                targets[name] = path
+            s_state = base / "state"
+            s_state.mkdir()
+            original_bytes = {name: p.read_bytes() for name, p in targets.items()}
+            self.blg.apply_transaction(
+                targets=targets, documents=documents, policy=policy,
+                state_dir=s_state, checkpoint_sink=self._make_sink(),
+            )
+            genuine_digest = self._digest()
+            alias = base / "state-alias"
+            os.symlink(str(s_state), str(alias), target_is_directory=True)
+            self.assertTrue(alias.is_symlink(), "alias must be a directory symlink")
+            alias_readlink_before = os.readlink(str(alias))
+            result = self.blg.rollback_transaction(
+                targets=targets, state_dir=alias, checkpoint_digest=genuine_digest,
+            )
+            self.assertTrue(result.get("rolled_back"), "rollback via alias must report rolled_back")
+            for name, p in targets.items():
+                self.assertEqual(p.read_bytes(), original_bytes[name],
+                                 f"target {name} must have original bytes after rollback")
+            journal = json.loads((s_state / "apply-journal.json").read_text(encoding="utf-8"))
+            self.assertEqual(journal["status"], "rolled_back", "S journal must be rolled_back")
+            self.assertTrue(alias.is_symlink(), "alias must be preserved after rollback")
+            self.assertEqual(os.readlink(str(alias)), alias_readlink_before,
+                             "alias raw readlink target must be unchanged after rollback")
+
+    def test_r4_post_approval_all_target_preflight(self):
+        """R4: Post-approval all-target preflight. After the approval
+        callback (checkpoint sink) completes, the guard must preflight ALL
+        targets' current state before persisting any helper. A callback
+        that leaves the later global target in a THIRD state or DELETED
+        must fail closed (GuardError) with ZERO helper persistence (no
+        backup, no journal, no state dir) and project untouched. A
+        callback that leaves the global target at its APPROVED APPLIED
+        bytes (already-applied CAS) must proceed: prepare leaves project
+        original, apply yields project candidate, global candidate remains."""
+        for pub_kind, cb_mode in (
+            ('prepare', 'third_state'),
+            ('prepare', 'deleted'),
+            ('prepare', 'already_applied'),
+            ('apply', 'third_state'),
+            ('apply', 'deleted'),
+            ('apply', 'already_applied'),
+        ):
+            with self.subTest(pub=pub_kind, cb=cb_mode):
+                with tempfile.TemporaryDirectory() as td:
+                    base = Path(td)
+                    # Fresh ABSENT state dir (guard creates it only on success).
+                    state_dir = base / "state"
+                    self.assertFalse(state_dir.exists())
+                    # Ordered targets: project THEN global.
+                    project_path = base / "project-settings.json"
+                    global_path = base / "global-settings.json"
+                    proj_doc = {
+                        "packages": ["npm:pi-web-access"],
+                        "skills": ["original-skill"],
+                    }
+                    glob_doc = {
+                        "theme": "dark",
+                        "packages": ["git:github.com/NVlabs/SoL-Pi"],
+                        "extensions": ["original-ext"],
+                    }
+                    # Owned third-state JSON, distinct from original and candidate.
+                    third_doc = {
+                        "__third_state__": "owned-callback",
+                        "packages": ["synthetic:third-state"],
+                    }
+                    # Write files in canonical form so injected docs match exactly.
+                    project_path.write_bytes(self.blg.encode_json_lf(proj_doc))
+                    global_path.write_bytes(self.blg.encode_json_lf(glob_doc))
+                    third_bytes = self.blg.encode_json_lf(third_doc)
+                    targets = {"project": project_path, "global": global_path}
+                    documents = {"project": proj_doc, "global": glob_doc}
+                    policy = self.policy
+                    # Snapshot originals.
+                    project_orig = project_path.read_bytes()
+                    # Compute pure candidate bytes BEFORE invocation.
+                    candidates = self.blg.build_candidate_documents(documents, policy, "bootstrap")
+                    global_candidate_bytes = self.blg.encode_json_lf(candidates["global"])
+                    project_candidate_bytes = self.blg.encode_json_lf(candidates["project"])
+                    # Approval callback state.
+                    captured = {"descriptor": None, "digest": None, "completed": False}
+                    def sink(descriptor, digest):
+                        # Retain genuine descriptor/digest (deep copy; do not mutate).
+                        captured["descriptor"] = json.loads(json.dumps(descriptor))
+                        captured["digest"] = digest
+                        # Change ONLY the later global target.
+                        if cb_mode == 'third_state':
+                            global_path.write_bytes(third_bytes)
+                        elif cb_mode == 'deleted':
+                            global_path.unlink()
+                        elif cb_mode == 'already_applied':
+                            global_path.write_bytes(global_candidate_bytes)
+                        # Mark completed AFTER mutation.
+                        captured["completed"] = True
+                    # Delegating _atomic_write spy (counts helper calls).
+                    aw_calls = [0]
+                    real_aw = self.blg._atomic_write
+                    def spy_aw(path, data):
+                        aw_calls[0] += 1
+                        real_aw(path, data)
+                    raised = False
+                    with mock.patch.object(self.blg, "_atomic_write", side_effect=spy_aw):
+                        try:
+                            if pub_kind == 'prepare':
+                                self.blg.prepare_transaction(
+                                    targets=targets, documents=documents, policy=policy,
+                                    state_dir=state_dir, checkpoint_sink=sink,
+                                )
+                            else:
+                                self.blg.apply_transaction(
+                                    targets=targets, documents=documents, policy=policy,
+                                    state_dir=state_dir, checkpoint_sink=sink,
+                                )
+                        except self.blg.GuardError:
+                            raised = True
+                    # Patch restored by context manager before next case.
+                    # Callback completed and genuine digest captured.
+                    self.assertTrue(captured["completed"])
+                    self.assertIsNotNone(captured["digest"])
+                    self.assertIsInstance(captured["digest"], str)
+                    self.assertIsInstance(captured["descriptor"], dict)
+                    if cb_mode in ('third_state', 'deleted'):
+                        # Negative: fail closed, zero helper persistence.
+                        self.assertTrue(raised)
+                        self.assertEqual(aw_calls[0], 0)
+                        self.assertFalse(state_dir.exists())
+                        # Project exact original unchanged.
+                        self.assertEqual(project_path.read_bytes(), project_orig)
+                        # Callback global third bytes / deletion preserved.
+                        if cb_mode == 'third_state':
+                            self.assertEqual(global_path.read_bytes(), third_bytes)
+                        else:
+                            self.assertFalse(global_path.exists())
+                    else:
+                        # Positive already_applied: proceed.
+                        self.assertFalse(raised)
+                        # Global candidate remains.
+                        self.assertEqual(global_path.read_bytes(), global_candidate_bytes)
+                        if pub_kind == 'prepare':
+                            # Prepare leaves project original.
+                            self.assertEqual(project_path.read_bytes(), project_orig)
+                        else:
+                            # Apply yields project candidate.
+                            self.assertEqual(project_path.read_bytes(), project_candidate_bytes)
+
+    def test_r4_nested_approval_preserves_transaction_ownership(self):
+        """R4: Nested approval within a checkpoint sink must preserve
+        transaction ownership. A's sink invokes B's full apply. After B
+        commits, the outer A apply must fail closed (shared state) or
+        succeed (separate state) without corrupting B's committed state.
+        B's subsequent rollback must restore exact B originals."""
+        for outer_kind, nested_kind, shared in (
+            ('prepare', 'prepare', True),
+            ('prepare', 'prepare', False),
+            ('prepare', 'apply', True),
+            ('prepare', 'apply', False),
+            ('apply', 'prepare', True),
+            ('apply', 'prepare', False),
+            ('apply', 'apply', True),
+            ('apply', 'apply', False),
+        ):
+            with self.subTest(outer_kind=outer_kind, nested_kind=nested_kind, shared=shared):
+                with tempfile.TemporaryDirectory() as td:
+                    base = Path(td)
+                    a_proj = base / "a-project.json"
+                    a_glob = base / "a-global.json"
+                    b_proj = base / "b-project.json"
+                    b_glob = base / "b-global.json"
+                    a_proj_doc = {"tag": "a-proj-v1", "packages": ["npm:a-pkg"]}
+                    a_glob_doc = {"tag": "a-glob-v1", "extensions": ["a-ext"]}
+                    b_proj_doc = {"tag": "b-proj-v1", "packages": ["npm:b-pkg"]}
+                    b_glob_doc = {"tag": "b-glob-v1", "extensions": ["b-ext"]}
+                    a_proj.write_text(json.dumps(a_proj_doc, indent=1) + "\n", encoding="utf-8")
+                    a_glob.write_text(json.dumps(a_glob_doc, indent=1) + "\n", encoding="utf-8")
+                    b_proj.write_text(json.dumps(b_proj_doc, indent=1) + "\n", encoding="utf-8")
+                    b_glob.write_text(json.dumps(b_glob_doc, indent=1) + "\n", encoding="utf-8")
+                    a_orig_proj = a_proj.read_bytes()
+                    a_orig_glob = a_glob.read_bytes()
+                    b_orig_proj = b_proj.read_bytes()
+                    b_orig_glob = b_glob.read_bytes()
+                    a_state = base / "state-a"
+                    b_state = a_state if shared else base / "state-b"
+                    self.assertFalse(a_state.exists())
+                    if not shared:
+                        self.assertFalse(b_state.exists())
+                    a_digest_box = {}
+                    b_digest_box = {}
+                    nested = {"completed": False}
+                    b_snap = {}
+                    a_snap = {}
+
+                    def b_sink(descriptor, digest):
+                        b_digest_box["digest"] = digest
+
+                    def a_sink(descriptor, digest):
+                        a_digest_box["digest"] = digest
+                        getattr(self.blg, nested_kind + '_transaction')(
+                            targets={"project": b_proj, "global": b_glob},
+                            documents={"project": b_proj_doc, "global": b_glob_doc},
+                            policy=self.policy,
+                            state_dir=b_state,
+                            checkpoint_sink=b_sink,
+                        )
+                        b_snap["proj_target"] = b_proj.read_bytes()
+                        b_snap["glob_target"] = b_glob.read_bytes()
+                        b_snap["complete"] = {f.name: f.read_bytes() for f in sorted(b_state.iterdir()) if f.is_file()}
+                        nested["completed"] = True
+
+                    outer_error = None
+                    try:
+                        getattr(self.blg, outer_kind + '_transaction')(
+                            targets={"project": a_proj, "global": a_glob},
+                            documents={"project": a_proj_doc, "global": a_glob_doc},
+                            policy=self.policy,
+                            state_dir=a_state,
+                            checkpoint_sink=a_sink,
+                        )
+                    except self.blg.GuardError as e:
+                        outer_error = e
+
+                    self.assertTrue(nested["completed"])
+                    self.assertIn("digest", a_digest_box)
+                    self.assertIn("digest", b_digest_box)
+
+                    if shared:
+                        self.assertIsNotNone(outer_error)
+                        self.assertEqual(a_proj.read_bytes(), a_orig_proj)
+                        self.assertEqual(a_glob.read_bytes(), a_orig_glob)
+                        self.assertEqual(b_proj.read_bytes(), b_snap["proj_target"])
+                        self.assertEqual(b_glob.read_bytes(), b_snap["glob_target"])
+                        self.assertEqual(
+                            {f.name: f.read_bytes() for f in sorted(b_state.iterdir()) if f.is_file()},
+                            b_snap["complete"],
+                        )
+                    else:
+                        self.assertIsNone(outer_error)
+                        a_snap["proj_target"] = a_proj.read_bytes()
+                        a_snap["glob_target"] = a_glob.read_bytes()
+                        a_snap["complete"] = {f.name: f.read_bytes() for f in sorted(a_state.iterdir()) if f.is_file()}
+
+                    self.blg.rollback_transaction(
+                        targets={"project": b_proj, "global": b_glob},
+                        state_dir=b_state,
+                        checkpoint_digest=b_digest_box["digest"],
+                    )
+                    self.assertEqual(b_proj.read_bytes(), b_orig_proj)
+                    self.assertEqual(b_glob.read_bytes(), b_orig_glob)
+                    if not shared:
+                        self.assertEqual(a_proj.read_bytes(), a_snap["proj_target"])
+                        self.assertEqual(a_glob.read_bytes(), a_snap["glob_target"])
+                        self.assertEqual(
+                            {f.name: f.read_bytes() for f in sorted(a_state.iterdir()) if f.is_file()},
+                            a_snap["complete"],
+                        )
+
+        # Two positive nested-approval controls: prior apply/prepare
+        # followed by prepare on the SAME state with genuine prior digest.
+        # Verifies _recover_pending terminal validation (apply) and
+        # auto-rollback recovery (prepare) before new journal creation.
+        for prior_kind in ('apply', 'prepare'):
+            with self.subTest(prior_kind=prior_kind):
+                with tempfile.TemporaryDirectory() as td:
+                    base = Path(td)
+                    t_proj = base / "p-project.json"
+                    t_glob = base / "p-global.json"
+                    t_proj_doc = {"tag": "p-proj-v1", "packages": ["npm:p-pkg"]}
+                    t_glob_doc = {"tag": "p-glob-v1", "extensions": ["p-ext"]}
+                    st = base / "state"
+                    prior_box = {}
+                    def prior_sink(d, dg):
+                        prior_box["digest"] = dg
+                    if prior_kind == 'apply':
+                        # Positive no-op control: build candidates from seed docs,
+                        # write exact candidate bytes to targets so the first apply
+                        # is an exact no-op on target bytes; backups then equal live
+                        # bytes, so a subsequent same-root prepare with a genuine
+                        # prior digest is legitimately supported (no BLG-E022).
+                        cand = self.blg.build_candidate_documents(
+                            {"project": t_proj_doc, "global": t_glob_doc},
+                            self.policy, 'bootstrap',
+                        )
+                        proj_bytes = self.blg.encode_json_lf(cand["project"])
+                        glob_bytes = self.blg.encode_json_lf(cand["global"])
+                        t_proj.write_bytes(proj_bytes)
+                        t_glob.write_bytes(glob_bytes)
+                        self.blg.apply_transaction(
+                            targets={"project": t_proj, "global": t_glob},
+                            documents=cand,
+                            policy=self.policy, state_dir=st,
+                            checkpoint_sink=prior_sink,
+                        )
+                        # First apply must be an exact no-op on target bytes.
+                        self.assertEqual(t_proj.read_bytes(), proj_bytes)
+                        self.assertEqual(t_glob.read_bytes(), glob_bytes)
+                    else:
+                        t_proj.write_text(json.dumps(t_proj_doc, indent=1) + "\n", encoding="utf-8")
+                        t_glob.write_text(json.dumps(t_glob_doc, indent=1) + "\n", encoding="utf-8")
+                        self.blg.prepare_transaction(
+                            targets={"project": t_proj, "global": t_glob},
+                            documents={"project": t_proj_doc, "global": t_glob_doc},
+                            policy=self.policy, state_dir=st,
+                            checkpoint_sink=prior_sink,
+                        )
+                    prior_tid = json.loads((st / "apply-journal.json").read_text(encoding="utf-8"))["transaction_id"]
+                    cur_proj = json.loads(t_proj.read_text(encoding="utf-8"))
+                    cur_glob = json.loads(t_glob.read_text(encoding="utf-8"))
+                    new_box = {}
+                    obs = {}
+                    def new_sink(d, dg):
+                        new_box["digest"] = dg
+                        obs["status"] = json.loads((st / "apply-journal.json").read_text(encoding="utf-8"))["status"]
+                    self.blg.prepare_transaction(
+                        targets={"project": t_proj, "global": t_glob},
+                        documents={"project": cur_proj, "global": cur_glob},
+                        policy=self.policy, state_dir=st,
+                        checkpoint_sink=new_sink,
+                        prior_checkpoint_digest=prior_box["digest"],
+                    )
+                    expected_status = "applied" if prior_kind == "apply" else "rolled_back"
+                    self.assertEqual(obs["status"], expected_status)
+                    self.assertIn("digest", new_box)
+                    self.assertNotEqual(new_box["digest"], prior_box["digest"])
+                    final_j = json.loads((st / "apply-journal.json").read_text(encoding="utf-8"))
+                    self.assertNotEqual(final_j["transaction_id"], prior_tid)
+                    self.assertEqual(final_j["checkpoint_digest"], new_box["digest"])
+
     def test_r3_unknown_root_with_valid_target_progress_rejected(self):
         """R3: A single unknown journal root status with VALID per-target
         progress statuses and otherwise-valid target statuses must be refused
