@@ -41,7 +41,7 @@ def _package_source(entry) -> str:
         if not isinstance(source, str) or not source.strip():
             raise GuardError("package dict missing or invalid source")
         return source
-    raise GuardError(f"invalid package entry type: {type(entry).__name__}")
+    raise GuardError("BLG-E001: invalid package entry type")
 
 
 def build_candidate_documents(documents, policy, profile="bootstrap"):
@@ -74,10 +74,10 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
         raise GuardError("policy must be a JSON dictionary")
     profiles = policy.get("profiles")
     if not isinstance(profiles, dict) or profile not in profiles:
-        raise GuardError(f"policy missing profile: {profile}")
+        raise GuardError("BLG-E002: policy missing profile")
     prof = profiles[profile]
     if not isinstance(prof, dict):
-        raise GuardError(f"policy profile must be a dictionary: {profile}")
+        raise GuardError("BLG-E003: policy profile must be a dictionary")
     pkg_policy = policy.get("package_policy")
     if not isinstance(pkg_policy, dict):
         raise GuardError("policy missing package_policy")
@@ -88,19 +88,19 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
     result = {}
     for name in ("project", "global"):
         if name not in documents:
-            raise GuardError(f"documents must supply a {name} JSON dictionary")
+            raise GuardError("BLG-E004: documents must supply required JSON dictionary")
         src = documents[name]
         if not isinstance(src, dict):
-            raise GuardError(f"documents[{name}] must be a JSON dictionary")
+            raise GuardError("BLG-E005: documents entry must be a JSON dictionary")
         doc = json.loads(json.dumps(src))  # deep copy (inputs not mutated)
         # Classified startup controls (extensions/skills arrays).
         lane = prof.get(name)
         if not isinstance(lane, dict):
-            raise GuardError(f"policy profile missing lane: {name}")
+            raise GuardError("BLG-E006: policy profile missing lane")
         for key in ("extensions", "skills"):
             value = lane.get(key)
             if not isinstance(value, list):
-                raise GuardError(f"policy profile {name}.{key} must be a list")
+                raise GuardError("BLG-E007: policy profile lane field must be a list")
             doc[key] = list(value)
         # Package modifications: only explicitly classified source entries
         # and approved resource fields; source identity/nonresource fields
@@ -108,7 +108,7 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
         if "packages" in doc:
             packages = doc["packages"]
             if not isinstance(packages, list):
-                raise GuardError(f"documents[{name}].packages must be a list")
+                raise GuardError("BLG-E008: documents packages must be a list")
             new_packages = []
             for entry in packages:
                 source = _package_source(entry)
@@ -117,7 +117,7 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
                     new_packages.append(entry)  # unknown/uncategorized: preserve
                     continue
                 if not isinstance(rule, dict):
-                    raise GuardError(f"approved rule must be a dictionary: {source}")
+                    raise GuardError("BLG-E009: approved rule must be a dictionary")
                 if isinstance(entry, str):
                     new_entry = {"source": entry}
                 else:
@@ -126,7 +126,7 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
                     if field in rule:
                         value = rule[field]
                         if not isinstance(value, list):
-                            raise GuardError(f"approved rule {source}.{field} must be a list")
+                            raise GuardError("BLG-E010: approved rule field must be a list")
                         new_entry[field] = list(value)
                 new_packages.append(new_entry)
             doc["packages"] = new_packages
@@ -168,89 +168,240 @@ def _journal_path(state_dir) -> Path:
 
 def _verify_binding(journal, targets) -> None:
     """Target/journal binding mismatch fails closed; never trust arbitrary
-    journal paths to choose write destinations."""
+    journal paths to choose write destinations. Uses resolved absolute paths
+    to prevent relative-path rebinding attacks."""
     journal_targets = journal.get("targets", {})
     if set(journal_targets) != set(targets):
         raise GuardError("journal/target binding mismatch: target sets differ")
     for name, record in journal_targets.items():
-        if Path(record.get("path", "")) != Path(targets[name]):
-            raise GuardError(f"journal/target binding mismatch for {name}: path differs")
+        journal_path = Path(record.get("path", "")).resolve()
+        target_path = Path(targets[name]).resolve()
+        if journal_path != target_path:
+            raise GuardError("BLG-E011: journal/target binding mismatch: resolved path differs")
 
 
-def _auto_rollback(journal, targets, state_dir) -> None:
+JOURNAL_SCHEMA = "blg-apply-journal-v2"
+JOURNAL_VERSION = 2
+
+# Legal progress states derived from actual implemented transitions.
+LEGAL_ROOT_STATUSES = frozenset({
+    "in_progress", "applied", "rolled_back",
+    "rolled_back_partial", "rollback_in_progress", "failed_final_verify",
+})
+LEGAL_TARGET_STATUSES = frozenset({
+    "pending", "applied", "restored",
+})
+
+
+def _validate_journal(journal) -> None:
+    """Shared fail-closed schema/version/required-state validation.
+    Called by ALL public entry points before any journal-dependent action.
+    Rejects unknown schema, version, or missing required fields.
+    Unsealed legacy journals (v1) fail closed."""
+    if not isinstance(journal, dict):
+        raise GuardError("RECOVERY_REQUIRED: journal is not a dictionary")
+    if journal.get("schema") != JOURNAL_SCHEMA:
+        raise GuardError("RECOVERY_REQUIRED: journal schema unrecognized (unsealed legacy fails closed)")
+    # Version must be exact non-bool integer (rejects 2.0, True, "2").
+    ver = journal.get("version")
+    if isinstance(ver, bool) or not isinstance(ver, int) or ver != JOURNAL_VERSION:
+        raise GuardError("RECOVERY_REQUIRED: journal version must be exact integer")
+    if not isinstance(journal.get("targets"), dict):
+        raise GuardError("RECOVERY_REQUIRED: journal missing targets")
+    # Root status must be a known legal state.
+    root_status = journal.get("status")
+    if not isinstance(root_status, str) or root_status not in LEGAL_ROOT_STATUSES:
+        raise GuardError("RECOVERY_REQUIRED: journal root status unrecognized")
+    # Per-target status must be a known legal state.
+    for tname, trec in journal["targets"].items():
+        tstatus = trec.get("status")
+        if not isinstance(tstatus, str) or tstatus not in LEGAL_TARGET_STATUSES:
+            raise GuardError("RECOVERY_REQUIRED: target progress status unrecognized")
+    if not isinstance(journal.get("transaction_id"), str):
+        raise GuardError("RECOVERY_REQUIRED: journal missing transaction_id")
+    # H7: checkpoint_digest is REQUIRED metadata (not authority).
+    # Missing = schema failure, not a descriptor-hash change.
+    if not isinstance(journal.get("checkpoint_digest"), str):
+        raise GuardError("RECOVERY_REQUIRED: journal missing required checkpoint_digest field")
+
+
+def compute_checkpoint_descriptor(journal) -> dict:
+    """Extract the immutable checkpoint descriptor from a journal.
+    Excludes mutable progress fields (status) and the stored seal itself
+    (checkpoint_digest) to avoid self-referential hash."""
+    return {
+        "schema": journal["schema"],
+        "version": journal["version"],
+        "transaction_id": journal["transaction_id"],
+        "targets": {
+            name: {
+                "path": rec["path"],
+                "original_sha256": rec["original_sha256"],
+                "applied_sha256": rec["applied_sha256"],
+                "backup": rec["backup"],
+            }
+            for name, rec in journal["targets"].items()
+        },
+    }
+
+
+def compute_checkpoint_digest(descriptor) -> str:
+    """Compute the canonical checkpoint digest from an immutable descriptor."""
+    return _sha256_bytes(encode_json_lf(descriptor))
+
+
+def verify_checkpoint_integrity(expected_digest, journal) -> None:
+    """H7 one integrity path: expected == recomputed == stored.
+    For EVERY existing journal, BEFORE any status shortcut or restore.
+    Missing/mismatched/tampered authority fails closed."""
+    if not isinstance(expected_digest, str) or not expected_digest:
+        raise GuardError("H7: missing or malformed expected checkpoint digest")
+    _validate_journal(journal)
+    # Recompute from journal's immutable descriptor.
+    descriptor = compute_checkpoint_descriptor(journal)
+    recomputed = compute_checkpoint_digest(descriptor)
+    stored = journal["checkpoint_digest"]
+    if expected_digest != recomputed:
+        raise GuardError("H7: expected checkpoint does not match recomputed descriptor digest")
+    if recomputed != stored:
+        raise GuardError("H7: stored checkpoint seal does not match recomputed descriptor digest (forged or tampered)")
+
+
+def _check_no_symlink(path) -> None:
+    """Reject symlink/reparse-point backup entries to prevent escape
+    outside the bound state directory."""
+    p = Path(path)
+    if p.is_symlink():
+        raise GuardError("BLG-E012: backup path is a symlink; refusing")
+    # On Windows, also check reparse points via os.stat
+    try:
+        st = os.stat(p, follow_symlinks=False)
+        if getattr(st, "st_file_attributes", 0) & 0x400:  # FILE_ATTRIBUTE_REPARSE_POINT
+            raise GuardError("BLG-E013: backup path is a reparse point; refusing")
+    except OSError:
+        pass  # path doesn't exist yet; that's fine for new backups
+
+
+def _file_identity(path) -> tuple:
+    """Return (st_dev, st_ino) for file-identity comparison (hard-link
+    detection). Returns (0, 0) if path doesn't exist."""
+    try:
+        st = os.stat(path)
+        return (st.st_dev, st.st_ino)
+    except OSError:
+        return (0, 0)
+
+
+def _auto_rollback(journal, targets, state_dir, expected_digest=None) -> None:
     """Auto-rollback from the journal on partial-write failure. Delegates to
-    the SAME strict all-target preflight/CAS logic as explicit
-    rollback_transaction (no independent weaker implementation). ORIGINAL
-    skip; own APPLIED restore; THIRD_STATE/corrupt backup fail closed
-    (RECOVERY_REQUIRED). Errors propagate (no skip/swallow loop)."""
+    the SAME verified rollback path as explicit rollback_transaction.
+    Internal: passes its retained prewrite digest through the same integrity
+    check. No weaker second implementation."""
     _verify_binding(journal, targets)
-    rollback_transaction(targets=targets, state_dir=state_dir)
+    rollback_transaction(targets=targets, state_dir=state_dir, checkpoint_digest=expected_digest)
 
 
-def _recover_pending(*, targets, state_dir) -> None:
+def _recover_pending(*, targets, state_dir, prior_checkpoint_digest=None) -> None:
     """Pending/interrupted transaction must be inspected/recovered BEFORE a
-    new apply. Verifies schema/version/status and target binding; delegates
-    pending/partial recovery to rollback_transaction. May proceed only after
-    confirmed fully rolled_back. Unknown status or incomplete recovery =>
-    GuardError RECOVERY_REQUIRED (does not overwrite journal or start a new
-    transaction). Applied/rolled_back terminal states are explicit no-ops."""
+    new apply. Requires independently supplied PRIOR checkpoint for any
+    existing journal. Fresh apply must NOT derive authority from old journal.
+    Empty state (no journal) is a truthful read-only no-op."""
     jpath = _journal_path(state_dir)
     if not jpath.exists():
-        return
+        return  # empty state: truthful read-only no-op
     journal = json.loads(jpath.read_text(encoding="utf-8"))
-    if journal.get("schema") != "blg-apply-journal" or journal.get("version") != 1:
-        raise GuardError("RECOVERY_REQUIRED: journal schema/version unrecognized")
+    # H7: one integrity path for ANY existing journal.
+    if prior_checkpoint_digest is None:
+        raise GuardError("H7: existing journal requires independently supplied prior checkpoint digest")
+    verify_checkpoint_integrity(prior_checkpoint_digest, journal)
     _verify_binding(journal, targets)
     status = journal.get("status")
     if status in ("applied", "rolled_back"):
-        return  # terminal states: nothing to recover
-    if status in ("in_progress", "rolled_back_partial"):
-        _auto_rollback(journal, targets, state_dir)
-        # Verify recovery completion before proceeding.
+        return  # terminal: validated, nothing to recover
+    if status in ("in_progress", "rolled_back_partial", "rollback_in_progress"):
+        _auto_rollback(journal, targets, state_dir, expected_digest=prior_checkpoint_digest)
         recovered = json.loads(jpath.read_text(encoding="utf-8"))
         if recovered.get("status") != "rolled_back":
             raise GuardError("RECOVERY_REQUIRED: recovery did not reach rolled_back")
         return
-    raise GuardError(f"RECOVERY_REQUIRED: unknown journal status: {status!r}")
+    raise GuardError("BLG-E014: RECOVERY_REQUIRED: unknown journal status")
 
 
-def prepare_transaction(*, targets, documents, policy, state_dir, profile="bootstrap"):
+def prepare_transaction(*, targets, documents, policy, state_dir, profile="bootstrap", checkpoint_sink=None, prior_checkpoint_digest=None):
     """Build candidates, read originals from injected paths, persist verified
     byte backups and the full journal BEFORE any settings write. Returns the
-    journal dict. `targets` is an explicit name->Path map; `state_dir` is an
-    explicit state directory (no default real paths)."""
+    journal dict. `checkpoint_sink` is REQUIRED for fresh transactions:
+    a callable(descriptor_copy, digest) invoked BEFORE any helper writes.
+    `prior_checkpoint_digest` is required if an existing journal is present."""
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     # Pending/interrupted transaction must be inspected/recovered BEFORE a
-    # new apply.
-    _recover_pending(targets=targets, state_dir=state_dir)
+    # new apply. Requires independently supplied PRIOR checkpoint.
+    _recover_pending(targets=targets, state_dir=state_dir, prior_checkpoint_digest=prior_checkpoint_digest)
     candidates = build_candidate_documents(documents, policy, profile=profile)
-    # Verify state files do not alias settings targets.
+    # Require absolute target paths (H8: prevent relative-path rebinding).
     for name, path in targets.items():
-        path = Path(path)
-        for state_file in (state_dir / f"{name}-settings.json.orig", _journal_path(state_dir)):
-            if state_file.resolve() == path.resolve():
-                raise GuardError(f"state file aliases settings target for {name}")
+        if not Path(path).is_absolute():
+            raise GuardError("BLG-E015: target path must be absolute")
+    # Verify state files do not alias settings targets (H1: extended check
+    # including manifest, cross-target aliases, and file identity).
+    all_state_files = []
+    for name in targets:
+        all_state_files.append(state_dir / f"{name}-settings.json.orig")
+    all_state_files.append(_journal_path(state_dir))
+    all_state_files.append(state_dir / "rollback-manifest.json")
+    for name, path in targets.items():
+        resolved_target = Path(path).resolve()
+        target_identity = _file_identity(path)
+        for state_file in all_state_files:
+            if state_file.resolve() == resolved_target:
+                raise GuardError("BLG-E016: state file aliases settings target")
+            # File-identity check (hard-link detection)
+            if target_identity != (0, 0) and state_file.exists():
+                if _file_identity(state_file) == target_identity:
+                    raise GuardError("BLG-E017: state file is a hard-link alias of settings target")
+    # Cross-target alias check (H1: no two targets may be the same file).
+    seen_identities = {}
+    for name, path in targets.items():
+        ident = _file_identity(path)
+        if ident != (0, 0):
+            if ident in seen_identities:
+                raise GuardError("BLG-E018: cross-target alias: two targets are the same file")
+            seen_identities[ident] = name
     journal = {
-        "schema": "blg-apply-journal",
-        "version": 1,
+        "schema": JOURNAL_SCHEMA,
+        "version": JOURNAL_VERSION,
         "transaction_id": uuid.uuid4().hex,
         "profile": profile,
         "status": "in_progress",
         "targets": {},
+        "checkpoint_digest": "",  # sealed after sink succeeds
     }
+    _originals = {}  # deferred backup bytes (written after sink succeeds)
     for name, path in targets.items():
         path = Path(path)
         if not path.exists():
-            raise GuardError(f"cannot read missing settings file: {path}")
+            raise GuardError("BLG-E019: cannot read missing settings file")
         original = path.read_bytes()
+        # H3: Stale injected snapshot rejection. The injected documents must
+        # match the current file content for ALL fields (including
+        # policy-classified fields). If the file has been modified since the
+        # documents were captured, reject before applying stale candidates.
+        try:
+            current_doc = json.loads(original.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise GuardError("BLG-E020: H3: cannot parse current file; refusing stale snapshot") from None
+        # Type-aware comparison: Python True==1 but JSON types differ.
+        # Use deterministic serialization to preserve value types.
+        if encode_json_lf(current_doc) != encode_json_lf(documents[name]):
+            raise GuardError("BLG-E021: H3: stale injected snapshot: documents do not match current file content (type-aware); refusing to apply")
         intended = encode_json_lf(candidates[name])
         backup_copy = state_dir / f"{name}-settings.json.orig"
+        # H2: reject symlink/reparse-point backup entries before any write.
+        _check_no_symlink(backup_copy)
         if backup_copy.exists() and backup_copy.read_bytes() != original:
-            raise GuardError(f"existing backup differs from live file for {name}; manual review required")
-        backup_copy.write_bytes(original)
-        if _sha256_bytes(backup_copy.read_bytes()) != _sha256_bytes(original):
-            raise GuardError(f"backup copy not verified for {name}")
+            raise GuardError("BLG-E022: existing backup differs from live file; manual review required")
+        # Gather plan in memory; backup write deferred until after sink succeeds.
         journal["targets"][name] = {
             "path": str(path),
             "original_sha256": _sha256_bytes(original),
@@ -258,17 +409,50 @@ def prepare_transaction(*, targets, documents, policy, state_dir, profile="boots
             "backup": str(backup_copy),
             "status": "pending",
         }
+        # Retain original bytes for deferred backup write.
+        _originals[name] = original
+    # H7: Compute checkpoint descriptor and digest from the fresh in-memory plan.
+    descriptor = compute_checkpoint_descriptor(journal)
+    digest = compute_checkpoint_digest(descriptor)
+    # H7: Invoke required checkpoint_sink BEFORE any helper writes
+    # (backups, journal, targets). Deep copy passed to caller.
+    if checkpoint_sink is None or not callable(checkpoint_sink):
+        raise GuardError("H7: checkpoint_sink is required and must be callable")
+    sink_copy = json.loads(json.dumps(descriptor))  # deep copy
+    sink_copy_digest = digest  # immutable string
+    try:
+        checkpoint_sink(sink_copy, sink_copy_digest)
+    except Exception:
+        raise GuardError("H7: checkpoint_sink callback failed; aborting before any helper writes") from None
+    # After sink: verify the copy was not mutated (compare against original).
+    if json.loads(json.dumps(sink_copy)) != descriptor:
+        raise GuardError("H7: checkpoint_sink mutated the descriptor copy; aborting")
+    # Seal the journal with the digest.
+    journal["checkpoint_digest"] = digest
+    # Helper retains its own separate immutable copy for internal auto-rollback.
+    _helper_descriptor = json.loads(json.dumps(descriptor))
+    _helper_digest = digest
+    # NOW: Write backups (after sink succeeded, before journal/target writes).
+    for name in targets:
+        backup_copy = state_dir / f"{name}-settings.json.orig"
+        backup_copy.write_bytes(_originals[name])
+        if _sha256_bytes(backup_copy.read_bytes()) != _sha256_bytes(_originals[name]):
+            raise GuardError("BLG-E023: backup copy not verified")
     # Journal persisted atomically BEFORE any settings write.
     _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
     return journal
 
 
-def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstrap", write=None):
+def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstrap", write=None, checkpoint_sink=None, prior_checkpoint_digest=None):
     """Prepare + apply with auto-rollback on partial-write failure. `write`
     is an optional injected write seam (for tests to inject a failing
-    write); defaults to _atomic_write. Returns the manifest dict."""
+    write); defaults to _atomic_write. `checkpoint_sink` is REQUIRED.
+    Returns the manifest dict."""
     write = write or _atomic_write
-    journal = prepare_transaction(targets=targets, documents=documents, policy=policy, state_dir=state_dir, profile=profile)
+    journal = prepare_transaction(targets=targets, documents=documents, policy=policy, state_dir=state_dir, profile=profile, checkpoint_sink=checkpoint_sink, prior_checkpoint_digest=prior_checkpoint_digest)
+    # H7: Retain prewrite digest for internal auto-rollback (separate from
+    # journal reread or mutable callback copy).
+    _prewrite_digest = journal["checkpoint_digest"]
     candidates = build_candidate_documents(documents, policy, profile=profile)
     state_dir = Path(state_dir)
     try:
@@ -283,22 +467,24 @@ def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstr
             elif current == rec["applied_sha256"]:
                 pass  # already applied (idempotent rerun); proceed
             else:
-                raise GuardError(f"apply aborted for {name}: current state is neither original nor journal-approved applied (possible external edit); refusing write")
+                raise GuardError("BLG-E024: apply aborted: current state is neither original nor journal-approved applied; refusing write")
             write(path, encode_json_lf(candidates[name]))
             journal["targets"][name]["status"] = "applied"
             _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
+        # H6: Final verification INSIDE the try block so failure triggers
+        # _auto_rollback (not an unsupported recovery state).
+        for name, path in targets.items():
+            if _sha256_file(Path(path)) != journal["targets"][name]["applied_sha256"]:
+                journal["status"] = "failed_final_verify"
+                _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
+                raise GuardError("BLG-E025: final verification failed")
     except BaseException:
-        # Auto-rollback safely from the journal on partial-write failure.
-        _auto_rollback(journal, targets, state_dir)
+        # Auto-rollback safely from the journal on partial-write or
+        # final-verification failure. Uses retained prewrite digest.
+        _auto_rollback(journal, targets, state_dir, expected_digest=_prewrite_digest)
         raise
-    # Final verification: every target at its journal-approved applied hash.
-    for name, path in targets.items():
-        if _sha256_file(Path(path)) != journal["targets"][name]["applied_sha256"]:
-            journal["status"] = "failed_final_verify"
-            _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
-            raise GuardError(f"final verification failed for {name}")
-    journal["status"] = "applied"
-    _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
+    # M3: Write manifest BEFORE publishing applied terminal marker.
+    # If manifest write fails, status remains in_progress (recoverable).
     manifest = {
         "schema": "blg-apply-manifest",
         "version": 1,
@@ -308,36 +494,49 @@ def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstr
         "applied": {name: {"sha256": rec["applied_sha256"]} for name, rec in journal["targets"].items()},
     }
     _atomic_write(state_dir / "rollback-manifest.json", (json.dumps(manifest, indent=1) + "\n").encode("utf-8"))
+    # Only after manifest success: publish applied terminal marker.
+    journal["status"] = "applied"
+    _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
     return manifest
 
 
-def recover_transaction(*, targets, state_dir):
-    """Inspect/recover any pending/interrupted transaction. Returns the
-    journal status after recovery."""
+def recover_transaction(*, targets, state_dir, checkpoint_digest=None):
+    """Inspect/recover any pending/interrupted transaction. Requires
+    independently supplied `checkpoint_digest` for any existing journal.
+    Empty state (no journal) is a truthful read-only NO_TRANSACTION no-op.
+    Returns the journal status after recovery."""
     state_dir = Path(state_dir)
     jpath = _journal_path(state_dir)
     if not jpath.exists():
-        return {"action": "NO_TRANSACTION"}
+        return {"action": "NO_TRANSACTION"}  # empty state: truthful no-op
     journal = json.loads(jpath.read_text(encoding="utf-8"))
+    # H7: one integrity path for ANY existing journal, BEFORE status shortcut.
+    verify_checkpoint_integrity(checkpoint_digest, journal)
     _verify_binding(journal, targets)
-    if journal.get("status") in ("in_progress", "rolled_back_partial"):
-        _auto_rollback(journal, targets, state_dir)
-        return {"action": "RECOVERED", "status": journal.get("status")}
+    if journal.get("status") in ("in_progress", "rolled_back_partial", "rollback_in_progress"):
+        _auto_rollback(journal, targets, state_dir, expected_digest=checkpoint_digest)
+        # M2: Reload journal from disk after recovery; return actual
+        # persisted outcome, not stale pre-recovery dict.
+        reloaded = json.loads(jpath.read_text(encoding="utf-8"))
+        return {"action": "RECOVERED", "status": reloaded.get("status")}
+    if journal.get("status") == "failed_final_verify":
+        raise GuardError("BLG-E031: RECOVERY_REQUIRED: journal status failed_final_verify is an unresolved nonterminal state; manual recovery is required")
     return {"action": "NO_RECOVERY_NEEDED", "status": journal.get("status")}
 
 
-def rollback_transaction(*, targets, state_dir):
-    """Journaled recoverable rollback. Preflight is ALL-or-NOTHING: every
-    target must be at its ORIGINAL hash (already restored -> skip) or its
-    journal-approved APPLIED hash (restore); any third state or corrupt
-    backup aborts ALL before any write (unrelated edits never overwritten).
-    Safe to rerun after a partial apply or partial rollback; idempotent
-    once all targets are at original."""
+def rollback_transaction(*, targets, state_dir, checkpoint_digest=None):
+    """Journaled recoverable rollback. Requires independently supplied
+    `checkpoint_digest` for integrity verification BEFORE any restore.
+    Preflight is ALL-or-NOTHING: every target must be at its ORIGINAL hash
+    (already restored -> skip) or its journal-approved APPLIED hash (restore);
+    any third state or corrupt backup aborts ALL before any write."""
     state_dir = Path(state_dir)
     jpath = _journal_path(state_dir)
     if not jpath.exists():
         raise GuardError("no apply journal; nothing to roll back")
     journal = json.loads(jpath.read_text(encoding="utf-8"))
+    # H7: one integrity path BEFORE any status shortcut or restore.
+    verify_checkpoint_integrity(checkpoint_digest, journal)
     _verify_binding(journal, targets)
     journal_targets = journal.get("targets", {})
     # Phase 1: preflight ALL targets + ALL backup copies (zero writes).
@@ -348,20 +547,29 @@ def rollback_transaction(*, targets, state_dir):
         if current == record["original_sha256"]:
             continue  # already restored (skip; idempotent rerun)
         if current != record["applied_sha256"]:
-            raise GuardError(f"rollback aborted for {name}: current state is neither original nor journal-approved applied (possible external edit); refusing all writes")
+            raise GuardError("BLG-E026: rollback aborted: current state is neither original nor journal-approved applied; refusing all writes")
         backup_copy = state_dir / f"{name}-settings.json.orig"
         if not backup_copy.exists():
-            raise GuardError(f"rollback aborted for {name}: backup copy missing")
+            raise GuardError("BLG-E027: rollback aborted: backup copy missing")
         original = backup_copy.read_bytes()
         if _sha256_bytes(original) != record["original_sha256"]:
-            raise GuardError(f"rollback aborted for {name}: backup copy does not match the recorded original hash")
+            raise GuardError("BLG-E028: rollback aborted: backup copy does not match recorded original hash")
         plan.append((name, path, original))
     if not plan:
         journal["status"] = "rolled_back"
         _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
         return {"action": "ALREADY_ROLLED_BACK", "rolled_back": True}
+    # H5: Persist rollback_in_progress BEFORE first restore. Interrupted
+    # rollback is recoverable; never reports rolled_back until complete.
+    journal["status"] = "rollback_in_progress"
+    _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
     # Phase 2: restore only the targets still at their approved applied state.
+    # H4: Recheck each target immediately before restore (post-preflight
+    # edits must survive; no cross-file atomicity claimed).
     for name, path, original in plan:
+        current = _sha256_file(path)
+        if current != journal_targets[name]["applied_sha256"]:
+            raise GuardError("BLG-E029: rollback aborted: state changed since preflight; refusing restore")
         _atomic_write(path, original)
         journal_targets[name]["status"] = "restored"
         _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
@@ -370,7 +578,7 @@ def rollback_transaction(*, targets, state_dir):
         if _sha256_file(Path(targets[name])) != record["original_sha256"]:
             journal["status"] = "failed_final_verify"
             _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
-            raise GuardError(f"rollback final verification failed for {name}")
+            raise GuardError("BLG-E030: rollback final verification failed")
     journal["status"] = "rolled_back"
     _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
     return {"action": "ROLLED_BACK", "rolled_back": True}
