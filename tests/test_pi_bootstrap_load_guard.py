@@ -1754,6 +1754,806 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                     self.assertEqual(other.read_bytes(), pre_other_bytes)
                     self.assertEqual(jpath.read_bytes(), pre_journal_bytes)
 
+    def test_r3_unknown_root_with_valid_target_progress_rejected(self):
+        """R3: A single unknown journal root status with VALID per-target
+        progress statuses and otherwise-valid target statuses must be refused
+        (GuardError containing 'journal root status unrecognized') by EVERY
+        public entrypoint BEFORE any write, sink callback, or state/target
+        mutation. The root status is excluded from the checkpoint descriptor,
+        so the retained digest stays independently genuine and unchanged; the
+        refusal is a root-validation failure, not an authority or target
+        failure. Closes a coverage gap; baseline should PASS."""
+        unknown_status = "unknown_root_state"
+        for ep in ("prepare", "apply", "recover", "rollback"):
+            with tempfile.TemporaryDirectory() as td:
+                state_dir = Path(td) / "state"
+                state_dir.mkdir(parents=True)
+                original_text = '{"extensions": []}\n'
+                target = Path(td) / "settings.json"
+                target.write_text(original_text, encoding="utf-8")
+                other = Path(td) / "global.json"
+                other.write_text(original_text, encoding="utf-8")
+                targets = {"project": target, "global": other}
+                docs = {"project": {"extensions": []}, "global": {"extensions": []}}
+                # Genuine fresh prepare with sink retaining descriptor/digest.
+                self.blg.prepare_transaction(
+                    targets=targets, documents=docs, policy=self.policy,
+                    state_dir=state_dir, checkpoint_sink=self._make_sink(),
+                )
+                original_digest = self._digest()
+                jpath = state_dir / "apply-journal.json"
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                # Prove valid root + valid target statuses BEFORE mutation.
+                self.assertIn(journal["status"], self.blg.LEGAL_ROOT_STATUSES)
+                for rec in journal["targets"].values():
+                    self.assertIn(rec["status"], self.blg.LEGAL_TARGET_STATUSES)
+                # Change ONLY the root status to an unknown string.
+                # Do NOT touch target statuses/schema/version/sealed fields or recompute.
+                journal["status"] = unknown_status
+                jpath.write_text(json.dumps(journal, indent=1) + "\n", encoding="utf-8")
+                # Retained digest still independently genuine and unchanged
+                # (root status is excluded from the descriptor).
+                recomputed = self.blg.compute_checkpoint_digest(
+                    self.blg.compute_checkpoint_descriptor(journal)
+                )
+                self.assertEqual(recomputed, original_digest)
+                self.assertEqual(recomputed, journal["checkpoint_digest"])
+                # Prove valid target statuses immediately before invocation.
+                reloaded = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertIn(
+                    reloaded["targets"]["project"]["status"],
+                    self.blg.LEGAL_TARGET_STATUSES,
+                )
+                self.assertIn(
+                    reloaded["targets"]["global"]["status"],
+                    self.blg.LEGAL_TARGET_STATUSES,
+                )
+                self.assertEqual(reloaded["status"], unknown_status)
+                # Snapshot target bytes + complete state file set/bytes AFTER
+                # the intentional mutation.
+                def snapshot_state():
+                    return {
+                        str(p): p.read_bytes()
+                        for p in sorted(state_dir.iterdir())
+                        if p.is_file()
+                    }
+                pre_target_bytes = target.read_bytes()
+                pre_other_bytes = other.read_bytes()
+                pre_state = snapshot_state()
+                # Spy _atomic_write (delegate normally) + new approval sink spy.
+                original_atomic_write = self.blg._atomic_write
+                new_sink = mock.MagicMock()
+                with mock.patch.object(
+                    self.blg, "_atomic_write", side_effect=original_atomic_write
+                ) as aw_mock:
+                    try:
+                        if ep == "prepare":
+                            self.blg.prepare_transaction(
+                                targets=targets, documents=docs, policy=self.policy,
+                                state_dir=state_dir, checkpoint_sink=new_sink,
+                                prior_checkpoint_digest=original_digest,
+                            )
+                        elif ep == "apply":
+                            self.blg.apply_transaction(
+                                targets=targets, documents=docs, policy=self.policy,
+                                state_dir=state_dir, checkpoint_sink=new_sink,
+                                prior_checkpoint_digest=original_digest,
+                            )
+                        elif ep == "recover":
+                            self.blg.recover_transaction(
+                                targets=targets, state_dir=state_dir,
+                                checkpoint_digest=original_digest,
+                            )
+                        else:  # rollback
+                            self.blg.rollback_transaction(
+                                targets=targets, state_dir=state_dir,
+                                checkpoint_digest=original_digest,
+                            )
+                        self.fail(
+                            f"{ep} must refuse unknown journal root status"
+                        )
+                    except self.blg.GuardError as err:
+                        # Specific root-validation failure, not a generic
+                        # error that could mask authority/target failures.
+                        self.assertIn(
+                            "journal root status unrecognized", str(err)
+                        )
+                        # Zero writes, no new sink callback, snapshots unchanged.
+                        self.assertEqual(aw_mock.call_count, 0)
+                        self.assertEqual(new_sink.call_count, 0)
+                        self.assertEqual(target.read_bytes(), pre_target_bytes)
+                        self.assertEqual(other.read_bytes(), pre_other_bytes)
+                        self.assertEqual(snapshot_state(), pre_state)
+
+    def test_r3_unknown_target_progress_with_valid_root_rejected(self):
+        """R3: A single unknown per-target progress status with a VALID root
+        status and otherwise-valid target statuses must be refused (GuardError
+        containing 'target progress status unrecognized') by EVERY public
+        entrypoint BEFORE any write, sink callback, or state/target mutation.
+        The per-target status is excluded from the checkpoint descriptor, so
+        the retained digest stays independently genuine and unchanged; the
+        refusal is a progress-validation failure, not an authority or root
+        failure. Closes a coverage gap; baseline should PASS."""
+        unknown_status = "unknown_progress_state"
+        for ep in ("prepare", "apply", "recover", "rollback"):
+            with tempfile.TemporaryDirectory() as td:
+                state_dir = Path(td) / "state"
+                state_dir.mkdir(parents=True)
+                original_text = '{"extensions": []}\n'
+                target = Path(td) / "settings.json"
+                target.write_text(original_text, encoding="utf-8")
+                other = Path(td) / "global.json"
+                other.write_text(original_text, encoding="utf-8")
+                targets = {"project": target, "global": other}
+                docs = {"project": {"extensions": []}, "global": {"extensions": []}}
+                # Genuine fresh prepare with sink retaining descriptor/digest.
+                self.blg.prepare_transaction(
+                    targets=targets, documents=docs, policy=self.policy,
+                    state_dir=state_dir, checkpoint_sink=self._make_sink(),
+                )
+                original_digest = self._digest()
+                jpath = state_dir / "apply-journal.json"
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                # Prove valid root + valid target statuses BEFORE mutation.
+                self.assertIn(journal["status"], self.blg.LEGAL_ROOT_STATUSES)
+                for rec in journal["targets"].values():
+                    self.assertIn(rec["status"], self.blg.LEGAL_TARGET_STATUSES)
+                # Change ONLY one target status to an unknown string.
+                # Do NOT touch root/schema/version/sealed fields or recompute.
+                journal["targets"]["project"]["status"] = unknown_status
+                jpath.write_text(json.dumps(journal, indent=1) + "\n", encoding="utf-8")
+                # Retained digest still independently genuine and unchanged
+                # (per-target status is excluded from the descriptor).
+                recomputed = self.blg.compute_checkpoint_digest(
+                    self.blg.compute_checkpoint_descriptor(journal)
+                )
+                self.assertEqual(recomputed, original_digest)
+                self.assertEqual(recomputed, journal["checkpoint_digest"])
+                # Prove valid root/other statuses immediately before invocation.
+                reloaded = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertIn(reloaded["status"], self.blg.LEGAL_ROOT_STATUSES)
+                self.assertIn(
+                    reloaded["targets"]["global"]["status"],
+                    self.blg.LEGAL_TARGET_STATUSES,
+                )
+                self.assertEqual(
+                    reloaded["targets"]["project"]["status"], unknown_status
+                )
+                # Snapshot target bytes + complete state file set/bytes AFTER
+                # the intentional mutation.
+                def snapshot_state():
+                    return {
+                        str(p): p.read_bytes()
+                        for p in sorted(state_dir.iterdir())
+                        if p.is_file()
+                    }
+                pre_target_bytes = target.read_bytes()
+                pre_other_bytes = other.read_bytes()
+                pre_state = snapshot_state()
+                # Spy _atomic_write (delegate normally) + new approval sink spy.
+                original_atomic_write = self.blg._atomic_write
+                new_sink = mock.MagicMock()
+                with mock.patch.object(
+                    self.blg, "_atomic_write", side_effect=original_atomic_write
+                ) as aw_mock:
+                    try:
+                        if ep == "prepare":
+                            self.blg.prepare_transaction(
+                                targets=targets, documents=docs, policy=self.policy,
+                                state_dir=state_dir, checkpoint_sink=new_sink,
+                                prior_checkpoint_digest=original_digest,
+                            )
+                        elif ep == "apply":
+                            self.blg.apply_transaction(
+                                targets=targets, documents=docs, policy=self.policy,
+                                state_dir=state_dir, checkpoint_sink=new_sink,
+                                prior_checkpoint_digest=original_digest,
+                            )
+                        elif ep == "recover":
+                            self.blg.recover_transaction(
+                                targets=targets, state_dir=state_dir,
+                                checkpoint_digest=original_digest,
+                            )
+                        else:  # rollback
+                            self.blg.rollback_transaction(
+                                targets=targets, state_dir=state_dir,
+                                checkpoint_digest=original_digest,
+                            )
+                        self.fail(
+                            f"{ep} must refuse unknown target progress status"
+                        )
+                    except self.blg.GuardError as err:
+                        # Specific progress-validation failure, not a generic
+                        # error that could mask authority/root failures.
+                        self.assertIn(
+                            "target progress status unrecognized", str(err)
+                        )
+                        # Zero writes, no new sink callback, snapshots unchanged.
+                        self.assertEqual(aw_mock.call_count, 0)
+                        self.assertEqual(new_sink.call_count, 0)
+                        self.assertEqual(target.read_bytes(), pre_target_bytes)
+                        self.assertEqual(other.read_bytes(), pre_other_bytes)
+                        self.assertEqual(snapshot_state(), pre_state)
+
+    def test_r3_policy_nonfinite_candidates_rejected(self):
+        """R3: build_candidate_documents MUST refuse (GuardError) when a
+        selected policy lane field (extensions/skills) contains non-finite
+        float values (NaN, +inf, -inf). Ordinary string values that merely
+        look like non-finite tokens must NOT be refused and must appear
+        verbatim in the returned candidate. The pure builder never calls
+        _atomic_write and existing target/state snapshots stay unchanged."""
+        import math as _math
+
+        nonfinite_values = [
+            float('nan'),
+            float('inf'),
+            float('-inf'),
+            json.loads('1e400'),  # IEEE overflow -> inf
+        ]
+        for v in nonfinite_values:
+            self.assertTrue(_math.isinf(v) or _math.isnan(v),
+                            f"precondition: {v!r} must be non-finite")
+
+        roles = ("project", "global")
+        fields = ("extensions", "skills")
+
+        # --- Non-finite value regression matrix ---
+        for role in roles:
+            for field in fields:
+                for nv in nonfinite_values:
+                    with self.subTest(role=role, field=field, value=nv):
+                        policy = copy.deepcopy(self.policy)
+                        policy["profiles"]["bootstrap"][role][field] = [nv]
+                        docs = copy.deepcopy(self.documents)
+
+                        pre_targets = {
+                            name: path.read_bytes()
+                            for name, path in self.targets.items()
+                        }
+                        pre_state = {}
+                        if self.state_dir.exists():
+                            for sf in self.state_dir.iterdir():
+                                if sf.is_file():
+                                    pre_state[sf.name] = sf.read_bytes()
+
+                        with mock.patch.object(
+                            self.blg, "_atomic_write",
+                            wraps=self.blg._atomic_write,
+                        ) as spy_aw:
+                            try:
+                                result = self.blg.build_candidate_documents(
+                                    docs, policy
+                                )
+                            except self.blg.GuardError as exc:
+                                self.assertIn(
+                                    "nonfinite", str(exc).lower(),
+                                    f"GuardError must indicate nonfinite: {exc}",
+                                )
+                            else:
+                                self.fail(
+                                    f"build_candidate_documents must raise "
+                                    f"GuardError for non-finite {nv!r} in "
+                                    f"{role}.{field}; returned {result!r}"
+                                )
+
+                        spy_aw.assert_not_called()
+                        for name, path in self.targets.items():
+                            self.assertEqual(
+                                path.read_bytes(), pre_targets[name]
+                            )
+                        for sf_name, sf_bytes in pre_state.items():
+                            self.assertEqual(
+                                (self.state_dir / sf_name).read_bytes(),
+                                sf_bytes,
+                            )
+
+        # --- Positive controls: ordinary strings must NOT be refused ---
+        string_controls = ["NaN", "Infinity", "-Infinity", "1e400"]
+        for role in roles:
+            for field in fields:
+                for sc in string_controls:
+                    with self.subTest(role=role, field=field, value=sc):
+                        policy = copy.deepcopy(self.policy)
+                        policy["profiles"]["bootstrap"][role][field] = [sc]
+                        docs = copy.deepcopy(self.documents)
+
+                        pre_targets = {
+                            name: path.read_bytes()
+                            for name, path in self.targets.items()
+                        }
+
+                        with mock.patch.object(
+                            self.blg, "_atomic_write",
+                            wraps=self.blg._atomic_write,
+                        ) as spy_aw:
+                            result = self.blg.build_candidate_documents(
+                                docs, policy
+                            )
+
+                        self.assertIn(
+                            sc, result[role][field],
+                            f"string control {sc!r} must appear in "
+                            f"{role}.{field}: {result[role][field]!r}",
+                        )
+                        spy_aw.assert_not_called()
+                        for name, path in self.targets.items():
+                            self.assertEqual(
+                                path.read_bytes(), pre_targets[name]
+                            )
+
+    def test_r3_numeric_descriptor_mutation_refuses_before_writes(self):
+        """R3: A numeric descriptor mutation (int->float) in the checkpoint
+        sink is invisible to Python equality but produces a canonical digest
+        mismatch. The guard MUST refuse (GuardError) before any helper writes.
+        On current code the existing numeric-equality check does not detect
+        this class of mutation; the GuardError assertion below therefore
+        fails on current code."""
+        public_calls = [
+            ("prepare_transaction", self.blg.prepare_transaction),
+            ("apply_transaction", self.blg.apply_transaction),
+        ]
+        for label, public_fn in public_calls:
+            with self.subTest(label=label):
+                with tempfile.TemporaryDirectory() as td:
+                    base = Path(td)
+                    # Valid targets: write files matching documents (H3).
+                    docs = {
+                        "project": {"extensions": [], "skills": []},
+                        "global": {"extensions": [], "skills": []},
+                    }
+                    targets = {}
+                    for name, doc in docs.items():
+                        p = base / f"{name}-settings.json"
+                        p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                        targets[name] = p
+                    # NONEXISTENT state dir.
+                    state_dir = base / "state"
+                    self.assertFalse(state_dir.exists())
+                    # Snapshot target bytes before call.
+                    pre_bytes = {n: p.read_bytes() for n, p in targets.items()}
+                    # Mutable sink-callback state.
+                    sink_state = {
+                        "completed": False,
+                        "pre_copy": None,
+                        "original_version": None,
+                        "original_version_type": None,
+                        "mutated_version": None,
+                        "mutated_version_type": None,
+                        "provided_digest": None,
+                        "mutated_copy": None,
+                    }
+                    def sink(descriptor, digest):
+                        sink_state["original_version"] = descriptor["version"]
+                        sink_state["original_version_type"] = type(descriptor["version"])
+                        # Record pre-mutation deep copy.
+                        sink_state["pre_copy"] = json.loads(json.dumps(descriptor))
+                        # Mutate version from int 2 to float 2.0.
+                        descriptor["version"] = float(descriptor["version"])
+                        sink_state["mutated_version"] = descriptor["version"]
+                        sink_state["mutated_version_type"] = type(descriptor["version"])
+                        # Retain actual mutated copy (what guard will check).
+                        sink_state["mutated_copy"] = json.loads(json.dumps(descriptor))
+                        sink_state["provided_digest"] = digest
+                        sink_state["completed"] = True
+                    # Spy on _atomic_write: capture original, delegate.
+                    original_atomic_write = self.blg._atomic_write
+                    atomic_write_calls = []
+                    def spy_atomic_write(path, data):
+                        atomic_write_calls.append((str(path), data))
+                        original_atomic_write(path, data)
+                    with mock.patch.object(self.blg, "_atomic_write", spy_atomic_write):
+                        try:
+                            public_fn(
+                                targets=targets, documents=docs,
+                                policy=self.policy, state_dir=state_dir,
+                                checkpoint_sink=sink,
+                            )
+                            guard_error_raised = None
+                        except self.blg.GuardError as e:
+                            guard_error_raised = e
+                    # Assert callback completed.
+                    self.assertTrue(sink_state["completed"],
+                                    f"{label}: sink callback did not complete")
+                    # Assert original type/value was int 2.
+                    self.assertEqual(sink_state["original_version"], 2)
+                    self.assertIs(sink_state["original_version_type"], int)
+                    # Assert mutated type is float 2.0.
+                    self.assertEqual(sink_state["mutated_version"], 2.0)
+                    self.assertIs(sink_state["mutated_version_type"], float)
+                    # Python numeric equality hides the mutation.
+                    self.assertEqual(sink_state["original_version"], sink_state["mutated_version"])
+                    # But canonical digest differs.
+                    canonical_mutated = self.blg.compute_checkpoint_digest(sink_state["mutated_copy"])
+                    self.assertNotEqual(canonical_mutated, sink_state["provided_digest"],
+                                        f"{label}: canonical digest of mutated copy must differ from provided digest")
+                    # Require GuardError refusal.
+                    self.assertIsNotNone(guard_error_raised,
+                                         f"{label}: GuardError must be raised for numeric descriptor mutation")
+                    # State dir still absent.
+                    self.assertFalse(state_dir.exists(),
+                                     f"{label}: state dir must not exist after refusal")
+                    # All target bytes unchanged.
+                    for name, p in targets.items():
+                        self.assertEqual(p.read_bytes(), pre_bytes[name],
+                                         f"{label}: target {name} bytes must be unchanged")
+                    # Zero observed _atomic_write calls.
+                    self.assertEqual(len(atomic_write_calls), 0,
+                                     f"{label}: zero _atomic_write calls expected")
+
+    def test_r3_cleanup_failure_preserves_process_control(self):
+        """R3: A genuine process-control interruption (KeyboardInterrupt /
+        SystemExit) raised by the write seam must be the object observed by
+        the caller even when the journal-persistence cleanup (rollback to
+        rolled_back) fails with an owned OSError. On current code the cleanup
+        failure is folded into a GuardError by the public boundary, replacing
+        the original process-control object; the identity assert below
+        therefore fails on current code.
+
+        Extended: direct-binding cleanup failure mode where _auto_rollback's
+        direct _verify_binding (outside decorated rollback) raises OSError.
+        Original interruption survives but `raise original` displays private
+        cleanup context in the formatted traceback."""
+        import traceback as _tb
+
+        # Capture original _verify_binding BEFORE any patching.
+        original_verify_binding = self.blg._verify_binding
+
+        for case_label, make_interruption, mode in (
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "journal"),
+            ("SystemExit", lambda: SystemExit(17), "journal"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "direct-binding"),
+            ("SystemExit", lambda: SystemExit(17), "direct-binding"),
+        ):
+            with self.subTest(interruption=case_label, mode=mode):
+                # Fresh owned TemporaryDirectory per case.
+                owned = tempfile.TemporaryDirectory(prefix="blg-r3-cleanup-")
+                self.addCleanup(owned.cleanup)
+                base = Path(owned.name)
+                owned_state_dir = base / "state"
+                owned_state_dir.mkdir()
+                # Copy self.documents / self.policy (never mutate setUp state).
+                documents = json.loads(json.dumps(self.documents))
+                policy = json.loads(json.dumps(self.policy))
+                # Create two target JSON files + separate state dir.
+                targets = {}
+                for name, doc in documents.items():
+                    path = base / f"{name}-settings.json"
+                    path.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                    targets[name] = path
+                pre_target_bytes = {name: p.read_bytes() for name, p in targets.items()}
+                # Retain genuine sink.
+                sink = self._make_sink()
+                # The single original interruption object (identity-checked).
+                the_interruption = make_interruption()
+                # Writer records hit and raises the original interruption BEFORE writing.
+                writer_hit = []
+                def writer(path, data):
+                    writer_hit.append(True)
+                    raise the_interruption
+                # Capture original _atomic_write BEFORE any patching.
+                original_atomic_write = self.blg._atomic_write
+                cleanup_hit = []
+
+                if mode == "journal":
+                    # Journal mode: existing narrow terminal-journal injection.
+                    owned_journal = (owned_state_dir / "apply-journal.json").resolve()
+                    def patched_atomic_write(path, data):
+                        if Path(path).resolve() == owned_journal:
+                            try:
+                                payload = json.loads(data.decode("utf-8"))
+                            except Exception:
+                                payload = None
+                            if isinstance(payload, dict) and payload.get("status") == "rolled_back":
+                                cleanup_hit.append(True)
+                                raise OSError("owned cleanup fixture")
+                        return original_atomic_write(path, data)
+                    caught = None
+                    with mock.patch.object(self.blg, "_atomic_write", patched_atomic_write):
+                        try:
+                            self.blg.apply_transaction(
+                                targets=targets,
+                                documents=documents,
+                                policy=policy,
+                                state_dir=owned_state_dir,
+                                profile="bootstrap",
+                                write=writer,
+                                checkpoint_sink=sink,
+                            )
+                        except BaseException as error:
+                            caught = error
+                else:
+                    # Direct-binding mode: _verify_binding raises after writer_hit.
+                    marker_variable = "BLG-R3-DIRECT-BINDING-MARKER-7X2"
+                    def patched_verify_binding(journal, targets):
+                        if writer_hit:
+                            cleanup_hit.append(True)
+                            raise OSError(marker_variable)
+                        return original_verify_binding(journal, targets)
+                    caught = None
+                    with mock.patch.object(self.blg, "_verify_binding", patched_verify_binding):
+                        try:
+                            self.blg.apply_transaction(
+                                targets=targets,
+                                documents=documents,
+                                policy=policy,
+                                state_dir=owned_state_dir,
+                                profile="bootstrap",
+                                write=writer,
+                                checkpoint_sink=sink,
+                            )
+                        except BaseException as error:
+                            caught = error
+
+                # Common assertions: writer/cleanup hooks.
+                self.assertIsNotNone(caught, "apply must surface an exception (process-control or cleanup)")
+                self.assertTrue(writer_hit, "writer seam must be hit before raising")
+                self.assertTrue(cleanup_hit, "cleanup must be hit (journal or direct-binding)")
+                # Both target originals unchanged.
+                for name, path in targets.items():
+                    self.assertEqual(path.read_bytes(), pre_target_bytes[name])
+                # Persisted journal nonterminal / in_progress.
+                jpath = owned_state_dir / "apply-journal.json"
+                self.assertTrue(jpath.exists(), "journal must be persisted during prepare")
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertEqual(journal.get("status"), "in_progress")
+                # The caught object IS the original interruption.
+                self.assertIs(caught, the_interruption)
+
+                # Direct-binding mode: marker-absence assertions.
+                if mode == "direct-binding":
+                    # Marker must be absent from str(caught).
+                    self.assertNotIn(marker_variable, str(caught))
+                    # Marker must be absent from standard formatted traceback.
+                    formatted_tb = "".join(_tb.format_exception(type(caught), caught, caught.__traceback__))
+                    self.assertNotIn(marker_variable, formatted_tb)
+
+    def test_r3_cleanup_guard_error_suppresses_private_context(self):
+        """R3: Cleanup guard error from native journal operation inherits
+        private PermissionError context. Marker must be absent from both
+        str(GuardError) and formatted traceback. On current code the context
+        exception leaks the marker through traceback.format_exception."""
+        import traceback as _tb
+
+        # Capture original _atomic_write BEFORE any patching.
+        original_atomic_write = self.blg._atomic_write
+
+        # Capture original bytes of both targets (before intentional fixture changes).
+        originals = {name: path.read_bytes() for name, path in self.targets.items()}
+
+        # Synthetic THIRD_STATE bytes (distinct from original and applied).
+        third_state_bytes = b"R3-synthetic-third-state-bytes-XK99\n"
+
+        # Private marker for the PermissionError (variable at raise site;
+        # not a literal in the line displayed by traceback).
+        _private_marker = "TEST_R3_JOURNAL_PRIVATE_XK77"
+
+        # Tracking flags.
+        write_seam_called = [False]
+        journal_fault_raised = [False]
+        target_written = [None]
+
+        # Custom apply writer: uses ORIGINAL atomic function to put THIRD_STATE
+        # bytes at its first owned target, records target/flag, returns normally.
+        def custom_write(path, data):
+            p = Path(path)
+            if not write_seam_called[0]:
+                original_atomic_write(p, third_state_bytes)
+                write_seam_called[0] = True
+                target_written[0] = p
+            # Return normally (no exception from write seam).
+
+        # Patched _atomic_write: delegates normally for backups/initial journal.
+        # AFTER the target write (flag set), the journal persistence raises
+        # PermissionError (native JOURNAL operation, not the write seam).
+        def patched_atomic_write(path, data):
+            if write_seam_called[0]:
+                journal_fault_raised[0] = True
+                raise PermissionError(_private_marker)
+            original_atomic_write(path, data)
+
+        with mock.patch.object(self.blg, "_atomic_write", side_effect=patched_atomic_write):
+            with self.assertRaises(self.blg.GuardError) as ctx:
+                self.blg.apply_transaction(
+                    targets=self.targets,
+                    documents=self.documents,
+                    policy=self.policy,
+                    state_dir=self.state_dir,
+                    write=custom_write,
+                    checkpoint_sink=self._make_sink(),
+                )
+
+        # Require GuardError (trusted library error, not sanitized operational).
+        exc = ctx.exception
+        self.assertIsInstance(exc, self.blg.GuardError)
+
+        # Prove writer and native journal fault actually executed.
+        self.assertTrue(write_seam_called[0], "custom write seam must have been called")
+        self.assertTrue(journal_fault_raised[0], "journal persistence fault must have been raised")
+        self.assertIsNotNone(target_written[0], "target must have been recorded")
+
+        # State assertions (before final traceback assertion so RED records setup).
+        # First target preserved at THIRD_STATE (cleanup refused to overwrite).
+        self.assertEqual(
+            target_written[0].read_bytes(), third_state_bytes,
+            "first target must remain at third-state bytes (cleanup refused overwrite)"
+        )
+        # Other target untouched at original.
+        written_name = "project" if target_written[0] == self.targets["project"] else "global"
+        other_name = "global" if written_name == "project" else "project"
+        self.assertEqual(
+            self.targets[other_name].read_bytes(), originals[other_name],
+            "other target must remain at original bytes (untouched)"
+        )
+        # Truthful nonterminal on-disk journal (in_progress from _prepare_plan;
+        # the journal update after target write never completed).
+        jpath = self.state_dir / "apply-journal.json"
+        journal = json.loads(jpath.read_text(encoding="utf-8"))
+        self.assertEqual(
+            journal["status"], "in_progress",
+            "journal must be at nonterminal in_progress (journal write after target never completed)"
+        )
+
+        # Final: synthetic marker absent from BOTH str(error) and formatted traceback.
+        self.assertNotIn(_private_marker, str(exc),
+            "private marker must be absent from str(GuardError)")
+        formatted = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+        self.assertNotIn(_private_marker, formatted,
+            "private marker must be absent from formatted traceback")
+
+    def test_r3_leaf_alias_recovery_restores_canonical_targets(self):
+        """R3: A FILE symlink alias pointing at the canonical project target
+        must survive apply and rollback/recover without being replaced by a
+        regular file. The canonical referent must be restored to original bytes
+        and the alias must remain a symlink. Current code replaces the alias
+        with a regular original file while the canonical referent remains
+        applied (os.replace on a symlink path destroys the link)."""
+        # Verify platform can create file symlinks (skip only on genuine
+        # platform inability; never catch operation/assertion failures as skips).
+        with tempfile.TemporaryDirectory() as probe_td:
+            probe_target = Path(probe_td) / "probe-target.txt"
+            probe_target.write_text("probe\n", encoding="utf-8")
+            probe_link = Path(probe_td) / "probe-link.txt"
+            try:
+                probe_link.symlink_to(probe_target)
+            except OSError:
+                self.skipTest("platform cannot create file symlinks; R3 unproved on this host")
+            self.assertTrue(
+                probe_link.is_symlink(),
+                "probe: symlink not created as symlink"
+            )
+
+        def _create_fixture(base):
+            """Create owned fixture: canonical files + FILE symlink alias.
+            Returns (targets, docs, policy, canonical_project, global_path, alias_path)."""
+            docs = {
+                "project": {"extensions": ["orig-ext"], "skills": ["orig-skill"], "theme": "dark"},
+                "global": {"extensions": ["orig-gext"], "skills": ["orig-gskill"], "mode": "light"},
+            }
+            policy = {
+                "profiles": {"bootstrap": {
+                    "global": {"extensions": ["!new-gext"], "skills": ["!new-gskill"]},
+                    "project": {"extensions": ["!new-ext"], "skills": ["!new-skill"]},
+                }},
+                "package_policy": {"approved": {}},
+            }
+            canonical_project = base / "project-settings.json"
+            global_path = base / "global-settings.json"
+            for name, doc in docs.items():
+                p = canonical_project if name == "project" else global_path
+                p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+            alias_path = base / "project-alias.json"
+            alias_path.symlink_to(canonical_project)
+            # Verify actual symlink creation and its original target.
+            self.assertTrue(alias_path.is_symlink(), "fixture: alias must be a symlink")
+            link_target = os.readlink(str(alias_path))
+            self.assertTrue(
+                Path(link_target).samefile(canonical_project),
+                f"fixture: symlink target does not point to canonical project: {link_target}"
+            )
+            targets = {"project": alias_path, "global": global_path}
+            return targets, docs, policy, canonical_project, global_path, alias_path
+
+        # --- Sub-test 1: genuine apply + public rollback ---
+        with self.subTest(r3_apply_rollback="symlink_alias_preserved"):
+            with tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                state_dir = base / "state"
+                state_dir.mkdir()
+                targets, docs, policy, canonical_project, global_path, alias_path = _create_fixture(base)
+                original_project_bytes = canonical_project.read_bytes()
+                original_global_bytes = global_path.read_bytes()
+                # Verify alias is a symlink before apply.
+                self.assertTrue(alias_path.is_symlink(), "alias must be a symlink before apply")
+                # Genuine public apply with alias target mapping.
+                self.blg.apply_transaction(
+                    targets=targets, documents=docs, policy=policy,
+                    state_dir=state_dir, checkpoint_sink=self._make_sink(),
+                )
+                genuine_digest = self._digest()
+                # Apply changed canonical referent.
+                candidates = self.blg.build_candidate_documents(docs, policy, "bootstrap")
+                expected_applied_bytes = self.blg.encode_json_lf(candidates["project"])
+                self.assertEqual(
+                    canonical_project.read_bytes(), expected_applied_bytes,
+                    "canonical project file must have applied bytes after apply"
+                )
+                # Alias remains a symlink after apply.
+                self.assertTrue(
+                    alias_path.is_symlink(),
+                    "alias must remain a symlink after apply"
+                )
+                # Public rollback with SAME alias target mapping.
+                result = self.blg.rollback_transaction(
+                    targets=targets, state_dir=state_dir,
+                    checkpoint_digest=genuine_digest,
+                )
+                self.assertTrue(result.get("rolled_back"), "rollback must report rolled_back")
+                # Canonical original bytes restored.
+                self.assertEqual(
+                    canonical_project.read_bytes(), original_project_bytes,
+                    "canonical project file must have original bytes after rollback"
+                )
+                # Alias still a symlink after rollback.
+                self.assertTrue(
+                    alias_path.is_symlink(),
+                    "alias must still be a symlink after rollback"
+                )
+                # Other target restored.
+                self.assertEqual(
+                    global_path.read_bytes(), original_global_bytes,
+                    "global file must have original bytes after rollback"
+                )
+                # Truthful rolled_back journal.
+                jpath = state_dir / "apply-journal.json"
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertEqual(journal["status"], "rolled_back")
+
+        # --- Sub-test 2: genuine apply + explicit recover (fresh fixture) ---
+        with self.subTest(r3_apply_recover="in_progress_recover"):
+            with tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                state_dir = base / "state"
+                state_dir.mkdir()
+                targets, docs, policy, canonical_project, global_path, alias_path = _create_fixture(base)
+                original_project_bytes = canonical_project.read_bytes()
+                original_global_bytes = global_path.read_bytes()
+                # Genuine public apply with alias target mapping.
+                self.blg.apply_transaction(
+                    targets=targets, documents=docs, policy=policy,
+                    state_dir=state_dir, checkpoint_sink=self._make_sink(),
+                )
+                genuine_digest = self._digest()
+                # Change ONLY mutable journal root status to in_progress
+                # (equivalent crash after final target progress but before terminal root).
+                jpath = state_dir / "apply-journal.json"
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertEqual(journal["status"], "applied", "journal must be applied before status change")
+                journal["status"] = "in_progress"
+                jpath.write_text(json.dumps(journal, indent=1) + "\n", encoding="utf-8")
+                # Do NOT reseal or replace independently retained digest.
+                # Invoke recover with SAME alias mapping.
+                result = self.blg.recover_transaction(
+                    targets=targets, state_dir=state_dir,
+                    checkpoint_digest=genuine_digest,
+                )
+                # Require restored canonical referent.
+                self.assertEqual(
+                    canonical_project.read_bytes(), original_project_bytes,
+                    "canonical project file must have original bytes after recover"
+                )
+                # Preserved alias.
+                self.assertTrue(
+                    alias_path.is_symlink(),
+                    "alias must still be a symlink after recover"
+                )
+                # Truthful rolled_back result.
+                self.assertEqual(result["status"], "rolled_back")
+                # Other target restored.
+                self.assertEqual(
+                    global_path.read_bytes(), original_global_bytes,
+                    "global file must have original bytes after recover"
+                )
+
     def test_r2_parent_junction_rebinding_rejected(self):
         """H1/R2: A historical canonical target-path binding must not be
         reinterpreted as authority over different replacement content after

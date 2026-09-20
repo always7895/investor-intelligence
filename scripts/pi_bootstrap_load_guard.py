@@ -148,6 +148,7 @@ def build_candidate_documents(documents, policy, profile="bootstrap"):
                 new_packages.append(new_entry)
             doc["packages"] = new_packages
         result[name] = doc
+    [_validate_json_value(v) for v in result.values()]
     return result
 
 
@@ -513,8 +514,8 @@ def _prepare_plan(*, targets, documents, policy, state_dir, profile="bootstrap",
         checkpoint_sink(sink_copy, sink_copy_digest)
     except Exception:
         raise GuardError("H7: checkpoint_sink callback failed; aborting before any helper writes") from None
-    # After sink: verify the copy was not mutated (compare against original).
-    if json.loads(json.dumps(sink_copy)) != descriptor:
+    # After sink: verify the copy was not mutated (digest comparison).
+    if compute_checkpoint_digest(sink_copy) != digest:
         raise GuardError("H7: checkpoint_sink mutated the descriptor copy; aborting")
     # Seal the journal with the digest.
     journal["checkpoint_digest"] = digest
@@ -556,8 +557,8 @@ def _public_boundary(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except GuardError:
-            raise
+        except GuardError as error:
+            raise error from None
         except Exception:
             raise GuardError("BLG-E040: operational error; details suppressed") from None
     return wrapper
@@ -613,11 +614,18 @@ def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstr
                 journal["status"] = "failed_final_verify"
                 _atomic_write(_journal_path(state_dir), (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
                 raise GuardError("BLG-E025: final verification failed")
-    except BaseException:
+    except BaseException as original:
         # Auto-rollback safely from the journal on partial-write or
         # final-verification failure. Uses retained prewrite digest.
-        _auto_rollback(journal, captured_targets, state_dir, expected_digest=retained_digest)
-        raise
+        try:
+            _auto_rollback(journal, captured_targets, state_dir, expected_digest=retained_digest)
+        except BaseException as cleanup_exc:
+            # Non-Exception process control (KeyboardInterrupt/SystemExit)
+            # must not be replaced by an ordinary Exception from cleanup.
+            if not isinstance(original, Exception) and isinstance(cleanup_exc, Exception):
+                raise original from None
+            raise
+        raise original
     # M3: Write manifest BEFORE publishing applied terminal marker.
     # If manifest write fails, status remains in_progress (recoverable).
     manifest = {
@@ -677,13 +685,15 @@ def rollback_transaction(*, targets, state_dir, checkpoint_digest=None):
     journal = json.loads(jpath.read_text(encoding="utf-8"))
     # H7: one integrity path BEFORE any status shortcut or restore.
     verify_checkpoint_integrity(checkpoint_digest, journal)
-    _verify_binding(journal, targets)
+    # Private canonical CURRENT target map (resolved paths for write safety).
+    captured = {name: str(Path(targets[name]).resolve()) for name in targets}
+    _verify_binding(journal, captured)
     _verify_backup_binding(journal, state_dir)
     journal_targets = journal.get("targets", {})
     # Phase 1: preflight ALL targets + ALL backup copies (zero writes).
     plan = []
     for name, record in journal_targets.items():
-        path = Path(targets[name])
+        path = Path(captured[name])
         current = _sha256_file(path)
         if current == record["original_sha256"]:
             record["status"] = "restored"  # genuinely already-original: LOCAL journal mark (no disk write)
@@ -717,7 +727,7 @@ def rollback_transaction(*, targets, state_dir, checkpoint_digest=None):
         _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
     # Final verification: every target at its original hash.
     for name, record in journal_targets.items():
-        if _sha256_file(Path(targets[name])) != record["original_sha256"]:
+        if _sha256_file(Path(captured[name])) != record["original_sha256"]:
             journal["status"] = "failed_final_verify"
             _atomic_write(jpath, (json.dumps(journal, indent=1) + "\n").encode("utf-8"))
             raise GuardError("BLG-E030: rollback final verification failed")
