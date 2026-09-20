@@ -206,7 +206,7 @@ class ModelProfileTests(unittest.TestCase):
         import v213_local_llm_gateway as gateway
         import secrets
         auth_value = secrets.token_hex(32)
-        response = Mock(ok=True)
+        response = Mock(ok=True, status_code=200)
         response.json.return_value = {'model': PROFILE['model'], 'choices': [
             {'finish_reason': 'stop', 'message': {'content': 'synthetic complete answer'}}]}
         server = ThreadingHTTPServer(('127.0.0.1', 0), gateway.V213GatewayHandler)
@@ -223,7 +223,10 @@ class ModelProfileTests(unittest.TestCase):
         with patch.dict(os.environ, {'II_LOCAL_LLM_SHARED_SECRET': auth_value, 'II_LOCAL_LLM_MODEL': 'ignored-legacy-selection',
                                      'V213_MODEL_PROFILE_JSON': json.dumps(PROFILE)}), \
              patch.object(gateway, '_available_model_catalog', return_value=[{'id': PROFILE['model']}]), \
-             patch.object(gateway.requests, 'post', return_value=response) as upstream:
+             patch.object(gateway, '_decision_client', return_value=Mock(answer=Mock(return_value=('SUFFICIENT', 0.9)))), \
+             patch.object(gateway, 'capability_context_evidence', return_value=262144), \
+             patch.object(gateway, 'structured_json_probe', return_value=True), \
+             patch.object(gateway, '_loopback_http', return_value=response) as upstream:
             thread.start()
             try:
                 self.assertEqual(call(self.body(PROFILE), 'wrong')[0], 401)

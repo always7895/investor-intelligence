@@ -114,7 +114,8 @@ def verify_model_binding(files, refs, receipts, archive_sha):
             raise VerificationError('legacy model mismatch')
         return {'exact_model': 'qwen38-q6', 'model_profile_sha256': None}
     required = {key, 'scripts/v213_model_profile.py', 'scripts/v213_compact_qa_gateway.py',
-                'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts'}
+                'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts',
+                'scripts/v213_decision_backend_client.py', 'config/local-runtime-independence-v1.json'}
     if not required.issubset(files):
         raise VerificationError('profile runtime payload missing')
     try:

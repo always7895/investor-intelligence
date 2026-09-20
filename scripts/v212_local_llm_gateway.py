@@ -37,6 +37,8 @@ except ImportError:  # pragma: no cover
 
 HOST = "127.0.0.1"
 PORT = 8814
+_LOOPBACK_SESSION = requests.Session()
+_LOOPBACK_SESSION.trust_env = False  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY ignored for AI HTTP
 MAX_BODY = 256_000
 MAX_CONTEXT_CHARS = 24_000
 TICKER_RE = re.compile(
@@ -492,7 +494,10 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._json(404, {"ok": False})
             return
         try:
-            response = requests.get(llama_base_url() + "/health", timeout=(2, 5))
+            response = _LOOPBACK_SESSION.get(
+                llama_base_url() + "/health", timeout=(2, 5),
+                allow_redirects=False, proxies={"http": None, "https": None},
+            )
             llama_ok = response.ok
         except Exception:
             llama_ok = False
@@ -532,7 +537,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 "max_tokens": min(1800, max(256, int(body.get("max_tokens") or 1400))),
                 "stream": False,
             }
-            response = requests.post(llama_url(), json=upstream, headers={"content-type": "application/json"}, timeout=(5, 120))
+            response = _LOOPBACK_SESSION.post(
+                llama_url(), json=upstream, headers={"content-type": "application/json"},
+                timeout=(5, 120), allow_redirects=False, proxies={"http": None, "https": None},
+            )
+            if 300 <= response.status_code < 400:
+                raise RuntimeError("II_LLAMA_BASE_URL_MUST_BE_LOOPBACK")
             if not response.ok:
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
@@ -543,6 +553,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     "source_diversity_status": context["source_diversity_status"],
                 }
             self._json(200, result)
+        except RuntimeError as exc:
+            if "MUST_BE_LOOPBACK" in str(exc):
+                self._json(502, {"error": "UPSTREAM_LOOPBACK_REFUSED"})
+            else:
+                self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
         except Exception as exc:
             self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
 

@@ -39,6 +39,10 @@ Serenity is the primary public-method lens; Leopold Aschenbrenner is CONTEXT_ONL
 
 Preserve scoring, claim independence, LINE/IBKR separation, freshness and provenance. Publication requires sealed digest-bound objects, readback and pointer-last commit, with replay rejection, durable failure journals, rollback and finalize. Certified `cloud/src/qa.ts` blob: `94184bc8937b413eb327b3d773926db00e22b3b9`. No second model/server or preset change.
 
+## Local runtime independence (development scope)
+
+The LOCAL v213 gateway can run 100% local AI (`$0` paid inference, no cloud fallback) from a single runtime config (`config/local-runtime-independence-v1.json`): a PRIMARY_REASONER and the existing local Mapika DECISION_ROUTER, with strict local-only flags (`LOCAL_AI_ONLY=true`, `PAID_INFERENCE_ALLOWED=false`, `CLOUD_AI_FALLBACK=false`). Pre-generation guards (decision approval, observed served-context, structured-JSON probe) fail closed to an explicit 503 with zero product generation; a declared `min_decision_confidence` 0.70 denies low-confidence decisions locally (never Astra/cloud). The natural-prose LINE reply is unchanged. This is a LOCAL-gateway capability, NOT a Worker change, and is NOT a whole-product release. Full roles, guards, evidence and PENDING release gates: [LOCAL_RUNTIME_INDEPENDENCE](docs/LOCAL_RUNTIME_INDEPENDENCE.md).
+
 ## Install / develop
 
 Follow [release/install boundaries](docs/FINAL_RELEASE.md). Verify the ZIP's external SHA256 before extraction; do not overwrite the mixed workspace or replay an old activation. Runtime location is an operator/install decision, not inferred from an old shortcut. Source work is `_workspace/source`; retain `_workspace` / `_archive` outside runtime packaging and data discovery.
