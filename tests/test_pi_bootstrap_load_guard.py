@@ -239,7 +239,7 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                 # Distinctive OSError on second write.
                 raise OSError("injected: second settings write failed")
 
-        with self.assertRaises(OSError) as ctx:
+        with self.assertRaises(self.blg.GuardError) as ctx:
             self.blg.apply_transaction(
                 targets=self.targets,
                 documents=self.documents,
@@ -248,8 +248,8 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                 write=failing_write,
                 checkpoint_sink=self._make_sink(),
             )
-        # Failure is propagated per current API (not silently success).
-        self.assertIn("second settings write failed", str(ctx.exception))
+        # M3 contract: failure propagated as GuardError; raw message absent.
+        self.assertNotIn("second settings write failed", str(ctx.exception))
         # Both exact original bytes restored.
         for name, path in self.targets.items():
             self.assertEqual(path.read_bytes(), originals[name])
@@ -1753,6 +1753,696 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                     self.assertEqual(target.read_bytes(), pre_target_bytes)
                     self.assertEqual(other.read_bytes(), pre_other_bytes)
                     self.assertEqual(jpath.read_bytes(), pre_journal_bytes)
+
+    def test_r2_parent_junction_rebinding_rejected(self):
+        """H1/R2: A historical canonical target-path binding must not be
+        reinterpreted as authority over different replacement content after
+        the filesystem parent changes. A directory junction at the former
+        target parent path must cause rollback to raise GuardError before
+        modifying any replacement content."""
+        # H1 lexical-platform regression: POSIX path semantics (data-only,
+        # before any platform skip). A backslash is a literal POSIX character;
+        # the guard must not conflate '/a\\b' with '/a/b'.
+        with self.subTest(posix_lexical="backslash_collision"):
+            from pathlib import PurePosixPath
+            from types import SimpleNamespace
+            import posixpath
+
+            class _CanonicalPosixPath(PurePosixPath):
+                def resolve(self):
+                    return self
+
+            posix_os = SimpleNamespace(name='posix', path=posixpath)
+            with mock.patch.object(self.blg, 'Path', _CanonicalPosixPath), \
+                 mock.patch.object(self.blg, 'os', posix_os):
+                # Sealed '/owned-fixture/a\\b' vs current '/owned-fixture/a/b'
+                # must raise GuardError (backslash is a literal POSIX character).
+                journal_bs = {"targets": {"project": {"path": "/owned-fixture/a\\b"}}}
+                targets_fwd = {"project": "/owned-fixture/a/b"}
+                with self.assertRaises(self.blg.GuardError):
+                    self.blg._verify_binding(journal_bs, targets_fwd)
+                # Identical literal-backslash canonical paths are accepted.
+                journal_bs2 = {"targets": {"project": {"path": "/owned-fixture/a\\b"}}}
+                targets_bs2 = {"project": "/owned-fixture/a\\b"}
+                self.blg._verify_binding(journal_bs2, targets_bs2)
+        if os.name != "nt":
+            self.skipTest("Windows-only junction test")
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            state_dir = base / "state"
+            state_dir.mkdir()
+            dir_a = base / "targets-a"
+            dir_a.mkdir()
+            docs = {
+                "project": {"extensions": ["orig-ext"], "skills": ["orig-skill"], "theme": "dark"},
+                "global": {"extensions": ["orig-gext"], "skills": ["orig-gskill"], "mode": "light"},
+            }
+            policy = {
+                "profiles": {"bootstrap": {
+                    "global": {"extensions": ["!new-gext"], "skills": ["!new-gskill"]},
+                    "project": {"extensions": ["!new-ext"], "skills": ["!new-skill"]},
+                }},
+                "package_policy": {"approved": {}},
+            }
+            targets = {}
+            for name, doc in docs.items():
+                p = dir_a / f"{name}-settings.json"
+                p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                targets[name] = p
+            original_bytes = {name: p.read_bytes() for name, p in targets.items()}
+            candidates = self.blg.build_candidate_documents(docs, policy, "bootstrap")
+            candidate_bytes = {name: self.blg.encode_json_lf(candidates[name]) for name in targets}
+            for name in targets:
+                self.assertNotEqual(candidate_bytes[name], original_bytes[name],
+                    f"Candidate for {name} must differ from original")
+            self.blg.apply_transaction(
+                targets=targets, documents=docs, policy=policy,
+                state_dir=state_dir, checkpoint_sink=self._make_sink(),
+            )
+            genuine_digest = self._digest()
+            historical_resolved = {name: p.resolve() for name, p in targets.items()}
+            dir_b = base / "targets-b"
+            dir_b.mkdir()
+            for name in targets:
+                (dir_b / targets[name].name).write_bytes(candidate_bytes[name])
+            dir_a_saved = base / "targets-a-saved"
+            dir_a.rename(dir_a_saved)
+            junction_result = os.system(f'mklink /J "{dir_a}" "{dir_b}" >nul 2>&1')
+            if junction_result != 0 or not dir_a.exists():
+                raise AssertionError("fixture: junction creation failed on Windows host")
+            try:
+                current_resolved = {name: p.resolve() for name, p in targets.items()}
+                for name in targets:
+                    self.assertNotEqual(current_resolved[name], historical_resolved[name],
+                        f"Resolved path for {name} must differ after parent change")
+                jpath = state_dir / "apply-journal.json"
+                journal_before = jpath.read_bytes()
+                b_bytes = {name: (dir_b / targets[name].name).read_bytes() for name in targets}
+                saved_bytes = {name: (dir_a_saved / targets[name].name).read_bytes() for name in targets}
+                backup_a = (state_dir / "project-settings.json.orig").read_bytes()
+                backup_b = (state_dir / "global-settings.json.orig").read_bytes()
+                with self.assertRaises(self.blg.GuardError):
+                    self.blg.rollback_transaction(
+                        targets=targets, state_dir=state_dir,
+                        checkpoint_digest=genuine_digest,
+                    )
+                self.assertEqual(jpath.read_bytes(), journal_before)
+                for name in targets:
+                    self.assertEqual((dir_b / targets[name].name).read_bytes(), b_bytes[name])
+                    self.assertEqual((dir_a_saved / targets[name].name).read_bytes(), saved_bytes[name])
+                self.assertEqual((state_dir / "project-settings.json.orig").read_bytes(), backup_a)
+                self.assertEqual((state_dir / "global-settings.json.orig").read_bytes(), backup_b)
+            finally:
+                os.system(f'rmdir "{dir_a}" >nul 2>&1')
+        # Fresh-apply rebinding subcase: junction at target parent during
+        # checkpoint_sink callback must cause GuardError before any
+        # helper/target persistence.
+        with self.subTest(windows_fresh_apply="junction_rebind"):
+            with tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                state_dir = base / "state-fresh"
+                self.assertFalse(state_dir.exists())
+                parent_a = base / "parent-a"
+                parent_a.mkdir()
+                docs = {
+                    "project": {"extensions": ["orig-ext"], "skills": ["orig-skill"], "theme": "dark"},
+                    "global": {"extensions": ["orig-gext"], "skills": ["orig-gskill"], "mode": "light"},
+                }
+                policy = {
+                    "profiles": {"bootstrap": {
+                        "global": {"extensions": ["!new-gext"], "skills": ["!new-gskill"]},
+                        "project": {"extensions": ["!new-ext"], "skills": ["!new-skill"]},
+                    }},
+                    "package_policy": {"approved": {}},
+                }
+                targets = {}
+                for name, doc in docs.items():
+                    p = parent_a / f"{name}-settings.json"
+                    p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                    targets[name] = p
+                original_bytes = {name: p.read_bytes() for name, p in targets.items()}
+                # parentB: replacement holding EXACT ORIGINAL bytes.
+                parent_b = base / "parent-b"
+                parent_b.mkdir()
+                for name, p in targets.items():
+                    (parent_b / p.name).write_bytes(original_bytes[name])
+                held_a = base / "held-a"
+                # Custom sink: retains descriptor/digest, then renames + junction.
+                sink_captured = {"descriptor": None, "digest": None, "junction_success": False}
+                def rebinding_sink(descriptor, digest):
+                    sink_captured["descriptor"] = json.loads(json.dumps(descriptor))
+                    sink_captured["digest"] = digest
+                    parent_a.rename(held_a)
+                    jresult = os.system(f'mklink /J "{parent_a}" "{parent_b}" >nul 2>&1')
+                    if jresult != 0 or not parent_a.exists():
+                        raise RuntimeError("fixture: junction creation failed")
+                    sink_captured["junction_success"] = True
+                # Capture transient writes via _atomic_write seam.
+                transient_writes = []
+                real_atomic_write = self.blg._atomic_write
+                def recording_atomic_write(path, data):
+                    transient_writes.append((Path(path), data))
+                    real_atomic_write(path, data)
+                with mock.patch.object(self.blg, "_atomic_write", side_effect=recording_atomic_write):
+                    with self.assertRaises(self.blg.GuardError):
+                        self.blg.apply_transaction(
+                            targets=targets, documents=docs, policy=policy,
+                            state_dir=state_dir, checkpoint_sink=rebinding_sink,
+                        )
+                try:
+                    # Junction success and captured descriptor/digest (non-vacuous).
+                    self.assertTrue(sink_captured["junction_success"])
+                    self.assertIsNotNone(sink_captured["descriptor"])
+                    self.assertIsNotNone(sink_captured["digest"])
+                    # No helper/target persistence.
+                    self.assertEqual(transient_writes, [])
+                    # B bytes unchanged (still original).
+                    for name, p in targets.items():
+                        self.assertEqual((parent_b / p.name).read_bytes(), original_bytes[name])
+                    # heldA originals unchanged.
+                    for name, p in targets.items():
+                        self.assertEqual((held_a / p.name).read_bytes(), original_bytes[name])
+                    # State remains nonexistent.
+                    self.assertFalse(state_dir.exists())
+                finally:
+                    # Cleanup: remove only the owned junction.
+                    os.system(f'rmdir "{parent_a}" >nul 2>&1')
+
+    def test_r2_callback_input_mutation_uses_sealed_plan(self):
+        """H2/R2: Once the approval callback captures the transaction
+        descriptor, caller-side mutations to target paths or candidate
+        inputs must not change the transaction's recorded destinations or
+        exact candidate bytes. A later rollback does not make an unintended
+        intermediate write acceptable."""
+
+        def _run_case(mutate_type):
+            with tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                state_dir = base / "state"  # initially nonexistent
+                self.assertFalse(state_dir.exists())
+                docs = {
+                    "project": {"extensions": ["orig-ext"], "skills": ["orig-skill"], "theme": "dark"},
+                    "global": {"extensions": ["orig-gext"], "skills": ["orig-gskill"], "mode": "light"},
+                }
+                policy = {
+                    "profiles": {"bootstrap": {
+                        "global": {"extensions": ["!new-gext"], "skills": ["!new-gskill"]},
+                        "project": {"extensions": ["!new-ext"], "skills": ["!new-skill"]},
+                    }},
+                    "package_policy": {"approved": {}},
+                }
+                targets = {}
+                for name, doc in docs.items():
+                    p = base / f"{name}-settings.json"
+                    p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                    targets[name] = p
+                # Capture original destination paths and bytes.
+                original_paths = {name: Path(p) for name, p in targets.items()}
+                original_bytes = {name: p.read_bytes() for name, p in targets.items()}
+                # Build expected candidates using the pure candidate builder.
+                candidates = self.blg.build_candidate_documents(docs, policy, "bootstrap")
+                expected_bytes = {name: self.blg.encode_json_lf(candidates[name]) for name in targets}
+                # Fixture assertions (outside callbacks): candidates differ from originals.
+                for name in targets:
+                    self.assertNotEqual(expected_bytes[name], original_bytes[name],
+                        f"Candidate for {name} must differ from original")
+                # Fixture assertion: alternate input values produce different candidate bytes.
+                if mutate_type == "candidate_input":
+                    alt_docs = copy.deepcopy(docs)
+                    alt_docs["project"]["theme"] = "MUTATED-VALUE"
+                    alt_cands = self.blg.build_candidate_documents(alt_docs, policy, "bootstrap")
+                    alt_bytes = self.blg.encode_json_lf(alt_cands["project"])
+                    self.assertNotEqual(alt_bytes, expected_bytes["project"],
+                        "Mutated docs must produce different candidate bytes")
+                # Create an owned sentinel file (never a real path).
+                sentinel = base / "sentinel-extra.json"
+                sentinel.write_bytes(b"sentinel-must-remain-unchanged\n")
+                sentinel_original = sentinel.read_bytes()
+                # Track all writes.
+                target_writes = []  # (Path, bytes) pairs from injected write seam
+                helper_writes = []  # (Path, bytes) pairs from _atomic_write
+                def recording_write(path, data):
+                    target_writes.append((Path(path), data))
+                    self.blg._atomic_write(path, data)
+                real_atomic_write = self.blg._atomic_write
+                def recording_atomic_write(path, data):
+                    helper_writes.append((Path(path), data))
+                    real_atomic_write(path, data)
+                # Wrap self._make_sink(): retain genuine descriptor/digest,
+                # then change only caller-owned objects.
+                genuine_sink = self._make_sink()
+                def mutated_sink(descriptor, digest):
+                    genuine_sink(descriptor, digest)
+                    if mutate_type == "mapping":
+                        # Redirect both names to one additional owned sentinel.
+                        targets["project"] = sentinel
+                        targets["global"] = sentinel
+                    elif mutate_type == "candidate_input":
+                        # Change an opaque document field.
+                        docs["project"]["theme"] = "MUTATED-VALUE"
+                with mock.patch.object(self.blg, "_atomic_write", side_effect=recording_atomic_write):
+                    try:
+                        self.blg.apply_transaction(
+                            targets=targets,
+                            documents=docs,
+                            policy=policy,
+                            state_dir=state_dir,
+                            write=recording_write,
+                            checkpoint_sink=mutated_sink,
+                        )
+                        outcome = "success"
+                    except self.blg.GuardError:
+                        outcome = "guard_error"
+                # Post-operation assertions.
+                if outcome == "success":
+                    # Only original captured paths may have been written.
+                    for wpath, wdata in target_writes:
+                        self.assertIn(wpath, original_paths.values(),
+                            f"Target write to unexpected path: {wpath}")
+                        name = next(n for n, p in original_paths.items() if p == wpath)
+                        self.assertEqual(wdata, expected_bytes[name],
+                            f"Target write data mismatch for {name}")
+                    # Both original targets must contain exact candidate bytes.
+                    for name, path in original_paths.items():
+                        self.assertEqual(path.read_bytes(), expected_bytes[name])
+                    # Sentinel must remain unchanged.
+                    self.assertEqual(sentinel.read_bytes(), sentinel_original)
+                else:  # guard_error
+                    # Zero target writes (no unintended intermediate write).
+                    self.assertEqual(target_writes, [],
+                        "GuardError must have zero target writes")
+                    # Zero helper-owned writes.
+                    self.assertEqual(helper_writes, [],
+                        "GuardError must have zero helper writes")
+                    # Nonexistent state_dir.
+                    self.assertFalse(state_dir.exists(),
+                        "GuardError must leave state_dir nonexistent")
+                    # Exact original target/sentinel bytes.
+                    for name, path in original_paths.items():
+                        self.assertEqual(path.read_bytes(), original_bytes[name])
+                    self.assertEqual(sentinel.read_bytes(), sentinel_original)
+                # In all outcomes: observed target writes confined to captured
+                # path/byte pairs. Do not catch unittest assertions here.
+                for wpath, wdata in target_writes:
+                    found = False
+                    for name, opath in original_paths.items():
+                        if wpath == opath:
+                            self.assertEqual(wdata, expected_bytes[name])
+                            found = True
+                            break
+                    self.assertTrue(found, f"Unconfined target write: {wpath}")
+
+        with self.subTest(mutate="mapping"):
+            _run_case("mapping")
+        with self.subTest(mutate="candidate_input"):
+            _run_case("candidate_input")
+
+    def test_r2_operational_errors_are_sanitized(self):
+        """M3/R2: Operational OSError during target writes or journal reads
+        must be sanitized into fixed GuardError. Synthetic private marker
+        absent from str() and formatted traceback."""
+        import traceback as _tb
+        MARKER = "TEST_DIAGNOSTIC_PRIVATE_VALUE"
+
+        # --- Writer case: second target write raises OSError(MARKER) ---
+        originals = {name: path.read_bytes() for name, path in self.targets.items()}
+        write_calls = {"n": 0}
+
+        def failing_write(path, data):
+            write_calls["n"] += 1
+            if write_calls["n"] == 1:
+                self.blg._atomic_write(path, data)
+            else:
+                raise OSError(MARKER)
+
+        with self.assertRaises(self.blg.GuardError) as ctx_w:
+            self.blg.apply_transaction(
+                targets=self.targets,
+                documents=self.documents,
+                policy=self.policy,
+                state_dir=self.state_dir,
+                write=failing_write,
+                checkpoint_sink=self._make_sink(),
+            )
+        exc_w = ctx_w.exception
+        formatted_w = "".join(_tb.format_exception(type(exc_w), exc_w, exc_w.__traceback__))
+        self.assertNotIn(MARKER, str(exc_w))
+        self.assertNotIn(MARKER, formatted_w)
+        self.assertIn("GuardError", formatted_w)
+        # Exact originals restored (auto-rollback).
+        for name, path in self.targets.items():
+            self.assertEqual(path.read_bytes(), originals[name])
+        journal = json.loads((self.state_dir / "apply-journal.json").read_text(encoding="utf-8"))
+        self.assertEqual(journal.get("status"), "rolled_back")
+
+        # --- Filesystem cases: prepare/recover/rollback ---
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            state_dir = base / "state"
+            state_dir.mkdir()
+            docs = {"project": {"extensions": ["orig"], "skills": ["orig"]},
+                    "global": {"extensions": ["orig"], "skills": ["orig"]}}
+            policy = {"profiles": {"bootstrap": {
+                "global": {"extensions": ["!new"], "skills": ["!new"]},
+                "project": {"extensions": ["!new"], "skills": ["!new"]}}},
+                "package_policy": {"approved": {}}}
+            targets = {}
+            for name, doc in docs.items():
+                p = base / f"{name}-settings.json"
+                p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                targets[name] = p
+            # Genuine apply creates valid journal + checkpoint.
+            self.blg.apply_transaction(
+                targets=targets, documents=docs, policy=policy,
+                state_dir=state_dir, write=self.blg._atomic_write,
+                checkpoint_sink=self._make_sink(),
+            )
+            genuine_digest = self._digest()
+            jpath = state_dir / "apply-journal.json"
+            # Snapshot all bytes before patch.
+            snap_targets = {n: p.read_bytes() for n, p in targets.items()}
+            snap_journal = jpath.read_bytes()
+            snap_backups = {f.name: f.read_bytes() for f in state_dir.iterdir()
+                            if f.name.endswith(".orig")}
+            # Patch Path.read_text narrowly for owned apply-journal.json.
+            real_read_text = Path.read_text
+            def patched_read_text(self_path, *args, **kwargs):
+                if self_path == jpath:
+                    raise OSError(MARKER)
+                return real_read_text(self_path, *args, **kwargs)
+            with mock.patch.object(Path, "read_text", patched_read_text):
+                for entrypoint in ("prepare", "recover", "rollback"):
+                    with self.subTest(entrypoint=entrypoint):
+                        try:
+                            if entrypoint == "prepare":
+                                live_docs = {n: json.loads(p.read_bytes().decode("utf-8"))
+                                             for n, p in targets.items()}
+                                self.blg.prepare_transaction(
+                                    targets=targets, documents=live_docs, policy=policy,
+                                    state_dir=state_dir, checkpoint_sink=self._make_sink(),
+                                    prior_checkpoint_digest=genuine_digest,
+                                )
+                            elif entrypoint == "recover":
+                                self.blg.recover_transaction(
+                                    targets=targets, state_dir=state_dir,
+                                    checkpoint_digest=genuine_digest,
+                                )
+                            else:
+                                self.blg.rollback_transaction(
+                                    targets=targets, state_dir=state_dir,
+                                    checkpoint_digest=genuine_digest,
+                                )
+                            self.fail(f"{entrypoint} must raise GuardError")
+                        except Exception as exc:
+                            self.assertIsInstance(exc, self.blg.GuardError)
+                            formatted = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+                            self.assertNotIn(MARKER, str(exc))
+                            self.assertNotIn(MARKER, formatted)
+                            self.assertIn("GuardError", formatted)
+            # All snapshotted bytes unchanged.
+            for n, p in targets.items():
+                self.assertEqual(p.read_bytes(), snap_targets[n])
+            self.assertEqual(jpath.read_bytes(), snap_journal)
+            for f in state_dir.iterdir():
+                if f.name.endswith(".orig"):
+                    self.assertEqual(f.read_bytes(), snap_backups[f.name])
+
+    def test_r2_nonfinite_json_is_rejected(self):
+        """R2: Nonfinite JSON values (NaN, Infinity, -Infinity, 1e400)
+        must be rejected as invalid JSON by the guard's encode/candidate/prepare
+        pipeline. The guard must raise GuardError rather than output non-JSON."""
+        nan_vals = [
+            ("float_nan", float('nan')),
+            ("float_inf", float('inf')),
+            ("float_neg_inf", float('-inf')),
+            ("json_NaN", json.loads("NaN")),
+            ("json_Infinity", json.loads("Infinity")),
+            ("json_neg_Infinity", json.loads("-Infinity")),
+            ("json_1e400", json.loads("1e400")),
+            ("tuple_nan", (float('nan'),)),
+        ]
+        # Part A: encode_json_lf must raise GuardError for nonfinite values.
+        for label, value in nan_vals:
+            with self.subTest(part="A", value=label):
+                with self.assertRaises(self.blg.GuardError):
+                    self.blg.encode_json_lf({"opaque": value})
+        # Part B: build_candidate_documents must refuse GuardError.
+        for label, value in nan_vals:
+            with self.subTest(part="B", value=label):
+                docs = {
+                    "project": {
+                        "defaultProvider": "openai-codex",
+                        "packages": ["npm:pi-web-access"],
+                        "skills": ["original-skill"],
+                        "opaque": value,
+                    },
+                    "global": {
+                        "theme": "dark",
+                        "packages": ["git:github.com/NVlabs/SoL-Pi"],
+                        "extensions": ["original-ext"],
+                    },
+                }
+                with self.assertRaises(self.blg.GuardError):
+                    self.blg.build_candidate_documents(docs, self.policy, "bootstrap")
+        # Positive control: ordinary text 'NaN' (string) is preserved as text.
+        encoded_text = self.blg.encode_json_lf({"opaque": "NaN"})
+        self.assertIn(b'"NaN"', encoded_text)
+        # Part C: prepare_transaction on fresh owned temp targets containing
+        # the SAME nonfinite JSON token in an opaque field and matching parsed
+        # documents, state_dir nonexistent. Must reject before checkpoint sink,
+        # mkdir, backup/journal or target writes.
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            state_dir = base / "state"
+            self.assertFalse(state_dir.exists())
+            target_text = '{"extensions": [], "skills": [], "opaque": NaN}\n'
+            target = base / "project-settings.json"
+            target.write_text(target_text, encoding="utf-8")
+            other = base / "global-settings.json"
+            other.write_text('{"extensions": []}\n', encoding="utf-8")
+            targets = {"project": target, "global": other}
+            docs = {
+                "project": json.loads(target_text),
+                "global": {"extensions": []},
+            }
+            target_before = target.read_bytes()
+            other_before = other.read_bytes()
+            sink_calls = []
+            def recording_sink(descriptor, digest):
+                sink_calls.append((descriptor, digest))
+            with self.assertRaises(self.blg.GuardError):
+                self.blg.prepare_transaction(
+                    targets=targets, documents=docs, policy=self.policy,
+                    state_dir=state_dir, checkpoint_sink=recording_sink,
+                )
+            self.assertEqual(sink_calls, [])
+            self.assertEqual(target.read_bytes(), target_before)
+            self.assertEqual(other.read_bytes(), other_before)
+            self.assertFalse(state_dir.exists())
+
+    def test_r2_forged_terminal_state_rejected(self):
+        """R2: Forged journal root status (applied/rolled_back) with
+        non-matching per-target status must be rejected with a terminal-claim
+        diagnostic. The original trusted checkpoint digest remains authority;
+        the guard must not accept a status forgery that bypasses genuine
+        terminal validation."""
+        for forged_status in ("applied", "rolled_back"):
+            for action in ("recover", "prepare"):
+                with self.subTest(forged=forged_status, action=action):
+                    with tempfile.TemporaryDirectory() as td:
+                        base = Path(td)
+                        state_dir = base / "state"; state_dir.mkdir()
+                        docs = {"project": {"extensions": ["orig"], "skills": ["orig"]},
+                                "global": {"extensions": ["orig"], "skills": ["orig"]}}
+                        policy = {"profiles": {"bootstrap": {
+                            "global": {"extensions": ["!new"], "skills": ["!new"]},
+                            "project": {"extensions": ["!new"], "skills": ["!new"]}}},
+                            "package_policy": {"approved": {}}}
+                        targets = {}
+                        for name, doc in docs.items():
+                            p = base / f"{name}-settings.json"
+                            p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                            targets[name] = p
+                        # Genuine transaction to establish journal + checkpoint.
+                        sink = self._make_sink()
+                        if forged_status == "applied":
+                            # prepare leaves in_progress + per-target pending + ORIGINAL bytes
+                            self.blg.prepare_transaction(targets=targets, documents=docs, policy=policy,
+                                state_dir=state_dir, checkpoint_sink=sink)
+                        else:
+                            # apply leaves applied + per-target applied + APPLIED bytes
+                            self.blg.apply_transaction(targets=targets, documents=docs, policy=policy,
+                                state_dir=state_dir, write=self.blg._atomic_write, checkpoint_sink=sink)
+                        trusted_digest = self._digest()
+                        jpath = state_dir / "apply-journal.json"
+                        journal = json.loads(jpath.read_text(encoding="utf-8"))
+                        # Non-vacuous: original != applied for every target.
+                        for tname, trec in journal["targets"].items():
+                            self.assertNotEqual(trec["original_sha256"], trec["applied_sha256"])
+                        # Forge ONLY root status; retain per-target as-is.
+                        journal["status"] = forged_status
+                        jpath.write_text(json.dumps(journal, indent=1) + "\n", encoding="utf-8")
+                        # Snapshot all bytes after tamper, before helper.
+                        snap_targets = {n: p.read_bytes() for n, p in targets.items()}
+                        snap_journal = jpath.read_bytes()
+                        snap_backups = {f.name: f.read_bytes() for f in state_dir.iterdir()
+                                        if f.name.endswith(".orig")}
+                        # Recording sink for prepare action (must NOT be invoked).
+                        new_sink_calls = []
+                        def recording_sink(descriptor, digest):
+                            new_sink_calls.append((descriptor, digest))
+                        if action == "recover":
+                            with self.assertRaises(self.blg.GuardError) as ctx:
+                                self.blg.recover_transaction(targets=targets, state_dir=state_dir,
+                                    checkpoint_digest=trusted_digest)
+                        else:
+                            # Read current target JSON into documents (no stale-snapshot shortcut).
+                            live_docs = {}
+                            for name, p in targets.items():
+                                live_docs[name] = json.loads(p.read_text(encoding="utf-8"))
+                            with self.assertRaises(self.blg.GuardError) as ctx:
+                                self.blg.prepare_transaction(targets=targets, documents=live_docs, policy=policy,
+                                    state_dir=state_dir, checkpoint_sink=recording_sink,
+                                    prior_checkpoint_digest=trusted_digest)
+                        # Terminal-claim diagnostic (case-insensitive).
+                        self.assertIn("terminal", str(ctx.exception).lower())
+                        # No new sink invocation on rejection.
+                        self.assertEqual(new_sink_calls, [])
+                        # All snapshotted bytes unchanged.
+                        for n, p in targets.items():
+                            self.assertEqual(p.read_bytes(), snap_targets[n])
+                        self.assertEqual(jpath.read_bytes(), snap_journal)
+                        for f in state_dir.iterdir():
+                            if f.name.endswith(".orig"):
+                                self.assertEqual(f.read_bytes(), snap_backups[f.name])
+
+    def test_r2_relocated_state_directory_rejected(self):
+        """M5: Relocated state directory must be rejected. Sealed backup
+        paths in the checkpoint descriptor bind the transaction to the
+        original state dir; restoring through a different dir is a
+        relocated-state attack that must fail closed."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            state_a = base / "state-a"; state_a.mkdir()
+            state_b = base / "state-b"; state_b.mkdir()
+            docs = {"project": {"extensions": ["orig"], "skills": ["orig"]},
+                    "global": {"extensions": ["orig"], "skills": ["orig"]}}
+            policy = {"profiles": {"bootstrap": {
+                "global": {"extensions": ["!new"], "skills": ["!new"]},
+                "project": {"extensions": ["!new"], "skills": ["!new"]}}},
+                "package_policy": {"approved": {}}}
+            targets = {}
+            for name, doc in docs.items():
+                p = base / f"{name}-settings.json"
+                p.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+                targets[name] = p
+            originals = {n: p.read_bytes() for n, p in targets.items()}
+            self.blg.apply_transaction(targets=targets, documents=docs, policy=policy,
+                state_dir=state_a, write=self.blg._atomic_write, checkpoint_sink=self._make_sink())
+            digest = self._digest()
+            self.assertTrue(any(targets[n].read_bytes() != originals[n] for n in targets))
+            import shutil
+            for f in state_a.iterdir():
+                shutil.copy2(str(f), str(state_b / f.name))
+            pre_t = {n: p.read_bytes() for n, p in targets.items()}
+            pre_a = {f.name: f.read_bytes() for f in state_a.iterdir()}
+            pre_b = {f.name: f.read_bytes() for f in state_b.iterdir()}
+            with self.assertRaises(self.blg.GuardError):
+                self.blg.rollback_transaction(targets=targets, state_dir=state_b, checkpoint_digest=digest)
+            for n, p in targets.items():
+                self.assertEqual(p.read_bytes(), pre_t[n])
+            for f in state_a.iterdir():
+                self.assertEqual(f.read_bytes(), pre_a[f.name])
+            for f in state_b.iterdir():
+                self.assertEqual(f.read_bytes(), pre_b[f.name])
+
+    def test_r2_unrelated_hardlinked_backup_not_truncated(self):
+        """H4: A pre-existing backup hardlinked to an unrelated sentinel
+        must not be truncated. Guard uses direct Path.write_bytes for
+        backup; an interrupted write (truncate + raise) would destroy
+        the sentinel via the shared inode. A safe guard must use atomic
+        replacement to avoid this seam."""
+        with tempfile.TemporaryDirectory() as td:
+            state_dir = Path(td) / "state"
+            state_dir.mkdir(parents=True)
+            target = Path(td) / "project-settings.json"
+            target.write_text('{"extensions": []}\n', encoding="utf-8")
+            other = Path(td) / "global-settings.json"
+            other.write_text('{"extensions": []}\n', encoding="utf-8")
+            target_bytes = target.read_bytes()
+            other_bytes = other.read_bytes()
+            # Sentinel must hold EXACT same bytes as target so guard
+            # passes the line-402 backup-exists check.
+            sentinel = Path(td) / "sentinel.bin"
+            sentinel.write_bytes(target_bytes)
+            backup_path = state_dir / "project-settings.json.orig"
+            os.link(str(sentinel), str(backup_path))
+            # Verify link identity: same inode.
+            self.assertEqual(os.stat(sentinel).st_ino, os.stat(backup_path).st_ino)
+            docs = {"project": {"extensions": []}, "global": {"extensions": []}}
+            targets = {"project": target, "global": other}
+            # Track whether the unsafe direct-write seam was reached.
+            unsafe_write_reached = []
+            real_write_bytes = Path.write_bytes
+            def patched_write_bytes(self, data):
+                if self == backup_path:
+                    unsafe_write_reached.append(True)
+                    # Simulate interrupted direct write: truncate the
+                    # owned synthetic inode then raise before any bytes
+                    # are written.
+                    with open(self, 'wb'):
+                        pass
+                    raise OSError('TEST_BACKUP_WRITE_FAILURE')
+                return real_write_bytes(self, data)
+            with mock.patch.object(Path, 'write_bytes', patched_write_bytes):
+                try:
+                    self.blg.prepare_transaction(
+                        targets=targets, documents=docs, policy=self.policy,
+                        state_dir=state_dir,
+                        checkpoint_sink=self._make_sink(),
+                    )
+                except (self.blg.GuardError, OSError):
+                    pass
+            # On a safe guard (atomic replacement or preflight refusal),
+            # the direct write_bytes seam is never reached and sentinel
+            # remains intact. On the current direct-write guard, the
+            # patched function truncates the shared inode -> sentinel
+            # is empty -> this assertion FAILS (expected RED).
+            self.assertEqual(sentinel.read_bytes(), target_bytes)
+            self.assertEqual(target.read_bytes(), target_bytes)
+            self.assertEqual(other.read_bytes(), other_bytes)
+
+    def test_r2_sink_refusal_creates_no_state_directory(self):
+        """M2: If the checkpoint sink is missing or raises,
+        prepare_transaction must leave state_dir nonexistent.
+        Current guard calls mkdir before sink, so regression is red."""
+        for sink_behavior in ("missing", "raising"):
+            with tempfile.TemporaryDirectory() as td:
+                state_dir = Path(td) / "state"
+                self.assertFalse(state_dir.exists())
+                target = Path(td) / "project-settings.json"
+                target.write_text('{"extensions": []}\n', encoding="utf-8")
+                other = Path(td) / "global-settings.json"
+                other.write_text('{"extensions": []}\n', encoding="utf-8")
+                target_bytes = target.read_bytes()
+                other_bytes = other.read_bytes()
+                docs = {"project": {"extensions": []}, "global": {"extensions": []}}
+                targets = {"project": target, "global": other}
+                if sink_behavior == "missing":
+                    sink = None
+                else:
+                    def raising_sink(descriptor, digest):
+                        raise RuntimeError("synthetic: sink refused")
+                    sink = raising_sink
+                with self.assertRaises(self.blg.GuardError):
+                    self.blg.prepare_transaction(
+                        targets=targets, documents=docs, policy=self.policy,
+                        state_dir=state_dir,
+                        checkpoint_sink=sink,
+                    )
+                self.assertFalse(state_dir.exists())
+                self.assertEqual(target.read_bytes(), target_bytes)
+                self.assertEqual(other.read_bytes(), other_bytes)
 
 
 if __name__ == "__main__":
