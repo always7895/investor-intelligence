@@ -656,7 +656,7 @@ def apply_transaction(*, targets, documents, policy, state_dir, profile="bootstr
             # must not be replaced by an ordinary Exception from cleanup.
             if not isinstance(original, Exception) and isinstance(cleanup_exc, Exception):
                 raise original from None
-            raise
+            raise cleanup_exc from None
         raise original
     # M3: Write manifest BEFORE publishing applied terminal marker.
     # If manifest write fails, status remains in_progress (recoverable).

@@ -1754,6 +1754,145 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                     self.assertEqual(other.read_bytes(), pre_other_bytes)
                     self.assertEqual(jpath.read_bytes(), pre_journal_bytes)
 
+    def test_r5_secondary_cleanup_interrupt_suppresses_native_context(self):
+        """R5: A native journal PermissionError (owned fault) during apply
+        triggers auto-rollback; the secondary cleanup interruption
+        (KeyboardInterrupt/SystemExit) must be the exact object observed.
+        The private native-fault filename marker must be absent from both
+        str(caught) and the standard formatted traceback. Baseline fails 4
+        privacy assertions (marker leaks through traceback context)."""
+        import traceback as _tb
+
+        for case_label, make_interruption, mode in (
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "direct_binding"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "rollback_journal"),
+            ("SystemExit", lambda: SystemExit(17), "direct_binding"),
+            ("SystemExit", lambda: SystemExit(17), "rollback_journal"),
+        ):
+            with self.subTest(interruption=case_label, mode=mode):
+                # Fresh owned TemporaryDirectory per case.
+                owned = tempfile.TemporaryDirectory(prefix="blg-r5-cleanup-")
+                self.addCleanup(owned.cleanup)
+                base = Path(owned.name)
+                owned_state_dir = base / "state"
+                self.assertFalse(owned_state_dir.exists())
+                jpath = owned_state_dir / "apply-journal.json"
+                # Copy self.documents / self.policy.
+                documents = json.loads(json.dumps(self.documents))
+                policy = json.loads(json.dumps(self.policy))
+                # Ordered project/global files with distinct original JSON bytes.
+                targets = {}
+                originals = {}
+                for name, doc in documents.items():
+                    path = base / f"{name}-settings.json"
+                    if name == "project":
+                        path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+                    else:
+                        path.write_text(json.dumps(doc) + "\r\n", encoding="utf-8")
+                    targets[name] = path
+                    originals[name] = path.read_bytes()
+                # Prove candidate first-target bytes differ from original.
+                candidates = self.blg.build_candidate_documents(documents, policy, "bootstrap")
+                candidate_first_bytes = self.blg.encode_json_lf(candidates["project"])
+                self.assertNotEqual(candidate_first_bytes, originals["project"],
+                    "candidate first-target bytes must differ from original")
+                # Genuinely retained sink.
+                sink = self._make_sink()
+                # The single preconstructed interruption object.
+                the_interruption = make_interruption()
+                # Save real _atomic_write and _verify_binding BEFORE patches.
+                original_atomic_write = self.blg._atomic_write
+                original_verify_binding = self.blg._verify_binding
+                # Tracking flags.
+                first_target_written = []
+                native_fault_hit = []
+                cleanup_hit = []
+                # Custom writer: delegates real atomic target write, marks first_target_written AFTER success.
+                def custom_writer(path, data):
+                    original_atomic_write(path, data)
+                    if not first_target_written:
+                        first_target_written.append(path)
+                # Patched _atomic_write: native fault on first journal call after target write.
+                def patched_atomic_write(path, data):
+                    if Path(path) == jpath and first_target_written and not native_fault_hit:
+                        native_fault_hit.append(True)
+                        _private_filename = "owned-journal-private-file-r5"
+                        raise PermissionError(13, 'owned journal failure', _private_filename)
+                    # rollback_journal mode: cleanup fault on rollback_in_progress.
+                    if mode == "rollback_journal" and Path(path) == jpath and native_fault_hit:
+                        try:
+                            payload = json.loads(data.decode("utf-8"))
+                        except Exception:
+                            payload = None
+                        if isinstance(payload, dict) and payload.get("status") == "rollback_in_progress":
+                            cleanup_hit.append(True)
+                            raise the_interruption
+                    return original_atomic_write(path, data)
+                # Patched _verify_binding: direct_binding mode cleanup fault.
+                def patched_verify_binding(journal, targets_map):
+                    if mode == "direct_binding" and native_fault_hit:
+                        cleanup_hit.append(True)
+                        raise the_interruption
+                    return original_verify_binding(journal, targets_map)
+                # Apply with patches; catch BaseException only around public apply.
+                caught = None
+                with mock.patch.object(self.blg, "_atomic_write", patched_atomic_write):
+                    with mock.patch.object(self.blg, "_verify_binding", patched_verify_binding):
+                        try:
+                            self.blg.apply_transaction(
+                                targets=targets,
+                                documents=documents,
+                                policy=policy,
+                                state_dir=owned_state_dir,
+                                profile="bootstrap",
+                                write=custom_writer,
+                                checkpoint_sink=sink,
+                            )
+                        except BaseException as error:
+                            caught = error
+                # Both mock contexts exited. Obtain retained digest.
+                retained_digest = self._digest()
+                self.assertTrue(retained_digest, "retained digest must be nonempty genuine callback authority")
+                # Now assert.
+                self.assertIsNotNone(caught, "apply must surface an exception")
+                self.assertTrue(first_target_written, "first target must be written")
+                self.assertTrue(native_fault_hit, "native journal fault must be hit")
+                self.assertTrue(cleanup_hit, "cleanup interruption must be hit")
+                # Exact selected object.
+                self.assertIs(caught, the_interruption)
+                # Project at candidate bytes, global at original.
+                self.assertEqual(targets["project"].read_bytes(), candidate_first_bytes,
+                    "project target must be at candidate bytes")
+                self.assertEqual(targets["global"].read_bytes(), originals["global"],
+                    "global target must be at original bytes")
+                # Durable journal in_progress.
+                journal = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertEqual(journal.get("status"), "in_progress",
+                    "journal must be at durable in_progress")
+                # Capture standard formatted traceback text.
+                formatted_tb = "".join(_tb.format_exception(type(caught), caught, caught.__traceback__))
+                # Public recover with original retained checkpoint using restored real functions.
+                recovered = self.blg.recover_transaction(
+                    targets=targets,
+                    state_dir=owned_state_dir,
+                    checkpoint_digest=retained_digest,
+                )
+                self.assertEqual(recovered["status"], "rolled_back")
+                # Exact original bytes for both targets.
+                self.assertEqual(targets["project"].read_bytes(), originals["project"],
+                    "project target must be restored to original after recover")
+                self.assertEqual(targets["global"].read_bytes(), originals["global"],
+                    "global target must be at original after recover")
+                # Journal rolled_back.
+                reloaded = json.loads(jpath.read_text(encoding="utf-8"))
+                self.assertEqual(reloaded["status"], "rolled_back")
+                # ONLY AFTER: assert marker absent from str(caught) and formatted text.
+                _private_filename = "owned-journal-private-file-r5"
+                self.assertNotIn(_private_filename, str(caught),
+                    "private native-fault marker must be absent from str(caught)")
+                self.assertNotIn(_private_filename, formatted_tb,
+                    "private native-fault marker must be absent from formatted traceback")
+
     def test_r4_backup_links_do_not_authorize_relocated_state(self):
         """R4: Relocating a sealed journal into a distinct directory T whose
         backup entries are FILE symlinks to the genuine S backups must NOT
