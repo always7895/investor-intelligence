@@ -1754,6 +1754,381 @@ class BootstrapLoadGuardCandidateTests(unittest.TestCase):
                     self.assertEqual(other.read_bytes(), pre_other_bytes)
                     self.assertEqual(jpath.read_bytes(), pre_journal_bytes)
 
+    def test_r7_public_read_cleanup_interrupt_suppresses_native_context(self):
+        """R7: A native read PermissionError (owned fault) during target/journal
+        read triggers the file-context __exit__ path; the preconstructed
+        interruption (KeyboardInterrupt/SystemExit) raised from the __exit__ hook
+        must be the exact object observed by the public caller. The private
+        native-fault filename marker must be absent from str(caught) and the
+        standard formatted traceback. Baseline fails 8 privacy assertions
+        (marker leaks through automatic __context__ in formatted traceback)."""
+        import traceback as _tb
+
+        for case_label, make_interruption, mode in (
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "prepare"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "apply"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "recover"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "rollback"),
+            ("SystemExit", lambda: SystemExit(17), "prepare"),
+            ("SystemExit", lambda: SystemExit(17), "apply"),
+            ("SystemExit", lambda: SystemExit(17), "recover"),
+            ("SystemExit", lambda: SystemExit(17), "rollback"),
+        ):
+            with self.subTest(interruption=case_label, mode=mode):
+                # Fresh owned TemporaryDirectory per case.
+                owned = tempfile.TemporaryDirectory(prefix="blg-r7-")
+                self.addCleanup(owned.cleanup)
+                base = Path(owned.name)
+                owned_state_dir = base / "state"
+                self.assertFalse(owned_state_dir.exists())
+                jpath = owned_state_dir / "apply-journal.json"
+                # Copy documents/policy.
+                documents = json.loads(json.dumps(self.documents))
+                policy = json.loads(json.dumps(self.policy))
+                # Ordered project/global files (indent2 JSON + CRLF).
+                targets = {}
+                originals = {}
+                for name, doc in documents.items():
+                    path = base / f"{name}-settings.json"
+                    path.write_bytes((json.dumps(doc, indent=2) + "\r\n").encode("utf-8"))
+                    targets[name] = path
+                    originals[name] = path.read_bytes()
+                # Genuinely retained sink.
+                sink = self._make_sink()
+                # For recover/rollback: seed real successful apply with sink,
+                # retain genuine digest BEFORE patches.
+                if mode in ("recover", "rollback"):
+                    self.blg.apply_transaction(
+                        targets=targets,
+                        documents=documents,
+                        policy=policy,
+                        state_dir=owned_state_dir,
+                        profile="bootstrap",
+                        checkpoint_sink=sink,
+                    )
+                    retained_digest = self._digest()
+                    self.assertTrue(retained_digest, "retained digest must be nonempty genuine")
+                # PRE-FAULT baselines captured after legitimate seed changes.
+                before_target_bytes = {name: path.read_bytes() for name, path in targets.items()}
+                def state_snapshot():
+                    if not owned_state_dir.exists():
+                        return None
+                    entries = {}
+                    for entry in sorted(owned_state_dir.iterdir()):
+                        if entry.is_file():
+                            entries[entry.name] = entry.read_bytes()
+                        else:
+                            entries[entry.name] = None
+                    return entries
+                before_state = state_snapshot()
+                # Fresh preconstructed interruption.
+                the_interruption = make_interruption()
+                # Preconstructed PermissionError (marker defined away from raise site).
+                _private_filename_r7 = "owned-read-private-file-r7"
+                the_permission_error = PermissionError(13, 'owned read failure', _private_filename_r7)
+                # Determine which file to proxy and in what mode.
+                if mode in ("prepare", "apply"):
+                    target_file = targets["project"]
+                    expected_mode = "rb"
+                else:
+                    target_file = jpath
+                    expected_mode = "r"
+                # Save real Path.open first.
+                real_path_open = Path.open
+                # Tracking.
+                open_hit = []
+                read_hit = []
+                close_hit = []
+                # _atomic_write spy (count fresh writes, never mask).
+                real_atomic_write = self.blg._atomic_write
+                fresh_write_count = [0]
+                def counting_atomic_write(path, data):
+                    fresh_write_count[0] += 1
+                    return real_atomic_write(path, data)
+                # Context proxy: wraps real file, read raises PermissionError,
+                # __exit__ closes real file then raises fresh interruption.
+                class _ReadFaultProxy:
+                    def __init__(self, real_file):
+                        self._real_file = real_file
+                        self._entered = False
+                    def __enter__(self):
+                        self._real_file.__enter__()
+                        self._entered = True
+                        return self
+                    def read(self, *args, **kwargs):
+                        read_hit.append(True)
+                        raise the_permission_error
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        if self._entered:
+                            self._real_file.__exit__(exc_type, exc_val, exc_tb)
+                            close_hit.append(True)
+                        raise the_interruption
+                # Path.open hook: proxy only the exact selected file in exact mode.
+                def owned_path_open(self_path, mode="r", *args, **kwargs):
+                    if self_path == target_file and mode == expected_mode and not open_hit:
+                        open_hit.append(True)
+                        real_file = real_path_open(self_path, mode, *args, **kwargs)
+                        return _ReadFaultProxy(real_file)
+                    return real_path_open(self_path, mode, *args, **kwargs)
+                # Catch BaseException only around actual public caller.
+                caught = None
+                with mock.patch.object(Path, "open", owned_path_open):
+                    with mock.patch.object(self.blg, "_atomic_write", counting_atomic_write):
+                        try:
+                            if mode == "prepare":
+                                self.blg.prepare_transaction(
+                                    targets=targets,
+                                    documents=documents,
+                                    policy=policy,
+                                    state_dir=owned_state_dir,
+                                    profile="bootstrap",
+                                    checkpoint_sink=sink,
+                                )
+                            elif mode == "apply":
+                                self.blg.apply_transaction(
+                                    targets=targets,
+                                    documents=documents,
+                                    policy=policy,
+                                    state_dir=owned_state_dir,
+                                    profile="bootstrap",
+                                    checkpoint_sink=sink,
+                                )
+                            elif mode == "recover":
+                                self.blg.recover_transaction(
+                                    targets=targets,
+                                    state_dir=owned_state_dir,
+                                    checkpoint_digest=retained_digest,
+                                )
+                            else:  # rollback
+                                self.blg.rollback_transaction(
+                                    targets=targets,
+                                    state_dir=owned_state_dir,
+                                    checkpoint_digest=retained_digest,
+                                )
+                        except BaseException as error:
+                            caught = error
+                # Exit ALL patches before assertions (both mock contexts exited).
+                # Assert hooks exactly hit.
+                self.assertIsNotNone(caught, "public caller must surface an exception")
+                self.assertEqual(open_hit, [True], "owned open hook must be hit exactly once")
+                self.assertEqual(read_hit, [True], "owned read hook must be hit exactly once")
+                self.assertEqual(close_hit, [True], "owned close hook must be hit exactly once")
+                # Exact selected interruption object.
+                self.assertIs(caught, the_interruption, "exact preconstructed interruption must escape")
+                # Retained primary __context__.
+                self.assertIs(caught.__context__, the_permission_error,
+                    "retained primary __context__ must be the PermissionError")
+                # Zero fresh atomic writes.
+                self.assertEqual(fresh_write_count[0], 0, "zero fresh atomic writes expected")
+                # Target bytes unchanged vs pre-fault baseline.
+                for name, path in targets.items():
+                    self.assertEqual(path.read_bytes(), before_target_bytes[name],
+                        f"{name} target must be unchanged")
+                # Complete state snapshots unchanged.
+                if mode in ("prepare", "apply"):
+                    # State dir must be absent (read fault before any state write).
+                    self.assertFalse(owned_state_dir.exists(),
+                        "state dir must be absent after prepare/apply read fault")
+                    self.assertIsNone(state_snapshot(),
+                        "state snapshot must be None (absent) after prepare/apply read fault")
+                else:
+                    # For recover/rollback: strict pre/post state equality.
+                    self.assertEqual(state_snapshot(), before_state,
+                        "state entries must be unchanged after recover/rollback read fault")
+                # Capture standard formatted traceback.
+                formatted_tb = "".join(_tb.format_exception(type(caught), caught, caught.__traceback__))
+                # After all predicates: assert marker absent from str and formatted text.
+                self.assertNotIn(_private_filename_r7, str(caught),
+                    "private native-fault marker must be absent from str(caught)")
+                self.assertNotIn(_private_filename_r7, formatted_tb,
+                    "private native-fault marker must be absent from formatted traceback")
+
+    def test_r6_atomic_cleanup_interrupt_suppresses_native_context(self):
+        """R6: An owned native os.replace PermissionError inside _atomic_write
+        triggers the cleanup os.unlink path; the preconstructed interruption
+        (KeyboardInterrupt/SystemExit) raised from the unlink hook must be the
+        exact object observed by the public caller. The private native-fault
+        filename marker must be absent from str(caught) and the standard
+        formatted traceback. Baseline fails 4 privacy assertions (marker leaks
+        through automatic __context__ in formatted traceback)."""
+        import traceback as _tb
+
+        for case_label, make_interruption, mode in (
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "prepare"),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt(), "apply"),
+            ("SystemExit", lambda: SystemExit(17), "prepare"),
+            ("SystemExit", lambda: SystemExit(17), "apply"),
+        ):
+            with self.subTest(interruption=case_label, mode=mode):
+                # Fresh owned TemporaryDirectory per case.
+                owned = tempfile.TemporaryDirectory(prefix="blg-r6-")
+                self.addCleanup(owned.cleanup)
+                base = Path(owned.name)
+                owned_state_dir = base / "state"
+                self.assertFalse(owned_state_dir.exists())
+                jpath = owned_state_dir / "apply-journal.json"
+                # Copy documents/policy.
+                documents = json.loads(json.dumps(self.documents))
+                policy = json.loads(json.dumps(self.policy))
+                # Ordered project/global files (indent2 JSON + CRLF).
+                targets = {}
+                originals = {}
+                for name, doc in documents.items():
+                    path = base / f"{name}-settings.json"
+                    path.write_bytes((json.dumps(doc, indent=2) + "\r\n").encode("utf-8"))
+                    targets[name] = path
+                    originals[name] = path.read_bytes()
+                # Candidate expected bytes; prove project candidate differs.
+                candidates = self.blg.build_candidate_documents(documents, policy, "bootstrap")
+                candidate_first_bytes = self.blg.encode_json_lf(candidates["project"])
+                self.assertNotEqual(candidate_first_bytes, originals["project"],
+                    "candidate first-target bytes must differ from original")
+                # Genuinely retained sink.
+                sink = self._make_sink()
+                # Fresh preconstructed interruption.
+                the_interruption = make_interruption()
+                # Preconstructed PermissionError (marker defined away from raise site).
+                _private_filename_r6 = "owned-replace-private-file-r6"
+                the_permission_error = PermissionError(13, 'owned replace failure', _private_filename_r6)
+                # Save real os.replace/os.unlink (current = deny wrappers).
+                real_os_replace = os.replace
+                real_os_unlink = os.unlink
+                # Tracking.
+                replace_hit = []
+                unlink_hit = []
+                failed_tmp_path = []
+                first_project_bytes = []
+                # Owned native replace hook.
+                def owned_replace_hook(src, dst, *args, **kwargs):
+                    if mode == "prepare":
+                        # Fault ONLY destination state/project-settings.json.orig.
+                        if Path(dst) == (owned_state_dir / "project-settings.json.orig") and not replace_hit:
+                            failed_tmp_path.append(src)
+                            replace_hit.append(True)
+                            raise the_permission_error
+                    else:
+                        # Fault ONLY journal destination after successful first project-target replacement.
+                        if Path(dst) == jpath and not replace_hit:
+                            current_project_bytes = Path(targets["project"]).read_bytes()
+                            if current_project_bytes == candidate_first_bytes:
+                                first_project_bytes.append(current_project_bytes)
+                                failed_tmp_path.append(src)
+                                replace_hit.append(True)
+                                raise the_permission_error
+                    return real_os_replace(src, dst, *args, **kwargs)
+                # Owned native unlink hook.
+                def owned_unlink_hook(path, *args, **kwargs):
+                    if path in failed_tmp_path and not unlink_hit:
+                        unlink_hit.append(True)
+                        raise the_interruption
+                    return real_os_unlink(path, *args, **kwargs)
+                # Catch BaseException only around public prepare/apply.
+                caught = None
+                with mock.patch("os.replace", owned_replace_hook):
+                    with mock.patch("os.unlink", owned_unlink_hook):
+                        try:
+                            if mode == "prepare":
+                                self.blg.prepare_transaction(
+                                    targets=targets,
+                                    documents=documents,
+                                    policy=policy,
+                                    state_dir=owned_state_dir,
+                                    profile="bootstrap",
+                                    checkpoint_sink=sink,
+                                )
+                            else:
+                                self.blg.apply_transaction(
+                                    targets=targets,
+                                    documents=documents,
+                                    policy=policy,
+                                    state_dir=owned_state_dir,
+                                    profile="bootstrap",
+                                    checkpoint_sink=sink,
+                                )
+                        except BaseException as error:
+                            caught = error
+                # Restore native patches BEFORE predicates (both mock contexts exited).
+                retained_digest = self._digest()
+                self.assertTrue(retained_digest, "retained digest must be nonempty genuine callback authority")
+                # Assert genuine approval, replace/unlink hooks and exact selected object.
+                self.assertIsNotNone(caught, "public caller must surface an exception")
+                self.assertTrue(replace_hit, "owned replace hook must be hit")
+                self.assertTrue(unlink_hit, "owned unlink hook must be hit")
+                self.assertIs(caught, the_interruption, "exact preconstructed interruption must escape")
+                if mode == "apply":
+                    # Candidate first write observed.
+                    self.assertTrue(first_project_bytes, "first project candidate bytes must be observed")
+                    self.assertEqual(first_project_bytes[0], candidate_first_bytes,
+                        "observed first project bytes must equal candidate")
+                    # BOTH exact originals restored.
+                    self.assertEqual(targets["project"].read_bytes(), originals["project"],
+                        "project target must be restored to original after rollback")
+                    self.assertEqual(targets["global"].read_bytes(), originals["global"],
+                        "global target must be at original after rollback")
+                    # Durable journal rolled_back.
+                    journal = json.loads(jpath.read_text(encoding="utf-8"))
+                    self.assertEqual(journal.get("status"), "rolled_back",
+                        "journal must be at durable rolled_back")
+                else:
+                    # BOTH originals unchanged.
+                    self.assertEqual(targets["project"].read_bytes(), originals["project"],
+                        "project target must be unchanged after prepare failure")
+                    self.assertEqual(targets["global"].read_bytes(), originals["global"],
+                        "global target must be unchanged after prepare failure")
+                    # Journal absent.
+                    self.assertFalse(jpath.exists(), "journal must be absent after prepare failure")
+                # Capture standard formatted traceback.
+                formatted_tb = "".join(_tb.format_exception(type(caught), caught, caught.__traceback__))
+                # After outcome assertions: assert marker absent from str and formatted text.
+                self.assertNotIn(_private_filename_r6, str(caught),
+                    "private native-fault marker must be absent from str(caught)")
+                self.assertNotIn(_private_filename_r6, formatted_tb,
+                    "private native-fault marker must be absent from formatted traceback")
+
+        # TWO compact owned _atomic_write positive controls.
+        for ctrl_label, make_replace_error in (
+            ("PermissionError", lambda: PermissionError(13, 'ctrl replace failure', 'ctrl-file')),
+            ("KeyboardInterrupt", lambda: KeyboardInterrupt()),
+        ):
+            with self.subTest(control=ctrl_label):
+                ctrl_owned = tempfile.TemporaryDirectory(prefix="blg-r6-ctrl-")
+                self.addCleanup(ctrl_owned.cleanup)
+                ctrl_base = Path(ctrl_owned.name)
+                ctrl_dest = ctrl_base / "dest.json"
+                ctrl_dest.write_bytes(b'{"original": true}\r\n')
+                ctrl_dest_bytes = ctrl_dest.read_bytes()
+                ctrl_replace_err = make_replace_error()
+                ctrl_unlink_err = OSError(13, 'ctrl unlink failure', 'ctrl-unlink-file')
+                real_os_replace = os.replace
+                real_os_unlink = os.unlink
+                ctrl_replace_hit = []
+                ctrl_unlink_hit = []
+                ctrl_failed_tmp = []
+                def ctrl_replace_hook(src, dst, *args, **kwargs):
+                    if Path(dst) == ctrl_dest and not ctrl_replace_hit:
+                        ctrl_failed_tmp.append(src)
+                        ctrl_replace_hit.append(True)
+                        raise ctrl_replace_err
+                    return real_os_replace(src, dst, *args, **kwargs)
+                def ctrl_unlink_hook(path, *args, **kwargs):
+                    if path in ctrl_failed_tmp and not ctrl_unlink_hit:
+                        ctrl_unlink_hit.append(True)
+                        raise ctrl_unlink_err
+                    return real_os_unlink(path, *args, **kwargs)
+                caught_ctrl = None
+                with mock.patch("os.replace", ctrl_replace_hook):
+                    with mock.patch("os.unlink", ctrl_unlink_hook):
+                        try:
+                            self.blg._atomic_write(ctrl_dest, b'{"new": true}\r\n')
+                        except BaseException as error:
+                            caught_ctrl = error
+                self.assertTrue(ctrl_replace_hit, "control replace hook must be hit")
+                self.assertTrue(ctrl_unlink_hit, "control unlink hook must be hit")
+                self.assertIs(caught_ctrl, ctrl_replace_err,
+                    "exact ORIGINAL replace error must escape _atomic_write")
+                self.assertEqual(ctrl_dest.read_bytes(), ctrl_dest_bytes,
+                    "destination bytes must be unchanged after failed replace")
+
     def test_r5_secondary_cleanup_interrupt_suppresses_native_context(self):
         """R5: A native journal PermissionError (owned fault) during apply
         triggers auto-rollback; the secondary cleanup interruption

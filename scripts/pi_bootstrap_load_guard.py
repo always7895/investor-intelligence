@@ -177,6 +177,8 @@ def _atomic_write(path, data: bytes) -> None:
             os.unlink(tmp)
         except OSError:
             pass
+        except BaseException as cleanup_exc:
+            raise cleanup_exc from None
         raise
 
 
@@ -593,6 +595,8 @@ def _public_boundary(func):
             raise error from None
         except Exception:
             raise GuardError("BLG-E040: operational error; details suppressed") from None
+        except BaseException as interruption:
+            raise interruption from None
     return wrapper
 
 
