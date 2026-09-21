@@ -1,6 +1,6 @@
 # Phase 3 Global Source Federation Status
 
-_Last updated: 2026-08-24 Asia/Taipei_
+_Foundation snapshot: 2026-08-24 Asia/Taipei; current code reconciliation below._
 
 ## Implemented in the feature branch
 
@@ -27,17 +27,30 @@ The catalogs are an authoritative candidate federation, not a claim that every s
 7. freshness, stale and revision behavior;
 8. zero-paid-fallback verification.
 
-## Next engineering work
+## Current code reconciliation (source ec82cfb)
 
-- Run the source-registry workflow on BARRY and resolve validation failures.
-- Implement Phase 3 normalized observation/event schemas.
-- Implement the first primary-source adapters by evidence value and coverage gap, not by a fixed source count.
-- Add per-host scheduler budgets, circuit-breaker state and last-known-good promotion.
-- Add source correction/restatement reconciliation.
-- Add primary-document download/hash/parser fixtures for HTML, JSON, RSS, XML, CSV and PDF.
-- Add multilingual entity/ticker resolution without allowing model-selected tenant or source identity.
-- Add production coverage-gap reports.
-- Keep all reputable media T3 and disabled until public-access/terms review passes.
+**Present building blocks (implemented, not re-derived):**
+- Normalized `SourceObservation` with privacy/chronology: [source_observation.py](../scripts/source_observation.py)
+- Run-bound acquisition, per-host/run budgets, circuit-breaker: [source_acquisition.py](../scripts/source_acquisition.py), [report_source_acquisition.py](../scripts/report_source_acquisition.py)
+- LKG persistence/promotion helpers (promotion ≠ automatic stale-serving; no stale-as-HEALTHY requirement)
+- Outages/unknowns remain failed/unknown, never zero/fresh
+- Typed metadata/hashes are not independent fetch authenticity by themselves
+
+**Evidence (factory-only, NOT release/shipping proof):**
+- Current inventory authority: `python scripts/source_registry.py summary`. Runtime-enabled catalog metadata is not broad live coverage; the ECB observation below is limited to its recorded source baseline.
+- ONE default factory read at `ec82cfb` (admitted ECB endpoint, real clock/transport): ACQUIRED 1 candidate / 1 successful source; hashes unchanged; `release_qualified=false`, `live_proof=false`.
+- Factory-only; NOT whole caller/answer/shipping acceptance. No endpoint admission, Production, or settings changes.
+
+**Remaining (scoped reconciliation/evidence required; not assumed absent from old TODOs):**
+- Broader canonical qualification + clearing-lane evidence (separately bounded contracts; not all require Production mutation)
+- Windows/archive/install/release proofs (separate)
+- Primary-document download/hash/parser fixtures (HTML, JSON, RSS, XML, CSV, PDF)
+- Multilingual entity/ticker resolution (no model-selected tenant/source identity)
+- Source correction/restatement reconciliation
+- Production coverage-gap reports
+- Keep reputable media T3, disabled until public-access/terms review passes
+
+**Tests:** [test_source_observation.py](../tests/test_source_observation.py), [test_source_acquisition.py](../tests/test_source_acquisition.py), [test_source_acquisition_caller.py](../tests/test_source_acquisition_caller.py), [test_report_source_acquisition.py](../tests/test_report_source_acquisition.py)
 
 ## Safety state
 
