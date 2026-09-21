@@ -36,6 +36,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [DETAILED_REPORT_CONTRACT](DETAILED_REPORT_CONTRACT.md)
 - [MODEL_RUNTIME_MIGRATION](MODEL_RUNTIME_MIGRATION.md)
 - [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — 100% local AI at the LOCAL v213 gateway: single runtime config, strict local-only flags, observed context/JSON/pre-decision guards, declared `min_decision_confidence` 0.70, fail-closed (no Astra/cloud); release gates PENDING
+- [DECLARED_CLAIM_CANDIDATES](DECLARED_CLAIM_CANDIDATES.md) - explicit MACRO candidate-only profile; no qualification or publication.
 - [PUBLIC_SOURCE_COVERAGE](PUBLIC_SOURCE_COVERAGE.md)
 - [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界規範（零錄取、時鐘分離、未驗證名稱相似群組）
 - [COMPANY_EVIDENCE_CANDIDATES](COMPANY_EVIDENCE_CANDIDATES.md) — 候選文本與引文位置驗證；不代表來源權威、獨立佐證或排名准入
