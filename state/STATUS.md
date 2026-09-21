@@ -1,15 +1,17 @@
 # Current state / 目前狀態
 
-## WORKFLOW_V4.1_RECONCILIATION (REJECT_WEAKENED_QA; RECORD_SCOPED_PROGRESS; 2026-09-21)
-- Source HEAD `8ae6f47d`; settings ADDED `npm:pi-typesafe` classified KNOWN_TOOL_CHANGE_JEV, reconciliation only, 0 settings writes.
-- Mapika role/capability/hash migration scoped ACCEPTED (role+capability+actual-hash rule); v9 HISTORICAL_PIN, governance files not rewritten.
-- Local runtime still Qwen (sole writer) + Mapika (router); Jev sanitized development-only, no runtime dependency.
-- Tests: 34 independence regressions PASS/49.121s; 7 malformed probes fail closed; existing 2 warmups+15 runs p95 301/463/779ms; scoped, no broad semantic/release claim.
-- QA fresh-pin read-only designs (contract03 + capacity-design) REJECTED (Jev REWORK, Mapika ESCALATE); compatibility not solved.
-- Blockers (2, distinct): native capacity/integration prerequisite + previously stale live qualification receipt.
-- No historical schema1/2 or legacy profile weakened; no fabricated capacity; no fake models_max/catalog-equals-loaded/fallback8080.
-- Audit evidence outside source: `../../audit-runtime/workflow-v4-1-reconciliation/master-acceptance.json`, `../../audit-runtime/workflow-v4-1-status-8ae6/master-contract.json`; next = independent capacity proof OR separately authorized enforcement/operational design.
-- 0 service/model/settings/Production mutations; DEVELOPMENT_COMPLETE=false; gates complete on unchanged code/test hashes: Python1739 OK/416.029s, Worker869/1skip, typecheck, 4 doc/sec/workflow gates, compile+JSON, PS5.1/7, launcher/bootstrap focused, diff-check ALL exit0; CI SKIPPED not PASS; fresh live QA blocked; orchestrator reruns doc gates post-change; receipt `../../audit-runtime/workflow-v4-1-status-repair-8ae6/qualification-01/gate-receipt.json`; no new P0, global count not re-audited.
+## QA_CAPACITY_V1 (DEVELOPMENT_ONLY; 2026-09-21; base HEAD 84133f8)
+- Settings: KNOWN_TOOL_CHANGE_JEV (no rewrite); npm:pi-typesafe (no rewrite). Mapika v10 scoped migration ACCEPTED; v9 HISTORICAL_PIN.
+- Prior QA fresh-pin designs REJECTED (Jev REWORK, Mapika ESCALATE); independent capacity qualification tracked separately from LIVE_PROOF_STALE blockers.
+- New module: `scripts/v213_qa_capacity.py` — QA capacity lease (native window observation, kernel-lock guard, receipt verification). Contract: [QA_CAPACITY_CONTRACT.md](../docs/QA_CAPACITY_CONTRACT.md).
+- Evidence: `../../audit-runtime/qa-capacity-v1-84133/`, `../../audit-runtime/qa-capacity-hash-linkage-84133/focused.log`.
+- Full qualification (all 14 gates exit 0): Python 1864 OK/424.858s; focused 125/6.583s; Worker 869 pass/1 skip; typecheck, security, both doc gates, workflow, compile/JSON, PS5.1/7, diff pass. Receipt: `../../audit-runtime/qa-capacity-full-gates-02-84133/qualification-01/gate-receipt.json`.
+- Earlier full attempt failed only missing doc-index link; failure retained, rerun after fix. Hashes unchanged; docs-only refresh, final docs gates rerun separately.
+- Closure review ACCEPT_SCOPED: 5 findings closed. JEV favors ACCEPT_SCOPED_DEV_CONTRACT, confidence 0.72 (prob 0.82) BELOW 0.85 gate. Independent contract acceptance NOT complete. Migration pref 0.97 no waiver.
+- Master/Mapika route: provisional LOCAL commit only to bind exact source for run_native_window negative proof (native API rejects uncommitted module). NO push/activation. No positive capacity or R75 proof. Mapika route confidence 0.955.
+- Host 28 C+G => UNQUALIFIED; no callback/live QA qualification established. Backend migration pending independent capacity acceptance; LIVE_PROOF_STALE separate.
+- README release identity untouched. No mutable version table. No Production/LINE/KV/Worker/schedule/credential/billing/broker/settings/model/service mutations.
+- DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false. Global P0 count not re-audited. No prohibited mutations.
 
 ## LOCAL_RUNTIME_INDEPENDENCE_V1 (ACCEPTED_SCOPED; 2026-09-20)
 - Base 977057d; 9 runtime/config/test paths. Local-only gateway, both-lane guards, minimum confidence 0.70. Details: [contract](../docs/LOCAL_RUNTIME_INDEPENDENCE.md).
