@@ -1,5 +1,16 @@
 # Current state / 目前狀態
 
+## WORKFLOW_V4.1_RECONCILIATION (REJECT_WEAKENED_QA; RECORD_SCOPED_PROGRESS; 2026-09-21)
+- Source HEAD `8ae6f47d`; settings ADDED `npm:pi-typesafe` classified KNOWN_TOOL_CHANGE_JEV, reconciliation only, 0 settings writes.
+- Mapika role/capability/hash migration scoped ACCEPTED (role+capability+actual-hash rule); v9 HISTORICAL_PIN, governance files not rewritten.
+- Local runtime still Qwen (sole writer) + Mapika (router); Jev sanitized development-only, no runtime dependency.
+- Tests: 34 independence regressions PASS/49.121s; 7 malformed probes fail closed; existing 2 warmups+15 runs p95 301/463/779ms; scoped, no broad semantic/release claim.
+- QA fresh-pin read-only designs (contract03 + capacity-design) REJECTED (Jev REWORK, Mapika ESCALATE); compatibility not solved.
+- Blockers (2, distinct): native capacity/integration prerequisite + previously stale live qualification receipt.
+- No historical schema1/2 or legacy profile weakened; no fabricated capacity; no fake models_max/catalog-equals-loaded/fallback8080.
+- Audit evidence outside source: `../../audit-runtime/workflow-v4-1-reconciliation/master-acceptance.json`, `../../audit-runtime/workflow-v4-1-status-8ae6/master-contract.json`; next = independent capacity proof OR separately authorized enforcement/operational design.
+- 0 service/model/settings/Production mutations; DEVELOPMENT_COMPLETE=false; gates complete on unchanged code/test hashes: Python1739 OK/416.029s, Worker869/1skip, typecheck, 4 doc/sec/workflow gates, compile+JSON, PS5.1/7, launcher/bootstrap focused, diff-check ALL exit0; CI SKIPPED not PASS; fresh live QA blocked; orchestrator reruns doc gates post-change; receipt `../../audit-runtime/workflow-v4-1-status-repair-8ae6/qualification-01/gate-receipt.json`; no new P0, global count not re-audited.
+
 ## LOCAL_RUNTIME_INDEPENDENCE_V1 (ACCEPTED_SCOPED; 2026-09-20)
 - Base 977057d; 9 runtime/config/test paths. Local-only gateway, both-lane guards, minimum confidence 0.70. Details: [contract](../docs/LOCAL_RUNTIME_INDEPENDENCE.md).
 - Focused 90 PASS/114.229s; live canonical probe PASS (context 262144). Full 1628 PASS/395.568s (3 skips, 0 outside); four gates/compile/PS5.1+7 PASS. Worker 869 PASS/1 skip; typecheck PASS. CI SKIPPED, not PASS.
@@ -19,22 +30,13 @@
 ## SEC adapter binding contract V1 (ACCEPTED scoped; 2026-09-19)
 - Frozen `FetchReceipt` minted ONLY by the fetch owner (actual status + raw bytes; no auto-attestation/default 200; fakes invalid); `ReceiptMintingTransport` offline seam (`fetch_bytes`/`collect`/ENDPOINTS unchanged; no SEC admission); `bind_sec_claim` strict binding (strict CIK + URL match; entity=CIK; USD-only monetary; raw units; explicit alias; US from registry; four clocks, earliest-bound `evidence_as_of`); qualifier SEC guard (typed receipt + digest proof; generic unchanged; real registry disabled non-qualifying; test-only enabled clone); catalog `adapter.id` → `sec_edgar` (status/runtime unchanged). Tests: sec binding 20 + fixture swap `jp_fsa_edinet`; focused 88/88 OK. `publication_eligible` always false.
 
-## TASK0-3L_RECONCILE_BASELINE (test-only/doc reconcile; ACCEPTED scoped; 2026-09-19)
-- Source base: `aac388e08480cca87cdee21aa9dbb91af1d648cc` (pushed; this baseline is uncommitted on top).
-- Baseline: **158 sources / 7 catalog files** verified via `load_registry()`; **10 current claim families** recorded versus the unimplemented 22-class/17-lane plan as requirements, not completion.
-- Deliverables 5–9: superseded by SEMANTIC_CORE above. Coverage matrix at advertised path: NOT_PRESENT (origin UNKNOWN).
-- `tests/test_source_registry.py`: +3 coverage-CLI subprocess regressions (fixture ledger equality, fixture-only ids, malformed/missing fail-closed, deterministic two runs; handle-owned `.tmp/` fixture; no network). Verification: focused 17/17 OK + 4 gates + diffcheck.
-- Baseline full suite (Master): Python 1534 tests OK skipped 3.
-- Scope: **ACCEPTED scoped** (Mapika .9723) — **NOT** TASK0-3L complete; broader 3L delivered by SEMANTIC_CORE above (gates/policy unchanged; routing recovery + TASK0-3K not reopened).
+## TASK0-3L_RECONCILE_BASELINE (ACCEPTED scoped; 2026-09-19)
+- ACCEPTED scoped (Mapika .9723); NOT 3L complete. Base `aac388e0` (pushed). 158 sources/7 catalog; 10 claim families vs 22-class/17-lane plan. Focused 17/17; Python 1534 OK skip 3.
+- Deliverables 5–9 → SEMANTIC_CORE. Immutable history in Git.
 
 ## ROUTING_RECOVERY_V1 / SOL_GUARD (ACCEPTED scoped; 2026-09-19)
-- Source HEAD `9cd22fe2c737a7088002941b10b8226128af8084` (branch `fix/options-provenance-audit`, ahead origin 5, fetched, tracked clean, untracked `.tmp/` preserved).
-- SoL-Pi small-session compaction guard implemented in the active project-local runtime `D:\Investor-Intelligence-LINE-Pi\.pi\git\github.com\NVlabs\SoL-Pi` (base `bd005888`); no upstream Pi patch, no reinstall, no global registration; runtime dirty lock preserved. See `documents/SOL_GUARD.md` (receipt, hashes, apply recipe) and `patches/sol-pi-small-session-guard.patch` (SHA `7E1F9831…45F59D`).
-- Acceptance: Master ACCEPT scoped (Mapika .9228); pre-commit base `9cd22fe2c737a7088002941b10b8226128af8084`; no invented final SHA.
-- Verification: 27/27 vitest + tsc + diffcheck + runtime regression 4/4; full gates (Python 1531 OK skip 3, compile, Worker 869/1 skip, typecheck, PS5.1/7) PASS. No deployment/QA recertification/release claim.
-- Routing roles reconciled to current policy: Astra master (architecture/escalation/acceptance only; no non-master Astra); Mapika CPU v9 ALIAS_ONLY; Qwen exact `Qwen3.8-27B-EXL3-5.5bpw-v2` sole writer at existing localhost:5000; Pi + official Herdr (1 master 1 writer); zero cloud scouts default, max 2 cheap only unresolved. Previous master/Gemini directives not ACTIVE (history preserved).
-- TASK0-3K CLOSED (never reopened). TASK0-3L implementation delivered by the SEMANTIC_CORE section above; deliverable 2 (Mapika-v9 pin) resolved ALIAS_ONLY.
-- Next: canonical qualification contracts and clearing research. ECB factory acquisition observed at ec82cfb (not release proof); Phase3 backlog reconciled.
+- ACCEPT scoped (Mapika .9228); HEAD `9cd22fe2` (branch `fix/options-provenance-audit`). SoL-Pi guard (base `bd005888`); 27/27 vitest + gates PASS. Roles HISTORICAL: Astra/Mapika v9 ALIAS_ONLY/Qwen sole writer/Pi+Herdr. 3K CLOSED.
+- Evidence + history in Git. Next: canonical qualification + clearing research.
 
 ## TASK0-3K_AUTOMATIC_TRIGGER_OBSERVATION (COMPLETE / ACCEPT; 2026-09-19)
 - Final ruling (master ChatGPT, conv 6aae32f7): ACCEPT / COMPLETE. AUTOMATIC_RUN=PASS; PRODUCTION_PATH_EQUIVALENCE=PROVEN; GATES=PASS; RETEST_REQUIRED=NO.
