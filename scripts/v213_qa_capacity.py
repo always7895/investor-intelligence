@@ -1127,107 +1127,135 @@ def _sample(lease, nonce, raw, phase, seq, prev_hash, t0, p_start, p_end):
 def _validate_coverage(samples, ws, we, config):
     """Validate chronology/coverage of samples.
 
-    Returns (errors: list[str], interior_during: int).
-    errors is empty if coverage is valid.
+    Returns (structural_errors, qualification_reasons, interior_during).
+    structural_errors: contradictions that make the receipt structurally
+      invalid (verifier must raise CapacityError).
+    qualification_reasons: incompleteness/failure that makes the receipt
+      UNQUALIFIED but still verifiable (MONITOR_COMPLETE=False).
     Uses actual probe started_s/ended_s/time_s emitted by run_window.
     """
-    errors = []
+    structural = []
+    qualification = []
     if not samples:
-        return errors, 0
+        return structural, qualification, 0
 
-    # 1. Strict sequence/chain
+    # 1. Strict sequence/chain [STRUCTURAL]
     for i, s in enumerate(samples):
         if s.get("seq") != i:
-            errors.append(f"sample seq mismatch at {i}")
+            structural.append(f"sample seq mismatch at {i}")
         if i == 0:
             if s.get("prev_hash") is not None:
-                errors.append("first sample prev_hash must be None")
+                structural.append("first sample prev_hash must be None")
         else:
             if s.get("prev_hash") != samples[i - 1].get("hash"):
-                errors.append(f"sample prev_hash mismatch at {i}")
+                structural.append(f"sample prev_hash mismatch at {i}")
 
-    # 2. Phase order: PRE then DURING* then POST
+    # 2. Phase order: PRE then DURING* then POST [STRUCTURAL/QUALIFICATION]
     phases = [s["phase"] for s in samples]
     for ph in phases:
         if ph not in ("PRE", "DURING", "POST"):
-            errors.append(f"unknown phase {ph!r}")
+            structural.append(f"unknown phase {ph!r}")
     pre_count = phases.count("PRE")
     post_count = phases.count("POST")
-    if pre_count != 1:
-        errors.append(f"expected exactly 1 PRE, got {pre_count}")
-    if post_count != 1:
-        errors.append(f"expected exactly 1 POST, got {post_count}")
-    if phases[0] != "PRE":
-        errors.append("first sample must be PRE")
-    if phases[-1] != "POST":
-        errors.append("last sample must be POST")
-    for i, ph in enumerate(phases):
-        if ph == "PRE" and i > 0:
-            errors.append(f"PRE at position {i} must be first")
-            break
-    for i, ph in enumerate(phases):
-        if ph == "POST" and i < len(phases) - 1:
-            errors.append(f"POST at position {i} must be last")
-            break
+    if pre_count > 1:
+        structural.append(f"expected exactly 1 PRE, got {pre_count}")
+    elif pre_count == 0:
+        qualification.append("PRE sample missing (probe failed)")
+    if post_count > 1:
+        structural.append(f"expected exactly 1 POST, got {post_count}")
+    elif post_count == 0:
+        qualification.append("POST sample missing (probe failed)")
+    # Position checks only when the phase is present
+    if pre_count >= 1:
+        if phases[0] != "PRE":
+            structural.append("first sample must be PRE")
+        for i, ph in enumerate(phases):
+            if ph == "PRE" and i > 0:
+                structural.append(f"PRE at position {i} must be first")
+                break
+    if post_count >= 1:
+        if phases[-1] != "POST":
+            structural.append("last sample must be POST")
+        for i, ph in enumerate(phases):
+            if ph == "POST" and i < len(phases) - 1:
+                structural.append(f"POST at position {i} must be last")
+                break
 
-    # 3. Finite nonnegative time values, start<=end, time_s==ended_s
+    # 3. Finite nonnegative time values, start<=end, time_s==ended_s [STRUCTURAL]
     for i, s in enumerate(samples):
         for key in ("time_s", "started_s", "ended_s"):
             v = s.get(key)
             if v is None:
-                errors.append(f"sample {i} missing {key}")
+                structural.append(f"sample {i} missing {key}")
             elif isinstance(v, bool) or not isinstance(v, (int, float)):
-                errors.append(f"sample {i} {key} not numeric")
+                structural.append(f"sample {i} {key} not numeric")
             elif not math.isfinite(v) or v < 0:
-                errors.append(f"sample {i} {key} not finite nonnegative")
+                structural.append(f"sample {i} {key} not finite nonnegative")
         st = s.get("started_s")
         en = s.get("ended_s")
         if isinstance(st, (int, float)) and isinstance(en, (int, float)):
             if st > en:
-                errors.append(f"sample {i} started_s > ended_s")
+                structural.append(f"sample {i} started_s > ended_s")
         ts = s.get("time_s")
         if isinstance(ts, (int, float)) and isinstance(en, (int, float)):
             if ts != en:
-                errors.append(f"sample {i} time_s != ended_s")
+                structural.append(f"sample {i} time_s != ended_s")
 
-    # 4. Sample order: no backwards/overlap
+    # 4. Sample order: no backwards/overlap [QUALIFICATION - boundary-overlap]
     for i in range(1, len(samples)):
         prev_end = samples[i - 1].get("ended_s")
         cur_start = samples[i].get("started_s")
         if isinstance(prev_end, (int, float)) and isinstance(cur_start, (int, float)):
             if cur_start < prev_end:
-                errors.append(
+                qualification.append(
                     f"sample {i} starts before sample {i-1} ends (overlap)")
 
-    # 5. Work interval checks
+    # 5. Work interval checks [MIXED]
     interior_during = 0
     if ws is None or we is None:
-        errors.append("work times missing; cannot validate coverage")
+        # Structural contradiction: DURING samples without work times
+        if (ws is None and we is None
+                and any(s["phase"] == "DURING" for s in samples)):
+            structural.append(
+                "DURING samples present but work times missing")
+        # Qualification: work times missing (no work because PRE denied, etc.)
+        qualification.append("work times missing; cannot validate coverage")
     else:
         for s in samples:
             if s["phase"] == "PRE":
                 en = s.get("ended_s")
                 if isinstance(en, (int, float)) and en > ws:
-                    errors.append("PRE ended after work starts")
+                    structural.append("PRE ended after work starts")
         for s in samples:
             if s["phase"] == "POST":
                 st = s.get("started_s")
                 if isinstance(st, (int, float)) and st < we:
-                    errors.append("POST began before work ends")
+                    structural.append("POST began before work ends")
         for s in samples:
             if s["phase"] == "DURING":
                 ts = s.get("time_s")
                 if isinstance(ts, (int, float)):
                     if ts < ws or ts > we:
-                        errors.append(
+                        structural.append(
                             f"DURING sample time_s={ts} outside "
                             f"work interval [{ws}, {we}]")
                     elif ws < ts < we:
                         interior_during += 1
-        if not errors and interior_during == 0:
-            errors.append("no genuinely interior DURING sample")
+        if not structural and interior_during == 0:
+            qualification.append("no genuinely interior DURING sample")
 
-    # 6. Probe duration and gap checks
+    # 5b. Work time budget: measured times beyond timeout_s are over-budget
+    #     failure evidence (qualification, not structural)
+    timeout_s = config.get("timeout_s")
+    if timeout_s is not None:
+        if ws is not None and ws > timeout_s:
+            qualification.append(
+                f"work_start_s={ws} exceeds timeout_s={timeout_s}")
+        if we is not None and we > timeout_s:
+            qualification.append(
+                f"work_end_s={we} exceeds timeout_s={timeout_s}")
+
+    # 6. Probe duration and gap checks [QUALIFICATION - measured gap/timeout]
     max_gap = config.get("max_gap_s")
     if max_gap is not None:
         for i, s in enumerate(samples):
@@ -1235,7 +1263,7 @@ def _validate_coverage(samples, ws, we, config):
             en = s.get("ended_s")
             if isinstance(st, (int, float)) and isinstance(en, (int, float)):
                 if (en - st) > max_gap:
-                    errors.append(
+                    qualification.append(
                         f"sample {i} probe duration {en - st} "
                         f"exceeds max_gap {max_gap}")
         for i in range(1, len(samples)):
@@ -1244,11 +1272,11 @@ def _validate_coverage(samples, ws, we, config):
             if isinstance(prev_end, (int, float)) and isinstance(cur_start, (int, float)):
                 gap = cur_start - prev_end
                 if gap > max_gap:
-                    errors.append(
+                    qualification.append(
                         f"gap between sample {i-1} and {i} is {gap} "
                         f"> max_gap {max_gap}")
 
-    return errors, interior_during
+    return structural, qualification, interior_during
 
 
 def _lease_hash_linkage_errors(receipt_data):
@@ -1400,10 +1428,10 @@ def _derive_summary(receipt_data, binding):
 
     # MONITOR_COMPLETE: validated via shared coverage checker
     if samples:
-        coverage_errors, _ = _validate_coverage(samples, ws, we, config)
-        if coverage_errors:
-            all_reasons.extend(coverage_errors)
-        monitor_ok = (not coverage_errors)
+        cov_struct, cov_qual, _ = _validate_coverage(samples, ws, we, config)
+        all_reasons.extend(cov_struct)
+        all_reasons.extend(cov_qual)
+        monitor_ok = not (cov_struct or cov_qual)
     else:
         monitor_ok = False
 
@@ -1630,20 +1658,21 @@ def verify_receipt(receipt, binding):
             raise CapacityError(f"config {key} invalid")
         if not math.isfinite(val) or val <= 0:
             raise CapacityError(f"config {key} must be finite positive")
-    # Validate work times are finite and within config bounds
+    # Validate work times are finite and nonnegative
+    # Over-budget (beyond timeout_s) is a qualification reason, not structural
     ws = receipt.get("work_start_s")
     we = receipt.get("work_end_s")
     timeout_s = config["timeout_s"]
     if ws is not None:
         if isinstance(ws, bool) or not isinstance(ws, (int, float)) or not math.isfinite(ws):
             raise CapacityError("work_start_s invalid")
-        if ws < 0 or ws > timeout_s:
-            raise CapacityError("work_start_s outside config bounds")
+        if ws < 0:
+            raise CapacityError("work_start_s must be nonnegative")
     if we is not None:
         if isinstance(we, bool) or not isinstance(we, (int, float)) or not math.isfinite(we):
             raise CapacityError("work_end_s invalid")
-        if we < 0 or we > timeout_s:
-            raise CapacityError("work_end_s outside config bounds")
+        if we < 0:
+            raise CapacityError("work_end_s must be nonnegative")
     if ws is not None and we is not None and we < ws:
         raise CapacityError("work_end_s before work_start_s")
     # Check sample chain
@@ -1657,12 +1686,22 @@ def verify_receipt(receipt, binding):
         if i > 0 and s.get("prev_hash") != samples[i - 1].get("hash"):
             raise CapacityError(f"sample prev_hash mismatch at {i}")
     # Validate chronology/coverage via shared validator
-    if samples:
-        cov_errors, _ = _validate_coverage(samples, ws, we, config)
-        if cov_errors:
-            raise CapacityError(f"coverage invalid: {cov_errors[0]}")
-    # Check lease events
     events = receipt.get("events", [])
+    if samples:
+        cov_struct, cov_qual, _ = _validate_coverage(samples, ws, we, config)
+        if cov_struct:
+            raise CapacityError(f"coverage structural: {cov_struct[0]}")
+        # Additional structural check: work started but no end requires
+        # a recorded failure/incomplete state
+        if ws is not None and we is None:
+            has_work_failure = any(
+                e.get("kind") == "error"
+                and e.get("code") in ("work_stuck", "work_raised")
+                for e in events)
+            if not has_work_failure:
+                raise CapacityError(
+                    "work_end_s missing without recorded work failure")
+    # Check lease events
     acq = [e for e in events if e.get("kind") == "acquire"]
     if not acq:
         raise CapacityError("no acquire event")

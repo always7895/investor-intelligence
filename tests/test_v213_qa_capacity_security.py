@@ -1006,5 +1006,161 @@ class TestReviewCounterexamples(unittest.TestCase):
                     pass
 
 
+# ---------------------------------------------------------------------------
+# Coverage classification: honest UNQUALIFIED receipts must verify
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageClassificationVerify(unittest.TestCase):
+    """Honest-failure replay: PRE-denied, missing-clients, probe-raise,
+    and work-timeout receipts must verify as UNQUALIFIED (not raise).
+    """
+
+    def setUp(self):
+        self.root = _root()
+        self._leases = []
+
+    def tearDown(self):
+        for l in self._leases:
+            try:
+                l.close()
+            except Exception:
+                pass
+        import shutil
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _lease(self, **kw):
+        lease = qc.CapacityLease(self.root, BINDING, **kw)
+        self._leases.append(lease)
+        return lease
+
+    # 1: Valid conflict observation at PRE (GPU C+G) => callback never called,
+    #    PRE/POST raw samples retained, None worktimes; verify succeeds with
+    #    equal fresh UNQUALIFIED summary and all conflict reasons.
+    def test_pre_gpu_conflict_verifies_unqualified(self):
+        lease = self._lease()
+        called = [False]
+        bad_xml = _gpu_xml_extra_process(8888, "C+G")
+
+        def work(cancel_event):
+            called[0] = True
+
+        receipt = qc.run_window(
+            lease, lambda: make_raw_snapshot(gpu_xml=bad_xml), work,
+            interval_s=0.01, max_gap_s=0.1, timeout_s=0.5)
+        self.assertFalse(called[0], "work must NOT run when PRE GPU shows C+G")
+        self.assertIsNone(receipt["work_start_s"])
+        self.assertIsNone(receipt["work_end_s"])
+        # PRE and POST samples retained
+        phases = [s["phase"] for s in receipt["samples"]]
+        self.assertIn("PRE", phases)
+        self.assertIn("POST", phases)
+        self.assertNotIn("DURING", phases)
+        # verify_receipt must succeed (not raise) and return UNQUALIFIED
+        result = qc.verify_receipt(receipt, BINDING)
+        self.assertEqual(result["CAPACITY_EVIDENCE"], "UNQUALIFIED")
+        self.assertFalse(result["MONITOR_COMPLETE"])
+        # Conflict reasons present
+        self.assertTrue(
+            any("conflict" in r.lower() or "C+G" in r
+                for r in result["reasons"]),
+            f"expected conflict reason in {result['reasons']}")
+        # Result is a fresh dict, not the stored object
+        self.assertIsNot(result, receipt["summary"])
+
+    # 2: PRE missing clients similarly verifies; unknown not fabricated conflict.
+    def test_pre_missing_clients_verifies_unqualified(self):
+        lease = self._lease()
+        called = [False]
+
+        def probe():
+            raw = make_raw_snapshot()
+            del raw["clients"]
+            return raw
+
+        def work(cancel_event):
+            called[0] = True
+
+        receipt = qc.run_window(
+            lease, probe, work,
+            interval_s=0.01, max_gap_s=0.1, timeout_s=0.5)
+        self.assertFalse(called[0], "work must NOT run when PRE clients missing")
+        self.assertIsNone(receipt["work_start_s"])
+        self.assertIsNone(receipt["work_end_s"])
+        # verify_receipt must succeed and return UNQUALIFIED
+        result = qc.verify_receipt(receipt, BINDING)
+        self.assertEqual(result["CAPACITY_EVIDENCE"], "UNQUALIFIED")
+        self.assertFalse(result["MONITOR_COMPLETE"])
+        # Must NOT fabricate a GPU conflict
+        self.assertFalse(result["GPU_CONFLICT_OBSERVED"],
+                         "GPU conflict must not be fabricated for missing clients")
+
+    # 3: PRE probe raises only on first call, POST healthy => honest ordered
+    #    incomplete receipt verifies UNQUALIFIED.
+    def test_pre_probe_raise_post_healthy_verifies_unqualified(self):
+        lease = self._lease()
+        call_count = [0]
+
+        def probe():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise qc.CapacityError("probe timeout")
+            return make_raw_snapshot()
+
+        called = [False]
+
+        def work(cancel_event):
+            called[0] = True
+
+        receipt = qc.run_window(
+            lease, probe, work,
+            interval_s=0.01, max_gap_s=0.1, timeout_s=0.5)
+        self.assertFalse(called[0], "work must NOT run when PRE probe fails")
+        self.assertIsNone(receipt["work_start_s"])
+        self.assertIsNone(receipt["work_end_s"])
+        # Only POST sample should exist (PRE probe failed)
+        phases = [s["phase"] for s in receipt["samples"]]
+        self.assertNotIn("PRE", phases)
+        self.assertIn("POST", phases)
+        # verify_receipt must succeed and return UNQUALIFIED
+        result = qc.verify_receipt(receipt, BINDING)
+        self.assertEqual(result["CAPACITY_EVIDENCE"], "UNQUALIFIED")
+        self.assertFalse(result["MONITOR_COMPLETE"])
+
+    # 4: Bounded work timeout with recorded stuck state; never successful
+    #    release if still running. Receipt verifies UNQUALIFIED.
+    def test_work_stuck_verifies_unqualified(self):
+        lease = self._lease()
+        called = [False]
+
+        def work(cancel_event):
+            called[0] = True
+            # Ignore cancel; block past deadline to trigger work_stuck
+            cancel_event.wait(5.0)
+
+        receipt = qc.run_window(
+            lease, lambda: make_raw_snapshot(), work,
+            interval_s=0.01, max_gap_s=0.1, timeout_s=0.15)
+        self.assertTrue(called[0], "work was called")
+        # work_stuck must be recorded
+        codes = [e.get("code") for e in receipt["events"]
+                 if e.get("kind") == "error"]
+        self.assertIn("work_stuck", codes)
+        # No successful release when work is stuck
+        self.assertFalse(
+            any(e.get("kind") == "release" for e in receipt["events"]),
+            "no release event when work is stuck")
+        # verify_receipt must succeed and return UNQUALIFIED
+        result = qc.verify_receipt(receipt, BINDING)
+        self.assertEqual(result["CAPACITY_EVIDENCE"], "UNQUALIFIED")
+        self.assertFalse(result["MONITOR_COMPLETE"])
+        self.assertFalse(result["lease_released"])
+        # Retained stuck and timeout budget reasons
+        self.assertIn("work_stuck", result["reasons"])
+        self.assertTrue(
+            any("exceeds timeout_s" in r for r in result["reasons"]),
+            f"expected timeout budget reason in {result['reasons']}")
+
+
 if __name__ == "__main__":
     unittest.main()
