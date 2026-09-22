@@ -1,0 +1,17 @@
+{
+ "model": "decider-v10",
+ "served_model_id": "Mapika-decider-2b-v10",
+ "answers": {
+  "proceed_to_master_review": {
+   "type": "choice",
+   "choice": "PROCEED",
+   "raw_completion": "{\"id\":\"cmpl-1874cd29f4bd4452bb6221fc84786901\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"eos_reason\":\"stop_token\",\"stop_str\":\"<|im_end|>\",\"message\":{\"role\":\"assistant\",\"content\":\"PROCEED\",\"reasoning_content\":null,\"tool_calls\":null,\"tool_call_id\":null},\"logprobs\":null}],\"created\":1790073967,\"model\":\"Qwen3.8-27B-EXL3-5.5bpw-v2\",\"object\":\"chat.completion\",\"usage\":null}"
+  }
+ },
+ "transport": {
+  "status": 200,
+  "elapsed_ms": 366,
+  "endpoint": "http://127.0.0.1:5000/v1/chat/completions"
+ },
+ "note": "V8 routing gate after JEV + fixture pass. Route authority = master V7 NEXT_ACTION (R2-A post-connect/pre-POST repair) + operator V8 session directive; recorded as routing gate, not master approval."
+}

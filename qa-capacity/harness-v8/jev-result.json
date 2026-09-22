@@ -1,0 +1,68 @@
+{
+ "model": "jev-1.13.0",
+ "answers": {
+  "r2a_resolved": {
+   "type": "choice",
+   "choice": "RESOLVED",
+   "confidence": 1,
+   "probabilities": {
+    "RESOLVED": 1,
+    "UNRESOLVED": 0,
+    "PARTIAL": 0
+   }
+  },
+  "v7_tests_retained": {
+   "type": "choice",
+   "choice": "RETAINED",
+   "confidence": 0.95,
+   "probabilities": {
+    "RETAINED": 0.96,
+    "PARTIAL": 0.03,
+    "NOT_RETAINED": 0.01
+   }
+  },
+  "budget_compliant": {
+   "type": "choice",
+   "choice": "COMPLIANT",
+   "confidence": 0.85,
+   "probabilities": {
+    "DEVIATION": 0.1,
+    "UNKNOWN": 0,
+    "COMPLIANT": 0.9
+   }
+  },
+  "constraints_held": {
+   "type": "choice",
+   "choice": "HELD",
+   "confidence": 0.84,
+   "probabilities": {
+    "HELD": 0.89,
+    "UNKNOWN": 0.08,
+    "VIOLATED": 0.03
+   }
+  },
+  "decision_grade": {
+   "type": "score",
+   "score": 2.4,
+   "confidence": 0.4,
+   "legend": {
+    "0": "blocked-defects",
+    "1": "minor-gaps",
+    "2": "ready-no-defects",
+    "3": "release-quality"
+   },
+   "probabilities": {
+    "0": 0.01,
+    "1": 0.08,
+    "2": 0.42,
+    "3": 0.49
+   }
+  }
+ },
+ "usage": {
+  "input_tokens": 1647,
+  "output_tokens": 202
+ },
+ "elapsedMs": 861,
+ "note": "V8 candidate judgment via TypeSafe (jev-1.13.0); raw JEV output preserved above. DECISION_GRADE 2.4 is an ORDINAL SCORE on the legend scale (position between 'ready-no-defects' and 'release-quality'; probabilities 2:0.42 / 3:0.49), NOT a probability."
+}

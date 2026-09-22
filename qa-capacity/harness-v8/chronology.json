@@ -1,0 +1,89 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v8-1790073020041",
+  "append_only": true,
+  "rule": "entries are appended, never rewritten; hashes recorded at entry time",
+  "entries": [
+    {
+      "seq": 1,
+      "event": "namespace_created",
+      "ts_epoch_s": 1790073260,
+      "detail": "fresh V8 namespace created after hash-verified session-handoff-v8.md (sha256 d19700fd6780718811eaa593c342fc8cbaad0b554db7c3dd5643233cd7581417 = expected); repo verified fix/options-provenance-audit @ 6922278ac865727fdcdded96535f94aaaabeb8b3 (tracked clean, untracked .tmp/ + _tmp_m5_code.txt preserved); V7 review branch qa-capacity-harness-v7 @ d98aa796c8648bbb454d185f70c28adcbbf7d28b verified on remote; no active prior test/write/Git/MCP transaction (no git locks; resident python services only); historical V7 namespace immutable and untouched"
+    },
+    {
+      "seq": 2,
+      "event": "dispatch_precondition_applied",
+      "ts_epoch_s": 1790073260,
+      "detail": {
+        "rule": "before dispatching any edit: (1) resolve the destination from the current task explicit namespace (no stale version-specific pointer files); (2) verify the destination task marker and expected baseline hashes before any write; (3) reject any immutable parent namespace as a write destination; (4) verify post-apply hashes against the intended change set",
+        "applied_in_v8": "destination = explicit V8 namespace working/ only; V7 baseline hashes verified before dispatch (harness 459cd777d6d61e04, test 285c46dc7f3f3944, run-plan e3d1ae20398330dc, request 1fa1910c8db0dda7, binding-template 5a453b450056ce69, parent-manifest-ref 4ad0bfdd785c3929); V7 namespace + V7 branch rejected as write destinations (immutable parent); post-apply verification will follow"
+      }
+    },
+    {
+      "seq": 3,
+      "event": "qwen_dispatch",
+      "ts_epoch_s": 1790073360,
+      "detail": "bounded Qwen implementation dispatch via TabbyAPI http://127.0.0.1:5000/v1/chat/completions model Qwen3.8-27B-EXL3-5.5bpw-v2 (temperature 0, n 1, stream false, max_tokens 16384, enable_thinking false, 180s cap, no retries); status 200 finish stop completion 8975 chars; raw persisted qwen-v8-response.json + qwen-v8-completion.txt; Qwen output sections: runner 3-change diff, test code (module fake + 3 tests), run-plan v8_rework + 4-stage rule replacements"
+    },
+    {
+      "seq": 4,
+      "event": "implementation_applied",
+      "ts_epoch_s": 1790073420,
+      "detail": "R2-A repair applied to V8 namespace working/ only: (1) make_transport(..., grant_check=None); (2) inside transport after successful conn.connect() + existing cancel/deadline checks, immediately before conn.request('POST', ...): if grant_check is not None: grant_check(); (3) run_live default transport bound to closure over already-validated unchanged auth record calling _check_window_current. No grant extension/restamping; all existing authority/cancel/deadline/cleanup checks preserved (runner diff = exactly 3 hunks, verified by diff against V7 baseline 459cd777d6d61e04). Placement correction applied pre-run (static diagnosis, no execution): _V8FakeConn + _V8FakeSock placed at MODULE level (class-attribute scope would NameError inside test methods); test code otherwise as Qwen-specified. run-plan.json: v8_rework section + window_contract.rule/authority.rule 4-stage naming (admission, work-callback entry, pre-transport, post-connect/pre-POST); all other bytes unchanged (verified by diff). request.json byte-identical 1fa1910c8db0dda7"
+    },
+    {
+      "seq": 5,
+      "event": "fixture_run1",
+      "ts_epoch_s": 1790073480,
+      "detail": {
+        "command": "python -B -m unittest test_native_inference_runner -v",
+        "result": "Ran 70 tests in 16.826s FAILED (errors=3), exit 1",
+        "pass": "67/70",
+        "failures": 0,
+        "errors": 3,
+        "skips": 0,
+        "log": "fixture-logs-v8-run1.log",
+        "note": "first (full) run: all 67 retained V7 tests pass; 3 new make_transport tests ERROR at 'inst = conn_factory.return_value' - unit-test discovery: patch.object with a class new-value returns the class, not a mock"
+      }
+    },
+    {
+      "seq": 6,
+      "event": "diagnosed_repair",
+      "ts_epoch_s": 1790073540,
+      "detail": "narrowly diagnosed repair (1/1): _V8FakeConn gains class-level last_instance tracker set in __init__; three tests read _V8FakeConn.last_instance instead of conn_factory.return_value (patch 'as' binding dropped). Runner + run-plan + request untouched by repair. No blind retry; this is the single permitted repair before the single retry run"
+    },
+    {
+      "seq": 7,
+      "event": "fixture_run2_retry",
+      "ts_epoch_s": 1790073600,
+      "detail": {
+        "command": "python -B -m unittest test_native_inference_runner -v",
+        "result": "Ran 70 tests in 16.828s OK, exit 0",
+        "pass": "70/70",
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "log": "fixture-logs-v8-run2.log",
+        "note": "retry run after single diagnosed repair; 3 new post-connect/pre-POST guard tests pass (expiry-during-connect -> authority_stale zero POST + closed; valid-window -> exactly one POST + 200/ok; non-finite clock at dispatch boundary -> clock_invalid zero POST + closed); all 67 retained V7 tests unchanged and passing; budget consumed: 1 full run + 1 diagnosed repair + 1 retry run; no third run required"
+      }
+    },
+    {
+      "seq": 8,
+      "event": "jev",
+      "ts_epoch_s": 1790073720,
+      "detail": "jev-1.13.0 (TypeSafe): r2a_resolved RESOLVED 1.00; v7_tests_retained RETAINED 0.95; budget_compliant COMPLIANT 0.85; constraints_held HELD 0.84; decision_grade 2.4 (ORDINAL score on legend blocked-defects/minor-gaps/ready-no-defects/release-quality; probabilities 2:0.42 / 3:0.49; NOT a probability); raw JEV output preserved in jev-result.json (sha256 2a7c83ac34332e8df49d421bc65f6d38f54e5a61efa724cbb9dae74ed61e8d52)"
+    },
+    {
+      "seq": 9,
+      "event": "mapika_route",
+      "ts_epoch_s": 1790073740,
+      "detail": "decider-v10 (served model id Mapika-decider-2b-v10, verified via /v1/models) PROCEED (finish stop); recorded as routing gate; route authority = master V7 NEXT_ACTION (R2-A post-connect/pre-POST repair) + operator V8 session directive; mapika-result.json sha256 e73618b3ab99ad0efb91497454f4e178e2e1e584bc46fa10cd2b3df0c8c0ae8c"
+    },
+    {
+      "seq": 10,
+      "event": "delivery_prepared",
+      "ts_epoch_s": 1790073760,
+      "detail": "review branch qa-capacity-harness-v8 commit + push from 6922278 (actual Git parent = authorized source SHA); 18-file packet under qa-capacity/harness-v8/ (17 V7-pattern files + second fixture log for budget disclosure); exact-SHA delivery to MCP ChatGPT Web master for review"
+    }
+  ]
+}

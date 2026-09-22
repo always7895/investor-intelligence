@@ -1,0 +1,176 @@
+# V8 REPAIR DIFF (QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8)# Baseline: review branch qa-capacity-harness-v7 @ d98aa796c8648bbb454d185f70c28adcbbf7d28b (V7 harness files)#=== SECTION 1: native_inference_runner.py (3 hunks) ===--- a/native_inference_runner.py
++++ b/native_inference_runner.py
+@@ -206,7 +206,7 @@
+     return (copy.deepcopy(binding), digest)
+ 
+ 
+-def make_transport(url=PINNED_ENDPOINT_URL, connect_deadline_s=CONNECT_DEADLINE_S, total_deadline_s=TOTAL_HTTP_DEADLINE_S, body_bytes_max=RESPONSE_BODY_BYTES_MAX, read_timeout_s=READ_TIMEOUT_S):
++def make_transport(url=PINNED_ENDPOINT_URL, connect_deadline_s=CONNECT_DEADLINE_S, total_deadline_s=TOTAL_HTTP_DEADLINE_S, body_bytes_max=RESPONSE_BODY_BYTES_MAX, read_timeout_s=READ_TIMEOUT_S, grant_check=None):
+     parts = urllib.parse.urlsplit(url)
+     host = parts.hostname or "127.0.0.1"
+     port = parts.port or 5000
+@@ -255,6 +255,8 @@
+             now = time.monotonic()
+             if deadline - now <= 0:
+                 raise WorkloadError("deadline_exceeded")
++            if grant_check is not None:
++                grant_check()
+             conn.request("POST", path, body=request_bytes, headers={"Content-Type": "application/json"})
+             sock = conn.sock
+             status_line = _interruptible_read(sock, 1, cancel_event, deadline, read_timeout_s)
+@@ -529,7 +531,9 @@
+     frozen_binding, binding_digest = freeze_binding(binding, namespace)
+     request_bytes = load_request_bytes(namespace, APPROVED_REQUEST_SHA256)
+     if transport is None:
+-        transport = make_transport()
++        def grant_check():
++            _check_window_current(auth)
++        transport = make_transport(grant_check=grant_check)
+     evidence = {}
+     work = work_factory(request_bytes, transport, evidence, auth)
+     _check_window_current(auth)
+=== SECTION 2: test_native_inference_runner.py (module fakes + 3 new tests; all 67 V7 tests unchanged) ===--- a/test_native_inference_runner.py
++++ b/test_native_inference_runner.py
+@@ -237,6 +237,41 @@
+             self._server = None
+ 
+ 
++# ---- V8 R2-A post-connect/pre-POST guard tests (master REWORK on review SHA d98aa796; make_transport in-memory HTTPConnection substitute) ----
++class _V8FakeSock:
++    def __init__(self, data):
++        self._buf = data
++    def settimeout(self, s):
++        pass
++    def recv(self, n):
++        if not self._buf:
++            return b""
++        chunk, self._buf = self._buf[:n], self._buf[n:]
++        return chunk
++
++class _V8FakeConn:
++    """In-memory http.client.HTTPConnection substitute exercising make_transport directly."""
++    last_instance = None
++    def __init__(self, host, port, timeout=None):
++        _V8FakeConn.last_instance = self
++        self.host = host
++        self.port = port
++        self.timeout = timeout
++        self.connected = False
++        self.post_requests = []
++        self.closed = False
++        self.sock = None
++        self._response_bytes = b""
++        self._on_connect = lambda: None
++    def connect(self):
++        self._on_connect()
++        self.connected = True
++        self.sock = _V8FakeSock(self._response_bytes)
++    def request(self, method, path, body=None, headers=None):
++        self.post_requests.append({"method": method, "path": path, "body": body, "headers": headers})
++    def close(self):
++        self.closed = True
++
+ class TestNativeInferenceRunner(unittest.TestCase):
+ 
+     def test_import_performs_no_work(self):
+@@ -1740,5 +1775,68 @@
+             shutil.rmtree(ns, ignore_errors=True)
+ 
+ 
++    # ---- V8 R2-A post-connect/pre-POST guard tests (master REWORK on review SHA d98aa796c8648bbb454d185f70c28adcbbf7d28b) ----
++
++    def test_make_transport_expiry_during_connect_zero_post(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 60, "valid_until_epoch_s": now + 60}
++        clock = {"now": now}
++        class FakeConn(_V8FakeConn):
++            def connect(self):
++                clock["now"] = now + 120  # grant expires while connect executes
++                super().connect()
++        with unittest.mock.patch.object(h.time, "time", lambda: clock["now"]), \
++             unittest.mock.patch.object(h.http.client, "HTTPConnection", FakeConn):
++            grant_check = lambda: h._check_window_current(auth)
++            transport = h.make_transport(grant_check=grant_check)
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport(b'{"x":1}', threading.Event())
++            self.assertEqual(ctx.exception.code, "authority_stale")
++            inst = _V8FakeConn.last_instance
++            self.assertEqual(len(inst.post_requests), 0)
++            self.assertTrue(inst.closed)
++
++    def test_make_transport_valid_window_single_post(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 60, "valid_until_epoch_s": now + 60}
++        clock = {"now": now}
++        response = b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'
++        class FakeConn(_V8FakeConn):
++            def __init__(self, host, port, timeout=None):
++                super().__init__(host, port, timeout)
++                self._response_bytes = response
++        with unittest.mock.patch.object(h.time, "time", lambda: clock["now"]), \
++             unittest.mock.patch.object(h.http.client, "HTTPConnection", FakeConn):
++            grant_check = lambda: h._check_window_current(auth)
++            transport = h.make_transport(grant_check=grant_check)
++            status, body = transport(b'{"x":1}', threading.Event())
++            self.assertEqual(status, 200)
++            self.assertEqual(body, b"ok")
++            inst = _V8FakeConn.last_instance
++            self.assertEqual(len(inst.post_requests), 1)
++            self.assertEqual(inst.post_requests[0]["method"], "POST")
++            self.assertEqual(inst.post_requests[0]["body"], b'{"x":1}')
++            self.assertTrue(inst.closed)
++
++    def test_make_transport_invalid_clock_at_dispatch_zero_post(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 60, "valid_until_epoch_s": now + 60}
++        clock = {"now": now}
++        class FakeConn(_V8FakeConn):
++            def connect(self):
++                clock["now"] = float("inf")  # non-finite clock at the post-connect/pre-POST boundary
++                super().connect()
++        with unittest.mock.patch.object(h.time, "time", lambda: clock["now"]), \
++             unittest.mock.patch.object(h.http.client, "HTTPConnection", FakeConn):
++            grant_check = lambda: h._check_window_current(auth)
++            transport = h.make_transport(grant_check=grant_check)
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport(b'{"x":1}', threading.Event())
++            self.assertEqual(ctx.exception.code, "clock_invalid")
++            inst = _V8FakeConn.last_instance
++            self.assertEqual(len(inst.post_requests), 0)
++            self.assertTrue(inst.closed)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+=== SECTION 3: run-plan.json (v8_rework section + 4-stage rule naming) ===--- a/run-plan.json
++++ b/run-plan.json
+@@ -10,7 +10,7 @@
+     "valid_from_epoch_s": "finite (math.isfinite), non-Boolean number; window start (inclusive); non-finite bounds (e.g. 1e309 -> inf) are rejected (authority_bounds_invalid)",
+     "valid_until_epoch_s": "finite (math.isfinite), non-Boolean number; window end (exclusive); non-finite bounds rejected (authority_bounds_invalid)",
+     "run_namespace": "the single canonical run namespace the grant is bound to; both authority and handoff must declare the identical run_namespace and it must equal the resolved namespace in which run_live executes; a grant cannot be replayed through another namespace",
+-    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated at admission, at work-callback entry, and immediately before HTTP dispatch (no extension, no restamping); expiry after the native PRE sample must fail closed (authority_stale, no successful evidence publication); the declared run_namespace must be a canonical ABSOLUTE path (relative grants are rejected before any further check); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
++    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated at admission, at work-callback entry, pre-transport (immediately before HTTP dispatch), and post-connect/pre-POST (inside the default live transport, after successful conn.connect() and after the existing cancel/deadline checks, immediately before conn.request('POST', ...)) (no extension, no restamping); expiry after the native PRE sample must fail closed (authority_stale, no successful evidence publication); the declared run_namespace must be a canonical ABSOLUTE path (relative grants are rejected before any further check); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
+   },
+   "artifact_identity": {
+     "authorized_source_sha": "declared in both authority records and must equal the plan value",
+@@ -57,7 +57,7 @@
+       "run-authority.json",
+       "operator-handoff.json"
+     ],
+-    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated at admission, at work-callback entry, and immediately before HTTP dispatch (expiry after the native PRE sample fails closed); missing, stale, mismatched, non-finite, or relative-namespace records are rejected before native work; no bypass switches exist"
++    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated at admission, at work-callback entry, pre-transport (immediately before HTTP dispatch), and post-connect/pre-POST (inside the default live transport) (expiry after the native PRE sample fails closed); missing, stale, mismatched, non-finite, or relative-namespace records are rejected before native work; no bypass switches exist"
+   },
+   "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+   "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+@@ -85,5 +85,11 @@
+     "closed_by_master": "R3 Transfer-Encoding presence-vs-nonempty; R5-L finite evidence timestamps; R5 canonical key/argv; R1/F1/F2/R4/R6 retained",
+     "findings": "R2-A HIGH remaining: the unchanged window must be revalidated (a) at work-callback entry and (b) immediately before HTTP dispatch; a grant that expires after the native PRE sample but before/during the native HTTP dispatch must fail closed (authority_stale, no successful evidence publication); the accepted finite non-Boolean bounds + finite clock enforcement is retained. R2-B HIGH remaining: the declared run_namespace must be a canonical ABSOLUTE path (relative grants rejected before any further check); same-grant/different-namespace replay prevention (resolved-namespace comparison + per-namespace exclusive persistence) retained",
+     "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; a mis-targeted run still counts as an execution and must be disclosed"
++  },
++  "v8_rework": {
++    "verdict": "REWORK (master exact-SHA review; review SHA d98aa796c8648bbb454d185f70c28adcbbf7d28b; V7 verdict REWORK with 17/17 files verified; persisted in V7 namespace)",
++    "closed_by_master": "R1; F1/F2; R2-B; R3; R4; R5 canonical-key/argv; R5-L; R6",
++    "findings": "R2-A HIGH remaining: the default live transport performs conn.connect() then cancel/deadline checks then conn.request('POST', ...); a grant that expires during conn.connect() can still issue the POST. Repair: make_transport(..., grant_check=None) binds the unchanged validated grant guard (run_live closure over the already-validated auth record calling _check_window_current) into the DEFAULT live transport; after successful conn.connect() and after the existing cancel/deadline checks, immediately before conn.request('POST', ...), the guard revalidates the unchanged authority window; an invalid finite clock or expired authority fails closed before POST (clock_invalid / authority_stale); the connection still closes through the existing finally cleanup; no grant extension or restamping; every existing authority/cancel/deadline/cleanup check preserved unchanged",
++    "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; no blind third run; a mis-targeted run still counts as an execution and must be disclosed"
+   }
+ }

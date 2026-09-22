@@ -1,0 +1,93 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v8-1790073020041",
+  "file_count": 17,
+  "path_note": "fixture logs use actual relative paths (fixture-logs/<filename>); packet = 18 files = the 17 files listed below + this artifact-manifest.json (V7 pattern was 17 files; the V8 addition is the second fixture log for run-budget disclosure)",
+  "files": [
+    {
+      "file": "native_inference_runner.py",
+      "sha256": "ef6bef33bd510a9f3dc155145ae895749c512670d14c91eaa8ed782f7f024324",
+      "bytes": 27671
+    },
+    {
+      "file": "test_native_inference_runner.py",
+      "sha256": "1cdda33092e05ff715e3ff5d3d76a01b46299e7e63e2802abb3bd4840763adb1",
+      "bytes": 87619
+    },
+    {
+      "file": "request.json",
+      "sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+      "bytes": 372
+    },
+    {
+      "file": "run-plan.json",
+      "sha256": "3e36a3be4b1a4e5d42d3dd6927cf4e160aa26ea72a011df73a9ce6fbc304866d",
+      "bytes": 11629
+    },
+    {
+      "file": "binding-template.json",
+      "sha256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+      "bytes": 841
+    },
+    {
+      "file": "implementation-review.md",
+      "sha256": "7f79759b99cea3ee517fc96377820837623e197bd16d8b2ab356b6c4fc8a77ad",
+      "bytes": 6323
+    },
+    {
+      "file": "runtime-repair-review.md",
+      "sha256": "2c9ae226d89f895288a1635bb676a0fb86cb21d2676a31d79c2ac97039c9ce73",
+      "bytes": 5878
+    },
+    {
+      "file": "repair.diff",
+      "sha256": "0c3a675085f9e1f03af9d8ebbdb4ebe61cb7ff23fea21496932bbb85345f76a1",
+      "bytes": 14119
+    },
+    {
+      "file": "chronology.json",
+      "sha256": "efb063812d7fb73815663438a0f01789b7777e9a31d65b0024f5dfd845c6005e",
+      "bytes": 6965
+    },
+    {
+      "file": "core-manifest.json",
+      "sha256": "c0258c1c1fcbb5d43bdb65b3c077bca3ce49a7ec1b65060ac55b94ba676c3679",
+      "bytes": 1237
+    },
+    {
+      "file": "parent-manifest-reference.json",
+      "sha256": "67805caa65eb69c39eeee8e6fdb152c9ecea973a1c45cf42c11cd95eb475672c",
+      "bytes": 983
+    },
+    {
+      "file": "fixture-results.json",
+      "sha256": "44092b83ba61662cfb2c9f0aec3f10c90fd5d854e7c6bccd83d17d94ff695f3e",
+      "bytes": 1480
+    },
+    {
+      "file": "jev-result.json",
+      "sha256": "2a7c83ac34332e8df49d421bc65f6d38f54e5a61efa724cbb9dae74ed61e8d52",
+      "bytes": 1494
+    },
+    {
+      "file": "mapika-result.json",
+      "sha256": "e73618b3ab99ad0efb91497454f4e178e2e1e584bc46fa10cd2b3df0c8c0ae8c",
+      "bytes": 960
+    },
+    {
+      "file": "handoff.json",
+      "sha256": "6e23c805ca1027004a4e7c8ebbffc4ea2d4a88235fdbd8472b9cab554e4ea6b5",
+      "bytes": 3954
+    },
+    {
+      "file": "fixture-logs/v8-fixture-run1.log",
+      "sha256": "ac416ee13587f18afbcf150589884931b56ac5a78ff6cb2d29fd692809d423a0",
+      "bytes": 20183
+    },
+    {
+      "file": "fixture-logs/v8-fixture-run2.log",
+      "sha256": "ece5e5bc903db52ec3fe1d386b81f6674af9384eb05942ca522ff6ea9fe4e14c",
+      "bytes": 17967
+    }
+  ]
+}

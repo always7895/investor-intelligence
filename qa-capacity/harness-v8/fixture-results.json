@@ -1,0 +1,22 @@
+{
+  "command": "python -B -m unittest test_native_inference_runner -v",
+  "suite": "70 tests (67 V7 retained incl. F1/F2 + 3 new V8 R2-A post-connect/pre-POST make_transport boundary regressions)",
+  "run1": {
+    "result": "Ran 70 tests in 16.826s \u2014 FAILED (errors=3), exit 1",
+    "pass": "67/70",
+    "failures": 0,
+    "errors": 3,
+    "skips": 0,
+    "log": "fixture-logs/v8-fixture-run1.log",
+    "note": "first (full) budgeted run: all 67 retained V7 tests pass; 3 new make_transport tests ERROR at 'inst = conn_factory.return_value' \u2014 test-side unit-test API misuse (patch.object with a class new-value returns the class, not a mock); harness behavior under test was not the cause"
+  },
+  "run2": {
+    "result": "Ran 70 tests in 16.828s \u2014 OK, exit 0",
+    "pass": "70/70",
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "log": "fixture-logs/v8-fixture-run2.log",
+    "note": "single permitted retry after the single narrowly diagnosed test-only repair (_V8FakeConn.last_instance tracker; runner/run-plan/request untouched). 3 new tests pass: expiry-during-connect -> authority_stale + ZERO POST + connection closed; valid-window -> exactly one POST + 200/'ok' + connection closed; non-finite clock at post-connect dispatch boundary -> clock_invalid + ZERO POST + connection closed. Budget consumed: 1 full run + 1 diagnosed repair + 1 retry run; no third run; no mis-targeted executions beyond the two documented runs"
+  }
+}

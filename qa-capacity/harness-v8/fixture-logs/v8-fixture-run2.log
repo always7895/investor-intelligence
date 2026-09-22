@@ -1,0 +1,199 @@
+test_authority_expiry_during_preparation (test_native_inference_runner.TestNativeInferenceRunner.test_authority_expiry_during_preparation) ... ok
+test_authority_namespace_mismatch (test_native_inference_runner.TestNativeInferenceRunner.test_authority_namespace_mismatch) ... ok
+test_authority_non_finite_bounds_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_authority_non_finite_bounds_rejected) ... ok
+test_authority_old_task (test_native_inference_runner.TestNativeInferenceRunner.test_authority_old_task) ... ok
+test_authority_window_expired (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_expired) ... ok
+test_authority_window_mismatch (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_mismatch) ... ok
+test_authority_wrong_harness (test_native_inference_runner.TestNativeInferenceRunner.test_authority_wrong_harness) ... ok
+test_callback_failure_propagates_nonpass (test_native_inference_runner.TestNativeInferenceRunner.test_callback_failure_propagates_nonpass) ... ok
+test_cancel_after_response_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_after_response_rejected) ... ok
+test_cancel_after_validation_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_after_validation_rejected) ... ok
+test_cancel_before_connection (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_before_connection) ... ok
+test_cancel_during_blocked_response (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_blocked_response) ... ok
+test_cancel_during_body_transfer (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_body_transfer) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 10040)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v8-1790073020041\working\test_native_inference_runner.py", line 155, in do_POST
+    self.wfile.write(bytes([byte]))
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_cancel_during_connect_zero_post (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_connect_zero_post) ... ok
+test_canonical_module_receipts (test_native_inference_runner.TestNativeInferenceRunner.test_canonical_module_receipts) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 7548)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v8-1790073020041\working\test_native_inference_runner.py", line 148, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_chunked_valid_accepted (test_native_inference_runner.TestNativeInferenceRunner.test_chunked_valid_accepted) ... ok
+test_cleanup_leaves_no_local_work (test_native_inference_runner.TestNativeInferenceRunner.test_cleanup_leaves_no_local_work) ... ok
+test_conflicting_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_conflicting_content_length_rejected) ... ok
+test_duplicate_attempt_same_namespace_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_duplicate_attempt_same_namespace_rejected) ... ok
+test_empty_transfer_encoding_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_empty_transfer_encoding_rejected) ... ok
+test_env_proxy_ignored (test_native_inference_runner.TestNativeInferenceRunner.test_env_proxy_ignored) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 5697)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v8-1790073020041\working\test_native_inference_runner.py", line 148, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_exact_request_preservation (test_native_inference_runner.TestNativeInferenceRunner.test_exact_request_preservation) ... ok
+test_expiry_after_native_pre_fails_closed (test_native_inference_runner.TestNativeInferenceRunner.test_expiry_after_native_pre_fails_closed) ... ok
+test_extra_client_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_extra_client_rejected) ... ok
+test_freeze_binding_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_freeze_binding_short_write_rejected) ... ok
+test_git_nonzero_result_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_git_nonzero_result_rejected) ... ok
+test_http_dispatch_revalidates_expired_grant (test_native_inference_runner.TestNativeInferenceRunner.test_http_dispatch_revalidates_expired_grant) ... ok
+test_import_performs_no_work (test_native_inference_runner.TestNativeInferenceRunner.test_import_performs_no_work) ... ok
+test_incomplete_cl_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_incomplete_cl_rejected) ... ok
+test_invalid_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_invalid_content_length_rejected) ... ok
+test_main_argv_forwarded (test_native_inference_runner.TestNativeInferenceRunner.test_main_argv_forwarded) ... ok
+test_main_infinite_evidence_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_main_infinite_evidence_rejected) ... ok
+test_main_refuses_without_authority (test_native_inference_runner.TestNativeInferenceRunner.test_main_refuses_without_authority) ... ok
+test_main_result_codes (test_native_inference_runner.TestNativeInferenceRunner.test_main_result_codes) ... ok
+test_make_transport_expiry_during_connect_zero_post (test_native_inference_runner.TestNativeInferenceRunner.test_make_transport_expiry_during_connect_zero_post) ... ok
+test_make_transport_invalid_clock_at_dispatch_zero_post (test_native_inference_runner.TestNativeInferenceRunner.test_make_transport_invalid_clock_at_dispatch_zero_post) ... ok
+test_make_transport_valid_window_single_post (test_native_inference_runner.TestNativeInferenceRunner.test_make_transport_valid_window_single_post) ... ok
+test_malformed_chunk_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_malformed_chunk_rejected) ... ok
+test_mixed_framing_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_mixed_framing_rejected) ... ok
+test_oversize_body_fails (test_native_inference_runner.TestNativeInferenceRunner.test_oversize_body_fails) ... ok
+test_post_freeze_binding_change_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_post_freeze_binding_change_rejected) ... ok
+test_pre_admit_exactly_one_no_retry (test_native_inference_runner.TestNativeInferenceRunner.test_pre_admit_exactly_one_no_retry) ... ok
+test_pre_deny_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_pre_deny_zero_dispatch) ... ok
+test_raw_validation_rejects (test_native_inference_runner.TestNativeInferenceRunner.test_raw_validation_rejects) ... ok
+test_receipt_binding_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_binding_mismatch_rejected) ... ok
+test_receipt_persisted_full_no_overwrite (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_persisted_full_no_overwrite) ... ok
+test_receipt_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_short_write_rejected) ... ok
+test_redirect_not_followed (test_native_inference_runner.TestNativeInferenceRunner.test_redirect_not_followed) ... ok
+test_relative_namespace_grant_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_relative_namespace_grant_rejected) ... ok
+test_relative_root_only_namespace_grant_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_relative_root_only_namespace_grant_rejected) ... ok
+test_request_amendment_usage_conditions (test_native_inference_runner.TestNativeInferenceRunner.test_request_amendment_usage_conditions) ... ok
+test_request_identity_negative_cases (test_native_inference_runner.TestNativeInferenceRunner.test_request_identity_negative_cases) ... ok
+test_response_failure_modes (test_native_inference_runner.TestNativeInferenceRunner.test_response_failure_modes) ... ok
+test_run_live_authority_stale_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_authority_stale_rejected) ... ok
+test_run_live_digest_mismatch_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_digest_mismatch_zero_dispatch) ... ok
+test_run_live_source_head_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_source_head_mismatch_rejected) ... ok
+test_script_entrypoint_forwards_args (test_native_inference_runner.TestNativeInferenceRunner.test_script_entrypoint_forwards_args) ... ok
+test_script_entrypoint_refuses_without_authority (test_native_inference_runner.TestNativeInferenceRunner.test_script_entrypoint_refuses_without_authority) ... ok
+test_self_binding_accepted (test_native_inference_runner.TestNativeInferenceRunner.test_self_binding_accepted) ... ok
+test_slow_headers_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_slow_headers_cannot_extend_deadline) ... ok
+test_stale_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_stale_identity_rejected) ... ok
+test_trickled_body_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_trickled_body_cannot_extend_deadline) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 14699)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v8-1790073020041\working\test_native_inference_runner.py", line 155, in do_POST
+    self.wfile.write(bytes([byte]))
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_unknown_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unknown_identity_rejected) ... ok
+test_unsupported_transfer_encoding_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unsupported_transfer_encoding_rejected) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 14697)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v8-1790073020041\working\test_native_inference_runner.py", line 148, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_whitespace_transfer_encoding_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_whitespace_transfer_encoding_rejected) ... ok
+test_work_callback_entry_revalidates_expired_grant (test_native_inference_runner.TestNativeInferenceRunner.test_work_callback_entry_revalidates_expired_grant) ... ok
+test_work_callback_valid_grant_dispatches (test_native_inference_runner.TestNativeInferenceRunner.test_work_callback_valid_grant_dispatches) ... ok
+test_worker_scope_fixed (test_native_inference_runner.TestNativeInferenceRunner.test_worker_scope_fixed) ... ok
+test_workload_evidence_timeline_consistency (test_native_inference_runner.TestNativeInferenceRunner.test_workload_evidence_timeline_consistency) ... ok
+test_wrong_endpoint_pinned (test_native_inference_runner.TestNativeInferenceRunner.test_wrong_endpoint_pinned) ... ok
+
+----------------------------------------------------------------------
+Ran 70 tests in 16.828s
+
+OK
+NATIVE_RECEIPT_DIGEST=3c1e6cc72c6cab607de4f4fdc1bff788ccc7c27cd0b59527fc0961882991d617
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=bc0bbb8dc468720acbf6958cdcaf6093960bc14022f88788139f0d57ac50ee79
+RESULT=PASS
+Usage: native_inference_runner [no flags]
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=PASS
+REFUSED code=authority_missing
+Usage: native_inference_runner [no flags]
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
