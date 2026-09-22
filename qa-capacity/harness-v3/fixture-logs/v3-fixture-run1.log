@@ -1,0 +1,91 @@
+test_callback_failure_propagates_nonpass (test_native_inference_runner.TestNativeInferenceRunner.test_callback_failure_propagates_nonpass) ... ok
+test_cancel_before_connection (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_before_connection) ... ok
+test_cancel_during_blocked_response (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_blocked_response) ... ok
+test_cancel_during_body_transfer (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_body_transfer) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 1153)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-test-only-repair-6922278-v3-1790010999893\test_native_inference_runner.py", line 154, in do_POST
+    self.wfile.write(bytes([byte]))
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_cleanup_leaves_no_local_work (test_native_inference_runner.TestNativeInferenceRunner.test_cleanup_leaves_no_local_work) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 1151)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-test-only-repair-6922278-v3-1790010999893\test_native_inference_runner.py", line 147, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_env_proxy_ignored (test_native_inference_runner.TestNativeInferenceRunner.test_env_proxy_ignored) ... ok
+test_exact_request_preservation (test_native_inference_runner.TestNativeInferenceRunner.test_exact_request_preservation) ... ok
+test_extra_client_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_extra_client_rejected) ... ok
+test_import_performs_no_work (test_native_inference_runner.TestNativeInferenceRunner.test_import_performs_no_work) ... ok
+test_main_refuses_without_authority (test_native_inference_runner.TestNativeInferenceRunner.test_main_refuses_without_authority) ... ok
+test_oversize_body_fails (test_native_inference_runner.TestNativeInferenceRunner.test_oversize_body_fails) ... ok
+test_post_freeze_binding_change_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_post_freeze_binding_change_rejected) ... ok
+test_pre_admit_exactly_one_no_retry (test_native_inference_runner.TestNativeInferenceRunner.test_pre_admit_exactly_one_no_retry) ... ok
+test_pre_deny_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_pre_deny_zero_dispatch) ... ok
+test_raw_validation_rejects (test_native_inference_runner.TestNativeInferenceRunner.test_raw_validation_rejects) ... ok
+test_receipt_binding_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_binding_mismatch_rejected) ... ok
+test_redirect_not_followed (test_native_inference_runner.TestNativeInferenceRunner.test_redirect_not_followed) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 1155)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-test-only-repair-6922278-v3-1790010999893\test_native_inference_runner.py", line 147, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_request_amendment_usage_conditions (test_native_inference_runner.TestNativeInferenceRunner.test_request_amendment_usage_conditions) ... ok
+test_response_failure_modes (test_native_inference_runner.TestNativeInferenceRunner.test_response_failure_modes) ... ok
+test_self_binding_accepted (test_native_inference_runner.TestNativeInferenceRunner.test_self_binding_accepted) ... ok
+test_slow_headers_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_slow_headers_cannot_extend_deadline) ... ok
+test_stale_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_stale_identity_rejected) ... ok
+test_trickled_body_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_trickled_body_cannot_extend_deadline) ... ok
+test_unknown_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unknown_identity_rejected) ... ok
+test_worker_scope_fixed (test_native_inference_runner.TestNativeInferenceRunner.test_worker_scope_fixed) ... ok
+test_workload_evidence_timeline_consistency (test_native_inference_runner.TestNativeInferenceRunner.test_workload_evidence_timeline_consistency) ... ok
+test_wrong_endpoint_pinned (test_native_inference_runner.TestNativeInferenceRunner.test_wrong_endpoint_pinned) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 7.870s
+
+OK
+REFUSED code=authority_missing
+Usage: native_inference_runner [no flags]
