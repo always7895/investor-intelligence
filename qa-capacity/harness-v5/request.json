@@ -1,0 +1,12 @@
+{
+  "model": "Qwen3.8-27B-EXL3-5.5bpw-v2",
+  "messages": [
+    {"role": "user", "content": "Write a numbered list of 32 distinct common English nouns. Use one line per item, formatted 'number: noun'. Output only the list."}
+  ],
+  "n": 1,
+  "stream": false,
+  "temperature": 0,
+  "max_tokens": 384,
+  "enable_thinking": false,
+  "stream_options": {"include_usage": true}
+}

@@ -1,0 +1,11 @@
+{
+  "parent_task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V4",
+  "parent_namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819",
+  "parent_review_sha": "7caa887eca1e616ffb5ebb46db960636e7bac6e3",
+  "parent_core_digest": "74a301b3606eb5d1fd57789decd6591e4e6f7b1adfab89273bc1ca3aa0ab4d75",
+  "parent_verdict": "REWORK (17/17 files verified; R1 CLOSED; F1/F2 CLOSED_RETAINED; O_BINARY correct_and_complete; R2/R3/R4/R5/R6 prescribed; new prospective task ID reserved)",
+  "grandparent_review_sha": "f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983",
+  "grandparent_core_digest": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+  "lineage_note": "actual Git parent of each review branch commit is 6922278ac865727fdcdded96535f94aaaabeb8b3 (the authorized source SHA); the review SHA chain is the delivery-reference chain (master lineage correction recorded in V4 verdict)",
+  "v4_namespace_integrity": "V4 harness was corrupted by an orchestration error (harness hunks applied to the wrong namespace); restored byte-identical from the reviewed branch (qa-capacity-harness-v4 @ 7caa887) before V5 work; all other V4 files verified intact"
+}

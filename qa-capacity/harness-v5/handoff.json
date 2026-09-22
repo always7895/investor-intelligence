@@ -1,0 +1,49 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V5",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v5-1790043960287",
+  "labels": {
+    "FIXTURE_PASS": true,
+    "SOURCE_ACCEPTANCE": "PENDING_EXACT_SHA_REVIEW",
+    "NATIVE_EXECUTION_AUTHORIZED": false,
+    "CAPACITY_EVIDENCE": "UNQUALIFIED",
+    "PROVISIONAL_LOCAL_ONLY": true,
+    "PUSH_ALLOWED": false,
+    "BACKEND_MIGRATION_ALLOWED": false,
+    "DEVELOPMENT_COMPLETE": false,
+    "FINAL_RELEASE_COMPLETE": false
+  },
+  "master_review_context": {
+    "parent_review_sha": "7caa887eca1e616ffb5ebb46db960636e7bac6e3",
+    "parent_verdict": "REWORK (17/17 files verified; R1 CLOSED; F1/F2 CLOSED_RETAINED; O_BINARY correct_and_complete; R2/R3/R4/R5/R6 prescribed; prospective task ID reserved)",
+    "v5_addressed": "R2 current execution authority (new prospective task ID + bounded window + identity binding + git returncode); R3 header framing validation; R4 final cancel check at publication boundary; R5 canonical result classification + evidence validation + argv handling; R6 checked complete persistence + byte/hash verification",
+    "next_action": "master exact-SHA review of the V5 candidate at its review commit (immutable raw.githubusercontent.com URLs); verdict ACCEPT/REWORK/SOURCE_UNAVAILABLE per the established schema"
+  },
+  "identities": {
+    "V5_HARNESS_SHA256": "8c70e35d6e419f3ad8c6f4ac41e249b2218ab4d9f4122cd9338cbd602f8efb18",
+    "V5_TEST_FILE_SHA256": "749c530df7f0b71d5325ee93a4b1d610a2aba608b9b8e20897118a1e9ae995d9",
+    "V5_REQUEST_BYTES_SHA256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+    "V5_RUN_PLAN_SHA256": "6b6a7b2221a18e93eb6ddf3d9e617073a89eedd8c01d259bd4b51d842c1fbc05",
+    "V5_BINDING_TEMPLATE_SHA256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+    "V5_IMPLEMENTATION_REVIEW_SHA256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27",
+    "V5_RUNTIME_REPAIR_REVIEW_SHA256": "b1dca5ba3614394c073ab37c861b2f4dcd7d25b2b4d240af49f6108cd01d08e6",
+    "REPAIR_DIFF_SHA256": "8cfabe842875ff8e35cda5069c20fd9c1aa4549fa8a2997f7ea30fab84b03f6f",
+    "V5_CORE_DIGEST": "c0ba20bcf599dd44b8ddcaa0959cb2f5d7889f044a0d7e5669c646dd3bfdfc4d",
+    "JEV_RESULT_SHA256": "a69505b3303c57cc45885187ba73d1a175b6bf366fc8ea352702f9fb57c3323e",
+    "MAPIKA_RESULT_SHA256": "1594a0fbe91b79e4b18eb185404267fb228c6f548458772a44305fbad993f42c"
+  },
+  "fixture": {
+    "run1": "invalidated (orchestration error; V4 restored byte-identical)",
+    "run2": "46/54 (7F+1E) -> minimal fixes",
+    "run3": "53/54 (1F) -> minimal fix",
+    "run4": "54/54 OK exit 0"
+  },
+  "constraints_held": [
+    "no native attempts",
+    "no live inference",
+    "no tracked repository changes",
+    "request payload byte-identical",
+    "capacity module unmodified",
+    "historical namespaces preserved (V4 restored to reviewed state)",
+    "R1 and F1/F2 logic not reworked"
+  ]
+}

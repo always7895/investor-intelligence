@@ -1,0 +1,30 @@
+{
+  "command": "python -B -m unittest test_native_inference_runner -v",
+  "suite": "54 tests (39 V4 retained incl. F1/F2 + 15 new V5 boundary regressions)",
+  "run1": {
+    "result": "Ran 54 tests — FAILED (failures=18, errors=1), exit 1",
+    "note": "invalidated: orchestration error — harness hunks were applied to the V4 namespace by a dispatch script that still read v4_ns.txt; V4 harness restored byte-identical from the reviewed branch (qa-capacity-harness-v4 @ 7caa887); all 10 harness hunks re-applied to the V5 namespace; run1 log preserved as-is"
+  },
+  "run2": {
+    "result": "Ran 54 tests in 10.168s — FAILED (failures=7, errors=1), exit 1",
+    "root_causes": [
+      "harness bug: TE header check len(set(values)) != 1 fired on the zero-header case (empty set length 0) — fixed by guarding with if transfer_encoding_values",
+      "test bug: canonical probe signature — module calls probe() with no arguments (test used probe(_binding))",
+      "test bug: canonical QUALIFIED fixture — instant work leaves no genuinely interior DURING sample; fixed with 3.0s slow work wrapper",
+      "test bug: receipt short-write simulation — loop continuation wrote the remainder fully (correct _write_complete behavior); simulation fixed to return 0 (no progress) on continuation"
+    ]
+  },
+  "run3": {
+    "result": "Ran 54 tests in 14.684s — FAILED (failures=1), exit 1",
+    "root_causes": [
+      "harness bug: added framing_required check fired on no-body 3xx responses (302 redirect has no CL/TE) before the status check — fixed by scoping framing_required to 2xx only (no-body 3xx/4xx/5xx keep the original read-until-EOF behavior)"
+    ]
+  },
+  "run4": {
+    "result": "Ran 54 tests in 14.699s — OK, exit 0",
+    "pass": "54/54",
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  }
+}

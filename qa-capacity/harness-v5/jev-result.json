@@ -1,0 +1,44 @@
+{
+  "model": "jev-1.13.0",
+  "scope": "V5 harness-repair candidate (master V4 REWORK: R2/R3/R4/R5/R6 + new prospective task ID): per-finding resolution + fixture evidence adequacy + overall decision-grade",
+  "binding": {
+    "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "v5_core_digest": "c0ba20bcf599dd44b8ddcaa0959cb2f5d7889f044a0d7e5669c646dd3bfdfc4d",
+    "parent_review_sha": "7caa887eca1e616ffb5ebb46db960636e7bac6e3"
+  },
+  "answers": {
+    "r2_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.9
+    },
+    "r3_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.93
+    },
+    "r4_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.99
+    },
+    "r5_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.98
+    },
+    "r6_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.99
+    },
+    "fixture_evidence_adequacy": {
+      "choice": "ADEQUATE",
+      "probability": 0.89
+    },
+    "overall_candidate": {
+      "choice": "DECISION_GRADE",
+      "probability": 0.79
+    }
+  },
+  "usage": {
+    "input_tokens": 3089,
+    "output_tokens": 282,
+    "elapsed_ms": 920
+  }
+}

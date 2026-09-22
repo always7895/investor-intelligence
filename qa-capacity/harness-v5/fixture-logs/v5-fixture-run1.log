@@ -1,0 +1,333 @@
+test_authority_old_task (test_native_inference_runner.TestNativeInferenceRunner.test_authority_old_task) ... FAIL
+test_authority_window_expired (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_expired) ... FAIL
+test_authority_window_mismatch (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_mismatch) ... FAIL
+test_authority_wrong_harness (test_native_inference_runner.TestNativeInferenceRunner.test_authority_wrong_harness) ... FAIL
+test_callback_failure_propagates_nonpass (test_native_inference_runner.TestNativeInferenceRunner.test_callback_failure_propagates_nonpass) ... ok
+test_cancel_after_response_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_after_response_rejected) ... ok
+test_cancel_after_validation_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_after_validation_rejected) ... FAIL
+test_cancel_before_connection (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_before_connection) ... ok
+test_cancel_during_blocked_response (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_blocked_response) ... ok
+test_cancel_during_body_transfer (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_body_transfer) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 7999)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 155, in do_POST
+    self.wfile.write(bytes([byte]))
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_cancel_during_connect_zero_post (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_during_connect_zero_post) ... ok
+test_canonical_module_receipts (test_native_inference_runner.TestNativeInferenceRunner.test_canonical_module_receipts) ... FAIL
+test_chunked_valid_accepted (test_native_inference_runner.TestNativeInferenceRunner.test_chunked_valid_accepted) ... ok
+test_cleanup_leaves_no_local_work (test_native_inference_runner.TestNativeInferenceRunner.test_cleanup_leaves_no_local_work) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 7997)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 148, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+ok
+test_conflicting_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_conflicting_content_length_rejected) ... FAIL
+test_env_proxy_ignored (test_native_inference_runner.TestNativeInferenceRunner.test_env_proxy_ignored) ... ok
+test_exact_request_preservation (test_native_inference_runner.TestNativeInferenceRunner.test_exact_request_preservation) ... ok
+test_extra_client_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_extra_client_rejected) ... ok
+test_freeze_binding_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_freeze_binding_short_write_rejected) ... FAIL
+test_git_nonzero_result_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_git_nonzero_result_rejected) ... FAIL
+test_import_performs_no_work (test_native_inference_runner.TestNativeInferenceRunner.test_import_performs_no_work) ... ok
+test_incomplete_cl_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_incomplete_cl_rejected) ... ok
+test_invalid_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_invalid_content_length_rejected) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 8006)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 148, in do_POST
+    self.wfile.write(body)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+FAIL
+test_main_argv_forwarded (test_native_inference_runner.TestNativeInferenceRunner.test_main_argv_forwarded) ... ok
+test_main_refuses_without_authority (test_native_inference_runner.TestNativeInferenceRunner.test_main_refuses_without_authority) ... ok
+test_main_result_codes (test_native_inference_runner.TestNativeInferenceRunner.test_main_result_codes) ... FAIL
+test_malformed_chunk_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_malformed_chunk_rejected) ... ok
+test_mixed_framing_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_mixed_framing_rejected) ... FAIL
+test_oversize_body_fails (test_native_inference_runner.TestNativeInferenceRunner.test_oversize_body_fails) ... ok
+test_post_freeze_binding_change_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_post_freeze_binding_change_rejected) ... ok
+test_pre_admit_exactly_one_no_retry (test_native_inference_runner.TestNativeInferenceRunner.test_pre_admit_exactly_one_no_retry) ... ok
+test_pre_deny_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_pre_deny_zero_dispatch) ... ok
+test_raw_validation_rejects (test_native_inference_runner.TestNativeInferenceRunner.test_raw_validation_rejects) ... ok
+test_receipt_binding_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_binding_mismatch_rejected) ... ok
+test_receipt_persisted_full_no_overwrite (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_persisted_full_no_overwrite) ... ERROR
+test_receipt_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_short_write_rejected) ... FAIL
+test_redirect_not_followed (test_native_inference_runner.TestNativeInferenceRunner.test_redirect_not_followed) ... ok
+test_request_amendment_usage_conditions (test_native_inference_runner.TestNativeInferenceRunner.test_request_amendment_usage_conditions) ... ok
+test_request_identity_negative_cases (test_native_inference_runner.TestNativeInferenceRunner.test_request_identity_negative_cases) ... ok
+test_response_failure_modes (test_native_inference_runner.TestNativeInferenceRunner.test_response_failure_modes) ... ok
+test_run_live_authority_stale_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_authority_stale_rejected) ... FAIL
+test_run_live_digest_mismatch_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_digest_mismatch_zero_dispatch) ... FAIL
+test_run_live_source_head_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_source_head_mismatch_rejected) ... FAIL
+test_script_entrypoint_forwards_args (test_native_inference_runner.TestNativeInferenceRunner.test_script_entrypoint_forwards_args) ... FAIL
+test_script_entrypoint_refuses_without_authority (test_native_inference_runner.TestNativeInferenceRunner.test_script_entrypoint_refuses_without_authority) ... ok
+test_self_binding_accepted (test_native_inference_runner.TestNativeInferenceRunner.test_self_binding_accepted) ... ok
+test_slow_headers_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_slow_headers_cannot_extend_deadline) ... ok
+test_stale_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_stale_identity_rejected) ... ok
+test_trickled_body_cannot_extend_deadline (test_native_inference_runner.TestNativeInferenceRunner.test_trickled_body_cannot_extend_deadline) ... ok
+test_unknown_identity_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unknown_identity_rejected) ... ok
+test_unsupported_transfer_encoding_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unsupported_transfer_encoding_rejected) ... ----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 8026)
+Traceback (most recent call last):
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 155, in do_POST
+    self.wfile.write(bytes([byte]))
+  File "C:\Users\moon9\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] 連線已被您主機上的軟體中止。
+----------------------------------------
+FAIL
+test_worker_scope_fixed (test_native_inference_runner.TestNativeInferenceRunner.test_worker_scope_fixed) ... ok
+test_workload_evidence_timeline_consistency (test_native_inference_runner.TestNativeInferenceRunner.test_workload_evidence_timeline_consistency) ... ok
+test_wrong_endpoint_pinned (test_native_inference_runner.TestNativeInferenceRunner.test_wrong_endpoint_pinned) ... ok
+
+======================================================================
+ERROR: test_receipt_persisted_full_no_overwrite (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_persisted_full_no_overwrite)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1229, in test_receipt_persisted_full_no_overwrite
+    receipt, evidence = h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\native_inference_runner.py", line 393, in run_live
+    raise WorkloadError("run_plan_mismatch")
+native_inference_runner.WorkloadError: run_plan_mismatch
+
+======================================================================
+FAIL: test_authority_old_task (test_native_inference_runner.TestNativeInferenceRunner.test_authority_old_task)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1342, in test_authority_old_task
+    self.assertEqual(ctx.exception.code, "authority_mismatch")
+AssertionError: 'run_plan_mismatch' != 'authority_mismatch'
+- run_plan_mismatch
++ authority_mismatch
+
+
+======================================================================
+FAIL: test_authority_window_expired (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_expired)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1300, in test_authority_window_expired
+    self.assertEqual(ctx.exception.code, "authority_stale")
+AssertionError: 'run_plan_mismatch' != 'authority_stale'
+- run_plan_mismatch
++ authority_stale
+
+
+======================================================================
+FAIL: test_authority_window_mismatch (test_native_inference_runner.TestNativeInferenceRunner.test_authority_window_mismatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1314, in test_authority_window_mismatch
+    self.assertEqual(ctx.exception.code, "authority_mismatch")
+AssertionError: 'run_plan_mismatch' != 'authority_mismatch'
+- run_plan_mismatch
++ authority_mismatch
+
+
+======================================================================
+FAIL: test_authority_wrong_harness (test_native_inference_runner.TestNativeInferenceRunner.test_authority_wrong_harness)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1328, in test_authority_wrong_harness
+    self.assertEqual(ctx.exception.code, "authority_mismatch")
+AssertionError: 'run_plan_mismatch' != 'authority_mismatch'
+- run_plan_mismatch
++ authority_mismatch
+
+
+======================================================================
+FAIL: test_cancel_after_validation_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_cancel_after_validation_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1424, in test_cancel_after_validation_rejected
+    with self.assertRaises(h.WorkloadError) as ctx:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkloadError not raised
+
+======================================================================
+FAIL: test_canonical_module_receipts (test_native_inference_runner.TestNativeInferenceRunner.test_canonical_module_receipts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1279, in test_canonical_module_receipts
+    self.assertEqual(receipt_pos["summary"]["CAPACITY_EVIDENCE"], "QUALIFIED")
+AssertionError: 'UNQUALIFIED' != 'QUALIFIED'
+- UNQUALIFIED
+? --
++ QUALIFIED
+
+
+======================================================================
+FAIL: test_conflicting_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_conflicting_content_length_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1385, in test_conflicting_content_length_rejected
+    self.assertEqual(ctx.exception.code, "conflicting_content_length")
+AssertionError: 'incomplete_body' != 'conflicting_content_length'
+- incomplete_body
++ conflicting_content_length
+
+
+======================================================================
+FAIL: test_freeze_binding_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_freeze_binding_short_write_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1465, in test_freeze_binding_short_write_rejected
+    with self.assertRaises(h.WorkloadError) as ctx:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkloadError not raised
+
+======================================================================
+FAIL: test_git_nonzero_result_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_git_nonzero_result_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1360, in test_git_nonzero_result_rejected
+    self.assertEqual(ctx.exception.code, "source_head_invalid")
+AssertionError: 'run_plan_mismatch' != 'source_head_invalid'
+- run_plan_mismatch
++ source_head_invalid
+
+
+======================================================================
+FAIL: test_invalid_content_length_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_invalid_content_length_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1371, in test_invalid_content_length_rejected
+    with self.assertRaises(h.WorkloadError) as ctx:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkloadError not raised
+
+======================================================================
+FAIL: test_main_result_codes (test_native_inference_runner.TestNativeInferenceRunner.test_main_result_codes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1181, in test_main_result_codes
+    self.assertEqual(h.main(namespace=str(ns)), 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_mixed_framing_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_mixed_framing_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1395, in test_mixed_framing_rejected
+    with self.assertRaises(h.WorkloadError) as ctx:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkloadError not raised
+
+======================================================================
+FAIL: test_receipt_short_write_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_receipt_short_write_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1500, in test_receipt_short_write_rejected
+    self.assertIn(ctx.exception.code, ("persistence_no_progress", "persistence_verify_failed"))
+AssertionError: 'run_plan_mismatch' not found in ('persistence_no_progress', 'persistence_verify_failed')
+
+======================================================================
+FAIL: test_run_live_authority_stale_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_authority_stale_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1074, in test_run_live_authority_stale_rejected
+    self.assertEqual(ctx.exception.code, "authority_stale")
+AssertionError: 'run_plan_mismatch' != 'authority_stale'
+- run_plan_mismatch
++ authority_stale
+
+
+======================================================================
+FAIL: test_run_live_digest_mismatch_zero_dispatch (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_digest_mismatch_zero_dispatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1048, in test_run_live_digest_mismatch_zero_dispatch
+    self.assertEqual(ctx.exception.code, "request_digest_mismatch")
+AssertionError: 'run_plan_mismatch' != 'request_digest_mismatch'
+- run_plan_mismatch
++ request_digest_mismatch
+
+
+======================================================================
+FAIL: test_run_live_source_head_mismatch_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_run_live_source_head_mismatch_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1060, in test_run_live_source_head_mismatch_rejected
+    self.assertEqual(ctx.exception.code, "source_head_mismatch")
+AssertionError: 'run_plan_mismatch' != 'source_head_mismatch'
+- run_plan_mismatch
++ source_head_mismatch
+
+
+======================================================================
+FAIL: test_script_entrypoint_forwards_args (test_native_inference_runner.TestNativeInferenceRunner.test_script_entrypoint_forwards_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1446, in test_script_entrypoint_forwards_args
+    self.assertIn("Usage: native_inference_runner [no flags]", result.stdout)
+AssertionError: 'Usage: native_inference_runner [no flags]' not found in 'REFUSED code=run_plan_mismatch\n'
+
+======================================================================
+FAIL: test_unsupported_transfer_encoding_rejected (test_native_inference_runner.TestNativeInferenceRunner.test_unsupported_transfer_encoding_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Investor-Intelligence-LINE-Pi\_workspace\audit-runtime\qa-capacity-harness-runtime-repair-6922278-v5-1790043960287\test_native_inference_runner.py", line 1407, in test_unsupported_transfer_encoding_rejected
+    with self.assertRaises(h.WorkloadError) as ctx:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkloadError not raised
+
+----------------------------------------------------------------------
+Ran 54 tests in 11.063s
+
+FAILED (failures=18, errors=1)
+Usage: native_inference_runner [no flags]
+REFUSED code=run_plan_mismatch
+Usage: native_inference_runner [no flags]
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
+NATIVE_RECEIPT_DIGEST=abababababababababababababababababababababababababababababababab
+RESULT=NON_PASS
