@@ -1,0 +1,80 @@
+{
+  "record": "attributable Mapika routing evaluation (single authorized re-run per master V8 finding EVAL-IDENTITY-01)",
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8",
+  "binding": {
+    "REVIEW_SHA": "ee86f15ba73ab4a0fdcf158dc7d8cebfed957601",
+    "CORE_DIGEST": "0247939d3357c39992b1c11cecebf4898149a9ad1c686ba1cdb78a23f866168d",
+    "JEV_RESULT_SHA256": "2a7c83ac34332e8df49d421bc65f6d38f54e5a61efa724cbb9dae74ed61e8d52"
+  },
+  "service_identity_verification": {
+    "note": "invocation service/model identity verified against the running sidecar process, its load profile, the on-disk weights, and the service's own health and response fields \u2014 not from the TabbyAPI /v1/models catalog label",
+    "sidecar_process": "C:\\Users\\moon9\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m uvicorn sidecar_server:app --app-dir D:\\AI\\decider-system-one-dual --host 127.0.0.1 --port 8000 --workers 1 (PID 37300, listening 127.0.0.1:8000)",
+    "load_profile": "D:/AI/decider-system-one-dual/profiles/system-one/mapika-decider-2b.json -> model_dir D:\\Models\\Mapika-decider-2b-v10, cpu_threads 12, max_state_tokens 1536",
+    "revision_record": "D:/AI/decider-system-one-dual/decider-model-revisions-20260921-143552.json -> Mapika/decider-2b sha b37f7e1ba3fbc9238004cf531fabbee2619973fd -> destination D:\\Models\\Mapika-decider-2b-v10",
+    "weights_file": "D:/models/Mapika-decider-2b-v10/model.safetensors",
+    "weights_sha256": "1bf79b6aa6966a0faf930940799b1f54a831368d9738123722d483597c0ac2e7",
+    "weights_version": "decider_config.json version=v10 (base Qwen/Qwen3.5-2B-Base, release 2026-09-19, parent decider-2b v8)",
+    "health_report": {
+      "ok": true,
+      "backend": "cpu",
+      "model": "decider-v10",
+      "device": "cpu",
+      "dtype": "torch.bfloat16",
+      "max_state_tokens": 1536,
+      "torch": "2.12.1+cpu",
+      "cuda_available": false,
+      "cpu_threads": 12
+    },
+    "response_self_identity": "the evaluation response below declares model=decider-v10 (the sidecar's own response field for this call)"
+  },
+  "disputed_record_diagnosis": {
+    "file": "mapika-result.json (preserved as historical evidence, NOT overwritten)",
+    "raw_record": "mapika-v8-raw.json (namespace): request to http://127.0.0.1:5000/v1/chat/completions with model=Mapika-decider-2b-v10; the returned completion's model field = Qwen3.8-27B-EXL3-5.5bpw-v2",
+    "conclusion": "WRONG ROUTE INVOKED: the TabbyAPI (port 5000) chat-completions call that requested the Mapika catalog ID was processed by the Qwen executor model (the response model field is the controlling execution evidence); the wrapper then mis-declared the result as Mapika based on the catalog label. No genuine existing Mapika result existed for the V8 candidate, so the single authorized re-run below was performed through the decider-system-one CPU sidecar (the same authorized service that produced the V7 mapika-result.json shape: model/answers/confidence/certainty/usage)."
+  },
+  "request": {
+    "endpoint": "http://127.0.0.1:8000/v1/systemone (decider-system-one extension system_one_decide tool)",
+    "max_state_tokens": 512,
+    "state": {
+      "task": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8 routing gate (single authorized re-run after master finding EVAL-IDENTITY-01: prior mapika-result.json wrapper mis-attributed a Qwen-processed completion as Mapika; that file is preserved as historical evidence, not overwritten)",
+      "review_sha": "ee86f15ba73ab4a0fdcf158dc7d8cebfed957601",
+      "core_digest": "0247939d3357c39992b1c11cecebf4898149a9ad1c686ba1cdb78a23f866168d",
+      "jev_result_sha256": "2a7c83ac34332e8df49d421bc65f6d38f54e5a61efa724cbb9dae74ed61e8d52",
+      "master_v8_review": "VERDICT=REWORK; SHA_VERIFIED=true; VERIFIED_FILES=18/18; R2-A CLOSED (runtime repair accepted: post-connect/pre-POST guard in default live transport, bound from run_live, 3-hunk diff, existing checks preserved); SOURCE_ACCEPTANCE=ACCEPT_SCOPED_RUNTIME_REPAIR; sole finding EVAL-IDENTITY-01 (evidence-only routing attribution, no code defect)",
+      "evidence": "fixture 70/70 (1 full run + 1 diagnosed test-only repair + 1 retry; no third run); master independently re-executed run_live path: expiry-during-connect 0 POST authority_stale, valid 1 POST, non-finite clock 0 POST clock_invalid, cancel retained, guard-removal control reproduces old failure; JEV RESOLVED/RETAINED/COMPLIANT/HELD ordinal 2.4; constraints held (0 native attempts, request byte-identical, capacity module unmodified, NATIVE_EXECUTION_AUTHORIZED=false)",
+      "note": "this evaluation is bound to review_sha + core_digest + jev_result_sha256; it is a routing gate only, not master approval; if PROCEED, source acceptance may be lifted without re-reviewing accepted code"
+    },
+    "questions": {
+      "routing_decision": {
+        "type": "choice",
+        "instructions": "Choose the routing decision for the V8 evidence-correction delivery.",
+        "criteria": {
+          "PROCEED": "Attributable routing evaluation confirms delivery: the accepted runtime repair stands and only the evidence correction is outstanding; source acceptance may be lifted",
+          "REWORK_FIRST": "Further repair or evidence work is required before source acceptance can be lifted",
+          "ESCALATE": "An operator-level decision is required"
+        }
+      }
+    }
+  },
+  "response_raw": {
+    "model": "decider-v10",
+    "answers": {
+      "routing_decision": {
+        "type": "choice",
+        "choice": "PROCEED",
+        "confidence": 0.9855,
+        "certainty": 0.9248,
+        "probabilities": {
+          "PROCEED": 0.9855,
+          "REWORK_FIRST": 0.0118,
+          "ESCALATE": 0.0027
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 600,
+      "output_tokens": 0
+    }
+  },
+  "result": "PROCEED (confidence 0.9855, certainty 0.9248) \u2014 routing gate only; route authority = master V8 next_action (evidence-only correction) + operator V8 session directive; not master approval"
+}

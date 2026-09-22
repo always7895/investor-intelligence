@@ -1,8 +1,8 @@
 {
   "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V8",
   "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v8-1790073020041",
-  "file_count": 17,
-  "path_note": "fixture logs use actual relative paths (fixture-logs/<filename>); packet = 18 files = the 17 files listed below + this artifact-manifest.json (V7 pattern was 17 files; the V8 addition is the second fixture log for run-budget disclosure)",
+  "file_count": 19,
+  "path_note": "fixture logs use actual relative paths (fixture-logs/<filename>); packet = 20 files = the 19 files listed below + this artifact-manifest.json (V7 pattern was 17 files; V8 additions: second fixture log for run-budget disclosure, then evidence-correction-v8.1.md + mapika-v8-routing-attributable.json for master finding EVAL-IDENTITY-01)",
   "files": [
     {
       "file": "native_inference_runner.py",
@@ -46,8 +46,8 @@
     },
     {
       "file": "chronology.json",
-      "sha256": "efb063812d7fb73815663438a0f01789b7777e9a31d65b0024f5dfd845c6005e",
-      "bytes": 6965
+      "sha256": "03955cb13e14e20cc9b54488021293d135993b389ebd88f745d0ba4cfbe3cb03",
+      "bytes": 9649
     },
     {
       "file": "core-manifest.json",
@@ -88,6 +88,16 @@
       "file": "fixture-logs/v8-fixture-run2.log",
       "sha256": "ece5e5bc903db52ec3fe1d386b81f6674af9384eb05942ca522ff6ea9fe4e14c",
       "bytes": 17967
+    },
+    {
+      "file": "evidence-correction-v8.1.md",
+      "sha256": "cd46a1a757eac50c8acc617b5199e317a3c8cdca6ee2a1eab166dfd87ca6a736",
+      "bytes": 5641
+    },
+    {
+      "file": "mapika-v8-routing-attributable.json",
+      "sha256": "21c3fea3799423f85b25c444df5d8e6fc26fa1d5cfd426024a3ef5791019c625",
+      "bytes": 6089
     }
   ]
 }

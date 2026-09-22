@@ -84,6 +84,24 @@
       "event": "delivery_prepared",
       "ts_epoch_s": 1790073760,
       "detail": "review branch qa-capacity-harness-v8 commit + push from 6922278 (actual Git parent = authorized source SHA); 18-file packet under qa-capacity/harness-v8/ (17 V7-pattern files + second fixture log for budget disclosure); exact-SHA delivery to MCP ChatGPT Web master for review"
+    },
+    {
+      "seq": 11,
+      "event": "delivery_complete",
+      "ts_epoch_s": 1790073820,
+      "detail": "qa-capacity-harness-v8 pushed: review SHA ee86f15ba73ab4a0fdcf158dc7d8cebfed957601 (actual Git parent 6922278ac865727fdcdded96535f94aaaabeb8b3 = authorized source SHA); 18 files under qa-capacity/harness-v8/ (fixture logs force-added past .gitignore *.log rule, same pattern as V7); manifest verification 17/17 committed bytes match; operator branch fix/options-provenance-audit restored @ 6922278; exact-SHA delivery to MCP ChatGPT Web master review follows (this namespace chronology append is post-commit; the branch chronology snapshot remains the committed efb06381 entry-1..10)"
+    },
+    {
+      "seq": 12,
+      "event": "master_v8_review_received",
+      "ts_epoch_s": 1790079600,
+      "detail": "MCP ChatGPT Web master (conversation 6ab14617, Pro) exact-SHA review of ee86f15ba73ab4a0fdcf158dc7d8cebfed957601: VERDICT=REWORK; SHA_VERIFIED=true; VERIFIED_FILES=18/18; R2-A CLOSED (runtime repair accepted within review scope; master independently re-executed run_live path: 4 cases pass + guard-removal control reproduces old failure); SOURCE_ACCEPTANCE=ACCEPT_SCOPED_RUNTIME_REPAIR; PACKET_ACCEPTANCE=REWORK_ROUTING_EVIDENCE_ONLY; sole finding EVAL-IDENTITY-01 HIGH (evidence-only routing attribution); raw response persisted _master_response_v8_raw.txt + web-review-response-v8.json"
+    },
+    {
+      "seq": 13,
+      "event": "eval_identity_01_corrected",
+      "ts_epoch_s": 1790079660,
+      "detail": "diagnosis: WRONG ROUTE INVOKED \u2014 TabbyAPI port-5000 chat-completions call requested Mapika catalog ID but was processed by Qwen3.8-27B-EXL3-5.5bpw-v2 (response model field is controlling evidence); wrapper mis-declared Mapika from catalog label; disputed mapika-result.json preserved as historical evidence (not overwritten). Single authorized re-run through the existing authorized Mapika service (decider-system-one CPU sidecar 127.0.0.1:8000) after verifying invocation service/model identity (sidecar process cmdline, load profile -> D:\\Models\\Mapika-decider-2b-v10, weights sha256 1bf79b6aa6966a0faf930940799b1f54a831368d9738123722d483597c0ac2e7, decider_config version=v10, health model=decider-v10, response model=decider-v10); evaluation bound to REVIEW_SHA ee86f15 + CORE_DIGEST 0247939d + JEV_RESULT_SHA256 2a7c83ac; result PROCEED (confidence 0.9855, certainty 0.9248). No fixture rerun, no JEV rerun, no runtime-repair iteration, no provider substitution. Deliverables: chronology entries 12-13, evidence-correction-v8.1.md, mapika-v8-routing-attributable.json, updated artifact-manifest.json (20-file packet)"
     }
   ]
 }
