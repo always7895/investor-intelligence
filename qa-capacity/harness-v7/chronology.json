@@ -1,0 +1,62 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V7",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v7-1790068813312",
+  "append_only": true,
+  "rule": "entries are appended, never rewritten; hashes recorded at entry time",
+  "entries": [
+    {
+      "seq": 1,
+      "event": "namespace_created",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": "fresh V7 namespace created after hash-verified session-handoff-v7.md (sha256 8ebc0fcdb73b85f661d9c60ce278c5406f5408c57c402f2e20cc80dc0f3cd493 = expected); repo verified fix/options-provenance-audit @ 6922278ac865727fdcdded96535f94aaaabeb8b3 (ahead 2 of origin, tracked clean, untracked .tmp/ + _tmp_m5_code.txt preserved); no active prior transaction (V6 cycle terminated: master REWORK verdict persisted, V7 handoff authored, Mapika V7 route recorded)"
+    },
+    {
+      "seq": 2,
+      "event": "dispatch_precondition_applied",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": {
+        "rule": "before dispatching any edit: (1) resolve the destination from the current task explicit namespace (no stale version-specific pointer files); (2) verify the destination task marker and expected baseline hashes before any write; (3) reject any immutable parent namespace as a write destination; (4) verify post-apply hashes against the intended change set",
+        "applied_in_v7": "destination resolved from the explicit V7 namespace; V6 baseline hashes verified before editing (harness b17b40db0d5df08a, test 4c87e17d193e8659, request 1fa1910c8db0dda7, run-plan fb8de167accdd2ea, binding-template 5a453b450056ce69, implementation-review 1c75467ec58b8ce7); V6 namespace rejected as write destination (immutable parent); post-apply hashes verified against the intended change set (harness 459cd777d6d61e04, test 285c46dc7f3f3944, run-plan e3d1ae20398330dc, request unchanged 1fa1910c8db0dda7)"
+      }
+    },
+    {
+      "seq": 3,
+      "event": "implementation_applied",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": "R2-A: _validate_window_records + _check_window_current helpers; unchanged-window revalidation at work-callback entry (work_factory) and immediately before HTTP dispatch (inference_callback); grant bound in run_live; finite bound/finite clock enforcement retained. R2-B: pathlib.PurePath(ns_a).is_absolute() rejection of relative grants before the retained resolved-namespace comparison; per-namespace exclusive persistence protections unchanged. run-plan.json: v7_rework section + sharpened window_contract/authority rule wording. Tests: 6 new (67 total)."
+    },
+    {
+      "seq": 4,
+      "event": "fixture_run1",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": {
+        "command": "python -B -m unittest test_native_inference_runner -v",
+        "result": "Ran 67 tests in 16.359s OK, exit 0",
+        "pass": "67/67",
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "log": "v7-fixture-run1.log (sha256 c839084cf1dac8f8e999fc6be28a1ed8084ab23f6244945797cda1f45f85e41c)",
+        "note": "first and only run for V7; no repair; no mis-targeted runs"
+      }
+    },
+    {
+      "seq": 5,
+      "event": "jev",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": "jev-1.13.0: R2-A RESOLVED 0.88; R2-B RESOLVED 0.94; budget COMPLIANT 0.99; constraints HELD 0.74; decision grade 1.5 (ready-no-defects 0.55 / minor-gaps 0.32); jev-result.json sha256 6d8144538ef9fdad4cad6c24ebd9e131fc211ae61822776f286315449b2147c7"
+    },
+    {
+      "seq": 6,
+      "event": "mapika_route",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": "decider-v10 PROCEED 0.9985 (certainty 0.9836); recorded as routing gate; route authority = master V6 NEXT_ACTION + operator session-rotation directive (prior low-confidence Mapika V7 tie recorded as-is in V6 namespace, not approval); mapika-result.json sha256 818c8e97feecc1836e195a8c1e91ec74220e8b748cc05bc8e105c872bab789fa"
+    },
+    {
+      "seq": 7,
+      "event": "delivery_prepared",
+      "ts_epoch_s": 1790069549.4529095,
+      "detail": "review branch qa-capacity-harness-v7 commit + push from 6922278; exact-SHA delivery to MCP ChatGPT Web master for review"
+    }
+  ]
+}

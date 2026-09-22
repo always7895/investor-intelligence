@@ -1,0 +1,20 @@
+{
+  "model": "decider-v10",
+  "answers": {
+    "proceed_to_master_review": {
+      "type": "choice",
+      "choice": "PROCEED",
+      "confidence": 0.9985,
+      "certainty": 0.9836,
+      "probabilities": {
+        "PROCEED": 0.9985,
+        "REWORK_FIRST": 0.0015
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 311,
+    "output_tokens": 0
+  },
+  "note": "V7 routing gate after JEV + fixture pass. Route authority = master V6 NEXT_ACTION + operator session-rotation directive; the prior low-confidence Mapika V7 tie (EXECUTE=CLARIFY 0.4065, certainty 0.1945) is recorded as-is in the V6 namespace mapika-v7-route.json and is NOT approval."
+}

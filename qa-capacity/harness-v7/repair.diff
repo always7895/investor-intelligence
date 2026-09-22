@@ -1,0 +1,257 @@
+=== native_inference_runner.py (V6 -> V7) ===
+--- a/native_inference_runner.py	2026-09-22 14:44:15.405725200 +0800
++++ b/native_inference_runner.py	2026-09-22 17:24:51.230786300 +0800
+@@ -38,6 +38,32 @@
+         super().__init__(message or code)
+ 
+ 
++def _validate_window_records(auth, handoff):
++    """Shared structural validation of the grant window records: finite non-Boolean
++    bounds, valid_from < valid_until, and identical bounds across both records."""
++    for rec in (auth, handoff):
++        wf = rec.get("valid_from_epoch_s")
++        wu = rec.get("valid_until_epoch_s")
++        if not isinstance(wf, (int, float)) or isinstance(wf, bool) or not math.isfinite(wf):
++            raise WorkloadError("authority_bounds_invalid")
++        if not isinstance(wu, (int, float)) or isinstance(wu, bool) or not math.isfinite(wu):
++            raise WorkloadError("authority_bounds_invalid")
++        if wf >= wu:
++            raise WorkloadError("authority_stale")
++    if auth.get("valid_from_epoch_s") != handoff.get("valid_from_epoch_s") or auth.get("valid_until_epoch_s") != handoff.get("valid_until_epoch_s"):
++        raise WorkloadError("authority_mismatch")
++
++
++def _check_window_current(auth):
++    """Revalidate the unchanged grant window against the current finite wall clock
++    (no extension, no restamping). Expiry at any revalidation point fails closed."""
++    now_wall = time.time()
++    if not math.isfinite(now_wall):
++        raise WorkloadError("clock_invalid")
++    if not (auth["valid_from_epoch_s"] <= now_wall < auth["valid_until_epoch_s"]):
++        raise WorkloadError("authority_stale")
++
++
+ def load_request_bytes(namespace, approved_digest=None):
+     if approved_digest is None:
+         approved_digest = APPROVED_REQUEST_SHA256
+@@ -351,9 +377,11 @@
+     return transport
+ 
+ 
+-def inference_callback(request_bytes, transport, cancel_event, evidence):
++def inference_callback(request_bytes, transport, cancel_event, evidence, auth=None):
+     if cancel_event.is_set():
+         raise WorkloadError("cancelled_before_dispatch")
++    if auth is not None:
++        _check_window_current(auth)
+     t_start = time.monotonic()
+     status, body = transport(request_bytes, cancel_event)
+     if cancel_event.is_set():
+@@ -406,9 +434,11 @@
+     return None
+ 
+ 
+-def work_factory(request_bytes, transport, evidence):
++def work_factory(request_bytes, transport, evidence, auth=None):
+     def work(cancel_event):
+-        inference_callback(request_bytes, transport, cancel_event, evidence)
++        if auth is not None:
++            _check_window_current(auth)
++        inference_callback(request_bytes, transport, cancel_event, evidence, auth)
+     return work
+ 
+ 
+@@ -459,28 +489,16 @@
+     wid_h = handoff.get("window_id")
+     if not isinstance(wid_a, str) or not wid_a or wid_a != wid_h:
+         raise WorkloadError("authority_mismatch")
+-    for rec in (auth, handoff):
+-        wf = rec.get("valid_from_epoch_s")
+-        wu = rec.get("valid_until_epoch_s")
+-        if not isinstance(wf, (int, float)) or isinstance(wf, bool) or not math.isfinite(wf):
+-            raise WorkloadError("authority_bounds_invalid")
+-        if not isinstance(wu, (int, float)) or isinstance(wu, bool) or not math.isfinite(wu):
+-            raise WorkloadError("authority_bounds_invalid")
+-        if wf >= wu:
+-            raise WorkloadError("authority_stale")
+-    if auth.get("valid_from_epoch_s") != handoff.get("valid_from_epoch_s") or auth.get("valid_until_epoch_s") != handoff.get("valid_until_epoch_s"):
+-        raise WorkloadError("authority_mismatch")
++    _validate_window_records(auth, handoff)
+     ns_a = auth.get("run_namespace")
+     ns_h = handoff.get("run_namespace")
+     if not isinstance(ns_a, str) or not ns_a or ns_a != ns_h:
+         raise WorkloadError("authority_mismatch")
++    if not pathlib.PurePath(ns_a).is_absolute():
++        raise WorkloadError("authority_mismatch")
+     if pathlib.Path(ns_a).resolve() != pathlib.Path(namespace).resolve():
+         raise WorkloadError("authority_mismatch")
+-    now_wall = time.time()
+-    if not math.isfinite(now_wall):
+-        raise WorkloadError("clock_invalid")
+-    if not (auth["valid_from_epoch_s"] <= now_wall < auth["valid_until_epoch_s"]):
+-        raise WorkloadError("authority_stale")
++    _check_window_current(auth)
+     if not isinstance(handoff.get("operator"), str) or not handoff.get("operator"):
+         raise WorkloadError("authority_stale")
+     runner_pid = os.getpid()
+@@ -513,12 +531,8 @@
+     if transport is None:
+         transport = make_transport()
+     evidence = {}
+-    work = work_factory(request_bytes, transport, evidence)
+-    now_admission = time.time()
+-    if not math.isfinite(now_admission):
+-        raise WorkloadError("clock_invalid")
+-    if not (auth["valid_from_epoch_s"] <= now_admission < auth["valid_until_epoch_s"]):
+-        raise WorkloadError("authority_stale")
++    work = work_factory(request_bytes, transport, evidence, auth)
++    _check_window_current(auth)
+     receipt = qc.run_native_window(frozen_binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30)
+     req_digest = hashlib.sha256(request_bytes).hexdigest()
+     receipt_bytes = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+=== test_native_inference_runner.py (V6 -> V7) ===
+--- a/test_native_inference_runner.py	2026-09-22 14:44:15.415763200 +0800
++++ b/test_native_inference_runner.py	2026-09-22 17:27:03.002485600 +0800
+@@ -1636,5 +1636,109 @@
+             shutil.rmtree(ns, ignore_errors=True)
+ 
+ 
++    # ---- V7 R2-A/R2-B regression tests (master REWORK on review SHA 36c07a3; R2-A callback-entry + pre-dispatch revalidation, R2-B canonical ABSOLUTE namespace) ----
++
++    def test_work_callback_entry_revalidates_expired_grant(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 7200, "valid_until_epoch_s": now - 3600}
++        transport = FakeTransport()
++        evidence = {}
++        work = h.work_factory((NS / "request.json").read_bytes(), transport, evidence, auth)
++        with self.assertRaises(h.WorkloadError) as ctx:
++            work(threading.Event())
++        self.assertEqual(ctx.exception.code, "authority_stale")
++        self.assertEqual(len(transport.calls), 0)
++        self.assertEqual(evidence, {})
++
++    def test_http_dispatch_revalidates_expired_grant(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 7200, "valid_until_epoch_s": now - 3600}
++        transport = FakeTransport()
++        evidence = {}
++        with self.assertRaises(h.WorkloadError) as ctx:
++            h.inference_callback((NS / "request.json").read_bytes(), transport, threading.Event(), evidence, auth)
++        self.assertEqual(ctx.exception.code, "authority_stale")
++        self.assertEqual(len(transport.calls), 0)
++        self.assertEqual(evidence, {})
++
++    def test_work_callback_valid_grant_dispatches(self):
++        now = time.time()
++        auth = {"valid_from_epoch_s": now - 60, "valid_until_epoch_s": now + 3600}
++        transport = FakeTransport()
++        evidence = {}
++        work = h.work_factory((NS / "request.json").read_bytes(), transport, evidence, auth)
++        work(threading.Event())
++        self.assertEqual(len(transport.calls), 1)
++        for k in ("request_start_s", "response_complete_s", "callback_end_s"):
++            self.assertIn(k, evidence)
++
++    def test_expiry_after_native_pre_fails_closed(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            # Grant valid at admission; expires during the native PRE phase before work runs.
++            self._write_authority_files(ns, plan_bytes, valid_from_offset_s=-60, valid_until_offset_s=0.3)
++            transport = FakeTransport()
++
++            def fake_run_native_window(binding, work, **kwargs):
++                # Mimic the module contract: PRE phase latency, then work invocation;
++                # a work failure yields an UNQUALIFIED receipt (no successful evidence).
++                time.sleep(0.45)
++                try:
++                    work(threading.Event())
++                    outcome = ("QUALIFIED", [])
++                except h.WorkloadError as e:
++                    outcome = ("UNQUALIFIED", [e.code])
++                return {"kind": "qa-capacity-cooperative-v1", "binding": {}, "lease": {"nonce": "00" * 16, "metadata": {}},
++                        "config": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15}, "work_start_s": 1.0, "work_end_s": 2.0,
++                        "samples": [], "events": [],
++                        "summary": {"CAPACITY_EVIDENCE": outcome[0], "reasons": outcome[1]}, "digest": "cd" * 32}
++
++            with unittest.mock.patch.object(h.qc, "run_native_window", fake_run_native_window):
++                receipt, evidence = h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(receipt["summary"]["CAPACITY_EVIDENCE"], "UNQUALIFIED")
++            self.assertIn("authority_stale", receipt["summary"]["reasons"])
++            self.assertEqual(len(transport.calls), 0)
++            self.assertEqual(evidence, {})
++            self.assertTrue((ns / "native-receipt.json").exists())
++            persisted = json.loads((ns / "workload-evidence.json").read_bytes().decode("utf-8"))
++            self.assertEqual(persisted["evidence"], {})
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_relative_namespace_grant_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            # Both records declare the identical RELATIVE namespace (equality passes; absoluteness must reject).
++            self._write_authority_files(ns, plan_bytes, run_namespace="relative/sub/path")
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_mismatch")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_relative_root_only_namespace_grant_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            # Root-only POSIX-style path: absolute but not anchored to the execution namespace;
++            # on Windows os.path.isabs('/x') is True yet the grant must still be rejected
++            # because it does not resolve to the actual run namespace.
++            self._write_authority_files(ns, plan_bytes, run_namespace="/x")
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_mismatch")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+=== run-plan.json (V6 -> V7) ===
+--- a/run-plan.json	2026-09-22 14:46:26.384748800 +0800
++++ b/run-plan.json	2026-09-22 17:26:19.220861300 +0800
+@@ -10,7 +10,7 @@
+     "valid_from_epoch_s": "finite (math.isfinite), non-Boolean number; window start (inclusive); non-finite bounds (e.g. 1e309 -> inf) are rejected (authority_bounds_invalid)",
+     "valid_until_epoch_s": "finite (math.isfinite), non-Boolean number; window end (exclusive); non-finite bounds rejected (authority_bounds_invalid)",
+     "run_namespace": "the single canonical run namespace the grant is bound to; both authority and handoff must declare the identical run_namespace and it must equal the resolved namespace in which run_live executes; a grant cannot be replayed through another namespace",
+-    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated immediately before native admission and workload dispatch (no extension, no restamping); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
++    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated at admission, at work-callback entry, and immediately before HTTP dispatch (no extension, no restamping); expiry after the native PRE sample must fail closed (authority_stale, no successful evidence publication); the declared run_namespace must be a canonical ABSOLUTE path (relative grants are rejected before any further check); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
+   },
+   "artifact_identity": {
+     "authorized_source_sha": "declared in both authority records and must equal the plan value",
+@@ -57,7 +57,7 @@
+       "run-authority.json",
+       "operator-handoff.json"
+     ],
+-    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated immediately before native admission and workload dispatch; missing, stale, mismatched, or non-finite records are rejected before native work; no bypass switches exist"
++    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated at admission, at work-callback entry, and immediately before HTTP dispatch (expiry after the native PRE sample fails closed); missing, stale, mismatched, non-finite, or relative-namespace records are rejected before native work; no bypass switches exist"
+   },
+   "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+   "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+@@ -79,5 +79,11 @@
+     "findings": "R2-A HIGH grant expiry during preparation + non-finite bounds (finite non-Boolean bounds + finite clock + revalidation of the unchanged grant immediately before native admission/dispatch); R2-B HIGH cross-namespace grant replay (run_namespace binding in both authority records + per-namespace exclusive persistence protection as the bounded single-use mechanism); R3 MEDIUM present-but-empty Transfer-Encoding accepted (presence vs nonempty value; empty/whitespace-only TE rejected; CL combined with any TE field rejected); R5-L LOW infinite evidence timestamps accepted (math.isfinite on the three evidence values)",
+     "evidence_corrections": "append-only chronology/exception record (chronology.json): run-budget deviation disclosure (runs 2/3/4 = three runs vs the documented one-full-run-plus-one-retry budget, recorded as a deviation, not compliance), per-run harness/test fingerprints (preserved where available, recorded unavailable otherwise), V4 orchestration-error incident record (resolved erroneous destination, affected file set, pre-error/detected/post-restoration fingerprints, accidentally modified bytes not preserved, post-restoration hash inventory), dispatch precondition (resolve destination from the current task explicit namespace, verify task marker + expected baseline, reject immutable parent namespaces, no stale version-specific pointer files)",
+     "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; an incorrectly targeted run still counts as an execution and must be disclosed; after the budget stop and return the evidence"
++  },
++  "v7_rework": {
++    "verdict": "REWORK (master exact-SHA review; review SHA 36c07a364425af90cc5e168436e2736629109cd3; response persisted in V6 namespace web-review-response-v6.json)",
++    "closed_by_master": "R3 Transfer-Encoding presence-vs-nonempty; R5-L finite evidence timestamps; R5 canonical key/argv; R1/F1/F2/R4/R6 retained",
++    "findings": "R2-A HIGH remaining: the unchanged window must be revalidated (a) at work-callback entry and (b) immediately before HTTP dispatch; a grant that expires after the native PRE sample but before/during the native HTTP dispatch must fail closed (authority_stale, no successful evidence publication); the accepted finite non-Boolean bounds + finite clock enforcement is retained. R2-B HIGH remaining: the declared run_namespace must be a canonical ABSOLUTE path (relative grants rejected before any further check); same-grant/different-namespace replay prevention (resolved-namespace comparison + per-namespace exclusive persistence) retained",
++    "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; a mis-targeted run still counts as an execution and must be disclosed"
+   }
+ }

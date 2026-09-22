@@ -1,0 +1,20 @@
+{
+  "source_head": "PLACEHOLDER_RESOLVED_AT_RUNTIME",
+  "model_id": "Qwen3.8-27B-EXL3-5.5bpw-v2",
+  "context": 262144,
+  "service": {
+    "pid": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "created": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "image_sha256": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "parent_pid": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "parent_created": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "parent_image_sha256": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+    "main_sha256": "PLACEHOLDER_FROM_LIVE_ATTESTATION"
+  },
+  "gpu_uuid": "PLACEHOLDER_FROM_LIVE_ATTESTATION",
+  "allowed_clients": [
+    {"pid": "PLACEHOLDER_RUNNER_PID", "created": "PLACEHOLDER_RUNNER_BIRTH"}
+  ],
+  "qwen_worker_names": ["qwen-writer"],
+  "model_artifacts": {"config_sha256": null, "weights_sha256": null, "availability": "NOT_EXPOSED_BY_ACTIVE_CARD"}
+}

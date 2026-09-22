@@ -1,0 +1,66 @@
+{
+ "model": "jev-1.13.0",
+ "answers": {
+  "r2a_resolution": {
+   "type": "choice",
+   "choice": "RESOLVED",
+   "confidence": 0.83,
+   "probabilities": {
+    "RESOLVED": 0.88,
+    "PARTIAL": 0.09,
+    "NOT_RESOLVED": 0.03
+   }
+  },
+  "r2b_resolution": {
+   "type": "choice",
+   "choice": "RESOLVED",
+   "confidence": 0.9,
+   "probabilities": {
+    "RESOLVED": 0.94,
+    "PARTIAL": 0.06,
+    "NOT_RESOLVED": 0
+   }
+  },
+  "budget_compliance": {
+   "type": "choice",
+   "choice": "COMPLIANT",
+   "confidence": 0.98,
+   "probabilities": {
+    "NON_COMPLIANT": 0.01,
+    "COMPLIANT": 0.99
+   }
+  },
+  "constraints_held": {
+   "type": "choice",
+   "choice": "HELD",
+   "confidence": 0.47,
+   "probabilities": {
+    "VIOLATED": 0.26,
+    "HELD": 0.74
+   }
+  },
+  "decision_grade": {
+   "type": "score",
+   "score": 1.5,
+   "confidence": 0.45,
+   "legend": {
+    "0": "Insufficient evidence to grade",
+    "1": "Ready for exact-SHA master review with no known defects",
+    "2": "Ready for exact-SHA master review with minor known gaps",
+    "3": "Contains a defect that should be repaired before review"
+   },
+   "probabilities": {
+    "0": 0.03,
+    "1": 0.55,
+    "2": 0.32,
+    "3": 0.1
+   }
+  }
+ },
+ "usage": {
+  "input_tokens": 2147,
+  "output_tokens": 182
+ },
+ "elapsedMs": 876,
+ "note": "V7 candidate judgment; DECISION_GRADE 1.5 (closer to 'ready, no known defects' 0.55 vs 'minor known gaps' 0.32)"
+}
