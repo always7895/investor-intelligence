@@ -1,0 +1,550 @@
+===== FILE: native_inference_runner.py =====
+--- D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893/native_inference_runner.py	2026-09-22 01:16:39.938327600 +0800
++++ D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819/native_inference_runner.py	2026-09-22 09:08:11.691906300 +0800
+@@ -22,6 +22,8 @@
+ MODEL_ID = "Qwen3.8-27B-EXL3-5.5bpw-v2"
+ APPROVED_CONTEXT = 262144
+ MAX_TOKENS_BOUND = 384
++APPROVED_REQUEST_SHA256 = "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0"
++EXPECTED_REQUEST_FIELDS = ("model", "n", "stream", "temperature", "max_tokens", "enable_thinking", "stream_options", "messages")
+ QWEN_WORKER_NAMES = ("qwen-writer",)
+ MONITORING = {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15, "ttl_s": 30}
+ EXPECTED_TASK_ID = "QA_CAPACITY_OPERATOR_HANDOFF_NATIVE_ONE_SHOT_6922278_V1"
+@@ -35,7 +37,9 @@
+         super().__init__(message or code)
+ 
+ 
+-def load_request_bytes(namespace):
++def load_request_bytes(namespace, approved_digest=None):
++    if approved_digest is None:
++        approved_digest = APPROVED_REQUEST_SHA256
+     ns = pathlib.Path(namespace)
+     req_path = ns / "request.json"
+     raw = req_path.read_bytes()
+@@ -45,6 +49,8 @@
+         raise WorkloadError("request_not_json")
+     if not isinstance(data, dict):
+         raise WorkloadError("request_invariant_violated")
++    if set(data) != set(EXPECTED_REQUEST_FIELDS):
++        raise WorkloadError("request_invariant_violated")
+     if data.get("model") != MODEL_ID:
+         raise WorkloadError("request_invariant_violated")
+     if not isinstance(data.get("n"), int) or isinstance(data.get("n"), bool) or data.get("n") != 1:
+@@ -58,7 +64,11 @@
+     if data.get("enable_thinking") is not False:
+         raise WorkloadError("request_invariant_violated")
+     so = data.get("stream_options")
+-    if not isinstance(so, dict) or so != {"include_usage": True}:
++    if (
++        not isinstance(so, dict)
++        or set(so) != {"include_usage"}
++        or so["include_usage"] is not True
++    ):
+         raise WorkloadError("request_invariant_violated")
+     msgs = data.get("messages")
+     if not isinstance(msgs, list) or not msgs:
+@@ -72,6 +82,8 @@
+             raise WorkloadError("request_invariant_violated")
+         if not isinstance(content, str):
+             raise WorkloadError("request_invariant_violated")
++    if hashlib.sha256(raw).hexdigest() != approved_digest:
++        raise WorkloadError("request_digest_mismatch")
+     return raw
+ 
+ 
+@@ -145,7 +157,7 @@
+     if out_path.exists():
+         raise WorkloadError("binding_already_frozen")
+     data = json.dumps(binding, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+-    fd = os.open(str(out_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
++    fd = os.open(str(out_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_BINARY, 0o644)
+     try:
+         os.write(fd, data)
+     finally:
+@@ -199,6 +211,11 @@
+                 if cancel_event.is_set():
+                     raise WorkloadError("cancelled_during_connect")
+                 raise WorkloadError("connect_deadline_exceeded")
++            if cancel_event.is_set():
++                raise WorkloadError("cancelled_during_connect")
++            now = time.monotonic()
++            if deadline - now <= 0:
++                raise WorkloadError("deadline_exceeded")
+             conn.request("POST", path, body=request_bytes, headers={"Content-Type": "application/json"})
+             sock = conn.sock
+             status_line = _interruptible_read(sock, 1, cancel_event, deadline, read_timeout_s)
+@@ -240,7 +257,7 @@
+                         raise WorkloadError("deadline_exceeded")
+                     chunk = _interruptible_read(sock, min(8192, content_length - len(body)), cancel_event, deadline, read_timeout_s)
+                     if not chunk:
+-                        break
++                        raise WorkloadError("incomplete_body")
+                     body += chunk
+                     if len(body) > body_bytes_max:
+                         raise WorkloadError("oversize_body")
+@@ -258,18 +275,31 @@
+                     try:
+                         chunk_size = int(size_str.split(";")[0], 16)
+                     except ValueError:
+-                        break
++                        raise WorkloadError("malformed_chunk")
++                    if chunk_size < 0:
++                        raise WorkloadError("malformed_chunk")
+                     if chunk_size == 0:
+-                        _interruptible_read(sock, 2, cancel_event, deadline, read_timeout_s)
++                        trailer = _interruptible_read(sock, 2, cancel_event, deadline, read_timeout_s)
++                        if trailer != b"\r\n":
++                            raise WorkloadError("malformed_chunk")
+                         break
+-                    while len(body) < len(body) + chunk_size:
+-                        chunk = _interruptible_read(sock, min(8192, chunk_size), cancel_event, deadline, read_timeout_s)
++                    chunk_remaining = chunk_size
++                    while chunk_remaining > 0:
++                        if cancel_event.is_set():
++                            raise WorkloadError("cancelled_during_body")
++                        now = time.monotonic()
++                        if deadline - now <= 0:
++                            raise WorkloadError("deadline_exceeded")
++                        chunk = _interruptible_read(sock, min(8192, chunk_remaining), cancel_event, deadline, read_timeout_s)
+                         if not chunk:
+-                            break
++                            raise WorkloadError("incomplete_body")
+                         body += chunk
++                        chunk_remaining -= len(chunk)
+                         if len(body) > body_bytes_max:
+                             raise WorkloadError("oversize_body")
+-                    _interruptible_read(sock, 2, cancel_event, deadline, read_timeout_s)
++                    trailer = _interruptible_read(sock, 2, cancel_event, deadline, read_timeout_s)
++                    if trailer != b"\r\n":
++                        raise WorkloadError("malformed_chunk")
+             else:
+                 while True:
+                     if cancel_event.is_set():
+@@ -295,6 +325,8 @@
+         raise WorkloadError("cancelled_before_dispatch")
+     t_start = time.monotonic()
+     status, body = transport(request_bytes, cancel_event)
++    if cancel_event.is_set():
++        raise WorkloadError("cancelled_after_response")
+     t_complete = time.monotonic()
+     if status != 200:
+         raise WorkloadError("http_status_%d" % status)
+@@ -347,17 +379,22 @@
+     return work
+ 
+ 
+-def run_live(namespace):
++def run_live(namespace, *, transport=None, git_head_fn=None, collector=None):
+     ns = pathlib.Path(namespace)
+     plan_path = ns / "run-plan.json"
+     if not plan_path.exists():
+         raise WorkloadError("run_plan_mismatch")
++    plan_bytes = plan_path.read_bytes()
+     try:
+-        plan = json.loads(plan_path.read_bytes().decode("utf-8"))
++        plan = json.loads(plan_bytes.decode("utf-8"))
+     except Exception:
+         raise WorkloadError("run_plan_mismatch")
+     if not isinstance(plan, dict) or plan.get("task_id") != EXPECTED_TASK_ID or plan.get("fixup_sha") != EXPECTED_FIXUP_SHA:
+         raise WorkloadError("run_plan_mismatch")
++    if plan.get("authorized_source_sha") != EXPECTED_FIXUP_SHA:
++        raise WorkloadError("run_plan_mismatch")
++    if plan.get("approved_request_sha256") != APPROVED_REQUEST_SHA256:
++        raise WorkloadError("run_plan_mismatch")
+     auth_path = ns / "run-authority.json"
+     handoff_path = ns / "operator-handoff.json"
+     if not auth_path.exists() or not handoff_path.exists():
+@@ -373,27 +410,53 @@
+         raise WorkloadError("authority_mismatch")
+     if auth.get("fixup_sha") != EXPECTED_FIXUP_SHA:
+         raise WorkloadError("authority_mismatch")
++    if auth.get("authorized_source_sha") != EXPECTED_FIXUP_SHA:
++        raise WorkloadError("authority_mismatch")
++    if auth.get("run_plan_sha256") != hashlib.sha256(plan_bytes).hexdigest():
++        raise WorkloadError("authority_mismatch")
++    if auth.get("window") != "CURRENT" or handoff.get("window") != "CURRENT":
++        raise WorkloadError("authority_stale")
++    if not isinstance(handoff.get("operator"), str) or not handoff.get("operator"):
++        raise WorkloadError("authority_stale")
+     runner_pid = os.getpid()
+     runner_birth = qc.process_identity(runner_pid)
+     if not isinstance(runner_birth, str) or len(runner_birth) != 16 or not all(c in "0123456789abcdef" for c in runner_birth):
+         raise WorkloadError("runner_birth_invalid")
+-    raw = qc.collect_windows_snapshot({})
++    if collector is None:
++        collector = qc.collect_windows_snapshot
++    raw = collector({})
++    if git_head_fn is None:
++        def git_head_fn():
++            result = subprocess.run(["git", "-C", REPO_ROOT, "rev-parse", "HEAD"], timeout=10, capture_output=True, text=True)
++            return result.stdout.strip()
+     try:
+-        result = subprocess.run(["git", "-C", REPO_ROOT, "rev-parse", "HEAD"], timeout=10, capture_output=True, text=True)
+-        source_head = result.stdout.strip()
++        source_head = git_head_fn()
+     except Exception:
+         raise WorkloadError("source_head_invalid")
+-    if len(source_head) != 40 or not all(c in "0123456789abcdef" for c in source_head):
++    if not isinstance(source_head, str) or len(source_head) != 40 or not all(c in "0123456789abcdef" for c in source_head):
+         raise WorkloadError("source_head_invalid")
++    if source_head != EXPECTED_FIXUP_SHA:
++        raise WorkloadError("source_head_mismatch")
++    receipt_path = ns / "native-receipt.json"
++    if receipt_path.exists():
++        raise WorkloadError("receipt_already_persisted")
+     binding = build_binding(source_head, raw, runner_pid, runner_birth)
+     frozen_binding, binding_digest = freeze_binding(binding, namespace)
+-    request_bytes = load_request_bytes(namespace)
+-    transport = make_transport()
++    request_bytes = load_request_bytes(namespace, APPROVED_REQUEST_SHA256)
++    if transport is None:
++        transport = make_transport()
+     evidence = {}
+     work = work_factory(request_bytes, transport, evidence)
+     receipt = qc.run_native_window(frozen_binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30)
+     req_digest = hashlib.sha256(request_bytes).hexdigest()
+-    evidence_out = {"request_sha256": req_digest, "binding_digest": binding_digest, "evidence": evidence}
++    receipt_bytes = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
++    fd = os.open(str(receipt_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_BINARY, 0o644)
++    try:
++        os.write(fd, receipt_bytes)
++    finally:
++        os.close(fd)
++    receipt_digest = hashlib.sha256(receipt_bytes).hexdigest()
++    evidence_out = {"request_sha256": req_digest, "binding_digest": binding_digest, "receipt_sha256": receipt_digest, "evidence": evidence}
+     (ns / "workload-evidence.json").write_bytes(json.dumps(evidence_out, indent=2).encode("utf-8"))
+     return (receipt, evidence)
+ 
+@@ -409,13 +472,24 @@
+         return 2
+     try:
+         receipt, evidence = run_live(namespace)
+-        print("NATIVE_RECEIPT_DIGEST=" + receipt["digest"])
+-        return 0
+     except WorkloadError as e:
+         print("REFUSED code=" + e.code)
+-        if e.code in ("authority_missing", "authority_mismatch", "run_plan_mismatch"):
++        if e.code in ("authority_missing", "authority_mismatch", "authority_stale", "run_plan_mismatch"):
+             return 2
+         return 1
+     except Exception as e:
+         print("FAILED " + type(e).__name__)
+         return 1
++    print("NATIVE_RECEIPT_DIGEST=" + receipt["digest"])
++    summary = receipt.get("summary", {})
++    qualified = summary.get("summary") == "QUALIFIED"
++    complete = all(k in evidence for k in ("request_start_s", "response_complete_s", "callback_end_s"))
++    if not qualified or not complete:
++        print("RESULT=NON_PASS")
++        return 1
++    print("RESULT=PASS")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+===== FILE: test_native_inference_runner.py =====
+--- D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893/test_native_inference_runner.py	2026-09-22 01:17:42.759936900 +0800
++++ D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819/test_native_inference_runner.py	2026-09-22 09:04:33.463040900 +0800
+@@ -14,6 +14,7 @@
+ import http.server
+ import urllib.parse
+ import shutil
++import unittest.mock
+ 
+ NS = pathlib.Path(__file__).resolve().parent
+ sys.path.insert(0, str(NS))
+@@ -154,6 +155,21 @@
+                         self.wfile.write(bytes([byte]))
+                         if interval > 0:
+                             time.sleep(interval)
++                elif mode == "chunked_valid":
++                    self.send_response(200)
++                    self.send_header("Transfer-Encoding", "chunked")
++                    self.end_headers()
++                    self.wfile.write(body)
++                elif mode == "incomplete_cl":
++                    self.send_response(200)
++                    self.send_header("Content-Length", str(config.get("cl", len(body))))
++                    self.end_headers()
++                    self.wfile.write(body)
++                elif mode == "malformed_chunk":
++                    self.send_response(200)
++                    self.send_header("Transfer-Encoding", "chunked")
++                    self.end_headers()
++                    self.wfile.write(body)
+                 else:  # valid
+                     self.send_response(200)
+                     self.send_header("Content-Length", str(len(body)))
+@@ -927,5 +943,243 @@
+             shutil.rmtree(root, ignore_errors=True)
+ 
+ 
++    # ---- V4 R1-R5 regression tests (master REWORK on review SHA f9a8a88; F1/F2 and all 27 cases retained) ----
++
++    def _write_authority_files(self, ns, plan_bytes, window="CURRENT", operator="fixture-operator",
++                               task_id=None, authorized_source_sha=None, run_plan_sha256=None):
++        plan = json.loads(plan_bytes.decode("utf-8"))
++        auth = {
++            "task_id": task_id if task_id is not None else plan["task_id"],
++            "fixup_sha": plan["fixup_sha"],
++            "authorized_source_sha": authorized_source_sha if authorized_source_sha is not None else plan["authorized_source_sha"],
++            "run_plan_sha256": run_plan_sha256 if run_plan_sha256 is not None else hashlib.sha256(plan_bytes).hexdigest(),
++            "window": window,
++        }
++        handoff = {
++            "task_id": task_id if task_id is not None else plan["task_id"],
++            "window": window,
++            "operator": operator,
++        }
++        (ns / "run-authority.json").write_bytes(json.dumps(auth).encode("utf-8"))
++        (ns / "operator-handoff.json").write_bytes(json.dumps(handoff).encode("utf-8"))
++
++    def _make_v4_namespace(self, ns, request_bytes=None, plan_bytes=None):
++        if request_bytes is None:
++            request_bytes = (NS / "request.json").read_bytes()
++        if plan_bytes is None:
++            plan_bytes = (NS / "run-plan.json").read_bytes()
++        (ns / "request.json").write_bytes(request_bytes)
++        (ns / "run-plan.json").write_bytes(plan_bytes)
++        self._write_authority_files(ns, plan_bytes)
++
++    def test_request_identity_negative_cases(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            approved = (NS / "request.json").read_bytes()
++            base = json.loads(approved.decode("utf-8"))
++
++            def variant_bytes(mutate):
++                data = json.loads(json.dumps(base))
++                mutate(data)
++                return json.dumps(data, indent=2).encode("utf-8")
++
++            def expect_code(variant, code):
++                (ns / "request.json").write_bytes(variant)
++                with self.assertRaises(h.WorkloadError) as ctx:
++                    h.load_request_bytes(ns, h.APPROVED_REQUEST_SHA256)
++                self.assertEqual(ctx.exception.code, code)
++
++            expect_code(variant_bytes(lambda d: d["stream_options"].update(include_usage=1)), "request_invariant_violated")
++            expect_code(variant_bytes(lambda d: d["stream_options"].update(extra_key=1)), "request_invariant_violated")
++            expect_code(variant_bytes(lambda d: d.update(tools=[])), "request_invariant_violated")
++            expect_code(variant_bytes(lambda d: d["messages"][0].update(content="modified prompt content")), "request_digest_mismatch")
++            (ns / "request.json").write_bytes(approved)
++            self.assertEqual(h.load_request_bytes(ns, h.APPROVED_REQUEST_SHA256), approved)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_run_live_digest_mismatch_zero_dispatch(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns, request_bytes=(NS / "request.json").read_bytes().replace(b"32 distinct", b"33 distinct"))
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "request_digest_mismatch")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_run_live_source_head_mismatch_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: "cd" * 20, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "source_head_mismatch")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_run_live_authority_stale_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            self._write_authority_files(ns, plan_bytes, window="CLOSED")
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_stale")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            self._write_authority_files(ns, plan_bytes, operator="")
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_stale")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_chunked_valid_accepted(self):
++        payload = valid_response_body()
++        half = len(payload) // 2
++        chunked = (format(half, "x").encode() + b"\r\n" + payload[:half] + b"\r\n"
++                   + format(len(payload) - half, "x").encode() + b"\r\n" + payload[half:] + b"\r\n"
++                   + b"0\r\n\r\n")
++        srv = EphemeralServer({"mode": "chunked_valid", "body": chunked})
++        srv.start()
++        try:
++            transport = h.make_transport(url=srv.url + "/v1/chat/completions")
++            status, body = transport((NS / "request.json").read_bytes(), threading.Event())
++            self.assertEqual(status, 200)
++            self.assertEqual(body, payload)
++        finally:
++            srv.stop()
++
++    def test_incomplete_cl_rejected(self):
++        payload = valid_response_body()
++        srv = EphemeralServer({"mode": "incomplete_cl", "body": payload[: len(payload) // 2], "cl": len(payload)})
++        srv.start()
++        try:
++            transport = h.make_transport(url=srv.url + "/v1/chat/completions")
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport((NS / "request.json").read_bytes(), threading.Event())
++            self.assertEqual(ctx.exception.code, "incomplete_body")
++        finally:
++            srv.stop()
++
++    def test_malformed_chunk_rejected(self):
++        srv = EphemeralServer({"mode": "malformed_chunk", "body": b"zz-not-hex\r\n0\r\n\r\n"})
++        srv.start()
++        try:
++            transport = h.make_transport(url=srv.url + "/v1/chat/completions")
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport((NS / "request.json").read_bytes(), threading.Event())
++            self.assertEqual(ctx.exception.code, "malformed_chunk")
++        finally:
++            srv.stop()
++
++    def test_cancel_during_connect_zero_post(self):
++        cancel_event = threading.Event()
++        posts = []
++
++        class FakeConn:
++            def __init__(self, host, port, timeout=None):
++                pass
++
++            def connect(self):
++                cancel_event.set()
++
++            def request(self, method, path, body=None, headers=None):
++                posts.append((method, path))
++
++            def close(self):
++                pass
++
++        with unittest.mock.patch.object(h.http.client, "HTTPConnection", FakeConn):
++            transport = h.make_transport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport((NS / "request.json").read_bytes(), cancel_event)
++        self.assertEqual(ctx.exception.code, "cancelled_during_connect")
++        self.assertEqual(posts, [])
++
++    def test_cancel_after_response_rejected(self):
++        class CancelingTransport:
++            def __init__(self):
++                self.calls = []
++
++            def __call__(self, request_bytes, cancel_event):
++                self.calls.append(1)
++                cancel_event.set()
++                return (200, valid_response_body())
++
++        t = CancelingTransport()
++        evidence = {}
++        with self.assertRaises(h.WorkloadError) as ctx:
++            h.inference_callback((NS / "request.json").read_bytes(), t, threading.Event(), evidence)
++        self.assertEqual(ctx.exception.code, "cancelled_after_response")
++        self.assertEqual(len(t.calls), 1)
++        self.assertEqual(evidence, {})
++
++    def test_main_result_codes(self):
++        complete = {"request_start_s": 1.0, "response_complete_s": 2.0, "callback_end_s": 3.0}
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            with unittest.mock.patch.object(h, "run_live", return_value=({"digest": "ab" * 32, "summary": {"summary": "UNQUALIFIED", "reasons": ["work_raised"]}}, complete)):
++                self.assertEqual(h.main(namespace=str(ns)), 1)
++            with unittest.mock.patch.object(h, "run_live", return_value=({"digest": "ab" * 32, "summary": {"summary": "QUALIFIED", "reasons": []}}, complete)):
++                self.assertEqual(h.main(namespace=str(ns)), 0)
++            with unittest.mock.patch.object(h, "run_live", return_value=({"digest": "ab" * 32, "summary": {"summary": "QUALIFIED", "reasons": []}}, {})):
++                self.assertEqual(h.main(namespace=str(ns)), 1)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_receipt_persisted_full_no_overwrite(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            transport = FakeTransport()
++
++            def fake_run_native_window(binding, work, **kwargs):
++                work(threading.Event())
++                return {"digest": "cd" * 32, "summary": {"summary": "UNQUALIFIED", "reasons": ["fixture_window"]}, "nonce": "00" * 16}
++
++            with unittest.mock.patch.object(h.qc, "run_native_window", side_effect=fake_run_native_window):
++                receipt, evidence = h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(len(transport.calls), 1)
++            rp = ns / "native-receipt.json"
++            self.assertTrue(rp.exists())
++            stored = json.loads(rp.read_bytes().decode("utf-8"))
++            self.assertEqual(stored, receipt)
++            self.assertEqual(stored["summary"]["summary"], "UNQUALIFIED")
++            ev_out = json.loads((ns / "workload-evidence.json").read_bytes().decode("utf-8"))
++            self.assertEqual(ev_out["receipt_sha256"], hashlib.sha256(rp.read_bytes()).hexdigest())
++            self.assertEqual(ev_out["request_sha256"], hashlib.sha256((NS / "request.json").read_bytes()).hexdigest())
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=FakeTransport(), git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "receipt_already_persisted")
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_script_entrypoint_refuses_without_authority(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            env = dict(os.environ)
++            env["QA_CAPACITY_HARNESS_NAMESPACE"] = str(ns)
++            result = subprocess.run([sys.executable, str(NS / "native_inference_runner.py")], timeout=60, capture_output=True, text=True, env=env)
++            self.assertEqual(result.returncode, 2)
++            self.assertIn("REFUSED code=run_plan_mismatch", result.stdout)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+===== FILE: run-plan.json =====
+--- D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893/run-plan.json	2026-09-22 01:16:39.956397400 +0800
++++ D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819/run-plan.json	2026-09-22 09:05:18.119334600 +0800
+@@ -2,15 +2,19 @@
+   "task_id": "QA_CAPACITY_OPERATOR_HANDOFF_NATIVE_ONE_SHOT_6922278_V1",
+   "harness_task_id": "QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1",
+   "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+-  "source_head_rule": "RESOLVE_AT_RUNTIME: at future invocation, resolve the then-current committed source identity via read-only git rev-parse HEAD in the frozen repository; the module source gate re-verifies it; never reuse a stale fixture value",
++  "authorized_source_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
++  "source_identity_rule": "EXACT_EQUALITY: the observed git HEAD must exactly equal authorized_source_sha (the explicitly authorized runtime source at FIXUP_SHA); the delivery commit is never auto-substituted; the RESOLVE_AT_RUNTIME rule is removed",
++  "approved_request_sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+   "endpoint": {"method": "POST", "url": "http://127.0.0.1:5000/v1/chat/completions", "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"},
+   "request_file": "request.json",
+   "request_amendment": {"approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)", "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged", "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable", "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"},
+   "limits": {"inference_requests_max": 1, "retries": 0, "connect_deadline_s": 2, "total_http_deadline_s": 10, "response_body_bytes_max": 65536, "max_tokens": 384},
+   "monitoring": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15, "ttl_s": 30},
+   "binding": {"allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard", "qwen_worker_names": ["qwen-writer"], "qwen_worker_names_rule": "fixed; not narrowable"},
+-  "authority": {"required_artifacts": ["run-authority.json", "operator-handoff.json"], "rule": "missing or mismatched authority cannot invoke the native entrypoint; no bypass switches exist"},
++  "authority": {"required_artifacts": ["run-authority.json", "operator-handoff.json"], "rule": "the authority records must affirmatively declare window CURRENT for task_id, with matching authorized_source_sha and run_plan_sha256 (the plan bytes bound to the authority); missing, stale, or mismatched records are rejected before native work; no bypass switches exist"},
++  "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+   "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+-  "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime",
++  "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime; the full native receipt (including negative outcomes) is persisted to native-receipt.json (pre-check + O_EXCL, never overwritten) with its SHA-256 linked into the workload evidence",
++  "v4_rework": {"verdict": "REWORK (master exact-SHA review; review SHA f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983; response persisted in V3 namespace web-review-response-v3.json)", "findings": "R1 request identity; R2 source/authority binding; R3 HTTP framing; R4 cancel rechecks; R5 terminal path", "test_budget": "one implementation batch + one full focused fixture suite run; on failure: read-only diagnosis, minimal repair, one focused retry; no blind third retry"},
+   "this_slice": {"live_native_attempts": 0, "live_inference": 0, "fixture_tests_only": true}
+-}
+\ No newline at end of file
++}

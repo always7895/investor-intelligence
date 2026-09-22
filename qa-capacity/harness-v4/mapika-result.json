@@ -1,0 +1,19 @@
+{
+  "model": "decider-v10 (verified via /health)",
+  "binding": {
+    "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "v4_core_digest": "74a301b3606eb5d1fd57789decd6591e4e6f7b1adfab89273bc1ca3aa0ab4d75",
+    "jep_result_sha256": "936abb4af7e9c20b2f8e0cc3f08b7d800687371a6a4b0b5c01359f0ec561f9c2"
+  },
+  "answer": {
+    "choice": "RETURN_TO_MASTER_EXACT_SHA_REVIEW",
+    "confidence": 0.9423,
+    "probabilities": {
+      "RETURN_TO_MASTER_EXACT_SHA_REVIEW": 0.9423,
+      "CONTINUE_LOCAL_REPAIR": 0.0376,
+      "COLLECT_MORE_EVIDENCE": 0.0077,
+      "DEFER": 0.0124
+    }
+  },
+  "note": ">=0.85 band; return full new source/diff/hashes/fixture evidence + newly bound JEV/Mapika to the master for exact-SHA review per the master NEXT_ACTION"
+}

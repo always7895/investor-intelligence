@@ -1,0 +1,46 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V4",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819",
+  "labels": {
+    "FIXTURE_PASS": true,
+    "SOURCE_ACCEPTANCE": "PENDING_EXACT_SHA_REVIEW",
+    "NATIVE_EXECUTION_AUTHORIZED": false,
+    "CAPACITY_EVIDENCE": "UNQUALIFIED",
+    "PROVISIONAL_LOCAL_ONLY": true,
+    "PUSH_ALLOWED": false,
+    "BACKEND_MIGRATION_ALLOWED": false,
+    "DEVELOPMENT_COMPLETE": false,
+    "FINAL_RELEASE_COMPLETE": false
+  },
+  "master_review_context": {
+    "parent_review_sha": "f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983",
+    "parent_verdict": "REWORK (16/16 files verified; F1/F2 CLOSED; R1-R5 prescribed)",
+    "v4_addressed": "R1 request identity; R2 source/authority binding; R3 HTTP framing; R4 cancel rechecks; R5 terminal path; plus fixture-surfaced O_BINARY persistence fix",
+    "next_action": "master exact-SHA review of the V4 candidate at its review commit (immutable raw.githubusercontent.com URLs); verdict ACCEPT/REWORK/SOURCE_UNAVAILABLE per the established schema"
+  },
+  "identities": {
+    "V4_HARNESS_SHA256": "334aea435ee3430b8161610ab820ed40ae0b63004612f9a574bd5cce28784d25",
+    "V4_TEST_FILE_SHA256": "7b0db177362487829abc58e757cf6238ab6a0ca3ad40a208057b6ebd80d560b0",
+    "V4_REQUEST_BYTES_SHA256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+    "V4_RUN_PLAN_SHA256": "6b4b0b6559f3741bf224af72f33295fd1ede26bce7e8352229b992723af40809",
+    "V4_BINDING_TEMPLATE_SHA256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+    "V4_IMPLEMENTATION_REVIEW_SHA256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27",
+    "V4_RUNTIME_REPAIR_REVIEW_SHA256": "129956b0c58596219d9a938230de75783423dae96073235e0476cdbab0cf25b0",
+    "REPAIR_DIFF_SHA256": "9353a20ce404af61f7f4da1ec308aa81ca38f185950adccc377be23674e4d339",
+    "V4_CORE_DIGEST": "74a301b3606eb5d1fd57789decd6591e4e6f7b1adfab89273bc1ca3aa0ab4d75",
+    "JEV_RESULT_SHA256": "936abb4af7e9c20b2f8e0cc3f08b7d800687371a6a4b0b5c01359f0ec561f9c2",
+    "MAPIKA_RESULT_SHA256": "cc6668976623cec27ff4da1e4ced30983a3f2545873d428f202c0062d44bc3a2"
+  },
+  "fixture": {
+    "run1": "38/39 (CRLF persistence defect found; minimal O_BINARY repair)",
+    "run2": "39/39 OK exit 0 (budgeted retry)"
+  },
+  "constraints_held": [
+    "no native attempts",
+    "no live inference",
+    "no tracked repository changes",
+    "request payload unchanged",
+    "capacity module unmodified",
+    "V3 namespace and reviewed branch preserved untouched"
+  ]
+}

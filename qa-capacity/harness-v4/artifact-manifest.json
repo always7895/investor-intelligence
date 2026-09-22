@@ -1,0 +1,88 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V4",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v4-1790038449819",
+  "manifest_sha256_of_this_file": null,
+  "files": [
+    {
+      "file": "native_inference_runner.py",
+      "sha256": "334aea435ee3430b8161610ab820ed40ae0b63004612f9a574bd5cce28784d25",
+      "bytes": 22758
+    },
+    {
+      "file": "test_native_inference_runner.py",
+      "sha256": "7b0db177362487829abc58e757cf6238ab6a0ca3ad40a208057b6ebd80d560b0",
+      "bytes": 53359
+    },
+    {
+      "file": "request.json",
+      "sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+      "bytes": 372
+    },
+    {
+      "file": "run-plan.json",
+      "sha256": "6b4b0b6559f3741bf224af72f33295fd1ede26bce7e8352229b992723af40809",
+      "bytes": 3597
+    },
+    {
+      "file": "binding-template.json",
+      "sha256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+      "bytes": 841
+    },
+    {
+      "file": "implementation-review.md",
+      "sha256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27",
+      "bytes": 14466
+    },
+    {
+      "file": "runtime-repair-review.md",
+      "sha256": "129956b0c58596219d9a938230de75783423dae96073235e0476cdbab0cf25b0",
+      "bytes": 7287
+    },
+    {
+      "file": "repair.diff",
+      "sha256": "9353a20ce404af61f7f4da1ec308aa81ca38f185950adccc377be23674e4d339",
+      "bytes": 31156
+    },
+    {
+      "file": "core-manifest.json",
+      "sha256": "7c1244576e569cd662fee59895a56204d351a3fa65222db226d2f0215b330f5d",
+      "bytes": 3054
+    },
+    {
+      "file": "parent-manifest-reference.json",
+      "sha256": "c3ac2a9b0b426da2b69e764730cf8dfa401813ecf8258787b9237d7d34cd8ca6",
+      "bytes": 1862
+    },
+    {
+      "file": "fixture-results.json",
+      "sha256": "ab4bbe0118a68b8b103aac36fe26efc43c5e2e07a3ced2f3b616af73b53ecad9",
+      "bytes": 2231
+    },
+    {
+      "file": "fixture-logs/v4-fixture-run1.log",
+      "sha256": "98eea0a5f4698df25ecdc92cff69629ce8c29b071ff42b98bec6ac65d0177d07",
+      "bytes": 13360
+    },
+    {
+      "file": "fixture-logs/v4-fixture-run2.log",
+      "sha256": "5f1aab8454310e2aed9465641b5c816f247183ecfe9dab509230bba49632ce7f",
+      "bytes": 11063
+    },
+    {
+      "file": "jev-result.json",
+      "sha256": "936abb4af7e9c20b2f8e0cc3f08b7d800687371a6a4b0b5c01359f0ec561f9c2",
+      "bytes": 1116
+    },
+    {
+      "file": "mapika-result.json",
+      "sha256": "cc6668976623cec27ff4da1e4ced30983a3f2545873d428f202c0062d44bc3a2",
+      "bytes": 755
+    },
+    {
+      "file": "handoff.json",
+      "sha256": "55b451586a8af93608953b9da66d2b810b0577c805b9f14252cd8cf9f9534c53",
+      "bytes": 2597
+    }
+  ],
+  "note": "artifact manifest for the V4 candidate; core digest 74a301b3606eb5d1fd57789decd6591e4e6f7b1adfab89273bc1ca3aa0ab4d75; JEV DECISION_GRADE 0.91; Mapika RETURN_TO_MASTER_EXACT_SHA_REVIEW 0.9423"
+}

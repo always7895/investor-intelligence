@@ -1,0 +1,37 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V4",
+  "parent_namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893",
+  "parent_verified": {
+    "branch": "fix/options-provenance-audit",
+    "HEAD": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "parent_commit": "89d8000c43304889671fe3dbfd6579e58349a0b1",
+    "tree": "93987e67593407cc5355531ffd8447c5362fe87a",
+    "origin_fix_tip": "84133f8da1d5999c2748c8fca31f1128c83ccc09",
+    "origin_v3_review_branch": "f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983",
+    "tracked_dirty": 0,
+    "index_dirty": 0,
+    "untracked_preserved": [
+      ".tmp/",
+      "_tmp_m5_code.txt"
+    ]
+  },
+  "module_identities": {
+    "CAPACITY_MODULE_GIT_BLOB_SHA": "64ab98a1a5ba0f7c7f6959ec8ba15d03d6b0f0ec",
+    "CAPACITY_MODULE_FILE_SHA256": "aa2b4dc0130f7b6d1548717763dbc7c04f5697c252aa970a525749e2a51456cd"
+  },
+  "v3_parent": {
+    "PARENT_CORE_DIGEST": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+    "PARENT_HARNESS_SHA256": "94563cf2e648b73492e75811dfa1cc106d4b436c0c3567979b44b809bfc8e140",
+    "PARENT_TEST_SHA256": "7e0823fe342bb13a3e22c9f409f141614cec881c084d95a83cc7bb841ee69243",
+    "master_review_verdict": "REWORK (review SHA f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983; 16/16 files verified; F1/F2 CLOSED; R1-R5 prescribed)",
+    "web_response_sha256": "6c2638003a21434f51c188f8d39dc4692772c55e79bcf853c3f39cae1385a45a",
+    "jep_rework_checkpoint_sha256": "8c34fba9aedf176e803c21f1b439f25428b11168d83e32780195c3b6b91ce691",
+    "mapika_rework_route_sha256": "1712ca850e542590aea56f64138c12ad233575593611854a8a6ae9ed3193d3d2",
+    "immutable_files_byte_identical": [
+      "request.json",
+      "binding-template.json",
+      "implementation-review.md"
+    ]
+  },
+  "verified_at_epoch_ms": 1790039359664
+}

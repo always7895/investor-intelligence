@@ -1,0 +1,36 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V4",
+  "command": "python -B -m unittest test_native_inference_runner -v",
+  "budget": "one implementation batch (dispatch A: 10 harness hunks; dispatch B: 5 hunks + direct run-plan write) + one full focused fixture run + (on failure) read-only diagnosis, minimal repair (O_BINARY at both os.open sites), one focused retry",
+  "run1": {
+    "label": "first full focused fixture run (V4)",
+    "summary": "Ran 39 tests in 10.537s — FAILED (failures=1)",
+    "passed": 38,
+    "failed": 1,
+    "errors": 0,
+    "skipped": 0,
+    "exit_code": 1,
+    "raw_log": "fixture-logs/v4-fixture-run1.log",
+    "failure": {
+      "test": "test_receipt_persisted_full_no_overwrite",
+      "root_cause": "this Windows Python build applies LF->CRLF conversion to os.open()+os.write() file handles; the persisted native-receipt.json on disk (CRLF) did not match the digested bytes (LF), so workload-evidence receipt_sha256 != sha256(file). Harness defect surfaced by the new R5 fixture (digest integrity of the persisted receipt).",
+      "minimal_repair": "added os.O_BINARY to the os.open flags at both persistence sites (freeze_binding expected-binding.json; run_live native-receipt.json); no other change"
+    }
+  },
+  "run2": {
+    "label": "focused retry after minimal repair (the one budgeted retry)",
+    "summary": "Ran 39 tests in 9.483s — OK",
+    "passed": 39,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "fixture_pass": true,
+    "raw_log": "fixture-logs/v4-fixture-run2.log",
+    "note": "trailing stdout lines (REFUSED/Usage/NATIVE_RECEIPT_DIGEST/RESULT) are expected output from the script-entrypoint and main-result-code tests"
+  },
+  "test_suite": "39 tests = 27 V3 tests (incl. F1/F2, all retained byte-identical) + 12 new R1-R5 discriminating regressions (request identity negatives; run_live digest/source/authority rejections with zero dispatch; chunked valid + incomplete CL + malformed chunk; cancel-during-connect zero POST; cancel-after-response; main result codes; receipt persistence + no overwrite; script entrypoint)",
+  "no_full_suite_rerun_beyond_budget": true,
+  "no_native_attempts": true,
+  "no_live_inference": true
+}

@@ -1,0 +1,20 @@
+{
+  "task_id": "QA_CAPACITY_OPERATOR_HANDOFF_NATIVE_ONE_SHOT_6922278_V1",
+  "harness_task_id": "QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1",
+  "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+  "authorized_source_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+  "source_identity_rule": "EXACT_EQUALITY: the observed git HEAD must exactly equal authorized_source_sha (the explicitly authorized runtime source at FIXUP_SHA); the delivery commit is never auto-substituted; the RESOLVE_AT_RUNTIME rule is removed",
+  "approved_request_sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+  "endpoint": {"method": "POST", "url": "http://127.0.0.1:5000/v1/chat/completions", "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"},
+  "request_file": "request.json",
+  "request_amendment": {"approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)", "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged", "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable", "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"},
+  "limits": {"inference_requests_max": 1, "retries": 0, "connect_deadline_s": 2, "total_http_deadline_s": 10, "response_body_bytes_max": 65536, "max_tokens": 384},
+  "monitoring": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15, "ttl_s": 30},
+  "binding": {"allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard", "qwen_worker_names": ["qwen-writer"], "qwen_worker_names_rule": "fixed; not narrowable"},
+  "authority": {"required_artifacts": ["run-authority.json", "operator-handoff.json"], "rule": "the authority records must affirmatively declare window CURRENT for task_id, with matching authorized_source_sha and run_plan_sha256 (the plan bytes bound to the authority); missing, stale, or mismatched records are rejected before native work; no bypass switches exist"},
+  "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+  "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+  "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime; the full native receipt (including negative outcomes) is persisted to native-receipt.json (pre-check + O_EXCL, never overwritten) with its SHA-256 linked into the workload evidence",
+  "v4_rework": {"verdict": "REWORK (master exact-SHA review; review SHA f9a8a88ec9581f3b8a7ebf1fa8679d40d2329983; response persisted in V3 namespace web-review-response-v3.json)", "findings": "R1 request identity; R2 source/authority binding; R3 HTTP framing; R4 cancel rechecks; R5 terminal path", "test_budget": "one implementation batch + one full focused fixture suite run; on failure: read-only diagnosis, minimal repair, one focused retry; no blind third retry"},
+  "this_slice": {"live_native_attempts": 0, "live_inference": 0, "fixture_tests_only": true}
+}
