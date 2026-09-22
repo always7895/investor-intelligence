@@ -1,0 +1,35 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_TEST_ONLY_REPAIR_6922278_V3",
+  "parent_namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-usage-test-repair-6922278-1790009963636",
+  "parent_verified": {
+    "branch": "fix/options-provenance-audit",
+    "HEAD": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "parent_commit": "89d8000c43304889671fe3dbfd6579e58349a0b1",
+    "tree": "93987e67593407cc5355531ffd8447c5362fe87a",
+    "origin_tip": "84133f8da1d5999c2748c8fca31f1128c83ccc09",
+    "ahead": 2,
+    "tracked_dirty": 0,
+    "index_dirty": 0,
+    "untracked_preserved": [
+      ".tmp/",
+      "_tmp_m5_code.txt"
+    ]
+  },
+  "module_identities": {
+    "CAPACITY_MODULE_GIT_BLOB_SHA": "64ab98a1a5ba0f7c7f6959ec8ba15d03d6b0f0ec",
+    "CAPACITY_MODULE_FILE_SHA256": "aa2b4dc0130f7b6d1548717763dbc7c04f5697c252aa970a525749e2a51456cd"
+  },
+  "v2_parent": {
+    "PARENT_CORE_DIGEST": "def2e7cdd54cbf7c3e49b567dc0fa27828b1fc56fe87c067aa27f5cf66451010",
+    "PARENT_TEST_SHA256": "a44cfbbd4cb0749f4eef40d27dd6fb5079dac307e34dbc43c6489759b099d241",
+    "parent_core_digest_recomputed_match": true,
+    "immutable_files_byte_identical": [
+      "native_inference_runner.py",
+      "request.json",
+      "run-plan.json",
+      "binding-template.json",
+      "implementation-review.md"
+    ]
+  },
+  "verified_at_epoch_ms": 1790011130534
+}

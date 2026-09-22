@@ -1,0 +1,45 @@
+{
+  "model": "jev-1.13.0",
+  "scope": "V3 test-only repair review (post FIXTURE_PASS + freeze; full harness source + V3-changed test regions + full diff + fixture output + identities supplied; harness not pre-labeled)",
+  "binding": {
+    "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "v3_core_digest": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+    "v2_parent_core_digest": "def2e7cdd54cbf7c3e49b567dc0fa27828b1fc56fe87c067aa27f5cf66451010"
+  },
+  "answers": {
+    "binding_integrity": {
+      "choice": "CONSISTENT",
+      "probability": 0.93
+    },
+    "cancellation_deadline": {
+      "choice": "HOLDS",
+      "probability": 0.97
+    },
+    "dispatch_cardinality": {
+      "choice": "GUARANTEED",
+      "probability": 0.94
+    },
+    "failure_propagation": {
+      "choice": "HOLDS",
+      "probability": 0.89
+    },
+    "request_bounds": {
+      "choice": "CORRECT",
+      "probability": 0.97
+    },
+    "v3_test_repair": {
+      "choice": "CORRECT",
+      "probability": 0.97
+    },
+    "provenance_proven": {
+      "choice": "DECISION_GRADE",
+      "probability": 0.72,
+      "note": "NOT_DECISION_GRADE 0.28"
+    }
+  },
+  "usage": {
+    "input_tokens": 9022,
+    "output_tokens": 274,
+    "elapsed_ms": 1321
+  }
+}

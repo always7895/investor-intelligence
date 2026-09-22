@@ -1,0 +1,19 @@
+{
+  "model": "decider-v10 (verified via /health)",
+  "binding": {
+    "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "v3_core_digest": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+    "jep_result_sha256": "e6bef112bea13d053ac6930de48740a6ae6a1c90ed810ccd39685af5b9023267"
+  },
+  "answer": {
+    "choice": "RETURN_TO_MASTER",
+    "confidence": 0.9481,
+    "probabilities": {
+      "RETURN_TO_MASTER": 0.9481,
+      "COLLECT_MORE_EVIDENCE": 0.0175,
+      "REPAIR_DIFFERENTLY": 0.0131,
+      "DEFER": 0.0213
+    }
+  },
+  "note": ">=0.85 band; follow within authorized task; full source delivery prepared inline per Master DELIVERY_REQUIREMENTS"
+}

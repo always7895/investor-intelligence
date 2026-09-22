@@ -1,0 +1,45 @@
+===== FILE: test_native_inference_runner.py =====
+--- D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-usage-test-repair-6922278-1790009963636/test_native_inference_runner.py	2026-09-22 01:04:15.973987400 +0800
++++ D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893/test_native_inference_runner.py	2026-09-22 01:17:42.759936900 +0800
+@@ -84,6 +84,8 @@
+             raise self.exc
+         return (self.status, self.body if self.body is not None else valid_response_body())
+ 
++_NULL_USAGE = object()
++
+ def check_timeline_containment(evidence, cb_start, cb_end):
+     """Same-clock containment: workload evidence timestamps must be valid
+     numbers within the callback interval captured on the same monotonic clock.
+@@ -447,7 +449,7 @@
+             captured request (include_usage true -> usage present, otherwise
+             usage null), mirroring the installed server semantics."""
+ 
+-            def __init__(self, usage_override=None):
++            def __init__(self, usage_override=_NULL_USAGE):
+                 self.calls = []
+                 self.usage_override = usage_override
+ 
+@@ -455,11 +457,11 @@
+                 self.calls.append({"request_bytes": request_bytes, "cancel_set": cancel_event.is_set()})
+                 req = json.loads(request_bytes.decode("utf-8"))
+                 include_usage = (req.get("stream_options") or {}).get("include_usage") is True
+-                if self.usage_override is not None:
+-                    usage = self.usage_override
+-                else:
++                if self.usage_override is _NULL_USAGE:
+                     usage = ({"prompt_tokens": 40, "completion_tokens": 12, "total_tokens": 52}
+                              if include_usage else None)
++                else:
++                    usage = self.usage_override
+                 body = json.dumps({
+                     "id": "cmpl-fixture",
+                     "object": "chat.completion",
+@@ -919,7 +921,7 @@
+             self.assertIsNotNone(receipt.get("work_end_s"))
+             self.assertLessEqual(receipt["work_start_s"], receipt["work_end_s"])
+             verified = h.qc.verify_receipt(receipt, binding)
+-            self.assertEqual(verified["summary"], receipt["summary"])
++            self.assertEqual(verified, receipt["summary"])
+         finally:
+             shutil.rmtree(ns, ignore_errors=True)
+             shutil.rmtree(root, ignore_errors=True)

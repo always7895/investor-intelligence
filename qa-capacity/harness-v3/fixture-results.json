@@ -1,0 +1,32 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_TEST_ONLY_REPAIR_6922278_V3",
+  "command": "python -B -m unittest test_native_inference_runner -v",
+  "budget": "exactly one test edit batch (4 replacements applied) + exactly one full fixture run (performed)",
+  "run1": {
+    "label": "the one authorized full fixture run (V3)",
+    "summary": "Ran 27 tests in 7.870s — OK",
+    "passed": 27,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "fixture_pass": true,
+    "raw_log": "fixture-logs/v3-fixture-run1.log",
+    "note": "expected fixture-server ConnectionAbortedError tracebacks appear in the log from cancel/deadline tests (client closes the connection; the affected tests are ok)"
+  },
+  "pre_run_checks": {
+    "in_memory_syntax_inspection": "SYNTAX_OK both files (py_compile, no execution)",
+    "immutable_drift": "all 5 immutable files byte-identical to V2",
+    "scope": "V2->V3 diff = exactly the 4 authorized changes (module-level _NULL_USAGE sentinel; UsageConditionedTransport __init__ default; __call__ is-identity branch; verify_receipt full-summary comparison)",
+    "request": "request.json intact (8 fields, stream_options include_usage true, stream false)"
+  },
+  "history": {
+    "v1_prep": "run1 23/26, run2 24/26 (2 diagnosed test-file bugs)",
+    "v2_repair": "one budgeted run 25/27 (2 diagnosed test-design bugs; STOP)",
+    "v3_test_only": "one run 27/27 OK"
+  },
+  "no_preliminary_test_execution": true,
+  "no_full_suite_rerun": true,
+  "no_native_attempts": true,
+  "no_integration_inference": true
+}

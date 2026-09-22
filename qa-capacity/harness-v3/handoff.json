@@ -1,0 +1,66 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_TEST_ONLY_REPAIR_6922278_V3",
+  "labels": {
+    "FIXTURE_PASS": true,
+    "SOURCE_ACCEPTANCE": "PENDING_EXACT_SOURCE_REVIEW",
+    "NATIVE_EXECUTION_AUTHORIZED": false,
+    "CAPACITY_EVIDENCE": "UNQUALIFIED",
+    "PROVISIONAL_LOCAL_ONLY": true,
+    "PUSH_ALLOWED": false,
+    "BACKEND_MIGRATION_ALLOWED": false,
+    "DEVELOPMENT_COMPLETE": false,
+    "FINAL_RELEASE_COMPLETE": false
+  },
+  "fixture": {
+    "summary": "Ran 27 tests in 7.870s — OK",
+    "exit_code": 0,
+    "passed": 27,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "log": "fixture-logs/v3-fixture-run1.log"
+  },
+  "v3_changes": "test_native_inference_runner.py only: F1 module-level _NULL_USAGE sentinel (is-identity; usage_override=None = explicit null usage) + F2 verify_receipt full-summary comparison; all 27 test names and subcases retained",
+  "immutable_files_byte_identical_to_v2": [
+    "native_inference_runner.py",
+    "request.json",
+    "run-plan.json",
+    "binding-template.json",
+    "implementation-review.md"
+  ],
+  "core_digest": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+  "v2_parent_core_digest": "def2e7cdd54cbf7c3e49b567dc0fa27828b1fc56fe87c067aa27f5cf66451010",
+  "identity_hashes": {
+    "V3_HARNESS_SHA256": "94563cf2e648b73492e75811dfa1cc106d4b436c0c3567979b44b809bfc8e140",
+    "V3_TEST_FILE_SHA256": "7e0823fe342bb13a3e22c9f409f141614cec881c084d95a83cc7bb841ee69243",
+    "V3_REQUEST_BYTES_SHA256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+    "V3_RUN_PLAN_SHA256": "39d0eb1ab08355ecdc295b8d11f231509cbb0a1c85beb19b9f39a3c0d0492f6f",
+    "V3_BINDING_TEMPLATE_SHA256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+    "V3_IMPLEMENTATION_REVIEW_SHA256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27",
+    "REPAIR_DIFF_SHA256": "de733d926d9462eb1f6d5502f5944d04b0c7d0e2303d19c34773cb3beaf700d7",
+    "TEST_REPAIR_REVIEW_SHA256": "fbbeeebb0229af227ace01d2ee570f8b9dfaced96e6248d5ef05d6be9cb2c4fa"
+  },
+  "jep": {
+    "model": "jev-1.13.0",
+    "sha256": "e6bef112bea13d053ac6930de48740a6ae6a1c90ed810ccd39685af5b9023267",
+    "answers": {
+      "binding_integrity": "CONSISTENT 0.93",
+      "cancellation_deadline": "HOLDS 0.97",
+      "dispatch_cardinality": "GUARANTEED 0.94",
+      "failure_propagation": "HOLDS 0.89",
+      "request_bounds": "CORRECT 0.97",
+      "v3_test_repair": "CORRECT 0.97",
+      "provenance_proven": "DECISION_GRADE 0.72"
+    }
+  },
+  "mapika": {
+    "model": "decider-v10",
+    "answer": "RETURN_TO_MASTER 0.9481"
+  },
+  "source_review_hold": "open harness-strictness question recorded (include_usage:1 vs true under Python dict equality; installed server Optional[bool] + callback status check gate it; dispatched bytes always the frozen artifact; not claimed exploitable or closed)",
+  "no_native_attempts": true,
+  "no_live_inference": true,
+  "no_tracked_changes": true,
+  "no_commits": true,
+  "no_pushes": true
+}

@@ -1,0 +1,68 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_TEST_ONLY_REPAIR_6922278_V3",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-test-only-repair-6922278-v3-1790010999893",
+  "files": [
+    {
+      "file": "binding-template.json",
+      "sha256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab"
+    },
+    {
+      "file": "core-manifest.json",
+      "sha256": "8a288097765fad5a2b9e34cff4052c035a4ec05e6b3b82c60cae16450ef3d07d"
+    },
+    {
+      "file": "fixture-results.json",
+      "sha256": "3c66646ad819210f9125eb641a8b727dcb1b9ff73ebc415690e0a8f4ee877777"
+    },
+    {
+      "file": "handoff.json",
+      "sha256": "67d7427e379caa8e2a6d26e5685f3927b0009fdae358a7f24cbdd09f712aad07"
+    },
+    {
+      "file": "implementation-review.md",
+      "sha256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27"
+    },
+    {
+      "file": "jev-result.json",
+      "sha256": "e6bef112bea13d053ac6930de48740a6ae6a1c90ed810ccd39685af5b9023267"
+    },
+    {
+      "file": "mapika-result.json",
+      "sha256": "dd6577dd1a88cc1f5d57a76de604869f23325824c6f273a42d5149cca9851db5"
+    },
+    {
+      "file": "native_inference_runner.py",
+      "sha256": "94563cf2e648b73492e75811dfa1cc106d4b436c0c3567979b44b809bfc8e140"
+    },
+    {
+      "file": "parent-manifest-reference.json",
+      "sha256": "5905010c5936cd1de569ddee44adeb2d2b23e6601b6fea6945928ded81631706"
+    },
+    {
+      "file": "repair.diff",
+      "sha256": "de733d926d9462eb1f6d5502f5944d04b0c7d0e2303d19c34773cb3beaf700d7"
+    },
+    {
+      "file": "request.json",
+      "sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0"
+    },
+    {
+      "file": "run-plan.json",
+      "sha256": "39d0eb1ab08355ecdc295b8d11f231509cbb0a1c85beb19b9f39a3c0d0492f6f"
+    },
+    {
+      "file": "test-repair-review.md",
+      "sha256": "fbbeeebb0229af227ace01d2ee570f8b9dfaced96e6248d5ef05d6be9cb2c4fa"
+    },
+    {
+      "file": "test_native_inference_runner.py",
+      "sha256": "7e0823fe342bb13a3e22c9f409f141614cec881c084d95a83cc7bb841ee69243"
+    }
+  ],
+  "directories": [
+    "fixture-logs",
+    "fixture-state"
+  ],
+  "core_digest": "1b4a58c8d28bd911f685ac67147e2a724fe10d18978f7fc10f0de726e2eb8bff",
+  "note": "artifact manifest; review-packet.zip contains the relevant permitted material (supplementary to the inline source delivery)"
+}

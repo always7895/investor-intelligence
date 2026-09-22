@@ -1,0 +1,16 @@
+{
+  "task_id": "QA_CAPACITY_OPERATOR_HANDOFF_NATIVE_ONE_SHOT_6922278_V1",
+  "harness_task_id": "QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1",
+  "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+  "source_head_rule": "RESOLVE_AT_RUNTIME: at future invocation, resolve the then-current committed source identity via read-only git rev-parse HEAD in the frozen repository; the module source gate re-verifies it; never reuse a stale fixture value",
+  "endpoint": {"method": "POST", "url": "http://127.0.0.1:5000/v1/chat/completions", "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"},
+  "request_file": "request.json",
+  "request_amendment": {"approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)", "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged", "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable", "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"},
+  "limits": {"inference_requests_max": 1, "retries": 0, "connect_deadline_s": 2, "total_http_deadline_s": 10, "response_body_bytes_max": 65536, "max_tokens": 384},
+  "monitoring": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15, "ttl_s": 30},
+  "binding": {"allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard", "qwen_worker_names": ["qwen-writer"], "qwen_worker_names_rule": "fixed; not narrowable"},
+  "authority": {"required_artifacts": ["run-authority.json", "operator-handoff.json"], "rule": "missing or mismatched authority cannot invoke the native entrypoint; no bypass switches exist"},
+  "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+  "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime",
+  "this_slice": {"live_native_attempts": 0, "live_inference": 0, "fixture_tests_only": true}
+}
