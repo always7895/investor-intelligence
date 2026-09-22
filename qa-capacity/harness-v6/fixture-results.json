@@ -1,0 +1,12 @@
+{
+  "command": "python -B -m unittest test_native_inference_runner -v",
+  "suite": "61 tests (54 V5 retained incl. F1/F2 + 7 new V6 boundary regressions)",
+  "run1": {
+    "result": "Ran 61 tests in 15.804s — OK, exit 0",
+    "pass": "61/61",
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "note": "first and only run for V6 (within the master-prescribed budget: at most one complete focused fixture run + one narrowly diagnosed repair/retry; no repair needed)"
+  }
+}

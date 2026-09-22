@@ -1,0 +1,83 @@
+{
+  "task_id": "QA_CAPACITY_OPERATOR_HANDOFF_NATIVE_ONE_SHOT_6922278_V5",
+  "harness_task_id": "QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1",
+  "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+  "authorized_source_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+  "source_identity_rule": "EXACT_EQUALITY: the observed git HEAD must exactly equal authorized_source_sha (the explicitly authorized runtime source at FIXUP_SHA); the delivery commit is never auto-substituted; a successful git execution (returncode 0) is required before stdout is accepted",
+  "approved_request_sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+  "window_contract": {
+    "window_id": "uniquely assigned by the operator at grant time; both authority and handoff must declare the identical window_id",
+    "valid_from_epoch_s": "finite (math.isfinite), non-Boolean number; window start (inclusive); non-finite bounds (e.g. 1e309 -> inf) are rejected (authority_bounds_invalid)",
+    "valid_until_epoch_s": "finite (math.isfinite), non-Boolean number; window end (exclusive); non-finite bounds rejected (authority_bounds_invalid)",
+    "run_namespace": "the single canonical run namespace the grant is bound to; both authority and handoff must declare the identical run_namespace and it must equal the resolved namespace in which run_live executes; a grant cannot be replayed through another namespace",
+    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated immediately before native admission and workload dispatch (no extension, no restamping); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
+  },
+  "artifact_identity": {
+    "authorized_source_sha": "declared in both authority records and must equal the plan value",
+    "run_plan_sha256": "declared in both authority records; the plan bytes bound to the authority",
+    "harness_sha256": "declared in both authority records; verified against the accepted harness file at admission",
+    "request_sha256": "declared in both authority records; must equal the approved request digest",
+    "run_namespace": "declared in both authority records; must equal the resolved execution namespace"
+  },
+  "endpoint": {
+    "method": "POST",
+    "url": "http://127.0.0.1:5000/v1/chat/completions",
+    "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"
+  },
+  "request_file": "request.json",
+  "request_amendment": {
+    "approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)",
+    "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged",
+    "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable",
+    "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"
+  },
+  "limits": {
+    "inference_requests_max": 1,
+    "retries": 0,
+    "connect_deadline_s": 2,
+    "total_http_deadline_s": 10,
+    "response_body_bytes_max": 65536,
+    "max_tokens": 384
+  },
+  "monitoring": {
+    "interval_s": 2,
+    "max_gap_s": 5,
+    "timeout_s": 15,
+    "ttl_s": 30
+  },
+  "binding": {
+    "allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard",
+    "qwen_worker_names": [
+      "qwen-writer"
+    ],
+    "qwen_worker_names_rule": "fixed; not narrowable"
+  },
+  "authority": {
+    "required_artifacts": [
+      "run-authority.json",
+      "operator-handoff.json"
+    ],
+    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated immediately before native admission and workload dispatch; missing, stale, mismatched, or non-finite records are rejected before native work; no bypass switches exist"
+  },
+  "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+  "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+  "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime; the full native receipt (including negative outcomes) is persisted to native-receipt.json (pre-check + O_EXCL + O_BINARY + complete-write + post-close byte verification, never overwritten) with its SHA-256 linked into the workload evidence; terminal classification uses the canonical receipt[summary][CAPACITY_EVIDENCE] field and fail-closed evidence validation (numeric values + ordering)",
+  "v5_rework": {
+    "verdict": "REWORK (master exact-SHA review; review SHA 7caa887eca1e616ffb5ebb46db960636e7bac6e3; response persisted in V4 namespace web-review-response-v4.json)",
+    "closed_by_master": "R1 request identity; F1/F2 retained; O_BINARY correct_and_complete",
+    "findings": "R2 current execution authority (new prospective task ID + bounded window + identity binding + git returncode); R3 header framing validation; R4 final cancel check at publication boundary; R5 canonical result classification + evidence validation + argv handling; R6 checked complete persistence + byte/hash verification",
+    "test_budget": "one implementation batch + one full focused fixture run; on failure: read-only diagnosis, minimal repair, one focused retry; no blind third retry"
+  },
+  "this_slice": {
+    "live_native_attempts": 0,
+    "live_inference": 0,
+    "fixture_tests_only": true
+  },
+  "v6_rework": {
+    "verdict": "REWORK (master exact-SHA review; review SHA 5c1ac9edcf732f37299751a4d9268601b4bf4b44; response persisted in V5 namespace web-review-response-v5.json)",
+    "closed_by_master": "R4 final cancel check; R6 checked persistence; R5 canonical key + argv; R1/F1/F2 retained",
+    "findings": "R2-A HIGH grant expiry during preparation + non-finite bounds (finite non-Boolean bounds + finite clock + revalidation of the unchanged grant immediately before native admission/dispatch); R2-B HIGH cross-namespace grant replay (run_namespace binding in both authority records + per-namespace exclusive persistence protection as the bounded single-use mechanism); R3 MEDIUM present-but-empty Transfer-Encoding accepted (presence vs nonempty value; empty/whitespace-only TE rejected; CL combined with any TE field rejected); R5-L LOW infinite evidence timestamps accepted (math.isfinite on the three evidence values)",
+    "evidence_corrections": "append-only chronology/exception record (chronology.json): run-budget deviation disclosure (runs 2/3/4 = three runs vs the documented one-full-run-plus-one-retry budget, recorded as a deviation, not compliance), per-run harness/test fingerprints (preserved where available, recorded unavailable otherwise), V4 orchestration-error incident record (resolved erroneous destination, affected file set, pre-error/detected/post-restoration fingerprints, accidentally modified bytes not preserved, post-restoration hash inventory), dispatch precondition (resolve destination from the current task explicit namespace, verify task marker + expected baseline, reject immutable parent namespaces, no stale version-specific pointer files)",
+    "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; an incorrectly targeted run still counts as an execution and must be disclosed; after the budget stop and return the evidence"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V6",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v6-1790058581489",
+  "core_candidate_files": [
+    {
+      "file": "native_inference_runner.py",
+      "sha256": "b17b40db0d5df08ac6c0cdfbf5a54fa5b66a6aa8408274e9a2142c0a3d4b1d42"
+    },
+    {
+      "file": "test_native_inference_runner.py",
+      "sha256": "4c87e17d193e86596056b21cfd6f1c9833fb6aa446bebad319ff2a744a584c5e"
+    },
+    {
+      "file": "request.json",
+      "sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0"
+    },
+    {
+      "file": "run-plan.json",
+      "sha256": "fb8de167accdd2ea6715f19ffbc0371e786c3d3b96b5fc40f5dd5156cc21d4b5"
+    },
+    {
+      "file": "binding-template.json",
+      "sha256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab"
+    },
+    {
+      "file": "implementation-review.md",
+      "sha256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27"
+    }
+  ],
+  "core_digest": "a1fc3242522b86de21b813fc448d6d67f2621693561e423538217e40b7ad059d",
+  "digest_rule": "sha256 of sorted file:sha256 lines (same rule as V1-V5)"
+}

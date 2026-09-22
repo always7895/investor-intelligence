@@ -1,0 +1,356 @@
+--- a/native_inference_runner.py	2026-09-22 13:06:49.321579200 +0800
++++ b/native_inference_runner.py	2026-09-22 14:44:15.405725200 +0800
+@@ -1,4 +1,5 @@
+ import json
++import math
+ import os
+ import sys
+ import time
+@@ -247,6 +248,7 @@
+             headers_str = headers_buf.decode("utf-8", errors="replace")
+             content_length_values = []
+             transfer_encoding_values = []
++            te_present = 0
+             for line in headers_str.split("\r\n"):
+                 if ":" in line:
+                     k, v = line.split(":", 1)
+@@ -255,6 +257,7 @@
+                     if k == "content-length":
+                         content_length_values.append(v)
+                     elif k == "transfer-encoding":
++                        te_present += 1
+                         transfer_encoding_values.append(v.lower())
+             content_length = None
+             if content_length_values:
+@@ -264,14 +267,16 @@
+                 if not cl_str.isdigit():
+                     raise WorkloadError("invalid_content_length")
+                 content_length = int(cl_str)
+-            if transfer_encoding_values and len(set(transfer_encoding_values)) != 1:
++            if te_present and len(set(transfer_encoding_values)) != 1:
+                 raise WorkloadError("conflicting_transfer_encoding")
+-            transfer_encoding = transfer_encoding_values[0] if transfer_encoding_values else ""
+-            if transfer_encoding and content_length is not None:
++            transfer_encoding = transfer_encoding_values[0] if te_present else ""
++            if te_present and not transfer_encoding:
++                raise WorkloadError("empty_transfer_encoding")
++            if te_present and content_length is not None:
+                 raise WorkloadError("mixed_framing")
+-            if transfer_encoding and transfer_encoding != "chunked":
++            if te_present and transfer_encoding != "chunked":
+                 raise WorkloadError("unsupported_transfer_encoding")
+-            if content_length is None and not transfer_encoding and 200 <= status < 300:
++            if content_length is None and not te_present and 200 <= status < 300:
+                 raise WorkloadError("framing_required")
+             body = b""
+             if content_length is not None:
+@@ -457,15 +462,23 @@
+     for rec in (auth, handoff):
+         wf = rec.get("valid_from_epoch_s")
+         wu = rec.get("valid_until_epoch_s")
+-        if not isinstance(wf, (int, float)) or isinstance(wf, bool):
+-            raise WorkloadError("authority_stale")
+-        if not isinstance(wu, (int, float)) or isinstance(wu, bool):
+-            raise WorkloadError("authority_stale")
++        if not isinstance(wf, (int, float)) or isinstance(wf, bool) or not math.isfinite(wf):
++            raise WorkloadError("authority_bounds_invalid")
++        if not isinstance(wu, (int, float)) or isinstance(wu, bool) or not math.isfinite(wu):
++            raise WorkloadError("authority_bounds_invalid")
+         if wf >= wu:
+             raise WorkloadError("authority_stale")
+     if auth.get("valid_from_epoch_s") != handoff.get("valid_from_epoch_s") or auth.get("valid_until_epoch_s") != handoff.get("valid_until_epoch_s"):
+         raise WorkloadError("authority_mismatch")
++    ns_a = auth.get("run_namespace")
++    ns_h = handoff.get("run_namespace")
++    if not isinstance(ns_a, str) or not ns_a or ns_a != ns_h:
++        raise WorkloadError("authority_mismatch")
++    if pathlib.Path(ns_a).resolve() != pathlib.Path(namespace).resolve():
++        raise WorkloadError("authority_mismatch")
+     now_wall = time.time()
++    if not math.isfinite(now_wall):
++        raise WorkloadError("clock_invalid")
+     if not (auth["valid_from_epoch_s"] <= now_wall < auth["valid_until_epoch_s"]):
+         raise WorkloadError("authority_stale")
+     if not isinstance(handoff.get("operator"), str) or not handoff.get("operator"):
+@@ -501,6 +514,11 @@
+         transport = make_transport()
+     evidence = {}
+     work = work_factory(request_bytes, transport, evidence)
++    now_admission = time.time()
++    if not math.isfinite(now_admission):
++        raise WorkloadError("clock_invalid")
++    if not (auth["valid_from_epoch_s"] <= now_admission < auth["valid_until_epoch_s"]):
++        raise WorkloadError("authority_stale")
+     receipt = qc.run_native_window(frozen_binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30)
+     req_digest = hashlib.sha256(request_bytes).hexdigest()
+     receipt_bytes = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+@@ -545,7 +563,7 @@
+     qualified = summary.get("CAPACITY_EVIDENCE") == "QUALIFIED"
+     evidence_keys = ("request_start_s", "response_complete_s", "callback_end_s")
+     values = [evidence.get(k) for k in evidence_keys]
+-    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
++    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in values)
+     ordered = numeric and values[0] <= values[1] <= values[2]
+     if not qualified or not ordered:
+         print("RESULT=NON_PASS")
+--- a/test_native_inference_runner.py	2026-09-22 13:00:18.456657200 +0800
++++ b/test_native_inference_runner.py	2026-09-22 14:44:15.415763200 +0800
+@@ -192,6 +192,18 @@
+                     self.send_header("Transfer-Encoding", "gzip")
+                     self.end_headers()
+                     self.wfile.write(body)
++                elif mode == "empty_te":
++                    self.send_response(200)
++                    self.send_header("Content-Length", str(len(body)))
++                    self.send_header("Transfer-Encoding", "")
++                    self.end_headers()
++                    self.wfile.write(body)
++                elif mode == "whitespace_te":
++                    self.send_response(200)
++                    self.send_header("Content-Length", str(len(body)))
++                    self.send_header("Transfer-Encoding", "   ")
++                    self.end_headers()
++                    self.wfile.write(body)
+                 else:  # valid
+                     self.send_response(200)
+                     self.send_header("Content-Length", str(len(body)))
+@@ -971,7 +983,8 @@
+                                task_id=None, authorized_source_sha=None, run_plan_sha256=None,
+                                window_id="fixture-window-1", valid_from_offset_s=-60, valid_until_offset_s=3600,
+                                harness_sha256=None, request_sha256=None,
+-                               handoff_window_id=None, handoff_validity_delta_s=0):
++                               handoff_window_id=None, handoff_validity_delta_s=0,
++                               run_namespace=None, handoff_run_namespace=None):
+         plan = json.loads(plan_bytes.decode("utf-8"))
+         now = time.time()
+         if harness_sha256 is None:
+@@ -988,6 +1001,7 @@
+             "window_id": window_id,
+             "valid_from_epoch_s": now + valid_from_offset_s,
+             "valid_until_epoch_s": now + valid_until_offset_s,
++            "run_namespace": run_namespace if run_namespace is not None else str(ns),
+         }
+         handoff = {
+             "task_id": task_id if task_id is not None else plan["task_id"],
+@@ -999,6 +1013,7 @@
+             "window_id": handoff_window_id if handoff_window_id is not None else window_id,
+             "valid_from_epoch_s": now + valid_from_offset_s + handoff_validity_delta_s,
+             "valid_until_epoch_s": now + valid_until_offset_s + handoff_validity_delta_s,
++            "run_namespace": handoff_run_namespace if handoff_run_namespace is not None else (run_namespace if run_namespace is not None else str(ns)),
+         }
+         (ns / "run-authority.json").write_bytes(json.dumps(auth).encode("utf-8"))
+         (ns / "operator-handoff.json").write_bytes(json.dumps(handoff).encode("utf-8"))
+@@ -1507,6 +1522,119 @@
+         finally:
+             shutil.rmtree(ns, ignore_errors=True)
+ 
++
++    # ---- V6 boundary regression tests (master REWORK on review SHA 5c1ac9ed; R2-A/R2-B/R3/R5-L) ----
++
++    def test_authority_expiry_during_preparation(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            self._write_authority_files(ns, plan_bytes, valid_from_offset_s=-60, valid_until_offset_s=0.005)
++            transport = FakeTransport()
++
++            def slow_collector(_binding):
++                time.sleep(0.2)
++                return clean_raw()
++
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=slow_collector)
++            self.assertEqual(ctx.exception.code, "authority_stale")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_authority_non_finite_bounds_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++            plan_bytes = (ns / "run-plan.json").read_bytes()
++            self._write_authority_files(ns, plan_bytes, valid_from_offset_s=-60, valid_until_offset_s=1e309)
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_bounds_invalid")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_authority_namespace_mismatch(self):
++        ns1 = pathlib.Path(tempfile.mkdtemp())
++        ns2 = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns1)
++            for f in ("run-plan.json", "request.json", "run-authority.json", "operator-handoff.json"):
++                (ns2 / f).write_bytes((ns1 / f).read_bytes())
++            transport = FakeTransport()
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns2), transport=transport, git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertEqual(ctx.exception.code, "authority_mismatch")
++            self.assertEqual(len(transport.calls), 0)
++        finally:
++            shutil.rmtree(ns1, ignore_errors=True)
++            shutil.rmtree(ns2, ignore_errors=True)
++
++    def test_duplicate_attempt_same_namespace_rejected(self):
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            self._make_v4_namespace(ns)
++
++            def fake_run_native_window(binding, work, **kwargs):
++                work(threading.Event())
++                return {"kind": "qa-capacity-cooperative-v1", "binding": {}, "lease": {"nonce": "00" * 16, "metadata": {}},
++                        "config": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15}, "work_start_s": 1.0, "work_end_s": 2.0,
++                        "samples": [], "events": [],
++                        "summary": {"CAPACITY_EVIDENCE": "UNQUALIFIED", "reasons": ["fixture_window"]}, "digest": "cd" * 32}
++
++            with unittest.mock.patch.object(h.qc, "run_native_window", side_effect=fake_run_native_window):
++                h.run_live(str(ns), transport=FakeTransport(), git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            with self.assertRaises(h.WorkloadError) as ctx:
++                h.run_live(str(ns), transport=FakeTransport(), git_head_fn=lambda: h.EXPECTED_FIXUP_SHA, collector=lambda _: clean_raw())
++            self.assertIn(ctx.exception.code, ("receipt_already_persisted", "binding_already_frozen"))
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
++    def test_empty_transfer_encoding_rejected(self):
++        payload = valid_response_body()
++        srv = EphemeralServer({"mode": "empty_te", "body": payload})
++        srv.start()
++        try:
++            transport = h.make_transport(url=srv.url + "/v1/chat/completions")
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport((NS / "request.json").read_bytes(), threading.Event())
++            self.assertEqual(ctx.exception.code, "empty_transfer_encoding")
++        finally:
++            srv.stop()
++
++    def test_whitespace_transfer_encoding_rejected(self):
++        payload = valid_response_body()
++        srv = EphemeralServer({"mode": "whitespace_te", "body": payload})
++        srv.start()
++        try:
++            transport = h.make_transport(url=srv.url + "/v1/chat/completions")
++            with self.assertRaises(h.WorkloadError) as ctx:
++                transport((NS / "request.json").read_bytes(), threading.Event())
++            self.assertEqual(ctx.exception.code, "empty_transfer_encoding")
++        finally:
++            srv.stop()
++
++    def test_main_infinite_evidence_rejected(self):
++        qualified = {"digest": "ab" * 32, "summary": {"CAPACITY_EVIDENCE": "QUALIFIED", "reasons": []}}
++        ns = pathlib.Path(tempfile.mkdtemp())
++        try:
++            for bad in (
++                {"request_start_s": float("inf"), "response_complete_s": float("inf"), "callback_end_s": float("inf")},
++                {"request_start_s": float("-inf"), "response_complete_s": 2.0, "callback_end_s": 3.0},
++                {"request_start_s": 1.0, "response_complete_s": float("nan"), "callback_end_s": 3.0},
++            ):
++                with unittest.mock.patch.object(h, "run_live", return_value=(qualified, bad)):
++                    self.assertEqual(h.main(namespace=str(ns)), 1)
++            good = {"request_start_s": 1.0, "response_complete_s": 2.0, "callback_end_s": 3.0}
++            with unittest.mock.patch.object(h, "run_live", return_value=(qualified, good)):
++                self.assertEqual(h.main(namespace=str(ns)), 0)
++        finally:
++            shutil.rmtree(ns, ignore_errors=True)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+--- a/run-plan.json	2026-09-22 11:44:23.349948800 +0800
++++ b/run-plan.json	2026-09-22 14:46:26.384748800 +0800
+@@ -5,18 +5,79 @@
+   "authorized_source_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+   "source_identity_rule": "EXACT_EQUALITY: the observed git HEAD must exactly equal authorized_source_sha (the explicitly authorized runtime source at FIXUP_SHA); the delivery commit is never auto-substituted; a successful git execution (returncode 0) is required before stdout is accepted",
+   "approved_request_sha256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+-  "window_contract": {"window_id": "uniquely assigned by the operator at grant time; both authority and handoff must declare the identical window_id", "valid_from_epoch_s": "epoch seconds; window start (inclusive)", "valid_until_epoch_s": "epoch seconds; window end (exclusive)", "rule": "both authority and handoff must declare identical validity bounds; the current wall-clock time must lie inside the window at admission; a granted window is single-use for the task and cannot be extended or reused; the literal CURRENT marker is descriptive only, not a freshness test"},
+-  "artifact_identity": {"authorized_source_sha": "declared in both authority records and must equal the plan value", "run_plan_sha256": "declared in both authority records; the plan bytes bound to the authority", "harness_sha256": "declared in both authority records; verified against the accepted harness file at admission", "request_sha256": "declared in both authority records; must equal the approved request digest"},
+-  "endpoint": {"method": "POST", "url": "http://127.0.0.1:5000/v1/chat/completions", "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"},
++  "window_contract": {
++    "window_id": "uniquely assigned by the operator at grant time; both authority and handoff must declare the identical window_id",
++    "valid_from_epoch_s": "finite (math.isfinite), non-Boolean number; window start (inclusive); non-finite bounds (e.g. 1e309 -> inf) are rejected (authority_bounds_invalid)",
++    "valid_until_epoch_s": "finite (math.isfinite), non-Boolean number; window end (exclusive); non-finite bounds rejected (authority_bounds_invalid)",
++    "run_namespace": "the single canonical run namespace the grant is bound to; both authority and handoff must declare the identical run_namespace and it must equal the resolved namespace in which run_live executes; a grant cannot be replayed through another namespace",
++    "rule": "both authority and handoff must declare identical validity bounds and identical run_namespace; the current wall-clock time (which must itself be finite) must lie inside the window at admission AND the unchanged grant is revalidated immediately before native admission and workload dispatch (no extension, no restamping); a granted window is single-use for the task: the per-namespace exclusive persistence protection (expected-binding.json + native-receipt.json, O_EXCL pre-checks) rejects any further attempt in the bound namespace, and the run_namespace binding rejects any attempt elsewhere; the literal CURRENT marker is descriptive only, not a freshness test"
++  },
++  "artifact_identity": {
++    "authorized_source_sha": "declared in both authority records and must equal the plan value",
++    "run_plan_sha256": "declared in both authority records; the plan bytes bound to the authority",
++    "harness_sha256": "declared in both authority records; verified against the accepted harness file at admission",
++    "request_sha256": "declared in both authority records; must equal the approved request digest",
++    "run_namespace": "declared in both authority records; must equal the resolved execution namespace"
++  },
++  "endpoint": {
++    "method": "POST",
++    "url": "http://127.0.0.1:5000/v1/chat/completions",
++    "destination": "literal loopback, pinned; no proxy, no redirect, no retry, no fallback"
++  },
+   "request_file": "request.json",
+-  "request_amendment": {"approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)", "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged", "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable", "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"},
+-  "limits": {"inference_requests_max": 1, "retries": 0, "connect_deadline_s": 2, "total_http_deadline_s": 10, "response_body_bytes_max": 65536, "max_tokens": 384},
+-  "monitoring": {"interval_s": 2, "max_gap_s": 5, "timeout_s": 15, "ttl_s": 30},
+-  "binding": {"allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard", "qwen_worker_names": ["qwen-writer"], "qwen_worker_names_rule": "fixed; not narrowable"},
+-  "authority": {"required_artifacts": ["run-authority.json", "operator-handoff.json"], "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window, and the accepted source/harness/request/plan identity; the window must contain the current wall-clock time at admission; missing, stale, or mismatched records are rejected before native work; no bypass switches exist"},
++  "request_amendment": {
++    "approved_by": "WEB_MASTER ruling on HARNESS_PREP_HANDOFF (QA_CAPACITY_INFERENCE_HARNESS_PREP_6922278_V1)",
++    "semantic_delta": "exactly stream_options: {\"include_usage\": true} added; stream remains false; all other fields unchanged",
++    "purpose": "installed server conditions non-streaming response usage on stream_options.include_usage (D:/tabbyAPI/endpoints/OAI/utils/chat_completion.py:932); without it usage=null and the token-accounting criterion is unsatisfiable",
++    "usage_semantics_unchanged": "missing/null usage remains a failure; no estimation, substitution, relaxation, streaming, added requests, or timeout extension"
++  },
++  "limits": {
++    "inference_requests_max": 1,
++    "retries": 0,
++    "connect_deadline_s": 2,
++    "total_http_deadline_s": 10,
++    "response_body_bytes_max": 65536,
++    "max_tokens": 384
++  },
++  "monitoring": {
++    "interval_s": 2,
++    "max_gap_s": 5,
++    "timeout_s": 15,
++    "ttl_s": 30
++  },
++  "binding": {
++    "allowed_clients_rule": "exactly the dedicated lease-owning runner's own freshly-attested (pid, birth) captured before lease acquisition and PRE; no orchestrator exemption, no external-workspace exemption, no child-process exemption, no wildcard",
++    "qwen_worker_names": [
++      "qwen-writer"
++    ],
++    "qwen_worker_names_rule": "fixed; not narrowable"
++  },
++  "authority": {
++    "required_artifacts": [
++      "run-authority.json",
++      "operator-handoff.json"
++    ],
++    "rule": "the authority records must declare the new prospective task ID, the same uniquely identified and explicitly bounded execution window (finite non-Boolean bounds), the same canonical run namespace, and the accepted source/harness/request/plan identity; the window must contain the current finite wall-clock time at admission and the unchanged grant is revalidated immediately before native admission and workload dispatch; missing, stale, mismatched, or non-finite records are rejected before native work; no bypass switches exist"
++  },
+   "runtime_window": "REQUIRES_CURRENT_AFFIRMATIVE_OPERATOR_HANDOFF",
+   "native_api": "run_native_window(binding, work, interval_s=2, max_gap_s=5, timeout_s=15, ttl_s=30) — unmodified module API at FIXUP_SHA",
+   "workload_evidence": "request start, response completion, and callback boundaries recorded on one consistent monotonic clock in a separate workload evidence artifact at future runtime; the full native receipt (including negative outcomes) is persisted to native-receipt.json (pre-check + O_EXCL + O_BINARY + complete-write + post-close byte verification, never overwritten) with its SHA-256 linked into the workload evidence; terminal classification uses the canonical receipt[summary][CAPACITY_EVIDENCE] field and fail-closed evidence validation (numeric values + ordering)",
+-  "v5_rework": {"verdict": "REWORK (master exact-SHA review; review SHA 7caa887eca1e616ffb5ebb46db960636e7bac6e3; response persisted in V4 namespace web-review-response-v4.json)", "closed_by_master": "R1 request identity; F1/F2 retained; O_BINARY correct_and_complete", "findings": "R2 current execution authority (new prospective task ID + bounded window + identity binding + git returncode); R3 header framing validation; R4 final cancel check at publication boundary; R5 canonical result classification + evidence validation + argv handling; R6 checked complete persistence + byte/hash verification", "test_budget": "one implementation batch + one full focused fixture run; on failure: read-only diagnosis, minimal repair, one focused retry; no blind third retry"},
+-  "this_slice": {"live_native_attempts": 0, "live_inference": 0, "fixture_tests_only": true}
+-}
+\ No newline at end of file
++  "v5_rework": {
++    "verdict": "REWORK (master exact-SHA review; review SHA 7caa887eca1e616ffb5ebb46db960636e7bac6e3; response persisted in V4 namespace web-review-response-v4.json)",
++    "closed_by_master": "R1 request identity; F1/F2 retained; O_BINARY correct_and_complete",
++    "findings": "R2 current execution authority (new prospective task ID + bounded window + identity binding + git returncode); R3 header framing validation; R4 final cancel check at publication boundary; R5 canonical result classification + evidence validation + argv handling; R6 checked complete persistence + byte/hash verification",
++    "test_budget": "one implementation batch + one full focused fixture run; on failure: read-only diagnosis, minimal repair, one focused retry; no blind third retry"
++  },
++  "this_slice": {
++    "live_native_attempts": 0,
++    "live_inference": 0,
++    "fixture_tests_only": true
++  },
++  "v6_rework": {
++    "verdict": "REWORK (master exact-SHA review; review SHA 5c1ac9edcf732f37299751a4d9268601b4bf4b44; response persisted in V5 namespace web-review-response-v5.json)",
++    "closed_by_master": "R4 final cancel check; R6 checked persistence; R5 canonical key + argv; R1/F1/F2 retained",
++    "findings": "R2-A HIGH grant expiry during preparation + non-finite bounds (finite non-Boolean bounds + finite clock + revalidation of the unchanged grant immediately before native admission/dispatch); R2-B HIGH cross-namespace grant replay (run_namespace binding in both authority records + per-namespace exclusive persistence protection as the bounded single-use mechanism); R3 MEDIUM present-but-empty Transfer-Encoding accepted (presence vs nonempty value; empty/whitespace-only TE rejected; CL combined with any TE field rejected); R5-L LOW infinite evidence timestamps accepted (math.isfinite on the three evidence values)",
++    "evidence_corrections": "append-only chronology/exception record (chronology.json): run-budget deviation disclosure (runs 2/3/4 = three runs vs the documented one-full-run-plus-one-retry budget, recorded as a deviation, not compliance), per-run harness/test fingerprints (preserved where available, recorded unavailable otherwise), V4 orchestration-error incident record (resolved erroneous destination, affected file set, pre-error/detected/post-restoration fingerprints, accidentally modified bytes not preserved, post-restoration hash inventory), dispatch precondition (resolve destination from the current task explicit namespace, verify task marker + expected baseline, reject immutable parent namespaces, no stale version-specific pointer files)",
++    "test_budget": "at most one complete focused fixture run + one narrowly diagnosed repair/retry; an incorrectly targeted run still counts as an execution and must be disclosed; after the budget stop and return the evidence"
++  }
++}

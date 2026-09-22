@@ -1,0 +1,10 @@
+{
+  "parent_task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V5",
+  "parent_namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v5-1790043960287",
+  "parent_review_sha": "5c1ac9edcf732f37299751a4d9268601b4bf4b44",
+  "parent_core_digest": "c0ba20bcf599dd44b8ddcaa0959cb2f5d7889f044a0d7e5669c646dd3bfdfc4d",
+  "parent_verdict": "REWORK (19/19 files verified; R4/R6/R5-canonical+argv CLOSED; R2-A/R2-B/R3/R5-L prescribed; two evidence/governance requires_fix rulings)",
+  "grandparent_review_sha": "7caa887eca1e616ffb5ebb46db960636e7bac6e3",
+  "grandparent_core_digest": "74a301b3606eb5d1fd57789decd6591e4e6f7b1adfab89273bc1ca3aa0ab4d75",
+  "lineage_note": "actual Git parent of each review branch commit is 6922278ac865727fdcdded96535f94aaaabeb8b3 (the authorized source SHA); the review SHA chain is the delivery-reference chain (master lineage correction recorded in V4 verdict)"
+}

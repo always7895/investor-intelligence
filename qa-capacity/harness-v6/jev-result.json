@@ -1,0 +1,44 @@
+{
+  "model": "jev-1.13.0",
+  "scope": "V6 harness-repair candidate (master V5 REWORK: R2-A/R2-B/R3/R5-L + two evidence/governance corrections): per-finding resolution + evidence corrections + fixture evidence adequacy + overall decision-grade",
+  "binding": {
+    "fixup_sha": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+    "v6_core_digest": "a1fc3242522b86de21b813fc448d6d67f2621693561e423538217e40b7ad059d",
+    "parent_review_sha": "5c1ac9edcf732f37299751a4d9268601b4bf4b44"
+  },
+  "answers": {
+    "r2a_resolved": {
+      "choice": "RESOLVED",
+      "probability": 1
+    },
+    "r2b_resolved": {
+      "choice": "RESOLVED",
+      "probability": 1
+    },
+    "r3_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.99
+    },
+    "r5l_resolved": {
+      "choice": "RESOLVED",
+      "probability": 0.99
+    },
+    "evidence_corrections_adequate": {
+      "choice": "ADEQUATE",
+      "probability": 0.99
+    },
+    "fixture_evidence_adequacy": {
+      "choice": "ADEQUATE",
+      "probability": 0.9
+    },
+    "overall_candidate": {
+      "choice": "DECISION_GRADE",
+      "probability": 0.75
+    }
+  },
+  "usage": {
+    "input_tokens": 2963,
+    "output_tokens": 290,
+    "elapsed_ms": 876
+  }
+}

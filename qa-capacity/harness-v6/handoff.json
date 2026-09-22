@@ -1,0 +1,49 @@
+{
+  "task_id": "QA_CAPACITY_HARNESS_RUNTIME_REPAIR_6922278_V6",
+  "namespace": "D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/qa-capacity-harness-runtime-repair-6922278-v6-1790058581489",
+  "labels": {
+    "FIXTURE_PASS": true,
+    "SOURCE_ACCEPTANCE": "PENDING_EXACT_SHA_REVIEW",
+    "NATIVE_EXECUTION_AUTHORIZED": false,
+    "CAPACITY_EVIDENCE": "UNQUALIFIED",
+    "PROVISIONAL_LOCAL_ONLY": true,
+    "PUSH_ALLOWED": false,
+    "BACKEND_MIGRATION_ALLOWED": false,
+    "DEVELOPMENT_COMPLETE": false,
+    "FINAL_RELEASE_COMPLETE": false
+  },
+  "master_review_context": {
+    "parent_review_sha": "5c1ac9edcf732f37299751a4d9268601b4bf4b44",
+    "parent_verdict": "REWORK (19/19 files verified; R4/R6/R5-canonical+argv CLOSED; R2-A/R2-B/R3/R5-L prescribed; two evidence/governance requires_fix rulings)",
+    "v6_addressed": "R2-A finite bounds + fresh grant revalidation; R2-B namespace-bound single-use grant; R3 empty Transfer-Encoding rejection; R5-L finite evidence validation; evidence corrections (chronology + incident record + dispatch precondition)",
+    "next_action": "master exact-SHA review of the V6 candidate at its review commit (immutable raw.githubusercontent.com URLs); verdict ACCEPT/REWORK/SOURCE_UNAVAILABLE per the established schema"
+  },
+  "identities": {
+    "V6_HARNESS_SHA256": "b17b40db0d5df08ac6c0cdfbf5a54fa5b66a6aa8408274e9a2142c0a3d4b1d42",
+    "V6_TEST_FILE_SHA256": "4c87e17d193e86596056b21cfd6f1c9833fb6aa446bebad319ff2a744a584c5e",
+    "V6_REQUEST_BYTES_SHA256": "1fa1910c8db0dda712d6997717e7c5519c22de9465222dd302e96456bcc3f7b0",
+    "V6_RUN_PLAN_SHA256": "fb8de167accdd2ea6715f19ffbc0371e786c3d3b96b5fc40f5dd5156cc21d4b5",
+    "V6_BINDING_TEMPLATE_SHA256": "5a453b450056ce69b55358f840d65a9bcd69e1cd64e322b170f193e16b6482ab",
+    "V6_IMPLEMENTATION_REVIEW_SHA256": "1c75467ec58b8ce723a0ab451826e94c4b27955ef6094cdc25286e2b0fb46a27",
+    "V6_RUNTIME_REPAIR_REVIEW_SHA256": "e6ac7065f0ae88b9fcd736e2cc65d4b5f5a40b1095d84e130a4523af23a02f54",
+    "REPAIR_DIFF_SHA256": "87ea3a5bc0d31d869cd8eff9eeb7a138842fbd705739a8ba140bf8f4d8a50156",
+    "CHRONOLOGY_SHA256": "486143bd950f0a91e1c057d9639a7b26850fa1fe436bd852432ddc3ef091fcd2",
+    "V6_CORE_DIGEST": "a1fc3242522b86de21b813fc448d6d67f2621693561e423538217e40b7ad059d",
+    "JEV_RESULT_SHA256": "e5d018151558e6511749cd7469c90498d228344fa5b395246e8fa50e0d4fa1d4",
+    "MAPIKA_RESULT_SHA256": "a24f2077b164171f9ff6f1e5ab05a3d49f53cb5c81333f50237835c05b34e1fb"
+  },
+  "fixture": {
+    "run1": "61/61 OK exit 0 (single budgeted run; no repair needed; no mis-targeted runs)"
+  },
+  "constraints_held": [
+    "no native attempts",
+    "no live inference",
+    "no tracked repository changes",
+    "request payload byte-identical",
+    "capacity module unmodified",
+    "historical namespaces preserved",
+    "V5 raw logs unaltered",
+    "no old candidates rerun",
+    "R1/R4/R5-canonical/R6 and F1/F2 logic not reworked"
+  ]
+}
