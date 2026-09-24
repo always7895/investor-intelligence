@@ -1171,6 +1171,22 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
     return "\n".join(lines) + "\n"
 
 
+def _top20_sort_key(item: Mapping[str, Any]) -> tuple[float, float, str]:
+    score = item.get("serenity_score")
+    quality = item.get("data_quality")
+    if type(score) is bool or type(quality) is bool:
+        raise PipelineError("TOP20_SCORE_OR_QUALITY_INVALID")
+    if not isinstance(score, (int, float)) or not isinstance(quality, (int, float)):
+        raise PipelineError("TOP20_SCORE_OR_QUALITY_INVALID")
+    if not (0 <= score <= 100) or not (0 <= quality <= 1):
+        raise PipelineError("TOP20_SCORE_OR_QUALITY_INVALID")
+    score_f = float(score)
+    quality_f = float(quality)
+    if not math.isfinite(score_f) or not math.isfinite(quality_f):
+        raise PipelineError("TOP20_SCORE_OR_QUALITY_INVALID")
+    return (-score_f, -quality_f, str(item["ticker"]))
+
+
 def validate_top20(records: Sequence[Mapping[str, Any]]) -> None:
     if len(records) != 20:
         raise PipelineError(f"Expected exactly 20 records, found {len(records)}")
@@ -1180,11 +1196,7 @@ def validate_top20(records: Sequence[Mapping[str, Any]]) -> None:
         raise PipelineError("Duplicate ticker in Top 20")
     expected = sorted(
         records,
-        key=lambda item: (
-            -int(item["serenity_score"]),
-            -float(item["data_quality"]),
-            str(item["ticker"]),
-        ),
+        key=_top20_sort_key,
     )
     if list(records) != expected:
         raise PipelineError("Top 20 order is not deterministic")
@@ -1254,11 +1266,7 @@ def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
         scored.append(score_candidate(candidate, metric, evidence, policy))
 
     scored.sort(
-        key=lambda item: (
-            -int(item["serenity_score"]),
-            -float(item["data_quality"]),
-            str(item["ticker"]),
-        )
+        key=_top20_sort_key
     )
     if len(scored) < int(policy["top_count"]):
         raise PipelineError(f"Only {len(scored)} scored candidates; 20 required")
