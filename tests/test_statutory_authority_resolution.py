@@ -1,8 +1,12 @@
 """Verify Objective A & B statutory authority resolution (STATUTORY_AUTHORITY_RESOLUTION_V1).
 
+SYNTHETIC GRAMMAR TESTS ONLY - NOT REAL LEGAL OR PUBLIC RESEARCH EVIDENCE.
+Unchanged parser default URLs/version labels (including CLI output) are not
+authenticated provenance. Real-corpus integration is separate and unqualified.
+
 Invariants verified (see docs/STATUTORY_AUTHORITY_RESOLUTION_V1.md):
 - The 7 typed statutory citations in scripts/carb_typed_section_parser.py carry
-  literal anchors that are exact substrings of the retained corpus, provenance
+  literal anchors that are exact substrings of the synthetic grammar fixture, provenance
   spans {start, length} consistent with those substrings, and SHA-256 digests of
   the anchor bytes.
 - unresolved_outside_corpus=True and limits_complete_interpretation=True are
@@ -11,7 +15,7 @@ Invariants verified (see docs/STATUTORY_AUTHORITY_RESOLUTION_V1.md):
 - Unknown / malformed reference text fails closed to UNPARSEABLE or OTHER.
 - parse_carb_document reports runtime_admitted strictly False and
   company_admissions strictly 0.
-- Zero network: everything runs against the digested retained corpus only.
+- Zero network: everything runs against the digested synthetic grammar fixture only.
 """
 from __future__ import annotations
 
@@ -33,15 +37,9 @@ from scripts.carb_typed_section_parser import (  # noqa: E402
 )
 
 # ==============================================================================
-# Resolve the absolute path to the retained corpus file
+# Resolve the absolute path to the synthetic grammar fixture file
 # ==============================================================================
-RETAINED_CORPUS = (
-    _REPO_ROOT.parent
-    / "audit-runtime"
-    / "gemini-executor-20260914"
-    / "meiden-independent-public-v1"
-    / "carb-final-regulation.md"
-)
+RETAINED_CORPUS = Path(__file__).resolve().parent / "fixtures" / "carb-parser-synthetic.txt"
 
 EXPECTED_CITATION_COUNT = 7
 FAILED_CLOSED_CLASSES = (ReferenceClass.UNPARSEABLE, ReferenceClass.OTHER)
@@ -53,10 +51,10 @@ class TestStatutoryAuthorityResolution(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not RETAINED_CORPUS.is_file():
-            raise unittest.SkipTest(f"Retained corpus not found at {RETAINED_CORPUS}")
+            raise FileNotFoundError("SYNTHETIC_FIXTURE_MISSING")
         cls.corpus = RETAINED_CORPUS.read_text(encoding="utf-8")
         cls.citations = parse_statutory_citations(cls.corpus)
-        cls.document = parse_carb_document(cls.corpus)
+        cls.document = parse_carb_document(cls.corpus, source_metadata={'id': 'SYNTHETIC-CARB-GRAMMAR', 'file': 'carb-parser-synthetic.txt', 'url': 'https://example.com/synthetic/carb-grammar'})
 
     # ------------------------------------------------------------------
     # 1) Exactly 7 typed citations with literal anchors

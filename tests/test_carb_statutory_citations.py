@@ -1,7 +1,11 @@
 """Focused tests for CARB Statutory Cross-Reference Typing (CARB_STATUTORY_CROSS_REFERENCE_TYPING_V1).
 
+SYNTHETIC GRAMMAR TESTS ONLY - NOT REAL LEGAL OR PUBLIC RESEARCH EVIDENCE.
+Unchanged parser default URLs/version labels (including CLI output) are not
+authenticated provenance. Real-corpus integration is separate and unqualified.
+
 Invariants verified:
-- Structured StatutoryCitation dataclass records mapped from actual retained source.
+- Structured StatutoryCitation dataclass records mapped from fixed synthetic grammar input.
 - Reference taxonomy distinguishes HealthSafetyCode, 40CFR, 17CCR, consensusstandards, OTHER, UNPARSEABLE.
 - Exactly 7 legacy external cross-references typed (no guessed section titles, dates, or legal substance resolution).
 - unresolved_outside_corpus=True and limits_complete_interpretation=True bound to all external citations.
@@ -39,7 +43,7 @@ from scripts.carb_typed_section_parser import (
     parse_statutory_citations,
 )
 
-RETAINED_CORPUS_PATH = Path(__file__).resolve().parent.parent.parent / "audit-runtime" / "gemini-executor-20260914" / "meiden-independent-public-v1" / "carb-final-regulation.md"
+RETAINED_CORPUS_PATH = Path(__file__).resolve().parent / "fixtures" / "carb-parser-synthetic.txt"
 
 
 class TestCarbStatutoryCitations(unittest.TestCase):
@@ -48,10 +52,10 @@ class TestCarbStatutoryCitations(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not RETAINED_CORPUS_PATH.is_file():
-            raise unittest.SkipTest(f"Retained corpus not found at {RETAINED_CORPUS_PATH}")
+            raise FileNotFoundError("SYNTHETIC_FIXTURE_MISSING")
         with open(RETAINED_CORPUS_PATH, "r", encoding="utf-8") as f:
             cls.corpus_text = f.read()
-        cls.parsed = parse_carb_document(cls.corpus_text)
+        cls.parsed = parse_carb_document(cls.corpus_text, source_metadata={'id': 'SYNTHETIC-CARB-GRAMMAR', 'file': 'carb-parser-synthetic.txt', 'url': 'https://example.com/synthetic/carb-grammar'})
 
     def test_dataclass_immutability(self):
         """StatutoryCitation records must be strictly immutable (frozen)."""
@@ -100,8 +104,8 @@ class TestCarbStatutoryCitations(unittest.TestCase):
         self.assertEqual(counts[ReferenceClass.CFR_40], 1, "Expected 1 40CFR citation")
         self.assertEqual(counts[ReferenceClass.CCR_17], 2, "Expected 2 17CCR citations")
         self.assertEqual(counts[ReferenceClass.CONSENSUS_STANDARDS], 1, "Expected 1 consensusstandards citation")
-        self.assertEqual(counts[ReferenceClass.OTHER], 0, "Expected 0 OTHER citations in official corpus")
-        self.assertEqual(counts[ReferenceClass.UNPARSEABLE], 0, "Expected 0 UNPARSEABLE citations in official corpus")
+        self.assertEqual(counts[ReferenceClass.OTHER], 0, "Expected 0 OTHER citations in synthetic grammar fixture")
+        self.assertEqual(counts[ReferenceClass.UNPARSEABLE], 0, "Expected 0 UNPARSEABLE citations in synthetic grammar fixture")
         self.assertEqual(sum(counts.values()), 7, "Total typed citations must equal 7")
 
     def test_citation_provenance_and_spans(self):

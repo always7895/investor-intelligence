@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Comprehensive behavioral tests for CARB Typed Section Parser (CARB_TYPED_SECTION_PARSER_V1).
 
+SYNTHETIC GRAMMAR TESTS ONLY - NOT REAL LEGAL OR PUBLIC RESEARCH EVIDENCE.
+Unchanged parser default URLs/version labels (including CLI output) are not
+authenticated provenance. Real-corpus integration is separate and unqualified.
+
 Covers:
-- Positive parsing of retained official CARB regulation text fixture.
+- Positive parsing of synthetic CARB grammar fixture.
 - Table 1 (<= 38 kV) vs Table 2 (> 38 kV) distinction, configuration handling, and exact row counts.
 - Exact boundary equality belonging to proper band (voltage 38 kV, 145 kV, 245 kV; current 25 kA, 63 kA).
 - Date distinction: acquisition phase-out date vs regulation promulgation date.
@@ -32,26 +36,24 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import carb_typed_section_parser as parser
 
-FIXTURE_PATH = (
-    Path("D:/Investor-Intelligence-LINE-Pi/_workspace/audit-runtime/gemini-executor-20260914/meiden-independent-public-v1/carb-final-regulation.md")
-)
+FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "carb-parser-synthetic.txt"
 
 
 class TestCarbParserPositiveFixture(unittest.TestCase):
-    """Positive tests against the retained official CARB regulation markdown fixture."""
+    """Positive tests against the synthetic CARB grammar fixture."""
 
     @classmethod
     def setUpClass(cls):
         if not FIXTURE_PATH.is_file():
-            raise unittest.SkipTest(f"Fixture not found at {FIXTURE_PATH}")
+            raise FileNotFoundError("SYNTHETIC_FIXTURE_MISSING")
         with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
             cls.raw_text = f.read()
         cls.parsed = parser.parse_carb_document(
             cls.raw_text,
             source_metadata={
-                "id": "carb-final-regulation",
-                "file": "carb-final-regulation.md",
-                "url": "https://ww2.arb.ca.gov/sites/default/files/barcu/regact/2020/sf6/fro.pdf",
+                "id": "SYNTHETIC-CARB-GRAMMAR",
+                "file": "carb-parser-synthetic.txt",
+                "url": "https://example.com/synthetic/carb-grammar",
             },
         )
 
@@ -275,7 +277,7 @@ class TestCarbParserNegativeMutations(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not FIXTURE_PATH.is_file():
-            raise unittest.SkipTest("Fixture missing")
+            raise FileNotFoundError("SYNTHETIC_FIXTURE_MISSING")
         with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
             cls.base_text = f.read()
 
@@ -340,10 +342,10 @@ class TestCarbParserTypeSafety(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not FIXTURE_PATH.is_file():
-            raise unittest.SkipTest("Fixture missing")
+            raise FileNotFoundError("SYNTHETIC_FIXTURE_MISSING")
         with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
             raw = f.read()
-        cls.parsed = parser.parse_carb_document(raw)
+        cls.parsed = parser.parse_carb_document(raw, source_metadata={'id': 'SYNTHETIC-CARB-GRAMMAR', 'file': 'carb-parser-synthetic.txt', 'url': 'https://example.com/synthetic/carb-grammar'})
 
     def test_reject_bool_voltage(self):
         """Boolean voltage (e.g. True) must be rejected to prevent Python int coercion."""
