@@ -201,8 +201,10 @@ class ReportSourceAcquisitionTests(unittest.TestCase):
             report=Path(tmp)/'five.json';base=Path(tmp)/'orders.json';out=Path(tmp)/'seven.json';text=Path(tmp)/'seven.txt'
             report.write_bytes(builder.json_bytes(result['report']));base.write_bytes(builder.json_bytes(baseline))
             out.write_text('SYNTHETIC_ORIGINAL');text.write_text('SYNTHETIC_PREVIEW')
+            universe=Path(tmp)/'universe.json'
+            universe.write_bytes(builder.json_bytes([{'ticker':ticker,'name':name} for ticker,name in names_for(result['report']).items()]))
             run=subprocess.run([sys.executable,'-B',str(ROOT/'scripts/build_v213_scheduled_top20_report.py'),
-                '--v212-report',str(report),'--baseline',str(base),'--output',str(out),'--preview',str(text),'--require-known-acquisition'],capture_output=True,timeout=30)
+                '--v212-report',str(report),'--baseline',str(base),'--top20',str(universe),'--output',str(out),'--preview',str(text),'--require-known-acquisition'],capture_output=True,timeout=30)
             self.assertEqual(run.returncode,1)
             self.assertIn(b'SOURCE_ACQUISITION_UNKNOWN',run.stderr)
             self.assertNotIn(b'Traceback',run.stderr)

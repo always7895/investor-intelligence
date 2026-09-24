@@ -1,5 +1,7 @@
 """Behavioral review tests for company_evidence_candidates producer.
 
+Self-contained synthetic fixtures only; not authenticated or current public research.
+
 Verifies:
 1. SECURITY: Credential redaction, static error codes, HTTPS-only, private IP/traversal rejection, canary omission in CLI stdout/stderr.
 2. FALSE PROVENANCE: Exact mapped spans / EXACT-only, roundtrip invariant original_text[offset:offset+length] == passage, repeated passage disambiguation.
@@ -23,15 +25,17 @@ SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import company_evidence_candidates as cec
+from company_evidence_test_corpus import build_corpus
 
-RUNTIME_DIR = ROOT.parent / "audit-runtime" / "gemini-executor-20260914"
-SOURCES_PATH = RUNTIME_DIR / "company-evidence-public-v1" / "research-sources.json"
 
 
 class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
     def setUp(self) -> None:
-        self.assertTrue(SOURCES_PATH.exists(), f"Missing sources: {SOURCES_PATH}")
-        with open(SOURCES_PATH, "r", encoding="utf-8") as f:
+        fixture = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.cleanup)
+        self.sources_path, self.proposals_path = build_corpus(Path(fixture.name))
+        self.assertTrue(self.sources_path.exists(), f"Missing sources: {self.sources_path}")
+        with open(self.sources_path, "r", encoding="utf-8") as f:
             self.sources_manifest = json.load(f)
 
     # 1. SECURITY & REDACTION TESTS
@@ -117,7 +121,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
     # 2. FALSE PROVENANCE & EXACT ROUNDTRIP TESTS
     def test_provenance_roundtrip_invariant(self) -> None:
         # Passage has slight whitespace formatting differences from source text
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         source_id = "gev-1q2026-results"
         doc_text = producer.source_texts[source_id]
 
@@ -155,7 +159,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
             self.assertIn("UNMATCHED", res["quarantine"][0]["reason"])
 
     def test_repeated_occurrences_require_disambiguation(self) -> None:
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         # "Electrification" appears dozens of times in gev-2q2026-transcript.md
         prop = {
             "schema_version": 1,
@@ -178,7 +182,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
 
     # 3. CONTEXT CONNECTION TESTS
     def test_context_must_enclose_selected_passage(self) -> None:
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         # Passage from page 5, context from page 2 (unrelated)
         prop = {
             "schema_version": 1,
@@ -201,7 +205,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
 
     # 4. DEFAULT PROMOTION TESTS
     def test_missing_semantics_default_to_unreviewed(self) -> None:
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         prop = {
             "schema_version": 1,
             "proposals": [
@@ -223,7 +227,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
         self.assertEqual(c.get("geography"), "UNKNOWN", "Defaulted to GLOBAL!")
 
     def test_issuer_document_role_promotion_rejected(self) -> None:
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         prop = {
             "schema_version": 1,
             "proposals": [
@@ -249,7 +253,7 @@ class TestCompanyEvidenceCandidatesReview(unittest.TestCase):
     def test_source_manifest_unknown_fields_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            for item in SOURCES_PATH.parent.iterdir():
+            for item in self.sources_path.parent.iterdir():
                 if item.is_file():
                     (tmp / item.name).write_bytes(item.read_bytes())
             sf = tmp / "research-sources.json"

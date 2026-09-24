@@ -1,5 +1,7 @@
 """Tests for company_evidence_candidates CLI safety, immutability, and resource bounds (Review 2).
 
+Self-contained synthetic fixtures only; not authenticated or current public research.
+
 Verifies:
 1. IMMUTABILITY & ANTI-DESTRUCTION:
    - Reject existing target before write (fail-closed, file remains byte-identical).
@@ -38,16 +40,17 @@ SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import company_evidence_candidates as cec
+from company_evidence_test_corpus import build_corpus
 
-RUNTIME_DIR = ROOT.parent / "audit-runtime" / "gemini-executor-20260914"
-SOURCES_PATH = RUNTIME_DIR / "company-evidence-public-v1" / "research-sources.json"
-REVIEW1_PROPOSALS_PATH = RUNTIME_DIR / "company-evidence-research-v1-review1-proposals.json"
 
 
 class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
     def setUp(self) -> None:
-        self.assertTrue(SOURCES_PATH.exists(), f"Missing sources path: {SOURCES_PATH}")
-        self.assertTrue(REVIEW1_PROPOSALS_PATH.exists(), f"Missing proposals path: {REVIEW1_PROPOSALS_PATH}")
+        fixture = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.cleanup)
+        self.sources_path, self.proposals_path = build_corpus(Path(fixture.name))
+        self.assertTrue(self.sources_path.exists(), f"Missing sources path: {self.sources_path}")
+        self.assertTrue(self.proposals_path.exists(), f"Missing proposals path: {self.proposals_path}")
 
     def _run_cli(self, sources: Path, proposals: Path, output: Path) -> subprocess.CompletedProcess:
         cmd = [
@@ -72,7 +75,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
             initial_content = b'{"immutable_canary": "DO_NOT_OVERWRITE_12345"}\n'
             out_file.write_bytes(initial_content)
 
-            res = self._run_cli(SOURCES_PATH, REVIEW1_PROPOSALS_PATH, out_file)
+            res = self._run_cli(self.sources_path, self.proposals_path, out_file)
             self.assertNotEqual(res.returncode, 0, "CLI must exit with non-zero when output exists")
             self.assertEqual(out_file.read_bytes(), initial_content, "Existing file must remain byte-identical")
             self.assertIn("OUTPUT_FILE_ALREADY_EXISTS", res.stderr)
@@ -82,10 +85,10 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             src_copy = tmp / "research-sources.json"
-            shutil.copy(SOURCES_PATH, src_copy)
+            shutil.copy(self.sources_path, src_copy)
             initial_bytes = src_copy.read_bytes()
 
-            res = self._run_cli(src_copy, REVIEW1_PROPOSALS_PATH, src_copy)
+            res = self._run_cli(src_copy, self.proposals_path, src_copy)
             self.assertNotEqual(res.returncode, 0)
             self.assertEqual(src_copy.read_bytes(), initial_bytes, "Sources manifest must remain byte-identical")
             self.assertTrue(
@@ -97,10 +100,10 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             prop_copy = tmp / "proposals.json"
-            shutil.copy(REVIEW1_PROPOSALS_PATH, prop_copy)
+            shutil.copy(self.proposals_path, prop_copy)
             initial_bytes = prop_copy.read_bytes()
 
-            res = self._run_cli(SOURCES_PATH, prop_copy, prop_copy)
+            res = self._run_cli(self.sources_path, prop_copy, prop_copy)
             self.assertNotEqual(res.returncode, 0)
             self.assertEqual(prop_copy.read_bytes(), initial_bytes, "Proposals file must remain byte-identical")
             self.assertTrue(
@@ -111,15 +114,15 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
         """CLI must fail before opening if output_path is aliased to a source text file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            # copy whole public v1 dir
-            for item in SOURCES_PATH.parent.iterdir():
+            # Copy only the generated synthetic fixture directory
+            for item in self.sources_path.parent.iterdir():
                 if item.is_file():
                     shutil.copy(item, tmp / item.name)
             src_manifest = tmp / "research-sources.json"
             text_target = tmp / "hitachi-fy2025-results.md"
             initial_bytes = text_target.read_bytes()
 
-            res = self._run_cli(src_manifest, REVIEW1_PROPOSALS_PATH, text_target)
+            res = self._run_cli(src_manifest, self.proposals_path, text_target)
             self.assertNotEqual(res.returncode, 0)
             self.assertEqual(text_target.read_bytes(), initial_bytes, "Source text file must remain byte-identical")
 
@@ -135,7 +138,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
             except (OSError, NotImplementedError):
                 self.skipTest("Symlinks not supported in environment")
 
-            res = self._run_cli(SOURCES_PATH, REVIEW1_PROPOSALS_PATH, link_file)
+            res = self._run_cli(self.sources_path, self.proposals_path, link_file)
             self.assertNotEqual(res.returncode, 0)
             self.assertEqual(real_file.read_bytes(), b'{"real": true}')
 
@@ -147,7 +150,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
             tmp = Path(tmpdir)
             out_file = tmp / f"output_{canary}.json"
 
-            res = self._run_cli(SOURCES_PATH, REVIEW1_PROPOSALS_PATH, out_file)
+            res = self._run_cli(self.sources_path, self.proposals_path, out_file)
             self.assertEqual(res.returncode, 0, f"CLI execution failed: {res.stderr}")
             self.assertNotIn(canary, res.stdout, "CLI stdout leaked canary token from output path!")
             self.assertNotIn(str(out_file), res.stdout, "CLI stdout leaked raw output path!")
@@ -164,7 +167,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
             prop_file.write_text('{"schema_version": 1, "scope": "COMPANY_EVIDENCE_RESEARCH_V1_PROPOSALS", "proposals": [{"claim_id": "NAN-1", "company_id": "TEST", "legal_entity": "TEST", "metric": "rev", "source_id": "hitachi-fy2025-results", "exact_passage": "test", "value": NaN}]}', encoding="utf-8")
             out_file = tmp / "output.json"
 
-            res = self._run_cli(SOURCES_PATH, prop_file, out_file)
+            res = self._run_cli(self.sources_path, prop_file, out_file)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("NON_FINITE_NUMERIC_REJECTED", res.stderr)
             self.assertFalse(out_file.exists(), "No partial output file should be created on failure")
@@ -177,7 +180,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
             prop_file.write_text('{"schema_version": 1, "schema_version": 1, "scope": "COMPANY_EVIDENCE_RESEARCH_V1_PROPOSALS", "proposals": []}', encoding="utf-8")
             out_file = tmp / "output.json"
 
-            res = self._run_cli(SOURCES_PATH, prop_file, out_file)
+            res = self._run_cli(self.sources_path, prop_file, out_file)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("DUPLICATE_KEY_REJECTED", res.stderr)
             self.assertFalse(out_file.exists())
@@ -191,7 +194,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
 
     def test_boolean_value_numeric_coercion_rejected(self) -> None:
         """Boolean value in metric value field must not be coerced to number (1 or 0)."""
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         payload = {
             "schema_version": 1,
             "scope": "COMPANY_EVIDENCE_RESEARCH_V1_PROPOSALS",
@@ -251,7 +254,7 @@ class TestCompanyEvidenceCandidatesCliSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             sf = tmp / "research-sources.json"
-            shutil.copy(SOURCES_PATH, sf)
+            shutil.copy(self.sources_path, sf)
             with open(sf, "r", encoding="utf-8") as f:
                 data = json.load(f)
             data["record_count"] = 999  # Mismatch with 4 sources

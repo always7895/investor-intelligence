@@ -1,7 +1,9 @@
 """Tests for company_evidence_candidates reusable producer (Review 1).
 
+Self-contained synthetic fixtures only; not authenticated or current public research.
+
 Validates:
-- Real corpus verification against research-sources.json and primary receipts.
+- Synthetic corpus byte/receipt integrity; NOT REAL RESEARCH EVIDENCE.
 - Fail-closed behavior on modified text / mismatched SHA256.
 - Fail-closed behavior on modified receipt SHA256.
 - Missing file / source ID mismatch rejected.
@@ -31,19 +33,21 @@ SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import company_evidence_candidates as cec
+from company_evidence_test_corpus import build_corpus
 
-RUNTIME_DIR = ROOT.parent / "audit-runtime" / "gemini-executor-20260914"
-SOURCES_PATH = RUNTIME_DIR / "company-evidence-public-v1" / "research-sources.json"
 
 
 class TestCompanyEvidenceCandidates(unittest.TestCase):
     def setUp(self) -> None:
-        self.assertTrue(SOURCES_PATH.exists(), f"Missing sources path: {SOURCES_PATH}")
-        with open(SOURCES_PATH, "r", encoding="utf-8") as f:
+        fixture = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.cleanup)
+        self.sources_path, self.proposals_path = build_corpus(Path(fixture.name))
+        self.assertTrue(self.sources_path.exists(), f"Missing sources path: {self.sources_path}")
+        with open(self.sources_path, "r", encoding="utf-8") as f:
             self.sources_data = json.load(f)
 
     def _create_temp_corpus(self, tmpdir: Path, mutate_fn=None) -> Path:
-        for item in SOURCES_PATH.parent.iterdir():
+        for item in self.sources_path.parent.iterdir():
             if item.is_file():
                 shutil.copy(item, tmpdir / item.name)
         sf = tmpdir / "research-sources.json"
@@ -117,7 +121,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
         }
 
     def test_sources_manifest_verification(self) -> None:
-        validator = cec.SourcesValidator(SOURCES_PATH)
+        validator = cec.SourcesValidator(self.sources_path)
         verified = validator.validate_all()
         self.assertEqual(len(verified), 4)
         for s in verified:
@@ -179,7 +183,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
 
     def test_valid_candidate_proposals_processing(self) -> None:
         proposals = self._sample_valid_proposals()
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         result = producer.process_proposals(proposals)
         self.assertEqual(result["summary"]["total_proposals"], 2)
         self.assertEqual(result["summary"]["validated_candidates"], 2)
@@ -195,7 +199,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
     def test_unmatched_passage_quarantined(self) -> None:
         proposals = self._sample_valid_proposals()
         proposals["proposals"][0]["exact_passage"] = "This is a completely fabricated quote not in Hitachi results."
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         result = producer.process_proposals(proposals)
         self.assertEqual(result["summary"]["validated_candidates"], 1)
         self.assertEqual(result["summary"]["quarantined_proposals"], 1)
@@ -207,7 +211,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
         proposals = self._sample_valid_proposals()
         dup = copy.deepcopy(proposals["proposals"][0])
         proposals["proposals"].append(dup)
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         result = producer.process_proposals(proposals)
         self.assertEqual(result["summary"]["validated_candidates"], 2)
         self.assertEqual(result["summary"]["quarantined_proposals"], 1)
@@ -218,7 +222,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
         proposals["proposals"][0]["status"] = "ADMITTED"
         proposals["proposals"][0]["bottleneck_score"] = 99.5
         proposals["proposals"][0]["admitted"] = True
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         result = producer.process_proposals(proposals)
         self.assertEqual(result["summary"]["validated_candidates"], 1)
         self.assertEqual(result["summary"]["quarantined_proposals"], 1)
@@ -272,7 +276,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
                 }
             ]
         }
-        producer = cec.CandidateProducer(SOURCES_PATH)
+        producer = cec.CandidateProducer(self.sources_path)
         result = producer.process_proposals(proposals)
         self.assertEqual(result["summary"]["validated_candidates"], 2)
         lineages = {c["source_lineage"] for c in result["candidates"]}
@@ -293,7 +297,7 @@ class TestCompanyEvidenceCandidates(unittest.TestCase):
                 "-B",
                 str(SCRIPTS_DIR / "company_evidence_candidates.py"),
                 "--sources",
-                str(SOURCES_PATH),
+                str(self.sources_path),
                 "--proposals",
                 str(prop_file),
                 "--output",
