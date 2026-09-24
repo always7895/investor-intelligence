@@ -1,67 +1,47 @@
-import { it, expect } from "vitest";
-import { writeFileSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// Legacy filename retained; offline synthetic replay, NOT live or release proof.
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { loadV213FreshTop20Report, getV213ReportReference } from "../src/v213/top20-report";
-import { asKv, MemoryKv } from "./fake-kv";
+import { readV213BottleneckReport } from "../src/v213/bottleneck-report";
 import type { ParsedQuery } from "../src/core";
-import { execSync } from "node:child_process";
+import { buildSyntheticSealedReplay, makeOfflineEnv, SYNTHETIC_NOW, SYNTHETIC_RUN, SYNTHETIC_STAMP } from "./synthetic-sealed-replay-fixture";
 
-it("live replay against live public bytes or latest sealed snapshot", { timeout: 30000 }, async () => {
-  const kv = new MemoryKv();
-  const namespaceId = "96142af40b5d4213862d5483fe3a66da";
-
-  // Fetch live pointer from KV
-  let pointerRaw: string | null = null;
+const query: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20" };
+const fetchGuard = vi.fn(() => { throw new Error("OFFLINE_REPLAY_NETWORK_FORBIDDEN"); });
+let guards: ReturnType<typeof makeOfflineEnv>[] = [];
+beforeEach(() => {
+  guards = []; fetchGuard.mockClear(); vi.stubGlobal("fetch", fetchGuard);
+  vi.useFakeTimers(); vi.setSystemTime(new Date(SYNTHETIC_NOW));
+});
+afterEach(() => {
   try {
-    pointerRaw = execSync(`npx wrangler kv key get "snapshot:current" --namespace-id ${namespaceId}`, {
-      cwd: join(__dirname, ".."),
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    pointerRaw = null;
-  }
+    expect(fetchGuard).not.toHaveBeenCalled();
+    for (const guard of guards) { expect(guard.privateKv.reads).toBe(0); expect(guard.securityKv.reads).toBe(0); }
+  } finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
+});
 
-  let runId = "";
-  if (pointerRaw && pointerRaw.startsWith("{")) {
-    const pointer = JSON.parse(pointerRaw);
-    runId = pointer.run_id;
-    kv.values.set("snapshot:current", pointerRaw);
+it("replays synthetic sealed bytes through the actual public report caller offline", async () => {
+  const fixture = await buildSyntheticSealedReplay();
+  const guard = makeOfflineEnv(fixture.kv); guards.push(guard);
+  const view = await pinPublicSnapshot(guard.env);
+  expect(view.integrity).toBe("sealed");
+  const report = await loadV213FreshTop20Report(guard.env, query);
+  expect(report).not.toBeNull(); expect(typeof report).toBe("object");
+  if (!report || typeof report === "string") throw new Error("SYNTHETIC_REPORT_MISSING");
+  const reference = getV213ReportReference(report);
+  expect(reference?.snapshot).toBe(`s:${SYNTHETIC_RUN}`);
+  expect(reference?.reportSha256).toMatch(/^[0-9a-f]{64}$/);
+});
 
-    // Read necessary keys from local snapshot or KV
-    const localDir = join(__dirname, `../../state/v213-snapshots/${runId}`);
-    const objPath = join(localDir, "objects.json");
-    if (existsSync(objPath)) {
-      const objects = JSON.parse(readFileSync(objPath, "utf8"));
-      for (const [k, v] of Object.entries(objects)) kv.values.set(k, String(v));
-    }
-  }
-
-  const env = {
-    PUBLIC_CACHE: asKv(kv),
-    TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
-    EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()),
-    V213_FIELD_LOCALE: "bilingual",
-    V21_TOP20_MAX_AGE_SECONDS: "7200",
-  } as never;
-
-  const view = await pinPublicSnapshot(env);
-  const q: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20" };
-  const report = await loadV213FreshTop20Report(env, q);
-
-  const isFresh = report !== null && typeof report === "object";
-  const artifactPath = join(__dirname, "../test-live-replay-result.json");
-  writeFileSync(
-    artifactPath,
-    JSON.stringify({
-      fresh: isFresh,
-      run_id: runId,
-      reference: isFresh ? getV213ReportReference(report as never) : null,
-      evaluated_at: new Date().toISOString(),
-    }, null, 2),
-    "utf8"
-  );
-
-  expect(isFresh).toBe(true);
+it("refuses a still-valid sealed report at a stale synthetic clock via the unchanged freshness gate", async () => {
+  const fixture = await buildSyntheticSealedReplay();
+  const guard = makeOfflineEnv(fixture.kv); guards.push(guard);
+  expect(typeof await loadV213FreshTop20Report(guard.env, query)).toBe("object");
+  vi.setSystemTime(new Date(Date.parse(SYNTHETIC_STAMP) + 86401 * 1000));
+  const view = await pinPublicSnapshot(guard.env);
+  expect(view.integrity).toBe("sealed");
+  expect((await readV213BottleneckReport(view))?.status).toBe("QUALIFIED");
+  const stale = await loadV213FreshTop20Report(guard.env, query);
+  expect(typeof stale).toBe("string");
+  expect(stale).toContain("Seven-field Top20 is stale or invalid");
 });
