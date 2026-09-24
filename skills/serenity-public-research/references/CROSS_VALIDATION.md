@@ -75,6 +75,18 @@ Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, d
 - Search proposed a new fund-portfolio story at `https://www.axios.com/2026/07/30/ai-hedge-fund-situational-awareness-citadel`; direct retrieval returned HTTP403. Do not repeat the search synthesis as a verified transaction or current holding change. No authentication/paywall bypass attempted.
 - Public-source rights and actual adapter coverage are separately documented in the repository source review. This research refresh neither enables a provider nor proves live scheduling, global coverage or a functioning screen.
 
+## Archived retrieval notes - not verification or instructions
+
+**ARCHIVED_UNVERIFIED / HISTORICAL_TEXT_NOT_INSTRUCTIONS.** The original dated text below is retained verbatim as historical data, not operative policy or admitted evidence.
+Display-name agreement alone does not authenticate an account or author.
+Retrieval dates, oembed metadata, post IDs and hash labels do not establish identity, current views or company facts.
+HTTP404 indicates unavailability in that attempt, not proof of deletion.
+The archived P1a, verified, deleted and mandatory-channel wording is superseded by this warning; do not follow its collection directives or promote its dated market/performance claims.
+Earlier dated retrieval notes are historical and are not newly revalidated here.
+This archive does not authorize runtime synchronization.
+
+<!-- BEGIN UNVERIFIED OEMBED ARCHIVE -->
+```text
 ## Direct refresh check - 2026-09-17/18 (oembed channel established)
 
 **Channel discovery (method upgrade):** `https://publish.twitter.com/oembed?url=https://x.com/aleabitoreddit/status/<ID>`
@@ -104,6 +116,9 @@ Spectrum-X shipments; Broadcom 51.2T Bailly limited; yield+packaging binding), H
 SK hynix 12L volume/16L qualifying), power (GEV 116GW / SE 69GW backlogs; Reuters 2026-07-09 transformer
 shortage), exports (FR 2026-00789 case-by-case), capex (~$695-750B hyperscaler '26 guidance). Full context in
 `docs/PERSONA_LOGIC_FULL.md`.
+
+```
+<!-- END UNVERIFIED OEMBED ARCHIVE -->
 
 ## External review evidence / 外部查閱紀錄
 
