@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type GlobalIdentityCatalog,
   type GlobalIdentityRecord,
@@ -9,8 +9,9 @@ import {
   evaluateCatalogAdmission,
   GLOBAL_IDENTITY_CATALOG_KEY,
 } from "../src/v213/global-identity-reader";
-import type { PublicSnapshotView } from "../src/v213/public-snapshot";
-import { MemoryKv, asKv } from "./fake-kv";
+import { pinPublicSnapshot, scopePublicSnapshot, type PublicSnapshotView } from "../src/v213/public-snapshot";
+import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import { buildSyntheticSealedReplay, makeOfflineEnv, SYNTHETIC_RUN } from "./synthetic-sealed-replay-fixture";
 
 function createValidCandidateCatalog(): GlobalIdentityCatalog {
   const records: GlobalIdentityRecord[] = [
@@ -220,37 +221,86 @@ describe("Global Identity Catalog Integrity: Strict Authority & Validation Bound
     expect(loaded).toBeNull();
   });
 
-  it("Case 9: actual closed sealed extra object negative in MemoryKv fails closed", async () => {
-    // MemoryKv with unsealed extra key or missing identity profile in seal
-    const kv = new MemoryKv();
-    // Provide a valid pointer but seal object does not include identity catalog key
-    const rawPointer = JSON.stringify({
-      schema_version: 2,
-      run_id: "20260915T000000Z-0123456789ab",
-      transaction_id: "0123456789abcdef0123456789abcdef",
-      seal_sha256: "0".repeat(64),
-      public_data_as_of: "2026-09-15T00:00:00.000Z",
-      promoted_at: "2026-09-15T00:00:00.000Z",
-      provider_scope: "public_only",
-      owner_watchlist_inherited: false,
-    });
-    await kv.put("snapshot:current", rawPointer);
+  it("Case 9: real pinned sealed view excludes unsealed identity KV extras", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new Error("OFFLINE_IDENTITY_NEGATIVE_NETWORK_FORBIDDEN"),
+    );
+    try {
+      const { kv, reportRaw, seal } = await buildSyntheticSealedReplay();
+      const { env, privateKv, securityKv } = makeOfflineEnv(kv);
+      const catalog = createValidCandidateCatalog();
+      const candidate = validateCatalogIntegrity(catalog);
+      expect(candidate).not.toBeNull(); // Structural test data only, never identity authority.
+      const raw = JSON.stringify(catalog);
+      const extraKeys = [
+        GLOBAL_IDENTITY_CATALOG_KEY,
+        `snapshot:${SYNTHETIC_RUN}:${GLOBAL_IDENTITY_CATALOG_KEY}`,
+      ];
+      const sealKey = `snapshot:${SYNTHETIC_RUN}:${SNAPSHOT_SEAL_KEY}`;
+      const originalValues = new Map(kv.values);
+      expect(originalValues.get("snapshot:current")).toBeDefined();
+      expect(originalValues.get(sealKey)).toBe(seal.text);
 
-    // Snapshot seal in current schema has NO identity slot
-    const mockView: PublicSnapshotView = {
-      runId: "20260915T000000Z-0123456789ab",
-      kind: "snapshot",
-      integrity: "sealed",
-      async text(keys: string[]) {
-        if (keys.includes(GLOBAL_IDENTITY_CATALOG_KEY)) return null;
-        return null;
-      },
-      async json<T>() {
-        return null;
-      },
-    };
-    const loaded = await loadGlobalIdentityCatalog(mockView);
-    expect(loaded).toBeNull();
+      // Extras exist on the SAME KV before a fresh scope/pin, not behind an old cached view.
+      for (const key of extraKeys) {
+        expect(originalValues.has(key)).toBe(false);
+        await kv.put(key, raw);
+        expect(kv.values.get(key)).toBe(raw);
+      }
+      expect(kv.values.size).toBe(originalValues.size + extraKeys.length);
+      for (const [key, value] of originalValues) {
+        expect(kv.values.get(key)).toBe(value); // Pointer, seal and every core member unchanged.
+      }
+
+      const getSpy = vi.spyOn(kv, "get"); // Delegates to the real MemoryKv implementation.
+      try {
+        const view = await pinPublicSnapshot(scopePublicSnapshot(env));
+        const readsAfterPin = getSpy.mock.calls.length;
+        expect(view.kind).toBe("snapshot");
+        expect(view.integrity).toBe("sealed");
+        expect(view.runId).toBe(SYNTHETIC_RUN);
+        expect(SNAPSHOT_OBJECT_KEYS).toHaveLength(13);
+        expect(getSpy.mock.calls.map(([key]) => key)).toEqual([
+          "snapshot:current",
+          sealKey,
+          ...SNAPSHOT_OBJECT_KEYS.map(key => `snapshot:${SYNTHETIC_RUN}:${key}`),
+        ]);
+        // Positive control traverses the actual verified map; invalid/legacy/null views fail.
+        expect(await view.text(["v213:top20-report:latest"])).toBe(reportRaw);
+        expect(await view.text([GLOBAL_IDENTITY_CATALOG_KEY])).toBeNull();
+        expect(await view.json([GLOBAL_IDENTITY_CATALOG_KEY])).toBeNull();
+        const loaded = await loadGlobalIdentityCatalog(view);
+        expect(loaded).toBeNull();
+
+        const rejected = evaluateCatalogAdmission(view, loaded);
+        expect(rejected.scope).toBe("REJECTED");
+        expect(rejected.reason).toContain("CANDIDATE_INVALID");
+        expect(rejected.isAuthoritative).toBe(false);
+        expect(rejected.catalog).toBeNull();
+        // Separately supplied structural data is deferred, not injected into the sealed map.
+        const deferred = evaluateCatalogAdmission(view, candidate);
+        expect(deferred.scope).toBe("ADMISSION_DEFER");
+        expect(deferred.reason).toContain("ADMISSION_DEFER");
+        expect(deferred.isAuthoritative).toBe(false);
+        expect(deferred.catalog).toBe(candidate);
+
+        expect(getSpy.mock.calls).toHaveLength(readsAfterPin);
+        for (const key of extraKeys) {
+          expect(getSpy.mock.calls.map(([readKey]) => readKey)).not.toContain(key);
+          expect(kv.values.get(key)).toBe(raw);
+        }
+        for (const [key, value] of originalValues) {
+          expect(kv.values.get(key)).toBe(value);
+        }
+        expect(privateKv.reads).toBe(0);
+        expect(securityKv.reads).toBe(0);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        getSpy.mockRestore();
+      }
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("Case 10: primitive flags (e.g. trusted: true or view.integrity string) cannot admit authority", () => {
