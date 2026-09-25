@@ -35,6 +35,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v213_serenity_h6b_full_top20 as h6b
+from v213_sourced_wording_guard import guard_order_fields, load_policy as load_wording_policy
 from report_source_acquisition import utc_time
 
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -188,6 +189,16 @@ def reconcile(
             return resolve_quantitative_sec_outlook(ticker, cik_map)
 
     rows: list[dict[str, Any]] = []
+    wording_policy = load_wording_policy()
+    wording_withheld: list[dict[str, Any]] = []
+
+    def guarded(row: dict[str, Any]) -> dict[str, Any]:
+        # Operator rule 2026-09-25: vague wording or an unsourced number withholds the field.
+        clean, findings = guard_order_fields(row, wording_policy)
+        if findings:
+            wording_withheld.append({"ticker": clean["ticker"], "fields": findings})
+        return clean
+
     researched: list[str] = []
     supported_new: list[str] = []
     unavailable_new: list[str] = []
@@ -206,12 +217,12 @@ def reconcile(
                 row = _baseline_row_from_outlook(rank, ticker, h6b.unavailable_outlook())
                 row['orders_confidence'] = 'UNAVAILABLE'
                 row['reconciliation_source'] = 'retained_order_acquisition_unavailable'
-            rows.append(row)
+            rows.append(guarded(row))
             continue
         print(f"II_PROGRESS v2.1.3 order evidence delta {len(researched)+1}/{len(added)} | {ticker}", flush=True)
         outlook = resolver(ticker)
         row = _baseline_row_from_outlook(rank, ticker, outlook)
-        rows.append(row)
+        rows.append(guarded(row))
         researched.append(ticker)
         if str(outlook.get("evidence_status") or "") == "UNAVAILABLE":
             unavailable_new.append(ticker)
@@ -244,6 +255,8 @@ def reconcile(
         "removed": removed,
         "preserved_count": preserved_count,
         "withheld_retained": withheld_retained,
+        "wording_guard_policy": wording_policy["policy_id"],
+        "wording_guard_withheld": wording_withheld,
         "researched_new": researched,
         "supported_new": supported_new,
         "unavailable_new": unavailable_new,

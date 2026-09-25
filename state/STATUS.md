@@ -4,20 +4,21 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `c665684` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `79438c2` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — weekly and monthly options guidance (週期權／月期權)
+## This change — Top20 sourced-wording guard (phase 1 of the upside plan)
 
-Operator request 2026-09-25. The query path (`[代號] 每週期權／每月期權`), collector windows (`scripts/fetch_options.py`) and KV sync already handled weekly and monthly quotes; the order-parameter guidance did not.
+Operator requirements 2026-09-25: rank Top20 by future upside potential; every figure sourced, no vague wording (「很多」「市場很大」); add 6M/1Y/2Y order-realization horizons with the implied share-price change. Plan and gaps: [TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md).
 
-- `cloud/src/v213/options-guidance.ts`: `classifyExpiryCycle` (third Friday = standard monthly, otherwise weekly; holiday-shifted Thursdays stay weekly), `OPTION_CYCLE_DTE_WINDOW` shared with the collector (weekly 3–14, monthly 21–45 days), optional requested cycle with an explicit mismatch flag (never swaps contracts), DTE-window status, cycle chip and line on the card and in the text, and `buildOptionsCycleComparisonFlex` (weekly beside monthly, same ticker and strategy, both annualized yields in the alt text).
-- Tests: 5 new cases in `cloud/test/v213-options-guidance.test.ts`.
-- Not wired to live quotes: guidance still needs a sealed public quote snapshot; no Worker deployment.
+- Phase 1 implemented: `config/v213-sourced-wording-policy.json` and pure `scripts/v213_sourced_wording_guard.py`. `reconcile_v213_order_evidence.reconcile` now guards every retained and new row: vague phrases or numbers without an https source withhold the field with the existing fallback, clear its URLs, and are listed in the receipt (`wording_guard_withheld`). Retained rows previously bypassed any wording check (for example the baseline 「幾乎全部」 row).
+- Tests: `tests/test_v213_sourced_wording_guard.py` (7). Worker-side enforcement deferred until one sealed cycle is built with the guard.
+- Phases 2–5 (order ledger, valuation bridge from own dated multiple and SEC fundamentals, upside ranking with one shared sort key, card line) remain open; phase 4 weighting needs an operator decision; live runs need a price source with an acquisition clock.
 
 ## Previous changes
 
+- `79438c2` weekly/monthly options guidance (Worker 900 passed; full Python 2490 OK, 437.3 s).
 - `c665684` LINE Flex redesign on a shared design system (Worker 895 passed; full Python 2490 OK, 439.0 s). Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `7b88bf7`, `79d23f8` research method refresh (SERENITY_LOGIC, ASCHENBRENNER_CONTEXT; full Python 2490 OK, 423.5 s) and C2b decision record.
 - `4ee66d8` C2a forward comparison renderer (5 tests; full Python 2490 OK, 435.0 s).
@@ -30,9 +31,9 @@ Operator request 2026-09-25. The query path (`[代號] 每週期權／每月期�
 
 ## Latest gate run
 
-- Worker: `npm run typecheck` PASS; `npm test` 900 passed / 1 named manual skip (61 files).
+- Focused: sourced-wording guard 7, reconcile 6, retained-order withholding 1, contract tests — OK.
 - `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Full Python 16:07:56–16:15:14: 2490 tests OK, 437.3 s.
+- Full Python 16:18:11–16:25:21: 2497 tests OK, 429.4 s. Worker unchanged (no `cloud/` edits).
 
 ## Pending operator decision — redundancy removal
 
