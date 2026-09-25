@@ -11,9 +11,9 @@ Reference: worker base URL `https://investor-intelligence-v21-owner-line.moon951
 ## 1. Health check & verification
 1. GET `/health` → expect HTTP 200, `ok: true`, `product_version: "2.1.3"`, `top20_presentation: "seven_fields"`.
 2. GET `/v213/readiness` → expect HTTP 409 `V213_READINESS_REQUEST_INVALID` and `worker_version` echoing the currently deployed version id. The 409 is the *healthy* challenge-gated response, not an error.
-3. Identify the live snapshot run: `npx wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da` → note `run_id` + `seal_sha256`.
+3. Identify the live snapshot run: `npx wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da --remote` (Wrangler 4 reads the local store without `--remote`) → note `run_id` + `seal_sha256`.
 4. Confirm the run passed the seal pipeline (logs of `sync_sealed_snapshot_kv.py`): `OBJECTS_UPLOADED 14 → READBACK_VERIFIED 14 → POINTER_LAST <run_id>`.
-5. Verify freshness window: pointer `public_data_as_of` must be ≤ 7200 s old, otherwise Top20 (honestly) answers the stale notice — in that case run procedure 2/refresh instead of chasing the worker.
+5. Verify freshness window: pointer `public_data_as_of` must be ≤ 7200 s old, otherwise Top20 (honestly) answers the stale notice — in that case run procedure 2/refresh instead of chasing the worker. The carried Top20 report itself must be ≤ 14 h old ([TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md)); `scripts/deploy_production_gate.ps1 -Phase post -WorkerVersion <id> -ExpectTop20Records 20` checks both.
 
 ## 2. Snapshot rollback (sealed run)
 Tool: `scripts/rollback_sealed_snapshot.py` — the ONLY mutation it can perform is the `snapshot:current` pointer.
@@ -25,6 +25,7 @@ Tool: `scripts/rollback_sealed_snapshot.py` — the ONLY mutation it can perform
    → expect `"status": "ROLLED_BACK"`, `"applied": true`; the previous run id is echoed in `from_run`.
 3. Re-run step 1 of Section 1 against the *rolled-back* run.
 Guards (all abort with `ROLLBACK ABORT`, pointer untouched): target dir not git-tracked; any object byte mismatch; pointer put failure; pointer readback mismatch.
+Hourly carry-forward runs live under the runtime's `data\v213-snapshots` and are not git-tracked, so this tool cannot target them. To stop carrying the Top20, re-register the hourly task without `-CarryForwardTop20` (Section 4); the next seal publishes INSUFFICIENT Top20 plus macro within about an hour.
 
 ## 3. Worker rollback (version)
 1. List recent versions: `npx wrangler versions list -c wrangler.v213.production.local.toml` (from `cloud/`).
@@ -34,9 +35,10 @@ Note: worker rollback does NOT touch KV; the sealed-snapshot pointer is independ
 
 ## 4. Scheduled task recreation (60-min refresh)
 1. Verify: `schtasks /Query /TN "InvestorIntelligenceSealedFreshness" /FO LIST` → `Status: Ready`.
-2. If missing/corrupt, recreate:
-   `schtasks /Create /TN "InvestorIntelligenceSealedFreshness" /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\Investor-Intelligence-LINE-Pi\_workspace\source\scripts\run_production_sealed_refresh.ps1" /SC MINUTE /MO 60 /F`
-3. Trigger once manually: `schtasks /Run /TN "InvestorIntelligenceSealedFreshness"` then check `data/cache/sealed-refresh.log` for `REFRESH OK run=<run_id> pointer last`.
+2. If missing/corrupt, recreate from the installed runtime (validate first with `-ValidateOnly`):
+   `powershell -NoProfile -File %LOCALAPPDATA%\InvestorIntelligence\V213Runtime\scripts\register_sealed_freshness_tasks.ps1 -ScriptRoot %LOCALAPPDATA%\InvestorIntelligence\V213Runtime -CarryForwardTop20 -SnapshotRoot data\v213-snapshots`
+3. Trigger once manually: `schtasks /Run /TN "InvestorIntelligenceSealedFreshness"` then check the runtime's `data\cache\sealed-refresh.log` for `REFRESH OK run=<run_id> pointer last` (and `CARRY_FORWARD_TOP20 seal first`).
+4. Runtime rollback: `scripts\v213_runtime_install_coordinator.ps1 -RuntimeRoot <rt> -RestorePrevious <transaction>` (transaction id from `%LOCALAPPDATA%\InvestorIntelligence\v213-runtime-install.journal.json`).
 Wiring: the pipeline re-evaluates the multi-lineage evidence at wall time and re-points ONLY on full success; on any stage failure the previous pointer is untouched.
 
 ## 5. Emergency incident response & fail-closed validation

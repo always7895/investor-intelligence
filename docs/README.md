@@ -64,6 +64,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [TOP20_UPSIDE_BRIDGE_V1](TOP20_UPSIDE_BRIDGE_V1.md) — upside ranking, sourced wording guard and 6M/1Y/2Y order-realization bridge plan
 - [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — measured source activation (1 of 158 enabled) and the wave plan for diversified sources
 - [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — data-driven macro industry rotation from BLS PPI and SEC XBRL, refreshed daily
+- [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — single-writer Top20: hourly seal of the validated LKG bundle, report-age contract, refresh after the pointer, rollback
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
