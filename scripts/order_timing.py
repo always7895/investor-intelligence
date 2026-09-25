@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 Fetch = Callable[[str], bytes]
+ROOT = Path(__file__).resolve().parents[1]
+CACHE_ROOT = ROOT / "data" / "cache" / "v21" / "order_timing"
+EXTRACTOR_VERSION = 2
 QUARTERLY_FORMS = ("10-Q", "10-K")
 _KEY = re.compile(r"remaining performance obligations?|\bRPO\b", re.I)
 _NUM = r"(\d{1,3}(?:\.\d+)?)"
@@ -140,20 +144,40 @@ def latest_periodic_filing(submissions: Mapping[str, Any], cik: str) -> dict[str
     for index, form in enumerate(recent.get("form") or []):
         if form in QUARTERLY_FORMS:
             accession = str(recent["accessionNumber"][index])
+            report_dates = recent.get("reportDate") or []
             return {"form": form, "filed": str(recent["filingDate"][index]), "accession": accession,
+                    "report_date": str(report_dates[index]) if index < len(report_dates) else "",
                     "url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/{recent['primaryDocument'][index]}"}
     return None
 
 
-def filing_timing(cik: str, fetch: Fetch) -> dict[str, Any]:
-    """Recognition schedule from the newest 10-Q/10-K, with its source; status says what was found."""
-    import company_business_profile as profile
-    submissions = json.loads(fetch(f"https://data.sec.gov/submissions/CIK{cik}.json"))
+def resolve_timing(cik: str, submissions: Mapping[str, Any], fetch: Fetch, cache_root: Path | None = CACHE_ROOT) -> dict[str, Any]:
+    """Recognition schedule of the newest 10-Q/10-K; the document is read again only when a new filing appears."""
     filing = latest_periodic_filing(submissions, cik)
     if filing is None:
         return {"status": "NO_PERIODIC_FILING"}
+    path = cache_root / f"CIK{cik}.json" if cache_root else None
+    if path:
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            if cached.get("accession") == filing["accession"] and cached.get("extractor_version") == EXTRACTOR_VERSION:
+                return cached
+        except (OSError, ValueError):
+            pass
+    import company_business_profile as profile
     timing = extract_timing(profile.business_text(fetch(filing["url"])))
-    if timing is None:
-        return {"status": "NOT_DISCLOSED", **filing}
-    return {"status": "DISCLOSED", **filing, "horizons": timing["horizons"], "passages": timing["passages"],
-            "segment_count": len(timing["segments"]), "schedule": weighted_schedule(timing)}
+    result: dict[str, Any] = {"status": "NOT_DISCLOSED", **filing, "extractor_version": EXTRACTOR_VERSION}
+    if timing is not None:
+        result.update(status="DISCLOSED", horizons={str(k): v for k, v in timing["horizons"].items()},
+                      passages=timing["passages"], segment_count=len(timing["segments"]), schedule=weighted_schedule(timing))
+    if path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        temp.replace(path)
+    return result
+
+
+def filing_timing(cik: str, fetch: Fetch) -> dict[str, Any]:
+    """Uncached lookup (probes): submissions, then the newest periodic filing."""
+    return resolve_timing(cik, json.loads(fetch(f"https://data.sec.gov/submissions/CIK{cik}.json")), fetch, cache_root=None)

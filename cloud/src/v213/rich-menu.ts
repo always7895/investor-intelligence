@@ -25,7 +25,10 @@ import type {
   OptionContractQuote,
 } from "./market-product-schema";
 import { validateMacroDeepAnalysis, validateMacroIndustryCard } from "./market-product-schema";
-import { buildPotentialRankingFlex, buildPotentialRankingText, buildPotentialReport, validatePotentialRanking } from "./potential-ranking";
+import {
+  buildOrderRealizationFlex, buildOrderRealizationText, buildPotentialRankingFlex, buildPotentialRankingText, buildPotentialReport,
+  validatePotentialRanking,
+} from "./potential-ranking";
 import {
   buildOptionContractFlex,
   buildOptionContractText,
@@ -154,7 +157,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       "A｜TOP20：當輪20家公司、歷史報酬、量化訂單線索及同輪證據。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；合格產業未達門檻時啟動短缺通報。",
       "C｜期權與個股快查：選擇權策略教學與公開合約報價；無合格報價時維持不可用，絕不猜測。",
-      "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告。",
+      "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
     ], NAV, isEnvText);
   }
 
@@ -368,7 +371,8 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
   // --- Data-driven potential ranking, sealed inside the TOP5 overview object ---
   const potentialReport = /^(?:潛力報告|潜力报告)\s*([A-Za-z]{1,5})(?:\s*文字)?$/i.exec(command);
-  if (potentialReport || /^(?:潛力榜|潜力榜|資料驅動潛力榜|潛力\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
+  const orderView = /^(?:訂單實現榜|订单实现榜|訂單榜)(?:\s*文字)?$/i.test(command);
+  if (potentialReport || orderView || /^(?:潛力榜|潜力榜|資料驅動潛力榜|潛力\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
     const overview = view.integrity === "sealed" ? await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]) : null;
@@ -380,6 +384,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       ], [["TOP5 產業總覽", "TOP5產業總覽"], ["回功能選單", "選單"]], isText);
     }
     if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of), isText);
+    if (orderView) return isText ? buildOrderRealizationText(ranking) : buildOrderRealizationFlex(ranking);
     return isText ? buildPotentialRankingText(ranking) : buildPotentialRankingFlex(ranking);
   }
 

@@ -112,6 +112,34 @@ describe("data-driven potential ranking", () => {
     expect(messages.every((m: any) => m.contents.contents.length === 5)).toBe(true);
   });
 
+  it("shows order coverage per horizon and ranks only fully disclosed companies by 2Y", async () => {
+    const orders = (m6: number | null, m12: number | null, m24: number | null) => ({ as_of: "2026-06-30", form: "10-Q", filed: "2026-07-29",
+      coverage_pct: { m6, m12, m24 }, floor_growth_pct: { m6: m6 !== null && m6 > 100 ? +(m6 - 100).toFixed(1) : null,
+        m12: m12 !== null && m12 > 100 ? +(m12 - 100).toFixed(1) : null, m24: m24 !== null && m24 > 100 ? +(m24 - 100).toFixed(1) : null } });
+    const ranking = { ...RANKING, records: [
+      { ...row(1, "SYNA"), orders: orders(103, 103, 89.7) },
+      { ...row(2, "SYNB"), orders: orders(206.3, 206.3, 206.3) },
+      { ...row(3, "SYNC"), orders: orders(45.9, 91.8, null) },       // 2Y not disclosed: excluded from the order view
+      { ...row(4, "SYND"), orders: { ...orders(1, 1, 1), form: "8-K" } }, // malformed: dropped, never rendered
+    ] };
+    const card = visibleText(JSON.parse(await actualReply("潛力榜", await sealedEnv(ranking))));
+    expect(card).toContain("1Y 已簽約覆蓋");
+    expect(card).toContain("成長下限 +3.0%");
+    expect(card).toContain("需新訂單");
+    expect(card).toContain("未揭露 RPO 認列時程");
+    expect(validatePotentialRanking(ranking)!.records[3]!.orders).toBeNull();
+    const view = JSON.parse(await actualReply("訂單實現榜", await sealedEnv(ranking)));
+    const text = visibleText(view);
+    expect(text.indexOf("SYNB")).toBeLessThan(text.indexOf("SYNA"));
+    expect(text).not.toContain("SYNC");
+    expect(text).not.toContain("SYND");
+    expect(text).toContain("2Y 206%");
+    const plain = JSON.parse(await actualReply("訂單實現榜 文字", await sealedEnv(ranking)));
+    expect(plain.every((m: any) => m.type === "text")).toBe(true);
+    const none = { ...RANKING, records: [{ ...row(1, "SYNA"), orders: orders(40, 80, null) }] };
+    expect(await actualReply("訂單實現榜", await sealedEnv(none))).toContain("沒有同時揭露 6M、1Y、2Y 認列時程");
+  });
+
   it("fails closed when the ranking is missing or malformed", async () => {
     expect(await actualReply("潛力榜", await sealedEnv(null))).toContain("POTENTIAL_RANKING_UNAVAILABLE");
     for (const bad of [

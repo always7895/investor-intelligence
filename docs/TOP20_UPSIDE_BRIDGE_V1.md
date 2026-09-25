@@ -49,6 +49,8 @@ For each horizon h ∈ {6M, 1Y, 2Y} and case ∈ {on-time, delayed/partial, fail
 
 No scenario probabilities (no calibration basis), no averaging of cases.
 
+Precursor (IMPLEMENTED 2026-09-25, potential ranking only): the on-time case from disclosed RPO timing as coverage of the current revenue run rate and a growth floor under constant margin, shares and P/E; see [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md). It needs no reference price, so it does not close the data gaps below.
+
 ## Phase 4 — upside-potential ranking (operator decision 2026-09-25)
 
 Replace the six duplicated sort keys with one shared key function. Only companies whose 6-month, 1-year and 2-year on-time `price_return_pct` can all be computed enter the upside ranking; they are ordered by the 2-year value, ties broken by the failed-case return (smaller loss first) and then data quality. Companies without all three horizons are not ranked by upside and are shown as 「上漲潛力未量化」 in the existing order.

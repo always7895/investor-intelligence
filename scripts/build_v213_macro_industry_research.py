@@ -355,9 +355,14 @@ def potential_ranking(rotation: dict | None) -> dict | None:
     fields = ("rank", "ticker", "name", "industry_name", "phase", "strength", "revenue_yoy_pct", "rpo_yoy_pct",
               "gross_margin_change_pp", "operating_margin_change_pp", "dilution_yoy_pct", "next_review_at")
     records = [{key: row.get(key) for key in fields} for row in rotation["company_ranking"]]
+    reports = company_deep_report.load_reports(tickers=[r["ticker"] for r in records])
+    for record in records:  # order-realization coverage from the same reports; absent when not disclosed
+        orders = (reports.get(record["ticker"]) or {}).get("orders")
+        if orders:
+            record["orders"] = orders
     return {"as_of": rotation.get("as_of"), "quarter": rotation.get("quarter"), "records": records,
             "method": "members of admitted industries; phase gate, confirmed tier first, published strength, at most five per industry",
-            "reports": company_deep_report.load_reports(tickers=[r["ticker"] for r in records])}
+            "reports": reports}
 
 
 def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,

@@ -8,18 +8,21 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## Production state (2026-09-25 13:40Z) — P0 open
+## Production state (2026-09-25 13:58Z) — stale-KV P0 closed
 
-- Worker `2cfb7d0b-e931-42d2-b574-5a23e4bbee4b` deployed at the operator's request (rollback `70dd7e15-0a98-4513-b156-5ebb2e807761`); readiness reports it.
-- **Production public KV is stale**: remote pointer `20260916T232252Z-0dd4ad588112` (age ≈ 8.6 days). Wrangler 4 KV commands default to the local Miniflare store and `sync_sealed_snapshot_kv.py` / `rollback_sealed_snapshot.py` pass no `--remote`, so every hourly sync since 2026-09-16 wrote locally. Live replay of the exact Production bytes: sealed, Top20 refuses (INSUFFICIENT_EVIDENCE), no TOP5 overview, no potential ranking.
-- The deploy gate passed falsely (it read the local pointer, PowerShell 7 shifted UTC anchors by +8 h, and its reader replay read a leftover 2026-09-24 file). Fixed: gate reads `--remote`, UTC-safe parse, exact-byte copy (`scripts/fetch_live_public_snapshot.py`) + `cloud/test/live-kv-replay.test.ts`; 6 tests. The fixed gate now FAILs with age 742,782 s in both shells.
-- Adding `--remote` to sync/rollback (which makes the hourly task write Production KV again) was refused by this session's permission guard: **operator decision**.
+- Worker `2cfb7d0b-e931-42d2-b574-5a23e4bbee4b` deployed at the operator's request (rollback `70dd7e15-0a98-4513-b156-5ebb2e807761`).
+- Root cause of 8.6 days of stale Production data: Wrangler 4 KV commands default to the local Miniflare store; sync, rollback, gate and watchdog passed no `--remote`, so hourly syncs since 2026-09-16 wrote locally and the gate read the same copy (plus a PowerShell 7 +8 h anchor shift and a reader replay of a leftover 2026-09-24 file). Fixed in `be4e2f0` (gate: `--remote`, UTC parse, exact-byte copy `scripts/fetch_live_public_snapshot.py`, `cloud/test/live-kv-replay.test.ts`) and `dc47bd3` (sync/rollback/watchdog `--remote`, operator-authorized); 8 tests.
+- The 13:56Z scheduled run published to Production: post gate PASS against remote KV, pointer `20260925T135616Z-3ef7a902d969` (105 s), live replay fresh Top20, TOP5 overview sealed, 20 potential-ranking records.
+
+## Order-realization scenario (operator rule: 6M/1Y/2Y if orders are realised)
+
+- Company reports gain 「訂單實現情境」 and a 1Y coverage tile: RPO × disclosed cumulative share versus latest quarter revenue × quarters; a revenue/price growth floor only above 100% (constant margin, shares and P/E; no new orders); period agreement ≤45 days; 10-Q text cached per accession. Potential-ranking cards show 6M/1Y/2Y coverage; 「訂單實現榜」 lists only companies with all three horizons, ordered by 2Y. Live: CRWV 206%, GEV 103/103/90% (+3.0% floor 6M/1Y), DELL 54/54/32%, HUBS 21%; 12 of 21 disclose no timing. Tests: 5 Python + 1 Worker (actual LINE path).
 
 ## Card body visuals (operator 2026-09-25: card bodies read as flat text)
 
 - `line-theme.ts` body visuals: figures in running text bolded via spans (negatives red, dates untouched), meters, rank badges, rail titles, timelines, stat tiles, phase ladder, stacked score bar; `packCarousels` splits by bytes (≤5 bubbles, ≤46 KB); oversized macro bubbles fall back to spans-free text.
 - TOP5 overview/industry cards/10-step deep analysis redrawn; 潛力報告 and the Top20 data-report detail are now a swipeable Flex report (`… 文字` keeps text); company reports carry optional validated `kpis` tiles from `company_deep_report.load_reports`. Top20 seven-field cards unchanged. Worker 916 passed (5 new visual tests); preview republished at the artifact below.
-- `05d86a5` RPO recognition timing from the latest 10-Q/10-K (`scripts/order_timing.py`, 5 tests); live probe: GEV, NVDA, DELL, CRWV, FROG, HUBS, KVYO, AMD disclose timing; order-realization scenario not yet wired into reports.
+- `05d86a5` RPO recognition timing from the latest 10-Q/10-K (`scripts/order_timing.py`, 5 tests).
 
 ## Earlier today — data-driven industry rotation (operator rules 2026-09-25)
 
@@ -40,12 +43,12 @@ Operator: all data must move with the latest market data, nothing hand-written; 
 - `41058f2` adaptive THINK under the profile ceiling (time budget, measured decode rate, System One screen, one answer-only retry) and TabbyAPI `:5000` as the EXE/bridge default router; 11 + 11 + 2 tests; full Python 2537 after a payload-list fix.
 - `0b3946d` ink monochrome LINE cards: three-stop black-to-graphite header gradient, section levels by lightness, grey secondary buttons on white footers, accounting-convention value colours, no green; every text/ground pair ≥4.5:1; Worker 900 passed. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `47a3f19` Top20 industry detail from SEC annual reports ([TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0): latest 10-K/20-F business excerpt → validated loopback-Qwen phrase → 「細分產業：主要業務」; per-accession cache, index re-read each run, 403/429 fence; scheduled runners pass `--business-profile`; live canary 22/22 Top20 plus TSM/ASML; 20 tests; full Python 2525 (one CI-env-only error, passes with `PYTHONUTF8=1`).
-- `3e80273` Wave 1 official public feeds: eight reviewed T1 entries (Fed, ECB, SEC press, TWSE/TPEx EOD and issuer directories, TAIFEX options) registered at `ADAPTER_CONTRACT_VALIDATED`; the claim-evidence acquisition factory rejects bulk datasets and news leads, so none is runtime-enabled yet (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`).
+- `3e80273` Wave 1 official public feeds: eight reviewed T1 entries at `ADAPTER_CONTRACT_VALIDATED`, none runtime-enabled yet.
 
 ## Latest gate run
 
-- `security_check`, documentation boundary/structure, workflow supply chain: PASS (21:12).
-- Worker typecheck PASS; 916 passed / 1 skipped. Focused Python: company deep reports, order timing — OK.
+- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS (22:10).
+- Worker typecheck PASS; 917 passed / 2 skipped. Focused Python: company deep reports, order timing, deploy gate — OK.
 - Full Python (after `9f7156a`): 2571 tests OK in 426.4 s.
 
 ## Closed components — no reopening without regression evidence
@@ -74,8 +77,8 @@ Astra master; exact local Qwen sole tracked writer on the Pi lane; Sol independe
 
 ## External mutations (this change)
 
-Git commits on this branch and a normal push to `origin` (updates PR #37). Read-only SEC EDGAR and loopback Tabby calls. Worker deployment at the operator's explicit request: `2cfb7d0b-e931-42d2-b574-5a23e4bbee4b` (2026-09-25 13:30Z). Read-only remote KV reads by the fixed gate. No KV, LINE, schedule, credential, billing, broker, model or service mutation.
+Git commits on this branch and a normal push to `origin` (updates PR #37). Read-only SEC EDGAR and loopback Tabby calls. Worker deployment at the operator's explicit request: `2cfb7d0b-e931-42d2-b574-5a23e4bbee4b` (2026-09-25 13:30Z). Production public KV now receives the hourly sealed sync again (operator-authorized `--remote`, first run 13:56Z). No LINE delivery, schedule definition, credential, billing, broker, model or service mutation.
 
 ## Next action
 
-Operator: decide whether the sealed sync/rollback scripts should write Production KV (`--remote`); after that the next hourly run publishes, then re-run `scripts/deploy_production_gate.ps1 -Phase post -WorkerVersion 2cfb7d0b-e931-42d2-b574-5a23e4bbee4b`. Reinstall the runtime so the scheduled runners pick up `--business-profile`. Engineering next: Top20 upside phases 2–5 (order ledger, valuation bridge, 6M/1Y/2Y sort key) and acquisition kinds for Wave 1 bulk/news feeds. Serenity originals still need a permitted retrieval channel (oEmbed HTTP 402); paid access requires explicit operator authorization.
+Deploy the order-coverage Worker and re-gate after the next hourly publish (operator standing authorization 2026-09-25). DEFERRED_WITH_REASON: the V213 runtime reinstall (morning/evening Top20 runner still lacks `--business-profile`) needs a CI-built R75 package (`HOTFIX-REFS.json` with a workflow run id); PR #37 CI only reports SKIPPED, and the identity is not fabricated. Engineering next: Top20 upside phases 2–5 (order ledger, valuation bridge, 6M/1Y/2Y sort key) and acquisition kinds for Wave 1 bulk/news feeds. Serenity originals still need a permitted retrieval channel (oEmbed HTTP 402); paid access requires explicit operator authorization.

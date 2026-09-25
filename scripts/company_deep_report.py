@@ -12,6 +12,9 @@ Every section is computed from primary data at run time and cites it:
 - industry      the company's SIC industry signals and phase from the data-driven rotation
 - phase         thesis_phase (company scope) from the company's own and industry signals,
                 with the next review date and the falsifiers that would flip it
+- orders        if the signed orders are delivered on the schedule the latest 10-Q/10-K discloses
+                (order_timing): contracted revenue for 6M/1Y/2Y versus the current run rate, and a
+                revenue/price growth floor only where that coverage exceeds 100% (stated premises)
 
 Missing facts are reported as missing; no estimate, target price or probability is produced.
 """
@@ -189,6 +192,83 @@ def company_signals(ticker: str, metrics: Mapping[str, Any], cik: str, industry:
     return signals
 
 
+HORIZONS = ((6, "m6", "6M"), (12, "m12", "1Y"), (24, "m24", "2Y"))
+ORDER_PREMISES = ("目前營收水準＝最近一季營收 × 期間季數", "只計已簽約訂單（RPO）依揭露時程認列，未計新接訂單，因此是下限",
+                  "股價對應成長假設利潤率、稀釋後股數與本益比不變")
+
+
+def order_scenario(metrics: Mapping[str, Any], timing: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """If the signed orders are delivered on the disclosed schedule: contracted revenue per horizon versus the
+    current run rate. A growth floor exists only where the contracted revenue alone exceeds the run rate."""
+    if not timing:
+        return None
+    base = {"status": timing.get("status"), "form": timing.get("form"), "filed": timing.get("filed"), "url": timing.get("url")}
+    if timing.get("status") != "DISCLOSED":
+        return base
+    rpo, revenue = metrics.get("rpo"), metrics.get("revenue")
+    rpo_as_of, quarter_end = metrics.get("rpo_as_of"), metrics.get("quarter_end")
+    if not rpo or not revenue or revenue <= 0 or not rpo_as_of or not quarter_end:
+        return {**base, "status": "INPUTS_MISSING"}
+    if abs((date.fromisoformat(rpo_as_of) - date.fromisoformat(quarter_end)).days) > 45:
+        return {**base, "status": "PERIOD_MISMATCH"}
+    report_date = timing.get("report_date")
+    if report_date and abs((date.fromisoformat(report_date) - date.fromisoformat(rpo_as_of)).days) > 45:
+        return {**base, "status": "PERIOD_MISMATCH"}
+    horizons: dict[str, Any] = {}
+    for months, key, _ in HORIZONS:
+        share = (timing.get("schedule") or {}).get(key)
+        if share is None:
+            horizons[key] = None
+            continue
+        contracted, run_rate = rpo * share / 100, revenue * months / 3
+        coverage = round(contracted / run_rate * 100, 1)
+        horizons[key] = {"share_pct": share, "contracted": round(contracted), "run_rate": round(run_rate), "coverage_pct": coverage,
+                         "floor_growth_pct": round(coverage - 100, 1) if coverage > 100 else None}
+    return {**base, "rpo": rpo, "rpo_as_of": rpo_as_of, "quarter_revenue": revenue, "horizons": horizons,
+            "premises": list(ORDER_PREMISES) + list((timing.get("schedule") or {}).get("premises") or [])}
+
+
+def _coverage(value: float) -> str:
+    return f"{value:.1f}%" if value < 10 else f"{value:.0f}%"  # 0.3% must not read as 0%
+
+
+def order_text(orders: Mapping[str, Any] | None) -> str:
+    if not orders:
+        return "未取得最新 10-Q／10-K，無訂單實現情境"
+    status = orders.get("status")
+    if status == "NO_PERIODIC_FILING":
+        return "沒有 10-Q／10-K 定期報告，無訂單實現情境"
+    if status == "NOT_DISCLOSED":
+        return f"最新 {orders.get('form')}（{orders.get('filed')}）未揭露 RPO 認列時程；不推估訂單實現情境"
+    if status == "INPUTS_MISSING":
+        return f"{orders.get('form')}（{orders.get('filed')}）有認列時程，但 XBRL 缺少 RPO 或同季營收；不推估"
+    if status == "PERIOD_MISMATCH":
+        return f"{orders.get('form')}（{orders.get('filed')}）的認列時程與 XBRL RPO／營收期間不一致；不混用"
+    parts, outcomes = [], []
+    for _, key, label in HORIZONS:
+        row = orders["horizons"].get(key)
+        if row is None:
+            outcomes.append(f"{label} 未揭露")
+            continue
+        parts.append(f"{label} 認列 {row['share_pct']:.1f}% → {_money(row['contracted'])}（目前水準的 {_coverage(row['coverage_pct'])}）")
+        outcomes.append(f"{label} 營收與股價成長下限 {row['floor_growth_pct']:+.1f}%" if row["floor_growth_pct"] is not None
+                        else f"{label} 已簽約僅支撐 {_coverage(row['coverage_pct'])}，其餘需新訂單")
+    interpolation = [p for p in orders["premises"][len(ORDER_PREMISES):]]
+    return (f"依 {orders['form']}（{orders['filed']}）揭露的認列時程，RPO {_money(orders['rpo'])}（{orders['rpo_as_of']}）："
+            + "；".join(parts) + f"。目前營收水準＝最近一季 {_money(orders['quarter_revenue'])} × 期間季數。若訂單如期實現，"
+            + "且利潤率、稀釋後股數與本益比不變：" + "；".join(outcomes) + "。未計新接訂單，屬下限"
+            + (f"（{'；'.join(interpolation)}）" if interpolation else ""))
+
+
+def compact_orders(orders: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Coverage and growth floor per horizon for the potential ranking card; None when not computable."""
+    if not orders or orders.get("status") != "DISCLOSED":
+        return None
+    pick = lambda field: {key: (row or {}).get(field) for key, row in orders["horizons"].items()}
+    return {"as_of": orders["rpo_as_of"], "form": orders["form"], "filed": orders["filed"],
+            "coverage_pct": pick("coverage_pct"), "floor_growth_pct": pick("floor_growth_pct")}
+
+
 def industry_for(sic: str | None, rotation: Mapping[str, Any] | None, config: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if not sic or not rotation or not config:
         return None
@@ -201,8 +281,9 @@ def industry_for(sic: str | None, rotation: Mapping[str, Any] | None, config: Ma
 
 def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions: Mapping[str, Any],
                  business: Mapping[str, Any] | None, rotation: Mapping[str, Any] | None,
-                 rotation_config: Mapping[str, Any] | None, today: date) -> dict[str, Any]:
+                 rotation_config: Mapping[str, Any] | None, today: date, timing: Mapping[str, Any] | None = None) -> dict[str, Any]:
     metrics = extract_metrics(facts)
+    orders = order_scenario(metrics, timing)
     sic = str(submissions.get("sic") or "") or None
     industry = industry_for(sic, rotation, rotation_config)
     signals = company_signals(ticker, metrics, cik, industry)
@@ -217,6 +298,7 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
                    f"營業利益率 {_pctx(metrics['operating_margin_pct'], '%').lstrip('+')}（年變化 {_pctx(metrics['operating_margin_change_pp'], ' 個百分點')}）")),
         ("訂單能見度", (f"剩餘履約義務（RPO）{_money(metrics['rpo'])}（{metrics['rpo_as_of']}），年增 {_pctx(metrics['rpo_yoy_pct'])}"
                     if metrics.get("rpo") is not None else "未申報剩餘履約義務（RPO），訂單能見度無法量化")),
+        ("訂單實現情境", order_text(orders)),
         ("產能與資本支出", (f"最近會計年度資本支出 {_money(metrics['capex_fy'])}（年度截至 {metrics['capex_fy_end']}），占營收 {_pctx(metrics['capex_share_of_revenue_pct']).lstrip('+')}"
                        if metrics.get("capex_fy") is not None else "未申報年度資本支出")),
         ("資產負債與稀釋", (f"現金 {_money(metrics['cash'])}{_tag(metrics.get('cash_tag'))}、長期負債 {_money(metrics['long_term_debt'])}{_tag(metrics.get('long_term_debt_tag'))}；"
@@ -236,6 +318,8 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
     ]
     references = [{"source": "SEC XBRL company facts", "url": FACTS_URL.format(cik=cik), "period": frame},
                   {"source": "SEC EDGAR submissions", "url": SUBMISSIONS_URL.format(cik=cik)}]
+    if orders and orders.get("url"):
+        references.append({"source": f"SEC {orders.get('form')} RPO recognition timing", "url": orders["url"], "period": orders.get("filed")})
     if business and business.get("url"):
         references.append({"source": f"SEC {business.get('form')} business section", "url": business["url"], "period": business.get("filed")})
     if industry:
@@ -243,21 +327,23 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
                           for row in industry["price"]["series"])
     return {"schema_version": 1, "ticker": ticker, "cik": cik, "name": name, "sic": sic,
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "as_of": today.isoformat(),
-            "metrics": metrics, "signals": signals, "phase": phase,
+            "metrics": metrics, "signals": signals, "phase": phase, "orders": orders,
             "sections": [{"title": title, "text": text} for title, text in sections], "source_references": references,
             "boundary": "官方資料的計算與整理；不是投資建議、價格預測或機率"}
 
 
 def build_reports(tickers: Mapping[str, str], fetch: Fetch, *, today: date, business_loader: Callable[[str], Mapping | None] | None = None,
-                  rotation: Mapping[str, Any] | None = None, rotation_config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                  rotation: Mapping[str, Any] | None = None, rotation_config: Mapping[str, Any] | None = None,
+                  timing_loader: Callable[[str, Mapping[str, Any]], Mapping | None] | None = None) -> dict[str, Any]:
     reports, failures = {}, {}
     for ticker, cik in tickers.items():
         try:
             facts = json.loads(fetch(FACTS_URL.format(cik=cik)))
             submissions = json.loads(fetch(SUBMISSIONS_URL.format(cik=cik)))
             business = business_loader(cik) if business_loader else None
+            timing = timing_loader(cik, submissions) if timing_loader else None
             reports[ticker] = build_report(ticker, cik, facts=facts, submissions=submissions, business=business,
-                                           rotation=rotation, rotation_config=rotation_config, today=today)
+                                           rotation=rotation, rotation_config=rotation_config, today=today, timing=timing)
         except Exception as error:
             failures[ticker] = type(error).__name__
     return {"schema_version": 1, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -313,7 +399,9 @@ def load_reports(path: Path = OUTPUT_PATH, *, tickers: Sequence[str], max_age_da
         compact[ticker] = {"ticker": ticker, "name": report["name"], "as_of": report["as_of"], "boundary": report["boundary"],
                            "phase": {"phase": report["phase"]["phase"], "next_review_at": report["phase"].get("next_review_at")},
                            "sections": [{"title": s["title"], "text": s["text"].replace("\n", " ")[:700]} for s in report["sections"]],
-                           "source_references": report["source_references"][:20], "kpis": kpis(report.get("metrics") or {})}
+                           "source_references": report["source_references"][:20],
+                           "kpis": kpis(report.get("metrics") or {}, report.get("orders")),
+                           "orders": compact_orders(report.get("orders"))}
     return compact
 
 
@@ -324,7 +412,7 @@ KPI_FIELDS = (("營收年增", "revenue_yoy_pct", True, "quarter_frame"), ("毛�
               ("稀釋後股數年增", "dilution_yoy_pct", True, "quarter_frame"), ("資本支出/營收", "capex_share_of_revenue_pct", False, "capex_fy_end"))
 
 
-def kpis(metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
+def kpis(metrics: Mapping[str, Any], orders: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     out = []
     for label, key, signed, period_key in KPI_FIELDS:
         value = metrics.get(key)
@@ -333,6 +421,10 @@ def kpis(metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
         if metrics.get(period_key):
             row["period"] = str(metrics[period_key])[:20]
         out.append(row)
+    one_year = ((orders or {}).get("horizons") or {}).get("m12") if (orders or {}).get("status") == "DISCLOSED" else None
+    if one_year:
+        out.append({"label": "1Y 已簽約覆蓋", "value": one_year["coverage_pct"], "unit": "%", "signed": False,
+                    "period": str(orders["rpo_as_of"])[:20]})
     return out
 
 
@@ -361,6 +453,7 @@ def main() -> int:
             return 0
     import company_business_profile as profile
     import industry_rotation
+    import order_timing
     from sec_contact_headers import sec_identity_headers
     if args.tickers:
         wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
@@ -374,6 +467,13 @@ def main() -> int:
     except (OSError, ValueError, KeyError):
         translate = None
 
+    def timing(cik: str, submissions: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        # Per-accession cache: the 10-Q/10-K text is read again only when a new periodic filing appears.
+        try:
+            return order_timing.resolve_timing(cik, submissions, fetch)
+        except Exception:
+            return None
+
     def business(cik: str) -> Mapping[str, Any] | None:
         # Per-accession cache; only a new annual report triggers a (loopback) translation.
         try:
@@ -382,7 +482,8 @@ def main() -> int:
             return cached_business(cik)
 
     document = build_reports({t: ciks[t] for t in wanted if t in ciks}, fetch, today=date.today(), business_loader=business,
-                             rotation=industry_rotation.load_rotation(), rotation_config=industry_rotation.load_config())
+                             rotation=industry_rotation.load_rotation(), rotation_config=industry_rotation.load_config(),
+                             timing_loader=timing)
     document["not_sec_listed"] = [t for t in wanted if t not in ciks]
     industry_rotation.atomic_write(args.output, document)
     print(json.dumps({"status": "OK", "reports": len(document["reports"]), "failures": document["failures"],

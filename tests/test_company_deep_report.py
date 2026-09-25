@@ -43,6 +43,63 @@ ROTATION = {"industries": [INDUSTRY]}
 CONFIG = {"industries": [{"industry_id": "semis", "sic": ["3674"]}]}
 
 
+TIMING = {"status": "DISCLOSED", "form": "10-Q", "filed": "2026-07-29", "report_date": "2026-06-30",
+          "url": "https://www.sec.gov/Archives/edgar/data/1/000000000126000002/q.htm",
+          "schedule": {"m6": 12.98, "m12": 25.96, "m24": 45.18, "premises": ["多段 RPO 依各段金額加權"]}}
+LARGE = {"rpo": 176.28e9, "rpo_as_of": "2026-06-30", "revenue": 11.104e9, "quarter_end": "2026-06-30"}
+
+
+class OrderScenarioTests(unittest.TestCase):
+    def test_coverage_and_floor_only_where_signed_orders_exceed_the_run_rate(self):
+        orders = cdr.order_scenario(LARGE, TIMING)
+        rows = orders["horizons"]
+        self.assertEqual((rows["m6"]["coverage_pct"], rows["m12"]["coverage_pct"], rows["m24"]["coverage_pct"]), (103.0, 103.0, 89.7))
+        self.assertEqual((rows["m6"]["floor_growth_pct"], rows["m24"]["floor_growth_pct"]), (3.0, None))
+        self.assertEqual(rows["m6"]["run_rate"], round(11.104e9 * 2))
+        text = cdr.order_text(orders)
+        self.assertIn("6M 營收與股價成長下限 +3.0%", text)
+        self.assertIn("2Y 已簽約僅支撐 90%，其餘需新訂單", text)
+        self.assertIn("未計新接訂單，屬下限", text)
+        self.assertIn("多段 RPO 依各段金額加權", text)
+        self.assertEqual(cdr.compact_orders(orders)["floor_growth_pct"], {"m6": 3.0, "m12": 3.0, "m24": None})
+
+    def test_undisclosed_mismatched_or_missing_inputs_are_stated_not_estimated(self):
+        self.assertIn("未揭露 RPO 認列時程", cdr.order_text(cdr.order_scenario(LARGE, {"status": "NOT_DISCLOSED", "form": "10-Q", "filed": "2026-08-01"})))
+        shifted = dict(LARGE, rpo_as_of="2026-03-31")
+        self.assertEqual(cdr.order_scenario(shifted, TIMING)["status"], "PERIOD_MISMATCH")
+        self.assertEqual(cdr.order_scenario(dict(LARGE, rpo=None), TIMING)["status"], "INPUTS_MISSING")
+        self.assertEqual(cdr.order_scenario(LARGE, dict(TIMING, report_date="2025-12-31"))["status"], "PERIOD_MISMATCH")
+        self.assertIsNone(cdr.compact_orders(cdr.order_scenario(shifted, TIMING)))
+        only_year = cdr.order_scenario(LARGE, dict(TIMING, schedule={"m6": 30.0, "m12": 60.0, "m24": None, "premises": []}))
+        self.assertIsNone(only_year["horizons"]["m24"])
+        self.assertIn("2Y 未揭露", cdr.order_text(only_year))
+
+    def test_report_section_tile_and_source(self):
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=None,
+                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY, timing=dict(TIMING, schedule={
+                                      "m6": 38.5, "m12": 77.0, "m24": 91.0, "premises": []}))
+        section = next(s["text"] for s in report["sections"] if s["title"] == "訂單實現情境")
+        self.assertIn("1Y 已簽約僅支撐 96%", section)  # 5000 × 77% = 3850 versus 1000 × 4
+        self.assertIn(TIMING["url"], [ref["url"] for ref in report["source_references"]])
+        tile = [row for row in cdr.kpis(report["metrics"], report["orders"]) if row["label"] == "1Y 已簽約覆蓋"]
+        self.assertEqual(tile[0]["value"], 96.2)
+
+
+class RankingOrdersTests(unittest.TestCase):
+    def test_sealed_ranking_records_carry_order_coverage_only_when_disclosed(self):
+        import build_v213_macro_industry_research as macro
+        compact = cdr.compact_orders(cdr.order_scenario(LARGE, TIMING))
+        original = cdr.load_reports
+        cdr.load_reports = lambda tickers, **kw: {"GEV": {"orders": compact}, "APH": {"orders": None}}
+        try:
+            ranking = macro.potential_ranking({"as_of": "2026-09-25", "quarter": "2026 Q2", "company_ranking": [
+                {"rank": 1, "ticker": "GEV"}, {"rank": 2, "ticker": "APH"}]})
+        finally:
+            cdr.load_reports = original
+        self.assertEqual(ranking["records"][0]["orders"]["coverage_pct"], {"m6": 103.0, "m12": 103.0, "m24": 89.7})
+        self.assertNotIn("orders", ranking["records"][1])
+
+
 class DeepReportTests(unittest.TestCase):
     def test_metrics_compare_the_same_calendar_quarter(self):
         m = cdr.extract_metrics(FACTS)
@@ -102,7 +159,7 @@ class SealingTests(unittest.TestCase):
             path.write_text(json.dumps({"as_of": TODAY.isoformat(), "reports": {"SYN": report}}), encoding="utf-8")
             compact = cdr.load_reports(path, tickers=["SYN", "ABSENT"], today=TODAY)
             self.assertEqual(list(compact), ["SYN"])
-            self.assertEqual(set(compact["SYN"]), {"ticker", "name", "as_of", "boundary", "phase", "sections", "source_references", "kpis"})
+            self.assertEqual(set(compact["SYN"]), {"ticker", "name", "as_of", "boundary", "phase", "sections", "source_references", "kpis", "orders"})
             self.assertNotIn("metrics", compact["SYN"])
             tiles = {row["label"]: row for row in compact["SYN"]["kpis"]}
             self.assertEqual(tiles["營收年增"]["value"], report["metrics"]["revenue_yoy_pct"])
