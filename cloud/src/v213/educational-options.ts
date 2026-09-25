@@ -165,9 +165,9 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`【${card.disclaimer}】`, "xs", T.onDarkMuted),
-      { ...menuText(card.strategy_name, "md", T.paper), weight: "bold" },
-      menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", T.onDarkMuted),
+      menuText(`【${card.disclaimer}】`, "xs", T.headerMuted),
+      { ...menuText(card.strategy_name, "md", T.headerText), weight: "bold" },
+      menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([

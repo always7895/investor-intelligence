@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
 import { buildTop20DeepAnalysisMessages } from "./deep-analysis";
-import { LINE_THEME as T, chip, divider, footnote, headerBackground, kpiTile, labelValue, menuAction, panel, sectionTitle, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, chip, divider, footnote, headerStyle, kpiTile, labelValue, menuAction, section, uiBox, uiText } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
@@ -55,34 +55,35 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       header: uiBox([
         uiBox([
           chip(`#${record.rank}`),
-          uiText(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xxs", T.onDarkMuted, { gravity: "center", flex: 1 }),
+          uiText(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xxs", T.headerMuted, { gravity: "center", flex: 1 }),
         ], { layout: "horizontal", spacing: "md" }),
         uiBox([
-          uiText(labels[0]!, "xxs", T.onDarkSubtle),
-          uiText(values[0]!, "3xl", T.onDark, { weight: "bold" }),
+          uiText(labels[0]!, "xxs", T.headerSubtle),
+          uiText(values[0]!, "3xl", T.headerText, { weight: "bold" }),
         ], { spacing: "none" }),
-        uiText(`原文：${record.name}`, "sm", T.onDark),
-        uiText("中文名稱：未完成來源核對", "xxs", T.onDarkSubtle),
-        uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.onDarkMuted, { weight: "bold" }),
-      ], { backgroundColor: T.night, background: headerBackground, paddingAll: "xl", spacing: "md" }),
+        uiText(`原文：${record.name}`, "md", T.headerText, { weight: "bold" }),
+        uiText("中文名稱：未完成來源核對", "xxs", T.headerSubtle),
+        uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.headerMuted, { weight: "bold" }),
+      ], { ...headerStyle, spacing: "md" }),
       body: uiBox([
-        sectionTitle("報酬 / Returns"),
-        uiBox([
-          kpiTile("2Y 總報酬", getTwoYearTotalReturnDisplay(record)),
-          kpiTile(labels[1]!, values[1]!),
-          kpiTile(labels[2]!, values[2]!),
-        ], { layout: "horizontal", spacing: "sm" }),
-        sectionTitle("公司 / Company"),
-        labelValue(labels[3]!, values[3]!, { weight: "bold" }),
-        divider(),
-        labelValue(labels[4]!, values[4]!),
-        panel([
-          sectionTitle("訂單 / Orders"),
-          labelValue(labels[5]!, values[5]!),
+        section("報酬 / Returns", [
+          uiBox([
+            kpiTile("2Y 總報酬", getTwoYearTotalReturnDisplay(record)),
+            kpiTile(labels[1]!, values[1]!),
+            kpiTile(labels[2]!, values[2]!),
+          ], { layout: "horizontal", spacing: "sm" }),
+        ], "green"),
+        section("公司 / Company", [
+          labelValue(labels[3]!, values[3]!, { weight: "bold" }),
+          divider(),
+          labelValue(labels[4]!, values[4]!, { weight: "bold" }),
+        ], "slate"),
+        section("訂單 / Orders", [
+          labelValue(labels[5]!, values[5]!, { weight: "bold" }),
           divider(),
           labelValue(labels[6]!, values[6]!),
-        ], "green"),
-      ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
+        ], "amber"),
+      ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
       footer: uiBox([
         ...(reference ? [menuAction("深度化分析 / Deep analysis",
           `Top20 深度化分析 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`

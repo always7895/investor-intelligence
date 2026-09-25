@@ -52,9 +52,9 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText("韭菜守護者 · 宏觀產業研究", "xs", T.onDarkMuted),
-      { ...menuText(overview.title, "xl", T.paper), weight: "bold" },
-      menuText(`觀察週期：${overview.horizon}｜${statusBadge}`, "xs", isShortfall ? T.onDarkAlert : T.onDarkMuted),
+      menuText("韭菜守護者 · 宏觀產業研究", "xs", T.headerMuted),
+      { ...menuText(overview.title, "xl", T.headerText), weight: "bold" },
+      menuText(`觀察週期：${overview.horizon}｜${statusBadge}`, "xs", isShortfall ? T.headerAlert : T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([
@@ -94,8 +94,8 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`宏觀產業 · ${rankLabel}`, "xs", T.onDarkMuted),
-      { ...menuText(card.industry_name, "lg", T.paper), weight: "bold" },
+      menuText(`宏觀產業 · ${rankLabel}`, "xs", T.headerMuted),
+      { ...menuText(card.industry_name, "lg", T.headerText), weight: "bold" },
       menuText(`機會分數：${card.opportunity_score}/100（量化評分，非機率）`, "xs", T.paleGreen),
     ], { ...headerStyle }),
     body: menuBox([
@@ -149,9 +149,9 @@ export function buildMacroDeepAnalysisBubble(analysis: MacroDeepAnalysis) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText("宏觀產業 · 深度化分析（10維因果鏈展開）", "xs", T.onDarkMuted),
-      { ...menuText(analysis.industry_name, "lg", T.paper), weight: "bold" },
-      menuText("需求→供給→瓶頸→定價→資本支出→競爭→受益者→催化劑→風險→證偽", "xxs", T.onDarkMuted),
+      menuText("宏觀產業 · 深度化分析（10維因果鏈展開）", "xs", T.headerMuted),
+      { ...menuText(analysis.industry_name, "lg", T.headerText), weight: "bold" },
+      menuText("需求→供給→瓶頸→定價→資本支出→競爭→受益者→催化劑→風險→證偽", "xxs", T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([
@@ -423,9 +423,9 @@ export function macroShortfallReport(
         type: "bubble",
         size: "mega",
         header: menuBox([
-          menuText("韭菜守護者 · 宏觀產業研究", "xs", T.onDarkMuted),
-          { ...menuText("TOP5 准入門檻未達成", "xl", T.paper), weight: "bold" },
-          menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.onDarkAlert),
+          menuText("韭菜守護者 · 宏觀產業研究", "xs", T.headerMuted),
+          { ...menuText("TOP5 准入門檻未達成", "xl", T.headerText), weight: "bold" },
+          menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
         footer: menuBox(actions.map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),

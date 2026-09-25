@@ -41,8 +41,8 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", T.onDarkMuted),
-      { ...menuText(`${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, "lg", T.paper), weight: "bold" },
+      menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", T.headerMuted),
+      { ...menuText(`${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, "lg", T.headerText), weight: "bold" },
       menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.paleGreen),
     ], { ...headerStyle }),
     body: menuBox([
@@ -170,9 +170,9 @@ export function optionsUnavailableReport(
         type: "bubble",
         size: "mega",
         header: menuBox([
-          menuText("韭菜守護者 · 期權查詢", "xs", T.onDarkMuted),
-          { ...menuText("期權報價不可用", "xl", T.paper), weight: "bold" },
-          menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.onDarkAlert),
+          menuText("韭菜守護者 · 期權查詢", "xs", T.headerMuted),
+          { ...menuText("期權報價不可用", "xl", T.headerText), weight: "bold" },
+          menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
         footer: menuBox(actions.slice(0, 4).map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),

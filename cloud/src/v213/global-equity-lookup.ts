@@ -201,9 +201,9 @@ export function buildGlobalEquityLookupMessages(
     type: "bubble" as const,
     size: "mega" as const,
     header: menuBox([
-      menuText("韭菜守護者 · 全球個股快查", "xs", T.onDarkMuted),
-      { ...menuText(headerTitle, "xl", T.paper), weight: "bold" },
-      menuText(`市場：${identity.exchange}`, "xs", T.onDarkMuted),
+      menuText("韭菜守護者 · 全球個股快查", "xs", T.headerMuted),
+      { ...menuText(headerTitle, "xl", T.headerText), weight: "bold" },
+      menuText(`市場：${identity.exchange}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([

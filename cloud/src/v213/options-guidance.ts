@@ -1,5 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, chip, divider, footnote, kpiTile, labelValue, panel, productHeader, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, chip, divider, footnote, kpiTile, labelValue, panel, productHeader, section, uiBox, uiText } from "./line-theme";
 
 /**
  * Options order guidance & position sizing (AGENTS.md "Recommendations &
@@ -275,28 +275,33 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 期權掛單參數 / Order parameters", guidance.ticker, [
       uiBox([
-        chip(CYCLE_LABEL[guidance.expiry_cycle], guidance.dte_window_status === "WITHIN_CYCLE_WINDOW" ? T.green : T.caution),
-        uiText(STRATEGY_LABEL[guidance.strategy], "sm", T.onDarkMuted, { gravity: "center", flex: 1 }),
+        guidance.dte_window_status === "WITHIN_CYCLE_WINDOW"
+          ? chip(CYCLE_LABEL[guidance.expiry_cycle])
+          : chip(CYCLE_LABEL[guidance.expiry_cycle], "#FDE68A", "#78350F"),
+        uiText(STRATEGY_LABEL[guidance.strategy], "sm", T.headerMuted, { gravity: "center", flex: 1 }),
       ], { layout: "horizontal", spacing: "md" }),
     ]),
     body: uiBox([
-      uiBox([
-        kpiTile("建議限價 / Limit", fmt(band.recommended_limit), T.ink),
-        kpiTile("Strike", fmt(guidance.strike), T.ink),
-        kpiTile("DTE", String(guidance.dte), T.ink),
-      ], { layout: "horizontal", spacing: "sm" }),
-      labelValue("到期 / Expiry", `${guidance.expiry}（DTE ${guidance.dte}）｜標的價格 ${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}`),
-      labelValue("週期 / Cycle", cycleLine(guidance)),
-      labelValue("Delta", `${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}（目標 0.20-0.30）`),
-      divider(),
-      labelValue("委託與報價 / Order & quotes", `委託 ${guidance.order_type}｜Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}`),
-      labelValue("限價區間 / Limit band", `Band ${fmt(band.lower)}-${fmt(band.upper)}｜建議避免市場單`),
-      labelValue("收益 / Yield", yieldText, { weight: "bold" }),
+      section("合約 / Contract", [
+        uiBox([
+          kpiTile("建議限價 / Limit", fmt(band.recommended_limit), T.ink),
+          kpiTile("Strike", fmt(guidance.strike), T.ink),
+          kpiTile("DTE", String(guidance.dte), T.ink),
+        ], { layout: "horizontal", spacing: "sm" }),
+        labelValue("到期 / Expiry", `${guidance.expiry}（DTE ${guidance.dte}）｜標的價格 ${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}`),
+        labelValue("週期 / Cycle", cycleLine(guidance)),
+        labelValue("Delta", `${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}（目標 0.20-0.30）`),
+      ], "slate"),
+      section("委託 / Order", [
+        labelValue("委託與報價 / Order & quotes", `委託 ${guidance.order_type}｜Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}`),
+        labelValue("限價區間 / Limit band", `Band ${fmt(band.lower)}-${fmt(band.upper)}｜建議避免市場單`),
+        labelValue("收益 / Yield", yieldText, { weight: "bold" }),
+      ], "green"),
       panel([
         uiText(`流動性：${LIQUIDITY_LABEL[guidance.liquidity_status]}`, "sm", T.ink, { weight: "bold" }),
         footnote(guidance.caveat_disclaimer),
       ], "caution"),
-    ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
+    ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
   };
 }
 
@@ -345,18 +350,22 @@ export function buildPositionSizingFlexBubble(sizing: PositionSizingFramework, t
       contents: [{
         type: "bubble", size: "mega",
         header: productHeader("韭菜守護者 · 倉位配置框架 / Position sizing", ticker, [
-          uiText(ARCHETYPE_LABEL[sizing.archetype], "sm", T.onDarkMuted),
+          uiText(ARCHETYPE_LABEL[sizing.archetype], "sm", T.headerMuted),
         ]),
         body: uiBox([
-          uiBox([
-            kpiTile("單一標的上限 / Cap", `${sizing.max_allocation_cap_pct}%`, T.ink),
-            kpiTile("現金儲備 / Cash", `>= ${sizing.cash_reserve_requirement_pct}%`, T.ink),
-          ], { layout: "horizontal", spacing: "sm" }),
-          labelValue("建倉節奏 / Pacing", sizing.tranche_pacing),
-          divider(),
-          labelValue("融資風險疊層 / Financing overlay", sizing.financing_risk_overlay),
+          section("配置 / Allocation", [
+            uiBox([
+              kpiTile("單一標的上限 / Cap", `${sizing.max_allocation_cap_pct}%`, T.ink),
+              kpiTile("現金儲備 / Cash", `>= ${sizing.cash_reserve_requirement_pct}%`, T.ink),
+            ], { layout: "horizontal", spacing: "sm" }),
+          ], "green"),
+          section("節奏與風險 / Pacing & risk", [
+            labelValue("建倉節奏 / Pacing", sizing.tranche_pacing),
+            divider(),
+            labelValue("融資風險疊層 / Financing overlay", sizing.financing_risk_overlay),
+          ], "slate"),
           panel([footnote(CAVEAT_DISCLAIMER)], "caution"),
-        ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
+        ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
       }],
     },
   };

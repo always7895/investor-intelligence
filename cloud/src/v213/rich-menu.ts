@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
-import { LINE_THEME as T, menuAction, menuBox, menuText, productHeader, sectionTitle } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -87,7 +87,7 @@ function panel(
   const messages: LineOutboundMessage[] = [{ type: "flex", altText: `${title}｜${subtitle}`, contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 公開研究", title),
-    body: menuBox([sectionTitle(subtitle), ...paragraphs.map(p => menuText(p))], { backgroundColor: T.paper, paddingAll: "xl" }),
+    body: menuBox([section(subtitle, paragraphs.map(p => menuText(p)), "slate")], { backgroundColor: T.paper, paddingAll: "lg" }),
     footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { backgroundColor: T.paleGreen, paddingAll: "md", spacing: "none" }),
   }] } }];
   assertLineMessages(messages);
