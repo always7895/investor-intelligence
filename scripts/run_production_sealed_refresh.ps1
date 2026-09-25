@@ -19,6 +19,21 @@ $log = Join-Path $logDir "sealed-refresh.log"
 $stamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssK"
 
 . (Join-Path $repo "scripts\v213_operation_lock.ps1")
+
+function Invoke-LoggedNative([scriptblock]$Command) {
+    # Run a native command with Continue so stderr lines are logged, not thrown; return its lines and exit code.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $lines = @(& $Command 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($lines.Count -gt 0) { Add-Content -Path $log -Value $lines }
+    $lines | ForEach-Object { Write-Host $_ }
+    return [pscustomobject]@{ Code = $code; Lines = $lines }
+}
 try {
     Enter-V213OperationLock -Owner "SealedRefresh" -TimeoutSeconds 0 | Out-Null
 } catch {
@@ -41,22 +56,35 @@ try {
     } catch {
         Add-Content -Path $log -Value "[$stamp] ROTATION FAILED (publication continues)"
     }
-    & $py "scripts\publish_sealed_snapshot.py" --live-clock 2>&1 | Tee-Object -FilePath $log -Append
-    if ($LASTEXITCODE -ne 0) {
+    # Native steps run with Continue: under Windows PowerShell 5.1 with Stop, any stderr line from python (a
+    # warning or traceback) becomes a terminating error that skipped the failure log (2026-09-25 15:56Z run).
+    # Success is judged by the exit code; every line, stderr included, goes to the log.
+    $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock }
+    if ($published.Code -ne 0) {
         Write-Host "[$stamp] GENERATE FAILED — pointer untouched, previous run still serving"
-        Add-Content -Path $log -Value "[$stamp] GENERATE FAILED exit=$LASTEXITCODE (pointer untouched)"
-        exit $LASTEXITCODE
+        Add-Content -Path $log -Value "[$stamp] GENERATE FAILED exit=$($published.Code) (pointer untouched)"
+        exit $published.Code
     }
-    $sumDir = Get-ChildItem (Join-Path $repo "state\v213-snapshots") -Directory |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    & $py "scripts\sync_sealed_snapshot_kv.py" --run-dir $sumDir.FullName 2>&1 | Tee-Object -FilePath $log -Append
-    if ($LASTEXITCODE -ne 0) {
+    # Sync exactly the run this publisher just wrote (never a newest-folder guess).
+    $runMatch = [regex]::Match(($published.Lines -join "`n"), '"run_id":\s*"(\d{8}T\d{6}Z-[0-9a-f]{12})"')
+    if (-not $runMatch.Success) {
+        Add-Content -Path $log -Value "[$stamp] GENERATE FAILED run id not printed (pointer untouched)"
+        exit 1
+    }
+    $runId = $runMatch.Groups[1].Value
+    $runDir = Join-Path $repo ("state\v213-snapshots\" + $runId)
+    $synced = Invoke-LoggedNative { & $py "scripts\sync_sealed_snapshot_kv.py" --run-dir $runDir }
+    if ($synced.Code -ne 0) {
         Write-Host "[$stamp] SYNC FAILED — pointer untouched, previous run still serving"
-        Add-Content -Path $log -Value "[$stamp] SYNC FAILED exit=$LASTEXITCODE (pointer untouched)"
-        exit $LASTEXITCODE
+        Add-Content -Path $log -Value "[$stamp] SYNC FAILED exit=$($synced.Code) (pointer untouched)"
+        exit $synced.Code
     }
-    Add-Content -Path $log -Value "[$stamp] REFRESH OK run=$($sumDir.Name) pointer last"
+    Add-Content -Path $log -Value "[$stamp] REFRESH OK run=$runId pointer last"
     Write-Host "[$stamp] sealed refresh OK"
+} catch {
+    # Anything unexpected is recorded with its type and message before the task reports failure.
+    Add-Content -Path $log -Value ("[$stamp] REFRESH FAILED " + $_.Exception.GetType().Name + ": " + $_.Exception.Message)
+    exit 1
 } finally {
     Exit-V213OperationLock
 }
