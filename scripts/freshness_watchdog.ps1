@@ -30,6 +30,21 @@ if (-not (Test-Path -LiteralPath $cacheDir)) {
 $logPath = Join-Path $cacheDir 'freshness-watch.jsonl'
 
 $namespaceId = '96142af40b5d4213862d5483fe3a66da'
+
+# Pointer anchors are UTC ISO-8601. PowerShell 7 ConvertFrom-Json already yields a DateTime whose string form
+# drops the zone, so never re-parse that string; an unzoned value is UTC by contract (same as the deploy gate).
+function ConvertTo-UtcAnchor([object]$Value) {
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [DateTime]) {
+        if ($Value.Kind -eq [DateTimeKind]::Local) { return $Value.ToUniversalTime() }
+        return [DateTime]::SpecifyKind($Value, [DateTimeKind]::Utc)
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Value)) { return $null }
+    $parsed = [DateTime]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if (-not [DateTime]::TryParse([string]$Value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $null }
+    return $parsed
+}
 if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
 
 $entry = [ordered]@{
@@ -43,7 +58,8 @@ $entry = [ordered]@{
 }
 
 try {
-    $raw = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $namespaceId --cwd (Join-Path $RepoRoot 'cloud') 2>$null
+    # Wrangler 4 KV commands default to the local Miniflare store; the watchdog must read Production.
+    $raw = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $namespaceId --remote --cwd (Join-Path $RepoRoot 'cloud') 2>$null
     if ($null -eq $raw -or $raw -is [string] -and -not $raw) { $raw = $null }
 } catch {
     $entry.note = 'WRANGLER_READ_FAILED'
@@ -54,11 +70,10 @@ if ($rawText -match '\{') {
     try {
         $pointer = $rawText | ConvertFrom-Json
         $entry.run_id = [string]$pointer.run_id
-        $anchorRaw = [string]$pointer.public_data_as_of
-        if ([string]::IsNullOrWhiteSpace($anchorRaw)) { $anchorRaw = [string]$pointer.promoted_at }
-        $anchor = [DateTime]::MinValue
-        if ([DateTime]::TryParse([string]$anchorRaw, [ref]$anchor)) {
-            if ($anchor.Kind -ne [DateTimeKind]::Utc) { $anchor = $anchor.ToUniversalTime() }
+        $anchor = ConvertTo-UtcAnchor $pointer.public_data_as_of
+        if ($null -eq $anchor) { $anchor = ConvertTo-UtcAnchor $pointer.promoted_at }
+        if ($null -ne $anchor) {
+            $anchorRaw = $anchor.ToString('o')
             $age = [int]((Get-Date).ToUniversalTime() - $anchor).TotalSeconds
             $entry.anchor = $anchorRaw
             $entry.ageSeconds = $age

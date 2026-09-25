@@ -56,7 +56,7 @@ def clean(raw: str) -> str:
 # ---------------------------------------------------------------- kv layer
 def wrangler_kv_get(key: str) -> str | None:
     p = subprocess.run(
-        [NPX, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS],
+        [NPX, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
         cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
     )
     if p.returncode != 0:
@@ -71,7 +71,7 @@ def wrangler_kv_put(key: str, body: str) -> bool:
     stage.write_bytes(body.encode("utf-8"))
     p = subprocess.run(
         [NPX, "--yes", "wrangler", "kv", "key", "put", key,
-         "--path", str(stage), "--namespace-id", NS],
+         "--path", str(stage), "--namespace-id", NS, "--remote"],
         cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
     )
     return p.returncode == 0

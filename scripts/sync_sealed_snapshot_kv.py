@@ -25,6 +25,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLOUD_DIR = ROOT / "cloud"
 NS = "96142af40b5d4213862d5483fe3a66da"
+# Wrangler 4 KV commands default to the local Miniflare store; Production is always addressed explicitly
+# (every hourly sync from 2026-09-16 to 2026-09-25 wrote only the local store).
+REMOTE = "--remote"
 
 NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 
@@ -38,12 +41,12 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
 
 def client_put(key: str, local_path: Path) -> bool:
     rel = os.path.relpath(local_path, str(ROOT)).replace("\\", "/")
-    p = _run_cli(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS])
+    p = _run_cli(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE])
     return p.returncode == 0
 
 
 def client_get(key: str) -> str | None:
-    p = _run_cli(["kv", "key", "get", key, "--namespace-id", NS])
+    p = _run_cli(["kv", "key", "get", key, "--namespace-id", NS, REMOTE])
     if p.returncode != 0:
         return None
     body = p.stdout

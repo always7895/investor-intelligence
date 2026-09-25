@@ -60,6 +60,39 @@ class GateContractTests(unittest.TestCase):
             self.assertEqual(out[:2], ["2026-09-25T12:56:15.0000000Z"] * 2, shell)
 
 
+class ProductionKvAddressingTests(unittest.TestCase):
+    """Every production KV command names Production explicitly; the local store is never a silent target."""
+
+    def test_sync_and_rollback_pass_remote_on_every_kv_command(self):
+        import rollback_sealed_snapshot as rollback
+        import sync_sealed_snapshot_kv as sync
+        calls = []
+        fake = lambda args, **kw: calls.append(list(args)) or subprocess.CompletedProcess(args, 0, "{}", "")
+        (ROOT / "data" / "cache").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=ROOT / "data" / "cache") as tmp:  # sync stages repo-relative paths
+            source = Path(tmp) / "body.bin"
+            source.write_bytes(b"{}")
+            originals = (sync.subprocess.run, rollback.subprocess.run)
+            sync.subprocess.run = rollback.subprocess.run = fake
+            try:
+                sync.client_put("snapshot:current", source)
+                sync.client_get("snapshot:current")
+                rollback.wrangler_kv_get("snapshot:current")
+                rollback.wrangler_kv_put("snapshot:current", "{}")
+            finally:
+                sync.subprocess.run, rollback.subprocess.run = originals
+        self.assertEqual(len(calls), 4)
+        self.assertTrue(all("--remote" in call and "--local" not in call for call in calls), calls)
+
+    def test_watchdog_reads_production_with_the_gate_anchor_parser(self):
+        watchdog = (ROOT / "scripts" / "freshness_watchdog.ps1").read_text(encoding="utf-8")
+        reads = re.findall(r"wrangler kv key get[^\n]*", watchdog)
+        self.assertTrue(reads and all("--remote" in line for line in reads))
+        self.assertNotRegex(watchdog, r"kv key put|kv bulk|kv key delete")
+        parser = re.compile(r"function ConvertTo-UtcAnchor.*?\n}\n", re.S)
+        self.assertEqual(parser.search(watchdog).group(0), parser.search(GATE).group(0))
+
+
 class LiveSnapshotCopyTests(unittest.TestCase):
     def test_copies_exact_bytes_and_verifies_the_seal(self):
         store = fake_store()
