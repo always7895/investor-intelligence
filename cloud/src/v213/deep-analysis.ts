@@ -12,9 +12,61 @@ import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
  * Fail-closed: missing valuation/order inputs stay UNAVAILABLE without fabricated narratives.
  * Never inherits generic AI beneficiary, pricing or customer claims onto individual companies.
  */
+/** Data-driven company report computed from SEC filings, BLS and the industry rotation
+ * (scripts/company_deep_report.py), embedded in the same sealed report object. */
+export interface CompanyDataReport {
+  readonly ticker: string;
+  readonly name: string;
+  readonly as_of: string;
+  readonly phase: string;
+  readonly next_review_at: string | null;
+  readonly sections: readonly { readonly title: string; readonly text: string }[];
+  readonly source_references: readonly { readonly source: string; readonly url: string; readonly period?: string }[];
+  readonly boundary: string;
+}
+
+const SHORT = (value: unknown, max: number): value is string =>
+  typeof value === "string" && value.trim().length > 0 && value.length <= max && !/[\r\n]/.test(value);
+
+/** Strict reader: any malformed field rejects the whole report (the caller then shows the audit template). */
+export function companyDataReportFromSealed(rawReportJson: string | null, ticker: string): CompanyDataReport | null {
+  if (!rawReportJson || rawReportJson.length > 2_097_152) return null;
+  let raw: any;
+  try { raw = JSON.parse(rawReportJson)?.deep_reports?.[ticker.toUpperCase()]; } catch { return null; }
+  if (!raw || typeof raw !== "object" || raw.ticker !== ticker.toUpperCase() || !SHORT(raw.name, 200)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.as_of)) || !SHORT(raw.boundary, 200)) return null;
+  const phase = raw.phase?.phase;
+  const next = raw.phase?.next_review_at ?? null;
+  if (!SHORT(phase, 40) || (next !== null && !/^\d{4}-\d{2}-\d{2}$/.test(String(next)))) return null;
+  if (!Array.isArray(raw.sections) || raw.sections.length < 3 || raw.sections.length > 12) return null;
+  if (!raw.sections.every((s: any) => SHORT(s?.title, 20) && SHORT(s?.text, 700))) return null;
+  if (!Array.isArray(raw.source_references) || raw.source_references.length < 1 || raw.source_references.length > 20) return null;
+  try {
+    const references = raw.source_references.map((ref: any) => {
+      if (!SHORT(ref?.source, 120) || (ref.period !== undefined && ref.period !== null && !SHORT(String(ref.period), 40))) throw new Error("REF");
+      return { source: ref.source, url: safeCitation(ref.url), ...(ref.period ? { period: String(ref.period) } : {}) };
+    });
+    return { ticker: raw.ticker, name: raw.name, as_of: raw.as_of, phase, next_review_at: next,
+      sections: raw.sections.map((s: any) => ({ title: s.title, text: s.text })), source_references: references, boundary: raw.boundary };
+  } catch {
+    return null;
+  }
+}
+
+function dataReportBlocks(report: V213Top20Report | V213BottleneckReport, data: CompanyDataReport): string[] {
+  const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
+  return [
+    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
+      `資料計算日：${data.as_of}｜資料階段：${data.phase}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
+    ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
+    `資料來源 / Sources\n` + data.source_references.map(ref => `• ${ref.source}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
+  ];
+}
+
 export function buildTop20DeepAnalysisMessages(
   report: V213Top20Report | V213BottleneckReport,
   ticker: string,
+  dataReport: CompanyDataReport | null = null,
 ): LineOutboundMessage[] {
   // Strict two-variant admission: certified top20 report first, then the
   // bottleneck policy report; anything else still throws REPORT_CONTEXT_INVALID.
@@ -34,7 +86,7 @@ export function buildTop20DeepAnalysisMessages(
 
   const percent = (value: number | null | undefined) => (value === null || value === undefined ? "未提供" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`);
 
-  const blocks: string[] = [
+  const blocks: string[] = dataReport ? dataReportBlocks(report, dataReport) : [
     // Header & Meta
     `【${row.ticker}｜深度化分析 · 供應鏈瓶頸與價值鏈研究】\n` +
     `原文公司名稱：${row.name}\n` +

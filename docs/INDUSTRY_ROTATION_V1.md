@@ -21,9 +21,13 @@ The configuration lists official classifications only (SIC codes and PPI series 
 
 ## Refresh and publication
 
-- `scripts/run_industry_rotation_refresh.ps1` decrypts the SEC Fair Access contact from the user's DPAPI file into the process only, runs the refresh at most every 20 hours and keeps the last good file on failure.
+- `scripts/run_daily_data_refresh.ps1` decrypts the SEC Fair Access contact from the user's DPAPI file into the process only, runs the refresh at most every 20 hours and keeps the last good file on failure.
 - The hourly `run_production_sealed_refresh.ps1` calls it before publishing (non-fatal) and `publish_sealed_snapshot.py` builds the sealed TOP5 overview from `data/cache/industry_rotation_latest.json` (maximum age 45 days). Industry cards and deep analyses are embedded in that overview, and the Worker reads them from it.
 - The former hand-written industry rows remain only as a synthetic contract fixture for tests (`_SYNTHETIC_CONTRACT_UNIVERSE`); they are never published.
+
+## Company deep reports
+
+`scripts/company_deep_report.py` builds one report per ticker of the newest sealed ranking (SEC filers only; others keep the audit template): business phrase from the latest annual report, same-calendar-quarter revenue, gross and operating margin, RPO, latest fiscal-year capital expenditure, cash, long-term debt, diluted-share change, inventory versus revenue, the company's SIC industry signals from the rotation, a company-scope `thesis_phase` result with next review date, falsifiers and source URLs. When an issuer switches XBRL tags, the tag with the most recent filing wins. Reports older than 7 days are not sealed. `publish_sealed_snapshot.py` embeds compact reports as `deep_reports` in the sealed bottleneck report, and the Worker renders them for 「深度化分析」 only when they come from the same snapshot the card referenced and pass strict validation.
 
 ## Limits and next sources
 

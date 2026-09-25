@@ -1,5 +1,6 @@
-# Daily data-driven industry rotation refresh (operator rule 2026-09-25: data change
-# with the market, nothing hand-written, keeps updating after the project is done).
+# Daily data refresh (operator rule 2026-09-25: data change with the market, nothing
+# hand-written, keeps updating after the project is done): the data-driven industry
+# rotation, then the data-driven company reports for the newest sealed ranking.
 #
 # Reads BLS PPI (public API, no key) and SEC EDGAR XBRL frames with the declared SEC
 # Fair Access contact. The contact is decrypted from the user's DPAPI file into this
@@ -27,6 +28,9 @@ try {
     try {
         & python 'scripts\industry_rotation.py' --refresh --if-older-than-hours $IfOlderThanHours
         $code = $LASTEXITCODE
+        # Company reports use the rotation just written; a failure keeps the last good file.
+        & python 'scripts\company_deep_report.py' --refresh --if-older-than-hours $IfOlderThanHours
+        if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
     } finally { Pop-Location }
 } finally {
     if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }

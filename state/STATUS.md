@@ -15,39 +15,25 @@ Operator: all data must move with the latest market data, nothing hand-written; 
 - `scripts/industry_rotation.py` + `config/industry-rotation-v1.json` (22 industries defined by SIC codes and BLS PPI series only): BLS PPI YoY (public API v1), SEC XBRL frames RPO / inventory / revenue summed over EDGAR SIC members (≥3 matched issuers) → `thesis_phase` (industry scope) → data strength. Cards and 10-part deep analyses are generated from the numbers with period, source and URL. Live run 2026-09-25 (2026 Q2 filings, PPI to 2026-08): TOP5 computers and storage (EARLY_VALIDATION, PPI +45.0%, RPO +86.3%), semiconductors, oil and gas extraction, construction machinery, steel (DISCOVERY).
 - `build_v213_macro_industry_research.py` and `publish_sealed_snapshot.py` now read the rotation (max age 45 days) and embed deep analyses in the sealed overview; the old hand-written rows are a test-only synthetic fixture. Stale or missing data publish an honest shortfall.
 - Worker `rich-menu.ts`: industry card and deep analysis come from the sealed overview (they were unreachable before because the seal admits one macro object); 3 new tests.
-- Refresh: `scripts/run_industry_rotation_refresh.ps1` (DPAPI contact in-process only, ≤ one refresh per 20 h), called non-fatally from the hourly sealed refresh, so the rotation keeps updating on its own. Details: [INDUSTRY_ROTATION_V1](../docs/INDUSTRY_ROTATION_V1.md).
+- Refresh: `scripts/run_daily_data_refresh.ps1` (DPAPI contact in-process only, ≤ one refresh per 20 h), called non-fatally from the hourly sealed refresh, so the rotation keeps updating on its own. Details: [INDUSTRY_ROTATION_V1](../docs/INDUSTRY_ROTATION_V1.md).
 - EXE and bridge auto-detect the local model server (operator request): saved/default address first, then loopback ports 5000, 8080, 11434, 1234, 5001, 8081 (never 8000); move only to a server holding the configured model; explicit addresses never move. The bridge now also reads `/v1/models` at the same base, which TabbyAPI needs. Tests: bridge discovery (PS 5.1 and 7), EXE self-test candidate order.
+- Company deep reports (`scripts/company_deep_report.py`, daily with the rotation): SEC XBRL same-quarter revenue/margins, RPO, capex, cash, debt, dilution, industry signals and company-scope phase with sources, embedded as `deep_reports` in the sealed report; the Worker renders them instead of the audit template when valid and from the same snapshot. Live: GEV revenue +21.9%, operating margin +1.7 pp, RPO US$176.28B (+37.0%). 6 Python + 2 Worker tests.
 - Tests: `test_industry_rotation` (11); Worker 903 passed / 1 skipped. Full Python 2561: 10 failures came from mid-edit bridge states and the explicit `--model-catalog-check` probing other ports; both fixed (explicit addresses never move) and rerun green (29 OK).
 
 ## Previous changes
 
 - `e97fd00` time-aware thesis phase engine and Serenity/Aschenbrenner refresh (EDGAR timeline, verified secondary quotes); `18b5927` option cycle chip back to yellow.
-
 - `41058f2` adaptive THINK under the profile ceiling (time budget, measured decode rate, System One screen, one answer-only retry) and TabbyAPI `:5000` as the EXE/bridge default router; 11 + 11 + 2 tests; full Python 2537 after a payload-list fix.
-
 - `0b3946d` ink monochrome LINE cards: three-stop black-to-graphite header gradient, section levels by lightness, grey secondary buttons on white footers, accounting-convention value colours, no green; every text/ground pair ≥4.5:1; Worker 900 passed. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `47a3f19` Top20 industry detail from SEC annual reports ([TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0): latest 10-K/20-F business excerpt → validated loopback-Qwen phrase → 「細分產業：主要業務」; per-accession cache, index re-read each run, 403/429 fence; scheduled runners pass `--business-profile`; live canary 22/22 Top20 plus TSM/ASML; 20 tests; full Python 2525 (one CI-env-only error, passes with `PYTHONUTF8=1`).
 - `3e80273` Wave 1 official public feeds: eight reviewed T1 entries (Fed, ECB, SEC press, TWSE/TPEx EOD and issuer directories, TAIFEX options) registered at `ADAPTER_CONTRACT_VALIDATED`; the claim-evidence acquisition factory rejects bulk datasets and news leads, so none is runtime-enabled yet (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`).
-- `7c01ef1`, `6d21066` layered LINE card design with black gradient band; source activation plan (full Python 2502 OK).
-- `6ba8e6d`, `292f274` installer fixture retention, C2b local artifact and recorded operator decisions (full Python 2502 OK).
-- `0c61b53` removal of 74 unreferenced docs, scripts and workflows (full Python 2497 OK).
-- `34417b9` Top20 sourced-wording guard, phase 1 (full Python 2497 OK, 429.4 s).
-- `79438c2` weekly/monthly options guidance (Worker 900 passed; full Python 2490 OK, 437.3 s).
-- `c665684` LINE Flex redesign on a shared design system (Worker 895 passed; full Python 2490 OK, 439.0 s). Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
-- `7b88bf7`, `79d23f8` research method refresh (SERENITY_LOGIC, ASCHENBRENNER_CONTEXT; full Python 2490 OK, 423.5 s) and C2b decision record.
-- `4ee66d8` C2a forward comparison renderer (5 tests; full Python 2490 OK, 435.0 s).
-- `c824b23` C1 `assess_forward_premises` premise-state shadow (12 tests; full Python 2485 OK, 460.6 s).
-- `b88dd9f`, `51c7132` instructions, skill, MCP and design:
-  - `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
-  - Local, untracked: workspace `AGENTS.md`, `.pi/HANDOFF.md` current pointer, GitHub MCP server in `.mcp.json` (token read from the `gh` keyring at connect time; handshake HTTP 200). Untracked leftovers relocated to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/` and `_archive/`, not deleted.
-  - Gates for that change: security, documentation boundary/structure, workflow supply chain and owner-config PASS; Worker typecheck PASS and 895 passed / 1 named manual skip; full Python 2473 OK in 424.3 s on a clean rerun. The first full run had 2 lock-contention failures while the live SealedFreshness task (14:56:15) held the operation lock; kept as evidence.
-  - Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; the 15:26:15 run returned 0. No task changed.
+- Earlier today (`b88dd9f` … `7c01ef1`): instructions/skill/MCP restructure, C1/C2a forward comparisons, research refresh, LINE redesign, weekly/monthly options, sourced-wording guard, 74-file cleanup, installer retention; each with full Python OK at the time (details in Git history of this file).
 
 ## Latest gate run
 
-- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Focused: business profile 20, v212 report, source acquisition, public JSON refresh, progress runner, entrypoints, installer boundaries, sealed refresh — 118 OK.
-- Full Python 18:38:42–18:45:45: 2525 tests, 2524 OK; the one error (`test_v213_market_products` CLI pipe) came from running without CI's `PYTHONUTF8=1` and passes with it (12 OK). Worker typecheck PASS, 900 passed / 1 skipped.
+- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS (20:22).
+- Worker typecheck PASS; 905 passed / 1 skipped. Focused Python: rotation, deep reports, market products, thesis phase, model profile (compiled EXE), bridge identity — OK.
+- Full Python 20:06: 2561 tests; 10 failures from mid-edit states, fixed and rerun green (see above).
 
 ## Closed components — no reopening without regression evidence
 

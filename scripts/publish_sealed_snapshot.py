@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import bottleneck_ranking as engine  # noqa: E402
 import multilineage_claim_bundle as mlb  # noqa: E402
 import build_v213_macro_industry_research as macro_builder  # noqa: E402
+import company_deep_report  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
 
@@ -209,6 +210,9 @@ def bottleneck_report(result: dict) -> dict:
         "total_evaluated": result["total_evaluated"],
         "records": records,
         "provider_scope": "public_only",
+        # Data-driven company reports (SEC XBRL + industry rotation, refreshed daily) for the
+        # ranked tickers; missing or stale reports leave the Worker's audit template in place.
+        "deep_reports": company_deep_report.load_reports(tickers=[row["ticker"] for row in records]),
     }
 
 
