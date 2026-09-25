@@ -14,6 +14,7 @@ param(
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
+    [switch]$AllowSealedActivation,
     [switch]$Synthetic,
     [switch]$SelfTest
 )
@@ -182,6 +183,9 @@ try {
                 }
                 elseif (-not (Test-Path -LiteralPath $syncConfig -PathType Leaf)) {
                     Write-Warning 'Formal v2.1.3 is installed, but signed-sync configuration is missing; local bundle retained.'
+                }
+                elseif (-not $AllowSealedActivation) {
+                    throw 'V213_SEALED_ACTIVATION_NOT_ALLOWED: the hourly sealed publisher is the single Production writer; rerun with -NoSync for a data-only refresh, or pass -AllowSealedActivation for an explicit operator activation.'
                 }
                 elseif ($bridgeReady) {
                     & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model

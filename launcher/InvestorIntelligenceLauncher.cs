@@ -909,10 +909,11 @@ namespace InvestorIntelligence
             }
             if (args.Contains("--local"))
             {
+                // Data-only: the hourly sealed publisher is the single Production writer.
                 return RunPowerShellCli(
                     "run-v213-local.ps1",
                     "-ProjectRoot " + PowerShellLiteral(Root) +
-                    " -InstallCloudflared");
+                    " -InstallCloudflared -NoSync");
             }
             if (args.Contains("--activate-schedule"))
             {
@@ -1220,10 +1221,11 @@ namespace InvestorIntelligence
                     await RunBusyAsync(
                         "更新中 / Refreshing...",
                         async delegate {
+                            // Data-only: the hourly sealed publisher is the single Production writer.
                             return await RunPowerShellAsync(
                                 "run-v213-local.ps1",
                                 "-ProjectRoot " + PowerShellLiteral(Root) +
-                                " -InstallCloudflared -Model " + PowerShellLiteral(model) +
+                                " -InstallCloudflared -NoSync -Model " + PowerShellLiteral(model) +
                                 " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
                                 true);
                         },
