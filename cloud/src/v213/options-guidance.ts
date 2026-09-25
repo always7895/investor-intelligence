@@ -277,7 +277,7 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
       uiBox([
         guidance.dte_window_status === "WITHIN_CYCLE_WINDOW"
           ? chip(CYCLE_LABEL[guidance.expiry_cycle])
-          : chip(CYCLE_LABEL[guidance.expiry_cycle], T.headerAlert, T.ink),
+          : chip(CYCLE_LABEL[guidance.expiry_cycle], T.cycleCaution, T.cycleCautionText),
         uiText(STRATEGY_LABEL[guidance.strategy], "sm", T.headerMuted, { gravity: "center", flex: 1 }),
       ], { layout: "horizontal", spacing: "md" }),
     ]),

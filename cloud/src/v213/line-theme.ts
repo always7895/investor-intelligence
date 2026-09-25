@@ -16,6 +16,8 @@ export const LINE_THEME = Object.freeze({ ink: "#111418", muted: "#4A5058", pape
   strong: "#1D2127", strongEnd: "#3A414B", slateTint: "#ECEEF1", slateTitle: "#111418",
   quietTint: "#F7F8F9", quietTitle: "#4A5058",
   button: "#ECEEF1", onAccent: "#111418", onInk: "#FFFFFF",
+  // Option cycle outside its DTE window: the original yellow pill (operator 2026-09-25: red read as an error).
+  cycleCaution: "#FDE68A", cycleCautionText: "#78350F",
   negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED" });
 
 export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text, size, color, wrap: true });
