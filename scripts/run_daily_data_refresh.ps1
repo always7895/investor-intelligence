@@ -30,6 +30,8 @@ try {
         $code = $LASTEXITCODE
         # Company reports use the rotation just written; a failure keeps the last good file.
         & python 'scripts\company_deep_report.py' --refresh --if-older-than-hours $IfOlderThanHours
+        # Official listing directories for the LINE stock/options lookup (sealed as identity shards).
+        & python 'scripts\build_identity_shards.py' --if-older-than-hours $IfOlderThanHours
         if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
     } finally { Pop-Location }
 } finally {

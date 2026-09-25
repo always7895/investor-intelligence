@@ -55,7 +55,7 @@ def vitest_runner(replay_dir: Path, result_path: Path) -> int:
     return done.returncode
 
 
-def expectations(result: dict[str, Any], state: str | None, run_id: str) -> list[str]:
+def expectations(result: dict[str, Any], state: str | None, run_id: str, identity: bool = False) -> list[str]:
     """Names of every failed expectation for this Top20 state (empty: pass)."""
     checks = {
         "READER_CONTRACT": result.get("reader_contract_version") == READER_CONTRACT_VERSION,
@@ -82,6 +82,10 @@ def expectations(result: dict[str, Any], state: str | None, run_id: str) -> list
         })
     else:
         checks["FRESH"] = result.get("fresh") is True
+    if identity:
+        probe = result.get("identity_probe") or {}
+        checks["IDENTITY_NVDA"] = probe.get("NVDA") == "RESOLVED:NASDAQ:NVDA"
+        checks["IDENTITY_2330"] = probe.get("2330") == "RESOLVED:TWSE:2330"
     return [name for name, ok in checks.items() if not ok]
 
 
@@ -96,12 +100,12 @@ def replay(run_dir: Path, runner: Runner = vitest_runner) -> dict[str, Any]:
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             result = {}
-    failed = expectations(result, state, run_id) if result else ["RESULT_MISSING"]
+    failed = expectations(result, state, run_id, bool(summary.get("lazy_objects"))) if result else ["RESULT_MISSING"]
     if code != 0:
         failed.insert(0, "VITEST_EXIT_NONZERO")
     return {"status": "PASS" if not failed else "FAIL", "run_id": run_id, "top20_state": state, "failed": failed,
             **{key: result.get(key) for key in ("fresh", "top20_records", "test_only_admission", "report_generated_at",
-                                                 "potential_ranking_records", "reader_contract_version")}}
+                                                 "potential_ranking_records", "reader_contract_version", "identity_probe")}}
 
 
 def main(argv: list[str] | None = None) -> int:

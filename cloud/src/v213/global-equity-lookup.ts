@@ -18,6 +18,7 @@ import {
   loadGlobalIdentityCatalog,
   evaluateCatalogAdmission,
 } from "./global-identity-reader";
+import { loadIdentityCatalogForQuery } from "./identity-shards";
 
 export type { SupportedMarket, GlobalIdentityRecord, GlobalIdentityResolution };
 
@@ -294,10 +295,15 @@ export async function handleGlobalEquityLookup(
     return buildGlobalEquityLookupMessages(fallbackResult, isText ? "text" : "flex");
   }
 
-  // Load candidate catalog from the SAME pinned sealed view
-  const candidateCatalog = await loadGlobalIdentityCatalog(view);
-  const admission = evaluateCatalogAdmission(view, candidateCatalog);
-  const effectiveCatalog = admission.scope === "ADMITTED_AUTHORITATIVE" ? candidateCatalog : null;
+  // Sealed identity shards (official listing directories, digest-verified lazily from this pinned view) are the
+  // admitted identity authority; the legacy single-catalog slot stays deferred.
+  const shardCatalog = await loadIdentityCatalogForQuery(view, query.normalized);
+  let effectiveCatalog = shardCatalog;
+  if (!effectiveCatalog) {
+    const candidateCatalog = await loadGlobalIdentityCatalog(view);
+    const admission = evaluateCatalogAdmission(view, candidateCatalog);
+    effectiveCatalog = admission.scope === "ADMITTED_AUTHORITATIVE" ? candidateCatalog : null;
+  }
 
   // If not obviously an equity query and no catalog name match, do not hijack normal conversation
   if (!isObviousEquity) {

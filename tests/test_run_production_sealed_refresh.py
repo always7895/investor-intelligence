@@ -80,10 +80,11 @@ CARRY_PUBLISH = TRACE + (
     "args = sys.argv[1:]\n"
     "if '--top20-insufficient' in args:\n    run, state = 'RUN_B', 'INSUFFICIENT'\n"
     "elif '--snapshot-root' in args:\n    run, state = 'RUN_C', 'CARRIED_FORWARD'\n"
-    "else:\n    run, state = 'RUN_A', 'CARRIED_FORWARD'\n"
+    "elif '--identity-shards' in args:\n    run, state = 'RUN_A', 'CARRIED_FORWARD'\n"
+    "else:\n    run, state = 'RUN_D', 'CARRIED_FORWARD'\n"
     "trace('PUBLISH ' + run + ' ' + ' '.join(a for a in args if a.startswith('--')))\n"
     "ids = {'RUN_A': '20260926T010000Z-aaaaaaaaaaaa', 'RUN_B': '20260926T010000Z-bbbbbbbbbbbb',"
-    " 'RUN_C': '20260926T010000Z-cccccccccccc'}\n"
+    " 'RUN_C': '20260926T010000Z-cccccccccccc', 'RUN_D': '20260926T010000Z-dddddddddddd'}\n"
     "print('{')\nprint('  \"run_id\": \"' + ids[run] + '\",')\nprint('  \"top20_state\": \"' + state + '\"')\nprint('}')\n")
 CARRY_REPLAY = TRACE + (
     "run = sys.argv[-1]\nfail = (root / ('replay_fail_' + run[-4:])).exists()\n"
@@ -136,25 +137,33 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell)
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[:3], ["PUBLISH RUN_A --live-clock --top20-bundle", "REPLAY aaaa PASS", "SYNC aaaa"], trace)
+            self.assertEqual(trace[:3], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards", "REPLAY aaaa PASS", "SYNC aaaa"], trace)
             self.assertEqual(trace[3:6], ["ROTATION", "LKG due", "REFRESH nosync=True"], trace)
             self.assertEqual(trace[6], "PUBLISH RUN_C --live-clock --top20-bundle --snapshot-root", trace)
             self.assertEqual(trace[7:], ["REPLAY cccc PASS", "LKG promote --candidate", "LKG record --result ok"], trace)
             self.assertIn("TABBY_MODEL_UNVERIFIED", log)
             self.assertIn("TOP20 CANDIDATE OK", log)
 
-    def test_replay_failure_republishes_insufficient_and_still_syncs(self):
+    def test_identity_replay_failure_keeps_the_carried_top20(self):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "not_due"))
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[:5], ["PUBLISH RUN_A --live-clock --top20-bundle", "REPLAY aaaa FAIL",
-                                         "PUBLISH RUN_B --live-clock --top20-insufficient", "REPLAY bbbb PASS", "SYNC bbbb"], trace)
+            self.assertEqual(trace[:5], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards", "REPLAY aaaa FAIL",
+                                         "PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd PASS", "SYNC dddd"], trace)
+            self.assertIn("REPLAY FAILED run=20260926T010000Z-aaaaaaaaaaaa tier=OK", log)
+
+    def test_replay_failure_republishes_insufficient_and_still_syncs(self):
+        for shell in shells():
+            code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "replay_fail_dddd", "not_due"))
+            self.assertEqual(code, 0, (shell, log))
+            self.assertEqual(trace[2:7], ["PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd FAIL",
+                                          "PUBLISH RUN_B --live-clock --top20-insufficient", "REPLAY bbbb PASS", "SYNC bbbb"], trace)
             self.assertIn("REPLAY FAILED", log)
             self.assertNotIn("REFRESH nosync=True", trace)
 
     def test_both_replays_failing_leave_the_pointer_untouched(self):
         for shell in shells():
-            code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "replay_fail_bbbb"))
+            code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "replay_fail_dddd", "replay_fail_bbbb"))
             self.assertNotEqual(code, 0)
             self.assertFalse([line for line in trace if line.startswith(("SYNC", "REFRESH", "ROTATION"))], trace)
             self.assertIn("GENERATE FAILED stage=REPLAY", log)
@@ -192,7 +201,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, carry=False)
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace, ["ROTATION", "PUBLISH RUN_A --live-clock", "SYNC aaaa"])
+            self.assertEqual(trace, ["ROTATION", "PUBLISH RUN_D --live-clock", "SYNC dddd"])
 
 
 if __name__ == "__main__":

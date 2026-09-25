@@ -79,6 +79,11 @@ ORDERS_STATE_AS_OF = {
 }
 
 SEAL_KEY = "v213:snapshot-seal:v1"
+# Lazy sealed objects (cloud/src/v213/snapshot-seal.ts SNAPSHOT_LAZY_KEY_RE): listed in the seal with their digest,
+# stored once under blob:v1:<sha256> and verified by the Worker only when a lookup needs them.
+LAZY_BLOB_PREFIX = "blob:v1:"
+IDENTITY_SHARDS_PATH = ROOT / "data" / "cache" / "identity_shards_latest.json"
+IDENTITY_MAX_AGE = timedelta(days=8)
 OBJECT_KEYS = [
     "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
     "reports:latest", "reports:morning:latest", "reports:evening:latest",
@@ -357,9 +362,27 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
-def build_seal(bodies: "dict[str, str]", meta: "dict") -> "tuple[str, str]":
+def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
+    """Identity shards (scripts/build_identity_shards.py) as lazy bodies; none when missing, stale or malformed."""
+    try:
+        document = json.loads(path.read_bytes().decode("utf-8"))
+        generated = datetime.strptime(document["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if document.get("schema") != "v213-identity-shard-v2" or now - generated > IDENTITY_MAX_AGE:
+            return {}
+        bodies = {f"v213:identity:v2:sym:{bucket}": _dumps(shard) for bucket, shard in sorted(document["symbol_shards"].items())}
+        bodies.update({f"v213:identity:v2:name:{bucket}": _dumps(shard) for bucket, shard in sorted(document["name_shards"].items())})
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    if "v213:identity:v2:sym:A" not in bodies or any(len(body.encode("utf-8")) > 2_000_000 for body in bodies.values()):
+        return {}
+    return bodies
+
+
+def build_seal(bodies: "dict[str, str]", meta: "dict", lazy: "dict[str, str] | None" = None) -> "tuple[str, str]":
     digest_rows = {key: {"sha256": _sha(bodies[key]), "utf8_bytes": len(bodies[key].encode("utf-8"))}
                    for key in [*OBJECT_KEYS, MACRO_KEY]}
+    for key, body in sorted((lazy or {}).items()):
+        digest_rows[key] = {"sha256": _sha(body), "utf8_bytes": len(body.encode("utf-8"))}
     manifest = {
         "schema_version": 1,
         "contract_id": CONTRACT_ID,
@@ -400,6 +423,8 @@ def main(argv=None) -> None:
                     help="Carry-forward mode, but seal an INSUFFICIENT Top20 with this reason (replay fallback).")
     ap.add_argument("--snapshot-root", type=Path, default=SNAPSHOT_ROOT,
                     help="Directory for sealed runs (default state/v213-snapshots).")
+    ap.add_argument("--identity-shards", nargs="?", const=str(IDENTITY_SHARDS_PATH), default=None, metavar="PATH",
+                    help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
     args = ap.parse_args(argv)
     if args.live_clock:
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -423,13 +448,18 @@ def main(argv=None) -> None:
         path = Path(args.top20_bundle) if args.top20_bundle else top20_carry_forward.newest_lkg()
         carry = carry_state(path, args.top20_insufficient)
     bodies, meta = build_bodies(carry)
-    seal_text, seal_sha = build_seal(bodies, meta)
+    lazy: "dict[str, str]" = {}
+    if args.identity_shards is not None:
+        lazy.update(lazy_identity_bodies(Path(args.identity_shards), LIVE_NOW or datetime.now(timezone.utc)))
+    seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
     out_dir = args.snapshot_root / meta["run_id"]
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
+    for body in lazy.values():
+        objects[LAZY_BLOB_PREFIX + _sha(body)] = body
     objects_path = out_dir / "objects.json"
     objects_path.write_bytes(_dumps(objects).encode("utf-8"))
     pointer_path = out_dir / "pointer.raw.json"
@@ -455,6 +485,8 @@ def main(argv=None) -> None:
         "objects_json": _display_path(objects_path),
         "pointer_raw_json": _display_path(pointer_path),
     }
+    if lazy:
+        summary["lazy_objects"] = len(lazy)
     if carry is not None:
         bundle = carry["bundle"] or {}
         summary.update({

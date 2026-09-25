@@ -21,6 +21,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 NS = "96142af40b5d4213862d5483fe3a66da"
 RUN_ID = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
+LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v1)$")
 Getter = Callable[[str], bytes]
 
 
@@ -48,8 +49,10 @@ def copy_snapshot(get: Getter, out: Path) -> dict:
     files = {"snapshot:current": pointer, seal_key: seal}
     mismatches = []
     for name, meta in json.loads(seal)["objects"].items():
-        body = get(f"snapshot:{run}:{name}")
-        files[f"snapshot:{run}:{name}"] = body
+        # Lazy sealed objects live once under their content address (cloud/src/v213/snapshot-seal.ts).
+        key = f"blob:v1:{meta.get('sha256')}" if LAZY_KEY.fullmatch(name) else f"snapshot:{run}:{name}"
+        body = get(key)
+        files[key] = body
         if hashlib.sha256(body).hexdigest() != meta.get("sha256"):
             mismatches.append(name)
     index = {}

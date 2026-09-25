@@ -1,5 +1,5 @@
 import type { StorageEnv } from "../storage";
-import { readSealedSnapshot, SNAPSHOT_RUN_RE, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
+import { readLazySealedObject, readSealedSnapshot, SNAPSHOT_RUN_RE, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
 
 interface SnapshotPointer { run_id?: unknown; runId?: unknown; }
 export interface PublicSnapshotView {
@@ -47,18 +47,32 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
     if (raw && typeof raw === "object" && !Array.isArray(raw) && Object.hasOwn(raw, "schema_version")) {
       try {
         const verified = await readSealedSnapshot(text, key => env.PUBLIC_CACHE.get(key, "text"));
+        // Lazy sealed objects are fetched and digest-verified on first use, then kept for this view.
+        const lazyBodies = new Map<string, Promise<string | null>>();
+        const sealedBody = async (key: string): Promise<string | undefined> => {
+          const body = verified.objects.get(key);
+          if (body !== undefined) return body;
+          const digest = verified.lazy.get(key);
+          if (!digest) return undefined;
+          let pending = lazyBodies.get(key);
+          if (!pending) {
+            pending = readLazySealedObject(digest, blobKey => env.PUBLIC_CACHE.get(blobKey, "text"));
+            lazyBodies.set(key, pending);
+          }
+          return (await pending) ?? undefined;
+        };
         return Object.freeze<PublicSnapshotView>({
           runId: verified.pointer.run_id, kind: "snapshot", integrity: "sealed",
           async text(logicalKeys) {
             for (const key of logicalKeys) {
-              const body = verified.objects.get(key);
+              const body = await sealedBody(key);
               if (body !== undefined) return body;
             }
             return null;
           },
           async json<T>(logicalKeys: string[]): Promise<T | null> {
             for (const key of logicalKeys) {
-              const body = verified.objects.get(key);
+              const body = await sealedBody(key);
               if (body !== undefined) {
                 try { return JSON.parse(body) as T; } catch { return null; }
               }

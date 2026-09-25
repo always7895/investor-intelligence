@@ -1,0 +1,85 @@
+"""Identity shards for the LINE stock lookup: feed parsing, shard layout, hashing parity with the Worker, and the
+lazy sealing path (publisher + content-addressed blobs). Synthetic feeds only; no network."""
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import build_identity_shards as shards  # noqa: E402
+import publish_sealed_snapshot as publisher  # noqa: E402
+
+NASDAQ = ("Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\n"
+          + "".join(f"N{i:03d}|Synthetic {i} Inc. - Common Stock|Q|N|N|100|N|N\n" for i in range(3000))
+          + "AAPL|Apple Inc. - Common Stock|Q|N|N|100|N|N\n" + "NVDA|NVIDIA Corporation - Common Stock|Q|N|N|100|N|N\nZTST|Test issue|Q|Y|N|100|N|N\n"
+          + "File Creation Time: 0926202601:00|||||||\n").encode()
+OTHER = ("ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\n"
+         + "".join(f"O{i:03d}|Other {i} Corp|N|O{i:03d}|N|100|N|O{i:03d}\n" for i in range(3000))).encode()
+TWSE = json.dumps([{"公司代號": f"{1000 + i}", "公司名稱": f"合成公司{i}股份有限公司", "公司簡稱": f"合成{i}"} for i in range(800)]
+                  + [{"公司代號": "2330", "公司名稱": "台灣積體電路製造股份有限公司", "公司簡稱": "台積電"}], ensure_ascii=False).encode()
+TPEX = json.dumps([{"SecuritiesCompanyCode": f"{6000 + i}", "CompanyName": f"櫃買合成{i}", "CompanyAbbreviation": f"櫃{i}"}
+                   for i in range(600)], ensure_ascii=False).encode()
+
+
+def nordic(count: int, extra: list[dict] | None = None) -> bytes:
+    rows = [{"symbol": f"S{i:03d}", "fullName": f"Svensk {i}", "currency": "SEK", "assetClass": "SHARES"} for i in range(count)]
+    return json.dumps({"data": {"instrumentListing": {"rows": rows + (extra or [])}}}).encode()
+
+
+FEEDS = {
+    "nasdaq-listed": NASDAQ, "other-us-listed": OTHER, "twse-listed": TWSE, "tpex-listed": TPEX,
+    "nasdaq-stockholm-main": nordic(250, [{"symbol": "SIVE", "fullName": "Sivers Semiconductors", "currency": "SEK", "assetClass": "SHARES"}]),
+    "nasdaq-stockholm-first-north": nordic(150),
+}
+
+
+def fetch(url: str) -> bytes:
+    return next(body for feed, body in FEEDS.items() if shards.FEEDS[feed] == url)
+
+
+class IdentityShardTests(unittest.TestCase):
+    def test_layout_parsing_and_exclusions(self):
+        document = shards.build(fetch, datetime(2026, 9, 26, 1, tzinfo=timezone.utc))
+        sym = document["symbol_shards"]
+        self.assertIn(["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", None, "COMMON_STOCK", "SEK", 4],
+                      sym["S"]["rows"])
+        self.assertIn(["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 2], sym["2"]["rows"])
+        self.assertFalse(any(row[0] == "ZTST" for row in sym["Z"]["rows"]) if "Z" in sym else False)  # test issue excluded
+        self.assertTrue(all(row[0][0] == bucket or bucket == "_" for bucket, shard in sym.items() for row in shard["rows"]))
+        name_bucket = str(shards.fnv1a_utf16("台積電") % 16)
+        self.assertIn(["台積電", "2", "2330", "TWSE"], document["name_shards"][name_bucket]["rows"])
+
+    def test_hash_parity_with_the_worker(self):
+        # Values asserted by cloud/test/v213-identity-shards.test.ts for identityNameBucket.
+        self.assertEqual(shards.fnv1a_utf16("台積電"), 1342269639)
+        self.assertEqual(shards.fnv1a_utf16("abc"), 440920331)
+
+    def test_a_short_or_failed_feed_fails_the_build(self):
+        saved = FEEDS["twse-listed"]
+        FEEDS["twse-listed"] = b"[]"
+        try:
+            with self.assertRaisesRegex(shards.IdentityShardError, "IDENTITY_FEED_TOO_SMALL twse-listed"):
+                shards.build(fetch)
+        finally:
+            FEEDS["twse-listed"] = saved
+
+    def test_publisher_seals_shards_as_content_addressed_lazy_objects(self):
+        document = shards.build(fetch, datetime.now(timezone.utc))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "identity.json"
+            path.write_bytes(shards.dumps(document).encode("utf-8"))
+            lazy = publisher.lazy_identity_bodies(path, datetime.now(timezone.utc))
+            self.assertIn("v213:identity:v2:sym:S", lazy)
+            self.assertEqual(len(lazy), len(document["symbol_shards"]) + len(document["name_shards"]))
+            stale = publisher.lazy_identity_bodies(path, datetime(2027, 1, 1, tzinfo=timezone.utc))
+            self.assertEqual(stale, {})
+
+
+if __name__ == "__main__":
+    unittest.main()

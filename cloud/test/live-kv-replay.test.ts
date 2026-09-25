@@ -15,6 +15,8 @@ import { MACRO_PRODUCT_KEY } from "../src/v213/macro-industry-product";
 import { validatePotentialRanking } from "../src/v213/potential-ranking";
 import { parseV21Top20 } from "../src/v21/top20";
 import { parseV212Top20Report } from "../src/v212/top20-report";
+import { resolveGlobalIdentity } from "../src/v213/global-identity";
+import { loadIdentityCatalogForQuery } from "../src/v213/identity-shards";
 import { asKv, MemoryKv } from "./fake-kv";
 
 // Bumped whenever the fields below change, so the gate and the staged replay can refuse an older reader.
@@ -53,6 +55,12 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
         && messageCount(buildV213Top20Messages(report as never, "bilingual", "text")) > 0;
     }
     const records = fresh ? (report as { records: { test_only_admission?: unknown }[] }).records : [];
+    // Identity lookups through the sealed shards (the LINE stock/options entry): status and resolved listing.
+    const identityProbe: Record<string, string> = {};
+    for (const probe of ["SIVE", "NVDA", "2330", "台積電"]) {
+      const resolution = resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, probe), probe);
+      identityProbe[probe] = resolution.status === "RESOLVED" ? `RESOLVED:${resolution.record.venue}:${resolution.record.symbol}` : resolution.status;
+    }
     const result = {
       reader_contract_version: READER_CONTRACT_VERSION,
       fresh, integrity: view.integrity, run_id: view.integrity === "sealed" ? view.runId : null,
@@ -64,6 +72,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       report_generated_at: fresh ? (report as { generated_at: string }).generated_at : null,
       line_flex_messages: messageCount(flex), line_text_messages: messageCount(text),
       v21_records: v21?.length ?? 0, v212_records: v212?.records.length ?? 0, broadcast_ready: broadcastReady,
+      identity_probe: identityProbe,
       macro_overview_sealed: !!overview, potential_ranking_records: ranking?.records.length ?? 0,
       evaluated_at: new Date().toISOString(),
     };

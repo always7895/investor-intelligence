@@ -37,6 +37,7 @@ NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 ATTEMPTS = 3
 RETRY_SECONDS = 5.0
 LAST_ERROR: list[str] = []
+BLOB_PREFIX = "blob:v1:"
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
@@ -108,15 +109,24 @@ def main() -> int:
     ptr_fp = staged / "__pointer.bin"
     ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
 
-    # 1) objects FIRST (pointer must never lead).
+    # 1) objects FIRST (pointer must never lead). Content-addressed lazy blobs (blob:v1:<sha256>) are immutable:
+    # one already stored with matching bytes is reused, so unchanged identity shards cost reads, not KV writes.
+    reused: set[str] = set()
     for key, fp in staged_files.items():
+        if key.startswith(BLOB_PREFIX):
+            live = client_get(key)
+            if live is not None and sha(live) == key[len(BLOB_PREFIX):]:
+                reused.add(key)
+                continue
         if not client_put(key, fp):
             print(f"SYNC ABORT (object put failed after {ATTEMPTS} attempts): {key} {LAST_ERROR[:1]}", file=sys.stderr)
             return 1
-    print(f"OBJECTS_UPLOADED {len(staged_files)}")
+    print(f"OBJECTS_UPLOADED {len(staged_files) - len(reused)}" + (f" BLOBS_REUSED {len(reused)}" if reused else ""))
 
-    # 2) verify every object by live readback.
+    # 2) verify every object by live readback (reused blobs were verified just above).
     for key, body in entries:
+        if key in reused:
+            continue
         live = client_get(key)
         if live is None or sha(live) != sha(body):
             print(f"SYNC ABORT (readback mismatch, pointer untouched): {key}", file=sys.stderr)

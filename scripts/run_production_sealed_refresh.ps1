@@ -103,21 +103,27 @@ function Test-TabbyModel {
 }
 
 function Invoke-CarryForwardSeal {
-    # Seal first: publish from the LKG, replay; on replay failure republish INSUFFICIENT and replay again.
-    $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock --top20-bundle }
-    if ($published.Code -ne 0) { return [pscustomobject]@{ Code = $published.Code; RunId = $null; Stage = 'GENERATE' } }
-    $runId = Get-PrintedRunId $published
-    if (-not $runId) { return [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'RUN_ID' } }
-    $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
-    if ($replayed.Code -eq 0) { return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = 'OK' } }
-    Add-Content -Path $log -Value "[$stamp] REPLAY FAILED run=$runId; republishing with an INSUFFICIENT Top20"
-    $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock --top20-insufficient "TOP20_STAGED_REPLAY_FAILED" }
-    if ($published.Code -ne 0) { return [pscustomobject]@{ Code = $published.Code; RunId = $null; Stage = 'GENERATE' } }
-    $runId = Get-PrintedRunId $published
-    if (-not $runId) { return [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'RUN_ID' } }
-    $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
-    if ($replayed.Code -ne 0) { return [pscustomobject]@{ Code = $replayed.Code; RunId = $null; Stage = 'REPLAY' } }
-    return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = 'INSUFFICIENT_FALLBACK' }
+    # Seal first, in tiers, each replayed through the real readers before any KV write: (1) the carried Top20 plus
+    # the identity shards, (2) the carried Top20 alone (an identity defect never costs the Top20), (3) an
+    # INSUFFICIENT Top20. The macro overview is sealed in every tier.
+    $tiers = @(
+        [pscustomobject]@{ Stage = 'OK'; Args = @('--top20-bundle', '--identity-shards') },
+        [pscustomobject]@{ Stage = 'WITHOUT_IDENTITY'; Args = @('--top20-bundle') },
+        [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient', 'TOP20_STAGED_REPLAY_FAILED') }
+    )
+    $last = [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'REPLAY' }
+    foreach ($tier in $tiers) {
+        $tierArgs = $tier.Args
+        $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock @tierArgs }
+        if ($published.Code -ne 0) { return [pscustomobject]@{ Code = $published.Code; RunId = $null; Stage = 'GENERATE' } }
+        $runId = Get-PrintedRunId $published
+        if (-not $runId) { return [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'RUN_ID' } }
+        $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
+        if ($replayed.Code -eq 0) { return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = $tier.Stage } }
+        Add-Content -Path $log -Value "[$stamp] REPLAY FAILED run=$runId tier=$($tier.Stage); trying the next tier"
+        $last = [pscustomobject]@{ Code = $replayed.Code; RunId = $null; Stage = 'REPLAY' }
+    }
+    return $last
 }
 
 function Invoke-Top20Refresh {
