@@ -1,19 +1,20 @@
 # Current state / 目前狀態
 
-Updated 2026-09-26 (01:20 Asia/Taipei) by an operator-directed Claude Code session (master and writer; the operator granted full authority to finish the Top20 publication work unattended, 2026-09-25). Previous registers: V12 `git show 0f5358b:state/STATUS.md`; older history `git show 38860e7:state/STATUS.md`. Release identity stays in `README.md` (historical 2026-09-06 baseline).
+Updated 2026-09-26 (05:20 Asia/Taipei) by an operator-directed Claude Code session (master and writer; the operator granted full authority to finish the Top20 publication work unattended, 2026-09-25). Previous registers: V12 `git show 0f5358b:state/STATUS.md`; older history `git show 38860e7:state/STATUS.md`. Release identity stays in `README.md` (historical 2026-09-06 baseline).
 
 ## Identity
 
 - Branch `fix/options-provenance-audit`, draft PR #37 to `main` (pushed after every commit). PR CI only reports COMPLETED_SKIPPED; skipped is not PASS or release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 
-## Production (2026-09-25 17:14Z)
+## Production (2026-09-25 21:12Z)
 
-- Worker `05f07139-1f61-415e-8549-c977b7069f37` (same code as `a815e7f9…`: report-age split, admission disclosure, activation commit kill-switch; scheduled push off, below). Rollback order: `a815e7f9…`, `13d665be…`, `2cfb7d0b…`, `70dd7e15…`.
-- **Top20 cutover done.** The hourly task now runs from the installed runtime with `-CarryForwardTop20 -SnapshotRoot data\v213-snapshots`. First carried seal `20260925T171240Z-a7825e47ca40`: CARRIED_FORWARD, staged replay PASS, 15 objects read back, pointer last. `deploy_production_gate.ps1 -Phase post -ExpectTop20Records 20`: PASS (20 records, report 17:08:58Z, test_only_admission=false, macro sealed, 20 potential-ranking records, deployed toml sha256 `5456228d…`). Watchdog FRESH, RECORDS_20. The GEV/6501 test corpus has left Production.
-- Top20 content (LKG `20260925T171142Z-11bd454063e7`): PATH, AFRM, BBY, CDE, CF, FIS, HIG, HST, SMCI, TRV, ALL, DG, NEM, NUE, PBR, PBR-A, WDC, ACGL, FSLR, GAP; SEC industry text on all 20; no margin over 100%; BBY/PBR/PBR-A show 「SEC 可用獲利指標不足」 (market_observation rows).
-- **Scheduled owner pushes are off by operator decision (2026-09-26: no pushes; keep all data updated in real time for on-demand answers).** Worker `05f07139-1f61-415e-8549-c977b7069f37` = same code with `V21_SCHEDULED_PUSH_ENABLED="false"` (verified in the version bindings; now also "false" in the local toml and both production templates, so later deploys keep it off); `V213_ACTIVATION_COMMIT_ENABLED` stays "false". Pre gate PASS; post gate `-ExpectTop20Records 20` PASS (run `20260925T171240Z-a7825e47ca40`, 20 records).
-- The runtime is LOCAL_SOURCE_CHECKOUT, release_qualified=false; this is not a release under the source AGENTS.md shipping list (no immutable ZIP, no R75 CI qualification).
+- Worker `fc96b97f-07dd-447b-bd7f-cec18f6d1b23` (lazy sealed objects, identity shards, bottleneck Top20 v3, delayed quotes/options; scheduled push off; activation commit kill-switch). Rollback order: `e1dd6694…`, `c95f939c…`, `05f07139…`, `a815e7f9…`.
+- Hourly task runs from the installed runtime (LOCAL_SOURCE_CHECKOUT `a8d4634`, tx `045da3dc…`, release_qualified=false; data preserved across reinstalls) with `-CarryForwardTop20 -SnapshotRoot data\v213-snapshots`. Seal tiers: Top20 + lazy objects, Top20 alone, INSUFFICIENT; each staged-replayed through the real readers before any KV write. Latest run `20260925T211233Z-057968d1cd9e`: 17 objects written, 52 unchanged blobs reused; post gate `-ExpectTop20Records 20` PASS.
+- **LINE TOP20 = bottleneck-explosion Top20 v3** ([BOTTLENECK_TOP20_V3](../docs/BOTTLENECK_TOP20_V3.md), operator request 2026-09-26): SNDK, MU, SK hynix, Samsung, NBIS, Etron, SIVE, BE, NVDA, AAOI, LITE, MRVL, ALAB, AMD, AVGO, POET, MTSI, CRDO, AXTI, CORZ; negative long-term returns excluded; `瓶頸詳情 代號`, `產業爆發榜` (Leopold-led: memory, power generation, compute, optics, grid …), `七欄Top20` keeps the carried seven-field board (LKG `20260925T171142Z-11bd454063e7`).
+- **Stock/options quick lookup fixed** (「身分資料未封存」): 15,599 listings from Nasdaq Trader, TWSE, TPEx and Nasdaq Stockholm sealed as identity shards; delayed quotes and option observations for the watch universe (US via Yahoo, Nasdaq Stockholm via the exchange API). SIVE resolves to Nasdaq Stockholm; SIVE monthly shows the 2026-10-16 36C (SEK); weekly states that no 3–14 day expiry is listed.
+- **Scheduled owner pushes are off by operator decision (2026-09-26).** `V21_SCHEDULED_PUSH_ENABLED="false"` in the local toml and both templates; every deploy keeps it off.
+- Refresh cadence (post-seal, bounded): quotes/options 1 h, bottleneck v3 3 h, Serenity archive 6 h, Leopold 13F 24 h, identity/rotation/company reports 20 h, seven-field LKG 11 h.
 
 ## Top20 single-writer programme (design workflow `wf_0fceff70-f50`)
 
@@ -54,7 +55,7 @@ Also: `1b43826` sync retries (the 16:56Z hourly aborted on a transient put; a ma
 
 ## Boundary flags
 
-NATIVE_ATTEMPT_COUNT=0; NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQUALIFIED; publication_eligible=false for candidates; global P0 NOT_REAUDITED. Serenity primary; Leopold Aschenbrenner CONTEXT_ONLY.
+NATIVE_ATTEMPT_COUNT=0; NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQUALIFIED; publication_eligible=false for candidates; global P0 NOT_REAUDITED. Serenity primary; Leopold Aschenbrenner CONTEXT_ONLY for company proof, leads the industry ranking since 2026-09-26 (operator).
 
 ## Control plane
 
@@ -66,4 +67,4 @@ Commits and normal pushes to `origin` (PR #37). Worker deployments: `2cfb7d0b…
 
 ## Next action
 
-Watch the hourly seals and the first automatic LKG refresh (about 04:10Z; log: `%LOCALAPPDATA%\InvestorIntelligence\V213Runtime\data\cache\sealed-refresh.log`), then open lane 1 (sealed company reports for the carried Top20) and shorten data refresh cadence where sources allow.
+Watch the hourly seals (quotes/options and v3 refresh inside the post-seal window), then: embed sealed company reports for the Top20 v3 cards, extend identity shards to Japan/Korea/Europe listings used by the layers, and review the v3 weights after a week of data.
