@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
 import { buildTop20DeepAnalysisMessages } from "./deep-analysis";
-import { LINE_THEME as T, menuAction } from "./line-theme";
+import { LINE_THEME as T, chip, divider, footnote, headerBackground, kpiTile, labelValue, menuAction, panel, sectionTitle, uiBox, uiText } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
@@ -18,8 +18,7 @@ const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / H
 const SCENARIO_STATUS = "6個月／1年／2年：實現、延遲及未實現訂單的目標價／漲跌幅，尚缺逐筆訂單與估值依據；不是零成長或零風險。時程見深度化分析。";
 const companyText = (record: V213Top20ReportRecord, labels: readonly string[]) =>
   `── ${record.rank}/20 · ${record.ticker}｜原文：${record.name} ──\n中文名稱：未完成來源核對（不猜譯）\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
-const text = (value: string, size = "sm", color: string = T.ink) => ({ type: "text", text: value, size, color, wrap: true });
-const box = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", contents, spacing: "sm", ...extra });
+
 
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
 export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLocale = "bilingual", style: "flex" | "text" = "flex"): LineOutboundMessage[] {
@@ -51,43 +50,45 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   }
   const bubbles = report.records.map(record => {
     const values = v213Top20DisplayValues(record);
-    const field = (i: number, emphasis = false) => box([
-      text(labels[i]!, i <= 2 ? "xxs" : "xs", T.muted),
-      { ...text(values[i]!, emphasis ? "xl" : "sm"), ...(emphasis ? { weight: "bold" } : {}) },
-    ], { flex: 1 });
-
-    const totalReturnDisplay = getTwoYearTotalReturnDisplay(record);
-    const returnBox = (label: string, value: string) => box([
-      text(label, "xxs", T.muted),
-      { ...text(value, value.length > 8 ? "sm" : "xl", T.ink), weight: "bold" },
-    ], { flex: 1 });
-
     return {
       type: "bubble", size: "mega",
-      header: box([
-        text(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xs", "#D4D4D4"),
-        text(labels[0]!, "xs", "#D4D4D4"),
-        { ...text(values[0]!, "xxl", T.paper), weight: "bold" },
-        text("歷史報酬，非預測 / Not forecasts", "xs", "#D4D4D4"),
-        text(`原文：${record.name}`, "sm", T.paper),
-        text("中文名稱：未完成來源核對", "xs", "#D4D4D4"),
-      ], { backgroundColor: T.ink, paddingAll: "lg" }),
-      body: box([
-        box([
-          returnBox("2Y 總報酬", totalReturnDisplay),
-          field(1, true),
-          field(2, true),
-        ], { layout: "horizontal", backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "sm" }),
-        field(3), { type: "separator", color: T.border }, field(4),
-        box([field(5), field(6)], { backgroundColor: T.paleGreen, paddingAll: "md", cornerRadius: "md", spacing: "sm" }),
-      ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
-      footer: box([
-        text(SCENARIO_STATUS, "xs", T.muted),
-        text(generated, "xs", T.muted), text(NOTICE, "xs", T.muted),
+      header: uiBox([
+        uiBox([
+          chip(`#${record.rank}`),
+          uiText(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xxs", T.onDarkMuted, { gravity: "center", flex: 1 }),
+        ], { layout: "horizontal", spacing: "md" }),
+        uiBox([
+          uiText(labels[0]!, "xxs", T.onDarkSubtle),
+          uiText(values[0]!, "3xl", T.onDark, { weight: "bold" }),
+        ], { spacing: "none" }),
+        uiText(`原文：${record.name}`, "sm", T.onDark),
+        uiText("中文名稱：未完成來源核對", "xxs", T.onDarkSubtle),
+        uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.onDarkMuted, { weight: "bold" }),
+      ], { backgroundColor: T.night, background: headerBackground, paddingAll: "xl", spacing: "md" }),
+      body: uiBox([
+        sectionTitle("報酬 / Returns"),
+        uiBox([
+          kpiTile("2Y 總報酬", getTwoYearTotalReturnDisplay(record)),
+          kpiTile(labels[1]!, values[1]!),
+          kpiTile(labels[2]!, values[2]!),
+        ], { layout: "horizontal", spacing: "sm" }),
+        sectionTitle("公司 / Company"),
+        labelValue(labels[3]!, values[3]!, { weight: "bold" }),
+        divider(),
+        labelValue(labels[4]!, values[4]!),
+        panel([
+          sectionTitle("訂單 / Orders"),
+          labelValue(labels[5]!, values[5]!),
+          divider(),
+          labelValue(labels[6]!, values[6]!),
+        ], "green"),
+      ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
+      footer: uiBox([
         ...(reference ? [menuAction("深度化分析 / Deep analysis",
           `Top20 深度化分析 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`
-        )] : [text("詳情入口未綁定 / Unbound detail reference", "xs", T.muted)]),
-      ], { paddingAll: "md", backgroundColor: T.soft }),
+        )] : [footnote("詳情入口未綁定 / Unbound detail reference")]),
+        footnote(SCENARIO_STATUS), footnote(generated), footnote(NOTICE),
+      ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.soft }),
     };
   });
   const messages: LineOutboundMessage[] = [];

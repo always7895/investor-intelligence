@@ -1,5 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -201,10 +201,10 @@ export function buildGlobalEquityLookupMessages(
     type: "bubble" as const,
     size: "mega" as const,
     header: menuBox([
-      menuText("韭菜守護者 · 全球個股快查", "xs", "#D4D4D4"),
+      menuText("韭菜守護者 · 全球個股快查", "xs", T.onDarkMuted),
       { ...menuText(headerTitle, "xl", T.paper), weight: "bold" },
-      menuText(`市場：${identity.exchange}`, "xs", "#D4D4D4"),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+      menuText(`市場：${identity.exchange}`, "xs", T.onDarkMuted),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText(statusTitle, "sm", quoteStatus === "AVAILABLE" && typeof result.price === "number" ? T.green : T.ink),

@@ -6,7 +6,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import type { OptionEducationalStrategyCard } from "./market-product-schema";
 
 export const EDUCATIONAL_DISCLAIMER = "教學範例，非推薦" as const;
@@ -165,10 +165,10 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`【${card.disclaimer}】`, "xs", "#D4D4D4"),
+      menuText(`【${card.disclaimer}】`, "xs", T.onDarkMuted),
       { ...menuText(card.strategy_name, "md", T.paper), weight: "bold" },
-      menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", "#D4D4D4"),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+      menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", T.onDarkMuted),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText("標的與履約設定", "xs", T.muted),
@@ -178,7 +178,7 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
       menuBox([
         menuText(`損益平衡：${card.breakeven}`, "xs", T.ink),
         menuText(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`, "xs", T.green),
-        menuText(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, "xs", "#B91C1C"),
+        menuText(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, "xs", T.negative),
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
       menuBox([

@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
-import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, productHeader, sectionTitle } from "./line-theme";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -86,10 +86,9 @@ function panel(
   if (isText) return panelTextMessages(title, subtitle, paragraphs, actions);
   const messages: LineOutboundMessage[] = [{ type: "flex", altText: `${title}｜${subtitle}`, contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
-    header: menuBox([menuText("韭菜守護者 · 公開研究", "xs", "#D4D4D4"),
-      { ...menuText(title, "xl", T.paper), weight: "bold" }], { backgroundColor: T.ink, paddingAll: "lg" }),
-    body: menuBox([menuText(subtitle, "sm", T.green), ...paragraphs.map(p => menuText(p))], { backgroundColor: T.paper, paddingAll: "lg" }),
-    footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
+    header: productHeader("韭菜守護者 · 公開研究", title),
+    body: menuBox([sectionTitle(subtitle), ...paragraphs.map(p => menuText(p))], { backgroundColor: T.paper, paddingAll: "xl" }),
+    footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { backgroundColor: T.paleGreen, paddingAll: "md", spacing: "none" }),
   }] } }];
   assertLineMessages(messages);
   return messages;
@@ -306,16 +305,13 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const overviewBubble = {
       type: "bubble" as const,
       size: "mega" as const,
-      header: menuBox([
-        menuText("韭菜守護者 · 公開研究", "xs", "#D4D4D4"),
-        { ...menuText("期權與個股快查", "xl", T.paper), weight: "bold" },
-      ], { backgroundColor: T.ink, paddingAll: "lg" }),
+      header: productHeader("韭菜守護者 · 公開研究", "期權與個股快查"),
       body: menuBox([
-        menuText("股票代號 → 每週／每月 → 報價與風險", "sm", T.green),
-        menuText(statusText, "xs", T.ink),
-        menuText("本入口整合逐約報價查詢與 4 種標準期權策略教學範例；請向右滑動查看教學卡片。", "xs", T.muted),
-      ], { backgroundColor: T.paper, paddingAll: "lg" }),
-      footer: menuBox(navActions.map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
+        sectionTitle("股票代號 → 每週／每月 → 報價與風險"),
+        menuText(statusText, "sm", T.ink),
+        menuText("本入口整合逐約報價查詢與 4 種標準期權策略教學範例；請向右滑動查看教學卡片。", "xs", T.subtle),
+      ], { backgroundColor: T.paper, paddingAll: "xl" }),
+      footer: menuBox(navActions.map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md", spacing: "none" }),
     };
 
     const eduFlex = buildEducationalStrategyFlex();

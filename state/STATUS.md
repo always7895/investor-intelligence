@@ -4,37 +4,39 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `4ee66d8` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `79d23f8` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — research method refresh (Serenity depth, Aschenbrenner context)
+## This change — LINE Flex UI/UX redesign (development only)
 
-Operator request 2026-09-25: refresh the method from the latest public sources and make the Serenity and Leopold Aschenbrenner logic detailed. Boundaries unchanged: Serenity primary, Aschenbrenner CONTEXT_ONLY, no scoring, universe or weight change.
+Operator request 2026-09-25: a professional visual redesign of the existing UI. Source change only; no Worker deployment, LINE send, rich-menu upload or Production mutation.
 
-- New `references/SERENITY_LOGIC.md`: constraint-in-time model (demand ramp, effective supply, time to substitute; bottleneck/chokepoint/beneficiary mapped to existing labels), ten-question chain with the evidence that answers each, layer-first worked stack, information-gap timing, financing override, macro overlays, risk/reflexivity/survivorship, falsifier checklist, verification status.
-- New `references/ASCHENBRENNER_CONTEXT.md`: the essay's quantitative chain from primary pages (OOM counting, cluster and investment tables, power then CoWoS/HBM as binding constraints, stated error bars), testable variables with falsifiers, a secondary two-year scorecard, and a dated SEC snapshot (13F 2026-03-31 and 2026-06-30, SharonAI 13D/13D-A) with explicit 13F limits.
-- SKILL.md links both (3990 B); CROSS_VALIDATION records the 2026-09-25 refresh: X oEmbed now returns HTTP 402, so Serenity originals stay UNVERIFIED; EDGAR filings are primary. Packaged research payload, its verifier, validator allowlist and payload tests now include the two references. Legacy `skills/*.md` point to them.
+- `cloud/src/v213/line-theme.ts` becomes a small design system: existing tokens unchanged, new semantic tokens (subtle, night/deepGreen header, on-dark text, negative, caution, alert) all at WCAG AA or better on their surfaces; components `productHeader`/`headerStyle` (gradient with solid fallback), `chip`, `sectionTitle`, `labelValue`, `kpiTile` (sign-aware colour, sign kept in text), `panel`, `divider`, `footnote`. Shared button contract kept (link, md, brand green).
+- Top20 card: rank chip, 3xl ticker, three return KPI tiles, Returns/Company/Orders sections with the orders pair in a bordered green panel; seven labels still appear once each directly before their values; one footer button; 4 carousels × 5 kept.
+- Options order and position-sizing cards rebuilt with KPI tiles, label/value rows and a caution panel; typo 認能價格 fixed to 標的價格 (Flex and text).
+- Product headers and alert colours unified across rich menu, options product, macro industry, educational options and global equity lookup.
+- Review preview (synthetic data, rendered from actual before/after JSON): private artifact https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - Validation: see "Latest gate run" below.
 
 ## Previous changes
 
+- `7b88bf7`, `79d23f8` research method refresh (SERENITY_LOGIC, ASCHENBRENNER_CONTEXT; full Python 2490 OK, 423.5 s) and C2b decision record.
 - `4ee66d8` C2a forward comparison renderer (5 tests; full Python 2490 OK, 435.0 s).
 - `c824b23` C1 `assess_forward_premises` premise-state shadow (12 tests; full Python 2485 OK, 460.6 s).
 - `b88dd9f`, `51c7132` instructions, skill, MCP and design:
   - `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
   - Local, untracked: workspace `AGENTS.md`, `.pi/HANDOFF.md` current pointer, GitHub MCP server in `.mcp.json` (token read from the `gh` keyring at connect time; handshake HTTP 200). Untracked leftovers relocated to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/` and `_archive/`, not deleted.
   - Gates for that change: security, documentation boundary/structure, workflow supply chain and owner-config PASS; Worker typecheck PASS and 895 passed / 1 named manual skip; full Python 2473 OK in 424.3 s on a clean rerun. The first full run had 2 lock-contention failures while the live SealedFreshness task (14:56:15) held the operation lock; kept as evidence.
-  - Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; no task changed.
+  - Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; the 15:26:15 run returned 0. No task changed.
 
 ## Latest gate run
 
-Interpreter: base CPython 3.12.10. Working tree of this change, 2026-09-25:
+Working tree of this change, 2026-09-25:
 
+- Worker: `npm run typecheck` PASS; `npm test` 895 passed / 1 named manual skip (61 files) — existing contracts (seven-field inspector, one footer button, shared button style, header risk text, 4×5 carousels, no px/maxLines, LINE size limits) all hold.
 - `security_check`, `documentation_boundary_gate`, `documentation_structure_gate`, `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
-- Focused: skill structure, attribution, packaged research payload and both documentation-gate test modules — 39 OK.
-- Full Python `scripts/run_offline_tests.py --repository` 15:32:22–15:39:27: 2490 tests OK, 423.5 s (includes PowerShell syntax checks of the edited packaging scripts).
-- Worker unchanged (no `cloud/` edits).
+- Full Python 15:57:27–16:04:47 (started after the 15:56 SealedFreshness run finished, result 0): 2490 tests OK, 439.0 s.
 
 ## Pending operator decision — redundancy removal
 
@@ -75,4 +77,4 @@ Git commits on this branch and a normal push to `origin` (updates PR #37). Local
 
 ## Next action
 
-Operator: approve or decline the redundancy removal above. C2b needs an operator choice between build-time digest, an archived-receipt contract or a separate local artifact (recommended), because SEC receipts are in-process only. Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.
+Operator: approve or decline the redundancy removal above; review the UI preview before any Worker deployment (deployment needs explicit authorization). C2b needs an operator choice between build-time digest, an archived-receipt contract or a separate local artifact (recommended), because SEC receipts are in-process only. Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.

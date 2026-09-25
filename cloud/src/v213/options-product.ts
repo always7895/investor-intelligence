@@ -12,7 +12,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 
@@ -41,10 +41,10 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", "#D4D4D4"),
+      menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", T.onDarkMuted),
       { ...menuText(`${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, "lg", T.paper), weight: "bold" },
       menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.paleGreen),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText("雙邊行情與價差", "xs", T.muted),
@@ -55,7 +55,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
         menuText("關鍵損益指標（需搭配具體策略與持倉成本）", "xs", T.muted),
         menuText("損益平衡：UNAVAILABLE（無定義策略）", "xs", T.ink),
         menuText("最大利潤：UNAVAILABLE（無定義策略）", "xs", T.green),
-        menuText("最大損失：UNAVAILABLE（無定義策略）", "xs", "#B91C1C"),
+        menuText("最大損失：UNAVAILABLE（無定義策略）", "xs", T.negative),
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
       menuBox([
@@ -170,10 +170,10 @@ export function optionsUnavailableReport(
         type: "bubble",
         size: "mega",
         header: menuBox([
-          menuText("韭菜守護者 · 期權查詢", "xs", "#D4D4D4"),
+          menuText("韭菜守護者 · 期權查詢", "xs", T.onDarkMuted),
           { ...menuText("期權報價不可用", "xl", T.paper), weight: "bold" },
-          menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", "#FCA5A5"),
-        ], { backgroundColor: T.ink, paddingAll: "lg" }),
+          menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.onDarkAlert),
+        ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
         footer: menuBox(actions.slice(0, 4).map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
       }],

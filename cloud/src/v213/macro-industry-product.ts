@@ -10,7 +10,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import type {
   MacroDeepAnalysis,
   MacroGrowthRate,
@@ -52,10 +52,10 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText("韭菜守護者 · 宏觀產業研究", "xs", "#D4D4D4"),
+      menuText("韭菜守護者 · 宏觀產業研究", "xs", T.onDarkMuted),
       { ...menuText(overview.title, "xl", T.paper), weight: "bold" },
-      menuText(`觀察週期：${overview.horizon}｜${statusBadge}`, "xs", isShortfall ? "#FCA5A5" : "#D4D4D4"),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+      menuText(`觀察週期：${overview.horizon}｜${statusBadge}`, "xs", isShortfall ? T.onDarkAlert : T.onDarkMuted),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText("准入與短缺狀態說明", "xs", T.muted),
@@ -64,9 +64,9 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
             ? `短缺通報：符合高標準市場成長率、瓶頸與價值鏈證據之合格產業候選僅 ${overview.qualified_count} 個（未達 5 個門檻）。系統拒絕假裝湊滿 5 個或捏造虛假排名。`
             : "本總覽由候選產業池依量化機會準則動態評選產生，非固定前五大產業清單，絕不以候選公司家數占比冒充市場成長率。",
           "xs",
-          isShortfall ? "#B91C1C" : T.ink,
+          isShortfall ? T.negative : T.ink,
         ),
-      ], { backgroundColor: isShortfall ? "#FEF2F2" : T.soft, paddingAll: "sm", cornerRadius: "sm" }),
+      ], { backgroundColor: isShortfall ? T.paleNegative : T.soft, paddingAll: "sm", cornerRadius: "sm" }),
       menuBox([
         menuText("評選名單", "xs", T.muted),
         ...(summaryLines.length > 0 ? summaryLines.map(line => menuText(line, "sm", T.ink)) : [menuText("（當前無合格准入產業）", "xs", T.muted)]),
@@ -94,10 +94,10 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText(`宏觀產業 · ${rankLabel}`, "xs", "#D4D4D4"),
+      menuText(`宏觀產業 · ${rankLabel}`, "xs", T.onDarkMuted),
       { ...menuText(card.industry_name, "lg", T.paper), weight: "bold" },
       menuText(`機會分數：${card.opportunity_score}/100（量化評分，非機率）`, "xs", T.paleGreen),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText("當前狀態與 12–36M 展望", "xs", T.muted),
@@ -106,7 +106,7 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
       menuBox([
         menuText("可查證市場成長率（RATE）", "xs", T.muted),
-        { ...menuText(growthText, "xs", card.growth ? T.green : "#B91C1C"), weight: "bold" },
+        { ...menuText(growthText, "xs", card.growth ? T.green : T.negative), weight: "bold" },
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
       menuBox([
@@ -149,10 +149,10 @@ export function buildMacroDeepAnalysisBubble(analysis: MacroDeepAnalysis) {
     type: "bubble",
     size: "mega",
     header: menuBox([
-      menuText("宏觀產業 · 深度化分析（10維因果鏈展開）", "xs", "#D4D4D4"),
+      menuText("宏觀產業 · 深度化分析（10維因果鏈展開）", "xs", T.onDarkMuted),
       { ...menuText(analysis.industry_name, "lg", T.paper), weight: "bold" },
-      menuText("需求→供給→瓶頸→定價→資本支出→競爭→受益者→催化劑→風險→證偽", "xxs", "#D4D4D4"),
-    ], { backgroundColor: T.ink, paddingAll: "lg" }),
+      menuText("需求→供給→瓶頸→定價→資本支出→競爭→受益者→催化劑→風險→證偽", "xxs", T.onDarkMuted),
+    ], { ...headerStyle }),
     body: menuBox([
       menuBox([
         menuText("1. 需求傳導 (Demand) 與 2. 供給現況 (Supply)", "xs", T.muted),
@@ -182,9 +182,9 @@ export function buildMacroDeepAnalysisBubble(analysis: MacroDeepAnalysis) {
         ...analysis.risks.map(r => menuText(`• ${r}`, "xs", T.muted)),
       ], { spacing: "xs" }),
       menuBox([
-        menuText("10. 邏輯證偽點 (Thesis Killers)", "xs", "#B91C1C"),
-        ...analysis.killers.map(k => menuText(`⚠️ ${k}`, "xs", "#B91C1C")),
-      ], { backgroundColor: "#FEF2F2", paddingAll: "sm", cornerRadius: "sm" }),
+        menuText("10. 邏輯證偽點 (Thesis Killers)", "xs", T.negative),
+        ...analysis.killers.map(k => menuText(`⚠️ ${k}`, "xs", T.negative)),
+      ], { backgroundColor: T.paleNegative, paddingAll: "sm", cornerRadius: "sm" }),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: menuBox([
       menuText("【來源憑證依據】\n" + (sourcesText || "無外部引用"), "xxs", T.muted),
@@ -423,10 +423,10 @@ export function macroShortfallReport(
         type: "bubble",
         size: "mega",
         header: menuBox([
-          menuText("韭菜守護者 · 宏觀產業研究", "xs", "#D4D4D4"),
+          menuText("韭菜守護者 · 宏觀產業研究", "xs", T.onDarkMuted),
           { ...menuText("TOP5 准入門檻未達成", "xl", T.paper), weight: "bold" },
-          menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", "#FCA5A5"),
-        ], { backgroundColor: T.ink, paddingAll: "lg" }),
+          menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.onDarkAlert),
+        ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
         footer: menuBox(actions.map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
       }],
