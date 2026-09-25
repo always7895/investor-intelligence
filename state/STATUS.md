@@ -8,15 +8,17 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — adaptive THINK and TabbyAPI router default (operator request 2026-09-25)
+## This change — time-aware thesis phase and research refresh (operator request 2026-09-25)
 
-Operator: the EXE must switch local models and thinking, pick thinking strength from an appropriate response time, and use the System One model for fast screening.
+Operator: update Serenity and Aschenbrenner logic from the latest public sources and screen companies and industries accurately as time passes.
 
-- `scripts/v213_adaptive_reasoning.py` + gateway: the profile effort is the ceiling; each compact answer gets the highest effort whose thinking fits the time budget at the measured decode rate (about 90 tokens/s measured on the RTX 5090 lane); a 0.8 s System One screen sends SIMPLE questions to no-thinking with content-free features only; a thinking overrun gets one answer-only retry inside the timeout; responses carry `ii_reasoning`. Profile, hash and certified deadline unchanged. Details: [MODEL_RUNTIME_MIGRATION](../docs/MODEL_RUNTIME_MIGRATION.md).
-- EXE and bridge default router moved from the retired llama.cpp `:8080` to TabbyAPI `:5000` (saved selections still win); the EXE THINK label now reads as the ceiling.
-- Tests: `tests/test_v213_adaptive_reasoning.py` (11, including the authenticated gateway handler), model profile 11 (compiled EXE and THINK UI self-test), bridge identity 2; the module is added to the explicit gateway payload lists (R75 verifier, isolated-process test). Full Python 2537: the one failure was that missing payload entry, fixed and rerun (15 OK).
+- `scripts/thesis_phase.py` + `config/thesis-phase-policy-v1.json`: phase derived from dated, sourced signals with class windows (structural 550 d, current-state 135, macro 45, market 7): DISCOVERY → EARLY/COMMERCIAL/INSTITUTIONAL_VALIDATION → CONSENSUS, plus RELIEVING and BROKEN; ramp evidence counts as capture; an active ATM ≥50% of market cap blocks entry; Aschenbrenner-lens signals are listed but never counted; `next_review_at` uses supporting-signal expiry or an already announced catalyst (no look-ahead); company and industry scopes; timeline and screen helpers. 13 tests.
+- Research refresh (secondary quotes verified inside their reports; EDGAR primary): SERENITY_LOGIC sections 4/4a/5/7/9 (entry before confirmation, ATM rule, falsifier framing, tracker snapshot, phase engine); ASCHENBRENNER_CONTEXT sections 4/5 (Nebius 13G, SharonAI timeline, Core Scientific 13D/A 4.4% on 2026-07-15, July deleveraging with conflicting fund sizes not used); CROSS_VALIDATION log entry (pinned archive bytes unchanged).
+- `18b5927` option cycle chip back to the original yellow (operator feedback).
 
 ## Previous changes
+
+- `41058f2` adaptive THINK under the profile ceiling (time budget, measured decode rate, System One screen, one answer-only retry) and TabbyAPI `:5000` as the EXE/bridge default router; 11 + 11 + 2 tests; full Python 2537 after a payload-list fix.
 
 - `0b3946d` ink monochrome LINE cards: three-stop black-to-graphite header gradient, section levels by lightness, grey secondary buttons on white footers, accounting-convention value colours, no green; every text/ground pair ≥4.5:1; Worker 900 passed. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `47a3f19` Top20 industry detail from SEC annual reports ([TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0): latest 10-K/20-F business excerpt → validated loopback-Qwen phrase → 「細分產業：主要業務」; per-accession cache, index re-read each run, 403/429 fence; scheduled runners pass `--business-profile`; live canary 22/22 Top20 plus TSM/ASML; 20 tests; full Python 2525 (one CI-env-only error, passes with `PYTHONUTF8=1`).

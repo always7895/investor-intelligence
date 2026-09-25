@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "policy_id": "thesis-phase-v1",
+  "authorship": "PROJECT_AUTHORED_INFERENCE",
+  "description": "Derives a candidate's or constraint's phase from dated, sourced signals so screening changes with time. Serenity is the primary lens; Aschenbrenner-context signals are recorded but never counted.",
+  "signal_windows_days": {
+    "structural": 550,
+    "current_state": 135,
+    "market": 7,
+    "macro": 45
+  },
+  "signal_kinds": {
+    "LEAD_TIME": {
+      "group": "constraint_or_relief",
+      "class": "current_state"
+    },
+    "PRICE": {
+      "group": "constraint_or_relief",
+      "class": "current_state"
+    },
+    "SOLD_OUT": {
+      "group": "constraint",
+      "class": "current_state"
+    },
+    "BACKLOG": {
+      "group": "constraint_or_relief",
+      "class": "current_state"
+    },
+    "BUYER_CAPEX": {
+      "group": "constraint_or_relief",
+      "class": "current_state"
+    },
+    "CAPACITY_ADDITION": {
+      "group": "relief",
+      "class": "structural"
+    },
+    "INVENTORY_BUILD": {
+      "group": "relief",
+      "class": "current_state"
+    },
+    "COMPANY_MARGIN": {
+      "group": "capture",
+      "class": "current_state"
+    },
+    "COMPANY_PRICING": {
+      "group": "capture",
+      "class": "current_state"
+    },
+    "RAMP_EVIDENCE": {
+      "group": "capture",
+      "class": "current_state"
+    },
+    "COVERAGE_INITIATIONS": {
+      "group": "consensus",
+      "class": "macro"
+    },
+    "VALUATION_PERCENTILE": {
+      "group": "consensus",
+      "class": "market"
+    },
+    "HOLDER_CROWDING": {
+      "group": "consensus",
+      "class": "macro"
+    },
+    "DILUTION": {
+      "group": "falsifier",
+      "class": "structural"
+    },
+    "ATM_CAPACITY": {
+      "group": "falsifier",
+      "class": "current_state"
+    },
+    "CUSTOMER_LOSS": {
+      "group": "falsifier",
+      "class": "structural"
+    },
+    "THESIS_KILLER": {
+      "group": "falsifier",
+      "class": "structural"
+    },
+    "CATALYST": {
+      "group": "schedule",
+      "class": "structural"
+    }
+  },
+  "thresholds": {
+    "confirmed_constraint_families": 2,
+    "relief_families": 2,
+    "dilution_broken_pct": 20.0,
+    "dilution_overhang_pct": 5.0,
+    "valuation_crowded_percentile": 80.0,
+    "valuation_institutional_percentile": 60.0,
+    "coverage_initiations_institutional": 3,
+    "holder_crowding_pct": 50.0,
+    "atm_block_pct_of_market_cap": 50.0,
+    "atm_overhang_pct_of_market_cap": 5.0
+  },
+  "phase_preference": [
+    "COMMERCIAL_VALIDATION",
+    "EARLY_VALIDATION",
+    "INSTITUTIONAL_VALIDATION",
+    "DISCOVERY",
+    "CONSENSUS",
+    "RELIEVING",
+    "INSUFFICIENT_EVIDENCE",
+    "BROKEN"
+  ],
+  "phase_preference_note": "Display and tie-break order only (information gap: a confirmed constraint whose company capture is visible but not yet consensus). Never a score bonus.",
+  "context_only_lenses": [
+    "ASCHENBRENNER_CONTEXT"
+  ]
+}

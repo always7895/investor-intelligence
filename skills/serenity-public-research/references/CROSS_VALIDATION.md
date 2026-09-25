@@ -83,6 +83,12 @@ Broader source activation still requires adapter tests, terms/access review, rat
 
 Dated records below are retained as history. They are not current views, verification or collection directives.
 
+### Second refresh — 2026-09-25 (evening)
+
+- A read-only scout plus direct checks. Verified inside the named secondary reports only (originals remain UNVERIFIED): Serenity's entry-before-confirmation line (KuCoin 2026-05-26), the ATM-versus-market-cap rule (Singularity Research Fund 2026-04-01) and the post-drawdown falsifier framing (Bitget 2026-07-17). The tracker snapshot was re-read directly and its narrower ticker list used.
+- SEC EDGAR (primary) added the Nebius 13G, SharonAI Form 3/13G/13G/A/Form 4 and the Core Scientific 13D/A at 4.4% (event 2026-07-15); the 2026-09-09 Axios lead about a Citadel sale is now supported by a 24/7 Wall St report (secondary), while fund-size figures conflict across outlets and are not used.
+- Results were written into SERENITY_LOGIC.md (sections 4, 4a, 5, 7, 9) and ASCHENBRENNER_CONTEXT.md (sections 4 and 5); the phase engine turns them into dated signals.
+
 ### Direct refresh check — 2026-09-25
 
 - X's official oEmbed endpoint now redirects from publish.twitter.com to `https://publish.x.com/oembed`, which returned HTTP 402 Payment Required for Serenity status IDs 2069062745308254434 and 2038965788724560093. No paid access or bypass was attempted. Tracker-cited Serenity views remain UNVERIFIED; the current stance on any ticker is unknown.
