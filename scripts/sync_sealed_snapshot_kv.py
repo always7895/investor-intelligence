@@ -18,8 +18,10 @@ import hashlib
 import json
 import os
 import shutil
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +32,11 @@ NS = "96142af40b5d4213862d5483fe3a66da"
 REMOTE = "--remote"
 
 NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+# A transient Cloudflare API or network error failed the 2026-09-25 16:56Z hourly put; an immediate manual retry
+# of the same run passed. Each KV call gets bounded retries; the pointer still moves only after full readback.
+ATTEMPTS = 3
+RETRY_SECONDS = 5.0
+LAST_ERROR: list[str] = []
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
@@ -39,14 +46,33 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+def _error_summary(p: subprocess.CompletedProcess) -> str:
+    """Last non-empty stderr line, truncated; ids and emails masked (logs never carry account details)."""
+    lines = [line.strip() for line in (p.stderr or "").splitlines() if line.strip()]
+    text = lines[-1] if lines else f"exit {p.returncode}"
+    text = re.sub(r"[0-9a-f]{32}", "<id>", text)
+    return re.sub(r"[^\s@]+@[^\s@]+", "<email>", text)[:200]
+
+
+def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
+    for attempt in range(1, ATTEMPTS + 1):
+        p = _run_cli(args)
+        if p.returncode == 0:
+            return p
+        LAST_ERROR[:] = [_error_summary(p)]
+        if attempt < ATTEMPTS:
+            time.sleep(RETRY_SECONDS * attempt)
+    return p
+
+
 def client_put(key: str, local_path: Path) -> bool:
     rel = os.path.relpath(local_path, str(ROOT)).replace("\\", "/")
-    p = _run_cli(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE])
+    p = _run_with_retry(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE])
     return p.returncode == 0
 
 
 def client_get(key: str) -> str | None:
-    p = _run_cli(["kv", "key", "get", key, "--namespace-id", NS, REMOTE])
+    p = _run_with_retry(["kv", "key", "get", key, "--namespace-id", NS, REMOTE])
     if p.returncode != 0:
         return None
     body = p.stdout
@@ -85,7 +111,7 @@ def main() -> int:
     # 1) objects FIRST (pointer must never lead).
     for key, fp in staged_files.items():
         if not client_put(key, fp):
-            print(f"SYNC ABORT (object put failed): {key}", file=sys.stderr)
+            print(f"SYNC ABORT (object put failed after {ATTEMPTS} attempts): {key} {LAST_ERROR[:1]}", file=sys.stderr)
             return 1
     print(f"OBJECTS_UPLOADED {len(staged_files)}")
 
@@ -100,7 +126,7 @@ def main() -> int:
 
     # 3) pointer LAST, only after full verification.
     if not client_put("snapshot:current", ptr_fp):
-        print("SYNC ABORT (pointer put failed)", file=sys.stderr)
+        print(f"SYNC ABORT (pointer put failed after {ATTEMPTS} attempts) {LAST_ERROR[:1]}", file=sys.stderr)
         return 1
     live_ptr = client_get("snapshot:current")
     if live_ptr is None or sha(live_ptr) != sha(ptr_raw):

@@ -171,5 +171,36 @@ class ReplayAcceptanceTests(unittest.TestCase):
         self.assertIn("[int]$ExpectTop20Records = 0", GATE)
 
 
+class SyncRetryTests(unittest.TestCase):
+    """A transient Cloudflare/network failure is retried (bounded); the final error is summarised without ids."""
+
+    def test_put_retries_then_succeeds_and_gives_up_after_three(self):
+        import sync_sealed_snapshot_kv as sync
+        calls = []
+        outcomes = []
+
+        def fake(args, **kw):
+            calls.append(list(args))
+            code = outcomes.pop(0)
+            return subprocess.CompletedProcess(args, code, "{}", "" if code == 0 else
+                                               "X [ERROR] A request to the Cloudflare API failed: account 0123456789abcdef0123456789abcdef\n")
+
+        original, delay = sync.subprocess.run, sync.RETRY_SECONDS
+        sync.subprocess.run, sync.RETRY_SECONDS = fake, 0
+        try:
+            outcomes[:] = [1, 1, 0]
+            self.assertTrue(sync.client_put("snapshot:current", ROOT / "README.md"))
+            self.assertEqual(len(calls), 3)
+            calls.clear()
+            outcomes[:] = [1, 1, 1]
+            self.assertFalse(sync.client_put("snapshot:current", ROOT / "README.md"))
+            self.assertEqual(len(calls), sync.ATTEMPTS)
+            self.assertIn("<id>", sync.LAST_ERROR[0])
+            self.assertNotIn("0123456789abcdef0123456789abcdef", sync.LAST_ERROR[0])
+            self.assertTrue(all("--remote" in call for call in calls))
+        finally:
+            sync.subprocess.run, sync.RETRY_SECONDS = original, delay
+
+
 if __name__ == "__main__":
     unittest.main()
