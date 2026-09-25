@@ -8,6 +8,8 @@ conversion, ratio, growth, scoring, Top20 order field or publication.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import hashlib
+import json
 
 if __package__:
     from .v213_forward_premises_shadow import ForwardPremiseAssessment
@@ -73,3 +75,17 @@ def render_forward_comparison_block(assessment: object) -> str:
     if len(text.encode("utf-16-le")) // 2 > MAX_SECTION_UNITS:
         raise ForwardRenderError("FORWARD_RENDER_TOO_LARGE")
     return text
+
+def build_forward_comparison_artifact(assessment: object) -> dict:
+    """Contract C2b (option C): one digest-bound local artifact; data_report is untouched."""
+    text = render_forward_comparison_block(assessment)
+    body = {
+        "schema_version": 1,
+        "kind": "FORWARD_COMPARISON_LOCAL_ARTIFACT",
+        "audience": "OPERATOR_LOCAL_ONLY",
+        "publication_eligible": False,
+        "assessment": assessment.to_dict(),
+        "text": text,
+    }
+    canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {**body, "sha256": hashlib.sha256(canonical).hexdigest()}

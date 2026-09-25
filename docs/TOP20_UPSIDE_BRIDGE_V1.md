@@ -5,6 +5,7 @@ Status (2026-09-25): design; phase 1 implemented, phases 2–5 open. Operator re
 1. Rank Top20 by the composite potential of future price appreciation.
 2. Every figure and estimate carries an explicit source; vague wording such as 「很多」「市場很大」 is forbidden.
 3. The future-orders field adds 6-month, 1-year and 2-year horizons and the estimated share-price change if the orders are realized.
+4. The industry field names the specific sub-industry and what the company actually makes or does, never a bare label such as 「半導體」.
 
 This contract keeps the project's evidence rules: no hard-coded bull/bear percentages, no invented order totals, scenarios labelled INFERENCE with premises, missing inputs shown as UNAVAILABLE (never 0%), `publication_eligible=false` until the R75 gates pass, and no Production or LINE change without explicit authorization.
 
@@ -14,6 +15,14 @@ This contract keeps the project's evidence rules: no hard-coded bull/bear percen
 - `current_orders` / `future_orders_estimate` are text with source URLs; amounts, units, recognition windows and accession numbers live inside the strings. `numeric_total_order_estimate_prohibited=true` is enforced in Python and in the Worker.
 - 6M/1Y/2Y scenario text is a placeholder (`SCENARIO_STATUS`, `deep-analysis.ts`, `company-evidence-report.ts`). `docs/RESEARCH_EXECUTION_AUDIT.md` already specifies the order ledger and the per-horizon on-time / delay / failure chain, still unimplemented.
 - No vague-wording lint exists; retained baseline rows bypass the only quantitative check (for example 「幾乎全部」 in a baseline row, 「能見度偏高」 in a contract fixture, 「強勁能見度」 in macro text).
+
+## Phase 0 — industry detail (operator rule)
+
+Today `industry` is yfinance `info.industry` (or `sector`) translated through a fixed table (`build_v212_top20_report.translate_industry`), so most technology names read 「半導體」. Target: 「細分產業｜主要產品或業務」 within the Worker's 100-character limit, for example 「半導體材料｜化合物半導體基板（InP、GaAs）」.
+
+- Source of the business phrase: the latest 10-K (or 20-F/40-F) Item 1 business description from SEC EDGAR, with the filing URL and accession recorded; the sub-industry uses the finest available classification (yfinance `industry`, SEC SIC description as cross-check).
+- The Chinese phrase is a translation of the sourced passage, labelled as such in the detail view with the original English sentence; no product claims beyond the passage.
+- Needs an `industry_source_url` alongside the record, which touches the exact-key parsers (Python contract, Worker `top20-report.ts`, bottleneck report, activation-v3); ship as one versioned schema change with fixtures.
 
 ## Phase 1 — sourced-wording guard (IMPLEMENTED)
 
@@ -38,9 +47,9 @@ For each horizon h ∈ {6M, 1Y, 2Y} and case ∈ {on-time, delayed/partial, fail
 
 No scenario probabilities (no calibration basis), no averaging of cases.
 
-## Phase 4 — upside-potential ranking (needs operator decision)
+## Phase 4 — upside-potential ranking (operator decision 2026-09-25)
 
-Replace the six duplicated sort keys with one shared key function. Proposed default, without invented weights: candidates with a complete bridge rank first by the on-time 2-year `price_return_pct`, ties broken by the failed-case return (smaller loss first) and then data quality; candidates without a complete bridge follow in the existing order and are labelled 「上漲潛力未量化」. Alternative weightings need the operator's explicit choice.
+Replace the six duplicated sort keys with one shared key function. Only companies whose 6-month, 1-year and 2-year on-time `price_return_pct` can all be computed enter the upside ranking; they are ordered by the 2-year value, ties broken by the failed-case return (smaller loss first) and then data quality. Companies without all three horizons are not ranked by upside and are shown as 「上漲潛力未量化」 in the existing order.
 
 ## Phase 5 — presentation
 

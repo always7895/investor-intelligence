@@ -4,21 +4,21 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `34417b9` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `b254400` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — redundancy removal (operator-requested)
+## This change — fixture-leak fix, C2b option C, operator decisions
 
-The operator explicitly asked to delete unneeded files (2026-09-25). 74 tracked files removed after a read-only triage and a second scripted check that nothing left in the tree references them; all remain in Git history (`git show 34417b9:<path>`).
-
-- 40 historical docs (SERENITY_H2–H6 notes, SERENITY_PUBLIC_LOGIC audits, TASK0-3E–3J reports, five superseded reviews/plans); the index keeps a retirement note instead of 40 links.
-- 28 scripts/payloads: v211/v212 task registrars (one could re-point live v21 task names), applied hotfix6 payloads and validator/packager, the BLS patch payload, an unused v211 wrangler template, a one-time patch applier and code generator, superseded Serenity release audits (base, v3, v5, v6) and snapshot audit v3, one-off TASK0-3A–3E harnesses and an unused publication-contract probe.
-- 6 workflows triggered only by dead branches (phase3 adapters/catalog/source-diversity/GLEIF-ECB, public-options candidates, v21 Serenity engine); their gates still run under the retained validation workflows.
-- Inventory floors lowered with the change: Markdown ≥80 (now 90), `.ps1` ≥70 (now 76). Kept: generated-snapshot audits v2/v4 (called by the probed v5 chain), evidence receipts including the dated `state/architecture-inventory.json`, rollback jars, schemas and live-task scripts.
+- LINE Flex palette: under revision after operator review (warm and plain variants rejected); not part of these commits. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
+- Fixture leak fixed: `tests/installer_parse_harness.py` created cases under `_workspace/audit-runtime/w1-review-b-cases` on every run and never removed them (28,433 directories, 9.6 GB). Cases are still kept as failure evidence but now pruned after 24 hours, once per process, without following links or junctions and without failing a run on pruning errors. Tests: `tests/test_installer_case_retention.py` (4).
+- C2b option C (operator choice): `build_forward_comparison_artifact` emits the C1 assessment and C2a text as one digest-bound, operator-only, non-publishable local artifact; `data_report` unchanged.
+- Operator decisions recorded: Top20 upside ranking admits only companies with all of 6M/1Y/2Y computed, ordered by 2Y; industry must show sub-industry and business (phase 0 design: SEC 10-K Item 1 as source). `CLAUDE.md` importing `AGENTS.md` added (`b254400`).
+- Local, untracked: operator-approved audit-area lightweighting (w1 cases, reproducible `node_modules` and `__pycache__`), receipt `_workspace/audit-runtime/audit-lightweighting-20260925.json`.
 
 ## Previous changes
 
+- `0c61b53` removal of 74 unreferenced docs, scripts and workflows (full Python 2497 OK).
 - `34417b9` Top20 sourced-wording guard, phase 1 (full Python 2497 OK, 429.4 s).
 - `79438c2` weekly/monthly options guidance (Worker 900 passed; full Python 2490 OK, 437.3 s).
 - `c665684` LINE Flex redesign on a shared design system (Worker 895 passed; full Python 2490 OK, 439.0 s). Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
@@ -33,9 +33,9 @@ The operator explicitly asked to delete unneeded files (2026-09-25). 74 tracked 
 
 ## Latest gate run
 
-- `security_check`, documentation boundary/structure (90 Markdown files), workflow supply chain, owner config: PASS.
-- Worker: 900 passed / 1 named manual skip.
-- Full Python 16:27:44–16:34:50: 2497 tests OK, 425.5 s.
+- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
+- Full Python 16:57:29–17:04:33: 2502 tests OK, 423.3 s (working tree also held uncommitted LINE palette edits; Worker 900 passed on it).
+- Audit area after lightweighting: 21.6 GB → 4.6 GB; w1 cases from the latest run: 3,271, pruned after 24 hours.
 
 ## Closed components — no reopening without regression evidence
 

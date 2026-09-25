@@ -11,7 +11,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import test_v213_forward_premises_shadow as c1  # noqa: E402
 from v213_forward_comparison_render import (  # noqa: E402
-    NOTICE, REVISED, TITLE, WITHHELD, ForwardRenderError, render_forward_comparison_block,
+    NOTICE, REVISED, TITLE, WITHHELD, ForwardRenderError, build_forward_comparison_artifact,
+    render_forward_comparison_block,
 )
 
 READY = "\n".join((
@@ -47,6 +48,18 @@ class ForwardComparisonRenderTests(unittest.TestCase):
         claim = c1.forward_claim()
         result = c1.research(claim, values=(4800.5, 4800.5))
         self.assertIn("4,800.5 million USD", render_forward_comparison_block(c1.assess(claim=claim, result=result)))
+
+    def test_local_artifact_is_digest_bound_and_never_publishable(self):
+        import hashlib
+        import json
+        artifact = build_forward_comparison_artifact(c1.assess())
+        self.assertEqual(artifact["text"], READY)
+        self.assertIs(artifact["publication_eligible"], False)
+        self.assertEqual(artifact["audience"], "OPERATOR_LOCAL_ONLY")
+        body = {k: v for k, v in artifact.items() if k != "sha256"}
+        canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self.assertEqual(artifact["sha256"], hashlib.sha256(canonical).hexdigest())
+        self.assertEqual(build_forward_comparison_artifact(c1.assess())["sha256"], artifact["sha256"])
 
     def test_rejects_non_assessment_input(self):
         for value in (None, {}, c1.assess().to_dict()):
