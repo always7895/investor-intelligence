@@ -1,8 +1,15 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$ProjectRoot,
+    [string]$ProjectRoot = '',
     [Parameter(Mandatory = $true)][string]$RuntimeRoot,
-    [Parameter(Mandatory = $true)][ValidateSet('BASE','SOURCE_DIVERSE','SOURCE_DIVERSE_V2','SERENITY_LATEST')][string]$Profile
+    [ValidateSet('BASE','SOURCE_DIVERSE','SOURCE_DIVERSE_V2','SERENITY_LATEST')][string]$Profile,
+    # R75_PACKAGE: a CI package (HOTFIX-REFS.json / VERSION-REFS.json with a workflow run id).
+    # LOCAL_SOURCE_CHECKOUT: an export of one commit of -SourceRepository (scripts/export_local_source_checkout.ps1,
+    # LOCAL-SOURCE-REFS.json); every exported file must equal that commit's git blob. Never release-qualified.
+    [ValidateSet('R75_PACKAGE','LOCAL_SOURCE_CHECKOUT')][string]$PackageOrigin = 'R75_PACKAGE',
+    [string]$SourceRepository = '',
+    # Undo the most recent finalized install: swap <runtime>.old.<transaction> back and restore state and receipt.
+    [string]$RestorePrevious = ''
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -174,6 +181,7 @@ function Get-V213Manifest([string]$Root) {
 }
 
 function Assert-V213PackageIdentity([string]$Root) {
+    if (Test-Path -LiteralPath (Join-Path $Root 'LOCAL-SOURCE-REFS.json')) { throw 'PACKAGE_IDENTITY_AMBIGUOUS' }
     $versionRefs = Join-Path $Root 'VERSION-REFS.json'
     $path = if (Test-Path -LiteralPath $versionRefs -PathType Leaf) { $versionRefs } else { Join-Path $Root 'HOTFIX-REFS.json' }
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'PACKAGE_IDENTITY_MISSING' }
@@ -185,6 +193,78 @@ function Assert-V213PackageIdentity([string]$Root) {
         [string]$identity.workflow_run_id -notmatch '^\d+$' -or
         $identity.production_mutation_by_ci -ne $false) { throw 'PACKAGE_IDENTITY_INVALID' }
     return $identity
+}
+
+function Assert-V213LocalSourceIdentity([string]$Root) {
+    foreach ($other in @('VERSION-REFS.json', 'HOTFIX-REFS.json')) {
+        if (Test-Path -LiteralPath (Join-Path $Root $other)) { throw 'PACKAGE_IDENTITY_AMBIGUOUS' }
+    }
+    $path = Join-Path $Root 'LOCAL-SOURCE-REFS.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'PACKAGE_IDENTITY_MISSING' }
+    try {
+        $identity = Get-Content -LiteralPath $path -Raw -Encoding utf8 | ConvertFrom-Json
+        $names = @($identity.PSObject.Properties.Name)
+        $valid = ($names -contains 'workflow_run_id') -and ($names -contains 'release_qualified') -and
+            $identity.artifact_kind -eq 'LOCAL_SOURCE_CHECKOUT' -and $identity.package_version -eq '2.1.3' -and
+            [string]$identity.source_commit -match '^[0-9a-f]{40}$' -and $null -eq $identity.workflow_run_id -and
+            $identity.release_qualified -eq $false -and $identity.production_mutation_by_ci -eq $false
+    }
+    catch { throw 'PACKAGE_IDENTITY_INVALID' }
+    if (-not $valid) { throw 'PACKAGE_IDENTITY_INVALID' }
+    return $identity
+}
+
+function Get-V213GitBlobSha1([string]$Path) {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $header = [Text.Encoding]::ASCII.GetBytes('blob ' + $bytes.Length + [char]0)
+    $sha = [Security.Cryptography.SHA1]::Create()
+    try {
+        [void]$sha.TransformBlock($header, 0, $header.Length, $null, 0)
+        [void]$sha.TransformFinalBlock($bytes, 0, $bytes.Length)
+        return ([BitConverter]::ToString($sha.Hash)).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
+# Every exported file equals the git blob of the named commit and every tracked file is present. Allowed extras: the
+# locally compiled launcher, the identity file and the pinned cloud/node_modules toolchain (npm ci of the lockfile).
+function Assert-V213LocalSourceTree([string]$Root, [string]$Repository, [string]$Commit) {
+    $git = (Get-Command git.exe -ErrorAction Stop).Source
+    $encoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+        $listing = (& $git -C $Repository -c core.quotepath=off ls-tree -r -z --full-tree $Commit 2>$null) -join "`n"
+        $code = $LASTEXITCODE
+    }
+    finally { [Console]::OutputEncoding = $encoding }
+    if ($code -ne 0 -or [string]::IsNullOrEmpty($listing)) { throw 'PACKAGE_SOURCE_COMMIT_UNKNOWN' }
+    $expected = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+    foreach ($record in ($listing -split [char]0)) {
+        if ([string]::IsNullOrEmpty($record.Trim("`n"))) { continue }
+        $match = [regex]::Match($record.Trim("`n"), '^(\d{6}) (\w+) ([0-9a-f]{40})\t(.+)$')
+        if (-not $match.Success -or ($match.Groups[1].Value -notin @('100644', '100755'))) { throw 'PACKAGE_SOURCE_TREE_UNSUPPORTED' }
+        $expected[$match.Groups[4].Value.Replace('/', '\')] = $match.Groups[3].Value
+    }
+    $allowed = @('InvestorIntelligence.exe', 'LOCAL-SOURCE-REFS.json')
+    $seen = 0
+    $pending = New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
+    $pending.Push([IO.DirectoryInfo](Get-Item -LiteralPath $Root -Force))
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($entry in $directory.GetFileSystemInfos()) {
+            $relative = Get-V213RelativePath $Root $entry
+            if ($entry -is [IO.DirectoryInfo]) {
+                if ($relative -cne 'cloud\node_modules') { $pending.Push([IO.DirectoryInfo]$entry) }
+                continue
+            }
+            if ($allowed -ccontains $relative) { continue }
+            if (-not $expected.ContainsKey($relative) -or (Get-V213GitBlobSha1 $entry.FullName) -cne $expected[$relative]) {
+                throw 'PACKAGE_SOURCE_TREE_MISMATCH'
+            }
+            $seen++
+        }
+    }
+    if ($seen -ne $expected.Count) { throw 'PACKAGE_SOURCE_TREE_MISMATCH' }
 }
 
 function Get-V213ProfileMaps([string]$SelectedProfile) {
@@ -316,9 +396,24 @@ function Restore-V213Metadata([string]$Path, [byte[]]$Original, [bool]$Existed, 
     return $true
 }
 
-$ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 $RuntimeRoot = [IO.Path]::GetFullPath($RuntimeRoot)
-$identity = Assert-V213PackageIdentity $ProjectRoot
+if ($RestorePrevious) {
+    . (Join-Path $PSScriptRoot 'v213_runtime_restore_previous.ps1')
+    Invoke-V213RestorePrevious -RuntimeRoot $RuntimeRoot -TransactionId $RestorePrevious
+    return
+}
+if (-not $Profile) { throw 'RUNTIME_PROFILE_INVALID' }
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { throw 'PROJECT_ROOT_REQUIRED' }
+$ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
+$localSource = $PackageOrigin -eq 'LOCAL_SOURCE_CHECKOUT'
+if ($localSource) {
+    if ([string]::IsNullOrWhiteSpace($SourceRepository)) { throw 'PACKAGE_SOURCE_REPOSITORY_REQUIRED' }
+    $identity = Assert-V213LocalSourceIdentity $ProjectRoot
+    Assert-V213LocalSourceTree $ProjectRoot ([IO.Path]::GetFullPath($SourceRepository)) ([string]$identity.source_commit)
+}
+else {
+    $identity = Assert-V213PackageIdentity $ProjectRoot
+}
 $sourceIdentity = Resolve-V213DirectoryIdentity $ProjectRoot 'PROJECT_ROOT'
 $runtimeIdentity = Resolve-V213DirectoryIdentity $RuntimeRoot 'RUNTIME_ROOT'
 if ((Test-V213SameOrBelow $sourceIdentity $runtimeIdentity) -or (Test-V213SameOrBelow $runtimeIdentity $sourceIdentity)) {
@@ -383,7 +478,7 @@ try {
     if (Test-Path -LiteralPath $journalPath -PathType Leaf) {
         try { $existingJournal = Get-Content -LiteralPath $journalPath -Raw -Encoding utf8 | ConvertFrom-Json }
         catch { throw 'RUNTIME_RECOVERY_REQUIRED' }
-        if ([int]$existingJournal.schema_version -ne 1 -or [string]$existingJournal.state -notmatch '^(FINALIZED|ROLLED_BACK)$') {
+        if ([int]$existingJournal.schema_version -ne 1 -or [string]$existingJournal.state -notmatch '^(FINALIZED|ROLLED_BACK|RESTORED_PREVIOUS)$') {
             throw 'RUNTIME_RECOVERY_REQUIRED'
         }
     }
@@ -476,6 +571,9 @@ try {
     $previous = -1
     foreach ($token in $orderedPipeline) { $position = $refresh.IndexOf($token, [StringComparison]::Ordinal); if ($position -le $previous) { throw 'RUNTIME_PIPELINE_ORDER_INVALID' }; $previous = $position }
     if ($refresh.Contains("& `$python 'scripts\build_v21_public_snapshot.py'")) { throw 'RUNTIME_LEGACY_SNAPSHOT_BUILDER' }
+    if ($localSource -and -not (Test-Path -LiteralPath (Join-Path $stagePath 'cloud\node_modules\.bin\wrangler.cmd') -PathType Leaf)) {
+        throw 'RUNTIME_REQUIRED_FILE_MISSING'
+    }
     if (-not $refresh.Contains('--enforce')) { throw 'RUNTIME_SOURCE_GATE_NOT_ENFORCED' }
     if (-not $refresh.Contains('company/claim diversity is blocking; unavailable free market cross-checks are disclosed and cap confidence')) { throw 'RUNTIME_MARKET_BOUNDARY_MISSING' }
     $bridge = [IO.File]::ReadAllText((Join-Path $stagePath 'run-v213-local-llm-bridge.ps1'), (New-Object Text.UTF8Encoding($false)))
@@ -517,6 +615,10 @@ try {
         health_schema_version = 2; official_serenity_formula_claimed = $false; official_serenity_score_claimed = $false
         private_serenity_method_reproduced = $false
     }
+    if ($localSource) {
+        $stateValue['package_origin'] = 'LOCAL_SOURCE_CHECKOUT'; $stateValue['workflow_run_id'] = $null; $stateValue['release_qualified'] = $false
+        $stateValue['source_commit'] = [string]$identity.source_commit
+    }
     if ($Profile -eq 'SOURCE_DIVERSE') {
         $profileReceipt = [ordered]@{ schema_version=1; product_version='2.1.3'; runtime_profile='source-diverse-exact-model'; installed_utc=(Get-Date).ToUniversalTime().ToString('o'); preferred_model=$null; model_selection_authority='runtime_model_profile'; model_profile_qualified=$false; health_schema_version=2; source_independence_gate='scripts/v213_source_independence_gate.py'; source_policy='config/v213-serenity-public-logic-policy.json'; official_serenity_formula_claimed=$false; private_serenity_method_reproduced=$false }
         Write-V213JsonAtomic (Join-Path $stagePath 'V213-SOURCE-DIVERSE-RUNTIME.json') $profileReceipt
@@ -537,6 +639,13 @@ try {
     $effectiveAfterManifest = Get-V213Manifest $stagePath
     if ($effectiveAfterManifest.sha256 -ne $effective.sha256) { throw 'RUNTIME_EFFECTIVE_MANIFEST_CHANGED' }
     Write-V213Journal $journalPath $journalBase 'PREPARED'
+    if ($runtimeExisted) {
+        # Preimages for -RestorePrevious: the retained old root is only restorable with the metadata it was attested by.
+        $preimage = [ordered]@{ schema_version = 1; transaction_id = $transactionId; runtime_root = $runtimeIdentity; old_root = $oldPath
+            state_existed = $stateExisted; state_base64 = $(if ($stateExisted) { [Convert]::ToBase64String($stateOriginal) } else { $null })
+            receipt_existed = $receiptExisted; receipt_base64 = $(if ($receiptExisted) { [Convert]::ToBase64String($receiptOriginal) } else { $null }) }
+        Write-V213JsonAtomic (Join-Path $metadataRoot ('v213-previous-' + $transactionId + '.json')) $preimage
+    }
 
     # The live root is rechecked immediately before the only destructive rename.
     $runtimeExistsNow = Test-Path -LiteralPath $runtimeIdentity -PathType Container
@@ -562,6 +671,10 @@ try {
 
     $newStateBytes = Get-V213Utf8Bytes ((Get-V213CanonicalJson $stateValue) + "`n")
     $newReceiptValue = [ordered]@{ schema_version=1; status='LOCAL_COMMITTED_PENDING_FINALIZE'; transaction_id=$transactionId; profile=$Profile; runtime_root=$runtimeIdentity; manifest_path='V213-RUNTIME-MANIFEST.json'; manifest_sha256=Get-V213Sha256Bytes $manifestBytes; effective_entries_sha256=$effective.sha256; file_count=$effective.file_count; byte_count=$effective.byte_count; source_commit=[string]$identity.source_commit; model_selection_authority='runtime_model_profile'; preferred_model=$null; model_profile_qualified=$false; production_mutation_by_ci=$false }
+    if ($localSource) {
+        $newReceiptValue['package_origin'] = 'LOCAL_SOURCE_CHECKOUT'; $newReceiptValue['workflow_run_id'] = $null; $newReceiptValue['release_qualified'] = $false
+        $newReceiptValue['overlay_map'] = @($maps | ForEach-Object { [string]$_.source + ' -> ' + [string]$_.destination })
+    }
     $newReceiptBytes = Get-V213Utf8Bytes ((Get-V213CanonicalJson $newReceiptValue) + "`n")
     Write-V213BytesAtomic $statePath $newStateBytes
     Write-V213BytesAtomic $receiptPath $newReceiptBytes
@@ -572,7 +685,7 @@ try {
     $finalized = $true
     if ($lock) { $lock.Dispose(); $lock = $null }
     $global:LASTEXITCODE = 0
-    Write-Host "V213_RUNTIME_INSTALL = PASS; profile=$Profile; staging=true; transaction=$transactionId; rollback_original_retained=$oldMoved; model_selection=runtime_profile_only" -ForegroundColor Green
+    Write-Host "V213_RUNTIME_INSTALL = PASS; profile=$Profile; package_origin=$PackageOrigin; staging=true; transaction=$transactionId; rollback_original_retained=$oldMoved; model_selection=runtime_profile_only" -ForegroundColor Green
 }
 catch {
     $matchedFailure = [regex]::Match([string]$_.Exception.Message, '^[A-Z][A-Z0-9_]+')
@@ -599,6 +712,8 @@ catch {
         if ($null -ne $newReceiptBytes) {
             if (-not (Restore-V213Metadata $receiptPath $receiptOriginal $receiptExisted $newReceiptBytes)) { throw 'RECEIPT_ROLLBACK_UNVERIFIED' }
         }
+        $preimagePath = Join-Path $metadataRoot ('v213-previous-' + $transactionId + '.json')
+        if (Test-Path -LiteralPath $preimagePath -PathType Leaf) { Remove-Item -LiteralPath $preimagePath -Force }
         if ($journalInitialized) { Write-V213Journal $journalPath $journalBase 'ROLLED_BACK' $failureCode }
     }
     catch { $rollbackCode = 'RECOVERY_REQUIRED' ; if ($journalInitialized) { try { Write-V213Journal $journalPath $journalBase 'RECOVERY_REQUIRED' 'RUNTIME_INSTALL_ROLLBACK_FAILED' } catch {} } }
