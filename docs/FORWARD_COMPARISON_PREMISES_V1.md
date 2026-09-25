@@ -48,7 +48,9 @@ No new provider or live fetch, no change to scoring, ranking, weights, LIMITED g
    - Identity uses the SEC binding's resolved symbol alias; its trust is inherited from that binding (`SYMBOL_ALIAS_TRUST_INHERITED_FROM_SEC_BINDING`).
    - Unit scale may differ (display only, never converted); currency, GAAP basis, consolidated scope and revenue tag must match.
    - Consumer admission is always `DEFERRED_TO_CONSUMER_CONTRACT`; scoring, publication and admission flags are fixed false.
-2. **C2 consumer contract:** render the side-by-side sentence or the withheld text in the local `data_report`, with byte-stable fixtures; still `publication_eligible=false`.
+2. **C2 consumer contract:**
+   - **C2a renderer — IMPLEMENTED:** `render_forward_comparison_block` in `scripts/v213_forward_comparison_render.py` turns a C1 assessment into one section: the side-by-side disclosure (values as disclosed, `Decimal` formatting, no conversion), a revision notice when the baseline changed within the SEC document, or `無可靠公開預估` with every unresolved premise and reason. Byte-exact text fixtures in `tests/test_v213_forward_comparison_render.py`; the section respects the 4400 UTF-16 unit ceiling used by `company_financial_products._product`.
+   - **C2b wiring — NEXT:** add the section to the local `data_report` only. `verify_financial_products` replays from input bytes, so the wiring needs a serializable, digest-bound forward-comparison input bundle (SEC receipt bytes, claim-engine document, T2/T3 declarations) that the replay can rebuild; in-process objects alone are not replayable. Still `publication_eligible=false`.
 3. **C3 live qualification:** a source-bound run on one real issuer under the existing R75 gates. Needs explicit operator authorization if it touches Production, KV or LINE.
 
 ## Operator decisions needed

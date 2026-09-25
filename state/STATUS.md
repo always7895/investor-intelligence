@@ -4,31 +4,34 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `51c7132` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `c824b23` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — C1 forward premise states (nonauthorizing shadow)
+## This change — C2a forward comparison renderer
 
-- New `scripts/v213_forward_premises_shadow.py`: `assess_forward_premises(diagnostic, baseline, forward_claim, research)` maps one T3 pair onto the SEC binding, the claim-engine result and the T2 period, returning the six premise states. Rules are listed in [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) (C1). Pure and import-inert; no I/O, clock, conversion, ratio, growth, scoring or consumer integration; consumer admission is always deferred.
-- New `tests/test_v213_forward_premises_shadow.py` (12 tests) drives the real T3 diagnostic, `bind_sec_claim` and `reconcile_research_claims`: aligned pair ready but unadmitted; identity alias; metric/currency/basis/scope/unit; period binding, role, length class, day alignment, retrieval and filing cutoffs; annual versus quarterly facts sharing an end date; latest vintage without averaging; forward conflict, late evidence, wrong claim type, single source; malformed input; frozen result; no input mutation.
+- New `scripts/v213_forward_comparison_render.py`: `render_forward_comparison_block(assessment)` renders a C1 result as one local section — side-by-side disclosure of the two SUPPORTED values (as disclosed, no conversion), a revision notice when the SEC baseline changed within the document, or `無可靠公開預估` plus each unresolved premise and reason. Pure and import-inert; no ratio, growth, scoring, Top20 order field or publication.
+- New `tests/test_v213_forward_comparison_render.py` (5 tests): byte-exact ready text, withheld text contains no values, revision notice, fractional values without float noise, non-assessment input rejected.
+- Not yet wired into `data_report`: C2b needs a serializable, digest-bound input bundle so `verify_financial_products` can replay it ([design](../docs/FORWARD_COMPARISON_PREMISES_V1.md)).
 - Validation: see "Latest gate run" below.
 
-## Previous change — instructions, skill, MCP and design (`b88dd9f`, `51c7132`)
+## Previous changes
 
-- `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
-- Local, untracked: workspace `AGENTS.md`, `.pi/HANDOFF.md` current pointer, GitHub MCP server in `.mcp.json` (token read from the `gh` keyring at connect time; handshake HTTP 200). Untracked leftovers relocated to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/` and `_archive/`, not deleted.
-- Gates for that change: security, documentation boundary/structure, workflow supply chain and owner-config PASS; Worker typecheck PASS and 895 passed / 1 named manual skip; full Python 2473 OK in 424.3 s on a clean rerun. The first full run had 2 lock-contention failures while the live SealedFreshness task (14:56:15) held the operation lock; kept as evidence.
-- Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; no task changed.
+- `c824b23` C1 `assess_forward_premises` premise-state shadow (12 tests; full Python 2485 OK, 460.6 s).
+- `b88dd9f`, `51c7132` instructions, skill, MCP and design:
+  - `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
+  - Local, untracked: workspace `AGENTS.md`, `.pi/HANDOFF.md` current pointer, GitHub MCP server in `.mcp.json` (token read from the `gh` keyring at connect time; handshake HTTP 200). Untracked leftovers relocated to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/` and `_archive/`, not deleted.
+  - Gates for that change: security, documentation boundary/structure, workflow supply chain and owner-config PASS; Worker typecheck PASS and 895 passed / 1 named manual skip; full Python 2473 OK in 424.3 s on a clean rerun. The first full run had 2 lock-contention failures while the live SealedFreshness task (14:56:15) held the operation lock; kept as evidence.
+  - Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; no task changed.
 
 ## Latest gate run
 
 Interpreter: base CPython 3.12.10. Working tree of this change, 2026-09-25:
 
 - `security_check`, `documentation_boundary_gate`, `documentation_structure_gate`, `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
-- Focused: C1 12 tests plus T2, T3, research-claim and SEC-binding modules — 101 tests OK; module imports cleanly both as `scripts.` package and top-level.
-- Full Python `scripts/run_offline_tests.py --repository` 15:14:21–15:22:02: 2485 tests OK, 460.6 s.
-- Worker unchanged by this change (no `cloud/` edits); last Worker run 895 passed / 1 named manual skip on `51c7132`'s tree.
+- Focused: C2a 5 tests with C1 12 tests — 17 OK; package-style import OK.
+- Full Python `scripts/run_offline_tests.py --repository` 15:23:13–15:30:29: 2490 tests OK, 435.0 s.
+- Worker unchanged (no `cloud/` edits); last Worker run 895 passed / 1 named manual skip.
 
 ## Pending operator decision — redundancy removal
 
@@ -51,7 +54,7 @@ All scoped development components; none is live, native, admission or release qu
 
 ## Open lanes
 
-1. **Forward comparison premises — C1 IMPLEMENTED, next C2:** [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) maps T3's six unresolved premises to admitted inputs from existing components (SEC CIK binding, claim-engine status and comparable fields, T2 period roles, source qualification), fixes the consumer to the local `data_report` side-by-side disclosure (never Top20 order fields) and names contracts C1 (pure premise-state function), C2 (local rendering) and C3 (live qualification). V1 computes no ratio, annualization or growth score; T3 publication does not complete FORWARD_REALIZABLE_GROWTH_POTENTIAL.
+1. **Forward comparison premises — C1 and C2a IMPLEMENTED, next C2b:** [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) maps T3's six unresolved premises to admitted inputs from existing components (SEC CIK binding, claim-engine status and comparable fields, T2 period roles, source qualification), fixes the consumer to the local `data_report` side-by-side disclosure (never Top20 order fields) and names contracts C1 (pure premise-state function), C2 (local rendering) and C3 (live qualification). V1 computes no ratio, annualization or growth score; T3 publication does not complete FORWARD_REALIZABLE_GROWTH_POTENTIAL.
 2. Deferred: O1 real venue and consumer admission; identity-to-Worker admission/rendering; R3A-to-V1 association/time/schema/consumer contract; U1/U2; real E2A/B; GB-S3 partial, S4/S5 blocked, Gate B pending; native/QA migration; Research V3, Top20, Macro, Options, zh-TW, LINE and integrated R75 shadow.
 3. Hygiene: historical `git diff --check` EXIT2 findings deferred; Worker prior effects from old hidden Wrangler coupling remain UNKNOWN (old generated artifact untouched).
 
@@ -69,4 +72,4 @@ Git commits on this branch and a normal push to `origin` (updates PR #37). Local
 
 ## Next action
 
-Operator: approve or decline the redundancy removal above. Development continues with C2 (local `data_report` side-by-side rendering with byte-stable fixtures, still `publication_eligible=false`), then the requested research-method refresh from current public sources (Serenity primary, Leopold Aschenbrenner CONTEXT_ONLY).
+Operator: approve or decline the redundancy removal above. Development continues with C2b (replayable `data_report` wiring, still `publication_eligible=false`) and the requested research-method refresh from current public sources (Serenity primary, Leopold Aschenbrenner CONTEXT_ONLY).
