@@ -242,7 +242,7 @@ function Resolve-Llama {
             if ($null -ne $property) { $candidate = $property.Value }
         }
         if ($candidate -isnot [string]) { throw 'MODEL_ROUTER_URL_INVALID' }
-        if ($candidate.Length -eq 0) { $candidate = 'http://127.0.0.1:8080' }
+        if ($candidate.Length -eq 0) { $candidate = 'http://127.0.0.1:5000' } # TabbyAPI; llama.cpp :8080 retired
     }
     if ($candidate -notmatch '\Ahttp://(?:127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?/?\z') { throw 'MODEL_ROUTER_URL_INVALID' }
     $port = if ($Matches[1]) { [int]$Matches[1] } else { 80 }

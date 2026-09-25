@@ -8,17 +8,17 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — ink monochrome LINE cards (operator feedback 2026-09-25)
+## This change — adaptive THINK and TabbyAPI router default (operator request 2026-09-25)
 
-Operator: Top20 green and the green menu options feel out of place; the card gradients are too faint. Matched to the bot's black-and-white line-art identity.
+Operator: the EXE must switch local models and thinking, pick thinking strength from an appropriate response time, and use the System One model for fast screening.
 
-- `cloud/src/v213/line-theme.ts`: three-stop header gradient (#000000 → #1E2228 at 45% → #4A525E, 135°); section levels by lightness (`key` ink gradient strip, `detail` grey, `context` pale); shared buttons are secondary light grey with ink labels on a white footer; rank chip inverted white; values follow the accounting convention (negatives red, others ink, sign kept). Every text/ground pair ≥4.5:1, including the lightest gradient end.
-- All green usages removed from Top20, rich menu, options, sizing, macro, educational and lookup cards; `docs/LINE_TOP20_UI.md` updated.
-- Preview (current vs new, real Flex JSON, dark LINE chat ground): https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
-- Worker typecheck PASS; 900 passed / 1 skipped (button contract test updated to the new token).
+- `scripts/v213_adaptive_reasoning.py` + gateway: the profile effort is the ceiling; each compact answer gets the highest effort whose thinking fits the time budget at the measured decode rate (about 90 tokens/s measured on the RTX 5090 lane); a 0.8 s System One screen sends SIMPLE questions to no-thinking with content-free features only; a thinking overrun gets one answer-only retry inside the timeout; responses carry `ii_reasoning`. Profile, hash and certified deadline unchanged. Details: [MODEL_RUNTIME_MIGRATION](../docs/MODEL_RUNTIME_MIGRATION.md).
+- EXE and bridge default router moved from the retired llama.cpp `:8080` to TabbyAPI `:5000` (saved selections still win); the EXE THINK label now reads as the ceiling.
+- Tests: `tests/test_v213_adaptive_reasoning.py` (11, including the authenticated gateway handler), model profile 11 (compiled EXE and THINK UI self-test), bridge identity 2; the module is added to the explicit gateway payload lists (R75 verifier, isolated-process test). Full Python 2537: the one failure was that missing payload entry, fixed and rerun (15 OK).
 
 ## Previous changes
 
+- `0b3946d` ink monochrome LINE cards: three-stop black-to-graphite header gradient, section levels by lightness, grey secondary buttons on white footers, accounting-convention value colours, no green; every text/ground pair ≥4.5:1; Worker 900 passed. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `47a3f19` Top20 industry detail from SEC annual reports ([TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0): latest 10-K/20-F business excerpt → validated loopback-Qwen phrase → 「細分產業：主要業務」; per-accession cache, index re-read each run, 403/429 fence; scheduled runners pass `--business-profile`; live canary 22/22 Top20 plus TSM/ASML; 20 tests; full Python 2525 (one CI-env-only error, passes with `PYTHONUTF8=1`).
 - `3e80273` Wave 1 official public feeds: eight reviewed T1 entries (Fed, ECB, SEC press, TWSE/TPEx EOD and issuer directories, TAIFEX options) registered at `ADAPTER_CONTRACT_VALIDATED`; the claim-evidence acquisition factory rejects bulk datasets and news leads, so none is runtime-enabled yet (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`).
 - `7c01ef1`, `6d21066` layered LINE card design with black gradient band; source activation plan (full Python 2502 OK).
@@ -68,8 +68,8 @@ Astra master; exact local Qwen sole tracked writer on the Pi lane; Sol independe
 
 ## External mutations (this change)
 
-Git commits on this branch and a normal push to `origin` (updates PR #37). Local workspace files listed above; installed skill directory resynchronized from source after commit with a backup in `_archive/instruction-sync-20260925T065208Z/`. No Production, KV, LINE, schedule, credential, billing, broker, model or service mutation.
+Git commits on this branch and a normal push to `origin` (updates PR #37). Read-only SEC EDGAR and loopback Tabby calls for the business-profile canary and a decode-rate measurement. Worker deployment: pre-gate PASS at 2026-09-25T10:57:56Z (pointer `20260925T105615Z-db4377bdbedc`, 103 s), then `wrangler deploy` was refused by this session's permission classifier; Production still serves version `70dd7e15-0a98-4513-b156-5ebb2e807761` (2026-09-17). No Production, KV, LINE, schedule, credential, billing, broker, model or service mutation.
 
 ## Next action
 
-Operator: review the UI preview before any Worker deployment (deployment needs explicit authorization). C2b needs an operator choice between build-time digest, an archived-receipt contract or a separate local artifact (recommended), because SEC receipts are in-process only. Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.
+Operator: deploy the Worker from `cloud/` when ready (`npx wrangler deploy -c wrangler.v213.production.local.toml`, then `scripts/deploy_production_gate.ps1 -Phase post -WorkerVersion <new id>`; rollback target `70dd7e15-0a98-4513-b156-5ebb2e807761`), and reinstall the runtime so the scheduled runners pick up `--business-profile`. Engineering next: Top20 upside phases 2–5 (order ledger, valuation bridge, 6M/1Y/2Y sort key) and acquisition kinds for Wave 1 bulk/news feeds. Serenity originals still need a permitted retrieval channel (oEmbed HTTP 402); paid access requires explicit operator authorization.

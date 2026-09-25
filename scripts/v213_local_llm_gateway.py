@@ -16,6 +16,7 @@ import re
 import sys
 import hmac
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -29,9 +30,10 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v212_local_llm_gateway as base
-from v213_compact_qa_gateway import compact_upstream, complete_compact_response, resolve_model_id
+from v213_compact_qa_gateway import POLICY as COMPACT_POLICY, compact_upstream, complete_compact_response, resolve_model_id
 from v213_model_profile import parse_profile, profile_sha256
 from v213_decision_backend_client import DecisionBackendClient, DeciderError
+import v213_adaptive_reasoning as adaptive
 from urllib.parse import urlsplit
 
 LOCAL_AI_CONFIG_PATH = ROOT / "config" / "local-runtime-independence-v1.json"
@@ -290,6 +292,34 @@ FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
 SOURCE_AUDIT_MAX_AGE_SECONDS = 7200
 MAX_CONCURRENT_GENERATIONS = max(1, min(8, int(os.getenv("II_GATEWAY_MAX_CONCURRENT_GENERATIONS", "1"))))
 GENERATION_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_GENERATIONS)
+DECODE_RATE = adaptive.DecodeRate()
+_SCREEN_CLIENT: DecisionBackendClient | None = None
+
+
+def _screen_client() -> DecisionBackendClient | None:
+    """Short-timeout System One client for the reasoning screen; None when not configured."""
+    global _SCREEN_CLIENT
+    if _SCREEN_CLIENT is None:
+        try:
+            cfg = _load_local_ai_config()
+            _SCREEN_CLIENT = DecisionBackendClient(cfg["decision_router"]["base_url"], timeout=0.8,
+                                                   min_confidence=cfg["capability_requirements"]["min_decision_confidence"])
+        except (DeciderError, KeyError, TypeError, OSError, ValueError):
+            return None
+    return _SCREEN_CLIENT
+
+
+def _reasoning_plan(body: Mapping[str, Any], upstream: Mapping[str, Any], runtime_profile: Mapping[str, Any] | None):
+    """Per-request thinking for profiled compact answers; transport smoke keeps the profile as is."""
+    if not runtime_profile or not runtime_profile["enable_thinking"] or body.get("ii_context_mode") != COMPACT_POLICY["mode"]:
+        return None
+    messages = body.get("messages") or []
+    query = messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else ""
+    screen = adaptive.system_one_screen(_screen_client(), adaptive.question_features(str(query)))
+    return adaptive.select_effort(runtime_profile["reasoning_effort"], timeout_ms=runtime_profile["timeout_ms"],
+                                  answer_tokens=int(upstream["max_tokens"]), rate=DECODE_RATE.value, screen=screen,
+                                  max_output_tokens=runtime_profile["max_output_tokens"])
+
 RETRY_AFTER_SECONDS = max(1, min(60, int(os.getenv("II_GATEWAY_RETRY_AFTER_SECONDS", "2"))))
 METHODOLOGY_RE = re.compile(
     r"(?:serenity|leopold|aschenbrenner|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
@@ -876,8 +906,13 @@ class V213GatewayHandler(base.GatewayHandler):
                 if not structured_json_probe(canonical):
                     self._json(503, {"error": "REASONER_CAPABILITY_STRUCTURED_JSON_UNSUPPORTED"})
                     return
+            # Adaptive thinking: the profile effort is the ceiling; time budget,
+            # measured decode rate and the System One screen pick this call's effort.
+            plan = _reasoning_plan(body, upstream, runtime_profile) if is_compact else None
+            completion_url = local_llm_base_url() + _endpoint_suffixes(local_llm_base_url())[1]
+            started = time.monotonic()
             response = _loopback_http(
-                "POST", local_llm_base_url() + _endpoint_suffixes(local_llm_base_url())[1], json=upstream,
+                "POST", completion_url, json=adaptive.apply_plan(upstream, plan) if plan else upstream,
                 headers={"content-type": "application/json"},
                 timeout=(2, runtime_profile['timeout_ms'] / 1000) if runtime_profile else ((2, 18) if is_compact else (5, 180)),
             )
@@ -885,6 +920,24 @@ class V213GatewayHandler(base.GatewayHandler):
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
+            elapsed = time.monotonic() - started
+            DECODE_RATE.observe(adaptive.estimate_tokens(result), elapsed)
+            if (plan and plan["enable_thinking"] and isinstance(result, dict) and result.get("model") == canonical
+                    and not complete_compact_response(result, selected, catalog)):
+                # Thinking overran its budget: one answer-only retry, only if it still fits the timeout.
+                remaining = runtime_profile['timeout_ms'] / 1000 - elapsed
+                answer_tokens = int(upstream["max_tokens"])
+                if remaining > answer_tokens / DECODE_RATE.value + adaptive.FIXED_OVERHEAD_SECONDS:
+                    plan = {**plan, "effective": "none", "enable_thinking": False, "max_tokens": answer_tokens,
+                            "reason": "THINKING_OVERRAN_RETRIED_WITHOUT"}
+                    response = _loopback_http("POST", completion_url, json=adaptive.apply_plan(upstream, plan),
+                                              headers={"content-type": "application/json"}, timeout=(2, remaining))
+                    if not response.ok:
+                        self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
+                        return
+                    result = response.json()
+            if isinstance(result, dict) and plan:
+                result["ii_reasoning"] = plan
             if not isinstance(result, dict) or result.get("model") != canonical or (is_compact and not complete_compact_response(result, selected, catalog)):
                 self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH",
                                  **({'failure_kind': 'MODEL_MISMATCH' if not isinstance(result, dict) or result.get('model') != canonical else 'INCOMPLETE'} if runtime_profile else {})})

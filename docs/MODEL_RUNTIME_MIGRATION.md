@@ -6,10 +6,11 @@ Historical model, EXE, runner and installed-state observations are not today's a
 
 ## Identity, transport and controls
 
-- Use the existing approved loopback Router, normally `http://127.0.0.1:8080`, and exact operator-selected catalog identity. Do not guess by model family, launch another server/model, change presets or infer capability from a name/HTTP200.
+- Use the existing approved loopback Router, by default TabbyAPI `http://127.0.0.1:5000` (llama.cpp `:8080` retired 2026-09-16; a saved selection still wins), and exact operator-selected catalog identity. Do not guess by model family, launch another server/model, change presets or infer capability from a name/HTTP200.
 - Explicit/saved endpoint must be a loopback base URL without credentials, paths, queries or fragments. Catalog redirects are disabled; at most `/models` and `/v1/models`, 1MiB response, 4.5s I/O deadline per path and 1024 unique identities/aliases. No `reload=1`, process/port scanning or replacement stack in bridge endpoint resolution.
 - Reject alias collisions and conflicting/malformed selection/profile types. Explicit inputs do not depend on an unrelated malformed compatibility file. A returned endpoint/catalog alone is not a completed answer.
-- EXE exposes model and manual THINK selectors; `none` disables thinking, other supported profile efforts request it. Save model/mode as unqualified, preserve token/time limits and lock selectors during operations. Manual choice is not automatic best-mode detection or proof the model honors each effort.
+- EXE exposes model and THINK selectors; `none` disables thinking, any other effort is the **ceiling**. Save model/mode as unqualified, preserve token/time limits and lock selectors during operations. The selection is not proof the model honors each effort.
+- Adaptive THINK (`scripts/v213_adaptive_reasoning.py`, compact answers only; transport smoke keeps the profile as is): per request the gateway picks the highest effort ≤ ceiling whose thinking tokens fit `timeout_ms × 0.75 − 1.5 s` at the measured decode rate (moving average, starts at 60 tokens/s; the RTX 5090 lane measured about 90) after the answer tokens. A System One (decider) screen with a 0.8 s timeout sends SIMPLE questions straight to no-thinking; the decider only sees content-free features (length, digits, clauses). If thinking overruns (`finish_reason=length`) one answer-only retry runs when it still fits the timeout. The response carries `ii_reasoning` (ceiling, effective, reason); the profile, its hash and the certified deadline are unchanged.
 - Native candidate tests exercise actual Use/Save handlers, profile bytes and child propagation. They do not qualify an older installed EXE. `--model-catalog-check` is metadata only; Test reply and `--model-route-check` share the actual EXE→PowerShell `-RoutingCheckOnly` caller.
 - Routing checks require the validated profile, exact complete marker and existing 64-bit CPython3.12.10 with requests. They never install Python, create a gateway/tunnel, read deployment credentials, register tasks or publish. Invalid mixed mutation/version flags cannot bypass checks. The GUI saves unqualified selection; the CLI does not.
 
@@ -47,4 +48,4 @@ Local settings validation only:
 & $env:PROJECT_PYTHON scripts/v213_model_profile.py --profile config/v213-model-profile-v1.json
 ```
 
-It returns settings/fingerprint and `release_qualified=false`, not deployment approval. Package acceptance, automatic THINK selection and installed live acceptance remain separate.
+It returns settings/fingerprint and `release_qualified=false`, not deployment approval. Package acceptance, live quality of adaptive THINK and installed live acceptance remain separate.

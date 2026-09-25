@@ -120,7 +120,7 @@ namespace InvestorIntelligence
             catch { throw new InvalidOperationException("MODEL_PROFILE_INVALID"); }
         }
 
-        const string DefaultLlamaBase = "http://127.0.0.1:8080";
+        const string DefaultLlamaBase = "http://127.0.0.1:5000"; // TabbyAPI; llama.cpp :8080 retired 2026-09-16
         const int MaxModelCatalogBytes = 1024 * 1024;
 
         static string LastPowerShellSummary = "";
@@ -1033,7 +1033,7 @@ namespace InvestorIntelligence
                     : PreferredModel;
                 discoveredBaseUrl = SafeLoopbackBase(saved.LlamaBaseUrl)
                     ? saved.LlamaBaseUrl.TrimEnd('/')
-                    : "http://127.0.0.1:8080";
+                    : DefaultLlamaBase;
                 Controls.Add(modelBox);
 
                 scanButton = new Button {
@@ -1293,10 +1293,10 @@ namespace InvestorIntelligence
                 };
                 thinkingBox.Items.AddRange(new object[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" });
                 thinkingBox.SelectedItem = initialProfile == null ? "none" : (string)initialProfile["reasoning_effort"];
-                Controls.Add(new Label { Left = 24, Top = 165, Width = 140, Height = 24, Text = "THINK / 推理模式" });
+                Controls.Add(new Label { Left = 24, Top = 165, Width = 140, Height = 24, Text = "THINK / 推理上限" });
                 Controls.Add(thinkingBox);
                 Controls.Add(new Label { Left = 340, Top = 160, Width = 335, Height = 48,
-                    Text = "none = 關閉；其他 = 要求的推理強度\n支援能力待實測 / Support unverified" });
+                    Text = "none = 關閉；其他 = 上限，每題依反應時間\n與 System One 篩選自動調整 / Auto below cap" });
                 thinkingBox.SelectedIndexChanged += delegate {
                     status.Text = "THINK 設定尚未儲存／驗證 / Pending, unqualified";
                 };
@@ -1525,7 +1525,7 @@ namespace InvestorIntelligence
                     return false;
                 }
                 if (!SafeLoopbackBase(requestedBaseUrl))
-                    requestedBaseUrl = "http://127.0.0.1:8080";
+                    requestedBaseUrl = DefaultLlamaBase;
 
                 if (discoveredModels.Count == 0) {
                     MessageBox.Show("請先取得所選 Router 的有效模型清單；不猜測模型。\nRead a valid Router catalog before changing models.", "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Warning);

@@ -124,7 +124,8 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
             files['config/v213-model-profile-v1.json'] = json.dumps(profile).encode()
             for p in ('scripts/v213_model_profile.py', 'scripts/v213_compact_qa_gateway.py',
                       'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts',
-                      'scripts/v213_decision_backend_client.py', 'config/local-runtime-independence-v1.json'):
+                      'scripts/v213_decision_backend_client.py', 'scripts/v213_adaptive_reasoning.py',
+                      'config/local-runtime-independence-v1.json'):
                 files[p] = (ROOT / p).read_bytes()
             for record in (refs, receipts[0], receipts[1]):
                 record.update(exact_model=profile['model'], model_profile_sha256=VERIFIER.profile_sha256(profile))
@@ -217,6 +218,7 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
             lambda f, r, e: f.pop('config/v213-model-profile-v1.json'),
             lambda f, r, e: f.pop('scripts/v213_model_profile.py'),
             lambda f, r, e: f.pop('scripts/v213_decision_backend_client.py'),
+            lambda f, r, e: f.pop('scripts/v213_adaptive_reasoning.py'),
             lambda f, r, e: f.pop('config/local-runtime-independence-v1.json'),
             lambda f, r, e: f.update({'config/v213-model-profile-v1.json': b'{"model":"invalid"}'}),
         ]

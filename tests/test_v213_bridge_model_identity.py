@@ -31,7 +31,7 @@ function Invoke-RestMethod {param($Method,$Uri,$Headers,$TimeoutSec,$MaximumRedi
 }
 $selectionPath=Join-Path 'TEMP' 'selection.json'
 $LlamaBaseUrl=''
-if((Resolve-Llama)-cne'http://127.0.0.1:8080'){throw 'DEFAULT_WRONG'}
+if((Resolve-Llama)-cne'http://127.0.0.1:5000'){throw 'DEFAULT_WRONG'}
 foreach($valid in @('http://localhost','http://127.0.0.1:65535','http://localhost:1/')){
  $LlamaBaseUrl=$valid
  if((Resolve-Llama)-cne$valid.TrimEnd('/')){throw 'VALID_ROUTER_REJECTED'}
