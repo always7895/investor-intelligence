@@ -21,7 +21,7 @@ V21_MAX_SYNC_BODY_BYTES = "5000000"
 V21_MAX_SYNC_AGE_SECONDS = "300"
 V21_TOP20_MAX_AGE_SECONDS = "7200"
 V21_OWNER_PAIRING_ENABLED = "true"
-V21_SCHEDULED_PUSH_ENABLED = "true"
+V21_SCHEDULED_PUSH_ENABLED = "false"
 # One Production writer (hourly sealed publisher): signed activation commits are refused unless "true".
 V213_ACTIVATION_COMMIT_ENABLED = "false"
 V213_FIELD_LOCALE = "bilingual"
