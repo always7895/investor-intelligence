@@ -55,7 +55,7 @@ def vitest_runner(replay_dir: Path, result_path: Path) -> int:
     return done.returncode
 
 
-def expectations(result: dict[str, Any], state: str | None, run_id: str, identity: bool = False) -> list[str]:
+def expectations(result: dict[str, Any], state: str | None, run_id: str, identity: bool = False, bottleneck: bool = False) -> list[str]:
     """Names of every failed expectation for this Top20 state (empty: pass)."""
     checks = {
         "READER_CONTRACT": result.get("reader_contract_version") == READER_CONTRACT_VERSION,
@@ -86,6 +86,9 @@ def expectations(result: dict[str, Any], state: str | None, run_id: str, identit
         probe = result.get("identity_probe") or {}
         checks["IDENTITY_NVDA"] = probe.get("NVDA") == "RESOLVED:NASDAQ:NVDA"
         checks["IDENTITY_2330"] = probe.get("2330") == "RESOLVED:TWSE:2330"
+    if bottleneck:
+        checks["BOTTLENECK_V3"] = int(result.get("bottleneck_v3_records") or 0) >= 10 and int(result.get("bottleneck_v3_flex") or 0) > 0
+        checks["INDUSTRY_V3"] = int(result.get("industry_v3_flex") or 0) > 0
     return [name for name, ok in checks.items() if not ok]
 
 
@@ -100,12 +103,17 @@ def replay(run_dir: Path, runner: Runner = vitest_runner) -> dict[str, Any]:
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             result = {}
-    failed = expectations(result, state, run_id, bool(summary.get("lazy_objects"))) if result else ["RESULT_MISSING"]
+    objects = json.loads((run_dir / "objects.json").read_bytes().decode("utf-8"))
+    seal = json.loads(next(body for key, body in objects.items() if key.endswith(":v213:snapshot-seal:v1")))
+    sealed_keys = set(seal.get("objects", {}))
+    identity = any(key.startswith("v213:identity:v2:") for key in sealed_keys)
+    failed = expectations(result, state, run_id, identity, "v213:bottleneck-top20:v3" in sealed_keys) if result else ["RESULT_MISSING"]
     if code != 0:
         failed.insert(0, "VITEST_EXIT_NONZERO")
     return {"status": "PASS" if not failed else "FAIL", "run_id": run_id, "top20_state": state, "failed": failed,
             **{key: result.get(key) for key in ("fresh", "top20_records", "test_only_admission", "report_generated_at",
-                                                 "potential_ranking_records", "reader_contract_version", "identity_probe")}}
+                                                 "potential_ranking_records", "reader_contract_version", "identity_probe",
+                                                 "bottleneck_v3_records")}}
 
 
 def main(argv: list[str] | None = None) -> int:

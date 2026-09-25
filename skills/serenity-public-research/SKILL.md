@@ -5,7 +5,7 @@ description: Researches listed companies through the public Serenity (@aleabitor
 
 # Serenity public research
 
-Serenity is the primary public-method lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: dated demand, compute, capital and energy scenarios may generate hypotheses, never company proof or an extra score. Neither author guarantees returns.
+Serenity is the primary lens. Leopold Aschenbrenner is **CONTEXT_ONLY** for company proof; since 2026-09-26 (operator) his scaling chain leads the industry ranking and his 13F is a lead input. Neither author guarantees returns.
 
 ## Workflow
 

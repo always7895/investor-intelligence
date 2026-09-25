@@ -1,5 +1,6 @@
 import { parseQuery, type ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "./bottleneck-v3";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
@@ -152,12 +153,32 @@ const STRATEGY_ALIASES: Record<string, "covered_call" | "cash_secured_put" | "bu
 export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const isEnvText = env.V213_LINE_PRESENTATION === "text";
   const command = query.normalized;
+  const commandText = isEnvText || /文字\s*$/i.test(command);
+
+  // --- Bottleneck-explosion Top20 v3 and the Leopold-led industry ranking (sealed lazy object) ---
+  if (/^(?:top\s*20|瓶頸爆發榜|瓶頸\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
+    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    if (doc) return buildBottleneckTop20Messages(doc, commandText ? "text" : "flex");
+  }
+  const bottleneckDetail = /^瓶頸詳情\s+([A-Za-z0-9.\-]{1,16})$/i.exec(command);
+  if (bottleneckDetail) {
+    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    return doc ? buildBottleneckDetail(doc, bottleneckDetail[1]!) : "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。";
+  }
+  if (/^(?:產業爆發榜|产业爆发榜|產業爆發)(?:\s*文字)?$/i.test(command)) {
+    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    return doc ? buildIndustryExplosionMessages(doc, commandText ? "text" : "flex") : "產業爆發榜目前沒有已封存且在時效內的資料，未以舊資料替代。";
+  }
+  if (/^(?:七欄\s*top\s*20|舊版\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
+    return v213Top20LineAnswer(env, { ...query, normalized: /文字\s*$/.test(command) ? "Top20 文字" : "Top20" });
+  }
   if (/^(?:選單|菜单|menu|功能導覽|功能导航)$/i.test(command)) {
     return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
       "A｜TOP20：當輪20家公司、歷史報酬、量化訂單線索及同輪證據。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；合格產業未達門檻時啟動短缺通報。",
       "C｜期權與個股快查：選擇權策略教學與公開合約報價；無合格報價時維持不可用，絕不猜測。",
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
+      "E｜瓶頸爆發 TOP20 已取代原榜單（Serenity/Leopold 線索＋財報與市場數據）；「產業爆發榜」看 Leopold 因果鏈產業排序；「七欄Top20」看舊版七欄榜。",
     ], NAV, isEnvText);
   }
 

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Maps Serenity (@aleabitoreddit) cashtags and company names that are not US-listed symbols to their home listing (Yahoo Finance symbol, exchange, currency). Identity metadata only; theses and figures come from the dated posts and company data, never from this file. Exchange codes verified against the exchanges' public listings (2026-09-26).",
+  "cashtags": {
+    "SIVE": {"symbol": "SIVE.ST", "name": "Sivers Semiconductors", "exchange": "Nasdaq Stockholm", "currency": "SEK"},
+    "SIVEF": {"symbol": "SIVE.ST", "name": "Sivers Semiconductors", "exchange": "Nasdaq Stockholm", "currency": "SEK"},
+    "XFAB": {"symbol": "XFAB.PA", "name": "X-FAB Silicon Foundries", "exchange": "Euronext Paris", "currency": "EUR"},
+    "SOI": {"symbol": "SOI.PA", "name": "Soitec", "exchange": "Euronext Paris", "currency": "EUR"},
+    "LPK": {"symbol": "LPK.DE", "name": "LPKF Laser & Electronics", "exchange": "Xetra", "currency": "EUR"},
+    "ESMT": {"symbol": "3006.TW", "name": "Elite Semiconductor Microelectronics Technology", "exchange": "TWSE", "currency": "TWD"},
+    "SKHY": {"symbol": "000660.KS", "name": "SK hynix", "exchange": "KRX", "currency": "KRW"},
+    "HPS.A": {"symbol": "HPS-A.TO", "name": "Hammond Power Solutions", "exchange": "TSX", "currency": "CAD"},
+    "IQE": {"symbol": "IQE.L", "name": "IQE plc", "exchange": "LSE", "currency": "GBP"},
+    "ENR": {"symbol": "ENR.DE", "name": "Siemens Energy", "exchange": "Xetra", "currency": "EUR"}
+  },
+  "names": {
+    "samsung": {"symbol": "005930.KS", "name": "Samsung Electronics", "exchange": "KRX", "currency": "KRW"},
+    "sk hynix": {"symbol": "000660.KS", "name": "SK hynix", "exchange": "KRX", "currency": "KRW"},
+    "hynix": {"symbol": "000660.KS", "name": "SK hynix", "exchange": "KRX", "currency": "KRW"},
+    "etron": {"symbol": "5351.TWO", "name": "Etron Technology", "exchange": "TPEx", "currency": "TWD"},
+    "foci": {"symbol": "3363.TWO", "name": "FOCI Fiber Optic Communications", "exchange": "TPEx", "currency": "TWD"},
+    "shunsin": {"symbol": "6451.TW", "name": "ShunSin Technology", "exchange": "TWSE", "currency": "TWD"},
+    "alchip": {"symbol": "3661.TW", "name": "Alchip Technologies", "exchange": "TWSE", "currency": "TWD"},
+    "taiyo yuden": {"symbol": "6976.T", "name": "Taiyo Yuden", "exchange": "TSE", "currency": "JPY"},
+    "oe solutions": {"symbol": "138080.KQ", "name": "OE Solutions", "exchange": "KOSDAQ", "currency": "KRW"},
+    "sivers": {"symbol": "SIVE.ST", "name": "Sivers Semiconductors", "exchange": "Nasdaq Stockholm", "currency": "SEK"},
+    "x-fab": {"symbol": "XFAB.PA", "name": "X-FAB Silicon Foundries", "exchange": "Euronext Paris", "currency": "EUR"},
+    "soitec": {"symbol": "SOI.PA", "name": "Soitec", "exchange": "Euronext Paris", "currency": "EUR"},
+    "lpkf": {"symbol": "LPK.DE", "name": "LPKF Laser & Electronics", "exchange": "Xetra", "currency": "EUR"},
+    "nittobo": {"symbol": "3110.T", "name": "Nitto Boseki", "exchange": "TSE", "currency": "JPY"},
+    "ibiden": {"symbol": "4062.T", "name": "Ibiden", "exchange": "TSE", "currency": "JPY"}
+  }
+}

@@ -19,7 +19,7 @@ export const SNAPSHOT_OPTIONAL_KEYS = ["v213:macro-industry:latest"] as const;
 /** Lazy sealed payloads: listed in the manifest with their digest, stored once under the content-addressed key
  *  `blob:v1:<sha256>` and verified only when a reader asks for them (identity shards, quotes, options). They never
  *  count toward the eager read of every question and are re-written only when their bytes change. */
-export const SNAPSHOT_LAZY_KEY_RE = /^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v1)$/;
+export const SNAPSHOT_LAZY_KEY_RE = /^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v1|bottleneck-top20:v3)$/;
 export const SNAPSHOT_LAZY_BLOB_PREFIX = "blob:v1:";
 const MAX_LAZY_KEYS = 64;
 const MAX_LAZY_TOTAL = 33_554_432;

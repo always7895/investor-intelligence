@@ -21,7 +21,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 NS = "96142af40b5d4213862d5483fe3a66da"
 RUN_ID = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
-LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v1)$")
+LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v1|bottleneck-top20:v3)$")
 Getter = Callable[[str], bytes]
 
 

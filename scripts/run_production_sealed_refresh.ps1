@@ -107,8 +107,8 @@ function Invoke-CarryForwardSeal {
     # the identity shards, (2) the carried Top20 alone (an identity defect never costs the Top20), (3) an
     # INSUFFICIENT Top20. The macro overview is sealed in every tier.
     $tiers = @(
-        [pscustomobject]@{ Stage = 'OK'; Args = @('--top20-bundle', '--identity-shards') },
-        [pscustomobject]@{ Stage = 'WITHOUT_IDENTITY'; Args = @('--top20-bundle') },
+        [pscustomobject]@{ Stage = 'OK'; Args = @('--top20-bundle', '--identity-shards', '--bottleneck-v3') },
+        [pscustomobject]@{ Stage = 'WITHOUT_LAZY'; Args = @('--top20-bundle') },
         [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient', 'TOP20_STAGED_REPLAY_FAILED') }
     )
     $last = [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'REPLAY' }

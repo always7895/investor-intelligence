@@ -84,6 +84,9 @@ SEAL_KEY = "v213:snapshot-seal:v1"
 LAZY_BLOB_PREFIX = "blob:v1:"
 IDENTITY_SHARDS_PATH = ROOT / "data" / "cache" / "identity_shards_latest.json"
 IDENTITY_MAX_AGE = timedelta(days=8)
+BOTTLENECK_V3_PATH = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
+BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3"
+BOTTLENECK_V3_MAX_AGE = timedelta(hours=13)  # the Worker refuses it after report_max_age_hours (14 h)
 OBJECT_KEYS = [
     "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
     "reports:latest", "reports:morning:latest", "reports:evening:latest",
@@ -378,6 +381,47 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
     return bodies
 
 
+def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
+    """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed."""
+    try:
+        doc = json.loads(path.read_bytes().decode("utf-8"))
+        generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if doc.get("schema") != "v213-bottleneck-top20-v3" or not timedelta(0) <= now - generated <= BOTTLENECK_V3_MAX_AGE:
+            return {}
+        pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
+        top = []
+        for entry in doc["top"]:
+            parts = entry["score_parts"]
+            sig, pos = entry.get("serenity"), entry.get("leopold")
+            fund = entry.get("fundamentals")
+            top.append({
+                "rank": entry["rank"], "symbol": entry["symbol"], "name": str(entry.get("name") or entry["symbol"])[:160],
+                "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
+                "role": entry["role"][:200], "role_source": entry["role_source"],
+                "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
+                "fundamentals": None if not fund else pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev",
+                                                                  "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                "market": pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "currency")),
+                "market_cap_usd": entry.get("market_cap_usd"),
+                "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
+                "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
+            })
+        industries = [{**pick(row, ("rank", "id", "name_zh", "chain", "leopold_constraint", "explosiveness", "median_revenue_yoy",
+                                    "median_acceleration", "median_return_6m", "fund_13f_weight", "serenity_heat")),
+                       "news": None if not row.get("news") else pick(row["news"], ("source", "source_url", "recent_30d", "prior_60d", "ratio"))}
+                      for row in doc["industries"]]
+        serenity = (doc.get("leads") or {}).get("serenity") or {}
+        filing = ((doc.get("leads") or {}).get("leopold") or {}).get("filing") or {}
+        sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"],
+                  "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
+                  "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
+                  "top": top, "industries": industries}
+        body = json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    return {BOTTLENECK_V3_KEY: body} if len(body.encode("utf-8")) <= 1_900_000 and 10 <= len(top) <= 20 else {}
+
+
 def build_seal(bodies: "dict[str, str]", meta: "dict", lazy: "dict[str, str] | None" = None) -> "tuple[str, str]":
     digest_rows = {key: {"sha256": _sha(bodies[key]), "utf8_bytes": len(bodies[key].encode("utf-8"))}
                    for key in [*OBJECT_KEYS, MACRO_KEY]}
@@ -425,6 +469,8 @@ def main(argv=None) -> None:
                     help="Directory for sealed runs (default state/v213-snapshots).")
     ap.add_argument("--identity-shards", nargs="?", const=str(IDENTITY_SHARDS_PATH), default=None, metavar="PATH",
                     help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
+    ap.add_argument("--bottleneck-v3", nargs="?", const=str(BOTTLENECK_V3_PATH), default=None, metavar="PATH",
+                    help="Seal the bottleneck-explosion Top20 v3 as a lazy object (no PATH: data/cache/bottleneck_top20_v3.json).")
     args = ap.parse_args(argv)
     if args.live_clock:
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -451,6 +497,8 @@ def main(argv=None) -> None:
     lazy: "dict[str, str]" = {}
     if args.identity_shards is not None:
         lazy.update(lazy_identity_bodies(Path(args.identity_shards), LIVE_NOW or datetime.now(timezone.utc)))
+    if args.bottleneck_v3 is not None:
+        lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
     out_dir = args.snapshot_root / meta["run_id"]

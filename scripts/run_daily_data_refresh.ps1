@@ -32,6 +32,10 @@ try {
         & python 'scripts\company_deep_report.py' --refresh --if-older-than-hours $IfOlderThanHours
         # Official listing directories for the LINE stock/options lookup (sealed as identity shards).
         & python 'scripts\build_identity_shards.py' --if-older-than-hours $IfOlderThanHours
+        # Bottleneck-explosion Top20 v3 leads and ranking (operator 2026-09-26: data refreshed near real time).
+        & python 'scripts\serenity_signals.py' --refresh --if-older-than-hours 6
+        & python 'scripts\leopold_positions.py' --if-older-than-hours 24
+        & python 'scripts\bottleneck_top20_v3.py' --if-older-than-hours 3
         if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
     } finally { Pop-Location }
 } finally {

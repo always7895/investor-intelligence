@@ -33,7 +33,7 @@ Focused run: `-m unittest tests.test_<name>`. Stop at the first nonzero exit. De
 
 ## Research and recommendations
 
-- Method: the on-demand skill `skills/serenity-public-research/SKILL.md` (Serenity primary; Leopold Aschenbrenner CONTEXT_ONLY, never a score bonus or permanent sector filter). Claims need independent claim-level evidence; mirrors of one disclosure are one lineage. The skill is not deployment authority.
+- Method: the on-demand skill `skills/serenity-public-research/SKILL.md` (Serenity primary; Leopold Aschenbrenner CONTEXT_ONLY for company proof, never a permanent sector filter). Operator decision 2026-09-26: Leopold's scaling chain leads the industry ranking and his fund's 13F weight is a lead input of the bottleneck Top20 v3 ([BOTTLENECK_TOP20_V3](docs/BOTTLENECK_TOP20_V3.md)); company figures still come only from filings and market data. Claims need independent claim-level evidence; mirrors of one disclosure are one lineage. The skill is not deployment authority.
 - Data-grounded recommendations, options order parameters and position sizing are allowed (`cloud/src/v213/options-guidance.ts`). The system never executes trades; LINE stays public-quote observation only.
 
 ## Work, commits and evidence
