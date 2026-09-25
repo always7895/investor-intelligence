@@ -3,7 +3,10 @@ import { assertLineMessages, type LineOutboundMessage } from "../src/line-messag
 import {
   CAVEAT_DISCLAIMER,
   CONSERVATIVE_DELTA_BAND,
+  OPTION_CYCLE_DTE_WINDOW,
+  buildOptionsCycleComparisonFlex,
   buildOptionsGuidanceFlexBubble,
+  classifyExpiryCycle,
   buildOptionsGuidanceText,
   buildPositionSizingFlexBubble,
   buildPositionSizingText,
@@ -187,4 +190,62 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       expect(body).toContain("LIMIT");
       expect(txt).toContain("LIMIT");
     });  });
+});
+
+describe("Weekly and monthly option cycles (週期權／月期權)", () => {
+  it("classifies the third Friday as the standard monthly and other expiries as weeklies", () => {
+    expect(classifyExpiryCycle("2026-10-16")).toBe("MONTHLY");
+    expect(classifyExpiryCycle("2026-12-18")).toBe("MONTHLY");
+    expect(classifyExpiryCycle("2027-01-15")).toBe("MONTHLY");
+    expect(classifyExpiryCycle("2026-10-09")).toBe("WEEKLY");
+    expect(classifyExpiryCycle("2026-10-23")).toBe("WEEKLY");
+    expect(classifyExpiryCycle("2026-10-15")).toBe("WEEKLY");
+    expect(() => classifyExpiryCycle("2026-02-30")).toThrow("OPTIONS_GUIDANCE_INVALID_EXPIRY");
+    expect(() => classifyExpiryCycle("2026/10/16")).toThrow("OPTIONS_GUIDANCE_INVALID_EXPIRY");
+  });
+
+  it("uses the collector's DTE windows and reports whether the contract fits", () => {
+    expect(OPTION_CYCLE_DTE_WINDOW).toEqual({ WEEKLY: [3, 14], MONTHLY: [21, 45] });
+    const weekly = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
+    expect(weekly.expiry_cycle).toBe("WEEKLY");
+    expect(weekly.cycle_matches_request).toBe(true);
+    expect(weekly.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
+    const monthly = gd({ expiry: "2026-10-16", dte: 30, cycle: "monthly" });
+    expect(monthly.dte_window).toEqual([21, 45]);
+    expect(monthly.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
+    expect(gd({ expiry: "2026-12-18", dte: 94 }).dte_window_status).toBe("OUTSIDE_CYCLE_WINDOW");
+    expect(gd({ expiry: "2026-12-18", dte: 94 }).requested_cycle).toBeNull();
+  });
+
+  it("flags a requested cycle that does not match the expiry instead of swapping contracts", () => {
+    const g = gd({ expiry: "2026-10-16", dte: 30, cycle: "weekly" });
+    expect(g.expiry_cycle).toBe("MONTHLY");
+    expect(g.cycle_matches_request).toBe(false);
+    expect(g.dte_window).toEqual([3, 14]);
+    const text = buildOptionsGuidanceText(g);
+    expect(text).toContain("查詢為週期權 Weekly，此到期日屬月期權 Monthly");
+    expect(() => gd({ cycle: "quarterly" as never })).toThrow("OPTIONS_GUIDANCE_INVALID_CYCLE");
+  });
+
+  it("shows the cycle on the card and in the text", () => {
+    const g = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
+    const card = JSON.stringify(buildOptionsGuidanceFlexBubble(g));
+    expect(card).toContain("週期權 Weekly");
+    expect(card).toContain("標準區間 3-14 天，符合標準區間");
+    expect(buildOptionsGuidanceText(g)).toContain("週期：週期權 Weekly｜DTE 7");
+  });
+
+  it("builds a two-card weekly versus monthly comparison with both annualized yields", () => {
+    const weekly = gd({ expiry: "2026-10-09", dte: 7, bid: 0.9, mid: 1.0, ask: 1.1 });
+    const monthly = gd({ expiry: "2026-10-16", dte: 30, bid: 2.9, mid: 3.0, ask: 3.1 });
+    const msg = buildOptionsCycleComparisonFlex(weekly, monthly) as FlexMsg;
+    assertLineMessages([msg]);
+    expect((msg.contents as any).contents).toHaveLength(2);
+    expect(msg.altText).toContain(`週 2026-10-09 年化 ${weekly.annualized_yield_pct!.toFixed(1)}%`);
+    expect(msg.altText).toContain(`月 2026-10-16 年化 ${monthly.annualized_yield_pct!.toFixed(1)}%`);
+    expect(JSON.stringify(msg)).not.toContain("MARKET");
+    expect(() => buildOptionsCycleComparisonFlex(monthly, weekly)).toThrow("OPTIONS_GUIDANCE_CYCLE_ORDER_INVALID");
+    const other = gd({ ticker: "amd", expiry: "2026-10-16", dte: 30 });
+    expect(() => buildOptionsCycleComparisonFlex(weekly, other)).toThrow("OPTIONS_GUIDANCE_COMPARISON_MISMATCH");
+  });
 });

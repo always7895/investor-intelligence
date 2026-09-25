@@ -1,5 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, divider, footnote, kpiTile, labelValue, panel, productHeader, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, chip, divider, footnote, kpiTile, labelValue, panel, productHeader, uiBox, uiText } from "./line-theme";
 
 /**
  * Options order guidance & position sizing (AGENTS.md "Recommendations &
@@ -14,6 +14,13 @@ export type OptionsStrategy = "covered_call" | "cash_secured_put";
 export type DeltaAssessment = "TARGET_CONSERVATIVE_BAND" | "TOO_AGGRESSIVE" | "TOO_FAR_OTM" | "UNAVAILABLE";
 export type LiquidityStatus = "QUALIFIED" | "LOW_VOLUME" | "LOW_OI" | "WIDE_SPREAD";
 export type SizingArchetype = "STEADY_CORE_COMPOUNDER" | "BOTTLENECK_CHOKEPOINT" | "SPECULATIVE_HIGH_DILUTION";
+export type OptionCycle = "WEEKLY" | "MONTHLY";
+export type DteWindowStatus = "WITHIN_CYCLE_WINDOW" | "OUTSIDE_CYCLE_WINDOW";
+
+/** DTE windows shared with scripts/fetch_options.py and market-product-schema.ts (weekly 3-14, monthly 21-45). */
+export const OPTION_CYCLE_DTE_WINDOW: Readonly<Record<OptionCycle, readonly [number, number]>> = Object.freeze({
+  WEEKLY: [3, 14] as const, MONTHLY: [21, 45] as const,
+});
 
 export const CONSERVATIVE_DELTA_BAND: readonly [number, number] = [0.2, 0.3];
 export const LIQUIDITY_MIN_OPEN_INTEREST = 100;
@@ -52,6 +59,13 @@ export interface OptionsOrderGuidance {
   limit_reference_band: LimitReferenceBand;
   annualized_yield_pct: number | null;
   liquidity_status: LiquidityStatus;
+  /** Cycle derived from the expiry date (third Friday = standard monthly). */
+  expiry_cycle: OptionCycle;
+  /** Cycle the operator asked for, if any; a mismatch is flagged, never silently swapped. */
+  requested_cycle: OptionCycle | null;
+  cycle_matches_request: boolean | null;
+  dte_window: readonly [number, number];
+  dte_window_status: DteWindowStatus;
   caveat_disclaimer: string;
 }
 
@@ -76,6 +90,8 @@ export interface GenerateOptionsOrderGuidanceParams {
   ask: number;
   openInterest: number;
   volume: number;
+  /** Optional requested cycle from a "每週期權 / 每月期權" style query. */
+  cycle?: "weekly" | "monthly" | null;
 }
 
 function requireFinitePositive(label: string, value: number): number {
@@ -110,6 +126,21 @@ const ARCHETYPE_LABEL: Record<SizingArchetype, string> = {
   SPECULATIVE_HIGH_DILUTION: "高稀釋投機型 Speculative High-Dilution",
 };
 
+/** Standard US equity monthly options expire on the third Friday; other listed expiries are weeklies.
+ * Holiday-shifted Thursday monthlies cannot be recognised from the date alone and classify as WEEKLY. */
+export function classifyExpiryCycle(expiry: string): OptionCycle {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expiry);
+  if (!match) throw new Error("OPTIONS_GUIDANCE_INVALID_EXPIRY");
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new Error("OPTIONS_GUIDANCE_INVALID_EXPIRY");
+  }
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const firstFriday = 1 + ((5 - firstWeekday + 7) % 7);
+  return date.getUTCDay() === 5 && day === firstFriday + 14 ? "MONTHLY" : "WEEKLY";
+}
+
 export function assessDeltaBand(delta: number | null): DeltaAssessment {
   if (delta === null || !Number.isFinite(delta)) return "UNAVAILABLE";
   const [low, high] = CONSERVATIVE_DELTA_BAND;
@@ -139,6 +170,12 @@ export function generateOptionsOrderGuidance(params: GenerateOptionsOrderGuidanc
   const mid = requireFinitePositive("MID", params.mid);
   const expiry = String(params.expiry ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) throw new Error("OPTIONS_GUIDANCE_INVALID_EXPIRY");
+  const expiryCycle = classifyExpiryCycle(expiry);
+  if (params.cycle !== undefined && params.cycle !== null && params.cycle !== "weekly" && params.cycle !== "monthly") {
+    throw new Error("OPTIONS_GUIDANCE_INVALID_CYCLE");
+  }
+  const requestedCycle: OptionCycle | null = params.cycle === "weekly" ? "WEEKLY" : params.cycle === "monthly" ? "MONTHLY" : null;
+  const window = OPTION_CYCLE_DTE_WINDOW[requestedCycle ?? expiryCycle];
   const strategy: OptionsStrategy = (params.strategy === "covered_call" || params.strategy === "cash_secured_put")
     ? params.strategy
     : (() => { throw new Error("OPTIONS_GUIDANCE_INVALID_STRATEGY"); })();
@@ -171,6 +208,11 @@ export function generateOptionsOrderGuidance(params: GenerateOptionsOrderGuidanc
     // premium sold at mid (fair value): (premium/strike) * (365/dte) * 100
     annualized_yield_pct: (mid / strike) * (365 / dte) * 100,
     liquidity_status: assessLiquidity(params.openInterest, params.volume, bid, mid, ask),
+    expiry_cycle: expiryCycle,
+    requested_cycle: requestedCycle,
+    cycle_matches_request: requestedCycle === null ? null : requestedCycle === expiryCycle,
+    dte_window: window,
+    dte_window_status: dte >= window[0] && dte <= window[1] ? "WITHIN_CYCLE_WINDOW" : "OUTSIDE_CYCLE_WINDOW",
     caveat_disclaimer: CAVEAT_DISCLAIMER,
   };
 }
@@ -187,6 +229,22 @@ export function generatePositionSizingFramework(archetype: SizingArchetype): Pos
   };
 }
 
+const CYCLE_LABEL: Record<OptionCycle, string> = {
+  WEEKLY: "週期權 Weekly",
+  MONTHLY: "月期權 Monthly",
+};
+const WINDOW_LABEL: Record<DteWindowStatus, string> = {
+  WITHIN_CYCLE_WINDOW: "符合標準區間",
+  OUTSIDE_CYCLE_WINDOW: "超出標準區間",
+};
+
+function cycleLine(guidance: OptionsOrderGuidance): string {
+  const [low, high] = guidance.dte_window;
+  const mismatch = guidance.cycle_matches_request === false && guidance.requested_cycle
+    ? `｜查詢為${CYCLE_LABEL[guidance.requested_cycle]}，此到期日屬${CYCLE_LABEL[guidance.expiry_cycle]}` : "";
+  return `${CYCLE_LABEL[guidance.expiry_cycle]}｜DTE ${guidance.dte}（標準區間 ${low}-${high} 天，${WINDOW_LABEL[guidance.dte_window_status]}）${mismatch}`;
+}
+
 function fmt(n: number): string {
   return n.toFixed(2);
 }
@@ -197,6 +255,7 @@ export function buildOptionsGuidanceText(guidance: OptionsOrderGuidance): string
     `【期權掛單參數｜${guidance.ticker}｜${STRATEGY_LABEL[guidance.strategy]}】`,
     `標的價格：${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}；Strike ${fmt(guidance.strike)}；到期 ${guidance.expiry}（DTE ${guidance.dte}）`,
     `Delta：${guidance.delta === null ? "N/A" : fmt(guidance.delta)}（${DELTA_LABEL[guidance.delta_assessment]}）；保守目標區 0.20-0.30`,
+    `週期：${cycleLine(guidance)}`,
     `委託類型：${guidance.order_type}（建議避免市場單）`,
     `限價參考帶：Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}；建議掛單 ${fmt(band.recommended_limit)}（參考區間 ${fmt(band.lower)}-${fmt(band.upper)}）`,
     guidance.annualized_yield_pct === null
@@ -207,40 +266,60 @@ export function buildOptionsGuidanceText(guidance: OptionsOrderGuidance): string
   ].join("\n");
 }
 
-export function buildOptionsGuidanceFlexBubble(guidance: OptionsOrderGuidance): LineOutboundMessage {
+function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, unknown> {
   const band = guidance.limit_reference_band;
   const yieldText = guidance.annualized_yield_pct === null
     ? "Annualized yield: N/A"
     : `Annualized yield: ${guidance.annualized_yield_pct.toFixed(1)}%`;
+  return {
+    type: "bubble", size: "mega",
+    header: productHeader("韭菜守護者 · 期權掛單參數 / Order parameters", guidance.ticker, [
+      uiBox([
+        chip(CYCLE_LABEL[guidance.expiry_cycle], guidance.dte_window_status === "WITHIN_CYCLE_WINDOW" ? T.green : T.caution),
+        uiText(STRATEGY_LABEL[guidance.strategy], "sm", T.onDarkMuted, { gravity: "center", flex: 1 }),
+      ], { layout: "horizontal", spacing: "md" }),
+    ]),
+    body: uiBox([
+      uiBox([
+        kpiTile("建議限價 / Limit", fmt(band.recommended_limit), T.ink),
+        kpiTile("Strike", fmt(guidance.strike), T.ink),
+        kpiTile("DTE", String(guidance.dte), T.ink),
+      ], { layout: "horizontal", spacing: "sm" }),
+      labelValue("到期 / Expiry", `${guidance.expiry}（DTE ${guidance.dte}）｜標的價格 ${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}`),
+      labelValue("週期 / Cycle", cycleLine(guidance)),
+      labelValue("Delta", `${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}（目標 0.20-0.30）`),
+      divider(),
+      labelValue("委託與報價 / Order & quotes", `委託 ${guidance.order_type}｜Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}`),
+      labelValue("限價區間 / Limit band", `Band ${fmt(band.lower)}-${fmt(band.upper)}｜建議避免市場單`),
+      labelValue("收益 / Yield", yieldText, { weight: "bold" }),
+      panel([
+        uiText(`流動性：${LIQUIDITY_LABEL[guidance.liquidity_status]}`, "sm", T.ink, { weight: "bold" }),
+        footnote(guidance.caveat_disclaimer),
+      ], "caution"),
+    ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
+  };
+}
+
+export function buildOptionsGuidanceFlexBubble(guidance: OptionsOrderGuidance): LineOutboundMessage {
+  const band = guidance.limit_reference_band;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: `期權掛單參數：${guidance.ticker} ${guidance.expiry} Strike ${fmt(guidance.strike)}（${guidance.strategy}；LIMIT ${fmt(band.recommended_limit)}）`,
-    contents: {
-      type: "carousel",
-      contents: [{
-        type: "bubble", size: "mega",
-        header: productHeader("韭菜守護者 · 期權掛單參數 / Order parameters", guidance.ticker, [
-          uiText(STRATEGY_LABEL[guidance.strategy], "sm", T.onDarkMuted),
-        ]),
-        body: uiBox([
-          uiBox([
-            kpiTile("建議限價 / Limit", fmt(band.recommended_limit), T.ink),
-            kpiTile("Strike", fmt(guidance.strike), T.ink),
-            kpiTile("DTE", String(guidance.dte), T.ink),
-          ], { layout: "horizontal", spacing: "sm" }),
-          labelValue("到期 / Expiry", `${guidance.expiry}（DTE ${guidance.dte}）｜標的價格 ${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}`),
-          labelValue("Delta", `${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}（目標 0.20-0.30）`),
-          divider(),
-          labelValue("委託與報價 / Order & quotes", `委託 ${guidance.order_type}｜Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}`),
-          labelValue("限價區間 / Limit band", `Band ${fmt(band.lower)}-${fmt(band.upper)}｜建議避免市場單`),
-          labelValue("收益 / Yield", yieldText, { weight: "bold" }),
-          panel([
-            uiText(`流動性：${LIQUIDITY_LABEL[guidance.liquidity_status]}`, "sm", T.ink, { weight: "bold" }),
-            footnote(guidance.caveat_disclaimer),
-          ], "caution"),
-        ], { paddingAll: "xl", spacing: "lg", backgroundColor: T.paper }),
-      }],
-    },
+    altText: `期權掛單參數：${guidance.ticker} ${guidance.expiry} Strike ${fmt(guidance.strike)}（${guidance.strategy}；${CYCLE_LABEL[guidance.expiry_cycle]}；LIMIT ${fmt(band.recommended_limit)}）`,
+    contents: { type: "carousel", contents: [optionsGuidanceBubble(guidance)] },
+  };
+  assertLineMessages([msg]);
+  return msg;
+}
+
+/** Weekly and monthly contracts of the same ticker and strategy side by side; never mixes tickers or strategies. */
+export function buildOptionsCycleComparisonFlex(weekly: OptionsOrderGuidance, monthly: OptionsOrderGuidance): LineOutboundMessage {
+  if (weekly.expiry_cycle !== "WEEKLY" || monthly.expiry_cycle !== "MONTHLY") throw new Error("OPTIONS_GUIDANCE_CYCLE_ORDER_INVALID");
+  if (weekly.ticker !== monthly.ticker || weekly.strategy !== monthly.strategy) throw new Error("OPTIONS_GUIDANCE_COMPARISON_MISMATCH");
+  const yieldOf = (g: OptionsOrderGuidance) => g.annualized_yield_pct === null ? "N/A" : `${g.annualized_yield_pct.toFixed(1)}%`;
+  const msg: LineOutboundMessage = {
+    type: "flex",
+    altText: `週／月期權對照：${weekly.ticker}｜週 ${weekly.expiry} 年化 ${yieldOf(weekly)}｜月 ${monthly.expiry} 年化 ${yieldOf(monthly)}（LIMIT 參數，非券商執行）`,
+    contents: { type: "carousel", contents: [optionsGuidanceBubble(weekly), optionsGuidanceBubble(monthly)] },
   };
   assertLineMessages([msg]);
   return msg;

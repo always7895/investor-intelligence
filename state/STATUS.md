@@ -4,23 +4,21 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `79d23f8` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `c665684` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — LINE Flex UI/UX redesign (development only)
+## This change — weekly and monthly options guidance (週期權／月期權)
 
-Operator request 2026-09-25: a professional visual redesign of the existing UI. Source change only; no Worker deployment, LINE send, rich-menu upload or Production mutation.
+Operator request 2026-09-25. The query path (`[代號] 每週期權／每月期權`), collector windows (`scripts/fetch_options.py`) and KV sync already handled weekly and monthly quotes; the order-parameter guidance did not.
 
-- `cloud/src/v213/line-theme.ts` becomes a small design system: existing tokens unchanged, new semantic tokens (subtle, night/deepGreen header, on-dark text, negative, caution, alert) all at WCAG AA or better on their surfaces; components `productHeader`/`headerStyle` (gradient with solid fallback), `chip`, `sectionTitle`, `labelValue`, `kpiTile` (sign-aware colour, sign kept in text), `panel`, `divider`, `footnote`. Shared button contract kept (link, md, brand green).
-- Top20 card: rank chip, 3xl ticker, three return KPI tiles, Returns/Company/Orders sections with the orders pair in a bordered green panel; seven labels still appear once each directly before their values; one footer button; 4 carousels × 5 kept.
-- Options order and position-sizing cards rebuilt with KPI tiles, label/value rows and a caution panel; typo 認能價格 fixed to 標的價格 (Flex and text).
-- Product headers and alert colours unified across rich menu, options product, macro industry, educational options and global equity lookup.
-- Review preview (synthetic data, rendered from actual before/after JSON): private artifact https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
-- Validation: see "Latest gate run" below.
+- `cloud/src/v213/options-guidance.ts`: `classifyExpiryCycle` (third Friday = standard monthly, otherwise weekly; holiday-shifted Thursdays stay weekly), `OPTION_CYCLE_DTE_WINDOW` shared with the collector (weekly 3–14, monthly 21–45 days), optional requested cycle with an explicit mismatch flag (never swaps contracts), DTE-window status, cycle chip and line on the card and in the text, and `buildOptionsCycleComparisonFlex` (weekly beside monthly, same ticker and strategy, both annualized yields in the alt text).
+- Tests: 5 new cases in `cloud/test/v213-options-guidance.test.ts`.
+- Not wired to live quotes: guidance still needs a sealed public quote snapshot; no Worker deployment.
 
 ## Previous changes
 
+- `c665684` LINE Flex redesign on a shared design system (Worker 895 passed; full Python 2490 OK, 439.0 s). Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `7b88bf7`, `79d23f8` research method refresh (SERENITY_LOGIC, ASCHENBRENNER_CONTEXT; full Python 2490 OK, 423.5 s) and C2b decision record.
 - `4ee66d8` C2a forward comparison renderer (5 tests; full Python 2490 OK, 435.0 s).
 - `c824b23` C1 `assess_forward_premises` premise-state shadow (12 tests; full Python 2485 OK, 460.6 s).
@@ -32,11 +30,9 @@ Operator request 2026-09-25: a professional visual redesign of the existing UI. 
 
 ## Latest gate run
 
-Working tree of this change, 2026-09-25:
-
-- Worker: `npm run typecheck` PASS; `npm test` 895 passed / 1 named manual skip (61 files) — existing contracts (seven-field inspector, one footer button, shared button style, header risk text, 4×5 carousels, no px/maxLines, LINE size limits) all hold.
-- `security_check`, `documentation_boundary_gate`, `documentation_structure_gate`, `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
-- Full Python 15:57:27–16:04:47 (started after the 15:56 SealedFreshness run finished, result 0): 2490 tests OK, 439.0 s.
+- Worker: `npm run typecheck` PASS; `npm test` 900 passed / 1 named manual skip (61 files).
+- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
+- Full Python 16:07:56–16:15:14: 2490 tests OK, 437.3 s.
 
 ## Pending operator decision — redundancy removal
 
