@@ -162,7 +162,7 @@ try {
         finally { Remove-Item Env:V213_LIVE_REPLAY_DIR, Env:V213_LIVE_REPLAY_OUT, Env:V213_LIVE_REPLAY_MAX_AGE -ErrorAction SilentlyContinue }
         $replay = $null
         if (Test-Path -LiteralPath $replayArtifact) {
-            $replay = Get-Content -LiteralPath $replayArtifact -Raw | ConvertFrom-Json
+            $replay = Get-Content -LiteralPath $replayArtifact -Raw -Encoding utf8 | ConvertFrom-Json
             $results.replay = [ordered]@{ runId = [string]$replay.run_id; fresh = [bool]$replay.fresh; refusal = [string]$replay.refusal
                 readerContractVersion = [string]$replay.reader_contract_version; top20Records = [int]$replay.top20_records
                 reportGeneratedAt = [string]$replay.report_generated_at; testOnlyAdmission = $replay.test_only_admission
