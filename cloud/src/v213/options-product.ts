@@ -12,7 +12,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle, footerStyle } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 
@@ -43,7 +43,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
     header: menuBox([
       menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", T.headerMuted),
       { ...menuText(`${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, "lg", T.headerText), weight: "bold" },
-      menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.paleGreen),
+      menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.headerSubtle),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([
@@ -54,7 +54,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
       menuBox([
         menuText("關鍵損益指標（需搭配具體策略與持倉成本）", "xs", T.muted),
         menuText("損益平衡：UNAVAILABLE（無定義策略）", "xs", T.ink),
-        menuText("最大利潤：UNAVAILABLE（無定義策略）", "xs", T.green),
+        menuText("最大利潤：UNAVAILABLE（無定義策略）", "xs", T.ink),
         menuText("最大損失：UNAVAILABLE（無定義策略）", "xs", T.negative),
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
@@ -67,7 +67,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
         menuText("履約與流動性警語", "xs", T.muted),
         menuText(`• ${quote.assignment_risk}`, "xxs", T.muted),
         menuText(`• ${quote.liquidity_warning}`, "xxs", T.muted),
-      ], { backgroundColor: T.paleGreen, paddingAll: "sm", cornerRadius: "sm" }),
+      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: menuBox([
       menuText(`時間戳記：${quote.timestamp}｜來源：${quote.source}｜憑證：${quote.provenance}｜權利：${quote.rights_status}`, "xxs", T.muted),
@@ -175,7 +175,7 @@ export function optionsUnavailableReport(
           menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
-        footer: menuBox(actions.slice(0, 4).map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
+        footer: menuBox(actions.slice(0, 4).map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
       }],
     },
   }];

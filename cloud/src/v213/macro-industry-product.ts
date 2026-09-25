@@ -10,7 +10,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle, footerStyle } from "./line-theme";
 import type {
   MacroDeepAnalysis,
   MacroGrowthRate,
@@ -96,7 +96,7 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
     header: menuBox([
       menuText(`宏觀產業 · ${rankLabel}`, "xs", T.headerMuted),
       { ...menuText(card.industry_name, "lg", T.headerText), weight: "bold" },
-      menuText(`機會分數：${card.opportunity_score}/100（量化評分，非機率）`, "xs", T.paleGreen),
+      menuText(`機會分數：${card.opportunity_score}/100（量化評分，非機率）`, "xs", T.headerSubtle),
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([
@@ -106,7 +106,7 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
       menuBox([
         menuText("可查證市場成長率（RATE）", "xs", T.muted),
-        { ...menuText(growthText, "xs", card.growth ? T.green : T.negative), weight: "bold" },
+        { ...menuText(growthText, "xs", card.growth ? T.ink : T.negative), weight: "bold" },
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
       menuBox([
@@ -125,7 +125,7 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
         menuText(`• 6M：${card.catalysts.m6}`, "xxs", T.ink),
         menuText(`• 1Y：${card.catalysts.y1}`, "xxs", T.ink),
         menuText(`• 2Y：${card.catalysts.y2}`, "xxs", T.ink),
-      ], { backgroundColor: T.paleGreen, paddingAll: "sm", cornerRadius: "sm" }),
+      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
       menuBox([
         menuText("生命週期與風險", "xs", T.muted),
         menuText(card.risks_lifecycle, "xs", T.muted),
@@ -176,7 +176,7 @@ export function buildMacroDeepAnalysisBubble(analysis: MacroDeepAnalysis) {
       menuBox([
         menuText("8. 催化時程 (Catalysts: 6M / 1Y / 2Y)", "xs", T.muted),
         menuText(`6M: ${analysis.catalysts.m6}｜1Y: ${analysis.catalysts.y1}｜2Y: ${analysis.catalysts.y2}`, "xxs", T.ink),
-      ], { backgroundColor: T.paleGreen, paddingAll: "sm", cornerRadius: "sm" }),
+      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
       menuBox([
         menuText("9. 主要產業風險 (Risks)", "xs", T.muted),
         ...analysis.risks.map(r => menuText(`• ${r}`, "xs", T.muted)),
@@ -428,7 +428,7 @@ export function macroShortfallReport(
           menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
-        footer: menuBox(actions.map(([label, cmd]) => menuAction(label, cmd)), { backgroundColor: T.paleGreen, paddingAll: "md" }),
+        footer: menuBox(actions.map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
       }],
     },
   }];

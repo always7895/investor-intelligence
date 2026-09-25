@@ -207,7 +207,7 @@ export function buildGlobalEquityLookupMessages(
     ], { ...headerStyle }),
     body: menuBox([
       menuBox([
-        menuText(statusTitle, "sm", quoteStatus === "AVAILABLE" && typeof result.price === "number" ? T.green : T.ink),
+        { ...menuText(statusTitle, "sm", T.ink), weight: "bold" },
         menuText(statusSub, "xs", T.muted),
       ], { backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
       menuBox([
@@ -224,7 +224,7 @@ export function buildGlobalEquityLookupMessages(
       menuText(`來源：${result.source}`, "xxs", T.muted),
       menuText(result.disclaimer, "xxs", T.muted),
       ...footerActions,
-    ], { backgroundColor: T.paleGreen, paddingAll: "md", spacing: "xs" }),
+    ], { backgroundColor: T.paper, paddingAll: "md", spacing: "xs" }),
   };
 
   const flexMsg: LineOutboundMessage = {

@@ -75,14 +75,14 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     };
     messages.forEach(walk);
     expect(buttons.length).toBeGreaterThan(0);
-    expect(buttons.every(b => b.height === "md" && b.color === "#147D47")).toBe(true);
+    expect(buttons.every(b => b.height === "md" && b.style === "secondary" && b.color === "#ECEEF1")).toBe(true);
     expect(buttons.map(b => ({ type: b.type, style: b.style, height: b.height, color: b.color, actionType: b.action.type }))[0])
       .toMatchInlineSnapshot(`
         {
           "actionType": "message",
-          "color": "#147D47",
+          "color": "#ECEEF1",
           "height": "md",
-          "style": "link",
+          "style": "secondary",
           "type": "button",
         }
       `);

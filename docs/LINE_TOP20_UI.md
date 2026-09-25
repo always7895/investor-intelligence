@@ -59,13 +59,13 @@ The implementation uses the same renderer for authenticated interactive Top20 an
 
 完整資料／完整文字分析指令仍由獨立產品契約處理；不改送選單或產業摘要冒充。部分入口可操作，不表示三類研究產品均已完成。
 
-Visual tokens in `line-theme.ts` use the supplied black/white mascot artwork's monochrome direction with dark-green actions and pale-green data groups. The existing rich-menu artwork is not uploaded or rescheduled by source edits. Original names are labelled explicitly; Chinese names say unverified rather than guessing. Preserve seven-field values, historic-return warnings and the realized/delayed/not-realized scenario gap.
+Visual tokens in `line-theme.ts` follow the black/white mascot artwork: ink monochrome, a three-stop black-to-graphite header gradient, and information levels by lightness (key: ink gradient strip; detail: grey; context: pale grey). Values follow the accounting convention (negatives red, everything else ink) and always keep their +/- sign; no green accent (operator direction 2026-09-25). The existing rich-menu artwork is not uploaded or rescheduled by source edits. Original names are labelled explicitly; Chinese names say unverified rather than guessing. Preserve seven-field values, historic-return warnings and the realized/delayed/not-realized scenario gap.
 
 `test/v213-rich-menu.test.ts` exercises the actual authorized caller with mocked LINE, including stale/invalid-pointer negatives, options key-presence/carryover and sealed-round fixtures, and explicit deep-product refusal. Optional `V213_MENU_PREVIEW_OUT` exports **synthetic message objects only**, not tokens/recipients, for local approximate rendering. Exporting HTML is not a successful visual review or device acceptance; no additional server is required or authorized by that export.
 
 ## Mobile hierarchy / 手機資訊層級
 
-Shared menu and Top20 detail actions use the existing green `md` button token; message commands and snapshot-bound references are unchanged. Top20 puts the historical-return warning in the header before prominent return figures. Macro Flex puts the unsealed-product and sample-weight limitations first, then explicitly shows at most five industry groups; `宏觀產業分析 文字` retains every industry and all 20 memberships. This disclosed preview limit is not a universe filter or a truncated Top20 report.
+Shared menu and Top20 detail actions use one secondary `md` button token (light grey ground, ink label) on a white footer; message commands and snapshot-bound references are unchanged. Top20 puts the historical-return warning in the header before prominent return figures. Macro Flex puts the unsealed-product and sample-weight limitations first, then explicitly shows at most five industry groups; `宏觀產業分析 文字` retains every industry and all 20 memberships. This disclosed preview limit is not a universe filter or a truncated Top20 report.
 
 Actual-caller regression, action snapshots and conservative message bounds cover these changes. Local synthetic 390×1900 previews are approximate layout checks only; no original mascot image is replaced, no LINE artwork is uploaded, and device/API visual acceptance remains open. Existing empty/stale/options-admission gates remain unchanged.
 

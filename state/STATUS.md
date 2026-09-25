@@ -8,17 +8,18 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — Top20 industry detail from SEC annual reports (operator rule 2026-09-25)
+## This change — ink monochrome LINE cards (operator feedback 2026-09-25)
 
-Operator rules: the industry field must say what the company does, not 「半導體」; sources must not be yfinance alone. Operator authorized all work in this session.
+Operator: Top20 green and the green menu options feel out of place; the card gradients are too faint. Matched to the bot's black-and-white line-art identity.
 
-- `scripts/company_business_profile.py`: latest 10-K / 20-F from SEC EDGAR → business excerpt (strong self-description, else Overview paragraph) → loopback Qwen phrase validated against the excerpt (no new digits, no banned vague wording, no 「｜」) → 「細分產業：主要業務」 ≤100 characters. Cached per accession, filing index re-read every run, 403/429 fence. Details: [TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0.
-- `build_v212_top20_report.py --business-profile` (both scheduled runners pass it): SEC-sourced industry clock; an unreceipted yfinance label is dropped rather than composed; non-publishable `*.business-profile-candidate.json` sidecar.
-- Live canary (SEC + local Qwen, read-only): 22/22 current Top20 plus TSM/ASML produced specific phrases (for example AXTI 「研發與生產高性能化合物及單元素半導體晶圓」, ASML 「製造極紫外光刻系統」).
-- Tests: `tests/test_company_business_profile.py` (20), including the seven-field caller and preview.
+- `cloud/src/v213/line-theme.ts`: three-stop header gradient (#000000 → #1E2228 at 45% → #4A525E, 135°); section levels by lightness (`key` ink gradient strip, `detail` grey, `context` pale); shared buttons are secondary light grey with ink labels on a white footer; rank chip inverted white; values follow the accounting convention (negatives red, others ink, sign kept). Every text/ground pair ≥4.5:1, including the lightest gradient end.
+- All green usages removed from Top20, rich menu, options, sizing, macro, educational and lookup cards; `docs/LINE_TOP20_UI.md` updated.
+- Preview (current vs new, real Flex JSON, dark LINE chat ground): https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
+- Worker typecheck PASS; 900 passed / 1 skipped (button contract test updated to the new token).
 
 ## Previous changes
 
+- `47a3f19` Top20 industry detail from SEC annual reports ([TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0): latest 10-K/20-F business excerpt → validated loopback-Qwen phrase → 「細分產業：主要業務」; per-accession cache, index re-read each run, 403/429 fence; scheduled runners pass `--business-profile`; live canary 22/22 Top20 plus TSM/ASML; 20 tests; full Python 2525 (one CI-env-only error, passes with `PYTHONUTF8=1`).
 - `3e80273` Wave 1 official public feeds: eight reviewed T1 entries (Fed, ECB, SEC press, TWSE/TPEx EOD and issuer directories, TAIFEX options) registered at `ADAPTER_CONTRACT_VALIDATED`; the claim-evidence acquisition factory rejects bulk datasets and news leads, so none is runtime-enabled yet (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`).
 - `7c01ef1`, `6d21066` layered LINE card design with black gradient band; source activation plan (full Python 2502 OK).
 - `6ba8e6d`, `292f274` installer fixture retention, C2b local artifact and recorded operator decisions (full Python 2502 OK).

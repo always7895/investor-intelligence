@@ -72,24 +72,24 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
             kpiTile(labels[1]!, values[1]!),
             kpiTile(labels[2]!, values[2]!),
           ], { layout: "horizontal", spacing: "sm" }),
-        ], "green"),
+        ], "key"),
         section("公司 / Company", [
           labelValue(labels[3]!, values[3]!, { weight: "bold" }),
           divider(),
           labelValue(labels[4]!, values[4]!, { weight: "bold" }),
-        ], "slate"),
+        ], "detail"),
         section("訂單 / Orders", [
           labelValue(labels[5]!, values[5]!, { weight: "bold" }),
           divider(),
           labelValue(labels[6]!, values[6]!),
-        ], "amber"),
+        ], "context"),
       ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
       footer: uiBox([
         ...(reference ? [menuAction("深度化分析 / Deep analysis",
           `Top20 深度化分析 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`
         )] : [footnote("詳情入口未綁定 / Unbound detail reference")]),
         footnote(SCENARIO_STATUS), footnote(generated), footnote(NOTICE),
-      ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.soft }),
+      ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     };
   });
   const messages: LineOutboundMessage[] = [];

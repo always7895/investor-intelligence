@@ -173,11 +173,11 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
       menuBox([
         menuText("標的與履約設定", "xs", T.muted),
         { ...menuText(card.strikes, "sm", T.ink), weight: "bold" },
-        menuText(`收支：${card.debit_credit}`, "xs", T.green),
+        { ...menuText(`收支：${card.debit_credit}`, "xs", T.ink), weight: "bold" },
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
       menuBox([
         menuText(`損益平衡：${card.breakeven}`, "xs", T.ink),
-        menuText(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`, "xs", T.green),
+        menuText(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`, "xs", T.ink),
         menuText(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, "xs", T.negative),
       ], { spacing: "xs" }),
       { type: "separator", color: T.border },
@@ -196,7 +196,7 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
         menuText(`• 單位：${card.assumptions.quantity_multiplier}`, "xxs", T.muted),
         menuText(`• 擔保：${card.assumptions.collateral}`, "xxs", T.muted),
         menuText(`• 摩擦：${card.assumptions.specific_caveats}`, "xxs", T.muted),
-      ], { backgroundColor: T.paleGreen, paddingAll: "sm", cornerRadius: "sm" }),
+      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: menuBox([
       menuText(`狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`, "xxs", T.muted),
