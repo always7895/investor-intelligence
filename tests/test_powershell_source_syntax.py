@@ -41,7 +41,7 @@ if($failed.Count-ne0){exit 1}
                 result = self.run_probe(probe, host)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 evidence = json.loads(result.stdout)
-                self.assertGreaterEqual(evidence['count'], 84)
+                self.assertGreaterEqual(evidence['count'], 70)
                 self.assertEqual(evidence['failed'], [])
                 self.assertFalse(evidence['executed_source_scripts'])
 

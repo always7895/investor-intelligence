@@ -20,7 +20,7 @@ class DocumentationStructureTests(unittest.TestCase):
     def test_actual_repository_and_cli(self):
         findings, stats = gate.audit(ROOT)
         self.assertEqual(findings, [])
-        self.assertGreaterEqual(stats['markdown_files'], 92)
+        self.assertGreaterEqual(stats['markdown_files'], 80)
         result = subprocess.run([sys.executable, str(ROOT / 'scripts/documentation_structure_gate.py')],
                                 cwd=ROOT, text=True, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stdout)

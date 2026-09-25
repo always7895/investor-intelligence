@@ -4,20 +4,22 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `79438c2` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `34417b9` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — Top20 sourced-wording guard (phase 1 of the upside plan)
+## This change — redundancy removal (operator-requested)
 
-Operator requirements 2026-09-25: rank Top20 by future upside potential; every figure sourced, no vague wording (「很多」「市場很大」); add 6M/1Y/2Y order-realization horizons with the implied share-price change. Plan and gaps: [TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md).
+The operator explicitly asked to delete unneeded files (2026-09-25). 74 tracked files removed after a read-only triage and a second scripted check that nothing left in the tree references them; all remain in Git history (`git show 34417b9:<path>`).
 
-- Phase 1 implemented: `config/v213-sourced-wording-policy.json` and pure `scripts/v213_sourced_wording_guard.py`. `reconcile_v213_order_evidence.reconcile` now guards every retained and new row: vague phrases or numbers without an https source withhold the field with the existing fallback, clear its URLs, and are listed in the receipt (`wording_guard_withheld`). Retained rows previously bypassed any wording check (for example the baseline 「幾乎全部」 row).
-- Tests: `tests/test_v213_sourced_wording_guard.py` (7). Worker-side enforcement deferred until one sealed cycle is built with the guard.
-- Phases 2–5 (order ledger, valuation bridge from own dated multiple and SEC fundamentals, upside ranking with one shared sort key, card line) remain open; phase 4 weighting needs an operator decision; live runs need a price source with an acquisition clock.
+- 40 historical docs (SERENITY_H2–H6 notes, SERENITY_PUBLIC_LOGIC audits, TASK0-3E–3J reports, five superseded reviews/plans); the index keeps a retirement note instead of 40 links.
+- 28 scripts/payloads: v211/v212 task registrars (one could re-point live v21 task names), applied hotfix6 payloads and validator/packager, the BLS patch payload, an unused v211 wrangler template, a one-time patch applier and code generator, superseded Serenity release audits (base, v3, v5, v6) and snapshot audit v3, one-off TASK0-3A–3E harnesses and an unused publication-contract probe.
+- 6 workflows triggered only by dead branches (phase3 adapters/catalog/source-diversity/GLEIF-ECB, public-options candidates, v21 Serenity engine); their gates still run under the retained validation workflows.
+- Inventory floors lowered with the change: Markdown ≥80 (now 90), `.ps1` ≥70 (now 76). Kept: generated-snapshot audits v2/v4 (called by the probed v5 chain), evidence receipts including the dated `state/architecture-inventory.json`, rollback jars, schemas and live-task scripts.
 
 ## Previous changes
 
+- `34417b9` Top20 sourced-wording guard, phase 1 (full Python 2497 OK, 429.4 s).
 - `79438c2` weekly/monthly options guidance (Worker 900 passed; full Python 2490 OK, 437.3 s).
 - `c665684` LINE Flex redesign on a shared design system (Worker 895 passed; full Python 2490 OK, 439.0 s). Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
 - `7b88bf7`, `79d23f8` research method refresh (SERENITY_LOGIC, ASCHENBRENNER_CONTEXT; full Python 2490 OK, 423.5 s) and C2b decision record.
@@ -31,18 +33,9 @@ Operator requirements 2026-09-25: rank Top20 by future upside potential; every f
 
 ## Latest gate run
 
-- Focused: sourced-wording guard 7, reconcile 6, retained-order withholding 1, contract tests — OK.
-- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Full Python 16:18:11–16:25:21: 2497 tests OK, 429.4 s. Worker unchanged (no `cloud/` edits).
-
-## Pending operator decision — redundancy removal
-
-Bulk deletion of tracked files was stopped by the session permission guard and needs explicit operator approval. Read-only triage (no code, test, packaging or scheduled-task reference) found:
-
-- 40 historical docs: `docs/SERENITY_H2…H6*` (25), `docs/SERENITY_PUBLIC_LOGIC_*` (3), `documents/TASK0-3E…3J` (6), `VALIDATION_TRANSACTION_NOTE_V2`, `W1_ATOMIC_IO_REVIEW_20260910`, `LUNA_MAX_IMPLEMENTATION_PLAN_20260910`, `CANONICAL_RELEASE_CANDIDATE_V2`, `V213_SERENITY_LOGIC_SOURCE_DIVERSITY_AUDIT`, `state/PHASE3_SOURCE_FEDERATION_STATUS.md`.
-- Scripts/payloads: `run-v211-local.ps1`, `register-v211-task.ps1` (can re-point live v21 refresh task names), `register-v212-local-llm-bridge-task.ps1`, `.github/patch-payload/hotfix6.part0*`, `.github/patches/*.b64`, `cloud/wrangler.v211.production.template.toml`, `scripts/apply_final_serenity_r3_patch.py`, `scripts/normalize_v213_final_source_gate.ps1`, `scripts/ci_v213_hotfix6_validate.ps1`, superseded `audit_v213_serenity_release{,_v3,_v5,_v6}.ps1` and `audit_v213_generated_snapshot_v3.ps1`, one-off `scripts/test_v213_3*.py` harnesses, `scripts/test_v213_r75_publication_contract.ps1`.
-- Workflows on dead branches: `phase3-authoritative-{adapters,catalog}-audit`, `phase3-source-diversity-audit`, `phase3-staged-gleif-ecb-audit`, `public-options-provider-candidates-audit`, `v21-serenity-engine`.
-- Same change must lower two inventory floors: `tests/test_documentation_structure_gate.py` (Markdown ≥92) and `tests/test_powershell_source_syntax.py` (`.ps1` ≥84). Keep `audit_v213_generated_snapshot.ps1`/`_v5.ps1` (syntax-test probes), receipts, rollback jars, schemas and live-task scripts.
+- `security_check`, documentation boundary/structure (90 Markdown files), workflow supply chain, owner config: PASS.
+- Worker: 900 passed / 1 named manual skip.
+- Full Python 16:27:44–16:34:50: 2497 tests OK, 425.5 s.
 
 ## Closed components — no reopening without regression evidence
 
@@ -74,4 +67,4 @@ Git commits on this branch and a normal push to `origin` (updates PR #37). Local
 
 ## Next action
 
-Operator: approve or decline the redundancy removal above; review the UI preview before any Worker deployment (deployment needs explicit authorization). C2b needs an operator choice between build-time digest, an archived-receipt contract or a separate local artifact (recommended), because SEC receipts are in-process only. Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.
+Operator: review the UI preview before any Worker deployment (deployment needs explicit authorization). C2b needs an operator choice between build-time digest, an archived-receipt contract or a separate local artifact (recommended), because SEC receipts are in-process only. Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.
