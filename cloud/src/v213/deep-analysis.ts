@@ -33,6 +33,11 @@ export function companyDataReportFromSealed(rawReportJson: string | null, ticker
   if (!rawReportJson || rawReportJson.length > 2_097_152) return null;
   let raw: any;
   try { raw = JSON.parse(rawReportJson)?.deep_reports?.[ticker.toUpperCase()]; } catch { return null; }
+  return validateCompanyDataReport(raw, ticker);
+}
+
+/** Strict validation of one embedded company data report; null on any malformed field. */
+export function validateCompanyDataReport(raw: any, ticker: string): CompanyDataReport | null {
   if (!raw || typeof raw !== "object" || raw.ticker !== ticker.toUpperCase() || !SHORT(raw.name, 200)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.as_of)) || !SHORT(raw.boundary, 200)) return null;
   const phase = raw.phase?.phase;
@@ -53,7 +58,7 @@ export function companyDataReportFromSealed(rawReportJson: string | null, ticker
   }
 }
 
-function dataReportBlocks(report: V213Top20Report | V213BottleneckReport, data: CompanyDataReport): string[] {
+function dataReportBlocks(report: { generated_at: string }, data: CompanyDataReport): string[] {
   const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return [
     `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
@@ -207,6 +212,15 @@ export function buildTop20DeepAnalysisMessages(
     `• 結論：這份報告列出快照資料、口徑與缺口，不生成沒有數據支撐的預測。完整研究必須補齊身分、財報、訂單／供給約束、獨立佐證與可重算情境，並通過同輪封存驗證。`,
   ];
 
+  return chunkBlocks(blocks);
+}
+
+/** Data report as LINE text messages (used by the data-driven potential ranking). */
+export function buildCompanyDataReportMessages(data: CompanyDataReport, generatedAt: string): LineOutboundMessage[] {
+  return chunkBlocks(dataReportBlocks({ generated_at: generatedAt }, data));
+}
+
+function chunkBlocks(blocks: string[]): LineOutboundMessage[] {
   // LINE chunking: up to 5 messages, each <= 4,800 characters
   const chunks: string[] = [];
   let currentChunk = "";

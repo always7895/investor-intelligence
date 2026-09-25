@@ -12,7 +12,8 @@
     },
     "sec_xbrl_frames": {
       "publisher": "U.S. SEC EDGAR XBRL frames (issuer filings)",
-      "endpoint": "https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/USD/{period}.json"
+      "endpoint": "https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/USD/{period}.json",
+      "endpoint_shares": "https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/shares/{period}.json"
     },
     "sec_sic_members": {
       "publisher": "U.S. SEC EDGAR company listing by SIC",
@@ -38,6 +39,15 @@
     "revenue": [
       "RevenueFromContractWithCustomerExcludingAssessedTax",
       "Revenues"
+    ],
+    "gross_profit": [
+      "GrossProfit"
+    ],
+    "operating_income": [
+      "OperatingIncomeLoss"
+    ],
+    "diluted_shares": [
+      "WeightedAverageNumberOfDilutedSharesOutstanding"
     ]
   },
   "thresholds": {
@@ -356,5 +366,32 @@
         "資訊服務業"
       ]
     }
-  ]
+  ],
+  "company_ranking": {
+    "size": 20,
+    "min_quarter_revenue_usd": 100000000,
+    "revenue_yoy_cap_pct": 60.0,
+    "revenue_points_per_pct": 0.5,
+    "backlog_yoy_cap_pct": 100.0,
+    "backlog_points_per_pct": 0.3,
+    "margin_change_cap_pp": 10.0,
+    "margin_points_per_pp": 2.0,
+    "dilution_penalty_per_pct": 2.0,
+    "dilution_penalty_cap": 20.0,
+    "inventory_gap_penalty_cap": 20.0,
+    "note": "Candidates are members of admitted industries only; no ticker list. Crowded, relieving, broken and insufficient phases are excluded; constraints confirmed by two or more families rank before single-family discoveries; the published strength orders each tier; at most five per industry. Not a forecast.",
+    "min_company_strength": 20,
+    "eligible_phases": [
+      "COMMERCIAL_VALIDATION",
+      "EARLY_VALIDATION",
+      "INSTITUTIONAL_VALIDATION",
+      "DISCOVERY"
+    ],
+    "max_per_industry": 5,
+    "confirmed_phases": [
+      "COMMERCIAL_VALIDATION",
+      "EARLY_VALIDATION",
+      "INSTITUTIONAL_VALIDATION"
+    ]
+  }
 }

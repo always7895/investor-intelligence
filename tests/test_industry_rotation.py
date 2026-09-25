@@ -74,7 +74,7 @@ def post(url, body):
 
 class RotationTests(unittest.TestCase):
     def build(self, **kwargs):
-        return rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, **kwargs)
+        return rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, bls_cache=None, **kwargs)
 
     def test_yoy_uses_same_month_and_skips_annual_average(self):
         points = [(date(2025, 8, 1), 100.0), (date(2026, 7, 1), 104.0), (date(2026, 8, 1), 110.0)]
@@ -111,7 +111,7 @@ class RotationTests(unittest.TestCase):
     def test_small_samples_are_not_used(self):
         cfg = config()
         cfg["thresholds"]["min_matched_issuers"] = 4
-        doc = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None)
+        doc = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, bls_cache=None)
         alpha = {r["industry_id"]: r for r in doc["industries"]}["alpha"]
         self.assertIsNone(alpha["revenue"]["yoy_pct"])
         self.assertEqual(alpha["phase"]["phase"], "DISCOVERY")
@@ -122,7 +122,7 @@ class RotationTests(unittest.TestCase):
             if "SIC=2222" in url:
                 raise OSError("down")
             return sec_fetch()(url)
-        doc = rot.build_rotation(config(), fetch_sec=failing, post_bls=post, today=TODAY, member_cache=None)
+        doc = rot.build_rotation(config(), fetch_sec=failing, post_bls=post, today=TODAY, member_cache=None, bls_cache=None)
         self.assertEqual(doc["unavailable_sic"], ["2222"])
         self.assertEqual({r["industry_id"]: r for r in doc["industries"]}["beta"]["member_count"], 0)
 
@@ -194,21 +194,65 @@ class RotationTests(unittest.TestCase):
                 for i in range(3)] + [{"資料年月": "11508", "產業別": "其他", "營業收入-當月營收": "90", "營業收入-去年當月營收": "100"},
                                       {"資料年月": "11508", "產業別": "合成業", "營業收入-當月營收": "5", "營業收入-去年當月營收": "0"}]
         twse = lambda url: json.dumps(rows, ensure_ascii=False).encode("utf-8")  # noqa: E731
-        doc = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, fetch_twse=twse)
+        doc = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, bls_cache=None, fetch_twse=twse)
         gamma = {r["industry_id"]: r for r in doc["industries"]}["gamma"]
         self.assertEqual(gamma["taiwan"]["count"], 6)  # both exchanges served the same rows; zero-prior rows excluded
         self.assertEqual(gamma["taiwan"]["month"], "2026-08")
         self.assertEqual(gamma["taiwan"]["yoy_pct"], 51.0)
         self.assertIn("taiwan_monthly_revenue", gamma["phase"]["constraint_families"])
         self.assertIn("臺灣上市櫃同業", rot.to_macro_card(gamma, 1, cfg)["current_state"])
-        broken = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None,
+        broken = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, bls_cache=None,
                                     fetch_twse=lambda url: b"not json")
         self.assertIsNone({r["industry_id"]: r for r in broken["industries"]}["gamma"]["taiwan"]["yoy_pct"])
+
+    def test_company_ranking_uses_admitted_industries_and_company_signals(self):
+        cfg = config()
+        row = {"industry_id": "alpha", "name_zh": "阿爾法設備", "quarter": "2026 Q2", "strength": 60,
+               "phase": {"phase": "EARLY_VALIDATION"}, "member_ciks": [101, 102, 103, 104],
+               "signals": [{"signal_id": "alpha:PRICE", "kind": "PRICE", "as_of": "2026-08-31", "direction": "UP", "value": 10.0,
+                            "evidence_family": "bls_ppi", "source_url": "https://data.bls.gov/timeseries/PCU1"}]}
+        weak = {**row, "industry_id": "beta", "phase": {"phase": "RELIEVING"}, "member_ciks": [201]}
+        big = cfg["company_ranking"]["min_quarter_revenue_usd"]
+
+        def f(values):
+            return {cik: {"val": v, "name": f"Issuer {cik}"} for cik, v in values.items()}
+        frames = {
+            "revenue_now": f({101: 3 * big, 102: 2 * big, 103: big / 2, 104: 2 * big, 201: 5 * big}),
+            "revenue_prior": f({101: 2 * big, 102: 2 * big, 103: big / 4, 104: big, 201: big}),
+            "backlog_now": f({101: 400, 102: 100}), "backlog_prior": f({101: 200, 102: 100}),
+            "gross_profit_now": f({101: 1.5 * big, 102: 0.6 * big}), "gross_profit_prior": f({101: 0.8 * big, 102: 0.6 * big}),
+            "operating_income_now": f({}), "operating_income_prior": f({}),
+            "diluted_shares_now": f({104: 150}), "diluted_shares_prior": f({104: 100}),
+            "inventory_now": f({}), "inventory_prior": f({}),
+        }
+        ranked = rot.rank_companies([row, weak], frames, cfg, TODAY, {101: "AAA", 102: "BBB", 103: "CCC", 104: "DDD", 201: "EEE"},
+                                    "2026-06-30")
+        tickers = [r["ticker"] for r in ranked]
+        self.assertNotIn("CCC", tickers)  # below the revenue floor
+        self.assertNotIn("EEE", tickers)  # industry not admitted
+        self.assertNotIn("DDD", tickers)  # 50% dilution breaks the thesis
+        self.assertEqual(tickers[0], "AAA")  # RPO up (issuer) + PPI up (BLS) + margin up -> commercial validation
+        self.assertEqual(ranked[0]["phase"], "COMMERCIAL_VALIDATION")
+        self.assertEqual((ranked[0]["revenue_yoy_pct"], ranked[0]["rpo_yoy_pct"]), (50.0, 100.0))
+        self.assertEqual(ranked[0]["rank"], 1)
+
+    def test_bls_refusal_falls_back_to_a_recent_cache_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "bls.json"
+            rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, bls_cache=cache)
+            refused = lambda url, body: json.dumps({"status": "REQUEST_NOT_PROCESSED"}).encode()  # noqa: E731
+            doc = rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=refused, today=TODAY, member_cache=None,
+                                     bls_cache=cache)
+            self.assertEqual({r["industry_id"]: r for r in doc["industries"]}["alpha"]["price"]["yoy_pct"], 10.0)
+            self.assertIn("bls_ppi_cache", [r["source"] for r in doc["receipts"]])
+            with self.assertRaises(rot.RotationError):
+                rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=refused, today=date(2026, 12, 1),
+                                   member_cache=None, bls_cache=cache)
 
     def test_bls_failure_status_fails_closed(self):
         bad = lambda url, body: json.dumps({"status": "REQUEST_NOT_PROCESSED"}).encode()  # noqa: E731
         with self.assertRaises(rot.RotationError):
-            rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=bad, today=TODAY, member_cache=None)
+            rot.build_rotation(config(), fetch_sec=sec_fetch(), post_bls=bad, today=TODAY, member_cache=None, bls_cache=None)
 
 
 if __name__ == "__main__":

@@ -119,6 +119,7 @@ def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
     for key in ("rpo", "inventory", "cash", "long_term_debt"):
         latest, prior = _latest_pair(_by_frame(_rows(facts, TAGS[key], "USD"), instant=True))
         out[key] = latest and latest["val"]
+        out[f"{key}_tag"] = latest and latest.get("tag")
         out[f"{key}_as_of"] = latest and latest["end"]
         out[f"{key}_yoy_pct"] = _pct(latest and latest["val"], prior and prior["val"])
     shares, shares_prior = _latest_pair(_by_frame(_rows(facts, TAGS["diluted_shares"], "shares"), instant=False))
@@ -134,6 +135,21 @@ def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
     out["inventory_minus_revenue_pp"] = (round(out["inventory_yoy_pct"] - out["revenue_yoy_pct"], 2)
                                          if out["inventory_yoy_pct"] is not None and out["revenue_yoy_pct"] is not None else None)
     return out
+
+
+PHASE_ZH = {"INSUFFICIENT_EVIDENCE": "資料不足", "DISCOVERY": "初現（單一來源）", "EARLY_VALIDATION": "驗證中（雙來源確認）",
+            "COMMERCIAL_VALIDATION": "商業驗證（公司開始獲利）", "INSTITUTIONAL_VALIDATION": "法人進場", "CONSENSUS": "共識擁擠",
+            "RELIEVING": "緩解中", "BROKEN": "已失效"}
+FAMILY_ZH = {"sec_issuer": "SEC 公司申報", "sec_issuer_inventory": "SEC 公司存貨", "bls_ppi": "BLS 生產者物價",
+             "taiwan_monthly_revenue": "臺灣上市櫃同業月營收", "sec_xbrl_issuers": "SEC 產業成員申報"}
+
+
+def _families(values: Sequence[str]) -> str:
+    return "、".join(FAMILY_ZH.get(v, v) for v in values) or "無"
+
+
+def _tag(tag: str | None) -> str:
+    return f"（XBRL {tag}）" if tag else ""
 
 
 def _money(value: float | None) -> str:
@@ -168,7 +184,7 @@ def company_signals(ticker: str, metrics: Mapping[str, Any], cik: str, industry:
         signals.append({"signal_id": f"{ticker}:INVENTORY", "kind": "INVENTORY_BUILD", "as_of": metrics["inventory_as_of"],
                         "value": gap, "evidence_family": "sec_issuer_inventory", "source_url": url})
     for signal in (industry or {}).get("signals", []):
-        if signal["kind"] == "PRICE":  # the industry's BLS price signal is an independent family
+        if signal["kind"] in ("PRICE", "SUPPLIER_REVENUE"):  # same industry families as the potential ranking
             signals.append(dict(signal, signal_id=f"{ticker}:{signal['signal_id']}"))
     return signals
 
@@ -203,15 +219,17 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
                     if metrics.get("rpo") is not None else "未申報剩餘履約義務（RPO），訂單能見度無法量化")),
         ("產能與資本支出", (f"最近會計年度資本支出 {_money(metrics['capex_fy'])}（年度截至 {metrics['capex_fy_end']}），占營收 {_pctx(metrics['capex_share_of_revenue_pct']).lstrip('+')}"
                        if metrics.get("capex_fy") is not None else "未申報年度資本支出")),
-        ("資產負債與稀釋", (f"現金 {_money(metrics['cash'])}、長期負債 {_money(metrics['long_term_debt'])}；"
+        ("資產負債與稀釋", (f"現金 {_money(metrics['cash'])}{_tag(metrics.get('cash_tag'))}、長期負債 {_money(metrics['long_term_debt'])}{_tag(metrics.get('long_term_debt_tag'))}；"
                        f"稀釋後加權股數年變化 {_pctx(metrics['dilution_yoy_pct'])}；"
                        + (f"存貨年增 {_pctx(metrics['inventory_yoy_pct'])}，較營收成長{'高' if metrics['inventory_minus_revenue_pp'] > 0 else '低'} {abs(metrics['inventory_minus_revenue_pp']):.1f} 個百分點"
                           if metrics.get("inventory_minus_revenue_pp") is not None else "存貨與營收可比資料不足"))),
-        ("所屬產業訊號", (f"{industry['name_zh']}：資料階段 {industry['phase']['phase']}，BLS PPI 年增 {_pctx(industry['price']['yoy_pct'])}，"
+        ("所屬產業訊號", (f"{industry['name_zh']}：資料階段 {PHASE_ZH.get(industry['phase']['phase'], industry['phase']['phase'])}，BLS PPI 年增 {_pctx(industry['price']['yoy_pct'])}，"
                        f"成員 RPO 年增 {_pctx(industry['backlog']['yoy_pct'])}（{industry['quarter']}）"
+                       + (f"，臺灣上市櫃同業 {industry['taiwan']['count']} 家 {industry['taiwan']['month']} 營收年增 {_pctx(industry['taiwan']['yoy_pct'])}"
+                          if (industry.get("taiwan") or {}).get("yoy_pct") is not None else "")
                        if industry else f"SIC {sic or '未知'} 不在產業輪替範圍或輪替資料不可用")),
-        ("資料階段", (f"{phase['phase']}（吃緊來源：{'、'.join(phase['constraint_families']) or '無'}；"
-                   f"公司捕捉：{'、'.join(phase['capture_families']) or '無'}；緩解：{'、'.join(phase['relief_families']) or '無'}）"
+        ("資料階段", (f"{PHASE_ZH.get(phase['phase'], phase['phase'])}（吃緊來源：{_families(phase['constraint_families'])}；"
+                   f"公司捕捉：{_families(phase['capture_families'])}；緩解：{_families(phase['relief_families'])}）"
                    f"；下次檢查 {phase['next_review_at'] or '下一份財報'}"
                    + ("；稀釋疑慮" if phase["dilution_overhang"] else ""))),
         ("證偽條件", "RPO 年增降至 -10% 以下；毛利率年減 1 個百分點以上；稀釋後股數年增 20% 以上；存貨成長超過營收 10 個百分點；所屬產業 PPI 年增降至 -3% 以下"),
@@ -325,7 +343,11 @@ def main() -> int:
     import company_business_profile as profile
     import industry_rotation
     from sec_contact_headers import sec_identity_headers
-    wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] if args.tickers else sealed_tickers()
+    if args.tickers:
+        wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    else:  # the sealed ranking plus the data-driven potential ranking, in that order, without duplicates
+        rotation_doc = industry_rotation.load_rotation() or {}
+        wanted = list(dict.fromkeys(sealed_tickers() + [r["ticker"] for r in rotation_doc.get("company_ranking", [])]))
     fetch = profile.sec_fetcher(sec_identity_headers())
     ciks = ticker_ciks(fetch, today=date.today())
     try:

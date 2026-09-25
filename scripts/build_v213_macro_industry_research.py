@@ -347,6 +347,19 @@ def load_rotation_candidates(path: Path | None = None) -> tuple[list[dict], dict
     return list(document.get("macro_candidates", [])), dict(document.get("deep_analyses", {})), document
 
 
+def potential_ranking(rotation: dict | None) -> dict | None:
+    """Data-driven company ranking from the same rotation run, with compact data reports (sealed together)."""
+    if not rotation or not rotation.get("company_ranking"):
+        return None
+    import company_deep_report
+    fields = ("rank", "ticker", "name", "industry_name", "phase", "strength", "revenue_yoy_pct", "rpo_yoy_pct",
+              "gross_margin_change_pp", "operating_margin_change_pp", "dilution_yoy_pct", "next_review_at")
+    records = [{key: row.get(key) for key in fields} for row in rotation["company_ranking"]]
+    return {"as_of": rotation.get("as_of"), "quarter": rotation.get("quarter"), "records": records,
+            "method": "members of admitted industries; phase gate, confirmed tier first, published strength, at most five per industry",
+            "reports": company_deep_report.load_reports(tickers=[r["ticker"] for r in records])}
+
+
 def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,
                                 deep_analyses: dict | None = None, rotation: dict | None = None) -> dict:
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -371,6 +384,7 @@ def build_macro_overview_output(qualified: list[dict], disqualified: list[dict],
                           for c in qualified[:5] if c.get("industry_id") in (deep_analyses or {})},
         "data_basis": ({"method": rotation.get("method"), "as_of": rotation.get("as_of"), "quarter": rotation.get("quarter"),
                         "receipt_count": len(rotation.get("receipts", []))} if rotation else None),
+        "potential_ranking": potential_ranking(rotation),
         "excluded_candidates": [
             {
                 "industry_id": c.get("industry_id"),

@@ -41,6 +41,7 @@ import thesis_phase  # noqa: E402
 CONFIG_PATH = ROOT / "config" / "industry-rotation-v1.json"
 OUTPUT_PATH = ROOT / "data" / "cache" / "industry_rotation_latest.json"
 MEMBER_CACHE_DIR = ROOT / "data" / "cache" / "v21" / "sic_members"
+BLS_CACHE = ROOT / "data" / "cache" / "v21" / "bls_ppi_series.json"
 MEMBER_CACHE_DAYS = 30
 MAX_BLS_BYTES = 10_000_000
 RETRY_PAUSES = (3.0, 8.0, 15.0)  # seconds before each retry of a 503 listing page
@@ -165,7 +166,36 @@ def _receipt(source: str, url: str, raw: bytes, **extra: Any) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- BLS PPI
 def bls_series(series_ids: Sequence[str], post: Post, config: Mapping[str, Any], *, start_year: int, end_year: int,
-               receipts: list) -> dict[str, list[tuple[date, float]]]:
+               receipts: list, cache: Path | None = None, today: date | None = None) -> dict[str, list[tuple[date, float]]]:
+    """Live BLS series; when the API refuses (daily threshold, outage) a cache up to 35 days old is used.
+
+    PPI is monthly, so a recent cache carries the same months; its receipt says it came from the cache.
+    """
+    try:
+        result = _bls_live(series_ids, post, config, start_year=start_year, end_year=end_year, receipts=receipts)
+    except Exception:
+        if cache is None:
+            raise
+        try:
+            stored = json.loads(cache.read_text(encoding="utf-8"))
+            retrieved = date.fromisoformat(stored["retrieved_on"])
+        except (OSError, ValueError, KeyError):
+            raise RotationError("ROTATION_BLS_UNAVAILABLE_NO_CACHE") from None
+        if (today or date.today()) - retrieved > timedelta(days=35):
+            raise RotationError("ROTATION_BLS_UNAVAILABLE_CACHE_STALE") from None
+        receipts.append({"source": "bls_ppi_cache", "url": str(config["sources"]["bls_ppi"]["endpoint"]),
+                         "retrieved_on": stored["retrieved_on"], "retrieved_at": utc_now()})
+        return {sid: [(date.fromisoformat(d), v) for d, v in rows] for sid, rows in stored["series"].items()}
+    if cache is not None and result:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"retrieved_on": (today or date.today()).isoformat(),
+                                     "series": {sid: [[d.isoformat(), v] for d, v in rows] for sid, rows in result.items()}}),
+                         encoding="utf-8")
+    return result
+
+
+def _bls_live(series_ids: Sequence[str], post: Post, config: Mapping[str, Any], *, start_year: int, end_year: int,
+              receipts: list) -> dict[str, list[tuple[date, float]]]:
     source = config["sources"]["bls_ppi"]
     size = int(source["max_series_per_request"])
     result: dict[str, list[tuple[date, float]]] = {}
@@ -255,13 +285,14 @@ def sic_members(sic: str, fetch: Fetch, config: Mapping[str, Any], *, today: dat
 
 
 def frame(concepts: Sequence[str], period: str, fetch: Fetch, config: Mapping[str, Any], receipts: list,
-          cache: dict) -> dict[int, dict[str, Any]]:
+          cache: dict, unit: str = "USD") -> dict[int, dict[str, Any]]:
     """cik -> {val, end, accn, name} from the first concept that reports it (e.g. two revenue tags)."""
     merged: dict[int, dict[str, Any]] = {}
     for concept in concepts:
         key = (concept, period)
         if key not in cache:
-            url = config["sources"]["sec_xbrl_frames"]["endpoint"].format(concept=concept, period=period)
+            template = config["sources"]["sec_xbrl_frames"]["endpoint" if unit == "USD" else "endpoint_shares"]
+            url = template.format(concept=concept, period=period)
             try:
                 raw = fetch(url)
             except Exception:
@@ -477,8 +508,93 @@ def to_deep_analysis(row: Mapping[str, Any], config: Mapping[str, Any]) -> dict[
     }
 
 
+def _capped(value: float | None, cap: float, per: float) -> float:
+    return min(max(value or 0.0, 0.0), cap) * per
+
+
+def rank_companies(rows: Sequence[Mapping[str, Any]], frames: Mapping[str, Mapping[int, Mapping[str, Any]]],
+                   config: Mapping[str, Any], today: date, tickers: Mapping[int, str], quarter_end: str) -> list[dict[str, Any]]:
+    """Members of admitted industries, ranked by company-scope phase and a published strength formula."""
+    rules, limits = config["company_ranking"], config["thresholds"]
+    frames_url = config["sources"]["sec_xbrl_frames"]["endpoint"]
+    best: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if row["phase"]["phase"] not in ADMITTED_PHASES or row["strength"] < int(limits["min_admission_strength"]):
+            continue
+        industry_signals = [s for s in row["signals"] if s["kind"] in ("PRICE", "SUPPLIER_REVENUE")]
+        for cik in row.get("member_ciks", []):
+            now, prior = frames["revenue_now"].get(cik), frames["revenue_prior"].get(cik)
+            ticker = tickers.get(cik)
+            if not now or not prior or prior["val"] <= 0 or not ticker or now["val"] < rules["min_quarter_revenue_usd"]:
+                continue
+            revenue_yoy = round((now["val"] / prior["val"] - 1) * 100, 2)
+
+            def change(key):
+                a, b = frames.get(f"{key}_now", {}).get(cik), frames.get(f"{key}_prior", {}).get(cik)
+                return (a["val"], b["val"]) if a and b and b["val"] else (None, None)
+            rpo_now, rpo_prior = change("backlog")
+            rpo_yoy = round((rpo_now / rpo_prior - 1) * 100, 2) if rpo_now is not None and rpo_prior > 0 else None
+            gp_now, gp_prior = change("gross_profit")
+            gm_change = round((gp_now / now["val"] - gp_prior / prior["val"]) * 100, 2) if gp_now is not None else None
+            op_now, op_prior = change("operating_income")
+            om_change = round((op_now / now["val"] - op_prior / prior["val"]) * 100, 2) if op_now is not None else None
+            sh_now, sh_prior = change("diluted_shares")
+            dilution = round((sh_now / sh_prior - 1) * 100, 2) if sh_now is not None and sh_prior > 0 else None
+            inv_now, inv_prior = change("inventory")
+            inv_gap = (round((inv_now / inv_prior - 1) * 100 - revenue_yoy, 2)
+                       if inv_now is not None and inv_prior > 0 else None)
+            url = frames_url.format(concept=config["concepts"]["revenue"][0], period=f"CY{row['quarter'].replace(' Q', 'Q')}")
+            signals = [dict(s, signal_id=f"{ticker}:{s['signal_id']}") for s in industry_signals]
+            if rpo_yoy is not None:
+                signals.append({"signal_id": f"{ticker}:RPO", "kind": "BACKLOG", "as_of": quarter_end, "value": rpo_yoy,
+                                "direction": _direction(rpo_yoy, limits["backlog_up_yoy_pct"], limits["backlog_down_yoy_pct"]),
+                                "evidence_family": "sec_issuer", "source_url": url})
+            if gm_change is not None:
+                signals.append({"signal_id": f"{ticker}:MARGIN", "kind": "COMPANY_MARGIN", "as_of": quarter_end, "value": gm_change,
+                                "direction": _direction(gm_change, 1.0, -1.0), "evidence_family": "sec_issuer", "source_url": url})
+            if dilution is not None and dilution > 0:
+                signals.append({"signal_id": f"{ticker}:DILUTION", "kind": "DILUTION", "as_of": quarter_end, "value": dilution,
+                                "evidence_family": "sec_issuer", "source_url": url})
+            if inv_gap is not None and inv_gap >= limits["inventory_build_gap_pp"]:
+                signals.append({"signal_id": f"{ticker}:INVENTORY", "kind": "INVENTORY_BUILD", "as_of": quarter_end, "value": inv_gap,
+                                "evidence_family": "sec_issuer_inventory", "source_url": url})
+            phase = thesis_phase.assess_phase(signals, today, scope="company")
+            points = (_capped(revenue_yoy, rules["revenue_yoy_cap_pct"], rules["revenue_points_per_pct"])
+                      + _capped(rpo_yoy, rules["backlog_yoy_cap_pct"], rules["backlog_points_per_pct"])
+                      + _capped(gm_change, rules["margin_change_cap_pp"], rules["margin_points_per_pp"])
+                      + _capped(om_change, rules["margin_change_cap_pp"], rules["margin_points_per_pp"])
+                      - min(max(dilution or 0, 0) * rules["dilution_penalty_per_pct"], rules["dilution_penalty_cap"])
+                      - min(max(inv_gap or 0, 0), rules["inventory_gap_penalty_cap"]))
+            record = {"ticker": ticker, "cik": f"{cik:010d}", "name": now.get("name", ""), "industry_id": row["industry_id"],
+                      "industry_name": row["name_zh"], "industry_phase": row["phase"]["phase"], "quarter": row["quarter"],
+                      "revenue": now["val"], "revenue_yoy_pct": revenue_yoy, "rpo_yoy_pct": rpo_yoy,
+                      "gross_margin_change_pp": gm_change, "operating_margin_change_pp": om_change,
+                      "dilution_yoy_pct": dilution, "inventory_minus_revenue_pp": inv_gap,
+                      "phase": phase["phase"], "phase_reasons": phase["reasons"], "next_review_at": phase["next_review_at"],
+                      "preference_rank": phase["preference_rank"], "strength": int(round(min(max(points, 0), 100)))}
+            key = (-record["strength"], record["preference_rank"])
+            if cik not in best or key < (-best[cik]["strength"], best[cik]["preference_rank"]):
+                best[cik] = record
+    # Phase gates eligibility; confirmed constraints (two or more families) rank before single-family
+    # discoveries; the published strength orders each tier; an industry cap keeps one cycle from filling the list.
+    eligible = [r for r in best.values() if r["phase"] in rules["eligible_phases"] and r["strength"] >= rules["min_company_strength"]]
+    ordered = sorted(eligible, key=lambda r: (r["phase"] not in rules["confirmed_phases"], -r["strength"], r["ticker"]))
+    ranked, per_industry = [], {}
+    for record in ordered:
+        if per_industry.get(record["industry_id"], 0) >= int(rules["max_per_industry"]):
+            continue
+        per_industry[record["industry_id"]] = per_industry.get(record["industry_id"], 0) + 1
+        ranked.append(record)
+        if len(ranked) == int(rules["size"]):
+            break
+    for rank, record in enumerate(ranked, 1):
+        record["rank"] = rank
+    return ranked
+
+
 def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Post, today: date,
-                   member_cache: Path | None = MEMBER_CACHE_DIR, fetch_twse: Fetch | None = None) -> dict[str, Any]:
+                   member_cache: Path | None = MEMBER_CACHE_DIR, fetch_twse: Fetch | None = None,
+                   tickers: Mapping[int, str] | None = None, bls_cache: Path | None = BLS_CACHE) -> dict[str, Any]:
     receipts: list = []
     cache: dict = {}
     taiwan = None
@@ -488,7 +604,8 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
         except Exception:
             taiwan = None  # one source down never blocks the others
     series = [s for industry in config["industries"] for s in industry["ppi"]]
-    ppi = bls_series(series, post_bls, config, start_year=today.year - 2, end_year=today.year, receipts=receipts)
+    ppi = bls_series(series, post_bls, config, start_year=today.year - 2, end_year=today.year, receipts=receipts,
+                     cache=bls_cache, today=today)
     year, q = latest_quarter(fetch_sec, config, today, receipts, cache)
     concepts = config["concepts"]
     frames = {
@@ -499,6 +616,12 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
         "inventory_now": frame(concepts["inventory"], f"CY{year}Q{q}I", fetch_sec, config, receipts, cache),
         "inventory_prior": frame(concepts["inventory"], f"CY{year - 1}Q{q}I", fetch_sec, config, receipts, cache),
     }
+    if "company_ranking" in config:
+        for key in ("gross_profit", "operating_income"):
+            frames[f"{key}_now"] = frame(concepts[key], f"CY{year}Q{q}", fetch_sec, config, receipts, cache)
+            frames[f"{key}_prior"] = frame(concepts[key], f"CY{year - 1}Q{q}", fetch_sec, config, receipts, cache)
+        frames["diluted_shares_now"] = frame(concepts["diluted_shares"], f"CY{year}Q{q}", fetch_sec, config, receipts, cache, unit="shares")
+        frames["diluted_shares_prior"] = frame(concepts["diluted_shares"], f"CY{year - 1}Q{q}", fetch_sec, config, receipts, cache, unit="shares")
     rows, unavailable_sic = [], []
     for industry in config["industries"]:
         members: dict[int, dict] = {}
@@ -510,8 +633,10 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
                 continue
             for member in listed:
                 members[int(member["cik"])] = member
-        rows.append(assess_industry(industry, ppi=ppi, members=list(members.values()), frames=frames,
-                                    quarter=(year, q), config=config, today=today, taiwan=taiwan))
+        row = assess_industry(industry, ppi=ppi, members=list(members.values()), frames=frames,
+                              quarter=(year, q), config=config, today=today, taiwan=taiwan)
+        row["member_ciks"] = sorted(members)
+        rows.append(row)
     rows.sort(key=lambda r: (r["phase"]["preference_rank"], -r["strength"], r["industry_id"]))
     admitted = [r for r in rows if r["phase"]["phase"] in ADMITTED_PHASES and r["revenue"]["yoy_pct"] is not None
                 and r["strength"] >= int(config["thresholds"]["min_admission_strength"])]
@@ -519,8 +644,14 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
     for rank, row in enumerate(admitted, 1):
         cards.append({**to_macro_card(row, rank, config), "rotation_rank": rank})
         deep[row["industry_id"]] = to_deep_analysis(row, config)
+    companies: list = []
+    if "company_ranking" in config and tickers is not None:
+        companies = rank_companies(rows, frames, config, today, tickers, _month_end(date(year, q * 3, 1)).isoformat())
+    for row in rows:
+        row.pop("member_ciks", None)  # large; membership is cached separately
     return {
         "schema_version": 1, "policy_id": config["policy_id"], "generated_at": utc_now(), "as_of": today.isoformat(),
+        "company_ranking": companies,
         "quarter": f"{year} Q{q}", "status": "COMPUTED", "publication_eligible": False,
         "method": "BLS PPI + SEC XBRL frames by SIC membership + TWSE/TPEx monthly revenue -> thesis_phase(industry) -> data strength",
         "industries": rows, "macro_candidates": cards, "deep_analyses": deep, "receipts": receipts,
@@ -569,8 +700,17 @@ def main() -> int:
     import company_business_profile as profile
     from sec_contact_headers import sec_identity_headers
     try:
-        document = build_rotation(config, fetch_sec=profile.sec_fetcher(sec_identity_headers()), post_bls=bls_post(),
-                                  today=date.today(), fetch_twse=twse_get())
+        import company_deep_report
+        fetch = profile.sec_fetcher(sec_identity_headers())
+        tickers: dict[int, str] = {}
+        for ticker, cik in company_deep_report.ticker_ciks(fetch, today=date.today()).items():
+            current = tickers.get(int(cik))
+            if not re.fullmatch(r"[A-Z]{1,5}", ticker):
+                continue  # preferred shares, warrants, units and share-class suffixes are not the common line
+            if current is None or (len(ticker), ticker) < (len(current), current):
+                tickers[int(cik)] = ticker
+        document = build_rotation(config, fetch_sec=fetch, post_bls=bls_post(), today=date.today(), fetch_twse=twse_get(),
+                                  tickers=tickers)
     except Exception as error:  # keep the last good file; report the class only
         print(json.dumps({"status": "FAILED", "error": type(error).__name__}))
         return 1
