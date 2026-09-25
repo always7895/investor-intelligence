@@ -37,18 +37,41 @@ $NamespaceId = '96142af40b5d4213862d5483fe3a66da'
 if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
 
 function Read-LivePointer {
-    $bytes = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --cwd $CloudDir 2>$null
+    # Read-only. Wrangler 4 KV commands default to the local Miniflare store; the gate must read Production.
+    $bytes = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --remote --cwd $CloudDir 2>$null
     $text = (($bytes -join '')).Trim()
     if ($text -notmatch '\{') { throw 'NO_LIVE_POINTER' }
     return ($text | ConvertFrom-Json)
 }
 
+# Read-only exact-byte copy of the Production sealed snapshot (scripts/fetch_live_public_snapshot.py).
+function Save-LiveSnapshot([object]$Pointer, [string]$Dir) {
+    $python = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
+    $copy = & $python (Join-Path (Join-Path $RepoRoot 'scripts') 'fetch_live_public_snapshot.py') --out $Dir 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw ('LIVE_SNAPSHOT_COPY_FAILED ' + $copy.Trim()) }
+    $copied = $copy | ConvertFrom-Json
+    if ([string]$copied.run_id -ne [string]$Pointer.run_id) { throw 'LIVE_POINTER_MOVED_DURING_COPY' }
+}
+
+# Pointer anchors are UTC ISO-8601. PowerShell 7 ConvertFrom-Json already yields a DateTime whose string form
+# drops the zone, so never re-parse that string; an unzoned value is UTC by contract.
+function ConvertTo-UtcAnchor([object]$Value) {
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [DateTime]) {
+        if ($Value.Kind -eq [DateTimeKind]::Local) { return $Value.ToUniversalTime() }
+        return [DateTime]::SpecifyKind($Value, [DateTimeKind]::Utc)
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Value)) { return $null }
+    $parsed = [DateTime]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if (-not [DateTime]::TryParse([string]$Value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $null }
+    return $parsed
+}
+
 function Get-PointerAgeSeconds([object]$Pointer) {
-    $raw = [string]$Pointer.public_data_as_of
-    $Anchor = [DateTime]::MinValue
-    if ([string]::IsNullOrWhiteSpace($raw)) { $raw = [string]$Pointer.promoted_at }
-    if (-not [DateTime]::TryParse([string]$raw, [ref]$Anchor)) { throw 'ANCHOR_PARSE_FAILED' }
-    if ($Anchor.Kind -ne [DateTimeKind]::Utc) { $Anchor = $Anchor.ToUniversalTime() }
+    $Anchor = ConvertTo-UtcAnchor $Pointer.public_data_as_of
+    if ($null -eq $Anchor) { $Anchor = ConvertTo-UtcAnchor $Pointer.promoted_at }
+    if ($null -eq $Anchor) { throw 'ANCHOR_PARSE_FAILED' }
     return [int]((Get-Date).ToUniversalTime() - $Anchor).TotalSeconds
 }
 
@@ -96,16 +119,25 @@ try {
         if (-not $results.checks.pointerFreshAfterActivation) {
             throw ('DEPLOY_GATE_POINTER_STALE_AFTER_ACTIVATION age={0}s; run a fresher sealed generate+sync and re-gate before acceptance.' -f $postAge)
         }
-        # Real reader replay over live KV bytes: run the in-repo probe (exits
-        # non-zero on ANY stale path) and capture its immutable result artifact.
-        $replayLog = & npx --yes vitest run test/live-production-replay.test.ts --root $CloudDir 2>&1 | Out-String
-        $replayExit = $LASTEXITCODE
-        $replayArtifact = Join-Path $CloudDir 'test-live-replay-result.json'
+        # Real reader replay over live KV bytes: copy the Production pointer, seal and sealed objects (read-only)
+        # and run the actual readers over them. The result file is written by this run only; a missing or
+        # leftover file can never pass (the old probe read a file no test wrote any more).
+        $replayDir = Join-Path ([IO.Path]::GetTempPath()) ('ii-live-replay-' + [Guid]::NewGuid().ToString('N'))
+        $replayArtifact = Join-Path $replayDir 'result.json'
+        Save-LiveSnapshot $PostPointer $replayDir
+        $env:V213_LIVE_REPLAY_DIR = $replayDir
+        $env:V213_LIVE_REPLAY_OUT = $replayArtifact
+        $env:V213_LIVE_REPLAY_MAX_AGE = [string]$CapSeconds
+        try { $replayLog = & npx --yes vitest run test/live-kv-replay.test.ts --root $CloudDir 2>&1 | Out-String; $replayExit = $LASTEXITCODE }
+        finally { Remove-Item Env:V213_LIVE_REPLAY_DIR, Env:V213_LIVE_REPLAY_OUT, Env:V213_LIVE_REPLAY_MAX_AGE -ErrorAction SilentlyContinue }
         $replayFresh = $false
         if (Test-Path -LiteralPath $replayArtifact) {
             $replay = Get-Content -LiteralPath $replayArtifact -Raw | ConvertFrom-Json
-            $replayFresh = [bool]$replay.fresh
+            $replayFresh = [bool]$replay.fresh -and ([string]$replay.run_id -eq [string]$PostPointer.run_id)
+            $results.replay = [ordered]@{ runId = [string]$replay.run_id; fresh = [bool]$replay.fresh; refusal = [string]$replay.refusal
+                macroOverviewSealed = [bool]$replay.macro_overview_sealed; potentialRankingRecords = [int]$replay.potential_ranking_records }
         }
+        Remove-Item -LiteralPath $replayDir -Recurse -Force -ErrorAction SilentlyContinue
         $results.checks.readerReplayExitZero = ($replayExit -eq 0)
         $results.checks.readerReplayFresh = $replayFresh
         if (-not $results.checks.readerReplayExitZero -or -not $replayFresh) { throw 'DEPLOY_GATE_READER_REPLAY_NOT_FRESH' }
