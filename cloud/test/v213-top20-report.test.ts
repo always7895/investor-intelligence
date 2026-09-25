@@ -70,13 +70,19 @@ function freshReport() {
   return data;
 }
 
+// Only the closed synthetic T00..T19 fixture vocabulary, not a real identity resolver.
+function hasFixtureTickerToken(text: string, ticker: string): boolean {
+  if (!/^T[0-9]{2}$/.test(ticker)) throw new Error("INVALID_SYNTHETIC_TICKER");
+  return new RegExp(`\\b${ticker}\\b`).test(text);
+}
+
 async function evidenceCommand(env: Parameters<typeof v213Top20LineAnswer>[0]): Promise<string> {
   const cards = await v213Top20LineAnswer(env, parseQuery("Top20"));
   if (!Array.isArray(cards)) throw new Error("EXPECTED_BOUND_CARDS");
   return (cards[0] as any).contents.contents[0].footer.contents.find((item: any) => item.type === "button").action.text;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   it("accepts exactly 20 closed-schema seven-field rows", () => {
     expect(parseV213Top20Report(report())).not.toBeNull();
@@ -148,7 +154,21 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(await v213Top20ReportAnswer(env, parseQuery("Top20"))).toContain("取得時間已過期");
   });
 
-  it("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five", async () => {
+  it("distinguishes synthetic identity tokens from ISO UTC01 timestamps", () => {
+    const timestamp = "2026-09-25T01:00:00.000Z";
+    expect(timestamp).toContain("T01");
+    expect(hasFixtureTickerToken(timestamp, "T01")).toBe(false);
+    for (const text of ["T01", "【T01｜深度化分析】", "公司代號 T01、名稱", "── 2/20 · T01｜原文：Synthetic 1 ──"]) {
+      expect(hasFixtureTickerToken(text, "T01")).toBe(true);
+    }
+    expect(hasFixtureTickerToken("T010 AT01 T01A", "T01")).toBe(false);
+    expect(() => hasFixtureTickerToken("T01", "T01|.*")).toThrow("INVALID_SYNTHETIC_TICKER");
+  });
+
+  it.each([0, 1, 12, 23])("routes the actual authorized LINE Top20 reply through all seven bilingual columns, never legacy five (UTC hour %i)", async hour => {
+    // Synthetic Date-only regression fixture, not current Production freshness proof.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 8, 25, hour));
     const kv = new MemoryKv();
     const data = freshReport();
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));
@@ -191,7 +211,9 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     expect(detail).toContain("多軸證據信心與來源品質");
     expect(detail).toContain("候選排位說明與為何為第N名");
     expect(detail).toContain("明確未明與待查事項");
-    expect(detail).not.toContain("T01");
+    for (const other of data.records.slice(1)) {
+      expect(hasFixtureTickerToken(detail, other.ticker)).toBe(false);
+    }
     expect(detail).toContain("https://www.sec.gov/example/current");
     expect(detail).not.toBe(formatV213Top20Report(parseV213Top20Report(data)!));
     assertLineMessages(messages);
@@ -200,7 +222,9 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
     const fullText = messages.map(x => x.text ?? "").join("\n");
     expect(fullText).toContain(data.records[0]!.name);
     for (const value of v213Top20DisplayValues(parseV213Top20Report(data)!.records[0]!)) expect(fullText).toContain(value);
-    expect(fullText).not.toContain("T01");
+    for (const other of data.records.slice(1)) {
+      expect(hasFixtureTickerToken(fullText, other.ticker)).toBe(false);
+    }
     expect(fullText).toContain("七欄摘要");
     expect(fullText).not.toBe(detail);
     assertLineMessages(messages);
