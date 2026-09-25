@@ -16,6 +16,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_v212_top20_report as builder
 import build_v213_scheduled_top20_report as scheduled
 
+
+def market_anchors(report, day=None):
+    """Latest-daily-bar anchors for the seven-field producer (synthetic; today's date unless given)."""
+    from datetime import datetime as _dt, timezone as _tz
+    day = day or _dt.now(_tz.utc).date().isoformat()
+    return {'records': {row['ticker']: {'windows': {'six_month': {'actual_end': day}}} for row in report['records']}}
+
+
+def write_anchors(path, report):
+    """Sidecar next to a v212 report file, where the producer CLI looks by default."""
+    path.with_name(path.stem + '.return-evidence-candidate.json').write_text(__import__('json').dumps(market_anchors(report)), encoding='utf-8')
+
 from build_v212_top20_report import (  # noqa: E402
     DISPLAY_COLUMNS,
     LONG_TERM_WINDOW_DAYS,
@@ -118,15 +130,15 @@ class V212Top20ReportTests(unittest.TestCase):
              'future_order_source_urls': [], 'current_orders': '未揭露（無可靠公開訂單數字）',
              'future_orders_estimate': '無可靠公開預估', 'orders_confidence': 'UNAVAILABLE', 'orders_as_of': ''}
             for row in report['records']]}
-        self.assertIsNone(scheduled.build(report, baseline, names_for(report))['records'][0]['retrieved_at'])
+        self.assertIsNone(scheduled.build(report, baseline, names_for(report), return_evidence=market_anchors(report))['records'][0]['retrieved_at'])
         with self.assertRaises(scheduled.V213ScheduledReportError):
-            scheduled.build(report, baseline, names_for(report), require_known_acquisition=True)  # No clock rescue at publication preflight.
+            scheduled.build(report, baseline, names_for(report), return_evidence=market_anchors(report), require_known_acquisition=True)  # No clock rescue at publication preflight.
         # Synthetic market-clock control only; no real source certification.
         for row in report['records']:
             row['source_acquisition']['industry'] = scheduled.field_clock('industry', row['industry'],
                 retrieved_at=report['generated_at'], evidence_sha256='a'*64)
             row['retrieved_at'] = report['generated_at']
-        seven = scheduled.build(report, baseline, names_for(report))
+        seven = scheduled.build(report, baseline, names_for(report), return_evidence=market_anchors(report))
         self.assertEqual(seven['records'][0]['profit_summary'], 'SEC 可用獲利指標不足')
 
     def test_actual_sec_adapter_dates_reach_report_not_only_handwritten_records(self):

@@ -30,6 +30,18 @@ SUBMISSIONS = {"sic": "3674", "sicDescription": "Semiconductors & Related Device
 PHRASE = "開發及生產化合物半導體基板"
 
 
+def market_anchors(report, day=None):
+    """Latest-daily-bar anchors for the seven-field producer (synthetic; today's date unless given)."""
+    from datetime import datetime as _dt, timezone as _tz
+    day = day or _dt.now(_tz.utc).date().isoformat()
+    return {'records': {row['ticker']: {'windows': {'six_month': {'actual_end': day}}} for row in report['records']}}
+
+
+def write_anchors(path, report):
+    """Sidecar next to a v212 report file, where the producer CLI looks by default."""
+    path.with_name(path.stem + '.return-evidence-candidate.json').write_text(__import__('json').dumps(market_anchors(report)), encoding='utf-8')
+
+
 def fake_fetch(url: str) -> bytes:
     if url.startswith("https://data.sec.gov/submissions/"):
         return json.dumps(SUBMISSIONS).encode("utf-8")
@@ -324,7 +336,7 @@ class ReportIntegrationTests(unittest.TestCase):
              "future_orders_estimate": "無可靠公開預估", "orders_confidence": "UNAVAILABLE", "orders_as_of": ""}
             for row in document["records"]]}
         names = {row["ticker"]: f"Synthetic Company {i}" for i, row in enumerate(document["records"])}
-        seven = scheduled.build(document, baseline, names)
+        seven = scheduled.build(document, baseline, names, return_evidence=market_anchors(document))
         self.assertEqual(seven["records"][0]["industry"], "半導體設備與材料：" + PHRASE)
         self.assertIn("半導體設備與材料：" + PHRASE, scheduled.preview(seven))
 

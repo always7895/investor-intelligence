@@ -22,6 +22,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from report_source_acquisition import SourceAcquisitionError, field_clock, utc_time, validate_report_acquisition
+from v213_evidence_policy import CLASS_POLICY_KEY, iso_z, load_policy, parse_time, policy_binding, window_days
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -98,8 +99,36 @@ def _completion_time() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
+def _market_anchor(return_evidence: Mapping[str, Any] | None, ticker: str) -> str | None:
+    """Date of the latest daily bar behind the row's market fields (source state, not the retrieval time)."""
+    record = ((return_evidence or {}).get("records") or {}).get(ticker) or {}
+    windows = record.get("windows") or {}
+    for window in ("six_month", "two_year"):  # the same daily series; the 2Y window when the 6M one is missing
+        end = (windows.get(window) or {}).get("actual_end")
+        moment = parse_time(end)
+        if moment is not None and len(str(end)) == 10:
+            return iso_z(moment)
+    return None
+
+
+def _withheld_orders(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    """Order fields when a disclosed claim is older than its evidence window: shown as not disclosed, never
+    re-anchored to a longer window or a newer date."""
+    return {**evidence, "current_orders": NO_CURRENT_ORDERS, "future_orders_estimate": NO_FUTURE_ORDER_ESTIMATE,
+            "orders_as_of": "", "orders_confidence": "UNAVAILABLE", "current_order_source_urls": [], "future_order_source_urls": []}
+
+
+NO_CURRENT_ORDERS = "未揭露（無可靠公開訂單數字）"
+NO_FUTURE_ORDER_ESTIMATE = "無可靠公開預估"
+
+
 def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Mapping[str, str], *,
-          require_known_acquisition: bool = False) -> dict[str, Any]:
+          require_known_acquisition: bool = False, return_evidence: Mapping[str, Any] | None = None,
+          report_notes: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Seven-field report with the two-anchor evidence contract the Worker enforces (top20-report.ts):
+    rows with a disclosed order claim are current_state_claim rows anchored at the disclosure date; rows
+    without one are market_observation rows anchored at their latest daily bar. A claim older than its
+    window is withheld (listed in ``report_notes``); a row with no dated anchor fails the build."""
     # Orders can be acquired AFTER the five-field report. This is a new artifact
     # completion clock; it must never replace any operand's acquisition clock.
     completed_at = _completion_time()
@@ -122,16 +151,24 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
         )
 
     evidence_by_ticker = {row["ticker"]: row for row in accepted}
+    policy = load_policy()
+    claim_window = window_days("current_state_claim", policy) * 86400
+    completed = utc_time(completed_at)
+    withheld: list[str] = []
     rows: list[dict[str, Any]] = []
     for rank, fresh_row in enumerate(fresh, 1):
         ticker = fresh_row["ticker"]
         evidence = evidence_by_ticker[ticker]
         retrieved = fresh_row['retrieved_at']
         no_order_claim = (evidence.get('orders_confidence') in ('UNAVAILABLE', 'NO_RELIABLE_PUBLIC_ORDER_NUMBER')
-                          and evidence.get('current_orders') == '未揭露（無可靠公開訂單數字）'
-                          and evidence.get('future_orders_estimate') == '無可靠公開預估'
+                          and evidence.get('current_orders') == NO_CURRENT_ORDERS
+                          and evidence.get('future_orders_estimate') == NO_FUTURE_ORDER_ESTIMATE
                           and evidence.get('current_order_source_urls') == []
                           and evidence.get('future_order_source_urls') == [])
+        claim_anchor = None if no_order_claim else parse_time(evidence.get('orders_as_of'))
+        if not no_order_claim and (claim_anchor is None or (completed - claim_anchor).total_seconds() > claim_window):
+            withheld.append(ticker)  # stale or undated claim: not publishable under the current-state window
+            evidence, no_order_claim, claim_anchor = _withheld_orders(evidence), True, None
         if not no_order_claim:
             # Retained order evidence does not inherit a refreshed market clock.
             # Neither orders_as_of nor a new generation date is acquisition time.
@@ -151,6 +188,12 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
         if (not isinstance(name, str) or not name.strip() or len(name.strip()) > 120
                 or "\r" in name or "\n" in name or "｜" in name):
             raise V213ScheduledReportError(f"TOP20_NAME_MISSING_OR_INVALID:{ticker}")
+        if no_order_claim:
+            evidence_class, anchor = "market_observation", _market_anchor(return_evidence, ticker)
+        else:
+            evidence_class, anchor = "current_state_claim", iso_z(claim_anchor)
+        if anchor is None:
+            raise V213ScheduledReportError(f"EVIDENCE_ANCHOR_MISSING:{ticker}")
         record = {
             "schema_version": 2,
             "rank": rank,
@@ -172,6 +215,11 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
             "future_order_source_urls": list(evidence.get("future_order_source_urls") or []),
             "numeric_total_order_estimate_prohibited": True,
             "retrieved_at": retrieved,
+            "orders_state_as_of": anchor,
+            "evidence_class": evidence_class,
+            "freshness_policy_key": CLASS_POLICY_KEY[evidence_class],
+            # Real public-data rows, not the licensed test-qualification path (readers disclose LIMITED research).
+            "test_only_admission": False,
             "provider_scope": "public_only",
             "owner_watchlist_inherited": False,
         }
@@ -181,10 +229,19 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
             record["two_year_return_evidence"] = fresh_row["two_year_return_evidence"]
         rows.append(record)
 
+    known = [utc_time(row["retrieved_at"]) for row in rows if row["retrieved_at"] is not None]
+    if not known and require_known_acquisition:
+        raise V213ScheduledReportError("EVIDENCE_CAPTURE_UNKNOWN")
+    if report_notes is not None:
+        report_notes["withheld_stale_order_claims"] = withheld
     return {
         "schema_version": 2,
         "product_version": "2.1.3",
         "generated_at": completed_at,
+        "freshness_policy": policy_binding(),
+        # Oldest real acquisition behind the rows (never the completion or seal clock). A candidate whose
+        # clocks are all unknown carries null, which every reader refuses (not publishable).
+        "evidence_capture_at": iso_z(min(known)) if known else None,
         "display_columns": DISPLAY_COLUMNS,
         "long_term_definition": "trailing_2y_adjusted_close_cagr",
         "short_term_definition": "trailing_6m_adjusted_close_price_return",
@@ -264,19 +321,24 @@ def self_test() -> None:
         } for i, ticker in enumerate(reversed(tickers))]
     }
     names = {ticker: f"Synthetic Company {i}" for i, ticker in enumerate(tickers)}
-    result = build(v212, baseline, names)
+    returns = {"records": {ticker: {"windows": {"six_month": {"actual_end": "2026-09-01"}}} for ticker in tickers}}
+    result = build(v212, baseline, names, return_evidence=returns)
     assert [r["ticker"] for r in result["records"]] == tickers
     assert [r["name"] for r in result["records"]] == [f"Synthetic Company {i}" for i in range(20)]
+    assert all(r["evidence_class"] == "market_observation" and r["orders_state_as_of"] == "2026-09-01T00:00:00Z"
+               and r["test_only_admission"] is False for r in result["records"])
+    assert result["evidence_capture_at"] == "2026-09-01T12:22:48Z" and result["freshness_policy"] == policy_binding()
     assert len(preview(result).splitlines()) == 21
     bad = dict(v212)
     bad["records"] = [dict(row) for row in v212["records"]]
     bad["records"][19]["ticker"] = "NEW"
-    try:
-        build(bad, baseline, names)
-    except V213ScheduledReportError:
-        pass
-    else:
-        raise AssertionError("membership drift did not fail closed")
+    for broken, kwargs in ((bad, {"return_evidence": returns}), (v212, {"return_evidence": {"records": {}}})):
+        try:
+            build(broken, baseline, names, **kwargs)
+        except V213ScheduledReportError:
+            pass
+        else:
+            raise AssertionError("membership drift or a missing evidence anchor did not fail closed")
     print("V213_SCHEDULED_REPORT_SELF_TEST = PASS")
 
 
@@ -289,17 +351,24 @@ def main() -> int:
     parser.add_argument("--preview", type=Path, default=DEFAULT_PREVIEW)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--require-known-acquisition", action="store_true", help="Refuse unknown clocks before output writes; never grants publication authority")
+    parser.add_argument("--return-evidence", type=Path, default=None,
+                        help="Market return sidecar (latest daily bar anchors); default: <v212-report>.return-evidence-candidate.json")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
+    evidence_path = args.return_evidence or args.v212_report.with_name(args.v212_report.stem + ".return-evidence-candidate.json")
+    notes: dict[str, Any] = {}
     report = build(_load(args.v212_report), _load(args.baseline), _load_names(args.top20),
-                   require_known_acquisition=args.require_known_acquisition)
+                   require_known_acquisition=args.require_known_acquisition, return_evidence=_load(evidence_path),
+                   report_notes=notes)
     text = preview(report)
     atomic_text(args.output, json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n")
     atomic_text(args.preview, text + "\n")
     unknown = sum(row['retrieved_at'] is None for row in report['records'])
-    print(f"V213_SCHEDULED_REPORT = CANDIDATE; rows=20; chars={len(text)}; acquisition_unknown={unknown}; publication_qualified=false")
+    withheld = ",".join(notes.get("withheld_stale_order_claims") or []) or "-"
+    print(f"V213_SCHEDULED_REPORT = CANDIDATE; rows=20; chars={len(text)}; acquisition_unknown={unknown}; "
+          f"withheld_stale_order_claims={withheld}; publication_qualified=false")
     return 0
 
 

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "description": "How long one seven-field Top20 report may be re-sealed hourly. Seal liveness keeps V21_TOP20_MAX_AGE_SECONDS; report generated_at, record times and evidence anchors are never re-stamped. The hourly publisher refreshes the report once it is refresh_after_hours old; readers refuse it after report_max_age_hours.",
+  "report_max_age_hours": 14,
+  "refresh_after_hours": 11
+}

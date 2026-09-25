@@ -17,6 +17,18 @@ from historical_return_evidence import (
     ReturnEvidenceError,
 )
 import build_v213_scheduled_top20_report as scheduled_builder
+
+
+def market_anchors(report, day=None):
+    """Latest-daily-bar anchors for the seven-field producer (synthetic; today's date unless given)."""
+    from datetime import datetime as _dt, timezone as _tz
+    day = day or _dt.now(_tz.utc).date().isoformat()
+    return {'records': {row['ticker']: {'windows': {'six_month': {'actual_end': day}}} for row in report['records']}}
+
+
+def write_anchors(path, report):
+    """Sidecar next to a v212 report file, where the producer CLI looks by default."""
+    path.with_name(path.stem + '.return-evidence-candidate.json').write_text(__import__('json').dumps(market_anchors(report)), encoding='utf-8')
 from report_source_acquisition import field_clock
 
 
@@ -277,7 +289,7 @@ class V213TotalReturnUITests(unittest.TestCase):
             ],
         }
         names = {ticker: f"Company {i}" for i, ticker in enumerate(tickers)}
-        result = scheduled_builder.build(v212_old, baseline, names)
+        result = scheduled_builder.build(v212_old, baseline, names, return_evidence=market_anchors(v212_old))
         self.assertEqual(len(result["records"]), 20)
         # Verify that absence of two_year_total_return_pct does not crash builder
         self.assertNotIn("two_year_total_return_pct", result["records"][0])

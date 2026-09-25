@@ -120,13 +120,8 @@ def evidence_policy_binding() -> "dict":
     minimal separators, unescaped non-ASCII. Readers compare against their own
     trusted in-worker policy copy; any drift rejects the report.
     """
-    raw = (ROOT / "config" / "v213-serenity-evidence-freshness-policy.json").read_text(encoding="utf-8")
-    parsed = json.loads(raw)
-    canonical = json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return {
-        "policy_id": parsed["policy_id"],
-        "policy_sha256": _sha(canonical),
-    }
+    import v213_evidence_policy  # one binding implementation for every producer (the Worker re-verifies it)
+    return v213_evidence_policy.policy_binding(EVIDENCE_POLICY_PATH)
 
 
 def _sha(raw: str) -> str:

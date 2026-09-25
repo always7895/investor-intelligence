@@ -1487,7 +1487,9 @@ def _synthetic_documents() -> tuple[dict[str, Any], ...]:
     for row in v213['records']:
         row.update(current_orders='未揭露（無可靠公開訂單數字）', future_orders_estimate='無可靠公開預估',
                    orders_as_of='', orders_confidence='UNAVAILABLE', current_order_source_urls=[], future_order_source_urls=[])
-    v213 = build_seven(v212, v213, {f"T{index:02d}": f"Synthetic Company {index}" for index in range(20)})
+    v213 = build_seven(v212, v213, {f"T{index:02d}": f"Synthetic Company {index}" for index in range(20)},
+                       return_evidence={"records": {f"T{index:02d}": {"windows": {"six_month": {"actual_end": stamp[:10]}}}
+                                                    for index in range(20)}})
     federation = {
         "schema_version": 1,
         "product_version": "2.1.3",
