@@ -16,6 +16,13 @@ Status: PLAN (2026-09-25). Operator rule: every data type must come from diversi
 
 Most adapter modules are called by standalone collectors whose ids do not match the catalog entries, so catalogue coverage overstates runtime diversity.
 
+## Wave 1 result (2026-09-25)
+
+- Eight official feeds registered with reviewed rights and promoted adapters (`config/sources/official-public-feeds.json`, `provider_runtime_hook.OFFICIAL_PUBLIC_FEED_HOSTS`); SEC requests now carry the declared contact.
+- Live canary: feeds reachable (TPEx directory timed out once; TAIFEX payload rejected), but the claim-evidence acquisition factory is the wrong consumer: bulk datasets exceed its 100-record cap and news items are leads, not claims. Status `ADAPTER_CONTRACT_VALIDATED`.
+- Market prices are not single-source at the evidence level: the scheduled `v213_source_independence_gate_v4` treats Yahoo as a compatibility calculation only and requires two comparable independent providers (Stooq, Nasdaq, Alpha Vantage) for high confidence. The single-source gap that remains is industry (yfinance only), addressed next through TWSE/TPEx issuer directories and SEC filings.
+- Next for these feeds: an acquisition kind for bulk market datasets and news leads with per-kind caps and normalizers, then `RUNTIME_ENABLED`.
+
 ## Diversity target per data type
 
 | Data type | Minimum independent families | Candidates (primary first) |

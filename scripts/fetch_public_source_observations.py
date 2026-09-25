@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple, Sequence
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 # The hash-verified embedded Python intentionally ignores cwd/PYTHONPATH.
@@ -146,10 +147,15 @@ def verified_tls_context() -> ssl.SSLContext:
 def fetch_bytes(url: str) -> bytes:
     if url not in set(ENDPOINTS.values()) and url not in set(ACQUISITION_ONLY_ENDPOINTS.values()):
         raise ValueError("UNADMITTED_FEED")
+    headers = {"User-Agent": "InvestorIntelligence-PublicRSS/1.0",
+               "Accept": "application/json, application/rss+xml, application/xml, text/xml"}
+    if urlsplit(url).hostname == "www.sec.gov":
+        # SEC fair access requires a declared contact; fail closed before any opener exists.
+        from sec_contact_headers import sec_identity_headers
+        headers.update(sec_identity_headers())
     # No environment proxy credentials, cookie jar, authorization or redirects.
     opener = build_opener(ProxyHandler({}), NoRedirect(), HTTPSHandler(context=verified_tls_context()))
-    request = Request(url, headers={"User-Agent": "InvestorIntelligence-PublicRSS/1.0",
-                                    "Accept": "application/json, application/rss+xml, application/xml, text/xml"})
+    request = Request(url, headers=headers)
     with opener.open(request, timeout=20) as response:
         if response.status != 200:
             raise ValueError("NEWS_HTTP_FAILURE")

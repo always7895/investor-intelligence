@@ -4,17 +4,22 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `292f274` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `6d21066` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — LINE card design (operator-approved direction) and source activation plan
+## This change — Wave 1 official public feeds (operator-authorized source diversification)
 
-- LINE Flex cards: black-to-graphite 135° gradient identity band (solid black fallback) with a brand-green rank chip, 3xl bold ticker and bold company name; body split into framed sections by information level with tinted title strips — Returns (green), Company (slate), Orders (amber); section titles sm bold; key values bold (return KPIs, industry, profit summary, current orders). Same system on options order, position sizing and menu panels; all product headers share the dark band. Earlier warm and plain variants were rejected by the operator. All text at WCAG AA or better; seven-field order, single footer button, shared button style, 4×5 carousels and LINE size limits unchanged (Top20 bubble ≈6.5 KB). Preview (version 6): https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
-- [SOURCE_ACTIVATION_PLAN_V1](../docs/SOURCE_ACTIVATION_PLAN_V1.md): operator rule "no single source". Measured: 158 catalogued sources, 1 runtime-enabled (ECB FX), 125 planned adapters, 32 manual-only; Top20 prices and industry come from yfinance only. Plan: per-source rights → adapter → access → admission → wiring, in three waves starting with official open data whose adapters already exist.
+Operator authorized all work in this session (2026-09-25) and requires diversified sources.
+
+- Rights reviewed from original pages and recorded (`docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md`, 2026-09-25): TWSE/TPEx EOD (data.gov.tw 11549/11371, OGDL v1), TWSE/TPEx issuer directories and TAIFEX options (reviewed 2026-09-09), Federal Reserve, ECB and SEC press feeds.
+- `config/sources/official-public-feeds.json`: eight T1 entries sharing independence groups with existing publisher entries; `provider_runtime_hook` promotes the reviewed staged adapters as capabilities. Requests to `www.sec.gov` send the declared SEC contact and fail closed without it.
+- Live canary (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`): feeds reachable, but the claim-evidence acquisition factory rejects bulk datasets (100-record cap) and news leads (not claims); entries stop at `ADAPTER_CONTRACT_VALIDATED`, not runtime-enabled. Market prices already need two independent non-Yahoo providers for high confidence (`v213_source_independence_gate_v4`); industry remains single-source (next task).
+- Tests: `tests/test_official_public_feeds_registry.py` (4).
 
 ## Previous changes
 
+- `7c01ef1`, `6d21066` layered LINE card design with black gradient band; source activation plan (full Python 2502 OK).
 - `6ba8e6d`, `292f274` installer fixture retention, C2b local artifact and recorded operator decisions (full Python 2502 OK).
 - `0c61b53` removal of 74 unreferenced docs, scripts and workflows (full Python 2497 OK).
 - `34417b9` Top20 sourced-wording guard, phase 1 (full Python 2497 OK, 429.4 s).
@@ -31,9 +36,9 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Latest gate run
 
-- Worker: `npm run typecheck` PASS; `npm test` 900 passed / 1 named manual skip.
 - `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Full Python 17:42:35–17:50:26: 2502 tests OK, 470.9 s.
+- Focused source tests: acquisition 37, registry 51, provider hook 10, catalog 10, wave 1 feeds 4 — OK.
+- Full Python 18:04:53–18:11:59: 2506 tests OK, 424.6 s. Worker unchanged.
 
 ## Closed components — no reopening without regression evidence
 

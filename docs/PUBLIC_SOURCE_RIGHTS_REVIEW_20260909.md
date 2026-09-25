@@ -70,3 +70,19 @@ Third-party content remains subject to its own notices and XBRL International / 
 **Decision:** the notice supports a conditional royalty-free permitted-work route, not unconditional open-data redistribution or general website scraping permission. Before any public taxonomy incorporation, resolve the applicable scope, first-page notice, unmodified content and imported/third-party conditions in the actual rendered/downloadable artifact. Do not mark the existing financial products, LINE service, issuer sources, WDI or any quotation provider eligible from this review. No paid license, account, billing, agreement acceptance or runtime setting was activated.
 
 SHA256: schema `4639263ec38aaa5d531cb7d0afb33f9582c2d602fb4623d4921e47e365b6ac9f`; documentation `27f1d4ba06b0dcb0c91225db2ac746d5adefc167518fa3948abbdfb944dab019`; notice `26d35a4ffd5129c4e75bd11ebb20ef3b27bdd93a3df41bac8c69874727c3434f`. Raw notice declares Windows-1252; the separate readable extraction decodes that charset without replacing or rebinding the original bytes. Semantic findings and the still-unloaded issuer calculation/definition network are recorded in the [detailed-report contract](DETAILED_REPORT_CONTRACT.md).
+
+## 2026-09-25 — Wave 1 official public feeds
+
+Scope: rights for the eight feeds the existing collector already fetches, reviewed from the original pages on 2026-09-25. Registry entries: `config/sources/official-public-feeds.json`.
+
+| Feed | Official evidence | Licence / terms | Attribution |
+| --- | --- | --- | --- |
+| `twse_equity_eod` | https://data.gov.tw/dataset/11549 | 政府資料開放授權條款-第1版; 免費; 每1日 | Provider and dataset, licence link |
+| `tpex_equity_eod` | https://data.gov.tw/dataset/11371 | 政府資料開放授權條款-第1版; 免費; 每1日 | Provider and dataset, licence link |
+| `twse_issuer_directory`, `tpex_issuer_directory`, `taifex_options_eod` | datasets 18419, 25036, 11320 (reviewed 2026-09-09 above) | 政府資料開放授權條款-第1版 | As above |
+| `federal_reserve_news` | https://www.federalreserve.gov/disclaimer.htm (updated 2024-08-02) | "Unless otherwise indicated, information on Board's website is in the public domain and may be copied and distributed without permission." Third-party material excluded. | "Please cite to the Board as the source" |
+| `ecb_news` | https://www.ecb.europa.eu/services/disclaimer/html/index.en.html | Reuse permitted when reproduced accurately with the ECB cited; modifications must be stated; authored papers excluded | Cite the ECB |
+| `sec_news` | https://www.sec.gov/privacy (updated 2023-11-29); https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data | "Information presented on sec.gov is considered public information and may be copied or further distributed ... without the SEC's permission"; fair access at most 10 requests per second with a declared User-Agent contact | Attribution encouraged |
+
+Decision: rights approved for internal factual research and brief quotation with attribution. Requests to `www.sec.gov` now send the configured SEC contact identity and fail closed without it. The canary (`_workspace/audit-runtime/source-activation-wave1-20260925/`) fetched the feeds, but the claim-evidence acquisition factory rejects bulk datasets (100-record cap) and news leads (not claim observations), so the entries stop at `ADAPTER_CONTRACT_VALIDATED`, not `RUNTIME_ENABLED`. This review is not legal advice and does not authorize redistribution beyond the stated terms.
+

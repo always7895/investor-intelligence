@@ -115,6 +115,43 @@ except Exception:
     pass
 
 
+# Wave 1 official public feeds (docs/SOURCE_ACTIVATION_PLAN_V1.md): the reviewed
+# staged adapters are promoted only through these capabilities. Rights evidence is
+# recorded in docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md (2026-09-25 section).
+OFFICIAL_PUBLIC_FEED_HOSTS = {
+    "federal_reserve_news": "www.federalreserve.gov",
+    "ecb_news": "www.ecb.europa.eu",
+    "sec_news": "www.sec.gov",
+    "twse_equity_eod": "openapi.twse.com.tw",
+    "tpex_equity_eod": "www.tpex.org.tw",
+    "twse_issuer_directory": "openapi.twse.com.tw",
+    "tpex_issuer_directory": "www.tpex.org.tw",
+    "taifex_options_eod": "openapi.taifex.com.tw",
+}
+
+try:
+    from adapters.staged_public import STAGED_ADAPTERS
+
+    for _source_id, _host in OFFICIAL_PUBLIC_FEED_HOSTS.items():
+        _staged = STAGED_ADAPTERS[_source_id]
+        register_provider_capability(
+            ProviderCapability(
+                source_id=_source_id,
+                adapter_id=_source_id,
+                parser_version=_staged.parser_version,
+                content_type="application/rss+xml" if _source_id.endswith("_news") else "application/json",
+                allowed_hosts=(_host,),
+                allowed_body_kinds=("official_public_feed",),
+                allowed_actions=("internal_factual_research", "brief_quotation"),
+                evidence_builder=None,
+                is_live_enabled=True,
+                adapter_factory=(lambda staged=_staged: staged),
+            )
+        )
+except Exception:
+    pass
+
+
 def _check_private_keys(val: Any) -> bool:
     """Check whether any forbidden private keys are present in data structure."""
     if isinstance(val, list):
