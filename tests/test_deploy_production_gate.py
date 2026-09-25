@@ -44,7 +44,7 @@ class GateContractTests(unittest.TestCase):
         self.assertNotIn("test-live-replay-result.json", GATE)
         self.assertIn("live-kv-replay.test.ts", GATE)
         self.assertIn("fetch_live_public_snapshot.py", GATE)
-        self.assertIn("-eq [string]$PostPointer.run_id", GATE)
+        self.assertIn("Test-ReplayAcceptance $replay ([string]$PostPointer.run_id)", GATE)  # bound to the live run
 
     def test_utc_anchor_in_windows_powershell_and_pwsh(self):
         function = re.search(r"function ConvertTo-UtcAnchor.*?\n}\n", GATE, re.S).group(0)
@@ -120,6 +120,55 @@ class LiveSnapshotCopyTests(unittest.TestCase):
             live.subprocess.run = original
         self.assertIn("--remote", calls[0])
         self.assertNotIn("put", calls[0])
+
+
+class ReplayAcceptanceTests(unittest.TestCase):
+    """State-aware replay acceptance (T6): record count, report age and the INSUFFICIENT state, in PS 5.1 and 7."""
+
+    CASES = {
+        # name: (replay fields, expected records, expected verdict prefix)
+        "carried_20": ({"fresh": True, "top20_records": 20, "age_hours": 3}, 20, "PASS"),
+        "golden_2_without_expectation": ({"fresh": True, "top20_records": 2, "age_hours": 0.1}, 0, "PASS"),
+        "golden_2_when_20_expected": ({"fresh": True, "top20_records": 2, "age_hours": 0.1}, 20, "TOP20_RECORDS 2 expected 20"),
+        "stale_report": ({"fresh": True, "top20_records": 20, "age_hours": 15}, 20, "REPORT_AGE"),
+        "insufficient_without_expectation": ({"fresh": False, "refusal_is_insufficient": True}, 0, "PASS_INSUFFICIENT"),
+        "insufficient_when_20_expected": ({"fresh": False, "refusal_is_insufficient": True}, 20, "TOP20_NOT_FRESH"),
+        "other_refusal": ({"fresh": False, "refusal_is_insufficient": False}, 0, "READER_REPLAY_NOT_FRESH"),
+        "old_reader": ({"fresh": True, "top20_records": 20, "age_hours": 1, "reader_contract_version": "v1"}, 0,
+                       "READER_CONTRACT_VERSION"),
+        "other_run": ({"fresh": True, "top20_records": 20, "age_hours": 1, "run_id": "20260101T000000Z-000000000000"}, 0,
+                      "REPLAY_RUN_MISMATCH"),
+    }
+
+    def test_verdicts(self):
+        from datetime import datetime, timedelta, timezone
+        shells = [s for s in ("powershell", "pwsh") if shutil.which(s)]
+        if not shells:
+            self.skipTest("PowerShell not available")
+        functions = "".join(re.search(rf"function {name}.*?\n}}\n", GATE, re.S).group(0)
+                            for name in ("ConvertTo-UtcAnchor", "Test-ReplayAcceptance"))
+        probe = functions
+        now = datetime.now(timezone.utc)
+        for name, (fields, expected, _) in self.CASES.items():
+            replay = {"reader_contract_version": "v213-reader-replay-v2", "run_id": RUN, "integrity": "sealed",
+                      "macro_overview_sealed": True, **{k: v for k, v in fields.items() if k != "age_hours"}}
+            if "age_hours" in fields:
+                replay["report_generated_at"] = (now - timedelta(hours=fields["age_hours"])).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            probe += (f"$r = '{json.dumps(replay)}' | ConvertFrom-Json\n"
+                      f"'{name}=' + (Test-ReplayAcceptance $r '{RUN}' {expected} 50400)\n")
+        for shell in shells:
+            out = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", probe], capture_output=True,
+                                 text=True, timeout=120)
+            verdicts = dict(line.split("=", 1) for line in out.stdout.splitlines() if "=" in line)
+            for name, (_, _, prefix) in self.CASES.items():
+                self.assertTrue(verdicts.get(name, "").startswith(prefix), (shell, name, verdicts.get(name), out.stderr[-400:]))
+            self.assertEqual(verdicts["carried_20"], "PASS", shell)
+
+    def test_gate_uses_the_acceptance_and_records_the_config(self):
+        self.assertIn("Test-ReplayAcceptance $replay ([string]$PostPointer.run_id) $ExpectTop20Records $reportMaxAge", GATE)
+        self.assertIn("v213-top20-report-freshness-v1.json", GATE)
+        self.assertIn("Get-FileHash -LiteralPath $configPath -Algorithm SHA256", GATE)
+        self.assertIn("[int]$ExpectTop20Records = 0", GATE)
 
 
 if __name__ == "__main__":

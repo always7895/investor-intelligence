@@ -6,6 +6,9 @@
 #   * Computes the ASSEMBLY anchor age (public_data_as_of) against the 7200s
 #     reader cap and appends one durable line per run to
 #     data/cache/freshness-watch.jsonl (append-only transition record).
+#   * Also records the sealed Top20 report age (generated_at, never re-stamped
+#     by hourly re-seals) and its record count or INSUFFICIENT state; the
+#     report bound is config/v213-top20-report-freshness-v1.json.
 #   * Exit code is always 0 for logging-type failures; a NON-ZERO (3) exit is
 #     reserved for STALE detection so Task Scheduler LastTaskResult becomes the
 #     alert signal. No secret, tenant, or credential material is read or printed.
@@ -55,6 +58,8 @@ $entry = [ordered]@{
     ageSeconds = $null
     capSeconds = $CapSeconds
     note       = ''
+    top20State = ''
+    reportAgeSeconds = $null
 }
 
 try {
@@ -91,6 +96,23 @@ if ($rawText -match '\{') {
                 $entry.status = 'STALE'
                 $entry.note = 'pointer exceeds reader cap; Top20 fails until the next healthy automated re-point'
             }
+            if ($entry.run_id -match '^\d{8}T\d{6}Z-[0-9a-f]{12}$') {
+                # Report bodies carry UTF-8 text; Windows PowerShell 5.1 decodes native output with the console code page.
+                $consoleEncoding = [Console]::OutputEncoding
+                try {
+                    [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+                    $reportRaw = & npx --yes wrangler kv key get ('snapshot:' + $entry.run_id + ':v213:top20-report:latest') --namespace-id $namespaceId --remote --cwd (Join-Path $RepoRoot 'cloud') 2>$null
+                    $report = (($reportRaw -join "`n").Trim()) | ConvertFrom-Json
+                    if ($report.PSObject.Properties.Name -contains 'status' -and [string]$report.status -eq 'INSUFFICIENT_EVIDENCE') {
+                        $entry.top20State = 'INSUFFICIENT'
+                    } else {
+                        $entry.top20State = ('RECORDS_' + @($report.records).Count)
+                        $generated = ConvertTo-UtcAnchor $report.generated_at
+                        if ($null -ne $generated) { $entry.reportAgeSeconds = [int]((Get-Date).ToUniversalTime() - $generated).TotalSeconds }
+                    }
+                } catch { $entry.top20State = 'REPORT_READ_FAILED' }
+                finally { [Console]::OutputEncoding = $consoleEncoding }
+            }
         }
         else {
             $entry.note = 'ANCHOR_PARSE_FAILED'
@@ -109,5 +131,5 @@ Add-Content -LiteralPath $logPath -Value $line -Encoding utf8
 
 $exitCode = 0
 if ($entry.status -eq 'STALE' -or $entry.status -eq 'CLOCK_ANOMALY') { $exitCode = 3 }
-Write-Host ("FRESHNESS_WATCH {0} run={1} anchor={2} age={3}s" -f $entry.status, $entry.run_id, $entry.anchor, $entry.ageSeconds)
+Write-Host ("FRESHNESS_WATCH {0} run={1} anchor={2} age={3}s top20={4} report_age={5}s" -f $entry.status, $entry.run_id, $entry.anchor, $entry.ageSeconds, $entry.top20State, $entry.reportAgeSeconds)
 exit $exitCode

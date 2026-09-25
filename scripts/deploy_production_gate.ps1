@@ -9,9 +9,13 @@
 #                     the expected worker version;
 #                 (2) live pointer re-read must be fresh (<7200s);
 #                 (3) a live KV readback + real reader replay (top20 loader)
-#                     must return the sealed seven-field report, not a stale
-#                     message;
-#                 (4) immutable acceptance artifact under state/records/.
+#                     must return the sealed seven-field report within the
+#                     report-age bound (config/v213-top20-report-freshness-v1.json)
+#                     and, with -ExpectTop20Records N, exactly N records. The
+#                     sealed INSUFFICIENT refusal (macro overview sealed) passes
+#                     only when no records are expected;
+#                 (4) immutable acceptance artifact under state/records/,
+#                     including the deployed Wrangler config path and sha256.
 #
 # No secret, tenant, or credential material is read, stored, or printed.
 # Requires the cached Wrangler CLI session (same as the sync script).
@@ -22,7 +26,9 @@ param(
     [string]$WorkerVersion = '',
     [string]$RepoRoot = '',
     [string]$WorkerUrl = 'https://investor-intelligence-v21-owner-line.moon951753.workers.dev',
-    [int]$CapSeconds = 7200)
+    [int]$CapSeconds = 7200,
+    [int]$ExpectTop20Records = 0,
+    [string]$WranglerConfig = 'wrangler.v213.production.local.toml')
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -68,6 +74,26 @@ function ConvertTo-UtcAnchor([object]$Value) {
     return $parsed
 }
 
+# State-aware replay acceptance: 'PASS', 'PASS_INSUFFICIENT' or a failure reason.
+function Test-ReplayAcceptance([object]$Replay, [string]$RunId, [int]$ExpectTop20Records, [double]$ReportMaxAgeSeconds) {
+    if ($null -eq $Replay) { return 'REPLAY_RESULT_MISSING' }
+    if ([string]$Replay.reader_contract_version -ne 'v213-reader-replay-v2') { return 'READER_CONTRACT_VERSION' }
+    if ([string]$Replay.run_id -ne $RunId -or [string]$Replay.integrity -ne 'sealed') { return 'REPLAY_RUN_MISMATCH' }
+    if ([bool]$Replay.fresh) {
+        if ($ExpectTop20Records -gt 0 -and [int]$Replay.top20_records -ne $ExpectTop20Records) {
+            return ('TOP20_RECORDS {0} expected {1}' -f [int]$Replay.top20_records, $ExpectTop20Records)
+        }
+        $generated = ConvertTo-UtcAnchor $Replay.report_generated_at
+        if ($null -eq $generated) { return 'REPORT_GENERATED_AT_INVALID' }
+        $reportAge = ((Get-Date).ToUniversalTime() - $generated).TotalSeconds
+        if ($reportAge -gt $ReportMaxAgeSeconds -or $reportAge -lt -300) { return ('REPORT_AGE {0}s' -f [int]$reportAge) }
+        return 'PASS'
+    }
+    if ($ExpectTop20Records -gt 0) { return 'TOP20_NOT_FRESH' }
+    if ([bool]$Replay.refusal_is_insufficient -and [bool]$Replay.macro_overview_sealed) { return 'PASS_INSUFFICIENT' }
+    return 'READER_REPLAY_NOT_FRESH'
+}
+
 function Get-PointerAgeSeconds([object]$Pointer) {
     $Anchor = ConvertTo-UtcAnchor $Pointer.public_data_as_of
     if ($null -eq $Anchor) { $Anchor = ConvertTo-UtcAnchor $Pointer.promoted_at }
@@ -102,6 +128,10 @@ try {
     }
     else {
         if ([string]::IsNullOrWhiteSpace($WorkerVersion)) { throw 'WORKER_VERSION_REQUIRED' }
+        # The receipt names the deployed config (the UserData copy has other bounds and must never be deployed).
+        $configPath = Join-Path $CloudDir $WranglerConfig
+        $results.deployConfig = [ordered]@{ path = $WranglerConfig
+            sha256 = $(if (Test-Path -LiteralPath $configPath) { (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }) }
         $challenge = [System.Guid]::NewGuid().ToString('N')
         $readinessUrl = '{0}/v213/readiness?challenge={1}' -f $WorkerUrl, $challenge
         $readiness = (Invoke-WebRequest -Uri $readinessUrl -Method Get -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
@@ -130,17 +160,21 @@ try {
         $env:V213_LIVE_REPLAY_MAX_AGE = [string]$CapSeconds
         try { $replayLog = & npx --yes vitest run test/live-kv-replay.test.ts --root $CloudDir 2>&1 | Out-String; $replayExit = $LASTEXITCODE }
         finally { Remove-Item Env:V213_LIVE_REPLAY_DIR, Env:V213_LIVE_REPLAY_OUT, Env:V213_LIVE_REPLAY_MAX_AGE -ErrorAction SilentlyContinue }
-        $replayFresh = $false
+        $replay = $null
         if (Test-Path -LiteralPath $replayArtifact) {
             $replay = Get-Content -LiteralPath $replayArtifact -Raw | ConvertFrom-Json
-            $replayFresh = [bool]$replay.fresh -and ([string]$replay.run_id -eq [string]$PostPointer.run_id)
             $results.replay = [ordered]@{ runId = [string]$replay.run_id; fresh = [bool]$replay.fresh; refusal = [string]$replay.refusal
+                readerContractVersion = [string]$replay.reader_contract_version; top20Records = [int]$replay.top20_records
+                reportGeneratedAt = [string]$replay.report_generated_at; testOnlyAdmission = $replay.test_only_admission
                 macroOverviewSealed = [bool]$replay.macro_overview_sealed; potentialRankingRecords = [int]$replay.potential_ranking_records }
         }
         Remove-Item -LiteralPath $replayDir -Recurse -Force -ErrorAction SilentlyContinue
+        $reportMaxAge = [double]((Get-Content -LiteralPath (Join-Path $RepoRoot 'config\v213-top20-report-freshness-v1.json') -Raw |
+            ConvertFrom-Json).report_max_age_hours) * 3600
+        $acceptance = Test-ReplayAcceptance $replay ([string]$PostPointer.run_id) $ExpectTop20Records $reportMaxAge
         $results.checks.readerReplayExitZero = ($replayExit -eq 0)
-        $results.checks.readerReplayFresh = $replayFresh
-        if (-not $results.checks.readerReplayExitZero -or -not $replayFresh) { throw 'DEPLOY_GATE_READER_REPLAY_NOT_FRESH' }
+        $results.checks.readerReplayAccepted = $acceptance
+        if (-not $results.checks.readerReplayExitZero -or $acceptance -notlike 'PASS*') { throw ('DEPLOY_GATE_READER_REPLAY_REJECTED ' + $acceptance) }
     }
     $results.status = 'PASS'
 }
