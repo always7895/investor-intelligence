@@ -445,6 +445,9 @@ def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float
             try:
                 with opener.open(request, timeout=timeout) as response:
                     payload = json.loads(response.read())
+                # Only the configured exact model may write the phrase (no silent model substitution).
+                if payload.get("model") != reasoner["model"]:
+                    return None
                 phrase = validate_phrase(str(payload["choices"][0]["message"]["content"] or ""), sentence)
             except Exception:
                 phrase = None

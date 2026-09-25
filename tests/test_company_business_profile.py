@@ -250,7 +250,8 @@ class SelectorRegressionTests(unittest.TestCase):
                          "美國、加拿大、墨西哥貴金屬生產商")
 
     def test_translator_asks_once_more_after_a_failure(self):
-        replies = [OSError("timed out"), json.dumps({"choices": [{"message": {"content": "貴金屬生產商"}}]}).encode()]
+        replies = [OSError("timed out"), json.dumps({"model": "local", "choices": [{"message": {"content": "貴金屬生產商"}}]}).encode(),
+                   json.dumps({"model": "other-model", "choices": [{"message": {"content": "貴金屬生產商"}}]}).encode()]
 
         class Response:
             def __init__(self, body): self.body = body
@@ -272,6 +273,8 @@ class SelectorRegressionTests(unittest.TestCase):
             with patch.object(profile, "build_opener", return_value=Opener()):
                 translate = profile.local_translator(config)
                 self.assertEqual(translate("Synthetic is a precious metals producer."), "貴金屬生產商")
+                # A reply served by any other model is refused outright (no retry, no silent substitution).
+                self.assertIsNone(translate("Synthetic is a precious metals producer."))
         self.assertEqual(replies, [])
 
 
