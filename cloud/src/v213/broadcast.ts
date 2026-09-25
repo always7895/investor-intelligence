@@ -4,7 +4,7 @@ import { pinPublicSnapshot } from "./public-snapshot";
 import { getOwnerPushTarget } from "../v21/owner-storage";
 import { pushMessages, type V21LinePushEnv } from "../v21/line-push";
 import { parseV21Top20 } from "../v21/top20";
-import { readV213Top20Report, v213FieldLocale, v213TimesAreFresh, v213EvidenceWithinWindow, v213TestOnlyDisclosure } from "./top20-report";
+import { readV213Top20Report, v213FieldLocale, v213ReportTimesAreFresh, v213EvidenceWithinWindow } from "./top20-report";
 import { buildV213Top20Messages } from "./top20-presentation";
 
 export interface V213BroadcastEnv extends StorageEnv, V21LinePushEnv {
@@ -53,18 +53,15 @@ export async function broadcastV213Top20(
   const stamp = (await view.text(["last_successful_pipeline_timestamp"])) ?? "";
   // A delayed cron's nominal scheduledTime is not the execution clock; a new
   // envelope cannot refresh an old company's retrieval timestamp.
-  if (!v213TimesAreFresh(env, [stamp, report.generated_at])) {
+  if (!v213ReportTimesAreFresh(env, stamp, [report.generated_at])) {
     return { status: "stale" };
   }
   if (!(await v213EvidenceWithinWindow(report.records.map(row => ({ freshAsOf: row.orders_state_as_of, retrievedAt: row.retrieved_at, evidenceClass: row.evidence_class, sealTime: report.generated_at }))))) {
     return { status: "stale" };
   }
 
+  // The admission disclosure is part of every message the builder emits (all locales, flex and text).
   const messages = buildV213Top20Messages(report, v213FieldLocale(env.V213_FIELD_LOCALE), env.V213_LINE_PRESENTATION === "text" ? "text" : "flex");
-  const locale = v213FieldLocale(env.V213_FIELD_LOCALE);
-  if (locale !== "bilingual") {
-    messages.unshift({ type: "text", text: v213TestOnlyDisclosure(report.evidence_capture_at, locale) });
-  }
 
   const runId = view.runId ?? "unknown";
   const date = taipeiDate(now);

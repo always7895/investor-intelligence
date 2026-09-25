@@ -284,7 +284,8 @@ describe("v2.1 private owner LINE delivery", () => {
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
     const runId = "synthetic-source-clock";
     const data = top20Report();
-    data.records[19]!.retrieved_at = new Date(Date.now() - 3 * 3600_000).toISOString();
+    // Older than the report bound (14 h): seal and report envelopes are fresh, the row is not.
+    data.records[19]!.retrieved_at = new Date(Date.now() - 15 * 3600_000).toISOString();
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(data));

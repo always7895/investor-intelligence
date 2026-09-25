@@ -12,6 +12,8 @@ import {
   type V213BottleneckRecord,
 } from "./bottleneck-report";
 import evidencePolicy from "../../../config/v213-serenity-evidence-freshness-policy.json";
+import { v213ReportAgeFresh } from "./report-age";
+export { v213ReportAgeFresh, v213ReportMaxAgeSeconds } from "./report-age";
 
 /** Trusted ALLOWLIST (PRO review 2A/B): evidence class -> freshness-policy key.
  * The worker re-verifies the report policy binding against its OWN config
@@ -89,7 +91,8 @@ export async function v213EvidenceWithinWindow(
     if (!retrievedRaw || !Number.isFinite(Date.parse(retrievedRaw))) return false;
     const retrievedMs = Date.parse(retrievedRaw);
     const retrievedAge = (observedAt - retrievedMs) / 1000;
-    if (Number.isFinite(retrievedAge) && retrievedAge < -300) return false;
+    // An old acquisition cannot be presented as current evidence either (same window as the anchor).
+    if (!Number.isFinite(retrievedAge) || retrievedAge < -300 || retrievedAge > windowDays * 86400) return false;
     const sealMs = observation.sealTime ? Date.parse(observation.sealTime) : NaN;
     if (Number.isFinite(sealMs) && retrievedMs > sealMs + 300_000) return false;
   }
@@ -108,6 +111,17 @@ export function v213TestOnlyDisclosure(captureAt: string | null | undefined, loc
     return `【TEST-ONLY 測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
   }
   return `【TEST-ONLY 測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [TEST-ONLY display] Rankings produced by the licensed test-qualification path; captured ${stamp} UTC; parts of the original disclosures date from 2025, formal current-state verification pending.`;
+}
+
+/** Admission disclosure shown with every Top20 surface: the licensed test-qualification path (true), or
+ * real public-data rows that are research candidates, not independently corroborated claims (false). */
+export function v213AdmissionDisclosure(report: Pick<V213Top20Report, "records" | "evidence_capture_at">,
+  locale: FieldLocale = "bilingual"): string {
+  if (report.records.some(row => row.test_only_admission === true)) return v213TestOnlyDisclosure(report.evidence_capture_at, locale);
+  const stamp = report.evidence_capture_at ?? "-";
+  const zh = `【研究候選 LIMITED_RESEARCH_CANDIDATE】公開資料排名，公司主張未達獨立雙來源驗證；資料擷取 ${stamp} UTC。`;
+  const en = `[Research candidates] Public-data ranking; company claims are not independently corroborated; data captured ${stamp} UTC.`;
+  return locale === "en" ? en : locale === "zh-TW" ? zh : `${zh} / ${en}`;
 }
 
 export function v213FieldLocale(value?: string): FieldLocale {
@@ -167,6 +181,20 @@ export function v213TimesAreFresh(
   });
 }
 
+/** Seal liveness and report age are separate gates: an hourly re-seal keeps the seal inside
+ * V21_TOP20_MAX_AGE_SECONDS, while the report and its row times (never re-stamped) must stay inside the report
+ * bound and cannot postdate the seal. */
+export function v213ReportTimesAreFresh(
+  env: Pick<V213Top20Env, "V21_TOP20_MAX_AGE_SECONDS">,
+  sealStamp: string | null | undefined,
+  reportTimes: readonly (string | null | undefined)[],
+  observedAt = Date.now(),
+): boolean {
+  if (!v213TimesAreFresh(env, [sealStamp ?? null], observedAt)) return false;
+  const seal = Date.parse(sealStamp ?? "");
+  return v213ReportAgeFresh(reportTimes, observedAt) && reportTimes.every(value => Date.parse(value ?? "") <= seal + 300_000);
+}
+
 export async function loadV213FreshTop20Report(
   env: V213Top20Env,
   query: ParsedQuery,
@@ -181,7 +209,7 @@ export async function loadV213FreshTop20Report(
     const bottleneck = await readV213BottleneckReport(view);
     if (bottleneck && bottleneck.status === "QUALIFIED" && bottleneck.records.length > 0) {
     const sealStamp = await view.text(["last_successful_pipeline_timestamp"]);
-    if (!v213TimesAreFresh(env, [sealStamp, bottleneck.generated_at])) {
+    if (!v213ReportTimesAreFresh(env, sealStamp, [bottleneck.generated_at])) {
       return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
     }
     if (!(await v213PolicyBindingMatches(bottleneck.freshness_policy))) return V213_STALE_RECORDS_MESSAGE;
@@ -222,7 +250,7 @@ export async function loadV213FreshTop20Report(
     return "七欄 Top20 報告尚未通過驗證；不退回五欄。 / Seven-field Top20 unavailable; no five-field fallback.";
   }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
-  if (!v213TimesAreFresh(env, [stamp, report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+  if (!v213ReportTimesAreFresh(env, stamp, [report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
   if (!(await v213EvidenceWithinWindow(report.records.map(row => ({
     freshAsOf: row.orders_state_as_of,
     retrievedAt: row.retrieved_at,
@@ -276,7 +304,8 @@ export interface V213Top20ReportRecord {
   /** Freshness-policy key the class maps to; re-validated against the allowlist. */
   freshness_policy_key: string;
   /** Licensed test-only qualification provenance (honesty, not admission). */
-  test_only_admission: true;
+  /** true: licensed test-qualification path; false: public-data research candidates. Uniform per report. */
+  test_only_admission: boolean;
   provider_scope: "public_only";
   owner_watchlist_inherited: false;
 }
@@ -452,7 +481,8 @@ function parseTop20ReportWithBounds(raw: unknown, exactTwenty: boolean): V213Top
       typeof item.orders_state_as_of !== "string" || !Number.isFinite(Date.parse(item.orders_state_as_of)) ||
       typeof item.evidence_class !== "string" || EVIDENCE_CLASS_POLICY_KEY[item.evidence_class] === undefined ||
       item.freshness_policy_key !== EVIDENCE_CLASS_POLICY_KEY[item.evidence_class] ||
-      item.test_only_admission !== true
+      typeof item.test_only_admission !== "boolean" ||
+      (index > 0 && item.test_only_admission !== (doc.records[0] as Record<string, unknown>).test_only_admission)
     ) return null;
 
     let twoYearTotalReturnPct: number | null | undefined = undefined;

@@ -1,5 +1,6 @@
 import type { ParsedQuery } from "../core";
 import { publicJson, type StorageEnv } from "../storage";
+import { v213ReportAgeFresh } from "../v213/report-age";
 import type { V21Top20Record } from "../v21/top20";
 
 const RECORD_KEYS = new Set([
@@ -162,10 +163,18 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
   // The sealed R75 snapshot stores the scored research rows as
   // v21:top20:latest; v211:universe:latest is the pre-R75 key retained for
   // legacy sealed snapshots only.
-  const raw = await publicJson<unknown>(env, ["v21:top20:latest", "v211:universe:latest"]);
+  const current = await publicJson<unknown>(env, ["v21:top20:latest"]);
+  const raw = current ?? await publicJson<unknown>(env, ["v211:universe:latest"]);
   const universe = parseV211ResearchUniverse(raw);
   if (!universe) {
     return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
+  }
+  // The current key is re-sealed hourly unchanged: each row's own generation time, not the seal, bounds its use.
+  if (current !== null && current !== undefined) {
+    const rowTimes = (Array.isArray(current) ? current : []).map(row => (row as { generated_at?: unknown })?.generated_at);
+    if (!v213ReportAgeFresh(rowTimes.map(value => (typeof value === "string" ? value : null)))) {
+      return "目前的公開系統量化 universe 已超過報告有效時間，等待下一次本機刷新。";
+    }
   }
   if (asksComparison(query.normalized) && tickers.length >= 2) {
     const left = universe.find((item) => item.ticker === tickers[0]);

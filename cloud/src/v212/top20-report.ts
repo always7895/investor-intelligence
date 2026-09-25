@@ -1,7 +1,7 @@
 import type { ParsedQuery } from "../core";
 import type { StorageEnv } from "../storage";
 import { pinPublicSnapshot } from "../v213/public-snapshot";
-import { v213TimesAreFresh, V213_STALE_RECORDS_MESSAGE } from "../v213/top20-report";
+import { v213ReportTimesAreFresh, V213_STALE_RECORDS_MESSAGE } from "../v213/top20-report";
 
 type SourceClock = { status: "KNOWN" | "UNKNOWN" | "UNAVAILABLE"; value: number | string | null; retrieved_at: string | null; evidence_sha256: string | null };
 const SOURCE_FIELDS = ["long_term_return_pct", "short_term_return_pct", "industry", "profit_summary"] as const;
@@ -173,6 +173,6 @@ export async function v212Top20ReportAnswer(env: StorageEnv & { V21_TOP20_MAX_AG
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   // Five-field legacy lane keeps its own assembly + retrieval contract; the
   // persisted-class evidence gate governs V213+ records only.
-  if (!v213TimesAreFresh(env, [stamp, report.generated_at, ...report.records.map(row => row.retrieved_at)])) return V213_STALE_RECORDS_MESSAGE;
+  if (!v213ReportTimesAreFresh(env, stamp, [report.generated_at, ...report.records.map(row => row.retrieved_at)])) return V213_STALE_RECORDS_MESSAGE;
   return formatV212Top20Report(report);
 }

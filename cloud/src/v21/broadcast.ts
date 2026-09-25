@@ -1,6 +1,6 @@
 import type { StorageEnv } from "../storage";
 import { pinPublicSnapshot } from "../v213/public-snapshot";
-import { v213TimesAreFresh, v213EvidenceWithinWindow } from "../v213/top20-report";
+import { v213ReportTimesAreFresh, v213EvidenceWithinWindow } from "../v213/top20-report";
 import { formatV212Top20Report, parseV212Top20Report } from "../v212/top20-report";
 import { getOwnerPushTarget } from "./owner-storage";
 import { pushText, type V21LinePushEnv } from "./line-push";
@@ -52,11 +52,12 @@ export async function broadcastV21Top20(
   // Row source-state freshness: rows carrying orders_state_as_of are judged on
   // that source-state stamp; V212 rows fall back to retrieved_at, which must then
   // satisfy the product max-age cap (not a 550d evidence window).
-  if (!v213TimesAreFresh(env, [
-    stamp,
+  // Seal liveness (7200 s) and report age are separate; report, list and row acquisition times are never
+  // re-stamped, so they must sit inside the report bound (source-state anchors keep their class windows below).
+  if (!v213ReportTimesAreFresh(env, stamp, [
     report.generated_at,
     ...records.map(row => row.generated_at),
-    ...report.records.map(row => (row as { orders_state_as_of?: string }).orders_state_as_of ?? row.retrieved_at),
+    ...report.records.map(row => row.retrieved_at),
   ])) {
     return { status: "stale" };
   }

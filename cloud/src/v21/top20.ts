@@ -1,5 +1,6 @@
 import type { ParsedQuery } from "../core";
 import { publicJson, type StorageEnv } from "../storage";
+import { v213ReportAgeFresh } from "../v213/report-age";
 
 export type V21ScoringVersion =
   | "serenity-first-v2.1.0"
@@ -285,6 +286,8 @@ export async function v21Top20Answer(env: StorageEnv, query: ParsedQuery): Promi
   if (query.intent !== "ranking" && !asksV21Detail(query)) return null;
   const records = parseV21Top20(await publicJson<unknown>(env, ["v21:top20:latest"]));
   if (!records) return "目前沒有通過嚴格驗證的 v2.1 公開 Top 20。";
+  // The list may be re-sealed hourly unchanged; its own generation time bounds how long it is shown.
+  if (!v213ReportAgeFresh(records.map(record => record.generated_at))) return "目前的 v2.1 公開 Top 20 已超過報告有效時間，等待下一次更新。";
   if (query.ticker) {
     const item = records.find((record) => record.ticker === query.ticker);
     return item ? formatV21Top20Detail(item) : `目前 Top 20 中沒有 ${query.ticker}。`;

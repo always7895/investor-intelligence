@@ -9,7 +9,7 @@ import { parseResearchProductRequest, unavailableResearchProduct } from "./resea
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
-  v213TimesAreFresh, v213EvidenceWithinWindow, v213TestOnlyDisclosure, V213_STALE_RECORDS_MESSAGE,
+  v213EvidenceWithinWindow, v213AdmissionDisclosure, V213_STALE_RECORDS_MESSAGE,
   v213Top20DisplayHeader, v213Top20DisplayValues,
   type V213Top20Env, type V213Top20Report, type V213Top20ReportRecord,
 } from "./top20-report";
@@ -32,10 +32,12 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   const labels = v213Top20DisplayHeader(locale);
   const localTime = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(report.generated_at));
   const generated = `報告產生 / Generated (台北 / Taipei): ${localTime}`;
+  // Every Top20 surface says what the rows are (test path or research candidates) and when data was captured.
+  const admission = v213AdmissionDisclosure(report, locale);
   if (style === "text") {
     // Keep complete company blocks. Never truncate a row, drop a field or emit
     // only the first five messages as a seemingly complete Top20.
-    const prefix = `Top20 · 七欄摘要 / Seven-field summary\n${generated}\n${NOTICE}`;
+    const prefix = `Top20 · 七欄摘要 / Seven-field summary\n${generated}\n${admission}\n${NOTICE}`;
     const chunks: string[] = [];
     let chunk = prefix;
     for (const record of report.records) {
@@ -89,7 +91,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         ...(reference ? [menuAction("深度化分析 / Deep analysis",
           `Top20 深度化分析 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`
         )] : [footnote("詳情入口未綁定 / Unbound detail reference")]),
-        footnote(SCENARIO_STATUS), footnote(generated), footnote(NOTICE),
+        footnote(SCENARIO_STATUS), footnote(generated), footnote(admission), footnote(NOTICE),
       ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     };
   });
@@ -100,6 +102,17 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   }
   assertLineMessages(messages);
   return messages;
+}
+
+/** The card's run is a sealed snapshot whose sealed seven-field report has exactly this SHA. */
+async function sealedReportShaMatches(env: PresentationEnv, runId: string, sha: string): Promise<boolean> {
+  try {
+    const raw = await env.PUBLIC_CACHE.get(`snapshot:${runId}:v213:snapshot-seal:v1`);
+    const seal = raw ? JSON.parse(raw) as { run_id?: unknown; objects?: Record<string, { sha256?: unknown }> } : null;
+    return seal?.run_id === runId && seal.objects?.["v213:top20-report:latest"]?.sha256 === sha;
+  } catch {
+    return false;
+  }
 }
 
 export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
@@ -113,14 +126,21 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
   if (!result || typeof result === "string") return result;
   if (detail) {
     const reference = getV213ReportReference(result);
-    if (!reference || detail[2] !== new Date(result.generated_at).toISOString() || detail[3] !== reference.snapshot || detail[4]!.toLowerCase() !== reference.reportSha256) return "Top20 已更新或內容不符，請重新取得卡片；不把另一份報告冒充舊卡片的詳情。";
+    // Hourly re-seals carry the same report bytes under a new run id: a card from an earlier run stays valid only
+    // when that run is a real sealed snapshot whose sealed report has exactly the card's SHA (and the current
+    // report has the same SHA and generation time). A forged or unsealed run id, or different bytes, still refuse.
+    const sameRun = !!reference && detail[3] === reference.snapshot;
+    const resealed = !!reference && !sameRun && detail[3]!.startsWith("s:") && reference.snapshot.startsWith("s:")
+      && await sealedReportShaMatches(env, detail[3]!.slice(2), detail[4]!.toLowerCase());
+    if (!reference || detail[2] !== new Date(result.generated_at).toISOString() || detail[4]!.toLowerCase() !== reference.reportSha256
+        || !(sameRun || resealed)) return "Top20 已更新或內容不符，請重新取得卡片；不把另一份報告冒充舊卡片的詳情。";
     const row = result.records.find(record => record.ticker === detail[1]!.toUpperCase());
     if (!row) return "該公司不在本輪 Top20 快照，沒有改用舊資料或其他公司的報告。";
     if (!(await v213EvidenceWithinWindow([{ freshAsOf: row.orders_state_as_of, retrievedAt: row.retrieved_at, evidenceClass: row.evidence_class, sealTime: result.generated_at }]))) return V213_STALE_RECORDS_MESSAGE;
     try {
       if (companyOnly) {
         const messages: LineOutboundMessage[] = [{ type: "text", text:
-          `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${v213TestOnlyDisclosure(result.evidence_capture_at, v213FieldLocale(env.V213_FIELD_LOCALE))}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
+          `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${v213AdmissionDisclosure(result, v213FieldLocale(env.V213_FIELD_LOCALE))}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
         assertLineMessages(messages);
         return messages;
       }

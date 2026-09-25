@@ -11,7 +11,7 @@ function runtime() {
   const kv = new MemoryKv();
   kv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
   kv.values.set("v21:top20:latest", JSON.stringify([
-    { ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }], private_field: "MUST_NOT_ENTER_PROMPT" },
+    { ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }], private_field: "MUST_NOT_ENTER_PROMPT", generated_at: new Date().toISOString() },
     { ticker: "OTHER", evidence: [{ title: "UNRELATED_UNIVERSE_MUST_NOT_ENTER" }] },
   ]));
   kv.values.set("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{

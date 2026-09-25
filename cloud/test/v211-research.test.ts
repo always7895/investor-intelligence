@@ -125,7 +125,8 @@ describe("v2.1.3 signed-universe + attribution-safe local-research routing", () 
   });
 
   it("accepts the R75 v2.1.3-diversified scoring universe", () => {
-    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified",
+      generated_at: new Date(Date.now() - 3600_000).toISOString() }));
     const parsed = parseV211ResearchUniverse(rows);
     expect(parsed).not.toBeNull();
     expect(parsed?.[0]?.ticker).toBe("T00");
@@ -134,7 +135,8 @@ describe("v2.1.3 signed-universe + attribution-safe local-research routing", () 
   it("serves ticker research from the sealed v21:top20:latest object", async () => {
     const publicKv = new MemoryKv();
     await publicKv.put("snapshot:current", JSON.stringify({ run_id: "run-1" }));
-    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified" }));
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...record(index), scoring_version: "system-operationalization-v2.1.3-diversified",
+      generated_at: new Date(Date.now() - 3600_000).toISOString() }));
     await publicKv.put("snapshot:run-1:v21:top20:latest", JSON.stringify(rows));
     const env = {
       PUBLIC_CACHE: asKv(publicKv),

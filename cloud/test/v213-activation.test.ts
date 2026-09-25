@@ -975,6 +975,28 @@ describe("v2.1.3 atomic activation transaction", () => {
     delete missing[0].evidence[0].period_end;
     expect(parseV21Top20(missing)).toBeNull();
   });
+  it("refuses a signed commit while activation commits are disabled, before any nonce or KV write", async () => {
+    const { publicKv, privateKv, env } = runtime();
+    const body = JSON.stringify(await bundle());
+    const key = "synthetic-test-only-key-".repeat(3);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = "b".repeat(32);
+    const version = "12345678-1234-1234-1234-123456789abc";
+    const before = { publicKeys: [...publicKv.values.keys()], privateKeys: [...privateKv.values.keys()] };
+    for (const flag of [undefined, "false", "off"]) {
+      const response = await productionWorker.fetch(new Request("https://synthetic.invalid/v213/admin/activation-bundle", {
+        method: "POST", body, headers: {
+          "x-ii-expected-worker-version": version, "x-ii-v21-timestamp": timestamp, "x-ii-v21-nonce": nonce,
+          "x-ii-v21-signature": createHmac("sha256", key).update(`${timestamp}.${nonce}.${body}`).digest("hex"),
+        },
+      }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version }, ...(flag ? { V213_ACTIVATION_COMMIT_ENABLED: flag } : {}) } as any,
+      { waitUntil: () => undefined } as unknown as ExecutionContext);
+      expect(response.status).toBe(403);
+      expect((await response.json<Record<string, unknown>>()).code).toBe("V213_ACTIVATION_COMMIT_DISABLED");
+    }
+    expect({ publicKeys: [...publicKv.values.keys()], privateKeys: [...privateKv.values.keys()] }).toEqual(before);
+  });
+
   it("writes all immutable objects before switching the pointer and rolls back exact text", async () => {
     const { publicKv, privateKv, env } = runtime();
     const oldPointer = JSON.stringify({ schema_version: 1, run_id: "20260901T000000Z-aaaaaaaaaaaa", marker: "exact" });
@@ -994,7 +1016,7 @@ describe("v2.1.3 atomic activation transaction", () => {
         "x-ii-v21-nonce": nonce,
         "x-ii-v21-signature": createHmac("sha256", key).update(`${timestamp}.${nonce}.${body}`).digest("hex"),
       },
-    }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version } } as any,
+    }), { ...env, V21_SYNC_HMAC_SECRET: key, CF_VERSION_METADATA: { id: version }, V213_ACTIVATION_COMMIT_ENABLED: "true" } as any,
     { waitUntil: () => undefined } as unknown as ExecutionContext);
     expect(response.status).toBe(200);
     const accepted = await response.json<Record<string, unknown>>();

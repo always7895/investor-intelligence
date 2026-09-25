@@ -3,6 +3,7 @@ import { configuredModelProfile, validateModelProfile, modelProfileSha256, type 
 import { generalAnswer, type QaEnv, type RequestContext } from "../qa";
 import { type ParsedQuery } from "../core";
 import { pinPublicSnapshot } from "./public-snapshot";
+import { v213ReportAgeFresh } from "./report-age";
 
 export const COMPACT_CONTEXT_MARKER = "II_V213_COMPACT_CONTEXT_V1:";
 export const COMPACT_MODE = "compact_public_v1";
@@ -55,6 +56,10 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now?:
   const row = list(await view.json(["v21:top20:latest"])).find((r) => r.ticker === ticker);
   const evidence = list(audit.records).find((r) => r.ticker === ticker);
   if (!row || !evidence) return { ...base, ticker, facts: "Ticker or claim audit unavailable; do not infer company facts." };
+  // A re-sealed row keeps its own generation time; past the report bound it is not current context.
+  if (!v213ReportAgeFresh([typeof row.generated_at === "string" ? row.generated_at : null], now ?? Date.now())) {
+    return { ...base, freshness: "STALE", ticker, facts: "Ticker row is older than the report bound; do not infer current company facts." };
+  }
   const mode = text(evidence.publication_evidence_mode ?? obj(evidence.freshness_state).publication_evidence_mode, 40);
   if (!["EVIDENCE_QUALIFIED", "LIMITED_RESEARCH_CANDIDATE"].includes(mode)) return { ...base, ticker, facts: "Publication mode unavailable; no validated thesis." };
   const sources = list(row.evidence).filter((s) => https(s.url)).sort((a, b) =>

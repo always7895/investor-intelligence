@@ -142,9 +142,14 @@ async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): P
 
 async function handleActivationTransaction(
   request: Request,
-  env: V211Env & VersionEnv,
+  env: V211Env & VersionEnv & { V213_ACTIVATION_COMMIT_ENABLED?: string },
   action: "commit" | "rollback" | "finalize",
 ): Promise<Response> {
+  // One Production writer (the hourly sealed publisher): a new activation commit is refused unless explicitly
+  // enabled, before authentication, so a refused call writes no nonce and touches no KV. Rollback/finalize stay.
+  if (action === "commit" && String(env.V213_ACTIVATION_COMMIT_ENABLED ?? "false").toLowerCase() !== "true") {
+    return jsonResponse({ ok: false, code: "V213_ACTIVATION_COMMIT_DISABLED", action }, 403);
+  }
   const authenticated = await authenticatedBody(request, env);
   if (authenticated instanceof Response) return authenticated;
   try {
