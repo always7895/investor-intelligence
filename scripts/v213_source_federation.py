@@ -64,6 +64,7 @@ ALPHA_URL = "https://www.alphavantage.co/query"
 # User-Agent here, and build_live sets trust_env=False so implicit netrc or
 # proxy credentials are not picked up by this session.
 FEDERATION_USER_AGENT = "Investor Intelligence 2.1.3 public research"
+MINIMUM_NASDAQ_SYMBOLS = 1000
 
 
 class FederationError(RuntimeError):
@@ -267,13 +268,15 @@ def fetch_nasdaq(session: requests.Session) -> tuple[dict[str, ListingIdentity],
         body, final_url, cached = cached_request(session, "GET", url, cache_hours=1)
         documents.append((final_url, body.decode("utf-8-sig", errors="strict")))
         cache_hits += int(cached)
-    listings = merge_directories(documents)
-    if len(listings) < 1000:
+    # merge_directories returns (listings, conflicts) since fc145e1; symbols listed with different details are
+    # quarantined there and must not resolve an identity here.
+    listings, conflicts = merge_directories(documents)
+    if len(listings) < MINIMUM_NASDAQ_SYMBOLS:
         raise FederationError(f"Nasdaq symbol directories unexpectedly small: {len(listings)}")
     return listings, observation(
         "nasdaq_symbol_directory", "nasdaq", "T2", "Nasdaq",
         "regulated_listing_identity", "HEALTHY", NASDAQ_LISTED_URL,
-        as_of=utc_now(), detail={"symbols": len(listings), "cache_hits": cache_hits},
+        as_of=utc_now(), detail={"symbols": len(listings), "quarantined_conflicts": len(conflicts), "cache_hits": cache_hits},
     )
 
 

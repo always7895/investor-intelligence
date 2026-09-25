@@ -29,7 +29,7 @@ LOCAL_RUNTIME_CONFIG = ROOT / "config" / "local-runtime-independence-v1.json"
 WORDING_POLICY = ROOT / "config" / "v213-sourced-wording-policy.json"
 CACHE_ROOT = ROOT / "data" / "cache" / "v21" / "business_profiles"
 ANNUAL_FORMS = ("10-K", "20-F")
-EXTRACTOR_VERSION = 5  # cached sentences from another extractor are re-derived
+EXTRACTOR_VERSION = 6  # cached sentences from another extractor are re-derived
 SEC_HOSTS = ("data.sec.gov", "www.sec.gov")
 MAX_DOCUMENT_BYTES = 40_000_000
 SEC_MIN_INTERVAL_SECONDS = 0.25  # well inside SEC fair access (10 requests/second)
@@ -37,22 +37,56 @@ MAX_INDUSTRY_CHARS = 100  # Worker lineSafeText limit for the industry field
 MAX_PHRASE_CHARS = 40
 _HEADINGS = (
     re.compile(r"item\s*1\s*[.:\-–—]?\s*business\b", re.I),
+    re.compile(r"items?\s*1\s*(?:and|&)\s*2\s*[.:\-–—]?\s*business\b", re.I),  # "Items 1 and 2. Business and Properties"
     re.compile(r"item\s*4\s*[.:\-–—]?\s*information\s+on\s+the\s+company\b", re.I),
 )
-_SELF = re.compile(r"\b(?:is|are)\s+(?:a|an|the|one\s+of)\b", re.I)
-_ACTIVITY = re.compile(r"\b(?:design|develop|manufactur|produc|provid|operat|offer|sell|make|suppl)\w*\b", re.I)
-_ROLE_NOUN = re.compile(r"\b(?:company|leader|provider|manufacturer|developer|designer|supplier|maker|producer)\b", re.I)
+# Sentence ends that are abbreviations, not sentence boundaries ("Coeur Mining, Inc. (“Coeur”) ... is a").
+_ABBREVIATION_END = re.compile(r"(?:\b(?:Inc|Corp|Co|Ltd|Ltda|Cos|Bros|No|Nos|St|Mt|vs|approx)|\b[A-Z]\.[A-Z]|\bL\.P|\bS\.A|\bN\.V|\bU\.S)\.$")
+_SELF = re.compile(r"\b(?:is|are)\s+(?:primarily\s+|principally\s+|mainly\s+)?(?:(?:a|an|the|one\s+of)\b|engaged\s+in\b)", re.I)
+_ACTIVITY = re.compile(r"\b(?:design|develop|manufactur|produc|provid|operat|offer|sell|make|suppl|engag|conduct|"
+                       r"explor|refin|insur|underwrit|retail|mine|mining)\w*\b", re.I)
+_ROLE_NOUN = re.compile(r"\b(?:company|leader|provider|manufacturer|developer|designer|supplier|maker|producer|insurer|"
+                        r"retailer|bank|operator|trust|REIT|firm|platform|distributor|miner|explorer|refiner|carrier|utility)\b", re.I)
 _SKIP = re.compile(r"item\s*1a|forward-looking|table of contents|risk factors", re.I)
+# Hard off-topic: never a business self-description (governance, accounting, legal, boilerplate, 20-F cross-reference).
 _OFF_TOPIC = re.compile(r"\b(?:committee|compensation|board of directors|we believe|see|form 10-k|form 20-f|"
-                        r"annual report|shareholders?|stockholders?|employees|properties|party to|defendant|"
+                        r"shareholders?|stockholders?|employees|party to|defendant|"
                         r"accounting firm|pcaob|audit\w*|demand is|demand for|fiscal year|"
-                        r"incorporated|headquarter\w*|dividends?|subsidiar\w*|restrictions?|ability to)\b", re.I)
+                        r"dividends?|restrictions?|ability to|held for sale|fair value|carrying value|costs to sell|"
+                        r"impairment|allegations?|damages?|litigation|lawsuits?|logo|trademarks?|symbol|equal employment|"
+                        r"integral part|presentation currency|functional currency|disclaimer|documents on display|"
+                        r"not applicable|sifi|risks?|exposed to|uncertaint\w*|references? to|refers? to|subject to|"
+                        r"standard & poor’?'?s \d+ company|we are a component|we are the agent|agent on behalf|"
+                        r"operates? through (?:its|our) subsidiaries|"
+                        r"only (?:material|significant) assets?|assets (?:primarily )?consist|liabilit\w*|lessee|lessor|"
+                        r"principal to|performance obligations?|revenue recognition)\b", re.I)
+# Words that do not distinguish the registrant from an affiliate (corporate forms and first-person subjects).
+_GENERIC_NAME_WORDS = {"the", "inc", "incorporated", "corp", "corporation", "co", "company", "companies", "ltd", "limited",
+                       "plc", "holding", "holdings", "group", "nv", "sa", "se", "ag", "and", "of", "de", "du", "la", "llc", "lp",
+                       "we", "our", "us"}
+# Soft off-topic: penalised only when the sentence is not the company's own "X is a ..." statement
+# ("was incorporated in 1921 and is primarily a gold producer", "is a holding company ... through its subsidiaries").
+_OFF_TOPIC_SOFT = re.compile(r"\b(?:annual report|properties|incorporated|headquarter\w*|subsidiar\w*)\b", re.I)
+# Cross-reference tables (page-number lists) are never prose.
+_TOC = re.compile(r"(?:\b\d{1,3}\s*,\s*){2,}\d{1,3}\b")
+# Only defined-term parentheticals are dropped; content lists such as "(e.g., structural steel, ...)" stay.
+# Index membership is not what the company does: the clause is dropped, the rest of the sentence kept.
+_INDEX_CLAUSE = re.compile(r"\s*,?\s*and\s+is\s+(?:part|a\s+(?:member|component))\s+of\s+the\s+S&P\s+\d+(?:\s+index)?", re.I)
+_PARENTHETICAL = re.compile(r"\s*\((?=[^()]{0,220}\))[^()]*?(?:[“”\"]|together with|collectively|referred to|individually|"
+                            r"the company|\bwe\b)[^()]*\)", re.I)
+_INCORPORATED = re.compile(r"\s+was\s+(?:incorporated|founded|organized|formed)\s+in\s+[^.,]{0,40}?\s+and(?=\s+(?:is|are)\b)", re.I)
+# Characters that occur only in Simplified Chinese; a phrase containing one is not Traditional Chinese.
+_SIMPLIFIED = set("确发业务产们这个来时为说对会过动实现开关东车长门问间题经济电话网体国际广场农专与应数据设备储术质资证银贷险厂矿炼钢铁药医疗营销户购买卖价额亿币汇导区块链云软计视频"
+                  "络线规划环节约统权础层级构运输仓库厅楼单页码标签优质领导积极极组织员职责条让认识记录报纸杂乐观听读写复杂简单结众")
 _OVERVIEW = re.compile(r"\b(?:Business Overview|Company Overview|Overview|Our Company)\b(?=\s+[A-Z])")
 _LEAD = re.compile(r"^(?:overview|general|our company|business overview)\s+", re.I)
 _CJK = re.compile(r"[一-鿿]")
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 PROMPT = ("將以下英文公司業務描述濃縮翻譯為繁體中文業務片語（最多28字）：不要寫公司名稱，"
-          "不要寫「全球」「領先」等形容，只寫公司做什麼與主要產品；不得加入原文沒有的資訊或數字。只輸出片語。\n")
+          "不要寫「全球」「領先」等形容，只寫公司做什麼與主要產品；不得加入原文沒有的資訊或數字；"
+          "提到數量時照抄原文數字，不要改成「數萬」「數千」等約略說法。只輸出片語。\n")
+# Vague quantities stand in for a number the filing states exactly ("數萬家門店" for 20,959 stores).
+_VAGUE_QUANTITY = re.compile(r"數[十百千萬億]|上[百千萬]|成千上萬")
 
 
 def latest_annual_filing(submissions: Mapping[str, Any], cik: str) -> dict[str, str] | None:
@@ -76,6 +110,12 @@ def business_text(raw: bytes) -> str:
     return re.sub(r"\s+", " ", html.unescape(text).replace("\xa0", " ")).strip()
 
 
+def _full_name(entity_name: str | None) -> re.Pattern[str] | None:
+    """First two words of the registrant name: "Antero Resources" beats an affiliate such as "Antero Midstream"."""
+    words = [w for w in re.findall(r"[A-Za-z0-9&]+", entity_name or "") if len(w) >= 2]
+    return re.compile(rf"\b{re.escape(words[0])}\s+{re.escape(words[1])}\b", re.I) if len(words) >= 2 else None
+
+
 def _self_patterns(entity_name: str | None, tickers: Sequence[str] = ()) -> tuple[re.Pattern[str], re.Pattern[str]]:
     """(sentence opens with the company as subject, strong self-description)."""
     words = re.findall(r"[A-Za-z0-9&]+", entity_name or "")
@@ -83,9 +123,19 @@ def _self_patterns(entity_name: str | None, tickers: Sequence[str] = ()) -> tupl
     subjects = [r"\bwe", r"\bthe company", r"\bour company"]
     escaped = [r"\b" + re.escape(name) for name in names]
     lead = re.compile("(?:" + "|".join(escaped + subjects) + r")\b", re.I)
-    named = [rf"\b{re.escape(name)}\b[\w.,&'’ -]{{0,40}}?" for name in names]
-    own = re.compile(rf"(?:{'|'.join(named + subjects)})(?:,[^.]{{0,80}},)?\s+(?:is|are)\s+(?:now\s+|currently\s+|today\s+)?"
-                     r"(?:a|an|the|one\s+of)\b", re.I)
+    # The rest of the name is capitalised tokens or corporate suffixes only (case-sensitive inside the
+    # case-insensitive pattern), so "Best Buy Marketplace, where there is a risk" is not a self-description.
+    tail = (r"(?:[\s,]+(?-i:[A-Z][\w&'’.\-]*|&|and|of|de|du|la)|,?\s+(?-i:Inc\.?|Corp\.?|Co\.?|Ltd\.?|plc|N\.V\.|S\.A\.|SE|AG)"
+            r"){0,6}")
+    named = [rf"\b{re.escape(name)}\b{tail}" for name in names]
+    # Subject, then optional defined-term parentheticals, "and its (consolidated) subsidiaries", an appositive,
+    # or "was incorporated in 1921 and", then the self-describing verb ("is (primarily) a", "are engaged in").
+    own = re.compile(rf"(?:{'|'.join(named + subjects)})(?:\s*\([^()]{{0,220}}\))*"
+                     r"(?:\s+and\s+(?:its|our)\s+(?:consolidated\s+)?subsidiaries(?:\s*\([^()]{0,220}\))*)?"
+                     r"(?:,[^.]{0,80},)?"
+                     r"(?:\s+was\s+(?:incorporated|founded|organized|formed)\s+in\s+[^.,]{0,40}?\s+and)?"
+                     r"\s+(?:is|are)\s+(?:now\s+|currently\s+|today\s+|primarily\s+|principally\s+|mainly\s+)?"
+                     r"(?:(?:a|an|the|one\s+of)\b|engaged\s+in\b)", re.I)
     return lead, own
 
 
@@ -98,13 +148,27 @@ def _clip(sentence: str) -> str | None:
     return cut[:boundary] if boundary >= 120 else None
 
 
-def _score(sentence: str, lead: re.Pattern[str], own: re.Pattern[str]) -> tuple[int, str]:
+def _affiliate(subject: str, registrant_words: set[str] | None) -> bool:
+    """Subject names words outside the registrant's name ("Antero Midstream" for Antero Resources)."""
+    if not registrant_words:
+        return False
+    head = _PARENTHETICAL.sub("", re.split(r"\s+(?:is|are|was)\s", subject, maxsplit=1)[0])
+    words = {w.lower() for w in re.findall(r"[A-Za-z0-9&]+", head) if w[:1].isupper()}
+    return bool(words - registrant_words - _GENERIC_NAME_WORDS)
+
+
+def _score(sentence: str, lead: re.Pattern[str], own: re.Pattern[str],
+           full: re.Pattern[str] | None = None, registrant_words: set[str] | None = None) -> tuple[int, str]:
     match = own.search(sentence)
     if match:
-        sentence, score = sentence[match.start():], 5  # drop heading residue before the subject
+        # Drop heading residue before the subject, defined-term parentheticals and the incorporation clause.
+        score = 6 if full is not None and full.search(match.group(0)) else 5
+        score -= 3 if _affiliate(match.group(0), registrant_words) else 0
+        sentence = _INDEX_CLAUSE.sub("", _INCORPORATED.sub("", _PARENTHETICAL.sub("", sentence[match.start():])))
     else:
         score = 2 if _SELF.search(sentence) else 0
         score += 1 if lead.match(sentence) else 0
+        score -= 4 if _OFF_TOPIC_SOFT.search(sentence) else 0
     score += 2 if _ACTIVITY.search(sentence) else 0
     score += 1 if _ROLE_NOUN.search(sentence) else 0
     score -= 4 if _OFF_TOPIC.search(sentence) else 0
@@ -112,26 +176,65 @@ def _score(sentence: str, lead: re.Pattern[str], own: re.Pattern[str]) -> tuple[
 
 
 def _sentences(text: str, start: int, width: int):
-    offset = start
+    """Sentences with their offsets; a fragment ending in an abbreviation ("Inc.", "U.S.") joins the next."""
+    offset, pending, pending_offset = start, "", start
     for raw in re.split(r"(?<=[.!?])\s+", text[start:start + width]):
-        yield offset, raw.strip()
+        piece = raw.strip()
+        if pending:
+            piece, fragment_offset = pending + " " + piece, pending_offset
+        else:
+            fragment_offset = offset
         offset += len(raw) + 1
+        if _ABBREVIATION_END.search(piece) and len(piece) < 1500:
+            pending, pending_offset = piece, fragment_offset
+            continue
+        pending = ""
+        yield fragment_offset, piece
+    if pending:
+        yield pending_offset, pending
+
+
+def _joined_sentences(text: str, start: int, width: int):
+    """_sentences, with a piece that starts lowercase or with a digit joined to the one before
+    ("approximately $26. 3 billion", "48 U.S. states"): a real sentence starts with a capital, quote or bracket."""
+    previous: tuple[int, str] | None = None
+    for offset, piece in _sentences(text, start, width):
+        if previous is not None and piece[:1].isalnum() and not piece[:1].isupper() and len(previous[1]) < 1500:
+            previous = (previous[0], previous[1] + " " + piece)
+            continue
+        if previous is not None:
+            yield previous
+        previous = (offset, piece)
+    if previous is not None:
+        yield previous
 
 
 def _best(text: str, windows: Sequence[int], lead: re.Pattern[str], own: re.Pattern[str], *, width: int,
-          minimum: int, strong_only: bool = False) -> str | None:
-    best: tuple[int, int, str] | None = None
+          minimum: int, strong_only: bool = False, full: re.Pattern[str] | None = None,
+          registrant_words: set[str] | None = None) -> str | None:
+    best: tuple[int, int, str, str | None] | None = None
     for start in windows:
-        for offset, raw in _sentences(text, start, width):
+        pieces = list(_joined_sentences(text, start, width))
+        for position, (offset, raw) in enumerate(pieces):
             candidate = _clip(_LEAD.sub("", raw))
-            if candidate is None or len(candidate) < 60 or _SKIP.search(candidate):
+            if candidate is None or len(candidate) < 30 or _SKIP.search(candidate) or _TOC.search(candidate):
                 continue
-            if strong_only and not own.search(candidate):
-                continue
-            score, sentence = _score(candidate, lead, own)
-            if len(sentence) >= 40 and score >= minimum and (best is None or (score, -offset) > (best[0], -best[1])):
-                best = (score, offset, sentence)
-    return best[2] if best else None
+            is_own = own.search(candidate) is not None
+            if (strong_only and not is_own) or (not is_own and len(candidate) < 60):
+                continue  # short sentences qualify only as self-descriptions ("CF Industries is a producer of ammonia.")
+            score, sentence = _score(candidate, lead, own, full, registrant_words)
+            if len(sentence) >= 30 and score >= minimum and (best is None or (score, -offset) > (best[0], -best[1])):
+                following = pieces[position + 1][1] if position + 1 < len(pieces) else None
+                best = (score, offset, sentence, following)
+    if best is None:
+        return None
+    sentence, following = best[2], best[3]
+    # A self-description without an activity ("X is a Bermuda exempted company ...") takes the next sentence when
+    # that one continues with the same subject and says what the company does ("Arch provides insurance ...").
+    if (following and not _ACTIVITY.search(sentence) and lead.match(following) and _ACTIVITY.search(following)
+            and not _OFF_TOPIC.search(following) and len(sentence) + len(following) < 400):
+        sentence = f"{sentence} {following}"
+    return sentence
 
 
 def _overview_excerpt(text: str, start: int, lead: re.Pattern[str]) -> str | None:
@@ -140,9 +243,10 @@ def _overview_excerpt(text: str, start: int, lead: re.Pattern[str]) -> str | Non
     if not match:
         return None
     parts: list[str] = []
-    for _, raw in _sentences(text, match.end(), 3000):
+    for _, raw in _joined_sentences(text, match.end(), 3000):
         candidate = _clip(raw)
-        if candidate is None or len(candidate) < 40 or _SKIP.search(candidate) or _OFF_TOPIC.search(candidate):
+        if (candidate is None or len(candidate) < 40 or _SKIP.search(candidate) or _OFF_TOPIC.search(candidate)
+                or _OFF_TOPIC_SOFT.search(candidate) or _TOC.search(candidate)):
             break
         if not parts and not (lead.search(candidate) or _ACTIVITY.search(candidate)):
             break
@@ -160,18 +264,23 @@ def business_sentence(text: str, entity_name: str | None = None, tickers: Sequen
     Order: a strong self-description ("X is a ... company that develops ...") in
     any business-heading window (tables of contents come first and MD&A
     cross-references later, so every window is scored and ties go to the earliest);
-    else the Overview paragraph; else the best activity sentence; else, without a
-    usable heading, a strong self-description anywhere in the report.
+    else the Overview paragraph; else a strong self-description anywhere in the
+    report (20-F filers that answer Item 4 through a cross-reference index);
+    else the best activity sentence in a heading window.
     """
     lead, own = _self_patterns(entity_name, tickers)
+    options = {"full": _full_name(entity_name),
+               "registrant_words": {w.lower() for w in re.findall(r"[A-Za-z0-9&]+", entity_name or "")} | {t.lower() for t in tickers}}
     windows = sorted(match.end() for heading in _HEADINGS for match in heading.finditer(text))
-    found = _best(text, windows, lead, own, width=12000, minimum=6)
+    found = _best(text, windows, lead, own, width=12000, minimum=6, **options)
     for start in windows if found is None else ():
         found = _overview_excerpt(text, start, lead)
         if found:
             break
-    found = found or _best(text, windows, lead, own, width=12000, minimum=3)
-    return found or _best(text, [0], lead, own, width=600000, minimum=6, strong_only=True)
+    found = found or _best(text, [0], lead, own, width=600000, minimum=6, strong_only=True, **options)
+    # Weak fallback only in the opening description (competition/pricing sections come later): better the
+    # label alone than "We carefully monitor pricing ..." as what the company does.
+    return found or _best(text, windows, lead, own, width=4000, minimum=3, **options)
 
 
 class ProfileBlocked(RuntimeError):
@@ -301,17 +410,21 @@ def validate_phrase(phrase: str, sentence: str) -> str | None:
     text = _THINK.sub("", phrase or "").strip().strip("「」\"'").rstrip("。.").strip()
     if not 4 <= len(text) <= MAX_PHRASE_CHARS or any(mark in text for mark in ("\n", "\r", "｜")):
         return None
-    if len(_CJK.findall(text)) < len(text) * 0.5:
+    if len(_CJK.findall(text)) < len(text) * 0.5 or any(char in _SIMPLIFIED for char in text):
         return None
     if not set(re.findall(r"\d", text)) <= set(re.findall(r"\d", sentence)):
         return None
-    if any(banned in text for banned in _banned_phrases()):
+    if any(banned in text for banned in _banned_phrases()) or _VAGUE_QUANTITY.search(text):
         return None
     return text
 
 
-def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float = 30.0) -> Callable[[str], str | None]:
-    """Translator bound to the configured loopback reasoner; failures return None."""
+def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float = 60.0,
+                     attempts: int = 2) -> Callable[[str], str | None]:
+    """Translator bound to the configured loopback reasoner; failures return None.
+
+    The GPU lane is shared, so a timed-out or rejected answer is asked once more
+    (2026-09-25: 5 of 20 Top20 translations were lost to transient timeouts)."""
     config = json.loads(config_path.read_text(encoding="utf-8"))
     reasoner = config["primary_reasoner"]
     base_url = str(reasoner["base_url"]).rstrip("/")
@@ -326,14 +439,18 @@ def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float
             "messages": [{"role": "system", "content": "你是財經翻譯。只輸出繁體中文譯文，不要解釋。"},
                          {"role": "user", "content": PROMPT + sentence}],
         }).encode("utf-8")
-        request = Request(base_url + "/chat/completions", data=body,
-                          headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            with opener.open(request, timeout=timeout) as response:
-                payload = json.loads(response.read())
-            return validate_phrase(str(payload["choices"][0]["message"]["content"] or ""), sentence)
-        except Exception:
-            return None
+        for _ in range(max(1, attempts)):
+            request = Request(base_url + "/chat/completions", data=body,
+                              headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with opener.open(request, timeout=timeout) as response:
+                    payload = json.loads(response.read())
+                phrase = validate_phrase(str(payload["choices"][0]["message"]["content"] or ""), sentence)
+            except Exception:
+                phrase = None
+            if phrase:
+                return phrase
+        return None
 
     return translate
 

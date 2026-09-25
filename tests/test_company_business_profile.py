@@ -182,6 +182,99 @@ class PhraseTests(unittest.TestCase):
                 profile.local_translator(config)
 
 
+class SelectorRegressionTests(unittest.TestCase):
+    """Failure patterns seen 2026-09-25 on a non-technology Top20 (shortened synthetic excerpts)."""
+
+    def pick(self, text: str, name: str, tickers=("SYN",)) -> str | None:
+        return profile.business_sentence(text, name, list(tickers))
+
+    def test_combined_heading_parentheticals_and_engaged_in(self):
+        text = ("Items 1 and 2. Business and Properties Our Company Synthetic Resources Corporation (individually "
+                "referred to as “Synthetic”) and its consolidated subsidiaries (collectively referred to as the "
+                "“Company,” “we” or “our”) are engaged in the development, production and exploration of natural gas "
+                "properties located in one basin. Synthetic Midstream is a growth-oriented midstream energy company "
+                "formed to own and operate gathering assets.")
+        chosen = self.pick(text, "SYNTHETIC RESOURCES Corp")
+        self.assertTrue(chosen.startswith("Synthetic Resources Corporation and its consolidated subsidiaries are engaged in"), chosen)
+        self.assertNotIn("Midstream", chosen)  # an affiliate is not the registrant
+
+    def test_incorporation_clause_and_accounting_sentences(self):
+        text = ("Item 1. Business Introduction Synthetic Gold Corporation was incorporated in 1921 and is primarily a gold "
+                "producer with operations in three countries. The Company presented these assets as held for sale and "
+                "recorded them at the lower of their carrying value or fair value, less costs to sell.")
+        self.assertEqual(self.pick(text, "SYNTHETIC GOLD Corp /DE/"),
+                         "Synthetic Gold Corporation is primarily a gold producer with operations in three countries.")
+
+    def test_abbreviation_does_not_end_the_sentence(self):
+        text = ("Item 1. Business Synthetic Mining, Inc. (“Synthetic”, “the Company”, or “we”), founded in 1928, is a "
+                "precious metals producer with assets located in the U.S. and Mexico.")
+        self.assertEqual(self.pick(text, "SYNTHETIC MINING, INC."),
+                         "Synthetic Mining, Inc., founded in 1928, is a precious metals producer with assets located in the U.S. and Mexico.")
+
+    def test_holding_company_statement_with_subsidiaries(self):
+        text = ("Item 1. BUSINESS The Synthetic Companies, Inc. (together with its subsidiaries, collectively, the Company) "
+                "is a holding company principally engaged, through its subsidiaries, in providing property and casualty "
+                "insurance products. The Company is an integral part of its business operations.")
+        chosen = self.pick(text, "SYNTHETIC COMPANIES, INC.")
+        self.assertIn("is a holding company principally engaged, through its subsidiaries, in providing", chosen)
+
+    def test_cross_reference_index_is_skipped_for_a_self_description_elsewhere(self):
+        text = ("Item 4. Information on the company A. History and development of the company Disclaimer (Documents on "
+                "Display); About Us (About us; Overview) 6, 23, 25 B. Business overview. " + "Filler text. " * 50 +
+                "We are a Brazilian partially state-owned company and one of the world’s largest oil and gas producers.")
+        self.assertEqual(self.pick(text, "SYNTHETIC ENERGY SA"),
+                         "We are a Brazilian partially state-owned company and one of the world’s largest oil and gas producers.")
+
+    def test_lowercase_words_are_not_part_of_the_company_name(self):
+        text = ("Item 1. Business Synthetic Buy Marketplace, where there is a risk that third-party sellers fail, may "
+                "affect our reputation. Both segments operate an omnichannel platform that allows customers to shop "
+                "online or visit our stores.")
+        self.assertNotIn("where there is a risk", self.pick(text, "SYNTHETIC BUY CO INC") or "")
+
+    def test_activity_less_statement_takes_the_next_same_subject_sentence(self):
+        text = ("Item 1. Business OUR COMPANY General Synthetic Capital is a publicly listed Bermuda exempted company with "
+                "approximately $26.9 billion in capital and is part of the S&P 500 index. Synthetic provides insurance, "
+                "reinsurance and mortgage insurance on a worldwide basis.")
+        self.assertEqual(self.pick(text, "SYNTHETIC CAPITAL GROUP LTD."),
+                         "Synthetic Capital is a publicly listed Bermuda exempted company with approximately $26.9 billion in "
+                         "capital. Synthetic provides insurance, reinsurance and mortgage insurance on a worldwide basis.")
+
+    def test_vague_quantity_is_rejected(self):
+        sentence = "We are the largest discount retailer in the United States by number of stores, with 20,959 stores."
+        self.assertIsNone(profile.validate_phrase("美國折扣零售商，經營數萬家門店", sentence))
+        self.assertEqual(profile.validate_phrase("美國折扣零售商，經營20,959家門店", sentence), "美國折扣零售商，經營20,959家門店")
+
+    def test_simplified_chinese_phrase_is_rejected(self):
+        self.assertIsNone(profile.validate_phrase("訴訟指控存在固有不确定性", "The allegations are subject to uncertainties."))
+        self.assertEqual(profile.validate_phrase("美國、加拿大、墨西哥貴金屬生產商", "precious metals producer"),
+                         "美國、加拿大、墨西哥貴金屬生產商")
+
+    def test_translator_asks_once_more_after_a_failure(self):
+        replies = [OSError("timed out"), json.dumps({"choices": [{"message": {"content": "貴金屬生產商"}}]}).encode()]
+
+        class Response:
+            def __init__(self, body): self.body = body
+            def __enter__(self): return self
+            def __exit__(self, *exc): return False
+            def read(self): return self.body
+
+        class Opener:
+            def open(self, request, timeout):
+                reply = replies.pop(0)
+                if isinstance(reply, Exception):
+                    raise reply
+                return Response(reply)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "runtime.json"
+            config.write_text(json.dumps({"primary_reasoner": {"base_url": "http://127.0.0.1:5000/v1", "model": "local"}}),
+                              encoding="utf-8")
+            with patch.object(profile, "build_opener", return_value=Opener()):
+                translate = profile.local_translator(config)
+                self.assertEqual(translate("Synthetic is a precious metals producer."), "貴金屬生產商")
+        self.assertEqual(replies, [])
+
+
 class ReportIntegrationTests(unittest.TestCase):
     def report(self, *, translate, label_clock: bool, _build=None, **kwargs):
         rows = [{"ticker": f"T{i:02}", "rank": i + 1} for i in range(20)]
