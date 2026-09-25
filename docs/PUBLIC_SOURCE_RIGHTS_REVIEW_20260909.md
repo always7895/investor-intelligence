@@ -86,3 +86,8 @@ Scope: rights for the eight feeds the existing collector already fetches, review
 
 Decision: rights approved for internal factual research and brief quotation with attribution. Requests to `www.sec.gov` now send the configured SEC contact identity and fail closed without it. The canary (`_workspace/audit-runtime/source-activation-wave1-20260925/`) fetched the feeds, but the claim-evidence acquisition factory rejects bulk datasets (100-record cap) and news leads (not claim observations), so the entries stop at `ADAPTER_CONTRACT_VALIDATED`, not `RUNTIME_ENABLED`. This review is not legal advice and does not authorize redistribution beyond the stated terms.
 
+## 2026-09-25 — Industry rotation sources
+
+- **BLS Producer Price Index, public API v1** (`https://api.bls.gov/publicAPI/v1/timeseries/data/`): U.S. federal statistics, public domain (17 U.S.C. 105); version 1 needs no key or registration (daily query limit respected: one run per ~20 hours, ≤25 series per request). Only a generic User-Agent is sent, no personal data.
+- **SEC EDGAR XBRL frames and company listing by SIC**: public filings data under SEC Fair Access (declared contact, ≤4 requests/second with back-off; 403/429 stop the run).
+- **Not used:** FRED CSV downloads (terms limit use to personal, non-commercial and prohibit automated extraction; the original publishers are used instead) and the Census Economic Indicators API (now requires a registered key).

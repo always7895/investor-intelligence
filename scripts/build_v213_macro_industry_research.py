@@ -18,9 +18,15 @@ import json
 import sys
 from pathlib import Path
 
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent.parent / "config" / "v213-macro-industry-policy-v1.json"
 
-WIDER_CANDIDATE_UNIVERSE = [
+# SYNTHETIC CONTRACT FIXTURE ONLY (operator rule 2026-09-25: no hand-written production data).
+# These rows prove the card/overview contract in tests; they are never published. Production
+# candidates come from scripts/industry_rotation.py (BLS PPI + SEC XBRL, recomputed from live data).
+_SYNTHETIC_CONTRACT_UNIVERSE = [
     {
         "industry_id": "advanced_packaging_hbm",
         "industry_name": "先進封裝與高頻寬記憶體 (Advanced Packaging & HBM)",
@@ -254,11 +260,11 @@ WIDER_CANDIDATE_UNIVERSE = [
 ]
 
 SYNTHETIC_FIVE_QUALIFIED = [
-    WIDER_CANDIDATE_UNIVERSE[0],
-    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "optical_networking"),
-    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "grid_power_infrastructure"),
-    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "thermal_cooling_systems"),
-    next(c for c in WIDER_CANDIDATE_UNIVERSE if c["industry_id"] == "semiconductor_equipment_materials"),
+    _SYNTHETIC_CONTRACT_UNIVERSE[0],
+    next(c for c in _SYNTHETIC_CONTRACT_UNIVERSE if c["industry_id"] == "optical_networking"),
+    next(c for c in _SYNTHETIC_CONTRACT_UNIVERSE if c["industry_id"] == "grid_power_infrastructure"),
+    next(c for c in _SYNTHETIC_CONTRACT_UNIVERSE if c["industry_id"] == "thermal_cooling_systems"),
+    next(c for c in _SYNTHETIC_CONTRACT_UNIVERSE if c["industry_id"] == "semiconductor_equipment_materials"),
 ]
 
 
@@ -311,7 +317,9 @@ def evaluate_candidates(candidates: list[dict]) -> tuple[list[dict], list[dict]]
     for cand in candidates:
         ok, reason = validate_candidate(cand)
         cand_copy = json.loads(json.dumps(cand))
-        cand_copy["opportunity_score"] = calculate_opportunity_score(cand_copy)
+        # Data-driven rows carry their computed strength; hand-scored rows exist only in synthetic tests.
+        cand_copy["opportunity_score"] = (int(cand_copy["data_strength"]) if "data_strength" in cand_copy
+                                          else calculate_opportunity_score(cand_copy))
         if ok:
             cand_copy["admission_status"] = "ADMITTED"
             qualified.append(cand_copy)
@@ -322,15 +330,25 @@ def evaluate_candidates(candidates: list[dict]) -> tuple[list[dict], list[dict]]
             cand_copy["growth"] = None
             disqualified.append(cand_copy)
 
-    # Sort qualified descending by opportunity score
-    qualified.sort(key=lambda c: c["opportunity_score"], reverse=True)
+    # Rotation order (phase, then data strength) when present; otherwise opportunity score.
+    qualified.sort(key=lambda c: (c.get("rotation_rank", 0), -c["opportunity_score"]))
     for idx, cand in enumerate(qualified):
         cand["rank"] = idx + 1
 
     return qualified, disqualified
 
 
-def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False) -> dict:
+def load_rotation_candidates(path: Path | None = None) -> tuple[list[dict], dict, dict | None]:
+    """(candidates, deep analyses, rotation doc) from the fresh data-driven rotation; empty when stale or missing."""
+    import industry_rotation
+    document = industry_rotation.load_rotation(path or industry_rotation.OUTPUT_PATH)
+    if document is None:
+        return [], {}, None
+    return list(document.get("macro_candidates", [])), dict(document.get("deep_analyses", {})), document
+
+
+def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,
+                                deep_analyses: dict | None = None, rotation: dict | None = None) -> dict:
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     qualified_count = len(qualified)
     shortfall = max(0, 5 - qualified_count)
@@ -348,6 +366,11 @@ def build_macro_overview_output(qualified: list[dict], disqualified: list[dict],
         "synthetic_contract_fixture": is_synthetic,
         "candidate_pool_size": qualified_count + len(disqualified),
         "industries": qualified[:5],
+        # Deep analyses travel inside the sealed overview (the seal admits one macro object).
+        "deep_analyses": {c["industry_id"]: (deep_analyses or {})[c["industry_id"]]
+                          for c in qualified[:5] if c.get("industry_id") in (deep_analyses or {})},
+        "data_basis": ({"method": rotation.get("method"), "as_of": rotation.get("as_of"), "quarter": rotation.get("quarter"),
+                        "receipt_count": len(rotation.get("receipts", []))} if rotation else None),
         "excluded_candidates": [
             {
                 "industry_id": c.get("industry_id"),
@@ -374,6 +397,8 @@ def main():
     parser.add_argument("--policy", type=str, default=str(DEFAULT_POLICY_PATH), help="Policy JSON path")
     parser.add_argument("--synthetic-fixture", action="store_true", help="Generate synthetic 5 qualified candidates to prove UI contract")
     args = parser.parse_args()
+    deep: dict = {}
+    rotation: dict | None = None
 
     if args.synthetic_fixture:
         candidates = SYNTHETIC_FIVE_QUALIFIED
@@ -383,12 +408,13 @@ def main():
             candidates = json.load(f)
         is_synthetic = False
     else:
-        # Default live evaluation: candidates from wider candidate universe
-        candidates = WIDER_CANDIDATE_UNIVERSE
+        # Default live evaluation: the data-driven rotation; stale or missing data is a shortfall.
+        candidates, deep, rotation = load_rotation_candidates()
         is_synthetic = False
 
     qualified, disqualified = evaluate_candidates(candidates)
-    result = build_macro_overview_output(qualified, disqualified, is_synthetic=is_synthetic)
+    result = build_macro_overview_output(qualified, disqualified, is_synthetic=is_synthetic,
+                                         deep_analyses=deep, rotation=rotation)
 
     output_json = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:

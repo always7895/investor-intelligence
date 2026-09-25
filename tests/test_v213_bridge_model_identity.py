@@ -41,7 +41,7 @@ $LlamaBaseUrl=''
 if((Resolve-Llama)-cne'http://localhost:8123'){throw 'SAVED_ROUTER_IGNORED'}
 $failed=$false
 try{Get-ModelCatalog (Resolve-Llama)}catch{$failed=$true}
-if(-not$failed-or$script:Uris.Count-ne1-or$script:Uris[0]-cne'http://localhost:8123/models'){throw 'ENDPOINT_FALLBACK'}
+if(-not$failed-or$script:Uris.Count-ne2-or$script:Uris[0]-cne'http://localhost:8123/models'-or$script:Uris[1]-cne'http://localhost:8123/v1/models'){throw 'ENDPOINT_FALLBACK'}
 foreach($bad in @('http://localhost:0','http://localhost:65536','http://localhost:8080?reload=1','http://localhost:8080#x','http://x@localhost:8080','http://example.com:8080','http://localhost:8080/path',"http://localhost:8080`n")){
  $LlamaBaseUrl=$bad;$failure=''
  try{Resolve-Llama}catch{$failure=$_.Exception.Message}
@@ -60,7 +60,7 @@ foreach($raw in @('SYNTHETIC_INVALID_JSON','[{"model":"synthetic"}]','{"model":[
 }
 $LlamaBaseUrl='http://127.0.0.1:8080'
 if((Resolve-Llama)-cne$LlamaBaseUrl){throw 'EXPLICIT_ROUTER_OVERRIDDEN'}
-if($script:Uris.Count-ne1){throw 'UNEXPECTED_NETWORK'}
+if($script:Uris.Count-ne2){throw 'UNEXPECTED_NETWORK'}
 function Get-ModelCatalog {param($Base) return @([pscustomobject]@{id='synthetic';aliases=@()})}
 function Invoke-SharedModelIdentity {param($Selected,$Catalog) return @{canonical_model=$Selected}}
 if((Resolve-Model $LlamaBaseUrl 'synthetic').model-cne'synthetic'){throw 'EXPLICIT_MODEL_READS_INVALID_SELECTION'}
@@ -76,6 +76,51 @@ Write-Output 'ROUTER_RESOLUTION=PASS; no_network=true; no_services=true'
                 with self.subTest(shell=shell):
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_saved_or_default_router_follows_a_moved_local_server_but_explicit_does_not(self):
+        script = r'''
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+$tokens=$null;$errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile('SOURCE',[ref]$tokens,[ref]$errors)
+$names=@('Get-ObjectPropertyValue','Get-ModelCatalog','Find-LocalModelServer','Resolve-ModelWithDiscovery')
+foreach($f in $ast.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $n.Name},$true)){. ([scriptblock]::Create($f.Extent.Text))}
+$script:Uris=@()
+function Invoke-RestMethod {param($Method,$Uri,$Headers,$TimeoutSec,$MaximumRedirection)
+ $script:Uris+=,$Uri
+ if($Uri-ceq'http://127.0.0.1:11434/v1/models'){return [pscustomobject]@{data=@([pscustomobject]@{id='wanted-model';aliases=@()})}}
+ if($Uri-ceq'http://127.0.0.1:5000/v1/models'){return [pscustomobject]@{data=@([pscustomobject]@{id='other-model';aliases=@()})}}
+ throw 'SYNTHETIC_UNAVAILABLE'
+}
+function Resolve-Model {param($Base,$Requested)
+ $ids=@(Get-ModelCatalog $Base|ForEach-Object{$_.id})
+ if($ids -notcontains $Requested){throw 'MODEL_NOT_IN_CATALOG'}
+ return [pscustomobject]@{model=$Requested}
+}
+function Write-Host {}
+$LlamaBaseUrl=''
+$found=Resolve-ModelWithDiscovery 'http://127.0.0.1:8080' 'wanted-model'
+if($found.base-cne'http://127.0.0.1:11434'-or$found.resolution.model-cne'wanted-model'){throw 'DISCOVERY_MISSED_MOVED_SERVER'}
+if(@($script:Uris|Where-Object{$_ -like '*:8000*'}).Count){throw 'DECIDER_PORT_PROBED'}
+$LlamaBaseUrl='http://127.0.0.1:8080'
+$failed=$false;try{$null=Resolve-ModelWithDiscovery 'http://127.0.0.1:8080' 'wanted-model'}catch{$failed=$true}
+if(-not$failed){throw 'EXPLICIT_ROUTER_HOPPED'}
+$LlamaBaseUrl=''
+$failed=$false;try{$null=Resolve-ModelWithDiscovery 'http://127.0.0.1:8080' 'absent-model'}catch{$failed=$true}
+if(-not$failed){throw 'ABSENT_MODEL_SUBSTITUTED'}
+Write-Output 'DISCOVERY=PASS'
+'''
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'discovery.ps1'
+            path.write_text(script.replace('SOURCE', str(ROOT / 'scripts/run_v213_local_llm_bridge_core.ps1').replace("'", "''")),
+                            encoding='utf-8-sig')
+            for shell in ('powershell.exe', 'pwsh'):
+                if shell == 'pwsh' and shutil.which('pwsh') is None:
+                    continue
+                result = subprocess.run([shell, '-NoProfile', '-File', str(path)], capture_output=True, timeout=60)
+                with self.subTest(shell=shell):
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(b'DISCOVERY=PASS', result.stdout)
+
     def test_ps51_and_ps7_share_alias_and_completed_marker_validation(self):
         quote = lambda value: "'" + str(value).replace("'", "''") + "'"
         script = r'''
@@ -86,9 +131,9 @@ $python=PYTHON_VALUE
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $ProjectRoot 'scripts/run_v213_local_llm_bridge_core.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'BRIDGE_PARSE_FAILED'}
-$names=@('Get-ObjectPropertyValue','Invoke-SharedModelIdentity','Resolve-Model','Test-SelectedModelRoute','Get-RuntimeModelProfile')
+$names=@('Get-ObjectPropertyValue','Invoke-SharedModelIdentity','Resolve-Model','Test-SelectedModelRoute','Get-RuntimeModelProfile','Resolve-ModelWithDiscovery','Find-LocalModelServer')
 $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $node.Name},$true))
-if($functions.Count-ne5){throw 'FUNCTION_INVENTORY_MISMATCH'}
+if($functions.Count-ne7){throw 'FUNCTION_INVENTORY_MISMATCH'}
 foreach($function in $functions){. ([scriptblock]::Create($function.Extent.Text))}
 function Read-ModelSelection { return $null }
 function Get-ModelCatalog { param($Base) return $script:Catalog }

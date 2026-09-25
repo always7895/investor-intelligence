@@ -301,8 +301,11 @@ def build_bodies() -> "tuple[dict[str, str], dict]":
     # Macro TOP5 artifact: built from the evidenced candidate pool. The pipeline
     # stays fail-closed on builder drift; a SHORTFALL_NOT_QUALIFIED document is
     # published honestly (the reader gate still refuses to rank under 5).
+    # Data-driven rotation (BLS PPI + SEC XBRL, refreshed daily); a stale or missing
+    # rotation publishes an honest shortfall, never hand-written industries.
+    rotation_candidates, rotation_deep, rotation_doc = macro_builder.load_rotation_candidates()
     macro_doc = macro_builder.build_macro_overview_output(
-        *macro_builder.evaluate_candidates(macro_builder.WIDER_CANDIDATE_UNIVERSE))
+        *macro_builder.evaluate_candidates(rotation_candidates), deep_analyses=rotation_deep, rotation=rotation_doc)
     bodies[MACRO_KEY] = _dumps(macro_doc)
     bodies["v213:activation-claim"] = _dumps(claim)
     return bodies, {"report": report, "top20": top20, "run_id": run_id, "transaction_id": transaction_id}

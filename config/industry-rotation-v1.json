@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "policy_id": "industry-rotation-v1",
+  "authorship": "PROJECT_AUTHORED_DATA_DERIVED",
+  "description": "Industry universe defined by official classifications only (SEC SIC membership, BLS PPI industry series). No industry, score, narrative or beneficiary is written by hand; every value is computed from the latest official data at run time.",
+  "sources": {
+    "bls_ppi": {
+      "publisher": "U.S. Bureau of Labor Statistics, Producer Price Index (public domain)",
+      "endpoint": "https://api.bls.gov/publicAPI/v1/timeseries/data/",
+      "series_page": "https://data.bls.gov/timeseries/{series}",
+      "max_series_per_request": 25
+    },
+    "sec_xbrl_frames": {
+      "publisher": "U.S. SEC EDGAR XBRL frames (issuer filings)",
+      "endpoint": "https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/USD/{period}.json"
+    },
+    "sec_sic_members": {
+      "publisher": "U.S. SEC EDGAR company listing by SIC",
+      "endpoint": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&SIC={sic}&type=10-K&dateb=&owner=include&count=100&start={start}&output=atom",
+      "max_pages": 10,
+      "page_size": 100
+    }
+  },
+  "concepts": {
+    "backlog": [
+      "RevenueRemainingPerformanceObligation"
+    ],
+    "inventory": [
+      "InventoryNet"
+    ],
+    "revenue": [
+      "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "Revenues"
+    ]
+  },
+  "thresholds": {
+    "ppi_up_yoy_pct": 3.0,
+    "ppi_down_yoy_pct": -3.0,
+    "backlog_up_yoy_pct": 10.0,
+    "backlog_down_yoy_pct": -10.0,
+    "inventory_build_gap_pp": 10.0,
+    "min_matched_issuers": 3,
+    "min_frame_rows": 300,
+    "rotation_max_age_days": 45,
+    "refresh_min_hours": 20,
+    "min_admission_strength": 15
+  },
+  "strength_formula": {
+    "price_yoy_cap_pct": 20.0,
+    "price_points_per_pct": 2.0,
+    "backlog_yoy_cap_pct": 50.0,
+    "backlog_points_per_pct": 0.8,
+    "revenue_yoy_cap_pct": 40.0,
+    "revenue_points_per_pct": 0.5,
+    "inventory_gap_penalty_cap": 20.0
+  },
+  "industries": [
+    {
+      "industry_id": "semiconductors",
+      "name_zh": "半導體元件（邏輯、記憶體、分離式元件）",
+      "name_en": "Semiconductors and related devices",
+      "sic": [
+        "3674"
+      ],
+      "ppi": [
+        "PCU334413334413"
+      ]
+    },
+    {
+      "industry_id": "special_machinery_semicap",
+      "name_zh": "特殊產業機械（含半導體製造設備）",
+      "name_en": "Special industry machinery incl. semiconductor equipment",
+      "sic": [
+        "3559"
+      ],
+      "ppi": [
+        "PCU333242333242"
+      ]
+    },
+    {
+      "industry_id": "printed_circuit_boards",
+      "name_zh": "印刷電路板",
+      "name_en": "Printed circuit boards",
+      "sic": [
+        "3672"
+      ],
+      "ppi": [
+        "PCU334412334412"
+      ]
+    },
+    {
+      "industry_id": "electronic_components",
+      "name_zh": "電子零組件與連接器",
+      "name_en": "Electronic components and connectors",
+      "sic": [
+        "3677",
+        "3678",
+        "3679"
+      ],
+      "ppi": [
+        "PCU334419334419",
+        "PCU334417334417"
+      ]
+    },
+    {
+      "industry_id": "computers_storage",
+      "name_zh": "電腦、伺服器與儲存設備",
+      "name_en": "Computers, servers and storage",
+      "sic": [
+        "3571",
+        "3572",
+        "3576",
+        "3577"
+      ],
+      "ppi": [
+        "PCU334111334111",
+        "PCU334112334112"
+      ]
+    },
+    {
+      "industry_id": "communications_equipment",
+      "name_zh": "通訊設備（網通、無線、光通訊）",
+      "name_en": "Communications equipment",
+      "sic": [
+        "3661",
+        "3663",
+        "3669"
+      ],
+      "ppi": [
+        "PCU334210334210",
+        "PCU334220334220"
+      ]
+    },
+    {
+      "industry_id": "wire_cable",
+      "name_zh": "通訊與電力線纜",
+      "name_en": "Communication and energy wire and cable",
+      "sic": [
+        "3357"
+      ],
+      "ppi": [
+        "PCU335929335929"
+      ]
+    },
+    {
+      "industry_id": "power_transformers_switchgear",
+      "name_zh": "電力變壓器與開關設備",
+      "name_en": "Power transformers and switchgear",
+      "sic": [
+        "3612",
+        "3613"
+      ],
+      "ppi": [
+        "PCU335311335311",
+        "PCU335313335313"
+      ]
+    },
+    {
+      "industry_id": "motors_generators",
+      "name_zh": "馬達與發電機",
+      "name_en": "Motors and generators",
+      "sic": [
+        "3621"
+      ],
+      "ppi": [
+        "PCU335312335312"
+      ]
+    },
+    {
+      "industry_id": "turbines",
+      "name_zh": "渦輪機與發電機組",
+      "name_en": "Turbines and turbine generator sets",
+      "sic": [
+        "3511"
+      ],
+      "ppi": [
+        "PCU333611333611"
+      ]
+    },
+    {
+      "industry_id": "hvac_cooling",
+      "name_zh": "空調與冷卻設備（含資料中心散熱）",
+      "name_en": "HVAC and cooling equipment",
+      "sic": [
+        "3585"
+      ],
+      "ppi": [
+        "PCU333415333415"
+      ]
+    },
+    {
+      "industry_id": "electric_utilities",
+      "name_zh": "電力公用事業",
+      "name_en": "Electric utilities",
+      "sic": [
+        "4911",
+        "4931",
+        "4991"
+      ],
+      "ppi": [
+        "PCU221122221122"
+      ]
+    },
+    {
+      "industry_id": "gas_pipelines",
+      "name_zh": "天然氣管線運輸",
+      "name_en": "Natural gas pipelines",
+      "sic": [
+        "4922",
+        "4923"
+      ],
+      "ppi": [
+        "PCU486210486210"
+      ]
+    },
+    {
+      "industry_id": "oil_gas_production",
+      "name_zh": "原油與天然氣開採",
+      "name_en": "Crude oil and natural gas extraction",
+      "sic": [
+        "1311"
+      ],
+      "ppi": [
+        "PCU211120211120"
+      ]
+    },
+    {
+      "industry_id": "copper_products",
+      "name_zh": "銅冶煉與銅材加工",
+      "name_en": "Copper smelting, rolling and drawing",
+      "sic": [
+        "3331",
+        "3351"
+      ],
+      "ppi": [
+        "PCU331420331420"
+      ]
+    },
+    {
+      "industry_id": "industrial_gases",
+      "name_zh": "工業氣體與無機化學品",
+      "name_en": "Industrial gases and inorganic chemicals",
+      "sic": [
+        "2810",
+        "2813"
+      ],
+      "ppi": [
+        "PCU325120325120"
+      ]
+    },
+    {
+      "industry_id": "aerospace",
+      "name_zh": "航太（飛機與引擎）",
+      "name_en": "Aircraft and engines",
+      "sic": [
+        "3721",
+        "3724"
+      ],
+      "ppi": [
+        "PCU336411336411",
+        "PCU336412336412"
+      ]
+    },
+    {
+      "industry_id": "medical_devices",
+      "name_zh": "醫療器材與電子醫療設備",
+      "name_en": "Medical and electromedical devices",
+      "sic": [
+        "3841",
+        "3845"
+      ],
+      "ppi": [
+        "PCU339112339112",
+        "PCU334510334510"
+      ]
+    },
+    {
+      "industry_id": "construction_machinery",
+      "name_zh": "營建機械",
+      "name_en": "Construction machinery",
+      "sic": [
+        "3531"
+      ],
+      "ppi": [
+        "PCU333120333120"
+      ]
+    },
+    {
+      "industry_id": "steel",
+      "name_zh": "鋼鐵",
+      "name_en": "Steel works and mills",
+      "sic": [
+        "3312"
+      ],
+      "ppi": [
+        "PCU331110331110"
+      ]
+    },
+    {
+      "industry_id": "data_hosting",
+      "name_zh": "資料處理與代管（雲端、資料中心服務）",
+      "name_en": "Data processing and hosting",
+      "sic": [
+        "7374"
+      ],
+      "ppi": [
+        "PCU518210518210"
+      ]
+    },
+    {
+      "industry_id": "software_publishers",
+      "name_zh": "軟體出版",
+      "name_en": "Software publishers",
+      "sic": [
+        "7372"
+      ],
+      "ppi": [
+        "PCU513210513210"
+      ]
+    }
+  ]
+}

@@ -150,6 +150,7 @@ namespace InvestorIntelligence
             public string BaseUrl = "";
             public readonly List<string> Models = new List<string>();
             public string Error = "";
+            public bool AutoDetected;
         }
 
         sealed class NamedTunnelSettings
@@ -349,45 +350,70 @@ namespace InvestorIntelligence
             }
         }
 
-        static ModelCatalog DiscoverModels(ModelSelection previous)
+        // Operator request 2026-09-25: follow the local model server when its address or model changes.
+        // Loopback only, read-only /models or /v1/models, well-known OpenAI-compatible ports:
+        // TabbyAPI, llama.cpp, Ollama, LM Studio and common alternates. 8000 (System One decider) is never probed.
+        static readonly int[] KnownModelPorts = { 5000, 8080, 11434, 1234, 5001, 8081 };
+
+        static List<string> ModelBaseCandidates(string saved)
+        {
+            var bases = new List<string>();
+            if (!String.IsNullOrEmpty(saved) && SafeLoopbackBase(saved)) bases.Add(saved.TrimEnd('/'));
+            bases.Add(DefaultLlamaBase);
+            bases.AddRange(KnownModelPorts.Select(port => "http://127.0.0.1:" + port));
+            return bases.Where(b => new Uri(b).Port != 8000)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        static List<string> ReadCatalog(string baseUrl)
+        {
+            foreach (string suffix in new[] { "/models", "/v1/models" })
+            {
+                try
+                {
+                    List<string> ids = ExtractModelIds(HttpGet(baseUrl + suffix));
+                    if (ids.Count > 0) return ids;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        static ModelCatalog DiscoverModels(ModelSelection previous, bool discover = false)
         {
             var catalog = new ModelCatalog();
             if (previous != null && !String.IsNullOrEmpty(previous.LlamaBaseUrl) && !SafeLoopbackBase(previous.LlamaBaseUrl)) {
                 catalog.Error = "MODEL_ROUTER_URL_INVALID";
                 return catalog;
             }
-            // Never hop to an unrelated local service when the selected Router fails.
-            var bases = new[] { previous != null && SafeLoopbackBase(previous.LlamaBaseUrl)
-                ? previous.LlamaBaseUrl.TrimEnd('/') : DefaultLlamaBase };
             string preferred = PreferredModel;
-
-            string last = "";
-            foreach (string baseUrl in bases)
+            string saved = previous != null ? previous.LlamaBaseUrl : "";
+            string firstBase = null;
+            List<string> firstIds = null;
+            // Saved address first; then (UI scan only) known local ports. A server holding the configured
+            // model wins; otherwise the first reachable catalog is offered (the profile needs requalification).
+            // Explicit command-line checks keep exactly the address they were given.
+            var candidates = discover ? ModelBaseCandidates(saved)
+                : new List<string> { SafeLoopbackBase(saved) ? saved.TrimEnd('/') : DefaultLlamaBase };
+            foreach (string baseUrl in candidates)
             {
-                foreach (string suffix in new[] { "/models", "/v1/models" })
-                {
-                    try
-                    {
-                        List<string> ids = ExtractModelIds(HttpGet(baseUrl + suffix));
-                        if (ids.Count == 0) continue;
-                        catalog.BaseUrl = baseUrl;
-                        catalog.Models.AddRange(ids.OrderBy(
-                            id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase)
-                                ? "0" + id
-                                : "1" + id,
-                            StringComparer.OrdinalIgnoreCase));
-                        return catalog;
-                    }
-                    catch
-                    {
-                        last = "MODEL_CATALOG_UNAVAILABLE";
-                    }
-                }
+                List<string> ids = ReadCatalog(baseUrl);
+                if (ids == null) continue;
+                bool hasPreferred = !String.IsNullOrEmpty(preferred) &&
+                    ids.Any(id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+                if (firstBase == null) { firstBase = baseUrl; firstIds = ids; }
+                if (hasPreferred || String.IsNullOrEmpty(preferred)) { firstBase = baseUrl; firstIds = ids; break; }
             }
-
-            catalog.Error = String.IsNullOrWhiteSpace(last)
-                ? "No llama.cpp model catalog was reachable."
-                : last;
+            if (firstBase == null)
+            {
+                catalog.Error = "MODEL_CATALOG_UNAVAILABLE: no local model server answered on the saved address or known ports.";
+                return catalog;
+            }
+            catalog.BaseUrl = firstBase;
+            catalog.AutoDetected = !firstBase.Equals((saved ?? "").TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+            catalog.Models.AddRange(firstIds.OrderBy(
+                id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase) ? "0" + id : "1" + id,
+                StringComparer.OrdinalIgnoreCase));
             return catalog;
         }
 
@@ -791,6 +817,10 @@ namespace InvestorIntelligence
             if (!SafeLoopbackBase("http://127.0.0.1:8080")) return 54;
             foreach (string invalid in new[] { "http://localhost:8080?key=fixture", "http://localhost:8080#fixture", "http://fixture@localhost:8080", "http://localhost:8080/path", "https://example.com" })
                 if (SafeLoopbackBase(invalid) || DiscoverModels(new ModelSelection { LlamaBaseUrl = invalid }).Error != "MODEL_ROUTER_URL_INVALID") return 66;
+            var candidates = ModelBaseCandidates("http://localhost:9999/");
+            if (candidates[0] != "http://localhost:9999" || candidates[1] != DefaultLlamaBase ||
+                candidates.Any(b => new Uri(b).Port == 8000) || candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count() != candidates.Count ||
+                !candidates.Contains("http://127.0.0.1:11434") || ModelBaseCandidates("https://example.com")[0] != DefaultLlamaBase) return 68;
             string many = "{\"data\":[" + String.Join(",", Enumerable.Range(0, 1025).Select(i => "{\"id\":\"synthetic-" + i + "\"}")) + "]}";
             try { ExtractModelIds(many); return 67; } catch (InvalidOperationException) { }
             return 0;
@@ -1458,7 +1488,7 @@ namespace InvestorIntelligence
                 string requested = modelBox.Text.Trim();
                 ModelSelection previous = LoadSelection();
                 ModelCatalog catalog = await Task.Run(
-                    delegate { return DiscoverModels(previous); });
+                    delegate { return DiscoverModels(previous, true); });
                 discoveredModels.Clear();
                 modelBox.Items.Clear();
 
@@ -1483,20 +1513,21 @@ namespace InvestorIntelligence
                         modelBox.SelectedItem = canonical;
 
                     endpointLabel.Text =
-                        "llama.cpp: " + discoveredBaseUrl +
+                        "Local model server: " + discoveredBaseUrl +
                         "  |  Models: " + catalog.Models.Count +
                         "  |  Selected: " + modelBox.Text;
-                    status.Text =
-                        "模型掃描完成 / Model scan completed\r\n" +
+                    status.Text = (catalog.AutoDetected
+                        ? "已自動偵測到本機模型伺服器（位址已變更）/ Auto-detected a new local address\r\n"
+                        : "模型掃描完成 / Model scan completed\r\n") +
                         "請確認後按「使用 / Use」。";
                 }
                 else
                 {
                     endpointLabel.Text =
-                        "llama.cpp: not detected / 未偵測  |  Typed model: " +
+                        "Local model server: not detected / 未偵測  |  Typed model: " +
                         modelBox.Text;
                     status.Text =
-                        "未讀到模型清單；可啟動 llama.cpp 後再掃描。\r\n" +
+                        "未讀到模型清單；啟動本機模型伺服器（TabbyAPI、llama.cpp、Ollama、LM Studio）後再掃描。\r\n" +
                         catalog.Error;
                 }
 

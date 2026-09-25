@@ -252,13 +252,44 @@ function Resolve-Llama {
 
 function Get-ModelCatalog {
     param([string]$Base)
-    try {
-        $payload = Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/') + '/models') -Headers @{'cache-control'='no-cache'} -TimeoutSec 15 -MaximumRedirection 0
-        $data = @(Get-ObjectPropertyValue $payload 'data' @())
-        if ($data.Count -eq 0) { throw 'EMPTY_CATALOG' }
-        return $data
+    # Same base only: llama.cpp answers /models, TabbyAPI and Ollama answer /v1/models.
+    foreach ($suffix in @('/models', '/v1/models')) {
+        try {
+            $payload = Invoke-RestMethod -Method Get -Uri ($Base.TrimEnd('/') + $suffix) -Headers @{'cache-control'='no-cache'} -TimeoutSec 15 -MaximumRedirection 0
+            $data = @(Get-ObjectPropertyValue $payload 'data' @())
+            if ($data.Count -gt 0) { return $data }
+        }
+        catch { }
     }
-    catch { throw 'MODEL_CATALOG_UNAVAILABLE; no_model_substitution=true' }
+    throw 'MODEL_CATALOG_UNAVAILABLE; no_model_substitution=true'
+}
+
+# Operator request 2026-09-25: follow the local model server when its address changes.
+# Loopback only, read-only catalogs, well-known OpenAI-compatible ports (TabbyAPI, llama.cpp,
+# Ollama, LM Studio, alternates); 8000 is the System One decider and is never probed.
+function Find-LocalModelServer {
+    param([string]$Current, [string]$WantedModel)
+    foreach ($port in @(5000, 8080, 11434, 1234, 5001, 8081)) {
+        $candidate = "http://127.0.0.1:$port"
+        if ($candidate -eq $Current.TrimEnd('/')) { continue }
+        try { $catalog = @(Get-ModelCatalog $candidate) } catch { continue }
+        $names = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' ''); @(Get-ObjectPropertyValue $_ 'aliases' @()) })
+        if ([string]::IsNullOrWhiteSpace($WantedModel) -or @($names | Where-Object { $_ -ieq $WantedModel }).Count -gt 0) { return $candidate }
+    }
+    return $null
+}
+
+function Resolve-ModelWithDiscovery {
+    param([string]$Base, [string]$Requested)
+    try { return [pscustomobject]@{ base=$Base; resolution=(Resolve-Model $Base $Requested) } }
+    catch {
+        # An explicitly passed address is honoured exactly; only saved/default addresses may move.
+        if (-not [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { throw }
+        $found = Find-LocalModelServer $Base $Requested
+        if (-not $found) { throw }
+        Write-Host "II_PROGRESS local model server auto-detected at $found (was $Base)" -ForegroundColor Yellow
+        return [pscustomobject]@{ base=$found; resolution=(Resolve-Model $found $Requested) }
+    }
 }
 
 function Invoke-SharedModelIdentity {
@@ -555,8 +586,9 @@ if ($RoutingCheckOnly) {
     $checkProfile = Get-RuntimeModelProfile
     if (-not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
     if ($Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
-    $checkBase = Resolve-Llama
-    $checkModel = Resolve-Model $checkBase ([string]$checkProfile.model)
+    $checkFound = Resolve-ModelWithDiscovery (Resolve-Llama) ([string]$checkProfile.model)
+    $checkBase = [string]$checkFound.base
+    $checkModel = $checkFound.resolution
     Test-SelectedModelRoute $checkBase ([string]$checkModel.model) @($checkModel.identity_catalog)
     [ordered]@{scope='LOCAL_ROUTING_CHECK_ONLY';complete_exact_marker=$true;model_profile_sha256=$script:RuntimeProfileHash;release_qualified=$false}|ConvertTo-Json -Compress
     return
@@ -591,7 +623,9 @@ if ($runtimeProfile) {
 }
 $llama = Resolve-Llama
 if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
-$modelResolution = Resolve-Model $llama $Model
+$discovered = Resolve-ModelWithDiscovery $llama $Model
+$llama = [string]$discovered.base
+$modelResolution = $discovered.resolution
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
 # A validated profile owns the exact model in the new lane. Keep the retained

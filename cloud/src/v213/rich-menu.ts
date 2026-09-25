@@ -24,6 +24,7 @@ import type {
   MacroTop5Overview,
   OptionContractQuote,
 } from "./market-product-schema";
+import { validateMacroDeepAnalysis, validateMacroIndustryCard } from "./market-product-schema";
 import {
   buildOptionContractFlex,
   buildOptionContractText,
@@ -32,6 +33,25 @@ import {
 } from "./options-product";
 
 type Env = V213Top20Env & { V213_LINE_PRESENTATION?: string };
+
+/** Industry card and deep analysis travel inside the sealed TOP5 overview (the seal admits one macro
+ * object); legacy per-industry keys are read only as a fallback. Invalid entries are ignored. */
+async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapshot>>, targetId: string, kind: "card" | "deep") {
+  const overview = await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]);
+  try {
+    if (overview && kind === "card" && Array.isArray(overview.industries)) {
+      const raw = (overview.industries as Record<string, unknown>[]).find(row => String(row?.industry_id ?? "").toLowerCase() === targetId);
+      if (raw) return validateMacroIndustryCard(raw);
+    }
+    const deep = overview?.deep_analyses as Record<string, unknown> | undefined;
+    if (kind === "deep" && deep && typeof deep === "object" && targetId in deep) return validateMacroDeepAnalysis(deep[targetId]);
+  } catch {
+    return null;
+  }
+  return kind === "card"
+    ? view.json<MacroIndustryCard>([`v213:macro-industry:${targetId}`])
+    : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]);
+}
 export const RICH_MENU_ACTIONS = Object.freeze([
   { label: "每日 TOP20 榜單", text: "TOP20" },
   { label: "宏觀產業分析", text: "宏觀產業分析" },
@@ -350,7 +370,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = cardMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const card = await view.json<MacroIndustryCard>([`v213:macro-industry:${targetId}`]);
+      const card = await sealedMacroEntry(view, targetId, "card") as MacroIndustryCard | null;
       if (card) {
         return isText ? buildMacroIndustryCardText(card) : buildMacroIndustryCardFlex(card);
       }
@@ -368,7 +388,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = deepMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const deep = await view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]);
+      const deep = await sealedMacroEntry(view, targetId, "deep") as MacroDeepAnalysis | null;
       if (deep) {
         return isText ? buildMacroDeepAnalysisText(deep) : buildMacroDeepAnalysisFlex(deep);
       }

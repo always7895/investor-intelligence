@@ -8,15 +8,20 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — time-aware thesis phase and research refresh (operator request 2026-09-25)
+## This change — data-driven industry rotation (operator rules 2026-09-25)
 
-Operator: update Serenity and Aschenbrenner logic from the latest public sources and screen companies and industries accurately as time passes.
+Operator: all data must move with the latest market data, nothing hand-written; macro industry analysis rotates to the industries with potential at the time; deep analyses are detailed; sources are diverse and keep updating after the project is done.
 
-- `scripts/thesis_phase.py` + `config/thesis-phase-policy-v1.json`: phase derived from dated, sourced signals with class windows (structural 550 d, current-state 135, macro 45, market 7): DISCOVERY → EARLY/COMMERCIAL/INSTITUTIONAL_VALIDATION → CONSENSUS, plus RELIEVING and BROKEN; ramp evidence counts as capture; an active ATM ≥50% of market cap blocks entry; Aschenbrenner-lens signals are listed but never counted; `next_review_at` uses supporting-signal expiry or an already announced catalyst (no look-ahead); company and industry scopes; timeline and screen helpers. 13 tests.
-- Research refresh (secondary quotes verified inside their reports; EDGAR primary): SERENITY_LOGIC sections 4/4a/5/7/9 (entry before confirmation, ATM rule, falsifier framing, tracker snapshot, phase engine); ASCHENBRENNER_CONTEXT sections 4/5 (Nebius 13G, SharonAI timeline, Core Scientific 13D/A 4.4% on 2026-07-15, July deleveraging with conflicting fund sizes not used); CROSS_VALIDATION log entry (pinned archive bytes unchanged).
-- `18b5927` option cycle chip back to the original yellow (operator feedback).
+- `scripts/industry_rotation.py` + `config/industry-rotation-v1.json` (22 industries defined by SIC codes and BLS PPI series only): BLS PPI YoY (public API v1), SEC XBRL frames RPO / inventory / revenue summed over EDGAR SIC members (≥3 matched issuers) → `thesis_phase` (industry scope) → data strength. Cards and 10-part deep analyses are generated from the numbers with period, source and URL. Live run 2026-09-25 (2026 Q2 filings, PPI to 2026-08): TOP5 computers and storage (EARLY_VALIDATION, PPI +45.0%, RPO +86.3%), semiconductors, oil and gas extraction, construction machinery, steel (DISCOVERY).
+- `build_v213_macro_industry_research.py` and `publish_sealed_snapshot.py` now read the rotation (max age 45 days) and embed deep analyses in the sealed overview; the old hand-written rows are a test-only synthetic fixture. Stale or missing data publish an honest shortfall.
+- Worker `rich-menu.ts`: industry card and deep analysis come from the sealed overview (they were unreachable before because the seal admits one macro object); 3 new tests.
+- Refresh: `scripts/run_industry_rotation_refresh.ps1` (DPAPI contact in-process only, ≤ one refresh per 20 h), called non-fatally from the hourly sealed refresh, so the rotation keeps updating on its own. Details: [INDUSTRY_ROTATION_V1](../docs/INDUSTRY_ROTATION_V1.md).
+- EXE and bridge auto-detect the local model server (operator request): saved/default address first, then loopback ports 5000, 8080, 11434, 1234, 5001, 8081 (never 8000); move only to a server holding the configured model; explicit addresses never move. The bridge now also reads `/v1/models` at the same base, which TabbyAPI needs. Tests: bridge discovery (PS 5.1 and 7), EXE self-test candidate order.
+- Tests: `test_industry_rotation` (11); Worker 903 passed / 1 skipped. Full Python 2561: 10 failures came from mid-edit bridge states and the explicit `--model-catalog-check` probing other ports; both fixed (explicit addresses never move) and rerun green (29 OK).
 
 ## Previous changes
+
+- `e97fd00` time-aware thesis phase engine and Serenity/Aschenbrenner refresh (EDGAR timeline, verified secondary quotes); `18b5927` option cycle chip back to yellow.
 
 - `41058f2` adaptive THINK under the profile ceiling (time budget, measured decode rate, System One screen, one answer-only retry) and TabbyAPI `:5000` as the EXE/bridge default router; 11 + 11 + 2 tests; full Python 2537 after a payload-list fix.
 

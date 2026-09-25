@@ -32,6 +32,15 @@ try {
     Set-Location $repo
 
     $py = "python"
+    # Data-driven industry rotation: at most one refresh per ~20 h; failure is logged and
+    # never blocks publication (the publisher reports a shortfall for stale rotation data).
+    try {
+        & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repo "scripts\run_industry_rotation_refresh.ps1") 2>&1 |
+            Tee-Object -FilePath $log -Append | Out-Null
+        Add-Content -Path $log -Value "[$stamp] ROTATION exit=$LASTEXITCODE"
+    } catch {
+        Add-Content -Path $log -Value "[$stamp] ROTATION FAILED (publication continues)"
+    }
     & $py "scripts\publish_sealed_snapshot.py" --live-clock 2>&1 | Tee-Object -FilePath $log -Append
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[$stamp] GENERATE FAILED — pointer untouched, previous run still serving"
