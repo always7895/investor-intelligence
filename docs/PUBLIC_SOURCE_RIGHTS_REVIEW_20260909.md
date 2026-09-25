@@ -90,4 +90,5 @@ Decision: rights approved for internal factual research and brief quotation with
 
 - **BLS Producer Price Index, public API v1** (`https://api.bls.gov/publicAPI/v1/timeseries/data/`): U.S. federal statistics, public domain (17 U.S.C. 105); version 1 needs no key or registration (daily query limit respected: one run per ~20 hours, ≤25 series per request). Only a generic User-Agent is sent, no personal data.
 - **SEC EDGAR XBRL frames and company listing by SIC**: public filings data under SEC Fair Access (declared contact, ≤4 requests/second with back-off; 403/429 stop the run).
+- **TWSE OpenAPI `t187ap05_L` and TPEx OpenAPI `mopsfin_t187ap05_O`** (listed and OTC monthly revenue): Taiwan Stock Exchange open data under the Government Open Data License (same licence family as the reviewed TWSE EOD feed); one request per daily refresh, generic User-Agent, no personal data.
 - **Not used:** FRED CSV downloads (terms limit use to personal, non-commercial and prohibit automated extraction; the original publishers are used instead) and the Census Economic Indicators API (now requires a registered key).

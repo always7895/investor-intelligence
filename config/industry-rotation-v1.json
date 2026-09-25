@@ -19,6 +19,13 @@
       "endpoint": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&SIC={sic}&type=10-K&dateb=&owner=include&count=100&start={start}&output=atom",
       "max_pages": 10,
       "page_size": 100
+    },
+    "taiwan_monthly_revenue": {
+      "publisher": "臺灣證券交易所與證券櫃檯買賣中心 OpenAPI 上市櫃公司每月營業收入彙總表（政府資料開放授權條款）",
+      "endpoints": [
+        "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
+        "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O"
+      ]
     }
   },
   "concepts": {
@@ -43,7 +50,9 @@
     "min_frame_rows": 300,
     "rotation_max_age_days": 45,
     "refresh_min_hours": 20,
-    "min_admission_strength": 15
+    "min_admission_strength": 15,
+    "tw_revenue_up_yoy_pct": 20.0,
+    "tw_revenue_down_yoy_pct": -10.0
   },
   "strength_formula": {
     "price_yoy_cap_pct": 20.0,
@@ -52,7 +61,9 @@
     "backlog_points_per_pct": 0.8,
     "revenue_yoy_cap_pct": 40.0,
     "revenue_points_per_pct": 0.5,
-    "inventory_gap_penalty_cap": 20.0
+    "inventory_gap_penalty_cap": 20.0,
+    "tw_revenue_yoy_cap_pct": 40.0,
+    "tw_revenue_points_per_pct": 0.25
   },
   "industries": [
     {
@@ -64,6 +75,9 @@
       ],
       "ppi": [
         "PCU334413334413"
+      ],
+      "tw_industry": [
+        "半導體業"
       ]
     },
     {
@@ -100,6 +114,9 @@
       "ppi": [
         "PCU334419334419",
         "PCU334417334417"
+      ],
+      "tw_industry": [
+        "電子零組件業"
       ]
     },
     {
@@ -115,6 +132,9 @@
       "ppi": [
         "PCU334111334111",
         "PCU334112334112"
+      ],
+      "tw_industry": [
+        "電腦及週邊設備業"
       ]
     },
     {
@@ -129,6 +149,9 @@
       "ppi": [
         "PCU334210334210",
         "PCU334220334220"
+      ],
+      "tw_industry": [
+        "通信網路業"
       ]
     },
     {
@@ -140,6 +163,9 @@
       ],
       "ppi": [
         "PCU335929335929"
+      ],
+      "tw_industry": [
+        "電器電纜"
       ]
     },
     {
@@ -164,6 +190,9 @@
       ],
       "ppi": [
         "PCU335312335312"
+      ],
+      "tw_industry": [
+        "電機機械"
       ]
     },
     {
@@ -294,6 +323,9 @@
       ],
       "ppi": [
         "PCU331110331110"
+      ],
+      "tw_industry": [
+        "鋼鐵工業"
       ]
     },
     {
@@ -305,6 +337,9 @@
       ],
       "ppi": [
         "PCU518210518210"
+      ],
+      "tw_industry": [
+        "數位雲端"
       ]
     },
     {
@@ -316,6 +351,9 @@
       ],
       "ppi": [
         "PCU513210513210"
+      ],
+      "tw_industry": [
+        "資訊服務業"
       ]
     }
   ]

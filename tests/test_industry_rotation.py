@@ -187,6 +187,24 @@ class RotationTests(unittest.TestCase):
         self.assertIn("load_rotation_candidates()", source)
         self.assertNotIn("_SYNTHETIC_CONTRACT_UNIVERSE", source)
 
+    def test_taiwan_monthly_revenue_adds_an_independent_family(self):
+        cfg = config()
+        cfg["industries"][2]["tw_industry"] = ["合成業"]  # gamma: price +1% and flat backlog alone are not enough
+        rows = [{"資料年月": "11508", "產業別": "合成業", "營業收入-當月營收": str(150 + i), "營業收入-去年當月營收": "100"}
+                for i in range(3)] + [{"資料年月": "11508", "產業別": "其他", "營業收入-當月營收": "90", "營業收入-去年當月營收": "100"},
+                                      {"資料年月": "11508", "產業別": "合成業", "營業收入-當月營收": "5", "營業收入-去年當月營收": "0"}]
+        twse = lambda url: json.dumps(rows, ensure_ascii=False).encode("utf-8")  # noqa: E731
+        doc = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None, fetch_twse=twse)
+        gamma = {r["industry_id"]: r for r in doc["industries"]}["gamma"]
+        self.assertEqual(gamma["taiwan"]["count"], 6)  # both exchanges served the same rows; zero-prior rows excluded
+        self.assertEqual(gamma["taiwan"]["month"], "2026-08")
+        self.assertEqual(gamma["taiwan"]["yoy_pct"], 51.0)
+        self.assertIn("taiwan_monthly_revenue", gamma["phase"]["constraint_families"])
+        self.assertIn("臺灣上市櫃同業", rot.to_macro_card(gamma, 1, cfg)["current_state"])
+        broken = rot.build_rotation(cfg, fetch_sec=sec_fetch(), post_bls=post, today=TODAY, member_cache=None,
+                                    fetch_twse=lambda url: b"not json")
+        self.assertIsNone({r["industry_id"]: r for r in broken["industries"]}["gamma"]["taiwan"]["yoy_pct"])
+
     def test_bls_failure_status_fails_closed(self):
         bad = lambda url, body: json.dumps({"status": "REQUEST_NOT_PROCESSED"}).encode()  # noqa: E731
         with self.assertRaises(rot.RotationError):

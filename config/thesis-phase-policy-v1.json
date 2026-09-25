@@ -30,6 +30,10 @@
       "group": "constraint_or_relief",
       "class": "current_state"
     },
+    "SUPPLIER_REVENUE": {
+      "group": "constraint_or_relief",
+      "class": "current_state"
+    },
     "CAPACITY_ADDITION": {
       "group": "relief",
       "class": "structural"

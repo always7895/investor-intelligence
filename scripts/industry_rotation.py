@@ -48,7 +48,8 @@ PHASE_ZH = {"INSUFFICIENT_EVIDENCE": "資料不足", "DISCOVERY": "初現（單�
             "RELIEVING": "緩解中", "BROKEN": "已失效", "COMMERCIAL_VALIDATION": "商業驗證", "INSTITUTIONAL_VALIDATION": "法人進場",
             "CONSENSUS": "共識擁擠"}
 ADMITTED_PHASES = ("EARLY_VALIDATION", "DISCOVERY")
-FAMILY_ZH = {"bls_ppi": "BLS 生產者物價", "sec_xbrl_issuers": "SEC 申報剩餘履約義務", "sec_xbrl_inventory": "SEC 申報存貨"}
+FAMILY_ZH = {"bls_ppi": "BLS 生產者物價", "sec_xbrl_issuers": "SEC 申報剩餘履約義務", "sec_xbrl_inventory": "SEC 申報存貨",
+             "taiwan_monthly_revenue": "臺灣上市櫃同業月營收"}
 
 Fetch = Callable[[str], bytes]
 Post = Callable[[str, bytes], bytes]
@@ -101,6 +102,60 @@ def bls_post() -> Post:
         return raw
 
     return post
+
+
+def twse_get() -> Fetch:
+    """TWSE and TPEx OpenAPI (government open data licence): no proxy, no redirect, verified TLS, generic agent."""
+    context = ssl.create_default_context()
+    try:
+        import certifi
+        context.load_verify_locations(cafile=certifi.where())
+    except ImportError:
+        pass
+    opener = build_opener(ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=context))
+
+    def get(url: str) -> bytes:
+        if not url.startswith(("https://openapi.twse.com.tw/", "https://www.tpex.org.tw/openapi/")):
+            raise ValueError("ROTATION_TWSE_URL_UNADMITTED")
+        with opener.open(Request(url, headers={"User-Agent": "InvestorIntelligence-Research/1.0 (public statistics)"}), timeout=60) as response:
+            raw = response.read(MAX_BLS_BYTES + 1)
+        if len(raw) > MAX_BLS_BYTES:
+            raise ValueError("ROTATION_TWSE_TOO_LARGE")
+        return raw
+
+    return get
+
+
+def twse_monthly_revenue(fetch: Fetch, config: Mapping[str, Any], receipts: list) -> dict[str, Any]:
+    """Listed (TWSE) and OTC (TPEx) monthly revenue summed by industry category (same month a year earlier)."""
+    rows: list = []
+    for url in config["sources"]["taiwan_monthly_revenue"]["endpoints"]:
+        try:
+            raw = fetch(url)
+            batch = json.loads(raw)
+        except Exception:
+            continue  # one exchange down leaves the other
+        receipts.append(_receipt("taiwan_monthly_revenue", url, raw))
+        rows.extend(batch if isinstance(batch, list) else [])
+    if not rows:
+        raise RotationError("ROTATION_TAIWAN_REVENUE_UNAVAILABLE")
+    by_category: dict[str, dict[str, float]] = {}
+    month = None
+    for row in rows:
+        try:
+            now, prior = float(row["營業收入-當月營收"]), float(row["營業收入-去年當月營收"])
+            period = str(row["資料年月"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if prior <= 0 or not re.fullmatch(r"\d{4,5}", period):
+            continue
+        roc_year, month_number = int(period[:-2]), int(period[-2:])
+        month = max(month or date.min, date(roc_year + 1911, month_number, 1))
+        bucket = by_category.setdefault(str(row.get("產業別", "")), {"now": 0.0, "prior": 0.0, "count": 0})
+        bucket["now"] += now
+        bucket["prior"] += prior
+        bucket["count"] += 1
+    return {"month": month, "categories": by_category}
 
 
 def _receipt(source: str, url: str, raw: bytes, **extra: Any) -> dict[str, Any]:
@@ -259,7 +314,7 @@ def _direction(value: float | None, up: float, down: float) -> str | None:
 
 def assess_industry(industry: Mapping[str, Any], *, ppi: Mapping[str, list], members: Sequence[Mapping[str, Any]],
                     frames: Mapping[str, Mapping[int, Mapping[str, Any]]], quarter: tuple[int, int],
-                    config: Mapping[str, Any], today: date) -> dict[str, Any]:
+                    config: Mapping[str, Any], today: date, taiwan: Mapping[str, Any] | None = None) -> dict[str, Any]:
     limits, formula, sources = config["thresholds"], config["strength_formula"], config["sources"]
     year, q = quarter
     period_label = f"{year} Q{q}"
@@ -290,6 +345,19 @@ def assess_industry(industry: Mapping[str, Any], *, ppi: Mapping[str, list], mem
                         "direction": backlog_dir, "value": backlog_yoy, "evidence_family": "sec_xbrl_issuers",
                         "source_url": frames_url.format(concept=config["concepts"]["backlog"][0], period=f"CY{year}Q{q}I")})
     gap = round(inventory_yoy - revenue_yoy, 2) if inventory_yoy is not None and revenue_yoy is not None else None
+    # Taiwan listed suppliers' monthly revenue: a faster, independent read of demand through the chain.
+    tw = {"categories": list(industry.get("tw_industry", [])), "count": 0, "yoy_pct": None, "month": None}
+    if taiwan and taiwan.get("month") and tw["categories"]:
+        buckets = [taiwan["categories"][c] for c in tw["categories"] if c in taiwan["categories"]]
+        now, prior = sum(b["now"] for b in buckets), sum(b["prior"] for b in buckets)
+        tw["count"] = sum(b["count"] for b in buckets)
+        tw["month"] = taiwan["month"].strftime("%Y-%m")
+        if tw["count"] >= minimum and prior > 0:
+            tw["yoy_pct"] = round((now / prior - 1) * 100, 2)
+            tw_dir = _direction(tw["yoy_pct"], limits["tw_revenue_up_yoy_pct"], limits["tw_revenue_down_yoy_pct"])
+            signals.append({"signal_id": f"{industry['industry_id']}:TW_REVENUE", "kind": "SUPPLIER_REVENUE",
+                            "as_of": _month_end(taiwan["month"]).isoformat(), "direction": tw_dir, "value": tw["yoy_pct"],
+                            "evidence_family": "taiwan_monthly_revenue", "source_url": sources["taiwan_monthly_revenue"]["endpoints"][0]})
     if gap is not None and gap >= limits["inventory_build_gap_pp"]:
         signals.append({"signal_id": f"{industry['industry_id']}:INVENTORY", "kind": "INVENTORY_BUILD", "as_of": quarter_end,
                         "value": gap, "evidence_family": "sec_xbrl_inventory",
@@ -299,13 +367,14 @@ def assess_industry(industry: Mapping[str, Any], *, ppi: Mapping[str, list], mem
     points = min(max(price_yoy or 0, 0), formula["price_yoy_cap_pct"]) * formula["price_points_per_pct"]
     points += min(max(backlog_yoy or 0, 0), formula["backlog_yoy_cap_pct"]) * formula["backlog_points_per_pct"]
     points += min(max(revenue_yoy or 0, 0), formula["revenue_yoy_cap_pct"]) * formula["revenue_points_per_pct"]
+    points += min(max(tw["yoy_pct"] or 0, 0), formula["tw_revenue_yoy_cap_pct"]) * formula["tw_revenue_points_per_pct"]
     points -= min(max(gap or 0, 0), formula["inventory_gap_penalty_cap"])
     strength = int(round(min(max(points, 0), 100)))
 
     leaders = sorted(revenue["ciks"], key=lambda cik: frames["revenue_now"][cik]["val"], reverse=True)
     top = leaders[:5]
     share = round(sum(frames["revenue_now"][c]["val"] for c in top) / revenue["now"] * 100, 1) if revenue["now"] > 0 and top else None
-    available = sum(value is not None for value in (price_yoy, revenue_yoy, backlog_yoy, inventory_yoy))
+    available = sum(value is not None for value in (price_yoy, revenue_yoy, backlog_yoy, inventory_yoy, tw["yoy_pct"]))
     return {
         "industry_id": industry["industry_id"], "name_zh": industry["name_zh"], "name_en": industry["name_en"],
         "sic": list(industry["sic"]), "ppi_series": list(industry["ppi"]), "member_count": len(ciks),
@@ -316,7 +385,7 @@ def assess_industry(industry: Mapping[str, Any], *, ppi: Mapping[str, list], mem
         "inventory": {k: inventory[k] for k in ("matched", "now", "prior", "yoy_pct")},
         "inventory_minus_revenue_pp": gap,
         "leaders": [{"cik": c, "name": frames["revenue_now"][c]["name"], "revenue": frames["revenue_now"][c]["val"]} for c in top],
-        "top5_revenue_share_pct": share, "data_completeness_pct": available * 25,
+        "top5_revenue_share_pct": share, "data_completeness_pct": available * 20, "taiwan": tw,
         "signals": signals, "phase": phase, "strength": strength,
     }
 
@@ -332,6 +401,9 @@ def _texts(row: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
                     if revenue["yoy_pct"] is not None and revenue["matched"] >= 2 else f"可比營收申報不足（{revenue['matched']} 家）")
     backlog_text = (f"{backlog['matched']} 家申報成員剩餘履約義務（RPO）年增 {_fmt_pct(backlog['yoy_pct'])}（{_money(backlog['prior'])} → {_money(backlog['now'])}，{row['quarter']}）"
                     if backlog["yoy_pct"] is not None and backlog["matched"] >= 2 else f"可比 RPO 申報不足（{backlog['matched']} 家），積壓訂單未量化")
+    tw = row.get("taiwan") or {}
+    taiwan_text = (f"臺灣上市櫃同業（{'、'.join(tw['categories'])}）{tw['count']} 家 {tw['month']} 營收年增 {_fmt_pct(tw['yoy_pct'])}（證交所與櫃買中心 OpenAPI）"
+                   if tw.get("yoy_pct") is not None else "")
     gap = row["inventory_minus_revenue_pp"]
     inventory_text = (f"存貨年增 {_fmt_pct(inventory['yoy_pct'])}，較營收成長{'高' if gap > 0 else '低'} {abs(gap):.1f} 個百分點"
                       if gap is not None else "存貨與營收的可比資料不足")
@@ -345,10 +417,10 @@ def _texts(row: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
     sic_text = "、".join(row["sic"])
     leaders = [leader["name"] for leader in row["leaders"] if leader["name"]] or ["成員營收資料不足"]
     return {
-        "current_state": f"{price_text}；{revenue_text}；{backlog_text}。",
+        "current_state": f"{price_text}；{revenue_text}；{backlog_text}" + (f"；{taiwan_text}" if taiwan_text else "") + "。",
         "outlook": (f"資料階段：{PHASE_ZH.get(phase['phase'], phase['phase'])}（吃緊訊號來源：{tightening}；緩解訊號來源：{relief}）。"
                     f"下次重新檢查：{next_review}。此為官方資料的現況判讀，不是價格或營收預測。"),
-        "demand": [revenue_text], "supply": inventory_text, "bottleneck": backlog_text, "pricing": price_text,
+        "demand": [revenue_text] + ([taiwan_text] if taiwan_text else []), "supply": inventory_text, "bottleneck": backlog_text, "pricing": price_text,
         "value_chain": (f"SIC {sic_text} 的 EDGAR 申報成員 {row['member_count']} 家"
                         + (f"；營收前五大合計占 {row['top5_revenue_share_pct']:.1f}%" if row["top5_revenue_share_pct"] is not None else "")),
         "leaders": leaders, "killers": killers, "next_review": next_review,
@@ -397,7 +469,7 @@ def to_deep_analysis(row: Mapping[str, Any], config: Mapping[str, Any]) -> dict[
                            "period": row["quarter"], "passage": f"{row[label]['matched']} matched issuers"})
     return {
         "industry_id": row["industry_id"], "industry_name": f"{row['name_zh']} ({row['name_en']})",
-        "demand": text["demand"][0], "supply": text["supply"], "bottleneck": text["bottleneck"], "pricing": text["pricing"],
+        "demand": "；".join(text["demand"]), "supply": text["supply"], "bottleneck": text["bottleneck"], "pricing": text["pricing"],
         "capex": "本資料集未量測買方資本支出；不以推估代替",
         "competition": text["value_chain"], "beneficiaries": text["leaders"],
         "catalysts": {"m6": f"下次資料檢查 {text['next_review']}", "y1": "每季財報 XBRL 更新後自動重算", "y2": "無已公告的兩年期催化劑（不捏造）"},
@@ -406,9 +478,15 @@ def to_deep_analysis(row: Mapping[str, Any], config: Mapping[str, Any]) -> dict[
 
 
 def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Post, today: date,
-                   member_cache: Path | None = MEMBER_CACHE_DIR) -> dict[str, Any]:
+                   member_cache: Path | None = MEMBER_CACHE_DIR, fetch_twse: Fetch | None = None) -> dict[str, Any]:
     receipts: list = []
     cache: dict = {}
+    taiwan = None
+    if fetch_twse is not None:
+        try:
+            taiwan = twse_monthly_revenue(fetch_twse, config, receipts)
+        except Exception:
+            taiwan = None  # one source down never blocks the others
     series = [s for industry in config["industries"] for s in industry["ppi"]]
     ppi = bls_series(series, post_bls, config, start_year=today.year - 2, end_year=today.year, receipts=receipts)
     year, q = latest_quarter(fetch_sec, config, today, receipts, cache)
@@ -433,7 +511,7 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
             for member in listed:
                 members[int(member["cik"])] = member
         rows.append(assess_industry(industry, ppi=ppi, members=list(members.values()), frames=frames,
-                                    quarter=(year, q), config=config, today=today))
+                                    quarter=(year, q), config=config, today=today, taiwan=taiwan))
     rows.sort(key=lambda r: (r["phase"]["preference_rank"], -r["strength"], r["industry_id"]))
     admitted = [r for r in rows if r["phase"]["phase"] in ADMITTED_PHASES and r["revenue"]["yoy_pct"] is not None
                 and r["strength"] >= int(config["thresholds"]["min_admission_strength"])]
@@ -444,7 +522,7 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
     return {
         "schema_version": 1, "policy_id": config["policy_id"], "generated_at": utc_now(), "as_of": today.isoformat(),
         "quarter": f"{year} Q{q}", "status": "COMPUTED", "publication_eligible": False,
-        "method": "BLS PPI + SEC XBRL frames by SIC membership -> thesis_phase(industry) -> data strength",
+        "method": "BLS PPI + SEC XBRL frames by SIC membership + TWSE/TPEx monthly revenue -> thesis_phase(industry) -> data strength",
         "industries": rows, "macro_candidates": cards, "deep_analyses": deep, "receipts": receipts,
         "unavailable_sic": sorted(set(unavailable_sic)),
     }
@@ -492,7 +570,7 @@ def main() -> int:
     from sec_contact_headers import sec_identity_headers
     try:
         document = build_rotation(config, fetch_sec=profile.sec_fetcher(sec_identity_headers()), post_bls=bls_post(),
-                                  today=date.today())
+                                  today=date.today(), fetch_twse=twse_get())
     except Exception as error:  # keep the last good file; report the class only
         print(json.dumps({"status": "FAILED", "error": type(error).__name__}))
         return 1

@@ -14,8 +14,9 @@ Operator rules (2026-09-25): macro industry analysis must rotate with the market
 | BACKLOG | SEC XBRL frames `RevenueRemainingPerformanceObligation`, summed over member issuers (`sec_xbrl_issuers`) | ≥ +10% tightening, ≤ −10% relief |
 | INVENTORY_BUILD | SEC XBRL frames `InventoryNet` vs revenue (`sec_xbrl_inventory`) | Inventory growth ≥ 10 points above revenue growth is relief |
 | Revenue growth | SEC XBRL frames revenue tags | Card growth rate and strength only |
+| SUPPLIER_REVENUE | TWSE (listed) and TPEx (OTC) OpenAPI monthly revenue summed by industry category (`taiwan_monthly_revenue`) | Same month a year earlier; ≥ +20% tightening, ≤ −10% relief; a faster read of demand through the Taiwan supply chain |
 
-Industry membership is read from EDGAR's company listing by SIC code (cached 30 days; empty listings are never cached). A metric with fewer than three matched issuers is treated as missing. `scripts/thesis_phase.py` (industry scope) turns the signals into a phase; a published strength (price, backlog and revenue growth, minus an inventory-build penalty) orders industries inside a phase. TOP5 admission needs phase DISCOVERY or EARLY_VALIDATION, revenue growth and strength ≥ 15; fewer than five is published as an honest shortfall.
+Industry membership is read from EDGAR's company listing by SIC code (cached 30 days; empty listings are never cached). A metric with fewer than three matched issuers is treated as missing. `scripts/thesis_phase.py` (industry scope) turns the signals into a phase; a published strength (price, backlog, revenue and Taiwan supplier revenue growth, minus an inventory-build penalty) orders industries inside a phase. TOP5 admission needs phase DISCOVERY or EARLY_VALIDATION, revenue growth and strength ≥ 15; fewer than five is published as an honest shortfall.
 
 The configuration lists official classifications only (SIC codes and PPI series per industry). Industry names are labels for those classifications; every sentence on cards and deep analyses is generated from the computed numbers with period, source and URL, and missing data are stated, not filled. Catalysts are limited to data-review dates; no forecast, probability or price target is produced.
 
@@ -31,4 +32,4 @@ The configuration lists official classifications only (SIC codes and PPI series 
 
 ## Limits and next sources
 
-BLS PPI is monthly and SEC frames are quarterly, so the rotation moves with official releases, not intraday. EDGAR's SIC listing throttles (HTTP 503 with back-off; unavailable codes are recorded and retried on the next run). Census M3 orders need an API key and are not used. Candidate additions: EIA electricity data, TWSE/TPEx monthly revenue for Taiwan industries, and buyer capital expenditure from hyperscaler XBRL.
+BLS PPI is monthly and SEC frames are quarterly, so the rotation moves with official releases, not intraday. EDGAR's SIC listing throttles (HTTP 503 with back-off; unavailable codes are recorded and retried on the next run). Census M3 orders need an API key and are not used. Candidate additions: EIA electricity data and buyer capital expenditure from hyperscaler XBRL.
