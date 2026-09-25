@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import order_timing as ot  # noqa: E402
+
+# Phrasings observed in 2026 10-Q filings, shortened; values are the filings' own percentages.
+PAIR = ("The Company expects to recognize approximately 77 % of remaining performance obligations as revenue in the next "
+        "twelve months , approximately 14 % in the following twelve months , and the remainder thereafter.")
+SEGMENTS = ("Remaining Performance Obligation (RPO) . We expect to recognize revenue as follows: (1) Equipment-related RPO of "
+            "$ 87,821 million of which 36 % , 65 % , and 97 % is expected to be recognized within 1 , 2 , and 5 years , "
+            "respectively. (2) Services-related RPO of $ 88,463 million of which 16 % , 54 % , 79 % , and 92 % is expected "
+            "to be recognized within 1 , 5 , 10 , and 15 years , respectively.")
+INITIAL = ("the Company had $ 103.7 billion of unsatisfied RPO, of which 41 % was expected to be recognized over the initial "
+           "24 months ending June 30, 2028, 39 % between months 25 and 48.")
+AMOUNT = "remaining performance obligations was $ 315 million, of which $ 201 million is expected to be recognized in the next 12 months."
+NOT_TIMING = ("remaining performance obligations was approximately $ 5 billion, of which $ 422 million has been recognized as "
+              "contract liabilities.")
+
+
+class OrderTimingTests(unittest.TestCase):
+    def test_percent_pair_gives_one_and_two_years(self):
+        timing = ot.extract_timing(PAIR)
+        self.assertEqual(timing["horizons"], {12: 77.0, 24: 91.0})
+        plan = ot.weighted_schedule(timing)
+        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (38.5, 77.0, 91.0))
+        self.assertTrue(any("0–12" in p for p in plan["premises"]))
+
+    def test_segments_are_scheduled_separately_then_weighted_by_amount(self):
+        plan = ot.weighted_schedule(ot.extract_timing(SEGMENTS))
+        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (12.98, 25.96, 45.18))
+        self.assertIn("多段 RPO 依各段金額加權", plan["premises"])
+
+    def test_single_window_interpolates_inside_never_beyond(self):
+        plan = ot.weighted_schedule(ot.extract_timing(INITIAL))
+        self.assertEqual((plan["m12"], plan["m24"]), (20.5, 41.0))
+        only_year = ot.weighted_schedule(ot.extract_timing(AMOUNT))
+        self.assertEqual(only_year["m12"], 63.81)
+        self.assertIsNone(only_year["m24"])  # no disclosed horizon beyond 12 months
+
+    def test_amounts_that_are_not_timing_are_ignored(self):
+        self.assertIsNone(ot.extract_timing(NOT_TIMING))
+        self.assertIsNone(ot.extract_timing("Revenue grew 40% over the next quarter without any backlog statement."))
+
+    def test_latest_periodic_filing(self):
+        submissions = {"filings": {"recent": {"form": ["8-K", "10-Q", "10-K"], "filingDate": ["2026-09-01", "2026-08-01", "2026-02-01"],
+                                              "accessionNumber": ["a", "0000000001-26-000002", "c"], "primaryDocument": ["x", "q.htm", "k.htm"]}}}
+        filing = ot.latest_periodic_filing(submissions, "0000000001")
+        self.assertEqual((filing["form"], filing["url"]), ("10-Q", "https://www.sec.gov/Archives/edgar/data/1/000000000126000002/q.htm"))
+
+
+if __name__ == "__main__":
+    unittest.main()
