@@ -67,6 +67,13 @@ async function actualReply(command: string, env: unknown) {
   return JSON.stringify(messages);
 }
 
+/** Text a LINE user sees: plain text nodes, or the spans of a highlighted text joined. */
+const visibleText = (node: any): string => !node || typeof node !== "object" ? ""
+  : Array.isArray(node) ? node.map(visibleText).join(" ")
+    : node.type === "text" && Array.isArray(node.contents) ? node.contents.map((span: any) => span.text).join("")
+      : node.type === "text" && typeof node.text === "string" ? node.text
+        : Object.values(node).map(visibleText).filter(Boolean).join(" ");
+
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-09-25T12:30:00Z")); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -82,7 +89,13 @@ describe("data-driven potential ranking", () => {
   it("renders a company report without being intercepted by the equity lookup", async () => {
     const body = await actualReply("潛力報告 SYNA", await sealedEnv());
     expect(body).toContain("公司深度報告 · 官方資料計算");
-    expect(body).toContain("RPO 年增 +68.4%");
+    expect(visibleText(JSON.parse(body))).toContain("RPO 年增 +68.4%");
+    const figure = JSON.stringify(JSON.parse(body)).match(/\{"type":"span","text":"\+68\.4%"[^}]*\}/)?.[0];
+    expect(figure).toContain('"weight":"bold"');
+    expect(JSON.stringify(JSON.parse(body))).toMatch(/"text":"-10%","weight":"bold","color":"#B42318"/);
+    const text = JSON.parse(await actualReply("潛力報告 SYNA 文字", await sealedEnv()));
+    expect(text.every((m: any) => m.type === "text")).toBe(true);
+    expect(text.map((m: any) => m.text).join(" ")).toContain("RPO 年增 +68.4%");
   });
 
   it("refuses companies outside the ranking or without a validated report", async () => {

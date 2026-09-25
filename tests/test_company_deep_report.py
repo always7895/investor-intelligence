@@ -102,8 +102,14 @@ class SealingTests(unittest.TestCase):
             path.write_text(json.dumps({"as_of": TODAY.isoformat(), "reports": {"SYN": report}}), encoding="utf-8")
             compact = cdr.load_reports(path, tickers=["SYN", "ABSENT"], today=TODAY)
             self.assertEqual(list(compact), ["SYN"])
-            self.assertEqual(set(compact["SYN"]), {"ticker", "name", "as_of", "boundary", "phase", "sections", "source_references"})
+            self.assertEqual(set(compact["SYN"]), {"ticker", "name", "as_of", "boundary", "phase", "sections", "source_references", "kpis"})
             self.assertNotIn("metrics", compact["SYN"])
+            tiles = {row["label"]: row for row in compact["SYN"]["kpis"]}
+            self.assertEqual(tiles["營收年增"]["value"], report["metrics"]["revenue_yoy_pct"])
+            self.assertTrue(tiles["營收年增"]["signed"])
+            self.assertFalse(tiles["毛利率"]["signed"])
+            self.assertTrue(all(len(row["label"]) <= 12 and row["unit"] == "%" for row in compact["SYN"]["kpis"]))
+            self.assertTrue(all(row["value"] is None or isinstance(row["value"], float) for row in compact["SYN"]["kpis"]))
             self.assertTrue(all(len(s["text"]) <= 700 and "\n" not in s["text"] for s in compact["SYN"]["sections"]))
             self.assertEqual(cdr.load_reports(path, tickers=["SYN"], today=date(2026, 10, 9)), {})  # older than 7 days
             self.assertEqual(cdr.load_reports(Path(tmp) / "absent.json", tickers=["SYN"], today=TODAY), {})

@@ -8,7 +8,13 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — data-driven industry rotation (operator rules 2026-09-25)
+## This change — card body visuals (operator 2026-09-25: card bodies read as flat text)
+
+- `line-theme.ts` body visuals: figures in running text bolded via spans (negatives red, dates untouched), meters, rank badges, rail titles, timelines, stat tiles, phase ladder, stacked score bar; `packCarousels` splits by bytes (≤5 bubbles, ≤46 KB); oversized macro bubbles fall back to spans-free text.
+- TOP5 overview/industry cards/10-step deep analysis redrawn; 潛力報告 and the Top20 data-report detail are now a swipeable Flex report (`… 文字` keeps text); company reports carry optional validated `kpis` tiles from `company_deep_report.load_reports`. Top20 seven-field cards unchanged. Worker 916 passed (5 new visual tests); preview republished at the artifact below.
+- `05d86a5` RPO recognition timing from the latest 10-Q/10-K (`scripts/order_timing.py`, 5 tests); live probe: GEV, NVDA, DELL, CRWV, FROG, HUBS, KVYO, AMD disclose timing; order-realization scenario not yet wired into reports.
+
+## Earlier today — data-driven industry rotation (operator rules 2026-09-25)
 
 Operator: all data must move with the latest market data, nothing hand-written; macro industry analysis rotates to the industries with potential at the time; deep analyses are detailed; sources are diverse and keep updating after the project is done.
 
@@ -20,7 +26,6 @@ Operator: all data must move with the latest market data, nothing hand-written; 
 - TWSE and TPEx monthly revenue (OpenAPI, open-data licence) added as a third independent family (`SUPPLIER_REVENUE`); live TOP5 with it: computers and storage (PPI, SEC RPO and TW revenue +90.6% all confirm), semiconductors (TW +61.3%), software, electronic components, oil and gas extraction.
 - Data-driven potential ranking (「潛力榜」, 「潛力報告 代號」): members of admitted industries, phase gate, confirmed tier first, published strength, ≤5 per industry, sealed with compact reports in the TOP5 overview. Live: NVDA, DELL, APH, CRWV, FROG, HUBS, KVYO, BRZE, LOGI, BELFA, DGII, FTNT, OMCL, POWL, then MU, AMD, MCHP, ADI, BDCO, CHRD. BLS refusal falls back to a ≤35-day cache. Worker 909 passed.
 - Company deep reports (`scripts/company_deep_report.py`, daily with the rotation): SEC XBRL same-quarter revenue/margins, RPO, capex, cash, debt, dilution, industry signals and company-scope phase with sources, embedded as `deep_reports` in the sealed report; the Worker renders them instead of the audit template when valid and from the same snapshot. Live: GEV revenue +21.9%, operating margin +1.7 pp, RPO US$176.28B (+37.0%). 6 Python + 2 Worker tests.
-- Tests: `test_industry_rotation` (11); Worker 903 passed / 1 skipped. Full Python 2561: 10 failures came from mid-edit bridge states and the explicit `--model-catalog-check` probing other ports; both fixed (explicit addresses never move) and rerun green (29 OK).
 
 ## Previous changes
 
@@ -33,9 +38,9 @@ Operator: all data must move with the latest market data, nothing hand-written; 
 
 ## Latest gate run
 
-- `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS (20:22).
-- Worker typecheck PASS; 905 passed / 1 skipped. Focused Python: rotation, deep reports, market products, thesis phase, model profile (compiled EXE), bridge identity — OK.
-- Full Python 20:24 (after `a90bdfe`): 2568 tests OK in 423.0 s. Earlier 20:06 run: 10 mid-edit failures, fixed.
+- `security_check`, documentation boundary/structure, workflow supply chain: PASS (21:12).
+- Worker typecheck PASS; 916 passed / 1 skipped. Focused Python: company deep reports, order timing — OK.
+- Full Python (after `9f7156a`): 2571 tests OK in 426.4 s.
 
 ## Closed components — no reopening without regression evidence
 

@@ -379,7 +379,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         "不以模型生成、舊資料或其他清單代替。",
       ], [["TOP5 產業總覽", "TOP5產業總覽"], ["回功能選單", "選單"]], isText);
     }
-    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of));
+    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of), isText);
     return isText ? buildPotentialRankingText(ranking) : buildPotentialRankingFlex(ranking);
   }
 

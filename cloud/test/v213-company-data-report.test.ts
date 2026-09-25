@@ -44,6 +44,13 @@ describe("company data report", () => {
     expect(text).not.toContain("WITHHELD");
   });
 
+  it("renders the Flex report on the Top20 detail path when Flex presentation is used", () => {
+    const flex = buildTop20DeepAnalysisMessages(REPORT, "SYN", companyDataReportFromSealed(sealed(DATA), "SYN"), "flex");
+    expect(flex.every(m => m.type === "flex")).toBe(true);
+    expect(JSON.stringify(flex)).toContain("回 Top20");
+    expect(JSON.stringify(flex)).not.toContain("WITHHELD");
+  });
+
   it("rejects malformed or foreign data and falls back to the audit template", () => {
     for (const bad of [
       { ...DATA, ticker: "OTHER" },

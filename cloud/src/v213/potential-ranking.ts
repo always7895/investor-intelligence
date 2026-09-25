@@ -4,8 +4,8 @@
  * The phase is an eligibility gate and the published strength formula orders companies; this is a
  * computation over official data, not a forecast, target price or recommendation. */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { buildCompanyDataReportMessages, validateCompanyDataReport, type CompanyDataReport } from "./deep-analysis";
-import { LINE_THEME as T, chip, footnote, headerStyle, kpiTile, labelValue, menuAction, section, signColor, uiBox, uiText } from "./line-theme";
+import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport, type CompanyDataReport } from "./deep-analysis";
+import { LINE_THEME as T, chip, footnote, headerStyle, labelValue, menuAction, phaseLadder, section, signColor, statTile, uiBox, uiText } from "./line-theme";
 
 export interface PotentialRecord {
   readonly rank: number; readonly ticker: string; readonly name: string; readonly industry_name: string;
@@ -63,9 +63,9 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
     body: uiBox([
       section("關鍵數據 / Key data", [
         uiBox([
-          kpiTile("營收年增", pct(row.revenue_yoy_pct)),
-          kpiTile("RPO年增", pct(row.rpo_yoy_pct)),
-          kpiTile("資料強度", `${row.strength}`, T.ink),
+          statTile("營收年增", pct(row.revenue_yoy_pct)),
+          statTile("RPO年增", pct(row.rpo_yoy_pct)),
+          statTile("資料強度", `${row.strength}`, row.strength),
         ], { layout: "horizontal", spacing: "sm" }),
       ], "key"),
       section("獲利與股本 / Margins & dilution", [
@@ -73,9 +73,9 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
         labelValue("營業利益率年變化", pct(row.operating_margin_change_pp, " 個百分點"), { weight: "bold", color: signColor(pct(row.operating_margin_change_pp)) }),
         labelValue("稀釋後股數年變化", pct(row.dilution_yoy_pct)),
       ], "detail"),
-      section("時間 / Timing", [
-        labelValue("資料季度", ranking.quarter),
-        labelValue("下次檢查", row.next_review_at ?? "下一份財報"),
+      section("資料階段 / Phase", [
+        phaseLadder(row.phase),
+        uiBox([labelValue("資料季度", ranking.quarter), labelValue("下次檢查", row.next_review_at ?? "下一份財報")], { layout: "horizontal", spacing: "md" }),
       ], "context"),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: uiBox([
@@ -107,10 +107,10 @@ export function buildPotentialRankingText(ranking: PotentialRanking): LineOutbou
   return messages;
 }
 
-export function buildPotentialReport(ranking: PotentialRanking, ticker: string, generatedAt: string): LineOutboundMessage[] | string {
+export function buildPotentialReport(ranking: PotentialRanking, ticker: string, generatedAt: string, isText = false): LineOutboundMessage[] | string {
   const symbol = ticker.toUpperCase();
   if (!ranking.records.some(row => row.ticker === symbol)) return `「${symbol}」不在本輪資料驅動潛力榜中；不以其他公司或舊資料代替。`;
   const data: CompanyDataReport | null = validateCompanyDataReport(ranking.reports[symbol], symbol);
   if (!data) return `「${symbol}」的詳細報告尚未產生或未通過驗證；不以樣板文字冒充。`;
-  return buildCompanyDataReportMessages(data, generatedAt);
+  return isText ? buildCompanyDataReportMessages(data, generatedAt) : buildCompanyDataReportFlex(data, generatedAt, ["回潛力榜", "潛力榜"]);
 }

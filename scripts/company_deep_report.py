@@ -313,8 +313,27 @@ def load_reports(path: Path = OUTPUT_PATH, *, tickers: Sequence[str], max_age_da
         compact[ticker] = {"ticker": ticker, "name": report["name"], "as_of": report["as_of"], "boundary": report["boundary"],
                            "phase": {"phase": report["phase"]["phase"], "next_review_at": report["phase"].get("next_review_at")},
                            "sections": [{"title": s["title"], "text": s["text"].replace("\n", " ")[:700]} for s in report["sections"]],
-                           "source_references": report["source_references"][:20]}
+                           "source_references": report["source_references"][:20], "kpis": kpis(report.get("metrics") or {})}
     return compact
+
+
+# Tiles on the LINE report: (label <= 12 chars, metric, signed change?, period field). Values come from the same metrics
+# the sections are written from; a missing fact stays null and renders as 未申報.
+KPI_FIELDS = (("營收年增", "revenue_yoy_pct", True, "quarter_frame"), ("毛利率", "gross_margin_pct", False, "quarter_frame"),
+              ("營業利益率", "operating_margin_pct", False, "quarter_frame"), ("RPO 年增", "rpo_yoy_pct", True, "rpo_as_of"),
+              ("稀釋後股數年增", "dilution_yoy_pct", True, "quarter_frame"), ("資本支出/營收", "capex_share_of_revenue_pct", False, "capex_fy_end"))
+
+
+def kpis(metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
+    out = []
+    for label, key, signed, period_key in KPI_FIELDS:
+        value = metrics.get(key)
+        row: dict[str, Any] = {"label": label, "value": round(float(value), 2) if isinstance(value, (int, float)) else None,
+                               "unit": "%", "signed": signed}
+        if metrics.get(period_key):
+            row["period"] = str(metrics[period_key])[:20]
+        out.append(row)
+    return out
 
 
 def cached_business(cik: str) -> Mapping[str, Any] | None:

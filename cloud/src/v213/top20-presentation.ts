@@ -128,7 +128,8 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
       const view = await pinPublicSnapshot(env);
       const sealedRaw = view.integrity === "sealed" && `s:${view.runId}` === reference.snapshot
         ? await view.text(["v213:top20-report:latest", "v213:bottleneck-report:latest"]) : null;
-      return buildTop20DeepAnalysisMessages(result, row.ticker, companyDataReportFromSealed(sealedRaw, row.ticker));
+      return buildTop20DeepAnalysisMessages(result, row.ticker, companyDataReportFromSealed(sealedRaw, row.ticker),
+        env.V213_LINE_PRESENTATION === "text" ? "text" : "flex");
     } catch { return "公司深度化分析未通過來源或訊息完整性檢查，已拒絕顯示。"; }
   }
   if (!(await v213EvidenceWithinWindow(result.records.map(row => ({ freshAsOf: row.orders_state_as_of, retrievedAt: row.retrieved_at, evidenceClass: row.evidence_class, sealTime: result.generated_at }))))) return V213_STALE_RECORDS_MESSAGE;

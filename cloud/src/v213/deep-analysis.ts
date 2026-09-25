@@ -3,6 +3,10 @@ import { requirePublicCitation as safeCitation } from "./public-citation";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
 import { parseV213BottleneckReport, type V213BottleneckReport } from "./bottleneck-report";
 import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
+import {
+  LINE_THEME as T, chip, divider, footerStyle, footnote, headerStyle, labelValue, menuAction, panel, phaseLadder, railTitle,
+  packCarousels, rankBadge, richText, statTile, uiBox, uiText,
+} from "./line-theme";
 
 /**
  * 深度化分析 (Deep Bottleneck & Value-Chain Analysis)
@@ -14,6 +18,13 @@ import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
  */
 /** Data-driven company report computed from SEC filings, BLS and the industry rotation
  * (scripts/company_deep_report.py), embedded in the same sealed report object. */
+export interface CompanyKpi {
+  readonly label: string;
+  readonly value: number | null;
+  readonly unit: "%" | "pp";
+  readonly signed: boolean;
+  readonly period?: string;
+}
 export interface CompanyDataReport {
   readonly ticker: string;
   readonly name: string;
@@ -23,6 +34,8 @@ export interface CompanyDataReport {
   readonly sections: readonly { readonly title: string; readonly text: string }[];
   readonly source_references: readonly { readonly source: string; readonly url: string; readonly period?: string }[];
   readonly boundary: string;
+  /** Optional structured figures for tiles (older sealed reports have none). */
+  readonly kpis: readonly CompanyKpi[];
 }
 
 const SHORT = (value: unknown, max: number): value is string =>
@@ -46,13 +59,19 @@ export function validateCompanyDataReport(raw: any, ticker: string): CompanyData
   if (!Array.isArray(raw.sections) || raw.sections.length < 3 || raw.sections.length > 12) return null;
   if (!raw.sections.every((s: any) => SHORT(s?.title, 20) && SHORT(s?.text, 700))) return null;
   if (!Array.isArray(raw.source_references) || raw.source_references.length < 1 || raw.source_references.length > 20) return null;
+  const kpis = raw.kpis ?? [];
+  if (!Array.isArray(kpis) || kpis.length > 8 || !kpis.every((k: any) => SHORT(k?.label, 12)
+    && (k.value === null || (typeof k.value === "number" && Number.isFinite(k.value) && Math.abs(k.value) < 1e6))
+    && (k.unit === "%" || k.unit === "pp") && typeof k.signed === "boolean"
+    && (k.period === undefined || k.period === null || SHORT(String(k.period), 20)))) return null;
   try {
     const references = raw.source_references.map((ref: any) => {
       if (!SHORT(ref?.source, 120) || (ref.period !== undefined && ref.period !== null && !SHORT(String(ref.period), 40))) throw new Error("REF");
       return { source: ref.source, url: safeCitation(ref.url), ...(ref.period ? { period: String(ref.period) } : {}) };
     });
     return { ticker: raw.ticker, name: raw.name, as_of: raw.as_of, phase, next_review_at: next,
-      sections: raw.sections.map((s: any) => ({ title: s.title, text: s.text })), source_references: references, boundary: raw.boundary };
+      sections: raw.sections.map((s: any) => ({ title: s.title, text: s.text })), source_references: references, boundary: raw.boundary,
+      kpis: kpis.map((k: any) => ({ label: k.label, value: k.value, unit: k.unit, signed: k.signed, ...(k.period ? { period: String(k.period) } : {}) })) };
   } catch {
     return null;
   }
@@ -72,6 +91,7 @@ export function buildTop20DeepAnalysisMessages(
   report: V213Top20Report | V213BottleneckReport,
   ticker: string,
   dataReport: CompanyDataReport | null = null,
+  style: "flex" | "text" = "text",
 ): LineOutboundMessage[] {
   // Strict two-variant admission: certified top20 report first, then the
   // bottleneck policy report; anything else still throws REPORT_CONTEXT_INVALID.
@@ -80,6 +100,8 @@ export function buildTop20DeepAnalysisMessages(
   const validated = top20 ?? bottleneck;
   const row: any = validated?.records?.find((item: any) => item.ticker === ticker.toUpperCase());
   if (!validated || !row) throw new Error("REPORT_CONTEXT_INVALID");
+
+  if (dataReport && style === "flex") return buildCompanyDataReportFlex(dataReport, validated.generated_at, ["回 Top20", "Top20"]);
 
   const currentUrls = [...new Set(((row.current_order_source_urls ?? []) as string[]).map(safeCitation))];
   const futureUrls = [...new Set(((row.future_order_source_urls ?? []) as string[]).map(safeCitation))];
@@ -215,7 +237,94 @@ export function buildTop20DeepAnalysisMessages(
   return chunkBlocks(blocks);
 }
 
-/** Data report as LINE text messages (used by the data-driven potential ranking). */
+const PHASE_NAME: Record<string, string> = {
+  INSUFFICIENT_EVIDENCE: "資料不足", DISCOVERY: "初現（單一來源）", EARLY_VALIDATION: "驗證中（雙來源確認）",
+  COMMERCIAL_VALIDATION: "商業驗證（公司開始獲利）", INSTITUTIONAL_VALIDATION: "法人進場", CONSENSUS: "共識擁擠",
+  RELIEVING: "緩解中", BROKEN: "已失效",
+};
+const NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
+
+const kpiValue = (kpi: CompanyKpi) => kpi.value === null ? "未申報"
+  : `${kpi.signed && kpi.value >= 0 ? "+" : ""}${kpi.value.toFixed(1)}${kpi.unit === "pp" ? "pp" : "%"}`;
+
+/** KPI tiles two per row; bounded levels (margins, shares of revenue) get a meter, changes do not. */
+function kpiRows(kpis: readonly CompanyKpi[]) {
+  const rows = [];
+  for (let start = 0; start < kpis.length; start += 2) {
+    const pair = kpis.slice(start, start + 2).map(kpi => statTile(kpi.label, kpiValue(kpi),
+      !kpi.signed && kpi.value !== null && kpi.value >= 0 && kpi.value <= 100 ? kpi.value : undefined, kpi.period));
+    if (pair.length === 1) pair.push(uiBox([], { flex: 1 }));
+    rows.push(uiBox(pair, { layout: "horizontal", spacing: "sm" }));
+  }
+  return rows;
+}
+
+/** Data report as a Flex carousel: overview (phase ladder, KPI tiles), numbered sections, sources. */
+export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt: string,
+  back: readonly [string, string] = ["回功能選單", "選單"]): LineOutboundMessage[] {
+  const perBubble = 4;
+  const sectionPages = Math.ceil(data.sections.length / perBubble);
+  const total = sectionPages + 2;
+  const overview = {
+    type: "bubble", size: "mega",
+    header: uiBox([
+      uiBox([chip("公司深度報告"), uiText("官方資料計算", "xxs", T.headerMuted, { weight: "bold", gravity: "center", flex: 1 })],
+        { layout: "horizontal", spacing: "md" }),
+      uiText(data.ticker, "3xl", T.headerText, { weight: "bold" }),
+      uiText(data.name, "md", T.headerText, { weight: "bold" }),
+      uiText(`資料計算日 ${data.as_of}｜快照 ${generatedAt}`, "xxs", T.headerSubtle),
+    ], { ...headerStyle, spacing: "sm" }),
+    body: uiBox([
+      uiBox([railTitle("資料階段", PHASE_NAME[data.phase] ?? data.phase), phaseLadder(data.phase),
+        labelValue("下次檢查", data.next_review_at ?? "下一份財報", { weight: "bold" })], { spacing: "md" }),
+      ...(data.kpis.length > 0 ? [uiBox([railTitle("關鍵數據", "SEC XBRL 同季年比較"), ...kpiRows(data.kpis)], { spacing: "sm" })] : []),
+      panel([footnote(`研究邊界：${data.boundary}`), footnote(`左滑看詳細報告 2–${total}/${total}`)], "soft"),
+    ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
+  };
+  const sectionBubbles = Array.from({ length: sectionPages }, (_, page) => {
+    const chunk = data.sections.slice(page * perBubble, page * perBubble + perBubble);
+    return {
+      type: "bubble", size: "mega",
+      header: uiBox([
+        uiText(`${data.ticker} · 詳細報告 ${page + 2}/${total}`, "xxs", T.headerMuted, { weight: "bold" }),
+        uiText(chunk.map(s => s.title).join("・"), "md", T.headerText, { weight: "bold" }),
+      ], { ...headerStyle, spacing: "sm" }),
+      body: uiBox(chunk.flatMap((item, offset) => {
+        const index = page * perBubble + offset;
+        const falsifier = /證偽/.test(item.title);
+        const block = uiBox([
+          uiBox([rankBadge(NUMERALS[index] ?? String(index + 1), index === 0),
+            uiText(item.title, "sm", falsifier ? T.negative : T.ink, { weight: "bold", gravity: "center", flex: 1 })],
+          { layout: "horizontal", spacing: "md" }),
+          falsifier
+            ? uiBox([richText(item.text, "xs", T.ink)], { backgroundColor: T.paleNegative, cornerRadius: "md", paddingAll: "md" })
+            : richText(item.text, "xs", T.ink),
+        ], { spacing: "sm" });
+        return offset > 0 ? [divider(), block] : [block];
+      }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
+    };
+  });
+  const sources = {
+    type: "bubble", size: "mega",
+    header: uiBox([
+      uiText(`${data.ticker} · 詳細報告 ${total}/${total}`, "xxs", T.headerMuted, { weight: "bold" }),
+      uiText("資料來源 / Sources", "md", T.headerText, { weight: "bold" }),
+    ], { ...headerStyle, spacing: "sm" }),
+    body: uiBox(data.source_references.slice(0, 10).flatMap((ref, index) => {
+      const block = uiBox([
+        uiText(ref.source, "xs", T.ink, { weight: "bold" }),
+        ...(ref.period ? [uiText(`期間 ${ref.period}`, "xxs", T.muted)] : []),
+        uiText(ref.url, "xxs", T.subtle),
+      ], { spacing: "xs" });
+      return index > 0 ? [divider(), block] : [block];
+    }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
+    footer: uiBox([menuAction(back[0], back[1]), ...(back[1] === "選單" ? [] : [menuAction("回功能選單", "選單")])], { ...footerStyle }),
+  };
+  const alt = `${data.ticker}｜公司深度報告 · 官方資料計算`;
+  return packCarousels([overview, ...sectionBubbles, sources], (index, total) => total > 1 ? `${alt}（${index + 1}/${total}）` : alt);
+}
+
+/** Data report as LINE text messages (text presentation of the data-driven potential ranking). */
 export function buildCompanyDataReportMessages(data: CompanyDataReport, generatedAt: string): LineOutboundMessage[] {
   return chunkBlocks(dataReportBlocks({ generated_at: generatedAt }, data));
 }

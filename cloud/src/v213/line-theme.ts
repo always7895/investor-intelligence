@@ -1,3 +1,5 @@
+import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+
 /** Ink monochrome palette, matched to the bot's black-and-white line-art identity.
  * Hierarchy comes from lightness, not hue: a three-stop black-to-graphite
  * gradient band, an ink strip for the key section, grey strips below it.
@@ -109,3 +111,112 @@ export const productHeader = (eyebrow: string, title: string, extra: unknown[] =
 
 /** Compact footnote text for disclosures that must remain visible. */
 export const footnote = (text: string) => uiText(text, "xxs", T.subtle);
+
+// Body visuals (operator 2026-09-25: card bodies read as flat text). Text keeps LINE size keywords;
+// decorative shapes (bars, dots, rails) use px thickness exactly like LINE's own showcase layouts.
+
+/** Figures inside running text: signed changes, money and percentages (a hyphen inside a date is not a sign). */
+const FIGURE = /((?<![\w.$-])[+\-−]\d[\d,]*(?:\.\d+)?\s?(?:%|個百分點|pp)?(?![\d-])|US\$[\d,]+(?:\.\d+)?[BMK]?|(?<![\w.])\d[\d,]*(?:\.\d+)?%)/g;
+
+/** Wrapped text whose figures are bold (negatives red, by the accounting convention). With spans LINE ignores `text`,
+ * so it is omitted to keep carousels under the 50 KB cap; visible text is the spans joined. */
+export function richText(text: string, size = "xs", color: string = T.ink, extra: Record<string, unknown> = {}) {
+  const parts = text.split(FIGURE).filter(part => part.length > 0);
+  if (parts.length < 2 || parts.length > 60) return uiText(text, size, color, extra);
+  const spans = parts.map(part => new RegExp(`^${FIGURE.source}$`).test(part)
+    ? { type: "span", text: part, weight: "bold", color: /^[-−]\d/.test(part) ? T.negative : T.ink }
+    : { type: "span", text: part, color });
+  return { type: "text", size, color, wrap: true, contents: spans, ...extra };
+}
+
+const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+/** Horizontal meter: a pale track with an ink fill proportional to value/max. `grow` only inside a horizontal row
+ * (in a vertical box flex would stretch the track downwards). */
+export const meter = (value: number, max = 100, fill: string = T.ink, grow = false) => ({
+  type: "box", layout: "vertical", backgroundColor: T.border, height: "6px", cornerRadius: "3px", ...(grow ? { flex: 1 } : {}),
+  contents: [{ type: "box", layout: "vertical", contents: [], width: `${Math.max(2, clampPct((value / max) * 100))}%`,
+    height: "6px", cornerRadius: "3px", background: { type: "linearGradient", angle: "90deg", startColor: T.strongEnd, endColor: fill }, backgroundColor: fill }],
+});
+
+/** Square rank badge: the leader is solid ink, the rest graphite outline. */
+export const rankBadge = (rank: number | string, lead = false) => uiBox([
+  uiText(String(rank), "sm", lead ? T.onInk : T.ink, { weight: "bold", align: "center" }),
+], {
+  width: "30px", height: "30px", cornerRadius: "8px", justifyContent: "center", flex: 0,
+  backgroundColor: lead ? T.ink : T.slateTint, ...(lead ? { background: { type: "linearGradient", angle: "135deg", startColor: T.headerBackground, endColor: T.headerGradientEnd } } : { borderColor: T.frame, borderWidth: "light" }),
+});
+
+/** Title with a short ink rail on its left: marks each item without another framed box. */
+export const railTitle = (title: string, sub?: string) => uiBox([
+  { type: "box", layout: "vertical", contents: [], width: "4px", backgroundColor: T.ink, cornerRadius: "2px" },
+  uiBox([uiText(title, "sm", T.ink, { weight: "bold" }), ...(sub ? [uiText(sub, "xxs", T.subtle)] : [])], { spacing: "none", flex: 1 }),
+], { layout: "horizontal", spacing: "md" });
+
+const RAIL = "#B8BEC6";
+
+/** One step of a vertical timeline: a numbered or hollow dot, a rail down to the next step, content on the right. */
+export const timelineStep = (marker: string, contents: unknown[], last = false, lead = false) => uiBox([
+  uiBox([
+    uiBox([uiText(marker, "xxs", lead ? T.onInk : T.ink, { weight: "bold", align: "center" })], {
+      width: "22px", height: "22px", cornerRadius: "11px", justifyContent: "center",
+      backgroundColor: lead ? T.ink : T.paper, borderColor: T.ink, borderWidth: "medium",
+    }),
+    ...(last ? [] : [uiBox([{ type: "box", layout: "vertical", contents: [], width: "2px", backgroundColor: RAIL, flex: 1 }],
+      { layout: "horizontal", justifyContent: "center", flex: 1 })]),
+  ], { width: "22px", flex: 0, spacing: "xs" }),
+  uiBox(contents, { flex: 1, spacing: "xs", paddingBottom: last ? "none" : "lg" }),
+], { layout: "horizontal", spacing: "md" });
+
+/** Stat tile with an optional meter under the value (for bounded percentages). */
+export const statTile = (label: string, value: string, bar?: number, sub?: string) => uiBox([
+  uiText(label, "xxs", T.subtle),
+  uiText(value, value.length <= 4 ? "xl" : value.length <= 6 ? "lg" : "md", signColor(value), { weight: "bold" }),
+  ...(bar === undefined ? [] : [meter(bar)]),
+  ...(sub ? [uiText(sub, "xxs", T.subtle)] : []),
+], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
+
+/** Thesis phase ladder: six stages as segments, filled up to the current one, short labels underneath. */
+export const PHASE_STEPS = ["DISCOVERY", "EARLY_VALIDATION", "COMMERCIAL_VALIDATION", "INSTITUTIONAL_VALIDATION", "CONSENSUS", "RELIEVING"] as const;
+const PHASE_SHORT = ["初現", "驗證", "商業", "法人", "共識", "緩解"];
+export const phaseLadder = (phase: string) => {
+  const at = PHASE_STEPS.indexOf(phase as typeof PHASE_STEPS[number]);
+  return uiBox([
+    uiBox(PHASE_STEPS.map((_, index) => ({
+      type: "box", layout: "vertical", contents: [], height: "8px", cornerRadius: "4px", flex: 1,
+      backgroundColor: phase === "BROKEN" ? T.paleNegative : index < at ? T.strongEnd : index === at ? T.ink : T.border,
+    })), { layout: "horizontal", spacing: "xs" }),
+    uiBox(PHASE_SHORT.map((label, index) => uiText(label, "xxs", index === at ? T.ink : T.subtle,
+      { align: "center", flex: 1, ...(index === at ? { weight: "bold" } : {}) })), { layout: "horizontal", spacing: "xs" }),
+  ], { spacing: "xs" });
+};
+
+/** Stacked composition bar (for example score weights), shades from ink to pale graphite. */
+const SHADES = [T.ink, T.strongEnd, T.subtle, "#8A919B", "#B8BEC6", "#D5D9DF"];
+export const stackedBar = (parts: readonly { label: string; weight: number }[]) => {
+  const total = parts.reduce((sum, part) => sum + part.weight, 0) || 1;
+  return uiBox([
+    uiBox(parts.map((part, index) => ({ type: "box", layout: "vertical", contents: [], height: "10px",
+      flex: Math.max(1, Math.round((part.weight / total) * 100)), backgroundColor: SHADES[index % SHADES.length] })),
+      { layout: "horizontal", spacing: "none", cornerRadius: "5px" }),
+    ...Array.from({ length: Math.ceil(parts.length / 3) }, (_, row) => uiBox(parts.slice(row * 3, row * 3 + 3).map((part, offset) => uiBox([
+      { type: "box", layout: "vertical", contents: [], width: "8px", height: "8px", cornerRadius: "2px", backgroundColor: SHADES[(row * 3 + offset) % SHADES.length] },
+      uiText(`${part.label} ${part.weight}`, "xxs", T.muted, { flex: 1 }),
+    ], { layout: "horizontal", spacing: "xs", flex: 1, alignItems: "center" })), { layout: "horizontal", spacing: "sm" })),
+  ], { spacing: "sm" });
+};
+
+/** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return. */
+export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
+  const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+  const groups: unknown[][] = [];
+  for (const bubble of bubbles) {
+    const last = groups[groups.length - 1];
+    if (last && last.length < 5 && size({ type: "carousel", contents: [...last, bubble] }) <= 46_000) last.push(bubble);
+    else groups.push([bubble]);
+  }
+  const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: altText(index, groups.length),
+    contents: { type: "carousel", contents } }));
+  assertLineMessages(messages);
+  return messages;
+}
