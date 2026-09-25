@@ -34,7 +34,7 @@ Operator: all data must move with the latest market data, nothing hand-written; 
 
 - `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS (20:22).
 - Worker typecheck PASS; 905 passed / 1 skipped. Focused Python: rotation, deep reports, market products, thesis phase, model profile (compiled EXE), bridge identity — OK.
-- Full Python 20:06: 2561 tests; 10 failures from mid-edit states, fixed and rerun green (see above).
+- Full Python 20:24 (after `a90bdfe`): 2568 tests OK in 423.0 s. Earlier 20:06 run: 10 mid-edit failures, fixed.
 
 ## Closed components — no reopening without regression evidence
 
