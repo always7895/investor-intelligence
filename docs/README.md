@@ -60,6 +60,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [LINE_BOT_QA_SPEC](LINE_BOT_QA_SPEC.md)
 - [LINE_BOT_QA_IMPLEMENTATION](LINE_BOT_QA_IMPLEMENTATION.md)
 - [QA_CAPACITY_CONTRACT](QA_CAPACITY_CONTRACT.md) — development-only cooperative capacity; not R75 release acceptance
+- [FORWARD_COMPARISON_PREMISES_V1](FORWARD_COMPARISON_PREMISES_V1.md) — design-only premise map for guidance-versus-reported-baseline comparisons
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
