@@ -66,15 +66,15 @@ def _timestamp(value: object) -> str:
 def _descriptors(value: object) -> dict:
     mapping = _mapping(value, _AXES)
     for axis in _AXES:
-        token = mapping[axis]
-        if token is None:
+        declaration = mapping[axis]
+        if declaration is None:
             continue
-        if type(token) is not str or not 1 <= len(token) <= 128:
+        if type(declaration) is not str or not 1 <= len(declaration) <= 128:
             raise _invalid()
         if axis == "measure_form":
-            if token not in ("AGGREGATE_FLOW", "PER_SHARE_FLOW"):
+            if declaration not in ("AGGREGATE_FLOW", "PER_SHARE_FLOW"):
                 raise _invalid()
-        elif not _TOKEN.fullmatch(token):
+        elif not _TOKEN.fullmatch(declaration):
             raise _invalid()
     return mapping
 
