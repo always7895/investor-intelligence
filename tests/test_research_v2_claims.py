@@ -327,5 +327,108 @@ class ResearchClaimTests(unittest.TestCase):
         self.assertFalse(wrapper._row_individually_high_eligible(result, {'comparable_count': 2, 'macro_fresh': True}, policy))
 
 
+    @staticmethod
+    def _financial_pair_document():
+        # Synthetic attributed statements, not economic comparability or live evidence.
+        claims, rows = [], []
+        for cid, kind, period, value, primary in (
+            ('baseline', 'issuer_financial_statement', '2026Q2', 100, 'issuer'),
+            ('forward', 'issuer_guidance_or_contract', '2027Q2', 125, 'official'),
+        ):
+            declared = claim(cid, kind)
+            declared.update(metric='revenue', period=period)
+            claims.append(declared)
+            for provider in (primary, 'news'):
+                item = evidence(provider, cid, kind, value)
+                item['payload'].update(metric='revenue', period=period)
+                if cid == 'forward' and provider == primary:
+                    item['evidence_role'] = 'issuer_filings'
+                rows.append(item)
+        return document(rows, claims)
+
+    def test_reported_baseline_and_future_period_guidance_keep_attribution_separate(self):
+        doc = self._financial_pair_document()
+        before = copy.deepcopy(doc)
+        result = assess(doc)
+        by_id = {item['claim_id']: item for item in result['claims']}
+        self.assertEqual(set(by_id), {'baseline', 'forward'})
+        self.assertEqual(by_id['baseline']['status'], 'SUPPORTED')
+        self.assertEqual(by_id['forward']['status'], 'SUPPORTED')
+        self.assertEqual(by_id['baseline']['value'], 100)
+        self.assertEqual(by_id['forward']['value'], 125)
+        for cid, kind, period in (
+            ('baseline', 'issuer_financial_statement', '2026Q2'),
+            ('forward', 'issuer_guidance_or_contract', '2027Q2'),
+        ):
+            rows = [item for item in result['evidence'] if cid in item['claim_ids']]
+            self.assertEqual(len(rows), 2)
+            self.assertTrue(all(item['claim_type'] == kind and item['period'] == period for item in rows))
+            self.assertTrue(all(item['as_of'] == '2026-09-12T12:00:00+00:00' for item in rows))
+        # SUPPORTED here is the existing claim-level fixture state, not future realization.
+        self.assertTrue(result['all_material_claims_supported'])
+        self.assertFalse(result['full_research_eligible'])
+        self.assertEqual(result['stock_score_adjustment'], 0)
+        self.assertFalse(result['conflict_values_averaged'])
+        self.assertEqual(doc, before)
+
+    def test_future_target_period_does_not_license_future_fact_as_of(self):
+        doc = self._financial_pair_document()
+        for item in doc['source_observations']:
+            if item['payload']['claim_ids'] == ['forward']:
+                item['payload']['as_of'] = '2027-06-30T12:00:00Z'
+        result = assess(doc)
+        by_id = {item['claim_id']: item for item in result['claims']}
+        self.assertEqual(by_id['baseline']['status'], 'SUPPORTED')
+        self.assertEqual(by_id['forward']['status'], 'UNAVAILABLE')
+        self.assertEqual(result['rejected_observation_count'], 2)
+        self.assertFalse(result['all_material_claims_supported'])
+
+    def test_supported_baseline_cannot_supply_forward_claim_corroboration(self):
+        doc = self._financial_pair_document()
+        doc['source_observations'] = [item for item in doc['source_observations']
+            if not (item['source_id'] == 'news' and item['payload']['claim_ids'] == ['forward'])]
+        result = assess(doc)
+        by_id = {item['claim_id']: item for item in result['claims']}
+        self.assertEqual(by_id['baseline']['status'], 'SUPPORTED')
+        self.assertEqual(by_id['baseline']['independent_evidence_families'], 2)
+        self.assertEqual(by_id['forward']['status'], 'SINGLE_SOURCE')
+        self.assertEqual(by_id['forward']['independent_evidence_families'], 1)
+        self.assertLessEqual(by_id['forward']['confidence'], 0.49)
+        self.assertFalse(result['all_material_claims_supported'])
+
+    def test_forward_financial_field_mismatch_leaves_baseline_support_separate(self):
+        for axis, different in (
+            ('period', '2027Q3'), ('unit', 'thousand'), ('currency', 'EUR'),
+            ('basis', 'ADJUSTED'), ('scope', 'segment'),
+        ):
+            with self.subTest(axis=axis):
+                doc = self._financial_pair_document()
+                for item in doc['source_observations']:
+                    if item['source_id'] == 'news' and item['payload']['claim_ids'] == ['forward']:
+                        item['payload'][axis] = different
+                result = assess(doc)
+                by_id = {item['claim_id']: item for item in result['claims']}
+                self.assertEqual(by_id['baseline']['status'], 'SUPPORTED')
+                self.assertEqual(by_id['forward']['status'], 'UNAVAILABLE')
+                self.assertIn('NOT_COMPARABLE', by_id['forward']['reasons'])
+                self.assertFalse(result['all_material_claims_supported'])
+
+    def test_forward_value_conflict_is_not_resolved_by_baseline_or_averaging(self):
+        doc = self._financial_pair_document()
+        for item in doc['source_observations']:
+            if item['source_id'] == 'news' and item['payload']['claim_ids'] == ['forward']:
+                item['payload']['value'] = 130
+        result = assess(doc)
+        by_id = {item['claim_id']: item for item in result['claims']}
+        self.assertEqual(by_id['baseline']['status'], 'SUPPORTED')
+        self.assertEqual(by_id['forward']['status'], 'CONFLICTED')
+        self.assertIsNone(by_id['forward']['value'])
+        self.assertEqual(sorted(item['value'] for item in by_id['forward']['conflict_set']), [125, 130])
+        self.assertEqual(by_id['forward']['authority_candidate']['value'], 125)
+        self.assertFalse(result['all_material_claims_supported'])
+        self.assertFalse(result['conflict_values_averaged'])
+        self.assertEqual(result['stock_score_adjustment'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()
