@@ -100,3 +100,7 @@ state/v213-snapshots/*/
 state/records/
 state/sealed-freshness-tasks.json
 cloud/test-live-replay-result.json
+
+# Local scratch (never tracked)
+.tmp/
+_tmp_*

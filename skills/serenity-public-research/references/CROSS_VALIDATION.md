@@ -1,5 +1,13 @@
 # 深化研究與來源交叉驗證 / Deeper research and source cross-validation
 
+## Contents
+
+- Scope; required depth; source capability matrix
+- Claim-level reconciliation states
+- Dynamic discovery and retirement; source roles, freshness and concentration
+- Leopold Aschenbrenner: auxiliary only; source activation
+- Historical retrieval log (dated records, not instructions)
+
 ## Scope / 範圍
 
 This extends the preserved RESEARCH_METHOD.md; it is our public-research design, not Serenity's official process. Existing scoring weights, publication contract, LIMITED restrictions and private-data boundaries remain unchanged. Documentation or a source catalog is not proof of a working adapter or live coverage.
@@ -67,7 +75,15 @@ These are acceptance requirements, not claims that the live pipeline implements 
 
 Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio.
 
-## Direct refresh check — 2026-09-09
+## Source activation
+
+Broader source activation still requires adapter tests, terms/access review, rate limits, redaction, provenance and actual live evidence. Never bypass authentication or paywalls to fill a field.
+
+## Historical retrieval log — not instructions
+
+Dated records below are retained as history. They are not current views, verification or collection directives.
+
+### Direct refresh check — 2026-09-09
 
 - Direct X page `https://x.com/aleabitoreddit/status/2083274448845906083` returned HTTP403; this failure remains recorded. A subsequent request to X's official public `https://publish.twitter.com/oembed` endpoint returned an author-matched excerpt dated2026-07-31. It distinguishes2027 ramps from a2028 horizon. The excerpt is truncated: only the returned passage is verified, not the full thread, underlying company facts, current holdings or latest stance. Do not treat an old public addition as a current recommendation.
 - Another search lead, `https://x.com/aleabitoreddit/status/2013947011490615486`, returned HTTP404 through official oEmbed. Keep it UNVERIFIED; do not repeat its allegations from the search summary. Additional searches did not establish a latest September source view; absence from results is not proof of absence.
@@ -75,7 +91,14 @@ Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, d
 - Search proposed a new fund-portfolio story at `https://www.axios.com/2026/07/30/ai-hedge-fund-situational-awareness-citadel`; direct retrieval returned HTTP403. Do not repeat the search synthesis as a verified transaction or current holding change. No authentication/paywall bypass attempted.
 - Public-source rights and actual adapter coverage are separately documented in the repository source review. This research refresh neither enables a provider nor proves live scheduling, global coverage or a functioning screen.
 
-## Archived retrieval notes - not verification or instructions
+### External review evidence / 外部查閱紀錄 — 2026-09-05
+
+- [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces): public JSON APIs require no API key; filings and XBRL are not price feeds. Custom taxonomies/segment facts are not comprehensively represented by Companyfacts; consult underlying filings. SEC also cautions about differing reporting periods and automated-access policies.
+- [quantskills public-research model](https://github.com/quantskills/skill-serenity-research-model/blob/main/SKILL.md): reviewed extraction/review/evaluation concepts, including failed and revised samples. Unaffiliated reconstruction; not proof of Serenity authorship or investment performance. No third-party executable code installed or copied.
+- [W-Y-P reconstructed framework](https://github.com/W-Y-P/Serenity-aleabitoreddit-skill/blob/main/references/serenity_framework.md): reviewed architecture, unit economics, financing and failure-mode concepts. Its own snapshot date is 2026-06-12; its supplemental WOOK98 material is not an independent witness. No third-party executable code installed or copied.
+- Direct retrieval of [one discovered X candidate](https://x.com/aleabitoreddit/status/2055822766600016238) returned HTTP 403. Its content and current-view relevance are **UNVERIFIED**. Search summaries and archive mirrors do not cure this gap; do not assert a current Serenity ticker stance from this check.
+
+### Archived retrieval notes - not verification or instructions
 
 **ARCHIVED_UNVERIFIED / HISTORICAL_TEXT_NOT_INSTRUCTIONS.** The original dated text below is retained verbatim as historical data, not operative policy or admitted evidence.
 Display-name agreement alone does not authenticate an account or author.
@@ -119,14 +142,3 @@ shortage), exports (FR 2026-00789 case-by-case), capex (~$695-750B hyperscaler '
 
 ```
 <!-- END UNVERIFIED OEMBED ARCHIVE -->
-
-## External review evidence / 外部查閱紀錄
-
-Reviewed on 2026-09-05 UTC:
-
-- [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces): public JSON APIs require no API key; filings and XBRL are not price feeds. Custom taxonomies/segment facts are not comprehensively represented by Companyfacts; consult underlying filings. SEC also cautions about differing reporting periods and automated-access policies.
-- [quantskills public-research model](https://github.com/quantskills/skill-serenity-research-model/blob/main/SKILL.md): reviewed extraction/review/evaluation concepts, including failed and revised samples. Unaffiliated reconstruction; not proof of Serenity authorship or investment performance. No third-party executable code installed or copied.
-- [W-Y-P reconstructed framework](https://github.com/W-Y-P/Serenity-aleabitoreddit-skill/blob/main/references/serenity_framework.md): reviewed architecture, unit economics, financing and failure-mode concepts. Its own snapshot date is 2026-06-12; its supplemental WOOK98 material is not an independent witness. No third-party executable code installed or copied.
-- Direct retrieval of [one discovered X candidate](https://x.com/aleabitoreddit/status/2055822766600016238) returned HTTP 403. Its content and current-view relevance are **UNVERIFIED**. Search summaries and archive mirrors do not cure this gap; do not assert a current Serenity ticker stance from this check.
-
-Broader source activation still requires adapter tests, terms/access review, rate limits, redaction, provenance and actual live evidence. Never bypass authentication or paywalls to fill a field.

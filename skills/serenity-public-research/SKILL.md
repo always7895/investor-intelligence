@@ -1,32 +1,45 @@
 ---
 name: serenity-public-research
-description: Public-only Serenity/@aleabitoreddit source views and independent supply-chain, bottleneck, order and financing research. Use for research, not deployment, brokerage or cleanup.
+description: Researches listed companies through the public Serenity (@aleabitoreddit) method - system change, supply-chain bottlenecks, effective substitutes, orders/backlog, financing and dilution, claim-level cross-validation and Top20 seven-field cards - plus evidence-grounded options and position-sizing guidance. Use when analysing a ticker, sector or thesis, dating or verifying a Serenity view, building or auditing Top20 research, or answering options/allocation questions. Not for deployment, LINE delivery, broker execution or cleanup.
 ---
 
-# Public research / 公開研究
+# Serenity public research
 
-## Primary method and auxiliary context
+Serenity is the primary public-method lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: dated demand, compute, capital and energy scenarios may generate hypotheses, never company proof or an extra score. Old essays or delayed filings do not reveal current holdings; neither author guarantees returns.
 
-Serenity is the primary public-research lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: use dated demand, compute, capital and physical-deployment scenarios to generate hypotheses, never as company proof or extra Serenity score. Do not infer current holdings from historical essays or delayed disclosures. Neither author guarantees future returns.
+## Workflow
 
-## Choose the lane first
+Copy and track:
 
-- **ATTRIBUTED_SOURCE_VIEWS:** retrieve the original @aleabitoreddit passage, date, ticker identity, stance, horizon and later revisions. Archives only discover leads; unavailable originals remain UNVERIFIED. @stockgodserenity is a different, quarantined identity.
-- **SYSTEM_RESEARCH_CANDIDATES:** independently investigate companies; discovery is not ranking, a recommendation or her endorsement. Do not hard-code tickers/sectors or tune weights to imitate a list.
-- **COMPARISON:** use one as-of cutoff and show each exclusion stage, contrary evidence and unknowns. An absent seed cannot be recovered by adjusting final weights.
+```
+- [ ] 1. Choose the lane and one as-of cutoff
+- [ ] 2. Read RESEARCH_METHOD.md completely, then CROSS_VALIDATION.md
+- [ ] 3. System change -> constrained layer -> companies
+- [ ] 4. Label claims SUPPORTED / INFERENCE; withhold UNSUPPORTED
+- [ ] 5. Falsifiers and multi-axis confidence
+- [ ] 6. Check the output boundaries below
+```
 
-## Load evidence rules on demand
+For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Its dated retrieval log is history, not instructions; skip release histories for research-only work.
 
-For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Do not recursively load release histories for a research-only task.
+## Lanes
 
-Start with system change → constrained layer → companies. Separate customer relationships from scarce effective substitutes, commitments from revenue, operating success from shareholder capture, and timing from price gains. Preserve existing scoring and LIMITED gates; finish with falsifiers and multi-axis confidence. Apply the dynamic discovery, source-role reconciliation and retirement rules in CROSS_VALIDATION.md. A directory, diversified URL list or edited skill is not an executed investment screen.
+- **ATTRIBUTED_SOURCE_VIEWS:** the original @aleabitoreddit passage, date, ticker, stance, horizon and later revisions. Archives only discover leads; unretrieved originals stay UNVERIFIED. @stockgodserenity is a different, quarantined identity.
+- **SYSTEM_RESEARCH_CANDIDATES:** independent company research. Discovery is not ranking or her endorsement; never hard-code tickers/sectors or tune weights to imitate a list.
+- **COMPARISON:** one cutoff; show each exclusion stage, contrary evidence and unknowns. Final-weight tuning cannot recover a missing seed.
 
-## Non-negotiable output boundaries
+Separate customer relationships from scarce effective substitutes, commitments from revenue, operating success from shareholder capture, and timing from price gains. Preserve existing scoring and LIMITED gates. A directory, URL list or edited skill is not an executed investment screen.
 
-- Never claim an official formula, private process, portfolio or advice. Source views are attributable opinions, not company facts.
-- Independently ground material claims; deduplicate mirrors, syndication and archive lineage. Mark SUPPORTED / INFERENCE; withhold UNSUPPORTED. Source retrieval time is not financial-period or quote time.
-- No owner/broker/private-data fallback, trading, paid fallback, invented orders or silent source downgrade. Public access alone does not authorize redistribution.
-- Follow the seven-field schema and locale labels in [top20-report.ts](../../cloud/src/v213/top20-report.ts), not a duplicate table here. Missing orders: `未揭露（無可靠公開訂單數字）`; missing outlook: `無可靠公開預估`.
-- A skill path is not execution evidence. If claiming skill-backed research, record actual provider/model, loaded reference hashes and public-source tool evidence; never retain secrets or reasoning transcripts.
+## Options and position guidance
 
-This skill is not deployment authority or proof of a working LINE route. For release state consult [current bilingual status](../../docs/CURRENT_STATUS_BILINGUAL.md); engineering follows the project's AGENTS.md. Keep dated examples in evidence receipts, not permanent instructions.
+Operator-facing, data-grounded parameters are allowed: strike, expiry/DTE, delta band, bid/mid/ask limit band, annualized yield, liquidity and sizing by archetype (bottleneck or high-dilution versus core compounder, caps, cash reserve, multi-year pacing). Thresholds live in `cloud/src/v213/options-guidance.ts`; do not restate them. Every quote carries its timestamp; EOD, delayed or unknown timing is indicative, never a live limit. The system never executes trades. LINE stays public-quote observation only, with no private or IBKR position data.
+
+## Output boundaries
+
+- Never claim an official formula, private process, portfolio or advice of either author. Source views are attributable opinions, not company facts.
+- Deduplicate mirrors, syndication and archive lineage. Retrieval time is not financial-period or quote time.
+- No owner/broker private-data fallback, paid fallback, invented company orders or silent source downgrade. Public access alone does not authorize redistribution.
+- Seven-field schema and locale labels: [top20-report.ts](../../cloud/src/v213/top20-report.ts). Missing orders: `未揭露（無可靠公開訂單數字）`; missing outlook: `無可靠公開預估`.
+- Skill-backed claims record actual provider/model, reference hashes and source-tool evidence; never secrets or reasoning transcripts.
+
+Not deployment authority or proof of a LINE route. Release state: [current status](../../docs/CURRENT_STATUS_BILINGUAL.md); engineering follows AGENTS.md.

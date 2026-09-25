@@ -1,5 +1,13 @@
 # Serenity Public Research Lens — Investor Intelligence
 
+## Contents
+
+- Identity and attribution boundary
+- Mandatory refresh and staleness rule
+- Research workflow: 1 system change … 12 falsifiers
+- LINE Top 20 output contract
+- Required final research object
+
 ## Identity and attribution boundary
 
 This project studies **Serenity / @aleabitoreddit** from public material only.
