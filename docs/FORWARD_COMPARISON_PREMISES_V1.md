@@ -50,9 +50,18 @@ No new provider or live fetch, no change to scoring, ranking, weights, LIMITED g
    - Consumer admission is always `DEFERRED_TO_CONSUMER_CONTRACT`; scoring, publication and admission flags are fixed false.
 2. **C2 consumer contract:**
    - **C2a renderer — IMPLEMENTED:** `render_forward_comparison_block` in `scripts/v213_forward_comparison_render.py` turns a C1 assessment into one section: the side-by-side disclosure (values as disclosed, `Decimal` formatting, no conversion), a revision notice when the baseline changed within the SEC document, or `無可靠公開預估` with every unresolved premise and reason. Byte-exact text fixtures in `tests/test_v213_forward_comparison_render.py`; the section respects the 4400 UTF-16 unit ceiling used by `company_financial_products._product`.
-   - **C2b wiring — NEXT:** add the section to the local `data_report` only. `verify_financial_products` replays from input bytes, so the wiring needs a serializable, digest-bound forward-comparison input bundle (SEC receipt bytes, claim-engine document, T2/T3 declarations) that the replay can rebuild; in-process objects alone are not replayable. Still `publication_eligible=false`.
+   - **C2b wiring — DECISION NEEDED (see "C2b finding"):** add the section to the local `data_report` only. `verify_financial_products` replays from input bytes, so the wiring needs a serializable, digest-bound forward-comparison input bundle (SEC receipt bytes, claim-engine document, T2/T3 declarations) that the replay can rebuild; in-process objects alone are not replayable. Still `publication_eligible=false`.
 3. **C3 live qualification:** a source-bound run on one real issuer under the existing R75 gates. Needs explicit operator authorization if it touches Production, KV or LINE.
+
+## C2b finding — replay versus the in-process receipt model
+
+`FetchReceipt` validity rests on an in-process mint marker (`scripts/adapters/base.py`); it carries no signature and cannot be revalidated in another process. `verify_financial_products` replays from bytes, so a serialized receipt cannot re-prove an SEC binding. Options:
+
+- **A. Build-time digest only:** render the section during the fetching process and record its digest; replay checks the digest but cannot re-derive the premises. Weakest; no trust-model change.
+- **B. Archived-receipt contract:** persist raw companyfacts bytes, receipt metadata and SHA-256; replay re-parses the bytes and yields `ARCHIVED_RECEIPT_REPLAY`, never a fresh mint. Changes the SEC trust model; needs its own reviewed contract.
+- **C. Separate local artifact (recommended now):** keep `data_report` unchanged and emit the forward comparison as its own local JSON plus text, digest-bound, operator-facing only. Revisit B together with C3 live qualification.
 
 ## Operator decisions needed
 
+- C2b: choose A, B or C (recommendation: C now, B with C3).
 - Implied-change display: keep V1 side-by-side only (current), or allow a labelled ratio in a later version.
