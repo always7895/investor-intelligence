@@ -1,6 +1,6 @@
 # Forward comparison premises V1 / 前瞻比較前提 V1
 
-Status: DESIGN_ONLY (2026-09-25). No code, API, scoring, ranking, publication or consumer change is authorized by this document. It closes open lane 1 of `state/STATUS.md` at design level and names the finite contracts that would implement it.
+Status (2026-09-25): design accepted for development; C1 implemented as a nonauthorizing shadow. No scoring, ranking, publication or consumer change is authorized by this document. It names the finite contracts that implement lane 1 of `state/STATUS.md`.
 
 ## Problem
 
@@ -41,11 +41,16 @@ No new provider or live fetch, no change to scoring, ranking, weights, LIMITED g
 
 ## Proposed finite contracts (each needs its own task)
 
-1. **C1 read contract:** a pure, import-inert function taking a T3 diagnostic, one SEC-bound baseline fact and one claim-engine assessment, returning per-premise states from the table above. No I/O, clock or consumer integration. Tests reuse the fixtures in `tests/test_research_v2_claims.py` and the T3 tests.
+1. **C1 read contract — IMPLEMENTED:** `assess_forward_premises` in `scripts/v213_forward_premises_shadow.py` takes a T3 diagnostic, an SEC `SecClaimBinding`, the forward claim declaration and the claim-engine result, and returns per-premise states; tests in `tests/test_v213_forward_premises_shadow.py` drive the real T3, SEC binding and claim engines. Implemented rules:
+   - Periods are half-open UTC-midnight intervals. The declared baseline start and end select the SEC duration fact, because annual and quarterly facts can share an end date. The forward claim period label must be `YYYY-MM-DD/YYYY-MM-DD` matching the T2 dates.
+   - Length classes: ANNUAL 364–371 days (52/53-week and calendar years), QUARTER 89–98 days; baseline and forward must share a class.
+   - SEC filing dates have day precision, so a fact counts only if its whole filing day precedes the information cutoff. The latest such filing wins; same-day conflicting values block; earlier different values add `BASELINE_REVISED_WITHIN_DOCUMENT`. The companyfacts receipt must be retrieved at or after the cutoff.
+   - Identity uses the SEC binding's resolved symbol alias; its trust is inherited from that binding (`SYMBOL_ALIAS_TRUST_INHERITED_FROM_SEC_BINDING`).
+   - Unit scale may differ (display only, never converted); currency, GAAP basis, consolidated scope and revenue tag must match.
+   - Consumer admission is always `DEFERRED_TO_CONSUMER_CONTRACT`; scoring, publication and admission flags are fixed false.
 2. **C2 consumer contract:** render the side-by-side sentence or the withheld text in the local `data_report`, with byte-stable fixtures; still `publication_eligible=false`.
 3. **C3 live qualification:** a source-bound run on one real issuer under the existing R75 gates. Needs explicit operator authorization if it touches Production, KV or LINE.
 
 ## Operator decisions needed
 
-- Approve C1 as the next implementation task.
-- Implied-change display: keep V1 side-by-side only, or allow a labelled ratio in a later version.
+- Implied-change display: keep V1 side-by-side only (current), or allow a labelled ratio in a later version.

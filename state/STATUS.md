@@ -4,27 +4,31 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `43777fe` (pipeline test commit after the V12 register) plus `0f5358b` (V12 register preserved verbatim).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `51c7132` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — instructions, skill and MCP (documentation only)
+## This change — C1 forward premise states (nonauthorizing shadow)
 
-- `AGENTS.md` restructured per agents.md: overview, before-editing, concrete commands, boundaries, research, work/evidence. All tested markers kept; 4774 B (budget 6000).
-- `skills/serenity-public-research/SKILL.md` restructured per the Agent Skills specification and Anthropic authoring guidance: third-person what/when description, copyable workflow checklist, lanes, options/position guidance delegating thresholds to `cloud/src/v213/options-guidance.ts`, output boundaries. 3955 B (budget 4000).
-- `RESEARCH_METHOD.md` and `CROSS_VALIDATION.md` gain contents lists; CROSS_VALIDATION moves its dated notes (2026-09-05 review, 2026-09-09 refresh, quarantined oEmbed archive) under one "Historical retrieval log — not instructions" section. Archive bytes and SHA-256 unchanged; line endings outside the archive normalized to LF.
-- Local, untracked (workspace): the installed-runtime `AGENTS.md` now records layout, the current control plane and GitHub MCP; `.mcp.json` adds the remote GitHub MCP server authenticated from the `gh` keyring at connect time (no stored token; initialize handshake returned HTTP 200).
-- Relocated, not deleted: `OVERNIGHT_STATUS.md` and `AUDIT/` to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/`; `.tmp/` and `_tmp_m5_code.txt` to `_archive/source-scratch-20260925/`.
+- New `scripts/v213_forward_premises_shadow.py`: `assess_forward_premises(diagnostic, baseline, forward_claim, research)` maps one T3 pair onto the SEC binding, the claim-engine result and the T2 period, returning the six premise states. Rules are listed in [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) (C1). Pure and import-inert; no I/O, clock, conversion, ratio, growth, scoring or consumer integration; consumer admission is always deferred.
+- New `tests/test_v213_forward_premises_shadow.py` (12 tests) drives the real T3 diagnostic, `bind_sec_claim` and `reconcile_research_claims`: aligned pair ready but unadmitted; identity alias; metric/currency/basis/scope/unit; period binding, role, length class, day alignment, retrieval and filing cutoffs; annual versus quarterly facts sharing an end date; latest vintage without averaging; forward conflict, late evidence, wrong claim type, single source; malformed input; frozen result; no input mutation.
 - Validation: see "Latest gate run" below.
+
+## Previous change — instructions, skill, MCP and design (`b88dd9f`, `51c7132`)
+
+- `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
+- Local, untracked: workspace `AGENTS.md`, `.pi/HANDOFF.md` current pointer, GitHub MCP server in `.mcp.json` (token read from the `gh` keyring at connect time; handshake HTTP 200). Untracked leftovers relocated to `_workspace/audit-runtime/v12-overnight-checkpoint-20260925/` and `_archive/`, not deleted.
+- Gates for that change: security, documentation boundary/structure, workflow supply chain and owner-config PASS; Worker typecheck PASS and 895 passed / 1 named manual skip; full Python 2473 OK in 424.3 s on a clean rerun. The first full run had 2 lock-contention failures while the live SealedFreshness task (14:56:15) held the operation lock; kept as evidence.
+- Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not STALE code 3) without a watch line; no task changed.
 
 ## Latest gate run
 
-Interpreter: base CPython 3.12.10 (`.venv-ci` is empty). All on the working tree of this change, 2026-09-25:
+Interpreter: base CPython 3.12.10. Working tree of this change, 2026-09-25:
 
-- `security_check`, `documentation_boundary_gate`, `documentation_structure_gate` (127 Markdown files), `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
-- Worker: `npm run typecheck` PASS; `npm test` 895 passed / 1 named manual skip (61 files, 8.43 s Vitest duration).
-- Full Python `scripts/run_offline_tests.py --repository`: first run 2473 tests, 450.3 s, 2 failures in `test_operation_lock_actual_callers_have_no_clixml_progress` (both shells). The live `InvestorIntelligenceSealedFreshness` task started 14:56:15 and held the operation lock while the suite ran (14:56–15:04); the module alone then passed 11/11. Clean rerun 15:05:40–15:12:45: 2473 tests OK, 424.3 s. The failed run is kept as evidence, not erased.
-- Observation only: `InvestorIntelligenceFreshnessWatchdog` returned 1 at 14:56:15 (not the STALE code 3) and wrote no watch line; the 14:26 line was FRESH. Not investigated further and no task changed.
+- `security_check`, `documentation_boundary_gate`, `documentation_structure_gate`, `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
+- Focused: C1 12 tests plus T2, T3, research-claim and SEC-binding modules — 101 tests OK; module imports cleanly both as `scripts.` package and top-level.
+- Full Python `scripts/run_offline_tests.py --repository` 15:14:21–15:22:02: 2485 tests OK, 460.6 s.
+- Worker unchanged by this change (no `cloud/` edits); last Worker run 895 passed / 1 named manual skip on `51c7132`'s tree.
 
 ## Pending operator decision — redundancy removal
 
@@ -47,7 +51,7 @@ All scoped development components; none is live, native, admission or release qu
 
 ## Open lanes
 
-1. **Forward comparison premises — DESIGN_DELIVERED, awaiting approval:** [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) maps T3's six unresolved premises to admitted inputs from existing components (SEC CIK binding, claim-engine status and comparable fields, T2 period roles, source qualification), fixes the consumer to the local `data_report` side-by-side disclosure (never Top20 order fields) and names contracts C1 (pure premise-state function), C2 (local rendering) and C3 (live qualification). V1 computes no ratio, annualization or growth score; T3 publication does not complete FORWARD_REALIZABLE_GROWTH_POTENTIAL.
+1. **Forward comparison premises — C1 IMPLEMENTED, next C2:** [FORWARD_COMPARISON_PREMISES_V1](../docs/FORWARD_COMPARISON_PREMISES_V1.md) maps T3's six unresolved premises to admitted inputs from existing components (SEC CIK binding, claim-engine status and comparable fields, T2 period roles, source qualification), fixes the consumer to the local `data_report` side-by-side disclosure (never Top20 order fields) and names contracts C1 (pure premise-state function), C2 (local rendering) and C3 (live qualification). V1 computes no ratio, annualization or growth score; T3 publication does not complete FORWARD_REALIZABLE_GROWTH_POTENTIAL.
 2. Deferred: O1 real venue and consumer admission; identity-to-Worker admission/rendering; R3A-to-V1 association/time/schema/consumer contract; U1/U2; real E2A/B; GB-S3 partial, S4/S5 blocked, Gate B pending; native/QA migration; Research V3, Top20, Macro, Options, zh-TW, LINE and integrated R75 shadow.
 3. Hygiene: historical `git diff --check` EXIT2 findings deferred; Worker prior effects from old hidden Wrangler coupling remain UNKNOWN (old generated artifact untouched).
 
@@ -65,4 +69,4 @@ Git commits on this branch and a normal push to `origin` (updates PR #37). Local
 
 ## Next action
 
-Operator: approve or decline the redundancy removal above, and approve C1 (or redirect priorities). C1 then runs as its own bounded implementation task with focused and full gates.
+Operator: approve or decline the redundancy removal above. Development continues with C2 (local `data_report` side-by-side rendering with byte-stable fixtures, still `publication_eligible=false`), then the requested research-method refresh from current public sources (Serenity primary, Leopold Aschenbrenner CONTEXT_ONLY).
