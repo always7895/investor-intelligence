@@ -59,5 +59,35 @@ class DataOnlyRegistrationTests(unittest.TestCase):
                 self.assertIn("production_mutation=false", result.stdout)
 
 
+class HourlyRegistrationTests(unittest.TestCase):
+    """T10: the carry-forward switch and snapshot root reach only the hourly task; the receipt stays out of the root."""
+
+    def validate(self, shell, *args):
+        return subprocess.run([shell, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "scripts/register_sealed_freshness_tasks.ps1"),
+                               "-ValidateOnly", *args], capture_output=True, encoding="utf-8", errors="replace", timeout=60)
+
+    def test_passthrough_is_hourly_only_and_off_by_default(self):
+        shells = [s for s in ("powershell.exe", "pwsh") if shutil.which(s)]
+        if not shells:
+            self.skipTest("PowerShell not available")
+        for shell in shells:
+            with self.subTest(shell=shell):
+                default = self.validate(shell)
+                self.assertEqual(default.returncode, 0, default.stdout + default.stderr)
+                self.assertNotIn("-CarryForwardTop20", default.stdout)
+                carried = self.validate(shell, "-CarryForwardTop20", "-SnapshotRoot", r"data\v213-snapshots")
+                self.assertEqual(carried.returncode, 0, carried.stdout + carried.stderr)
+                actions = dict(line.split(": ", 1) for line in carried.stdout.splitlines() if line.startswith("TASK_ACTION "))
+                self.assertIn('-CarryForwardTop20 -SnapshotRoot "data\\v213-snapshots"', actions["TASK_ACTION InvestorIntelligenceSealedFreshness"])
+                self.assertNotIn("-CarryForwardTop20", actions["TASK_ACTION InvestorIntelligenceFreshnessWatchdog"])
+                bad = self.validate(shell, "-SnapshotRoot", 'data" -X "')
+                self.assertNotEqual(bad.returncode, 0)
+
+    def test_receipt_is_written_outside_the_script_root(self):
+        text = (ROOT / "scripts/register_sealed_freshness_tasks.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("state\\sealed-freshness-tasks.json", text)
+        self.assertIn("InvestorIntelligence\\status", text)
+
+
 if __name__ == "__main__":
     unittest.main()
