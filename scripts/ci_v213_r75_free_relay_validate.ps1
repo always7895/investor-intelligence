@@ -19,6 +19,8 @@ try {
         'AGENTS.md','skills/serenity-public-research/SKILL.md',
         'skills/serenity-public-research/references/RESEARCH_METHOD.md','tests/test_agent_skill_structure.py',
         'skills/serenity-public-research/references/CROSS_VALIDATION.md',
+        'skills/serenity-public-research/references/SERENITY_LOGIC.md',
+        'skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md',
         'state/architecture-inventory.json','tests/test_compatibility_entrypoints.py',
         '.github/workflows/phase-audit.yml','.github/workflows/phase5-line-bot-audit.yml',
         '.github/workflows/canonical-release-candidate-audit-v2.yml','tests/test_pull_request_workflow_dedup.py',

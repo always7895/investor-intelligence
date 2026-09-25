@@ -73,7 +73,7 @@ These are acceptance requirements, not claims that the live pipeline implements 
 
 ### Leopold Aschenbrenner: auxiliary only
 
-Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio.
+Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio. Scenario variables, the dated scorecard and filing snapshots are in ASCHENBRENNER_CONTEXT.md.
 
 ## Source activation
 
@@ -82,6 +82,12 @@ Broader source activation still requires adapter tests, terms/access review, rat
 ## Historical retrieval log — not instructions
 
 Dated records below are retained as history. They are not current views, verification or collection directives.
+
+### Direct refresh check — 2026-09-25
+
+- X's official oEmbed endpoint now redirects from publish.twitter.com to `https://publish.x.com/oembed`, which returned HTTP 402 Payment Required for Serenity status IDs 2069062745308254434 and 2038965788724560093. No paid access or bypass was attempted. Tracker-cited Serenity views remain UNVERIFIED; the current stance on any ticker is unknown.
+- SEC EDGAR (primary) returned Situational Awareness LP 13F filings for 2026-03-31 and 2026-06-30 and a Schedule 13D and 13D/A for SharonAI Holdings. They are summarized in ASCHENBRENNER_CONTEXT.md as dated disclosures, not current holdings or company evidence.
+- A public tracker and a third-party reconstruction of Serenity's method were reviewed as leads and summarized in SERENITY_LOGIC.md with their lineage and verification status.
 
 ### Direct refresh check — 2026-09-09
 

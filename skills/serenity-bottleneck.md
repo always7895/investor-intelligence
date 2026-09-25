@@ -5,6 +5,8 @@
 > It is a **public-logic high-fidelity reconstruction**, not a verbatim Serenity framework.
 >
 > Fidelity boundary: this file models only reasoning patterns that can be supported by identifiable public posts. It is **not** a claim to reproduce Serenity's private research process, portfolio, hidden data sources, or discretionary judgment. Serenity has not endorsed this project.
+>
+> Current, deeper reasoning model with verification status: [SERENITY_LOGIC](serenity-public-research/references/SERENITY_LOGIC.md). This file is a compatibility reference.
 
 ## 1. What the public record supports
 

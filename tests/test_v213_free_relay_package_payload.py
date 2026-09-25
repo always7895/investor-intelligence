@@ -32,6 +32,8 @@ class PackagedWorkerPayloadTests(unittest.TestCase):
         paths = ['skills/serenity-public-research/SKILL.md',
                  'skills/serenity-public-research/references/RESEARCH_METHOD.md',
                  'skills/serenity-public-research/references/CROSS_VALIDATION.md',
+                 'skills/serenity-public-research/references/SERENITY_LOGIC.md',
+                 'skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md',
                  'cloud/src/v213/top20-report.ts', 'docs/CURRENT_STATUS_BILINGUAL.md']
         files = {p.casefold(): (p, (ROOT / p).read_bytes()) for p in paths}
         VERIFIER.verify_public_research_payload(files)
@@ -98,6 +100,8 @@ cloud/src/v213/publication-mode.ts cloud/src/v213/activation-v2.ts
 skills/serenity-public-research/SKILL.md
 skills/serenity-public-research/references/RESEARCH_METHOD.md
 skills/serenity-public-research/references/CROSS_VALIDATION.md
+skills/serenity-public-research/references/SERENITY_LOGIC.md
+skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md
 cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
         for p in paths:
             files[p.casefold()] = (ROOT / p).read_bytes()

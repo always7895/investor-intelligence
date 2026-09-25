@@ -59,7 +59,7 @@ try {
     Remove-Item -LiteralPath $sourceArchive -Force
     foreach ($internal in @('.github','.gitignore','delivery','IMPLEMENTATION_STATUS.md','skills','state','tests')) { Remove-Item -LiteralPath (Join-Path $stage $internal) -Recurse -Force -ErrorAction SilentlyContinue }
     # Ship only the reviewed public methodology, not unrelated skills/archives.
-    $researchPayload=@('skills/serenity-public-research/SKILL.md','skills/serenity-public-research/references/RESEARCH_METHOD.md','skills/serenity-public-research/references/CROSS_VALIDATION.md')
+    $researchPayload=@('skills/serenity-public-research/SKILL.md','skills/serenity-public-research/references/RESEARCH_METHOD.md','skills/serenity-public-research/references/CROSS_VALIDATION.md','skills/serenity-public-research/references/SERENITY_LOGIC.md','skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md')
     foreach($relative in $researchPayload){
         $destination=Join-Path $stage $relative
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination)|Out-Null

@@ -69,6 +69,8 @@ def verify_public_research_payload(files: dict[str, tuple[str, bytes]]) -> None:
         'skills/serenity-public-research/skill.md',
         'skills/serenity-public-research/references/research_method.md',
         'skills/serenity-public-research/references/cross_validation.md',
+        'skills/serenity-public-research/references/serenity_logic.md',
+        'skills/serenity-public-research/references/aschenbrenner_context.md',
     }
     if {p for p in files if p.startswith('skills/')} != expected:
         raise VerificationError('public research payload missing or unreviewed skill included')

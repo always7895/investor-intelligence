@@ -4,19 +4,22 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `c824b23` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `4ee66d8` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — C2a forward comparison renderer
+## This change — research method refresh (Serenity depth, Aschenbrenner context)
 
-- New `scripts/v213_forward_comparison_render.py`: `render_forward_comparison_block(assessment)` renders a C1 result as one local section — side-by-side disclosure of the two SUPPORTED values (as disclosed, no conversion), a revision notice when the SEC baseline changed within the document, or `無可靠公開預估` plus each unresolved premise and reason. Pure and import-inert; no ratio, growth, scoring, Top20 order field or publication.
-- New `tests/test_v213_forward_comparison_render.py` (5 tests): byte-exact ready text, withheld text contains no values, revision notice, fractional values without float noise, non-assessment input rejected.
-- Not yet wired into `data_report`: C2b needs a serializable, digest-bound input bundle so `verify_financial_products` can replay it ([design](../docs/FORWARD_COMPARISON_PREMISES_V1.md)).
+Operator request 2026-09-25: refresh the method from the latest public sources and make the Serenity and Leopold Aschenbrenner logic detailed. Boundaries unchanged: Serenity primary, Aschenbrenner CONTEXT_ONLY, no scoring, universe or weight change.
+
+- New `references/SERENITY_LOGIC.md`: constraint-in-time model (demand ramp, effective supply, time to substitute; bottleneck/chokepoint/beneficiary mapped to existing labels), ten-question chain with the evidence that answers each, layer-first worked stack, information-gap timing, financing override, macro overlays, risk/reflexivity/survivorship, falsifier checklist, verification status.
+- New `references/ASCHENBRENNER_CONTEXT.md`: the essay's quantitative chain from primary pages (OOM counting, cluster and investment tables, power then CoWoS/HBM as binding constraints, stated error bars), testable variables with falsifiers, a secondary two-year scorecard, and a dated SEC snapshot (13F 2026-03-31 and 2026-06-30, SharonAI 13D/13D-A) with explicit 13F limits.
+- SKILL.md links both (3990 B); CROSS_VALIDATION records the 2026-09-25 refresh: X oEmbed now returns HTTP 402, so Serenity originals stay UNVERIFIED; EDGAR filings are primary. Packaged research payload, its verifier, validator allowlist and payload tests now include the two references. Legacy `skills/*.md` point to them.
 - Validation: see "Latest gate run" below.
 
 ## Previous changes
 
+- `4ee66d8` C2a forward comparison renderer (5 tests; full Python 2490 OK, 435.0 s).
 - `c824b23` C1 `assess_forward_premises` premise-state shadow (12 tests; full Python 2485 OK, 460.6 s).
 - `b88dd9f`, `51c7132` instructions, skill, MCP and design:
   - `AGENTS.md` (4774 B) and the research skill (SKILL.md 3955 B) restructured per agents.md, the Agent Skills specification and Anthropic authoring guidance; tested markers and the pinned oEmbed archive bytes kept. Installed skill resynchronized from `51c7132` (hashes match; backup `_archive/instruction-sync-20260925T065208Z/`).
@@ -29,9 +32,9 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 Interpreter: base CPython 3.12.10. Working tree of this change, 2026-09-25:
 
 - `security_check`, `documentation_boundary_gate`, `documentation_structure_gate`, `workflow_supply_chain_gate`, `owner_config_boundary_gate`: PASS.
-- Focused: C2a 5 tests with C1 12 tests — 17 OK; package-style import OK.
-- Full Python `scripts/run_offline_tests.py --repository` 15:23:13–15:30:29: 2490 tests OK, 435.0 s.
-- Worker unchanged (no `cloud/` edits); last Worker run 895 passed / 1 named manual skip.
+- Focused: skill structure, attribution, packaged research payload and both documentation-gate test modules — 39 OK.
+- Full Python `scripts/run_offline_tests.py --repository` 15:32:22–15:39:27: 2490 tests OK, 423.5 s (includes PowerShell syntax checks of the edited packaging scripts).
+- Worker unchanged (no `cloud/` edits).
 
 ## Pending operator decision — redundancy removal
 
@@ -72,4 +75,4 @@ Git commits on this branch and a normal push to `origin` (updates PR #37). Local
 
 ## Next action
 
-Operator: approve or decline the redundancy removal above. Development continues with C2b (replayable `data_report` wiring, still `publication_eligible=false`) and the requested research-method refresh from current public sources (Serenity primary, Leopold Aschenbrenner CONTEXT_ONLY).
+Operator: approve or decline the redundancy removal above. Development continues with C2b (replayable `data_report` wiring, still `publication_eligible=false`). Serenity originals need a permitted retrieval channel (oEmbed now HTTP 402); paid access requires explicit operator authorization.

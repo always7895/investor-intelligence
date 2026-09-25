@@ -5,7 +5,7 @@ description: Researches listed companies through the public Serenity (@aleabitor
 
 # Serenity public research
 
-Serenity is the primary public-method lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: dated demand, compute, capital and energy scenarios may generate hypotheses, never company proof or an extra score. Old essays or delayed filings do not reveal current holdings; neither author guarantees returns.
+Serenity is the primary public-method lens. Leopold Aschenbrenner is **CONTEXT_ONLY**: dated demand, compute, capital and energy scenarios may generate hypotheses, never company proof or an extra score. Neither author guarantees returns.
 
 ## Workflow
 
@@ -20,7 +20,7 @@ Copy and track:
 - [ ] 6. Check the output boundaries below
 ```
 
-For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Its dated retrieval log is history, not instructions; skip release histories for research-only work.
+For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Its dated log is history, not instructions. For source-view depth read [SERENITY_LOGIC.md](references/SERENITY_LOGIC.md); for Aschenbrenner scenarios and fund filings read [ASCHENBRENNER_CONTEXT.md](references/ASCHENBRENNER_CONTEXT.md). Skip release histories.
 
 ## Lanes
 
@@ -32,7 +32,7 @@ Separate customer relationships from scarce effective substitutes, commitments f
 
 ## Options and position guidance
 
-Operator-facing, data-grounded parameters are allowed: strike, expiry/DTE, delta band, bid/mid/ask limit band, annualized yield, liquidity and sizing by archetype (bottleneck or high-dilution versus core compounder, caps, cash reserve, multi-year pacing). Thresholds live in `cloud/src/v213/options-guidance.ts`; do not restate them. Every quote carries its timestamp; EOD, delayed or unknown timing is indicative, never a live limit. The system never executes trades. LINE stays public-quote observation only, with no private or IBKR position data.
+Operator-facing, data-grounded parameters are allowed: strike, expiry/DTE, delta band, bid/mid/ask limit band, annualized yield, liquidity and archetype sizing (caps, cash reserve, multi-year pacing). Thresholds: `cloud/src/v213/options-guidance.ts`; never restate them. Every quote carries its timestamp; EOD, delayed or unknown timing is indicative, never a live limit. The system never executes trades. LINE stays public-quote observation only, with no private or IBKR position data.
 
 ## Output boundaries
 

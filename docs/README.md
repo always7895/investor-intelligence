@@ -77,6 +77,8 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [SKILL](../skills/serenity-public-research/SKILL.md)
 - [CROSS_VALIDATION](../skills/serenity-public-research/references/CROSS_VALIDATION.md)
 - [RESEARCH_METHOD](../skills/serenity-public-research/references/RESEARCH_METHOD.md)
+- [SERENITY_LOGIC](../skills/serenity-public-research/references/SERENITY_LOGIC.md) — deep reconstruction of the Serenity reasoning model with verification status
+- [ASCHENBRENNER_CONTEXT](../skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md) — CONTEXT_ONLY essay model, testable variables and dated SEC filing snapshot
 - [user-long-term-overlay](../skills/user-long-term-overlay.md)
 
 ## Dated evidence and historical technical references / 歷史與有日期的技術證據
