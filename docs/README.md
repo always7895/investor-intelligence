@@ -9,6 +9,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [README](../README.md)
 - [README.zh-TW](../README.zh-TW.md)
 - [AGENTS](../AGENTS.md)
+- [CLAUDE](../CLAUDE.md) — Claude Code entrypoint importing AGENTS.md
 - [IMPLEMENTATION_STATUS](../IMPLEMENTATION_STATUS.md)
 - [STATUS](../state/STATUS.md)
 - [POST_LAUNCH_BACKLOG / 上線後待辦](../state/POST_LAUNCH_BACKLOG.md)
