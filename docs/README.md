@@ -62,6 +62,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [QA_CAPACITY_CONTRACT](QA_CAPACITY_CONTRACT.md) — development-only cooperative capacity; not R75 release acceptance
 - [FORWARD_COMPARISON_PREMISES_V1](FORWARD_COMPARISON_PREMISES_V1.md) — design-only premise map for guidance-versus-reported-baseline comparisons
 - [TOP20_UPSIDE_BRIDGE_V1](TOP20_UPSIDE_BRIDGE_V1.md) — upside ranking, sourced wording guard and 6M/1Y/2Y order-realization bridge plan
+- [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — measured source activation (1 of 158 enabled) and the wave plan for diversified sources
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)

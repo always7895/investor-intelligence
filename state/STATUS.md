@@ -4,20 +4,18 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Identity
 
-- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `b254400` (pushed).
+- Branch `fix/options-provenance-audit`, draft PR #37 to `main`. Base for this change: `292f274` (pushed).
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — fixture-leak fix, C2b option C, operator decisions
+## This change — LINE card design (operator-approved direction) and source activation plan
 
-- LINE Flex palette: under revision after operator review (warm and plain variants rejected); not part of these commits. Preview: https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
-- Fixture leak fixed: `tests/installer_parse_harness.py` created cases under `_workspace/audit-runtime/w1-review-b-cases` on every run and never removed them (28,433 directories, 9.6 GB). Cases are still kept as failure evidence but now pruned after 24 hours, once per process, without following links or junctions and without failing a run on pruning errors. Tests: `tests/test_installer_case_retention.py` (4).
-- C2b option C (operator choice): `build_forward_comparison_artifact` emits the C1 assessment and C2a text as one digest-bound, operator-only, non-publishable local artifact; `data_report` unchanged.
-- Operator decisions recorded: Top20 upside ranking admits only companies with all of 6M/1Y/2Y computed, ordered by 2Y; industry must show sub-industry and business (phase 0 design: SEC 10-K Item 1 as source). `CLAUDE.md` importing `AGENTS.md` added (`b254400`).
-- Local, untracked: operator-approved audit-area lightweighting (w1 cases, reproducible `node_modules` and `__pycache__`), receipt `_workspace/audit-runtime/audit-lightweighting-20260925.json`.
+- LINE Flex cards: black-to-graphite 135° gradient identity band (solid black fallback) with a brand-green rank chip, 3xl bold ticker and bold company name; body split into framed sections by information level with tinted title strips — Returns (green), Company (slate), Orders (amber); section titles sm bold; key values bold (return KPIs, industry, profit summary, current orders). Same system on options order, position sizing and menu panels; all product headers share the dark band. Earlier warm and plain variants were rejected by the operator. All text at WCAG AA or better; seven-field order, single footer button, shared button style, 4×5 carousels and LINE size limits unchanged (Top20 bubble ≈6.5 KB). Preview (version 6): https://claude.ai/artifact/CqRyqkqvhwDUqCZDLb6rcU
+- [SOURCE_ACTIVATION_PLAN_V1](../docs/SOURCE_ACTIVATION_PLAN_V1.md): operator rule "no single source". Measured: 158 catalogued sources, 1 runtime-enabled (ECB FX), 125 planned adapters, 32 manual-only; Top20 prices and industry come from yfinance only. Plan: per-source rights → adapter → access → admission → wiring, in three waves starting with official open data whose adapters already exist.
 
 ## Previous changes
 
+- `6ba8e6d`, `292f274` installer fixture retention, C2b local artifact and recorded operator decisions (full Python 2502 OK).
 - `0c61b53` removal of 74 unreferenced docs, scripts and workflows (full Python 2497 OK).
 - `34417b9` Top20 sourced-wording guard, phase 1 (full Python 2497 OK, 429.4 s).
 - `79438c2` weekly/monthly options guidance (Worker 900 passed; full Python 2490 OK, 437.3 s).
@@ -33,9 +31,9 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 
 ## Latest gate run
 
+- Worker: `npm run typecheck` PASS; `npm test` 900 passed / 1 named manual skip.
 - `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Full Python 16:57:29–17:04:33: 2502 tests OK, 423.3 s (working tree also held uncommitted LINE palette edits; Worker 900 passed on it).
-- Audit area after lightweighting: 21.6 GB → 4.6 GB; w1 cases from the latest run: 3,271, pruned after 24 hours.
+- Full Python 17:42:35–17:50:26: 2502 tests OK, 470.9 s.
 
 ## Closed components — no reopening without regression evidence
 
