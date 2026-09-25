@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -371,8 +372,11 @@ def ticker_ciks(fetch: Fetch, *, today: date, cache: Path = TICKERS_CACHE, max_a
     return {str(row[fields.index("ticker")]).upper(): str(row[fields.index("cik")]).zfill(10) for row in exchange["data"]}
 
 
-def sealed_tickers(snapshots_dir: Path = ROOT / "state" / "v213-snapshots") -> list[str]:
-    """Tickers ranked in the newest sealed run (the companies LINE can open a deep report for)."""
+def sealed_tickers(snapshots_dir: Path | None = None) -> list[str]:
+    """Tickers ranked in the newest sealed run (the companies LINE can open a deep report for); the snapshot root
+    is the publisher's II_SNAPSHOT_ROOT setting."""
+    if snapshots_dir is None:
+        snapshots_dir = ROOT / (os.environ.get("II_SNAPSHOT_ROOT", "").strip() or "state/v213-snapshots")
     runs = sorted((p for p in snapshots_dir.glob("*/summary.json")), key=lambda p: p.stat().st_mtime, reverse=True)
     for path in runs:
         try:

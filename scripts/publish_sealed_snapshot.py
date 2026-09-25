@@ -14,11 +14,21 @@ Artifacts (pointer is committed LAST, in its own commit):
 
 Deterministic for a fixed evaluation clock; fails closed on any engine or
 corpus drift.
+
+Carry-forward mode (``--top20-bundle``, single-writer design T5, used only by
+run_production_sealed_refresh.ps1 -CarryForwardTop20): the Top20 objects
+(v21:top20, v212 and v213 reports) are the exact payload bytes of the newest
+validated last-known-good bundle (scripts/top20_carry_forward.py); report and
+row times are never re-stamped. An invalid or missing bundle seals an honest
+INSUFFICIENT Top20 with a reason code; the macro overview is sealed either way.
+The GEV/6501 corpus is used only on the default (golden) path.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +40,7 @@ import bottleneck_ranking as engine  # noqa: E402
 import multilineage_claim_bundle as mlb  # noqa: E402
 import build_v213_macro_industry_research as macro_builder  # noqa: E402
 import company_deep_report  # noqa: E402
+import top20_carry_forward  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
 
@@ -44,6 +55,9 @@ PRODUCT_VERSION = "2.1.3"
 LIVE_NOW = None
 LIVE_STAMP = None
 CONTRACT_ID = "v213-stored-snapshot-v1"
+# One snapshot-root setting shared with company_deep_report.sealed_tickers and the hourly script (-SnapshotRoot):
+# an installed runtime keeps its sealed runs under data\, outside the attested payload.
+SNAPSHOT_ROOT = ROOT / (os.environ.get("II_SNAPSHOT_ROOT", "").strip() or "state/v213-snapshots")
 
 # Evidence honesty (P0 freshness incident repair; two-anchor contract):
 #   * EVIDENCE_CAPTURE_AT is the real offline capture time of the bundled corpus.
@@ -266,11 +280,20 @@ def top20_projection(report: dict) -> dict:
     }
 
 
-def build_bodies() -> "tuple[dict[str, str], dict]":
-    result = qualified_ranking()
-    report = bottleneck_report(result)
-    bottleneck_json = _dumps(report)
-    top20 = top20_projection(report)
+def build_bodies(carry: "dict | None" = None) -> "tuple[dict[str, str], dict]":
+    """Golden path when ``carry`` is None; otherwise ``carry`` is {"state", "reason", "bundle"} from carry_state()."""
+    if carry is None:
+        result = qualified_ranking()
+        report = bottleneck_report(result)
+        bottleneck_json = _dumps(report)
+        top20 = top20_projection(report)
+    else:
+        report = top20 = None
+        if carry["state"] == "CARRIED_FORWARD":
+            bottleneck_json = carry["bundle"]["payloads"]["v213_top20_report_json"]
+            top20 = json.loads(bottleneck_json)
+        else:
+            bottleneck_json = _dumps({"status": "INSUFFICIENT_EVIDENCE", "reason": carry["reason"], "records": []})
     bodies = {
         "v21:top20:latest": "[]",
         "scores:latest": "{}",
@@ -285,6 +308,10 @@ def build_bodies() -> "tuple[dict[str, str], dict]":
         "v213:source-federation:latest": _dumps({"status": "INSUFFICIENT_EVIDENCE", "families": 0}),
         "v213:source-independence:latest": _dumps({"status": "INSUFFICIENT_EVIDENCE", "families": 0}),
     }
+    if carry is not None and carry["state"] == "CARRIED_FORWARD":
+        # Exact bundle bytes; reports:*, source-independence and federation keep their placeholders.
+        for name, key in top20_carry_forward.CARRIED_OBJECTS.items():
+            bodies[key] = carry["bundle"]["payloads"][name]
     digest_seed = "".join(bodies[k] for k in OBJECT_KEYS if k != "v213:activation-claim") + bottleneck_json
     run_suffix = _sha(digest_seed)[:12]
     transaction_id = _sha(digest_seed)[:32]
@@ -307,7 +334,27 @@ def build_bodies() -> "tuple[dict[str, str], dict]":
         *macro_builder.evaluate_candidates(rotation_candidates), deep_analyses=rotation_deep, rotation=rotation_doc)
     bodies[MACRO_KEY] = _dumps(macro_doc)
     bodies["v213:activation-claim"] = _dumps(claim)
-    return bodies, {"report": report, "top20": top20, "run_id": run_id, "transaction_id": transaction_id}
+    return bodies, {"report": report, "top20": top20, "run_id": run_id, "transaction_id": transaction_id, "carry": carry}
+
+
+def carry_state(bundle_path: "Path | None", forced_reason: "str | None" = None) -> dict:
+    """CARRIED_FORWARD with the validated bundle, or INSUFFICIENT with a reason code (never raises)."""
+    if forced_reason:
+        return {"state": "INSUFFICIENT", "reason": forced_reason, "bundle": None}
+    if bundle_path is None:
+        return {"state": "INSUFFICIENT", "reason": "TOP20_BUNDLE_MISSING", "bundle": None}
+    try:
+        bundle = top20_carry_forward.load_top20_bundle(bundle_path, LIVE_NOW or datetime.now(timezone.utc))
+    except top20_carry_forward.BundleRejected as error:
+        return {"state": "INSUFFICIENT", "reason": str(error), "bundle": None}
+    return {"state": "CARRIED_FORWARD", "reason": None, "bundle": bundle}
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def build_seal(bodies: "dict[str, str]", meta: "dict") -> "tuple[str, str]":
@@ -347,6 +394,12 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live-clock", action="store_true",
                     help="Live UTC clock stamp (production refresh lane); default = pinned golden clock.")
+    ap.add_argument("--top20-bundle", nargs="?", const="", default=None, metavar="PATH",
+                    help="Carry the Top20 objects from this validated bundle (no PATH: newest in data/cache/top20-lkg).")
+    ap.add_argument("--top20-insufficient", metavar="REASON",
+                    help="Carry-forward mode, but seal an INSUFFICIENT Top20 with this reason (replay fallback).")
+    ap.add_argument("--snapshot-root", type=Path, default=SNAPSHOT_ROOT,
+                    help="Directory for sealed runs (default state/v213-snapshots).")
     args = ap.parse_args(argv)
     if args.live_clock:
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -363,10 +416,16 @@ def main(argv=None) -> None:
         g["PROMOTED_AT"] = iso
         g["PUBLISHED_DATA_AS_OF"] = iso
         assert RETRIEVED_AT == EVIDENCE_CAPTURE_AT, "evidence capture time must stay pinned"
-    bodies, meta = build_bodies()
+    carry = None
+    if args.top20_bundle is not None or args.top20_insufficient:
+        if args.top20_insufficient is not None and not re.fullmatch(r"[A-Z0-9_:]{1,80}", args.top20_insufficient):
+            ap.error("--top20-insufficient needs an upper-case reason code")
+        path = Path(args.top20_bundle) if args.top20_bundle else top20_carry_forward.newest_lkg()
+        carry = carry_state(path, args.top20_insufficient)
+    bodies, meta = build_bodies(carry)
     seal_text, seal_sha = build_seal(bodies, meta)
     pointer = pointer_text(meta, seal_sha)
-    out_dir = ROOT / "state" / "v213-snapshots" / meta["run_id"]
+    out_dir = args.snapshot_root / meta["run_id"]
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
@@ -375,20 +434,37 @@ def main(argv=None) -> None:
     objects_path.write_bytes(_dumps(objects).encode("utf-8"))
     pointer_path = out_dir / "pointer.raw.json"
     pointer_path.write_bytes(pointer.encode("utf-8"))
-    (out_dir / "seven-field-projection.json").write_bytes(_dumps(meta["top20"]).encode("utf-8"))
+    if meta["top20"] is not None:
+        (out_dir / "seven-field-projection.json").write_bytes(_dumps(meta["top20"]).encode("utf-8"))
 
+    if carry is None:
+        ranked = [(r["rank"], r["ticker"], r["system_bottleneck_explosion_score"]) for r in meta["report"]["records"]]
+        counts = {"admitted_count": meta["report"]["admitted_count"], "ranked_count": meta["report"]["ranked_count"]}
+    else:
+        rows = meta["top20"]["records"] if meta["top20"] else []
+        ranked = [(r["rank"], r["ticker"], None) for r in rows]
+        counts = {"admitted_count": len(rows), "ranked_count": len(rows)}
     summary = {
         "run_id": meta["run_id"],
         "transaction_id": meta["transaction_id"],
         "seal_sha256": seal_sha,
         "promoted_at": PROMOTED_AT,
         "public_data_as_of": PUBLISHED_DATA_AS_OF,
-        "ranked": [(r["rank"], r["ticker"], r["system_bottleneck_explosion_score"]) for r in meta["report"]["records"]],
-        "admitted_count": meta["report"]["admitted_count"],
-        "ranked_count": meta["report"]["ranked_count"],
-        "objects_json": str(objects_path.relative_to(ROOT)),
-        "pointer_raw_json": str(pointer_path.relative_to(ROOT)),
+        "ranked": ranked,
+        **counts,
+        "objects_json": _display_path(objects_path),
+        "pointer_raw_json": _display_path(pointer_path),
     }
+    if carry is not None:
+        bundle = carry["bundle"] or {}
+        summary.update({
+            "top20_state": carry["state"],
+            "top20_reason": carry["reason"],
+            "top20_bundle_run_id": bundle.get("run_id"),
+            "top20_bundle_sha256": bundle.get("bundle_sha256"),
+            "top20_report_generated_at": bundle.get("report_generated_at"),
+            "run_dir": str(out_dir),
+        })
     (out_dir / "summary.json").write_bytes(_dumps(summary).encode("utf-8"))
     print(json.dumps(summary, indent=2))
 
