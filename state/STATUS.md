@@ -8,17 +8,18 @@ Updated 2026-09-25 by an operator-directed Claude Code session (master and write
 - PR #37 CI has only reported COMPLETED_SKIPPED (latest run 36092036399). Skipped is not PASS and not release qualification.
 - DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_CUTOVER_PENDING=false.
 
-## This change — Wave 1 official public feeds (operator-authorized source diversification)
+## This change — Top20 industry detail from SEC annual reports (operator rule 2026-09-25)
 
-Operator authorized all work in this session (2026-09-25) and requires diversified sources.
+Operator rules: the industry field must say what the company does, not 「半導體」; sources must not be yfinance alone. Operator authorized all work in this session.
 
-- Rights reviewed from original pages and recorded (`docs/PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md`, 2026-09-25): TWSE/TPEx EOD (data.gov.tw 11549/11371, OGDL v1), TWSE/TPEx issuer directories and TAIFEX options (reviewed 2026-09-09), Federal Reserve, ECB and SEC press feeds.
-- `config/sources/official-public-feeds.json`: eight T1 entries sharing independence groups with existing publisher entries; `provider_runtime_hook` promotes the reviewed staged adapters as capabilities. Requests to `www.sec.gov` send the declared SEC contact and fail closed without it.
-- Live canary (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`): feeds reachable, but the claim-evidence acquisition factory rejects bulk datasets (100-record cap) and news leads (not claims); entries stop at `ADAPTER_CONTRACT_VALIDATED`, not runtime-enabled. Market prices already need two independent non-Yahoo providers for high confidence (`v213_source_independence_gate_v4`); industry remains single-source (next task).
-- Tests: `tests/test_official_public_feeds_registry.py` (4).
+- `scripts/company_business_profile.py`: latest 10-K / 20-F from SEC EDGAR → business excerpt (strong self-description, else Overview paragraph) → loopback Qwen phrase validated against the excerpt (no new digits, no banned vague wording, no 「｜」) → 「細分產業：主要業務」 ≤100 characters. Cached per accession, filing index re-read every run, 403/429 fence. Details: [TOP20_UPSIDE_BRIDGE_V1](../docs/TOP20_UPSIDE_BRIDGE_V1.md) Phase 0.
+- `build_v212_top20_report.py --business-profile` (both scheduled runners pass it): SEC-sourced industry clock; an unreceipted yfinance label is dropped rather than composed; non-publishable `*.business-profile-candidate.json` sidecar.
+- Live canary (SEC + local Qwen, read-only): 22/22 current Top20 plus TSM/ASML produced specific phrases (for example AXTI 「研發與生產高性能化合物及單元素半導體晶圓」, ASML 「製造極紫外光刻系統」).
+- Tests: `tests/test_company_business_profile.py` (20), including the seven-field caller and preview.
 
 ## Previous changes
 
+- `3e80273` Wave 1 official public feeds: eight reviewed T1 entries (Fed, ECB, SEC press, TWSE/TPEx EOD and issuer directories, TAIFEX options) registered at `ADAPTER_CONTRACT_VALIDATED`; the claim-evidence acquisition factory rejects bulk datasets and news leads, so none is runtime-enabled yet (receipts `_workspace/audit-runtime/source-activation-wave1-20260925/`).
 - `7c01ef1`, `6d21066` layered LINE card design with black gradient band; source activation plan (full Python 2502 OK).
 - `6ba8e6d`, `292f274` installer fixture retention, C2b local artifact and recorded operator decisions (full Python 2502 OK).
 - `0c61b53` removal of 74 unreferenced docs, scripts and workflows (full Python 2497 OK).
@@ -37,8 +38,8 @@ Operator authorized all work in this session (2026-09-25) and requires diversifi
 ## Latest gate run
 
 - `security_check`, documentation boundary/structure, workflow supply chain, owner config: PASS.
-- Focused source tests: acquisition 37, registry 51, provider hook 10, catalog 10, wave 1 feeds 4 — OK.
-- Full Python 18:04:53–18:11:59: 2506 tests OK, 424.6 s. Worker unchanged.
+- Focused: business profile 20, v212 report, source acquisition, public JSON refresh, progress runner, entrypoints, installer boundaries, sealed refresh — 118 OK.
+- Full Python 18:38:42–18:45:45: 2525 tests, 2524 OK; the one error (`test_v213_market_products` CLI pipe) came from running without CI's `PYTHONUTF8=1` and passes with it (12 OK). Worker typecheck PASS, 900 passed / 1 skipped.
 
 ## Closed components — no reopening without regression evidence
 

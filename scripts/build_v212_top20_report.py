@@ -26,7 +26,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -40,9 +40,10 @@ from historical_return_evidence import (
     build_two_year_return_evidence, ReturnEvidenceError, validate_return_observation,
 )
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
+from company_business_profile import compose_industry, local_translator, resolve_business_profile, sec_fetcher
 from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
-                                       row_time, unavailable, validate_company_receipt,
+                                       row_time, unavailable, utc_time, validate_company_receipt,
                                        validate_report_acquisition)
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
@@ -293,7 +294,9 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
 
 def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
           financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None,
-          require_known_acquisition: bool = False) -> dict[str, Any]:
+          require_known_acquisition: bool = False, translate: Callable[[str], str | None] | None = None,
+          business_profile_sink: dict | None = None, profile_fetch: Callable[[str], bytes] | None = None,
+          profile_cache_root: Path | None = None) -> dict[str, Any]:
     from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
     precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
     precision_used = False
@@ -346,6 +349,18 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             precision_used = True
         if financial_evidence_sink is not None:
             financial_evidence_sink[ticker] = financial
+        # Operator rule 2026-09-25: the industry field says what the company does,
+        # from the latest SEC annual report, translated locally; label kept otherwise.
+        business = None
+        if official and translate is not None and 'sec' not in getattr(http, '_public_json_blocked_sources', ()):
+            profile_fetch = profile_fetch or sec_fetcher(headers)
+            try:
+                business = resolve_business_profile(str(official.get("cik") or "").zfill(10), profile_fetch, translate,
+                                                    **({'cache_root': profile_cache_root} if profile_cache_root else {}))
+            except Exception:
+                business = None  # label-only industry; the failure stays visible in the sidecar
+        if business_profile_sink is not None:
+            business_profile_sink[ticker] = business
         row = {
             "schema_version": 2,
             "rank": int(item["rank"]),
@@ -380,6 +395,18 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 clocks[key] = field_clock(key, row[key])
             else:
                 clocks[key] = field_clock(key, row[key])
+        if business and business.get("phrase_zh"):
+            # Every part stays sourced: a receipted label is composed with the SEC
+            # phrase (older clock, joint digest); an unreceipted label is dropped.
+            label = clocks['industry']
+            if label['status'] == 'KNOWN':
+                row['industry'] = compose_industry(row['industry'], business['phrase_zh'])
+                retrieved = min(label['retrieved_at'], business['retrieved_at'], key=utc_time)
+                evidence = digest({'label': label['evidence_sha256'], 'business': business['evidence_sha256']})
+            else:
+                row['industry'] = business['phrase_zh'][:100]
+                retrieved, evidence = business['retrieved_at'], business['evidence_sha256']
+            clocks['industry'] = field_clock('industry', row['industry'], retrieved_at=retrieved, evidence_sha256=evidence)
         clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'])
         if receipt and clocks['profit_summary']['status'] != 'UNAVAILABLE':
             clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'],
@@ -498,6 +525,8 @@ def main() -> int:
     parser.add_argument("--financial-products-output", type=Path, help="Distinct local financial components only; not sealed or LINE eligible")
     parser.add_argument('--debt-precision-bundle', type=Path, help='Optional original-file bundle; conditional precision only, never debt reconciliation or publication')
     parser.add_argument('--require-known-acquisition', action='store_true', help='Refuse unverified market clocks and fail closed to UNAVAILABLE')
+    parser.add_argument('--business-profile-output', type=Path, help='Local SEC business-profile sidecar (source sentence, URL, translation)')
+    parser.add_argument('--business-profile', action='store_true', help='Add the SEC annual-report business phrase (local loopback translation) to the industry field')
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -506,7 +535,9 @@ def main() -> int:
         evidence_output = args.return_evidence_output or args.output.with_name(args.output.stem + ".return-evidence-candidate.json")
         financial_output = args.financial_evidence_output or args.output.with_name(args.output.stem + ".financial-evidence-candidate.json")
         products_output = args.financial_products_output or args.output.with_name(args.output.stem + ".financial-products-candidate.json")
-        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve()]
+        profile_output = args.business_profile_output or args.output.with_name(args.output.stem + ".business-profile-candidate.json")
+        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve(),
+                        profile_output.resolve()]
         if len(set(destinations)) != len(destinations):
             raise Top20ReportError("Report and evidence paths must differ")
         from debt_source_precision import read_bundle
@@ -514,8 +545,16 @@ def main() -> int:
         observations: dict[str, Any] = {}
         financials: dict[str, Any] = {}
         options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
+        profiles: dict[str, Any] = {}
+        translator = None
+        if args.business_profile:
+            try:
+                translator = local_translator()
+            except (OSError, ValueError, KeyError):
+                translator = None  # label-only industry; never a cloud or paid fallback
         document = build(return_evidence_sink=observations, financial_evidence_sink=financials,
-                         require_known_acquisition=args.require_known_acquisition, **options)
+                         require_known_acquisition=args.require_known_acquisition, translate=translator,
+                         business_profile_sink=profiles, **options)
         report_body = json_bytes(document)
         financial_document = {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -538,6 +577,13 @@ def main() -> int:
             "records": observations,
         })
         atomic_write(financial_output, financial_document)
+        atomic_write(profile_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "generated_at": document["generated_at"],
+            "source": "SEC EDGAR latest annual report, Item 1 / Item 4",
+            "translation": "local loopback model; phrase validated against the source sentence",
+            "records": profiles,
+        })
         atomic_write(products_output, products)
         verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes(), precision_bundle=precision_raw)
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))

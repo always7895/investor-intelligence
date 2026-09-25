@@ -165,7 +165,7 @@ try {
             # Fail closed: unverified market acquisition (no receipt) must degrade to
             # UNAVAILABLE so every row keeps a dated SEC-anchored retrieved_at; the
             # atomic bundle validator refuses UNKNOWN clocks.
-            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition'
+            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition' '--business-profile'
             if ($LASTEXITCODE -ne 0) {
                 throw 'v2.1.2 five-field report failed.'
             }

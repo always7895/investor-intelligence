@@ -16,13 +16,15 @@ This contract keeps the project's evidence rules: no hard-coded bull/bear percen
 - 6M/1Y/2Y scenario text is a placeholder (`SCENARIO_STATUS`, `deep-analysis.ts`, `company-evidence-report.ts`). `docs/RESEARCH_EXECUTION_AUDIT.md` already specifies the order ledger and the per-horizon on-time / delay / failure chain, still unimplemented.
 - No vague-wording lint exists; retained baseline rows bypass the only quantitative check (for example 「幾乎全部」 in a baseline row, 「能見度偏高」 in a contract fixture, 「強勁能見度」 in macro text).
 
-## Phase 0 — industry detail (operator rule)
+## Phase 0 — industry detail (IMPLEMENTED, sidecar only for the source URL)
 
-Today `industry` is yfinance `info.industry` (or `sector`) translated through a fixed table (`build_v212_top20_report.translate_industry`), so most technology names read 「半導體」. Target: 「細分產業｜主要產品或業務」 within the Worker's 100-character limit, for example 「半導體材料｜化合物半導體基板（InP、GaAs）」.
+Before: `industry` was yfinance `info.industry` translated through a fixed table, so most technology names read 「半導體」. Now (`scripts/company_business_profile.py`, enabled with `--business-profile` in both scheduled runners): 「細分產業：主要業務」 within the Worker's 100-character limit, for example 「半導體設備與材料：研發與生產高性能化合物及單元素半導體晶圓」. 「｜」 is the report column separator and is rejected.
 
-- Source of the business phrase: the latest 10-K (or 20-F/40-F) Item 1 business description from SEC EDGAR, with the filing URL and accession recorded; the sub-industry uses the finest available classification (yfinance `industry`, SEC SIC description as cross-check).
-- The Chinese phrase is a translation of the sourced passage, labelled as such in the detail view with the original English sentence; no product claims beyond the passage.
-- Needs an `industry_source_url` alongside the record, which touches the exact-key parsers (Python contract, Worker `top20-report.ts`, bottleneck report, activation-v3); ship as one versioned schema change with fixtures.
+- Source: the latest 10-K / 20-F on SEC EDGAR. Selection order: a strong self-description in any Item 1 / Item 4 window (tables of contents and MD&A cross-references are both scored, earliest wins); else the first 1–3 sentences of the Overview paragraph; else the best activity sentence; else, without a usable heading, a strong self-description anywhere. Off-topic sentences (auditor report, dividends, fiscal year, committees, headquarters) are penalised.
+- Translation: the configured loopback Qwen only (thinking disabled, temperature 0). The phrase is rejected if it adds a digit absent from the source, uses a banned vague phrase, contains 「｜」 or a line break, is not mostly CJK, or exceeds 40 characters; then the classification label stays.
+- Provenance: the filing index is re-read every run; the annual document and validated phrase are cached per accession (`data/cache/v21/business_profiles`, extractor-versioned). The industry clock is the index check time with a joint digest of document and index; an unreceipted yfinance label is dropped instead of being composed. SEC 403/429 fences further profile requests for the run; the SEC session fence is honoured too.
+- Evidence: `*.business-profile-candidate.json` (not publication eligible) keeps form, accession, filing URL, document SHA-256, English source excerpt and the phrase. Live canary 2026-09-25: 22/22 current Top20 plus TSM/ASML produced specific phrases, about 1 s each.
+- Open: surfacing the filing URL on the card still needs an `industry_source_url` field in the exact-key parsers (Python contract, Worker `top20-report.ts`, bottleneck report, activation-v3) as one versioned schema change.
 
 ## Phase 1 — sourced-wording guard (IMPLEMENTED)
 

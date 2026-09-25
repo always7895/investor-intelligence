@@ -129,7 +129,7 @@ try {
             Stage 4 'Five-field market and SEC report for provisional membership'
             # Fail closed: unverified market acquisition (no receipt) must degrade to
             # UNAVAILABLE so every row keeps a dated SEC-anchored retrieved_at.
-            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition'
+            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition' '--business-profile'
             if ($LASTEXITCODE -ne 0) { throw 'v2.1.2 five-field report failed.' }
 
             Stage 5 'Current-membership order evidence and seven-field draft'
