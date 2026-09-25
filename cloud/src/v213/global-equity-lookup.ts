@@ -19,6 +19,7 @@ import {
   evaluateCatalogAdmission,
 } from "./global-identity-reader";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
+import { loadDelayedQuote, observationSymbol } from "./market-observations";
 
 export type { SupportedMarket, GlobalIdentityRecord, GlobalIdentityResolution };
 
@@ -146,9 +147,13 @@ export function buildGlobalEquityLookupMessages(
   let statusSub = "QUOTE_UNAVAILABLE：目前快照中無該標的之封存驗收資料；不使用未驗證資料、模型生成或非公開快照猜測。";
 
   if (resolution) {
-    if (resolution.status === "RESOLVED") {
+    if (resolution.status === "RESOLVED" && result.quoteStatus === "AVAILABLE" && typeof result.price === "number") {
+      const change = typeof result.changePct === "number" ? `（${result.changePct >= 0 ? "+" : ""}${(result.changePct * 100).toFixed(2)}%）` : "";
+      statusTitle = "已准入證券身分 · 延遲報價";
+      statusSub = `價格 ${result.price} ${identity.currency}${change}，觀察時間 ${result.asOf ?? "未揭露"}；延遲公開報價，非即時可成交價。`;
+    } else if (resolution.status === "RESOLVED") {
       statusTitle = "已准入證券身分 · 報價未開放";
-      statusSub = "IDENTITY_RESOLVED：官方上市證券身分已核對；當前無已准入之即時報價管道，報價維持不可用。";
+      statusSub = "IDENTITY_RESOLVED：官方上市證券身分已核對；本標的不在已封存之延遲報價觀察清單。";
     } else if (resolution.status === "NEEDS_MARKET_SELECTION") {
       statusTitle = "多市場代號重疊 · 請確認市場";
       statusSub = "NEEDS_MARKET_SELECTION：本名稱／代號在多個市場掛牌或有多種股類，請使用精確市場代號查詢。";
@@ -196,7 +201,9 @@ export function buildGlobalEquityLookupMessages(
         const sym = c.split(" ")[0]!;
         return menuAction(`查詢 ${sym}`, sym);
       })
-    : [menuAction("返回 TOP20 榜單", "TOP20"), menuAction("回功能選單", "選單")];
+    : result.quoteStatus === "AVAILABLE"
+      ? [menuAction("每月期權", `${identity.canonicalSymbol} 每月期權`), menuAction("每週期權", `${identity.canonicalSymbol} 每週期權`), menuAction("返回 TOP20 榜單", "TOP20")]
+      : [menuAction("返回 TOP20 榜單", "TOP20"), menuAction("回功能選單", "選單")];
 
   const bubble = {
     type: "bubble" as const,
@@ -317,6 +324,7 @@ export async function handleGlobalEquityLookup(
 
   if (resolution.status === "RESOLVED") {
     const rec = resolution.record;
+    const quote = await loadDelayedQuote(view, observationSymbol(rec));
     const result: EquityLookupResult = {
       identity: {
         rawInput: query.normalized,
@@ -333,9 +341,11 @@ export async function handleGlobalEquityLookup(
       },
       admittedInSealedSnapshot: true,
       nameUnverified: !rec.native_name,
-      quoteStatus: "UNAVAILABLE", // Quotes remain withheld
-      source: `sealed_snapshot:${rec.source_feed}`,
-      disclaimer: "公開研究資訊，非投資建議；官方上市身分已核對，即時報價管道暫未開放。",
+      quoteStatus: quote ? "AVAILABLE" : "UNAVAILABLE",
+      ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof } : {}),
+      source: quote ? `sealed_snapshot:${rec.source_feed}；報價：${quote.source} ${quote.source_url}` : `sealed_snapshot:${rec.source_feed}`,
+      disclaimer: quote ? "公開研究資訊，非投資建議；身分來自官方上市目錄，報價為延遲觀察值，不下單。"
+        : "公開研究資訊，非投資建議；官方上市身分已核對，本標的暫無延遲報價觀察。",
       resolution,
     };
     return buildGlobalEquityLookupMessages(result, isText ? "text" : "flex");

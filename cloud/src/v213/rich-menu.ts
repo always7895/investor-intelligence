@@ -1,6 +1,7 @@
 import { parseQuery, type ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "./bottleneck-v3";
+import { loadOptionObservation } from "./market-observations";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
@@ -323,7 +324,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
     const statusText = view.integrity === "sealed"
-      ? "OPTION_DATA_NOT_ADMITTED：當輪已封存快照的契約物件集合不含期權物件，沒有已封存的期權准入；未封存殘留鍵不構成可用報價，不代表權利金為0或沒有風險。"
+      ? "已封存延遲期權觀察：TOP20 與瓶頸觀察清單內的美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm 期權（交易所公開 API，延遲）；清單外標的或無雙邊報價時維持不可用，不代表權利金為0或沒有風險。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
 
     const navActions = [
@@ -481,6 +482,20 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     if (!["教學", "試算說明", "HELP", "TOP20"].includes(ticker)) {
       const view = await pinPublicSnapshot(env);
       if (view.integrity === "sealed") {
+        // Sealed delayed observations of the watch universe (US options and Nasdaq Stockholm options).
+        const observed = await loadOptionObservation(view, ticker, period);
+        if (observed && "unavailable" in observed) {
+          return optionsUnavailableReport(ticker, period, `${observed.unavailable}（已封存之公開觀察）`, isText);
+        }
+        if (observed && "quote" in observed) {
+          try {
+            const options = { ticker, period } as const;
+            return isText ? buildOptionContractText(observed.quote as OptionContractQuote, options)
+              : buildOptionContractFlex(observed.quote as OptionContractQuote, options);
+          } catch {
+            return optionsUnavailableReport(ticker, period, "封存之期權觀察未通過報價驗證，已拒絕顯示。", isText);
+          }
+        }
         const quote = await view.json<OptionContractQuote>([`options:${ticker}:${period}:latest`]);
         if (quote) {
           return isText ? buildOptionContractText(quote) : buildOptionContractFlex(quote);

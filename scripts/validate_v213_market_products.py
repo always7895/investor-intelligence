@@ -180,7 +180,7 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
         raise MarketProductValidationError("BARE_QUOTE_STRATEGY_METRICS_PROHIBITED")
 
     # Finding C: Currency, multiplier, source, provenance, rights_status
-    if quote.get("currency") != "USD":
+    if quote.get("currency") not in ("USD", "SEK"):  # US-listed and Nasdaq Stockholm options
         raise MarketProductValidationError("INVALID_CURRENCY")
     if quote.get("multiplier") != 100:
         raise MarketProductValidationError("INVALID_MULTIPLIER")

@@ -87,6 +87,8 @@ IDENTITY_MAX_AGE = timedelta(days=8)
 BOTTLENECK_V3_PATH = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
 BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3"
 BOTTLENECK_V3_MAX_AGE = timedelta(hours=13)  # the Worker refuses it after report_max_age_hours (14 h)
+MARKET_OBSERVATIONS_PATH = ROOT / "data" / "cache" / "market_quotes_options.json"
+MARKET_OBSERVATIONS_MAX_AGE = timedelta(hours=5)  # the Worker ignores observations older than 6 h
 OBJECT_KEYS = [
     "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
     "reports:latest", "reports:morning:latest", "reports:evening:latest",
@@ -422,6 +424,36 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
     return {BOTTLENECK_V3_KEY: body} if len(body.encode("utf-8")) <= 1_900_000 and 10 <= len(top) <= 20 else {}
 
 
+def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
+    """Delayed quotes and option observations (scripts/build_market_quotes_options.py) as two lazy bodies; each option
+    observation must pass the shared quote validator or is replaced by an explicit unavailability reason."""
+    from validate_v213_market_products import MarketProductValidationError, validate_option_quote
+    try:
+        doc = json.loads(path.read_bytes().decode("utf-8"))
+        generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if doc.get("schema") != "v213-market-observations-v1" or not timedelta(0) <= now - generated <= MARKET_OBSERVATIONS_MAX_AGE:
+            return {}
+        options: dict = {}
+        for ticker, cycles in doc["options"].items():
+            options[ticker] = {}
+            for cycle, value in cycles.items():
+                if "unavailable" in value:
+                    options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
+                    continue
+                try:
+                    validate_option_quote(value, evaluated_at=doc["generated_at"])
+                    options[ticker][cycle] = value
+                except MarketProductValidationError as error:
+                    options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}
+        quotes = {"schema": "v213-quotes-v1", "generated_at": doc["generated_at"], "quotes": doc["quotes"]}
+        option_doc = {"schema": "v213-options-v1", "generated_at": doc["generated_at"], "options": options}
+        bodies = {"v213:quotes:v1": json.dumps(quotes, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
+                  "v213:options:v1": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    return bodies if all(len(body.encode("utf-8")) <= 1_900_000 for body in bodies.values()) else {}
+
+
 def build_seal(bodies: "dict[str, str]", meta: "dict", lazy: "dict[str, str] | None" = None) -> "tuple[str, str]":
     digest_rows = {key: {"sha256": _sha(bodies[key]), "utf8_bytes": len(bodies[key].encode("utf-8"))}
                    for key in [*OBJECT_KEYS, MACRO_KEY]}
@@ -469,6 +501,8 @@ def main(argv=None) -> None:
                     help="Directory for sealed runs (default state/v213-snapshots).")
     ap.add_argument("--identity-shards", nargs="?", const=str(IDENTITY_SHARDS_PATH), default=None, metavar="PATH",
                     help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
+    ap.add_argument("--market-observations", nargs="?", const=str(MARKET_OBSERVATIONS_PATH), default=None, metavar="PATH",
+                    help="Seal delayed quotes and option observations as lazy objects.")
     ap.add_argument("--bottleneck-v3", nargs="?", const=str(BOTTLENECK_V3_PATH), default=None, metavar="PATH",
                     help="Seal the bottleneck-explosion Top20 v3 as a lazy object (no PATH: data/cache/bottleneck_top20_v3.json).")
     args = ap.parse_args(argv)
@@ -497,6 +531,8 @@ def main(argv=None) -> None:
     lazy: "dict[str, str]" = {}
     if args.identity_shards is not None:
         lazy.update(lazy_identity_bodies(Path(args.identity_shards), LIVE_NOW or datetime.now(timezone.utc)))
+    if args.market_observations is not None:
+        lazy.update(lazy_market_bodies(Path(args.market_observations), LIVE_NOW or datetime.now(timezone.utc)))
     if args.bottleneck_v3 is not None:
         lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)

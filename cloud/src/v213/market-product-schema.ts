@@ -103,7 +103,7 @@ export interface OptionContractQuote {
   readonly quote_basis: "realtime" | "delayed" | "asof_close";
   readonly source: string;
   readonly provenance: string;
-  readonly currency: "USD";
+  readonly currency: "USD" | "SEK";
   readonly multiplier: 100;
   readonly rights_status: "reviewed_public_access" | "candidate_local_review" | "unadmitted_third_party" | "review_before_enable" | "automated_access_prohibited";
   readonly admission_status: "ADMITTED" | "NOT_ADMITTED";
@@ -601,11 +601,11 @@ export function validateOptionContractQuote(
     throw new Error("INVALID_QUOTE_BASIS");
   }
 
-  // Currency and multiplier binding (Finding C)
-  if (obj.currency !== "USD") {
+  // Currency and multiplier binding (Finding C): US-listed (USD) and Nasdaq Stockholm (SEK) options, both 100 shares.
+  if (obj.currency !== "USD" && obj.currency !== "SEK") {
     throw new Error("INVALID_CURRENCY");
   }
-  const currency: "USD" = "USD";
+  const currency: "USD" | "SEK" = obj.currency;
 
   if (obj.multiplier !== 100) {
     throw new Error("INVALID_MULTIPLIER");

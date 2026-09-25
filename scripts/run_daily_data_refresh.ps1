@@ -36,6 +36,8 @@ try {
         & python 'scripts\serenity_signals.py' --refresh --if-older-than-hours 6
         & python 'scripts\leopold_positions.py' --if-older-than-hours 24
         & python 'scripts\bottleneck_top20_v3.py' --if-older-than-hours 3
+        # Delayed quotes and option observations for the LINE lookup and options queries, every hour.
+        & python 'scripts\build_market_quotes_options.py' --if-older-than-hours 0.9
         if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
     } finally { Pop-Location }
 } finally {

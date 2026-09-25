@@ -137,7 +137,8 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell)
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[:3], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3", "REPLAY aaaa PASS", "SYNC aaaa"], trace)
+            self.assertEqual(trace[:3], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3 --market-observations",
+                                         "REPLAY aaaa PASS", "SYNC aaaa"], trace)
             self.assertEqual(trace[3:6], ["ROTATION", "LKG due", "REFRESH nosync=True"], trace)
             self.assertEqual(trace[6], "PUBLISH RUN_C --live-clock --top20-bundle --snapshot-root", trace)
             self.assertEqual(trace[7:], ["REPLAY cccc PASS", "LKG promote --candidate", "LKG record --result ok"], trace)
@@ -148,7 +149,8 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "not_due"))
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[:5], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3", "REPLAY aaaa FAIL",
+            self.assertEqual(trace[:5], ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3 --market-observations",
+                                         "REPLAY aaaa FAIL",
                                          "PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd PASS", "SYNC dddd"], trace)
             self.assertIn("REPLAY FAILED run=20260926T010000Z-aaaaaaaaaaaa tier=OK", log)
 

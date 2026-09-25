@@ -18,8 +18,8 @@ import { validateOptionContractQuote } from "./market-product-schema";
 
 export const OPTIONS_PRODUCT_KEY = "v213:options-chain:latest";
 
-function formatMoney(val: number): string {
-  return `$${val.toFixed(2)}`;
+function formatMoney(val: number, currency: string = "USD"): string {
+  return currency === "USD" ? `$${val.toFixed(2)}` : `${val.toFixed(2)} ${currency}`;
 }
 
 export function buildOptionContractBubble(quote: OptionContractQuote) {
@@ -48,8 +48,8 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
     body: menuBox([
       menuBox([
         menuText("雙邊行情與價差", "xs", T.muted),
-        menuText(`Bid ${formatMoney(quote.bid)} ｜ Mid ${formatMoney(quote.mid)} ｜ Ask ${formatMoney(quote.ask)}`, "sm", T.ink),
-        menuText(`Spread: ${formatMoney(quote.spread)}（未驗證委託保證成交）`, "xs", T.muted),
+        menuText(`Bid ${formatMoney(quote.bid, quote.currency)} ｜ Mid ${formatMoney(quote.mid, quote.currency)} ｜ Ask ${formatMoney(quote.ask, quote.currency)}`, "sm", T.ink),
+        menuText(`Spread: ${formatMoney(quote.spread, quote.currency)}（未驗證委託保證成交）`, "xs", T.muted),
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
       menuBox([
         menuText("關鍵損益指標（需搭配具體策略與持倉成本）", "xs", T.muted),
@@ -103,8 +103,8 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
     `【公開期權合約報價】${validated.ticker} ${validated.expiry} ${validated.strike}${validated.type.toUpperCase()}`,
     `報價性質：${nonexecTag}`,
     `DTE：${validated.dte} 天｜基準：${validated.quote_basis}｜來源：${validated.source}｜幣別：${validated.currency}（乘數 ${validated.multiplier}）`,
-    `行情：Bid ${formatMoney(validated.bid)} ｜ Mid ${formatMoney(validated.mid)} ｜ Ask ${formatMoney(validated.ask)}`,
-    `Spread：${formatMoney(validated.spread)}`,
+    `行情：Bid ${formatMoney(validated.bid, validated.currency)} ｜ Mid ${formatMoney(validated.mid, validated.currency)} ｜ Ask ${formatMoney(validated.ask, validated.currency)}`,
+    `Spread：${formatMoney(validated.spread, validated.currency)}`,
     "損益平衡：UNAVAILABLE（無定義策略）",
     "最大利潤：UNAVAILABLE（無定義策略） ｜ 最大損失：UNAVAILABLE（無定義策略）",
     `Greeks：Delta ${validated.delta !== null ? validated.delta.toFixed(3) : "UNAVAILABLE"} ｜ IV ${validated.iv !== null ? (validated.iv * 100).toFixed(1) + "%" : "UNAVAILABLE"}`,
