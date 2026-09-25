@@ -39,7 +39,7 @@ def prepare(root, *, rich=False, prices=None):
              'federation':root/'federation.json','source_audit':root/'source.json','ledger':root/'ledger.json',
              'returns':root/'report.return-evidence-candidate.json','basis':root/'report.financial-evidence-candidate.json',
              'products':root/'report.financial-products-candidate.json'}
-    seven=fixture.scheduled.build(result['report'],fixture.no_orders(result['report']),fixture.names_for(result['report']),return_evidence=fixture.market_anchors(result['report']))
+    seven=fixture.scheduled.build(result['report'],fixture.no_orders(result['report']),fixture.names_for(result['report']),**fixture.evidence_inputs(result['report']))
     paths['v213'].write_bytes(builder.json_bytes(seven))
     for name,key in [('federation','ticker_sources'),('source_audit','records'),('ledger','records')]:
         paths[name].write_bytes(builder.json_bytes({key:[{'rank':i+1,'ticker':f'T{i:02d}','scope':'SYNTHETIC'} for i in range(20)]}))

@@ -26,9 +26,21 @@ def market_anchors(report, day=None):
     return {'records': {row['ticker']: {'windows': {'six_month': {'actual_end': day}}} for row in report['records']}}
 
 
+def profit_claims(report, day=None):
+    """Profit-display sidecar: every displayed profit metric filed today (synthetic)."""
+    from datetime import datetime as _dt, timezone as _tz
+    day = day or _dt.now(_tz.utc).date().isoformat()
+    return {'records': {row['ticker']: {'claim_filed_at': day} for row in report['records']}}
+
+
+def evidence_inputs(report):
+    return {'return_evidence': market_anchors(report), 'profit_display': profit_claims(report)}
+
+
 def write_anchors(path, report):
-    """Sidecar next to a v212 report file, where the producer CLI looks by default."""
+    """Sidecars next to a v212 report file, where the producer CLI looks by default."""
     path.with_name(path.stem + '.return-evidence-candidate.json').write_text(__import__('json').dumps(market_anchors(report)), encoding='utf-8')
+    path.with_name(path.stem + '.profit-display-candidate.json').write_text(__import__('json').dumps(profit_claims(report)), encoding='utf-8')
 from report_source_acquisition import field_clock
 
 
@@ -289,7 +301,7 @@ class V213TotalReturnUITests(unittest.TestCase):
             ],
         }
         names = {ticker: f"Company {i}" for i, ticker in enumerate(tickers)}
-        result = scheduled_builder.build(v212_old, baseline, names, return_evidence=market_anchors(v212_old))
+        result = scheduled_builder.build(v212_old, baseline, names, **evidence_inputs(v212_old))
         self.assertEqual(len(result["records"]), 20)
         # Verify that absence of two_year_total_return_pct does not crash builder
         self.assertNotIn("two_year_total_return_pct", result["records"][0])

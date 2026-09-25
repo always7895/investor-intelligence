@@ -24,9 +24,9 @@ import json
 import math
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -66,6 +66,8 @@ DISPLAY_COLUMNS = [
 ]
 
 INDUSTRY_ZH_TW = {
+    "Discount Stores": "折扣零售",
+    "Department Stores": "百貨零售",
     "Semiconductors": "半導體",
     "Semiconductor Equipment & Materials": "半導體設備與材料",
     "Communication Equipment": "通訊設備",
@@ -186,6 +188,87 @@ def profit_summary(metrics: Mapping[str, Any]) -> str:
     return "；".join(parts)[:120]
 
 
+QUARTER_DAYS = (80, 100)
+_REVENUE_TAGS = ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet")
+
+
+def _day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _operand(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: record.get(key) for key in ("tag", "form", "start", "end", "filed", "accession_number", "value")}
+
+
+def latest_quarter_growth(records: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Revenue of the latest reported quarter versus the same quarter a year earlier (same tag), from the
+    filing that reports the latest quarter. The annual comparison can be most of a year old; this cannot."""
+    quarters = []
+    for item in base.latest_records(records, _REVENUE_TAGS):
+        start, end, value = _day(item.get("start")), _day(item.get("end")), _finite(item.get("value"))
+        if start and end and value is not None and QUARTER_DAYS[0] <= (end - start).days <= QUARTER_DAYS[1]:
+            quarters.append((end, str(item.get("filed") or ""), item))
+    if not quarters:
+        return None
+    latest_end, _, latest = max(quarters, key=lambda q: (q[0], q[1]))
+    prior = [q for q in quarters if q[2].get("tag") == latest.get("tag") and abs((latest_end - q[0]).days - 365) <= 15]
+    if not prior:
+        return None
+    base_value = _finite(max(prior, key=lambda q: q[1])[2].get("value"))
+    if not base_value or base_value <= 0:
+        return None
+    return {"value": _finite(latest["value"]) / base_value - 1, "kind": "latest_quarter_yoy",
+            "numerator": _operand(latest), "denominator": _operand(max(prior, key=lambda q: q[1])[2])}
+
+
+def profit_display(entries: Mapping[str, Any], *, quarter_growth: Mapping[str, Any] | None, clock: datetime,
+                   max_age_seconds: float) -> tuple[str, dict[str, Any]]:
+    """The profit summary users see, with what was shown and what was withheld and why.
+
+    A displayed metric is a current-state company claim: its filing must be inside the evidence window
+    (minus the report carry margin), numerator and denominator must cover the same period, and a margin
+    cannot exceed 100% (a revenue-subset denominator, e.g. ASC 606 revenue of an insurer, is refused)."""
+    displayed: dict[str, Any] = {}
+    withheld: dict[str, str] = {}
+
+    def fresh(operand: Mapping[str, Any] | None) -> bool:
+        filed = _day((operand or {}).get("filed"))
+        if filed is None:
+            return False
+        age = (clock - datetime(filed.year, filed.month, filed.day, tzinfo=timezone.utc)).total_seconds()
+        return -300 <= age <= max_age_seconds
+
+    if quarter_growth and fresh(quarter_growth["numerator"]) and abs(quarter_growth["value"]) <= 10:
+        displayed["revenue_growth"] = dict(quarter_growth)
+    else:
+        entry = entries.get("revenue_growth") or {}
+        if entry.get("status") == "AVAILABLE" and entry.get("value") is not None and fresh(entry.get("numerator")):
+            displayed["revenue_growth"] = {"value": entry["value"], "kind": "annual", "numerator": entry["numerator"],
+                                           "denominator": entry["denominator"]}
+        else:
+            withheld["revenue_growth"] = ("STALE_FILING" if entry.get("status") == "AVAILABLE" or quarter_growth
+                                          else str(entry.get("status") or "MISSING_OPERAND"))
+    for name in ("operating_margin", "net_margin"):
+        entry = entries.get(name) or {}
+        value, numerator, denominator = entry.get("value"), entry.get("numerator") or {}, entry.get("denominator") or {}
+        if entry.get("status") != "AVAILABLE" or value is None:
+            withheld[name] = str(entry.get("status") or "MISSING_OPERAND")
+        elif abs(value) > 1.0:
+            withheld[name] = "IMPLAUSIBLE_MARGIN_OVER_100_PERCENT"
+        elif (numerator.get("start"), numerator.get("end")) != (denominator.get("start"), denominator.get("end")):
+            withheld[name] = "PERIOD_MISMATCH"
+        elif not fresh(numerator):
+            withheld[name] = "STALE_FILING"
+        else:
+            displayed[name] = {"value": value, "kind": "reported_period", "numerator": numerator, "denominator": denominator}
+    filed = [str(item["numerator"].get("filed")) for item in displayed.values() if item["numerator"].get("filed")]
+    text = profit_summary({name: item["value"] for name, item in displayed.items()})
+    return text, {"displayed": displayed, "withheld": withheld, "claim_filed_at": min(filed) if filed else None}
+
+
 def translate_industry(value: str) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -296,7 +379,7 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
           financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None,
           require_known_acquisition: bool = False, translate: Callable[[str], str | None] | None = None,
           business_profile_sink: dict | None = None, profile_fetch: Callable[[str], bytes] | None = None,
-          profile_cache_root: Path | None = None) -> dict[str, Any]:
+          profile_cache_root: Path | None = None, profit_display_sink: dict | None = None) -> dict[str, Any]:
     from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
     precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
     precision_used = False
@@ -310,6 +393,10 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
     http = base.session()
     reference = base.sec_reference(policy, http, headers)
     cutoff = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    cutoff_clock = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
+    from v213_evidence_policy import load_policy, report_freshness
+    claim_max_age_seconds = (float(load_policy()["current_state_claim_max_age_days"]) * 86400
+                             - report_freshness()["report_max_age_hours"] * 3600)
 
     rows: list[dict[str, Any]] = []
     for item in top20:
@@ -319,6 +406,7 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
         if return_evidence_sink is not None:
             return_evidence_sink[ticker] = observation
         metrics: dict[str, Any] = {}
+        records: list = []
         receipt: dict[str, Any] = {}
         financial: dict[str, Any] = {"status": "NO_OFFICIAL_IDENTITY", "publication_eligible": False}
         official = reference.get(ticker)
@@ -361,6 +449,16 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 business = None  # label-only industry; the failure stays visible in the sidecar
         if business_profile_sink is not None:
             business_profile_sink[ticker] = business
+        # Displayed profit metrics are current-state company claims: filed inside the evidence window
+        # (minus the carry margin), same-period operands, margins within 100%; the rest is withheld with a reason.
+        if financial.get("status") == "CANDIDATE_NOT_PUBLICATION_QUALIFIED" and isinstance(financial.get("metrics"), dict):
+            summary_text, display = profit_display(financial["metrics"], quarter_growth=latest_quarter_growth(records),
+                                                   clock=cutoff_clock, max_age_seconds=claim_max_age_seconds)
+        else:
+            summary_text, display = profit_summary(metrics), {"displayed": {}, "withheld": {"all": str(financial.get("status"))},
+                                                              "claim_filed_at": None}
+        if profit_display_sink is not None:
+            profit_display_sink[ticker] = display
         row = {
             "schema_version": 2,
             "rank": int(item["rank"]),
@@ -368,7 +466,7 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             "long_term_return_pct": None if long_term is None else round(long_term * 100, 2),
             "short_term_return_pct": None if short_term is None else round(short_term * 100, 2),
             "industry": industry[:100],
-            "profit_summary": profit_summary(metrics),
+            "profit_summary": summary_text,
             "long_term_window": "2y_cagr",
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
@@ -536,8 +634,9 @@ def main() -> int:
         financial_output = args.financial_evidence_output or args.output.with_name(args.output.stem + ".financial-evidence-candidate.json")
         products_output = args.financial_products_output or args.output.with_name(args.output.stem + ".financial-products-candidate.json")
         profile_output = args.business_profile_output or args.output.with_name(args.output.stem + ".business-profile-candidate.json")
+        display_output = args.output.with_name(args.output.stem + ".profit-display-candidate.json")
         destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve(),
-                        profile_output.resolve()]
+                        profile_output.resolve(), display_output.resolve()]
         if len(set(destinations)) != len(destinations):
             raise Top20ReportError("Report and evidence paths must differ")
         from debt_source_precision import read_bundle
@@ -546,6 +645,7 @@ def main() -> int:
         financials: dict[str, Any] = {}
         options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
         profiles: dict[str, Any] = {}
+        displays: dict[str, Any] = {}
         translator = None
         if args.business_profile:
             try:
@@ -554,7 +654,7 @@ def main() -> int:
                 translator = None  # label-only industry; never a cloud or paid fallback
         document = build(return_evidence_sink=observations, financial_evidence_sink=financials,
                          require_known_acquisition=args.require_known_acquisition, translate=translator,
-                         business_profile_sink=profiles, **options)
+                         business_profile_sink=profiles, profit_display_sink=displays, **options)
         report_body = json_bytes(document)
         financial_document = {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
@@ -583,6 +683,13 @@ def main() -> int:
             "source": "SEC EDGAR latest annual report, Item 1 / Item 4",
             "translation": "local loopback model; phrase validated against the source sentence",
             "records": profiles,
+        })
+        atomic_write(display_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "generated_at": document["generated_at"],
+            "rule": "displayed metric = filed within the current-state window minus the report carry margin, "
+                    "same-period operands, margin within 100%; revenue growth = latest quarter versus the same quarter a year earlier",
+            "records": displays,
         })
         atomic_write(products_output, products)
         verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes(), precision_bundle=precision_raw)

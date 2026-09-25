@@ -22,7 +22,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from report_source_acquisition import SourceAcquisitionError, field_clock, utc_time, validate_report_acquisition
-from v213_evidence_policy import CLASS_POLICY_KEY, iso_z, load_policy, parse_time, policy_binding, window_days
+from v213_evidence_policy import CLASS_POLICY_KEY, iso_z, load_policy, parse_time, policy_binding, report_freshness, window_days
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_V212 = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
@@ -120,15 +120,26 @@ def _withheld_orders(evidence: Mapping[str, Any]) -> dict[str, Any]:
 
 NO_CURRENT_ORDERS = "未揭露（無可靠公開訂單數字）"
 NO_FUTURE_ORDER_ESTIMATE = "無可靠公開預估"
+NO_PROFIT_METRICS = "SEC 可用獲利指標不足"
+
+
+def _profit_claim_displayed(summary: Any) -> bool:
+    """The profit column shows at least one SEC metric (anything but the 'metrics insufficient' text)."""
+    return isinstance(summary, str) and bool(summary.strip()) and summary.strip() != NO_PROFIT_METRICS
 
 
 def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Mapping[str, str], *,
           require_known_acquisition: bool = False, return_evidence: Mapping[str, Any] | None = None,
-          report_notes: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Seven-field report with the two-anchor evidence contract the Worker enforces (top20-report.ts):
-    rows with a disclosed order claim are current_state_claim rows anchored at the disclosure date; rows
-    without one are market_observation rows anchored at their latest daily bar. A claim older than its
-    window is withheld (listed in ``report_notes``); a row with no dated anchor fails the build."""
+          profit_display: Mapping[str, Any] | None = None, report_notes: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Seven-field report with the two-anchor evidence contract the Worker enforces (top20-report.ts).
+
+    A row that displays a company current-state claim (a retained order disclosure, or a profit metric
+    from ``profit_display``: the v212 builder's display sidecar) is a current_state_claim anchored at the
+    oldest filing date behind those claims. Only a row that displays no company claim is a market_observation
+    anchored at its latest daily bar, which never certifies an SEC claim. Every window keeps the report carry
+    margin (report_max_age_hours) so a row accepted now is still inside its window when last re-sealed. An order
+    claim outside that is withheld (``report_notes``); a displayed profit claim without a filing date, or a row
+    without a dated anchor inside its window, fails the build."""
     # Orders can be acquired AFTER the five-field report. This is a new artifact
     # completion clock; it must never replace any operand's acquisition clock.
     completed_at = _completion_time()
@@ -152,8 +163,11 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
 
     evidence_by_ticker = {row["ticker"]: row for row in accepted}
     policy = load_policy()
-    claim_window = window_days("current_state_claim", policy) * 86400
+    margin = report_freshness()["report_max_age_hours"] * 3600
+    claim_window = window_days("current_state_claim", policy) * 86400 - margin
+    market_window = window_days("market_observation", policy) * 86400 - margin
     completed = utc_time(completed_at)
+    profit_claims = (profit_display or {}).get("records") or {}
     withheld: list[str] = []
     rows: list[dict[str, Any]] = []
     for rank, fresh_row in enumerate(fresh, 1):
@@ -188,12 +202,21 @@ def build(v212: Mapping[str, Any], baseline: Mapping[str, Any], top20_names: Map
         if (not isinstance(name, str) or not name.strip() or len(name.strip()) > 120
                 or "\r" in name or "\n" in name or "｜" in name):
             raise V213ScheduledReportError(f"TOP20_NAME_MISSING_OR_INVALID:{ticker}")
-        if no_order_claim:
-            evidence_class, anchor = "market_observation", _market_anchor(return_evidence, ticker)
+        claim_dates = [] if claim_anchor is None else [claim_anchor]
+        if _profit_claim_displayed(fresh_row.get("profit_summary")):
+            filed = parse_time((profit_claims.get(ticker) or {}).get("claim_filed_at"))
+            if filed is None:
+                raise V213ScheduledReportError(f"PROFIT_CLAIM_DATE_UNKNOWN:{ticker}")
+            claim_dates.append(filed)
+        if claim_dates:
+            evidence_class, anchor, limit = "current_state_claim", min(claim_dates), claim_window
         else:
-            evidence_class, anchor = "current_state_claim", iso_z(claim_anchor)
+            evidence_class, anchor, limit = "market_observation", parse_time(_market_anchor(return_evidence, ticker)), market_window
         if anchor is None:
             raise V213ScheduledReportError(f"EVIDENCE_ANCHOR_MISSING:{ticker}")
+        if not -300 <= (completed - anchor).total_seconds() <= limit:
+            raise V213ScheduledReportError(f"EVIDENCE_ANCHOR_OUTSIDE_WINDOW:{ticker}")
+        anchor = iso_z(anchor)
         record = {
             "schema_version": 2,
             "rank": rank,
@@ -321,18 +344,21 @@ def self_test() -> None:
         } for i, ticker in enumerate(reversed(tickers))]
     }
     names = {ticker: f"Synthetic Company {i}" for i, ticker in enumerate(tickers)}
-    returns = {"records": {ticker: {"windows": {"six_month": {"actual_end": "2026-09-01"}}} for ticker in tickers}}
-    result = build(v212, baseline, names, return_evidence=returns)
+    today = datetime.now(timezone.utc).date().isoformat()
+    returns = {"records": {ticker: {"windows": {"six_month": {"actual_end": today}}} for ticker in tickers}}
+    claims = {"records": {ticker: {"claim_filed_at": today} for ticker in tickers}}
+    result = build(v212, baseline, names, return_evidence=returns, profit_display=claims)
     assert [r["ticker"] for r in result["records"]] == tickers
     assert [r["name"] for r in result["records"]] == [f"Synthetic Company {i}" for i in range(20)]
-    assert all(r["evidence_class"] == "market_observation" and r["orders_state_as_of"] == "2026-09-01T00:00:00Z"
+    assert all(r["evidence_class"] == "current_state_claim" and r["orders_state_as_of"] == f"{today}T00:00:00Z"
                and r["test_only_admission"] is False for r in result["records"])
     assert result["evidence_capture_at"] == "2026-09-01T12:22:48Z" and result["freshness_policy"] == policy_binding()
     assert len(preview(result).splitlines()) == 21
     bad = dict(v212)
     bad["records"] = [dict(row) for row in v212["records"]]
     bad["records"][19]["ticker"] = "NEW"
-    for broken, kwargs in ((bad, {"return_evidence": returns}), (v212, {"return_evidence": {"records": {}}})):
+    for broken, kwargs in ((bad, {"return_evidence": returns, "profit_display": claims}),
+                           (v212, {"return_evidence": returns, "profit_display": {"records": {}}})):
         try:
             build(broken, baseline, names, **kwargs)
         except V213ScheduledReportError:
@@ -353,15 +379,18 @@ def main() -> int:
     parser.add_argument("--require-known-acquisition", action="store_true", help="Refuse unknown clocks before output writes; never grants publication authority")
     parser.add_argument("--return-evidence", type=Path, default=None,
                         help="Market return sidecar (latest daily bar anchors); default: <v212-report>.return-evidence-candidate.json")
+    parser.add_argument("--profit-display", type=Path, default=None,
+                        help="Displayed profit metrics with filing dates; default: <v212-report>.profit-display-candidate.json")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
     evidence_path = args.return_evidence or args.v212_report.with_name(args.v212_report.stem + ".return-evidence-candidate.json")
+    display_path = args.profit_display or args.v212_report.with_name(args.v212_report.stem + ".profit-display-candidate.json")
     notes: dict[str, Any] = {}
     report = build(_load(args.v212_report), _load(args.baseline), _load_names(args.top20),
                    require_known_acquisition=args.require_known_acquisition, return_evidence=_load(evidence_path),
-                   report_notes=notes)
+                   profit_display=_load(display_path) if display_path.exists() else None, report_notes=notes)
     text = preview(report)
     atomic_text(args.output, json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n")
     atomic_text(args.preview, text + "\n")
