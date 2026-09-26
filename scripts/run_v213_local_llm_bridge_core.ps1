@@ -633,16 +633,16 @@ if ($runtimeProfile) {
     $Model = [string]$runtimeProfile.model
 }
 $llama = Resolve-Llama
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and [string]::IsNullOrWhiteSpace($Model)) { $Model = 'qwen38-q6' }
+# Operator 2026-09-26: without a profile the model is -Model, else the saved selection (launcher or desktop model
+# selector), else the preferred id, else the only model served; a changed port or model is auto-detected. The Worker
+# accepts the route's model when LOCAL_LLM_MODEL_FROM_ROUTE is on and refuses the route otherwise.
 $discovered = Resolve-ModelWithDiscovery $llama $Model
 $llama = [string]$discovered.base
 $modelResolution = $discovered.resolution
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-# A validated profile owns the exact model in the new lane. Keep the retained
-# Q6 restriction for unprofiled callers; Test-SelectedModelRoute below rechecks
-# profile agreement and requires a complete response with exact identity.
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile -and $Model -cne 'qwen38-q6') { throw 'FREE_RELAY_LEGACY_MODEL_MISMATCH' }
+# A validated profile owns the exact model; Test-SelectedModelRoute below rechecks profile agreement and requires a
+# complete response with the exact served identity before the gateway or a route is started.
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
 $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGatewaySecret -HmacSecret ([string]$freeRelayConfiguration.hmac_secret) -Generation $routeGeneration } else { Random-Secret }
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET

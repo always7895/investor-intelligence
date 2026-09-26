@@ -94,6 +94,25 @@ describe("v213 bounded query-aware public context", () => {
     expect(answer).toContain("sec_edgar");
     expect(compactCompletionBody({ messages: [{ role: "user", content: "PUBLIC_REPORT\nII_V213_COMPACT_CONTEXT_V1:{}" }] })).toBeNull();
   });
+  it("uses the free-relay route's model end to end when the Worker follows the route (operator 2026-09-26)", async () => {
+    const { env } = runtime();
+    const bodies: any[] = [];
+    const native = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: bodies.length === 1 ? "公開證據僅支持特定主張。" : SMOKE_MARKER } }],
+        ii_exact_model_pin: { selected_model: "Qwen3.8-27B", request_model_substitution_allowed: false } }));
+    });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => v213RuntimeCompatibleFetch(native as typeof fetch, input, init));
+    const following = { ...env, LOCAL_LLM_MODEL: "Qwen3.8-27B", LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    await compactGeneralAnswer(following, parseQuery("NVDA有哪些需要驗證的風險？"), { tenantId: "synthetic", chatType: "group" });
+    expect(bodies[0].model).toBe("Qwen3.8-27B");
+    expect(bodies[0].ii_context_mode).toBe("compact_public_v1");
+    expect(JSON.stringify(bodies[0])).not.toContain("route_model");  // consumed by the compact rewrite, never sent
+    expect(await minimalModelSmoke(following)).toBe(true);
+    expect(bodies[1].model).toBe("Qwen3.8-27B");
+    // Without the switch the policy model stays pinned and a different LOCAL_LLM_MODEL is refused.
+    await expect(minimalModelSmoke({ ...env, LOCAL_LLM_MODEL: "Qwen3.8-27B" })).rejects.toThrow("MODEL_CONFIG_INVALID");
+  });
   it("smoke uses fixed minimal input and NEVER reads public or private storage", async () => {
     const { env } = runtime(); const { bodies } = transport(SMOKE_MARKER);
     const forbidden = { get() { throw new Error("SMOKE_STORAGE_ACCESS_FORBIDDEN"); } } as unknown as KVNamespace;

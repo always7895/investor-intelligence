@@ -146,10 +146,11 @@ function Invoke-RestMethod {
  $request=[Text.Encoding]::UTF8.GetString([byte[]]$Body)|ConvertFrom-Json
  if($script:ProfileActive){
   if($request.model-cne'profile-model-test'-or$request.max_tokens-ne128-or$request.chat_template_kwargs.enable_thinking-ne$true-or$request.reasoning_effort-cne'xhigh'-or$TimeoutSec-ne18){throw 'PROFILE_PROBE_INVALID'}
- }elseif($request.model-cne'qwen38-q6'-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
+ }elseif($request.model-cne$script:ExpectedModel-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
  return $script:Response
 }
 $preferredModel='qwen38-q6'
+$script:ExpectedModel='qwen38-q6'
 $canonical='canonical-q6-測試'
 $script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
 $resolved=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'
@@ -212,11 +213,19 @@ $script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
 $script:Response=@{model=$canonical;choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
 . $startup
 if($Model-cne'qwen38-q6'){throw 'LEGACY_STARTUP_MODEL_CHANGED'}
+# Operator 2026-09-26: an unprofiled relay publishes the served model it verified (the Worker decides whether to
+# follow it); a model the server does not serve is still refused before anything starts.
 $Model='profile-model-test'
+$script:ExpectedModel='profile-model-test'
 $script:Catalog=$profileCatalog
+$script:Response=@{model='profile-model-test';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+. $startup
+if($Model-cne'profile-model-test'){throw 'UNPROFILED_SERVED_MODEL_NOT_USED'}
+$Model='never-served-model'
+$LlamaBaseUrl='http://127.0.0.1:1'
 $failure=''
 try{. $startup}catch{$failure=$_.Exception.Message}
-if($failure-cne'FREE_RELAY_LEGACY_MODEL_MISMATCH'){throw 'UNPROFILED_FREE_RELAY_MODEL_ACCEPTED'}
+if(-not$failure){throw 'UNSERVED_MODEL_ACCEPTED'}
 Write-Output 'BRIDGE_SHARED_IDENTITY=PASS; startup_profile=PASS; no_network=true; no_mutation=true'
 '''.replace('ROOT_VALUE', quote(ROOT)).replace('PYTHON_VALUE', quote(sys.executable))
         with tempfile.TemporaryDirectory(prefix='Bridge 身分 (1) ') as directory:

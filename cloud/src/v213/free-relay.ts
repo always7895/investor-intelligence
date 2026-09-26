@@ -7,6 +7,9 @@ export interface FreeRelayEnv {
   FREE_RELAY_ENABLED?: string;
   FREE_RELAY_MAX_TTL_SECONDS?: string;
   LOCAL_LLM_MODEL?: string;
+  /** Operator 2026-09-26: "true" lets the model named in the HMAC-authenticated route (the one the local bridge
+   * detected and verified) be used, so a changed local model needs no Worker change. A model profile still pins. */
+  LOCAL_LLM_MODEL_FROM_ROUTE?: string;
 }
 
 export interface FreeRelayRouteRecord {
@@ -55,8 +58,20 @@ function maxTtlSeconds(env: FreeRelayEnv): number {
   return Math.max(60, Math.min(600, Number.isFinite(configured) ? configured : 300));
 }
 
-function expectedModel(env: FreeRelayEnv): string {
-  return (configuredModelProfile(env)?.model ?? env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
+/** The model a route must name; null when the route's own (authenticated) model is accepted. */
+function expectedModel(env: FreeRelayEnv): string | null {
+  const profile = configuredModelProfile(env);
+  if (!profile && modelFromRoute(env)) return null;
+  return (profile?.model ?? env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
+}
+
+export function modelFromRoute(env: Pick<FreeRelayEnv, "LOCAL_LLM_MODEL_FROM_ROUTE">): boolean {
+  return enabled(env.LOCAL_LLM_MODEL_FROM_ROUTE);
+}
+
+function modelAccepted(env: FreeRelayEnv, model: string): boolean {
+  const expected = expectedModel(env);
+  return MODEL_RE.test(model) && (expected === null || model === expected);
 }
 
 function routeUrl(value: string): URL | null {
@@ -102,7 +117,7 @@ export function parseFreeRelayRoute(
   if (
     route.schema_version !== 1 || route.tunnel_mode !== "quick_free_relay" ||
     route.health_schema_version !== 2 || route.consecutive_health_checks !== 3 ||
-    typeof route.model !== "string" || !MODEL_RE.test(route.model) || route.model !== expectedModel(env) ||
+    typeof route.model !== "string" || !modelAccepted(env, route.model) ||
     typeof route.route_generation !== "string" || !GENERATION_RE.test(route.route_generation) ||
     !url || !Number.isFinite(connected) || !Number.isFinite(expires) ||
     connected > nowMs + 30_000 || expires <= nowMs + 15_000 ||
@@ -259,7 +274,8 @@ export async function currentFreeRelayRoute(env: FreeRelayEnv): Promise<FreeRela
   }
   if (!response.ok) return null;
   const route = await response.json<StoredRoute>().catch(() => null);
-  if (!route || Date.parse(route.expires_at) <= Date.now() || route.model !== expectedModel(env) || !routeUrl(route.public_url)) return null;
+  if (!route || Date.parse(route.expires_at) <= Date.now() || typeof route.model !== "string" || !modelAccepted(env, route.model)
+    || !routeUrl(route.public_url)) return null;
   return route;
 }
 

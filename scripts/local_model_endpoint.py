@@ -17,7 +17,9 @@ and no family match give no automatic choice. The best match wins across servers
 the earlier server wins a tie. The result names the served id, so callers verify replies against the model that is
 actually loaded and label it; nothing is substituted silently.
 
-CLI: python scripts/local_model_endpoint.py [--want MODEL] [--base URL] -> one JSON line; exit 0 when found, 3 when not.
+CLI: python scripts/local_model_endpoint.py [--want MODEL] [--base URL] [--all] -> one JSON line; exit 0 when found,
+3 when not. --all also scans every loopback listener and lists all servers (scripts/select_local_model.ps1 uses it to
+let the operator pick one of several models; the pick is saved as the launcher selection, which every caller wants first).
 """
 from __future__ import annotations
 
@@ -166,7 +168,7 @@ def candidate_bases(explicit: str = "") -> list[str]:
 
 
 def resolve(want: str = "", base: str = "", *, catalog_reader: Callable[[str], list[dict[str, Any]] | None] = read_catalog,
-            listeners: Callable[[], list[int]] = listening_ports) -> dict[str, Any]:
+            listeners: Callable[[], list[int]] = listening_ports, scan_all: bool = False) -> dict[str, Any]:
     wanted = [want, os.getenv("II_LOCAL_LLM_MODEL", ""), saved_selection()["model"], configured_reasoner()["model"]]
     wanted = [model for index, model in enumerate(wanted) if model and model not in wanted[:index]]
     bases = candidate_bases(base)
@@ -186,7 +188,7 @@ def resolve(want: str = "", base: str = "", *, catalog_reader: Callable[[str], l
                 best = {"base_url": server, "model": choice[0], "match": choice[1]}
 
     scan(bases)
-    if best is None or best["match"] != "exact":
+    if scan_all or best is None or best["match"] != "exact":
         extra = [f"http://127.0.0.1:{port}" for port in listeners() if port not in NEVER_PROBED]
         extra = [server for server in extra if server not in bases][:MAX_LISTENERS]
         scan(extra)
@@ -203,8 +205,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--want", default="")
     parser.add_argument("--base", default="")
+    parser.add_argument("--all", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
-    result = resolve(args.want, args.base)
+    result = resolve(args.want, args.base, scan_all=args.all)
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     return 0 if "error" not in result else 3
 

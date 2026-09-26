@@ -4,6 +4,7 @@ import { generalAnswer, type QaEnv, type RequestContext } from "../qa";
 import { type ParsedQuery } from "../core";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { modelFromRoute } from "./free-relay";
 
 export const COMPACT_CONTEXT_MARKER = "II_V213_COMPACT_CONTEXT_V1:";
 export const COMPACT_MODE = "compact_public_v1";
@@ -15,6 +16,15 @@ export const MAX_COMPACT_CONTEXT_CHARS = policy.max_context_chars;
 export const MAX_MODEL_OUTPUT_TOKENS = policy.max_output_tokens;
 
 type Obj = Record<string, unknown>;
+type RouteModelEnv = { LOCAL_LLM_MODEL?: string; LOCAL_LLM_MODEL_FROM_ROUTE?: string };
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$/;
+
+/** The model the free-relay route named (free-relay.ts puts it in LOCAL_LLM_MODEL) when the Worker follows the
+ * route's model (LOCAL_LLM_MODEL_FROM_ROUTE); otherwise undefined and the policy model applies. */
+function routeModel(env: RouteModelEnv): string | undefined {
+  const model = (env.LOCAL_LLM_MODEL ?? "").trim();
+  return modelFromRoute(env) && MODEL_RE.test(model) ? model : undefined;
+}
 function obj(raw: unknown): Obj { return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Obj : {}; }
 function list(raw: unknown): Obj[] { return Array.isArray(raw) ? raw.map(obj) : []; }
 function text(raw: unknown, max: number): string { return typeof raw === "string" ? raw.slice(0, max) : ""; }
@@ -78,10 +88,12 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now?:
 /** Only the public context view is replaced; the certified privacy checks,
  * tenant history, encryption, freshness gate and answer persistence still run.
  */
-export async function compactGeneralAnswer(env: QaEnv & ModelProfileEnv, query: ParsedQuery, context: RequestContext): Promise<string> {
+export async function compactGeneralAnswer(env: QaEnv & ModelProfileEnv & RouteModelEnv, query: ParsedQuery, context: RequestContext): Promise<string> {
   const profile = configuredModelProfile(env);
+  const route = profile ? undefined : routeModel(env);
   const data = await compactPublicContext(env, query);
-  const report = COMPACT_CONTEXT_MARKER + JSON.stringify({ ...data, ...(profile ? { runtime_model_profile: profile } : {}) });
+  const report = COMPACT_CONTEXT_MARKER + JSON.stringify({ ...data, ...(profile ? { runtime_model_profile: profile } : {}),
+    ...(route ? { route_model: route } : {}) });
   const view = { async get(key: string) {
     if (key === "reports:latest") return report;
     if (key === "last_successful_pipeline_timestamp") return data.as_of ?? null;
@@ -108,21 +120,25 @@ export function compactCompletionBody(raw: unknown): Obj | null {
   try { data = obj(JSON.parse(system.slice(index + marker.length))); } catch { throw new Error("V213_COMPACT_CONTEXT_INVALID"); }
   const profile = data.runtime_model_profile === undefined ? undefined : validateModelProfile(data.runtime_model_profile);
   delete data.runtime_model_profile;
-  if (body.model !== (profile?.model ?? policy.model)) throw new Error('V213_COMPACT_MODEL_MISMATCH');
+  // Placed by compactGeneralAnswer only, from the authenticated free-relay route.
+  const route = typeof data.route_model === "string" && MODEL_RE.test(data.route_model) ? data.route_model : undefined;
+  delete data.route_model;
+  const model = profile?.model ?? route ?? policy.model;
+  if (body.model !== model) throw new Error('V213_COMPACT_MODEL_MISMATCH');
   if (data.v !== 1 || JSON.stringify(data).length > MAX_COMPACT_CONTEXT_CHARS) throw new Error("V213_COMPACT_CONTEXT_INVALID");
   const last = messages.at(-1);
   if (last?.role !== "user" || typeof last.content !== "string" || last.content.length > 360) throw new Error("V213_COMPACT_QUERY_INVALID");
   // Bounded opt-in history remains tenant-isolated; never concatenate all turns.
   const history = messages.slice(1, -1).filter((m) => ["user", "assistant"].includes(String(m.role)))
     .slice(-2).map((m) => ({ role: m.role, content: text(m.content, 120) }));
-  return { model: profile?.model ?? policy.model, ...(profile ? { ii_model_profile: profile } : {}), messages: [{ role: "system", content: COMPACT_RULES + "\nDATA=" + JSON.stringify(data) }, ...history, last],
+  return { model, ...(profile ? { ii_model_profile: profile } : {}), messages: [{ role: "system", content: COMPACT_RULES + "\nDATA=" + JSON.stringify(data) }, ...history, last],
     temperature: 0.2, max_tokens: profile?.max_output_tokens ?? MAX_MODEL_OUTPUT_TOKENS, stream: false, cache_prompt: true, ii_context_mode: COMPACT_MODE };
 }
 
 /** Minimal transport probe, independent of snapshot size and research context. */
-export async function minimalModelSmoke(env: QaEnv & ModelProfileEnv): Promise<boolean> {
+export async function minimalModelSmoke(env: QaEnv & ModelProfileEnv & RouteModelEnv): Promise<boolean> {
   const profile = configuredModelProfile(env);
-  const selected = profile?.model ?? policy.model;
+  const selected = profile?.model ?? routeModel(env) ?? policy.model;
   if ((!profile && env.LOCAL_LLM_MODEL !== selected) || !env.LOCAL_LLM_BASE_URL || !env.LOCAL_LLM_SHARED_SECRET) throw new Error("FREE_RELAY_SMOKE_MODEL_CONFIG_INVALID");
   const endpoint = new URL("/v1/chat/completions", env.LOCAL_LLM_BASE_URL);
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.port ||
