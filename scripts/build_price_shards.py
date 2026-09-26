@@ -7,6 +7,8 @@
 - Sweden: Nasdaq Nordic share screener, Stockholm Main Market and First North (last sale, change; no trade date in
   the feed, so the retrieval date is shown as such);
 - Euronext: Paris, Amsterdam, Brussels and Milan equities download (closing price and its date).
+- Japan and Korea (no free official bulk price file): Yahoo Finance daily closes for the common stocks in the identity
+  shards, batched, at most once per --yahoo-every-hours (default 20); labelled unofficial, with each row's own date.
 
 Output data/cache/price_shards_latest.json: {"schema": "v213-price-shard-v1", "generated_at", "shards": {MARKET: {"schema",
 "market", "generated_at", "sources": [{id, url, retrieved_at, sha256, rows}], "rows": {KEY: [price, change_pct|null,
@@ -31,6 +33,11 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "cache" / "price_shards_latest.json"
+IDENTITY = ROOT / "data" / "cache" / "identity_shards_latest.json"
+YAHOO_URL = "https://finance.yahoo.com/"
+YAHOO_MARKETS = {"JAPAN": {"TSE": "T"}, "KOREA": {"KRX": "KS", "KOSDAQ": "KQ"}}
+YAHOO_MINIMUM = {"JAPAN": 2000, "KOREA": 1200}
+YAHOO_BATCH = 400
 SCHEMA = "v213-price-shard-v1"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) InvestorIntelligence public price directory"
 FEEDS = {
@@ -170,10 +177,56 @@ def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any
     return {"schema": SCHEMA, "generated_at": stamp, "failed": failed, "shards": shards}
 
 
+def yahoo_symbols(identity: Path = IDENTITY) -> dict[str, dict[str, str]]:
+    """{market: {yahoo_symbol: identity_symbol}} for the common stocks of the Yahoo-priced markets."""
+    document = json.loads(identity.read_bytes().decode("utf-8"))
+    out: dict[str, dict[str, str]] = {market: {} for market in YAHOO_MARKETS}
+    for shard in document["symbol_shards"].values():
+        for row in shard["rows"]:
+            suffix = YAHOO_MARKETS.get(row[2], {}).get(row[1])
+            if suffix and row[6] == "COMMON_STOCK":
+                out[row[2]][f"{row[0]}.{suffix}"] = row[0]
+    return out
+
+
+def yahoo_shard(market: str, symbols: dict[str, str], now: datetime, download: Callable[..., Any] | None = None) -> dict[str, Any] | None:
+    """Daily closes in batches; a row carries its own last trade date and the change from the prior close."""
+    if download is None:
+        import yfinance as yf
+        download = yf.download
+    stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    currency = "JPY" if market == "JAPAN" else "KRW"
+    rows: dict[str, list[Any]] = {}
+    names = sorted(symbols)
+    for start in range(0, len(names), YAHOO_BATCH):
+        batch = names[start:start + YAHOO_BATCH]
+        try:
+            data = download(batch, period="7d", interval="1d", group_by="column", threads=True, progress=False, auto_adjust=False)
+            close = data["Close"]
+        except Exception:  # noqa: BLE001 - a failed batch leaves those rows out
+            continue
+        for yahoo in batch:
+            if yahoo not in getattr(close, "columns", []):
+                continue
+            series = close[yahoo].dropna()
+            if series.empty or not float(series.iloc[-1]) > 0:
+                continue
+            last = float(series.iloc[-1])
+            prior = float(series.iloc[-2]) if len(series) > 1 else None
+            rows[symbols[yahoo]] = [round(last, 4), round((last / prior - 1) * 100, 3) if prior else None,
+                                    str(series.index[-1].date()), currency, 0]
+    if len(rows) < YAHOO_MINIMUM[market]:
+        return None
+    return {"schema": SCHEMA, "market": market, "generated_at": stamp,
+            "sources": [{"id": "yahoo-daily-close", "url": YAHOO_URL, "retrieved_at": stamp, "sha256": hashlib.sha256(
+                json.dumps(rows, sort_keys=True).encode("utf-8")).hexdigest(), "rows": len(rows)}], "rows": rows}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--if-older-than-hours", type=float, default=0.0)
+    parser.add_argument("--yahoo-every-hours", type=float, default=20.0)
     args = parser.parse_args(argv)
     now = datetime.now(timezone.utc)
     previous: dict[str, Any] | None = None
@@ -190,6 +243,24 @@ def main(argv: list[str] | None = None) -> int:
     except PriceShardError as error:
         print(json.dumps({"status": "FAILED", "error": str(error)}))
         return 1
+    # Japan and Korea at most once per --yahoo-every-hours; a younger previous shard is kept as it is.
+    try:
+        wanted = yahoo_symbols()
+    except (OSError, ValueError, KeyError, TypeError):
+        wanted = {}
+    for market, symbols in wanted.items():
+        kept = ((previous or {}).get("shards") or {}).get(market)
+        try:
+            kept_age = (now - datetime.strptime(kept["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
+        except (TypeError, KeyError, ValueError):
+            kept_age = None
+        if kept_age is not None and kept_age < args.yahoo_every_hours:
+            continue
+        shard = yahoo_shard(market, symbols, now)
+        if shard:
+            document["shards"][market] = shard
+        else:
+            document["failed"].append(f"yahoo-{market.lower()}:TOO_SMALL")
     # A market whose feed failed this run keeps its previous shard (with its own, older generated_at).
     for market, shard in ((previous or {}).get("shards") or {}).items():
         document["shards"].setdefault(market, shard)

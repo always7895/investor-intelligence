@@ -45,7 +45,7 @@ const PRICE_MAX_AGE_MS = 4 * 86400_000;  // Friday's close is still the latest o
 const PRICE_SOURCE_LABEL: Record<string, string> = {
   "nasdaq-us-screener": "Nasdaq 股票篩選器（延遲）", "twse-day-all": "臺灣證交所每日收盤", "tpex-daily-close": "櫃買中心每日收盤",
   "nasdaq-stockholm-main": "Nasdaq Nordic 斯德哥爾摩（延遲）", "nasdaq-stockholm-first-north": "Nasdaq Nordic First North（延遲）",
-  "euronext-equities": "Euronext 收盤",
+  "euronext-equities": "Euronext 收盤", "yahoo-daily-close": "Yahoo Finance 日收盤（非官方）",
 };
 
 /** The delayed daily price of any listed identity from its market's sealed price shard (scripts/build_price_shards.py,

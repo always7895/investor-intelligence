@@ -84,5 +84,22 @@ class PriceShardTests(unittest.TestCase):
         self.assertEqual(json.loads(bodies["v213:prices:v1:TAIWAN"])["rows"]["2059"][0], 12350.0)
 
 
+class YahooShardTests(unittest.TestCase):
+    def test_japan_rows_carry_their_own_date_and_change(self):
+        import pandas as pd
+        symbols = {f"{1000 + i}.T": str(1000 + i) for i in range(2100)}
+        index = pd.to_datetime(["2026-09-24", "2026-09-25"])
+
+        def download(batch, **_):
+            columns = {name: [100.0, 101.0] for name in batch if name != "1005.T"}
+            columns["1005.T"] = [float("nan"), float("nan")]  # no price: no row
+            return pd.concat({"Close": pd.DataFrame(columns, index=index)}, axis=1)
+        shard = prices.yahoo_shard("JAPAN", symbols, datetime(2026, 9, 26, 1, tzinfo=timezone.utc), download)
+        self.assertEqual(shard["rows"]["1000"], [101.0, 1.0, "2026-09-25", "JPY", 0])
+        self.assertNotIn("1005", shard["rows"])
+        self.assertEqual(shard["sources"][0]["id"], "yahoo-daily-close")
+        self.assertIsNone(prices.yahoo_shard("KOREA", {"005930.KS": "005930"}, datetime(2026, 9, 26, tzinfo=timezone.utc), download))
+
+
 if __name__ == "__main__":
     unittest.main()

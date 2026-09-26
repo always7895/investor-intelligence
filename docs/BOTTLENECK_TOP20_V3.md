@@ -58,7 +58,10 @@ Stock lookup prices: the watch-universe quote (hourly) when present, otherwise t
 official bulk feeds (`scripts/build_price_shards.py`, every 3 h): Nasdaq stock screener (US, with its stated price
 date), TWSE STOCK_DAY_ALL and TPEx daily close (Taiwan, trade date), Nasdaq Nordic (Stockholm; no trade date in the
 feed, so the retrieval time is shown as such) and Euronext closing prices. Sealed as lazy `v213:prices:v1:<MARKET>`;
-the Worker ignores a shard older than 4 days. Japan, Korea and London listings are not yet covered.
+the Worker ignores a shard older than 4 days. Japan and Korea have no free official bulk price file: their common
+stocks get Yahoo Finance daily closes once a day (labelled unofficial, each row with its own date). London listings
+(for example IQE on AIM) are not yet in the identity directories: the exchange publishes its lists only through its
+web application.
 
 `TOP20` (v3 when sealed and fresh, else the seven-field Top20), `瓶頸詳情 代號`, `產業爆發榜`, `七欄Top20`.
 The Worker refuses a v3 document older than the report bound (14 h) and falls back rather than showing stale data.
