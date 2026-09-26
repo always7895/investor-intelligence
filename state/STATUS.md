@@ -28,7 +28,7 @@ Updated 2026-09-26 (15:00 Asia/Taipei) by an operator-directed Claude Code sessi
 | `e02a518` `eefa982` `6d6c49e` | Japan/Korea daily closes; name-cache checkpoints; London identities and prices; Samsung name tiebreak |
 | `ba8e52f` | Exchange names outrank sourced Chinese names; gate copies price shards with KV read retries |
 | `fdd35b6` | Options universe: 100 largest US listings and optionable Stockholm Large Caps (JEV screen); Stockholm keys carry .ST (AZN vs AZN.ST); Worker accepts share classes (VOLV B) |
-| this batch | Nasdaq historical corroboration restored (ISO query dates); read-only MCP servers `public_data_mcp.py` (SEC EDGAR, TWSE/TPEx monthly revenue) and `codex_review_mcp.py` (Codex CLI, read-only); [SOURCE_DIVERSITY_AUDIT](../docs/SOURCE_DIVERSITY_AUDIT.md) |
+| `1f717b5` | Nasdaq historical corroboration restored (ISO query dates); read-only MCP servers `public_data_mcp.py` (SEC EDGAR, TWSE/TPEx monthly revenue) and `codex_review_mcp.py` (Codex CLI, read-only); [SOURCE_DIVERSITY_AUDIT](../docs/SOURCE_DIVERSITY_AUDIT.md) |
 
 ## Latest gate run
 
@@ -37,7 +37,7 @@ Updated 2026-09-26 (15:00 Asia/Taipei) by an operator-directed Claude Code sessi
 
 ## Open lanes
 
-1. Production rollout of `fdd35b6` and this batch (Worker deploy, runtime reinstall, manual seal and post gate) awaits the operator's authorization in the current session. Deploy the Worker and reinstall back to back: the new Worker reads .ST keys, the old runtime still writes SIVE.
+1. Production rollout of `fdd35b6` and `1f717b5` (Worker deploy, runtime reinstall, manual seal and post gate) awaits the operator's authorization in the current session. Deploy the Worker and reinstall back to back: the new Worker reads .ST keys, the old runtime still writes SIVE.
 2. Source diversity ([SOURCE_DIVERSITY_AUDIT](../docs/SOURCE_DIVERSITY_AUDIT.md)): US option chains and the covered-call spot are Yahoo-only (Cboe rejected by the rights review; Nasdaq option chain needs its review), price and identity shards are single per market, Serenity signals single; stooq unreachable, hfmarketdata frozen at 2026-09-03.
 3. Company order estimates: only 3 of 16 sealed SEC reports have a disclosed RPO timing (NVDA, AMD, AVGO). Qwen inventory (verified: CRWV RPO $103.7B at 2026-06-30): RPO without XBRL timing also for CRWV, SNDK, MU, AXTI, NBIS (20-F); timing is in the filing text; Taiwan monthly revenue from TWSE `t187ap05_L` / TPEx `mopsfin_t187ap05_O` (5351 present, about the 17th); Korea needs a free OpenDART key (operator registration); Sivers IR unreachable.
 4. Worker audit items: aliases (排名/前20), the option phrasing "NVDA 期權" without a period, stale help texts, carousel packing guard, v3 validator for `news.ratio`.
@@ -60,6 +60,11 @@ Astra master; exact local Qwen sole tracked writer on the Pi lane; Sol independe
 
 Commits and normal pushes to `origin` (PR #37). Worker deployments `911fa6b2…`, `6a359ef1…`, `b9d270d5…`, `513b0444…` (operator authority; push off). Runtime reinstalls tx `7dc6bd2f…`, `2ac8cd52…`, `0abef62a…` (previous roots retained); runtime caches seeded from the source tree (Chinese names, identity, prices); one manual hourly-task start. Production public KV: sealed syncs `20260926T011233Z`, `20260926T014136Z` and the hourly runs (`--remote`; run keys 14-day TTL, blobs 30-day TTL). Read-only public calls: Wikidata SPARQL, Chinese Wikipedia API, Taiwan GCIS company registry, Nasdaq, TWSE, TPEx, Euronext, London Stock Exchange, Yahoo Finance. No credential, billing or broker change; no LINE push. 2026-09-26 afternoon (operator instructions): deleted the 12 `V213Runtime.old.*` roots and 8 `v213-previous-*.json` preimages (46,768 files, 6.19 GB; Gemini review APPROVE; live receipt and state hashes unchanged; `-RestorePrevious` now fails closed, rollback = reinstall from a commit); `.mcp.json` gained `public-data` and `chatgpt-codex` and lost `chatgpt-web` (preimages in `_archive/mcp-config-*`). Read-only public calls also to Cboe (one request, not used), Nasdaq option chain and historical APIs, SEC EDGAR, TWSE/TPEx OpenAPI.
 
-## Next action
+## Handoff (paused by the operator, 2026-09-26 15:05)
 
-Hourly seals on `ba8e52f` pass (13:12 `20260926T051233Z-3077c3754e1c`, post gate PASS). Next: the operator's go for the rollout (lane 1), then the Nasdaq option-chain rights review and the order-evidence adapters (lanes 2 and 3).
+- Safe checkpoint: everything committed and pushed (`1f717b5` on PR #37); production untouched by this session's code: Worker `513b0444…`, runtime `ba8e52f`, hourly task Ready (14:12 seal `20260926T061233Z-af4a81d255d3` post gate PASS, next 15:12).
+- Needs the operator: the rollout go (lane 1); optional free-key registrations (OpenDART for Korea); whether "Pro" reviews should use a higher Codex effort (max/ultra), since the Codex CLI has no Pro tier.
+- Herdr (workspace w9): `qwen-scout` w9:p6 idle and paused (no new dispatch); `gemini-review` w9:p7 idle. Reuse them; do not start a second Tabby model.
+- New MCP servers (`public-data`, `chatgpt-codex`) load in new Pi/Claude sessions only.
+- Scratch evidence (untracked): `%TEMP%\ii-live` (review requests and results, live options run) and `%TEMP%\ii-lanes` (Qwen order findings).
+- Resume order: lane 1 after the go (Worker deploy, reinstall from `1f717b5`, manual seal, post gate, replay probes incl. VOLV B and AZN.ST); lane 2 (Nasdaq option-chain rights review, then fallbacks); lane 3 (RPO-only filers, Taiwan monthly revenue).
