@@ -113,7 +113,8 @@ def listings(fetch: Fetch) -> list[dict[str, str]]:
     return rows
 
 
-def render_titles(titles: list[str], cache: dict[str, Any], fetch: Fetch, now: float, max_parse: int) -> int:
+def render_titles(titles: list[str], cache: dict[str, Any], fetch: Fetch, now: float, max_parse: int,
+                  checkpoint: Callable[[dict[str, Any]], None] | None = None) -> int:
     """zh-tw display title per article (the article's own conversion rules); cached for TITLE_TTL_SECONDS."""
     parsed = 0
     for title in titles:
@@ -129,6 +130,8 @@ def render_titles(titles: list[str], cache: dict[str, Any], fetch: Fetch, now: f
             continue
         cache[title] = {"tw": TAG.sub("", shown or "").strip() or None, "at": now}
         parsed += 1
+        if checkpoint and parsed % 200 == 0:
+            checkpoint(cache)  # a killed run keeps what it rendered
         time.sleep(0.05)
     return parsed
 
@@ -182,12 +185,13 @@ def names_for(symbols: list[str], identity_path: Path | None = None, names_path:
 
 
 def build(fetch: Fetch = http_get, now: datetime | None = None, cache: dict[str, Any] | None = None,
-          max_parse: int = 400, official: dict[str, list[str]] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+          max_parse: int = 400, official: dict[str, list[str]] | None = None,
+          checkpoint: Callable[[dict[str, Any]], None] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     now = now or datetime.now(timezone.utc)
     cache = {} if cache is None else cache
     rows = listings(fetch)
     titles = sorted({row["title"] for row in rows if row.get("title")})
-    parsed = render_titles(titles, cache, fetch, now.timestamp(), max_parse)
+    parsed = render_titles(titles, cache, fetch, now.timestamp(), max_parse, checkpoint)
     candidates: dict[str, set[tuple[str, str]]] = {}
     for row in rows:
         key = ticker_key(EXCHANGES[row["ex"].rsplit("/", 1)[1]], row["ticker"])
@@ -220,6 +224,13 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, cache: dict[str,
     return document, cache
 
 
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_bytes(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    temp.replace(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, default=OUTPUT)
@@ -242,15 +253,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
         return 0
     try:
-        document, cache = build(now=now, cache=cache, max_parse=args.max_parse)
+        document, cache = build(now=now, cache=cache, max_parse=args.max_parse, checkpoint=lambda value: write_json(TITLE_CACHE, value))
     except Exception as error:  # noqa: BLE001 - the last good file keeps serving
         print(json.dumps({"status": "FAILED", "error": f"{type(error).__name__}: {str(error)[:160]}"}))
         return 1
     for path, value in ((TITLE_CACHE, cache), (args.output, document)):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_name(path.name + ".tmp")
-        temp.write_bytes(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        temp.replace(path)
+        write_json(path, value)
     print(json.dumps({"status": "OK", **document["stats"]}))
     return 0
 
