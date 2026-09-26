@@ -21,11 +21,13 @@ BINDINGS = [
     {"ex": EX + "Q82059", "ticker": "MU", "title": "美光科技", "tw": "美光記憶台"},  # the article title beats a stray label
     {"ex": EX + "Q13677", "ticker": "AMD", "title": "AMD", "tw": "超微半導體"},  # Latin title: label fallback
     {"ex": EX + "Q13677", "ticker": "COHR", "title": "Coherent, Inc."},  # no Chinese anywhere
-    {"ex": EX + "Q495372", "ticker": "005930", "title": "三星電子"},
-    {"ex": EX + "Q495372", "ticker": "005930", "title": "三星集团"},  # two articles for one listing: ambiguous
+    {"ex": EX + "Q495372", "ticker": "005930", "title": "三星電子", "pub": "1"},
+    {"ex": EX + "Q495372", "ticker": "005930", "title": "三星集团"},  # a group item with the listed company's ticker
+    {"ex": EX + "Q495372", "ticker": "000001", "title": "甲公司"},
+    {"ex": EX + "Q495372", "ticker": "000001", "title": "乙公司"},  # two non-public candidates: ambiguous
     {"ex": EX + "Q217475", "ticker": "8035", "title": "東京威力科創股份有限公司"},
 ] + [{"ex": EX + "Q82059", "ticker": f"X{i}"} for i in range(1000)]
-DISPLAY = {"英伟达": "<span>輝達</span>", "美光科技": "美光科技", "AMD": "AMD", "Coherent, Inc.": "Coherent, Inc.",
+DISPLAY = {"英伟达": "<span>輝達</span>", "美光科技": "美光科技", "AMD": "AMD", "Coherent, Inc.": "Coherent, Inc.", "甲公司": "甲公司", "乙公司": "乙公司",
            "三星電子": "三星電子", "三星集团": "三星集團", "東京威力科創股份有限公司": "東京威力科創股份有限公司"}
 
 
@@ -46,7 +48,8 @@ class ZhNameTests(unittest.TestCase):
         self.assertEqual(names["US:MU"], ["美光科技", "ZHWIKI"])
         self.assertEqual(names["US:AMD"], ["超微半導體", "OFFICIAL"])
         self.assertNotIn("US:COHR", names)
-        self.assertNotIn("KOREA:005930", names)
+        self.assertEqual(names["KOREA:005930"], ["三星電子", "ZHWIKI"])
+        self.assertNotIn("KOREA:000001", names)
         self.assertEqual(document["stats"]["ambiguous_dropped"], 1)
         self.assertEqual(names["JAPAN:8035"], ["東京威力科創", "ZHWIKI"])  # legal-form suffix dropped
         self.assertIn("英伟达", cache)

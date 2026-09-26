@@ -36,7 +36,15 @@ EURONEXT = ("﻿Name;ISIN;Symbol;Market;Currency;Open;High;Low;Last;Time;TZ;Volu
             + "SOITEC;FR0013227113;SOI;Euronext Paris;EUR;1;1;1;143.10;x;CET;1;1;143.05;25/09/2026\n"
             + "".join(f"S{i};X;S{i};Euronext Paris;EUR;1;1;1;2;x;CET;1;1;2;25/09/2026\n" for i in range(800))
             + "OSLO;NO1;OSL;Oslo Børs;NOK;1;1;1;1;x;CET;1;1;1;25/09/2026\n").encode("utf-8")
-BODIES = {"nasdaq-us-screener": US, "twse-day-all": TWSE, "tpex-daily-close": TPEX,
+def lse(n: int, extra: list | None = None) -> bytes:
+    rows = (extra or []) + [{"tidm": f"L{i}", "issuername": f"LONDON {i} PLC", "description": f"LONDON {i} PLC ORD 1P",
+                             "category": "EQUITY", "currency": "GBX", "lastprice": 100 + i, "percentualchange": 0.5} for i in range(n)]
+    return json.dumps([{"content": [{"name": "priceexplorersearch", "value": {"content": rows}}]}]).encode()
+
+
+IQE = {"tidm": "IQE", "issuername": "IQE PLC", "description": "IQE PLC ORD 1P", "category": "EQUITY", "currency": "GBX",
+       "lastprice": 46.4, "percentualchange": 5.3348}
+BODIES = {"nasdaq-us-screener": US, "lse-main-market": lse(800), "lse-aim": lse(400, [IQE]), "twse-day-all": TWSE, "tpex-daily-close": TPEX,
           "nasdaq-stockholm-main": nordic(250, [{"symbol": "SIVE", "lastSalePrice": "32.78", "percentageChange": "1.2%",
                                                  "currency": "SEK", "assetClass": "SHARES"}]),
           "nasdaq-stockholm-first-north": nordic(150), "euronext-equities": EURONEXT}
@@ -60,6 +68,7 @@ class PriceShardTests(unittest.TestCase):
         self.assertEqual(shards["SWEDEN"]["rows"]["SIVE"], [32.78, 1.2, None, "SEK", 0])  # the feed states no trade date
         self.assertEqual(shards["EUROPE"]["rows"]["EURONEXT PARIS|SOI"], [143.05, None, "2026-09-25", "EUR", 0])
         self.assertNotIn("OSLO BØRS|OSL", shards["EUROPE"]["rows"])
+        self.assertEqual(shards["UK"]["rows"]["IQE"], [46.4, 5.3348, None, "GBX", 1])  # AIM is the second London source
 
     def test_a_failed_feed_drops_only_its_market(self):
         saved = BODIES["tpex-daily-close"]
@@ -80,7 +89,7 @@ class PriceShardTests(unittest.TestCase):
             path = Path(tmp) / "prices.json"
             path.write_text(json.dumps(document), encoding="utf-8")
             bodies = publisher.lazy_price_bodies(path, now)
-        self.assertEqual(sorted(bodies), ["v213:prices:v1:SWEDEN", "v213:prices:v1:TAIWAN", "v213:prices:v1:US"])
+        self.assertEqual(sorted(bodies), ["v213:prices:v1:SWEDEN", "v213:prices:v1:TAIWAN", "v213:prices:v1:UK", "v213:prices:v1:US"])
         self.assertEqual(json.loads(bodies["v213:prices:v1:TAIWAN"])["rows"]["2059"][0], 12350.0)
 
 

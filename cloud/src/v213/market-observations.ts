@@ -24,6 +24,7 @@ export function observationSymbol(record: Pick<GlobalIdentityRecord, "symbol" | 
   if (record.market === "SWEDEN") return `${base}.ST`;
   if (record.market === "TAIWAN") return `${base}.${record.venue.toUpperCase() === "TPEX" ? "TWO" : "TW"}`;
   if (record.market === "JAPAN") return `${base}.T`;
+  if (record.market === "UK") return `${base.replace(/\./g, "-")}.L`;
   if (record.market === "KOREA") return `${base}.${record.venue.toUpperCase() === "KOSDAQ" ? "KQ" : "KS"}`;
   const europe: Record<string, string> = { "EURONEXT PARIS": "PA", "EURONEXT AMSTERDAM": "AS", "EURONEXT BRUSSELS": "BR", "BORSA ITALIANA": "MI" };
   if (record.market === "EUROPE" && europe[record.venue.toUpperCase()]) return `${base}.${europe[record.venue.toUpperCase()]}`;
@@ -46,6 +47,7 @@ const PRICE_SOURCE_LABEL: Record<string, string> = {
   "nasdaq-us-screener": "Nasdaq 股票篩選器（延遲）", "twse-day-all": "臺灣證交所每日收盤", "tpex-daily-close": "櫃買中心每日收盤",
   "nasdaq-stockholm-main": "Nasdaq Nordic 斯德哥爾摩（延遲）", "nasdaq-stockholm-first-north": "Nasdaq Nordic First North（延遲）",
   "euronext-equities": "Euronext 收盤", "yahoo-daily-close": "Yahoo Finance 日收盤（非官方）",
+  "lse-main-market": "倫敦證交所主板（延遲）", "lse-aim": "倫敦證交所 AIM（延遲）",
 };
 
 /** The delayed daily price of any listed identity from its market's sealed price shard (scripts/build_price_shards.py,

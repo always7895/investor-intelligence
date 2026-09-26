@@ -13,7 +13,8 @@ Nothing here translates. A name is used only when a human-edited public source s
 Taiwan listings need none of this: the exchange directories are Chinese (build_identity_shards.py). A company with no
 such source has no Chinese name, and the readers say so explicitly instead of inventing one. Legal-form suffixes
 (股份有限公司, 有限公司, 公司) are dropped from Wikipedia titles; a candidate without a CJK ideograph is not a Chinese name.
-Two different candidates for one listing are ambiguous and dropped.
+Two different candidates for one listing are ambiguous: the one whose item is a public company (Wikidata Q891723) wins
+when it is the only such one (a group item sometimes carries its listed subsidiary's ticker); otherwise dropped.
 
 Output (data/cache/zh_names_latest.json): {"schema", "generated_at", "sources", "names": {"<MARKET>:<SYMBOL>":
 [name_zh, source]}} with MARKET as in the identity shards (US, JAPAN, KOREA, SWEDEN, EUROPE, UK, HK) and source one of
@@ -58,13 +59,14 @@ EXCHANGES = {
     "Q171240": "UK",       # London Stock Exchange
     "Q496672": "HK",       # Hong Kong Stock Exchange
 }
-QUERY = """SELECT ?item ?ticker ?ex ?title ?tw ?hant WHERE {
+QUERY = """SELECT ?item ?ticker ?ex ?title ?tw ?hant ?pub WHERE {
   VALUES ?ex { %s }
   ?item p:P414 ?st . ?st ps:P414 ?ex ; pq:P249 ?ticker .
   FILTER NOT EXISTS { ?st pq:P582 ?ended }
   OPTIONAL { ?art schema:about ?item ; schema:isPartOf <https://zh.wikipedia.org/> ; schema:name ?title . }
   OPTIONAL { ?item rdfs:label ?tw FILTER(lang(?tw) = "zh-tw") }
   OPTIONAL { ?item rdfs:label ?hant FILTER(lang(?hant) = "zh-hant") }
+  OPTIONAL { ?item wdt:P31 wd:Q891723 . BIND("1" AS ?pub) }
 }"""
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 LEGAL_SUFFIX = re.compile(r"(股份有限公司|有限责任公司|有限責任公司|有限公司|有限|公司)$")
@@ -193,6 +195,7 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, cache: dict[str,
     titles = sorted({row["title"] for row in rows if row.get("title")})
     parsed = render_titles(titles, cache, fetch, now.timestamp(), max_parse, checkpoint)
     candidates: dict[str, set[tuple[str, str]]] = {}
+    public: dict[str, set[str]] = {}
     for row in rows:
         key = ticker_key(EXCHANGES[row["ex"].rsplit("/", 1)[1]], row["ticker"])
         if not key:
@@ -204,10 +207,14 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, cache: dict[str,
             name, source = clean_name(row.get("tw") or row.get("hant")), "WIKIDATA_LABEL"
         if name:
             candidates.setdefault(key, set()).add((name, source))
+            if row.get("pub"):
+                public.setdefault(key, set()).add(name)
     names: dict[str, list[str]] = {}
     ambiguous = 0
     for key, found in candidates.items():
         best = {name for name, source in found if source == "ZHWIKI"} or {name for name, _ in found}
+        if len(best) > 1 and len(best & public.get(key, set())) == 1:
+            best = best & public[key]
         if len(best) == 1:
             name = next(iter(best))
             names[key] = [name, "ZHWIKI" if (name, "ZHWIKI") in found else "WIKIDATA_LABEL"]

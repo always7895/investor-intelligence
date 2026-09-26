@@ -56,7 +56,17 @@ EURONEXT = ("\ufeffName;ISIN;Symbol;Market;Currency\n"
             + "".join(f"SYN{i};FR{i:010d};SY{i};Euronext Paris;EUR\n" for i in range(800))
             + "SOITEC;FR0013227113;SOI;Euronext Paris;EUR\nSOITEC;FR0013227113;2SOI;Trading After Hours;EUR\n").encode("utf-8")
 
+def lse(n: int, extra: list | None = None) -> bytes:
+    rows = (extra or []) + [{"tidm": f"L{i}", "issuername": f"LONDON {i} PLC", "description": f"LONDON {i} PLC ORD 1P",
+                             "category": "EQUITY", "currency": "GBX", "lastprice": 100 + i, "percentualchange": 0.5} for i in range(n)]
+    return json.dumps([{"content": [{"name": "priceexplorersearch", "value": {"content": rows}}]}]).encode()
+
+
+IQE = {"tidm": "IQE", "issuername": "IQE PLC", "description": "IQE PLC ORD 1P", "category": "EQUITY", "currency": "GBX",
+       "lastprice": 46.4, "percentualchange": 5.3348}
 FEEDS = {
+    "lse-main-market": lse(800), "lse-aim": lse(400, [IQE, {**IQE, "tidm": "SMSN", "issuername": "SAMSUNG ELECTRONICS CO LTD",
+                                                              "description": "SAMSUNG ELECTRONICS CO LD GDR (EACH REP 25 COM STK)"}]),
     "jpx-listed": JPX, "krx-listed": KRX, "euronext-equities": EURONEXT,
     "nasdaq-listed": NASDAQ, "other-us-listed": OTHER, "twse-listed": TWSE, "tpex-listed": TPEX,
     "nasdaq-stockholm-main": nordic(250, [{"symbol": "SIVE", "fullName": "Sivers Semiconductors", "currency": "SEK", "assetClass": "SHARES"}]),
@@ -66,6 +76,13 @@ FEEDS = {
 
 def fetch(url: str) -> bytes:
     return next(body for feed, body in FEEDS.items() if shards.FEEDS[feed] == url)
+
+
+def fetch_or_fail(url: str) -> bytes:
+    body = next((body for feed, body in FEEDS.items() if shards.FEEDS[feed] == url), None)
+    if body is None:
+        raise OSError("synthetic outage")
+    return body
 
 
 class IdentityShardTests(unittest.TestCase):
@@ -81,6 +98,9 @@ class IdentityShardTests(unittest.TestCase):
         self.assertIn(["005930", "KRX", "KOREA", "Korea", "삼성전자", "삼성전자", "COMMON_STOCK", "KRW", 7, None], sym["0"]["rows"])
         self.assertIn(["SOI", "EURONEXT PARIS", "EUROPE", "France", "SOITEC", None, "COMMON_STOCK", "EUR", 8, None], sym["S"]["rows"])
         self.assertFalse(any(row[0] in ("999999", "2SOI") for shard in sym.values() for row in shard["rows"]))
+        self.assertIn(["IQE", "LSE", "UK", "United Kingdom", "IQE PLC", None, "COMMON_STOCK", "GBX", 10, None], sym["I"]["rows"])
+        self.assertEqual(next(row for row in sym["S"]["rows"] if row[0] == "SMSN")[6], "ADR")
+        self.assertEqual(document["skipped_optional_feeds"], [])
         name_bucket = str(shards.fnv1a_utf16("台積電") % 16)
         self.assertIn(["台積電", "2", "2330", "TWSE"], document["name_shards"][name_bucket]["rows"])
 
@@ -99,6 +119,15 @@ class IdentityShardTests(unittest.TestCase):
         self.assertEqual(document["zh_names"]["rows"], 1)
         bucket = str(shards.fnv1a_utf16("三星電子") % 16)
         self.assertIn(["三星電子", "0", "005930", "KRX"], document["name_shards"][bucket]["rows"])
+
+    def test_london_is_optional(self):
+        saved = FEEDS.pop("lse-aim")
+        try:
+            document = shards.build(fetch_or_fail, zh=({}, None))
+        finally:
+            FEEDS["lse-aim"] = saved
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-aim"])
+        self.assertEqual(len(document["feeds"]), len(shards.FEEDS) - 1)
 
     def test_hash_parity_with_the_worker(self):
         # Values asserted by cloud/test/v213-identity-shards.test.ts for identityNameBucket.

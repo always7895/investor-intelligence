@@ -9,7 +9,8 @@ content-addressed lazy objects; see scripts/publish_sealed_snapshot.py --identit
 - Sweden: Nasdaq Nordic share screener for Stockholm Main Market and First North (public exchange web API);
 - Japan: JPX list of TSE-listed issues (data_e.xlsx, read with the standard library);
 - Korea: KRX KIND listed-company list (KOSPI and KOSDAQ; Korean names);
-- Euronext: Paris, Amsterdam, Brussels and Milan equities (Euronext stock download).
+- Euronext: Paris, Amsterdam, Brussels and Milan equities (Euronext stock download);
+- London: Main Market and AIM equities (the exchange's price-explorer API; optional: a failure leaves London out).
 
 Every row carries a Traditional Chinese name when a source states one (tenth column [name_zh, source]; null
 otherwise): Taiwan rows use the exchange's own Chinese short name (source TWSE/TPEX), other markets the sourced names of
@@ -61,7 +62,10 @@ FEEDS = {
     "jpx-listed": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx",
     "krx-listed": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13",
     "euronext-equities": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY",
+    "lse-main-market": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET",
+    "lse-aim": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM",
 }
+OPTIONAL_FEEDS = {"lse-main-market", "lse-aim"}
 EURONEXT_VENUES = {"Euronext Paris": ("EURONEXT PARIS", "France"), "Euronext Growth Paris": ("EURONEXT PARIS", "France"),
                    "Euronext Amsterdam": ("EURONEXT AMSTERDAM", "Netherlands"), "Euronext Brussels": ("EURONEXT BRUSSELS", "Belgium"),
                    "Euronext Growth Brussels": ("EURONEXT BRUSSELS", "Belgium"), "Euronext Milan": ("BORSA ITALIANA", "Italy"),
@@ -70,7 +74,7 @@ KRX_MARKETS = {"유가": ("KRX", "KOSPI"), "유가증권": ("KRX", "KOSPI"), "�
 OTHER_US_VENUES = {"A": "NYSE American", "N": "NYSE", "P": "NYSE Arca", "Z": "Cboe BZX", "V": "IEX"}
 MINIMUM_ROWS = {"nasdaq-listed": 3000, "other-us-listed": 3000, "twse-listed": 800, "tpex-listed": 600,
                 "nasdaq-stockholm-main": 250, "nasdaq-stockholm-first-north": 150, "jpx-listed": 3000, "krx-listed": 1500,
-                "euronext-equities": 800}
+                "euronext-equities": 800, "lse-main-market": 800, "lse-aim": 400}
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9 .\-]{0,14}$")
 
 Fetch = Callable[[str], bytes]
@@ -80,7 +84,35 @@ class IdentityShardError(RuntimeError):
     pass
 
 
+# London Stock Exchange: the exchange publishes its lists only through its web application; its public price-explorer
+# component API (POST) returns every equity of a market with TIDM, ISIN, issuer, currency and last price.
+LSE_API = "https://api.londonstockexchange.com/api/v1/components/refresh"
+LSE_COMPONENT = "block_content:9524a5dd-7053-4f7a-ac75-71d12db796b4"
+
+
+def lse_post(url: str) -> bytes:
+    """url = LSE_API#markets=<MAINMARKET|AIM>: the whole market's equities in one page."""
+    market = url.split("#markets=", 1)[1]
+    body = {"path": "live-markets/market-data-dashboard/price-explorer", "parameters": "",
+            "components": [{"componentId": LSE_COMPONENT, "parameters": f"markets={market}&categories=EQUITY&page=0&size=3000"}]}
+    request = urllib.request.Request(LSE_API, data=json.dumps(body).encode("utf-8"), method="POST",
+                                     headers={"User-Agent": USER_AGENT, "Content-Type": "application/json", "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - fixed public HTTPS endpoint
+        return response.read()
+
+
+def lse_rows(raw: bytes) -> list[dict[str, Any]]:
+    document = json.loads(raw.decode("utf-8"))
+    for component in document:
+        for item in component.get("content") or []:
+            if item.get("name") == "priceexplorersearch":
+                return list(item["value"]["content"])
+    raise ValueError("LSE_PRICE_EXPLORER_MISSING")
+
+
 def http_get(url: str) -> bytes:
+    if url.startswith(LSE_API):
+        return lse_post(url)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
     with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed public HTTPS feeds
         return response.read()
@@ -183,6 +215,16 @@ def parse_feed(feed: str, raw: bytes) -> list[list[Any]]:
                 continue
             venue, country = EURONEXT_VENUES[row[3]]
             rows.append([row[2].strip().upper(), venue, "EUROPE", country, row[0].strip(), None, "COMMON_STOCK", row[4].strip() or "EUR"])
+    elif feed.startswith("lse-"):
+        for row in lse_rows(raw):
+            symbol = str(row.get("tidm") or "").strip().upper()
+            description = str(row.get("description") or "").upper()
+            if not symbol or str(row.get("category") or "").upper() != "EQUITY":
+                continue
+            security_class = ("ADR" if re.search(r"\b(GDR|ADR|DEPOSITARY)\b", description)
+                              else "PREFERRED_STOCK" if re.search(r"\bPREF", description) else "COMMON_STOCK")
+            rows.append([symbol, "LSE", "UK", "United Kingdom", str(row.get("issuername") or row.get("description") or "").strip(),
+                         None, security_class, str(row.get("currency") or "GBX").strip() or "GBX"])
     else:
         listing = json.loads(raw.decode("utf-8"))["data"]["instrumentListing"]["rows"]
         for row in listing:
@@ -229,14 +271,24 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[s
     feeds: list[dict[str, Any]] = []
     records: list[list[Any]] = []
     seen: dict[tuple[str, str], int] = {}
-    for index, (feed, url) in enumerate(FEEDS.items()):
+    skipped: list[str] = []
+    for feed, url in FEEDS.items():
         try:
             raw = fetch(url)
             parsed = parse_feed(feed, raw)
+            if len(parsed) < MINIMUM_ROWS[feed]:
+                raise IdentityShardError(f"IDENTITY_FEED_TOO_SMALL {feed}: {len(parsed)}")
+        except IdentityShardError:
+            if feed in OPTIONAL_FEEDS:
+                skipped.append(feed)
+                continue
+            raise
         except Exception as error:  # a required feed failing fails the build; the last good shards keep serving
+            if feed in OPTIONAL_FEEDS:
+                skipped.append(feed)
+                continue
             raise IdentityShardError(f"IDENTITY_FEED_FAILED {feed}: {type(error).__name__}") from None
-        if len(parsed) < MINIMUM_ROWS[feed]:
-            raise IdentityShardError(f"IDENTITY_FEED_TOO_SMALL {feed}: {len(parsed)}")
+        index = len(feeds)
         feeds.append({"id": feed, "url": url, "retrieved_at": stamp, "sha256": hashlib.sha256(raw).hexdigest(),
                       "rows": len(parsed)})
         for row in parsed:
@@ -257,7 +309,7 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[s
                                                  "generated_at": stamp, "rows": []})["rows"].append(
                 [name, bucket, row[0], row[1]])
     return {"schema": SCHEMA, "generated_at": stamp, "feeds": feeds, "records": len(records),
-            "zh_names": zh_feed, "zh_named_records": sum(1 for row in records if row[9]),
+            "zh_names": zh_feed, "zh_named_records": sum(1 for row in records if row[9]), "skipped_optional_feeds": skipped,
             "symbol_shards": symbol_shards, "name_shards": name_shards}
 
 

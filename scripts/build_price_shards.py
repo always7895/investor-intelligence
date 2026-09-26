@@ -7,6 +7,7 @@
 - Sweden: Nasdaq Nordic share screener, Stockholm Main Market and First North (last sale, change; no trade date in
   the feed, so the retrieval date is shown as such);
 - Euronext: Paris, Amsterdam, Brussels and Milan equities download (closing price and its date).
+- London: Main Market and AIM equities from the exchange's price-explorer API (last price, change; no trade date).
 - Japan and Korea (no free official bulk price file): Yahoo Finance daily closes for the common stocks in the identity
   shards, batched, at most once per --yahoo-every-hours (default 20); labelled unofficial, with each row's own date.
 
@@ -47,11 +48,13 @@ FEEDS = {
     "nasdaq-stockholm-main": ("SWEDEN", "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"),
     "nasdaq-stockholm-first-north": ("SWEDEN", "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"),
     "euronext-equities": ("EUROPE", "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"),
+    "lse-main-market": ("UK", "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"),
+    "lse-aim": ("UK", "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"),
 }
 # The download omits its price date; the one-row table call states it ("Last price as of Sep 24, 2026").
 US_ASOF_URL = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=1"
 MINIMUM_ROWS = {"nasdaq-us-screener": 3000, "twse-day-all": 800, "tpex-daily-close": 600, "nasdaq-stockholm-main": 250,
-                "nasdaq-stockholm-first-north": 150, "euronext-equities": 800}
+                "nasdaq-stockholm-first-north": 150, "euronext-equities": 800, "lse-main-market": 800, "lse-aim": 400}
 EURONEXT_VENUES = {"Euronext Paris": "EURONEXT PARIS", "Euronext Growth Paris": "EURONEXT PARIS", "Euronext Amsterdam": "EURONEXT AMSTERDAM",
                    "Euronext Brussels": "EURONEXT BRUSSELS", "Euronext Growth Brussels": "EURONEXT BRUSSELS", "Euronext Milan": "BORSA ITALIANA",
                    "Euronext Growth Milan": "BORSA ITALIANA"}
@@ -64,7 +67,35 @@ class PriceShardError(RuntimeError):
     pass
 
 
+# London Stock Exchange: the exchange publishes its lists only through its web application; its public price-explorer
+# component API (POST) returns every equity of a market with TIDM, ISIN, issuer, currency and last price.
+LSE_API = "https://api.londonstockexchange.com/api/v1/components/refresh"
+LSE_COMPONENT = "block_content:9524a5dd-7053-4f7a-ac75-71d12db796b4"
+
+
+def lse_post(url: str) -> bytes:
+    """url = LSE_API#markets=<MAINMARKET|AIM>: the whole market's equities in one page."""
+    market = url.split("#markets=", 1)[1]
+    body = {"path": "live-markets/market-data-dashboard/price-explorer", "parameters": "",
+            "components": [{"componentId": LSE_COMPONENT, "parameters": f"markets={market}&categories=EQUITY&page=0&size=3000"}]}
+    request = urllib.request.Request(LSE_API, data=json.dumps(body).encode("utf-8"), method="POST",
+                                     headers={"User-Agent": USER_AGENT, "Content-Type": "application/json", "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - fixed public HTTPS endpoint
+        return response.read()
+
+
+def lse_rows(raw: bytes) -> list[dict[str, Any]]:
+    document = json.loads(raw.decode("utf-8"))
+    for component in document:
+        for item in component.get("content") or []:
+            if item.get("name") == "priceexplorersearch":
+                return list(item["value"]["content"])
+    raise ValueError("LSE_PRICE_EXPLORER_MISSING")
+
+
 def http_get(url: str) -> bytes:
+    if url.startswith(LSE_API):
+        return lse_post(url)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/csv, */*"})
     for attempt in range(3):  # TPEx sometimes closes a 4 MB response early
         try:
@@ -130,6 +161,11 @@ def parse_feed(feed: str, raw: bytes, retrieved: str, asof_hint: str | None = No
             symbol, price = str(row.get("symbol") or "").strip().upper(), number(row.get("lastSalePrice"))
             if symbol and price and price > 0 and str(row.get("assetClass") or "SHARES").upper() == "SHARES":
                 rows[symbol] = [price, number(row.get("percentageChange")), None, str(row.get("currency") or "SEK")]
+    elif feed.startswith("lse-"):
+        for row in lse_rows(raw):
+            symbol, price = str(row.get("tidm") or "").strip().upper(), number(row.get("lastprice"))
+            if symbol and price and price > 0 and str(row.get("category") or "").upper() == "EQUITY":
+                rows[symbol] = [price, number(row.get("percentualchange")), None, str(row.get("currency") or "GBX")]
     elif feed == "euronext-equities":
         for row in csv.reader(io.StringIO(raw.decode("utf-8-sig", "replace")), delimiter=";"):
             if len(row) < 15 or row[3] not in EURONEXT_VENUES:
