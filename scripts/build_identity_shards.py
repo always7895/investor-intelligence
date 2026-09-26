@@ -6,7 +6,10 @@ content-addressed lazy objects; see scripts/publish_sealed_snapshot.py --identit
 
 - US: Nasdaq Trader symbol directories (nasdaqlisted.txt, otherlisted.txt; test issues excluded);
 - Taiwan: TWSE listed companies (t187ap03_L) and TPEx listed companies (mopsfin_t187ap03_O);
-- Sweden: Nasdaq Nordic share screener for Stockholm Main Market and First North (public exchange web API).
+- Sweden: Nasdaq Nordic share screener for Stockholm Main Market and First North (public exchange web API);
+- Japan: JPX list of TSE-listed issues (data_e.xlsx, read with the standard library);
+- Korea: KRX KIND listed-company list (KOSPI and KOSDAQ; Korean names);
+- Euronext: Paris, Amsterdam, Brussels and Milan equities (Euronext stock download).
 
 Symbol shards are keyed by the first character of the symbol (A-Z, 0-9, _), name shards by FNV-1a(normalized name)
 mod 16 (the Worker computes the same hash over UTF-16 code units). Every shard names its feeds with URL, retrieval
@@ -20,11 +23,14 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import html
 import io
 import json
 import re
 import sys
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -37,7 +43,7 @@ from global_identity_index import classify_security  # noqa: E402
 OUTPUT = ROOT / "data" / "cache" / "identity_shards_latest.json"
 SCHEMA = "v213-identity-shard-v2"
 NAME_BUCKETS = 16
-USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public identity directory)"
+USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public identity directory)"  # Euronext refuses clients without a browser agent
 FEEDS = {
     "nasdaq-listed": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
     "other-us-listed": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
@@ -45,10 +51,19 @@ FEEDS = {
     "tpex-listed": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
     "nasdaq-stockholm-main": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO",
     "nasdaq-stockholm-first-north": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO",
+    "jpx-listed": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx",
+    "krx-listed": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13",
+    "euronext-equities": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY",
 }
+EURONEXT_VENUES = {"Euronext Paris": ("EURONEXT PARIS", "France"), "Euronext Growth Paris": ("EURONEXT PARIS", "France"),
+                   "Euronext Amsterdam": ("EURONEXT AMSTERDAM", "Netherlands"), "Euronext Brussels": ("EURONEXT BRUSSELS", "Belgium"),
+                   "Euronext Growth Brussels": ("EURONEXT BRUSSELS", "Belgium"), "Euronext Milan": ("BORSA ITALIANA", "Italy"),
+                   "Euronext Growth Milan": ("BORSA ITALIANA", "Italy")}
+KRX_MARKETS = {"유가": ("KRX", "KOSPI"), "유가증권": ("KRX", "KOSPI"), "코스닥": ("KOSDAQ", "KOSDAQ")}
 OTHER_US_VENUES = {"A": "NYSE American", "N": "NYSE", "P": "NYSE Arca", "Z": "Cboe BZX", "V": "IEX"}
 MINIMUM_ROWS = {"nasdaq-listed": 3000, "other-us-listed": 3000, "twse-listed": 800, "tpex-listed": 600,
-                "nasdaq-stockholm-main": 250, "nasdaq-stockholm-first-north": 150}
+                "nasdaq-stockholm-main": 250, "nasdaq-stockholm-first-north": 150, "jpx-listed": 3000, "krx-listed": 1500,
+                "euronext-equities": 800}
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9 .\-]{0,14}$")
 
 Fetch = Callable[[str], bytes]
@@ -90,6 +105,28 @@ def _pipe_rows(raw: bytes) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO("\n".join(lines)), delimiter="|"))
 
 
+def xlsx_rows(raw: bytes) -> list[list[str]]:
+    """First worksheet of an .xlsx as rows of cell text (standard library only; shared strings resolved)."""
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    book = zipfile.ZipFile(io.BytesIO(raw))
+    shared = []
+    if "xl/sharedStrings.xml" in book.namelist():
+        shared = ["".join(node.text or "" for node in item.iter(namespace + "t"))
+                  for item in ET.fromstring(book.read("xl/sharedStrings.xml")).findall(namespace + "si")]
+    rows = []
+    for row in ET.fromstring(book.read("xl/worksheets/sheet1.xml")).iter(namespace + "row"):
+        values = []
+        for cell in row.findall(namespace + "c"):
+            if cell.get("t") == "inlineStr":
+                values.append("".join(node.text or "" for node in cell.iter(namespace + "t")))
+                continue
+            value = cell.find(namespace + "v")
+            text = value.text if value is not None and value.text is not None else ""
+            values.append(shared[int(text)] if cell.get("t") == "s" and text else text)
+        rows.append(values)
+    return rows
+
+
 def parse_feed(feed: str, raw: bytes) -> list[list[Any]]:
     """Rows: [symbol, venue, market, country, security_name, native_name, class, currency]."""
     rows: list[list[Any]] = []
@@ -114,6 +151,31 @@ def parse_feed(feed: str, raw: bytes) -> list[list[Any]]:
             name = full or short
             rows.append([code, "TWSE" if feed == "twse-listed" else "TPEX", "TAIWAN", "Taiwan", name,
                          short if short and short != name else None, "COMMON_STOCK", "TWD"])
+    elif feed == "jpx-listed":
+        table = xlsx_rows(raw)
+        header = table[0]
+        code_at, name_at, section_at = header.index("Local Code"), header.index("Name (English)"), header.index("Section/Products")
+        for row in table[1:]:
+            if len(row) <= max(code_at, name_at, section_at) or not row[code_at]:
+                continue
+            section = row[section_at]
+            security_class = "ETF" if "ETF" in section.upper() else "REVIEW_REQUIRED" if "REIT" in section.upper() or "PRO MARKET" in section.upper() else "COMMON_STOCK"
+            rows.append([row[code_at].strip().upper(), "TSE", "JAPAN", "Japan", row[name_at].strip(), None, security_class, "JPY"])
+    elif feed == "krx-listed":
+        page = raw.decode("euc-kr", "replace")
+        for row_html in re.findall(r"<tr>(.*?)</tr>", page, re.S)[1:]:
+            cells = [html.unescape(re.sub(r"<[^>]+>", "", cell)).strip() for cell in re.findall(r"<td[^>]*>(.*?)</td>", row_html, re.S)]
+            if len(cells) < 3 or cells[1] not in KRX_MARKETS:
+                continue
+            venue, _ = KRX_MARKETS[cells[1]]
+            rows.append([cells[2].upper(), venue, "KOREA", "Korea", cells[0], cells[0], "COMMON_STOCK", "KRW"])
+    elif feed == "euronext-equities":
+        text = raw.decode("utf-8-sig", "replace")
+        for row in csv.reader(io.StringIO(text), delimiter=";"):
+            if len(row) < 5 or row[3] not in EURONEXT_VENUES or row[0] == "Name":
+                continue
+            venue, country = EURONEXT_VENUES[row[3]]
+            rows.append([row[2].strip().upper(), venue, "EUROPE", country, row[0].strip(), None, "COMMON_STOCK", row[4].strip() or "EUR"])
     else:
         listing = json.loads(raw.decode("utf-8"))["data"]["instrumentListing"]["rows"]
         for row in listing:

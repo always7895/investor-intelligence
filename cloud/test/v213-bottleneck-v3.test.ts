@@ -31,7 +31,12 @@ function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
   return { schema: "v213-bottleneck-top20-v3-sealed", generated_at: iso(generatedMs),
     serenity_source: { url: "https://raw.githubusercontent.com/yan-labs/serenity-aleabitoreddit/main/data/aleabitoreddit_tweets.json", latest_post_at: "2026-09-17T23:56:29Z" },
     leopold_filing: { period: "2026-06-30", filed: "2026-08-14", url: "https://www.sec.gov/Archives/edgar/data/2045724/x.xml" },
-    top, industries, ...overrides };
+    top, industries, deep_reports: { "SIVE.ST": null, S1: {
+      ticker: "S1", name: "Synthetic One", as_of: "2026-09-25", boundary: "公開資料研究，非投資建議",
+      phase: { phase: "EARLY_VALIDATION", next_review_at: "2026-11-01" },
+      sections: [{ title: "業務", text: "合成業務描述" }, { title: "財務", text: "營收年增 +109%" }, { title: "訂單", text: "未揭露" }],
+      source_references: [{ source: "SEC 10-Q", url: "https://www.sec.gov/Archives/edgar/data/1/x.htm", period: "2026Q2" }], kpis: [],
+    } }, ...overrides };
 }
 
 describe("bottleneck-explosion Top20 v3", () => {
@@ -58,6 +63,11 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(detail[0]!.text).toContain("https://data.sec.gov/api/xbrl/companyfacts/");
     expect(detail[0]!.text).toContain("線索只影響排序權重");
     expect(buildBottleneckDetail(parsed, "ZZZ")).toContain("不在本輪");
+    const withReport = buildBottleneckDetail(parsed, "S1", "flex") as { type: string }[];
+    expect(withReport.length).toBeGreaterThan(1);
+    expect(withReport[0]!.type).toBe("text");
+    expect(JSON.stringify(withReport.slice(1))).toContain("Synthetic One");
+    expect(buildBottleneckDetail(parsed, "SIVE.ST", "flex")).toHaveLength(1);  // no sealed report: summary only
     const industries = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
     expect(industries).toContain("Leopold 邏輯");
     expect(industries).toContain("3.00x");

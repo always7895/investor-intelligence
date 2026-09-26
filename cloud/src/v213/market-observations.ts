@@ -23,6 +23,10 @@ export function observationSymbol(record: Pick<GlobalIdentityRecord, "symbol" | 
   const base = record.symbol.replace(/ /g, "-");
   if (record.market === "SWEDEN") return `${base}.ST`;
   if (record.market === "TAIWAN") return `${base}.${record.venue.toUpperCase() === "TPEX" ? "TWO" : "TW"}`;
+  if (record.market === "JAPAN") return `${base}.T`;
+  if (record.market === "KOREA") return `${base}.${record.venue.toUpperCase() === "KOSDAQ" ? "KQ" : "KS"}`;
+  const europe: Record<string, string> = { "EURONEXT PARIS": "PA", "EURONEXT AMSTERDAM": "AS", "EURONEXT BRUSSELS": "BR", "BORSA ITALIANA": "MI" };
+  if (record.market === "EUROPE" && europe[record.venue.toUpperCase()]) return `${base}.${europe[record.venue.toUpperCase()]}`;
   return base;
 }
 

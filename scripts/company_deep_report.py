@@ -386,6 +386,15 @@ def sealed_tickers(snapshots_dir: Path | None = None) -> list[str]:
     return []
 
 
+def v3_tickers(path: Path = ROOT / "data" / "cache" / "bottleneck_top20_v3.json") -> list[str]:
+    """US-listed (SEC filer) symbols of the bottleneck Top20 v3, so its cards open a company data report."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [str(row["symbol"]) for row in document.get("top", []) if "." not in str(row.get("symbol", ""))]
+
+
 def load_reports(path: Path = OUTPUT_PATH, *, tickers: Sequence[str], max_age_days: int = 7,
                  today: date | None = None) -> dict[str, dict[str, Any]]:
     """Compact reports for sealing: only fields the Worker renders; stale or missing files give none."""
@@ -463,7 +472,7 @@ def main() -> int:
         wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
     else:  # the sealed ranking plus the data-driven potential ranking, in that order, without duplicates
         rotation_doc = industry_rotation.load_rotation() or {}
-        wanted = list(dict.fromkeys(sealed_tickers() + [r["ticker"] for r in rotation_doc.get("company_ranking", [])]))
+        wanted = list(dict.fromkeys(sealed_tickers() + v3_tickers() + [r["ticker"] for r in rotation_doc.get("company_ranking", [])]))
     fetch = profile.sec_fetcher(sec_identity_headers())
     ciks = ticker_ciks(fetch, today=date.today())
     try:

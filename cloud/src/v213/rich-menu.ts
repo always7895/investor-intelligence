@@ -164,7 +164,8 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   const bottleneckDetail = /^瓶頸詳情\s+([A-Za-z0-9.\-]{1,16})$/i.exec(command);
   if (bottleneckDetail) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
-    return doc ? buildBottleneckDetail(doc, bottleneckDetail[1]!) : "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。";
+    return doc ? buildBottleneckDetail(doc, bottleneckDetail[1]!, commandText ? "text" : "flex")
+      : "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。";
   }
   if (/^(?:產業爆發榜|产业爆发榜|產業爆發)(?:\s*文字)?$/i.test(command)) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));

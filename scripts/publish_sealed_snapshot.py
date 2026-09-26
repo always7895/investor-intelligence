@@ -414,7 +414,8 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                       for row in doc["industries"]]
         serenity = (doc.get("leads") or {}).get("serenity") or {}
         filing = ((doc.get("leads") or {}).get("leopold") or {}).get("filing") or {}
-        sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"],
+        deep = company_deep_report.load_reports(tickers=[row["symbol"] for row in top if "." not in row["symbol"]])
+        sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"], "deep_reports": deep,
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries}

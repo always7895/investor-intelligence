@@ -7,6 +7,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
   LINE_THEME as T, chip, divider, footerStyle, footnote, menuAction, meter, packCarousels, productHeader, rankBadge,
   section, stackedBar, statTile, uiBox, uiText,
@@ -38,6 +39,8 @@ export interface BottleneckV3 {
   generated_at: string; serenity_source: { url: string; latest_post_at: string | null } | null;
   leopold_filing: { period: string; filed: string; url: string } | null;
   top: BottleneckEntry[]; industries: IndustryEntry[];
+  /** Sealed company data reports (SEC filers), validated per ticker when a detail is opened. */
+  deep_reports: Record<string, unknown>;
 }
 
 const CHAIN_ZH: Record<string, string> = { compute: "算力", power: "電力", datacenter: "資料中心", chips_memory: "晶片與記憶體",
@@ -79,7 +82,8 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   if (!Array.isArray(doc.industries) || doc.industries.length < 3 || doc.industries.length > 20 || !doc.industries.every(validIndustry)) return null;
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
-  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top: doc.top, industries: doc.industries };
+  const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
+  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top: doc.top, industries: doc.industries, deep_reports: deep };
 }
 
 export async function loadBottleneckV3(view: PublicSnapshotView): Promise<BottleneckV3 | null> {
@@ -147,7 +151,7 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
   return packCarousels(doc.top.map(entry => companyBubble(doc, entry)), (index, total) => `瓶頸爆發 TOP20（${index + 1}/${total}）`);
 }
 
-export function buildBottleneckDetail(doc: BottleneckV3, symbol: string): LineOutboundMessage[] | string {
+export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: "flex" | "text" = "text"): LineOutboundMessage[] | string {
   const entry = doc.top.find(item => item.symbol.toUpperCase() === symbol.toUpperCase());
   if (!entry) return `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${doc.generated_at}）。`;
   const fund = entry.fundamentals;
@@ -162,7 +166,18 @@ export function buildBottleneckDetail(doc: BottleneckV3, symbol: string): LineOu
     entry.leopold ? `Leopold 線索：Situational Awareness LP 13F 多頭部位 ${(entry.leopold.long_weight * 100).toFixed(1)}%（${entry.leopold.status}；期末 ${doc.leopold_filing?.period}，申報 ${doc.leopold_filing?.filed}）${doc.leopold_filing?.url ?? ""}` : "Leopold 線索：最新 13F 未持有。",
     "線索只影響排序權重，不是公司事實；13F 為季末持倉、申報可晚 45 天。非投資建議，不自動下單。",
   ].join("\n");
-  const messages: LineOutboundMessage[] = [{ type: "text", text: text.slice(0, 4900) }];
+  const summary: LineOutboundMessage = { type: "text", text: text.slice(0, 4900) };
+  // The company data report (SEC filings, business profile, thesis phase, order realization) when one is sealed.
+  const raw = Object.hasOwn(doc.deep_reports, entry.symbol) ? doc.deep_reports[entry.symbol] : undefined;
+  const report = raw ? validateCompanyDataReport(raw, entry.symbol) : null;
+  if (report) {
+    const extra = style === "flex" ? buildCompanyDataReportFlex(report, doc.generated_at, ["回瓶頸 TOP20", "TOP20"])
+      : buildCompanyDataReportMessages(report, doc.generated_at);
+    const messages = [summary, ...extra].slice(0, 5);
+    assertLineMessages(messages);
+    return messages;
+  }
+  const messages: LineOutboundMessage[] = [summary];
   assertLineMessages(messages);
   return messages;
 }

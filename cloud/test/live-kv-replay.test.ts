@@ -59,7 +59,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
     const bottleneck = await loadBottleneckV3(view);
     // Identity lookups through the sealed shards (the LINE stock/options entry): status and resolved listing.
     const identityProbe: Record<string, string> = {};
-    for (const probe of ["SIVE", "NVDA", "2330", "台積電"]) {
+    for (const probe of ["SIVE", "NVDA", "2330", "台積電", "4062.T", "005930.KS", "SOI.PA"]) {
       const resolution = resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, probe), probe);
       identityProbe[probe] = resolution.status === "RESOLVED" ? `RESOLVED:${resolution.record.venue}:${resolution.record.symbol}` : resolution.status;
     }

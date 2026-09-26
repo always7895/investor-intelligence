@@ -128,6 +128,10 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
       if (shard) take(shard, record => record.symbol === symbol && record.venue === venue);
     }
   }
+  // Bare numeric codes are Taiwan-first (4-digit Tokyo codes overlap Taiwan's); `.T` or another suffix selects others.
+  if (parsed.isNumericTicker && !parsed.suffixHint && [...selected.values()].some(record => record.market === "TAIWAN")) {
+    for (const [key, record] of selected) if (record.market !== "TAIWAN") selected.delete(key);
+  }
   if (generatedAt === null) {
     // A sealed but empty result still proves the shards exist: an empty catalog resolves to honest UNAVAILABLE.
     const probe = await shardFor("A");

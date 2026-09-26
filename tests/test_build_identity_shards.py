@@ -32,7 +32,32 @@ def nordic(count: int, extra: list[dict] | None = None) -> bytes:
     return json.dumps({"data": {"instrumentListing": {"rows": rows + (extra or [])}}}).encode()
 
 
+def xlsx(rows: list[list[str]]) -> bytes:
+    """A minimal one-sheet workbook with inline strings (enough for the standard-library reader)."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+    cells = "".join("<row>" + "".join(f'<c t="inlineStr"><is><t>{escape(v)}</t></is></c>' for v in row) + "</row>" for row in rows)
+    sheet = ('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+             + cells + "</sheetData></worksheet>")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as book:
+        book.writestr("xl/worksheets/sheet1.xml", sheet)
+    return buffer.getvalue()
+
+
+JPX = xlsx([["Effective Date", "Local Code", "Name (English)", "Section/Products"]]
+           + [["20260831", f"J{i:03d}", f"JAPAN SYNTH {i}", "Prime Market (Domestic)"] for i in range(3000)]
+           + [["20260831", "4062", "IBIDEN CO.,LTD.", "Prime Market (Domestic)"], ["20260831", "2330", "Forside Co.,Ltd.", "Growth Market"]])
+KRX = ("<table><tr><th>회사명</th><th>시장구분</th><th>종목코드</th></tr>"
+       + "".join(f"<tr><td>합성{i}</td><td>유가</td><td>{100000 + i:06d}</td></tr>" for i in range(1500))
+       + "<tr><td>삼성전자</td><td>유가</td><td>005930</td></tr><tr><td>코넥스사</td><td>코넥스</td><td>999999</td></tr></table>").encode("euc-kr")
+EURONEXT = ("\ufeffName;ISIN;Symbol;Market;Currency\n"
+            + "".join(f"SYN{i};FR{i:010d};SY{i};Euronext Paris;EUR\n" for i in range(800))
+            + "SOITEC;FR0013227113;SOI;Euronext Paris;EUR\nSOITEC;FR0013227113;2SOI;Trading After Hours;EUR\n").encode("utf-8")
+
 FEEDS = {
+    "jpx-listed": JPX, "krx-listed": KRX, "euronext-equities": EURONEXT,
     "nasdaq-listed": NASDAQ, "other-us-listed": OTHER, "twse-listed": TWSE, "tpex-listed": TPEX,
     "nasdaq-stockholm-main": nordic(250, [{"symbol": "SIVE", "fullName": "Sivers Semiconductors", "currency": "SEK", "assetClass": "SHARES"}]),
     "nasdaq-stockholm-first-north": nordic(150),
@@ -52,6 +77,10 @@ class IdentityShardTests(unittest.TestCase):
         self.assertIn(["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 2], sym["2"]["rows"])
         self.assertFalse(any(row[0] == "ZTST" for row in sym["Z"]["rows"]) if "Z" in sym else False)  # test issue excluded
         self.assertTrue(all(row[0][0] == bucket or bucket == "_" for bucket, shard in sym.items() for row in shard["rows"]))
+        self.assertIn(["4062", "TSE", "JAPAN", "Japan", "IBIDEN CO.,LTD.", None, "COMMON_STOCK", "JPY", 6], sym["4"]["rows"])
+        self.assertIn(["005930", "KRX", "KOREA", "Korea", "삼성전자", "삼성전자", "COMMON_STOCK", "KRW", 7], sym["0"]["rows"])
+        self.assertIn(["SOI", "EURONEXT PARIS", "EUROPE", "France", "SOITEC", None, "COMMON_STOCK", "EUR", 8], sym["S"]["rows"])
+        self.assertFalse(any(row[0] in ("999999", "2SOI") for shard in sym.values() for row in shard["rows"]))
         name_bucket = str(shards.fnv1a_utf16("台積電") % 16)
         self.assertIn(["台積電", "2", "2330", "TWSE"], document["name_shards"][name_bucket]["rows"])
 

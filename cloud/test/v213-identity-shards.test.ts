@@ -20,6 +20,7 @@ const ROWS = [
   ["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 1],
   ["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", null, "COMMON_STOCK", "SEK", 2],
   ["VOLV B", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Volvo B", null, "COMMON_STOCK", "SEK", 2],
+  ["2330", "TSE", "JAPAN", "Japan", "Forside Co.,Ltd.", null, "COMMON_STOCK", "JPY", 0],
 ] as const;
 
 async function sha(text: string): Promise<string> {
@@ -88,6 +89,7 @@ describe("sealed identity shards", () => {
     expect(await status("NVDA")).toBe("NASDAQ:NVDA");
     expect(await status("2330")).toBe("TWSE:2330");
     expect(await status("2330.TW")).toBe("TWSE:2330");
+    expect(await status("2330.T")).toBe("TSE:2330");  // bare numeric codes stay Taiwan-first
     expect(await status("台積電")).toBe("TWSE:2330");
     expect(await status("VOLV.B")).toBe("NASDAQ STOCKHOLM:VOLV B");
     expect(await status("股票 VOLV-B")).toBe("NASDAQ STOCKHOLM:VOLV B");

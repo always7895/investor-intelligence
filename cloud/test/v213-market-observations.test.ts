@@ -65,6 +65,9 @@ describe("sealed market observations", () => {
     expect(observationSymbol({ symbol: "5351", market: "TAIWAN", venue: "TPEX" })).toBe("5351.TWO");
     expect(observationSymbol({ symbol: "2330", market: "TAIWAN", venue: "TWSE" })).toBe("2330.TW");
     expect(observationSymbol({ symbol: "NVDA", market: "US", venue: "NASDAQ" })).toBe("NVDA");
+    expect(observationSymbol({ symbol: "4062", market: "JAPAN", venue: "TSE" })).toBe("4062.T");
+    expect(observationSymbol({ symbol: "005930", market: "KOREA", venue: "KRX" })).toBe("005930.KS");
+    expect(observationSymbol({ symbol: "SOI", market: "EUROPE", venue: "EURONEXT PARIS" })).toBe("SOI.PA");
   });
 
   it("answers SIVE monthly options with the SEK observation and weekly with the exchange reason", async () => {
