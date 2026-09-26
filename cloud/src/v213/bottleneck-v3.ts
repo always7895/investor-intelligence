@@ -8,6 +8,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
 import { sourceZh } from "./source-labels";
+import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
   LINE_THEME as T, chip, divider, footerStyle, footnote, menuAction, meter, packCarousels, productHeader, rankBadge,
@@ -24,6 +25,8 @@ interface Market {
   source: string; source_url: string; asof: string; ret_6m: number | null; ret_1y: number | null; cagr_2y: number | null; currency: string | null;
   /** Annualized since the first trading day, only for listings younger than two years (null otherwise). */
   cagr_listed?: number | null; history_start?: string | null;
+  /** The exchange's own close for the listing (price shards), beside the Yahoo close the returns use. */
+  cross_check?: { source_id: string; source_url: string; price: number; asof: string | null; currency: string; diff: number | null };
 }
 interface SerenityLead { mentions: number; bullish: number; bearish: number; stance: string; latest_at: string | null; latest_url: string | null; }
 /** Current orders, the consensus outlook and the price scenarios if it is realized (scripts/bottleneck_top20_v3.py). */
@@ -39,9 +42,16 @@ interface Consensus {
   source: string | null; source_url: string; asof: string | null;
 }
 type ScenarioKind = "REVENUE_CONSTANT_PS" | "EPS_CONSTANT_PE" | "ANALYST_TARGET";
+/** A second, independent consensus (Nasdaq.com analyst estimates, US listings), shown beside Yahoo, never merged. */
+interface SecondConsensus {
+  target_mean: number | null; target_upside: number | null; target_analysts: number | null; eps_fy0: number | null;
+  eps_fy1: number | null; eps_growth: number | null; eps_analysts: number | null; eps_fiscal_end: string | null;
+  source: string | null; source_url: string; asof: string | null;
+}
 export interface Outlook {
   orders: OrdersFigure | { kind: "NOT_DISCLOSED"; reason: string | null } | null;
   consensus: Consensus | null; scenarios: { kind: ScenarioKind; change: number }[];
+  consensus_second?: SecondConsensus | null;
 }
 interface LeopoldLead { long_weight: number; status: string; }
 export interface BottleneckEntry {
@@ -95,7 +105,11 @@ function validOutlook(raw: any): boolean {
   const consensusOk = c === null || c === undefined || (typeof c === "object" && num(c.revenue_growth) && https(c.source_url)
     && ["revenue_fy0", "revenue_fy1", "revenue_analysts", "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts", "target_mean",
       "target_analysts", "price", "target_upside"].every(key => optNum(c[key])) && optStr(c.source, 80) && optStr(c.asof, 12));
-  return ordersOk && consensusOk;
+  const s = raw.consensus_second;
+  const secondOk = s === null || s === undefined || (typeof s === "object" && https(s.source_url)
+    && ["target_mean", "target_upside", "target_analysts", "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts"].every(key => optNum(s[key]))
+    && optStr(s.source, 80) && optStr(s.asof, 12) && optStr(s.eps_fiscal_end, 20));
+  return ordersOk && consensusOk && secondOk;
 }
 
 function validEntry(raw: any): raw is BottleneckEntry {
@@ -109,6 +123,9 @@ function validEntry(raw: any): raw is BottleneckEntry {
       && str(raw.fundamentals.quarter_end, 12) && ["revenue_yoy", "revenue_yoy_prev", "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy"].every(key => optNum(raw.fundamentals[key]))))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
+    && (raw.market.cross_check === undefined || (raw.market.cross_check && str(raw.market.cross_check.source_id, 40)
+      && https(raw.market.cross_check.source_url) && num(raw.market.cross_check.price) && raw.market.cross_check.price > 0
+      && optStr(raw.market.cross_check.asof, 30) && str(raw.market.cross_check.currency, 8) && optNum(raw.market.cross_check.diff)))
     && (raw.market.history_start === undefined || raw.market.history_start === null || str(raw.market.history_start, 12))
     && (raw.serenity === null || (raw.serenity && Number.isInteger(raw.serenity.mentions) && str(raw.serenity.stance, 12)
       && (raw.serenity.latest_url === null || https(raw.serenity.latest_url))))
@@ -179,6 +196,16 @@ function futureOutlook(outlook: Outlook | null | undefined): string[] {
     if (o.guidance) lines.push(`公司指引：${o.guidance.year ?? ""} 年新接訂單 ${money(o.guidance.amount, o.currency)}${o.guidance.previous ? `（原 ${money(o.guidance.previous, o.currency)}）` : ""}。`);
   }
   const c = outlook?.consensus;
+  const s = outlook?.consensus_second;
+  if (s) {
+    const parts = [s.target_mean != null ? `平均目標價 ${s.target_mean}${s.target_upside != null ? `（${pct(s.target_upside, 0)}` : "（"}${s.target_analysts ? `，${s.target_analysts} 位）` : "）"}` : "",
+      s.eps_fy1 != null ? `${s.eps_fiscal_end || "下一財年"} EPS ${s.eps_fy1}${s.eps_growth != null ? `（${pct(s.eps_growth, 1)}` : "（"}${s.eps_analysts ? `，${s.eps_analysts} 位）` : "）"}` : ""].filter(Boolean);
+    lines.push(`第二來源（${sourceZh(s.source)}）：${parts.join("；")}。`);
+    const yahooTarget = (outlook?.scenarios ?? []).find(row => row.kind === "ANALYST_TARGET")?.change;
+    if (yahooTarget != null && s.target_upside != null && Math.abs(yahooTarget - s.target_upside) > 0.15) {
+      lines.push(`兩家來源目標價差距大（Yahoo ${pct(yahooTarget, 0)}／Nasdaq ${pct(s.target_upside, 0)}），請審慎參考。`);
+    }
+  }
   if (!c) lines.push("未來預估：未取得分析師共識。");
   else lines.push(`未來預估（分析師共識營收，非訂單數）：下一財年營收 ${pct(c.revenue_growth, 1)}${c.revenue_analysts ? `（${c.revenue_analysts} 位）` : ""}`
     + `${c.eps_growth === null || c.eps_growth === undefined ? "" : `；EPS ${pct(c.eps_growth, 1)}${c.eps_analysts ? `（${c.eps_analysts} 位）` : ""}`}。`);
@@ -199,6 +226,12 @@ function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): 
     uiBox(rows.map(row => statTile(SCENARIO_LABEL[row.kind], pct(row.change, 0), undefined, compact ? undefined : sub(row.kind))), { layout: "horizontal", spacing: "sm" }),
     ...(analysts < MIN_ANALYSTS ? [uiText(`僅 ${analysts} 位分析師，參考性低。`, "xxs", T.negative)] : []),
   ];
+}
+
+/** "交易所收盤交叉比對：<exchange> <price> <currency>（<date>），與 Yahoo 差 <diff>" beside the card's Yahoo price line. */
+function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
+  const diff = check.diff === null ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
+  return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
 function layerName(doc: BottleneckV3, id: string): string {
@@ -274,7 +307,8 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const target = (outlook?.scenarios ?? []).find(row => row.kind === "ANALYST_TARGET");
   const price: [string, string, string] = !c || !revenue ? ["若實現股價", "—", "無共識可推算"]
     : thin ? ["若實現股價", "—", "樣本不足"]
-    : ["若實現股價", pct(revenue.change, 0), target ? `目標價 ${pct(target.change, 0)}` : "營收×市銷率"];
+    : ["若實現股價", pct(revenue.change, 0), [target ? `目標價 ${pct(target.change, 0)}` : "營收×市銷率",
+      ...(outlook?.consensus_second?.target_upside != null ? [`Nasdaq ${pct(outlook.consensus_second.target_upside, 0)}`] : [])].join("／")];
   return [orders, future, price];
 }
 
@@ -329,6 +363,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         uiBox([statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub)], { layout: "horizontal", spacing: "sm" }),
         footnote(fund ? `財報：${sourceZh(fund.source)}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
+        ...(entry.market.cross_check ? [footnote(exchangeCheck(entry.market.cross_check))] : []),
       ]),
       lean ? section("訂單與成長情境", [uiText(outlookTiles(doc, entry).map(([label, value, sub]) => `${label} ${value}（${sub}）`).join("\n"), "xs", T.ink)], "key")
         : orderSection(doc, entry),
@@ -387,6 +422,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
       section("市場數據", [
         row(statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub), statTile("市值", cap(entry.market_cap_usd))),
         footnote(`${sourceZh(entry.market.source)}，至 ${entry.market.asof}：${entry.market.source_url}`.slice(0, 220)),
+        ...(entry.market.cross_check ? [footnote(`${exchangeCheck(entry.market.cross_check)}：${entry.market.cross_check.source_url}`.slice(0, 220))] : []),
       ]),
       orderSection(doc, entry, false),
       ...(entry.name_zh ? [footnote(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`)] : []),
@@ -408,6 +444,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${fund.revenue_yoy !== null && fund.revenue_yoy_prev !== null ? pp(fund.revenue_yoy - fund.revenue_yoy_prev) : "未揭露"}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
+    ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
     ...futureOutlook(outlook),

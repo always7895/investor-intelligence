@@ -403,6 +403,39 @@ def _layer_translations(path: Path = BOTTLENECK_LAYERS_PATH) -> "tuple[dict[str,
     return roles, constraints
 
 
+def _exchange_cross_checks(symbols: "list[str]", market_prices: "dict[str, dict]", path: Path = PRICE_SHARDS_PATH) -> "dict[str, dict]":
+    """Operator 2026-09-26 (cards cited Yahoo only): the exchange's own close for each Top20 listing from the price
+    shards, beside the Yahoo close the card's returns use. Only exchange feeds count (a Yahoo daily-close shard is not an
+    independent source); the difference is given only in the same currency unit and never replaces the card's figures."""
+    try:
+        shards = json.loads(path.read_bytes().decode("utf-8"))["shards"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    unit = lambda value: {"GBP": "GBX", "GBp": "GBX", "GBX": "GBX"}.get(str(value or ""), str(value or "").upper())  # noqa: E731
+    out: dict = {}
+    for symbol in symbols:
+        market, _, native = build_zh_names.listing_key(symbol).partition(":")
+        shard = shards.get(market) if isinstance(shards, dict) else None
+        row = ((shard or {}).get("rows") or {}).get(native)
+        if not isinstance(row, list) or len(row) < 5:
+            continue
+        try:
+            source = shard["sources"][int(row[4])]
+            price, asof, currency = float(row[0]), row[2], row[3]
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        if str(source.get("id", "")).startswith("yahoo") or not math.isfinite(price) or price <= 0 \
+                or not str(source.get("url", "")).startswith("https://"):
+            continue
+        mine = market_prices.get(symbol) or {}
+        own = mine.get("price")
+        same = isinstance(own, (int, float)) and math.isfinite(own) and own > 0 and unit(mine.get("currency")) == unit(currency)
+        out[symbol] = {"source_id": str(source["id"])[:40], "source_url": str(source["url"])[:400], "price": price,
+                       "asof": asof if isinstance(asof, str) else shard.get("generated_at"), "currency": str(currency)[:8],
+                       "diff": round(own / price - 1, 5) if same else None}
+    return out
+
+
 def _sealed_outlook(raw: "object") -> "dict | None":
     """Orders, consensus and scenario figures from the v3 builder, reduced to known keys with finite numbers and https
     sources; anything malformed is dropped rather than sealed."""
@@ -440,7 +473,16 @@ def _sealed_outlook(raw: "object") -> "dict | None":
     scenarios = [{"kind": row["kind"], "change": number(row.get("change"))} for row in raw.get("scenarios") or []
                  if isinstance(row, dict) and row.get("kind") in ("REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET")
                  and number(row.get("change")) is not None][:3]
-    return {"orders": sealed_orders, "consensus": sealed_consensus, "scenarios": scenarios if sealed_consensus else []}
+    second = raw.get("consensus_second") if isinstance(raw.get("consensus_second"), dict) else None
+    sealed_second = None
+    if second and str(second.get("source_url", "")).startswith("https://") and \
+            (number(second.get("target_mean")) or number(second.get("eps_fy1")) is not None):
+        sealed_second = {key: number(second.get(key)) for key in ("target_mean", "target_upside", "target_analysts", "eps_fy0",
+                                                                  "eps_fy1", "eps_growth", "eps_analysts")}
+        sealed_second.update(source=text(second.get("source"), 80), source_url=second["source_url"][:400],
+                             asof=text(second.get("asof"), 12), eps_fiscal_end=text(second.get("eps_fiscal_end"), 20))
+    return {"orders": sealed_orders, "consensus": sealed_consensus, "scenarios": scenarios if sealed_consensus else [],
+            "consensus_second": sealed_second}
 
 
 def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
@@ -454,6 +496,8 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]])
+        checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
+                                        {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
         for entry in doc["top"]:
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
@@ -469,8 +513,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": None if not fund else pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev",
                                                                   "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy")),
-                "market": pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "cagr_listed",
-                                                 "history_start", "currency")),
+                "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "cagr_listed",
+                                                    "history_start", "currency")),
+                           **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},

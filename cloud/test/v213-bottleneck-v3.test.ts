@@ -16,7 +16,9 @@ const OUTLOOKS: Record<number, unknown> = {
     scenarios: [{ kind: "REVENUE_CONSTANT_PS", change: 28.6 }, { kind: "ANALYST_TARGET", change: 0.9 }] },
   1: { orders: { kind: "RPO", amount: 3.2e9, currency: "USD", as_of: "2026-07-26", yoy: 0.68, source: "SEC EDGAR XBRL companyfacts",
     source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json" }, consensus: CONSENSUS,
-    scenarios: [{ kind: "REVENUE_CONSTANT_PS", change: 0.7 }, { kind: "EPS_CONSTANT_PE", change: 0.688 }, { kind: "ANALYST_TARGET", change: 0.456 }] },
+    scenarios: [{ kind: "REVENUE_CONSTANT_PS", change: 0.7 }, { kind: "EPS_CONSTANT_PE", change: 0.688 }, { kind: "ANALYST_TARGET", change: 0.456 }],
+    consensus_second: { target_mean: 250, target_upside: 0.11, target_analysts: 33, eps_fy0: 9.25, eps_fy1: 13.5, eps_growth: 0.459, eps_analysts: 15,
+      eps_fiscal_end: "Jan 2028", source: "Nasdaq.com analyst estimates", source_url: "https://www.nasdaq.com/market-activity/stocks/s1/analyst-research", asof: "2026-09-26" } },
   4: { orders: { kind: "BACKLOG", amount: 17507e9, currency: "KRW", as_of: "2026-06-30", yoy: 0.63, scope: "重工業部門（連結）",
     source: "효성중공업 26.2분기 p.9", source_url: "https://www.hyosungheavyindustries.com/download/5816",
     intake_quarter: { amount: 3324.2e9, yoy: 0.51 }, guidance: { kind: "ANNUAL_NEW_ORDERS", year: 2026, amount: 12e12, previous: 8.4e12 } },
@@ -35,7 +37,9 @@ function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
       quarter_end: "2026-06-30", revenue_yoy: 1.09, revenue_yoy_prev: 0.9, gross_margin: 0.42, gross_margin_change: 0.14, rpo_yoy: null, shares_yoy: 0.02 },
     market: { source: "Yahoo Finance adjusted daily close (unofficial)", source_url: "https://finance.yahoo.com/quote/X", asof: "2026-09-25",
       ret_6m: 0.8, ret_1y: 2.1, cagr_2y: index === 2 ? null : 1.1, cagr_listed: index === 2 ? 0.64 : null,
-      history_start: index === 2 ? "2025-02-13" : "2023-09-26", currency: "USD" },
+      history_start: index === 2 ? "2025-02-13" : "2023-09-26", currency: "USD",
+      ...(index === 0 ? { cross_check: { source_id: "nasdaq-stockholm-main", source_url: "https://api.nasdaq.com/api/nordic/screener/shares",
+        price: 32.78, asof: "2026-09-25", currency: "SEK", diff: 0.0012 } } : {}) },
     market_cap_usd: 1.05e9 * (index + 1),
     serenity: index % 3 === 0 ? null : { mentions: 30, bullish: 12, bearish: 1, stance: "BULLISH", latest_at: "2026-09-03T10:00:00Z",
       latest_url: "https://x.com/aleabitoreddit/status/1" },
@@ -120,6 +124,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).not.toContain("原文：");  // the English original is on the detail card
     expect(serialized).toContain("財報：SEC EDGAR XBRL 財報資料");
     expect(serialized).toContain("股價：Yahoo Finance 還原收盤價（非官方）");
+    expect(serialized).toContain("交易所收盤交叉比對：Nasdaq Nordic 斯德哥爾摩（延遲） 32.78 SEK（2026-09-25），與 Yahoo 差 +0.12%");
     expect(flex.length).toBeLessThanOrEqual(5);  // one LINE reply
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
     expect(text[0]!.text).toContain("為負者排除");
@@ -144,6 +149,8 @@ describe("bottleneck-explosion Top20 v3", () => {
       "50 位", "預估來源：https://finance.yahoo.com/quote/S1/analysis", "訂單來源：SEC EDGAR XBRL 財報資料"]) expect(s1).toContain(label);
     expect(s1).toContain("目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B（2026-07-26，年增 +68%）");
     expect(s1).toContain("下一財年營收 +70.0%（58 位）");
+    expect(s1).toContain("第二來源（Nasdaq.com 分析師預估）：平均目標價 250（+11%，33 位）；Jan 2028 EPS 13.5（+45.9%，15 位）");
+    expect(s1).toContain("兩家來源目標價差距大（Yahoo +46%／Nasdaq +11%）");
     const korea = JSON.stringify(buildBottleneckDetail(parsed, "S4", "flex"));
     expect(korea).toContain("目前訂單：在手訂單（重工業部門（連結）） 17.51兆 KRW（2026-06-30，年增 +63%）");
     expect(korea).toContain("最新一季新接訂單 3.32兆 KRW（年增 +51%）");
@@ -187,6 +194,6 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
     const s1 = parsed.top.find(entry => entry.symbol === "S1")!;
     expect(outlookTiles(parsed, s1)).toEqual([["現有訂單", "US$3.2B", "RPO 2026-07-26 年增+68%"], ["未來預估", "+70%", "營收共識 58位"],
-      ["若實現股價", "+70%", "目標價 +46%"]]);  // full and lean cards are both built from these three items
+      ["若實現股價", "+70%", "目標價 +46%／Nasdaq +11%"]]);  // full and lean cards are both built from these three items
   });
 });

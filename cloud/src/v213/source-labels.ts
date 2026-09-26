@@ -11,6 +11,7 @@ const EXACT: Record<string, string> = {
   "Yahoo Finance quarterly income statement (unofficial)": "Yahoo Finance 季度損益表（非官方）",
   "Yahoo Finance adjusted daily close (unofficial)": "Yahoo Finance 還原收盤價（非官方）",
   "Yahoo Finance analyst estimates (unofficial)": "Yahoo Finance 分析師預估（非官方）",
+  "Nasdaq.com analyst estimates": "Nasdaq.com 分析師預估",
   "Yahoo Finance (unofficial, delayed)": "Yahoo Finance（非官方，延遲）",
   "Yahoo Finance option chain (unofficial, delayed)": "Yahoo Finance 期權鏈（非官方，延遲）",
   "Nasdaq Nordic option chain (exchange public web API, delayed)": "Nasdaq Nordic 期權鏈（交易所公開網頁 API，延遲）",

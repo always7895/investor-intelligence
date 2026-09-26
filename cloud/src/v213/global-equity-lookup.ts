@@ -56,9 +56,25 @@ export interface EquityLookupResult {
   price?: number;
   changePct?: number;
   asOf?: string;
+  /** Where the shown price comes from (Chinese label) and a second, independent observation of the same listing. */
+  priceSource?: string;
+  crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null };
   source: string;
   disclaimer: string;
   resolution?: GlobalIdentityResolution;
+}
+
+type ObservedQuote = { price: number; change_pct: number | null; currency: string | null; asof: string; source: string; source_url: string };
+
+/** Operator 2026-09-26 (a lookup showed Yahoo only): the exchange's own feed leads; a second observation from a
+ * different source is shown beside it, with the difference only when both are in the same currency. */
+export function combineQuotes(official: ObservedQuote | null, observed: ObservedQuote | null):
+  { primary: ObservedQuote | null; crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null } } {
+  const primary = official ?? observed;
+  if (!official || !observed || sourceZh(official.source) === sourceZh(observed.source)) return { primary };
+  const sameCurrency = (official.currency ?? "").toUpperCase() === (observed.currency ?? "").toUpperCase() && !!official.currency;
+  const diffPct = sameCurrency && official.price > 0 ? observed.price / official.price - 1 : null;
+  return { primary, crossCheck: { price: observed.price, source: observed.source, asOf: observed.asof, diffPct } };
 }
 
 /**
@@ -157,7 +173,10 @@ export function buildGlobalEquityLookupMessages(
     if (resolution.status === "RESOLVED" && result.quoteStatus === "AVAILABLE" && typeof result.price === "number") {
       const change = typeof result.changePct === "number" ? `（${result.changePct >= 0 ? "+" : ""}${(result.changePct * 100).toFixed(2)}%）` : "";
       statusTitle = "已准入證券身分 · 延遲報價";
-      statusSub = `價格 ${result.price} ${identity.currency}${change}，觀察時間 ${result.asOf ?? "未揭露"}；延遲公開報價，非即時可成交價。`;
+      const check = result.crossCheck;
+      const cross = check ? `；交叉比對：${sourceZh(check.source)} ${check.price}${check.diffPct === null ? "（幣別或單位不同，不比較）"
+        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${check.asOf}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
+      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ?? "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
     } else if (resolution.status === "RESOLVED") {
       statusTitle = "已准入證券身分 · 報價未開放";
       statusSub = "IDENTITY_RESOLVED：官方上市證券身分已核對；本標的不在已封存之延遲報價觀察清單。";
@@ -332,8 +351,8 @@ export async function handleGlobalEquityLookup(
 
   if (resolution.status === "RESOLVED") {
     const rec = resolution.record;
-    // Watch-universe quote first (hourly); otherwise the listing's market price shard (official daily feeds).
-    const quote = await loadDelayedQuote(view, observationSymbol(rec)) ?? await loadListingPrice(view, rec);
+    // The listing's market price shard (exchange feeds) leads; the hourly watch-universe quote is its cross-check.
+    const { primary: quote, crossCheck } = combineQuotes(await loadListingPrice(view, rec), await loadDelayedQuote(view, observationSymbol(rec)));
     const result: EquityLookupResult = {
       identity: {
         rawInput: query.normalized,
@@ -352,8 +371,10 @@ export async function handleGlobalEquityLookup(
       admittedInSealedSnapshot: true,
       nameUnverified: !rec.name_zh,
       quoteStatus: quote ? "AVAILABLE" : "UNAVAILABLE",
-      ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof } : {}),
-      source: quote ? `sealed_snapshot:${rec.source_feed}；報價：${quote.source} ${quote.source_url}` : `sealed_snapshot:${rec.source_feed}`,
+      ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof, priceSource: sourceZh(quote.source) } : {}),
+      ...(crossCheck ? { crossCheck } : {}),
+      source: quote ? `sealed_snapshot:${rec.source_feed}；報價：${sourceZh(quote.source)} ${quote.source_url}${crossCheck ? `；交叉比對：${sourceZh(crossCheck.source)}` : ""}`
+        : `sealed_snapshot:${rec.source_feed}`,
       disclaimer: quote ? "公開研究資訊，非投資建議；身分來自官方上市目錄，報價為延遲觀察值，不下單。"
         : "公開研究資訊，非投資建議；官方上市身分已核對，本標的暫無延遲報價觀察。",
       resolution,

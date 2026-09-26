@@ -83,7 +83,24 @@ class OutlookTests(unittest.TestCase):
         self.assertEqual(kinds, ["REVENUE_CONSTANT_PS"])  # no P/E scenario on losses, no target without a price
         empty = SimpleNamespace(revenue_estimate=self.frame([]), earnings_estimate=self.frame([]))
         self.assertIsNone(engine.yahoo_consensus(empty, "X", 1.0, {}))
-        self.assertEqual(engine.outlook("X", None, None), {"orders": None, "consensus": None, "scenarios": []})
+        self.assertEqual(engine.outlook("X", None, None), {"orders": None, "consensus": None, "scenarios": [], "consensus_second": None})
+
+    def test_nasdaq_is_a_second_consensus_for_us_listings_only(self):
+        replies = {"targetprice": {"data": {"consensusOverview": {"priceTarget": 324.32, "buy": 31, "hold": 2, "sell": 0}}},
+                   "earnings-forecast": {"data": {"yearlyForecast": {"rows": [
+                       {"fiscalEnd": "Jan 2027", "consensusEPSForecast": 9.25, "noOfEstimates": 17},
+                       {"fiscalEnd": "Jan 2028", "consensusEPSForecast": 13.5, "noOfEstimates": 15}]}}}}
+        urls = []
+        fetch = lambda url: urls.append(url) or replies[url.rsplit("/", 1)[1]]
+        second = engine.nasdaq_consensus("BRK-B", 225.0, fetch)
+        self.assertIn("/analyst/brk.b/targetprice", urls[0])
+        self.assertEqual((second["target_mean"], second["target_analysts"]), (324.32, 33))
+        self.assertAlmostEqual(second["target_upside"], 324.32 / 225.0 - 1)
+        self.assertAlmostEqual(second["eps_growth"], 13.5 / 9.25 - 1)
+        self.assertEqual((second["eps_analysts"], second["eps_fiscal_end"]), (15, "Jan 2028"))
+        self.assertIsNone(engine.nasdaq_consensus("SIVE.ST", 32.0, fetch))  # US listings only
+        self.assertIsNone(engine.nasdaq_consensus("X", 1.0, lambda url: {"data": None}))  # nothing published
+        self.assertIsNone(engine.nasdaq_consensus("X", 1.0, lambda url: (_ for _ in ()).throw(OSError("down"))))
 
     def test_korean_backlog_comes_from_the_ir_config_or_states_why_not(self):
         orders = engine.outlook("298040.KS", None, None)["orders"]
@@ -180,6 +197,25 @@ class SealedFormTests(unittest.TestCase):
             self.assertNotIn("intensity", sealed["top"][0]["serenity"])
             self.assertEqual(publisher.lazy_bottleneck_v3_body(path, now + timedelta(hours=14)), {})
 
+    def test_exchange_cross_check_uses_exchange_feeds_only(self):
+        shards = {"shards": {
+            "US": {"sources": [{"id": "nasdaq-us-screener", "url": "https://api.nasdaq.com/api/screener/stocks"}], "rows": {"NVDA": [224.58, -0.4, "2026-09-24", "USD", 0]}},
+            "JAPAN": {"sources": [{"id": "yahoo-daily-close", "url": "https://finance.yahoo.com/"}], "rows": {"4062": [5000.0, 1.0, "2026-09-25", "JPY", 0]}},
+            "UK": {"sources": [{"id": "lse-aim", "url": "https://www.londonstockexchange.com/"}], "generated_at": "2026-09-26T00:00:00Z", "rows": {"IQE": [46.4, 5.3, None, "GBX", 0]}},
+            "SWEDEN": {"sources": [{"id": "nasdaq-stockholm-main", "url": "https://api.nasdaq.com/api/nordic/"}], "rows": {"SIVE": [32.78, 0.0, None, "SEK", 0]}}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "shards.json"
+            path.write_text(json.dumps(shards), encoding="utf-8")
+            checks = publisher._exchange_cross_checks(["NVDA", "4062.T", "IQE.L", "SIVE.ST"], {
+                "NVDA": {"price": 225.07, "currency": "USD"}, "4062.T": {"price": 5010.0, "currency": "JPY"},
+                "IQE.L": {"price": 46.5, "currency": "GBp"}, "SIVE.ST": {"price": 33.0, "currency": "USD"}}, path)
+        self.assertEqual(checks["NVDA"]["source_id"], "nasdaq-us-screener")
+        self.assertAlmostEqual(checks["NVDA"]["diff"], round(225.07 / 224.58 - 1, 5))
+        self.assertNotIn("4062.T", checks)  # a Yahoo shard is not an independent source
+        self.assertAlmostEqual(checks["IQE.L"]["diff"], round(46.5 / 46.4 - 1, 5))  # GBp and GBX are the same unit
+        self.assertEqual(checks["IQE.L"]["asof"], "2026-09-26T00:00:00Z")
+        self.assertIsNone(checks["SIVE.ST"]["diff"])  # different currencies are not compared
+
     def test_outlook_is_sealed_with_known_keys_only(self):
         raw = {"orders": {"kind": "RPO", "amount": 3.2e9, "currency": "USD", "as_of": "2026-07-26", "yoy": 0.68, "source": "SEC",
                           "source_url": "https://data.sec.gov/x", "secret": "x"},
@@ -194,6 +230,12 @@ class SealedFormTests(unittest.TestCase):
         self.assertIsNone(publisher._sealed_outlook({"orders": {"kind": "RPO", "amount": 1, "source_url": "http://x"}})["orders"])
         self.assertEqual(publisher._sealed_outlook({"orders": {"kind": "NOT_DISCLOSED", "reason": "none"}})["orders"]["kind"], "NOT_DISCLOSED")
         self.assertIsNone(publisher._sealed_outlook("x"))
+        second = publisher._sealed_outlook({"consensus_second": {"target_mean": 324.32, "target_upside": 0.44, "target_analysts": 33,
+                                                                 "eps_growth": float("nan"), "source": "Nasdaq.com analyst estimates",
+                                                                 "source_url": "https://www.nasdaq.com/x", "junk": 1}})["consensus_second"]
+        self.assertEqual((second["target_mean"], second["eps_growth"]), (324.32, None))
+        self.assertNotIn("junk", second)
+        self.assertIsNone(publisher._sealed_outlook({"consensus_second": {"target_mean": 1, "source_url": "http://x"}})["consensus_second"])
         backlog = publisher._sealed_outlook({"orders": {
             "kind": "BACKLOG", "amount": 17507e9, "currency": "KRW", "as_of": "2026-06-30", "yoy": 0.63, "scope": "重工業部門",
             "source": "deck p.9", "source_url": "https://www.hyosungheavyindustries.com/download/5816",

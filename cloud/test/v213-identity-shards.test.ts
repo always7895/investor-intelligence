@@ -131,7 +131,7 @@ describe("sealed identity shards", () => {
     const env = await sealedWithShards();
     const tw = await handleGlobalEquityLookup(env as never, parseQuery("2330")) as { text: string }[];
     expect(tw[0]!.text).toContain("已准入證券身分 · 延遲報價");
-    expect(tw[0]!.text).toContain("價格 1000 TWD（-0.50%），觀察時間 2026-09-24");
+    expect(tw[0]!.text).toContain("價格 1000 TWD（-0.50%），來源 臺灣證交所每日收盤，觀察時間 2026-09-24");
     expect(tw[0]!.text).toContain("臺灣證交所每日收盤 https://openapi.twse.com.tw/");
     const se = await handleGlobalEquityLookup(env as never, parseQuery("SIVE")) as { text: string }[];
     expect(se[0]!.text).toContain("擷取時間；來源未載明成交日");

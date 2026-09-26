@@ -251,6 +251,46 @@ def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[st
             "price": price, "target_upside": target / price - 1 if target and price and price > 0 else None}
 
 
+NASDAQ_ANALYST = "https://api.nasdaq.com/api/analyst/{symbol}/{kind}"
+
+
+def nasdaq_consensus(symbol: str, price: float | None, fetch_json: Callable[[str], Any] | None = None) -> dict[str, Any] | None:
+    """Second, independent consensus for US listings (operator 2026-09-26: Yahoo alone was too narrow; Nasdaq data is
+    accepted): Nasdaq.com's mean price target with the analyst count and the yearly EPS consensus. None when neither
+    part is published; shown beside Yahoo, never averaged into it."""
+    if "." in symbol:
+        return None
+    def get(kind: str) -> Any:
+        url = NASDAQ_ANALYST.format(symbol=urllib.parse.quote(symbol.replace("-", ".").lower()), kind=kind)
+        if fetch_json:
+            return fetch_json(url)
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (InvestorIntelligence public observation)",
+                                                       "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - fixed public host
+            return json.loads(response.read().decode("utf-8"))
+    out: dict[str, Any] = {"source": "Nasdaq.com analyst estimates", "asof": utc_now().date().isoformat(),
+                           "source_url": f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/analyst-research"}
+    try:
+        overview = ((get("targetprice").get("data") or {}).get("consensusOverview") or {})
+        target = _finite(overview.get("priceTarget"))
+        count = sum(int(overview.get(key) or 0) for key in ("buy", "hold", "sell"))
+        if target and target > 0:
+            out.update(target_mean=target, target_analysts=count or None,
+                       target_upside=target / price - 1 if price and price > 0 else None)
+    except Exception:
+        pass
+    try:
+        rows = (((get("earnings-forecast").get("data") or {}).get("yearlyForecast") or {}).get("rows") or [])[:2]
+        eps = [(_finite(row.get("consensusEPSForecast")), _finite(row.get("noOfEstimates")), str(row.get("fiscalEnd") or "")) for row in rows]
+        if len(eps) == 2 and eps[0][0] and eps[1][0]:
+            out.update(eps_fy0=eps[0][0], eps_fy1=eps[1][0], eps_fiscal_end=eps[1][2][:20],
+                       eps_analysts=int(eps[1][1]) if eps[1][1] else None,
+                       eps_growth=eps[1][0] / eps[0][0] - 1 if eps[0][0] > 0 and eps[1][0] > 0 else None)
+    except Exception:
+        pass
+    return out if ("target_mean" in out or "eps_fy1" in out) else None
+
+
 def korea_orders(symbol: str, path: Path = KOREA_ORDERS) -> dict[str, Any] | None:
     """Order backlog and guidance from the company's IR deck (config/korea-ir-orders-v1.json), or the stated reason
     why none is available."""
@@ -271,7 +311,8 @@ def korea_orders(symbol: str, path: Path = KOREA_ORDERS) -> dict[str, Any] | Non
     return {"kind": "NOT_DISCLOSED", "reason": reason} if reason else None
 
 
-def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] | None) -> dict[str, Any]:
+def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] | None,
+            second: dict[str, Any] | None = None) -> dict[str, Any]:
     """Current orders (SEC RPO or a Korean IR backlog), the consensus outlook and the price scenarios if it is realized
     at unchanged valuation multiples (scenario arithmetic, not a forecast)."""
     orders = None
@@ -287,7 +328,7 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
             scenarios.append({"kind": "EPS_CONSTANT_PE", "change": consensus["eps_growth"]})
         if consensus.get("target_upside") is not None:
             scenarios.append({"kind": "ANALYST_TARGET", "change": consensus["target_upside"]})
-    return {"orders": orders, "consensus": consensus, "scenarios": scenarios}
+    return {"orders": orders, "consensus": consensus, "scenarios": scenarios, "consensus_second": second}
 
 
 # ---------------------------------------------------------------- Yahoo Finance
@@ -455,7 +496,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         companies[symbol] = {"symbol": symbol, "name": data.get("name") or member["capturer"].get("role"), "layer": member["layer"]["id"],
                              "role": member["capturer"]["role"], "role_zh": member["capturer"].get("role_zh"),
                              "role_source": {"url": member["capturer"]["source_url"], "date": member["capturer"]["source_date"]},
-                             "outlook": outlook(symbol, fund, data.get("consensus")),
+                             "outlook": outlook(symbol, fund, data.get("consensus"),
+                                                 nasdaq_consensus(symbol, (data.get("market") or {}).get("price"))),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
     # Layer heat and the Leopold-led industry ranking.
