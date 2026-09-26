@@ -201,7 +201,7 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
     footer: menuBox([
       menuText(`狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`, "xxs", T.muted),
       menuText("本內容僅為選擇權結構教學，絕非投資建議、即時行情或委託下單指示。", "xxs", T.muted),
-      menuAction("查公開期權報價", "最新期權"),
+      menuAction("範例：NVDA 每月期權", "NVDA 每月期權"),
       menuAction("期權試算說明", "期權試算說明"),
       menuAction("回功能選單", "選單"),
     ], { paddingAll: "md", backgroundColor: T.soft }),
@@ -262,7 +262,7 @@ export function buildEducationalStrategyText(
       `• 策略特有風險：${card.assumptions.specific_caveats}`,
       "───",
       "本內容僅為選擇權原理與算術教學，絕非投資建議、行情快照或下單指示。",
-      "快捷指令：最新期權、期權試算說明、選單",
+      "快捷指令：代號 每月期權（例：NVDA 每月期權）、期權試算說明、選單",
     ];
     chunks.push(lines.join("\n"));
   }

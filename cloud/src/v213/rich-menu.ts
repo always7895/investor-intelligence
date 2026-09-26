@@ -1,6 +1,8 @@
 import { parseQuery, type ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "./bottleneck-v3";
+import {
+  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, findBottleneckEntry, loadBottleneckV3,
+} from "./bottleneck-v3";
 import { loadOptionObservation, optionTickerKeys } from "./market-observations";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
 import { pinPublicSnapshot } from "./public-snapshot";
@@ -154,21 +156,29 @@ const STRATEGY_ALIASES: Record<string, "covered_call" | "cash_secured_put" | "bu
  */
 export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promise<LineOutboundMessage[] | string | null> {
   const isEnvText = env.V213_LINE_PRESENTATION === "text";
-  const command = query.normalized;
+  // Trailing punctuation never changes a command ("TOP20。", "NVDA 每月期權！"; NFKC already folded full-width forms).
+  const command = query.normalized.replace(/[\s。.!?~～]+$/u, "");
   const commandText = isEnvText || /文字\s*$/i.test(command);
 
   // --- Bottleneck-explosion Top20 v3 and the Leopold-led industry ranking (sealed lazy object) ---
-  if (/^(?:top\s*20|瓶頸爆發榜|瓶頸\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
+  // It replaced the original ranking, so the plain ranking words lead here too ("七欄Top20" keeps the old report).
+  if (/^(?:top\s*20|瓶頸爆發榜|瓶頸\s*top\s*20|瓶頸(?:排名|排行|榜)|前\s*(?:20|二十)\s*名?|排名|排行榜?)(?:\s*文字)?$/i.test(command)) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
     if (doc) return buildBottleneckTop20Messages(doc, commandText ? "text" : "flex");
   }
-  const bottleneckDetail = /^瓶頸詳情\s+([A-Za-z0-9.\-]{1,16})$/i.exec(command);
+  const bottleneckDetail = /^(?:瓶頸詳情|瓶颈详情|瓶頸|瓶颈)\s*([A-Za-z0-9][A-Za-z0-9.\-]{0,15})(?:\s*文字)?$/i.exec(command);
   if (bottleneckDetail) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
     return doc ? buildBottleneckDetail(doc, bottleneckDetail[1]!, commandText ? "text" : "flex")
       : "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。";
   }
-  if (/^(?:產業爆發榜|产业爆发榜|產業爆發)(?:\s*文字)?$/i.test(command)) {
+  // "NVDA 詳情" opens the detail only for a current Top20 company; any other ticker keeps its research answer.
+  const tickerDetail = /^([A-Za-z0-9][A-Za-z0-9.\-]{0,15})\s*(?:詳情|详情)(?:\s*文字)?$/i.exec(command);
+  if (tickerDetail) {
+    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    if (doc && findBottleneckEntry(doc, tickerDetail[1]!)) return buildBottleneckDetail(doc, tickerDetail[1]!, commandText ? "text" : "flex");
+  }
+  if (/^(?:產業爆發榜|产业爆发榜|產業爆發|产业爆发|產業(?:排名|排行榜?|榜)|产业(?:排名|排行榜?|榜))(?:\s*文字)?$/i.test(command)) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
     return doc ? buildIndustryExplosionMessages(doc, commandText ? "text" : "flex") : "產業爆發榜目前沒有已封存且在時效內的資料，未以舊資料替代。";
   }
@@ -177,11 +187,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   }
   if (/^(?:選單|菜单|menu|功能導覽|功能导航)$/i.test(command)) {
     return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
-      "A｜TOP20：當輪20家公司、歷史報酬、量化訂單線索及同輪證據。歷史報酬不是未來預測。",
-      "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；合格產業未達門檻時啟動短缺通報。",
-      "C｜期權與個股快查：選擇權策略教學與公開合約報價；無合格報價時維持不可用，絕不猜測。",
+      "A｜TOP20：瓶頸爆發 TOP20（Serenity／Leopold 線索＋財報、訂單與交易所報價）；輸入「瓶頸詳情 代號」（例：瓶頸詳情 NVDA）看單一公司完整卡片。歷史報酬不是未來預測。",
+      "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；輸入「產業爆發榜」看 Leopold 因果鏈產業排序。",
+      "C｜期權與個股快查：輸入「代號 每月期權」或「代號 每週期權」（例：NVDA 每月期權，格式範例非推薦）看備兌買權建議；直接輸入代號或名稱（例：2330、SIVE）查延遲報價；「期權教學」看策略範例。",
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
-      "E｜瓶頸爆發 TOP20 已取代原榜單（Serenity/Leopold 線索＋財報與市場數據）；「產業爆發榜」看 Leopold 因果鏈產業排序；「七欄Top20」看舊版七欄榜。",
+      "E｜舊版七欄榜請輸入「七欄Top20」。本服務不連券商、不下單，內容非投資建議。",
     ], NAV, isEnvText);
   }
 
@@ -330,7 +340,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
 
     const navActions = [
-      ["查公開期權報價", "最新期權"],
+      ["範例：NVDA 每月期權", "NVDA 每月期權"],
       ["期權試算說明", "期權試算說明"],
       ["TOP20 個股入口", "TOP20"],
       ["回功能選單", "選單"],
@@ -340,7 +350,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       const overviewMessages = panelTextMessages("期權與個股快查", "股票代號 → 每週／每月 → 報價與風險", [
         statusText,
         "查詢例：NVDA 每週期權、AAPL 每月期權（僅格式範例，不是推薦）。個股資訊請輸入股票代號；完整深度產品仍須封存驗收。",
-        "「最新期權」查詢仍適用既有逐標的freshness與報價門檻；有合格資料才顯示到期日/DTE、Strike、Bid/Mid/Ask、Delta、OI/Volume及年化收益；限價與中間價不保證成交。",
+        "「代號 每週期權／每月期權」只顯示已封存的延遲觀察：到期日/DTE、履約價、Bid/Ask、建議賣出限價、Delta、OI/成交量及年化收益；限價不保證成交。未註明週期時顯示每週。",
         "無自動報價時可用「期權試算說明」做本次輸入的算術試算；結果標示未驗證，不存持倉、不連IBKR、不下單。",
         "以下提供 4 種標準期權教學策略卡片（教學範例，非推薦）：",
       ], navActions);
@@ -473,8 +483,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
   // --- Options Quote Functional Queries ---
   // A ticker may carry a share class after a space as the stock lookup shows it (VOLV B, NDA SE, OCTV SDB).
-  const quoteMatch = /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)\s*(?:期權|期权|options?)(?:\s*文字)?$/i.exec(command)
-    || /^(?:期權|期权|options?)\s+([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)?(?:\s*文字)?$/i.exec(command);
+  // Without a cycle word only the Chinese option words count after a ticker ("NVDA 期權"), so English such as
+  // "call options" is never read as a ticker.
+  const quoteMatch = /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)\s*(?:期權|期权|選擇權|选择权|options?)(?:\s*文字)?$/i.exec(command)
+    || /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*()(?:期權|期权|選擇權|选择权)(?:\s*文字)?$/i.exec(command)
+    || /^(?:(?:期權|期权|選擇權|选择权)\s*|options?\s+)([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)?(?:\s*文字)?$/i.exec(command);
   if (quoteMatch) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const ticker = quoteMatch[1]!.toUpperCase();

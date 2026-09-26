@@ -163,6 +163,11 @@ const pct = (value: number | null | undefined, digits = 1) => value === null || 
 const pp = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}個百分點`;
 const cap = (value: number | null) => value === null ? "未揭露" : value >= 1e12 ? `US$${(value / 1e12).toFixed(2)}T` : value >= 1e9 ? `US$${(value / 1e9).toFixed(1)}B` : `US$${(value / 1e6).toFixed(0)}M`;
 const day = (value: string | null | undefined) => (value ?? "").slice(0, 10) || "未揭露";
+/** SEC filing heat (last 30 days against the prior 60-day pace); the sealed ratio is optional. */
+const newsRatio = (news: IndustryEntry["news"] | undefined) => {
+  const ratio = news?.ratio;
+  return ratio === null || ratio === undefined ? "未取得" : `${ratio.toFixed(2)}x`;
+};
 
 function money(amount: number, currency: string | null | undefined): string {
   const unit = (currency ?? "").toUpperCase();
@@ -230,7 +235,7 @@ function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): 
 
 /** "交易所收盤交叉比對：<exchange> <price> <currency>（<date>），與 Yahoo 差 <diff>" beside the card's Yahoo price line. */
 function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
-  const diff = check.diff === null ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
+  const diff = check.diff === null || check.diff === undefined ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
   return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
@@ -460,8 +465,18 @@ function atLineBoundary(text: string, limit: number): string {
   return `${text.slice(0, cut > 0 ? cut : limit - 1)}…`;
 }
 
+/** The Top20 entry for a typed symbol: exact, else the one listing whose symbol before the venue suffix matches
+ * ("SIVE" -> SIVE.ST, "5351" -> 5351.TWO); two listings sharing a base stay unresolved. */
+export function findBottleneckEntry(doc: BottleneckV3, symbol: string): BottleneckEntry | undefined {
+  const wanted = symbol.toUpperCase();
+  const exact = doc.top.find(item => item.symbol.toUpperCase() === wanted);
+  if (exact) return exact;
+  const byBase = doc.top.filter(item => item.symbol.toUpperCase().split(".")[0] === wanted);
+  return byBase.length === 1 ? byBase[0] : undefined;
+}
+
 export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: "flex" | "text" = "text"): LineOutboundMessage[] | string {
-  const entry = doc.top.find(item => item.symbol.toUpperCase() === symbol.toUpperCase());
+  const entry = findBottleneckEntry(doc, symbol);
   if (!entry) return `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${doc.generated_at}）。`;
   // The detail card first; then the company data report (SEC filings, business profile, thesis phase, order
   // realization) when one is sealed.
@@ -490,8 +505,8 @@ function industryBubble(doc: BottleneckV3, industry: IndustryEntry) {
         ...(industry.leopold_constraint_zh ? [footnote(`原文：${industry.leopold_constraint}`)] : [])], "key"),
       section("資料訊號", [
         meter(industry.explosiveness),
-        uiBox([statTile("營收年增中位數", pct(industry.median_revenue_yoy, 0)), statTile("加速度中位數", industry.median_acceleration === null ? "未揭露" : `${industry.median_acceleration >= 0 ? "+" : ""}${(industry.median_acceleration * 100).toFixed(0)}pp`)], { layout: "horizontal", spacing: "sm" }),
-        uiBox([statTile("SEC申報熱度", news?.ratio === null || news === null ? "未取得" : `${news.ratio.toFixed(2)}x`, undefined, news ? `近30天 ${news.recent_30d}／前60天 ${news.prior_60d}` : undefined), statTile("6個月股價中位數", pct(industry.median_return_6m, 0))], { layout: "horizontal", spacing: "sm" }),
+        uiBox([statTile("營收年增中位數", pct(industry.median_revenue_yoy, 0)), statTile("加速度中位數", industry.median_acceleration === null || industry.median_acceleration === undefined ? "未揭露" : `${industry.median_acceleration >= 0 ? "+" : ""}${(industry.median_acceleration * 100).toFixed(0)}pp`)], { layout: "horizontal", spacing: "sm" }),
+        uiBox([statTile("SEC申報熱度", newsRatio(news), undefined, news ? `近30天 ${news.recent_30d}／前60天 ${news.prior_60d}` : undefined), statTile("6個月股價中位數", pct(industry.median_return_6m, 0))], { layout: "horizontal", spacing: "sm" }),
       ]),
       section("本輪 TOP20 成員", [uiText(members.length ? members.join("、") : "（無）", "sm", T.ink)], "context"),
       divider(),
@@ -503,7 +518,7 @@ function industryBubble(doc: BottleneckV3, industry: IndustryEntry) {
 
 export function buildIndustryExplosionMessages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.industries.map(industry => `${industry.rank}. ${industry.name_zh}｜爆發力 ${industry.explosiveness.toFixed(1)}｜營收年增中位數 ${pct(industry.median_revenue_yoy, 0)}｜SEC申報熱度 ${industry.news?.ratio ?? "未取得"}x｜6個月股價中位數 ${pct(industry.median_return_6m, 0)}`);
+    const lines = doc.industries.map(industry => `${industry.rank}. ${industry.name_zh}｜爆發力 ${industry.explosiveness.toFixed(1)}｜營收年增中位數 ${pct(industry.median_revenue_yoy, 0)}｜SEC申報熱度 ${newsRatio(industry.news)}｜6個月股價中位數 ${pct(industry.median_return_6m, 0)}`);
     const messages: LineOutboundMessage[] = [{ type: "text", text: [`產業爆發榜（Leopold 因果鏈，產生 ${doc.generated_at}）`, ...lines, "非投資建議。"].join("\n").slice(0, 4900) }];
     assertLineMessages(messages);
     return messages;

@@ -167,7 +167,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     const messages = await actualReply("期權", f);
     const body = JSON.stringify(messages);
     expect(body).toContain("OPTION_DATA_UNAVAILABLE");
-    expect(body).toContain("最新期權");
+    expect(body).toContain("NVDA 每月期權");
     expect(body).toContain("期權試算說明");
     expect(body).toContain("選單");
     expect(body).not.toContain(SENTINEL);
