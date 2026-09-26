@@ -6,9 +6,13 @@ has no MCP server mode in this build, so this server runs `codex exec` non-inter
 ephemeral session and returns the final message. The ChatGPT chat UI is never automated (its terms forbid automated
 extraction); the Codex quota applies, and an exhausted quota is reported as CODEX_QUOTA_EXHAUSTED instead of retried.
 
+Operator 2026-09-26: "Pro first, xhigh once it is used up". The CLI has no Pro tier, so the default effort `auto` runs
+the top effort `ultra` and, only when that attempt reports an exhausted quota, runs the same prompt once at `xhigh`.
+An explicit effort is a single attempt.
+
 Tool
 - chatgpt_review  prompt (required), cwd (under WORKSPACE, default the source repository), model (default gpt-6-sol,
-                  only models the CLI lists), effort (default xhigh; high, xhigh, max or ultra)
+                  only models the CLI lists), effort (default auto = ultra then xhigh; high, xhigh, max or ultra)
 """
 from __future__ import annotations
 
@@ -27,7 +31,8 @@ SERVER_INFO = {"name": "chatgpt-codex-review", "version": "1.0.0"}
 WORKSPACE = Path(r"D:\Investor-Intelligence-LINE-Pi\_workspace")
 DEFAULT_CWD = WORKSPACE / "source"
 DEFAULT_MODEL = "gpt-6-sol"  # the independent reviewer model of the control plane
-EFFORTS = ("high", "xhigh", "max", "ultra")
+EFFORTS = ("auto", "high", "xhigh", "max", "ultra")
+AUTO_EFFORTS = ("ultra", "xhigh")  # the "Pro" tier first, then the operator's fallback
 MAX_PROMPT = 200_000
 TIMEOUT_SECONDS = 3600
 QUOTA_RE = re.compile(r"usage limit|rate limit|quota|too many requests|429", re.IGNORECASE)
@@ -71,9 +76,25 @@ def chatgpt_review(args: dict[str, Any]) -> dict[str, Any]:
     model = str(args.get("model") or DEFAULT_MODEL)
     if model not in listed_models():
         raise ToolError(f"MODEL_NOT_LISTED: {model[:40]}")
-    effort = str(args.get("effort") or "xhigh")
+    effort = str(args.get("effort") or "auto")
     if effort not in EFFORTS:
-        raise ToolError("EFFORT_MUST_BE_HIGH_XHIGH_MAX_OR_ULTRA")
+        raise ToolError("EFFORT_MUST_BE_AUTO_HIGH_XHIGH_MAX_OR_ULTRA")
+    attempts = AUTO_EFFORTS if effort == "auto" else (effort,)
+    for index, attempt in enumerate(attempts):
+        try:
+            answer = _run_codex(prompt, cwd, model, attempt)
+        except ToolError as error:
+            if str(error) == "CODEX_QUOTA_EXHAUSTED" and index + 1 < len(attempts):
+                continue
+            raise
+        result = {"model": model, "effort": attempt, "cwd": str(cwd), "answer": answer}
+        if index:
+            result["fallback_from"] = list(attempts[:index])
+        return result
+    raise ToolError("CODEX_NO_ATTEMPT")  # unreachable: attempts is never empty
+
+
+def _run_codex(prompt: str, cwd: Path, model: str, effort: str) -> str:
     with tempfile.TemporaryDirectory(prefix="codex-review-") as tmp:
         last = Path(tmp) / "last-message.txt"
         command = [codex_exe(), "exec", "--sandbox", "read-only", "--ephemeral", "--skip-git-repo-check", "--color", "never",
@@ -89,7 +110,7 @@ def chatgpt_review(args: dict[str, Any]) -> dict[str, Any]:
         if QUOTA_RE.search(tail):
             raise ToolError("CODEX_QUOTA_EXHAUSTED")
         raise ToolError(f"CODEX_FAILED exit={completed.returncode}: {tail.strip()[-600:]}")
-    return {"model": model, "effort": effort, "cwd": str(cwd), "answer": answer}
+    return answer
 
 
 TOOLS = {
@@ -98,7 +119,8 @@ TOOLS = {
                        {"type": "object", "additionalProperties": False, "required": ["prompt"], "properties": {
                            "prompt": {"type": "string"}, "cwd": {"type": "string"},
                            "model": {"type": "string", "description": f"default {DEFAULT_MODEL}"},
-                           "effort": {"type": "string", "enum": list(EFFORTS), "description": "default xhigh"}}}),
+                           "effort": {"type": "string", "enum": list(EFFORTS),
+                                      "description": "default auto: ultra, then xhigh when the quota is exhausted"}}}),
 }
 
 

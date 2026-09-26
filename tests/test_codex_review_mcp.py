@@ -35,9 +35,11 @@ class CodexReviewTests(unittest.TestCase):
         server.WORKSPACE, server.DEFAULT_CWD, server.codex_exe, server.listed_models, server.subprocess.run = self.saved
         self.tmp.cleanup()
 
-    def fake_run(self, answer="VERDICT: APPROVE", returncode=0, stderr=""):
+    def fake_run(self, answer="VERDICT: APPROVE", returncode=0, stderr="", exhausted=()):
         def run(command, **kwargs):
             self.commands.append((command, kwargs))
+            if any(f'model_reasoning_effort="{effort}"' in command for effort in exhausted):
+                return SimpleNamespace(returncode=1, stdout="", stderr="ERROR: You've hit your usage limit.")
             if answer:
                 Path(command[command.index("-o") + 1]).write_text(answer, encoding="utf-8")
             return SimpleNamespace(returncode=returncode, stdout="", stderr=stderr)
@@ -48,10 +50,12 @@ class CodexReviewTests(unittest.TestCase):
         result = call({"prompt": "review this"})
         self.assertFalse(result["isError"])
         payload = json.loads(result["content"][0]["text"])
-        self.assertEqual((payload["model"], payload["effort"], payload["answer"]), ("gpt-6-sol", "xhigh", "VERDICT: APPROVE"))
+        self.assertEqual((payload["model"], payload["effort"], payload["answer"]), ("gpt-6-sol", "ultra", "VERDICT: APPROVE"))
+        self.assertNotIn("fallback_from", payload)
+        self.assertEqual(len(self.commands), 1)
         command, kwargs = self.commands[0]
         self.assertEqual(command[1:5], ["exec", "--sandbox", "read-only", "--ephemeral"])
-        self.assertIn('model_reasoning_effort="xhigh"', command)
+        self.assertIn('model_reasoning_effort="ultra"', command)
         self.assertEqual(command[-1], "-")
         self.assertEqual(kwargs["input"], "review this")
         self.assertNotIn("danger-full-access", command)
@@ -65,6 +69,24 @@ class CodexReviewTests(unittest.TestCase):
             self.assertTrue(result["isError"])
             self.assertIn(code, result["content"][0]["text"])
         self.assertEqual(self.commands, [])
+
+    def test_auto_falls_back_to_xhigh_only_when_ultra_quota_is_exhausted(self):
+        self.fake_run(exhausted=("ultra",))
+        payload = json.loads(call({"prompt": "review"})["content"][0]["text"])
+        self.assertEqual((payload["effort"], payload["fallback_from"]), ("xhigh", ["ultra"]))
+        self.assertEqual([c[0][c[0].index("-c") + 1] for c in self.commands],
+                         ['model_reasoning_effort="ultra"', 'model_reasoning_effort="xhigh"'])
+
+    def test_auto_reports_quota_when_xhigh_is_exhausted_too_and_other_failures_do_not_fall_back(self):
+        self.fake_run(exhausted=("ultra", "xhigh"))
+        result = call({"prompt": "review"})
+        self.assertEqual((result["isError"], result["content"][0]["text"]), (True, "CODEX_QUOTA_EXHAUSTED"))
+        self.assertEqual(len(self.commands), 2)
+        self.commands.clear()
+        self.fake_run(answer="", returncode=2, stderr="model crashed")
+        result = call({"prompt": "review"})
+        self.assertIn("CODEX_FAILED exit=2", result["content"][0]["text"])
+        self.assertEqual(len(self.commands), 1)
 
     def test_an_exhausted_quota_is_reported_not_retried(self):
         self.fake_run(answer="", returncode=1, stderr="ERROR: You've hit your usage limit. Try again later.")
