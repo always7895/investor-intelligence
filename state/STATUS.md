@@ -1,51 +1,40 @@
 # Current state / 目前狀態
 
-Updated 2026-09-26 (20:45 Asia/Taipei) by an operator-directed Claude Code session (master and writer; operator authority 2026-09-25/26; deploy go and relay go given in this session). Earlier detail: `git show a8c6e58:state/STATUS.md` (17:15 handoff), `git show 59049db:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
+Updated 2026-09-26 (22:10 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
 
 ## Identity
 
 - Branch `fix/options-provenance-audit`, draft PR #37 to `main`; PR CI reports COMPLETED_SKIPPED (not PASS). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 
-## Production (2026-09-26 12:37Z)
+## Production (unchanged since 20:45)
 
-- Worker `25377354-0ff5-4a28-a78b-82ec2457729f` (source `16cb1b3`; vars add `LOCAL_LLM_MODEL_FROM_ROUTE=true`); rollback order `e75fe11c…`, `4a187f32…`, `0a4f568f…`, `bb485ed6…`.
-- Runtime LOCAL_SOURCE_CHECKOUT `ff6dc42`, tx `75cc59dc…` (installer now carries `data\`; old roots `V213Runtime.old.*` retained, about 0.5 GB each). Manual seals `20260926T122933Z` and `20260926T124509Z-ad93b335bf24` (after a company-report refresh with order-timing extractor v3), post gate `-ExpectTop20Records 20` PASS. Hourly task `InvestorIntelligenceSealedFreshness` unchanged (:12).
-- LINE Q&A relay live: task `InvestorIntelligence-v213-FreeRelay` runs `scripts\v213_free_relay_watchdog.ps1` at logon and every 5 min; bridge on ninfer `:8080` `Qwen3.8-27B` (auto-detected), gateway :8814, Worker signed smoke PASS (a smoke during the hourly translation can fail transiently; the local server takes one request at a time).
-- Production model-profile secret `V213_MODEL_PROFILE_JSON` pins the retired `Qwen3.8-27B-EXL3-SC5-H6-V6` (identified by readiness sha256 `70077f89…`); in route mode only its settings apply (thinking off, 1024/128 tokens, 18 s). Not changed.
+- Worker `25377354-0ff5-4a28-a78b-82ec2457729f` (source `16cb1b3`); runtime LOCAL_SOURCE_CHECKOUT `ff6dc42`, tx `75cc59dc…`; hourly task `InvestorIntelligenceSealedFreshness` (:12); LINE Q&A relay live on ninfer `Qwen3.8-27B` through the watchdog task. Rollback order and secrets: `git show 3ac39a1:state/STATUS.md`.
+- Not deployed: `bdd72e5` and every commit below. A Worker deploy plus a runtime reinstall needs the operator's go in the session that does it.
 
-## Commits after the 16:00 rollout (all deployed)
+## Commits after 20:45 (tests and gates PASS; not deployed)
 
 | Commit | Change |
 | --- | --- |
-| `7366181` `bb7b1a3` `9814fa8` | installer data carry; Yahoo fallbacks (Nasdaq US chain, Alpha Vantage quote); LF restore |
-| `d021726` | local model auto-detection (`scripts/local_model_endpoint.py`, EXE scan incl. loopback listeners) |
-| `0922bf5` `be71da9` `6e957b8` `0cd6a73` | sourced Chinese names; Top20 outlook, scenarios, detail card, Chinese roles/Leopold; Chinese source labels |
-| `21c82b1` `d0110e4` `ff6dc42` | ChatGPT packet MCP: clipboard + open app, prompt file, collect (CRLF-safe) |
-| `57b9ea6` `067228e` `0cb9f03` | relay follows the route model; watchdog; model selector; route-mode profile; gateway on ninfer with the retired decider |
-| `35127bd` `988f25d` | no RPO schedule from zero (CRWV 6M=1Y=2Y artefact); one three-tile order layout on every card |
-| `16cb1b3` | exchange price leads lookups with a Yahoo cross-check; exchange close on Top20 cards; Nasdaq.com second US consensus |
-| `bdd72e5` | Euronext rows keyed by venue match the cross-check (Qwen review APPROVE finding); not yet installed |
+| `13d7c85` | lane 6: every covered-call high strike needs delta <= 0.20; chains without Greeks (Nasdaq Stockholm, Nasdaq US fallback) use the volatility implied by the strike's own bid/ask (`delta_basis` QUOTE_IMPLIED). Live SIVE: strike 62 implies 157% volatility, delta 0.061 (kept, now labelled). A fixed moneyness cap was rejected (12% OTM is delta ~0.40 at 100% volatility) |
+| `b3f5e8d` | lane 3: RPO timing as a word fraction ("one-third", Micron: its card said "not disclosed") or with "during" (Nebius); extractor v4 re-reads cached filings |
+| `dee1a05` | lane 4: 排名/前20/前二十/瓶頸排名/TOP20。 reach Top20 v3 (they served the legacy seven-field report), 產業排名 the industry ranking; 瓶頸詳情NVDA, "NVDA 詳情" (Top20 only), SIVE/5351 base symbols; 選擇權 and no-cycle option phrasings; help texts stop naming the dead 最新期權; the v3 renderer no longer throws on a missing `news.ratio` |
+| `e8824ae` | Taiwan listings show TWSE/TPEx official monthly revenue beside the Yahoo quarter (`fundamentals.cross_check`, never differenced); `docs/SOURCE_DIVERSITY_AUDIT.md` matrix brought up to date |
 
-## Latest gate run (20:25, tree `16cb1b3`)
-
-Gates PASS; full offline suite 2736 OK (`PYTHONUTF8=1`, base CPython 3.12.10; `.venv-ci` lacks pandas); vitest 946 passed / 2 skipped. Reviews: Qwen APPROVE (auto-detect, lanes 9–12), Gemini APPROVE (lanes 9–12); Qwen APPROVE on the evening diff (one finding fixed in `bdd72e5`); ChatGPT 6 Pro packet `chatgpt-pro-relay` awaits the operator.
+Gate run 22:10 (final tree): security, documentation boundary/structure, workflow supply-chain PASS; typecheck PASS; vitest 954 passed / 2 skipped; offline suite 2741 OK (`PYTHONUTF8=1`, CPython 3.12.10). The only offline failure before this update was this file missing the `38860e7` pointer that `tests/test_agent_skill_structure.py` requires (dropped at 20:45).
 
 ## Operator decisions (2026-09-26)
 
-- Reviews: ChatGPT 6 Pro first (then 極高). 6 Pro is chat-only; `chatgpt_pro_packet` puts the request on the clipboard and opens the ChatGPT app, the operator pastes and sends, `chatgpt_pro_collect` saves the copied reply (OpenAI terms forbid scripting the chat window). Codex CLI quota (ultra/xhigh) resets 2026-09-30 10:27. Qwen (ninfer, w9:p5) and Gemini (w9:p7) review meanwhile; JEV screens uncertain items.
-- Local model: TabbyAPI is gone; ninfer serves `Qwen3.8-27B` on :8080 (shared GPU, concurrency 1). Port or model changes are followed automatically; with several models the pick in the launcher or `select_local_model.ps1` (desktop 選擇本機模型.cmd) wins. The System One decider is retired (`decision_router.retired`).
-- Alpha Vantage key stored as DPAPI ciphertext in `<user_config_root>\alphavantage-key.local.txt` (imported from the operator's desktop note; verified with one quote). The plaintext note `Desktop\Alpha Vantage 免費金鑰.txt` still holds the key: operator to delete. Desktop `儲存 Alpha Vantage 金鑰.cmd` re-stores it.
-- No OpenDART/data.go.kr key: Korea via company IR decks (Hyosung verified; HD Hyundai Electric unreadable). Nasdaq data accepted. Google Finance rejected (no API; terms forbid automated collection).
+- ChatGPT review MCP is now `chatgpt-web` (`D:\chatgpt-web-mcp\src\index.js`, dedicated signed-in Chrome profile, zh-TW UI) in the workspace `.mcp.json`, replacing `chatgpt-codex` (`scripts/codex_review_mcp.py`, kept in the repo). Pro first; 極高 only when Pro is locked or spent. On 22:00 the tier slider showed 極高 (4 of 5) and the fifth (Pro) position 「已鎖定」. Its selectors are zh-CN/English: use only `chatgpt_send_message` (`answerTier`, `newChat`, inline prompt) and `chatgpt_route_new_chat`; no uploads or mode/model/thinking options. Rule recorded in the workspace `AGENTS.md`. No pointless questions.
+- Local model: ninfer `Qwen3.8-27B` on :8080 (shared GPU, concurrency 1); the System One decider stays retired. Alpha Vantage key as DPAPI ciphertext; the plaintext desktop note is still the operator's to delete. No OpenDART/data.go.kr key; Nasdaq data accepted; Google Finance rejected.
 
-## Open lanes (resume order: 2, 3, 6, 4)
+## Open lanes
 
-2. Source diversity phase 2 (Gemini audit `%TEMP%\ii-live\gemini-source-diversity.result.md`): Top20 returns are Yahoo-only in every market; non-US fundamentals Yahoo-only (next: TWSE/TPEx monthly revenue for Taiwan listings, Cision/MFN reports for Stockholm, EDINET needs a free key); Japan and Korea price shards are Yahoo daily closes (no free exchange feed found); consensus outside the US Yahoo-only. Update `docs/SOURCE_DIVERSITY_AUDIT.md`.
-3. Company orders: SEC RPO timing now only from disclosed horizons; RPO without XBRL timing for CRWV, SNDK, MU, AXTI, NBIS (20-F); Korea: HD Hyundai Electric deck unreadable keylessly; Taiwan monthly revenue not yet used.
-6. Covered calls without a delta (Nasdaq Nordic, Nasdaq US fallback) have no assignment cap (SIVE monthly strike 62 on spot 32.78).
-4. Worker audit items: aliases (排名/前20), "NVDA 期權" without a period, stale help texts, v3 validator for `news.ratio`.
+2. Source diversity: Taiwan done in code. Sweden/Korea researched (Gemini `%TEMP%\ii-live\gemini-lane2-sweden-korea.result.md`; Yahoo matched the official figures exactly for SIVE Q2 53.8 MSEK, SK hynix 2Q26 KRW 79,318.7B, Samsung 2Q26 KRW 171,499,470M): SIVE via the Cision release RSS/HTML ("Net sales amounted to SEK x m (y)"): GO_WITH_LIMITS (robots.txt allows it; one RSS read a day, the release page only for a new item, store figures + URL with attribution; `%TEMP%\ii-live\gemini-cision-terms.result.md`), MFN RSS is disallowed by robots.txt and the Sivers site is bot-blocked; Samsung only via the IR statement PDF (needs a PDF parser outside the hash-locked requirements); SK hynix newsroom terms forbid robots, so only a curated per-quarter config (as the Hyosung orders). Japan/Korea price shards stay Yahoo daily closes; consensus outside the US Yahoo-only.
+3. Orders: MU fixed. CRWV (24M only) and SNDK (12M only) disclose no other horizon. AXTI ("through the first half of 2029") and NBIS (20-F/6-K, 28%→36% within 24M) have no deep report (only domestic SEC filers get one): DEFERRED_WITH_REASON until foreign-filer deep reports exist. Korea HD Hyundai Electric deck unreadable keylessly.
 5. Deferred: report-age gates for carried reports and federation readers (certified `cloud/src/qa.ts` needs recertification); the CI R75 route blocks release qualification.
+14. Deploy the commits above (Worker + runtime reinstall + seal + post gate), then refresh company reports so MU's schedule appears. Needs the operator's go.
 
-Closed today: lanes 1, 7, 8, 9, 10, 11, 12, 13 (relay).
+Closed today: lanes 1, 4, 6, 7, 8, 9, 10, 11, 12, 13.
 
 ## Closed components — no reopening without regression evidence
 
@@ -57,14 +46,14 @@ NATIVE_ATTEMPT_COUNT=0; NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQ
 
 ## Control plane
 
-Astra master; local Qwen writer lane; Sol reviewer. The operator assigned Claude Code as master and single tracked writer (2026-09-25) and asked for Herdr dispatch to Qwen and Gemini with JEV screening; they write result files only. Herdr w9: p5 `qwen-local` (ninfer Qwen3.8-27B), p7 `gemini-review` (Gemini 3.8 flash; five-hour quota hit once). The w6/wB panes belong to other projects.
+Claude Code is master and single tracked writer (operator 2026-09-25). Herdr w9 helpers write result files only: p5 `qwen-local` (ninfer Qwen3.8-27B: code analysis and reviews), p7 `gemini-review` (Gemini 3.8 flash: web research and audits). Each task starts with `/new` (send it with `MSYS_NO_PATHCONV=1` from Git Bash, or it arrives as a path). Tonight: Gemini audits (lane 4, Taiwan revenue, RPO passages, Sweden/Korea); Qwen patch proposal (lane 6) and reviews (lanes 6, 4+3, 2). The wB panes belong to another project.
 
-## External mutations (this session, after 16:00)
+## Workspace fixes (outside the repository, logged)
 
-Worker deploys `0a4f568f…`, `4a187f32…`, `e75fe11c…`, `25377354…` (vars `LOCAL_LLM_MODEL_FROM_ROUTE`); runtime reinstalls `a98903e7…`, `7d52c2fc…`, `5c9ca41e…`, `db952013…`, `75cc59dc…`; manual seals `20260926T103905Z`, `20260926T122933Z` (+ hourly); relay task re-registered to the watchdog and briefly disabled around reinstalls; relay routes leased (production Durable Object) and signed smokes; runtime v3 rebuilds; Alpha Vantage key DPAPI file; desktop `.cmd` helpers; `%LOCALAPPDATA%\InvestorIntelligence\tools\save-alphavantage-key.ps1`; model selection saved (`desktop_model_selector`). Read-only: wrangler secret names, Worker readiness, Nasdaq/Alpha Vantage/Wikipedia/GCIS/company sites. No billing or broker change; no LINE push. Earlier today: `git show a8c6e58:state/STATUS.md`.
+- Pi `[Extension issues]`: `pi-mcp-adapter` failed because `~\.pi\agent\settings.json` had a UTF-8 BOM written by `Configure-Pi-NInfer.ps1` (Windows PowerShell `Set-Content -Encoding UTF8`). The kit and installed copies now write UTF-8 without BOM and read UTF-8; `models.json` BOM removed; the project `.pi/sol-pi.json` reducer that named the removed `tabby-local` provider is off. Receipt `_archive\extension-issues-fix-20260926T132956Z\RECEIPT.md`.
+- `.mcp.json` and workspace `AGENTS.md` preimages: `_archive\chatgpt-web-mcp-switch-20260926T135913Z`.
 
-## Handoff (2026-09-26 20:45)
+## Handoff (2026-09-26 22:10)
 
-- All work committed and pushed (PR #37 head = this STATUS commit). Production as above.
-- Operator: paste `chatgpt-pro-relay` into ChatGPT 6 Pro and copy the reply (then `chatgpt_pro_collect relay`); delete the plaintext key note on the desktop.
-- Scratch: `%TEMP%\ii-live` (tasks, results, packets, probes, offline runs), `%TEMP%\ii-pkg-*` exports.
+- Next: lane 14 deploy on the operator's go; lane 2 Sweden/Korea from Gemini's result; ChatGPT review of `13d7c85..HEAD` through `chatgpt-web` (Pro, else 極高).
+- Scratch: `%TEMP%\ii-live` (tasks, results, diffs, offline runs).
