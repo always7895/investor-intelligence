@@ -131,6 +131,8 @@ def capability_context_evidence(canonical: str) -> int | None:
     url = override or (base + _endpoint_suffixes(base)[0])
     try:
         response = _loopback_http("GET", url, timeout=(2, 8))
+        if response.status_code == 404 and not override:
+            return _catalog_context_evidence(canonical)
         if response.status_code != 200:
             return None
         data = response.json()
@@ -148,6 +150,16 @@ def capability_context_evidence(canonical: str) -> int | None:
     if type(value) is not int or value <= 0:
         return None
     return value
+
+
+def _catalog_context_evidence(canonical: str) -> int | None:
+    """Servers without the TabbyAPI /v1/model card (ninfer, vLLM; operator 2026-09-26) report the configured served
+    context as max_model_len on their /v1/models row. Only that row, for exactly the resolved identity, counts."""
+    for row in _available_model_catalog():
+        if isinstance(row, dict) and str(row.get("id", "")).casefold() == str(canonical).casefold():
+            value = row.get("max_model_len")
+            return value if type(value) is int and value > 0 else None
+    return None
 
 
 CAPABILITY_PROBE_PROMPT = "Respond with a JSON object."
@@ -175,6 +187,13 @@ def structured_json_probe(model: str | None = None) -> bool:
     }
     try:
         response = _loopback_http("POST", url, json=body, timeout=(2, 10))
+        if response.status_code == 400 and "response_format" in response.text:
+            # A server without constrained decoding (ninfer) refuses the json_object format; the same capability is
+            # then proved by an unconstrained reply that must still parse as a JSON object.
+            body = {key: value for key, value in body.items() if key != "response_format"}
+            body["messages"] = [{"role": "user", "content": CAPABILITY_PROBE_PROMPT + " Output only the JSON object."}]
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+            response = _loopback_http("POST", url, json=body, timeout=(2, 10))
         if response.status_code != 200:
             return False
         data = response.json()
@@ -228,6 +247,11 @@ def _reasoner_decision_gate(context: dict, canonical: str) -> dict:
     if status in ("CONFLICTED", "STALE", "UNAVAILABLE"):
         return {"allowed": False, "error": "REASONER_DECISION_DENIED",
                 "authority": "source_qualification", "sufficiency": "NOT_SUFFICIENT"}
+    if _decider_retired():
+        # The System One decider is retired (AGENTS.md; config decision_router.retired): source qualification alone
+        # decides. Failed, stale or conflicted evidence is still denied above; nothing is asked of a missing model.
+        return {"allowed": True, "authority": "source_qualification_decider_retired",
+                "sufficiency": "SUFFICIENT", "confidence": None}
     question = "Source evidence sufficiency for answering?"
     options = ["SUFFICIENT", "NOT_SUFFICIENT"]
     try:
@@ -253,7 +277,8 @@ def _format_decision_annotation(gate: dict) -> dict:
     parallel router)."""
     if gate["allowed"]:
         return {"sufficiency": gate["sufficiency"], "confidence": gate["confidence"],
-                "authority": gate["authority"], "decider": "OK"}
+                "authority": gate["authority"],
+                "decider": "RETIRED" if gate["authority"] == "source_qualification_decider_retired" else "OK"}
     if gate["authority"] == "source_qualification":
         return {"sufficiency": "NOT_SUFFICIENT", "authority": "source_qualification",
                 "decider": "NOT_CONSULTED"}
@@ -296,9 +321,18 @@ DECODE_RATE = adaptive.DecodeRate()
 _SCREEN_CLIENT: DecisionBackendClient | None = None
 
 
+def _decider_retired() -> bool:
+    try:
+        return _load_local_ai_config()["decision_router"].get("retired") is True
+    except (KeyError, TypeError, AttributeError, OSError, ValueError):
+        return False
+
+
 def _screen_client() -> DecisionBackendClient | None:
-    """Short-timeout System One client for the reasoning screen; None when not configured."""
+    """Short-timeout System One client for the reasoning screen; None when not configured or retired."""
     global _SCREEN_CLIENT
+    if _decider_retired():
+        return None
     if _SCREEN_CLIENT is None:
         try:
             cfg = _load_local_ai_config()

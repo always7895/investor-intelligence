@@ -126,6 +126,7 @@ class R75GatewayProcessTests(unittest.TestCase):
             threading.Thread(target=decider.serve_forever, daemon=True).start()
             lriv1 = json.loads((ROOT / "config/local-runtime-independence-v1.json").read_text(encoding="utf-8"))
             lriv1["decision_router"]["base_url"] = f"http://127.0.0.1:{decider.server_port}"
+            lriv1["decision_router"]["retired"] = False  # this case exercises the decider path explicitly
             (config / "local-runtime-independence-v1.json").write_text(json.dumps(lriv1), encoding="utf-8")
             port = free_port()
             env = os.environ.copy()

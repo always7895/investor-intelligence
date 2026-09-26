@@ -15,7 +15,9 @@
   "model": "Mapika-decider-2b-v9",
   "alias_diagnostic_only": "decider-v8",
   "role": "DECISION_ROUTER",
-  "label_kind": "diagnostic_selection_only"
+  "label_kind": "diagnostic_selection_only",
+  "retired": true,
+  "retired_note": "Mapika / decider-system-one retired (AGENTS.md); the gateway gate uses source qualification alone"
  },
  "capability_requirements": {
   "min_context": 32768,

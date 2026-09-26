@@ -307,6 +307,7 @@ class _LocalRuntimeBase(unittest.TestCase):
         _real_cfg = json.loads(
             (SCRIPTS.parent / "config" / "local-runtime-independence-v1.json").read_text(encoding="utf-8-sig"))
         _real_cfg["decision_router"]["base_url"] = f"http://127.0.0.1:{_port(self.decider)}"
+        _real_cfg["decision_router"]["retired"] = False  # these cases exercise the decider path explicitly
         self._cfg_path.write_text(json.dumps(_real_cfg), encoding="utf-8")
         self._cfg_patch = patch.object(gw, "LOCAL_AI_CONFIG_PATH", self._cfg_path)
         self._cfg_patch.start()
