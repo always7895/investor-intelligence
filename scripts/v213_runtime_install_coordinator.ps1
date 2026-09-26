@@ -645,6 +645,18 @@ try {
             state_existed = $stateExisted; state_base64 = $(if ($stateExisted) { [Convert]::ToBase64String($stateOriginal) } else { $null })
             receipt_existed = $receiptExisted; receipt_base64 = $(if ($receiptExisted) { [Convert]::ToBase64String($receiptOriginal) } else { $null }) }
         Write-V213JsonAtomic (Join-Path $metadataRoot ('v213-previous-' + $transactionId + '.json')) $preimage
+
+        # data\ is mutable runtime state outside the manifest (Top20 last-known-good bundles, sealed runs, caches). A new
+        # root without it sealed an INSUFFICIENT Top20 with no lookups (2026-09-26), so the files the package does not
+        # ship are carried from the live root: copy only (the old root keeps its data for -RestorePrevious), never
+        # overwrite a packaged file (/XC /XN /XO), never follow a junction (/XJ).
+        $liveData = Join-Path $runtimeIdentity 'data'
+        if (Test-Path -LiteralPath $liveData -PathType Container) {
+            & $robocopy $liveData (Join-Path $stagePath 'data') '/E' '/XC' '/XN' '/XO' '/XJ' '/R:2' '/W:1' '/NFL' '/NDL' '/NJH' '/NJS' '/NP' | Out-Null
+            if ($LASTEXITCODE -gt 7) { throw 'RUNTIME_DATA_CARRY_FAILED' }
+            Assert-V213NoReparseTree $stagePath 'RUNTIME_STAGE'
+            if ((Get-V213Manifest $stagePath).sha256 -ne $effective.sha256) { throw 'RUNTIME_DATA_CARRY_CHANGED_PAYLOAD' }
+        }
     }
 
     # The live root is rechecked immediately before the only destructive rename.

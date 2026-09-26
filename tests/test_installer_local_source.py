@@ -130,6 +130,49 @@ class LocalSourceInstallTests(unittest.TestCase):
                 self.assertFalse((parent / "runtime").exists(), output)
                 self.assertFalse((parent / "local/InvestorIntelligence/v213-runtime-install-receipt.json").exists())
 
+    def test_reinstall_carries_live_data_without_overwriting_packaged_files_and_refuses_junctions(self):
+        shell = harness.required_hosts()[0][0]
+        with harness.persistent_fixture("local-source-data-carry") as directory:
+            parent = Path(directory)
+            runtime = parent / "runtime"
+            repo = self._repository(parent)
+            first = self._install(shell, parent, self._export(shell, repo, parent / "export-a"), repo, runtime)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            packaged = "data/bootstrap/v213-r15r-order-baseline.json"
+            self.assertTrue((runtime / packaged).is_file())
+            lkg = runtime / "data/cache/top20-lkg/20260926T000000Z-fixture.json"
+            sealed = runtime / "data/v213-snapshots/20260926T000000Z-fixture/objects.json"
+            for path, body in ((lkg, b"LKG"), (sealed, b"SEALED")):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(body)
+            (runtime / packaged).write_bytes(b"STALE")
+            outside = parent / "outside"
+            outside.mkdir()
+            (outside / "secret.txt").write_text("never carried", encoding="utf-8")
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(runtime / "data/cache/link"), str(outside)], check=True, capture_output=True)
+            marker = repo / "docs/LOCAL_FIXTURE_SECOND_COMMIT.md"
+            marker.parent.mkdir(exist_ok=True)
+            marker.write_text("second commit\n", encoding="utf-8")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-q", "-m", "second")
+            export_b = self._export(shell, repo, parent / "export-b")
+            refused = self._install(shell, parent, export_b, repo, runtime)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("RUNTIME_ROOT_TOPOLOGY_REPARSE_ENTRY", refused.stdout + refused.stderr)
+            self.assertFalse((runtime / "docs/LOCAL_FIXTURE_SECOND_COMMIT.md").exists())
+            os.rmdir(runtime / "data/cache/link")  # removes the junction itself, never its target
+            self.assertTrue((outside / "secret.txt").is_file())
+            second = self._install(shell, parent, export_b, repo, runtime)
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertTrue((runtime / "docs/LOCAL_FIXTURE_SECOND_COMMIT.md").exists())
+            self.assertEqual((runtime / "data/cache/top20-lkg/20260926T000000Z-fixture.json").read_bytes(), b"LKG")
+            self.assertEqual((runtime / "data/v213-snapshots/20260926T000000Z-fixture/objects.json").read_bytes(), b"SEALED")
+            self.assertEqual((runtime / packaged).read_bytes(), (repo / packaged).read_bytes())
+            transaction = json.loads((parent / "local/InvestorIntelligence/v213-runtime-install.journal.json").read_text(encoding="utf-8"))["transaction_id"]
+            old = parent / ("runtime.old." + transaction)
+            self.assertEqual((old / "data/cache/top20-lkg/20260926T000000Z-fixture.json").read_bytes(), b"LKG")
+            self.assertEqual((old / packaged).read_bytes(), b"STALE")
+
     def test_restore_previous_swaps_back_and_reattests(self):
         for shell, _ in harness.required_hosts():
             with self.subTest(shell=shell), harness.persistent_fixture("local-source-restore") as directory:
