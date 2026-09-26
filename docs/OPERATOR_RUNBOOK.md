@@ -47,6 +47,7 @@ Decision tree (all steps read-only until a verified action is named):
 - **Corrupted/rejected seal** (loader answers `INSUFFICIENT_EVIDENCE`): do NOT "fix" bytes — roll back the pointer to the newest verified run (Section 2), then verify 1–2.
 - **Bad worker version deployed**: Section 3.
 - **Schedule stopped**: Section 4.
+- **`SYNC FAILED` with `KV_DAILY_WRITE_LIMIT_REACHED`** (Cloudflare code 10048): the free plan's 1,000 KV writes a day are spent; nothing can publish until 00:00 UTC (08:00 Taipei), the pointer stays on the last seal and Top20 answers the stale notice after 7200 s. Wait for the reset; do not re-run seals. Budget: an hourly seal writes about 20 keys; a seal after a Chinese-name or identity rebuild about 70. Keep rollout days to a few manual seals (2026-09-26: five reinstalls and a names-cache fill spent the quota by 21:12).
 - Full post-action validation: this file's Sections 1–2 checks + `python scripts/sync_sealed_snapshot_kv.py --run-dir state/v213-snapshots/<current>/` reading `READBACK_VERIFIED 14`.
 Escalation: if two rollback attempts fail, HALT; the system is by design still serving the last good sealed run — capture `data/cache/live-pointer-at-<ref>.txt` snapshot + readiness echo before any further action.
 

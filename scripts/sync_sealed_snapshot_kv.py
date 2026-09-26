@@ -54,8 +54,21 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+# Cloudflare's free plan allows 1,000 KV writes a day (reset 00:00 UTC). An hourly seal writes about 20 keys; a rollout
+# day with reinstalls and manual seals can spend the rest (2026-09-26: every seal after 21:12 local failed on it).
+KV_DAILY_LIMIT = "KV_DAILY_WRITE_LIMIT_REACHED (Cloudflare code 10048, free plan; resets 00:00 UTC; the last seal keeps serving)"
+
+
+def _daily_limit(p: subprocess.CompletedProcess) -> bool:
+    text = f"{p.stdout or ''}\n{p.stderr or ''}"
+    return "10048" in text or "free usage limit" in text
+
+
 def _error_summary(p: subprocess.CompletedProcess) -> str:
-    """Last non-empty stderr line, truncated; ids and emails masked (logs never carry account details)."""
+    """The daily write limit by name, else the last non-empty stderr line, truncated; ids and emails masked (logs never
+    carry account details)."""
+    if _daily_limit(p):
+        return KV_DAILY_LIMIT
     lines = [line.strip() for line in (p.stderr or "").splitlines() if line.strip()]
     text = lines[-1] if lines else f"exit {p.returncode}"
     text = re.sub(r"[0-9a-f]{32}", "<id>", text)
@@ -68,6 +81,8 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
         if p.returncode == 0:
             return p
         LAST_ERROR[:] = [_error_summary(p)]
+        if _daily_limit(p):
+            return p  # retrying cannot succeed before the reset
         if attempt < ATTEMPTS:
             time.sleep(RETRY_SECONDS * attempt)
     return p
