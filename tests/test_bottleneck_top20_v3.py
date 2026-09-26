@@ -123,6 +123,48 @@ class OutlookTests(unittest.TestCase):
                      {"資料年月": "11508", "公司代號": "5351", "營業收入-去年同月增減(%)": ""}]
         self.assertEqual(engine.taiwan_monthly_revenue(["5351.TWO"], lambda url: malformed), {})
 
+    def test_stockholm_listing_takes_its_interim_report_from_cision_within_the_fetch_limits(self):
+        rss = ("<rss><channel>"
+               "<item><title>Sivers Semiconductors Makes Changes to Senior Leadership Team</title><link>https://news.cision.com/x/r/a,c1</link></item>"
+               "<item><title>Sivers Semiconductors Reports Q2 2026 Results as Product Growth</title><link>https://news.cision.com/x/r/q2,c2</link></item>"
+               "<item><title>Invitation to Presentation of Sivers Semiconductors' Q2 2026 Report</title><link>https://news.cision.com/x/r/inv,c3</link></item>"
+               "<item><title>Sivers Semiconductors AB (publ), Publishes Interim Report Q1, January - March 2026</title><link>https://news.cision.com/x/r/q1,c4</link></item>"
+               "</channel></rss>")
+        page = ('<li style=" margin-bottom:3pt;"><span>Net sales amounted to SEK 53.8 m (61.4), corresponding to a decrease of 12% '
+                'year-over-year.</span></li>')
+        urls = []
+        feed = engine.CISION_RSS.format(slug="sivers-semiconductors")
+        replies = {feed: rss, "https://news.cision.com/x/r/q2,c2": page}
+        def fetch(url):
+            urls.append(url)
+            return replies[url]
+        now = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+        expected = {"SIVE.ST": {"source_id": "CISION", "source_url": "https://news.cision.com/x/r/q2,c2", "period": "2026-Q2",
+                                 "revenue_yoy": round(53.8 / 61.4 - 1, 6), "cumulative_yoy": None, "currency": "SEK"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cision.json"
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST", "NVDA"], now, fetch, cache), expected)
+            self.assertEqual(len(urls), 2)  # the feed, then the one new report page
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(hours=2), fetch, cache), expected)
+            self.assertEqual(len(urls), 2)  # one feed read a day
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(hours=21), fetch, cache), expected)
+            self.assertEqual(len(urls), 3)  # the feed again, the known report page not
+            down = lambda url: (_ for _ in ()).throw(OSError("down"))  # noqa: E731
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(hours=45), down, cache), expected)
+            replies[feed] = rss.replace("q2,c2", "q3,c5").replace("Q2 2026", "Q3 2026")
+            replies["https://news.cision.com/x/r/q3,c5"] = "<p>Net sales grew strongly.</p>"  # unreadable: no figure, no guess
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=3), fetch, cache), {})
+            replies["https://news.cision.com/x/r/q3,c5"] = page.replace("53.8 m (61.4)", "70.0 m (56.0)")  # readable the next day
+            q3 = engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=4), fetch, cache)["SIVE.ST"]
+            self.assertEqual((q3["period"], q3["revenue_yoy"]), ("2026-Q3", 0.25))
+        with tempfile.TemporaryDirectory() as tmp:  # a page that stays unreadable is read on three days, then left alone
+            urls.clear()
+            replies["https://news.cision.com/x/r/q3,c5"] = "<p>challenge</p>"
+            for day in range(5):
+                engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=day), fetch, Path(tmp) / "cision.json")
+            self.assertEqual(sum(url.endswith("q3,c5") for url in urls), 3)
+        self.assertEqual(engine.cision_interim_revenue(["NVDA"], now, lambda url: self.fail("not a Cision issuer"), None), {})
+
     def test_korean_backlog_comes_from_the_ir_config_or_states_why_not(self):
         orders = engine.outlook("298040.KS", None, None)["orders"]
         self.assertEqual((orders["kind"], orders["amount"], orders["currency"], orders["as_of"]), ("BACKLOG", 17507000000000, "KRW", "2026-06-30"))
@@ -278,8 +320,12 @@ class SealedFormTests(unittest.TestCase):
                  "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD", "junk": 1}
         self.assertEqual(publisher._sealed_revenue_check(check), {k: v for k, v in check.items() if k != "junk"})
         for bad in ({**check, "source_id": "YAHOO"}, {**check, "source_url": "http://x"}, {**check, "period": "2026-13"},
-                    {**check, "revenue_yoy": float("nan"), "cumulative_yoy": None}, None):
+                    {**check, "revenue_yoy": float("nan"), "cumulative_yoy": None}, {**check, "period": "2026-Q2"}, None):
             self.assertIsNone(publisher._sealed_revenue_check(bad))
+        report = {"source_id": "CISION", "source_url": "https://news.cision.com/x/r/q2,c2", "period": "2026-Q2", "revenue_yoy": -0.123779,
+                  "cumulative_yoy": None, "currency": "TWD"}
+        self.assertEqual(publisher._sealed_revenue_check(report), {**report, "currency": "SEK"})  # the currency follows the source
+        self.assertIsNone(publisher._sealed_revenue_check({**report, "period": "2026-08"}))
         self.assertEqual(backlog["guidance"], {"kind": "ANNUAL_NEW_ORDERS", "year": 2026.0, "amount": 12e12, "previous": None})
 
     def test_sealed_entries_carry_the_sourced_chinese_name_and_listing_age(self):

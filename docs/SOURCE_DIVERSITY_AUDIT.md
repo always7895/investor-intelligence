@@ -23,7 +23,7 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 | Serenity signals | third-party GitHub archive | local archive cache | **single**: OPEN |
 | Chinese names | TWSE/TPEx short names, Chinese Wikipedia, Wikidata, `config/company-zh-names-v1.json` | cache | multiple |
 | Taiwan monthly revenue (research MCP) | TWSE OpenAPI (listed), TPEx OpenAPI (OTC) | none per market | **single per market**: OPEN (low) |
-| Top20 fundamentals | SEC XBRL (US filers); Yahoo quarterly income statement elsewhere | Taiwan: TWSE/TPEx monthly revenue beside the Yahoo quarter (`fundamentals.cross_check`) | Taiwan two sources; Sweden, Korea, Japan **single**: OPEN |
+| Top20 fundamentals | SEC XBRL (US filers); Yahoo quarterly income statement elsewhere | Taiwan: TWSE/TPEx monthly revenue; Stockholm (SIVE): the issuer's Cision interim report, one feed read a day (`fundamentals.cross_check`, beside the Yahoo quarter) | Taiwan and SIVE two sources; Korea, Japan **single**: OPEN |
 | Top20 card price | Yahoo adjusted daily close (returns) | exchange close from the price shards (`market.cross_check`) | two sources where an exchange feed exists |
 | US consensus | Yahoo analyst estimates | Nasdaq.com targets and EPS (`consensus_second`), shown beside, never averaged | two sources; outside the US **single**: OPEN |
 
@@ -36,13 +36,15 @@ met by a cached last good value, an age limit and an explicit unavailability rea
   2026-09-26: Nasdaq data accepted); its observations carry `rights_status: candidate_local_review`.
 - Keyed free APIs (for example Alpha Vantage, OpenDART, FRED) need the operator's own registration; the key is stored
   DPAPI-protected like the SEC contact and never in the repository.
+- Cision (news.cision.com) carries Stockholm issuers' MAR releases; its robots.txt allows the release RSS and pages. MFN's
+  robots.txt disallows its RSS feeds, so it is not used.
 - Research agents reach official keyless data through the read-only MCP server `scripts/public_data_mcp.py` (SEC EDGAR,
   TWSE/TPEx monthly revenue).
 
 ## Next steps (in order)
 
-1. Official fundamentals beside Yahoo for Stockholm (SIVE interim reports) and Korea (company IR releases); keyless only,
-   otherwise stay Yahoo-only with the reason.
+1. Official fundamentals beside Yahoo for Korea: Samsung's IR statement PDF needs a PDF parser outside the hash-locked
+   requirements; SK hynix's newsroom terms forbid robots (a curated per-quarter config only). Keyless only.
 2. Second identity/price sources per market, starting with the US (SEC directory; Yahoo daily close as the price fallback
    already used for Japan and Korea).
 3. A replacement for the frozen hfmarketdata corroborator; stooq only if it becomes reachable again.

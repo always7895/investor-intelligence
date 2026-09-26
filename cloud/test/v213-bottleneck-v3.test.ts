@@ -133,6 +133,21 @@ describe("bottleneck-explosion Top20 v3", () => {
     }
   });
 
+  it("shows a Stockholm listing's own interim report (Cision) with its quarter", () => {
+    const report = { source_id: "CISION", source_url: "https://news.cision.com/sivers-semiconductors/r/q2,c4388331", period: "2026-Q2",
+      revenue_yoy: -0.123779, cumulative_yoy: null, currency: "SEK" };
+    const withReport = doc(Date.now() - HOUR);
+    (withReport.top[0] as any).fundamentals.cross_check = report;
+    const parsed = parseBottleneckV3(withReport)!;
+    expect(parsed).not.toBeNull();
+    const text = JSON.stringify(buildBottleneckDetail(parsed, "SIVE.ST", "text"));
+    expect(text).toContain("公司財報公告：Cision（發行公司法規公告） 2026-Q2 營收年增 -12%");
+    expect(text).not.toContain("官方月營收");
+    const bad = doc(Date.now() - HOUR);
+    (bad.top[0] as any).fundamentals.cross_check = { ...report, period: "2026-Q5" };
+    expect(parseBottleneckV3(bad)).toBeNull();
+  });
+
   it("renders optional numbers the validator lets through as missing, never as NaN or a crash", () => {
     const sparse = doc(Date.now() - HOUR);
     delete (sparse.industries[0] as any).news.ratio;

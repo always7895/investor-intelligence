@@ -441,12 +441,17 @@ def _exchange_cross_checks(symbols: "list[str]", market_prices: "dict[str, dict]
 
 
 def _sealed_revenue_check(raw: "object") -> "dict | None":
-    """The exchange's monthly revenue beside a Taiwan listing's Yahoo quarter (scripts/bottleneck_top20_v3.py), reduced to
-    known keys with finite numbers and an https source; anything malformed is dropped."""
-    if not isinstance(raw, dict) or raw.get("source_id") not in ("TWSE", "TPEX") or not str(raw.get("source_url", "")).startswith("https://"):
+    """An official revenue figure beside a listing's Yahoo quarter (scripts/bottleneck_top20_v3.py): the exchange's monthly
+    revenue for Taiwan (period YYYY-MM, TWD) or the issuer's own Cision interim report for Stockholm (YYYY-Qn, SEK),
+    reduced to known keys with finite numbers and an https source; anything malformed is dropped."""
+    sources = {"TWSE": ("TWD", False), "TPEX": ("TWD", False), "CISION": ("SEK", True)}
+    if not isinstance(raw, dict) or raw.get("source_id") not in sources or not str(raw.get("source_url", "")).startswith("https://"):
         return None
+    currency, quarterly = sources[raw["source_id"]]
     period = str(raw.get("period", ""))
-    if len(period) != 7 or period[4] != "-" or not (period[:4] + period[5:]).isdigit() or not 1 <= int(period[5:]) <= 12:
+    if len(period) != 7 or period[4] != "-" or not period[:4].isdigit():
+        return None
+    if not (period[5] == "Q" and period[6] in "1234" if quarterly else period[5:].isdigit() and 1 <= int(period[5:]) <= 12):
         return None
     def number(value: object) -> "float | None":
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
@@ -454,7 +459,7 @@ def _sealed_revenue_check(raw: "object") -> "dict | None":
     if yoy is None and cumulative is None:
         return None
     return {"source_id": raw["source_id"], "source_url": raw["source_url"][:400], "period": period, "revenue_yoy": yoy,
-            "cumulative_yoy": cumulative, "currency": "TWD"}
+            "cumulative_yoy": cumulative, "currency": currency}
 
 
 def _sealed_outlook(raw: "object") -> "dict | None":

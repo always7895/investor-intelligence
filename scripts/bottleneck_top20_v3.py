@@ -27,13 +27,16 @@ Usage: bottleneck_top20_v3.py [--if-older-than-hours H] [--output PATH] [--no-ne
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import math
+import re
 import statistics
 import sys
 import time
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -48,6 +51,7 @@ LEOPOLD = ROOT / "data" / "cache" / "leopold_positions_latest.json"
 TICKERS = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
 CACHE = ROOT / "data" / "cache" / "v3"
 OUTPUT = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
+CISION_CACHE = ROOT / "data" / "cache" / "cision_interim_revenue.json"
 COMPANYFACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 EFTS = "https://efts.sec.gov/LATEST/search-index?q={query}&dateRange=custom&startdt={start}&enddt={end}"
 REVENUE_TAGS = [("us-gaap", "Revenues"), ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
@@ -452,6 +456,79 @@ def taiwan_monthly_revenue(symbols: Iterable[str], fetch_json: Callable[[str], A
     return out
 
 
+# Nasdaq Stockholm issuers publish interim reports (EU MAR) through Cision; news.cision.com's robots.txt allows the release
+# RSS and pages. One RSS read a day, the release page only when a new report appears; only the figures and the URL are kept.
+CISION_ISSUERS = {"SIVE.ST": "sivers-semiconductors"}
+CISION_RSS = "https://news.cision.com/{slug}/rss/releases"
+CISION_RSS_MIN_HOURS = 20
+_REPORT_TITLE = re.compile(r"\binterim report\b|\byear-end report\b|\breports?\s+Q[1-4]\s+20\d{2}\s+results\b", re.I)
+_NET_SALES = re.compile(r"Net sales (?:amounted to|of|was|were|totalled|totaled)\s+SEK\s*(\d[\d,]*(?:\.\d+)?)\s*(?:m|million|MSEK)\b\s*\((\d[\d,]*(?:\.\d+)?)\)", re.I)
+
+
+def _report_period(title: str) -> str | None:
+    """Report period from a release title: "Reports Q2 2026 Results" -> 2026-Q2, "Interim Report Q1, January - March
+    2026" -> 2026-Q1; a year-end report without a quarter is Q4."""
+    year, quarter = re.search(r"\b(20\d{2})\b", title), re.search(r"\bQ([1-4])\b", title)
+    if year and quarter:
+        return f"{year.group(1)}-Q{quarter.group(1)}"
+    if year and re.search(r"year-end report", title, re.I):
+        return f"{year.group(1)}-Q4"
+    return None
+
+
+def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Callable[[str], str] | None = None,
+                           cache_path: Path | None = CISION_CACHE) -> dict[str, dict[str, Any]]:
+    """Symbol -> the latest interim report's net sales change from the issuer's own Cision release ("Net sales amounted
+    to SEK 53.8 m (61.4)"), beside the Yahoo quarter. A failed read keeps the cached report; nothing is guessed."""
+    def get(url: str) -> str:
+        if fetch_text:
+            return fetch_text(url)
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (InvestorIntelligence public observation)"})
+        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed public HTTPS host
+            return response.read().decode("utf-8-sig", "replace")
+
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path and cache_path.exists() else {}
+    except (OSError, ValueError):
+        cache = {}
+    out: dict[str, dict[str, Any]] = {}
+    for symbol in [s for s in symbols if s in CISION_ISSUERS]:
+        entry = cache.get(symbol) if isinstance(cache.get(symbol), dict) else {}
+        try:
+            read_at = datetime.strptime(str(entry.get("rss_read_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            read_at = None
+        if read_at is None or now - read_at >= timedelta(hours=CISION_RSS_MIN_HOURS):
+            try:
+                items = ET.fromstring(get(CISION_RSS.format(slug=CISION_ISSUERS[symbol]))).findall("./channel/item")
+                reports = [(item.findtext("title") or "", item.findtext("link") or "") for item in items
+                           if _REPORT_TITLE.search(item.findtext("title") or "")
+                           and not re.search(r"\binvitation\b", item.findtext("title") or "", re.I)]
+                title, link = reports[0] if reports else ("", "")  # the feed lists the newest release first
+                # A new report's page is read once; an unreadable one (a challenge page, say) at most three days running.
+                attempts = entry.get("attempts", 0) if link == entry.get("link") and entry.get("check") is None else None
+                if link.startswith("https://news.cision.com/") and (link != entry.get("link") or (attempts is not None and attempts < 3)):
+                    text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", get(link))))
+                    sales, period = _NET_SALES.search(text), _report_period(title)
+                    current, prior = (float(sales.group(1).replace(",", "")), float(sales.group(2).replace(",", ""))) if sales else (0.0, 0.0)
+                    check = ({"source_id": "CISION", "source_url": link, "period": period, "revenue_yoy": round(current / prior - 1, 6),
+                              "cumulative_yoy": None, "currency": "SEK"} if sales and period and prior > 0 else None)
+                    entry = {"link": link, "check": check, **({"attempts": (attempts or 0) + 1} if check is None else {})}
+                entry = {**entry, "rss_read_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+                cache[symbol] = entry
+            except Exception:
+                pass  # keep the cached report, if any
+        if isinstance(entry.get("check"), dict):
+            out[symbol] = entry["check"]
+    if cache_path:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+    return out
+
+
 def usd_rate(currency: str | None, cache: dict[str, float | None]) -> float | None:
     if not currency or currency == "USD":
         return 1.0
@@ -529,7 +606,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             members.setdefault(capturer["symbol"], {"layer": layer, "capturer": capturer})
     fx: dict[str, float | None] = {}
     companies: dict[str, dict[str, Any]] = {}
-    monthly = taiwan_monthly_revenue(members)
+    official = {**taiwan_monthly_revenue(members), **cision_interim_revenue(members, now)}
     for symbol, member in members.items():
         data = yahoo_data(symbol)
         fund = None
@@ -538,8 +615,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             facts = companyfacts(cik, fetch)
             fund = sec_fundamentals(symbol, cik, facts) if facts else None
         fund = fund or data.get("fundamentals")
-        if fund and symbol in monthly:
-            fund = {**fund, "cross_check": monthly[symbol]}
+        if fund and symbol in official:
+            fund = {**fund, "cross_check": official[symbol]}
         market = data.get("market")
         cap = market.get("market_cap") if market else None
         rate = usd_rate(market.get("currency") if market else None, fx)

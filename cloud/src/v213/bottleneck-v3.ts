@@ -20,7 +20,8 @@ export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
 interface Fundamentals {
   source: string; source_url: string; quarter_end: string; revenue_yoy: number | null; revenue_yoy_prev: number | null;
   gross_margin: number | null; gross_margin_change: number | null; rpo_yoy: number | null; shares_yoy: number | null;
-  /** Official monthly revenue for Taiwan listings (TWSE/TPEx open data) beside the Yahoo quarter; never replaces it. */
+  /** Official revenue beside the Yahoo quarter, never replacing it: the exchange's monthly revenue for Taiwan listings
+   * (TWSE/TPEx open data, period YYYY-MM) or the issuer's own interim report for Stockholm (Cision, period YYYY-Qn). */
   cross_check?: RevenueCheck | null;
 }
 interface RevenueCheck {
@@ -97,7 +98,7 @@ const SCENARIOS = new Set(["REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TA
 
 function validRevenueCheck(raw: any): boolean {
   return raw === undefined || raw === null || (typeof raw === "object" && str(raw.source_id, 40) && https(raw.source_url)
-    && typeof raw.period === "string" && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(raw.period) && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy)
+    && typeof raw.period === "string" && /^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$/.test(raw.period) && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy)
     && (num(raw.revenue_yoy) || num(raw.cumulative_yoy)) && optStr(raw.currency, 8));
 }
 
@@ -251,14 +252,20 @@ function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
   return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
-/** "官方月營收：櫃買中心 2026-08 年增 +525%，1–8 月累計年增 +489%" beside the Yahoo quarter (different periods: shown, not differenced). */
+const OFFICIAL_SOURCE_LABEL: Record<string, string> = { ...ZH_SOURCE_LABEL, CISION: "Cision（發行公司法規公告）" };
+/** Beside the Yahoo quarter, never differenced: "官方月營收：櫃買中心 2026-08 單月年增 +525%，1–8 月累計年增 +489%"
+ * (a different period) or "公司財報公告：Cision（發行公司法規公告） 2026-Q2 營收年增 -12%". */
 function revenueCheck(check: RevenueCheck): string {
+  if (/Q[1-4]$/.test(check.period)) {
+    const yoy = check.revenue_yoy === null || check.revenue_yoy === undefined ? "未揭露" : pct(check.revenue_yoy, 0);
+    return `公司財報公告：${OFFICIAL_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${check.period} 營收年增 ${yoy}`;
+  }
   const month = Number(check.period.slice(5, 7));
   const parts = [
     ...(check.revenue_yoy === null || check.revenue_yoy === undefined ? [] : [`${check.period} 單月年增 ${pct(check.revenue_yoy, 0)}`]),
     ...(check.cumulative_yoy === null || check.cumulative_yoy === undefined ? [] : [`${month === 1 ? "1 月" : `1–${month} 月`}累計年增 ${pct(check.cumulative_yoy, 0)}`]),
   ];
-  return `官方月營收：${ZH_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${parts.join("，")}`;
+  return `官方月營收：${OFFICIAL_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${parts.join("，")}`;
 }
 
 function layerName(doc: BottleneckV3, id: string): string {
