@@ -12,8 +12,10 @@ for example:
 - "$315 million, of which $201 million is expected to be recognized in the next 12 months"
 
 Only explicit statements are used, with passages, filing URL and accession. Horizons that the
-filing does not state are derived only by linear interpolation inside a disclosed window (a
-stated premise); nothing is extrapolated beyond the last disclosed horizon.
+filing does not state are derived only by linear interpolation between two disclosed horizons (a
+stated premise); nothing is extrapolated beyond the last disclosed horizon, and nothing is drawn
+from zero before the first one (operator 2026-09-26: a line from zero made every horizon up to the
+first disclosure show the same coverage, e.g. CRWV 6M = 1Y = 2Y).
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from typing import Any, Callable, Mapping
 Fetch = Callable[[str], bytes]
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_ROOT = ROOT / "data" / "cache" / "v21" / "order_timing"
-EXTRACTOR_VERSION = 2
+EXTRACTOR_VERSION = 3  # 3: no interpolation from zero before the first disclosed horizon
 QUARTERLY_FORMS = ("10-Q", "10-K")
 _KEY = re.compile(r"remaining performance obligations?|\bRPO\b", re.I)
 _NUM = r"(\d{1,3}(?:\.\d+)?)"
@@ -120,7 +122,8 @@ def weighted_schedule(timing: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def schedule(horizons: Mapping[int, float]) -> dict[str, Any]:
-    """6/12/24-month cumulative percent; linear inside a disclosed window, never beyond the last horizon."""
+    """6/12/24-month cumulative percent; linear only between two disclosed horizons, never before the first or
+    beyond the last."""
     points = sorted((int(m), float(p)) for m, p in horizons.items() if 0 < float(p) <= 100)
     out: dict[str, Any] = {"premises": []}
     for target in (6, 12, 24):
@@ -128,9 +131,9 @@ def schedule(horizons: Mapping[int, float]) -> dict[str, Any]:
         if exact is not None:
             out[f"m{target}"] = exact
             continue
-        lower = max([(m, p) for m, p in points if m < target], default=(0, 0.0))
+        lower = max([(m, p) for m, p in points if m < target], default=None)
         upper = min([(m, p) for m, p in points if m > target], default=None)
-        if upper is None:
+        if lower is None or upper is None:
             out[f"m{target}"] = None
             continue
         value = lower[1] + (upper[1] - lower[1]) * (target - lower[0]) / (upper[0] - lower[0])

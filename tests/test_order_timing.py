@@ -28,17 +28,19 @@ class OrderTimingTests(unittest.TestCase):
         timing = ot.extract_timing(PAIR)
         self.assertEqual(timing["horizons"], {12: 77.0, 24: 91.0})
         plan = ot.weighted_schedule(timing)
-        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (38.5, 77.0, 91.0))
-        self.assertTrue(any("0–12" in p for p in plan["premises"]))
+        # Nothing before the first disclosed horizon: a line from zero would give 6M the same coverage as 1Y.
+        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (None, 77.0, 91.0))
+        self.assertFalse(any("0–" in p for p in plan["premises"]))
 
     def test_segments_are_scheduled_separately_then_weighted_by_amount(self):
         plan = ot.weighted_schedule(ot.extract_timing(SEGMENTS))
-        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (12.98, 25.96, 45.18))
+        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (None, 25.96, 45.18))  # 2Y: services 1–5 years
         self.assertIn("多段 RPO 依各段金額加權", plan["premises"])
 
     def test_single_window_interpolates_inside_never_beyond(self):
         plan = ot.weighted_schedule(ot.extract_timing(INITIAL))
-        self.assertEqual((plan["m12"], plan["m24"]), (20.5, 41.0))
+        # CRWV: only "41% over the initial 24 months" is stated, so 6M and 1Y are not derived (they used to equal 2Y).
+        self.assertEqual((plan["m6"], plan["m12"], plan["m24"]), (None, None, 41.0))
         only_year = ot.weighted_schedule(ot.extract_timing(AMOUNT))
         self.assertEqual(only_year["m12"], 63.81)
         self.assertIsNone(only_year["m24"])  # no disclosed horizon beyond 12 months
