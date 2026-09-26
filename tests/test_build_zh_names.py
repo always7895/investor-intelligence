@@ -80,7 +80,25 @@ class ZhNameTests(unittest.TestCase):
         for entry in entries:
             self.assertTrue(entry["source_url"].startswith("https://"), entry)
             self.assertIsNotNone(zh.clean_name(entry["name_zh"]), entry)
-        self.assertEqual(len(zh.load_official()), len(entries))
+        official = zh.load_official()
+        self.assertEqual(len(official), len(entries))
+        self.assertEqual(official["US:SNDK"], ["晟碟", "ZHWIKI"])  # operator 2026-09-26
+        self.assertEqual(official["US:MU"], ["美光科技", "ZHWIKI"])
+        self.assertEqual(official["US:LITE"][1], "OFFICIAL")
+
+    def test_sourced_entries_override_the_name_cache_at_seal_time_and_a_wiki_source_must_be_zh_wikipedia(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            names = Path(tmp) / "names.json"
+            names.write_text(json.dumps({"names": {"US:MU": ["美光記憶台", "WIKIDATA_LABEL"], "US:NVDA": ["輝達", "ZHWIKI"]}},
+                                        ensure_ascii=False), encoding="utf-8")
+            found = zh.names_for(["MU", "NVDA", "SNDK", "4062.T"], Path(tmp) / "absent.json", names)
+            self.assertEqual(found, {"MU": ["美光科技", "ZHWIKI"], "NVDA": ["輝達", "ZHWIKI"], "SNDK": ["晟碟", "ZHWIKI"],
+                                     "4062.T": ["揖斐電", "OFFICIAL"]})
+            bad = Path(tmp) / "bad.json"
+            bad.write_text(json.dumps({"names": [{"market": "US", "symbol": "X", "name_zh": "某公司", "source": "ZHWIKI",
+                                                 "source_url": "https://example.com/x"}]}, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                zh.load_official(bad)
 
 
 if __name__ == "__main__":

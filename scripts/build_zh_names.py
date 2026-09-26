@@ -144,9 +144,12 @@ def load_official(path: Path = OFFICIAL) -> dict[str, list[str]]:
     for entry in document["names"]:
         key = ticker_key(entry["market"], entry["symbol"])
         name = clean_name(entry["name_zh"])
-        if not key or not name or not str(entry.get("source_url", "")).startswith("https://"):
+        source = str(entry.get("source") or "OFFICIAL")
+        url = str(entry.get("source_url", ""))
+        if not key or not name or not url.startswith("https://") or source not in ("OFFICIAL", "ZHWIKI") \
+                or (source == "ZHWIKI" and not url.startswith("https://zh.wikipedia.org/")):
             raise ValueError(f"ZH_OFFICIAL_ENTRY_INVALID {entry.get('symbol')}")
-        names[key] = [name, "OFFICIAL"]
+        names[key] = [name, source]
     return names
 
 
@@ -163,16 +166,23 @@ def listing_key(symbol: str) -> str:
     return f"{market}:{body}"
 
 
-def names_for(symbols: list[str], identity_path: Path | None = None, names_path: Path | None = None) -> dict[str, list[str]]:
-    """{symbol: [name_zh, source]} for the symbols that have a stated Chinese name (exchange or sourced)."""
+def names_for(symbols: list[str], identity_path: Path | None = None, names_path: Path | None = None,
+              official_path: Path | None = None) -> dict[str, list[str]]:
+    """{symbol: [name_zh, source]} for the symbols that have a stated Chinese name (exchange or sourced). The sourced
+    entries in config/company-zh-names-v1.json come first, so a correction reaches the next seal without waiting for
+    the weekly name cache or the identity shards."""
     keys = {symbol: listing_key(symbol) for symbol in symbols}
     wanted, found = set(keys.values()), {}
+    try:
+        found.update({key: value for key, value in load_official(official_path or OFFICIAL).items() if key in wanted})
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     try:
         document = json.loads((identity_path or IDENTITY).read_bytes().decode("utf-8"))
         for shard in document["symbol_shards"].values():
             for row in shard["rows"]:
                 key = f"{row[2]}:{row[0]}"
-                if key in wanted and len(row) >= 10 and row[9]:
+                if key in wanted and key not in found and len(row) >= 10 and row[9]:
                     found[key] = list(row[9])
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "rule": "Company-stated Chinese names only: the company's own Taiwan registration in the Ministry of Economic Affairs company registry (GCIS open data; the cited query returns the registered name and, where shown, the parent shareholder), its official Chinese website or press release. The registered name is shown without the foreign-company prefix (美商, 新加坡商, 香港商, 英屬維京群島商), the locality prefix (台灣) and the legal-form suffix. Entries fill gaps where Chinese Wikipedia has no Chinese title; no translation and no media transliteration.",
+  "rule": "Company-stated Chinese names only: the company's own Taiwan registration in the Ministry of Economic Affairs company registry (GCIS open data; the cited query returns the registered name and, where shown, the parent shareholder), its official Chinese website or press release. The registered name is shown without the foreign-company prefix (美商, 新加坡商, 香港商, 英屬維京群島商), the locality prefix (台灣) and the legal-form suffix. Entries fill gaps where Chinese Wikipedia has no Chinese title; no translation and no media transliteration. Entries with \"source\": \"ZHWIKI\" give the zh-tw display title of the company's Chinese Wikipedia article where the automatic Wikidata listing match misses it (a spin-off whose article sits on the predecessor item) or shows a different label; they override the name cache at seal time. A Japanese company's own kanji name on its official site counts as company-stated.",
   "verified_at": "2026-09-26",
   "names": [
     {"market": "US", "symbol": "LITE", "name_zh": "流明光學", "registered_name": "台灣流明光學股份有限公司",
@@ -26,6 +26,16 @@
      "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2022554573"},
     {"market": "US", "symbol": "BE", "name_zh": "博隆能源", "registered_name": "美商博隆能源股份有限公司",
      "evidence": "Taiwan branch of Bloom Energy Corporation (registered 2023-09-14)",
-     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2093751033"}
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2093751033"},
+    {"market": "US", "symbol": "SNDK", "name_zh": "晟碟", "source": "ZHWIKI", "evidence": "zh-tw display title 晟碟公司 (article on the predecessor item Q260833; operator 2026-09-26)", "source_url": "https://zh.wikipedia.org/zh-tw/晟碟公司"},
+    {"market": "US", "symbol": "MU", "name_zh": "美光科技", "source": "ZHWIKI", "evidence": "zh-tw display title 美光科技 (Wikidata label 美光記憶台 differs)", "source_url": "https://zh.wikipedia.org/zh-tw/美光科技"},
+    {"market": "US", "symbol": "MRVL", "name_zh": "邁威爾科技", "source": "ZHWIKI", "evidence": "zh-tw display title 邁威爾科技", "source_url": "https://zh.wikipedia.org/zh-tw/邁威爾科技"},
+    {"market": "US", "symbol": "TSEM", "name_zh": "高塔半導體", "source": "ZHWIKI", "evidence": "zh-tw display title 高塔半導體", "source_url": "https://zh.wikipedia.org/zh-tw/高塔半導體"},
+    {"market": "US", "symbol": "VRT", "name_zh": "維諦技術", "source": "ZHWIKI", "evidence": "zh-tw display title 維諦技術", "source_url": "https://zh.wikipedia.org/zh-tw/維諦技術"},
+    {"market": "US", "symbol": "FCX", "name_zh": "費利浦·麥克莫蘭銅金", "source": "ZHWIKI", "evidence": "zh-tw display title 費利浦·麥克莫蘭銅金公司", "source_url": "https://zh.wikipedia.org/zh-tw/費利浦·麥克莫蘭銅金公司"},
+    {"market": "US", "symbol": "ASX", "name_zh": "日月光投資控股", "registered_name": "日月光投資控股股份有限公司", "evidence": "ADR of the registered Taiwan company (GCIS 29187308)", "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2029187308"},
+    {"market": "US", "symbol": "VSH", "name_zh": "威世", "registered_name": "台灣威世有限公司", "evidence": "Taiwan subsidiary of Vishay (GCIS 16748263)", "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2016748263"},
+    {"market": "JAPAN", "symbol": "4062", "name_zh": "揖斐電", "registered_name": "台灣揖斐電股份有限公司", "evidence": "Taiwan subsidiary of Ibiden (GCIS 16817227)", "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2016817227"},
+    {"market": "JAPAN", "symbol": "3110", "name_zh": "日東紡績", "registered_name": "日東紡績株式会社", "evidence": "the company's own kanji name on nittobo.co.jp", "source_url": "https://www.nittobo.co.jp/"}
   ]
 }
