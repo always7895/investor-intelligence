@@ -66,6 +66,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — data-driven macro industry rotation from BLS PPI and SEC XBRL, refreshed daily
 - [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck-explosion Top20 (Serenity/Leopold leads, filings and market data) and the Leopold-led industry ranking
 - [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — single-writer Top20: hourly seal of the validated LKG bundle, report-age contract, refresh after the pointer, rollback
+- [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — no single-source dependency: product-by-source matrix, rejected sources and the remediation order
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)

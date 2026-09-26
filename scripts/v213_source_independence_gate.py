@@ -549,11 +549,13 @@ def parse_nasdaq_price(value: Any) -> float:
 
 def observe_nasdaq(ticker: str) -> Observation:
     today = dt.date.today()
+    # The API rejects US-style query dates since 2026-09 (rCode 400 "Bad or No parameter fromdate"); its rows still
+    # carry MM/DD/YYYY dates.
     query = urllib.parse.urlencode(
         {
             "assetclass": "stocks",
-            "fromdate": (today - dt.timedelta(days=800)).strftime("%m/%d/%Y"),
-            "todate": today.strftime("%m/%d/%Y"),
+            "fromdate": (today - dt.timedelta(days=800)).isoformat(),
+            "todate": today.isoformat(),
             "limit": "5000",
         }
     )

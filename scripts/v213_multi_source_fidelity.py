@@ -234,8 +234,8 @@ def observe_nasdaq(ticker: str) -> MarketObservation:
     start = today - dt.timedelta(days=790)
     query = urllib.parse.urlencode({
         "assetclass": "stocks",
-        "fromdate": start.strftime("%m/%d/%Y"),
-        "todate": today.strftime("%m/%d/%Y"),
+        "fromdate": start.isoformat(),  # US-style query dates are rejected since 2026-09; rows stay MM/DD/YYYY
+        "todate": today.isoformat(),
         "limit": "5000",
     })
     url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker)}/historical?{query}"
