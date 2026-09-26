@@ -108,7 +108,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("目前訂單：在手訂單 17.51兆 KRW（2026-06-30，+63%）；2026年接單指引 12.00兆 KRW");
     expect(serialized).toContain("目前訂單：未揭露");
     expect(serialized).toContain("未來預估：下一財年營收 +70%（58位分析師）");
-    expect(serialized).toContain("若實現股價情境：營收實現·市銷率不變 +70%｜EPS實現·本益比不變 +69%｜分析師目標價 +46%");
+    expect(serialized).toContain("若下一財年共識實現，股價情境：營收實現·市銷率不變 +70%｜EPS實現·本益比不變 +69%｜分析師目標價 +46%");
     expect(serialized).toContain("分析師樣本不足（1 位），不列推算");  // one analyst: no scenario on the card
     expect(serialized).not.toContain("+2860%");
     expect(serialized).toContain("未來預估：分析師樣本不足（1位），見瓶頸詳情");

@@ -270,7 +270,7 @@ function compactOutlook(doc: BottleneckV3, entry: BottleneckEntry): string[] {
   const rows = outlook?.scenarios ?? [];
   const scenario = !c || rows.length === 0 ? "若實現股價情境：無共識可推算"
     : (c.revenue_analysts ?? 0) < MIN_ANALYSTS ? `若實現股價情境：分析師樣本不足（${c.revenue_analysts ?? 0} 位），不列推算`
-    : `若實現股價情境：${rows.map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("｜")}`;
+    : `若下一財年共識實現，股價情境：${rows.map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("｜")}`;
   return [orders, future, scenario];
 }
 
