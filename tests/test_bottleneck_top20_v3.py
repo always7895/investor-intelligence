@@ -132,6 +132,32 @@ class SealedFormTests(unittest.TestCase):
             self.assertNotIn("intensity", sealed["top"][0]["serenity"])
             self.assertEqual(publisher.lazy_bottleneck_v3_body(path, now + timedelta(hours=14)), {})
 
+    def test_sealed_entries_carry_the_sourced_chinese_name_and_listing_age(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 1.9,
+                  "ret_1y": 17.8, "cagr_2y": None, "cagr_listed": 4.1, "history_start": "2025-02-13", "currency": "USD"}
+        entry = {"rank": 1, "symbol": "SNDK", "name": "Sandisk", "layer": "memory", "archetype": "COMPOUNDER", "score": 70.0,
+                 "role": "NAND", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
+                 "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
+                 "fundamentals": None, "market": market, "market_cap_usd": 5e10, "serenity": None, "leopold": None}
+        doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "leads": {},
+               "top": [{**entry, "rank": index + 1, "symbol": "SNDK" if index == 0 else f"S{index}"} for index in range(12)],
+               "industries": [{"rank": 1, "id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "leopold_constraint": "x",
+                               "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
+                               "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
+        saved = publisher.build_zh_names.names_for
+        publisher.build_zh_names.names_for = lambda symbols: {"SNDK": ["晟碟", "ZHWIKI"]}
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "v3.json"
+                path.write_text(json.dumps(doc), encoding="utf-8")
+                sealed = json.loads(publisher.lazy_bottleneck_v3_body(path, now)[publisher.BOTTLENECK_V3_KEY])
+        finally:
+            publisher.build_zh_names.names_for = saved
+        self.assertEqual((sealed["top"][0]["name_zh"], sealed["top"][0]["name_zh_source"]), ("晟碟", "ZHWIKI"))
+        self.assertIsNone(sealed["top"][1]["name_zh"])
+        self.assertEqual((sealed["top"][0]["market"]["cagr_listed"], sealed["top"][0]["market"]["history_start"]), (4.1, "2025-02-13"))
+
 
 if __name__ == "__main__":
     unittest.main()

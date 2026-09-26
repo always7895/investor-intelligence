@@ -70,19 +70,35 @@ def fetch(url: str) -> bytes:
 
 class IdentityShardTests(unittest.TestCase):
     def test_layout_parsing_and_exclusions(self):
-        document = shards.build(fetch, datetime(2026, 9, 26, 1, tzinfo=timezone.utc))
+        document = shards.build(fetch, datetime(2026, 9, 26, 1, tzinfo=timezone.utc), zh=({}, None))
         sym = document["symbol_shards"]
-        self.assertIn(["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", None, "COMMON_STOCK", "SEK", 4],
+        self.assertIn(["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", None, "COMMON_STOCK", "SEK", 4, None],
                       sym["S"]["rows"])
-        self.assertIn(["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 2], sym["2"]["rows"])
+        self.assertIn(["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 2, ["台積電", "TWSE"]], sym["2"]["rows"])
         self.assertFalse(any(row[0] == "ZTST" for row in sym["Z"]["rows"]) if "Z" in sym else False)  # test issue excluded
         self.assertTrue(all(row[0][0] == bucket or bucket == "_" for bucket, shard in sym.items() for row in shard["rows"]))
-        self.assertIn(["4062", "TSE", "JAPAN", "Japan", "IBIDEN CO.,LTD.", None, "COMMON_STOCK", "JPY", 6], sym["4"]["rows"])
-        self.assertIn(["005930", "KRX", "KOREA", "Korea", "삼성전자", "삼성전자", "COMMON_STOCK", "KRW", 7], sym["0"]["rows"])
-        self.assertIn(["SOI", "EURONEXT PARIS", "EUROPE", "France", "SOITEC", None, "COMMON_STOCK", "EUR", 8], sym["S"]["rows"])
+        self.assertIn(["4062", "TSE", "JAPAN", "Japan", "IBIDEN CO.,LTD.", None, "COMMON_STOCK", "JPY", 6, None], sym["4"]["rows"])
+        self.assertIn(["005930", "KRX", "KOREA", "Korea", "삼성전자", "삼성전자", "COMMON_STOCK", "KRW", 7, None], sym["0"]["rows"])
+        self.assertIn(["SOI", "EURONEXT PARIS", "EUROPE", "France", "SOITEC", None, "COMMON_STOCK", "EUR", 8, None], sym["S"]["rows"])
         self.assertFalse(any(row[0] in ("999999", "2SOI") for shard in sym.values() for row in shard["rows"]))
         name_bucket = str(shards.fnv1a_utf16("台積電") % 16)
         self.assertIn(["台積電", "2", "2330", "TWSE"], document["name_shards"][name_bucket]["rows"])
+
+    def test_sourced_chinese_names_are_attached_and_indexed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "zh.json"
+            path.write_text(json.dumps({"schema": "v213-zh-names-v1", "generated_at": "2026-09-26T00:00:00Z", "names": {
+                "KOREA:005930": ["三星電子", "ZHWIKI"], "SWEDEN:SIVE": ["不可信", "MACHINE"], "JAPAN:4062": ["x" * 41, "ZHWIKI"]}},
+                ensure_ascii=False), encoding="utf-8")
+            zh = shards.load_zh_names(path)
+        self.assertEqual(zh[0], {"KOREA:005930": ["三星電子", "ZHWIKI"]})  # unknown source and over-long names dropped
+        document = shards.build(fetch, datetime(2026, 9, 26, 1, tzinfo=timezone.utc), zh=zh)
+        rows = {row[0]: row for shard in document["symbol_shards"].values() for row in shard["rows"]}
+        self.assertEqual(rows["005930"][9], ["三星電子", "ZHWIKI"])
+        self.assertIsNone(rows["SIVE"][9])
+        self.assertEqual(document["zh_names"]["rows"], 1)
+        bucket = str(shards.fnv1a_utf16("三星電子") % 16)
+        self.assertIn(["三星電子", "0", "005930", "KRX"], document["name_shards"][bucket]["rows"])
 
     def test_hash_parity_with_the_worker(self):
         # Values asserted by cloud/test/v213-identity-shards.test.ts for identityNameBucket.
@@ -94,12 +110,12 @@ class IdentityShardTests(unittest.TestCase):
         FEEDS["twse-listed"] = b"[]"
         try:
             with self.assertRaisesRegex(shards.IdentityShardError, "IDENTITY_FEED_TOO_SMALL twse-listed"):
-                shards.build(fetch)
+                shards.build(fetch, zh=({}, None))
         finally:
             FEEDS["twse-listed"] = saved
 
     def test_publisher_seals_shards_as_content_addressed_lazy_objects(self):
-        document = shards.build(fetch, datetime.now(timezone.utc))
+        document = shards.build(fetch, datetime.now(timezone.utc), zh=({}, None))
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "identity.json"
             path.write_bytes(shards.dumps(document).encode("utf-8"))

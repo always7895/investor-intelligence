@@ -4,7 +4,7 @@
 #
 # SEC steps (rotation, company reports, Leopold 13F, bottleneck v3) need the declared SEC Fair Access contact, which is
 # decrypted from the user's DPAPI file into this process only, never printed or written, and cleared afterwards.
-# Steps that need no SEC contact (identity shards, Serenity signals, quotes/options) always run. Every step logs one
+# Steps that need no SEC contact (Chinese names, identity shards, Serenity signals, quotes/options) always run. Every step logs one
 # STEP line with its exit code; native stderr never aborts the remaining steps (Windows PowerShell 5.1 would turn a
 # warning line into a terminating error under Stop). The script exits non-zero when any step failed.
 [CmdletBinding()]
@@ -38,7 +38,8 @@ Push-Location $repo
 $pointer = [IntPtr]::Zero
 $previous = $env:SEC_CONTACT_EMAIL
 try {
-    # Steps without the SEC contact.
+    # Steps without the SEC contact. Chinese names (weekly, sourced, never translated) feed the identity shards.
+    Invoke-Step 'zh_names' @('scripts\build_zh_names.py', '--if-older-than-hours', '168')
     Invoke-Step 'identity_shards' @('scripts\build_identity_shards.py', '--if-older-than-hours', "$IfOlderThanHours")
     Invoke-Step 'serenity_signals' @('scripts\serenity_signals.py', '--refresh', '--if-older-than-hours', '6')
     if ($contactPath) {
@@ -60,6 +61,8 @@ try {
         $failed.Add('sec_contact_missing')
     }
     # Delayed quotes and covered-call suggestions for the LINE lookup and options queries, every hour.
+    # Delayed daily prices for every listing (official bulk feeds per market) for the stock lookup, every 3 hours.
+    Invoke-Step 'price_shards' @('scripts\build_price_shards.py', '--if-older-than-hours', '2.9')
     Invoke-Step 'market_observations' @('scripts\build_market_quotes_options.py', '--if-older-than-hours', '0.9')
 } finally {
     Pop-Location

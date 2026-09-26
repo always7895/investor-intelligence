@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import bottleneck_ranking as engine  # noqa: E402
 import multilineage_claim_bundle as mlb  # noqa: E402
 import build_v213_macro_industry_research as macro_builder  # noqa: E402
+import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
 import top20_carry_forward  # noqa: E402
 
@@ -89,6 +90,9 @@ BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3"
 BOTTLENECK_V3_MAX_AGE = timedelta(hours=13)  # the Worker refuses it after report_max_age_hours (14 h)
 MARKET_OBSERVATIONS_PATH = ROOT / "data" / "cache" / "market_quotes_options.json"
 MARKET_OBSERVATIONS_MAX_AGE = timedelta(hours=5)  # the Worker ignores observations older than 6 h
+PRICE_SHARDS_PATH = ROOT / "data" / "cache" / "price_shards_latest.json"
+PRICE_SHARD_MAX_AGE = timedelta(days=3)  # the Worker ignores a market shard older than 4 days (weekends, holidays)
+PRICE_MARKETS = ("US", "TAIWAN", "SWEDEN", "EUROPE", "JAPAN", "KOREA", "UK", "HK")
 OBJECT_KEYS = [
     "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
     "reports:latest", "reports:morning:latest", "reports:evening:latest",
@@ -392,18 +396,22 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
             return {}
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
+        zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]])
         for entry in doc["top"]:
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
             fund = entry.get("fundamentals")
             top.append({
                 "rank": entry["rank"], "symbol": entry["symbol"], "name": str(entry.get("name") or entry["symbol"])[:160],
+                "name_zh": zh[entry["symbol"]][0] if entry["symbol"] in zh else None,
+                "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_source": entry["role_source"],
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": None if not fund else pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev",
                                                                   "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy")),
-                "market": pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "currency")),
+                "market": pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "cagr_listed",
+                                                 "history_start", "currency")),
                 "market_cap_usd": entry.get("market_cap_usd"),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
@@ -423,6 +431,29 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
     return {BOTTLENECK_V3_KEY: body} if len(body.encode("utf-8")) <= 1_900_000 and 10 <= len(top) <= 20 else {}
+
+
+def lazy_price_bodies(path: Path, now: datetime) -> "dict[str, str]":
+    """Per-market delayed price shards (scripts/build_price_shards.py) as lazy bodies; a stale or malformed market is
+    left out on its own."""
+    try:
+        document = json.loads(path.read_bytes().decode("utf-8"))
+        shards = document["shards"] if document.get("schema") == "v213-price-shard-v1" else {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    bodies: dict[str, str] = {}
+    for market, shard in sorted(shards.items()):
+        try:
+            generated = datetime.strptime(shard["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if market not in PRICE_MARKETS or shard.get("market") != market or not timedelta(0) <= now - generated <= PRICE_SHARD_MAX_AGE \
+                    or not isinstance(shard.get("rows"), dict) or not shard.get("sources"):
+                continue
+            body = _dumps(shard)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if len(body.encode("utf-8")) <= 1_900_000:
+            bodies[f"v213:prices:v1:{market}"] = body
+    return bodies
 
 
 def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
@@ -504,6 +535,8 @@ def main(argv=None) -> None:
                     help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
     ap.add_argument("--market-observations", nargs="?", const=str(MARKET_OBSERVATIONS_PATH), default=None, metavar="PATH",
                     help="Seal delayed quotes and option observations as lazy objects.")
+    ap.add_argument("--price-shards", nargs="?", const=str(PRICE_SHARDS_PATH), default=None, metavar="PATH",
+                    help="Seal per-market delayed price shards as lazy objects (no PATH: data/cache/price_shards_latest.json).")
     ap.add_argument("--bottleneck-v3", nargs="?", const=str(BOTTLENECK_V3_PATH), default=None, metavar="PATH",
                     help="Seal the bottleneck-explosion Top20 v3 as a lazy object (no PATH: data/cache/bottleneck_top20_v3.json).")
     args = ap.parse_args(argv)
@@ -534,6 +567,8 @@ def main(argv=None) -> None:
         lazy.update(lazy_identity_bodies(Path(args.identity_shards), LIVE_NOW or datetime.now(timezone.utc)))
     if args.market_observations is not None:
         lazy.update(lazy_market_bodies(Path(args.market_observations), LIVE_NOW or datetime.now(timezone.utc)))
+    if args.price_shards is not None:
+        lazy.update(lazy_price_bodies(Path(args.price_shards), LIVE_NOW or datetime.now(timezone.utc)))
     if args.bottleneck_v3 is not None:
         lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)

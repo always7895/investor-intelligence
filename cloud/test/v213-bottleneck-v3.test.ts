@@ -10,13 +10,15 @@ const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z")
 function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
   const top = Array.from({ length: 20 }, (_, index) => ({
     rank: index + 1, symbol: index === 0 ? "SIVE.ST" : `S${index}`, name: `Synthetic ${index}`, layer: index % 2 ? "optics" : "memory",
+    name_zh: index === 1 ? "合成一號" : null, name_zh_source: index === 1 ? "ZHWIKI" : null,
     archetype: index < 5 ? "EXPLOSION" : "COMPOUNDER", score: 80 - index,
     role: "synthetic scarce layer role", role_source: { url: "https://example.com/source", date: "2026-09-01" },
     parts: { layer_heat: 20, capture: 20, lead: 15, confirmation: 12, size: 8, penalty: index === 3 ? 2 : 0 },
     fundamentals: { source: "SEC EDGAR XBRL companyfacts", source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json",
       quarter_end: "2026-06-30", revenue_yoy: 1.09, revenue_yoy_prev: 0.9, gross_margin: 0.42, gross_margin_change: 0.14, rpo_yoy: null, shares_yoy: 0.02 },
     market: { source: "Yahoo Finance adjusted daily close (unofficial)", source_url: "https://finance.yahoo.com/quote/X", asof: "2026-09-25",
-      ret_6m: 0.8, ret_1y: 2.1, cagr_2y: index === 2 ? null : 1.1, currency: "USD" },
+      ret_6m: 0.8, ret_1y: 2.1, cagr_2y: index === 2 ? null : 1.1, cagr_listed: index === 2 ? 0.64 : null,
+      history_start: index === 2 ? "2025-02-13" : "2023-09-26", currency: "USD" },
     market_cap_usd: 1.05e9 * (index + 1),
     serenity: index % 3 === 0 ? null : { mentions: 30, bullish: 12, bearish: 1, stance: "BULLISH", latest_at: "2026-09-03T10:00:00Z",
       latest_url: "https://x.com/aleabitoreddit/status/1" },
@@ -35,7 +37,10 @@ function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
       ticker: "S1", name: "Synthetic One", as_of: "2026-09-25", boundary: "公開資料研究，非投資建議",
       phase: { phase: "EARLY_VALIDATION", next_review_at: "2026-11-01" },
       sections: [{ title: "業務", text: "合成業務描述" }, { title: "財務", text: "營收年增 +109%" }, { title: "訂單", text: "未揭露" }],
-      source_references: [{ source: "SEC 10-Q", url: "https://www.sec.gov/Archives/edgar/data/1/x.htm", period: "2026Q2" }], kpis: [],
+      source_references: [{ source: "SEC 10-Q", url: "https://www.sec.gov/Archives/edgar/data/1/x.htm", period: "2026Q2" }],
+      kpis: [{ label: "RPO 年增", value: 35.2, unit: "%", signed: true, period: "2026-06-30" }],
+      orders: { as_of: "2026-06-30", form: "10-Q", filed: "2026-08-05", coverage_pct: { m6: 40, m12: 132.5, m24: null },
+        floor_growth_pct: { m6: null, m12: 32.5, m24: null } },
     } }, ...overrides };
 }
 
@@ -45,6 +50,8 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(parseBottleneckV3(doc(now - HOUR))?.top).toHaveLength(20);
     expect(parseBottleneckV3(doc(now - 15 * HOUR))).toBeNull();
     const bad = doc(now - HOUR); (bad.top[4] as any).fundamentals.source_url = "http://insecure.example"; expect(parseBottleneckV3(bad)).toBeNull();
+    const translated = doc(now - HOUR); (translated.top[3] as any).name_zh = "機翻名"; (translated.top[3] as any).name_zh_source = "MACHINE";
+    expect(parseBottleneckV3(translated)).toBeNull();
     const shuffled = doc(now - HOUR); (shuffled.top[0] as any).rank = 2; expect(parseBottleneckV3(shuffled)).toBeNull();
     expect(parseBottleneckV3(doc(now - HOUR, { schema: "other" }))).toBeNull();
   });
@@ -57,19 +64,35 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("SIVE.ST");
     expect(serialized).toContain("瓶頸詳情 SIVE.ST");
     expect(serialized).toContain("+109%");
+    // Chinese name next to the original, or the explicit statement that none exists (never a translation).
+    expect(serialized).toContain("S1｜合成一號");
+    expect(serialized).toContain("中文名來源：中文維基百科");
+    expect(serialized).toContain("SIVE.ST｜無公認中文名");
+    // One long-term standard on every card: 6-month return and 2-year CAGR; younger listings say so.
+    expect(serialized.match(/"2年年化"/g)).toHaveLength(20);
+    expect(serialized).not.toContain("1年報酬");
+    expect(serialized).toContain("上市未滿2年");
+    expect(serialized).toContain("2025-02-13起年化 +64%");
+    // Lead scores are not shown; signed-order floors from the sealed SEC report are.
+    expect(serialized).not.toMatch(/Serenity|Leopold 基金|"線索"/);
+    expect(serialized).toContain("訂單實現下限（已簽約 RPO）");
+    expect(serialized).toContain("≥+33%");
+    expect(serialized).toContain("非 SEC 定期申報公司");
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
-    expect(text[0]!.text).toContain("長期報酬為負者排除");
+    expect(text[0]!.text).toContain("為負者排除");
+    expect(text[0]!.text).toContain("S1 合成一號（Synthetic 1）");
     const detail = buildBottleneckDetail(parsed, "sive.st") as { text: string }[];
     expect(detail[0]!.text).toContain("https://data.sec.gov/api/xbrl/companyfacts/");
-    expect(detail[0]!.text).toContain("線索只影響排序權重");
+    expect(detail[0]!.text).not.toMatch(/Serenity|Leopold/);
     expect(buildBottleneckDetail(parsed, "ZZZ")).toContain("不在本輪");
     const withReport = buildBottleneckDetail(parsed, "S1", "flex") as { type: string }[];
-    expect(withReport.length).toBeGreaterThan(1);
-    expect(withReport[0]!.type).toBe("text");
-    expect(JSON.stringify(withReport.slice(1))).toContain("Synthetic One");
-    expect(buildBottleneckDetail(parsed, "SIVE.ST", "flex")).toHaveLength(1);  // no sealed report: summary only
+    expect(withReport.length).toBeGreaterThanOrEqual(1);
+    expect(withReport[0]!.type).toBe("flex");  // the company report itself, not a repeat of the card
+    expect(JSON.stringify(withReport)).toContain("Synthetic One");
+    expect(buildBottleneckDetail(parsed, "SIVE.ST", "flex")).toHaveLength(1);  // no sealed report: filing figures only
     const industries = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
     expect(industries).toContain("Leopold 邏輯");
     expect(industries).toContain("3.00x");
+    expect(industries).not.toMatch(/Serenity 熱度|基金13F占比/);
   });
 });

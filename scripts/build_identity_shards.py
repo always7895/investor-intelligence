@@ -11,6 +11,11 @@ content-addressed lazy objects; see scripts/publish_sealed_snapshot.py --identit
 - Korea: KRX KIND listed-company list (KOSPI and KOSDAQ; Korean names);
 - Euronext: Paris, Amsterdam, Brussels and Milan equities (Euronext stock download).
 
+Every row carries a Traditional Chinese name when a source states one (tenth column [name_zh, source]; null
+otherwise): Taiwan rows use the exchange's own Chinese short name (source TWSE/TPEX), other markets the sourced names of
+scripts/build_zh_names.py (OFFICIAL, ZHWIKI, WIKIDATA_LABEL). Nothing is translated; the Chinese name is also indexed
+for name lookups.
+
 Symbol shards are keyed by the first character of the symbol (A-Z, 0-9, _), name shards by FNV-1a(normalized name)
 mod 16 (the Worker computes the same hash over UTF-16 code units). Every shard names its feeds with URL, retrieval
 time and the SHA-256 of the raw download. A feed that fails keeps its previous rows out entirely (never partial); the
@@ -41,6 +46,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from global_identity_index import classify_security  # noqa: E402
 
 OUTPUT = ROOT / "data" / "cache" / "identity_shards_latest.json"
+ZH_NAMES = ROOT / "data" / "cache" / "zh_names_latest.json"
+ZH_SOURCES = {"OFFICIAL", "ZHWIKI", "WIKIDATA_LABEL"}
 SCHEMA = "v213-identity-shard-v2"
 NAME_BUCKETS = 16
 USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public identity directory)"  # Euronext refuses clients without a browser agent
@@ -191,8 +198,33 @@ def parse_feed(feed: str, raw: bytes) -> list[list[Any]]:
     return [row for row in rows if _SYMBOL.fullmatch(row[0]) and row[4]]
 
 
-def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any]:
+def load_zh_names(path: Path | None = None) -> tuple[dict[str, list[str]], dict[str, Any] | None]:
+    """Sourced Chinese names by "<MARKET>:<SYMBOL>" and the feed entry describing them (None when absent)."""
+    path = path or ZH_NAMES
+    try:
+        raw = path.read_bytes()
+        document = json.loads(raw.decode("utf-8"))
+    except (OSError, ValueError):
+        return {}, None
+    names = document.get("names") if isinstance(document, dict) and document.get("schema") == "v213-zh-names-v1" else None
+    if not isinstance(names, dict):
+        return {}, None
+    kept = {key: [value[0], value[1]] for key, value in names.items() if isinstance(value, list) and len(value) == 2
+            and isinstance(value[0], str) and 0 < len(value[0]) <= 40 and value[1] in ZH_SOURCES}
+    digest = hashlib.sha256(json.dumps(kept, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    return kept, {"id": "zh-names", "url": "https://www.wikidata.org/", "retrieved_at": document.get("generated_at"),
+                  "sha256": digest, "rows": len(kept)}
+
+
+def zh_name(row: list[Any], names: dict[str, list[str]]) -> list[str] | None:
+    if row[2] == "TAIWAN":  # the exchange directory itself is Chinese
+        return [str(row[5] or row[4])[:40], row[1]]
+    return names.get(f"{row[2]}:{row[0]}")
+
+
+def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[str, list[str]], dict[str, Any] | None] | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
+    zh_names, zh_feed = zh if zh is not None else load_zh_names()
     stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     feeds: list[dict[str, Any]] = []
     records: list[list[Any]] = []
@@ -212,19 +244,20 @@ def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any
             if key in seen:
                 continue  # first feed wins for an exact venue:symbol duplicate within one directory
             seen[key] = len(records)
-            records.append([*row, index])
+            records.append([*row, index, zh_name(row, zh_names)])
     symbol_shards: dict[str, dict[str, Any]] = {}
     name_shards: dict[str, dict[str, Any]] = {}
     for row in sorted(records, key=lambda item: (item[0], item[1])):
         bucket = symbol_bucket(row[0])
         symbol_shards.setdefault(bucket, {"schema": SCHEMA, "kind": "symbol", "bucket": bucket, "generated_at": stamp,
                                           "feeds": feeds, "rows": []})["rows"].append(row)
-        for name in {normalize_name(row[4]), normalize_name(row[5] or "")} - {""}:
+        for name in {normalize_name(row[4]), normalize_name(row[5] or ""), normalize_name(row[9][0] if row[9] else "")} - {""}:
             name_bucket = str(fnv1a_utf16(name) % NAME_BUCKETS)
             name_shards.setdefault(name_bucket, {"schema": SCHEMA, "kind": "name", "bucket": name_bucket,
                                                  "generated_at": stamp, "rows": []})["rows"].append(
                 [name, bucket, row[0], row[1]])
     return {"schema": SCHEMA, "generated_at": stamp, "feeds": feeds, "records": len(records),
+            "zh_names": zh_feed, "zh_named_records": sum(1 for row in records if row[9]),
             "symbol_shards": symbol_shards, "name_shards": name_shards}
 
 
@@ -239,9 +272,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.if_older_than_hours > 0 and args.output.exists():
         try:
-            stamp = json.loads(args.output.read_bytes().decode("utf-8"))["generated_at"]
+            previous = json.loads(args.output.read_bytes().decode("utf-8"))
+            stamp = previous["generated_at"]
             age = (datetime.now(timezone.utc) - datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age < args.if_older_than_hours:
+            current_zh = load_zh_names()[1]
+            zh_changed = (current_zh or {}).get("sha256") != ((previous.get("zh_names") or {}).get("sha256"))
+            if age < args.if_older_than_hours and not zh_changed:
                 print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
                 return 0
         except (OSError, ValueError, KeyError):

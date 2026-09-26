@@ -20,6 +20,8 @@ const MARKETS = new Set<SupportedMarket>(["US", "UK", "SWEDEN", "EUROPE", "JAPAN
   "CHINA_SHENZHEN", "CHINA_BEIJING", "HK", "TAIWAN", "UNKNOWN"]);
 const CLASSES = new Set(["COMMON_STOCK", "ETF", "PREFERRED_STOCK", "WARRANT", "UNIT", "RIGHTS", "ADR", "REVIEW_REQUIRED"]);
 const SYMBOL = /^[A-Z0-9][A-Z0-9 .\-]{0,14}$/;
+/** Sources of the tenth column (scripts/build_identity_shards.py): exchange directories or sourced names; never a translation. */
+const ZH_SOURCES = new Set(["TWSE", "TPEX", "OFFICIAL", "ZHWIKI", "WIKIDATA_LABEL"]);
 
 interface ShardFeed { readonly id: string; readonly url: string; readonly retrieved_at: string; readonly sha256: string; }
 interface SymbolShard { readonly generated_at: string; readonly feeds: readonly ShardFeed[]; readonly rows: readonly GlobalIdentityRecord[]; }
@@ -64,15 +66,19 @@ function parseSymbolShard(raw: unknown, bucket: string): SymbolShard | null {
   if (!feeds) return null;
   const rows: GlobalIdentityRecord[] = [];
   for (const row of shard.rows) {
-    if (!Array.isArray(row) || row.length !== 9) return null;
-    const [symbol, venue, market, country, name, nativeName, securityClass, currency, feedIndex] = row;
+    if (!Array.isArray(row) || (row.length !== 9 && row.length !== 10)) return null;
+    const [symbol, venue, market, country, name, nativeName, securityClass, currency, feedIndex, zh] = row;
+    const zhOk = zh === undefined || zh === null
+      || (Array.isArray(zh) && zh.length === 2 && text(zh[0], 40) && ZH_SOURCES.has(String(zh[1])));
+    if (!zhOk) return null;
     if (!text(symbol, 15) || !SYMBOL.test(symbol) || identitySymbolBucket(symbol) !== bucket || !text(venue, 40)
       || !MARKETS.has(market as SupportedMarket) || !text(country, 40) || !text(name, 300)
       || !(nativeName === null || text(nativeName, 100)) || !CLASSES.has(String(securityClass)) || !text(currency, 8)
       || !Number.isInteger(feedIndex) || (feedIndex as number) < 0 || (feedIndex as number) >= feeds.length) return null;
     const feed = feeds[feedIndex as number]!;
     rows.push({ symbol, native_symbol: symbol, venue, market: market as SupportedMarket, country, security_name: name,
-      native_name: nativeName as string | null, security_class: String(securityClass), currency, source_feed: feed.id, source_url: feed.url });
+      native_name: nativeName as string | null, security_class: String(securityClass), currency, source_feed: feed.id, source_url: feed.url,
+      name_zh: Array.isArray(zh) ? String(zh[0]) : null, name_zh_source: Array.isArray(zh) ? String(zh[1]) : null });
   }
   return { generated_at: shard.generated_at as string, feeds, rows };
 }
@@ -145,7 +151,7 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
   records.forEach((record, index) => {
     byVenue[`${record.venue}:${record.symbol}`] = index;
     for (const spelling of spellings(record.symbol)) (bySymbol[spelling] ??= []).push(index);
-    for (const name of new Set([record.security_name, record.native_name ?? ""].map(normalizeCompanyName).filter(Boolean))) {
+    for (const name of new Set([record.security_name, record.native_name ?? "", record.name_zh ?? ""].map(normalizeCompanyName).filter(Boolean))) {
       (byName[name] ??= []).push(index);
     }
   });

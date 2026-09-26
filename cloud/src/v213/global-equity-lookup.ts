@@ -19,7 +19,7 @@ import {
   evaluateCatalogAdmission,
 } from "./global-identity-reader";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
-import { loadDelayedQuote, observationSymbol } from "./market-observations";
+import { loadDelayedQuote, loadListingPrice, observationSymbol } from "./market-observations";
 
 export type { SupportedMarket, GlobalIdentityRecord, GlobalIdentityResolution };
 
@@ -32,6 +32,8 @@ export interface ResolvedEquityIdentity {
   exchange: string;
   currency: string;
   canonicalNameZh?: string;
+  /** Where the Chinese name is stated (TWSE, TPEX, OFFICIAL, ZHWIKI, WIKIDATA_LABEL). */
+  nameZhSource?: string;
   canonicalNameEn?: string;
   isAmbiguous: boolean;
   ambiguityCandidates?: string[];
@@ -40,6 +42,10 @@ export interface ResolvedEquityIdentity {
   isCompanyQuery?: boolean;
   suffixHint?: boolean;
 }
+
+const ZH_SOURCE_LABEL: Record<string, string> = {
+  TWSE: "臺灣證交所", TPEX: "櫃買中心", OFFICIAL: "公司官方", ZHWIKI: "中文維基百科", WIKIDATA_LABEL: "維基數據",
+};
 
 export interface EquityLookupResult {
   identity: ResolvedEquityIdentity;
@@ -142,7 +148,7 @@ export function buildGlobalEquityLookupMessages(
 ): LineOutboundMessage[] {
   const { identity, quoteStatus, resolution } = result;
 
-  const headerTitle = `個股快查 · ${identity.canonicalSymbol}`;
+  const headerTitle = `個股快查 · ${identity.canonicalSymbol}${identity.canonicalNameZh && !result.nameUnverified ? ` ${identity.canonicalNameZh}` : ""}`;
   let statusTitle = "個股資料未封存准入 · 報價不可用";
   let statusSub = "QUOTE_UNAVAILABLE：目前快照中無該標的之封存驗收資料；不使用未驗證資料、模型生成或非公開快照猜測。";
 
@@ -170,8 +176,8 @@ export function buildGlobalEquityLookupMessages(
   }
 
   const nameZh = (result.nameUnverified || !identity.canonicalNameZh)
-    ? "未完成來源核對（不猜譯）"
-    : identity.canonicalNameZh;
+    ? (result.admittedInSealedSnapshot && !identity.isAmbiguous ? "無公認中文名（交易所、公司官方與中文維基百科皆無，不自行翻譯）" : "未完成來源核對（不猜譯）")
+    : `${identity.canonicalNameZh}（${ZH_SOURCE_LABEL[identity.nameZhSource ?? ""] ?? "來源已核對"}）`;
   const nameEn = identity.canonicalNameEn || identity.canonicalSymbol;
 
   const lines = [
@@ -324,7 +330,8 @@ export async function handleGlobalEquityLookup(
 
   if (resolution.status === "RESOLVED") {
     const rec = resolution.record;
-    const quote = await loadDelayedQuote(view, observationSymbol(rec));
+    // Watch-universe quote first (hourly); otherwise the listing's market price shard (official daily feeds).
+    const quote = await loadDelayedQuote(view, observationSymbol(rec)) ?? await loadListingPrice(view, rec);
     const result: EquityLookupResult = {
       identity: {
         rawInput: query.normalized,
@@ -335,12 +342,13 @@ export async function handleGlobalEquityLookup(
         exchange: `${rec.venue}（${rec.country}）`,
         currency: rec.currency,
         canonicalNameEn: rec.security_name,
-        canonicalNameZh: rec.native_name ?? undefined,
+        canonicalNameZh: rec.name_zh ?? undefined,
+        nameZhSource: rec.name_zh_source ?? undefined,
         isAmbiguous: false,
         leadingZeroPreserved: /^0/.test(rec.native_symbol),
       },
       admittedInSealedSnapshot: true,
-      nameUnverified: !rec.native_name,
+      nameUnverified: !rec.name_zh,
       quoteStatus: quote ? "AVAILABLE" : "UNAVAILABLE",
       ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof } : {}),
       source: quote ? `sealed_snapshot:${rec.source_feed}；報價：${quote.source} ${quote.source_url}` : `sealed_snapshot:${rec.source_feed}`,

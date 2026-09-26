@@ -16,8 +16,8 @@ const FEEDS = [
   { id: "nasdaq-stockholm-main", url: "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO", retrieved_at: "2026-09-26T01:00:00Z", sha256: "c".repeat(64), rows: 1 },
 ];
 const ROWS = [
-  ["NVDA", "NASDAQ", "US", "United States", "NVIDIA Corporation - Common Stock", null, "COMMON_STOCK", "USD", 0],
-  ["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 1],
+  ["NVDA", "NASDAQ", "US", "United States", "NVIDIA Corporation - Common Stock", null, "COMMON_STOCK", "USD", 0, ["輝達", "ZHWIKI"]],
+  ["2330", "TWSE", "TAIWAN", "Taiwan", "台灣積體電路製造股份有限公司", "台積電", "COMMON_STOCK", "TWD", 1, ["台積電", "TWSE"]],
   ["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", null, "COMMON_STOCK", "SEK", 2],
   ["VOLV B", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Volvo B", null, "COMMON_STOCK", "SEK", 2],
   ["2330", "TSE", "JAPAN", "Japan", "Forside Co.,Ltd.", null, "COMMON_STOCK", "JPY", 0],
@@ -35,13 +35,22 @@ function shards(): Record<string, unknown> {
     const key = `v213:identity:v2:sym:${bucket}`;
     const shard = (out[key] ??= { schema: "v213-identity-shard-v2", kind: "symbol", bucket, generated_at: "2026-09-26T01:00:00Z", feeds: FEEDS, rows: [] }) as { rows: unknown[] };
     shard.rows.push([...row]);
-    for (const name of new Set([row[4], row[5]].filter(Boolean).map(value => String(value).trim().toLowerCase()))) {
+    const zh = row.length > 9 ? (row as readonly unknown[])[9] as readonly string[] : null;
+    for (const name of new Set([row[4], row[5], zh?.[0]].filter(Boolean).map(value => String(value).trim().toLowerCase()))) {
       const nameBucket = identityNameBucket(name);
       const nameKey = `v213:identity:v2:name:${nameBucket}`;
       const nameShard = (out[nameKey] ??= { schema: "v213-identity-shard-v2", kind: "name", bucket: String(nameBucket), generated_at: "2026-09-26T01:00:00Z", rows: [] }) as { rows: unknown[] };
       nameShard.rows.push([name, bucket, row[0], row[1]]);
     }
   }
+  // Market price shards (scripts/build_price_shards.py): Taiwan has a stated trade date, Sweden none.
+  const stamp = new Date(Date.now() - 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  out["v213:prices:v1:TAIWAN"] = { schema: "v213-price-shard-v1", market: "TAIWAN", generated_at: stamp,
+    sources: [{ id: "twse-day-all", url: "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", retrieved_at: stamp, sha256: "d".repeat(64), rows: 1 }],
+    rows: { "2330": [1000, -0.5, "2026-09-24", "TWD", 0] } };
+  out["v213:prices:v1:SWEDEN"] = { schema: "v213-price-shard-v1", market: "SWEDEN", generated_at: stamp,
+    sources: [{ id: "nasdaq-stockholm-main", url: "https://api.nasdaq.com/api/nordic/screener/shares", retrieved_at: stamp, sha256: "e".repeat(64), rows: 1 }],
+    rows: { SIVE: [32.78, 1.2, null, "SEK", 0] } };
   if (!out["v213:identity:v2:sym:A"]) {
     out["v213:identity:v2:sym:A"] = { schema: "v213-identity-shard-v2", kind: "symbol", bucket: "A", generated_at: "2026-09-26T01:00:00Z", feeds: FEEDS, rows: [] };
   }
@@ -94,6 +103,18 @@ describe("sealed identity shards", () => {
     expect(await status("VOLV.B")).toBe("NASDAQ STOCKHOLM:VOLV B");
     expect(await status("股票 VOLV-B")).toBe("NASDAQ STOCKHOLM:VOLV B");
     expect(await status("ZZZZ")).toBe("UNAVAILABLE");
+    expect(await status("輝達")).toBe("NASDAQ:NVDA");  // sourced Chinese names are searchable
+  });
+
+  it("shows the sourced Chinese name next to the original, or says that none exists", async () => {
+    const env = await sealedWithShards();
+    const nvda = await handleGlobalEquityLookup(env as never, parseQuery("NVDA")) as { text: string }[];
+    expect(nvda[0]!.text).toContain("中文名稱：輝達（中文維基百科）");
+    expect(nvda[0]!.text).toContain("公司名稱（原文）：NVIDIA Corporation");
+    const tw = await handleGlobalEquityLookup(env as never, parseQuery("2330")) as { text: string }[];
+    expect(tw[0]!.text).toContain("中文名稱：台積電（臺灣證交所）");
+    const sive = await handleGlobalEquityLookup(env as never, parseQuery("SIVE")) as { text: string }[];
+    expect(sive[0]!.text).toContain("中文名稱：無公認中文名");
   });
 
   it("answers the LINE stock lookup with the admitted identity instead of 身分資料未封存", async () => {
@@ -102,6 +123,18 @@ describe("sealed identity shards", () => {
     expect(answer[0]!.text).toContain("已准入證券身分");
     expect(answer[0]!.text).toContain("Sivers Semiconductors");
     expect(answer[0]!.text).not.toContain("身分資料未封存");
+  });
+
+  it("shows the market price shard for listings outside the watch universe", async () => {
+    const env = await sealedWithShards();
+    const tw = await handleGlobalEquityLookup(env as never, parseQuery("2330")) as { text: string }[];
+    expect(tw[0]!.text).toContain("已准入證券身分 · 延遲報價");
+    expect(tw[0]!.text).toContain("價格 1000 TWD（-0.50%），觀察時間 2026-09-24");
+    expect(tw[0]!.text).toContain("臺灣證交所每日收盤 https://openapi.twse.com.tw/");
+    const se = await handleGlobalEquityLookup(env as never, parseQuery("SIVE")) as { text: string }[];
+    expect(se[0]!.text).toContain("擷取時間；來源未載明成交日");
+    const us = await handleGlobalEquityLookup(env as never, parseQuery("NVDA")) as { text: string }[];
+    expect(us[0]!.text).toContain("報價未開放");  // no US shard sealed: stays honest
   });
 
   it("refuses a lazy blob whose bytes do not match the sealed digest", async () => {

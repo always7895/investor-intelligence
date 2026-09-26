@@ -36,6 +36,9 @@ export interface GlobalIdentityRecord {
   native_symbol: string;
   security_name: string;
   native_name?: string | null;
+  /** Traditional Chinese name from a stated source (exchange, company, Chinese Wikipedia); null when none exists. */
+  name_zh?: string | null;
+  name_zh_source?: string | null;
   security_class: string;
   currency: string;
   source_feed: string;

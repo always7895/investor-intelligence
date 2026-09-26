@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "rule": "Company-stated Chinese names only: the company's own Taiwan registration in the Ministry of Economic Affairs company registry (GCIS open data; the cited query returns the registered name and, where shown, the parent shareholder), its official Chinese website or press release. The registered name is shown without the foreign-company prefix (美商, 新加坡商, 香港商, 英屬維京群島商), the locality prefix (台灣) and the legal-form suffix. Entries fill gaps where Chinese Wikipedia has no Chinese title; no translation and no media transliteration.",
+  "verified_at": "2026-09-26",
+  "names": [
+    {"market": "US", "symbol": "LITE", "name_zh": "流明光學", "registered_name": "台灣流明光學股份有限公司",
+     "evidence": "shareholder 美商 Lumentum Operations LLC",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2052408628"},
+    {"market": "US", "symbol": "COHR", "name_zh": "科希倫", "registered_name": "新加坡商科希倫股份有限公司",
+     "evidence": "Taiwan branch of Coherent Singapore Pte. Ltd.",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2053011435"},
+    {"market": "US", "symbol": "CRDO", "name_zh": "默升科技", "registered_name": "香港商默升科技有限公司",
+     "evidence": "Taiwan branch of Credo's Hong Kong subsidiary",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2042949385"},
+    {"market": "US", "symbol": "ALAB", "name_zh": "艾斯特拉", "registered_name": "艾斯特拉股份有限公司",
+     "evidence": "shareholder 美商 Astera Labs, Inc.",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2083138500"},
+    {"market": "US", "symbol": "AAOI", "name_zh": "祥茂光電科技", "registered_name": "英屬維京群島商祥茂光電科技股份有限公司",
+     "evidence": "Taiwan branch; representative 林誌祥 (Thompson Lin, Applied Optoelectronics CEO)",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2028410552"},
+    {"market": "US", "symbol": "MTSI", "name_zh": "和康電訊", "registered_name": "和康電訊股份有限公司",
+     "evidence": "shareholder M/A-COM Technology Solutions (UK) Limited",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2016130486"},
+    {"market": "US", "symbol": "AMD", "name_zh": "超微半導體", "registered_name": "美商超微半導體股份有限公司",
+     "evidence": "Taiwan branch of Advanced Micro Devices",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2022554573"},
+    {"market": "US", "symbol": "BE", "name_zh": "博隆能源", "registered_name": "美商博隆能源股份有限公司",
+     "evidence": "Taiwan branch of Bloom Energy Corporation (registered 2023-09-14)",
+     "source_url": "https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO%20eq%2093751033"}
+  ]
+}

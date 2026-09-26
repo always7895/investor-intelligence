@@ -238,6 +238,11 @@ def yahoo_data(symbol: str) -> dict[str, Any]:
         out["market"][label] = (last / base - 1) if base and (last_day - first_day).days >= days - 5 else None
     two = out["market"].get("ret_2y")
     out["market"]["cagr_2y"] = ((1 + two) ** 0.5 - 1) if two is not None and two > -1 else None
+    # Listings younger than two years (spin-offs, IPOs) have no 2-year figure; the same long-term standard then uses
+    # the annualized return since the first trading day, and only from one year of history on.
+    span, first = (last_day - first_day).days, float(closes.iloc[0])
+    out["market"]["cagr_listed"] = ((last / first) ** (365.25 / span) - 1) \
+        if out["market"]["cagr_2y"] is None and span >= 360 and first > 0 else None
     try:
         info = ticker.fast_info
         out["market"]["currency"] = info.get("currency")
@@ -402,10 +407,10 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     for company in companies.values():
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
         reasons = []
-        if not market or market.get("ret_1y") is None and market.get("cagr_2y") is None:
-            reasons.append("MARKET_DATA_MISSING")
+        if not market or market.get("cagr_2y") is None and market.get("cagr_listed") is None:
+            reasons.append("MARKET_HISTORY_UNDER_1Y")
         long_term = (market or {}).get("cagr_2y")
-        long_term = long_term if long_term is not None else (market or {}).get("ret_1y")
+        long_term = long_term if long_term is not None else (market or {}).get("cagr_listed")
         if long_term is None or long_term <= 0:
             reasons.append("LONG_TERM_RETURN_NOT_POSITIVE")
         if sig and sig.get("stance") == "BEARISH" and sig.get("bearish", 0) >= 3 and sig.get("bullish", 0) == 0:
