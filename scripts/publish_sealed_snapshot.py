@@ -442,9 +442,10 @@ def _exchange_cross_checks(symbols: "list[str]", market_prices: "dict[str, dict]
 
 def _sealed_revenue_check(raw: "object") -> "dict | None":
     """An official revenue figure beside a listing's Yahoo quarter (scripts/bottleneck_top20_v3.py): the exchange's monthly
-    revenue for Taiwan (period YYYY-MM, TWD) or the issuer's own Cision interim report for Stockholm (YYYY-Qn, SEK),
+    revenue for Taiwan (period YYYY-MM, TWD), the issuer's own Cision interim report for Stockholm (YYYY-Qn, SEK) or a
+    Korean company's curated IR release (YYYY-Qn, KRW),
     reduced to known keys with finite numbers and an https source; anything malformed is dropped."""
-    sources = {"TWSE": ("TWD", False), "TPEX": ("TWD", False), "CISION": ("SEK", True)}
+    sources = {"TWSE": ("TWD", False), "TPEX": ("TWD", False), "CISION": ("SEK", True), "COMPANY_IR_KR": ("KRW", True)}
     if not isinstance(raw, dict) or raw.get("source_id") not in sources or not str(raw.get("source_url", "")).startswith("https://"):
         return None
     currency, quarterly = sources[raw["source_id"]]

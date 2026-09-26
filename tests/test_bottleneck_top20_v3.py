@@ -165,6 +165,19 @@ class OutlookTests(unittest.TestCase):
             self.assertEqual(sum(url.endswith("q3,c5") for url in urls), 3)
         self.assertEqual(engine.cision_interim_revenue(["NVDA"], now, lambda url: self.fail("not a Cision issuer"), None), {})
 
+    def test_korean_revenue_comes_from_the_curated_ir_config_for_the_same_quarter_only(self):
+        hynix = engine.korea_ir_revenue("000660.KS", "2026-06-30")
+        self.assertEqual((hynix["source_id"], hynix["period"], hynix["currency"]), ("COMPANY_IR_KR", "2026-Q2", "KRW"))
+        self.assertAlmostEqual(hynix["revenue_yoy"], 79318.7 / 22232 - 1, places=5)
+        self.assertTrue(hynix["source_url"].startswith("https://news.skhynix.com/"))
+        self.assertAlmostEqual(engine.korea_ir_revenue("005930.KS", "2026-06-30")["revenue_yoy"], 171499470 / 74566317 - 1, places=5)
+        self.assertIsNone(engine.korea_ir_revenue("000660.KS", "2026-09-30"))  # a newer Yahoo quarter: no stale figure beside it
+        self.assertIsNone(engine.korea_ir_revenue("298040.KS", "2026-06-30"))  # not in the config
+        self.assertIsNone(engine.korea_ir_revenue("000660.KS", "2026-06-30", Path("absent.json")))
+        sealed = publisher._sealed_revenue_check({**hynix, "currency": "USD"})
+        self.assertEqual(sealed, hynix)  # the seal fixes KRW for this source
+        self.assertIsNone(publisher._sealed_revenue_check({**hynix, "period": "2026-06"}))
+
     def test_korean_backlog_comes_from_the_ir_config_or_states_why_not(self):
         orders = engine.outlook("298040.KS", None, None)["orders"]
         self.assertEqual((orders["kind"], orders["amount"], orders["currency"], orders["as_of"]), ("BACKLOG", 17507000000000, "KRW", "2026-06-30"))

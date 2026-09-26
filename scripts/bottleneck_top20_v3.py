@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
+KOREA_FUNDAMENTALS = ROOT / "config" / "korea-ir-fundamentals-v1.json"
 SERENITY = ROOT / "data" / "cache" / "serenity_signals_latest.json"
 LEOPOLD = ROOT / "data" / "cache" / "leopold_positions_latest.json"
 TICKERS = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
@@ -529,6 +530,23 @@ def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Ca
     return out
 
 
+def korea_ir_revenue(symbol: str, quarter_end: str | None, path: Path = KOREA_FUNDAMENTALS) -> dict[str, Any] | None:
+    """The company's own IR revenue for the same quarter as the card (config/korea-ir-fundamentals-v1.json), or None when
+    the config has no entry for that quarter."""
+    try:
+        entry = load_json(path).get("companies", {}).get(symbol)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(entry, dict) or not quarter_end or entry.get("period_end") != quarter_end:
+        return None
+    revenue = entry.get("revenue") or {}
+    current, prior = _finite(revenue.get("amount")), _finite(revenue.get("prior"))
+    if not current or not prior or prior <= 0 or not str(entry.get("source_url", "")).startswith("https://"):
+        return None
+    return {"source_id": "COMPANY_IR_KR", "source_url": entry["source_url"], "period": entry["period"],
+            "revenue_yoy": round(current / prior - 1, 6), "cumulative_yoy": None, "currency": revenue.get("currency", "KRW")}
+
+
 def usd_rate(currency: str | None, cache: dict[str, float | None]) -> float | None:
     if not currency or currency == "USD":
         return 1.0
@@ -615,8 +633,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             facts = companyfacts(cik, fetch)
             fund = sec_fundamentals(symbol, cik, facts) if facts else None
         fund = fund or data.get("fundamentals")
-        if fund and symbol in official:
-            fund = {**fund, "cross_check": official[symbol]}
+        check = official.get(symbol) or (korea_ir_revenue(symbol, fund.get("quarter_end")) if fund else None)
+        if fund and check:
+            fund = {**fund, "cross_check": check}
         market = data.get("market")
         cap = market.get("market_cap") if market else None
         rate = usd_rate(market.get("currency") if market else None, fx)

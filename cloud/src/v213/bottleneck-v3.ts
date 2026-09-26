@@ -252,7 +252,7 @@ function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
   return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
-const OFFICIAL_SOURCE_LABEL: Record<string, string> = { ...ZH_SOURCE_LABEL, CISION: "Cision（發行公司法規公告）" };
+const OFFICIAL_SOURCE_LABEL: Record<string, string> = { ...ZH_SOURCE_LABEL, CISION: "Cision（發行公司法規公告）", COMPANY_IR_KR: "公司 IR 財報" };
 /** Beside the Yahoo quarter, never differenced: "官方月營收：櫃買中心 2026-08 單月年增 +525%，1–8 月累計年增 +489%"
  * (a different period) or "公司財報公告：Cision（發行公司法規公告） 2026-Q2 營收年增 -12%". */
 function revenueCheck(check: RevenueCheck): string {

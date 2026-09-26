@@ -146,6 +146,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     const bad = doc(Date.now() - HOUR);
     (bad.top[0] as any).fundamentals.cross_check = { ...report, period: "2026-Q5" };
     expect(parseBottleneckV3(bad)).toBeNull();
+    const korea = doc(Date.now() - HOUR);
+    (korea.top[0] as any).fundamentals.cross_check = { ...report, source_id: "COMPANY_IR_KR", revenue_yoy: 2.567748, currency: "KRW",
+      source_url: "https://news.skhynix.com/en/q2-2026-business-results/" };
+    expect(JSON.stringify(buildBottleneckDetail(parseBottleneckV3(korea)!, "SIVE.ST", "text"))).toContain("公司財報公告：公司 IR 財報 2026-Q2 營收年增 +257%");
   });
 
   it("renders optional numbers the validator lets through as missing, never as NaN or a crash", () => {

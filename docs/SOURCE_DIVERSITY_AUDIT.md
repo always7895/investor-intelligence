@@ -23,7 +23,7 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 | Serenity signals | third-party GitHub archive | local archive cache | **single**: OPEN |
 | Chinese names | TWSE/TPEx short names, Chinese Wikipedia, Wikidata, `config/company-zh-names-v1.json` | cache | multiple |
 | Taiwan monthly revenue (research MCP) | TWSE OpenAPI (listed), TPEx OpenAPI (OTC) | none per market | **single per market**: OPEN (low) |
-| Top20 fundamentals | SEC XBRL (US filers); Yahoo quarterly income statement elsewhere | Taiwan: TWSE/TPEx monthly revenue; Stockholm (SIVE): the issuer's Cision interim report, one feed read a day (`fundamentals.cross_check`, beside the Yahoo quarter) | Taiwan and SIVE two sources; Korea, Japan **single**: OPEN |
+| Top20 fundamentals | SEC XBRL (US filers); Yahoo quarterly income statement elsewhere | Taiwan: TWSE/TPEx monthly revenue; Stockholm (SIVE): the issuer's Cision interim report, one feed read a day (`fundamentals.cross_check`, beside the Yahoo quarter) | Taiwan and SIVE two sources; Korea (SK hynix, Samsung) two sources from `config/korea-ir-fundamentals-v1.json`, curated per quarter and shown only for the same quarter; Japan **single**: OPEN |
 | Top20 card price | Yahoo adjusted daily close (returns) | exchange close from the price shards (`market.cross_check`) | two sources where an exchange feed exists |
 | US consensus | Yahoo analyst estimates | Nasdaq.com targets and EPS (`consensus_second`), shown beside, never averaged | two sources; outside the US **single**: OPEN |
 
@@ -43,8 +43,8 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 
 ## Next steps (in order)
 
-1. Official fundamentals beside Yahoo for Korea: Samsung's IR statement PDF needs a PDF parser outside the hash-locked
-   requirements; SK hynix's newsroom terms forbid robots (a curated per-quarter config only). Keyless only.
+1. Keep `config/korea-ir-fundamentals-v1.json` current after each Korean earnings release (SK hynix's newsroom terms forbid
+   automated access; Samsung publishes a PDF statement); Japan needs a keyless official source (EDINET needs a key).
 2. Second identity/price sources per market, starting with the US (SEC directory; Yahoo daily close as the price fallback
    already used for Japan and Korea).
 3. A replacement for the frozen hfmarketdata corroborator; stooq only if it becomes reachable again.
