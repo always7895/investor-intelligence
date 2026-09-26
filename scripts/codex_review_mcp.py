@@ -10,9 +10,16 @@ Operator 2026-09-26: "Pro first, xhigh once it is used up". The CLI has no Pro t
 the top effort `ultra` and, only when that attempt reports an exhausted quota, runs the same prompt once at `xhigh`.
 An explicit effort is a single attempt.
 
-Tool
-- chatgpt_review  prompt (required), cwd (under WORKSPACE, default the source repository), model (default gpt-6-sol,
-                  only models the CLI lists), effort (default auto = ultra then xhigh; high, xhigh, max or ultra)
+The chat model "6 Pro" of the ChatGPT app is not offered to the CLI or the app server (model/list checked
+2026-09-26), and its chat UI may not be scripted, so a Pro review is a packet the operator pastes into ChatGPT.
+
+Tools
+- chatgpt_review      prompt (required), cwd (under WORKSPACE, default the source repository), model (default
+                      gpt-6-sol, only models the CLI lists), effort (default auto = ultra then xhigh; high, xhigh, max or
+                      ultra). An exhausted quota names the reset time the CLI reports: CODEX_QUOTA_EXHAUSTED until <time>.
+- chatgpt_pro_packet  prompt (required), name, clipboard (default false): writes the review request to
+                      PACKET_DIR/chatgpt-pro-<name>.md for the operator to paste into ChatGPT with 6 Pro selected (and
+                      copies it to the clipboard on request). Nothing is sent; the reply comes back through the operator.
 """
 from __future__ import annotations
 
@@ -27,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "chatgpt-codex-review", "version": "1.0.0"}
+SERVER_INFO = {"name": "chatgpt-codex-review", "version": "1.1.0"}
 WORKSPACE = Path(r"D:\Investor-Intelligence-LINE-Pi\_workspace")
 DEFAULT_CWD = WORKSPACE / "source"
 DEFAULT_MODEL = "gpt-6-sol"  # the independent reviewer model of the control plane
@@ -35,6 +42,8 @@ EFFORTS = ("auto", "high", "xhigh", "max", "ultra")
 AUTO_EFFORTS = ("ultra", "xhigh")  # the "Pro" tier first, then the operator's fallback
 MAX_PROMPT = 200_000
 TIMEOUT_SECONDS = 3600
+PACKET_DIR = Path(os.environ.get("TEMP", tempfile.gettempdir())) / "ii-live"
+RESET_RE = re.compile(r"try again (?:at|in) ([^.\r\n]{3,60})", re.IGNORECASE)
 QUOTA_RE = re.compile(r"usage limit|rate limit|quota|too many requests|429", re.IGNORECASE)
 
 
@@ -84,7 +93,7 @@ def chatgpt_review(args: dict[str, Any]) -> dict[str, Any]:
         try:
             answer = _run_codex(prompt, cwd, model, attempt)
         except ToolError as error:
-            if str(error) == "CODEX_QUOTA_EXHAUSTED" and index + 1 < len(attempts):
+            if str(error).startswith("CODEX_QUOTA_EXHAUSTED") and index + 1 < len(attempts):
                 continue
             raise
         result = {"model": model, "effort": attempt, "cwd": str(cwd), "answer": answer}
@@ -108,9 +117,28 @@ def _run_codex(prompt: str, cwd: Path, model: str, effort: str) -> str:
     if completed.returncode != 0 or not answer:
         tail = (completed.stderr or completed.stdout or "")[-1200:]
         if QUOTA_RE.search(tail):
-            raise ToolError("CODEX_QUOTA_EXHAUSTED")
+            reset = RESET_RE.search(tail)
+            raise ToolError("CODEX_QUOTA_EXHAUSTED" + (f" until {reset.group(1).strip()}" if reset else ""))
         raise ToolError(f"CODEX_FAILED exit={completed.returncode}: {tail.strip()[-600:]}")
     return answer
+
+
+def chatgpt_pro_packet(args: dict[str, Any]) -> dict[str, Any]:
+    prompt = str(args.get("prompt") or "")
+    if not prompt.strip() or len(prompt) > MAX_PROMPT:
+        raise ToolError("PROMPT_REQUIRED_MAX_200000_CHARS")
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(args.get("name") or "review")).strip("-.")[:60] or "review"
+    PACKET_DIR.mkdir(parents=True, exist_ok=True)
+    path = PACKET_DIR / f"chatgpt-pro-{name}.md"
+    path.write_text(prompt, encoding="utf-8")
+    copied = False
+    if args.get("clipboard") is True:
+        completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                                    "Set-Clipboard -Value (Get-Content -LiteralPath $env:II_PACKET -Raw -Encoding utf8)"],
+                                   env={**os.environ, "II_PACKET": str(path)}, capture_output=True, timeout=60)
+        copied = completed.returncode == 0
+    return {"packet": str(path), "chars": len(prompt), "clipboard": copied,
+            "next": "Paste into ChatGPT with 6 Pro selected (極高 when Pro is used up) and paste the reply back."}
 
 
 TOOLS = {
@@ -121,6 +149,11 @@ TOOLS = {
                            "model": {"type": "string", "description": f"default {DEFAULT_MODEL}"},
                            "effort": {"type": "string", "enum": list(EFFORTS),
                                       "description": "default auto: ultra, then xhigh when the quota is exhausted"}}}),
+    "chatgpt_pro_packet": (chatgpt_pro_packet, "Review packet for ChatGPT 6 Pro: written to a file (and the clipboard on "
+                           "request) for the operator to paste; nothing is sent automatically.",
+                           {"type": "object", "additionalProperties": False, "required": ["prompt"], "properties": {
+                               "prompt": {"type": "string"}, "name": {"type": "string"},
+                               "clipboard": {"type": "boolean", "description": "default false"}}}),
 }
 
 

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -94,6 +95,22 @@ class CodexReviewTests(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertEqual(result["content"][0]["text"], "CODEX_QUOTA_EXHAUSTED")
         self.assertEqual(len(self.commands), 1)
+        self.fake_run(answer="", returncode=1, stderr="ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage "
+                      "to purchase more credits or try again at Sep 30th, 2026 10:27 AM.")
+        result = call({"prompt": "review", "effort": "max"})
+        self.assertEqual(result["content"][0]["text"], "CODEX_QUOTA_EXHAUSTED until Sep 30th, 2026 10:27 AM")
+
+    def test_pro_packet_is_written_for_the_operator_and_nothing_is_run(self):
+        import tempfile
+        self.fake_run()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(server, "PACKET_DIR", Path(tmp)):
+            result = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "chatgpt_pro_packet", "arguments": {"prompt": "審查這個 diff", "name": "lane 7/x"}}})["result"]
+            payload = json.loads(result["content"][0]["text"])
+            self.assertEqual(Path(payload["packet"]).name, "chatgpt-pro-lane-7-x.md")
+            self.assertEqual(Path(payload["packet"]).read_text(encoding="utf-8"), "審查這個 diff")
+            self.assertFalse(payload["clipboard"])
+        self.assertEqual(self.commands, [])
 
 
 if __name__ == "__main__":
