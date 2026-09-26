@@ -135,6 +135,11 @@ class CodexReviewTests(unittest.TestCase):
             self.clipboard = ""
             with self.assertRaises(server.ToolError):
                 server.chatgpt_pro_collect({"name": "x"})
+            prepared = Path(tmp) / "prepared.prompt.txt"
+            prepared.write_text("審查這個 diff", encoding="utf-8")
+            self.assertEqual(server.chatgpt_pro_packet({"prompt_file": str(prepared), "name": "y"})["chars"], 9)
+            with self.assertRaises(server.ToolError):
+                server.chatgpt_pro_packet({"prompt_file": str(ROOT / "README.md"), "name": "z"})  # outside the packet directory
 
 
 if __name__ == "__main__":

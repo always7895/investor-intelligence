@@ -143,6 +143,12 @@ OPEN_CHATGPT = ("$app = Get-StartApps | Where-Object { $_.AppID -like 'OpenAI.Co
 
 def chatgpt_pro_packet(args: dict[str, Any]) -> dict[str, Any]:
     prompt = str(args.get("prompt") or "")
+    if not prompt and args.get("prompt_file"):
+        # A prepared review request (diffs are long) from the packet directory only.
+        source = Path(str(args["prompt_file"])).resolve()
+        if source.parent != PACKET_DIR.resolve() or not source.is_file():
+            raise ToolError("PROMPT_FILE_MUST_BE_IN_THE_PACKET_DIRECTORY")
+        prompt = source.read_text(encoding="utf-8")
     if not prompt.strip() or len(prompt) > MAX_PROMPT:
         raise ToolError("PROMPT_REQUIRED_MAX_200000_CHARS")
     name = _packet_name(args)
@@ -184,8 +190,9 @@ TOOLS = {
                                       "description": "default auto: ultra, then xhigh when the quota is exhausted"}}}),
     "chatgpt_pro_packet": (chatgpt_pro_packet, "Review packet for ChatGPT 6 Pro: written to a file (and the clipboard on "
                            "request) for the operator to paste; nothing is sent automatically.",
-                           {"type": "object", "additionalProperties": False, "required": ["prompt"], "properties": {
+                           {"type": "object", "additionalProperties": False, "properties": {
                                "prompt": {"type": "string"}, "name": {"type": "string"},
+                               "prompt_file": {"type": "string", "description": "a prepared request in the packet directory"},
                                "clipboard": {"type": "boolean", "description": "default false"},
                                "open_app": {"type": "boolean", "description": "bring the ChatGPT app to the front; default false"}}}),
     "chatgpt_pro_collect": (chatgpt_pro_collect, "Save the ChatGPT reply the operator copied to the clipboard for the packet "
