@@ -286,6 +286,10 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) ->
         delta = item.get("delta")
         if delta is not None and not 0 <= finite(delta, "delta") <= 1:
             raise MarketProductValidationError("INVALID_DELTA_RANGE")
+        if item.get("delta_basis") not in (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"):
+            raise MarketProductValidationError("INVALID_DELTA_BASIS")
+        if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:
+            raise MarketProductValidationError("INVALID_IMPLIED_VOLATILITY")
     if len(suggestions) == 2 and not suggestions[0]["strike"] > suggestions[1]["strike"]:
         raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_NOT_HIGHER")
 

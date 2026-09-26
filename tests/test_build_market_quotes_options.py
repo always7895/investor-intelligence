@@ -34,6 +34,39 @@ class SuggestionTests(unittest.TestCase):
         self.assertEqual(suggestions[0]["limit_price"], 0.62)  # mid 0.625 rounded down to the tick
         self.assertAlmostEqual(suggestions[0]["annualized_yield"], 0.62 / 100 * 365 / 30, places=6)
 
+    def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
+        spot, dte, years = 100.0, 30, 30 / 365
+        fair = lambda strike, vol: round(builder.bs_call_price(spot, strike, years, vol), 2)  # noqa: E731
+        # 150 is quoted at a 160% volatility: it pays far more than 6% annualized, but the delta its quote implies is
+        # over the 0.20 cap. 130 (45% volatility) pays too little; 120 (50%) is the highest strike within both limits.
+        rows = [row(150, fair(150, 1.6) - 0.01, fair(150, 1.6) + 0.01), row(130, fair(130, 0.45) - 0.01, fair(130, 0.45) + 0.01),
+                row(120, fair(120, 0.5) - 0.01, fair(120, 0.5) + 0.01), row(110, fair(110, 0.5) - 0.01, fair(110, 0.5) + 0.01)]
+        suggestions = builder.covered_call_suggestions(rows, spot, dte)
+        by_strike = {s["strike"]: s for s in suggestions}
+        self.assertNotIn(150, by_strike)
+        high = suggestions[0]
+        self.assertEqual(high["role"], "HIGH_STRIKE")
+        self.assertEqual(high["delta_basis"], "QUOTE_IMPLIED")
+        self.assertLessEqual(high["delta"], builder.MAX_HIGH_STRIKE_DELTA)
+        self.assertEqual(high["strike"], 120)
+        self.assertAlmostEqual(high["iv"], 0.5, delta=0.02)
+        self.assertAlmostEqual(high["delta"], builder.bs_call_delta(spot, high["strike"], years, high["iv"]), places=3)
+
+    def test_implied_vol_inverts_the_price_and_rejects_impossible_quotes(self):
+        price = builder.bs_call_price(100.0, 115.0, 0.1, 0.6)
+        self.assertAlmostEqual(builder.implied_vol(price, 100.0, 115.0, 0.1), 0.6, places=3)
+        self.assertIsNone(builder.implied_vol(100.0, 100.0, 115.0, 0.1))  # a call cannot cost the share
+        self.assertIsNone(builder.implied_vol(0.0, 100.0, 115.0, 0.1))
+        # A row whose quote implies no volatility has no assignment reference and cannot be the high strike.
+        self.assertEqual(builder.covered_call_suggestions([row(115, 99.0, 99.5)], 100.0, 30), [])
+
+    def test_quoted_iv_and_quoted_delta_keep_their_basis(self):
+        iv_row = {**row(125, 0.50, 0.54), "iv": 0.8}
+        suggestion = builder.covered_call_suggestions([iv_row], 100.0, 30)[0]
+        self.assertEqual(suggestion["delta_basis"], "QUOTED_IV")
+        self.assertEqual(suggestion["delta"], builder.bs_call_delta(100.0, 125.0, 30 / 365, 0.8))
+        self.assertEqual(builder.covered_call_suggestions([row(120, 0.5, 0.54, 0.15)], 100.0, 30)[0]["delta_basis"], "QUOTED")
+
     def test_wide_spread_moves_the_limit_towards_the_bid_and_untradeable_quotes_are_ignored(self):
         suggestions = builder.covered_call_suggestions([row(120, 1.0, 1.6)], 100.0, 20)
         self.assertEqual(suggestions[0]["limit_price"], 1.15)  # spread 46% of mid -> bid + a quarter of the spread
@@ -221,7 +254,9 @@ class FallbackTests(unittest.TestCase):
         self.assertIn("fromdate=2026-09-29", self.urls[0])
         self.assertEqual((out["weekly"]["expiry"], out["weekly"]["dte"]), ("2026-10-02", 6))
         self.assertEqual((out["monthly"]["expiry"], out["monthly"]["suggestions"][0]["strike"]), ("2026-10-23", 250.0))
-        self.assertIsNone(out["weekly"]["suggestions"][0]["delta"])
+        weekly = out["weekly"]["suggestions"][0]
+        self.assertEqual(weekly["delta_basis"], "QUOTE_IMPLIED")  # the chain has no delta or IV: implied by the quote
+        self.assertLessEqual(weekly["delta"], builder.MAX_HIGH_STRIKE_DELTA)
         self.assertEqual(out["weekly"]["suggestions"][0]["oi"], 1200)
         self.assertTrue(out["weekly"]["provenance"].startswith("https://www.nasdaq.com/"))
         self.assertEqual(out["weekly"]["rights_status"], "candidate_local_review")
@@ -312,6 +347,12 @@ class SealingTests(unittest.TestCase):
         tampered["suggestions"][0]["limit_price"] = 9.0
         with self.assertRaises(MarketProductValidationError):
             validate_covered_call_cycle(tampered, evaluated_at=stamp)
+        self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTED")
+        for key, value in (("delta_basis", "GUESSED"), ("iv", 0.0)):
+            bad = json.loads(json.dumps(good))
+            bad["suggestions"][0][key] = value
+            with self.assertRaises(MarketProductValidationError):
+                validate_covered_call_cycle(bad, evaluated_at=stamp)
         doc = {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": {"NVDA": {"symbol": "NVDA", "price": 225.0}},
                "options": {"NVDA": {"monthly": good, "weekly": tampered}, "SIVE": {"weekly": {"unavailable": "無週期權"}}}}
         with tempfile.TemporaryDirectory() as tmp:

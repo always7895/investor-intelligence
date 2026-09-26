@@ -13,14 +13,16 @@ screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange 
 - Nasdaq Stockholm options (for example SIVE.ST): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
 Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE): two covered-call sell suggestions for a holder of 100
 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the shares are not called away):
-- HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD (and, when a delta
-  is available, delta <= MAX_HIGH_STRIKE_DELTA); strikes with a spread wider than the mid are ignored;
+- HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD with delta <=
+  MAX_HIGH_STRIKE_DELTA; strikes with a spread wider than the mid, or without a delta, are ignored;
 - BALANCED: a lower strike nearest delta BALANCED_DELTA (or BALANCED_MONEYNESS without a delta) for more premium.
 Each carries a sell limit (mid rounded down to the tick, or bid + a quarter of the spread when the spread exceeds 25% of
 the mid; never below the bid), premium per contract, period and
 annualized yield on the current price, the upside kept up to the strike, delta as the assignment reference, OI, volume
-and spread. Delta is Black-Scholes from the quoted implied volatility (a labelled model Greek); prices are never
-modelled. A cycle without two-sided quotes stays unavailable with its reason.
+and spread. Delta is Black-Scholes from the quoted implied volatility (a labelled model Greek); a chain without one
+(Nasdaq Stockholm, the Nasdaq US fallback) takes the volatility implied by the strike's own bid/ask mid instead
+(delta_basis QUOTE_IMPLIED), so every high strike carries the same assignment cap. Prices are never modelled. A cycle
+without two-sided quotes stays unavailable with its reason.
 
 Output: data/cache/market_quotes_options.json. Observation only; nothing here is an order.
 """
@@ -63,7 +65,7 @@ RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
 BALANCED_DELTA = 0.30
-BALANCED_MONEYNESS = 1.05     # without a delta (Nasdaq Stockholm), about 5% out of the money
+BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
 TICK = 0.01
 MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
 WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
@@ -179,6 +181,42 @@ def bs_call_delta(spot: float, strike: float, years: float, vol: float | None) -
     return round(0.5 * (1 + math.erf(d1 / math.sqrt(2))), 3)
 
 
+def bs_call_price(spot: float, strike: float, years: float, vol: float) -> float:
+    d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
+    d2 = d1 - vol * math.sqrt(years)
+    cdf = lambda x: 0.5 * (1 + math.erf(x / math.sqrt(2)))  # noqa: E731
+    return spot * cdf(d1) - strike * math.exp(-RISK_FREE * years) * cdf(d2)
+
+
+def implied_vol(price: float, spot: float, strike: float, years: float) -> float | None:
+    """The Black-Scholes volatility that reproduces a quoted call price (bisection between 1% and 500%); None when the
+    quote lies outside that range."""
+    low, high = 0.01, 5.0
+    if price <= 0 or years <= 0 or spot <= 0 or strike <= 0 or not bs_call_price(spot, strike, years, low) < price < bs_call_price(spot, strike, years, high):
+        return None
+    for _ in range(60):
+        mid = (low + high) / 2
+        if bs_call_price(spot, strike, years, mid) < price:
+            low = mid
+        else:
+            high = mid
+    return round((low + high) / 2, 4)
+
+
+def with_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
+    """The row with its assignment reference: the quoted delta, else Black-Scholes from the quoted implied volatility,
+    else from the volatility implied by its own bid/ask mid (labelled QUOTE_IMPLIED)."""
+    if row.get("delta") is not None:  # the Yahoo path computes it from the quoted IV when parsing
+        return {**row, "delta_basis": "QUOTED_IV" if row.get("iv") else "QUOTED"}
+    years = dte / 365
+    if row.get("iv"):
+        return {**row, "delta": bs_call_delta(spot, row["strike"], years, row["iv"]), "delta_basis": "QUOTED_IV"}
+    vol = implied_vol((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
+    if vol is None:
+        return {**row, "delta_basis": None}
+    return {**row, "iv": vol, "delta": bs_call_delta(spot, row["strike"], years, vol), "delta_basis": "QUOTE_IMPLIED"}
+
+
 def _int(value: Any) -> int | None:
     try:
         text = str(value).replace(",", "").strip()
@@ -206,20 +244,24 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
     return {"role": role, "strike": row["strike"], "bid": bid, "ask": ask, "mid": mid, "limit_price": limit,
             "premium_per_contract": round(limit * 100, 2), "period_yield": round(period_yield, 6),
             "annualized_yield": round(period_yield * 365 / dte, 6), "upside_to_strike": round(row["strike"] / spot - 1, 6),
-            "delta": row.get("delta"), "iv": row.get("iv"), "oi": row.get("oi"), "volume": row.get("volume"),
+            "delta": row.get("delta"), "delta_basis": row.get("delta_basis"), "iv": row.get("iv") or None, "oi": row.get("oi"), "volume": row.get("volume"),
             "spread_pct": round((ask - bid) / mid, 4) if mid > 0 else None}
 
 
 def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int) -> list[dict[str, Any]]:
     """Up to two sell-call suggestions for a holder of 100 shares: the highest strike still worth selling, then a
-    balanced strike below it. Only out-of-the-money strikes with a two-sided quote qualify."""
-    usable = [row for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid") and row.get("ask")
-              and row["ask"] >= row["bid"] > 0 and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT]
-    if not usable or dte <= 0:
+    balanced strike below it. Only out-of-the-money strikes with a two-sided quote qualify, and the high strike needs a
+    delta (quoted or implied by its quote) within MAX_HIGH_STRIKE_DELTA."""
+    if dte <= 0:
+        return []
+    usable = [with_delta(row, spot, dte) for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid")
+              and row.get("ask") and row["ask"] >= row["bid"] > 0
+              and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT]
+    if not usable:
         return []
     annual = lambda row: row["bid"] / spot * 365 / dte  # noqa: E731 - on the bid: premium that is actually collectable
     high = [row for row in usable if annual(row) >= MIN_ANNUALIZED_YIELD
-            and (row.get("delta") is None or row["delta"] <= MAX_HIGH_STRIKE_DELTA)]
+            and row.get("delta") is not None and row["delta"] <= MAX_HIGH_STRIKE_DELTA]
     if not high:
         return []
     first = max(high, key=lambda row: row["strike"])

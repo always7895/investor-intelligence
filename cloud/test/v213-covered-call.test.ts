@@ -39,4 +39,21 @@ describe("covered-call suggestions", () => {
     expect(text).toContain("建議賣出限價 $1.52");
     expect(text).toContain("本服務不下單");
   });
+
+  it("labels a delta implied by the quote itself and refuses unknown bases or volatilities", () => {
+    const implied = cycle({ currency: "SEK", spot: 32.78, suggestions: [{ ...suggestion("HIGH_STRIKE", 62, 0.2, 0.35, 0.27, 32.78, 20),
+      delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658 }], dte: 20 });
+    const valid = validateCoveredCallCycle(implied)!;
+    expect(valid).not.toBeNull();
+    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
+    expect(flex).toContain("Delta 0.06（約 6%，模型值，波動率由買賣報價反推 157%）");
+    const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
+    expect(text).toContain("Delta 0.06（由報價反推）");
+    const unknown = structuredClone(implied); (unknown.suggestions as any)[0].delta_basis = "GUESSED";
+    expect(validateCoveredCallCycle(unknown)).toBeNull();
+    const badVol = structuredClone(implied); (badVol.suggestions as any)[0].iv = -1;
+    expect(validateCoveredCallCycle(badVol)).toBeNull();
+    const noDelta = cycle(); (noDelta.suggestions[1] as any).delta = undefined;
+    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex"))).toContain("報價不足以推算 Delta");
+  });
 });

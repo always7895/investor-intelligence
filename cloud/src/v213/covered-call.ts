@@ -12,6 +12,9 @@ export interface CoveredCallSuggestion {
   role: "HIGH_STRIKE" | "BALANCED"; strike: number; bid: number; ask: number; mid: number; limit_price: number;
   premium_per_contract: number; period_yield: number; annualized_yield: number; upside_to_strike: number;
   delta: number | null; iv: number | null; oi: number | null; volume: number | null; spread_pct: number | null;
+  /** QUOTED: the venue's delta; QUOTED_IV: Black-Scholes from the quoted implied volatility; QUOTE_IMPLIED: Black-Scholes
+   * from the volatility implied by the strike's own bid/ask mid (chains without Greeks). */
+  delta_basis?: "QUOTED" | "QUOTED_IV" | "QUOTE_IMPLIED" | null;
 }
 export interface CoveredCallCycle {
   ticker: string; strategy: "COVERED_CALL"; expiry: string; dte: number; spot: number; currency: "USD" | "SEK";
@@ -20,6 +23,7 @@ export interface CoveredCallCycle {
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const DELTA_BASES = new Set(["QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"]);
 const close = (value: number, expected: number) => Math.abs(value - expected) <= Math.max(1e-4, Math.abs(expected) * 1e-3);
 
 /** A strictly validated cycle, or null (the caller then shows the option as unavailable). */
@@ -43,6 +47,8 @@ export function validateCoveredCallCycle(raw: unknown): CoveredCallCycle | null 
       || !close(item.annualized_yield, item.limit_price / cycle.spot * 365 / cycle.dte)
       || !close(item.upside_to_strike, item.strike / cycle.spot - 1)) return null;
     if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return null;
+    if (item.delta_basis !== null && item.delta_basis !== undefined && !DELTA_BASES.has(item.delta_basis)) return null;
+    if (item.iv !== null && item.iv !== undefined && !(finite(item.iv) && item.iv > 0)) return null;
   }
   if (cycle.suggestions.length === 2 && !(cycle.suggestions[0].strike > cycle.suggestions[1].strike)) return null;
   return cycle as CoveredCallCycle;
@@ -55,9 +61,16 @@ const ROLE = {
   BALANCED: ["建議二：平衡型（收較多權利金）", "履約價較低、權利金較高；被指派機率也較高。"],
 } as const;
 
+function assignmentText(item: CoveredCallSuggestion): string {
+  if (item.delta === null || item.delta === undefined) return "被指派機率參考：報價不足以推算 Delta";
+  const basis = item.delta_basis === "QUOTED" ? "交易所提供"
+    : item.delta_basis === "QUOTE_IMPLIED" && item.iv ? `模型值，波動率由買賣報價反推 ${pct(item.iv, 0)}` : "模型值";
+  return `被指派機率參考：Delta ${item.delta.toFixed(2)}（約 ${Math.round(item.delta * 100)}%，${basis}）`;
+}
+
 function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion) {
   const [title, note] = ROLE[item.role];
-  const assignment = item.delta === null ? "被指派機率參考：交易所未提供 Delta" : `被指派機率參考：Delta ${item.delta.toFixed(2)}（約 ${Math.round(item.delta * 100)}%，模型值）`;
+  const assignment = assignmentText(item);
   return section(title, [
     uiBox([statTile("履約價", money(item.strike, cycle.currency), undefined, `距現價 +${pct(item.upside_to_strike)}`),
       statTile("建議賣出限價", money(item.limit_price, cycle.currency), undefined, `Bid ${money(item.bid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}`)],
@@ -78,7 +91,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
       ...cycle.suggestions.map(item => [
         ROLE[item.role][0],
         `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（Bid ${money(item.bid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}）`,
-        `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null ? "未提供" : item.delta.toFixed(2)}`,
+        `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${item.delta_basis === "QUOTE_IMPLIED" ? "（由報價反推）" : ""}`}`,
       ].join("\n")),
       `前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`,
       `來源：${sourceZh(cycle.source)}（延遲報價，${cycle.timestamp}）${cycle.provenance}`,
