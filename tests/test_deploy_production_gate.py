@@ -173,6 +173,20 @@ class ReplayAcceptanceTests(unittest.TestCase):
         self.assertIn("[int]$ExpectTop20Records = 0", GATE)
 
 
+class LazyKeyParityTests(unittest.TestCase):
+    def test_gate_copy_knows_every_lazy_key_the_worker_seals(self):
+        import fetch_live_public_snapshot as fetcher
+        worker = (ROOT / "cloud" / "src" / "v213" / "snapshot-seal.ts").read_text(encoding="utf-8")
+        pattern = re.search(r"SNAPSHOT_LAZY_KEY_RE = /(.+)/;", worker).group(1)
+        for key in ("v213:identity:v2:sym:R", "v213:identity:v2:name:15", "v213:quotes:v1", "v213:options:v2",
+                    "v213:bottleneck-top20:v3", "v213:prices:v1:UK", "v213:prices:v1:TAIWAN"):
+            self.assertTrue(re.fullmatch(pattern, key), key)
+            self.assertTrue(fetcher.LAZY_KEY.fullmatch(key), key)
+        for key in ("v213:prices:v1:MARS", "v213:top20-report:latest"):
+            self.assertFalse(re.fullmatch(pattern, key), key)
+            self.assertFalse(fetcher.LAZY_KEY.fullmatch(key), key)
+
+
 class SyncLedgerTests(unittest.TestCase):
     """KV growth is bounded: run keys and blobs carry an expiry, the pointer none; a blob this machine stored recently
     is reused without any KV call; the ledger only records blobs after the pointer moved."""

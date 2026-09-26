@@ -15,13 +15,17 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 NS = "96142af40b5d4213862d5483fe3a66da"
 RUN_ID = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
-LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v[12]|bottleneck-top20:v3)$")
+LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v[12]|bottleneck-top20:v3"
+                      r"|prices:v1:(?:US|TAIWAN|SWEDEN|EUROPE|JAPAN|KOREA|UK|HK))$")  # mirror of snapshot-seal.ts SNAPSHOT_LAZY_KEY_RE
+ATTEMPTS = 3
+RETRY_SECONDS = 5
 Getter = Callable[[str], bytes]
 
 
@@ -29,11 +33,15 @@ def remote_getter() -> Getter:
     npx = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 
     def get(key: str) -> bytes:
-        done = subprocess.run([npx, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
-                              cwd=str(ROOT / "cloud"), capture_output=True, timeout=300)
-        if done.returncode != 0 or not done.stdout:
-            raise LookupError(f"LIVE_KEY_MISSING {key}")
-        return done.stdout
+        # A transient Cloudflare/network failure is retried; only a key absent on every attempt is reported missing.
+        for attempt in range(ATTEMPTS):
+            done = subprocess.run([npx, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
+                                  cwd=str(ROOT / "cloud"), capture_output=True, timeout=300)
+            if done.returncode == 0 and done.stdout:
+                return done.stdout
+            if attempt + 1 < ATTEMPTS:
+                time.sleep(RETRY_SECONDS)
+        raise LookupError(f"LIVE_KEY_MISSING {key}")
     return get
 
 

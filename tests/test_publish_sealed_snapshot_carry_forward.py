@@ -286,3 +286,17 @@ class StagedReplayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StagedReplayIdentityTests(unittest.TestCase):
+    """The staged replay refuses a seal whose Chinese-name index would make 台積電 ambiguous (regression 2026-09-26:
+    the TSM ADR carried the same sourced Chinese name)."""
+
+    def test_taiwan_name_must_resolve_to_the_exchange_listing(self):
+        import stage_sealed_replay as replay
+        base = {"reader_contract_version": replay.READER_CONTRACT_VERSION, "integrity": "sealed", "run_id": "R",
+                "macro_overview_sealed": True, "fresh": True}
+        good = {**base, "identity_probe": {"NVDA": "RESOLVED:NASDAQ:NVDA", "2330": "RESOLVED:TWSE:2330", "台積電": "RESOLVED:TWSE:2330"}}
+        self.assertEqual(replay.expectations(good, "OTHER", "R", True, False), [])
+        bad = {**good, "identity_probe": {**good["identity_probe"], "台積電": "NEEDS_MARKET_SELECTION"}}
+        self.assertEqual(replay.expectations(bad, "OTHER", "R", True, False), ["IDENTITY_TW_NAME"])

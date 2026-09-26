@@ -21,6 +21,7 @@ const ROWS = [
   ["SIVE", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Sivers Semiconductors", null, "COMMON_STOCK", "SEK", 2],
   ["VOLV B", "NASDAQ STOCKHOLM", "SWEDEN", "Sweden", "Volvo B", null, "COMMON_STOCK", "SEK", 2],
   ["2330", "TSE", "JAPAN", "Japan", "Forside Co.,Ltd.", null, "COMMON_STOCK", "JPY", 0],
+  ["TSM", "NYSE", "US", "United States", "Taiwan Semiconductor Manufacturing Company Ltd.", null, "COMMON_STOCK", "USD", 0, ["台積電", "ZHWIKI"]],
 ] as const;
 
 async function sha(text: string): Promise<string> {
@@ -104,6 +105,7 @@ describe("sealed identity shards", () => {
     expect(await status("股票 VOLV-B")).toBe("NASDAQ STOCKHOLM:VOLV B");
     expect(await status("ZZZZ")).toBe("UNAVAILABLE");
     expect(await status("輝達")).toBe("NASDAQ:NVDA");  // sourced Chinese names are searchable
+    expect(await status("台積電")).toBe("TWSE:2330");  // the exchange's own name beats the ADR's sourced name
   });
 
   it("shows the sourced Chinese name next to the original, or says that none exists", async () => {

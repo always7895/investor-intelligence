@@ -151,9 +151,16 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
   records.forEach((record, index) => {
     byVenue[`${record.venue}:${record.symbol}`] = index;
     for (const spelling of spellings(record.symbol)) (bySymbol[spelling] ??= []).push(index);
-    for (const name of new Set([record.security_name, record.native_name ?? "", record.name_zh ?? ""].map(normalizeCompanyName).filter(Boolean))) {
+    for (const name of new Set([record.security_name, record.native_name ?? ""].map(normalizeCompanyName).filter(Boolean))) {
       (byName[name] ??= []).push(index);
     }
+  });
+  // Sourced Chinese names come second: a name an exchange directory states for its own listing (台積電 on TWSE) wins
+  // over the same Chinese name attached to another venue's listing (the TSM ADR); depositary receipts never take it.
+  const official = new Set(Object.keys(byName));
+  records.forEach((record, index) => {
+    const name = normalizeCompanyName(record.name_zh ?? "");
+    if (name && !official.has(name) && record.security_class !== "ADR") (byName[name] ??= []).push(index);
   });
   return {
     schema_version: 1, contract_id: "v213-global-identity-v1", generated_at: generatedAt, collection_receipts_sha256: feedDigest!,

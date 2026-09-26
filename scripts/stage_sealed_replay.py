@@ -86,6 +86,7 @@ def expectations(result: dict[str, Any], state: str | None, run_id: str, identit
         probe = result.get("identity_probe") or {}
         checks["IDENTITY_NVDA"] = probe.get("NVDA") == "RESOLVED:NASDAQ:NVDA"
         checks["IDENTITY_2330"] = probe.get("2330") == "RESOLVED:TWSE:2330"
+        checks["IDENTITY_TW_NAME"] = probe.get("台積電") == "RESOLVED:TWSE:2330"  # exchange name beats sourced Chinese names
     if bottleneck:
         checks["BOTTLENECK_V3"] = int(result.get("bottleneck_v3_records") or 0) >= 10 and int(result.get("bottleneck_v3_flex") or 0) > 0
         checks["INDUSTRY_V3"] = int(result.get("industry_v3_flex") or 0) > 0
@@ -112,7 +113,7 @@ def replay(run_dir: Path, runner: Runner = vitest_runner) -> dict[str, Any]:
         failed.insert(0, "VITEST_EXIT_NONZERO")
     return {"status": "PASS" if not failed else "FAIL", "run_id": run_id, "top20_state": state, "failed": failed,
             **{key: result.get(key) for key in ("fresh", "top20_records", "test_only_admission", "report_generated_at",
-                                                 "potential_ranking_records", "reader_contract_version", "identity_probe",
+                                                 "potential_ranking_records", "reader_contract_version", "identity_probe", "price_probe", "bottleneck_v3_zh_named",
                                                  "bottleneck_v3_records")}}
 
 

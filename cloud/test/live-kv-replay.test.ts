@@ -17,6 +17,7 @@ import { parseV21Top20 } from "../src/v21/top20";
 import { parseV212Top20Report } from "../src/v212/top20-report";
 import { resolveGlobalIdentity } from "../src/v213/global-identity";
 import { loadIdentityCatalogForQuery } from "../src/v213/identity-shards";
+import { loadListingPrice } from "../src/v213/market-observations";
 import { buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "../src/v213/bottleneck-v3";
 import { asKv, MemoryKv } from "./fake-kv";
 
@@ -59,9 +60,15 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
     const bottleneck = await loadBottleneckV3(view);
     // Identity lookups through the sealed shards (the LINE stock/options entry): status and resolved listing.
     const identityProbe: Record<string, string> = {};
-    for (const probe of ["SIVE", "NVDA", "2330", "台積電", "4062.T", "005930.KS", "SOI.PA"]) {
+    // Prices the lookup would show for listings outside the watch universe (market price shards).
+    const priceProbe: Record<string, string> = {};
+    for (const probe of ["SIVE", "NVDA", "2330", "台積電", "4062.T", "005930.KS", "SOI.PA", "IQE.L", "輝達", "2059"]) {
       const resolution = resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, probe), probe);
       identityProbe[probe] = resolution.status === "RESOLVED" ? `RESOLVED:${resolution.record.venue}:${resolution.record.symbol}` : resolution.status;
+      if (resolution.status === "RESOLVED") {
+        const price = await loadListingPrice(view, resolution.record);
+        priceProbe[probe] = price ? `${price.price} ${price.currency} @${price.asof.slice(0, 10)}` : "NO_PRICE";
+      }
     }
     const result = {
       reader_contract_version: READER_CONTRACT_VERSION,
@@ -74,7 +81,8 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       report_generated_at: fresh ? (report as { generated_at: string }).generated_at : null,
       line_flex_messages: messageCount(flex), line_text_messages: messageCount(text),
       v21_records: v21?.length ?? 0, v212_records: v212?.records.length ?? 0, broadcast_ready: broadcastReady,
-      identity_probe: identityProbe,
+      identity_probe: identityProbe, price_probe: priceProbe,
+      bottleneck_v3_zh_named: bottleneck ? bottleneck.top.filter(entry => entry.name_zh).length : 0,
       bottleneck_v3_records: bottleneck?.top.length ?? 0, bottleneck_v3_flex: bottleneck ? messageCount(buildBottleneckTop20Messages(bottleneck, "flex")) : 0,
       industry_v3_flex: bottleneck ? messageCount(buildIndustryExplosionMessages(bottleneck, "flex")) : 0,
       macro_overview_sealed: !!overview, potential_ranking_records: ranking?.records.length ?? 0,
