@@ -59,7 +59,7 @@ class PullRequestWorkflowDedupTests(unittest.TestCase):
                 self.assertNotIn("\n  workflow_run:\n", header)
         current = (ROOT / ".github/workflows/v213-r75-release.yml").read_text(encoding="utf-8")
         self.assertIn("'pi/**'", trigger_header(ROOT / ".github/workflows/v213-r75-release.yml"))
-        self.assertIn("runs-on: [self-hosted, Windows, X64, investor-intelligence]", current)
+        self.assertIn("runs-on: [self-hosted, Windows, X64, investor-intelligence-reviewed]", current)
         self.assertIn("LINE_PUSH_ENABLED: 'false'", current)
 
 

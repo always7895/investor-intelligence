@@ -7,6 +7,9 @@ This changes request size/output bounds, never the user's llama.cpp preset.
 from __future__ import annotations
 import json
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from v213_model_profile import validate_profile
 
 POLICY = json.loads((Path(__file__).resolve().parents[1] / "config/v213-compact-qa-v1.json").read_text(encoding="utf-8-sig"))
 
@@ -54,20 +57,28 @@ def complete_compact_response(result: object, selected: str, catalog: object = N
             and isinstance(message.get("content"), str) and bool(message["content"].strip()))
 
 
-def compact_upstream(body: dict, selected: str) -> dict | None:
+def compact_upstream(body: dict, selected: str, runtime_profile=None) -> dict | None:
+    profile = validate_profile(runtime_profile) if runtime_profile is not None else None
+    if profile is not None:
+        if validate_profile(body.get('ii_model_profile')) != profile:
+            raise ValueError('MODEL_PROFILE_MISMATCH')
+    elif 'ii_model_profile' in body:
+        raise ValueError('MODEL_PROFILE_NOT_CONFIGURED')
     mode = body.get("ii_context_mode")
     if mode is None:
+        if profile is not None:
+            raise ValueError('MODEL_PROFILE_COMPACT_REQUIRED')
         return None
-    if selected != POLICY["model"] or body.get("model") != selected:
+    if selected != (profile['model'] if profile else POLICY["model"]) or body.get("model") != selected:
         raise ValueError("COMPACT_MODEL_MISMATCH")
     if mode not in (POLICY["mode"], POLICY["smoke_mode"]):
         raise ValueError("COMPACT_MODE_INVALID")
     messages = body.get("messages")
-    maximum = POLICY["max_output_tokens"]
+    maximum = profile['max_output_tokens'] if profile else POLICY["max_output_tokens"]
     if mode == POLICY["smoke_mode"]:
         if messages != [{"role": "user", "content": POLICY["smoke_prompt"]}]:
             raise ValueError("COMPACT_SMOKE_INPUT_INVALID")
-        maximum = POLICY["smoke_output_tokens"]
+        maximum = profile['smoke_output_tokens'] if profile else POLICY["smoke_output_tokens"]
     else:
         if not isinstance(messages, list) or not 2 <= len(messages) <= 2 + POLICY["max_history_turns"]:
             raise ValueError("COMPACT_MESSAGES_INVALID")
@@ -94,7 +105,8 @@ def compact_upstream(body: dict, selected: str) -> dict | None:
     return {"model": selected, "messages": messages, "temperature": 0.2,
             "max_tokens": count, "stream": False, "cache_prompt": body.get("cache_prompt", True),
             # User-authorized request-only short-answer mode. Router preset is untouched.
-            "chat_template_kwargs": {"enable_thinking": POLICY["compact_request_enable_thinking"]}}
+            "chat_template_kwargs": {"enable_thinking": profile['enable_thinking'] if profile else POLICY["compact_request_enable_thinking"]},
+            **({'reasoning_effort': profile['reasoning_effort']} if profile else {})}
 
 
 if __name__ == "__main__":

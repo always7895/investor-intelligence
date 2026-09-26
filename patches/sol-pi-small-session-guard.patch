@@ -1,0 +1,847 @@
+diff --git a/src/sol-pi/extensions/online-context-compact/extension.ts b/src/sol-pi/extensions/online-context-compact/extension.ts
+index 858d9a0..29f18a5 100644
+--- a/src/sol-pi/extensions/online-context-compact/extension.ts
++++ b/src/sol-pi/extensions/online-context-compact/extension.ts
+@@ -7,7 +7,9 @@ import {
+ 	buildSessionContext,
+ 	estimateTokens,
+ 	findCutPoint,
++	getAgentDir,
+ 	sessionEntryToContextMessages,
++	SettingsManager,
+ 	type ExtensionContext,
+ 	type ExtensionFactory,
+ 	type SessionEntry,
+@@ -39,6 +41,11 @@ export const BOUNDARY_COMPACTION_INSTRUCTIONS =
+ export const POST_COMPACTION_PLAN_REMINDER =
+ 	"Online context compaction finished. The parent task is still active. " +
+ 	"Before continuing work, call update_plan with a fresh plan for the remaining work.";
++export const SMALL_SESSION_PLAN_REMINDER =
++	"Online context compaction was unnecessary because the session is too small. " +
++	"The parent task is still active. " +
++	"Before continuing work, call update_plan with a fresh plan for the remaining work.";
++export const NO_OP_COMPACTION_ERROR_MESSAGE = "Nothing to compact (session too small)";
+ 
+ export type OnlineContextCompactOptions = {
+ 	readonly cacheWriteReadRatio?: number | null;
+@@ -87,63 +94,60 @@ function progressSummary(input: PlanUpdateInput, completedStepId: string): Progr
+ 	};
+ }
+ 
+-function compactionMessageCount(entries: readonly SessionEntry[], startIndex: number, endIndex: number): number {
+-	let count = 0;
+-	for (let index = startIndex; index < endIndex; index++) {
+-		const entry = entries[index];
+-		if (entry && entry.type !== "compaction" && sessionEntryToContextMessages(entry).length > 0) count++;
++/**
++ * Reads the effective native compaction keepRecentTokens through Pi's public
++ * SettingsManager API (same files the CLI session loads).
++ */
++function effectiveNativeKeepRecentTokens(context: ExtensionContext): number | null {
++	try {
++		const settings = SettingsManager.create(context.cwd, getAgentDir(), {
++			projectTrusted: context.isProjectTrusted(),
++		}).getCompactionSettings();
++		return validPositiveInteger(settings.keepRecentTokens) ? settings.keepRecentTokens : null;
++	} catch {
++		return null;
+ 	}
+-	return count;
+-}
+-
+-function branchAfterAbort(entries: readonly SessionEntry[]): SessionEntry[] {
+-	const last = entries.at(-1);
+-	const markerProvider = ["sol", "pi"].join("-");
+-	return [
+-		...entries,
+-		{
+-			type: "message",
+-			id: "sol-pi-online-context-compact-abort-marker",
+-			parentId: last?.id ?? null,
+-			timestamp: new Date(0).toISOString(),
+-			message: {
+-				role: "assistant",
+-				content: [],
+-				api: markerProvider,
+-				provider: markerProvider,
+-				model: "aborted",
+-				usage: {
+-					input: 0,
+-					output: 0,
+-					cacheRead: 0,
+-					cacheWrite: 0,
+-					totalTokens: 0,
+-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+-				},
+-				stopReason: "aborted",
+-				timestamp: 0,
+-			},
+-		} as SessionEntry,
+-	];
+ }
+ 
+-function nativeCompactionFeasible(entries: readonly SessionEntry[], keepRecentTokens: number): boolean {
+-	const path = branchAfterAbort(entries);
+-	let startIndex = 0;
++/**
++ * Mirrors Pi's internal prepareCompaction non-compactable condition using only
++ * public primitives (findCutPoint + sessionEntryToContextMessages), evaluated
++ * on the actual current branch (no synthetic optimistic entries).
++ */
++function nativeCompactionRegionExists(branch: readonly SessionEntry[], keepRecentTokens: number): boolean {
++	const path = [...branch];
++	const last = path[path.length - 1];
++	if (last?.type === "compaction") return false;
++	let prevCompactionIndex = -1;
+ 	for (let index = path.length - 1; index >= 0; index--) {
+-		const entry = path[index];
+-		if (entry?.type !== "compaction") continue;
+-		const keptIndex = path.findIndex((item) => item.id === entry.firstKeptEntryId);
+-		startIndex = keptIndex >= 0 ? keptIndex : index + 1;
+-		break;
++		if (path[index]?.type === "compaction") {
++			prevCompactionIndex = index;
++			break;
++		}
+ 	}
+-
+-	const cut = findCutPoint(path, startIndex, path.length, keepRecentTokens);
++	let boundaryStart = 0;
++	if (prevCompactionIndex >= 0) {
++		const previous = path[prevCompactionIndex];
++		if (previous?.type !== "compaction") return false;
++		const firstKeptEntryIndex = path.findIndex((entry) => entry.id === previous.firstKeptEntryId);
++		boundaryStart = firstKeptEntryIndex >= 0 ? firstKeptEntryIndex : prevCompactionIndex + 1;
++	}
++	const cut = findCutPoint(path, boundaryStart, path.length, keepRecentTokens);
++	const firstKeptEntry = branch[cut.firstKeptEntryIndex];
++	if (!firstKeptEntry?.id) return false;
++	const countMessages = (startIndex: number, endIndex: number): number => {
++		let count = 0;
++		for (let index = startIndex; index < endIndex; index++) {
++			const entry = path[index];
++			if (entry && entry.type !== "compaction" && sessionEntryToContextMessages(entry).length > 0) count++;
++		}
++		return count;
++	};
+ 	const historyEnd = cut.isSplitTurn ? cut.turnStartIndex : cut.firstKeptEntryIndex;
+-	const historyMessages = historyEnd > startIndex ? compactionMessageCount(path, startIndex, historyEnd) : 0;
++	const historyMessages = historyEnd > boundaryStart ? countMessages(boundaryStart, historyEnd) : 0;
+ 	const prefixMessages =
+ 		cut.isSplitTurn && cut.turnStartIndex >= 0
+-			? compactionMessageCount(path, cut.turnStartIndex, cut.firstKeptEntryIndex)
++			? countMessages(cut.turnStartIndex, cut.firstKeptEntryIndex)
+ 			: 0;
+ 	return historyMessages > 0 || prefixMessages > 0;
+ }
+@@ -301,8 +305,13 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
+ 				cacheWriteReadRatio,
+ 				economics: DEFAULT_COMPACTION_ECONOMICS,
+ 			});
++			const nativeKeepRecent = effectiveNativeKeepRecentTokens(context);
+ 			const decision: CompactionDecision =
+-				priced.compact && !nativeCompactionFeasible(context.sessionManager.getBranch(), keepRecentTokens)
++				priced.compact &&
++				!nativeCompactionRegionExists(
++					context.sessionManager.getBranch(),
++					nativeKeepRecent ?? keepRecentTokens,
++				)
+ 					? { ...priced, compact: false, reason: "native_not_compactable" }
+ 					: priced;
+ 			if (!decision.compact) return;
+@@ -328,6 +337,37 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
+ 				return;
+ 			}
+ 
++			const startPlanContinuation = async (content: string): Promise<void> => {
++				let resolveContinuation!: () => void;
++				const continuation: PendingContinuation = {
++					promise: new Promise<void>((resolve) => {
++						resolveContinuation = resolve;
++					}),
++					resolve: () => resolveContinuation(),
++				};
++				nextContinuation = continuation;
++				try {
++					pi.sendMessage(
++						{
++							customType: "sol-pi-online-context-compact",
++							content,
++							display: false,
++						},
++						{ triggerTurn: true },
++					);
++				} catch (error) {
++					if (nextContinuation === continuation) nextContinuation = undefined;
++					continuation.resolve();
++					throw error;
++				}
++				if (context.isIdle() && nextContinuation === continuation) {
++					nextContinuation = undefined;
++					continuation.resolve();
++					throw new Error("Online context compact continuation did not start");
++				}
++				await continuation.promise;
++			};
++
+ 			activeDebt = {
+ 				debtTokens: pending.decision.writeTokens * (pending.decision.incrementalCacheCostRatio ?? 0),
+ 				repaymentTokens: Math.max(0, pending.decision.archiveTokens - pending.decision.memoTokens),
+@@ -335,6 +375,17 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
+ 			let compacted = false;
+ 			let compactionError: Error | undefined;
+ 			try {
++				const nativeKeepRecent = effectiveNativeKeepRecentTokens(context);
++				const compactable = nativeCompactionRegionExists(
++					context.sessionManager.getBranch(),
++					nativeKeepRecent ?? keepRecentTokens,
++				);
++				if (!compactable) {
++					// Known non-compactable: skip ctx.compact() entirely (zero
++					// compaction_start/end noise) and resume the aborted plan once.
++					await startPlanContinuation(SMALL_SESSION_PLAN_REMINDER);
++					return;
++				}
+ 				compactionInFlight = true;
+ 				await new Promise<void>((resolve) => {
+ 					let finished = false;
+@@ -370,43 +421,22 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
+ 					});
+ 				});
+ 				compactionInFlight = false;
++				const benignSmallSessionSkip =
++					compactionError !== undefined &&
++					compactionError.message === NO_OP_COMPACTION_ERROR_MESSAGE;
+ 				if (
+ 					compactionError &&
++					!benignSmallSessionSkip &&
+ 					compactionError.name !== "AbortError" &&
+ 					compactionError.message !== "Compaction cancelled"
+ 				) {
+ 					throw compactionError;
+ 				}
+ 
+-				if (compacted) {
+-					let resolveContinuation!: () => void;
+-					const continuation: PendingContinuation = {
+-						promise: new Promise<void>((resolve) => {
+-							resolveContinuation = resolve;
+-						}),
+-						resolve: () => resolveContinuation(),
+-					};
+-					nextContinuation = continuation;
+-					try {
+-						pi.sendMessage(
+-							{
+-								customType: "sol-pi-online-context-compact",
+-								content: POST_COMPACTION_PLAN_REMINDER,
+-								display: false,
+-							},
+-							{ triggerTurn: true },
+-						);
+-					} catch (error) {
+-						if (nextContinuation === continuation) nextContinuation = undefined;
+-						continuation.resolve();
+-						throw error;
+-					}
+-					if (context.isIdle() && nextContinuation === continuation) {
+-						nextContinuation = undefined;
+-						continuation.resolve();
+-						throw new Error("Online context compact continuation did not start");
+-					}
+-					await continuation.promise;
++				if (compacted || benignSmallSessionSkip) {
++					await startPlanContinuation(
++						compacted ? POST_COMPACTION_PLAN_REMINDER : SMALL_SESSION_PLAN_REMINDER,
++					);
+ 				}
+ 			} finally {
+ 				compactionInFlight = false;
+diff --git a/src/sol-pi/extensions/online-context-compact/index.ts b/src/sol-pi/extensions/online-context-compact/index.ts
+index e817d99..d47a035 100644
+--- a/src/sol-pi/extensions/online-context-compact/index.ts
++++ b/src/sol-pi/extensions/online-context-compact/index.ts
+@@ -19,7 +19,9 @@ export {
+ 	createOnlineContextCompactExtension,
+ 	DEFAULT_KEEP_RECENT_TOKENS,
+ 	DEFAULT_NATIVE_SUMMARY_TOKEN_ESTIMATE,
++	NO_OP_COMPACTION_ERROR_MESSAGE,
+ 	POST_COMPACTION_PLAN_REMINDER,
++	SMALL_SESSION_PLAN_REMINDER,
+ 	type OnlineContextCompactOptions,
+ 	resolveKeepRecentTokens,
+ } from "./extension.ts";
+diff --git a/tests/online-context-compact-agent-session.test.ts b/tests/online-context-compact-agent-session.test.ts
+index e9d73bb..7e06c27 100644
+--- a/tests/online-context-compact-agent-session.test.ts
++++ b/tests/online-context-compact-agent-session.test.ts
+@@ -2,12 +2,13 @@
+  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  * SPDX-License-Identifier: MIT
+  */
+-import { mkdir, mkdtemp, rm } from "node:fs/promises";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import {
+ 	createAgentSession,
+ 	DefaultResourceLoader,
++	getAgentDir,
+ 	SessionManager,
+ 	SettingsManager,
+ 	type AgentSession,
+@@ -21,14 +22,18 @@ import {
+ 	type FauxResponseStep,
+ } from "@earendil-works/pi-ai/providers/faux";
+ import { describe, expect, it } from "vitest";
++import { createSolPiExtension } from "../src/sol-pi/index.ts";
+ import {
+ 	BOUNDARY_COMPACTION_INSTRUCTIONS,
+ 	createOnlineContextCompactExtension,
+ 	POST_COMPACTION_PLAN_REMINDER,
+ } from "../src/sol-pi/extensions/online-context-compact/extension.ts";
++import { restoreOnlineState } from "../src/sol-pi/extensions/online-context-compact/state.ts";
+ 
+ const OPEN = [{ id: "build", goal: "build it", status: "in_progress" }] as const;
+ const DONE = [{ id: "build", goal: "build it", status: "completed" }] as const;
++const OPEN2 = [{ id: "ship", goal: "ship it", status: "in_progress" }] as const;
++const DONE2 = [{ id: "ship", goal: "ship it", status: "completed" }] as const;
+ const PROGRESS = {
+ 	files_changed: ["src/a.ts"],
+ 	verification: ["tests passed"],
+@@ -41,6 +46,8 @@ async function runCompactionScenario(requestedCompactions: 1 | 2): Promise<void>
+ 	const cwd = await mkdtemp(join(tmpdir(), "sol-pi-occ-session-"));
+ 	const agentDir = join(cwd, "agent");
+ 	await mkdir(agentDir);
++	// Deterministic native compaction settings for the extension preflight.
++	await writeProjectSettings(cwd, 150);
+ 
+ 	let session: AgentSession | undefined;
+ 	try {
+@@ -165,6 +172,208 @@ async function runCompactionScenario(requestedCompactions: 1 | 2): Promise<void>
+ 	}
+ }
+ 
++async function writeProjectSettings(cwd: string, keepRecentTokens: number): Promise<void> {
++	const configDir = join(cwd, ".pi");
++	await mkdir(configDir, { recursive: true });
++	await writeFile(
++		join(configDir, "settings.json"),
++		JSON.stringify({
++			compaction: { enabled: false, reserveTokens: 1_024, keepRecentTokens },
++			retry: { enabled: false },
++		}),
++	);
++}
++
++async function runRealCompactionScenario(mode: "small-session" | "genuine-error"): Promise<void> {
++	const cwd = await mkdtemp(join(tmpdir(), "sol-pi-occ-real-"));
++	const agentDir = join(cwd, "agent");
++	await mkdir(agentDir);
++	// Temporary project compaction settings: the session and the extension
++	// preflight both read this file (project scope overrides global).
++	// small-session is intentionally non-compactable, genuine-error is compactable.
++	await writeProjectSettings(cwd, mode === "small-session" ? 1_000_000 : 150);
++
++	let session: AgentSession | undefined;
++	try {
++		const finalReply = "final reply after second plan step";
++		const faux = fauxProvider({
++			provider: `sol-pi-occ-real-${mode}`,
++			api: `sol-pi-occ-real-api-${mode}`,
++			models: [{ id: `sol-pi-occ-real-model-${mode}`, contextWindow: 4_096, maxTokens: 1_024 }],
++		});
++		const responses: FauxResponseStep[] = [
++			fauxAssistantMessage(fauxToolCall("update_plan", { steps: OPEN }, { id: "plan-open" }), {
++				stopReason: "toolUse",
++			}),
++			fauxAssistantMessage(
++				fauxToolCall("update_plan", { steps: DONE, progress: PROGRESS }, { id: "plan-done" }),
++				{ stopReason: "toolUse" },
++			),
++		];
++		if (mode === "genuine-error") {
++			responses.push(
++				fauxAssistantMessage(fauxText("summary attempt"), {
++					stopReason: "error",
++					errorMessage: "genuine summarizer failure",
++				}),
++			);
++		} else {
++			responses.push(
++				fauxAssistantMessage(fauxToolCall("update_plan", { steps: OPEN2 }, { id: "plan-open-2" }), {
++					stopReason: "toolUse",
++				}),
++				fauxAssistantMessage(
++					fauxToolCall("update_plan", { steps: DONE2, progress: PROGRESS }, { id: "plan-done-2" }),
++					{ stopReason: "toolUse" },
++				),
++				async () => {
++					await new Promise((resolve) => setTimeout(resolve, 80));
++					return fauxAssistantMessage(finalReply);
++				},
++			);
++		}
++		faux.setResponses(responses);
++
++		// Load the actual project entry (src/sol-pi/index.ts) with a deterministic config.
++		const extension: ExtensionFactory = (pi) => {
++			pi.registerProvider(faux.provider);
++			createSolPiExtension(() => ({
++				version: 1,
++				actionFusion: false,
++				observationPack: false,
++				evidencePreservingReducer: false,
++				evidencePreservingReducerModel: "",
++				evidencePreservingReducerProvider: "",
++				onlineContextCompact: true,
++				cacheWriteReadRatio: 0,
++			}))(pi);
++		};
++
++		const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
++		// Bounded trust preconditions: the session context reports trusted and the
++		// effective temp keepRecent (project override over global) is deterministic.
++		expect(settingsManager.isProjectTrusted()).toBe(true);
++		expect(
++			SettingsManager.create(cwd, getAgentDir(), {
++				projectTrusted: settingsManager.isProjectTrusted(),
++			}).getCompactionSettings().keepRecentTokens,
++		).toBe(mode === "small-session" ? 1_000_000 : 150);
++		const sessionManager = SessionManager.inMemory(cwd);
++		// ~25k tokens of history so the default keepRecent (20k) economics still
++		// selects compaction at the boundary even though native settings decide it.
++		sessionManager.appendMessage({
++			role: "user",
++			content: [{ type: "text", text: `historical request ${"x".repeat(100_000)}` }],
++			timestamp: Date.now() - 2,
++		});
++		sessionManager.appendMessage(fauxAssistantMessage(`historical response ${"y".repeat(4_000)}`));
++		const resourceLoader = new DefaultResourceLoader({
++			cwd,
++			agentDir,
++			settingsManager,
++			extensionFactories: [{ name: `online-context-compact-real-${mode}`, factory: extension }],
++			noExtensions: true,
++			noSkills: true,
++			noPromptTemplates: true,
++			noThemes: true,
++			noContextFiles: true,
++			systemPrompt: "You are a deterministic lifecycle test assistant.",
++		});
++		await resourceLoader.reload();
++		expect(resourceLoader.getExtensions().errors).toEqual([]);
++
++		const created = await createAgentSession({
++			cwd,
++			agentDir,
++			model: faux.getModel(),
++			thinkingLevel: "off",
++			tools: ["update_plan"],
++			resourceLoader,
++			sessionManager,
++			settingsManager,
++		});
++		session = created.session;
++		// Explicit extension binding (public lifecycle): this fires the
++		// session_start extension event that registers the configured features.
++		const extensionErrors: unknown[] = [];
++		await session.bindExtensions({ onError: (error) => extensionErrors.push(error) });
++		expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["update_plan"]));
++		const compactionStarts: unknown[] = [];
++		const compactionEnds: Array<{ errorMessage?: string }> = [];
++		session.subscribe((event) => {
++			if (event.type === "compaction_start") compactionStarts.push(event);
++			if (event.type === "compaction_end") compactionEnds.push(event);
++		});
++
++		await session.prompt("finish the current plan step", {
++			expandPromptTemplates: false,
++			source: "interactive",
++		});
++		if (mode === "genuine-error") {
++			// Fatal failure surfaces as a genuine compaction failure, never as
++			// small-session noise; no fabricated resume, evidence, or debt.
++			expect(compactionStarts).toHaveLength(1);
++			expect(compactionEnds).toHaveLength(1);
++			expect(compactionEnds[0]?.errorMessage).toContain("genuine summarizer failure");
++			expect(compactionEnds[0]?.errorMessage).not.toContain("Nothing to compact");
++			// The fatal handler error surfaces through the bound onError listener.
++			expect(JSON.stringify(extensionErrors)).toContain("genuine summarizer failure");
++			expect(sessionManager.getBranch().filter((entry) => entry.type === "compaction")).toHaveLength(0);
++			expect(
++				sessionManager
++					.getBranch()
++					.filter(
++						(entry) =>
++							entry.type === "custom_message" &&
++							entry.customType === "sol-pi-online-context-compact",
++					),
++			).toHaveLength(0);
++			// Calls: open plan, done plan, then the failed summarization request.
++			expect(faux.state.callCount).toBe(3);
++			expect(session.isStreaming).toBe(false);
++			expect(session.isIdle).toBe(true);
++			return;
++		}
++		// Zero small-session noise: the known non-compactable compact call is
++		// prevented entirely, so no compaction events are emitted at all.
++		expect(compactionStarts).toHaveLength(0);
++		expect(compactionEnds).toHaveLength(0);
++		expect(
++			compactionEnds.some((event) => event.errorMessage?.includes("Nothing to compact (session too small)")),
++		).toBe(false);
++		expect(extensionErrors).toEqual([]);
++		expect(sessionManager.getBranch().filter((entry) => entry.type === "compaction")).toHaveLength(0);
++		expect(
++			sessionManager
++				.getBranch()
++				.filter(
++					(entry) =>
++						entry.type === "custom_message" &&
++						entry.customType === "sol-pi-online-context-compact",
++				),
++		).toHaveLength(0);
++		expect(faux.state.callCount).toBe(5);
++		// The agent ran through both completed plan steps (two boundaries) in one
++		// prompt: the preflight kept blocking compaction at every boundary, so
++		// there is no loop and no small-session noise.
++		expect(compactionStarts).toHaveLength(0);
++		expect(compactionEnds).toHaveLength(0);
++		expect(sessionManager.getBranch().filter((entry) => entry.type === "compaction")).toHaveLength(0);
++		expect(session.getLastAssistantText()).toBe(finalReply);
++		expect(session.isStreaming).toBe(false);
++		expect(session.isIdle).toBe(true);
++		const onlineState = restoreOnlineState(sessionManager.getBranch());
++		expect(onlineState).toMatchObject({
++			nativeCompactionCount: 0,
++			cacheDebtTokens: 0,
++			cacheDebtRepaymentTokens: 0,
++		});
++	} finally {
++		session?.dispose();
++		await rm(cwd, { recursive: true, force: true });
++	}
++}
++
+ describe("Online Context Compact with a real AgentSession", () => {
+ 	it("settles the automatic continuation before the original prompt returns", async () => {
+ 		await runCompactionScenario(1);
+@@ -173,4 +382,12 @@ describe("Online Context Compact with a real AgentSession", () => {
+ 	it("settles two consecutive automatic compactions before the original prompt returns", async () => {
+ 		await runCompactionScenario(2);
+ 	}, 10_000);
++
++	it("prevents the known non-compactable small-session compact call with zero noise", async () => {
++		await runRealCompactionScenario("small-session");
++	}, 15_000);
++
++	it("keeps genuine compact failures fatal through the registered agent_settled caller", async () => {
++		await runRealCompactionScenario("genuine-error");
++	}, 10_000);
+ });
+diff --git a/tests/online-context-compact.test.ts b/tests/online-context-compact.test.ts
+index 817c743..6d00471 100644
+--- a/tests/online-context-compact.test.ts
++++ b/tests/online-context-compact.test.ts
+@@ -4,6 +4,9 @@
+  */
+ import type { AgentMessage } from "@earendil-works/pi-agent-core";
+ import type { CompactOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
+ import { describe, expect, it, vi } from "vitest";
+ import {
+ 	BOUNDARY_COMPACTION_INSTRUCTIONS,
+@@ -12,6 +15,7 @@ import {
+ 	POST_COMPACTION_PLAN_REMINDER,
+ 	registerOnlineContextCompact,
+ 	resolveKeepRecentTokens,
++	SMALL_SESSION_PLAN_REMINDER,
+ } from "../src/sol-pi/extensions/online-context-compact/index.ts";
+ import { restoreOnlineState } from "../src/sol-pi/extensions/online-context-compact/state.ts";
+ import { FakePi, FakeSessionManager, fakeContext } from "./helpers.ts";
+@@ -24,6 +28,16 @@ const PROGRESS = {
+ 	decisions: ["kept the implementation small"],
+ };
+ 
++async function tempCwdWithSettings(keepRecentTokens: number): Promise<string> {
++	const dir = await mkdtemp(join(tmpdir(), "sol-pi-occ-settings-"));
++	await mkdir(join(dir, ".pi"), { recursive: true });
++	await writeFile(
++		join(dir, ".pi", "settings.json"),
++		JSON.stringify({ compaction: { enabled: false, reserveTokens: 1_024, keepRecentTokens } }),
++	);
++	return dir;
++}
++
+ function assistant(text: string): AgentMessage {
+ 	return {
+ 		role: "assistant",
+@@ -90,6 +104,8 @@ describe("Online Context Compact extension", () => {
+ 	});
+ 
+ 	it("stops at an eligible completed-step boundary, then compacts after settlement", async () => {
++		const cwd = await tempCwdWithSettings(150);
++		try {
+ 		const manager = new FakeSessionManager();
+ 		manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
+ 		manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
+@@ -137,6 +153,8 @@ describe("Online Context Compact extension", () => {
+ 				}));
+ 		};
+ 		context = fakeContext(manager, {
++			cwd,
++			isProjectTrusted: () => true,
+ 			abort,
+ 			compact,
+ 			isIdle: () => idle,
+@@ -208,6 +226,247 @@ describe("Online Context Compact extension", () => {
+ 		expect(firstSettlementFinished).toBe(true);
+ 		expect(await pi.emit("session_before_tree", { type: "session_before_tree" }, context)).toBeUndefined();
+ 		expect(restoreOnlineState(manager.entries)).toMatchObject({ nativeCompactionCount: 1, pendingProgress: [] });
++		} finally {
++			await rm(cwd, { recursive: true, force: true });
++		}
++	});
++
++	it("silently skips the exact small-session compact error and resumes the plan once", async () => {
++		const cwd = await tempCwdWithSettings(150);
++		try {
++		const manager = new FakeSessionManager();
++		manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
++		manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
++		const pi = new FakePi(manager);
++		createOnlineContextCompactExtension({ cacheWriteReadRatio: 12.5, keepRecentTokens: 1 })(pi.asExtensionApi());
++		let idle = true;
++		const sendMessage = pi.sendMessage.bind(pi);
++		vi.spyOn(pi, "sendMessage").mockImplementation((message, options) => {
++			idle = false;
++			sendMessage(message, options);
++		});
++		const compactCalls: CompactOptions[] = [];
++		const compact = (options: CompactOptions = {}): void => {
++			compactCalls.push(options);
++			options.onError?.(new Error("Nothing to compact (session too small)"));
++		};
++		const context = fakeContext(manager, {
++			cwd,
++			isProjectTrusted: () => true,
++			compact,
++			isIdle: () => idle,
++			getSystemPrompt: () => "test prompt",
++			getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
++		});
++
++		await pi.emit("session_start", { type: "session_start" }, context);
++		await pi.emitContext(buildSessionMessages(), context);
++		await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, context);
++		await runPlan(pi, context, "plan-open", { steps: OPEN });
++		await runPlan(pi, context, "plan-done", { steps: DONE, progress: PROGRESS });
++		await pi.emit(
++			"turn_end",
++			{
++				type: "turn_end",
++				turnIndex: 1,
++				message: assistant("boundary"),
++				toolResults: [
++					{
++						role: "toolResult",
++						toolCallId: "plan-done",
++						toolName: "update_plan",
++						content: [{ type: "text", text: "done" }],
++						isError: false,
++						timestamp: Date.now(),
++					},
++				],
++			},
++			context,
++		);
++
++		let settled = false;
++		const settlement = pi.emit("agent_settled", { type: "agent_settled" }, context).then(() => {
++			settled = true;
++		});
++		await vi.waitFor(() => expect(compactCalls).toHaveLength(1));
++		expect(compactCalls[0]?.customInstructions).toBe(BOUNDARY_COMPACTION_INSTRUCTIONS);
++		await vi.waitFor(() => expect(pi.sentMessages).toHaveLength(1));
++		expect(pi.sentMessages).toEqual([
++			{
++				message: {
++					customType: "sol-pi-online-context-compact",
++					content: SMALL_SESSION_PLAN_REMINDER,
++					display: false,
++				},
++				options: { triggerTurn: true },
++			},
++		]);
++		expect(settled).toBe(false);
++
++		// The resumed child settles exactly once; no second compact attempt follows.
++		idle = true;
++		await pi.emit("agent_settled", { type: "agent_settled" }, context);
++		await settlement;
++		expect(settled).toBe(true);
++		expect(compactCalls).toHaveLength(1);
++		expect(pi.sentMessages).toHaveLength(1);
++		expect(restoreOnlineState(manager.entries)).toMatchObject({ nativeCompactionCount: 0 });
++		} finally {
++			await rm(cwd, { recursive: true, force: true });
++		}
++	});
++
++	it("keeps genuine compact failures fatal without fabricating resume evidence", async () => {
++		const cwd = await tempCwdWithSettings(150);
++		try {
++		const manager = new FakeSessionManager();
++		manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
++		manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
++		const pi = new FakePi(manager);
++		createOnlineContextCompactExtension({ cacheWriteReadRatio: 12.5, keepRecentTokens: 1 })(pi.asExtensionApi());
++		const compactCalls: CompactOptions[] = [];
++		const compact = (options: CompactOptions = {}): void => {
++			compactCalls.push(options);
++			options.onError?.(new Error("genuine summarizer failure"));
++		};
++		const context = fakeContext(manager, {
++			cwd,
++			isProjectTrusted: () => true,
++			compact,
++			isIdle: () => true,
++			getSystemPrompt: () => "test prompt",
++			getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
++		});
++
++		await pi.emit("session_start", { type: "session_start" }, context);
++		await pi.emitContext(buildSessionMessages(), context);
++		await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, context);
++		await runPlan(pi, context, "plan-open", { steps: OPEN });
++		await runPlan(pi, context, "plan-done", { steps: DONE, progress: PROGRESS });
++		await pi.emit(
++			"turn_end",
++			{
++				type: "turn_end",
++				turnIndex: 1,
++				message: assistant("boundary"),
++				toolResults: [
++					{
++						role: "toolResult",
++						toolCallId: "plan-done",
++						toolName: "update_plan",
++						content: [{ type: "text", text: "done" }],
++						isError: false,
++						timestamp: Date.now(),
++					},
++				],
++			},
++			context,
++		);
++
++		await expect(pi.emit("agent_settled", { type: "agent_settled" }, context)).rejects.toThrow(
++			"genuine summarizer failure",
++		);
++		expect(compactCalls).toHaveLength(1);
++		expect(pi.sentMessages).toEqual([]);
++		expect(restoreOnlineState(manager.entries)).toMatchObject({ nativeCompactionCount: 0 });
++		} finally {
++			await rm(cwd, { recursive: true, force: true });
++		}
++	});
++
++	it("skips the compact call entirely when the settled-time preflight is non-compactable", async () => {
++		const feasibleCwd = await tempCwdWithSettings(150);
++		const nonCompactableCwd = await tempCwdWithSettings(1_000_000);
++		try {
++			const manager = new FakeSessionManager();
++			manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
++			manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
++			const pi = new FakePi(manager);
++			createOnlineContextCompactExtension({ cacheWriteReadRatio: 12.5, keepRecentTokens: 1 })(pi.asExtensionApi());
++			let idle = true;
++			const sendMessage = pi.sendMessage.bind(pi);
++			vi.spyOn(pi, "sendMessage").mockImplementation((message, options) => {
++				idle = false;
++				sendMessage(message, options);
++			});
++			const compactCalls: CompactOptions[] = [];
++			const compact = (options: CompactOptions = {}): void => {
++				compactCalls.push(options);
++				options.onComplete?.({
++					summary: "summary",
++					firstKeptEntryId: "message-1",
++					tokensBefore: 1_000,
++				});
++			};
++			const turnEndContext = fakeContext(manager, {
++				cwd: feasibleCwd,
++				isProjectTrusted: () => true,
++				compact,
++				isIdle: () => idle,
++				getSystemPrompt: () => "test prompt",
++				getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
++			});
++			const settledContext = fakeContext(manager, {
++				cwd: nonCompactableCwd,
++				isProjectTrusted: () => true,
++				compact,
++				isIdle: () => idle,
++				getSystemPrompt: () => "test prompt",
++				getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
++			});
++
++			await pi.emit("session_start", { type: "session_start" }, turnEndContext);
++			await pi.emitContext(buildSessionMessages(), turnEndContext);
++			await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, turnEndContext);
++			await runPlan(pi, turnEndContext, "plan-open", { steps: OPEN });
++			await runPlan(pi, turnEndContext, "plan-done", { steps: DONE, progress: PROGRESS });
++			await pi.emit(
++				"turn_end",
++				{
++					type: "turn_end",
++					turnIndex: 1,
++					message: assistant("boundary"),
++					toolResults: [
++						{
++							role: "toolResult",
++							toolCallId: "plan-done",
++							toolName: "update_plan",
++							content: [{ type: "text", text: "done" }],
++							isError: false,
++							timestamp: Date.now(),
++						},
++					],
++				},
++				turnEndContext,
++			);
++
++			let settled = false;
++			const settlement = pi.emit("agent_settled", { type: "agent_settled" }, settledContext).then(() => {
++				settled = true;
++			});
++			await vi.waitFor(() => expect(pi.sentMessages).toHaveLength(1));
++			expect(compactCalls).toEqual([]);
++			expect(pi.sentMessages).toEqual([
++				{
++					message: {
++						customType: "sol-pi-online-context-compact",
++						content: SMALL_SESSION_PLAN_REMINDER,
++						display: false,
++					},
++					options: { triggerTurn: true },
++				},
++			]);
++			idle = true;
++			await pi.emit("agent_settled", { type: "agent_settled" }, settledContext);
++			await settlement;
++			expect(settled).toBe(true);
++			expect(compactCalls).toEqual([]);
++			expect(pi.sentMessages).toHaveLength(1);
++			expect(restoreOnlineState(manager.entries)).toMatchObject({ nativeCompactionCount: 0 });
++		} finally {
++			await rm(feasibleCwd, { recursive: true, force: true });
++			await rm(nonCompactableCwd, { recursive: true, force: true });
++		}
+ 	});
+ });
+ 

@@ -26,7 +26,14 @@ def resolve_script(name: object, scripts_dir: Path = SCRIPTS_DIR) -> Path:
     value = str(name or "").strip()
     if not SCRIPT_NAME_RE.fullmatch(value):
         raise RepositoryScriptError("Script name must be one lowercase sibling .py filename")
-    target = (scripts_dir / value).resolve()
+    original = scripts_dir / value
+    if original.is_symlink():
+        raise RepositoryScriptError(f"Reviewed repository script must not be a symlink: {value}")
+    if not original.exists():
+        raise RepositoryScriptError(f"Reviewed repository script does not exist: {value}")
+    if not original.is_file():
+        raise RepositoryScriptError(f"Reviewed repository script must be a regular file: {value}")
+    target = original.resolve()
     try:
         target.relative_to(scripts_dir.resolve())
     except ValueError as exc:

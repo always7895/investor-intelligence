@@ -11,26 +11,40 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WindowsSecurityHostTests(unittest.TestCase):
-    def test_native_runtime_copy_preserves_installed_dependencies(self):
+    def test_native_runtime_stage_copy_never_copies_source_node_modules(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]
         if not all(shells):
             self.skipTest('Both Windows PowerShell hosts required')
-        command = next(line.strip() for line in (ROOT/'install-v213-runtime.ps1').read_text(encoding='utf-8-sig').splitlines() if line.strip().startswith('& $robocopy '))
+        coordinator = (ROOT/'scripts'/'v213_runtime_install_coordinator.ps1').read_text(encoding='utf-8-sig')
+        start = coordinator.index('$robocopyArgs = @(')
+        depth = 0; end = start
+        for index in range(start, len(coordinator)):
+            if coordinator[index] == '(': depth += 1
+            elif coordinator[index] == ')':
+                depth -= 1
+                if depth == 0:
+                    end = index + 1; break
+        args_block = coordinator[start:end]
+        command = '& $robocopy @robocopyArgs'
         for shell in shells:
             with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temp:
-                folder=Path(temp); source=folder/'source (1)'; runtime=folder/'runtime (2)'
-                for base in (source,runtime):
-                    (base/'cloud/node_modules').mkdir(parents=True)
-                (source/'cloud/node_modules/untrusted-source.txt').write_text('not copied')
-                (runtime/'cloud/node_modules/resident.txt').write_text('preserved')
+                folder=Path(temp); source=folder/'source (1)'; stage=folder/'stage (2)'
+                (source/'cloud/node_modules').mkdir(parents=True)
+                (source/'cloud/node_modules/wrangler-path-marker.txt').write_text('staged wrangler path marker')
                 (source/'fresh.txt').write_text('new')
                 script=folder/'copy.ps1'
-                script.write_text("$ProjectRoot='"+str(source).replace("'","''")+"'\n$RuntimeRoot='"+str(runtime).replace("'","''")+"'\n$robocopy=(Get-Command robocopy.exe).Source\n"+command+"\nif($LASTEXITCODE-gt7){exit 1}\nexit 0\n",encoding='utf-8-sig')
+                script.write_text("$sourceIdentity='"+str(source).replace("'","''")+"'\n$stagePath='"+str(stage).replace("'","''")+"'\n$markerName='v213-stage-ownership-marker.tmp'\n$robocopy=(Get-Command robocopy.exe).Source\n"+args_block+"\n"+command+"\nif($LASTEXITCODE-gt7){exit 1}\nexit 0\n",encoding='utf-8-sig')
                 result=subprocess.run([shell,'-NoProfile','-NonInteractive','-File',str(script)],capture_output=True,encoding='utf-8',errors='replace',timeout=30)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-                self.assertTrue((runtime/'fresh.txt').is_file())
-                self.assertEqual((runtime/'cloud/node_modules/resident.txt').read_text(),'preserved')
-                self.assertFalse((runtime/'cloud/node_modules/untrusted-source.txt').exists())
+                self.assertTrue((stage/'fresh.txt').is_file())
+                # The live root is swapped as a whole (old root retained), so the
+                # stage must never inherit the source root node_modules.
+                self.assertFalse((stage/'node_modules').exists())
+                # cloud/node_modules is deliberately staged: the scheduled refresh
+                # AUTH_CHECK invokes cloud/node_modules/.bin/wrangler from the live
+                # runtime, so excluding it (the pre-wrangler name-based /XD bug)
+                # breaks scheduled publication.
+                self.assertTrue((stage/'cloud/node_modules/wrangler-path-marker.txt').is_file())
 
     def test_real_task_settings_construct_without_registering_tasks(self):
         shells = [shutil.which(s) for s in ('powershell.exe', 'pwsh')]

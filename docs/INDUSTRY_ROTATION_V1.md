@@ -1,0 +1,43 @@
+# Data-driven industry rotation v1 / 資料驅動產業輪替
+
+[Docs index](README.md) · [Current state](../state/STATUS.md)
+
+Operator rules (2026-09-25): macro industry analysis must rotate with the market, nothing hand-written; every value needs a source; data stay diverse and keep updating after the project is finished.
+
+## What is computed
+
+`scripts/industry_rotation.py` with `config/industry-rotation-v1.json`:
+
+| Signal | Source (independence family) | Rule |
+| --- | --- | --- |
+| PRICE | BLS Producer Price Index industry series, public API v1 (`bls_ppi`) | Latest month vs the same month a year earlier; ≥ +3% tightening, ≤ −3% relief |
+| BACKLOG | SEC XBRL frames `RevenueRemainingPerformanceObligation`, summed over member issuers (`sec_xbrl_issuers`) | ≥ +10% tightening, ≤ −10% relief |
+| INVENTORY_BUILD | SEC XBRL frames `InventoryNet` vs revenue (`sec_xbrl_inventory`) | Inventory growth ≥ 10 points above revenue growth is relief |
+| Revenue growth | SEC XBRL frames revenue tags | Card growth rate and strength only |
+| SUPPLIER_REVENUE | TWSE (listed) and TPEx (OTC) OpenAPI monthly revenue summed by industry category (`taiwan_monthly_revenue`) | Same month a year earlier; ≥ +20% tightening, ≤ −10% relief; a faster read of demand through the Taiwan supply chain |
+
+Industry membership is read from EDGAR's company listing by SIC code (cached 30 days; empty listings are never cached). A metric with fewer than three matched issuers is treated as missing. `scripts/thesis_phase.py` (industry scope) turns the signals into a phase; a published strength (price, backlog, revenue and Taiwan supplier revenue growth, minus an inventory-build penalty) is the opportunity score. TOP5 admission needs phase DISCOVERY or EARLY_VALIDATION, revenue growth and strength ≥ 15; admitted industries are ranked by that score (operator 2026-09-26: a higher score never ranks lower), the phase only breaks ties; fewer than five is published as an honest shortfall.
+
+The configuration lists official classifications only (SIC codes and PPI series per industry). Industry names are labels for those classifications; every sentence on cards and deep analyses is generated from the computed numbers with period, source and URL, and missing data are stated, not filled. Catalysts are limited to data-review dates; no forecast, probability or price target is produced.
+
+## Refresh and publication
+
+- `scripts/run_daily_data_refresh.ps1` decrypts the SEC Fair Access contact from the user's DPAPI file into the process only, runs the refresh at most every 20 hours and keeps the last good file on failure.
+- The hourly `run_production_sealed_refresh.ps1` calls it before publishing (non-fatal) and `publish_sealed_snapshot.py` builds the sealed TOP5 overview from `data/cache/industry_rotation_latest.json` (maximum age 45 days). Industry cards and deep analyses are embedded in that overview, and the Worker reads them from it.
+- The former hand-written industry rows remain only as a synthetic contract fixture for tests (`_SYNTHETIC_CONTRACT_UNIVERSE`); they are never published.
+
+## Company deep reports
+
+`scripts/company_deep_report.py` builds one report per ticker of the newest sealed ranking (SEC filers only; others keep the audit template): business phrase from the latest annual report, same-calendar-quarter revenue, gross and operating margin, RPO, latest fiscal-year capital expenditure, cash, long-term debt, diluted-share change, inventory versus revenue, the company's SIC industry signals from the rotation, a company-scope `thesis_phase` result with next review date, falsifiers and source URLs. When an issuer switches XBRL tags, the tag with the most recent filing wins. Reports older than 7 days are not sealed. `publish_sealed_snapshot.py` embeds compact reports as `deep_reports` in the sealed bottleneck report, and the Worker renders them for 「深度化分析」 only when they come from the same snapshot the card referenced and pass strict validation.
+
+### Order-realization scenario (operator rule 2026-09-25)
+
+`scripts/order_timing.py` reads the newest 10-Q/10-K text (cached per accession; read again only when a new periodic filing appears) and keeps only explicit cumulative recognition statements for remaining performance obligations, with passages and URL. 6M/1Y/2Y shares interpolate linearly inside a disclosed window (stated premise), never beyond the last disclosed horizon; multi-segment RPO is amount-weighted. The report section 「訂單實現情境」 computes, per horizon, contracted revenue = RPO × cumulative share, and coverage = contracted ÷ (latest quarter revenue × quarters in the horizon). Only coverage above 100% gives a revenue and price growth floor (coverage − 100%), under stated premises: constant margin, diluted shares and P/E, no new orders. Below 100% the text says the rest needs new orders. The RPO date, the quarter and the filing period must agree within 45 days, and missing or undisclosed inputs are stated rather than estimated. Live 2026-09-25: GEV 103%/103%/90% (+3.0% floor at 6M and 1Y), CRWV 206% at all three, DELL 54%/54%/32%, HUBS 21%; 12 of 21 ranked companies disclose no timing. The potential-ranking cards show the three coverages. 「訂單實現榜」 lists only companies with all three horizons computable, ordered by 2Y (operator decision). This is the Phase 3 precursor in [TOP20_UPSIDE_BRIDGE_V1](TOP20_UPSIDE_BRIDGE_V1.md); it uses no price or multiple, so it is a floor, not a price target.
+
+## Data-driven potential ranking
+
+The same run ranks companies (`company_ranking` in the rotation file; LINE commands 「潛力榜」 and 「潛力報告 代號」): candidates are SEC members of admitted industries with at least US$100M quarterly revenue and a common-stock ticker; each gets company-scope signals (RPO, gross-margin change, dilution, inventory versus revenue) plus its industry's BLS and Taiwan signals. Crowded, relieving, broken and insufficient phases are excluded; companies whose constraint is confirmed by two or more families rank before single-family discoveries; a published strength (revenue, RPO and margin changes minus dilution and inventory penalties) orders each tier; at most five per industry. The ranking and compact company reports are sealed inside the TOP5 overview object. BLS refusals (for example the v1 daily threshold) fall back to a series cache up to 35 days old, with a cache receipt.
+
+## Limits and next sources
+
+BLS PPI is monthly and SEC frames are quarterly, so the rotation moves with official releases, not intraday. EDGAR's SIC listing throttles (HTTP 503 with back-off; unavailable codes are recorded and retried on the next run). Census M3 orders need an API key and are not used. Candidate additions: EIA electricity data and buyer capital expenditure from hyperscaler XBRL.

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "status": "RESEARCH_DRAFT_NOT_PUBLICATION_QUALIFIED",
+  "lane": "SYSTEM_RESEARCH_CANDIDATES",
+  "source_head_at_start": "fad075a5ff8bc4c50de5a9582aa649118ba561e3",
+  "research_date": "2026-09-09",
+  "retrieval_time_precision": "day",
+  "provider": "openai-codex",
+  "model": "gpt-6-astra",
+  "publication_eligible": false,
+  "card_route_integrated": false,
+  "sealed_snapshot_bound": false,
+  "latest_disclosure_coverage_complete": false,
+  "numeric_total_order_estimate_prohibited": true,
+  "report_path": "docs/research/TSEM-20260909.md",
+  "report_sha256": "08b2a11bf0a923c7d7addd4287d05fcf567cccd8d0ee5160c46affdc688f1bc1",
+  "hash_scope": "report UTF-8 file bytes; not source HTTP bodies or a sealed publication",
+  "loaded_references": [
+    {"path": "skills/serenity-public-research/SKILL.md", "sha256": "0fea4749dfdcf6ab88fe4eff71aacef34e5088b77e14c4064a7470cdd69ebd70"},
+    {"path": "skills/serenity-public-research/references/RESEARCH_METHOD.md", "sha256": "32e66a880665143641f35d75e30abd99a8fdd5244775bf921eaebd2745d5cb2c"},
+    {"path": "skills/serenity-public-research/references/CROSS_VALIDATION.md", "sha256": "ffb3994f5b8863024c1a77342b7e3f0f81c3a756bfc20da65a6e72472b3e18d1"}
+  ],
+  "loaded_reference_root": "installed runtime; source mirrors hash-matched at collection",
+  "sources": [
+    {
+      "id": "S1", "lineage": "tower-issuer", "role": "issuer_contracts_and_model",
+      "published_date": "2026-05-13", "retrieval_date": "2026-09-09",
+      "url": "https://towersemi.com/2026/05/13/05132026_1/",
+      "retrieval": "fetch_content readable original returned",
+      "reconciliation": "PRIMARY_ONLY",
+      "passages": [
+        "has signed Silicon Photonics (SiPho) contracts for $1.3 billion for 2027 revenue with its largest customers, and the receipt of $290 million in customers’ prepayments for capacity reservation.",
+        "an even larger contractual wafer commitment for 2028 for which additional associated prepayments are due by January 2027.",
+        "SiPho customer base of over 50 active customers across wide-ranging SiPho based applications.",
+        "the targeted model of $2.8 billion revenue with $750 million net profit in 2028."
+      ]
+    },
+    {
+      "id": "S2", "lineage": "tower-issuer", "role": "issuer_financials_and_guidance",
+      "published_date": "2026-08-04", "retrieval_date": "2026-09-09",
+      "url": "https://towersemi.com/2026/08/04/08042026/",
+      "retrieval": "fetch_content/get_search_content mttsps3ef2kphx index 0",
+      "reconciliation": "PRIMARY_ONLY",
+      "passages": [
+        "Revenue for the second quarter of 2026 was a record of $460 million",
+        "Gross profit for the second quarter of 2026 was a record of $138 million",
+        "Operating profit for the second quarter of 2026 was $90 million",
+        "Net profit for the second quarter of 2026 was a record $91 million",
+        "Cash from operating activities in the second quarter of 2026 was $177 million and investments in property and equipment, net, were $187 million.",
+        "revenue guidance of $520 million for the third quarter of 2026",
+        "$687 million for the six months period ended June 30, 2026 that includes $283 million increase in customers’ advances, net",
+        "$343 million and $222 million for the six months periods ended June 30, 2026 and June 30, 2025, respectively",
+        "our 2028 target business model to $3.6 billion of revenue with $1.2 billion net profit"
+      ]
+    },
+    {
+      "id": "S3", "lineage": "nvidia-own-products", "role": "demand_architecture_not_tower_order_corroboration",
+      "published_date": null, "retrieval_date": "2026-09-09",
+      "url": "https://www.nvidia.com/en-us/networking/products/silicon-photonics/",
+      "retrieval": "fetch_content/get_search_content mttsps3ef2kphx index 2",
+      "reconciliation": "PRIMARY_ONLY",
+      "passages": ["CoreWeave, Lambda, Meta, Microsoft, and Oracle Cloud Infrastructure as first adopters."]
+    },
+    {
+      "id": "S4", "lineage": "gf-own-technology", "role": "competitor_self_disclosure_not_effective_substitution_proof",
+      "published_date": "2026-05-04", "retrieval_date": "2026-09-09",
+      "url": "https://gf.com/news-and-events/news/globalfoundries-accelerates-adoption-of-co-packaged-optics-for-advanced-ai-data-centers-with-scale-optical-module-solution/",
+      "retrieval": "fetch_content/get_search_content mttsutiho9x880 index 0",
+      "reconciliation": "PRIMARY_ONLY",
+      "passages": ["GF has already demonstrated 8λ and 16λ bi-directional DWDM natively on its platform"]
+    }
+  ],
+  "financial_inputs_musd": {
+    "q2_revenue": {"value": "460", "source": "S2", "kind": "reported"},
+    "q2_gross_profit": {"value": "138", "source": "S2", "kind": "reported"},
+    "q2_operating_profit": {"value": "90", "source": "S2", "kind": "reported"},
+    "q2_net_profit": {"value": "91", "source": "S2", "kind": "reported"},
+    "q2_ocf": {"value": "177", "source": "S2", "kind": "reported"},
+    "q2_net_ppe": {"value": "187", "source": "S2", "kind": "reported"},
+    "h1_ocf": {"value": "687", "source": "S2", "kind": "reported"},
+    "h1_net_ppe": {"value": "343", "source": "S2", "kind": "reported"},
+    "h1_customer_advances_net_increase": {"value": "283", "source": "S2", "kind": "reported"},
+    "may_2028_model_revenue": {"value": "2800", "source": "S1", "kind": "management_model"},
+    "may_2028_model_net_profit": {"value": "750", "source": "S1", "kind": "management_model"},
+    "aug_2028_model_revenue": {"value": "3600", "source": "S2", "kind": "management_model"},
+    "aug_2028_model_net_profit": {"value": "1200", "source": "S2", "kind": "management_model"}
+  },
+  "derived_metrics": [
+    {"id": "q2_gross_margin", "formula": "percent_ratio", "inputs": ["q2_gross_profit", "q2_revenue"], "value": "30.0", "report_token": "30.0%"},
+    {"id": "q2_operating_margin", "formula": "percent_ratio", "inputs": ["q2_operating_profit", "q2_revenue"], "value": "19.6", "report_token": "19.6%"},
+    {"id": "q2_net_margin", "formula": "percent_ratio", "inputs": ["q2_net_profit", "q2_revenue"], "value": "19.8", "report_token": "19.8%"},
+    {"id": "q2_fcf", "formula": "subtract", "inputs": ["q2_ocf", "q2_net_ppe"], "value": "-10", "report_token": "−10 百萬美元"},
+    {"id": "h1_fcf", "formula": "subtract", "inputs": ["h1_ocf", "h1_net_ppe"], "value": "344", "report_token": "344 百萬美元"},
+    {"id": "h1_simple_ex_advances_difference", "formula": "subtract", "inputs": ["h1_fcf", "h1_customer_advances_net_increase"], "value": "61", "report_token": "344 − 283 = 61"},
+    {"id": "advances_to_fcf_ratio", "formula": "percent_ratio", "inputs": ["h1_customer_advances_net_increase", "h1_fcf"], "value": "82.3", "report_token": "82.3%"},
+    {"id": "may_model_margin", "formula": "percent_ratio", "inputs": ["may_2028_model_net_profit", "may_2028_model_revenue"], "value": "26.8", "report_token": "26.8%"},
+    {"id": "aug_model_margin", "formula": "percent_ratio", "inputs": ["aug_2028_model_net_profit", "aug_2028_model_revenue"], "value": "33.3", "report_token": "33.3%"},
+    {"id": "model_revenue_revision", "formula": "percent_change", "inputs": ["aug_2028_model_revenue", "may_2028_model_revenue"], "value": "28.6", "report_token": "28.6%"},
+    {"id": "model_profit_revision", "formula": "percent_change", "inputs": ["aug_2028_model_net_profit", "may_2028_model_net_profit"], "value": "60.0", "report_token": "60.0%"}
+  ],
+  "failed_or_incomplete_checks": [
+    "Original ir.towersemi.com contract URL: fetch aborted; corporate-site original retrieved separately, same issuer lineage.",
+    "Later September disclosure search: No search provider available; no paid fallback attempted.",
+    "Tower press-release index: returned navigation only; newest-disclosure coverage NOT established.",
+    "Q2 slide readable extraction: insufficient to verify utilization-model scope; omitted that numerical claim."
+  ],
+  "open_acceptance": [
+    "This is one dated operating-research draft, not 20 qualified stock reports.",
+    "Independent Tower claim corroboration, effective substitutes, current identity/price/financial dilution inputs and delivery rights incomplete.",
+    "Stock valuation and historical-return calculations unavailable; options and macro detailed-report routes incomplete.",
+    "No Production storage, Worker, schedule, LINE delivery or installed-runtime mutation."
+  ]
+}

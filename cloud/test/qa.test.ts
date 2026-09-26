@@ -230,7 +230,9 @@ describe("Q&A public-only privacy, namespace isolation and freshness", () => {
   it("uses only PUBLIC_CACHE option snapshots", async () => {
     const publicKv = new MemoryKv();
     const privateKv = new MemoryKv();
-    const now = new Date().toISOString();
+    // A valid timestamp containing 999 must not be mistaken for a private bid.
+    const clock = new Date(); clock.setUTCMilliseconds(999);
+    const now = clock.toISOString();
     publicKv.values.set(
       "options:latest",
       JSON.stringify([
@@ -274,14 +276,17 @@ describe("Q&A public-only privacy, namespace isolation and freshness", () => {
       JSON.stringify({ ticker: "TEST", quote_source: "IBKR_PRIVATE_SENTINEL", bid: 999 }),
     );
 
+    const privateRead = vi.spyOn(privateKv, "get");
     const answer = await deterministicAnswer(
       env(publicKv, {}, privateKv),
       parseQuery("TEST 每週期權 BID ASK"),
       firstContext,
     );
     expect(answer).toContain("Bid USD 2.00");
-    expect(answer).not.toContain("999");
+    expect(answer).toContain(".999Z");
+    expect(answer).not.toContain("Bid USD 999.00");
     expect(answer).not.toContain("IBKR_PRIVATE_SENTINEL");
+    expect(privateRead).not.toHaveBeenCalled();
   });
 
   it("always denies portfolio and brokerage queries for every tenant", async () => {

@@ -1,0 +1,37 @@
+{
+ "schema_version": 1,
+ "LOCAL_AI_ONLY": true,
+ "PAID_INFERENCE_ALLOWED": false,
+ "CLOUD_AI_FALLBACK": false,
+ "primary_reasoner": {
+  "base_url": "http://127.0.0.1:5000/v1",
+  "model": "Qwen3.8-27B-EXL3-5.5bpw-v2",
+  "role": "PRIMARY_REASONER",
+  "label_kind": "diagnostic_selection_only"
+ },
+ "decision_router": {
+  "base_url": "http://127.0.0.1:8000",
+  "endpoint": "/v1/systemone",
+  "model": "Mapika-decider-2b-v9",
+  "alias_diagnostic_only": "decider-v8",
+  "role": "DECISION_ROUTER",
+  "label_kind": "diagnostic_selection_only",
+  "retired": true,
+  "retired_note": "Mapika / decider-system-one retired (AGENTS.md); the gateway gate uses source qualification alone"
+ },
+ "capability_requirements": {
+  "min_context": 32768,
+  "min_decision_confidence": 0.70,
+  "structured_json": true,
+  "timeout_ms": 20000,
+  "format_as_used": "openai_chat_completions"
+ },
+ "policy": {
+  "ai_http_requires_loopback": true,
+  "proxy_environment": "disabled",
+  "redirects": "rejected",
+  "unavailable_behavior": "explicit_degraded_fail_closed",
+  "no_cloud_attempts": true,
+  "decider_cannot_promote_failed_source_evidence": true
+ }
+}

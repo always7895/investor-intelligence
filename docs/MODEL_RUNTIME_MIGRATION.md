@@ -1,0 +1,52 @@
+# Model runtime contract / 模型串接與切換
+
+[Current acceptance](../state/STATUS.md) · [Execution lanes / SKILL audit](RESEARCH_EXECUTION_AUDIT.md)
+
+Historical model, EXE, runner and installed-state observations are not today's acceptance. Full earlier record and failed receipts remain in Git: `git show 4ba2a606c9e459884e15354aa91798ec432df0ba:docs/MODEL_RUNTIME_MIGRATION.md`. No restamping, failed-source fallback or current-session deployment authority is granted here.
+
+## Identity, transport and controls
+
+- Use the existing approved loopback Router, by default TabbyAPI `http://127.0.0.1:5000` (llama.cpp `:8080` retired 2026-09-16; a saved selection still wins), and exact operator-selected catalog identity. Do not guess by model family, launch another server/model, change presets or infer capability from a name/HTTP200.
+- Explicit/saved endpoint must be a loopback base URL without credentials, paths, queries or fragments. Catalog redirects are disabled; at most `/models` and `/v1/models` per base, 1MiB response, 4.5s I/O deadline per path and 1024 unique identities/aliases. No `reload=1`, process scanning or replacement stack.
+- Auto-detection (operator request 2026-09-25): when the saved or default address does not serve the configured model, the EXE and the bridge read the catalogs of well-known loopback model ports only — 5000 TabbyAPI, 8080 llama.cpp, 11434 Ollama, 1234 LM Studio, 5001, 8081; 8000 (System One decider) is never probed — and move to the server that holds the configured model (the EXE otherwise offers the first reachable catalog, which leaves the profile unqualified until tested). An explicitly passed address is honoured exactly and never moves; an absent model is never substituted.
+- Reject alias collisions and conflicting/malformed selection/profile types. Explicit inputs do not depend on an unrelated malformed compatibility file. A returned endpoint/catalog alone is not a completed answer.
+- EXE exposes model and THINK selectors; `none` disables thinking, any other effort is the **ceiling**. Save model/mode as unqualified, preserve token/time limits and lock selectors during operations. The selection is not proof the model honors each effort.
+- Adaptive THINK (`scripts/v213_adaptive_reasoning.py`, compact answers only; transport smoke keeps the profile as is): per request the gateway picks the highest effort ≤ ceiling whose thinking tokens fit `timeout_ms × 0.75 − 1.5 s` at the measured decode rate (moving average, starts at 60 tokens/s; the RTX 5090 lane measured about 90) after the answer tokens. A System One (decider) screen with a 0.8 s timeout sends SIMPLE questions straight to no-thinking; the decider only sees content-free features (length, digits, clauses). If thinking overruns (`finish_reason=length`) one answer-only retry runs when it still fits the timeout. The response carries `ii_reasoning` (ceiling, effective, reason); the profile, its hash and the certified deadline are unchanged.
+- Native candidate tests exercise actual Use/Save handlers, profile bytes and child propagation. They do not qualify an older installed EXE. `--model-catalog-check` is metadata only; Test reply and `--model-route-check` share the actual EXE→PowerShell `-RoutingCheckOnly` caller.
+- Routing checks require the validated profile, exact complete marker and existing 64-bit CPython3.12.10 with requests. They never install Python, create a gateway/tunnel, read deployment credentials, register tasks or publish. Invalid mixed mutation/version flags cannot bypass checks. The GUI saves unqualified selection; the CLI does not.
+
+## Profile authority
+
+Schema: [config/v213-model-profile-v1.json](../config/v213-model-profile-v1.json). Shared validation: [Python](../scripts/v213_model_profile.py), [Worker](../cloud/src/v213/model-profile.ts), EXE parser.
+
+Precedence: explicit `V213_MODEL_PROFILE_JSON`, then `%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v213-model-profile-v1.json`, then packaged template. The compatibility selection file/installation receipt is not model or qualification authority.
+
+- Exact closed scalar types; no unknown/duplicate keys, singleton-array coercion, invalid effort or conflicting thinking flags.
+- Fixed-order scalar-array SHA256 shared across languages; changed profile invalidates prior qualification.
+- Per-file replacements are atomic, **not** a transaction across profile, compatibility selection, child and remote Worker.
+- Gateway/Worker must share exact profile identity; health, readiness and completed response must agree. Do not extend the certified caller's deadline to fit long thinking.
+- Current installer metadata emits `preferred_model=null`, `model_selection_authority=runtime_model_profile`, `model_profile_qualified=false`. Installing code never chooses/certifies a model.
+
+## Readiness and source-bound evidence
+
+Per-request HttpClient transport is direct, cookie/default-credential/redirect-free, 10s/1MiB bounded and strict UTF-8. HTTP failures remain failures except the explicit409 compatibility result. Keep version/hash/nonce/primitive-type checks and three-consecutive-proof requirements; no global proxy changes.
+
+QA reference selection requires regular HEAD-committed files and identical worktree bytes. Missing/invalid/drifted pointers never fall back. Both callers must still run freshness/profile/runtime verification; selecting a receipt is not qualification. New ZIPs bind the reference path/SHA in HOTFIX-REFS and adjacent Windows/QA/delivery receipts; trusted-source archive verification never imports archive code.
+
+Historical none/low markers, cold/warm cases, extracted installers and earlier successful CI remain tied to their original source and scope. They are not all-THINK-mode, live-data-rights or whole-release acceptance. Preserve all failed/truncated/unsupported responses without reasoning transcripts or raw private exceptions.
+
+## Required future acceptance
+
+1. Probe only the approved exact model serially; retain UNKNOWN for unobservable mode behavior.
+2. Complete representative answers within real task/latency budgets. Healthy endpoint, settings, catalog, reasoning-only output or a fixed marker is not research quality.
+3. Test EXE→actual child→authenticated gateway→Worker→complete answer, including drift, timeout and incomplete response negatives. Full SKILL research needs its own verifiable source/tool execution, not compact-Q&A attribution text.
+4. Validate full installed dependency chain/actions, fresh source-bound Windows proof and independent archive/receipt/install evidence. Source changes invalidate old runtime manifests.
+5. Production synchronization, real LINE delivery and schedule changes require explicit current-session authorization. No stale activation replay or paid fallback.
+
+Local settings validation only:
+
+```powershell
+& $env:PROJECT_PYTHON scripts/v213_model_profile.py --profile config/v213-model-profile-v1.json
+```
+
+It returns settings/fingerprint and `release_qualified=false`, not deployment approval. Package acceptance, live quality of adaptive THINK and installed live acceptance remain separate.

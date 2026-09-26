@@ -40,6 +40,27 @@
       "notes": "Official euro-area central-bank data."
     },
     {
+      "source_id": "eu_ecb_fx_reference",
+      "display_name": "ECB EUR/USD daily reference rate",
+      "authority_class": "central_bank",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": ["macroeconomics", "foreign_exchange"],
+      "jurisdictions": ["EA"],
+      "languages": ["en"],
+      "canonical_urls": [
+        "https://www.ecb.europa.eu/rss/fxref-usd.html",
+        "https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html"
+      ],
+      "independence_group": "eu_ecb",
+      "admission_status": "RUNTIME_ENABLED",
+      "adapter": {"id": "eu_ecb_fx_reference", "status": "implemented"},
+      "access": {"free_access_required": true, "payment_required": false, "terms_review_status": "approved"},
+      "runtime": {"enabled": true, "per_host_concurrency": 1, "minimum_request_interval_seconds": 0.5, "maximum_retries": 0, "freshness_seconds": 345600},
+      "provenance": {"required": true, "correction_tracking": true},
+      "priority": 110,
+      "notes": "Official ECB EUR/USD daily reference exchange rate; see docs/ECB_REFERENCE_SOURCE_ADMISSION.md."
+    },
+    {
       "source_id": "eu_esma",
       "display_name": "European Securities and Markets Authority",
       "authority_class": "securities_regulator",

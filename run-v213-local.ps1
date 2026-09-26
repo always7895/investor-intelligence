@@ -14,6 +14,7 @@ param(
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
+    [switch]$AllowSealedActivation,
     [switch]$Synthetic,
     [switch]$SelfTest
 )
@@ -162,7 +163,10 @@ try {
         }
         else {
             Stage 4 'Five-field market and SEC report for provisional membership'
-            & $python 'scripts\v213_v212_progress_runner.py'
+            # Fail closed: unverified market acquisition (no receipt) must degrade to
+            # UNAVAILABLE so every row keeps a dated SEC-anchored retrieved_at; the
+            # atomic bundle validator refuses UNKNOWN clocks.
+            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition' '--business-profile'
             if ($LASTEXITCODE -ne 0) {
                 throw 'v2.1.2 five-field report failed.'
             }
@@ -227,6 +231,11 @@ try {
                 }
                 elseif (-not (Test-Path -LiteralPath $syncConfig -PathType Leaf)) {
                     Write-Warning 'Formal v2.1.3 is installed, but signed-sync configuration is missing; local bundle retained and remote data remains fail-closed.'
+                }
+                elseif (-not $AllowSealedActivation) {
+                    # The hourly sealed publisher is the single Production writer (Top20 single-writer design, T8): a
+                    # local refresh commits or activates only with this explicit operator switch.
+                    throw 'V213_SEALED_ACTIVATION_NOT_ALLOWED: the hourly sealed publisher is the single Production writer; rerun with -NoSync for a data-only refresh, or pass -AllowSealedActivation for an explicit operator activation.'
                 }
                 elseif ($bridgeReady) {
                     & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model

@@ -1,0 +1,71 @@
+SYNTHETIC TEST FIXTURE - NOT REAL LEGAL OR PUBLIC RESEARCH EVIDENCE
+
+Legacy parser grammar tokens only. Not a publication, current law, authenticated corpus, or legal interpretation. Fixed input assembled from existing code/test literals, not independent legal evidence.
+
+Final Regulation Order
+
+§ 95352. Sulfur Hexafluoride Phase-Out.
+
+Table 1. Phase-Out Dates for SF 6 GIE with Voltage Capacity ≤ 38 kV Configuration Voltage Capacity (kV) Short-Circuit Current Rating (kA) Phase-Out Date
+
+Aboveground < 38 All January 1, 2025
+
+38 All January 1, 2028
+
+Belowground ≤ 38 < 25 January 1, 2025
+
+≥ 25 January 1, 2031
+
+Table 2. Phase-Out Dates for SF 6 GIE with Voltage Capacity > 38 kV Voltage Capacity (kV) Short-Circuit Current Rating (kA) Phase-Out Date
+
+38 < kV ≤ 145 < 63 January 1, 2025
+
+≥ 63 January 1, 2028
+
+145 < kV ≤ 245 < 63 January 1, 2027
+
+≥ 63 January 1, 2031
+
+> 245 All January 1, 2033
+
+(1) An SF 6 phase-out exemption was approved by the Executive Officer, or SF 6 GIE were acquired in response to a failure, pursuant to section 95357.
+
+(2) The SF 6 GIE device was present in California and reported to CARB pursuant to section 95355(a) for a data year prior to the applicable phase-out date listed in Table 1 or Table 2.
+
+(3) The SF 6 GIE device was purchased by the GIE owner prior to the applicable phase-out date listed in Table 1 or Table 2 for the relevant GIE characteristics, and enters California no later than 24 months after the purchase date.
+
+(4) The SF 6 GIE manufacturer replaces a defective SF 6 GIE device under the terms of the manufacturer’s warranty.
+
+(c) Replacement parts are not subject to the phase-out dates provided in Table 1 and Table 2.
+
+“Acquire” means to take possession and/or ownership of an item or to obtain an item through lease.
+
+“Purchase” means executing an agreement between the buyer and the seller to acquire a product such that any reversal on behalf of the buyer or the seller could result in a breach of the agreement and/or trigger cancellation or termination charges.
+
+“Gas-Insulated Equipment Characteristics” or “GIE Characteristics” means
+
+NOTE: Authority cited: Sections 38510, 38560, 38580, 39600 and 39601, Health and Safety Code.
+
+“Person” shall have the same meaning as defined in Health and Safety Code section 39047.
+
+Injunctions. Any violation of this subarticle may be enjoined pursuant to Health and Safety Code section 41513.
+
+Table A-1 of Subpart A of Title 40, Code of Federal Regulations (CFR), Part 98 as published in the Federal Register on December 11, 2014, which is hereby incorporated by reference.
+
+title 17, California Code of Regulations, section 95100 et seq.
+
+title 17, California Code of Regulations, sections 91000 through 91022.
+
+use NIST-traceable standards and a published calibration method identified as appropriate for that scale by either the International Society of Weighing and Measurement or the National Conference on Weights and Measures.
+
+(b) Starting on the applicable phase-out dates provided in Table 1 and Table 2, no GIE owner may convert non-SF 6 GIE to SF 6 GIE.
+
+“Gas-iInsulated switchgear Equipment” or GIS “GIE ” means
+
+“Active GIS Gas-Insulated Equipment” or “Active GIE” means
+
+“ Spare GIE ” are GIE that have been acquired
+
+“Failure” means the sudden and unexpected, or imminent, failure
+
+“ Voltage Capacity ” means the maximum voltage

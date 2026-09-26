@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Validate the fail-closed final cleanup policy and exact final receipt.
 
-This retained release tool is deliberately read-only.  It never removes files,
-backups, Git refs, Actions artifacts or caches.  A separate one-time maintenance
-transaction may use its validation result only after final release acceptance.
+This retained release tool is deliberately read-only and non-destructive.
+It never removes files, backups, Git refs, Actions artifacts or caches.
+Structural validation of a receipt does not authorize cleanup; unlocking
+is refused because no source-bound proof is accepted by this legacy tool.
 """
 from __future__ import annotations
 
@@ -388,7 +389,7 @@ def main() -> int:
     parser.add_argument(
         "--require-unlocked",
         action="store_true",
-        help="Require a valid exact final receipt; validation remains read-only.",
+        help="Fail-closed legacy check; unlocking is refused because no source-bound proof is accepted.",
     )
     args = parser.parse_args()
     try:
@@ -404,8 +405,10 @@ def main() -> int:
                     expected_candidate=args.expected_candidate,
                 )
             )
-        if args.require_unlocked and receipt is None:
-            findings.append("a final receipt is required to unlock cleanup")
+        if args.require_unlocked:
+            findings.append(
+                "cleanup cannot be unlocked: no source-bound proof is accepted by this legacy tool"
+            )
     except (FileNotFoundError, FinalCleanupPolicyError, OSError):
         print("FINAL CLEANUP GATE FAILED\n- cleanup policy or receipt could not be loaded")
         return 1
@@ -415,10 +418,7 @@ def main() -> int:
         for finding in findings:
             print(f"- {finding}")
         return 1
-    if args.require_unlocked:
-        print("FINAL CLEANUP GATE PASSED: exact final receipt authorizes a separate cleanup transaction")
-    else:
-        print("FINAL CLEANUP GATE PASSED: cleanup remains locked and no deletion was performed")
+    print("FINAL CLEANUP GATE PASSED: cleanup remains locked and no deletion was performed")
     return 0
 
 

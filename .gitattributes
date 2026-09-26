@@ -1,0 +1,6 @@
+# Live evidence and its source-pinned reference are byte-exact, not restamped.
+state/r75-qa-live*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Raw publisher XML retains original whitespace; a pinned SHA-256 test protects every byte.
+tests/fixtures/ecb-fxref-usd.xml -text -whitespace
+# Source-bound patch receipt is byte-exact (pinned SHA-256); unified-diff syntax is not source whitespace.
+patches/sol-pi-small-session-guard.patch -text -whitespace

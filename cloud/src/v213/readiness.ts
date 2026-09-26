@@ -1,9 +1,10 @@
 import { parseV21Top20 } from "../v21/top20";
 import { R75_PUBLICATION_MODE_CONTRACT_ID, r75PublicationModeContractHash } from "./publication-mode";
 import policy from "../../../config/v213-compact-qa-v1.json";
+import { configuredModelProfile, modelProfileSha256, type ModelProfileEnv } from './model-profile';
 
 export const PARSER_SCHEMA = "v213-r75-sec-filing-provenance-v1";
-export type VersionEnv = { CF_VERSION_METADATA?: { id: string } };
+export type VersionEnv = ModelProfileEnv & { CF_VERSION_METADATA?: { id: string } };
 const VERSION = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function servingVersion(env: VersionEnv): string | null {
   const id = env.CF_VERSION_METADATA?.id;
@@ -40,10 +41,19 @@ export async function edgeReadiness(request: Request, env: VersionEnv): Promise<
   const challenge = url.searchParams.get("challenge") ?? "";
   const expected = url.searchParams.get("expected_version");
   const version = servingVersion(env);
+  const expectedProfile = url.searchParams.get('expected_model_profile_sha256');
+  let profileHash: string | undefined;
+  let profileInvalid = false;
+  try { const profile = configuredModelProfile(env); if (profile) profileHash = await modelProfileSha256(profile); }
+  catch { profileInvalid = true; }
   let code = "";
   if (request.method !== "GET" || url.search.length > 240 || !/^[0-9a-f]{32}$/.test(challenge) || (expected && !VERSION.test(expected)) ||
-      [...url.searchParams.keys()].some((key) => !["challenge", "expected_version"].includes(key)) ||
-      url.searchParams.getAll("challenge").length !== 1 || url.searchParams.getAll("expected_version").length > 1) code = "V213_READINESS_REQUEST_INVALID";
+      [...url.searchParams.keys()].some((key) => !["challenge", "expected_version", "expected_model_profile_sha256"].includes(key)) ||
+      url.searchParams.getAll("challenge").length !== 1 || url.searchParams.getAll("expected_version").length > 1 ||
+      url.searchParams.getAll('expected_model_profile_sha256').length > 1 ||
+      (expectedProfile !== null && !/^[0-9a-f]{64}$/.test(expectedProfile))) code = "V213_READINESS_REQUEST_INVALID";
+  else if (profileInvalid) code = 'V213_READINESS_MODEL_PROFILE_INVALID';
+  else if (expectedProfile !== null && expectedProfile !== profileHash) code = 'V213_READINESS_MODEL_PROFILE_MISMATCH';
   else if (!version) code = "V213_READINESS_VERSION_UNAVAILABLE";
   else if (expected && version !== expected) code = "V213_READINESS_VERSION_MISMATCH";
   else if (!parserCompatibility()) code = "V213_READINESS_PARSER_FAILED";
@@ -52,6 +62,7 @@ export async function edgeReadiness(request: Request, env: VersionEnv): Promise<
     publication_contract_id: R75_PUBLICATION_MODE_CONTRACT_ID,
     publication_contract_sha256: await r75PublicationModeContractHash(), compact_policy_sha256: await compactPolicyHash(),
     compatibility: "PASS", no_write: true,
+    ...(profileHash ? { model_profile_sha256: profileHash } : {}),
   };
   return new Response(JSON.stringify(result), { status: code ? 409 : 200,
     headers: { "content-type": "application/json", "cache-control": "no-store, max-age=0", "x-content-type-options": "nosniff", "x-ii-serving-version": version ?? "unavailable" } });

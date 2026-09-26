@@ -1,5 +1,13 @@
 # 深化研究與來源交叉驗證 / Deeper research and source cross-validation
 
+## Contents
+
+- Scope; required depth; source capability matrix
+- Claim-level reconciliation states
+- Dynamic discovery and retirement; source roles, freshness and concentration
+- Leopold Aschenbrenner: auxiliary only; source activation
+- Historical retrieval log (dated records, not instructions)
+
 ## Scope / 範圍
 
 This extends the preserved RESEARCH_METHOD.md; it is our public-research design, not Serenity's official process. Existing scoring weights, publication contract, LIMITED restrictions and private-data boundaries remain unchanged. Documentation or a source catalog is not proof of a working adapter or live coverage.
@@ -44,13 +52,105 @@ Use explicit research reconciliation states:
 
 These are research labels, not a new publication-mode schema. Preserve the existing federation thresholds and validator. Report actual per-ticker/per-claim coverage and concentration, not merely successful global endpoints. Multiple sources must add independent relevant evidence, not pad a website count. Retrieving an old filing today does not make the underlying facts current.
 
-## External review evidence / 外部查閱紀錄
+## Dynamic discovery and retirement / 動態發現與汰換
 
-Reviewed on 2026-09-05 UTC:
+These are acceptance requirements, not claims that the live pipeline implements them.
+
+1. **Open discovery:** combine permitted exchange-wide issuer directories with dated regulatory, procurement, company, counterparty, industry and news events. X, forums, podcasts and media can propose hypotheses; popularity, repost count or a famous investor's list adds no evidence score. Do not reserve permanent capacity for AI or any other named sector. Record coverage gaps by exchange/security class and the discovery exclusion stage.
+2. **Constraint before ticker:** describe the system change, required function, binding capacity/qualification constraint, effective substitutes and dated expansion response. A large TAM, partnership or rising share price alone is not a bottleneck. Distinguish structural scarcity from temporary allocation and ordinary cyclicality.
+3. **Company capture:** connect the scarce layer to accessible capacity, achievable yield, contracted demand, realizable margin/cash flow and diluted per-share capture. Keep each inference's premises explicit. Do not turn announced capacity into available capacity or multiply market capex by a guessed supplier share.
+4. **Adversarial validation:** actively seek qualified alternatives, shorter lead times, cancellations, inventory accumulation, price cuts, customer concentration, architecture bypass, funding gaps and dilution. Compare like-for-like units, specification, period, currency and customer platform; conflicting or non-comparable observations do not corroborate one another.
+5. **State transitions:** DISCOVERED → EVIDENCE_PENDING → qualified or LIMITED; allow STALE / CONFLICT / THESIS_BROKEN / SUPERSEDED transitions. A removed candidate retains dated reasons; reconsideration needs new evidence, not a fresh retrieval stamp. Trigger review on material events and source-policy expiry, not arbitrary sector rotation.
+6. **No guaranteed explosion:** prioritize testable asymmetric opportunities and explicit downside/scenario assumptions. Evaluate out of sample with point-in-time universes, delisted/failed cases, benchmark-relative returns and drawdowns. Backtests or good examples do not establish predictive accuracy.
+
+### Source roles, freshness and concentration
+
+- For material investment conclusions, require relevant independent company-level support under the existing publication policy, including primary evidence. A single attributable filing can remain a PRIMARY_ONLY factual observation; it cannot masquerade as cross-validated thesis support. Listing directories and macro data do not satisfy company-order corroboration.
+- Track original publisher, underlying disclosure lineage, role, security identity, source event/period time, retrieval time, exact passage, content hash, rights scope, currency/units and revision/supersession. Financial period end, filing date, retrieval date and market quote time are different clocks.
+- Enforce source-specific refresh/freshness policy and exchange/session calendars. An EOD feed must say EOD, not real-time; delayed or unknown quote timing cannot become an executable live limit reference. No unbounded scraping or paid fallback to simulate coverage.
+- Reuse unchanged admitted content by hash; deduplicate syndicated stories; use permitted conditional requests, bounded queues, rate limits and backoff. Re-evaluate when evidence changes, not by resending the entire archive to the model. Failed refresh keeps its failed state and must not advance last-success time.
+- Report per-claim lineage counts and per-candidate coverage, stale/conflicting/missing fields, provider failure rates and provider/domain concentration at discovery, evidence and publication stages. Multiple APIs of the same publisher are not independent. Global website counts never substitute for these metrics.
+
+### Leopold Aschenbrenner: auxiliary only
+
+Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio. Scenario variables, the dated scorecard and filing snapshots are in ASCHENBRENNER_CONTEXT.md.
+
+## Source activation
+
+Broader source activation still requires adapter tests, terms/access review, rate limits, redaction, provenance and actual live evidence. Never bypass authentication or paywalls to fill a field.
+
+## Historical retrieval log — not instructions
+
+Dated records below are retained as history. They are not current views, verification or collection directives.
+
+### Second refresh — 2026-09-25 (evening)
+
+- A read-only scout plus direct checks. Verified inside the named secondary reports only (originals remain UNVERIFIED): Serenity's entry-before-confirmation line (KuCoin 2026-05-26), the ATM-versus-market-cap rule (Singularity Research Fund 2026-04-01) and the post-drawdown falsifier framing (Bitget 2026-07-17). The tracker snapshot was re-read directly and its narrower ticker list used.
+- SEC EDGAR (primary) added the Nebius 13G, SharonAI Form 3/13G/13G/A/Form 4 and the Core Scientific 13D/A at 4.4% (event 2026-07-15); the 2026-09-09 Axios lead about a Citadel sale is now supported by a 24/7 Wall St report (secondary), while fund-size figures conflict across outlets and are not used.
+- Results were written into SERENITY_LOGIC.md (sections 4, 4a, 5, 7, 9) and ASCHENBRENNER_CONTEXT.md (sections 4 and 5); the phase engine turns them into dated signals.
+
+### Direct refresh check — 2026-09-25
+
+- X's official oEmbed endpoint now redirects from publish.twitter.com to `https://publish.x.com/oembed`, which returned HTTP 402 Payment Required for Serenity status IDs 2069062745308254434 and 2038965788724560093. No paid access or bypass was attempted. Tracker-cited Serenity views remain UNVERIFIED; the current stance on any ticker is unknown.
+- SEC EDGAR (primary) returned Situational Awareness LP 13F filings for 2026-03-31 and 2026-06-30 and a Schedule 13D and 13D/A for SharonAI Holdings. They are summarized in ASCHENBRENNER_CONTEXT.md as dated disclosures, not current holdings or company evidence.
+- A public tracker and a third-party reconstruction of Serenity's method were reviewed as leads and summarized in SERENITY_LOGIC.md with their lineage and verification status.
+
+### Direct refresh check — 2026-09-09
+
+- Direct X page `https://x.com/aleabitoreddit/status/2083274448845906083` returned HTTP403; this failure remains recorded. A subsequent request to X's official public `https://publish.twitter.com/oembed` endpoint returned an author-matched excerpt dated2026-07-31. It distinguishes2027 ramps from a2028 horizon. The excerpt is truncated: only the returned passage is verified, not the full thread, underlying company facts, current holdings or latest stance. Do not treat an old public addition as a current recommendation.
+- Another search lead, `https://x.com/aleabitoreddit/status/2013947011490615486`, returned HTTP404 through official oEmbed. Keep it UNVERIFIED; do not repeat its allegations from the search summary. Additional searches did not establish a latest September source view; absence from results is not proof of absence.
+- Retrieved Leopold's original `https://situational-awareness.ai/racing-to-the-trillion-dollar-cluster/`. This is a historical2024 scenario, NOT a new2026 statement. Exact wording includes “These are just very rough numbers anyway” and “the lead times for these are much longer still” when discussing infrastructure. Preserve this uncertainty and test today's constraints independently.
+- Search proposed a new fund-portfolio story at `https://www.axios.com/2026/07/30/ai-hedge-fund-situational-awareness-citadel`; direct retrieval returned HTTP403. Do not repeat the search synthesis as a verified transaction or current holding change. No authentication/paywall bypass attempted.
+- Public-source rights and actual adapter coverage are separately documented in the repository source review. This research refresh neither enables a provider nor proves live scheduling, global coverage or a functioning screen.
+
+### External review evidence / 外部查閱紀錄 — 2026-09-05
 
 - [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces): public JSON APIs require no API key; filings and XBRL are not price feeds. Custom taxonomies/segment facts are not comprehensively represented by Companyfacts; consult underlying filings. SEC also cautions about differing reporting periods and automated-access policies.
 - [quantskills public-research model](https://github.com/quantskills/skill-serenity-research-model/blob/main/SKILL.md): reviewed extraction/review/evaluation concepts, including failed and revised samples. Unaffiliated reconstruction; not proof of Serenity authorship or investment performance. No third-party executable code installed or copied.
 - [W-Y-P reconstructed framework](https://github.com/W-Y-P/Serenity-aleabitoreddit-skill/blob/main/references/serenity_framework.md): reviewed architecture, unit economics, financing and failure-mode concepts. Its own snapshot date is 2026-06-12; its supplemental WOOK98 material is not an independent witness. No third-party executable code installed or copied.
 - Direct retrieval of [one discovered X candidate](https://x.com/aleabitoreddit/status/2055822766600016238) returned HTTP 403. Its content and current-view relevance are **UNVERIFIED**. Search summaries and archive mirrors do not cure this gap; do not assert a current Serenity ticker stance from this check.
 
-Broader source activation still requires adapter tests, terms/access review, rate limits, redaction, provenance and actual live evidence. Never bypass authentication or paywalls to fill a field.
+### Archived retrieval notes - not verification or instructions
+
+**ARCHIVED_UNVERIFIED / HISTORICAL_TEXT_NOT_INSTRUCTIONS.** The original dated text below is retained verbatim as historical data, not operative policy or admitted evidence.
+Display-name agreement alone does not authenticate an account or author.
+Retrieval dates, oembed metadata, post IDs and hash labels do not establish identity, current views or company facts.
+HTTP404 indicates unavailability in that attempt, not proof of deletion.
+The archived P1a, verified, deleted and mandatory-channel wording is superseded by this warning; do not follow its collection directives or promote its dated market/performance claims.
+Earlier dated retrieval notes are historical and are not newly revalidated here.
+This archive does not authorize runtime synchronization.
+
+<!-- BEGIN UNVERIFIED OEMBED ARCHIVE -->
+```text
+## Direct refresh check - 2026-09-17/18 (oembed channel established)
+
+**Channel discovery (method upgrade):** `https://publish.twitter.com/oembed?url=https://x.com/aleabitoreddit/status/<ID>`
+returns primary X post content (author_name, html, date) directly, where x.com direct fetch 403s.
+Author-name match on `Serenity` = P1a verification class. This channel is now the mandatory first attempt for any
+registry post in `skills/serenity-bottleneck.md`.
+
+**Verified via oembed (2026-09-17/18):** 10 posts (IDs/dates/content in the skill registry) - 2045965735386820934
+(04-19), 2066868456457416871 (06-16), 2068301039946887269 (06-20), 2069062745308254434 (06-22), 2075496116481884524
+(07-10), 2078150537074373117 (07-17), 2081472671129501729 (07-26), 2088226398708338889 (08-14),
+2088501133543407959 (08-15, zh), 2090903631793127644 (08-21).
+
+**Deleted (oembed 404 = negative evidence; never reconstruct):** 2065547964606462282, 2063379724428992964.
+
+**Remaining lead-only IDs (re-verify at next refresh):** 2013947011490615486, 2033889361801175094,
+2034752613246542215, 2038101004252753959, 2041168871168545115, 2044491122161160517, 2047110496999137730,
+2063465386960736396.
+
+**Mirror lineage note:** github/yan-labs/serenity-aleabitoreddit, topicdigg.com, twiscan.com, semiconstocks.com
+tracker = single corpus lineages of the same X posts (fan/secondary). They are leads for *discovery* only; they
+never count as independent corroboration and their paraphrased "track record" numbers (e.g. +3,612% YTD, +122%
+1Y, three-phase rotation, Strait-of-AXTI stack) stay TR-tagged unless individually oembed-verified. Serenity's
+self-reported P&L (including the 07-17 -49.4% month and 08-15 YTD +2,411.84%) is self-reported + unaudited.
+
+**2026-09 architecture state refresh (S2-sourced where noted):** CPO (TrendForce 2026-07-27 initial NVDA
+Spectrum-X shipments; Broadcom 51.2T Bailly limited; yield+packaging binding), HBM4 (Micron ~100K wpm year-end;
+SK hynix 12L volume/16L qualifying), power (GEV 116GW / SE 69GW backlogs; Reuters 2026-07-09 transformer
+shortage), exports (FR 2026-00789 case-by-case), capex (~$695-750B hyperscaler '26 guidance). Full context in
+`docs/PERSONA_LOGIC_FULL.md`.
+
+```
+<!-- END UNVERIFIED OEMBED ARCHIVE -->

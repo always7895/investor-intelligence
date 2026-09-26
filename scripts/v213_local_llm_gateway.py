@@ -9,12 +9,14 @@ score.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 import hmac
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -28,7 +30,286 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v212_local_llm_gateway as base
-from v213_compact_qa_gateway import compact_upstream, complete_compact_response, resolve_model_id
+from v213_compact_qa_gateway import POLICY as COMPACT_POLICY, compact_upstream, complete_compact_response, resolve_model_id
+from v213_model_profile import parse_profile, profile_sha256
+from v213_decision_backend_client import DecisionBackendClient, DeciderError
+import v213_adaptive_reasoning as adaptive
+from urllib.parse import urlsplit
+
+LOCAL_AI_CONFIG_PATH = ROOT / "config" / "local-runtime-independence-v1.json"
+_LOOPBACK_SESSION = requests.Session()
+_LOOPBACK_SESSION.trust_env = False  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY ignored for all AI HTTP
+
+
+def _strict_bool_flags_check(raw_text: str) -> None:
+    """The three hard flags must be JSON boolean tokens. Numeric 1/0 is
+    rejected: JSON 1/0 parses to Python ints (not bools), and numeric values
+    compare equal to booleans (1 == True, 0 == False), which is why strict
+    bool typing is required."""
+    class _Tok:
+        def __init__(self, value, is_bool_token):
+            self.value = value
+            self.is_bool_token = is_bool_token
+
+    def _pairs(items):
+        return {k: _Tok(v, isinstance(v, bool)) for k, v in items}
+
+    doc = json.loads(raw_text, object_pairs_hook=_pairs)
+    for field in ("LOCAL_AI_ONLY", "PAID_INFERENCE_ALLOWED", "CLOUD_AI_FALLBACK"):
+        tok = doc.get(field) if isinstance(doc, dict) else None
+        if not isinstance(tok, _Tok) or not tok.is_bool_token:
+            raise SystemExit(f"LOCAL_AI_POLICY_INVALID: {field} must be a JSON boolean token (numeric 1/0 rejected)")
+
+
+def _load_local_ai_config() -> dict:
+    """Strict local-AI policy: exact flags fail closed on any deviation."""
+    raw = LOCAL_AI_CONFIG_PATH.read_text(encoding="utf-8-sig")
+    _strict_bool_flags_check(raw)
+    doc = json.loads(raw)
+    flags = (doc.get("LOCAL_AI_ONLY"), doc.get("PAID_INFERENCE_ALLOWED"), doc.get("CLOUD_AI_FALLBACK"))
+    if flags != (True, False, False):
+        raise SystemExit("LOCAL_AI_POLICY_INVALID: flags must be LOCAL_AI_ONLY=true PAID_INFERENCE_ALLOWED=false CLOUD_AI_FALLBACK=false")
+    return doc
+
+
+def _assert_loopback_url(url: str) -> str:
+    parts = urlsplit(url)
+    if parts.scheme != "http" or parts.hostname not in ("127.0.0.1", "localhost") or parts.username or parts.password:
+        raise SystemExit("AI_ENDPOINT_MUST_BE_LOOPBACK")
+    return url
+
+
+def _loopback_http(method: str, url: str, *, timeout, **kwargs):
+    """All AI HTTP: loopback-validated, no proxy environment, no redirects."""
+    _assert_loopback_url(url)
+    response = _LOOPBACK_SESSION.request(
+        method, url, timeout=timeout, allow_redirects=False,
+        proxies={"http": None, "https": None}, **kwargs,
+    )
+    if 300 <= response.status_code < 400:
+        raise LoopbackRedirectRefused()
+    return response
+
+
+class LoopbackRedirectRefused(RuntimeError):
+    """Upstream attempted a redirect; loopback-only policy refuses it."""
+
+
+def local_llm_base_url() -> str:
+    """Documented precedence: II_LLAMA_BASE_URL override, else the config
+    primary_reasoner.base_url (default http://127.0.0.1:5000/v1)."""
+    override = os.getenv("II_LLAMA_BASE_URL", "").strip()
+    base = override or _load_local_ai_config()["primary_reasoner"]["base_url"]
+    _assert_loopback_url(base)
+    return base.rstrip("/")
+
+
+def _endpoint_suffixes(base: str) -> tuple[str, str, list[str]]:
+    """Endpoint paths derive from the ACTUAL base shape: a base that already
+    ends in /v1 (TabbyAPI style, e.g. http://127.0.0.1:5000/v1) takes bare
+    paths; a bare base takes /v1-prefixed paths."""
+    if base.rstrip("/").endswith("/v1"):
+        return "/model", "/chat/completions", ["/models"]
+    return "/v1/model", "/v1/chat/completions", ["/models", "/v1/models"]
+
+
+def selected_model_id() -> str:
+    """Documented precedence: II_LOCAL_LLM_MODEL override, else the config
+    primary_reasoner.model (default Qwen3.8-27B-EXL3-5.5bpw-v2)."""
+    override = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+    return override or _load_local_ai_config()["primary_reasoner"]["model"]
+
+
+def capability_context_evidence(canonical: str) -> int | None:
+    """Context evidence from the ACTUAL served metadata API (/v1/model):
+    the current card's id must match the RESOLVED canonical identity and
+    parameters.max_seq_len must be a strict positive int. Catalog cards and
+    training-context metadata (n_ctx_train/n_ctx) are NOT served-runtime
+    proof. Any missing/mismatched/typed-differently evidence => None."""
+    base = local_llm_base_url()
+    override = os.getenv("II_CAPABILITY_METADATA_URL", "").strip()
+    url = override or (base + _endpoint_suffixes(base)[0])
+    try:
+        response = _loopback_http("GET", url, timeout=(2, 8))
+        if response.status_code == 404 and not override:
+            return _catalog_context_evidence(canonical)
+        if response.status_code != 200:
+            return None
+        data = response.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    model_id = data.get("id")
+    if not isinstance(model_id, str) or model_id.casefold() != str(canonical).casefold():
+        return None
+    parameters = data.get("parameters")
+    if not isinstance(parameters, dict):
+        return None
+    value = parameters.get("max_seq_len")
+    if type(value) is not int or value <= 0:
+        return None
+    return value
+
+
+def _catalog_context_evidence(canonical: str) -> int | None:
+    """Servers without the TabbyAPI /v1/model card (ninfer, vLLM; operator 2026-09-26) report the configured served
+    context as max_model_len on their /v1/models row. Only that row, for exactly the resolved identity, counts."""
+    for row in _available_model_catalog():
+        if isinstance(row, dict) and str(row.get("id", "")).casefold() == str(canonical).casefold():
+            value = row.get("max_model_len")
+            return value if type(value) is int and value > 0 else None
+    return None
+
+
+CAPABILITY_PROBE_PROMPT = "Respond with a JSON object."
+
+
+def _reject_json_constant(name: str):
+    # NaN/Infinity are not valid JSON; reject them (fail closed).
+    raise ValueError(f"invalid JSON constant: {name}")
+
+
+def structured_json_probe(model: str | None = None) -> bool:
+    """PROVE structured-JSON support with a bounded local probe using the
+    required format; malformed JSON fails closed. Standard OpenAI-compatible
+    payload (no bespoke test flags). Never touches the LINE reply format
+    (natural language is preserved in the product path). The probe sends the
+    selected/canonical model when given, else the configured selection."""
+    base = local_llm_base_url()
+    url = base + _endpoint_suffixes(base)[1]
+    body = {
+        "model": model if model is not None else selected_model_id(),
+        "messages": [{"role": "user", "content": CAPABILITY_PROBE_PROMPT}],
+        "response_format": {"type": "json_object"},
+        "max_tokens": 64,
+        "stream": False,
+    }
+    try:
+        response = _loopback_http("POST", url, json=body, timeout=(2, 10))
+        if response.status_code == 400 and "response_format" in response.text:
+            # A server without constrained decoding (ninfer) refuses the json_object format; the same capability is
+            # then proved by an unconstrained reply that must still parse as a JSON object.
+            body = {key: value for key, value in body.items() if key != "response_format"}
+            body["messages"] = [{"role": "user", "content": CAPABILITY_PROBE_PROMPT + " Output only the JSON object."}]
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+            response = _loopback_http("POST", url, json=body, timeout=(2, 10))
+        if response.status_code != 200:
+            return False
+        data = response.json()
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(choices, list) or not choices:
+            return False
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, str) or not content.strip():
+            return False
+        parsed = json.loads(content, parse_constant=_reject_json_constant)
+    except LoopbackRedirectRefused:
+        raise
+    except Exception:
+        return False
+    return isinstance(parsed, dict)
+
+
+def capability_report(selected: str) -> dict:
+    """Capability = observed evidence, never configured requirements.
+    Context comes from the served metadata API; missing evidence is
+    CAPABILITY_UNKNOWN (no assumed-healthy from model name, request profile,
+    training context, or configured minimum)."""
+    cfg = _load_local_ai_config()
+    min_context = cfg["capability_requirements"]["min_context"]
+    context = capability_context_evidence(selected)
+    try:
+        structured = structured_json_probe(selected)
+    except Exception:
+        structured = False
+    report = {
+        "selected_model": selected, "context": context,
+        "min_context_required": min_context, "structured_json": structured,
+    }
+    if context is None:
+        report["capability"] = "CAPABILITY_UNKNOWN"
+    elif context >= min_context and structured:
+        report["capability"] = "READY"
+    else:
+        report["capability"] = "DEGRADED"
+    return report
+
+
+def _reasoner_decision_gate(context: dict, canonical: str) -> dict:
+    """Pre-generation decision gate: the reasoner product completion may run
+    ONLY after approval. Failed source evidence is authoritative (denied
+    without consulting the decider); healthy evidence requires an explicit
+    decider approval. Unavailable/low-confidence/NOT_SUFFICIENT/malformed
+    decisions deny (fail closed)."""
+    ctx = context if isinstance(context, dict) else {}
+    status = str(ctx.get("source_diversity_status", "UNKNOWN"))
+    if status in ("CONFLICTED", "STALE", "UNAVAILABLE"):
+        return {"allowed": False, "error": "REASONER_DECISION_DENIED",
+                "authority": "source_qualification", "sufficiency": "NOT_SUFFICIENT"}
+    if _decider_retired():
+        # The System One decider is retired (AGENTS.md; config decision_router.retired): source qualification alone
+        # decides. Failed, stale or conflicted evidence is still denied above; nothing is asked of a missing model.
+        return {"allowed": True, "authority": "source_qualification_decider_retired",
+                "sufficiency": "SUFFICIENT", "confidence": None}
+    question = "Source evidence sufficiency for answering?"
+    options = ["SUFFICIENT", "NOT_SUFFICIENT"]
+    try:
+        choice, confidence = _decision_client().answer(
+            {"selected_model": canonical, "source_diversity_status": status,
+             "successful_source_families": ctx.get("successful_source_families", [])},
+            question, options,
+        )
+    except DeciderError:
+        return {"allowed": False, "error": "REASONER_DECISION_DENIED",
+                "authority": "decider_unavailable", "sufficiency": "UNKNOWN"}
+    if choice != "SUFFICIENT":
+        return {"allowed": False, "error": "REASONER_DECISION_DENIED",
+                "authority": "decider_plus_source_qualification",
+                "sufficiency": choice, "confidence": confidence}
+    return {"allowed": True, "authority": "decider_plus_source_qualification",
+            "sufficiency": choice, "confidence": confidence}
+
+
+def _format_decision_annotation(gate: dict) -> dict:
+    """Shared formatter: derive the ii_decision annotation from an ALREADY
+    computed gate result. Does NOT query the CPU (shared formatter, not a
+    parallel router)."""
+    if gate["allowed"]:
+        return {"sufficiency": gate["sufficiency"], "confidence": gate["confidence"],
+                "authority": gate["authority"],
+                "decider": "RETIRED" if gate["authority"] == "source_qualification_decider_retired" else "OK"}
+    if gate["authority"] == "source_qualification":
+        return {"sufficiency": "NOT_SUFFICIENT", "authority": "source_qualification",
+                "decider": "NOT_CONSULTED"}
+    return {"sufficiency": gate.get("sufficiency", "UNKNOWN"),
+            "authority": gate["authority"], "decider": "DEGRADED"}
+
+
+def _decision_seam(context: dict, canonical: str) -> dict:
+    """Standalone helper (queries the CPU once); shares the formatter with
+    do_POST so the two cannot diverge."""
+    return _format_decision_annotation(_reasoner_decision_gate(context, canonical))
+
+
+_DECIDER_CLIENT: DecisionBackendClient | None = None
+
+
+def _decision_client() -> DecisionBackendClient:
+    global _DECIDER_CLIENT
+    if _DECIDER_CLIENT is None:
+        cfg = _load_local_ai_config()
+        # Declared backend routing minimum; missing/invalid fails closed in the
+        # client constructor (no healthy default, never Astra).
+        min_confidence = cfg.get("capability_requirements", {}).get("min_decision_confidence")
+        _DECIDER_CLIENT = DecisionBackendClient(
+            cfg["decision_router"]["base_url"], timeout=5.0, min_confidence=min_confidence)
+    return _DECIDER_CLIENT
+
+
+def _decision_seam_removed(context: dict, selected: str) -> dict:
+    """Replaced by the pre-generation gate; marker only."""
+    raise RuntimeError("REPLACED_BY_REASONER_DECISION_GATE")
 
 ORIGINAL_ENRICH = base.enrich_messages
 SOURCE_AUDIT_PATH = ROOT / "data" / "cache" / "v213_source_independence_latest.json"
@@ -36,9 +317,46 @@ FEDERATION_PATH = ROOT / "data" / "cache" / "v213_source_federation_latest.json"
 SOURCE_AUDIT_MAX_AGE_SECONDS = 7200
 MAX_CONCURRENT_GENERATIONS = max(1, min(8, int(os.getenv("II_GATEWAY_MAX_CONCURRENT_GENERATIONS", "1"))))
 GENERATION_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_GENERATIONS)
+DECODE_RATE = adaptive.DecodeRate()
+_SCREEN_CLIENT: DecisionBackendClient | None = None
+
+
+def _decider_retired() -> bool:
+    try:
+        return _load_local_ai_config()["decision_router"].get("retired") is True
+    except (KeyError, TypeError, AttributeError, OSError, ValueError):
+        return False
+
+
+def _screen_client() -> DecisionBackendClient | None:
+    """Short-timeout System One client for the reasoning screen; None when not configured or retired."""
+    global _SCREEN_CLIENT
+    if _decider_retired():
+        return None
+    if _SCREEN_CLIENT is None:
+        try:
+            cfg = _load_local_ai_config()
+            _SCREEN_CLIENT = DecisionBackendClient(cfg["decision_router"]["base_url"], timeout=0.8,
+                                                   min_confidence=cfg["capability_requirements"]["min_decision_confidence"])
+        except (DeciderError, KeyError, TypeError, OSError, ValueError):
+            return None
+    return _SCREEN_CLIENT
+
+
+def _reasoning_plan(body: Mapping[str, Any], upstream: Mapping[str, Any], runtime_profile: Mapping[str, Any] | None):
+    """Per-request thinking for profiled compact answers; transport smoke keeps the profile as is."""
+    if not runtime_profile or not runtime_profile["enable_thinking"] or body.get("ii_context_mode") != COMPACT_POLICY["mode"]:
+        return None
+    messages = body.get("messages") or []
+    query = messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else ""
+    screen = adaptive.system_one_screen(_screen_client(), adaptive.question_features(str(query)))
+    return adaptive.select_effort(runtime_profile["reasoning_effort"], timeout_ms=runtime_profile["timeout_ms"],
+                                  answer_tokens=int(upstream["max_tokens"]), rate=DECODE_RATE.value, screen=screen,
+                                  max_output_tokens=runtime_profile["max_output_tokens"])
+
 RETRY_AFTER_SECONDS = max(1, min(60, int(os.getenv("II_GATEWAY_RETRY_AFTER_SECONDS", "2"))))
 METHODOLOGY_RE = re.compile(
-    r"(?:serenity|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
+    r"(?:serenity|leopold|aschenbrenner|瓶頸|瓶颈|供應鏈|供应链|chokepoint|bottleneck|"
     r"supply\s*chain|source|來源|来源|evidence|證據|证据|thesis|投資邏輯)",
     re.I,
 )
@@ -60,6 +378,30 @@ official formula, or official score. Keep these layers separate:
    operationalization and never as a Serenity score.
 10. Explicitly labelled model inference with uncertainty.
 11. The user's long-term preference as a separate overlay.
+12. Leopold Aschenbrenner is CONTEXT_ONLY: dated macro/compute/power scenarios
+    generate hypotheses, never company-order evidence, a Serenity score bonus,
+    a current holding claim or a permanent AI-sector discovery filter.
+    Only evidence-tested scenario probabilities, sector regime and risk may be
+    adjusted; missing/currently contradicted thesis inputs mean no overlay.
+
+SERENITY IS THE PRIMARY DECISION FRAMEWORK:
+- Cover fundamentals, earnings/guidance, orders/backlog, valuation, price/market
+  structure, industry cycle, macro, catalysts, risks, source confidence and
+  scenario valuation. Missing dimensions remain UNAVAILABLE, not filled in.
+- Authority order: verified current evidence > Serenity company evidence >
+  current macro/industry evidence > dated Leopold thesis. Author opinions never
+  override facts. Old essays, interviews and 13F are not current holdings.
+
+ORDER TIMING AND VALUATION:
+- Preserve each disclosed order's amount/quantity, currency, counterparty,
+  contract type, source passage/date, fulfillment window and cancellation terms.
+  Report exact dates only when disclosed; a filing/retrieval date is not delivery.
+- RPO, backlog, prepayments, pipeline and recognized revenue are distinct;
+  overlapping commitments must not be summed. "Large" is not numerical evidence.
+- Separate 6/12/24-month on-time, delay/partial and failure scenarios from past
+  returns. Numeric price upside requires a reproducible revenue/profit/cash-flow,
+  financing/diluted-share and valuation bridge with dated inputs. Missing inputs
+  mean UNAVAILABLE, never a hard-coded percentage or a guarantee.
 
 SOURCE-INDEPENDENCE RULES:
 - v213_source_independence_latest.json is the claim-level control plane. If it is
@@ -154,6 +496,18 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _claim_audit_eligible(audit: Mapping[str, Any]) -> bool:
+    # Compact/transport-only bundles need not import the research collector.
+    # Missing research dependencies must cap confidence, not crash the gateway.
+    if not audit:
+        return False
+    try:
+        from source_observation import research_audit_high_eligible
+    except ImportError:
+        return False
+    return research_audit_high_eligible(audit)
+
+
 def _format_source_audit_context(
     document: Mapping[str, Any] | None,
     ticker: str,
@@ -224,7 +578,19 @@ def _format_source_audit_context(
     metrics = _as_dict(record.get("source_metrics"))
     market = _as_dict(record.get("market_corroboration"))
     public_logic = _as_dict(record.get("public_logic_state"))
-    eligible = status == "PASS" and record.get("eligible_for_high_confidence_model_inference") is True
+    claim_audit = _as_dict(record.get("claim_evidence_audit"))
+    eligible = (status == "PASS" and availability == "FRESH"
+                and record.get("eligible_for_high_confidence_model_inference") is True
+                and _claim_audit_eligible(claim_audit))
+    if not eligible:
+        public_logic = dict(public_logic, model_inference_confidence="LIMITED")
+    lines.append("exact_claim_audit_status=" + str(claim_audit.get("status", "UNAVAILABLE")))
+    lines.append("source_diversity=" + json.dumps(_as_dict(claim_audit.get("source_diversity")), ensure_ascii=False, sort_keys=True))
+    for claim in _as_list(claim_audit.get("claims"))[:40]:
+        if isinstance(claim, dict):
+            summary = {key: claim.get(key) for key in ("claim_id", "status", "confidence", "independent_evidence_families", "value", "conflict_set", "reasons")}
+            lines.append("exact_claim=" + json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    lines.append("Only exact SUPPORTED claim IDs may use high confidence; SINGLE_SOURCE is capped, CONFLICTED/STALE/UNAVAILABLE are withheld. Legacy inventory never supplies missing claim bindings.")
     lines.extend(
         [
             f"ticker={ticker}",
@@ -351,6 +717,8 @@ def enrich_messages(messages: list[dict[str, Any]]):
             enriched.insert(0, {"role": "system", "content": directive})
         context = dict(context) if isinstance(context, dict) else {}
         context["serenity_public_logic_fidelity"] = "2.1.3-source-independence-v3"
+        context["methodology_directive_sha256"] = hashlib.sha256(PUBLIC_LOGIC_DIRECTIVE.encode("utf-8")).hexdigest()
+        context["aschenbrenner_role"] = "CONTEXT_ONLY"
         context["legacy_quantitative_overlay_label"] = "System operationalization score"
         context["private_process_reproduction_claimed"] = False
         context["official_serenity_formula_claimed"] = False
@@ -360,12 +728,33 @@ def enrich_messages(messages: list[dict[str, Any]]):
     return enriched, context
 
 
+def methodology_execution_evidence(mode: object, context: Mapping[str, Any]) -> dict[str, Any]:
+    """Report actual routing, not skill-file presence as research execution.
+
+    Compact traffic deliberately bypasses legacy enrichment. Neither path loads
+    the complete Pi skill/references or proves model adherence/research quality.
+    Do not echo a prompt, source payload, user text or model reasoning here.
+    """
+    injected = mode is None and "methodology_directive_sha256" in context
+    lane = ("TRANSPORT_SMOKE" if mode == "transport_smoke_v1" else
+            "COMPACT_POLICY_ONLY" if mode is not None else
+            "LEGACY_SYSTEM_DIRECTIVE" if injected else "NO_RESEARCH_ENRICHMENT")
+    return {
+        "lane": lane,
+        "full_skill_executed": False,
+        "reference_files_loaded": [],
+        "model_adherence_verified": False,
+        "directive_sha256": context["methodology_directive_sha256"] if injected else None,
+        "aschenbrenner_role": "CONTEXT_ONLY" if injected else "NOT_EVALUATED",
+    }
+
+
 def _available_model_catalog() -> list[dict[str, Any]]:
     # Router /models carries aliases; OpenAI /v1/models may omit them. Never
     # turn an invalid catalog into a permissive direct-ID fallback.
-    for suffix in ("/models", "/v1/models"):
+    for suffix in _endpoint_suffixes(local_llm_base_url())[2]:
         try:
-            response = requests.get(base.llama_base_url() + suffix, timeout=(2, 8), allow_redirects=False)
+            response = _loopback_http("GET", local_llm_base_url() + suffix, timeout=(2, 8))
             if response.status_code == 404:
                 continue
             response.raise_for_status()
@@ -437,7 +826,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if self.path.split("?", 1)[0] != "/health":
             super().do_GET()
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID', 'llama_reachable': False})
+            return
+        selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         try:
             response = requests.get(
                 base.llama_base_url() + "/health",
@@ -448,12 +843,12 @@ class V213GatewayHandler(base.GatewayHandler):
             upstream_health = False
         self._json(
             200,
-            _build_health_payload(
+            {**_build_health_payload(
                 selected,
                 _available_model_catalog(),
                 upstream_health,
                 _source_audit_health(),
-            ),
+            ), **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {})},
         )
 
 
@@ -481,7 +876,13 @@ class V213GatewayHandler(base.GatewayHandler):
         if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
             self._json(400, {"error": "MESSAGES_REQUIRED"})
             return
-        selected = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+        try:
+            raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
+            runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
+        except ValueError:
+            self._json(503, {'error': 'MODEL_PROFILE_INVALID'})
+            return
+        selected = runtime_profile['model'] if runtime_profile else selected_model_id()
         requested = str(body.get("model") or "").strip()
         if not selected:
             self._json(503, {"error": "SELECTED_MODEL_NOT_CONFIGURED"})
@@ -498,7 +899,7 @@ class V213GatewayHandler(base.GatewayHandler):
             return
         try:
             try:
-                upstream = compact_upstream(body, selected)
+                upstream = compact_upstream(body, selected, runtime_profile)
             except (ValueError, TypeError, KeyError):
                 self._json(400, {"error": "COMPACT_REQUEST_INVALID"})
                 return
@@ -522,16 +923,58 @@ class V213GatewayHandler(base.GatewayHandler):
             if canonical is None:
                 self._json(503, {"error": "MODEL_CATALOG_IDENTITY_UNAVAILABLE"})
                 return
-            response = requests.post(
-                base.llama_url(), json=upstream,
-                headers={"content-type": "application/json"}, timeout=(2, 18) if is_compact else (5, 180),
+            # Pre-generation gates: decision approval, served-context
+            # capability, and structured-JSON readiness (both lanes) must
+            # all pass BEFORE any reasoner product completion.
+            gate = _reasoner_decision_gate(context, canonical)
+            if not gate["allowed"]:
+                self._json(503, {"error": gate["error"], "authority": gate["authority"],
+                                 "sufficiency": gate.get("sufficiency", "UNKNOWN")})
+                return
+            context_evidence = capability_context_evidence(canonical)
+            if context_evidence is None or context_evidence < _load_local_ai_config()["capability_requirements"]["min_context"]:
+                self._json(503, {"error": "REASONER_CAPABILITY_CONTEXT_UNKNOWN",
+                                 "observed_context": context_evidence})
+                return
+            if _load_local_ai_config()["capability_requirements"].get("structured_json"):
+                if not structured_json_probe(canonical):
+                    self._json(503, {"error": "REASONER_CAPABILITY_STRUCTURED_JSON_UNSUPPORTED"})
+                    return
+            # Adaptive thinking: the profile effort is the ceiling; time budget,
+            # measured decode rate and the System One screen pick this call's effort.
+            plan = _reasoning_plan(body, upstream, runtime_profile) if is_compact else None
+            completion_url = local_llm_base_url() + _endpoint_suffixes(local_llm_base_url())[1]
+            started = time.monotonic()
+            response = _loopback_http(
+                "POST", completion_url, json=adaptive.apply_plan(upstream, plan) if plan else upstream,
+                headers={"content-type": "application/json"},
+                timeout=(2, runtime_profile['timeout_ms'] / 1000) if runtime_profile else ((2, 18) if is_compact else (5, 180)),
             )
             if not response.ok:
                 self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
                 return
             result = response.json()
+            elapsed = time.monotonic() - started
+            DECODE_RATE.observe(adaptive.estimate_tokens(result), elapsed)
+            if (plan and plan["enable_thinking"] and isinstance(result, dict) and result.get("model") == canonical
+                    and not complete_compact_response(result, selected, catalog)):
+                # Thinking overran its budget: one answer-only retry, only if it still fits the timeout.
+                remaining = runtime_profile['timeout_ms'] / 1000 - elapsed
+                answer_tokens = int(upstream["max_tokens"])
+                if remaining > answer_tokens / DECODE_RATE.value + adaptive.FIXED_OVERHEAD_SECONDS:
+                    plan = {**plan, "effective": "none", "enable_thinking": False, "max_tokens": answer_tokens,
+                            "reason": "THINKING_OVERRAN_RETRIED_WITHOUT"}
+                    response = _loopback_http("POST", completion_url, json=adaptive.apply_plan(upstream, plan),
+                                              headers={"content-type": "application/json"}, timeout=(2, remaining))
+                    if not response.ok:
+                        self._json(502, {"error": "LLAMA_UPSTREAM_FAILED", "status": response.status_code})
+                        return
+                    result = response.json()
+            if isinstance(result, dict) and plan:
+                result["ii_reasoning"] = plan
             if not isinstance(result, dict) or result.get("model") != canonical or (is_compact and not complete_compact_response(result, selected, catalog)):
-                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH"})
+                self._json(502, {"error": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH",
+                                 **({'failure_kind': 'MODEL_MISMATCH' if not isinstance(result, dict) or result.get('model') != canonical else 'INCOMPLETE'} if runtime_profile else {})})
                 return
             if isinstance(result, dict):
                 result["ii_exact_model_pin"] = {
@@ -539,13 +982,23 @@ class V213GatewayHandler(base.GatewayHandler):
                     "canonical_model": canonical,
                     "identity_proof": "unique_router_catalog",
                     "request_model_substitution_allowed": False,
+                    **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {}),
                 }
+                result["ii_methodology_execution"] = methodology_execution_evidence(body.get("ii_context_mode"), context)
                 result["ii_source_ensemble"] = {
                     "successful_source_families": context.get("successful_source_families", []) if isinstance(context, dict) else [],
                     "source_diversity_status": context.get("source_diversity_status", "UNKNOWN") if isinstance(context, dict) else "UNKNOWN",
                     "model_confidence_cap": context.get("model_confidence_cap", "LIMITED") if isinstance(context, dict) else "LIMITED",
                 }
+                result["ii_decision"] = _format_decision_annotation(gate)
             self._json(200, result)
+        except LoopbackRedirectRefused:
+            self._json(502, {"error": "LOOPBACK_REDIRECT_REFUSED"})
+        except requests.Timeout as exc:
+            if runtime_profile:
+                self._json(504, {'error': 'MODEL_PROFILE_TIMEOUT'})
+            else:
+                self._json(502, {'error': 'LOCAL_GATEWAY_FAILED', 'detail': type(exc).__name__})
         except Exception as exc:
             self._json(502, {"error": "LOCAL_GATEWAY_FAILED", "detail": type(exc).__name__})
         finally:
@@ -611,6 +1064,48 @@ def _self_test() -> None:
             }
         ],
     }
+    import datetime as _dt
+    from source_observation import utc_now as _utc_now, parse_timestamp as _pt  # noqa: E402
+    _now = _utc_now()
+    _vts = _now - _dt.timedelta(minutes=1)
+    _vus = _now + _dt.timedelta(minutes=90)
+    _claim = {
+        "claim_id": "CT-TEST-1",
+        "status": "SUPPORTED",
+        "high_confidence_eligible": True,
+        "conflict_set": [],
+        "evidence_ids": ["OBS-1", "OBS-2", "OBS-3", "OBS-4"],
+    }
+    _classes = (
+        "primary_company_regulatory",
+        "market_exchange",
+        "macro_industry",
+        "independent_journalism_research",
+    )
+    _evidence = []
+    for _k, _cls in enumerate(_classes, start=1):
+        _evidence.append({
+            "observation_id": f"OBS-{_k}",
+            "claim_ids": ["CT-TEST-1"],
+            "source_class": _cls,
+            "admitted": True,
+            "freshness": "CURRENT",
+            "value": "1.0",
+            "claim_type": "industry_event",
+            "independence_group": f"grp-{_k}",
+            "origin_group": f"org-{_k}",
+            "content_sha256": f"{'%064x' % _k}",
+            "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+        })
+    sample["records"][0]["claim_evidence_audit"] = {
+        "schema_version": 2,
+        "full_research_eligible": True,
+        "all_material_claims_supported": True,
+        "claims": [_claim],
+        "evidence": _evidence,
+        "validated_at": _vts.isoformat().replace("+00:00", "Z"),
+        "valid_until": _vus.isoformat().replace("+00:00", "Z"),
+    }
     context, eligible = _format_source_audit_context(sample, "TEST", "FRESH", 10)
     assert eligible is True
     assert "claim_relevant_primary_sources=1" in context
@@ -633,11 +1128,53 @@ def _self_test() -> None:
     print("V213_LOCAL_LLM_GATEWAY_HEALTH_SELF_TEST = PASS; exact_model_pin=true; bounded_generation=true; health_slot_independent=true")
 
 
+def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
+    """Fail-closed startup gate (TASK0 2J-B1): the EXACT pinned model id must be
+    served by the tabbyAPI / list endpoint before the gateway accepts traffic.
+    A name that is never served (e.g. a stale LOCAL_LLM_MODEL) must refuse to
+    start instead of silencing every request downstream. Zero secrets in any
+    output; model IDs only."""
+    import time
+    model = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
+    url = base.llama_base_url() + "/v1/models"
+    started = time.monotonic()
+    last_seen: list[str] = []
+    while True:
+        try:
+            response = requests.get(url, timeout=(2, 6), allow_redirects=False)
+            rows = response.json().get("data", [])
+            rows = rows if isinstance(rows, list) else []
+            last_seen = [
+                item if isinstance(item, str) else str(item.get("id") or "")
+                for item in rows if isinstance(item, (str, dict))
+            ]
+            # Accept the exact pinned id or a unique catalog alias, matching the
+            # alias-aware identity resolution used by the health and response
+            # paths. resolve_model_id stays fail-closed: a collision, a
+            # malformed row, or a name that is never served all resolve to None.
+            if resolve_model_id(model, rows):
+                print("V213_LOCAL_LLM_GATEWAY_MODEL_PIN = PASS; model served by list", flush=True)
+                return
+        except Exception as exc:  # noqa: BLE001 - bounded retry window
+            last_seen = [f"(list unreachable: {type(exc).__name__})"]
+        if time.monotonic() - started >= deadline_seconds:
+            shown = ", ".join(last_seen[:8]) or "(none)"
+            print(
+                "V213_LOCAL_LLM_GATEWAY_MODEL_PIN = FAIL; MODEL_NOT_SERVED; "
+                f"requested_model={model}; served_ids=[{shown}] "
+                "(exact model pin violated; refusing to start)",
+                flush=True,
+            )
+            raise SystemExit(3)
+        time.sleep(3)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=base.HOST)
     parser.add_argument("--port", type=int, default=base.PORT)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--skip-model-pin", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         _self_test()
@@ -648,6 +1185,15 @@ def main() -> int:
         raise SystemExit("II_LOCAL_LLM_SHARED_SECRET must be configured")
     if not os.getenv("II_LOCAL_LLM_MODEL", "").strip():
         raise SystemExit("II_LOCAL_LLM_MODEL must be configured")
+    # Strict local-AI policy (LOCAL_AI_ONLY / no paid / no cloud fallback).
+    _load_local_ai_config()
+    if not args.skip_model_pin:
+        pin_deadline = 30.0
+        try:
+            pin_deadline = max(6.0, float(os.getenv("II_MODEL_PIN_TIMEOUT_S", "30") or "30"))
+        except ValueError:
+            pin_deadline = 30.0
+        verify_served_model(args.host, pin_deadline)
     base.enrich_messages = enrich_messages
     server = ThreadingHTTPServer((args.host, args.port), V213GatewayHandler)
     print(

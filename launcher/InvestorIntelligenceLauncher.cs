@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -16,17 +17,111 @@ namespace InvestorIntelligence
     static class Program
     {
         const string Version = "2.1.3";
-        const string Revision = "ModelSelect-R43";
-        const string PreferredModel = "qwen38-q6";
+        const string Revision = "ModelProfile-V1-Development";
+        static string PreferredModel {
+            get { var profile = LoadModelProfile(); return profile == null ? "" : (string)profile["model"]; }
+        }
 
-        static readonly string[] KnownLlamaBases = {
-            "http://127.0.0.1:8080",
-            "http://127.0.0.1:7905",
-            "http://127.0.0.1:14410",
-            "http://127.0.0.1:8813",
-            "http://127.0.0.1:8081",
-            "http://127.0.0.1:8000"
-        };
+        static string ProfileTestConfigRoot = null;
+
+        static string ModelProfilePath {
+            get { return Path.Combine(ConfigRoot, "v213-model-profile-v1.json"); }
+        }
+
+        static Dictionary<string, object> ParseModelProfile(string raw) {
+            if (raw == null || raw.Length > 4096) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            var profile = new JavaScriptSerializer().DeserializeObject(raw) as Dictionary<string, object>;
+            string[] fields = { "schema_version", "model", "enable_thinking", "reasoning_effort", "max_output_tokens", "smoke_output_tokens", "timeout_ms" };
+            if (profile == null || profile.Count != fields.Length || fields.Any(k => !profile.ContainsKey(k)) ||
+                System.Text.RegularExpressions.Regex.Matches(raw, "\"(?:[^\"\\\\]|\\\\.)*\"\\s*:").Count != fields.Length)
+                throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            if (!(profile["schema_version"] is int) || (int)profile["schema_version"] != 1 ||
+                !(profile["model"] is string) || !System.Text.RegularExpressions.Regex.IsMatch((string)profile["model"], @"\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z") ||
+                !(profile["enable_thinking"] is bool) || !(profile["reasoning_effort"] is string))
+                throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            string effort = (string)profile["reasoning_effort"];
+            if (!(new [] { "none", "minimal", "low", "medium", "high", "xhigh", "max" }).Contains(effort) ||
+                (bool)profile["enable_thinking"] == (effort == "none")) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            foreach (string key in new [] { "max_output_tokens", "smoke_output_tokens", "timeout_ms" }) {
+                int low = key == "timeout_ms" ? 1000 : 1;
+                int high = key == "timeout_ms" ? 20000 : 8192;
+                if (!(profile[key] is int) || (int)profile[key] < low || (int)profile[key] > high) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            }
+            if ((int)profile["smoke_output_tokens"] > (int)profile["max_output_tokens"]) throw new InvalidOperationException("MODEL_PROFILE_INVALID");
+            return profile;
+        }
+
+        static string ModelProfileHash(Dictionary<string, object> profile) {
+            string[] keys = { "schema_version", "model", "enable_thinking", "reasoning_effort", "max_output_tokens", "smoke_output_tokens", "timeout_ms" };
+            string json = new JavaScriptSerializer().Serialize(keys.Select(k => profile[k]).ToArray());
+            using (var hash = System.Security.Cryptography.SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(json))).Replace("-", "").ToLowerInvariant();
+        }
+
+        static int ModelProfileSelfTest(bool exerciseUi = false) {
+            var serializer = new JavaScriptSerializer();
+            var profile = new Dictionary<string, object> {
+                { "schema_version", 1 }, { "model", "synthetic-model-a" }, { "enable_thinking", true },
+                { "reasoning_effort", "xhigh" }, { "max_output_tokens", 1024 }, { "smoke_output_tokens", 128 }, { "timeout_ms", 18000 }
+            };
+            var boundary = new Dictionary<string, object>(profile); boundary["model"] = new string('x', 200);
+            ParseModelProfile(serializer.Serialize(boundary)); boundary["model"] = new string('x', 201);
+            try { ParseModelProfile(serializer.Serialize(boundary)); return 65; } catch (InvalidOperationException) { }
+            string raw = serializer.Serialize(profile);
+            if (ModelProfileHash(ParseModelProfile(raw)) != "2bea7c8ce0f160ea609ddf82c7f34631a6841f9a939debdb0a663444b5307d19") return 58;
+            foreach (var change in new Dictionary<string, object> { { "schema_version", true }, { "model", "bad\nmodel" }, { "enable_thinking", "true" }, { "reasoning_effort", "none" }, { "max_output_tokens", 8193 }, { "smoke_output_tokens", 1025 }, { "timeout_ms", 20001 }, { "extra", "unreviewed" } }) {
+                var invalid = new Dictionary<string, object>(profile); invalid[change.Key] = change.Value;
+                try { ParseModelProfile(serializer.Serialize(invalid)); return 59; } catch (InvalidOperationException) { }
+            }
+            try { ParseModelProfile(raw.Substring(0, raw.Length - 1) + ",\"model\":\"hidden\"}"); return 60; } catch (InvalidOperationException) { }
+            profile["model"] = "other/model-v2"; profile["enable_thinking"] = false; profile["reasoning_effort"] = "none";
+            if ((string)ParseModelProfile(serializer.Serialize(profile))["model"] != "other/model-v2") return 61;
+            string previous = Environment.GetEnvironmentVariable("V213_MODEL_PROFILE_JSON");
+            string isolated = Path.Combine(Path.GetTempPath(), "ii-profile-selftest-" + Guid.NewGuid().ToString("N"));
+            try {
+                ProfileTestConfigRoot = isolated;
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", serializer.Serialize(profile));
+                if (exerciseUi) {
+                    var context = System.Threading.SynchronizationContext.Current;
+                    try {
+                        using (var form = new MainForm(false)) {
+                            int result = form.ThinkingUiSelfTest(isolated);
+                            if (result != 0) return result;
+                        }
+                    } finally { System.Threading.SynchronizationContext.SetSynchronizationContext(context); }
+                }
+                string before = ModelProfileHash(profile);
+                foreach (string model in new [] { "third/model-v3", "fourth/model-v4" }) {
+                    SaveSelection(model, "http://127.0.0.1:8080", new List<string> { model }, "synthetic-self-test");
+                    var persisted = ParseModelProfile(File.ReadAllText(ModelProfilePath, Encoding.UTF8));
+                    if (LoadSelection().Model != model || (string)persisted["model"] != model || (bool)persisted["enable_thinking"] || (string)persisted["reasoning_effort"] != "none") return 62;
+                    var selection = serializer.DeserializeObject(File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
+                    if ((string)selection["model_profile_sha256"] != ModelProfileHash(persisted) || (bool)selection["model_profile_qualified"] || before == ModelProfileHash(persisted)) return 63;
+                }
+                string probe = Path.Combine(isolated, "profile-child.ps1");
+                File.WriteAllText(probe, "$p=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json; if($p.model -cne 'fourth/model-v4' -or $p.enable_thinking -ne $false -or $p.reasoning_effort -cne 'none'){exit 1}; Write-Output 'V213_MODEL_PROFILE_CHILD = PASS'; exit 0", new UTF8Encoding(false));
+                if (RunPowerShellCli(probe, "") != 0) return 64;
+            } finally {
+                ProfileTestConfigRoot = null;
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", previous);
+                if (Directory.Exists(isolated)) Directory.Delete(isolated, true);
+            }
+            return 0;
+        }
+
+        static Dictionary<string, object> LoadModelProfile() {
+            string raw = Environment.GetEnvironmentVariable("V213_MODEL_PROFILE_JSON");
+            if (raw == null) {
+                string path = File.Exists(ModelProfilePath) ? ModelProfilePath : Path.Combine(Root, "config", "v213-model-profile-v1.json");
+                if (!File.Exists(path)) return null; // legacy installations without a profile
+                raw = File.ReadAllText(path, Encoding.UTF8);
+            }
+            try { return ParseModelProfile(raw); }
+            catch { throw new InvalidOperationException("MODEL_PROFILE_INVALID"); }
+        }
+
+        const string DefaultLlamaBase = "http://127.0.0.1:5000"; // TabbyAPI; llama.cpp :8080 retired 2026-09-16
+        const int MaxModelCatalogBytes = 1024 * 1024;
 
         static string LastPowerShellSummary = "";
         static volatile string LastPowerShellLiveLine = "";
@@ -55,6 +150,9 @@ namespace InvestorIntelligence
             public string BaseUrl = "";
             public readonly List<string> Models = new List<string>();
             public string Error = "";
+            public bool AutoDetected;
+            public string Chosen = "";  // the model picked automatically (exact, same family or the only one)
+            public string Match = "";
         }
 
         sealed class NamedTunnelSettings
@@ -73,6 +171,7 @@ namespace InvestorIntelligence
         {
             get
             {
+                if (ProfileTestConfigRoot != null) return ProfileTestConfigRoot;
                 return Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvestorIntelligence", "UserData", "config");
@@ -159,7 +258,7 @@ namespace InvestorIntelligence
         static bool SafeModelId(string value)
         {
             return !String.IsNullOrWhiteSpace(value) &&
-                Regex.IsMatch(value, @"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$");
+                Regex.IsMatch(value, @"\A[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}\z");
         }
 
         static bool SafeLoopbackBase(string value)
@@ -170,7 +269,8 @@ namespace InvestorIntelligence
             if (!(uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
                   uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))) return false;
             return uri.Port >= 1 && uri.Port <= 65535 &&
-                (uri.AbsolutePath == "/" || uri.AbsolutePath == "");
+                (uri.AbsolutePath == "/" || uri.AbsolutePath == "") &&
+                String.IsNullOrEmpty(uri.Query) && String.IsNullOrEmpty(uri.Fragment);
         }
 
         static List<string> ExtractModelIds(string json)
@@ -186,6 +286,7 @@ namespace InvestorIntelligence
             // UI choices only. The shared Python resolver revalidates the full
             // catalog and actual completion before the bridge can be used.
             var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (object raw in rows)
             {
                 var item = raw as Dictionary<string, object>;
@@ -210,7 +311,8 @@ namespace InvestorIntelligence
                     if (owners.TryGetValue(name, out owner) && !owner.Equals(id, StringComparison.Ordinal))
                         throw new InvalidOperationException("Ambiguous model catalog alias.");
                     owners[name] = id;
-                    if (!result.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase))) result.Add(name);
+                    if (seen.Add(name)) result.Add(name);
+                    if (result.Count > 1024) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
                 }
             }
             return result;
@@ -221,60 +323,144 @@ namespace InvestorIntelligence
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
             request.Proxy = null;
+            request.AllowAutoRedirect = false;
+            request.UseDefaultCredentials = false;
             request.KeepAlive = false;
             request.Timeout = 4500;
             request.ReadWriteTimeout = 4500;
             request.Headers[HttpRequestHeader.CacheControl] = "no-cache";
 
+            var clock = Stopwatch.StartNew();
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8, true))
+            using (var stream = response.GetResponseStream())
+            using (var bytes = new MemoryStream())
             {
-                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
-                    throw new InvalidOperationException("HTTP " + (int)response.StatusCode);
-                return reader.ReadToEnd();
+                if ((int)response.StatusCode != 200) throw new InvalidOperationException("MODEL_CATALOG_HTTP_FAILED");
+                if (response.ContentLength > MaxModelCatalogBytes) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
+                byte[] buffer = new byte[4096];
+                while (true) {
+                    int remaining = 4500 - (int)clock.ElapsedMilliseconds;
+                    if (remaining <= 0) throw new InvalidOperationException("MODEL_CATALOG_TIMEOUT");
+                    if (stream.CanTimeout) stream.ReadTimeout = remaining;
+                    int count = stream.Read(buffer, 0, buffer.Length);
+                    if (clock.ElapsedMilliseconds > 4500) throw new InvalidOperationException("MODEL_CATALOG_TIMEOUT");
+                    if (count == 0) break;
+                    if (bytes.Length + count > MaxModelCatalogBytes) throw new InvalidOperationException("MODEL_CATALOG_TOO_LARGE");
+                    bytes.Write(buffer, 0, count);
+                }
+                return new UTF8Encoding(false, true).GetString(bytes.ToArray());
             }
         }
 
-        static ModelCatalog DiscoverModels(ModelSelection previous)
+        // Operator request 2026-09-25: follow the local model server when its address or model changes.
+        // Loopback only, read-only /models or /v1/models, well-known OpenAI-compatible ports:
+        // TabbyAPI, llama.cpp, Ollama, LM Studio and common alternates. 8000 (System One decider) is never probed.
+        static readonly int[] KnownModelPorts = { 5000, 8080, 11434, 1234, 5001, 8081 };
+
+        static List<string> ModelBaseCandidates(string saved, bool includeListeners = false)
+        {
+            var bases = new List<string>();
+            if (!String.IsNullOrEmpty(saved) && SafeLoopbackBase(saved)) bases.Add(saved.TrimEnd('/'));
+            bases.Add(DefaultLlamaBase);
+            bases.AddRange(KnownModelPorts.Select(port => "http://127.0.0.1:" + port));
+            // Operator request 2026-09-26: a model server on any other port is found too (every loopback listener).
+            if (includeListeners) bases.AddRange(LoopbackListenerPorts().Select(port => "http://127.0.0.1:" + port));
+            return bases.Where(b => new Uri(b).Port != 8000)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        static List<int> LoopbackListenerPorts()
+        {
+            try {
+                return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
+                    .Where(e => IPAddress.IsLoopback(e.Address) || e.Address.Equals(IPAddress.Any) || e.Address.Equals(IPAddress.IPv6Any))
+                    .Select(e => e.Port).Where(p => p >= 1024 && p != 8000).Distinct().OrderBy(p => p).Take(48).ToList();
+            } catch { return new List<int>(); }
+        }
+
+        // Qwen3.8-27B-EXL3-5.5bpw-v2 -> qwen3.8-27b: the id up to its parameter-count token (same rule as
+        // scripts/local_model_endpoint.py); an id without one is its own family.
+        static string ModelFamily(string id)
+        {
+            string[] parts = (id ?? "").Trim().Split('-');
+            for (int i = 0; i < parts.Length; i++)
+                if (Regex.IsMatch(parts[i], @"\A\d+(\.\d+)?[BbMm]\z")) return String.Join("-", parts.Take(i + 1)).ToLowerInvariant();
+            return (id ?? "").Trim().ToLowerInvariant();
+        }
+
+        // Exact wanted model, else one served model of the same family, else the only model; null when ambiguous.
+        static string[] ChooseModel(List<string> ids, IEnumerable<string> wanted)
+        {
+            var names = wanted.Where(w => !String.IsNullOrWhiteSpace(w)).ToList();
+            foreach (string w in names) {
+                string hit = ids.FirstOrDefault(id => id.Equals(w, StringComparison.OrdinalIgnoreCase));
+                if (hit != null) return new[] { hit, "exact" };
+            }
+            foreach (string w in names) {
+                var hits = ids.Where(id => ModelFamily(id) == ModelFamily(w)).ToList();
+                if (hits.Count == 1) return new[] { hits[0], "family" };
+            }
+            return ids.Count == 1 ? new[] { ids[0], "only" } : null;
+        }
+
+        static List<string> ReadCatalog(string baseUrl)
+        {
+            foreach (string suffix in new[] { "/models", "/v1/models" })
+            {
+                try
+                {
+                    List<string> ids = ExtractModelIds(HttpGet(baseUrl + suffix));
+                    if (ids.Count > 0) return ids;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        static ModelCatalog DiscoverModels(ModelSelection previous, bool discover = false)
         {
             var catalog = new ModelCatalog();
-            var bases = new List<string>();
-
-            if (previous != null && SafeLoopbackBase(previous.LlamaBaseUrl))
-                bases.Add(previous.LlamaBaseUrl.TrimEnd('/'));
-            foreach (string item in KnownLlamaBases)
-            {
-                if (!bases.Any(existing => existing.Equals(item, StringComparison.OrdinalIgnoreCase)))
-                    bases.Add(item);
+            if (previous != null && !String.IsNullOrEmpty(previous.LlamaBaseUrl) && !SafeLoopbackBase(previous.LlamaBaseUrl)) {
+                catalog.Error = "MODEL_ROUTER_URL_INVALID";
+                return catalog;
             }
-
-            string last = "";
-            foreach (string baseUrl in bases)
+            string preferred = PreferredModel;
+            string saved = previous != null ? previous.LlamaBaseUrl : "";
+            var wanted = new List<string> { previous != null ? previous.Model : "", preferred };
+            // Saved address first; then (UI scan only) known local ports and every other loopback listener, read in
+            // parallel. The best model match wins (exact, then same family, then the only model), the earlier address
+            // on a tie; without any match the first reachable catalog is offered. A changed model leaves the profile
+            // unqualified until it is saved and requalified. Explicit command-line checks keep exactly their address.
+            var candidates = discover ? ModelBaseCandidates(saved, true)
+                : new List<string> { SafeLoopbackBase(saved) ? saved.TrimEnd('/') : DefaultLlamaBase };
+            var catalogs = new List<string>[candidates.Count];
+            System.Threading.Tasks.Parallel.For(0, candidates.Count, new ParallelOptions { MaxDegreeOfParallelism = 16 },
+                i => { catalogs[i] = ReadCatalog(candidates[i]); });
+            string firstBase = null, bestBase = null;
+            List<string> firstIds = null, bestIds = null;
+            string[] best = null;
+            var rank = new Dictionary<string, int> { { "exact", 0 }, { "family", 1 }, { "only", 2 } };
+            for (int i = 0; i < candidates.Count; i++)
             {
-                foreach (string suffix in new[] { "/models", "/v1/models" })
-                {
-                    try
-                    {
-                        List<string> ids = ExtractModelIds(HttpGet(baseUrl + suffix));
-                        if (ids.Count == 0) continue;
-                        catalog.BaseUrl = baseUrl;
-                        catalog.Models.AddRange(ids.OrderBy(
-                            id => id.Equals(PreferredModel, StringComparison.OrdinalIgnoreCase)
-                                ? "0" + id
-                                : "1" + id,
-                            StringComparer.OrdinalIgnoreCase));
-                        return catalog;
-                    }
-                    catch (Exception ex)
-                    {
-                        last = baseUrl + suffix + ": " + ex.Message;
-                    }
-                }
+                List<string> ids = catalogs[i];
+                if (ids == null) continue;
+                if (firstBase == null) { firstBase = candidates[i]; firstIds = ids; }
+                string[] choice = ChooseModel(ids, wanted);
+                if (choice != null && (best == null || rank[choice[1]] < rank[best[1]])) { best = choice; bestBase = candidates[i]; bestIds = ids; }
             }
-
-            catalog.Error = String.IsNullOrWhiteSpace(last)
-                ? "No llama.cpp model catalog was reachable."
-                : last;
+            if (firstBase == null)
+            {
+                catalog.Error = "MODEL_CATALOG_UNAVAILABLE: no local model server answered on the saved address, known ports or other loopback listeners.";
+                return catalog;
+            }
+            if (bestBase != null) { firstBase = bestBase; firstIds = bestIds; catalog.Chosen = best[0]; catalog.Match = best[1]; }
+            catalog.BaseUrl = firstBase;
+            catalog.AutoDetected = !firstBase.Equals((saved ?? "").TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+            string chosen = catalog.Chosen;
+            catalog.Models.AddRange(firstIds.OrderBy(
+                id => id.Equals(chosen, StringComparison.OrdinalIgnoreCase) ? "0" + id
+                    : id.Equals(preferred, StringComparison.OrdinalIgnoreCase) ? "1" + id : "2" + id,
+                StringComparer.OrdinalIgnoreCase));
             return catalog;
         }
 
@@ -289,7 +475,7 @@ namespace InvestorIntelligence
                 if (root == null) return new ModelSelection();
 
                 return new ModelSelection {
-                    Model = root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : "",
+                    Model = !String.IsNullOrEmpty(PreferredModel) ? PreferredModel : (root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : ""),
                     LlamaBaseUrl = root.ContainsKey("llama_base_url")
                         ? Convert.ToString(root["llama_base_url"]) ?? ""
                         : ""
@@ -348,7 +534,8 @@ namespace InvestorIntelligence
             string model,
             string baseUrl,
             IEnumerable<string> availableModels,
-            string source)
+            string source,
+            string thinkingEffort = null)
         {
             if (!SafeModelId(model))
                 throw new InvalidOperationException("Invalid model ID / 模型 ID 格式不正確。");
@@ -368,6 +555,24 @@ namespace InvestorIntelligence
                 { "preferred_model", PreferredModel }
             };
 
+            var profile = LoadModelProfile();
+            if (thinkingEffort != null && profile == null) throw new InvalidOperationException("MODEL_PROFILE_REQUIRED");
+            if (profile != null) {
+                profile["model"] = model;
+                if (thinkingEffort != null) {
+                    profile["enable_thinking"] = thinkingEffort != "none";
+                    profile["reasoning_effort"] = thinkingEffort;
+                }
+                string profileJson = serializer.Serialize(profile);
+                ParseModelProfile(profileJson);
+                value["model_profile_sha256"] = ModelProfileHash(profile);
+                value["model_profile_qualified"] = false;
+                string profileTemp = ModelProfilePath + ".tmp";
+                File.WriteAllText(profileTemp, profileJson, new UTF8Encoding(false));
+                if (File.Exists(ModelProfilePath)) File.Replace(profileTemp, ModelProfilePath, null);
+                else File.Move(profileTemp, ModelProfilePath);
+                Environment.SetEnvironmentVariable("V213_MODEL_PROFILE_JSON", profileJson);
+            }
             string temporary = SelectionPath + ".tmp";
             File.WriteAllText(temporary, serializer.Serialize(value), new UTF8Encoding(false));
             if (File.Exists(SelectionPath))
@@ -396,7 +601,7 @@ namespace InvestorIntelligence
                 return 2;
             }
 
-            string logRoot = Path.Combine(
+            string logRoot = ProfileTestConfigRoot != null ? Path.Combine(ProfileTestConfigRoot, "logs") : Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "InvestorIntelligence", "logs", "launcher");
             Directory.CreateDirectory(logRoot);
@@ -459,6 +664,8 @@ namespace InvestorIntelligence
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                var profile = LoadModelProfile();
+                if (profile != null) startInfo.EnvironmentVariables["V213_MODEL_PROFILE_JSON"] = new JavaScriptSerializer().Serialize(profile);
                 var process = new Process { StartInfo = startInfo };
                 if (!process.Start())
                 {
@@ -592,6 +799,14 @@ namespace InvestorIntelligence
             return exitCode;
         }
 
+        static Task<int> CheckLocalModelAsync(ModelSelection selection, bool showErrors)
+        {
+            return RunPowerShellAsync("scripts/run_v213_local_llm_bridge_core.ps1",
+                "-RoutingCheckOnly -ProjectRoot " + PowerShellLiteral(Root) +
+                " -LlamaBaseUrl " + PowerShellLiteral(selection.LlamaBaseUrl) +
+                " -Model " + PowerShellLiteral(selection.Model), showErrors);
+        }
+
         static int RunPowerShellCli(string script, string arguments)
         {
             return RunPowerShellAsync(script, arguments, false)
@@ -629,15 +844,17 @@ namespace InvestorIntelligence
 
         static int ModelSelectionSelfTest()
         {
+            const string PreferredModel = "synthetic-model-a";
+            if (ModelProfileSelfTest() != 0) return 58;
             string json =
                 "{\"data\":[{\"id\":\"gemma4\"},{\"id\":\"" +
                 PreferredModel + "\"}]}";
             List<string> models = ExtractModelIds(json);
             if (models.Count != 2) return 51;
-            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]}]}");
+            var aliases = ExtractModelIds("{\"data\":[{\"id\":\"canonical-test\",\"aliases\":[\"" + PreferredModel + "\"]}]}");
             if (!aliases.Contains(PreferredModel)) return 56;
             try {
-                ExtractModelIds("{\"data\":[{\"id\":\"canonical-q6\",\"aliases\":[\"qwen38-q6\"]},{\"id\":\"wrong\",\"aliases\":[\"qwen38-q6\"]}]}");
+                ExtractModelIds("{\"data\":[{\"id\":\"canonical-test\",\"aliases\":[\"" + PreferredModel + "\"]},{\"id\":\"wrong\",\"aliases\":[\"" + PreferredModel + "\"]}]}");
                 return 57;
             } catch (InvalidOperationException) { }
             if (!models.Any(id => id.Equals(
@@ -645,20 +862,75 @@ namespace InvestorIntelligence
                     StringComparison.Ordinal))) return 52;
             if (!SafeModelId(PreferredModel)) return 53;
             if (!SafeLoopbackBase("http://127.0.0.1:8080")) return 54;
+            foreach (string invalid in new[] { "http://localhost:8080?key=fixture", "http://localhost:8080#fixture", "http://fixture@localhost:8080", "http://localhost:8080/path", "https://example.com" })
+                if (SafeLoopbackBase(invalid) || DiscoverModels(new ModelSelection { LlamaBaseUrl = invalid }).Error != "MODEL_ROUTER_URL_INVALID") return 66;
+            var candidates = ModelBaseCandidates("http://localhost:9999/");
+            if (candidates[0] != "http://localhost:9999" || candidates[1] != DefaultLlamaBase ||
+                candidates.Any(b => new Uri(b).Port == 8000) || candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count() != candidates.Count ||
+                !candidates.Contains("http://127.0.0.1:11434") || ModelBaseCandidates("https://example.com")[0] != DefaultLlamaBase) return 68;
+            if (ModelFamily("Qwen3.8-27B-EXL3-5.5bpw-v2") != "qwen3.8-27b" || ModelFamily("Qwen3.8-27B") != "qwen3.8-27b" ||
+                ModelFamily("gemma4") != "gemma4") return 69;
+            var moved = ChooseModel(new List<string> { "Qwen3.8-27B" }, new[] { "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548", "Qwen3.8-27B-EXL3-5.5bpw-v2" });
+            if (moved == null || moved[0] != "Qwen3.8-27B" || moved[1] != "family") return 73;
+            var exact = ChooseModel(new List<string> { "other", "Qwen3.8-27B-EXL3-5.5bpw-v2" }, new[] { "", "qwen3.8-27b-exl3-5.5bpw-v2" });
+            if (exact == null || exact[1] != "exact" || ChooseModel(new List<string> { "a-7B", "b-8B" }, new[] { "c-9B" }) != null) return 74;
+            if (ModelBaseCandidates("", true).Any(b => new Uri(b).Port == 8000)) return 75;
+            string many = "{\"data\":[" + String.Join(",", Enumerable.Range(0, 1025).Select(i => "{\"id\":\"synthetic-" + i + "\"}")) + "]}";
+            try { ExtractModelIds(many); return 67; } catch (InvalidOperationException) { }
             return 0;
         }
 
         [STAThread]
         static int Main(string[] args)
         {
-            if (args.Contains("--version"))
+            if (args.Length == 1 && args[0] == "--version")
             {
                 Console.WriteLine(
                     "Investor Intelligence " + Version + " " + Revision);
                 return 0;
             }
+            if (args.Contains("--credential-store-self-test"))
+            {
+                if (args.Length != 1) return 1;
+                System.Type storeType = System.Type.GetType("InvestorIntelligence.SecureCredentialManager");
+                if (storeType == null) return 3;
+                System.Reflection.MethodInfo storeMethod = storeType.GetMethod("RunSelfTest", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static, null, System.Type.EmptyTypes, null);
+                if (storeMethod == null) return 3;
+                object storeResult = storeMethod.Invoke(null, null);
+                return storeResult is int ? (int)storeResult : 3;
+            }
+            // Read-only native transport check: no selection, model start or preset mutation.
+            if (args.Length > 0 && args[0] == "--model-catalog-check") {
+                if (args.Length != 2 || !SafeLoopbackBase(args[1])) return 70;
+                try {
+                    var catalog = DiscoverModels(new ModelSelection { LlamaBaseUrl = args[1] });
+                    return catalog.Models.Count > 0 ? 0 : 71;
+                } catch { return 72; }
+            }
+            // Read-only auto-detection report (no selection or profile change): address, model and how it matched.
+            if (args.Length == 1 && args[0] == "--model-discovery-check") {
+                try {
+                    var found = DiscoverModels(LoadSelection(), true);
+                    Console.WriteLine(new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
+                        { "base_url", found.BaseUrl }, { "model", found.Chosen }, { "match", found.Match },
+                        { "auto_detected", found.AutoDetected }, { "models", found.Models.Take(16).ToArray() }, { "error", found.Error } }));
+                    return String.IsNullOrEmpty(found.Chosen) ? 71 : 0;
+                } catch { return 72; }
+            }
+            if (args.Length > 0 && args[0] == "--model-route-check") {
+                if (args.Length != 2 || !SafeLoopbackBase(args[1])) return 70;
+                try {
+                    var profile = LoadModelProfile();
+                    if (profile == null) return 71;
+                    return CheckLocalModelAsync(new ModelSelection {
+                        Model = (string)profile["model"], LlamaBaseUrl = args[1]
+                    }, false).GetAwaiter().GetResult();
+                } catch { return 72; }
+            }
             if (args.Contains("--pipe-hold-self-test"))
                 return PipeHoldSelfTest();
+            if (args.Contains("--model-profile-self-test")) return ModelProfileSelfTest();
+            if (args.Contains("--model-thinking-ui-self-test")) return ModelProfileSelfTest(true);
             if (args.Contains("--model-selection-self-test"))
                 return ModelSelectionSelfTest();
             if (args.Contains("--self-test"))
@@ -677,7 +949,15 @@ namespace InvestorIntelligence
                     @"scripts\v213_free_relay.ps1",
                     @"scripts\v213_free_relay_heartbeat.ps1",
                     "register-v213-free-relay-task.ps1",
-                    "requirements-ci.txt"
+                    "requirements-ci.txt",
+                    @"scripts\run_v213_local_llm_bridge_core.ps1",
+                    @"scripts\run_v213_local_llm_bridge_core_v2.ps1",
+                    @"scripts\v213_windows_security.ps1",
+                    @"scripts\v213_local_llm_gateway.py",
+                    @"scripts\v213_model_profile.py",
+                    @"scripts\v213_compact_qa_gateway.py",
+                    @"config\v213-compact-qa-v1.json",
+                    @"config\v213-model-profile-v1.json"
                 };
                 foreach (string item in required)
                 {
@@ -693,10 +973,11 @@ namespace InvestorIntelligence
             }
             if (args.Contains("--local"))
             {
+                // Data-only: the hourly sealed publisher is the single Production writer.
                 return RunPowerShellCli(
                     "run-v213-local.ps1",
                     "-ProjectRoot " + PowerShellLiteral(Root) +
-                    " -InstallCloudflared");
+                    " -InstallCloudflared -NoSync");
             }
             if (args.Contains("--activate-schedule"))
             {
@@ -773,10 +1054,14 @@ namespace InvestorIntelligence
 
         sealed class MainForm : Form
         {
+            readonly Label headerLabel;
             readonly Label status;
             readonly Label endpointLabel;
             readonly ComboBox modelBox;
+            readonly ComboBox thinkingBox;
+            readonly bool thinkingAvailable;
             readonly Button scanButton;
+            readonly Button checkModelButton;
             readonly Button useModelButton;
             readonly Button refreshButton;
             readonly Button activateButton;
@@ -792,7 +1077,7 @@ namespace InvestorIntelligence
             string discoveredBaseUrl = "";
             bool busy;
 
-            public MainForm()
+            public MainForm(bool discoverOnShow = true)
             {
                 Text = "Investor Intelligence v" + Version + " " + Revision;
                 Width = 720;
@@ -801,18 +1086,26 @@ namespace InvestorIntelligence
                 FormBorderStyle = FormBorderStyle.FixedDialog;
                 MaximizeBox = false;
 
-                Controls.Add(new Label {
+                headerLabel = new Label {
                     Left = 24,
                     Top = 18,
                     Width = 650,
                     Height = 48,
                     Text = "Investor Intelligence v2.1.3 " + Revision +
                         "\n本地模型 + 七欄 LINE / Local Model + Seven-Field LINE",
-                    Font = new System.Drawing.Font(
+                    Font = new Font(
                         "Segoe UI",
                         13F,
-                        System.Drawing.FontStyle.Bold)
-                });
+                        FontStyle.Bold)
+                };
+                Controls.Add(headerLabel);
+                var headerMeasured = TextRenderer.MeasureText(
+                    headerLabel.Text,
+                    headerLabel.Font,
+                    new Size(headerLabel.Width, 32767),
+                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                int headerDelta = Math.Max(0, headerMeasured.Height - headerLabel.Height);
+                headerLabel.Height += headerDelta;
 
                 Controls.Add(new Label {
                     Left = 24,
@@ -835,7 +1128,7 @@ namespace InvestorIntelligence
                     : PreferredModel;
                 discoveredBaseUrl = SafeLoopbackBase(saved.LlamaBaseUrl)
                     ? saved.LlamaBaseUrl.TrimEnd('/')
-                    : "http://127.0.0.1:8080";
+                    : DefaultLlamaBase;
                 Controls.Add(modelBox);
 
                 scanButton = new Button {
@@ -910,7 +1203,7 @@ namespace InvestorIntelligence
                     Top = 445,
                     Width = 652,
                     Height = 105,
-                    Text = "Ready / 就緒\r\nPreferred / 預設首選: " +
+                    Text = "設定待驗證 / Configuration not qualified\r\nPreferred / 預設首選: " +
                         PreferredModel,
                     BorderStyle = BorderStyle.FixedSingle,
                     Padding = new Padding(8)
@@ -936,8 +1229,9 @@ namespace InvestorIntelligence
                     ModelSelection selection;
                     if (!TryCommitSelection(out selection)) return;
                     status.Text =
-                        "模型選擇已儲存 / Model selection saved\r\n" +
-                        selection.Model + " @ " + selection.LlamaBaseUrl;
+                        "模型選擇已儲存，尚未通過回答／think 驗證 / Saved, not qualified\r\n" +
+                        selection.Model + " @ " + selection.LlamaBaseUrl +
+                        "\r\nTHINK: " + (string)thinkingBox.SelectedItem;
                 };
 
                 freeRelayButton.Click += async delegate {
@@ -991,10 +1285,11 @@ namespace InvestorIntelligence
                     await RunBusyAsync(
                         "更新中 / Refreshing...",
                         async delegate {
+                            // Data-only: the hourly sealed publisher is the single Production writer.
                             return await RunPowerShellAsync(
                                 "run-v213-local.ps1",
                                 "-ProjectRoot " + PowerShellLiteral(Root) +
-                                " -InstallCloudflared -Model " + PowerShellLiteral(model) +
+                                " -InstallCloudflared -NoSync -Model " + PowerShellLiteral(model) +
                                 " -LlamaBaseUrl " + PowerShellLiteral(baseUrl),
                                 true);
                         },
@@ -1082,20 +1377,184 @@ namespace InvestorIntelligence
                         MessageBoxIcon.Information);
                 };
 
-                Shown += async delegate { await RefreshModelsAsync(); };
+                // Add the mode controls without compressing existing action/status text.
+                foreach (Control control in Controls) if (control.Top >= 166) control.Top += 64;
+                Height += 64;
+                var initialProfile = LoadModelProfile();
+                thinkingAvailable = initialProfile != null;
+                thinkingBox = new ComboBox {
+                    Left = 166, Top = 162, Width = 160, Height = 28,
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    AccessibleName = "THINK reasoning effort", Enabled = thinkingAvailable
+                };
+                thinkingBox.Items.AddRange(new object[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" });
+                thinkingBox.SelectedItem = initialProfile == null ? "none" : (string)initialProfile["reasoning_effort"];
+                Controls.Add(new Label { Left = 24, Top = 165, Width = 140, Height = 24, Text = "THINK / 推理上限" });
+                Controls.Add(thinkingBox);
+                Controls.Add(new Label { Left = 340, Top = 160, Width = 335, Height = 48,
+                    Text = "none = 關閉；其他 = 上限，每題依反應時間\n與 System One 篩選自動調整 / Auto below cap" });
+                thinkingBox.SelectedIndexChanged += delegate {
+                    status.Text = "THINK 設定尚未儲存／驗證 / Pending, unqualified";
+                };
+                checkModelButton = new Button { Left = 166, Top = 195, Width = 160, Height = 28,
+                    Text = "本機回覆測試 / Test reply" };
+                Controls.Add(checkModelButton);
+                checkModelButton.Click += async delegate {
+                    ModelSelection selection;
+                    if (!TryCommitSelection(out selection)) return;
+                    await RunBusyAsync("驗證本機固定回覆 / Checking local reply...", async delegate {
+                        return await CheckLocalModelAsync(selection, true);
+                    }, "本機固定回覆通過；THINK強度／發布未驗證 / Marker passed, not release-qualified",
+                       "本機回覆測試失敗 / Local reply check failed");
+                };
+
+                if (headerDelta > 0)
+                {
+                    foreach (Control control in Controls)
+                    {
+                        if (control != headerLabel)
+                        {
+                            control.Top += headerDelta;
+                        }
+                    }
+                    Height += headerDelta;
+                }
+
+                if (discoverOnShow) Shown += async delegate { await RefreshModelsAsync(); };
+            }
+
+            public int ThinkingUiSelfTest(string isolated)
+            {
+                // Only synthetic choices and isolated profile storage. No discovery,
+                // inference, activation, task registration or production buttons.
+                foreach (var button in new[] { scanButton, checkModelButton, refreshButton, activateButton, bridgeButton,
+                    folderButton, namedTunnelButton, freeRelayButton }) button.Enabled = false;
+                Show();
+
+                // Regression: validate measured header fits without clipping.
+                var measuredHeader = TextRenderer.MeasureText(
+                    headerLabel.Text,
+                    headerLabel.Font,
+                    new Size(headerLabel.Width, 32767),
+                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                if (headerLabel.Height < measuredHeader.Height) return 80;
+                if (!headerLabel.Text.Contains(Revision)) return 81;
+
+                // Validate header does not overlap subsequent controls.
+                foreach (Control control in Controls)
+                {
+                    if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        return 82;
+                }
+
+                // Validate all controls fit ClientRectangle.
+                foreach (Control control in Controls)
+                {
+                    if (!ClientRectangle.Contains(control.Bounds))
+                        return 83;
+                }
+
+                // Validate no unexpected control intersections.
+                for (int i = 0; i < Controls.Count; i++)
+                {
+                    for (int j = i + 1; j < Controls.Count; j++)
+                    {
+                        if (Controls[i].Bounds.IntersectsWith(Controls[j].Bounds))
+                            return 84;
+                    }
+                }
+
+                // Negative probe 1: too-short header must be rejected.
+                int originalHeight = headerLabel.Height;
+                try
+                {
+                    headerLabel.Height = Math.Max(0, measuredHeader.Height - 1);
+                    var tooShortProbe = TextRenderer.MeasureText(
+                        headerLabel.Text,
+                        headerLabel.Font,
+                        new Size(headerLabel.Width, 32767),
+                        TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                    if (headerLabel.Height >= tooShortProbe.Height) return 85;
+                }
+                finally
+                {
+                    headerLabel.Height = originalHeight;
+                }
+
+                // Negative probe 2: intentional header overlap must be detected.
+                try
+                {
+                    headerLabel.Height = originalHeight + 50;
+                    bool detectedOverlap = false;
+                    foreach (Control control in Controls)
+                    {
+                        if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        {
+                            detectedOverlap = true;
+                            break;
+                        }
+                    }
+                    if (!detectedOverlap) return 86;
+                }
+                finally
+                {
+                    headerLabel.Height = originalHeight;
+                }
+
+                // Verify restored geometry is completely valid.
+                if (headerLabel.Height < measuredHeader.Height) return 87;
+                foreach (Control control in Controls)
+                {
+                    if (control != headerLabel && headerLabel.Bounds.IntersectsWith(control.Bounds))
+                        return 88;
+                }
+
+                if (!thinkingBox.Visible || !ClientRectangle.Contains(thinkingBox.Bounds) ||
+                    thinkingBox.DropDownStyle != ComboBoxStyle.DropDownList) return 77;
+                foreach (string model in new[] { "synthetic-ui-a", "synthetic-ui-b" }) {
+                    discoveredModels.Clear(); discoveredModels.Add(model);
+                    modelBox.Items.Clear(); modelBox.Items.Add(model); modelBox.Text = model;
+                    foreach (string effort in new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max", "none" }) {
+                        thinkingBox.SelectedItem = effort;
+                        useModelButton.PerformClick();
+                        var persisted = ParseModelProfile(File.ReadAllText(ModelProfilePath, Encoding.UTF8));
+                        if ((string)persisted["model"] != model || (string)persisted["reasoning_effort"] != effort ||
+                            (bool)persisted["enable_thinking"] != (effort != "none")) return 73;
+                        var saved = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(SelectionPath, Encoding.UTF8)) as Dictionary<string, object>;
+                        if ((bool)saved["model_profile_qualified"] || (string)saved["model_profile_sha256"] != ModelProfileHash(persisted) ||
+                            !status.Text.Contains("not qualified")) return 74;
+                        if (effort == "none" || effort == "xhigh") {
+                            string probe = Path.Combine(isolated, "thinking-ui-child.ps1");
+                            File.WriteAllText(probe, "$p=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json; if($p.model -cne " + PowerShellLiteral(model) +
+                                " -or $p.reasoning_effort -cne " + PowerShellLiteral(effort) + " -or $p.enable_thinking -ne " +
+                                (effort == "none" ? "$false" : "$true") + "){exit 1}; exit 0", new UTF8Encoding(false));
+                            if (Task.Run(() => RunPowerShellCli(probe, "")).GetAwaiter().GetResult() != 0) return 75;
+                        }
+                    }
+                }
+                string validBytes = File.ReadAllText(ModelProfilePath, Encoding.UTF8);
+                try {
+                    SaveSelection("synthetic-ui-b", DefaultLlamaBase, discoveredModels, "synthetic-test", "invalid-mode");
+                    return 78;
+                } catch (InvalidOperationException) { }
+                if (File.ReadAllText(ModelProfilePath, Encoding.UTF8) != validBytes) return 79;
+                SetBusy(true, "synthetic busy check");
+                bool locked = !thinkingBox.Enabled && !modelBox.Enabled && !useModelButton.Enabled;
+                SetBusy(false, "");
+                if (!locked || !thinkingBox.Enabled) return 76;
+                Close();
+                return 0;
             }
 
             async Task RefreshModelsAsync()
             {
                 if (busy) return;
-                scanButton.Enabled = false;
-                useModelButton.Enabled = false;
-                status.Text =
-                    "正在掃描 llama.cpp 模型 / Scanning llama.cpp models...";
-
+                SetBusy(true, "讀取所選 Router 清單 / Reading selected Router catalog...");
+                try {
+                string requested = modelBox.Text.Trim();
                 ModelSelection previous = LoadSelection();
                 ModelCatalog catalog = await Task.Run(
-                    delegate { return DiscoverModels(previous); });
+                    delegate { return DiscoverModels(previous, true); });
                 discoveredModels.Clear();
                 modelBox.Items.Clear();
 
@@ -1106,7 +1565,7 @@ namespace InvestorIntelligence
                     foreach (string id in catalog.Models)
                         modelBox.Items.Add(id);
 
-                    string current = modelBox.Text.Trim();
+                    string current = requested;
                     string canonical = catalog.Models.FirstOrDefault(
                         id => id.Equals(current, StringComparison.OrdinalIgnoreCase));
                     if (canonical == null)
@@ -1116,29 +1575,43 @@ namespace InvestorIntelligence
                                 PreferredModel,
                                 StringComparison.OrdinalIgnoreCase));
                     }
+                    bool modelChanged = false;
+                    if (canonical == null && !String.IsNullOrEmpty(catalog.Chosen))
+                    {
+                        canonical = catalog.Chosen;  // the saved model is gone: same family or the only model served
+                        modelChanged = true;
+                    }
                     if (canonical != null)
                         modelBox.SelectedItem = canonical;
 
                     endpointLabel.Text =
-                        "llama.cpp: " + discoveredBaseUrl +
+                        "Local model server: " + discoveredBaseUrl +
                         "  |  Models: " + catalog.Models.Count +
                         "  |  Selected: " + modelBox.Text;
-                    status.Text =
-                        "模型掃描完成 / Model scan completed\r\n" +
+                    status.Text = (modelChanged
+                        ? "已自動偵測到本機模型（模型已變更：" + requested + " → " + canonical + "）/ Auto-detected a changed model\r\n"
+                        : catalog.AutoDetected
+                        ? "已自動偵測到本機模型伺服器（位址已變更）/ Auto-detected a new local address\r\n"
+                        : "模型掃描完成 / Model scan completed\r\n") +
                         "請確認後按「使用 / Use」。";
                 }
                 else
                 {
                     endpointLabel.Text =
-                        "llama.cpp: not detected / 未偵測  |  Typed model: " +
+                        "Local model server: not detected / 未偵測  |  Typed model: " +
                         modelBox.Text;
                     status.Text =
-                        "未讀到模型清單；可啟動 llama.cpp 後再掃描。\r\n" +
+                        "未讀到模型清單；啟動本機模型伺服器（TabbyAPI、llama.cpp、Ollama、LM Studio）後再掃描。\r\n" +
                         catalog.Error;
                 }
 
-                scanButton.Enabled = true;
-                useModelButton.Enabled = true;
+                } catch {
+                    discoveredModels.Clear();
+                    modelBox.Items.Clear();
+                    status.Text = "模型清單不可用；未更換模型 / Catalog unavailable; selection unchanged.";
+                } finally {
+                    SetBusy(false, "");
+                }
             }
 
             bool TryCommitSelection(out ModelSelection selection)
@@ -1157,8 +1630,12 @@ namespace InvestorIntelligence
                     return false;
                 }
                 if (!SafeLoopbackBase(requestedBaseUrl))
-                    requestedBaseUrl = "http://127.0.0.1:8080";
+                    requestedBaseUrl = DefaultLlamaBase;
 
+                if (discoveredModels.Count == 0) {
+                    MessageBox.Show("請先取得所選 Router 的有效模型清單；不猜測模型。\nRead a valid Router catalog before changing models.", "Investor Intelligence", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
                 if (discoveredModels.Count > 0)
                 {
                     string lookupModel = requestedModel;
@@ -1180,13 +1657,18 @@ namespace InvestorIntelligence
                     modelBox.Text = canonical;
                 }
 
+                if (thinkingAvailable && thinkingBox.SelectedItem == null) {
+                    MessageBox.Show("請選擇 THINK 模式 / Select a reasoning mode.");
+                    return false;
+                }
                 try
                 {
                     SaveSelection(
                         requestedModel,
                         requestedBaseUrl,
                         discoveredModels,
-                        "launcher_model_selector");
+                        "launcher_model_selector",
+                        thinkingAvailable ? (string)thinkingBox.SelectedItem : null);
                     selection = new ModelSelection {
                         Model = requestedModel,
                         LlamaBaseUrl = requestedBaseUrl
@@ -1242,8 +1724,10 @@ namespace InvestorIntelligence
             {
                 busy = value;
                 scanButton.Enabled = !value;
+                checkModelButton.Enabled = !value;
                 useModelButton.Enabled = !value;
                 modelBox.Enabled = !value;
+                thinkingBox.Enabled = !value && thinkingAvailable;
                 refreshButton.Enabled = !value;
                 activateButton.Enabled = !value;
                 bridgeButton.Enabled = !value;

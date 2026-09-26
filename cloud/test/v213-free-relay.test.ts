@@ -269,6 +269,31 @@ describe("R75 FREE_RELAY route lease", () => {
     })).rejects.toThrow("V213_LOCAL_MODEL_REDIRECT_REJECTED");
   });
 
+  it("follows the route's authenticated model only when LOCAL_LLM_MODEL_FROM_ROUTE is on (a profile keeps its settings only)", async () => {
+    const relay = relayObject();
+    const moved = { ...route("abababababababababababababababab", -1_000), model: "Qwen3.8-27B" } as FreeRelayRouteRecord;
+    const pinned = env(relay.object);
+    expect(() => parseFreeRelayRoute(JSON.stringify(moved), pinned)).toThrow("FREE_RELAY_ROUTE_INVALID");
+    const following = { ...pinned, LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    expect(parseFreeRelayRoute(JSON.stringify(moved), following).model).toBe("Qwen3.8-27B");
+    expect(() => parseFreeRelayRoute(JSON.stringify({ ...moved, model: "bad model!" }), following)).toThrow("FREE_RELAY_ROUTE_INVALID");
+    const profiled = { ...following, V213_MODEL_PROFILE_JSON: JSON.stringify({ schema_version: 1, model: "profile-model", enable_thinking: false,
+      reasoning_effort: "none", max_output_tokens: 1024, smoke_output_tokens: 128, timeout_ms: 18000 }) };
+    expect(parseFreeRelayRoute(JSON.stringify(moved), profiled).model).toBe("Qwen3.8-27B");  // settings only in route mode
+    const { LOCAL_LLM_MODEL_FROM_ROUTE: _off, ...profiledPinned } = profiled;
+    expect(() => parseFreeRelayRoute(JSON.stringify(moved), profiledPinned)).toThrow("FREE_RELAY_ROUTE_INVALID");  // pinned without it
+    await relay.object.fetch(new Request("https://free-relay.internal/update", { method: "POST", body: JSON.stringify(moved) }));
+    let sent: RequestInit | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = init;
+      return Response.json({ choices: [{ message: { content: "relay answer" } }] });
+    }));
+    expect((await freeRelayRequestEnv(pinned)).LOCAL_LLM_BASE_URL).toBe("");  // pinned Worker ignores the moved route
+    const answer = await generalAnswer(await freeRelayRequestEnv(following), parseQuery("explain photonics"), { tenantId: "synthetic", chatType: "user" });
+    expect(answer).toBe("relay answer");
+    expect(JSON.parse(String(sent?.body))).toMatchObject({ model: "Qwen3.8-27B" });
+  });
+
   it("routes Q&A through the current lease with exact model and per-generation authentication", async () => {
     const relay = relayObject();
     const current = route("dddddddddddddddddddddddddddddddd", -1_000);

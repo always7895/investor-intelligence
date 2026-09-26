@@ -14,6 +14,7 @@ export type BotIntent =
   | "memory_clear"
   | "delete_data"
   | "job_result"
+  | "global_equity_lookup"
   | "general_qa";
 
 export type OptionPeriod = "weekly" | "monthly" | null;
@@ -76,13 +77,20 @@ const IGNORED_TICKER_TOKENS = new Set([
   "CURRENT",
 ]);
 
+// These are ambiguous macro terms, not implicit stock selections. Explicit
+// $symbol, ticker declarations and instrument-context queries still take priority.
+const MACRO_ABBREVIATIONS = new Set([
+  "GDP", "CPI", "PPI", "PMI", "FOMC", "FED", "ECB", "BOJ", "BOE",
+  "IMF", "OECD", "OPEC", "EIA", "IEA", "DXY", "VIX", "USD", "EUR", "CNY", "TWD",
+]);
+
 export function normalizeText(text: string): string {
   return text.normalize("NFKC").trim().replace(/\s+/g, " ");
 }
 
 function normalizedTickerCandidate(raw: string | undefined): string | null {
   const candidate = String(raw ?? "").replace(/^\$/, "").toUpperCase();
-  if (!candidate || /^\d+$/.test(candidate) || IGNORED_TICKER_TOKENS.has(candidate)) {
+  if (!candidate || /^\d+$/.test(candidate) || IGNORED_TICKER_TOKENS.has(candidate) || /^TOP\d*$/i.test(candidate)) {
     return null;
   }
   if (!new RegExp(`^${EXPLICIT_TICKER_TOKEN}$`, "i").test(candidate)) return null;
@@ -129,7 +137,7 @@ export function extractTicker(text: string): string | null {
     /(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{0,5}(?:[.-][A-Z0-9]{1,4})?)(?=$|[^A-Za-z0-9])/g;
   for (const match of normalized.matchAll(uppercasePattern)) {
     const candidate = normalizedTickerCandidate(match[1]);
-    if (candidate) return candidate;
+    if (candidate && !MACRO_ABBREVIATIONS.has(candidate)) return candidate;
   }
   return null;
 }
@@ -141,6 +149,37 @@ export function extractPeriod(text: string): OptionPeriod {
   return null;
 }
 
+const GLOBAL_EQUITY_SUFFIXES = new Set(["TW","TWO","T","KS","KQ","HK","SS","SH","SZ","BJ","L","ST","AS","PA","DE","SW","BR","MI"]);
+
+function isGlobalEquityLookupQuery(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 64) return false;
+  // Explicit research-product requests stay owned by the product pipeline
+  if (/(?:card_summary|data_report|narrative_analysis|卡片摘要|數據詳報|数据详报|深入分析|完整文字分析)/i.test(trimmed)) return false;
+  const prefixed = /^(?:股票|個股|公司|查股票|查股價|查股價|stock|ticker)\s*[:：]?\s*(.+)$/i.exec(trimmed);
+  if (prefixed) {
+    const tail = prefixed[1]!.trim();
+    if (!tail || /[?\uff1f]/.test(tail)) return false;
+    if (/^[A-Za-z0-9][A-Za-z0-9.-]{0,11}(\.[A-Za-z]{2})?$/.test(tail)) return true;
+    return tail.length <= 48;
+  }
+  const suffixed = /^([A-Za-z0-9][A-Za-z0-9.-]{0,11})\.([A-Za-z]{1,2})$/.exec(trimmed);
+  if (suffixed) return GLOBAL_EQUITY_SUFFIXES.has(suffixed[2]!.toUpperCase());
+  if (/^\d{4,6}$/.test(trimmed)) return true;
+  if (/^[A-Za-z]{1,6}[A-Za-z0-9]{0,4}$/.test(trimmed)) {
+    const up = trimmed.toUpperCase();
+    return !IGNORED_TICKER_TOKENS.has(up) && !MACRO_ABBREVIATIONS.has(up);
+  }
+  if (
+    /\b(?:inc\.?|corp\.?|corporation|ltd|limited|co\.|company|holdings?|semiconductors?|technologies?|solutions)\b|股份有限公司|有限公司/i.test(trimmed) &&
+    !/[?\uff1f]/.test(trimmed) &&
+    !/(?:為什麼|為何|怎麼|如何|什麼是|什么|解释|解釋|分析|評價|建議|看法|影響|explain|what\b|why\b|how\b)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function parseQuery(text: string): ParsedQuery {
   const normalized = normalizeText(text);
   const lowered = normalized.toLowerCase();
@@ -150,7 +189,7 @@ export function parseQuery(text: string): ParsedQuery {
   const referenceId = resultMatch?.[1]?.toUpperCase() ?? null;
 
   let intent: BotIntent = "general_qa";
-  if (/^(help|幫助|帮助|功能|選單|菜单|menu|指令|怎麼用|怎么用)$/i.test(normalized)) {
+  if (/^(help|幫助|帮助|說明|说明|功能|選單|菜单|menu|指令|怎麼用|怎么用)$/i.test(normalized)) {
     intent = "help";
   } else if (/^(記憶狀態|记忆状态|memory status)$/i.test(normalized)) {
     intent = "memory_status";
@@ -178,12 +217,14 @@ export function parseQuery(text: string): ParsedQuery {
     intent = "options";
   } else if (/(持倉|持仓|部位|portfolio|position|我持有|資產配置|资产配置)/i.test(lowered)) {
     intent = "portfolio";
-  } else if (/(排名|評分|评分|score|ranking|top\s*\d*)/i.test(lowered)) {
+  } else if (/(排名|評分|评分|score|ranking|top\s*\d*|前\s*20|排行)/i.test(lowered)) {
     intent = "ranking";
   } else if (/(serenity|aschenbrenner|leopold|來源觀點|来源观点|原始觀點|原始观点)/i.test(lowered)) {
     intent = "source_views";
   } else if (/^(健康|狀態|状态|health|status|系統狀態|系统状态)$/i.test(normalized)) {
     intent = "health";
+  } else if (isGlobalEquityLookupQuery(normalized)) {
+    intent = "global_equity_lookup";
   }
 
   return { intent, ticker, period, referenceId, normalized };

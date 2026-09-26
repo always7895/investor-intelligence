@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { deriveTenantId } from "../src/security";
 import { asKv, MemoryKv } from "./fake-kv";
 import { authenticateV21AdminRequest, ingestV21PublicSnapshot } from "../src/v21/admin";
@@ -104,6 +105,8 @@ function runtime() {
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_SECRET: "SYNTHETIC_LINE_CHANNEL_KEY_NOT_REAL",
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_CHANNEL_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+    V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace,
     V21_SYNC_HMAC_SECRET: SYNC_KEY,
     V21_SCHEDULED_PUSH_ENABLED: "true",
     V21_TOP20_MAX_AGE_SECONDS: "7200",
@@ -172,6 +175,52 @@ afterEach(() => {
 });
 
 describe("v2.1 private owner LINE delivery", () => {
+  it.each(["missing", "malformed"])("keeps persisted %s target state for diagnosis rather than destructive cleanup", async failure => {
+    const { privateKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const targetKey = [...privateKv.values.keys()].find(key => key.endsWith(":v21:owner-line:push-target"))!;
+    expect(targetKey).toBeTruthy();
+    if (failure === "missing") privateKv.values.delete(targetKey);
+    else privateKv.values.set(targetKey, '{"v":99}');
+    const before = [...privateKv.values];
+    const remove = vi.spyOn(privateKv, "delete"); const put = vi.spyOn(privateKv, "put");
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(remove).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+    expect([...privateKv.values]).toEqual(before);
+  });
+  it("does not delete a changed owner pointer after an older target lookup fails", async () => {
+    const { privateKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const originalGet = privateKv.get.bind(privateKv);
+    const replacement = "B".repeat(43);
+    const remove = vi.spyOn(privateKv, "delete");
+    vi.spyOn(privateKv, "get").mockImplementation(async (key, type) => {
+      if (key.endsWith(":v21:owner-line:push-target")) {
+        // Simulated interleaving, not a native KV/atomic pairing proof.
+        privateKv.values.set("v21:owner-line:tenant", replacement);
+        return null;
+      }
+      return originalGet(key, type);
+    });
+    expect(await getOwnerPushTarget(env)).toBeNull();
+    expect(privateKv.values.get("v21:owner-line:tenant")).toBe(replacement);
+    expect(remove).not.toHaveBeenCalled();
+  });
+  it("refuses the retained transaction-shaped unsealed fixture before LINE transport", async () => {
+    const { publicKv, env } = runtime();
+    await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);
+    const runId = "20260830T000000Z-0123456789ab";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV21Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
   it("accepts only an exact sorted Top 20 and answers ticker detail", async () => {
     const rows = top20();
     expect(parseV21Top20(rows)).toHaveLength(20);
@@ -214,11 +263,11 @@ describe("v2.1 private owner LINE delivery", () => {
     expect(publicKv.values.has("snapshot:current")).toBe(true);
   });
 
-  it("fails closed on a future pipeline timestamp", async () => {
+  it("retains the future-timestamp guard for explicit legacy unsealed fixtures", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260830T000000Z-0123456789ab";
+    const runId = "legacy-synthetic-future"; // Not a current sealed-admission proof.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
@@ -229,17 +278,35 @@ describe("v2.1 private owner LINE delivery", () => {
     expect((await broadcastV21Top20(env, "morning")).status).toBe("stale");
   });
 
-  it("pushes exactly one five-field fresh scheduled message and deduplicates the slot", async () => {
+  it("refuses an old displayed row in the actual five-field push alias despite fresh envelopes", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260830T000000Z-0123456789ab";
+    const runId = "synthetic-source-clock";
+    const data = top20Report();
+    // Older than the report bound (14 h): seal and report envelopes are fresh, the row is not.
+    data.records[19]!.retrieved_at = new Date(Date.now() - 15 * 3600_000).toISOString();
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(data));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const fetch = vi.fn(withPushPreflight(async () => new Response("{}", { status: 200 })));
+    vi.stubGlobal("fetch", fetch);
+    expect((await broadcastV21Top20(env, "test")).status).toBe("stale");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("retains five-field legacy unsealed presentation and mocked slot dedupe", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const runId = "legacy-synthetic-five-field"; // Actual current seal/push caller is tested separately.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v212:top20-report:latest`, JSON.stringify(top20Report()));
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));

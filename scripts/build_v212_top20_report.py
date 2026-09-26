@@ -19,13 +19,14 @@ is read or emitted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -34,13 +35,28 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import build_v21_public_snapshot as snapshot
 import v21_serenity_top20 as base
+from historical_return_evidence import (
+    calculate_return_evidence, legacy_return_pair, canonical_return_triplet,
+    build_two_year_return_evidence, ReturnEvidenceError, validate_return_observation,
+)
+from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
+from company_business_profile import compose_industry, local_translator, resolve_business_profile, sec_fetcher
+from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
+from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
+                                       row_time, unavailable, utc_time, validate_company_receipt,
+                                       validate_report_acquisition)
 
 TOP20_PATH = ROOT / "data" / "cache" / "top20_public_latest.json"
+# Stale-bar tolerance for minting a local yfinance fetch receipt; same horizon as
+# the market-corroboration degradation policy. A stale provider response degrades
+# exactly like a failed fetch instead of being presented as fresh.
+MAX_MARKET_BAR_AGE_DAYS = 7
 OUTPUT_PATH = ROOT / "data" / "cache" / "v212_top20_report_public_latest.json"
 LONG_TERM_WINDOW_DAYS = 730
 SHORT_TERM_WINDOW_DAYS = 183
-MIN_LONG_TERM_ELAPSED_DAYS = 600
-MIN_SHORT_TERM_ELAPSED_DAYS = 120
+# Compatibility constants only; selection uses complete calendar-month targets.
+MIN_LONG_TERM_ELAPSED_DAYS = 730
+MIN_SHORT_TERM_ELAPSED_DAYS = 181
 DISPLAY_COLUMNS = [
     "股票",
     "長期投資報酬率（近2年年化）",
@@ -50,6 +66,8 @@ DISPLAY_COLUMNS = [
 ]
 
 INDUSTRY_ZH_TW = {
+    "Discount Stores": "折扣零售",
+    "Department Stores": "百貨零售",
     "Semiconductors": "半導體",
     "Semiconductor Equipment & Materials": "半導體設備與材料",
     "Communication Equipment": "通訊設備",
@@ -95,6 +113,42 @@ INDUSTRY_ZH_TW = {
     "Basic Materials": "基礎材料",
     "Utilities": "公用事業",
     "Real Estate": "房地產",
+    "Insurance": "保險",
+    "Property & Casualty Insurance": "財產與意外保險",
+    "Life Insurance": "人壽保險",
+    "Agricultural Inputs": "農業投入品",
+    "Agriculture": "農業",
+    "Farm Products": "農產品",
+    "Retail - Apparel & Fashion": "零售（服飾時尚）",
+    "Retail - Cyclical": "零售（週期性）",
+    "Retail - Defensive": "零售（防禦性）",
+    "Apparel, Accessories & Luxury Goods": "服飾配件與奢侈品",
+    "Food & Beverage Retail": "食品飲料零售",
+    "Food Distribution": "食品分銷",
+    "Food - Major Consumers": "食品（大眾消費）",
+    "Beverages - Wineries & Distilleries": "飲料（釀酒與調酒）",
+    "Packaging & Containers": "包裝與容器",
+    "Paper & Forest Products": "造紙與林產",
+    "Steel": "鋼鐵",
+    "Metal Fabrication": "金屬加工",
+    "Gold": "黃金",
+    "Silver": "白銀",
+    "Copper": "銅",
+    "Solar": "太陽能",
+    "Hotel & Resort": "觀光飯店",
+    "REIT - Hotel & Motel": "REIT（飯店）",
+    "REIT - Diversified": "REIT（多元化）",
+    "REIT - Healthcare": "REIT（醫療）",
+    "REIT - Industrial": "REIT（工業）",
+    "REIT - Office": "REIT（辦公）",
+    "REIT - Residential": "REIT（住宅）",
+    "REIT - Retail": "REIT（零售）",
+    "REIT - Specialty": "REIT（專業）",
+    "REIT - Mall": "REIT（購物中心）",
+    "Entertainment": "娛樂",
+    "Gambling": "博彩",
+    "Textile Manufacturing": "紡織製造",
+    "Multi-Industrials": "多元工業",
 }
 
 
@@ -130,8 +184,89 @@ def profit_summary(metrics: Mapping[str, Any]) -> str:
     if not parts:
         return "SEC 可用獲利指標不足"
     if net is not None:
-        parts.insert(0, "獲利" if net >= 0 else "虧損")
+        parts.insert(0, "損益兩平" if net == 0 else "獲利" if net > 0 else "虧損")
     return "；".join(parts)[:120]
+
+
+QUARTER_DAYS = (80, 100)
+_REVENUE_TAGS = ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet")
+
+
+def _day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _operand(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: record.get(key) for key in ("tag", "form", "start", "end", "filed", "accession_number", "value")}
+
+
+def latest_quarter_growth(records: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Revenue of the latest reported quarter versus the same quarter a year earlier (same tag), from the
+    filing that reports the latest quarter. The annual comparison can be most of a year old; this cannot."""
+    quarters = []
+    for item in base.latest_records(records, _REVENUE_TAGS):
+        start, end, value = _day(item.get("start")), _day(item.get("end")), _finite(item.get("value"))
+        if start and end and value is not None and QUARTER_DAYS[0] <= (end - start).days <= QUARTER_DAYS[1]:
+            quarters.append((end, str(item.get("filed") or ""), item))
+    if not quarters:
+        return None
+    latest_end, _, latest = max(quarters, key=lambda q: (q[0], q[1]))
+    prior = [q for q in quarters if q[2].get("tag") == latest.get("tag") and abs((latest_end - q[0]).days - 365) <= 15]
+    if not prior:
+        return None
+    base_value = _finite(max(prior, key=lambda q: q[1])[2].get("value"))
+    if not base_value or base_value <= 0:
+        return None
+    return {"value": _finite(latest["value"]) / base_value - 1, "kind": "latest_quarter_yoy",
+            "numerator": _operand(latest), "denominator": _operand(max(prior, key=lambda q: q[1])[2])}
+
+
+def profit_display(entries: Mapping[str, Any], *, quarter_growth: Mapping[str, Any] | None, clock: datetime,
+                   max_age_seconds: float) -> tuple[str, dict[str, Any]]:
+    """The profit summary users see, with what was shown and what was withheld and why.
+
+    A displayed metric is a current-state company claim: its filing must be inside the evidence window
+    (minus the report carry margin), numerator and denominator must cover the same period, and a margin
+    cannot exceed 100% (a revenue-subset denominator, e.g. ASC 606 revenue of an insurer, is refused)."""
+    displayed: dict[str, Any] = {}
+    withheld: dict[str, str] = {}
+
+    def fresh(operand: Mapping[str, Any] | None) -> bool:
+        filed = _day((operand or {}).get("filed"))
+        if filed is None:
+            return False
+        age = (clock - datetime(filed.year, filed.month, filed.day, tzinfo=timezone.utc)).total_seconds()
+        return -300 <= age <= max_age_seconds
+
+    if quarter_growth and fresh(quarter_growth["numerator"]) and abs(quarter_growth["value"]) <= 10:
+        displayed["revenue_growth"] = dict(quarter_growth)
+    else:
+        entry = entries.get("revenue_growth") or {}
+        if entry.get("status") == "AVAILABLE" and entry.get("value") is not None and fresh(entry.get("numerator")):
+            displayed["revenue_growth"] = {"value": entry["value"], "kind": "annual", "numerator": entry["numerator"],
+                                           "denominator": entry["denominator"]}
+        else:
+            withheld["revenue_growth"] = ("STALE_FILING" if entry.get("status") == "AVAILABLE" or quarter_growth
+                                          else str(entry.get("status") or "MISSING_OPERAND"))
+    for name in ("operating_margin", "net_margin"):
+        entry = entries.get(name) or {}
+        value, numerator, denominator = entry.get("value"), entry.get("numerator") or {}, entry.get("denominator") or {}
+        if entry.get("status") != "AVAILABLE" or value is None:
+            withheld[name] = str(entry.get("status") or "MISSING_OPERAND")
+        elif abs(value) > 1.0:
+            withheld[name] = "IMPLAUSIBLE_MARGIN_OVER_100_PERCENT"
+        elif (numerator.get("start"), numerator.get("end")) != (denominator.get("start"), denominator.get("end")):
+            withheld[name] = "PERIOD_MISMATCH"
+        elif not fresh(numerator):
+            withheld[name] = "STALE_FILING"
+        else:
+            displayed[name] = {"value": value, "kind": "reported_period", "numerator": numerator, "denominator": denominator}
+    filed = [str(item["numerator"].get("filed")) for item in displayed.values() if item["numerator"].get("filed")]
+    text = profit_summary({name: item["value"] for name, item in displayed.items()})
+    return text, {"displayed": displayed, "withheld": withheld, "claim_filed_at": min(filed) if filed else None}
 
 
 def translate_industry(value: str) -> str:
@@ -153,7 +288,15 @@ def translate_industry(value: str) -> str:
         (("biotech",), "生物科技"),
         (("medical", "health"), "醫療保健"),
         (("bank",), "銀行"),
+        (("insurance",), "保險"),
         (("financial", "capital market", "asset management"), "金融服務"),
+        (("retail",), "零售"),
+        (("apparel", "clothing", "footwear", "luxury", "textile"), "紡織成衣"),
+        (("food", "beverage", "distiller"), "食品飲料"),
+        (("mining",), "礦業"),
+        (("solar",), "太陽能"),
+        (("hospitality", "lodging", "resort"), "觀光住宿"),
+        (("reit -",), "不動產投資信託基金"),
         (("aerospace", "defense"), "航太與國防"),
         (("chemical",), "化學材料"),
         (("energy", "oil", "gas"), "能源"),
@@ -172,39 +315,23 @@ def translate_industry(value: str) -> str:
     return raw[:100]
 
 
+def _history_return_evidence(history: Any) -> dict[str, Any]:
+    if history is None or "Close" not in history:
+        return calculate_return_evidence([])
+    # Do not drop a missing last price and silently move the observation clock.
+    return calculate_return_evidence([(stamp.date(), price) for stamp, price in history["Close"].items()])
+
+
 def _returns_from_history(history: Any) -> tuple[float | None, float | None]:
-    if history is None or len(getattr(history, "index", [])) < 2 or "Close" not in history:
+    try:
+        return legacy_return_pair(_history_return_evidence(history))
+    except (ReturnEvidenceError, TypeError, ValueError, AttributeError, OverflowError):
         return None, None
-    closes = history["Close"].dropna()
-    if len(closes) < 2:
-        return None, None
-    latest_price = _finite(closes.iloc[-1])
-    if latest_price is None or latest_price <= 0:
-        return None, None
-    latest_time = closes.index[-1]
-
-    def start_point(days: int) -> tuple[float | None, int]:
-        target = latest_time - timedelta(days=days)
-        window = closes[closes.index >= target]
-        if len(window) < 2:
-            return None, 0
-        first_price = _finite(window.iloc[0])
-        elapsed = int((latest_time - window.index[0]).days)
-        return first_price, elapsed
-
-    long_start, long_days = start_point(LONG_TERM_WINDOW_DAYS)
-    long_term = None
-    if long_start and long_start > 0 and long_days >= MIN_LONG_TERM_ELAPSED_DAYS:
-        long_term = (latest_price / long_start) ** (365.25 / long_days) - 1
-
-    short_start, short_days = start_point(SHORT_TERM_WINDOW_DAYS)
-    short_term = None
-    if short_start and short_start > 0 and short_days >= MIN_SHORT_TERM_ELAPSED_DAYS:
-        short_term = latest_price / short_start - 1
-    return long_term, short_term
 
 
-def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | None, float | None, str]:
+def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: dict | None = None) -> tuple[float | None, float | None, str]:
+    if evidence_sink is not None:
+        evidence_sink.update(status="UNAVAILABLE", publication_eligible=False, provider="yfinance", ticker=ticker)
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -212,7 +339,30 @@ def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | No
     try:
         obj = yf.Ticker(ticker)
         history = obj.history(period="3y", interval="1d", auto_adjust=True)
-        long_term, short_term = _returns_from_history(history)
+        observed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        points: list[tuple] = []
+        if history is not None and "Close" in history:
+            points = [(stamp.date(), price) for stamp, price in history["Close"].items()]
+        # A local fetch receipt is minted only while the freshest bar is recent;
+        # empty or stale price data degrades to N/A exactly like a failed fetch.
+        # Industry from provider identity is independent of price history.
+        fresh = bool(points) and (datetime.now(timezone.utc).date() - max(day for day, _ in points)).days <= MAX_MARKET_BAR_AGE_DAYS
+        if fresh:
+            evidence = calculate_return_evidence(points)
+            long_term, short_term = legacy_return_pair(evidence)
+        else:
+            evidence = calculate_return_evidence([])
+            long_term = short_term = None
+        usable = fresh and any(w["status"] == "AVAILABLE" for w in evidence["windows"].values())
+        if evidence_sink is not None:
+            evidence_sink.update(evidence)
+            evidence_sink.update(
+                status=("CALCULATED_NOT_QUALIFIED" if usable else "NO_COMPLETE_RETURN_WINDOW"),
+                observed_at=observed_at,
+                retrieved_at=observed_at if usable else None,
+                acquisition_status=("LOCAL_FETCH_RECEIPT" if usable else "UNKNOWN_PROVIDER_ACQUISITION_TIME"),
+                request={"period": "3y", "interval": "1d", "auto_adjust": True},
+            )
         industry = ""
         try:
             info = obj.info
@@ -225,7 +375,14 @@ def _market_observation(ticker: str, fallback_industry: str) -> tuple[float | No
         return None, None, translate_industry(fallback_industry)
 
 
-def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
+def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
+          financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None,
+          require_known_acquisition: bool = False, translate: Callable[[str], str | None] | None = None,
+          business_profile_sink: dict | None = None, profile_fetch: Callable[[str], bytes] | None = None,
+          profile_cache_root: Path | None = None, profit_display_sink: dict | None = None) -> dict[str, Any]:
+    from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
+    precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
+    precision_used = False
     try:
         raw = json.loads(top20_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -235,41 +392,135 @@ def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
     headers = base.sec_headers()
     http = base.session()
     reference = base.sec_reference(policy, http, headers)
-    generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    cutoff = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    cutoff_clock = datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
+    from v213_evidence_policy import load_policy, report_freshness
+    claim_max_age_seconds = (float(load_policy()["current_state_claim_max_age_days"]) * 86400
+                             - report_freshness()["report_max_age_hours"] * 3600)
 
     rows: list[dict[str, Any]] = []
     for item in top20:
         ticker = str(item["ticker"])
-        long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""))
+        observation: dict[str, Any] = {}
+        long_term, short_term, industry = _market_observation(ticker, str(item.get("category") or ""), evidence_sink=observation)
+        if return_evidence_sink is not None:
+            return_evidence_sink[ticker] = observation
         metrics: dict[str, Any] = {}
+        records: list = []
+        receipt: dict[str, Any] = {}
+        financial: dict[str, Any] = {"status": "NO_OFFICIAL_IDENTITY", "publication_eligible": False}
         official = reference.get(ticker)
         if official:
             try:
                 candidate = {"ticker": ticker, "official": dict(official), "market": {}}
-                records = base.sec_companyfacts(candidate, policy, http, headers)
-                metrics, _evidence = base.metrics(records)
+                records = base.sec_companyfacts(candidate, policy, http, headers, receipt_sink=receipt)
+                if receipt:
+                    validate_company_receipt(receipt, cik=official.get('cik'), records=records)
+                # Company5 retains disclosed debt parts, not total liabilities;
+                # source receipt, profit projection and eligibility stay unchanged.
+                financial = profitability_evidence(records, cik=official.get("cik"), as_of=cutoff)
+                financial.update(schema_version=5, limitations=list(FINANCIAL_V5_LIMITATIONS),
+                                 cashflow_bridge=cashflow_evidence(records, cik=official.get("cik"), as_of=cutoff),
+                                 liquidity_bridge=liquidity_evidence(records, cik=official.get("cik"), as_of=cutoff),
+                                 debt_bridge=debt_evidence(records, cik=official.get("cik"), as_of=cutoff),
+                                 source_acquisition=dict(receipt) if receipt else None,
+                                 source_retrieved_at=receipt.get('retrieved_at'))
+                metrics = {key: entry["value"] for key, entry in financial["metrics"].items()}
             except Exception:
-                metrics = {}
-        rows.append({
-            "schema_version": 1,
+                metrics = {}; receipt.clear()
+                financial = {"status": "SOURCE_FETCH_OR_VALIDATION_FAILED", "publication_eligible": False}
+        if precision is not None and financial.get('schema_version') == 5 and financial['cik'] == precision.cik:
+            # A separate, replay-bound dimension: never replace the point bridge,
+            # promote CONFLICT, or discard independently supported profit/CFO.
+            financial.update(schema_version=6, limitations=list(PRECISION_LIMITATIONS),
+                             debt_precision=precision.assess(financial['debt_bridge'], financial['source_acquisition'], cutoff))
+            precision_used = True
+        if financial_evidence_sink is not None:
+            financial_evidence_sink[ticker] = financial
+        # Operator rule 2026-09-25: the industry field says what the company does,
+        # from the latest SEC annual report, translated locally; label kept otherwise.
+        business = None
+        if official and translate is not None and 'sec' not in getattr(http, '_public_json_blocked_sources', ()):
+            profile_fetch = profile_fetch or sec_fetcher(headers)
+            try:
+                business = resolve_business_profile(str(official.get("cik") or "").zfill(10), profile_fetch, translate,
+                                                    **({'cache_root': profile_cache_root} if profile_cache_root else {}))
+            except Exception:
+                business = None  # label-only industry; the failure stays visible in the sidecar
+        if business_profile_sink is not None:
+            business_profile_sink[ticker] = business
+        # Displayed profit metrics are current-state company claims: filed inside the evidence window
+        # (minus the carry margin), same-period operands, margins within 100%; the rest is withheld with a reason.
+        if financial.get("status") == "CANDIDATE_NOT_PUBLICATION_QUALIFIED" and isinstance(financial.get("metrics"), dict):
+            summary_text, display = profit_display(financial["metrics"], quarter_growth=latest_quarter_growth(records),
+                                                   clock=cutoff_clock, max_age_seconds=claim_max_age_seconds)
+        else:
+            summary_text, display = profit_summary(metrics), {"displayed": {}, "withheld": {"all": str(financial.get("status"))},
+                                                              "claim_filed_at": None}
+        if profit_display_sink is not None:
+            profit_display_sink[ticker] = display
+        row = {
+            "schema_version": 2,
             "rank": int(item["rank"]),
             "ticker": ticker,
             "long_term_return_pct": None if long_term is None else round(long_term * 100, 2),
             "short_term_return_pct": None if short_term is None else round(short_term * 100, 2),
             "industry": industry[:100],
-            "profit_summary": profit_summary(metrics),
+            "profit_summary": summary_text,
             "long_term_window": "2y_cagr",
             "short_term_window": "6m_price_return",
             "market_source": "yfinance",
             "profit_source": "sec_edgar",
-            "retrieved_at": generated,
+            "retrieved_at": None,
             "provider_scope": "public_only",
             "owner_watchlist_inherited": False,
-        })
-    return {
-        "schema_version": 1,
+        }
+        market_clocks = observation.get('source_acquisition', {})
+        if not isinstance(market_clocks, dict) or not set(market_clocks) <= set(FIELDS[:3]):
+            raise SourceAcquisitionError('SOURCE_ACQUISITION_INVALID')
+        market_receipt = observation.get('retrieved_at')
+        if observation.get('acquisition_status') != 'LOCAL_FETCH_RECEIPT' or not isinstance(market_receipt, str):
+            market_receipt = None
+        market_receipt_sha = digest(observation.get('windows') or {}) if market_receipt is not None else None
+        clocks = {}
+        for key in FIELDS[:3]:
+            if key in market_clocks:
+                clocks[key] = market_clocks[key]
+            elif market_receipt is not None and not unavailable(key, row[key]):
+                clocks[key] = field_clock(key, row[key], retrieved_at=market_receipt, evidence_sha256=market_receipt_sha)
+            elif require_known_acquisition:
+                row[key] = '未分類' if key == 'industry' else None
+                clocks[key] = field_clock(key, row[key])
+            else:
+                clocks[key] = field_clock(key, row[key])
+        if business and business.get("phrase_zh"):
+            # Every part stays sourced: a receipted label is composed with the SEC
+            # phrase (older clock, joint digest); an unreceipted label is dropped.
+            label = clocks['industry']
+            if label['status'] == 'KNOWN':
+                row['industry'] = compose_industry(row['industry'], business['phrase_zh'])
+                retrieved = min(label['retrieved_at'], business['retrieved_at'], key=utc_time)
+                evidence = digest({'label': label['evidence_sha256'], 'business': business['evidence_sha256']})
+            else:
+                row['industry'] = business['phrase_zh'][:100]
+                retrieved, evidence = business['retrieved_at'], business['evidence_sha256']
+            clocks['industry'] = field_clock('industry', row['industry'], retrieved_at=retrieved, evidence_sha256=evidence)
+        clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'])
+        if receipt and clocks['profit_summary']['status'] != 'UNAVAILABLE':
+            clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'],
+                retrieved_at=receipt['retrieved_at'], evidence_sha256=digest(receipt))
+        row['source_acquisition'] = clocks
+        rows.append(row)
+    if precision is not None and not precision_used:
+        raise Top20ReportError('DEBT_PRECISION_INPUT_NOT_BOUND')
+    generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    for row in rows:
+        row['retrieved_at'] = row_time(row, generated_at=generated)
+    document = {
+        "schema_version": 2,
         "product_version": "2.1.2",
         "generated_at": generated,
+        "calculation_cutoff": cutoff,
         "display_columns": DISPLAY_COLUMNS,
         "long_term_definition": "trailing_2y_adjusted_close_cagr",
         "short_term_definition": "trailing_6m_adjusted_close_price_return",
@@ -277,13 +528,68 @@ def build(*, top20_path: Path = TOP20_PATH) -> dict[str, Any]:
         "provider_scope": "public_only",
         "owner_watchlist_inherited": False,
     }
+    validate_report_acquisition(document)
+    return document
+
+
+def json_bytes(value: Mapping[str, Any]) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+
+
+def rebind_ranked_candidates(report_bytes: bytes, returns_bytes: bytes, basis_bytes: bytes, products_bytes: bytes,
+                             *, precision_bundle: bytes | None = None) -> tuple[bytes, bytes, bytes]:
+    """Rank-only local rebind after the existing scoring/normalization stages.
+
+    Recover the original report ordering using the retained product manifest,
+    but accept it ONLY if its complete UTF-8 SHA matches the original basis and
+    the prior products verify. No value/date reconstruction, stale-input rescue,
+    fetching, score change or publication authorization.
+    """
+    def require(ok):
+        if not ok:
+            raise Top20ReportError('RANKED_CANDIDATE_BINDING_INVALID')
+    report = parse_candidate_json(report_bytes)
+    validate_report_acquisition(report)
+    prior = parse_candidate_json(products_bytes)
+    require(isinstance(prior, dict) and isinstance(prior.get('records'), list) and len(prior['records']) == 20)
+    order = []
+    for item in prior['records']:
+        require(isinstance(item, dict) and isinstance(item.get('ticker'), str))
+        order.append(item['ticker'])
+    mapping = {row['ticker']: row for row in report['records']}
+    require(len(set(order)) == 20 and set(order) == set(mapping))
+    original = {**report, 'records': [dict(mapping[ticker], rank=index) for index, ticker in enumerate(order, 1)]}
+    original_bytes = json_bytes(original)
+    # Matching the original full-report hash is mandatory, not a best-effort
+    # guess at a former serialization or a new basis derived from summaries.
+    verify_financial_products(products_bytes, original_bytes, basis_bytes, precision_bundle=precision_bundle)
+    basis = parse_candidate_json(basis_bytes)
+    returns = parse_candidate_json(returns_bytes)
+    keys = {'schema_version', 'status', 'publication_eligible', 'provider_scope', 'owner_watchlist_inherited', 'generated_at', 'report_sha256', 'records'}
+    require(isinstance(returns, dict) and set(returns) == keys
+            and type(returns['schema_version']) is int and returns['schema_version'] == 1
+            and returns['status'] == 'CANDIDATE_NOT_PUBLICATION_QUALIFIED'
+            and returns['publication_eligible'] is False and returns['provider_scope'] == 'public_only'
+            and returns['owner_watchlist_inherited'] is False and returns['generated_at'] == report['generated_at']
+            and returns['report_sha256'] == hashlib.sha256(original_bytes).hexdigest()
+            and isinstance(returns['records'], dict) and set(returns['records']) == set(mapping))
+    for ticker, row in mapping.items():
+        validate_return_observation(returns['records'][ticker], ticker=ticker,
+            long_pct=row['long_term_return_pct'], short_pct=row['short_term_return_pct'], completed=report['generated_at'])
+    if original_bytes == report_bytes:
+        return returns_bytes, basis_bytes, products_bytes
+    digest = hashlib.sha256(report_bytes).hexdigest()
+    new_returns = json_bytes(dict(returns, report_sha256=digest))
+    new_basis = json_bytes(dict(basis, report_sha256=digest))
+    new_products = json_bytes(build_financial_products(report_bytes, new_basis, precision_bundle=precision_bundle))
+    verify_financial_products(new_products, report_bytes, new_basis, precision_bundle=precision_bundle)
+    return new_returns, new_basis, new_products
 
 
 def atomic_write(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n", delete=False, dir=path.parent, prefix=f".{path.name}.", suffix=".tmp") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
-        handle.write("\n")
+        handle.write(json_bytes(value).decode("utf-8"))
         temporary = Path(handle.name)
     temporary.replace(path)
 
@@ -312,13 +618,81 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
+    parser.add_argument("--return-evidence-output", type=Path, help="Local unqualified calculation sidecar; never a publication payload")
+    parser.add_argument("--financial-evidence-output", type=Path, help="Local operand/basis candidate; not a complete or sealed research report")
+    parser.add_argument("--financial-products-output", type=Path, help="Distinct local financial components only; not sealed or LINE eligible")
+    parser.add_argument('--debt-precision-bundle', type=Path, help='Optional original-file bundle; conditional precision only, never debt reconciliation or publication')
+    parser.add_argument('--require-known-acquisition', action='store_true', help='Refuse unverified market clocks and fail closed to UNAVAILABLE')
+    parser.add_argument('--business-profile-output', type=Path, help='Local SEC business-profile sidecar (source sentence, URL, translation)')
+    parser.add_argument('--business-profile', action='store_true', help='Add the SEC annual-report business phrase (local loopback translation) to the industry field')
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
             return 0
-        document = build()
+        evidence_output = args.return_evidence_output or args.output.with_name(args.output.stem + ".return-evidence-candidate.json")
+        financial_output = args.financial_evidence_output or args.output.with_name(args.output.stem + ".financial-evidence-candidate.json")
+        products_output = args.financial_products_output or args.output.with_name(args.output.stem + ".financial-products-candidate.json")
+        profile_output = args.business_profile_output or args.output.with_name(args.output.stem + ".business-profile-candidate.json")
+        display_output = args.output.with_name(args.output.stem + ".profit-display-candidate.json")
+        destinations = [args.output.resolve(), evidence_output.resolve(), financial_output.resolve(), products_output.resolve(),
+                        profile_output.resolve(), display_output.resolve()]
+        if len(set(destinations)) != len(destinations):
+            raise Top20ReportError("Report and evidence paths must differ")
+        from debt_source_precision import read_bundle
+        precision_raw = read_bundle(args.debt_precision_bundle, forbidden=destinations) if args.debt_precision_bundle else None
+        observations: dict[str, Any] = {}
+        financials: dict[str, Any] = {}
+        options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
+        profiles: dict[str, Any] = {}
+        displays: dict[str, Any] = {}
+        translator = None
+        if args.business_profile:
+            try:
+                translator = local_translator()
+            except (OSError, ValueError, KeyError):
+                translator = None  # label-only industry; never a cloud or paid fallback
+        document = build(return_evidence_sink=observations, financial_evidence_sink=financials,
+                         require_known_acquisition=args.require_known_acquisition, translate=translator,
+                         business_profile_sink=profiles, profit_display_sink=displays, **options)
+        report_body = json_bytes(document)
+        financial_document = {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "provider_scope": "public_only",
+            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
+            "report_sha256": hashlib.sha256(report_body).hexdigest(),
+            "hash_scope": "v212 report UTF-8 bytes, not source HTTP or sealed snapshot",
+            "records": financials,
+        }
+        # Validate/render before any output mutation; no new collector or cloud key.
+        products = build_financial_products(report_body, json_bytes(financial_document), precision_bundle=precision_raw)
+        if precision_raw is not None and read_bundle(args.debt_precision_bundle, forbidden=destinations) != precision_raw:
+            raise Top20ReportError('DEBT_PRECISION_INPUT_CHANGED')
         atomic_write(args.output, document)
+        atomic_write(evidence_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "provider_scope": "public_only",
+            "owner_watchlist_inherited": False, "generated_at": document["generated_at"],
+            "report_sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
+            "records": observations,
+        })
+        atomic_write(financial_output, financial_document)
+        atomic_write(profile_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "generated_at": document["generated_at"],
+            "source": "SEC EDGAR latest annual report, Item 1 / Item 4",
+            "translation": "local loopback model; phrase validated against the source sentence",
+            "records": profiles,
+        })
+        atomic_write(display_output, {
+            "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
+            "publication_eligible": False, "generated_at": document["generated_at"],
+            "rule": "displayed metric = filed within the current-state window minus the report carry margin, "
+                    "same-period operands, margin within 100%; revenue growth = latest quarter versus the same quarter a year earlier",
+            "records": displays,
+        })
+        atomic_write(products_output, products)
+        verify_financial_products(products_output.read_bytes(), args.output.read_bytes(), financial_output.read_bytes(), precision_bundle=precision_raw)
         print(json.dumps({"status": "PASS", "records": len(document["records"]), "output": str(args.output)}, ensure_ascii=False, indent=2))
         return 0
     except (Top20ReportError, snapshot.SnapshotError, base.PipelineError, OSError, ValueError) as exc:
