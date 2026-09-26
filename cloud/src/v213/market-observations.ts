@@ -72,15 +72,27 @@ export async function loadListingPrice(view: PublicSnapshotView, record: Pick<Gl
     asof: asof ?? `${String(doc.generated_at)}（擷取時間；來源未載明成交日）`, source: PRICE_SOURCE_LABEL[source.id] ?? source.id, source_url: source.url };
 }
 
+/** The options keys to try for a typed or looked-up ticker, in order (scripts/build_market_quotes_options.py keys US
+ * listings by their Yahoo symbol and Stockholm listings with the .ST suffix). Share-class separators become "-". A bare
+ * ticker prefers the US listing and falls back to Stockholm (AZN -> AZN then AZN.ST; VOLV B -> VOLV-B then VOLV-B.ST;
+ * SIVE also matches the older unsuffixed key); an explicit .ST never falls back to another market. */
+export function optionTickerKeys(raw: string): string[] {
+  const upper = raw.trim().toUpperCase();
+  const base = upper.replace(/\.ST$/, "").replace(/[\s./]+/g, "-");
+  return upper.endsWith(".ST") ? [`${base}.ST`] : [base, `${base}.ST`];
+}
+
 /** A covered-call cycle (validated by the caller), an explicit unavailability reason, or null. */
 export type OptionObservation = { quote: unknown } | { unavailable: string } | null;
 
-/** The sealed observation for one underlying and cycle: a quote, an explicit unavailability reason, or null. */
-export async function loadOptionObservation(view: PublicSnapshotView, ticker: string, period: "weekly" | "monthly", now = Date.now()): Promise<OptionObservation> {
+/** The sealed observation for one underlying and cycle (the first of the given keys that exists): a quote, an explicit
+ * unavailability reason, or null. */
+export async function loadOptionObservation(view: PublicSnapshotView, ticker: string | readonly string[], period: "weekly" | "monthly", now = Date.now()): Promise<OptionObservation> {
   if (view.integrity !== "sealed") return null;
   const doc = await view.json<{ schema?: unknown; generated_at?: unknown; options?: Record<string, Record<string, unknown>> }>([OPTIONS_KEY]);
   if (!doc || doc.schema !== "v213-options-v2" || !fresh(doc.generated_at, now) || !doc.options || typeof doc.options !== "object") return null;
-  const cycles = Object.hasOwn(doc.options, ticker) ? doc.options[ticker] : undefined;
+  const key = (typeof ticker === "string" ? [ticker] : ticker).find(candidate => Object.hasOwn(doc.options!, candidate));
+  const cycles = key !== undefined ? doc.options[key] : undefined;
   const entry = cycles && Object.hasOwn(cycles, period) ? cycles[period] as Record<string, unknown> : undefined;
   if (!entry || typeof entry !== "object") return null;
   if (typeof entry.unavailable === "string") return { unavailable: entry.unavailable.slice(0, 200) };

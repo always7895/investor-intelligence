@@ -1,7 +1,7 @@
 import { parseQuery, type ParsedQuery } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "./bottleneck-v3";
-import { loadOptionObservation } from "./market-observations";
+import { loadOptionObservation, optionTickerKeys } from "./market-observations";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
@@ -472,12 +472,13 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   }
 
   // --- Options Quote Functional Queries ---
-  const quoteMatch = /^([A-Z0-9.-]{1,15})\s*(每週|每周|每月|weekly|monthly)\s*(?:期權|期权|options?)(?:\s*文字)?$/i.exec(command)
-    || /^(?:期權|期权|options?)\s+([A-Z0-9.-]{1,15})\s*(每週|每周|每月|weekly|monthly)?(?:\s*文字)?$/i.exec(command);
+  // A ticker may carry a share class after a space as the stock lookup shows it (VOLV B, NDA SE, OCTV SDB).
+  const quoteMatch = /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)\s*(?:期權|期权|options?)(?:\s*文字)?$/i.exec(command)
+    || /^(?:期權|期权|options?)\s+([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)?(?:\s*文字)?$/i.exec(command);
   if (quoteMatch) {
     const isText = isEnvText || /文字\s*$/i.test(command);
-    const ticker = (quoteMatch[1] ?? quoteMatch[2])!.toUpperCase();
-    const periodRaw = quoteMatch[2] ?? quoteMatch[1];
+    const ticker = quoteMatch[1]!.toUpperCase();
+    const periodRaw = quoteMatch[2];  // both forms: group 1 ticker, group 2 period (optional after 期權; weekly by default)
     const period = periodRaw && /每月|monthly/i.test(periodRaw) ? "monthly" : "weekly";
 
     // Non-ticker words filter
@@ -485,7 +486,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       const view = await pinPublicSnapshot(env);
       if (view.integrity === "sealed") {
         // Sealed delayed observations of the watch universe (US options and Nasdaq Stockholm options).
-        const observed = await loadOptionObservation(view, ticker, period);
+        const observed = await loadOptionObservation(view, optionTickerKeys(ticker), period);
         if (observed && "unavailable" in observed) {
           return optionsUnavailableReport(ticker, period, `${observed.unavailable}（已封存之公開觀察）`, isText);
         }

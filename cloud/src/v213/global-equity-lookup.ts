@@ -201,14 +201,15 @@ export function buildGlobalEquityLookupMessages(
     return [textMsg];
   }
 
-  // Flex Presentation
+  // Flex Presentation. A Stockholm listing asks for its own options (AZN.ST), never the US listing of the same symbol.
+  const optionSymbol = identity.market === "SWEDEN" ? `${identity.canonicalSymbol.replace(/ /g, "-")}.ST` : identity.canonicalSymbol;
   const footerActions = (identity.isAmbiguous && identity.ambiguityCandidates && identity.ambiguityCandidates.length > 0)
     ? identity.ambiguityCandidates.slice(0, 3).map(c => {
         const sym = c.split(" ")[0]!;
         return menuAction(`查詢 ${sym}`, sym);
       })
     : result.quoteStatus === "AVAILABLE"
-      ? [menuAction("每月期權", `${identity.canonicalSymbol} 每月期權`), menuAction("每週期權", `${identity.canonicalSymbol} 每週期權`), menuAction("返回 TOP20 榜單", "TOP20")]
+      ? [menuAction("每月期權", `${optionSymbol} 每月期權`), menuAction("每週期權", `${optionSymbol} 每週期權`), menuAction("返回 TOP20 榜單", "TOP20")]
       : [menuAction("返回 TOP20 榜單", "TOP20"), menuAction("回功能選單", "選單")];
 
   const bubble = {

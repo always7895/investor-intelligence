@@ -60,6 +60,134 @@ class UniverseTests(unittest.TestCase):
                 builder.TOP20, builder.V3, builder.LAYERS = saved
 
 
+class BroadUniverseTests(unittest.TestCase):
+    NOW = datetime(2026, 9, 26, 6, 0, tzinfo=timezone.utc)
+
+    def fake_http(self, url):
+        if url == builder.US_SCREENER:
+            rows = [{"symbol": f"S{i}", "marketCap": str(1000 - i)} for i in range(150)]
+            rows += [{"symbol": "BRK/B", "marketCap": "5000"}, {"symbol": "ZERO", "marketCap": ""}]
+            return {"data": {"rows": rows}}
+        if url == builder.STOCKHOLM_LARGE_CAP:
+            return {"data": {"instrumentListing": {"rows": [
+                {"symbol": "VOLV B", "orderbookId": "TX100", "assetClass": "SHARES", "currency": "SEK"},
+                {"symbol": "NOOPT", "orderbookId": "TX1", "assetClass": "SHARES", "currency": "SEK"},
+                {"symbol": "EURO", "orderbookId": "TX2", "assetClass": "SHARES", "currency": "EUR"}]}}}
+        chain_rows = {"TX100": [{"assetClass": "FUTURES_FORWARDS"}, {"assetClass": "OPTIONS"}], "TX1": [{"assetClass": "FUTURES_FORWARDS"}]}
+        orderbook = url.split("/instruments/")[1].split("/")[0]
+        return {"data": {"instrumentListing": {"rows": chain_rows.get(orderbook, [])}}}
+
+    def test_largest_us_listings_and_optionable_stockholm_large_caps(self):
+        saved = builder.http_json
+        builder.http_json = self.fake_http
+        try:
+            document = builder.build_broad(self.NOW)
+        finally:
+            builder.http_json = saved
+        self.assertEqual(len(document["us"]), builder.US_LARGEST)
+        self.assertEqual(document["us"][:2], ["BRK-B", "S0"])  # by market cap; Yahoo class-share symbol
+        self.assertNotIn("ZERO", document["us"])
+        self.assertEqual(document["sweden"], {"VOLV-B.ST": "TX100"})  # no options / not SEK -> excluded
+
+    def test_cache_is_reused_then_rebuilt_and_a_failed_rebuild_keeps_a_recent_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broad.json"
+            cached = {"schema": "v213-options-universe-v1", "generated_at": "2026-09-26T00:00:00Z", "us": ["AAPL"],
+                      "sweden": {"VOLV-B.ST": "TX100"}}
+            saved = builder.build_broad
+            try:
+                path.write_text(json.dumps(dict(cached, sweden={})), encoding="utf-8")  # an empty list is never reused
+                builder.build_broad = lambda now: (_ for _ in ()).throw(OSError("offline"))
+                self.assertEqual(builder.broad_universe(self.NOW, path), {"us": [], "sweden": {}})
+                path.write_text(json.dumps(cached), encoding="utf-8")
+                builder.build_broad = lambda now: (_ for _ in ()).throw(AssertionError("fresh cache must be reused"))
+                self.assertEqual(builder.broad_universe(self.NOW, path)["us"], ["AAPL"])
+                later = self.NOW + timedelta(days=2)
+                builder.build_broad = lambda now: (_ for _ in ()).throw(OSError("offline"))
+                self.assertEqual(builder.broad_universe(later, path)["us"], ["AAPL"])  # stale but within 7 days
+                self.assertEqual(builder.broad_universe(self.NOW + timedelta(days=8), path), {"us": [], "sweden": {}})
+                rebuilt = dict(cached, generated_at="2026-09-28T06:00:00Z", us=["MSFT"])
+                builder.build_broad = lambda now: rebuilt
+                self.assertEqual(builder.broad_universe(later, path)["us"], ["MSFT"])
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["us"], ["MSFT"])
+            finally:
+                builder.build_broad = saved
+
+    def test_futures_rows_in_a_nordic_chain_are_not_calls(self):
+        chain = [{"fullName": "VOLVB 16OCT26 FUTC", "assetClass": "FUTURES_FORWARDS", "expirationDate": "2026-10-16",
+                  "strikePrice": "0.00", "bidPrice": "300", "askPrice": "301", "contractSize": "100"},
+                 {"fullName": "VOLVB 23OCT26 330C", "assetClass": "OPTIONS", "expirationDate": "2026-10-23",
+                  "strikePrice": "330.00", "bidPrice": "2.00", "askPrice": "2.10", "contractSize": "100"}]
+        seen = []
+
+        def fake_http(url):
+            seen.append(url)
+            return {"data": {"instrumentListing": {"rows": chain}}}
+        saved = builder.http_json
+        builder.http_json = fake_http
+        try:
+            out = builder.nordic_options("VOLV-B.ST", "VOLV-B", 310.0, self.NOW.date(), "2026-09-26T06:00:00Z", "TX100")
+        finally:
+            builder.http_json = saved
+        self.assertEqual(seen, [builder.NORDIC_CHAIN.format(orderbook="TX100")])  # known order book: no search
+        self.assertEqual(out["monthly"]["ticker"], "VOLV-B")
+        self.assertEqual(out["monthly"]["suggestions"][0]["strike"], 330.0)
+        self.assertIn("unavailable", out["weekly"])  # no call expires within 3-14 days
+
+    def test_markets_never_share_a_key_and_one_failure_never_aborts_the_run(self):
+        class FakeTicker:
+            def __init__(self, symbol):
+                if symbol == "BROKEN":
+                    raise RuntimeError("quote failed")
+                self.fast_info = {"lastPrice": 100.0, "previousClose": 99.0, "currency": "SEK" if symbol.endswith(".ST") else "USD"}
+        calls = []
+
+        def fake_us(symbol, spot, today, stamp):
+            if symbol == "BAD":
+                raise ValueError("malformed expiry")
+            return {"weekly": {"unavailable": f"US {symbol}"}}
+
+        def fake_nordic(symbol, base, spot, today, stamp, orderbook=None):
+            calls.append((symbol, orderbook))
+            return {"weekly": {"unavailable": f"STO {base}"}}
+        saved = (sys.modules.get("yfinance"), builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe)
+        sys.modules["yfinance"] = type(sys)("yfinance")
+        sys.modules["yfinance"].Ticker = FakeTicker
+        builder.us_options, builder.nordic_options = fake_us, fake_nordic
+        builder.broad_universe = lambda now: {"us": ["AZN", "BAD", "BROKEN"], "sweden": {"AZN.ST": "TX9", "VOLV-B.ST": "TX100"}}
+        builder.universe = lambda: ["NVDA", "SIVE.ST", "2330.TW"]
+        try:
+            document = builder.build(self.NOW)
+        finally:
+            yf, builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe = saved
+            if yf is None:
+                sys.modules.pop("yfinance", None)
+            else:
+                sys.modules["yfinance"] = yf
+        options = document["options"]
+        self.assertEqual(sorted(options), ["AZN", "AZN.ST", "BAD", "NVDA", "SIVE.ST", "VOLV-B.ST"])
+        self.assertEqual(options["AZN"]["weekly"]["unavailable"], "US AZN")
+        self.assertEqual(options["AZN.ST"]["weekly"]["unavailable"], "STO AZN")
+        self.assertIn("讀取失敗", options["BAD"]["weekly"]["unavailable"])  # the quote stays, the chain is unavailable
+        self.assertIn("BAD", document["quotes"])
+        self.assertNotIn("BROKEN", document["quotes"])
+        self.assertIn("2330.TW", document["quotes"])  # quote only: no listed-option source for Taiwan here
+        self.assertEqual(sorted(calls), [("AZN.ST", "TX9"), ("SIVE.ST", None), ("VOLV-B.ST", "TX100")])
+
+    def test_an_unreadable_option_check_keeps_the_previous_list(self):
+        def flaky(url):
+            if "/instruments/" in url:
+                raise OSError("429")
+            return self.fake_http(url)
+        saved = builder.http_json
+        builder.http_json = flaky
+        try:
+            with self.assertRaises(ValueError):
+                builder.build_broad(self.NOW)
+        finally:
+            builder.http_json = saved
+
+
 class SealingTests(unittest.TestCase):
     def cycle(self, now):
         expiry = (now + timedelta(days=27)).date().isoformat()

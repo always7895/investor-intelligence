@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseQuery } from "../src/core";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { identityNameBucket, identitySymbolBucket } from "../src/v213/identity-shards";
-import { observationSymbol } from "../src/v213/market-observations";
+import { observationSymbol, optionTickerKeys } from "../src/v213/market-observations";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
@@ -34,7 +34,11 @@ async function sealedEnv() {
       bucket: String(identityNameBucket("sivers semiconductors")), generated_at: stamp, rows: [["sivers semiconductors", "S", "SIVE", "NASDAQ STOCKHOLM"]] },
     "v213:quotes:v1": { schema: "v213-quotes-v1", generated_at: stamp, quotes: { "SIVE.ST": { symbol: "SIVE.ST", price: 32.78, previous_close: 31.5,
       change_pct: 0.0406, currency: "SEK", asof: stamp, source: "Yahoo Finance (unofficial, delayed)", source_url: "https://finance.yahoo.com/quote/SIVE.ST" } } },
-    "v213:options:v2": { schema: "v213-options-v2", generated_at: stamp, options: { SIVE: {
+    "v213:options:v2": { schema: "v213-options-v2", generated_at: stamp, options: {
+      "VOLV-B.ST": { weekly: { unavailable: "合成：VOLV-B 週期權無雙邊報價" } },
+      AZN: { weekly: { unavailable: "合成：美股 AZN 週期權" } },
+      "AZN.ST": { weekly: { unavailable: "合成：斯德哥爾摩 AZN 週期權" } },
+      SIVE: {  // the older unsuffixed Stockholm key still answers a bare SIVE
       weekly: { unavailable: "Nasdaq Stockholm 無 3-14 天到期的上市期權" },
       monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte: 21, spot: 32.78, currency: "SEK", multiplier: 100,
         quote_basis: "delayed", timestamp: stamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
@@ -89,6 +93,37 @@ describe("sealed market observations", () => {
     expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每週期權")));
     expect(weekly).toContain("無 3-14 天到期的上市期權");
+  });
+
+  it("maps typed and looked-up tickers to option keys", () => {
+    expect(optionTickerKeys("SIVE.ST")).toEqual(["SIVE.ST"]);
+    expect(optionTickerKeys("volv b")).toEqual(["VOLV-B", "VOLV-B.ST"]);
+    expect(optionTickerKeys("BRK.B")).toEqual(["BRK-B", "BRK-B.ST"]);
+    expect(optionTickerKeys("BRK/B")).toEqual(["BRK-B", "BRK-B.ST"]);
+    expect(optionTickerKeys("AZN")).toEqual(["AZN", "AZN.ST"]);
+  });
+
+  it("answers share classes, keeps US and Stockholm listings apart and is not taken by the stock lookup", async () => {
+    const env = await sealedEnv();
+    const expected: [string, string][] = [
+      ["VOLV B 每週期權", "VOLV-B 週期權無雙邊報價"], ["期權 VOLV B 每週", "VOLV-B 週期權無雙邊報價"],
+      ["VOLV-B.ST 每週期權", "VOLV-B 週期權無雙邊報價"], ["AZN 每週期權", "美股 AZN 週期權"], ["AZN.ST 每週期權", "斯德哥爾摩 AZN 週期權"],
+    ];
+    for (const [text, reason] of expected) {
+      expect(await handleGlobalEquityLookup(env as never, parseQuery(text))).toBeNull();  // the Worker asks the lookup first
+      expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery(text)))).toContain(reason);
+    }
+    // An explicit Stockholm suffix never falls back to another key (here only the older unsuffixed SIVE exists).
+    expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE.ST 每月期權")))).not.toContain("0.23 SEK");
+    const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("NVDA weekly options")));
+    expect(weekly).toContain("OPTION_DATA_NOT_ADMITTED");  // no observation for NVDA in this fixture
+  });
+
+  it("offers the Stockholm listing's own options from the stock lookup", async () => {
+    const env = { ...(await sealedEnv()), V213_LINE_PRESENTATION: "flex" };
+    const card = JSON.stringify(await handleGlobalEquityLookup(env as never, parseQuery("SIVE")));
+    expect(card).toContain("SIVE.ST 每月期權");
+    expect(card).toContain("SIVE.ST 每週期權");
   });
 
   it("shows the delayed quote on the stock lookup", async () => {

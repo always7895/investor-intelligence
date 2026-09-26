@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Quotes and listed-option observations for the watch universe (LINE stock lookup and options queries).
 
-Universe: the bottleneck Top20 v3 (top and watch), the carried seven-field Top20 and every layer capturer.
+Universe: the bottleneck Top20 v3 (top and watch), the carried seven-field Top20 and every layer capturer, plus (operator
+2026-09-26: more US names and Swedish large caps) the US_LARGEST largest US listings by market cap in the Nasdaq stock
+screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange options. The broad list is rebuilt daily
+(data/cache/options_universe.json); a failed rebuild keeps the previous list for up to BROAD_MAX_STALE_DAYS.
 - Quotes: Yahoo Finance last price, previous close and currency (unofficial, delayed; labelled).
 - US-listed options: Yahoo Finance option chains (unofficial, delayed).
-- Nasdaq Stockholm options (for example SIVE): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
+- Nasdaq Stockholm options (for example SIVE.ST): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
 Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE): two covered-call sell suggestions for a holder of 100
 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the shares are not called away):
 - HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD (and, when a delta
@@ -24,7 +27,7 @@ import argparse
 import json
 import math
 import sys
-import time
+import urllib.parse
 import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -32,11 +35,18 @@ from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "cache" / "market_quotes_options.json"
+BROAD = ROOT / "data" / "cache" / "options_universe.json"
 V3 = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 TOP20 = ROOT / "data" / "cache" / "top20-lkg"
 NORDIC_SEARCH = "https://api.nasdaq.com/api/nordic/search?searchText={symbol}"
 NORDIC_CHAIN = "https://api.nasdaq.com/api/nordic/instruments/{orderbook}/option-chain"
+US_SCREENER = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true"
+STOCKHOLM_LARGE_CAP = "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO&segment=LARGE_CAP"
+US_LARGEST = 100              # by market cap (floor about $166B on 2026-09-26); share classes each keep their own chain
+BROAD_MAX_AGE_HOURS = 24
+BROAD_MAX_STALE_DAYS = 7
+WORKERS = 4
 CYCLES = {"weekly": (3, 14), "monthly": (15, 60)}  # monthly: the expiry nearest 30 days
 RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
@@ -86,6 +96,69 @@ def universe() -> list[str]:
     for symbol in symbols:
         seen.setdefault(str(symbol).upper(), None)
     return list(seen)
+
+
+def _market_cap(row: dict[str, Any]) -> float:
+    return _float(row.get("marketCap")) or 0.0
+
+
+def _has_listed_options(orderbook: str) -> bool | None:
+    """True or False from the exchange option chain; None when the chain could not be read."""
+    try:
+        rows = ((http_json(NORDIC_CHAIN.format(orderbook=orderbook)).get("data") or {}).get("instrumentListing") or {}).get("rows") or []
+    except Exception:
+        return None
+    return any(row.get("assetClass") == "OPTIONS" for row in rows)
+
+
+def build_broad(now: datetime) -> dict[str, Any]:
+    """The US_LARGEST US listings by market cap (Yahoo symbols: BRK/B -> BRK-B) and the Stockholm Large Cap shares in SEK
+    whose exchange option chain lists options (Yahoo symbol VOLV-B.ST, Nasdaq Nordic order book kept for the chain)."""
+    rows = http_json(US_SCREENER)["data"]["rows"]
+    largest = sorted((row for row in rows if _market_cap(row) > 0), key=_market_cap, reverse=True)[:US_LARGEST]
+    us = [str(row["symbol"]).strip().upper().replace("/", "-") for row in largest]
+    shares = http_json(STOCKHOLM_LARGE_CAP)["data"]["instrumentListing"]["rows"]
+    shares = [row for row in shares if row.get("assetClass") == "SHARES" and row.get("currency") == "SEK" and row.get("orderbookId")]
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(WORKERS) as pool:
+        listed = list(pool.map(lambda row: _has_listed_options(row["orderbookId"]), shares))
+    if sum(1 for ok in listed if ok is None) * 10 > len(shares):
+        raise ValueError("BROAD_OPTION_CHECK_FAILED")  # more than 10% unreadable: keep the previous list instead
+    sweden = {str(row["symbol"]).strip().upper().replace(" ", "-") + ".ST": row["orderbookId"] for row, ok in zip(shares, listed) if ok}
+    if len(us) < US_LARGEST // 2 or not sweden:
+        raise ValueError("BROAD_UNIVERSE_TOO_SMALL")
+    return {"schema": "v213-options-universe-v1", "generated_at": iso(now), "us": us, "sweden": sweden,
+            "sources": [US_SCREENER, STOCKHOLM_LARGE_CAP, NORDIC_CHAIN]}
+
+
+def broad_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
+    """The cached broad list when younger than BROAD_MAX_AGE_HOURS; otherwise a rebuild, falling back to the cached list
+    while it is younger than BROAD_MAX_STALE_DAYS, else an empty list (the watch universe still runs)."""
+    path = path or BROAD
+    cached: dict[str, Any] | None = None
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        age = now - datetime.strptime(cached["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if (cached.get("schema") != "v213-options-universe-v1" or not isinstance(cached.get("us"), list)
+                or not isinstance(cached.get("sweden"), dict) or not cached["us"] or not cached["sweden"]):
+            cached = None
+        elif age.total_seconds() < BROAD_MAX_AGE_HOURS * 3600:
+            return cached
+        elif age.days >= BROAD_MAX_STALE_DAYS:
+            cached = None
+    except (OSError, ValueError, KeyError, TypeError):
+        cached = None
+    try:
+        document = build_broad(now)
+    except Exception:
+        return cached or {"us": [], "sweden": {}}
+    try:  # the cache only saves the next rebuild; a write failure never blocks this run
+        temp = path.with_name(path.name + ".tmp")
+        temp.write_bytes(json.dumps(document, ensure_ascii=False).encode("utf-8"))
+        temp.replace(path)
+    except OSError:
+        pass
+    return document
 
 
 def bs_call_delta(spot: float, strike: float, years: float, vol: float | None) -> float | None:
@@ -193,19 +266,22 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, A
     return out
 
 
-def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {}
+    native = base.replace("-", " ")  # VOLV-B is listed as "VOLV B"
     try:
-        groups = http_json(NORDIC_SEARCH.format(symbol=base))["data"] or []
-        orderbook = next(item["orderbookId"] for group in groups for item in group["instruments"]
-                         if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == base.upper())
+        if not orderbook:
+            groups = http_json(NORDIC_SEARCH.format(symbol=urllib.parse.quote(native)))["data"] or []
+            orderbook = next(item["orderbookId"] for group in groups for item in group["instruments"]
+                             if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == native.upper())
         rows = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
     except Exception:
         return {cycle: {"unavailable": "Nasdaq Nordic 期權鏈讀取失敗"} for cycle in CYCLES}
     calls = []
     for row in rows:
         name = str(row.get("fullName") or "")
-        if not name.endswith("C"):
+        # Futures ("VOLVB 16OCT26 FUTC") and combinations share the chain; only options are calls here.
+        if not name.endswith("C") or row.get("assetClass") not in (None, "", "OPTIONS"):
             continue
         expiry = str(row.get("expirationDate") or "")
         try:
@@ -228,30 +304,58 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str)
     return out
 
 
-def build(now: datetime) -> dict[str, Any]:
+def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
+    """One underlying: the delayed quote and, for US and Stockholm listings, its covered-call cycles. Options keys never
+    collide across markets: US listings by their Yahoo symbol (class shares use "-": BRK-B; dotted symbols are other
+    markets such as 2330.TW), Stockholm listings with the suffix (SIVE.ST, VOLV-B.ST, AZN.ST next to the US AZN)."""
     import yfinance as yf
+    try:
+        info = yf.Ticker(symbol).fast_info
+        price, previous = _float(info.get("lastPrice")), _float(info.get("previousClose"))
+        currency = info.get("currency")
+    except Exception:
+        return None
+    if not price:
+        return None
+    base = symbol.split(".")[0] if symbol.endswith(".ST") else symbol
+    quote = {"symbol": symbol, "display": base, "price": price, "previous_close": previous,
+             "change_pct": (price / previous - 1) if previous else None, "currency": currency,
+             "asof": stamp, "source": "Yahoo Finance (unofficial, delayed)", "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
+    try:
+        if "." not in symbol:
+            return quote, symbol, us_options(symbol, price, today, stamp)
+        if symbol.endswith(".ST"):
+            return quote, symbol, nordic_options(symbol, base, price, today, stamp, orderbook)
+    except Exception:  # one malformed chain never aborts the other underlyings
+        return quote, symbol, {cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES}
+    return quote, symbol, {}
+
+
+def _observe_safely(symbol: str, today: date, stamp: str, orderbook: str | None) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
+    try:
+        return observe(symbol, today, stamp, orderbook)
+    except Exception:
+        return None
+
+
+def build(now: datetime) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor
     stamp = iso(now)
     today = now.date()
+    broad = broad_universe(now)
+    orderbooks: dict[str, str] = dict(broad.get("sweden") or {})
+    symbols = list(dict.fromkeys(universe() + list(broad.get("us") or []) + list(orderbooks)))
+    with ThreadPoolExecutor(WORKERS) as pool:
+        results = list(pool.map(lambda symbol: _observe_safely(symbol, today, stamp, orderbooks.get(symbol)), symbols))
     quotes: dict[str, Any] = {}
     options: dict[str, Any] = {}
-    for symbol in universe():
-        try:
-            info = yf.Ticker(symbol).fast_info
-            price, previous = _float(info.get("lastPrice")), _float(info.get("previousClose"))
-            currency = info.get("currency")
-        except Exception:
+    for symbol, result in zip(symbols, results):
+        if result is None:
             continue
-        if not price:
-            continue
-        base = symbol.split(".")[0] if symbol.endswith(".ST") else symbol
-        quotes[symbol] = {"symbol": symbol, "display": base, "price": price, "previous_close": previous,
-                          "change_pct": (price / previous - 1) if previous else None, "currency": currency,
-                          "asof": stamp, "source": "Yahoo Finance (unofficial, delayed)", "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
-        if "." not in symbol:
-            options[symbol] = us_options(symbol, price, today, stamp)
-        elif symbol.endswith(".ST"):
-            options[base] = nordic_options(symbol, base, price, today, stamp)
-            time.sleep(1)
+        quote, key, cycles = result
+        quotes[symbol] = quote
+        if cycles:
+            options[key] = cycles
     return {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": quotes, "options": options,
             "note": "Delayed public observations; not an order, not a recommendation to trade."}
 
@@ -284,7 +388,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     temp.replace(args.output)
     available = sum(1 for cycles in document["options"].values() for value in cycles.values() if "unavailable" not in value)
     print(json.dumps({"status": "OK", "quotes": len(document["quotes"]), "option_underlyings": len(document["options"]),
-                      "option_observations": available, "sive": document["options"].get("SIVE")}, ensure_ascii=False)[:1500])
+                      "option_observations": available, "sive": document["options"].get("SIVE.ST")}, ensure_ascii=False)[:1500])
     return 0
 
 
