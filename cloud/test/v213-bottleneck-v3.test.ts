@@ -126,7 +126,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"))).toContain(expected);
     expect(JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))).toContain(expected);
     for (const bad of [{ ...monthly, period: "2026-13" }, { ...monthly, source_url: "http://x" },
-      { ...monthly, revenue_yoy: null, cumulative_yoy: null }, { ...monthly, revenue_yoy: "525%" }]) {
+      { ...monthly, revenue_yoy: null, cumulative_yoy: null }, { ...monthly, revenue_yoy: "525%" },
+      // ChatGPT review: the Worker enforces the seal's source -> period -> currency contract
+      { ...monthly, period: "2026-Q2" }, { ...monthly, source_id: "CISION" }, { ...monthly, source_id: "YAHOO" },
+      { ...monthly, currency: "USD" }, { ...monthly, period: "2026-０８" }]) {
       const rejected = doc(Date.now() - HOUR);
       (rejected.top[1] as any).fundamentals.cross_check = bad;
       expect(parseBottleneckV3(rejected)).toBeNull();
@@ -157,16 +160,24 @@ describe("bottleneck-explosion Top20 v3", () => {
     delete (sparse.industries[0] as any).news.ratio;
     delete (sparse.industries[1] as any).median_acceleration;
     delete (sparse.top[0] as any).market.cross_check.diff;
+    delete (sparse.top[1] as any).fundamentals.revenue_yoy;  // ChatGPT review: acceleration was NaN
+    delete (sparse.top[1] as any).market_cap_usd;  // and the market cap US$NaNM
+    (sparse.top[2] as any).fundamentals.cross_check = { source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+      period: "2026-08", cumulative_yoy: 0.2, currency: "TWD" };
     const parsed = parseBottleneckV3(sparse)!;
     expect(parsed).not.toBeNull();
     const flex = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
     const text = JSON.stringify(buildIndustryExplosionMessages(parsed, "text"));
     const detail = JSON.stringify(buildBottleneckDetail(parsed, "SIVE.ST", "text"));
-    for (const body of [flex, text, detail]) expect(body).not.toMatch(/NaN|undefined/);
+    const second = [JSON.stringify(buildBottleneckDetail(parsed, "S1", "text")), JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex")),
+      JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))];
+    for (const body of [flex, text, detail, ...second]) expect(body).not.toMatch(/NaN|undefined/);
+    expect(second[0]).toContain("加速度 未揭露");
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S2", "text"))).toContain("官方月營收：櫃買中心 2026-08 1–8 月累計年增 +20%");
     expect(flex).toContain("未取得");
     expect(text).toContain("SEC申報熱度 未取得｜");
     expect(text).toContain("SEC申報熱度 3.00x");
-    expect(detail).toContain("幣別單位不同，不比較");
+    expect(detail).toContain("未取得可比較差異");  // a missing diff is not a currency mismatch
   });
 
   it("falls back to lean cards instead of a failed reply when twenty full cards exceed five carousels", () => {

@@ -61,6 +61,8 @@ async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapsho
     ? view.json<MacroIndustryCard>([`v213:macro-industry:${targetId}`])
     : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]);
 }
+const V3_UNAVAILABLE = "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。輸入「七欄Top20」可看舊版七欄榜。";
+
 export const RICH_MENU_ACTIONS = Object.freeze([
   { label: "每日 TOP20 榜單", text: "TOP20" },
   { label: "宏觀產業分析", text: "宏觀產業分析" },
@@ -165,6 +167,10 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:top\s*20|瓶頸爆發榜|瓶頸\s*top\s*20|瓶頸(?:排名|排行|榜)|前\s*(?:20|二十)\s*名?|排名|排行榜?)(?:\s*文字)?$/i.test(command)) {
     const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
     if (doc) return buildBottleneckTop20Messages(doc, commandText ? "text" : "flex");
+    // Without a valid, fresh v3 document: the words that reached the certified Top20 path before v3 (TOP20, 前20, 排行,
+    // 排名; the matcher of loadV213FreshTop20Report) keep it; every other v3 word names the unavailable product instead of
+    // reaching an older list (Astra review 2026-09-27).
+    if (!/(?:top\s*20|前\s*20|排行|排名)/i.test(command)) return V3_UNAVAILABLE;
   }
   const bottleneckDetail = /^(?:瓶頸詳情|瓶颈详情|瓶頸|瓶颈)\s*([A-Za-z0-9][A-Za-z0-9.\-]{0,15})(?:\s*文字)?$/i.exec(command);
   if (bottleneckDetail) {

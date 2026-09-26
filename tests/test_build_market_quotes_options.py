@@ -60,6 +60,15 @@ class SuggestionTests(unittest.TestCase):
         # A row whose quote implies no volatility has no assignment reference and cannot be the high strike.
         self.assertEqual(builder.covered_call_suggestions([row(115, 99.0, 99.5)], 100.0, 30), [])
 
+    def test_the_delta_limit_is_checked_at_full_precision(self):
+        # ChatGPT review counter-example: the quote implies delta 0.2003, which rounds to 0.200 for display.
+        years = 30 / 365
+        exact = builder.bs_call_delta(100.0, 110.0, years, builder.implied_vol(1.10, 100.0, 110.0, years), digits=None)
+        self.assertGreater(exact, 0.20)
+        self.assertEqual(round(exact, 3), 0.2)
+        self.assertEqual(builder.covered_call_suggestions([row(110, 1.09, 1.11)], 100.0, 30), [])
+        self.assertEqual(builder.covered_call_suggestions([row(110, 1.0, 1.05, 0.2)], 100.0, 30)[0]["strike"], 110)  # at the limit
+
     def test_quoted_iv_and_quoted_delta_keep_their_basis(self):
         iv_row = {**row(125, 0.50, 0.54), "iv": 0.8}
         suggestion = builder.covered_call_suggestions([iv_row], 100.0, 30)[0]
@@ -348,7 +357,11 @@ class SealingTests(unittest.TestCase):
         with self.assertRaises(MarketProductValidationError):
             validate_covered_call_cycle(tampered, evaluated_at=stamp)
         self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTED")
-        for key, value in (("delta_basis", "GUESSED"), ("iv", 0.0)):
+        at_limit = json.loads(json.dumps(good))
+        at_limit["suggestions"][0]["delta"] = 0.2
+        validate_covered_call_cycle(at_limit, evaluated_at=stamp)  # exactly 0.20 passes
+        for key, value in (("delta_basis", "GUESSED"), ("iv", 0.0), ("delta", None), ("delta", 0.2000000005),
+                           ("delta", 0.2001), ("delta", 0.9), ("delta", -0.01), ("delta", float("inf"))):
             bad = json.loads(json.dumps(good))
             bad["suggestions"][0][key] = value
             with self.assertRaises(MarketProductValidationError):

@@ -96,10 +96,20 @@ const https = (value: unknown) => str(value, 400) && value.startsWith("https://"
 const optStr = (value: unknown, max: number) => value === undefined || value === null || str(value, max);
 const SCENARIOS = new Set(["REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET"]);
 
+/** Source -> period shape and currency, as sealed by publish_sealed_snapshot._sealed_revenue_check. */
+const REVENUE_SOURCES: Record<string, { period: RegExp; currency: string }> = {
+  TWSE: { period: /^[0-9]{4}-(?:0[1-9]|1[0-2])$/, currency: "TWD" },
+  TPEX: { period: /^[0-9]{4}-(?:0[1-9]|1[0-2])$/, currency: "TWD" },
+  CISION: { period: /^[0-9]{4}-Q[1-4]$/, currency: "SEK" },
+  COMPANY_IR_KR: { period: /^[0-9]{4}-Q[1-4]$/, currency: "KRW" },
+};
+
 function validRevenueCheck(raw: any): boolean {
-  return raw === undefined || raw === null || (typeof raw === "object" && str(raw.source_id, 40) && https(raw.source_url)
-    && typeof raw.period === "string" && /^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$/.test(raw.period) && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy)
-    && (num(raw.revenue_yoy) || num(raw.cumulative_yoy)) && optStr(raw.currency, 8));
+  if (raw === undefined || raw === null) return true;
+  const rule = typeof raw === "object" && typeof raw.source_id === "string" && Object.hasOwn(REVENUE_SOURCES, raw.source_id)
+    ? REVENUE_SOURCES[raw.source_id]! : null;
+  return rule !== null && https(raw.source_url) && typeof raw.period === "string" && rule.period.test(raw.period)
+    && raw.currency === rule.currency && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy) && (num(raw.revenue_yoy) || num(raw.cumulative_yoy));
 }
 
 function validOutlook(raw: any): boolean {
@@ -174,7 +184,9 @@ export async function loadBottleneckV3(view: PublicSnapshotView): Promise<Bottle
 
 const pct = (value: number | null | undefined, digits = 1) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
 const pp = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}個百分點`;
-const cap = (value: number | null) => value === null ? "未揭露" : value >= 1e12 ? `US$${(value / 1e12).toFixed(2)}T` : value >= 1e9 ? `US$${(value / 1e9).toFixed(1)}B` : `US$${(value / 1e6).toFixed(0)}M`;
+const cap = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : value >= 1e12 ? `US$${(value / 1e12).toFixed(2)}T` : value >= 1e9 ? `US$${(value / 1e9).toFixed(1)}B` : `US$${(value / 1e6).toFixed(0)}M`;
+/** Revenue acceleration only when both growth figures are present. */
+const accelOf = (fund: Fundamentals) => num(fund.revenue_yoy) && num(fund.revenue_yoy_prev) ? fund.revenue_yoy - fund.revenue_yoy_prev : null;
 const day = (value: string | null | undefined) => (value ?? "").slice(0, 10) || "未揭露";
 /** SEC filing heat (last 30 days against the prior 60-day pace); the sealed ratio is optional. */
 const newsRatio = (news: IndustryEntry["news"] | undefined) => {
@@ -248,7 +260,7 @@ function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): 
 
 /** "交易所收盤交叉比對：<exchange> <price> <currency>（<date>），與 Yahoo 差 <diff>" beside the card's Yahoo price line. */
 function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
-  const diff = check.diff === null || check.diff === undefined ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
+  const diff = check.diff === undefined ? "（未取得可比較差異）" : check.diff === null ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
   return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
@@ -262,10 +274,10 @@ function revenueCheck(check: RevenueCheck): string {
   }
   const month = Number(check.period.slice(5, 7));
   const parts = [
-    ...(check.revenue_yoy === null || check.revenue_yoy === undefined ? [] : [`${check.period} 單月年增 ${pct(check.revenue_yoy, 0)}`]),
+    ...(check.revenue_yoy === null || check.revenue_yoy === undefined ? [] : [`單月年增 ${pct(check.revenue_yoy, 0)}`]),
     ...(check.cumulative_yoy === null || check.cumulative_yoy === undefined ? [] : [`${month === 1 ? "1 月" : `1–${month} 月`}累計年增 ${pct(check.cumulative_yoy, 0)}`]),
   ];
-  return `官方月營收：${OFFICIAL_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${parts.join("，")}`;
+  return `官方月營收：${OFFICIAL_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${check.period} ${parts.join("，")}`;
 }
 
 function layerName(doc: BottleneckV3, id: string): string {
@@ -438,7 +450,7 @@ const row = (...tiles: unknown[]) => uiBox(tiles, { layout: "horizontal", spacin
 function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
   const fund = entry.fundamentals;
   const long = longTerm(entry.market);
-  const accel = fund && fund.revenue_yoy !== null && fund.revenue_yoy_prev !== null ? ppShort(fund.revenue_yoy - fund.revenue_yoy_prev) : "未揭露";
+  const accel = fund ? ppShort(accelOf(fund)) : "未揭露";
   return {
     type: "bubble", size: "mega",
     header: productHeader(`瓶頸詳情 · #${entry.rank} · ${entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型"}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
@@ -478,7 +490,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
-    fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${fund.revenue_yoy !== null && fund.revenue_yoy_prev !== null ? pp(fund.revenue_yoy - fund.revenue_yoy_prev) : "未揭露"}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
+    fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
     ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),

@@ -447,12 +447,12 @@ def taiwan_monthly_revenue(symbols: Iterable[str], fetch_json: Callable[[str], A
         for row in rows if isinstance(rows, list) else []:
             symbol = codes.get(str(row.get("公司代號", "")).strip()) if isinstance(row, dict) else None
             roc = str(row.get("資料年月", "")).strip() if symbol else ""
-            if not symbol or not roc.isdigit() or len(roc) not in (4, 5) or not 1 <= int(roc[-2:]) <= 12:
+            if not symbol or not re.fullmatch(r"[0-9]{4,5}", roc) or not 1 <= int(roc[-2:]) <= 12:  # ASCII digits only
                 continue
             yoy, cumulative = change(row.get("營業收入-去年同月增減(%)")), change(row.get("累計營業收入-前期比較增減(%)"))
             if yoy is None and cumulative is None:
                 continue
-            out[symbol] = {"source_id": source_id, "source_url": url, "period": f"{int(roc[:-2]) + 1911}-{roc[-2:]}",
+            out[symbol] = {"source_id": source_id, "source_url": url, "period": f"{int(roc[:-2]) + 1911}-{int(roc[-2:]):02d}",
                            "revenue_yoy": yoy, "cumulative_yoy": cumulative, "currency": "TWD"}
     return out
 
@@ -462,25 +462,92 @@ def taiwan_monthly_revenue(symbols: Iterable[str], fetch_json: Callable[[str], A
 CISION_ISSUERS = {"SIVE.ST": "sivers-semiconductors"}
 CISION_RSS = "https://news.cision.com/{slug}/rss/releases"
 CISION_RSS_MIN_HOURS = 20
+CISION_PARSER_VERSION = 5  # 5: blocks come from the markup only (4: the section heading names the quarter); older checks discarded
 _REPORT_TITLE = re.compile(r"\binterim report\b|\byear-end report\b|\breports?\s+Q[1-4]\s+20\d{2}\s+results\b", re.I)
 _NET_SALES = re.compile(r"Net sales (?:amounted to|of|was|were|totalled|totaled)\s+SEK\s*(\d[\d,]*(?:\.\d+)?)\s*(?:m|million|MSEK)\b\s*\((\d[\d,]*(?:\.\d+)?)\)", re.I)
 
 
 def _report_period(title: str) -> str | None:
-    """Report period from a release title: "Reports Q2 2026 Results" -> 2026-Q2, "Interim Report Q1, January - March
-    2026" -> 2026-Q1; a year-end report without a quarter is Q4."""
+    """Report period from a release title that names its quarter: "Reports Q2 2026 Results" -> 2026-Q2, "Interim Report
+    Q1, January - March 2026" -> 2026-Q1. A year-end report without a quarter gives None: its first net-sales figure may
+    be the full year."""
     year, quarter = re.search(r"\b(20\d{2})\b", title), re.search(r"\bQ([1-4])\b", title)
-    if year and quarter:
-        return f"{year.group(1)}-Q{quarter.group(1)}"
-    if year and re.search(r"year-end report", title, re.I):
-        return f"{year.group(1)}-Q4"
+    return f"{year.group(1)}-Q{quarter.group(1)}" if year and quarter else None
+
+
+_ORDINAL = {"first": "1", "second": "2", "third": "3", "fourth": "4"}
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+_MONTH = "(" + "|".join(m.capitalize() for m in _MONTHS) + ")"
+# Every period label a report can put on a section or a figure, with or without a year: a named quarter, Q1-Q4, a month
+# range, or a cumulative period. Only a label with a year that is exactly one calendar quarter can prove scope.
+_PERIOD_LABEL = re.compile(r"\b(first|second|third|fourth) quarter(?: of)?,?(?: (20\d\d))?\b"
+                           r"|\bQ([1-4])(?:\s+(20\d\d))?\b"
+                           r"|\b" + _MONTH + r"\s*[-\u2013\u2014]\s*" + _MONTH + r"(?:,?\s+(20\d\d))?\b"
+                           r"|full[- ]year|twelve months|\b(?:six|nine|12|6|9)[- ]months?\b|first half|year[- ]to[- ]date|\bH1\b|\b9M\b",
+                           re.I)
+_BLOCK_TAG = re.compile(r"</?(?:h[1-6]|p|li|div|br|tr|td|th|ul|ol|table|section|article|header|footer)\b[^>]*>", re.I)
+
+
+def _label_quarter(label: re.Match) -> str | None:
+    """"2025-Q4" for "fourth quarter of 2025", "Q4 2025" or "October - December 2025"; None for a label without a year, a
+    partial or cumulative period."""
+    if label.group(1) and label.group(2):
+        return f"{label.group(2)}-Q{_ORDINAL[label.group(1).lower()]}"
+    if label.group(3) and label.group(4):
+        return f"{label.group(4)}-Q{label.group(3)}"
+    if label.group(5) and label.group(7):
+        first, last = _MONTHS.index(label.group(5).lower()), _MONTHS.index(label.group(6).lower())
+        if first % 3 == 0 and last == first + 2:
+            return f"{label.group(7)}-Q{first // 3 + 1}"
     return None
+
+
+def _report_blocks(page: str) -> list[tuple[bool, str]]:
+    """The page as (is_heading, text) blocks: h1-h6, or a short line without a closing full stop ("January - December")."""
+    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page)
+    body = re.sub(r"\s+", " ", body)  # source line breaks are not blocks; only the markup is
+    body = _BLOCK_TAG.sub("\n", re.sub(r"(?i)<h[1-6]\b[^>]*>", "\n\x00", body))
+    blocks = []
+    for raw in body.split("\n"):
+        heading = raw.lstrip().startswith("\x00")
+        text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", raw.replace("\x00", " ")))).strip()
+        if text:
+            blocks.append((heading or (len(text) <= 80 and not text.endswith(".")), text))
+    return blocks
+
+
+def _report_check(title: str, link: str, page: str) -> dict[str, Any] | None:
+    """The cross-check from one report page, only when its quarterly scope is established: the title names the quarter, net
+    sales are stated exactly once, every period label in that statement's own block is the quarter, and the last heading
+    before it that carries any period label names exactly that quarter with its year (a later section "January - December",
+    "July - September" or "Q3", with or without a year, withholds it). Prose elsewhere never sets scope. Anything else stays
+    Yahoo-only."""
+    period = _report_period(title)
+    blocks = _report_blocks(page)
+    figures = [(index, match) for index, (_, text) in enumerate(blocks) for match in _NET_SALES.finditer(text)]
+    if not period or len(figures) != 1:
+        return None
+    index, sales = figures[0]
+    own = [_label_quarter(label) for label in _PERIOD_LABEL.finditer(blocks[index][1])]
+    if any(quarter != period for quarter in own):
+        return None
+    headed = [labels for heading, text in blocks[:index] if heading and (labels := list(_PERIOD_LABEL.finditer(text)))]
+    scoped = bool(headed) and all(_label_quarter(label) == period for label in headed[-1])
+    if not (scoped or own) or (headed and not scoped):
+        return None
+    current, prior = (float(value.replace(",", "")) for value in sales.groups())
+    if prior <= 0:
+        return None
+    return {"source_id": "CISION", "source_url": link, "period": period, "revenue_yoy": round(current / prior - 1, 6),
+            "cumulative_yoy": None, "currency": "SEK"}
 
 
 def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Callable[[str], str] | None = None,
                            cache_path: Path | None = CISION_CACHE) -> dict[str, dict[str, Any]]:
     """Symbol -> the latest interim report's net sales change from the issuer's own Cision release ("Net sales amounted
-    to SEK 53.8 m (61.4)"), beside the Yahoo quarter. A failed read keeps the cached report; nothing is guessed."""
+    to SEK 53.8 m (61.4)"), beside the Yahoo quarter. The feed is read at most once in CISION_RSS_MIN_HOURS and a new
+    report's page at most three times, counted before each request so failures count too; the last good report keeps
+    serving meanwhile. Nothing is guessed."""
     def get(url: str) -> str:
         if fetch_text:
             return fetch_text(url)
@@ -490,43 +557,51 @@ def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Ca
 
     try:
         cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path and cache_path.exists() else {}
+        cache = cache if isinstance(cache, dict) else {}
     except (OSError, ValueError):
         cache = {}
+
+    def save() -> None:
+        if cache_path:
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+            except OSError:
+                pass
+
     out: dict[str, dict[str, Any]] = {}
     for symbol in [s for s in symbols if s in CISION_ISSUERS]:
-        entry = cache.get(symbol) if isinstance(cache.get(symbol), dict) else {}
+        entry = dict(cache.get(symbol)) if isinstance(cache.get(symbol), dict) else {}
+        if entry.get("parser") != CISION_PARSER_VERSION:
+            entry = {"parser": CISION_PARSER_VERSION}  # re-read the feed and the report with the current rules
+        cache[symbol] = entry
         try:
             read_at = datetime.strptime(str(entry.get("rss_read_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except ValueError:
             read_at = None
         if read_at is None or now - read_at >= timedelta(hours=CISION_RSS_MIN_HOURS):
+            entry["rss_read_at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            save()  # the attempt counts even if the request fails
             try:
                 items = ET.fromstring(get(CISION_RSS.format(slug=CISION_ISSUERS[symbol]))).findall("./channel/item")
                 reports = [(item.findtext("title") or "", item.findtext("link") or "") for item in items
                            if _REPORT_TITLE.search(item.findtext("title") or "")
                            and not re.search(r"\binvitation\b", item.findtext("title") or "", re.I)]
                 title, link = reports[0] if reports else ("", "")  # the feed lists the newest release first
-                # A new report's page is read once; an unreadable one (a challenge page, say) at most three days running.
-                attempts = entry.get("attempts", 0) if link == entry.get("link") and entry.get("check") is None else None
-                if link.startswith("https://news.cision.com/") and (link != entry.get("link") or (attempts is not None and attempts < 3)):
-                    text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", get(link))))
-                    sales, period = _NET_SALES.search(text), _report_period(title)
-                    current, prior = (float(sales.group(1).replace(",", "")), float(sales.group(2).replace(",", ""))) if sales else (0.0, 0.0)
-                    check = ({"source_id": "CISION", "source_url": link, "period": period, "revenue_yoy": round(current / prior - 1, 6),
-                              "cumulative_yoy": None, "currency": "SEK"} if sales and period and prior > 0 else None)
-                    entry = {"link": link, "check": check, **({"attempts": (attempts or 0) + 1} if check is None else {})}
-                entry = {**entry, "rss_read_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
-                cache[symbol] = entry
+                if link.startswith("https://news.cision.com/") and link != entry.get("link"):
+                    if entry.get("pending") != link:
+                        entry["pending"], entry["attempts"] = link, 0
+                    if entry["attempts"] < 3:
+                        entry["attempts"] += 1
+                        save()
+                        check = _report_check(title, link, get(link))
+                        if check:  # a new report replaces the last good one only once it has been read
+                            entry.update(link=link, check=check, pending=None, attempts=0)
             except Exception:
-                pass  # keep the cached report, if any
+                pass  # the last good report, if any, keeps serving
         if isinstance(entry.get("check"), dict):
             out[symbol] = entry["check"]
-    if cache_path:
-        try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
-        except OSError:
-            pass
+    save()
     return out
 
 

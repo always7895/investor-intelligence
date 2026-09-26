@@ -240,6 +240,10 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
             raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
 
 
+# The high-strike suggestion's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA).
+MAX_HIGH_STRIKE_DELTA = 0.20
+
+
 def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
     strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices."""
@@ -286,6 +290,8 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) ->
         delta = item.get("delta")
         if delta is not None and not 0 <= finite(delta, "delta") <= 1:
             raise MarketProductValidationError("INVALID_DELTA_RANGE")
+        if item.get("role") == "HIGH_STRIKE" and (delta is None or finite(delta, "delta") > MAX_HIGH_STRIKE_DELTA):
+            raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_DELTA_ABOVE_LIMIT")
         if item.get("delta_basis") not in (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"):
             raise MarketProductValidationError("INVALID_DELTA_BASIS")
         if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:

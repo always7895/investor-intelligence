@@ -24,6 +24,8 @@ export interface CoveredCallCycle {
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const DELTA_BASES = new Set(["QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"]);
+/** The high strike's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA). */
+const MAX_HIGH_STRIKE_DELTA = 0.20;
 const close = (value: number, expected: number) => Math.abs(value - expected) <= Math.max(1e-4, Math.abs(expected) * 1e-3);
 
 /** A strictly validated cycle, or null (the caller then shows the option as unavailable). */
@@ -47,6 +49,7 @@ export function validateCoveredCallCycle(raw: unknown): CoveredCallCycle | null 
       || !close(item.annualized_yield, item.limit_price / cycle.spot * 365 / cycle.dte)
       || !close(item.upside_to_strike, item.strike / cycle.spot - 1)) return null;
     if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return null;
+    if (item.role === "HIGH_STRIKE" && !(finite(item.delta) && item.delta <= MAX_HIGH_STRIKE_DELTA)) return null;
     if (item.delta_basis !== null && item.delta_basis !== undefined && !DELTA_BASES.has(item.delta_basis)) return null;
     if (item.iv !== null && item.iv !== undefined && !(finite(item.iv) && item.iv > 0)) return null;
   }

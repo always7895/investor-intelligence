@@ -174,11 +174,13 @@ def broad_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
     return document
 
 
-def bs_call_delta(spot: float, strike: float, years: float, vol: float | None) -> float | None:
+def bs_call_delta(spot: float, strike: float, years: float, vol: float | None, digits: int | None = 3) -> float | None:
+    """Black-Scholes call delta, rounded for display; digits=None keeps full precision for limit checks."""
     if not vol or vol <= 0 or years <= 0 or spot <= 0 or strike <= 0:
         return None
     d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
-    return round(0.5 * (1 + math.erf(d1 / math.sqrt(2))), 3)
+    delta = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
+    return round(delta, digits) if digits is not None else delta
 
 
 def bs_call_price(spot: float, strike: float, years: float, vol: float) -> float:
@@ -200,21 +202,25 @@ def implied_vol(price: float, spot: float, strike: float, years: float) -> float
             low = mid
         else:
             high = mid
-    return round((low + high) / 2, 4)
+    return (low + high) / 2
 
 
 def with_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
     """The row with its assignment reference: the quoted delta, else Black-Scholes from the quoted implied volatility,
-    else from the volatility implied by its own bid/ask mid (labelled QUOTE_IMPLIED)."""
-    if row.get("delta") is not None:  # the Yahoo path computes it from the quoted IV when parsing
-        return {**row, "delta_basis": "QUOTED_IV" if row.get("iv") else "QUOTED"}
+    else from the volatility implied by its own bid/ask mid (labelled QUOTE_IMPLIED). delta_exact keeps full precision
+    for the limit check (a rounded 0.200 must not admit 0.2003); delta and iv are rounded for display."""
     years = dte / 365
+    if row.get("delta") is not None:  # the Yahoo path computes it from the quoted IV when parsing
+        exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None) if row.get("iv") else row["delta"]
+        return {**row, "delta_exact": exact, "delta_basis": "QUOTED_IV" if row.get("iv") else "QUOTED"}
     if row.get("iv"):
-        return {**row, "delta": bs_call_delta(spot, row["strike"], years, row["iv"]), "delta_basis": "QUOTED_IV"}
+        exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None)
+        return {**row, "delta": round(exact, 3) if exact is not None else None, "delta_exact": exact, "delta_basis": "QUOTED_IV"}
     vol = implied_vol((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
     if vol is None:
         return {**row, "delta_basis": None}
-    return {**row, "iv": vol, "delta": bs_call_delta(spot, row["strike"], years, vol), "delta_basis": "QUOTE_IMPLIED"}
+    exact = bs_call_delta(spot, row["strike"], years, vol, digits=None)
+    return {**row, "iv": round(vol, 4), "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTE_IMPLIED"}
 
 
 def _int(value: Any) -> int | None:
@@ -261,7 +267,7 @@ def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int) 
         return []
     annual = lambda row: row["bid"] / spot * 365 / dte  # noqa: E731 - on the bid: premium that is actually collectable
     high = [row for row in usable if annual(row) >= MIN_ANNUALIZED_YIELD
-            and row.get("delta") is not None and row["delta"] <= MAX_HIGH_STRIKE_DELTA]
+            and row.get("delta_exact") is not None and row["delta_exact"] <= MAX_HIGH_STRIKE_DELTA]
     if not high:
         return []
     first = max(high, key=lambda row: row["strike"])

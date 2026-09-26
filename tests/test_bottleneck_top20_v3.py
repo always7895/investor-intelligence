@@ -120,6 +120,7 @@ class OutlookTests(unittest.TestCase):
                                              "period": "2026-08", "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD"}})
         self.assertEqual(engine.taiwan_monthly_revenue(["NVDA"], lambda url: self.fail("no Taiwan listing, no request")), {})
         malformed = [{"資料年月": "11513", "公司代號": "5351", "營業收入-去年同月增減(%)": "1"},
+                     {"資料年月": "115０８", "公司代號": "5351", "營業收入-去年同月增減(%)": "1"},  # full-width digits
                      {"資料年月": "11508", "公司代號": "5351", "營業收入-去年同月增減(%)": ""}]
         self.assertEqual(engine.taiwan_monthly_revenue(["5351.TWO"], lambda url: malformed), {})
 
@@ -130,7 +131,9 @@ class OutlookTests(unittest.TestCase):
                "<item><title>Invitation to Presentation of Sivers Semiconductors' Q2 2026 Report</title><link>https://news.cision.com/x/r/inv,c3</link></item>"
                "<item><title>Sivers Semiconductors AB (publ), Publishes Interim Report Q1, January - March 2026</title><link>https://news.cision.com/x/r/q1,c4</link></item>"
                "</channel></rss>")
-        page = ('<li style=" margin-bottom:3pt;"><span>Net sales amounted to SEK 53.8 m (61.4), corresponding to a decrease of 12% '
+        page = ('<h1>Sivers Reports Q2 2026 Results</h1><p>Sivers today announced its interim report for the second quarter of '
+                '2026.</p><p>Financial Highlights:</p>'
+                '<li style=" margin-bottom:3pt;"><span>Net sales amounted to SEK 53.8 m (61.4), corresponding to a decrease of 12% '
                 'year-over-year.</span></li>')
         urls = []
         feed = engine.CISION_RSS.format(slug="sivers-semiconductors")
@@ -153,8 +156,9 @@ class OutlookTests(unittest.TestCase):
             self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(hours=45), down, cache), expected)
             replies[feed] = rss.replace("q2,c2", "q3,c5").replace("Q2 2026", "Q3 2026")
             replies["https://news.cision.com/x/r/q3,c5"] = "<p>Net sales grew strongly.</p>"  # unreadable: no figure, no guess
-            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=3), fetch, cache), {})
-            replies["https://news.cision.com/x/r/q3,c5"] = page.replace("53.8 m (61.4)", "70.0 m (56.0)")  # readable the next day
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=3), fetch, cache), expected)  # Q2 keeps serving
+            replies["https://news.cision.com/x/r/q3,c5"] = (page.replace("53.8 m (61.4)", "70.0 m (56.0)")
+                                                            .replace("second quarter", "third quarter").replace("Q2", "Q3"))
             q3 = engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=4), fetch, cache)["SIVE.ST"]
             self.assertEqual((q3["period"], q3["revenue_yoy"]), ("2026-Q3", 0.25))
         with tempfile.TemporaryDirectory() as tmp:  # a page that stays unreadable is read on three days, then left alone
@@ -164,6 +168,66 @@ class OutlookTests(unittest.TestCase):
                 engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=day), fetch, Path(tmp) / "cision.json")
             self.assertEqual(sum(url.endswith("q3,c5") for url in urls), 3)
         self.assertEqual(engine.cision_interim_revenue(["NVDA"], now, lambda url: self.fail("not a Cision issuer"), None), {})
+
+    def test_cision_failures_still_count_against_the_fetch_limits(self):
+        # ChatGPT review: a raising request must not bypass the 20-hour feed limit or the three page attempts.
+        now = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+        feed = engine.CISION_RSS.format(slug="sivers-semiconductors")
+        rss = "<rss><channel><item><title>Sivers Reports Q3 2026 Results</title><link>https://news.cision.com/x/r/q3,c9</link></item></channel></rss>"
+        with tempfile.TemporaryDirectory() as tmp:
+            cache, urls = Path(tmp) / "cision.json", []
+            def down(url):
+                urls.append(url)
+                raise TimeoutError("timeout")
+            for hour in range(0, 5):  # the feed times out: read once, not five times
+                engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(hours=hour), down, cache)
+            self.assertEqual(urls, [feed])
+        with tempfile.TemporaryDirectory() as tmp:
+            cache, urls = Path(tmp) / "cision.json", []
+            def page_down(url):
+                urls.append(url)
+                if url == feed:
+                    return rss
+                raise OSError("reset")
+            for day in range(6):  # the page keeps failing: three attempts on three days, then no more
+                engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=day), page_down, cache)
+            self.assertEqual(sum(url.endswith("q3,c9") for url in urls), 3)
+            self.assertEqual(urls.count(feed), 6)
+            engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=6), lambda url: "<not xml", cache)  # invalid XML
+            engine.cision_interim_revenue(["SIVE.ST"], now + timedelta(days=6, hours=1),
+                                          lambda url: self.fail("an invalid feed still counts against the 20 hours"), cache)
+        with tempfile.TemporaryDirectory() as tmp:  # a check cached by an older parser is discarded and read again
+            cache = Path(tmp) / "cision.json"
+            cache.write_text(json.dumps({"SIVE.ST": {"rss_read_at": "2026-09-26T11:00:00Z", "link": "https://news.cision.com/x/r/old",
+                                                  "check": {"source_id": "CISION", "period": "2025-Q4"}}}), encoding="utf-8")
+            self.assertEqual(engine.cision_interim_revenue(["SIVE.ST"], now, lambda url: "<rss><channel/></rss>", cache), {})
+
+    def test_a_cision_page_must_name_its_quarter_and_state_net_sales_once(self):
+        page = "<p>Interim report for the fourth quarter of 2025</p><h2>October - December 2025</h2><p>Net sales amounted to SEK 40 m (50).</p>"
+        self.assertEqual(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x", page)["revenue_yoy"], -0.2)
+        # Astra: one figure under a cumulative heading is not a quarter, and the page must name the title's quarter.
+        cumulative = "<h2>January - December 2025</h2><p>Net sales amounted to SEK 300 m (200).</p>"
+        self.assertIsNone(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x", cumulative))
+        self.assertIsNone(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x",
+                                               "<p>Interim report for the fourth quarter of 2025</p>" + cumulative))
+        self.assertIsNone(engine._report_check("Sivers Reports Q3 2025 Results", "https://news.cision.com/x", page))  # another quarter
+        wrapped = "<h1>\nInterim report for the fourth\nquarter of 2025\n</h1>\n<h2>October -\nDecember 2025</h2>\n" + page.split("</h2>")[1]
+        self.assertEqual(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x", wrapped)["period"], "2025-Q4")
+        # Astra: the figure's own section heading decides its scope, with or without a year, however far it is.
+        q4, figure = "<h1>Interim report for the fourth quarter of 2025</h1>", "<p>Net sales amounted to SEK 300 m (200).</p>"
+        for body in (q4 + "<h2>July - September 2025</h2>" + figure, q4 + "<h2>January - December</h2>" + figure,
+                     q4 + "<h2>July - September</h2>" + figure, q4 + "<h2>Q3 2025</h2>" + figure,
+                     q4 + "<h2>January - December 2025</h2><p>" + "Management discussed operating performance and comparative "
+                     "figures for the reporting period. " * 4 + "</p>" + figure,
+                     q4 + "<p>For January - December 2025, net sales were SEK 300 m (200).</p>",
+                     "<h1>Interim report</h1>" + figure,
+                     # Astra: source line breaks inside a heading must not hide it
+                     q4 + "<h2>January -\nDecember 2025</h2>" + figure, q4 + "<h2>\nJanuary - December 2025.\n</h2>" + figure):
+            self.assertIsNone(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x", body))
+        both = ("<h2>January - December 2025</h2><p>Net sales amounted to SEK 300 m (200).</p>"
+                "<h2>October - December 2025</h2><p>Net sales amounted to SEK 40 m (50).</p>")
+        self.assertIsNone(engine._report_check("Sivers Reports Q4 2025 Results", "https://news.cision.com/x", both))
+        self.assertIsNone(engine._report_check("Year-end Report 2025", "https://news.cision.com/x", page))  # no quarter named
 
     def test_korean_revenue_comes_from_the_curated_ir_config_for_the_same_quarter_only(self):
         hynix = engine.korea_ir_revenue("000660.KS", "2026-06-30")
@@ -333,7 +397,8 @@ class SealedFormTests(unittest.TestCase):
                  "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD", "junk": 1}
         self.assertEqual(publisher._sealed_revenue_check(check), {k: v for k, v in check.items() if k != "junk"})
         for bad in ({**check, "source_id": "YAHOO"}, {**check, "source_url": "http://x"}, {**check, "period": "2026-13"},
-                    {**check, "revenue_yoy": float("nan"), "cumulative_yoy": None}, {**check, "period": "2026-Q2"}, None):
+                    {**check, "revenue_yoy": float("nan"), "cumulative_yoy": None}, {**check, "period": "2026-Q2"},
+                    {**check, "period": "2026-０８"}, None):
             self.assertIsNone(publisher._sealed_revenue_check(bad))
         report = {"source_id": "CISION", "source_url": "https://news.cision.com/x/r/q2,c2", "period": "2026-Q2", "revenue_yoy": -0.123779,
                   "cumulative_yoy": None, "currency": "TWD"}

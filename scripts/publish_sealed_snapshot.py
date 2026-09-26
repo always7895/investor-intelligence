@@ -450,9 +450,7 @@ def _sealed_revenue_check(raw: "object") -> "dict | None":
         return None
     currency, quarterly = sources[raw["source_id"]]
     period = str(raw.get("period", ""))
-    if len(period) != 7 or period[4] != "-" or not period[:4].isdigit():
-        return None
-    if not (period[5] == "Q" and period[6] in "1234" if quarterly else period[5:].isdigit() and 1 <= int(period[5:]) <= 12):
+    if not re.fullmatch(r"[0-9]{4}-Q[1-4]" if quarterly else r"[0-9]{4}-(?:0[1-9]|1[0-2])", period):  # ASCII only
         return None
     def number(value: object) -> "float | None":
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None

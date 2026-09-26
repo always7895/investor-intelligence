@@ -65,6 +65,25 @@ class OrderTimingTests(unittest.TestCase):
         self.assertEqual(ot.weighted_schedule(micron)["m12"], 33.33)
         self.assertEqual(ot.extract_timing(DURING)["horizons"], {24: 36.0})
 
+    def test_a_word_fraction_takes_only_its_own_rpo_recognition_clause(self):
+        # ChatGPT Pro and Astra counter-examples: another clause's period, a different subject, a negation.
+        for text in ("One-third of RPO will be recognized after five years; two-thirds of RPO will be recognized over the next "
+                     "twelve months.",
+                     "One-third of RPO is expected to be recognized after five years, while two-thirds of RPO is expected to be "
+                     "recognized over the next twelve months."):
+            self.assertEqual(ot.extract_timing(text)["horizons"], {12: 66.67}, text)
+        for text in ("Our RPO is $5 billion. One-third of our customers are expected to upgrade within the next twelve months.",
+                     "One-third of our remaining performance obligations is expected not to be recognized as revenue over the next "
+                     "twelve months.",
+                     "Not one-third of RPO is expected to be recognized over the next twelve months.",
+                     "One-third of RPO is never expected to be recognized over the next twelve months.",
+                     "One-third of RPO relates to hardware. Revenue is expected to be recognized over the next twelve months.",
+                     # Astra: a recognition that belongs to another subject in the same sentence
+                     "One-third of RPO relates to hardware, and the remainder is expected to be recognized over the next twelve months.",
+                     "One-third of RPO relates to hardware, while services revenue is expected to be recognized over the next twelve "
+                     "months."):
+            self.assertIsNone(ot.extract_timing(text), text)
+
     def test_latest_periodic_filing(self):
         submissions = {"filings": {"recent": {"form": ["8-K", "10-Q", "10-K"], "filingDate": ["2026-09-01", "2026-08-01", "2026-02-01"],
                                               "accessionNumber": ["a", "0000000001-26-000002", "c"], "primaryDocument": ["x", "q.htm", "k.htm"]}}}

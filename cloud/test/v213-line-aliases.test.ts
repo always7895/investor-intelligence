@@ -27,13 +27,13 @@ const SIVE_MONTHLY = { ticker: "SIVE.ST", strategy: "COVERED_CALL", expiry, dte:
     period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / 21, upside_to_strike: 62 / 32.78 - 1,
     delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 }] };
 
-async function sealedEnv() {
+async function sealedEnv(v3 = doc(now - HOUR)) {
   const kv = new MemoryKv();
   kv.values.set("v213:top20-report:latest", JSON.stringify({ synthetic: "report" }));
   kv.values.set("last_successful_pipeline_timestamp", new Date(now - 60_000).toISOString().replace(/\.\d{3}Z$/, "Z"));
   await sealUnboundReport(kv, RUN);
   const lazy: Record<string, unknown> = {
-    [BOTTLENECK_V3_KEY]: doc(now - HOUR),
+    [BOTTLENECK_V3_KEY]: v3,
     "v213:options:v2": { schema: "v213-options-v2", generated_at: stamp, options: {
       "SIVE.ST": { weekly: { unavailable: "Nasdaq Stockholm 無 3-14 天到期的上市期權" }, monthly: SIVE_MONTHLY } } },
   };
@@ -65,6 +65,17 @@ describe("LINE aliases for the current products", () => {
     for (const text of ["TOP20。", "ＴＯＰ２０！", "top 20?", "排名", "排行榜", "前20", "前 20 名", "前二十", "瓶頸排名", "瓶頸榜", "TOP20 文字"]) {
       expect(await answer(env, text), text).toContain("瓶頸爆發 TOP20（v3");
     }
+  });
+
+  it("without a fresh v3 names the unavailable product for words new to ranking; certified words keep their path", async () => {
+    const env = await sealedEnv(doc(now - 15 * HOUR));  // past the report-age bound
+    for (const text of ["瓶頸榜", "前二十", "瓶頸爆發榜"]) {
+      const body = await answer(env, text);
+      expect(body, text).toContain("瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料");
+      expect(body, text).toContain("七欄Top20");
+    }
+    const button = await answer(env, "TOP20");  // the certified Top20 path (T1-T11 contracts), unchanged
+    for (const text of ["排名", "前20", "TOP20。"]) expect(await answer(env, text), text).toBe(button);
   });
 
   it("sends industry ranking phrasings to the Leopold industry ranking, not the company Top20", async () => {

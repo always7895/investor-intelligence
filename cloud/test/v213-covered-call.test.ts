@@ -24,6 +24,12 @@ describe("covered-call suggestions", () => {
     expect(validateCoveredCallCycle(reversed)).toBeNull();
     const badYield = cycle(); (badYield.suggestions[1] as any).annualized_yield = 0.9; expect(validateCoveredCallCycle(badYield)).toBeNull();
     expect(validateCoveredCallCycle(cycle({ currency: "EUR" }))).toBeNull();
+    for (const delta of [null, undefined, 0.2000000005, 0.2001, 0.9, -0.01, Number.POSITIVE_INFINITY, Number.NaN]) {  // the high strike always needs delta <= 0.20
+      const uncapped = cycle(); (uncapped.suggestions[0] as any).delta = delta;
+      expect(validateCoveredCallCycle(uncapped)).toBeNull();
+    }
+    const atLimit = cycle(); (atLimit.suggestions[0] as any).delta = 0.2;
+    expect(validateCoveredCallCycle(atLimit)).not.toBeNull();
   });
 
   it("renders two sell suggestions with limit, premium, yield and assignment reference, no payoff placeholders", () => {
