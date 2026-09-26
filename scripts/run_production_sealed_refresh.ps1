@@ -29,7 +29,12 @@ param(
     [string]$TabbyModel = 'Qwen3.8-27B-EXL3-5.5bpw-v2',
     # Sealed runs directory (default state\v213-snapshots); an installed runtime uses data\v213-snapshots so its
     # attested payload never changes. Exported as II_SNAPSHOT_ROOT for the publisher and the company reports.
-    [string]$SnapshotRoot = ''
+    [string]$SnapshotRoot = '',
+    # Post-seal work may only start while the run is younger than this (the task limit is 1 h, the next trigger
+    # would otherwise be skipped by the operation lock); each child is further capped by RefreshTimeoutSeconds.
+    [int]$PostSealBudgetSeconds = 2100,
+    # Sealed runs kept under -SnapshotRoot (hourly runs are not rollback targets; the pointer's run is always kept).
+    [int]$KeepRuns = 48
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -37,6 +42,7 @@ $logDir = Join-Path $repo "data\cache"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 $log = Join-Path $logDir "sealed-refresh.log"
 $stamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssK"
+$runStarted = Get-Date
 if ([string]::IsNullOrWhiteSpace($SnapshotRoot)) { $runsRoot = Join-Path $repo "state\v213-snapshots" }
 else {
     $runsRoot = if ([IO.Path]::IsPathRooted($SnapshotRoot)) { $SnapshotRoot } else { Join-Path $repo $SnapshotRoot }
@@ -115,15 +121,30 @@ function Invoke-CarryForwardSeal {
     foreach ($tier in $tiers) {
         $tierArgs = $tier.Args
         $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock @tierArgs }
-        if ($published.Code -ne 0) { return [pscustomobject]@{ Code = $published.Code; RunId = $null; Stage = 'GENERATE' } }
-        $runId = Get-PrintedRunId $published
-        if (-not $runId) { return [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'RUN_ID' } }
+        $runId = if ($published.Code -eq 0) { Get-PrintedRunId $published } else { $null }
+        if (-not $runId) {
+            # A crash caused by an optional input must not cost the seal: fall through to the next tier.
+            Add-Content -Path $log -Value "[$(Get-Date -Format o)] GENERATE FAILED tier=$($tier.Stage) exit=$($published.Code); trying the next tier"
+            $last = [pscustomobject]@{ Code = $(if ($published.Code) { $published.Code } else { 1 }); RunId = $null; Stage = 'GENERATE' }
+            continue
+        }
         $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
         if ($replayed.Code -eq 0) { return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = $tier.Stage } }
         Add-Content -Path $log -Value "[$stamp] REPLAY FAILED run=$runId tier=$($tier.Stage); trying the next tier"
         $last = [pscustomobject]@{ Code = $replayed.Code; RunId = $null; Stage = 'REPLAY' }
     }
     return $last
+}
+
+function Remove-OldRuns {
+    # Keep the newest $KeepRuns sealed runs under an explicit -SnapshotRoot (generated hourly artifacts outside Git;
+    # the tracked state\v213-snapshots tree is never pruned).
+    if ([string]::IsNullOrWhiteSpace($SnapshotRoot) -or -not (Test-Path -LiteralPath $runsRoot)) { return }
+    $runs = @(Get-ChildItem -LiteralPath $runsRoot -Directory | Where-Object { $_.Name -match '^\d{8}T\d{6}Z-[0-9a-f]{12}$' } |
+        Sort-Object Name -Descending)
+    foreach ($old in ($runs | Select-Object -Skip $KeepRuns)) {
+        if ($old.Name -ne $runId) { Remove-Item -LiteralPath $old.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 function Invoke-Top20Refresh {
@@ -220,8 +241,17 @@ try {
     if ($CarryForwardTop20) {
         # Only after the pointer write: nothing below can delay or block this hour's seal, or fail the task.
         try {
-            Invoke-BoundedScript 'ROTATION' (Join-Path $repo 'scripts\run_daily_data_refresh.ps1') @() $RefreshTimeoutSeconds | Out-Null
-            Invoke-Top20Refresh
+            Remove-OldRuns
+            $elapsed = [int]((Get-Date) - $runStarted).TotalSeconds
+            if ($elapsed -lt $PostSealBudgetSeconds) {
+                $budget = [Math]::Min($RefreshTimeoutSeconds, [Math]::Max(60, $PostSealBudgetSeconds - $elapsed))
+                Invoke-BoundedScript 'DATA_REFRESH' (Join-Path $repo 'scripts\run_daily_data_refresh.ps1') @() $budget | Out-Null
+            } else { Add-Content -Path $log -Value "[$(Get-Date -Format o)] POST_SEAL SKIPPED data refresh (elapsed ${elapsed}s)" }
+            $elapsed = [int]((Get-Date) - $runStarted).TotalSeconds
+            if ($elapsed -lt $PostSealBudgetSeconds) {
+                $script:RefreshTimeoutSeconds = [Math]::Min($RefreshTimeoutSeconds, [Math]::Max(60, $PostSealBudgetSeconds - $elapsed))
+                Invoke-Top20Refresh
+            } else { Add-Content -Path $log -Value "[$(Get-Date -Format o)] POST_SEAL SKIPPED Top20 refresh (elapsed ${elapsed}s)" }
         } catch {
             Add-Content -Path $log -Value ("[$stamp] POST_SEAL REFRESH FAILED " + $_.Exception.GetType().Name + ": " + $_.Exception.Message)
             Invoke-LoggedNative { & $py "scripts\top20_carry_forward.py" record --result fail --note "POST_SEAL_EXCEPTION" } | Out-Null

@@ -18,7 +18,7 @@ GEV/6501 test corpus. Two writers, neither complete, and a launcher that could a
   (`data\cache\top20-lkg\<run_id>.json`), replays the staged run through the real Worker readers
   (`scripts/stage_sealed_replay.py`), and syncs objects first, pointer last (`--remote`, bounded retries).
 - **Refresh after.** Only after the pointer write: the daily rotation/company-report refresh, then — when the LKG
-  report is 11 h old (`refresh_after_hours`) and no 3 h failure backoff is active — a data-only Top20 refresh
+  report is 8 h old (`refresh_after_hours`) and no 2 h failure backoff is active — a data-only Top20 refresh
   (`run-v213-local.ps1 -NoSync`) under a hard timeout with a process-tree kill. The candidate becomes the LKG only
   after the bundle checks and a staged replay pass (`scripts/top20_carry_forward.py`).
 - **No second writer.** Launcher refresh paths pass `-NoSync`; stage 8 of `run-v213-local.ps1` commits or activates

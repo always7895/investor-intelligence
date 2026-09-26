@@ -83,6 +83,7 @@ CARRY_PUBLISH = TRACE + (
     "elif '--identity-shards' in args:\n    run, state = 'RUN_A', 'CARRIED_FORWARD'\n"
     "else:\n    run, state = 'RUN_D', 'CARRIED_FORWARD'\n"
     "trace('PUBLISH ' + run + ' ' + ' '.join(a for a in args if a.startswith('--')))\n"
+    "if (root / ('publish_fail_' + run)).exists():\n    print('Traceback: synthetic crash', file=sys.stderr)\n    sys.exit(2)\n"
     "ids = {'RUN_A': '20260926T010000Z-aaaaaaaaaaaa', 'RUN_B': '20260926T010000Z-bbbbbbbbbbbb',"
     " 'RUN_C': '20260926T010000Z-cccccccccccc', 'RUN_D': '20260926T010000Z-dddddddddddd'}\n"
     "print('{')\nprint('  \"run_id\": \"' + ids[run] + '\",')\nprint('  \"top20_state\": \"' + state + '\"')\nprint('}')\n")
@@ -103,7 +104,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
     """-CarryForwardTop20: seal first, replay fallback, refresh only after the pointer, bounded, backoff-gated."""
 
     def run_carry(self, shell: str, markers: tuple[str, ...] = (), carry: bool = True,
-                  extra: tuple[str, ...] = ()) -> tuple[int, list[str], str, float]:
+                  extra: tuple[str, ...] = (), run_dirs: tuple[str, ...] = ()) -> tuple[int, list[str], str, float]:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             scripts = root / "scripts"
@@ -118,6 +119,9 @@ class CarryForwardHourlyTests(unittest.TestCase):
             (root / "run-v213-local.ps1").write_text(REFRESH_STUB, encoding="utf-8")
             for marker in markers:
                 (root / marker).write_text("1", encoding="utf-8")
+            snapshots = root / "data" / "v213-snapshots"
+            for name in run_dirs:
+                (snapshots / name).mkdir(parents=True)
             command = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(scripts / SCRIPT.name)]
             if carry:
                 command += ["-CarryForwardTop20", "-RefreshTimeoutSeconds", "5", "-TabbyUrl", "http://127.0.0.1:9", *extra]
@@ -127,6 +131,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
             trace_path = root / "trace.txt"
             trace = trace_path.read_text(encoding="utf-8").splitlines() if trace_path.exists() else []
             log = (root / "data" / "cache" / "sealed-refresh.log").read_text(encoding="utf-8", errors="replace")
+            self.remaining = sorted(p.name for p in snapshots.iterdir()) if snapshots.exists() else []
             return done.returncode, trace, log, elapsed
 
     def setUp(self):
@@ -198,6 +203,29 @@ class CarryForwardHourlyTests(unittest.TestCase):
             code, trace, log, _ = self.run_carry(shell, ("not_due",), extra=("-SnapshotRoot", r"data\v213-snapshots"))
             self.assertEqual(code, 0, (shell, log))
             self.assertRegex(log, r"SYNC_ARG .*\\data\\v213-snapshots\\20260926T010000Z-aaaaaaaaaaaa")
+
+    def test_a_crashing_lazy_tier_falls_through_to_the_next_tier(self):
+        for shell in shells():
+            code, trace, log, _ = self.run_carry(shell, ("publish_fail_RUN_A", "not_due"))
+            self.assertEqual(code, 0, (shell, log))
+            self.assertEqual(trace[1:4], ["PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd PASS", "SYNC dddd"], trace)
+            self.assertIn("GENERATE FAILED tier=", log)
+
+    def test_old_runs_under_the_snapshot_root_are_pruned_after_the_seal(self):
+        old = ("20260925T010000Z-111111111111", "20260925T020000Z-222222222222", "20260925T030000Z-333333333333", "keep-me")
+        for shell in shells():
+            code, trace, log, _ = self.run_carry(shell, ("not_due",), extra=("-SnapshotRoot", r"data\v213-snapshots", "-KeepRuns", "2"),
+                                                 run_dirs=old + ("20260926T010000Z-aaaaaaaaaaaa",))
+            self.assertEqual(code, 0, (shell, log))
+            self.assertEqual(self.remaining, ["20260925T030000Z-333333333333", "20260926T010000Z-aaaaaaaaaaaa", "keep-me"])
+
+    def test_an_exhausted_post_seal_budget_skips_the_refreshes(self):
+        for shell in shells():
+            code, trace, log, _ = self.run_carry(shell, extra=("-PostSealBudgetSeconds", "0"))
+            self.assertEqual(code, 0, (shell, log))
+            self.assertEqual(trace, ["PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3 --market-observations",
+                                     "REPLAY aaaa PASS", "SYNC aaaa"], trace)
+            self.assertIn("POST_SEAL SKIPPED Top20 refresh", log)
 
     def test_switch_off_keeps_the_default_flow(self):
         for shell in shells():

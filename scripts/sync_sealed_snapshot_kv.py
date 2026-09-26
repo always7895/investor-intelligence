@@ -38,6 +38,13 @@ ATTEMPTS = 3
 RETRY_SECONDS = 5.0
 LAST_ERROR: list[str] = []
 BLOB_PREFIX = "blob:v1:"
+# KV growth is bounded: per-run keys expire after 14 days (only the pointer's run is ever read), content-addressed
+# blobs after 30 days. A local ledger remembers blobs this machine stored; one stored in the last 20 days is reused
+# without a KV read, an older or unknown one is (re)put, which also renews its expiry while it is still referenced.
+RUN_KEY_TTL_SECONDS = 14 * 86400
+BLOB_TTL_SECONDS = 30 * 86400
+BLOB_REUSE_SECONDS = 20 * 86400
+LEDGER = ROOT / "data" / "cache" / "kv-blob-ledger.json"
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
@@ -66,10 +73,30 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
     return p
 
 
-def client_put(key: str, local_path: Path) -> bool:
+def client_put(key: str, local_path: Path, ttl: int | None = None) -> bool:
     rel = os.path.relpath(local_path, str(ROOT)).replace("\\", "/")
-    p = _run_with_retry(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE])
+    extra = ["--ttl", str(ttl)] if ttl else []
+    p = _run_with_retry(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE, *extra])
     return p.returncode == 0
+
+
+def load_ledger(path: Path | None = None) -> dict[str, float]:
+    path = path or LEDGER
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return {str(k): float(v) for k, v in value.items()} if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_ledger(ledger: dict[str, float], path: Path | None = None) -> None:
+    path = path or LEDGER
+    horizon = time.time() - BLOB_TTL_SECONDS
+    kept = {k: v for k, v in ledger.items() if v >= horizon}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(json.dumps(kept), encoding="utf-8")
+    temp.replace(path)
 
 
 def client_get(key: str) -> str | None:
@@ -110,15 +137,16 @@ def main() -> int:
     ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
 
     # 1) objects FIRST (pointer must never lead). Content-addressed lazy blobs (blob:v1:<sha256>) are immutable:
-    # one already stored with matching bytes is reused, so unchanged identity shards cost reads, not KV writes.
+    # one this machine stored recently (ledger) is reused without a KV call; others are put with an expiry.
+    ledger = load_ledger()
+    now = time.time()
     reused: set[str] = set()
     for key, fp in staged_files.items():
-        if key.startswith(BLOB_PREFIX):
-            live = client_get(key)
-            if live is not None and sha(live) == key[len(BLOB_PREFIX):]:
-                reused.add(key)
-                continue
-        if not client_put(key, fp):
+        blob = key.startswith(BLOB_PREFIX)
+        if blob and now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS:
+            reused.add(key)
+            continue
+        if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             print(f"SYNC ABORT (object put failed after {ATTEMPTS} attempts): {key} {LAST_ERROR[:1]}", file=sys.stderr)
             return 1
     print(f"OBJECTS_UPLOADED {len(staged_files) - len(reused)}" + (f" BLOBS_REUSED {len(reused)}" if reused else ""))
@@ -143,6 +171,11 @@ def main() -> int:
         print("SYNC ABORT (pointer readback mismatch)", file=sys.stderr)
         return 1
     print(f"POINTER_LAST {json.loads(ptr_raw)['run_id']} seal {json.loads(ptr_raw)['seal_sha256'][:12]}")
+    for key in staged_files:
+        if key.startswith(BLOB_PREFIX) and key not in reused:
+            ledger[key[len(BLOB_PREFIX):]] = now
+    save_ledger(ledger)
+    shutil.rmtree(staged, ignore_errors=True)  # the staged copies are only needed until the pointer moved
     return 0
 
 

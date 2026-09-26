@@ -44,7 +44,7 @@ CARRIED_OBJECTS = {
 }
 SHARED_FIELDS = ("long_term_return_pct", "short_term_return_pct", "industry", "profit_summary")
 SEAL_INTERVAL_SECONDS = 3600  # a carried report must stay readable until the next hourly seal
-BACKOFF_SECONDS = 3 * 3600
+BACKOFF_SECONDS = 2 * 3600  # with refresh at 8 h and the carry bound at 13 h, a failure still leaves a retry
 KEEP_LKG = 5
 
 

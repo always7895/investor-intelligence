@@ -10,6 +10,8 @@ import hashlib
 import json
 import re
 import shutil
+import contextlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -169,6 +171,47 @@ class ReplayAcceptanceTests(unittest.TestCase):
         self.assertIn("v213-top20-report-freshness-v1.json", GATE)
         self.assertIn("Get-FileHash -LiteralPath $configPath -Algorithm SHA256", GATE)
         self.assertIn("[int]$ExpectTop20Records = 0", GATE)
+
+
+class SyncLedgerTests(unittest.TestCase):
+    """KV growth is bounded: run keys and blobs carry an expiry, the pointer none; a blob this machine stored recently
+    is reused without any KV call; the ledger only records blobs after the pointer moved."""
+
+    def test_ttls_and_ledger_reuse(self):
+        import sync_sealed_snapshot_kv as sync
+        store: dict[str, str] = {}
+        puts: list[tuple[str, int | None]] = []
+
+        def put(key, path, ttl=None):
+            puts.append((key, ttl))
+            store[key] = Path(path).read_bytes().decode("utf-8")
+            return True
+
+        blob_body = '{"x": 1}'
+        blob_key = "blob:v1:" + sync.sha(blob_body)
+        objects = {"v213:run:aaaa": "run-body", blob_key: blob_body}
+        pointer = json.dumps({"run_id": "20260926T010000Z-aaaaaaaaaaaa", "seal_sha256": "ab" * 32})
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "20260926T010000Z-aaaaaaaaaaaa"
+            run_dir.mkdir()
+            (run_dir / "objects.json").write_text(json.dumps(objects), encoding="utf-8")
+            (run_dir / "pointer.raw.json").write_text(pointer, encoding="utf-8")
+            saved = (sync.client_put, sync.client_get, sync.LEDGER, sys.argv)
+            sync.client_put, sync.client_get, sync.LEDGER = put, store.get, Path(tmp) / "ledger.json"
+            sys.argv = ["sync", "--run-dir", str(run_dir)]
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(sync.main(), 0)
+                self.assertEqual(dict(puts), {"v213:run:aaaa": sync.RUN_KEY_TTL_SECONDS, blob_key: sync.BLOB_TTL_SECONDS,
+                                              "snapshot:current": None})
+                self.assertIn(blob_key[len("blob:v1:"):], json.loads((Path(tmp) / "ledger.json").read_text(encoding="utf-8")))
+                self.assertFalse((run_dir / ".kv-stage").exists())
+                puts.clear()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(sync.main(), 0)
+                self.assertNotIn(blob_key, dict(puts))  # reused from the ledger, no KV call
+            finally:
+                sync.client_put, sync.client_get, sync.LEDGER, sys.argv = saved
 
 
 class SyncRetryTests(unittest.TestCase):

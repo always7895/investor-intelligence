@@ -147,17 +147,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
-        if args.if_older_than_hours > 0 and args.output.exists():
-            previous = json.loads(args.output.read_text(encoding="utf-8"))
-            age = (now - datetime.strptime(previous["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age < args.if_older_than_hours:
-                print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
-                return 0
+        previous = json.loads(args.output.read_text(encoding="utf-8")) if args.if_older_than_hours > 0 and args.output.exists() else None
+        age = (now - datetime.strptime(previous["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
+    except (OSError, ValueError, KeyError, TypeError):
+        age = None  # unreadable previous file: rebuild
+    if age is not None and age < args.if_older_than_hours:
+        print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
+        return 0
+    try:
         document = build(sec_fetcher(), ticker_index(), now)
     except Exception as error:  # keep the last good file
         print(json.dumps({"status": "FAILED", "error": type(error).__name__, "detail": str(error)[:120]}))
         return 1
-    args.output.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    temp = args.output.with_name(args.output.name + ".tmp")  # atomic: a killed run never leaves a truncated file
+    temp.write_bytes(json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+    temp.replace(args.output)
     print(json.dumps({"status": "OK", "filing": document["filing"]["period"],
                       "top": [(p["ticker"] or p["issuer"], p["long_weight"], p["status"]) for p in document["positions"][:12]]}))
     return 0

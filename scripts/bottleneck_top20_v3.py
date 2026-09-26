@@ -486,7 +486,12 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 1
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temp = args.output.with_name(args.output.name + ".tmp")
-    temp.write_bytes(json.dumps(document, ensure_ascii=False, default=str).encode("utf-8"))
+    try:
+        body = json.dumps(document, ensure_ascii=False, default=str, allow_nan=False)
+    except ValueError:  # a NaN from a provider would make the publisher drop v3 later; fail here with the reason
+        print(json.dumps({"status": "FAILED", "error": "NON_FINITE_VALUE"}))
+        return 1
+    temp.write_bytes(body.encode("utf-8"))
     temp.replace(args.output)
     print(json.dumps({"status": "OK", "top": [(c["rank"], c["symbol"], c["score"], c["layer"]) for c in document["top"]],
                       "industries": [(i["rank"], i["id"], i["explosiveness"]) for i in document["industries"]],
