@@ -137,6 +137,7 @@ if($functions.Count-ne7){throw 'FUNCTION_INVENTORY_MISMATCH'}
 foreach($function in $functions){. ([scriptblock]::Create($function.Extent.Text))}
 function Read-ModelSelection { return $null }
 function Get-ModelCatalog { param($Base) return $script:Catalog }
+function Set-FollowingModelProfile { param($Model) return $null }  # tested separately below
 Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $script:ProfileActive=$false
 function Invoke-RestMethod {
@@ -238,6 +239,39 @@ Write-Output 'BRIDGE_SHARED_IDENTITY=PASS; startup_profile=PASS; no_network=true
                     self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-2500:])
                     self.assertIn('BRIDGE_SHARED_IDENTITY=PASS', result.stdout)
 
+
+    def test_relay_builds_the_following_profile_from_the_settings_and_the_detected_model(self):
+        quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+        script = r'''
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+$ProjectRoot=ROOT_VALUE
+$python=PYTHON_VALUE
+$stateRoot=STATE_VALUE
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $ProjectRoot 'scripts/run_v213_local_llm_bridge_core.ps1'),[ref]$tokens,[ref]$errors)
+foreach($function in @($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and @('Set-FollowingModelProfile','Get-RuntimeModelProfile') -contains $node.Name},$true))){. ([scriptblock]::Create($function.Extent.Text))}
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
+$default=Set-FollowingModelProfile 'Qwen3.8-27B'
+if($default.model-cne'Qwen3.8-27B'-or$default.enable_thinking-ne$false-or$default.max_output_tokens-ne1024-or$default.timeout_ms-ne18000){throw 'DEFAULT_SETTINGS_NOT_USED'}
+@{schema_version=1;model='old';enable_thinking=$true;reasoning_effort='high';max_output_tokens=2048;smoke_output_tokens=64;timeout_ms=19000}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $stateRoot 'v213-model-profile-v1.json') -Encoding utf8
+$launcher=Set-FollowingModelProfile 'Other-8B'
+if($launcher.model-cne'Other-8B'-or$launcher.enable_thinking-ne$true-or$launcher.reasoning_effort-cne'high'-or$launcher.max_output_tokens-ne2048){throw 'LAUNCHER_SETTINGS_NOT_USED'}
+if(([Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')|ConvertFrom-Json).model-cne'Other-8B'){throw 'GATEWAY_PROFILE_NOT_SET'}
+Write-Output 'FOLLOWING_PROFILE=PASS'
+'''
+        with tempfile.TemporaryDirectory(prefix='Profile (1) ') as directory:
+            script_text = script.replace('ROOT_VALUE', quote(ROOT)).replace('PYTHON_VALUE', quote(sys.executable)).replace('STATE_VALUE', quote(directory))
+            path = Path(directory) / 'check.ps1'
+            path.write_text(script_text, encoding='utf-8-sig')
+            for shell in ('powershell.exe', 'pwsh'):
+                if shutil.which(shell) is None:
+                    continue
+                result = subprocess.run([shell, '-NoProfile', '-NonInteractive', '-File', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+                with self.subTest(shell=shell):
+                    self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-2000:])
+                    self.assertIn('FOLLOWING_PROFILE=PASS', result.stdout)
+                (Path(directory) / 'v213-model-profile-v1.json').unlink(missing_ok=True)
 
 if __name__ == '__main__':
     unittest.main()

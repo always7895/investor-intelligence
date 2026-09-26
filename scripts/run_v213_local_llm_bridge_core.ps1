@@ -326,6 +326,25 @@ function Get-RuntimeModelProfile {
     return $validated.profile
 }
 
+function Set-FollowingModelProfile {
+    # Operator 2026-09-26: the Worker follows the route's model (LOCAL_LLM_MODEL_FROM_ROUTE) and keeps only the settings
+    # of its model profile. The relay builds the same profile from the same settings (the launcher's profile file, else
+    # the project default) and the model it detected, so both sides hash to the same profile. None when no file exists.
+    param([string]$Model)
+    foreach ($path in @((Join-Path $stateRoot 'v213-model-profile-v1.json'), (Join-Path $ProjectRoot 'config\v213-model-profile-v1.json'))) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $settings = Get-Content -LiteralPath $path -Raw -Encoding utf8 | ConvertFrom-Json
+        $profileJson = [ordered]@{
+            schema_version = [int]$settings.schema_version; model = $Model; enable_thinking = [bool]$settings.enable_thinking
+            reasoning_effort = [string]$settings.reasoning_effort; max_output_tokens = [int]$settings.max_output_tokens
+            smoke_output_tokens = [int]$settings.smoke_output_tokens; timeout_ms = [int]$settings.timeout_ms
+        } | ConvertTo-Json -Compress
+        [Environment]::SetEnvironmentVariable('V213_MODEL_PROFILE_JSON', $profileJson)
+        return Get-RuntimeModelProfile
+    }
+    return $null
+}
+
 function Resolve-Model {
     param([string]$Base, [string]$Requested)
     $catalog = @(Get-ModelCatalog $Base)
@@ -641,6 +660,7 @@ $llama = [string]$discovered.base
 $modelResolution = $discovered.resolution
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
+if ($tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile) { $runtimeProfile = Set-FollowingModelProfile $Model }
 # A validated profile owns the exact model; Test-SelectedModelRoute below rechecks profile agreement and requires a
 # complete response with the exact served identity before the gateway or a route is started.
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)

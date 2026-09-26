@@ -113,6 +113,27 @@ describe("v213 bounded query-aware public context", () => {
     // Without the switch the policy model stays pinned and a different LOCAL_LLM_MODEL is refused.
     await expect(minimalModelSmoke({ ...env, LOCAL_LLM_MODEL: "Qwen3.8-27B" })).rejects.toThrow("MODEL_CONFIG_INVALID");
   });
+  it("in route mode a configured profile keeps its settings and takes the route's model on both sides", async () => {
+    const { env } = runtime();
+    const settings = { schema_version: 1, model: "Qwen3.8-27B-EXL3-SC5-H6-V6", enable_thinking: false, reasoning_effort: "none",
+      max_output_tokens: 1024, smoke_output_tokens: 128, timeout_ms: 18000 };
+    const local = { ...settings, model: "Qwen3.8-27B" };  // what the local bridge builds from the same settings
+    const { modelProfileSha256 } = await import("../src/v213/model-profile");
+    const localSha = await modelProfileSha256(local as any);
+    const bodies: any[] = [];
+    const native = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: bodies.length === 1 ? "公開證據僅支持特定主張。" : SMOKE_MARKER } }],
+        ii_exact_model_pin: { selected_model: "Qwen3.8-27B", request_model_substitution_allowed: false, model_profile_sha256: localSha } }));
+    });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => v213RuntimeCompatibleFetch(native as typeof fetch, input, init));
+    const following = { ...env, V213_MODEL_PROFILE_JSON: JSON.stringify(settings), LOCAL_LLM_MODEL: "Qwen3.8-27B", LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    await compactGeneralAnswer(following, parseQuery("NVDA有哪些需要驗證的風險？"), { tenantId: "synthetic", chatType: "group" });
+    expect(bodies[0].model).toBe("Qwen3.8-27B");
+    expect(bodies[0].ii_model_profile).toEqual(local);
+    expect(await minimalModelSmoke(following)).toBe(true);  // the local profile hash matches the Worker's effective profile
+    expect(bodies[1].ii_model_profile).toEqual(local);
+  });
   it("smoke uses fixed minimal input and NEVER reads public or private storage", async () => {
     const { env } = runtime(); const { bodies } = transport(SMOKE_MARKER);
     const forbidden = { get() { throw new Error("SMOKE_STORAGE_ACCESS_FORBIDDEN"); } } as unknown as KVNamespace;

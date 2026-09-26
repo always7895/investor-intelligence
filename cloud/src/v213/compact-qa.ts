@@ -25,6 +25,14 @@ function routeModel(env: RouteModelEnv): string | undefined {
   const model = (env.LOCAL_LLM_MODEL ?? "").trim();
   return modelFromRoute(env) && MODEL_RE.test(model) ? model : undefined;
 }
+
+/** The configured profile; in route mode its model is the route's (the local bridge builds the same profile from the
+ * same settings and the model it detected, so both sides hash to the same profile). */
+function effectiveProfile(env: ModelProfileEnv & RouteModelEnv) {
+  const profile = configuredModelProfile(env);
+  const route = routeModel(env);
+  return profile && route ? validateModelProfile({ ...profile, model: route }) : profile;
+}
 function obj(raw: unknown): Obj { return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Obj : {}; }
 function list(raw: unknown): Obj[] { return Array.isArray(raw) ? raw.map(obj) : []; }
 function text(raw: unknown, max: number): string { return typeof raw === "string" ? raw.slice(0, max) : ""; }
@@ -89,7 +97,7 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now?:
  * tenant history, encryption, freshness gate and answer persistence still run.
  */
 export async function compactGeneralAnswer(env: QaEnv & ModelProfileEnv & RouteModelEnv, query: ParsedQuery, context: RequestContext): Promise<string> {
-  const profile = configuredModelProfile(env);
+  const profile = effectiveProfile(env);
   const route = profile ? undefined : routeModel(env);
   const data = await compactPublicContext(env, query);
   const report = COMPACT_CONTEXT_MARKER + JSON.stringify({ ...data, ...(profile ? { runtime_model_profile: profile } : {}),
@@ -137,7 +145,7 @@ export function compactCompletionBody(raw: unknown): Obj | null {
 
 /** Minimal transport probe, independent of snapshot size and research context. */
 export async function minimalModelSmoke(env: QaEnv & ModelProfileEnv & RouteModelEnv): Promise<boolean> {
-  const profile = configuredModelProfile(env);
+  const profile = effectiveProfile(env);
   const selected = profile?.model ?? routeModel(env) ?? policy.model;
   if ((!profile && env.LOCAL_LLM_MODEL !== selected) || !env.LOCAL_LLM_BASE_URL || !env.LOCAL_LLM_SHARED_SECRET) throw new Error("FREE_RELAY_SMOKE_MODEL_CONFIG_INVALID");
   const endpoint = new URL("/v1/chat/completions", env.LOCAL_LLM_BASE_URL);

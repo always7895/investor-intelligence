@@ -8,7 +8,8 @@ export interface FreeRelayEnv {
   FREE_RELAY_MAX_TTL_SECONDS?: string;
   LOCAL_LLM_MODEL?: string;
   /** Operator 2026-09-26: "true" lets the model named in the HMAC-authenticated route (the one the local bridge
-   * detected and verified) be used, so a changed local model needs no Worker change. A model profile still pins. */
+   * detected and verified) be used, so a changed local model needs no Worker change. A model profile then supplies
+   * the settings only (thinking, tokens, timeout); its model field is replaced by the route's model. */
   LOCAL_LLM_MODEL_FROM_ROUTE?: string;
 }
 
@@ -60,9 +61,8 @@ function maxTtlSeconds(env: FreeRelayEnv): number {
 
 /** The model a route must name; null when the route's own (authenticated) model is accepted. */
 function expectedModel(env: FreeRelayEnv): string | null {
-  const profile = configuredModelProfile(env);
-  if (!profile && modelFromRoute(env)) return null;
-  return (profile?.model ?? env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
+  if (modelFromRoute(env)) return null;
+  return (configuredModelProfile(env)?.model ?? env.LOCAL_LLM_MODEL ?? "qwen38-q6").trim();
 }
 
 export function modelFromRoute(env: Pick<FreeRelayEnv, "LOCAL_LLM_MODEL_FROM_ROUTE">): boolean {
