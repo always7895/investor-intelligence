@@ -128,6 +128,10 @@ class CodexReviewTests(unittest.TestCase):
             self.clipboard = "review diff"
             with self.assertRaises(server.ToolError):
                 server.chatgpt_pro_collect({"name": "x"})
+            server.chatgpt_pro_packet({"prompt": "line one\nline two\n", "name": "x"})
+            self.clipboard = "line one\r\nline two\r\n"  # the Windows clipboard converts line endings
+            with self.assertRaises(server.ToolError):
+                server.chatgpt_pro_collect({"name": "x"})
             self.clipboard = "VERDICT: APPROVE"
             reply = server.chatgpt_pro_collect({"name": "x"})
             self.assertEqual(reply["reply"], "VERDICT: APPROVE")

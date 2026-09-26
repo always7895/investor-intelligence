@@ -173,7 +173,8 @@ def chatgpt_pro_collect(args: dict[str, Any]) -> dict[str, Any]:
     reply = completed.stdout.decode("utf-8", errors="replace").strip() if completed.returncode == 0 else ""
     if not reply:
         raise ToolError("CLIPBOARD_EMPTY: copy the ChatGPT reply first")
-    if packet.exists() and reply == packet.read_text(encoding="utf-8").strip():
+    same = lambda text: " ".join(text.replace("\r\n", "\n").split())  # noqa: E731 - the clipboard turns LF into CRLF
+    if packet.exists() and same(reply) == same(packet.read_text(encoding="utf-8")):
         raise ToolError("CLIPBOARD_STILL_HOLDS_THE_PACKET: copy the ChatGPT reply first")
     path = PACKET_DIR / f"chatgpt-pro-{name}.reply.md"
     path.write_text(reply[:MAX_PROMPT], encoding="utf-8")
