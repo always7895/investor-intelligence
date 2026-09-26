@@ -10,6 +10,8 @@ for example:
   within 1, 2, and 5 years, respectively"
 - "$103.7 billion of unsatisfied RPO, of which 41% was expected to be recognized over the initial 24 months"
 - "$315 million, of which $201 million is expected to be recognized in the next 12 months"
+- "Approximately one-third of the remaining performance obligations ... over the next twelve months" (Micron)
+- "of which 36% is expected to be recognized as revenue during the 24 months ending June 30, 2028" (Nebius)
 
 Only explicit statements are used, with passages, filing URL and accession. Horizons that the
 filing does not state are derived only by linear interpolation between two disclosed horizons (a
@@ -27,12 +29,16 @@ from typing import Any, Callable, Mapping
 Fetch = Callable[[str], bytes]
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_ROOT = ROOT / "data" / "cache" / "v21" / "order_timing"
-EXTRACTOR_VERSION = 3  # 3: no interpolation from zero before the first disclosed horizon
+EXTRACTOR_VERSION = 4  # 3: no interpolation from zero before the first disclosed horizon; 4: word fractions, "during"
 QUARTERLY_FORMS = ("10-Q", "10-K")
 _KEY = re.compile(r"remaining performance obligations?|\bRPO\b", re.I)
 _NUM = r"(\d{1,3}(?:\.\d+)?)"
 _PCT = r"(?:approximately|about|roughly|~)?\s*" + _NUM + r"\s*%"
 _MONEY = r"\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(billion|million)?"
+# A share written as a fraction counts only as "<fraction> of ...", never "the second half of 2027".
+_FRACTIONS = {"one-third": 33.33, "one third": 33.33, "two-thirds": 66.67, "two thirds": 66.67, "one-half": 50.0,
+              "one half": 50.0, "one-quarter": 25.0, "three-quarters": 75.0}
+_SHARE = (r"(?:approximately|about|roughly|~)?\s*(?:" + _NUM + r"\s*%|(" + "|".join(_FRACTIONS) + r")(?=\s+of\b))")
 _UNIT_MONTHS = {"month": 1, "months": 1, "year": 12, "years": 12}
 
 
@@ -50,7 +56,7 @@ def _amount(number: str, scale: str | None) -> float:
 _PAIR = re.compile(_PCT + r"[^%]{0,220}?next\s+(?:twelve|12)\s+months[^%]{0,60}?" + _PCT
                    + r"[^%]{0,80}?(?:following|subsequent|next)\s+(?:twelve|12)\s+months", re.I)
 _LIST = re.compile(r"of which\s+((?:" + _NUM + r"\s*%\s*,?\s*(?:and\s+)?){2,6})[^%]{0,80}?within\s+((?:[\d.]+\s*,?\s*(?:and\s+)?){2,6})\s*(years?|months?)", re.I)
-_OVER = re.compile(_PCT + r"[^%$]{0,140}?(?:over|within|in)\s+(?:the\s+)?(?:next|initial|first|coming)?\s*(\w+(?:-\w+)?)\s+(months?|years?)", re.I)
+_OVER = re.compile(_SHARE + r"[^%$]{0,140}?(?:over|within|in|during)\s+(?:the\s+)?(?:next|initial|first|coming)?\s*(\w+(?:-\w+)?)\s+(months?|years?)", re.I)
 _OF_WHICH = re.compile(_MONEY + r"[^$%]{0,80}?of which\s+" + _MONEY + r"[^.$%]{0,120}?(?:next|coming|within)\s+(?:the\s+next\s+)?(twelve|12|one|1)\s+(months?|years?)", re.I)
 _SEGMENT = re.compile(r"RPO\s+of\s+" + _MONEY + r"\s+of which", re.I)
 
@@ -87,10 +93,10 @@ def _cumulative(window: str) -> tuple[dict[int, float], list[str], list[dict]]:
     over = _OVER.search(window)
     if over:
         try:
-            months = _months(over.group(2), over.group(3))
+            months = _months(over.group(3), over.group(4))
         except (KeyError, TypeError, ValueError):
             months = 0
-        value = float(over.group(1))
+        value = float(over.group(1)) if over.group(1) else _FRACTIONS[over.group(2).lower()]
         if 0 < value <= 100 and 1 <= months <= 120:
             return {months: value}, [over.group(0).strip()[:300]], []
     return {}, [], []

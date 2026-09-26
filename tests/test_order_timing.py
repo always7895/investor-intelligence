@@ -21,6 +21,13 @@ INITIAL = ("the Company had $ 103.7 billion of unsatisfied RPO, of which 41 % wa
 AMOUNT = "remaining performance obligations was $ 315 million, of which $ 201 million is expected to be recognized in the next 12 months."
 NOT_TIMING = ("remaining performance obligations was approximately $ 5 billion, of which $ 422 million has been recognized as "
               "contract liabilities.")
+# Micron 10-Q (2026-06-25) and Nebius 6-K exhibit 99.2 (2026-08-12), verbatim.
+FRACTION = ("As of May 28, 2026, the transaction price allocated to our remaining performance obligations was approximately $ 5 "
+            "billion, of which $ 422 million has been recognized as contract liabilities. As of August 28, 2025, our remaining "
+            "performance obligations were not material. Approximately one-third of the remaining performance obligations as of "
+            "May 28, 2026 are expected to be recognized as revenue over the next twelve months.")
+DURING = ("As of June 30, 2026, the amount of unsatisfied RPO was $37,490.6, of which 36% is expected to be recognized as revenue "
+          "during the 24 months ending June 30, 2028, 40% between months 25 and 48, and the remainder recognized thereafter.")
 
 
 class OrderTimingTests(unittest.TestCase):
@@ -48,6 +55,15 @@ class OrderTimingTests(unittest.TestCase):
     def test_amounts_that_are_not_timing_are_ignored(self):
         self.assertIsNone(ot.extract_timing(NOT_TIMING))
         self.assertIsNone(ot.extract_timing("Revenue grew 40% over the next quarter without any backlog statement."))
+        # A fraction that is a calendar period, not a share of the RPO, is not a timing.
+        self.assertIsNone(ot.extract_timing("Our RPO will ramp in the second half of fiscal 2027 as capacity arrives over the next 12 months."))
+
+    def test_word_fractions_and_during_are_timings(self):
+        micron = ot.extract_timing(FRACTION)
+        self.assertEqual(micron["horizons"], {12: 33.33})
+        self.assertIn("one-third", micron["passages"][0])
+        self.assertEqual(ot.weighted_schedule(micron)["m12"], 33.33)
+        self.assertEqual(ot.extract_timing(DURING)["horizons"], {24: 36.0})
 
     def test_latest_periodic_filing(self):
         submissions = {"filings": {"recent": {"form": ["8-K", "10-Q", "10-K"], "filingDate": ["2026-09-01", "2026-08-01", "2026-02-01"],
