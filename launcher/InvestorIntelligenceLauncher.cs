@@ -151,6 +151,8 @@ namespace InvestorIntelligence
             public readonly List<string> Models = new List<string>();
             public string Error = "";
             public bool AutoDetected;
+            public string Chosen = "";  // the model picked automatically (exact, same family or the only one)
+            public string Match = "";
         }
 
         sealed class NamedTunnelSettings
@@ -355,14 +357,50 @@ namespace InvestorIntelligence
         // TabbyAPI, llama.cpp, Ollama, LM Studio and common alternates. 8000 (System One decider) is never probed.
         static readonly int[] KnownModelPorts = { 5000, 8080, 11434, 1234, 5001, 8081 };
 
-        static List<string> ModelBaseCandidates(string saved)
+        static List<string> ModelBaseCandidates(string saved, bool includeListeners = false)
         {
             var bases = new List<string>();
             if (!String.IsNullOrEmpty(saved) && SafeLoopbackBase(saved)) bases.Add(saved.TrimEnd('/'));
             bases.Add(DefaultLlamaBase);
             bases.AddRange(KnownModelPorts.Select(port => "http://127.0.0.1:" + port));
+            // Operator request 2026-09-26: a model server on any other port is found too (every loopback listener).
+            if (includeListeners) bases.AddRange(LoopbackListenerPorts().Select(port => "http://127.0.0.1:" + port));
             return bases.Where(b => new Uri(b).Port != 8000)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        static List<int> LoopbackListenerPorts()
+        {
+            try {
+                return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
+                    .Where(e => IPAddress.IsLoopback(e.Address) || e.Address.Equals(IPAddress.Any) || e.Address.Equals(IPAddress.IPv6Any))
+                    .Select(e => e.Port).Where(p => p >= 1024 && p != 8000).Distinct().OrderBy(p => p).Take(48).ToList();
+            } catch { return new List<int>(); }
+        }
+
+        // Qwen3.8-27B-EXL3-5.5bpw-v2 -> qwen3.8-27b: the id up to its parameter-count token (same rule as
+        // scripts/local_model_endpoint.py); an id without one is its own family.
+        static string ModelFamily(string id)
+        {
+            string[] parts = (id ?? "").Trim().Split('-');
+            for (int i = 0; i < parts.Length; i++)
+                if (Regex.IsMatch(parts[i], @"\A\d+(\.\d+)?[BbMm]\z")) return String.Join("-", parts.Take(i + 1)).ToLowerInvariant();
+            return (id ?? "").Trim().ToLowerInvariant();
+        }
+
+        // Exact wanted model, else one served model of the same family, else the only model; null when ambiguous.
+        static string[] ChooseModel(List<string> ids, IEnumerable<string> wanted)
+        {
+            var names = wanted.Where(w => !String.IsNullOrWhiteSpace(w)).ToList();
+            foreach (string w in names) {
+                string hit = ids.FirstOrDefault(id => id.Equals(w, StringComparison.OrdinalIgnoreCase));
+                if (hit != null) return new[] { hit, "exact" };
+            }
+            foreach (string w in names) {
+                var hits = ids.Where(id => ModelFamily(id) == ModelFamily(w)).ToList();
+                if (hits.Count == 1) return new[] { hits[0], "family" };
+            }
+            return ids.Count == 1 ? new[] { ids[0], "only" } : null;
         }
 
         static List<string> ReadCatalog(string baseUrl)
@@ -388,31 +426,40 @@ namespace InvestorIntelligence
             }
             string preferred = PreferredModel;
             string saved = previous != null ? previous.LlamaBaseUrl : "";
-            string firstBase = null;
-            List<string> firstIds = null;
-            // Saved address first; then (UI scan only) known local ports. A server holding the configured
-            // model wins; otherwise the first reachable catalog is offered (the profile needs requalification).
-            // Explicit command-line checks keep exactly the address they were given.
-            var candidates = discover ? ModelBaseCandidates(saved)
+            var wanted = new List<string> { previous != null ? previous.Model : "", preferred };
+            // Saved address first; then (UI scan only) known local ports and every other loopback listener, read in
+            // parallel. The best model match wins (exact, then same family, then the only model), the earlier address
+            // on a tie; without any match the first reachable catalog is offered. A changed model leaves the profile
+            // unqualified until it is saved and requalified. Explicit command-line checks keep exactly their address.
+            var candidates = discover ? ModelBaseCandidates(saved, true)
                 : new List<string> { SafeLoopbackBase(saved) ? saved.TrimEnd('/') : DefaultLlamaBase };
-            foreach (string baseUrl in candidates)
+            var catalogs = new List<string>[candidates.Count];
+            System.Threading.Tasks.Parallel.For(0, candidates.Count, new ParallelOptions { MaxDegreeOfParallelism = 16 },
+                i => { catalogs[i] = ReadCatalog(candidates[i]); });
+            string firstBase = null, bestBase = null;
+            List<string> firstIds = null, bestIds = null;
+            string[] best = null;
+            var rank = new Dictionary<string, int> { { "exact", 0 }, { "family", 1 }, { "only", 2 } };
+            for (int i = 0; i < candidates.Count; i++)
             {
-                List<string> ids = ReadCatalog(baseUrl);
+                List<string> ids = catalogs[i];
                 if (ids == null) continue;
-                bool hasPreferred = !String.IsNullOrEmpty(preferred) &&
-                    ids.Any(id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase));
-                if (firstBase == null) { firstBase = baseUrl; firstIds = ids; }
-                if (hasPreferred || String.IsNullOrEmpty(preferred)) { firstBase = baseUrl; firstIds = ids; break; }
+                if (firstBase == null) { firstBase = candidates[i]; firstIds = ids; }
+                string[] choice = ChooseModel(ids, wanted);
+                if (choice != null && (best == null || rank[choice[1]] < rank[best[1]])) { best = choice; bestBase = candidates[i]; bestIds = ids; }
             }
             if (firstBase == null)
             {
-                catalog.Error = "MODEL_CATALOG_UNAVAILABLE: no local model server answered on the saved address or known ports.";
+                catalog.Error = "MODEL_CATALOG_UNAVAILABLE: no local model server answered on the saved address, known ports or other loopback listeners.";
                 return catalog;
             }
+            if (bestBase != null) { firstBase = bestBase; firstIds = bestIds; catalog.Chosen = best[0]; catalog.Match = best[1]; }
             catalog.BaseUrl = firstBase;
             catalog.AutoDetected = !firstBase.Equals((saved ?? "").TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+            string chosen = catalog.Chosen;
             catalog.Models.AddRange(firstIds.OrderBy(
-                id => id.Equals(preferred, StringComparison.OrdinalIgnoreCase) ? "0" + id : "1" + id,
+                id => id.Equals(chosen, StringComparison.OrdinalIgnoreCase) ? "0" + id
+                    : id.Equals(preferred, StringComparison.OrdinalIgnoreCase) ? "1" + id : "2" + id,
                 StringComparer.OrdinalIgnoreCase));
             return catalog;
         }
@@ -821,6 +868,13 @@ namespace InvestorIntelligence
             if (candidates[0] != "http://localhost:9999" || candidates[1] != DefaultLlamaBase ||
                 candidates.Any(b => new Uri(b).Port == 8000) || candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count() != candidates.Count ||
                 !candidates.Contains("http://127.0.0.1:11434") || ModelBaseCandidates("https://example.com")[0] != DefaultLlamaBase) return 68;
+            if (ModelFamily("Qwen3.8-27B-EXL3-5.5bpw-v2") != "qwen3.8-27b" || ModelFamily("Qwen3.8-27B") != "qwen3.8-27b" ||
+                ModelFamily("gemma4") != "gemma4") return 69;
+            var moved = ChooseModel(new List<string> { "Qwen3.8-27B" }, new[] { "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548", "Qwen3.8-27B-EXL3-5.5bpw-v2" });
+            if (moved == null || moved[0] != "Qwen3.8-27B" || moved[1] != "family") return 73;
+            var exact = ChooseModel(new List<string> { "other", "Qwen3.8-27B-EXL3-5.5bpw-v2" }, new[] { "", "qwen3.8-27b-exl3-5.5bpw-v2" });
+            if (exact == null || exact[1] != "exact" || ChooseModel(new List<string> { "a-7B", "b-8B" }, new[] { "c-9B" }) != null) return 74;
+            if (ModelBaseCandidates("", true).Any(b => new Uri(b).Port == 8000)) return 75;
             string many = "{\"data\":[" + String.Join(",", Enumerable.Range(0, 1025).Select(i => "{\"id\":\"synthetic-" + i + "\"}")) + "]}";
             try { ExtractModelIds(many); return 67; } catch (InvalidOperationException) { }
             return 0;
@@ -851,6 +905,16 @@ namespace InvestorIntelligence
                 try {
                     var catalog = DiscoverModels(new ModelSelection { LlamaBaseUrl = args[1] });
                     return catalog.Models.Count > 0 ? 0 : 71;
+                } catch { return 72; }
+            }
+            // Read-only auto-detection report (no selection or profile change): address, model and how it matched.
+            if (args.Length == 1 && args[0] == "--model-discovery-check") {
+                try {
+                    var found = DiscoverModels(LoadSelection(), true);
+                    Console.WriteLine(new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
+                        { "base_url", found.BaseUrl }, { "model", found.Chosen }, { "match", found.Match },
+                        { "auto_detected", found.AutoDetected }, { "models", found.Models.Take(16).ToArray() }, { "error", found.Error } }));
+                    return String.IsNullOrEmpty(found.Chosen) ? 71 : 0;
                 } catch { return 72; }
             }
             if (args.Length > 0 && args[0] == "--model-route-check") {
@@ -1511,6 +1575,12 @@ namespace InvestorIntelligence
                                 PreferredModel,
                                 StringComparison.OrdinalIgnoreCase));
                     }
+                    bool modelChanged = false;
+                    if (canonical == null && !String.IsNullOrEmpty(catalog.Chosen))
+                    {
+                        canonical = catalog.Chosen;  // the saved model is gone: same family or the only model served
+                        modelChanged = true;
+                    }
                     if (canonical != null)
                         modelBox.SelectedItem = canonical;
 
@@ -1518,7 +1588,9 @@ namespace InvestorIntelligence
                         "Local model server: " + discoveredBaseUrl +
                         "  |  Models: " + catalog.Models.Count +
                         "  |  Selected: " + modelBox.Text;
-                    status.Text = (catalog.AutoDetected
+                    status.Text = (modelChanged
+                        ? "已自動偵測到本機模型（模型已變更：" + requested + " → " + canonical + "）/ Auto-detected a changed model\r\n"
+                        : catalog.AutoDetected
                         ? "已自動偵測到本機模型伺服器（位址已變更）/ Auto-detected a new local address\r\n"
                         : "模型掃描完成 / Model scan completed\r\n") +
                         "請確認後按「使用 / Use」。";

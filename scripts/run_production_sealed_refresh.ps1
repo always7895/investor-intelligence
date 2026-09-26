@@ -99,13 +99,17 @@ function Invoke-BoundedScript([string]$Label, [string]$File, [string[]]$Argument
     return $code
 }
 
-function Test-TabbyModel {
-    # The exact local writer model must be loaded before any translation; otherwise the refresh runs label-only
-    # (the business-profile translator refuses a reply from any other model) and the seal is never blocked.
+function Get-LocalModel {
+    # Records the local model the business-profile translator will use. The translator finds it itself
+    # (scripts/local_model_endpoint.py: -TabbyUrl, the launcher's saved address, known and listening loopback ports;
+    # -TabbyModel exactly, else the same family or the only model served; operator 2026-09-26: the port and model
+    # change). Without one the refresh runs label-only and the seal is never blocked.
     try {
-        $loaded = Invoke-RestMethod -Uri ($TabbyUrl.TrimEnd('/') + '/v1/model') -TimeoutSec 5
-        return ([string]$loaded.id -ceq $TabbyModel)
-    } catch { return $false }
+        $raw = & $py "scripts\local_model_endpoint.py" --want $TabbyModel --base $TabbyUrl 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $found = ($raw | Select-Object -Last 1) | ConvertFrom-Json
+        return $found
+    } catch { return $null }
 }
 
 function Invoke-CarryForwardSeal {
@@ -151,8 +155,9 @@ function Invoke-Top20Refresh {
     # After the pointer write: data-only refresh when due, candidate -> staged seal + replay -> LKG promotion.
     $due = Invoke-LoggedNative { & $py "scripts\top20_carry_forward.py" due }
     if (($due.Lines -join "`n") -notmatch '"due":\s*true') { return }
-    if (Test-TabbyModel) { Add-Content -Path $log -Value "[$stamp] TABBY_MODEL_VERIFIED $TabbyModel" }
-    else { Add-Content -Path $log -Value "[$stamp] TABBY_MODEL_UNVERIFIED (translation label-only)" }
+    $localModel = Get-LocalModel
+    if ($localModel) { Add-Content -Path $log -Value "[$stamp] LOCAL_MODEL_DETECTED $($localModel.model) at $($localModel.base_url) match=$($localModel.match)" }
+    else { Add-Content -Path $log -Value "[$stamp] LOCAL_MODEL_UNAVAILABLE (translation label-only)" }
     $code = Invoke-BoundedScript 'TOP20_REFRESH' (Join-Path $repo 'run-v213-local.ps1') `
         @('-ProjectRoot', $repo, '-NoModelBridge', '-NoTunnel', '-NoSync', '-NoAutoActivation') $RefreshTimeoutSeconds
     if ($code -ne 0) {

@@ -286,9 +286,20 @@ function Resolve-ModelWithDiscovery {
         # An explicitly passed address is honoured exactly; only saved/default addresses may move.
         if (-not [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { throw }
         $found = Find-LocalModelServer $Base $Requested
-        if (-not $found) { throw }
-        Write-Host "II_PROGRESS local model server auto-detected at $found (was $Base)" -ForegroundColor Yellow
-        return [pscustomobject]@{ base=$found; resolution=(Resolve-Model $found $Requested) }
+        if ($found) {
+            Write-Host "II_PROGRESS local model server auto-detected at $found (was $Base)" -ForegroundColor Yellow
+            return [pscustomobject]@{ base=$found; resolution=(Resolve-Model $found $Requested) }
+        }
+        # Operator 2026-09-26: the model itself changes too (TabbyAPI EXL3 on :5000 replaced by ninfer Qwen3.8-27B on
+        # :8080). The shared resolver also scans the other loopback listeners and accepts the same family or the only
+        # served model; the identity proof and route probe below still run on the model it names.
+        $wanted = $Requested
+        if ([string]::IsNullOrWhiteSpace($wanted)) { $wanted = [string](Get-ObjectPropertyValue (Read-ModelSelection) 'model' '') }
+        $raw = & $python (Join-Path $ProjectRoot 'scripts/local_model_endpoint.py') --want $wanted --base $Base 2>$null
+        if ($LASTEXITCODE -ne 0) { throw "LOCAL_MODEL_NOT_FOUND; resolver_exit=$LASTEXITCODE; wanted=$wanted; no_model_substitution=true" }
+        $resolved = ($raw | Select-Object -Last 1) | ConvertFrom-Json
+        Write-Host "II_PROGRESS local model auto-detected: $($resolved.model) at $($resolved.base_url) (was $wanted at $Base; match=$($resolved.match))" -ForegroundColor Yellow
+        return [pscustomobject]@{ base=[string]$resolved.base_url; resolution=(Resolve-Model ([string]$resolved.base_url) ([string]$resolved.model)) }
     }
 }
 

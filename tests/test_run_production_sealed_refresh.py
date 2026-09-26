@@ -147,7 +147,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
             self.assertEqual(trace[3:6], ["ROTATION", "LKG due", "REFRESH nosync=True"], trace)
             self.assertEqual(trace[6], "PUBLISH RUN_C --live-clock --top20-bundle --snapshot-root", trace)
             self.assertEqual(trace[7:], ["REPLAY cccc PASS", "LKG promote --candidate", "LKG record --result ok"], trace)
-            self.assertIn("TABBY_MODEL_UNVERIFIED", log)
+            self.assertIn("LOCAL_MODEL_UNAVAILABLE", log)  # no resolver in the fixture root
             self.assertIn("TOP20 CANDIDATE OK", log)
 
     def test_identity_replay_failure_keeps_the_carried_top20(self):

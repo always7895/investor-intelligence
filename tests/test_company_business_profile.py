@@ -273,6 +273,41 @@ class SelectorRegressionTests(unittest.TestCase):
         self.assertEqual(profile.validate_phrase("美國、加拿大、墨西哥貴金屬生產商", "precious metals producer"),
                          "美國、加拿大、墨西哥貴金屬生產商")
 
+    def test_translator_follows_the_local_model_found_and_refuses_other_replies(self):
+        urls = []
+
+        class Opener:
+            def open(self, request, timeout):
+                urls.append(request.full_url)
+                body = json.loads(request.data)
+                reply = {"model": body["model"], "choices": [{"message": {"content": "貴金屬生產商"}}]}
+
+                class Response:
+                    def __enter__(self): return self
+                    def __exit__(self, *exc): return False
+                    def read(self): return json.dumps(reply).encode()
+                return Response()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "runtime.json"
+            config.write_text(json.dumps({"primary_reasoner": {"base_url": "http://127.0.0.1:5000/v1",
+                                                               "model": "Qwen3.8-27B-EXL3-5.5bpw-v2"}}), encoding="utf-8")
+            calls = []
+            moved = {"base_url": "http://127.0.0.1:8080", "model": "Qwen3.8-27B", "match": "family"}
+            with patch.object(profile, "build_opener", return_value=Opener()):
+                translate = profile.local_translator(config, resolver=lambda want, base: calls.append((want, base)) or moved)
+                self.assertIsNone(translate.model)  # nothing is probed before the first sentence
+                self.assertEqual(translate("Synthetic is a precious metals producer."), "貴金屬生產商")
+                translate("Synthetic is a precious metals producer.")
+            self.assertEqual(calls, [("Qwen3.8-27B-EXL3-5.5bpw-v2", "http://127.0.0.1:5000/v1")])  # resolved once
+            self.assertEqual(urls, ["http://127.0.0.1:8080/v1/chat/completions"] * 2)
+            self.assertEqual(translate.model, "Qwen3.8-27B")
+            missing = {"error": "LOCAL_MODEL_NOT_FOUND"}
+            with patch.object(profile, "build_opener", return_value=Opener()):
+                translate = profile.local_translator(config, resolver=lambda want, base: missing)
+                translate("Synthetic is a precious metals producer.")
+            self.assertEqual(urls[-1], "http://127.0.0.1:5000/v1/chat/completions")  # configured target, fails closed
+
     def test_translator_asks_once_more_after_a_failure(self):
         replies = [OSError("timed out"), json.dumps({"model": "local", "choices": [{"message": {"content": "貴金屬生產商"}}]}).encode(),
                    json.dumps({"model": "other-model", "choices": [{"message": {"content": "貴金屬生產商"}}]}).encode()]
@@ -294,9 +329,11 @@ class SelectorRegressionTests(unittest.TestCase):
             config = Path(tmp) / "runtime.json"
             config.write_text(json.dumps({"primary_reasoner": {"base_url": "http://127.0.0.1:5000/v1", "model": "local"}}),
                               encoding="utf-8")
+            found = {"base_url": "http://127.0.0.1:5000", "model": "local", "match": "exact"}
             with patch.object(profile, "build_opener", return_value=Opener()):
-                translate = profile.local_translator(config)
+                translate = profile.local_translator(config, resolver=lambda want, base: found)
                 self.assertEqual(translate("Synthetic is a precious metals producer."), "貴金屬生產商")
+                self.assertEqual(translate.model, "local")
                 # A reply served by any other model is refused outright (no retry, no silent substitution).
                 self.assertIsNone(translate("Synthetic is a precious metals producer."))
         self.assertEqual(replies, [])

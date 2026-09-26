@@ -420,33 +420,49 @@ def validate_phrase(phrase: str, sentence: str) -> str | None:
 
 
 def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float = 60.0,
-                     attempts: int = 2) -> Callable[[str], str | None]:
-    """Translator bound to the configured loopback reasoner; failures return None.
+                     attempts: int = 2, resolver: Callable[..., dict] | None = None) -> Callable[[str], str | None]:
+    """Translator bound to the local loopback reasoner; failures return None.
 
     The GPU lane is shared, so a timed-out or rejected answer is asked once more
-    (2026-09-25: 5 of 20 Top20 translations were lost to transient timeouts)."""
+    (2026-09-25: 5 of 20 Top20 translations were lost to transient timeouts).
+    The server and model are found on first use (scripts/local_model_endpoint.py; operator 2026-09-26: the local
+    model's port and ID change): the configured model where served, else the same family or the only model served.
+    A reply must name the model actually found, and that model is reported through ``translate.model``."""
+    import local_model_endpoint
+
     config = json.loads(config_path.read_text(encoding="utf-8"))
     reasoner = config["primary_reasoner"]
-    base_url = str(reasoner["base_url"]).rstrip("/")
-    if urlsplit(base_url).hostname not in ("127.0.0.1", "localhost", "::1"):
+    configured = str(reasoner["base_url"]).rstrip("/")
+    if urlsplit(configured).hostname not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError("LOCAL_REASONER_NOT_LOOPBACK")
     opener = build_opener(ProxyHandler({}))
+    endpoint: dict[str, str] = {}
+
+    def target() -> tuple[str, str]:
+        if not endpoint:
+            found = (resolver or local_model_endpoint.resolve)(str(reasoner["model"]), configured)
+            if "error" in found:  # nothing answers: the configured target fails closed below
+                endpoint.update(chat=configured + "/chat/completions", model=str(reasoner["model"]))
+            else:
+                endpoint.update(chat=found["base_url"] + "/v1/chat/completions", model=found["model"])
+            translate.model = endpoint["model"]
+        return endpoint["chat"], endpoint["model"]
 
     def translate(sentence: str) -> str | None:
+        chat_url, model = target()
         body = json.dumps({
-            "model": reasoner["model"], "temperature": 0, "max_tokens": 120,
+            "model": model, "temperature": 0, "max_tokens": 120,
             "chat_template_kwargs": {"enable_thinking": False},
-            "messages": [{"role": "system", "content": "你是財經翻譯。只輸出繁體中文譯文，不要解釋。"},
+            "messages": [{"role": "system", "content": "你是財經翻譯。只輸出繁體中文（台灣用語，例如資料中心、客製化）譯文，不要解釋。"},
                          {"role": "user", "content": PROMPT + sentence}],
         }).encode("utf-8")
         for _ in range(max(1, attempts)):
-            request = Request(base_url + "/chat/completions", data=body,
-                              headers={"Content-Type": "application/json"}, method="POST")
+            request = Request(chat_url, data=body, headers={"Content-Type": "application/json"}, method="POST")
             try:
                 with opener.open(request, timeout=timeout) as response:
                     payload = json.loads(response.read())
-                # Only the configured exact model may write the phrase (no silent model substitution).
-                if payload.get("model") != reasoner["model"]:
+                # Only the model found on the server may write the phrase (no silent substitution by the server).
+                if payload.get("model") != model:
                     return None
                 phrase = validate_phrase(str(payload["choices"][0]["message"]["content"] or ""), sentence)
             except Exception:
@@ -455,6 +471,7 @@ def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float
                 return phrase
         return None
 
+    translate.model = None  # type: ignore[attr-defined]
     return translate
 
 
