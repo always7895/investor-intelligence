@@ -20,6 +20,11 @@ export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
 interface Fundamentals {
   source: string; source_url: string; quarter_end: string; revenue_yoy: number | null; revenue_yoy_prev: number | null;
   gross_margin: number | null; gross_margin_change: number | null; rpo_yoy: number | null; shares_yoy: number | null;
+  /** Official monthly revenue for Taiwan listings (TWSE/TPEx open data) beside the Yahoo quarter; never replaces it. */
+  cross_check?: RevenueCheck | null;
+}
+interface RevenueCheck {
+  source_id: string; source_url: string; period: string; revenue_yoy: number | null; cumulative_yoy: number | null; currency?: string | null;
 }
 interface Market {
   source: string; source_url: string; asof: string; ret_6m: number | null; ret_1y: number | null; cagr_2y: number | null; currency: string | null;
@@ -90,6 +95,12 @@ const https = (value: unknown) => str(value, 400) && value.startsWith("https://"
 const optStr = (value: unknown, max: number) => value === undefined || value === null || str(value, max);
 const SCENARIOS = new Set(["REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET"]);
 
+function validRevenueCheck(raw: any): boolean {
+  return raw === undefined || raw === null || (typeof raw === "object" && str(raw.source_id, 40) && https(raw.source_url)
+    && typeof raw.period === "string" && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(raw.period) && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy)
+    && (num(raw.revenue_yoy) || num(raw.cumulative_yoy)) && optStr(raw.currency, 8));
+}
+
 function validOutlook(raw: any): boolean {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== "object" || !Array.isArray(raw.scenarios) || raw.scenarios.length > 3
@@ -120,7 +131,8 @@ function validEntry(raw: any): raw is BottleneckEntry {
     && raw.role_source && https(raw.role_source.url) && str(raw.role_source.date, 20)
     && raw.parts && ["layer_heat", "capture", "lead", "confirmation", "size", "penalty"].every(key => num(raw.parts[key]))
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
-      && str(raw.fundamentals.quarter_end, 12) && ["revenue_yoy", "revenue_yoy_prev", "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy"].every(key => optNum(raw.fundamentals[key]))))
+      && str(raw.fundamentals.quarter_end, 12) && ["revenue_yoy", "revenue_yoy_prev", "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy"].every(key => optNum(raw.fundamentals[key]))
+      && validRevenueCheck(raw.fundamentals.cross_check)))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
     && (raw.market.cross_check === undefined || (raw.market.cross_check && str(raw.market.cross_check.source_id, 40)
@@ -237,6 +249,16 @@ function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): 
 function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
   const diff = check.diff === null || check.diff === undefined ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
   return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
+}
+
+/** "官方月營收：櫃買中心 2026-08 年增 +525%，1–8 月累計年增 +489%" beside the Yahoo quarter (different periods: shown, not differenced). */
+function revenueCheck(check: RevenueCheck): string {
+  const month = Number(check.period.slice(5, 7));
+  const parts = [
+    ...(check.revenue_yoy === null || check.revenue_yoy === undefined ? [] : [`${check.period} 單月年增 ${pct(check.revenue_yoy, 0)}`]),
+    ...(check.cumulative_yoy === null || check.cumulative_yoy === undefined ? [] : [`${month === 1 ? "1 月" : `1–${month} 月`}累計年增 ${pct(check.cumulative_yoy, 0)}`]),
+  ];
+  return `官方月營收：${ZH_SOURCE_LABEL[check.source_id.toUpperCase()] ?? check.source_id} ${parts.join("，")}`;
 }
 
 function layerName(doc: BottleneckV3, id: string): string {
@@ -367,6 +389,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         uiBox([statTile("最新季營收年增", pct(fund?.revenue_yoy ?? null, 0)), statTile("毛利率變化", fund?.gross_margin_change === null || fund?.gross_margin_change === undefined ? "未揭露" : `${fund.gross_margin_change >= 0 ? "+" : ""}${(fund.gross_margin_change * 100).toFixed(1)}pp`)], { layout: "horizontal", spacing: "sm" }),
         uiBox([statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub)], { layout: "horizontal", spacing: "sm" }),
         footnote(fund ? `財報：${sourceZh(fund.source)}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
+        ...(fund?.cross_check ? [footnote(revenueCheck(fund.cross_check))] : []),
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
         ...(entry.market.cross_check ? [footnote(exchangeCheck(entry.market.cross_check))] : []),
       ]),
@@ -423,6 +446,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
         row(statTile("毛利率", gmText(fund.gross_margin)), statTile("毛利率年變化", ppShort(fund.gross_margin_change)), statTile("股數年增", pct(fund.shares_yoy, 1))),
         row(statTile("RPO 年增", pct(fund.rpo_yoy, 0)), statTile("季末", fund.quarter_end)),
         footnote(`${sourceZh(fund.source)}：${fund.source_url}`.slice(0, 220)),
+        ...(fund.cross_check ? [footnote(`${revenueCheck(fund.cross_check)}：${fund.cross_check.source_url}`.slice(0, 220))] : []),
       ] : [uiText("未取得可比季度（不以估計替代）。", "xs", T.ink)]),
       section("市場數據", [
         row(statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub), statTile("市值", cap(entry.market_cap_usd))),
@@ -448,6 +472,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${fund.revenue_yoy !== null && fund.revenue_yoy_prev !== null ? pp(fund.revenue_yoy - fund.revenue_yoy_prev) : "未揭露"}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
+    ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")

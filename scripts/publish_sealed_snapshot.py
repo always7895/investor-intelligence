@@ -440,6 +440,23 @@ def _exchange_cross_checks(symbols: "list[str]", market_prices: "dict[str, dict]
     return out
 
 
+def _sealed_revenue_check(raw: "object") -> "dict | None":
+    """The exchange's monthly revenue beside a Taiwan listing's Yahoo quarter (scripts/bottleneck_top20_v3.py), reduced to
+    known keys with finite numbers and an https source; anything malformed is dropped."""
+    if not isinstance(raw, dict) or raw.get("source_id") not in ("TWSE", "TPEX") or not str(raw.get("source_url", "")).startswith("https://"):
+        return None
+    period = str(raw.get("period", ""))
+    if len(period) != 7 or period[4] != "-" or not (period[:4] + period[5:]).isdigit() or not 1 <= int(period[5:]) <= 12:
+        return None
+    def number(value: object) -> "float | None":
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+    yoy, cumulative = number(raw.get("revenue_yoy")), number(raw.get("cumulative_yoy"))
+    if yoy is None and cumulative is None:
+        return None
+    return {"source_id": raw["source_id"], "source_url": raw["source_url"][:400], "period": period, "revenue_yoy": yoy,
+            "cumulative_yoy": cumulative, "currency": "TWD"}
+
+
 def _sealed_outlook(raw: "object") -> "dict | None":
     """Orders, consensus and scenario figures from the v3 builder, reduced to known keys with finite numbers and https
     sources; anything malformed is dropped rather than sealed."""
@@ -515,8 +532,10 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
                 "role_source": entry["role_source"], "outlook": _sealed_outlook(entry.get("outlook")),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
-                "fundamentals": None if not fund else pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev",
-                                                                  "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                "fundamentals": None if not fund else {
+                    **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
+                                  "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    **({"cross_check": check} if (check := _sealed_revenue_check(fund.get("cross_check"))) else {})},
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "cagr_listed",
                                                     "history_start", "currency")),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},

@@ -405,6 +405,53 @@ def yahoo_data(symbol: str) -> dict[str, Any]:
     return out
 
 
+# Official monthly revenue of Taiwan listings (政府資料開放授權條款第1版): the latest reported month, filed by the 10th.
+TAIWAN_MONTHLY_REVENUE = {"TW": ("TWSE", "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"),
+                          "TWO": ("TPEX", "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O")}
+
+
+def taiwan_monthly_revenue(symbols: Iterable[str], fetch_json: Callable[[str], Any] | None = None) -> dict[str, dict[str, Any]]:
+    """Symbol -> the exchange's monthly revenue row for Taiwan listings (operator 2026-09-26: non-US fundamentals were
+    Yahoo-only): the month's and the year-to-date year-on-year change. Shown beside the Yahoo quarter (a different
+    period), never differenced against or substituted for it; a feed that cannot be read leaves its listings Yahoo-only."""
+    wanted: dict[str, dict[str, str]] = {}
+    for symbol in symbols:
+        code, _, suffix = symbol.partition(".")
+        if suffix in TAIWAN_MONTHLY_REVENUE:
+            wanted.setdefault(suffix, {})[code] = symbol
+
+    def get(url: str) -> Any:
+        if fetch_json:
+            return fetch_json(url)
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (InvestorIntelligence public observation)",
+                                                       "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed public HTTPS feeds
+            return json.loads(response.read().decode("utf-8-sig"))
+
+    def change(value: Any) -> float | None:  # the feeds give percent strings such as "525.3153"
+        number = _finite(str(value).replace(",", "").strip()) if value not in (None, "") else None
+        return round(number / 100, 6) if number is not None else None
+
+    out: dict[str, dict[str, Any]] = {}
+    for suffix, codes in wanted.items():
+        source_id, url = TAIWAN_MONTHLY_REVENUE[suffix]
+        try:
+            rows = get(url)
+        except Exception:
+            continue
+        for row in rows if isinstance(rows, list) else []:
+            symbol = codes.get(str(row.get("公司代號", "")).strip()) if isinstance(row, dict) else None
+            roc = str(row.get("資料年月", "")).strip() if symbol else ""
+            if not symbol or not roc.isdigit() or len(roc) not in (4, 5) or not 1 <= int(roc[-2:]) <= 12:
+                continue
+            yoy, cumulative = change(row.get("營業收入-去年同月增減(%)")), change(row.get("累計營業收入-前期比較增減(%)"))
+            if yoy is None and cumulative is None:
+                continue
+            out[symbol] = {"source_id": source_id, "source_url": url, "period": f"{int(roc[:-2]) + 1911}-{roc[-2:]}",
+                           "revenue_yoy": yoy, "cumulative_yoy": cumulative, "currency": "TWD"}
+    return out
+
+
 def usd_rate(currency: str | None, cache: dict[str, float | None]) -> float | None:
     if not currency or currency == "USD":
         return 1.0
@@ -482,6 +529,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             members.setdefault(capturer["symbol"], {"layer": layer, "capturer": capturer})
     fx: dict[str, float | None] = {}
     companies: dict[str, dict[str, Any]] = {}
+    monthly = taiwan_monthly_revenue(members)
     for symbol, member in members.items():
         data = yahoo_data(symbol)
         fund = None
@@ -490,6 +538,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             facts = companyfacts(cik, fetch)
             fund = sec_fundamentals(symbol, cik, facts) if facts else None
         fund = fund or data.get("fundamentals")
+        if fund and symbol in monthly:
+            fund = {**fund, "cross_check": monthly[symbol]}
         market = data.get("market")
         cap = market.get("market_cap") if market else None
         rate = usd_rate(market.get("currency") if market else None, fx)

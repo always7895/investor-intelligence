@@ -102,6 +102,27 @@ class OutlookTests(unittest.TestCase):
         self.assertIsNone(engine.nasdaq_consensus("X", 1.0, lambda url: {"data": None}))  # nothing published
         self.assertIsNone(engine.nasdaq_consensus("X", 1.0, lambda url: (_ for _ in ()).throw(OSError("down"))))
 
+    def test_taiwan_listings_carry_the_exchange_monthly_revenue(self):
+        # TPEx mopsfin_t187ap05_O row for 5351 as published on 2026-09-17 (August 2026), shortened.
+        tpex = [{"出表日期": "1150917", "資料年月": "11508", "公司代號": "5351", "公司名稱": "鈺創",
+                 "營業收入-當月營收": "2260221", "營業收入-去年同月增減(%)": "525.3153",
+                 "累計營業收入-前期比較增減(%)": "488.9214"},
+                {"資料年月": "11508", "公司代號": "6488", "營業收入-去年同月增減(%)": "1.0"}]
+        urls = []
+        def fetch(url):
+            urls.append(url)
+            if "twse" in url:
+                raise OSError("TWSE down")  # one feed failing leaves only its listings Yahoo-only
+            return tpex
+        rows = engine.taiwan_monthly_revenue(["5351.TWO", "2330.TW", "NVDA", "SIVE.ST"], fetch)
+        self.assertEqual(sorted(urls), sorted(url for _, url in engine.TAIWAN_MONTHLY_REVENUE.values()))
+        self.assertEqual(rows, {"5351.TWO": {"source_id": "TPEX", "source_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+                                             "period": "2026-08", "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD"}})
+        self.assertEqual(engine.taiwan_monthly_revenue(["NVDA"], lambda url: self.fail("no Taiwan listing, no request")), {})
+        malformed = [{"資料年月": "11513", "公司代號": "5351", "營業收入-去年同月增減(%)": "1"},
+                     {"資料年月": "11508", "公司代號": "5351", "營業收入-去年同月增減(%)": ""}]
+        self.assertEqual(engine.taiwan_monthly_revenue(["5351.TWO"], lambda url: malformed), {})
+
     def test_korean_backlog_comes_from_the_ir_config_or_states_why_not(self):
         orders = engine.outlook("298040.KS", None, None)["orders"]
         self.assertEqual((orders["kind"], orders["amount"], orders["currency"], orders["as_of"]), ("BACKLOG", 17507000000000, "KRW", "2026-06-30"))
@@ -187,12 +208,19 @@ class SealedFormTests(unittest.TestCase):
                "industries": [{"rank": 1, "id": "optics", "name_zh": "光通訊", "chain": "network_optics", "leopold_constraint": "x",
                                "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
                                "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
+        monthly = {"source_id": "TPEX", "source_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O", "period": "2026-08",
+                   "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD"}
+        doc["top"][1]["fundamentals"] = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/5351.TWO/financials",
+                                         "quarter_end": "2026-06-30", "revenue": 4.9e9, "revenue_yoy": 5.58, "cross_check": monthly}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "v3.json"
             path.write_text(json.dumps(doc), encoding="utf-8")
             body = publisher.lazy_bottleneck_v3_body(path, now)[publisher.BOTTLENECK_V3_KEY]
             sealed = json.loads(body)
             self.assertEqual(sealed["schema"], "v213-bottleneck-top20-v3-sealed")
+            self.assertEqual(sealed["top"][1]["fundamentals"]["cross_check"], monthly)
+            self.assertNotIn("revenue", sealed["top"][1]["fundamentals"])  # only the known keys are sealed
+            self.assertIsNone(sealed["top"][0]["fundamentals"])
             self.assertNotIn("capture_detail", sealed["top"][0]["parts"])
             self.assertNotIn("intensity", sealed["top"][0]["serenity"])
             self.assertEqual(publisher.lazy_bottleneck_v3_body(path, now + timedelta(hours=14)), {})
@@ -246,6 +274,12 @@ class SealedFormTests(unittest.TestCase):
             "intake_quarter": {"amount": 3324.2e9, "yoy": 0.51, "junk": "x"},
             "guidance": {"kind": "ANNUAL_NEW_ORDERS", "year": 2026, "amount": 12e12, "previous": float("nan"), "note": "x"}}})["orders"]
         self.assertEqual(backlog["intake_quarter"], {"amount": 3324.2e9, "yoy": 0.51})
+        check = {"source_id": "TPEX", "source_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O", "period": "2026-08",
+                 "revenue_yoy": 5.253153, "cumulative_yoy": 4.889214, "currency": "TWD", "junk": 1}
+        self.assertEqual(publisher._sealed_revenue_check(check), {k: v for k, v in check.items() if k != "junk"})
+        for bad in ({**check, "source_id": "YAHOO"}, {**check, "source_url": "http://x"}, {**check, "period": "2026-13"},
+                    {**check, "revenue_yoy": float("nan"), "cumulative_yoy": None}, None):
+            self.assertIsNone(publisher._sealed_revenue_check(bad))
         self.assertEqual(backlog["guidance"], {"kind": "ANNUAL_NEW_ORDERS", "year": 2026.0, "amount": 12e12, "previous": None})
 
     def test_sealed_entries_carry_the_sourced_chinese_name_and_listing_age(self):

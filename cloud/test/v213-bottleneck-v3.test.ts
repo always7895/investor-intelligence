@@ -114,6 +114,25 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(industries).not.toMatch(/Serenity 熱度|基金13F占比/);
   });
 
+  it("shows a Taiwan listing's official monthly revenue beside the Yahoo quarter and refuses a malformed one", () => {
+    const monthly = { source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O", period: "2026-08",
+      revenue_yoy: 5.253153, cumulative_yoy: 4.889214, currency: "TWD" };
+    const withCheck = doc(Date.now() - HOUR);
+    (withCheck.top[1] as any).fundamentals.cross_check = monthly;
+    const parsed = parseBottleneckV3(withCheck)!;
+    expect(parsed).not.toBeNull();
+    const expected = "官方月營收：櫃買中心 2026-08 單月年增 +525%，1–8 月累計年增 +489%";
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).toContain(expected);
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"))).toContain(expected);
+    expect(JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))).toContain(expected);
+    for (const bad of [{ ...monthly, period: "2026-13" }, { ...monthly, source_url: "http://x" },
+      { ...monthly, revenue_yoy: null, cumulative_yoy: null }, { ...monthly, revenue_yoy: "525%" }]) {
+      const rejected = doc(Date.now() - HOUR);
+      (rejected.top[1] as any).fundamentals.cross_check = bad;
+      expect(parseBottleneckV3(rejected)).toBeNull();
+    }
+  });
+
   it("renders optional numbers the validator lets through as missing, never as NaN or a crash", () => {
     const sparse = doc(Date.now() - HOUR);
     delete (sparse.industries[0] as any).news.ratio;
