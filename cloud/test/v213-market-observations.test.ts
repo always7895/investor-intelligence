@@ -34,12 +34,19 @@ async function sealedEnv() {
       bucket: String(identityNameBucket("sivers semiconductors")), generated_at: stamp, rows: [["sivers semiconductors", "S", "SIVE", "NASDAQ STOCKHOLM"]] },
     "v213:quotes:v1": { schema: "v213-quotes-v1", generated_at: stamp, quotes: { "SIVE.ST": { symbol: "SIVE.ST", price: 32.78, previous_close: 31.5,
       change_pct: 0.0406, currency: "SEK", asof: stamp, source: "Yahoo Finance (unofficial, delayed)", source_url: "https://finance.yahoo.com/quote/SIVE.ST" } } },
-    "v213:options:v1": { schema: "v213-options-v1", generated_at: stamp, options: { SIVE: {
+    "v213:options:v2": { schema: "v213-options-v2", generated_at: stamp, options: { SIVE: {
       weekly: { unavailable: "Nasdaq Stockholm 無 3-14 天到期的上市期權" },
-      monthly: { ticker: "SIVE", expiry, dte: 21, strike: 36, type: "call", bid: 0.8, mid: 2.3, ask: 3.8, spread: 3, delta: null, iv: null,
-        oi: 16, volume: null, breakeven: null, maxprofit: null, maxloss: null, annualized_yield: null, assignment_risk: "美式期權可能提前指派",
-        liquidity_warning: "價差大", timestamp: stamp, quote_basis: "delayed", source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
-        provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", currency: "SEK", multiplier: 100, rights_status: "candidate_local_review" },
+      monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte: 21, spot: 32.78, currency: "SEK", multiplier: 100,
+        quote_basis: "delayed", timestamp: stamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
+        provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
+        suggestions: [
+          { role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
+            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / 21, upside_to_strike: 62 / 32.78 - 1,
+            delta: null, iv: null, oi: 12, volume: null, spread_pct: 0.5455 },
+          { role: "BALANCED", strike: 34, bid: 1.5, ask: 4.5, mid: 3, limit_price: 2.25, premium_per_contract: 225,
+            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / 21, upside_to_strike: 34 / 32.78 - 1,
+            delta: null, iv: null, oi: 16, volume: null, spread_pct: 1 },
+        ] },
     } } },
   };
   const sealKey = `snapshot:${RUN}:${SNAPSHOT_SEAL_KEY}`;
@@ -74,8 +81,12 @@ describe("sealed market observations", () => {
     const env = await sealedEnv();
     const monthly = await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")) as { text: string }[];
     expect(monthly[0]!.text).toContain("SIVE");
-    expect(monthly[0]!.text).toContain("0.80 SEK");
+    expect(monthly[0]!.text).toContain("備兌買權建議");
+    expect(monthly[0]!.text).toContain("62.00 SEK");
+    expect(monthly[0]!.text).toContain("建議賣出限價 0.23 SEK");
+    expect(monthly[0]!.text).toContain("每口權利金 225.00 SEK");
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
+    expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每週期權")));
     expect(weekly).toContain("無 3-14 天到期的上市期權");
   });

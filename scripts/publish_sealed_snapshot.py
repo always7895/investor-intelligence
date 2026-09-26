@@ -426,13 +426,13 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
 
 
 def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
-    """Delayed quotes and option observations (scripts/build_market_quotes_options.py) as two lazy bodies; each option
-    observation must pass the shared quote validator or is replaced by an explicit unavailability reason."""
-    from validate_v213_market_products import MarketProductValidationError, validate_option_quote
+    """Delayed quotes and covered-call suggestions (scripts/build_market_quotes_options.py) as two lazy bodies; each cycle
+    must pass the shared validator or is replaced by an explicit unavailability reason."""
+    from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle
     try:
         doc = json.loads(path.read_bytes().decode("utf-8"))
         generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if doc.get("schema") != "v213-market-observations-v1" or not timedelta(0) <= now - generated <= MARKET_OBSERVATIONS_MAX_AGE:
+        if doc.get("schema") != "v213-market-observations-v2" or not timedelta(0) <= now - generated <= MARKET_OBSERVATIONS_MAX_AGE:
             return {}
         options: dict = {}
         for ticker, cycles in doc["options"].items():
@@ -442,14 +442,14 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                     options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
                     continue
                 try:
-                    validate_option_quote(value, evaluated_at=doc["generated_at"])
+                    validate_covered_call_cycle(value, evaluated_at=doc["generated_at"])
                     options[ticker][cycle] = value
                 except MarketProductValidationError as error:
                     options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}
         quotes = {"schema": "v213-quotes-v1", "generated_at": doc["generated_at"], "quotes": doc["quotes"]}
-        option_doc = {"schema": "v213-options-v1", "generated_at": doc["generated_at"], "options": options}
+        option_doc = {"schema": "v213-options-v2", "generated_at": doc["generated_at"], "options": options}
         bodies = {"v213:quotes:v1": json.dumps(quotes, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
-                  "v213:options:v1": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
+                  "v213:options:v2": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
     return bodies if all(len(body.encode("utf-8")) <= 1_900_000 for body in bodies.values()) else {}

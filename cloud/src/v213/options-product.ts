@@ -51,12 +51,6 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
         menuText(`Bid ${formatMoney(quote.bid, quote.currency)} ｜ Mid ${formatMoney(quote.mid, quote.currency)} ｜ Ask ${formatMoney(quote.ask, quote.currency)}`, "sm", T.ink),
         menuText(`Spread: ${formatMoney(quote.spread, quote.currency)}（未驗證委託保證成交）`, "xs", T.muted),
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
-      menuBox([
-        menuText("關鍵損益指標（需搭配具體策略與持倉成本）", "xs", T.muted),
-        menuText("損益平衡：UNAVAILABLE（無定義策略）", "xs", T.ink),
-        menuText("最大利潤：UNAVAILABLE（無定義策略）", "xs", T.ink),
-        menuText("最大損失：UNAVAILABLE（無定義策略）", "xs", T.negative),
-      ], { spacing: "xs" }),
       { type: "separator", color: T.border },
       menuBox([
         menuText("Greeks 與流動性", "xs", T.muted),
@@ -105,8 +99,6 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
     `DTE：${validated.dte} 天｜基準：${validated.quote_basis}｜來源：${validated.source}｜幣別：${validated.currency}（乘數 ${validated.multiplier}）`,
     `行情：Bid ${formatMoney(validated.bid, validated.currency)} ｜ Mid ${formatMoney(validated.mid, validated.currency)} ｜ Ask ${formatMoney(validated.ask, validated.currency)}`,
     `Spread：${formatMoney(validated.spread, validated.currency)}`,
-    "損益平衡：UNAVAILABLE（無定義策略）",
-    "最大利潤：UNAVAILABLE（無定義策略） ｜ 最大損失：UNAVAILABLE（無定義策略）",
     `Greeks：Delta ${validated.delta !== null ? validated.delta.toFixed(3) : "UNAVAILABLE"} ｜ IV ${validated.iv !== null ? (validated.iv * 100).toFixed(1) + "%" : "UNAVAILABLE"}`,
     `市場深度：OI ${validated.oi !== null ? validated.oi : "UNAVAILABLE"} ｜ 成交量 ${validated.volume !== null ? validated.volume : "UNAVAILABLE"}`,
     `指派風險：${validated.assignment_risk}`,

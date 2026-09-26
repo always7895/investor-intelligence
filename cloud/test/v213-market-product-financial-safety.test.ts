@@ -89,13 +89,15 @@ describe("v213 Market Product Financial Safety Suite", () => {
       const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
       assertLineMessages(flex);
       const flexBody = JSON.stringify(flex);
-      expect(flexBody).toContain("UNAVAILABLE（無定義策略）");
+      // Operator 2026-09-26: without a position the payoff rows are omitted, never shown as numbers or placeholders.
+      expect(flexBody).not.toContain("UNAVAILABLE（無定義策略）");
       expect(flexBody).not.toContain("129.35");
 
       const text = buildOptionContractText(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
       assertLineMessages(text);
       const textBody = JSON.stringify(text);
-      expect(textBody).toContain("UNAVAILABLE（無定義策略）");
+      expect(textBody).not.toContain("UNAVAILABLE（無定義策略）");
+      expect(textBody).not.toContain("129.35");
     });
   });
 

@@ -5,9 +5,16 @@ Universe: the bottleneck Top20 v3 (top and watch), the carried seven-field Top20
 - Quotes: Yahoo Finance last price, previous close and currency (unofficial, delayed; labelled).
 - US-listed options: Yahoo Finance option chains (unofficial, delayed).
 - Nasdaq Stockholm options (for example SIVE): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
-Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE) one observation: the call nearest 10% out of the
-money with a two-sided bid/ask. Delta, when shown, is Black-Scholes from the quoted implied volatility and is labelled
-as a model Greek; prices are never modelled. A cycle without a two-sided quote stays unavailable with its reason.
+Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE): two covered-call sell suggestions for a holder of 100
+shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the shares are not called away):
+- HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD (and, when a delta
+  is available, delta <= MAX_HIGH_STRIKE_DELTA); strikes with a spread wider than the mid are ignored;
+- BALANCED: a lower strike nearest delta BALANCED_DELTA (or BALANCED_MONEYNESS without a delta) for more premium.
+Each carries a sell limit (mid rounded down to the tick, or bid + a quarter of the spread when the spread exceeds 25% of
+the mid; never below the bid), premium per contract, period and
+annualized yield on the current price, the upside kept up to the strike, delta as the assignment reference, OI, volume
+and spread. Delta is Black-Scholes from the quoted implied volatility (a labelled model Greek); prices are never
+modelled. A cycle without two-sided quotes stays unavailable with its reason.
 
 Output: data/cache/market_quotes_options.json. Observation only; nothing here is an order.
 """
@@ -30,9 +37,15 @@ LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 TOP20 = ROOT / "data" / "cache" / "top20-lkg"
 NORDIC_SEARCH = "https://api.nasdaq.com/api/nordic/search?searchText={symbol}"
 NORDIC_CHAIN = "https://api.nasdaq.com/api/nordic/instruments/{orderbook}/option-chain"
-CYCLES = {"weekly": (3, 14), "monthly": (21, 45)}
-TARGET_MONEYNESS = 1.10
+CYCLES = {"weekly": (3, 14), "monthly": (15, 60)}  # monthly: the expiry nearest 30 days
 RISK_FREE = 0.04
+MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
+MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
+BALANCED_DELTA = 0.30
+BALANCED_MONEYNESS = 1.05     # without a delta (Nasdaq Stockholm), about 5% out of the money
+TICK = 0.01
+MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
+WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
 
 
 def utc_now() -> datetime:
@@ -62,8 +75,9 @@ def universe() -> list[str]:
     except (OSError, ValueError, KeyError):
         pass
     try:
-        newest = sorted(TOP20.glob("*.json"))[-1] if TOP20.exists() else None
-        if newest and newest.name != "refresh-state.json":
+        import top20_carry_forward  # the newest LKG by run id (refresh-state.json is not a bundle)
+        newest = top20_carry_forward.newest_lkg(TOP20)
+        if newest:
             bundle = json.loads(newest.read_text(encoding="utf-8"))
             symbols += [row["ticker"] for row in json.loads(bundle["payloads"]["top20_json"])]
     except (OSError, ValueError, KeyError, IndexError):
@@ -98,24 +112,52 @@ def _float(value: Any) -> float | None:
         return None
 
 
-def observation(ticker: str, expiry: str, dte: int, strike: float, bid: float, ask: float, *, delta: float | None, iv: float | None,
-                oi: int | None, volume: int | None, currency: str, source: str, provenance: str, rights: str, stamp: str) -> dict[str, Any]:
+def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
+    bid, ask = row["bid"], row["ask"]
     mid = round((bid + ask) / 2, 4)
-    spread = round(ask - bid, 4)
-    return {"ticker": ticker, "expiry": expiry, "dte": dte, "strike": strike, "type": "call", "bid": bid, "mid": mid, "ask": ask,
-            "spread": spread, "delta": delta, "iv": iv, "oi": oi, "volume": volume, "breakeven": None, "maxprofit": None,
-            "maxloss": None, "annualized_yield": None,
-            "assignment_risk": "美式期權可能提前指派；賣出買權者在股價高於履約價時可能被指派。",
-            "liquidity_warning": ("買賣價差占中價 {:.0%}，成交可能明顯偏離中價。".format(spread / mid) if mid > 0 and spread / mid > 0.10
-                                  else "買賣價差在中價 10% 以內；仍不保證成交。"),
-            "timestamp": stamp, "quote_basis": "delayed", "source": source, "provenance": provenance, "currency": currency,
-            "multiplier": 100, "rights_status": rights}
+    spread_pct = (ask - bid) / mid if mid > 0 else 0.0
+    target = mid if spread_pct <= WIDE_SPREAD_PCT else bid + (ask - bid) / 4
+    limit = round(max(bid, math.floor(target / TICK + 1e-9) * TICK), 2)
+    period_yield = limit / spot
+    return {"role": role, "strike": row["strike"], "bid": bid, "ask": ask, "mid": mid, "limit_price": limit,
+            "premium_per_contract": round(limit * 100, 2), "period_yield": round(period_yield, 6),
+            "annualized_yield": round(period_yield * 365 / dte, 6), "upside_to_strike": round(row["strike"] / spot - 1, 6),
+            "delta": row.get("delta"), "iv": row.get("iv"), "oi": row.get("oi"), "volume": row.get("volume"),
+            "spread_pct": round((ask - bid) / mid, 4) if mid > 0 else None}
 
 
-def pick(rows: list[dict[str, Any]], spot: float) -> dict[str, Any] | None:
-    """The two-sided out-of-the-money call nearest the 10% target."""
-    usable = [row for row in rows if row["strike"] >= spot and row["bid"] and row["ask"] and row["ask"] >= row["bid"] > 0]
-    return min(usable, key=lambda row: abs(row["strike"] / spot - TARGET_MONEYNESS)) if usable else None
+def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int) -> list[dict[str, Any]]:
+    """Up to two sell-call suggestions for a holder of 100 shares: the highest strike still worth selling, then a
+    balanced strike below it. Only out-of-the-money strikes with a two-sided quote qualify."""
+    usable = [row for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid") and row.get("ask")
+              and row["ask"] >= row["bid"] > 0 and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT]
+    if not usable or dte <= 0:
+        return []
+    annual = lambda row: row["bid"] / spot * 365 / dte  # noqa: E731 - on the bid: premium that is actually collectable
+    high = [row for row in usable if annual(row) >= MIN_ANNUALIZED_YIELD
+            and (row.get("delta") is None or row["delta"] <= MAX_HIGH_STRIKE_DELTA)]
+    if not high:
+        return []
+    first = max(high, key=lambda row: row["strike"])
+    suggestions = [_suggestion("HIGH_STRIKE", first, spot, dte)]
+    lower = [row for row in usable if row["strike"] < first["strike"] and annual(row) > annual(first)]
+    if lower:
+        if all(row.get("delta") is not None for row in lower):
+            second = min(lower, key=lambda row: abs(row["delta"] - BALANCED_DELTA))
+        else:
+            second = min(lower, key=lambda row: abs(row["strike"] / spot - BALANCED_MONEYNESS))
+        suggestions.append(_suggestion("BALANCED", second, spot, dte))
+    return suggestions
+
+
+def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
+                 provenance: str, rights: str, stamp: str) -> dict[str, Any]:
+    suggestions = covered_call_suggestions(rows, spot, dte)
+    if not suggestions:
+        return {"unavailable": f"{expiry} 到期的價外買權中，沒有年化權利金達 {MIN_ANNUALIZED_YIELD:.0%} 且有雙邊報價的履約價"}
+    return {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
+            "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
+            "rights_status": rights, "suggestions": suggestions}
 
 
 def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
@@ -132,23 +174,22 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, A
         if not candidates:
             out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
             continue
-        expiry, dte = min(candidates, key=lambda item: item[1]) if cycle == "weekly" else max(candidates, key=lambda item: item[1])
+        expiry, dte = min(candidates, key=lambda item: item[1]) if cycle == "weekly" else min(candidates, key=lambda item: abs(item[1] - 30))
         try:
             chain = ticker.option_chain(expiry).calls
         except Exception:
             out[cycle] = {"unavailable": "期權鏈讀取失敗"}
             continue
-        rows = [{"strike": float(row.strike), "bid": _float(row.bid), "ask": _float(row.ask), "iv": _float(row.impliedVolatility),
-                 "oi": _int(row.openInterest), "volume": _int(row.volume)} for row in chain.itertuples()]
-        best = pick(rows, spot)
-        if not best:
-            out[cycle] = {"unavailable": "無雙邊報價的價外買權"}
-            continue
-        out[cycle] = observation(symbol, expiry, dte, best["strike"], best["bid"], best["ask"],
-                                 delta=bs_call_delta(spot, best["strike"], dte / 365, best["iv"]), iv=best["iv"], oi=best["oi"],
-                                 volume=best["volume"], currency="USD", source="Yahoo Finance option chain (unofficial, delayed)",
-                                 provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
-                                 rights="unadmitted_third_party", stamp=stamp)
+        rows = []
+        for row in chain.itertuples():
+            iv = _float(row.impliedVolatility)
+            rows.append({"strike": float(row.strike), "bid": _float(row.bid), "ask": _float(row.ask), "iv": iv,
+                         "delta": bs_call_delta(spot, float(row.strike), dte / 365, iv), "oi": _int(row.openInterest),
+                         "volume": _int(row.volume)})
+        out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
+                                  source="Yahoo Finance option chain (unofficial, delayed)",
+                                  provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
+                                  rights="unadmitted_third_party", stamp=stamp)
     return out
 
 
@@ -179,15 +220,11 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str)
         if not window:
             out[cycle] = {"unavailable": f"Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權"}
             continue
-        target = min(row["dte"] for row in window) if cycle == "weekly" else max(row["dte"] for row in window)
-        best = pick([row for row in window if row["dte"] == target], spot)
-        if not best:
-            out[cycle] = {"unavailable": "無雙邊報價的價外買權"}
-            continue
-        out[cycle] = observation(base, best["expiry"], best["dte"], best["strike"], best["bid"], best["ask"], delta=None, iv=None,
-                                 oi=best["oi"], volume=best["volume"], currency="SEK",
-                                 source="Nasdaq Nordic option chain (exchange public web API, delayed)",
-                                 provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review", stamp=stamp)
+        target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
+        chosen = [row for row in window if row["dte"] == target]
+        out[cycle] = cycle_result(base, chosen[0]["expiry"], target, spot, chosen, currency="SEK",
+                                  source="Nasdaq Nordic option chain (exchange public web API, delayed)",
+                                  provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review", stamp=stamp)
     return out
 
 
@@ -215,7 +252,7 @@ def build(now: datetime) -> dict[str, Any]:
         elif symbol.endswith(".ST"):
             options[base] = nordic_options(symbol, base, price, today, stamp)
             time.sleep(1)
-    return {"schema": "v213-market-observations-v1", "generated_at": stamp, "quotes": quotes, "options": options,
+    return {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": quotes, "options": options,
             "note": "Delayed public observations; not an order, not a recommendation to trade."}
 
 

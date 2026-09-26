@@ -240,6 +240,56 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
             raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
 
 
+def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) -> None:
+    """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
+    strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices."""
+    def finite(value, name):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}")
+        return float(value)
+
+    if not isinstance(cycle, dict) or cycle.get("strategy") != "COVERED_CALL":
+        raise MarketProductValidationError("COVERED_CALL_CYCLE_INVALID")
+    if cycle.get("currency") not in ("USD", "SEK") or cycle.get("multiplier") != 100 or cycle.get("quote_basis") != "delayed":
+        raise MarketProductValidationError("COVERED_CALL_CONTRACT_TERMS_INVALID")
+    if not str(cycle.get("source", "")).strip() or not str(cycle.get("provenance", "")).startswith("https://"):
+        raise MarketProductValidationError("MISSING_QUOTE_PROVENANCE")
+    dte = cycle.get("dte")
+    if not isinstance(dte, int) or isinstance(dte, bool) or not 1 <= dte <= 60:
+        raise MarketProductValidationError("INVALID_DTE")
+    try:
+        expiry = datetime.strptime(str(cycle.get("expiry")), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError as error:
+        raise MarketProductValidationError("INVALID_EXPIRY_FORMAT") from error
+    if evaluated_at:
+        clock = datetime.strptime(evaluated_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if abs((expiry.date() - clock.date()).days - dte) > 1:
+            raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
+    spot = finite(cycle.get("spot"), "spot")
+    suggestions = cycle.get("suggestions")
+    if not isinstance(suggestions, list) or not 1 <= len(suggestions) <= 2:
+        raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
+    roles = [item.get("role") for item in suggestions]
+    if roles not in (["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
+        raise MarketProductValidationError("COVERED_CALL_ROLES")
+    for item in suggestions:
+        strike, bid, ask, mid, limit = (finite(item.get(key), key) for key in ("strike", "bid", "ask", "mid", "limit_price"))
+        if not strike > spot > 0:
+            raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_OUT_OF_THE_MONEY")
+        if not 0 < bid <= ask or abs(mid - (bid + ask) / 2) > 0.001 or not bid - 1e-9 <= limit <= mid + 1e-9:
+            raise MarketProductValidationError("COVERED_CALL_PRICES_INCONSISTENT")
+        checks = {"premium_per_contract": limit * 100, "period_yield": limit / spot,
+                  "annualized_yield": limit / spot * 365 / dte, "upside_to_strike": strike / spot - 1}
+        for key, expected in checks.items():
+            if abs(finite(item.get(key), key) - expected) > max(1e-4, abs(expected) * 1e-3):
+                raise MarketProductValidationError(f"COVERED_CALL_DERIVED_MISMATCH: {key}")
+        delta = item.get("delta")
+        if delta is not None and not 0 <= finite(delta, "delta") <= 1:
+            raise MarketProductValidationError("INVALID_DELTA_RANGE")
+    if len(suggestions) == 2 and not suggestions[0]["strike"] > suggestions[1]["strike"]:
+        raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_NOT_HIGHER")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: validate_v213_market_products.py <path_to_json>")

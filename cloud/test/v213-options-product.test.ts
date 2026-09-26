@@ -118,19 +118,19 @@ describe("Options Product Contract and Validation", () => {
     expect(() => validateOptionContractQuote(badDte, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("EXPIRY_DTE_INCONSISTENT");
   });
 
-  it("renders valid Flex and text contracts with payoff unavailable on bare quotes", () => {
+  it("renders valid Flex and text contracts without payoff placeholder rows", () => {
     const flex = buildOptionContractFlex(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);
     expect(flexStr).toContain("NVDA 2026-09-25 125CALL");
-    expect(flexStr).toContain("UNAVAILABLE（無定義策略）");
+    expect(flexStr).not.toContain("UNAVAILABLE（無定義策略）");
     expect(flexStr).toContain("Bid $4.20");
 
     const text = buildOptionContractText(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(text);
     const textStr = JSON.stringify(text);
     expect(textStr).toContain("【公開期權合約報價】NVDA");
-    expect(textStr).toContain("最大利潤：UNAVAILABLE（無定義策略）");
+    expect(textStr).not.toContain("UNAVAILABLE（無定義策略）");  // operator 2026-09-26: no position, no P&L rows
   });
 
   it("renders explicit unavailable report when no admitted quotes exist with period selector navigation", () => {
