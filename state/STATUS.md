@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-Updated 2026-09-26 (22:40 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
+Updated 2026-09-26 (23:50 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
 
 ## Identity
 
@@ -20,8 +20,9 @@ Updated 2026-09-26 (22:40 Asia/Taipei) by an operator-directed Claude Code sessi
 | `dee1a05` | lane 4: 排名/前20/前二十/瓶頸排名/TOP20。 reach Top20 v3 (they served the legacy seven-field report), 產業排名 the industry ranking; 瓶頸詳情NVDA, "NVDA 詳情" (Top20 only), SIVE/5351 base symbols; 選擇權 and no-cycle option phrasings; help texts stop naming the dead 最新期權; the v3 renderer no longer throws on a missing `news.ratio` |
 | `e8824ae` | Taiwan listings show TWSE/TPEx official monthly revenue beside the Yahoo quarter (`fundamentals.cross_check`, never differenced); `docs/SOURCE_DIVERSITY_AUDIT.md` matrix brought up to date |
 | `4bae22f` | Stockholm: SIVE's own interim report from Cision beside the Yahoo quarter ("公司財報公告：Cision 2026-Q2 營收年增 -12%"); one feed read a day, the release page only for a new report; figures + URL cached in `data/cache/cision_interim_revenue.json` |
+| `6503a8b` | Korea: SK hynix and Samsung 2Q26 revenue from their own IR releases (`config/korea-ir-fundamentals-v1.json`, curated per quarter; shown only for the same quarter as the Yahoo figure) |
 
-Gate run 22:10 (final tree): security, documentation boundary/structure, workflow supply-chain PASS; typecheck PASS; vitest 955 passed / 2 skipped; offline suite 2742 OK (`PYTHONUTF8=1`, CPython 3.12.10). The only offline failure before this update was this file missing the `38860e7` pointer that `tests/test_agent_skill_structure.py` requires (dropped at 20:45).
+Gate run 22:10 (final tree): security, documentation boundary/structure, workflow supply-chain PASS; typecheck PASS; vitest 955 passed / 2 skipped; offline suite 2743 OK (`PYTHONUTF8=1`, CPython 3.12.10). The only offline failure before this update was this file missing the `38860e7` pointer that `tests/test_agent_skill_structure.py` requires (dropped at 20:45).
 
 ## Operator decisions (2026-09-26)
 
@@ -30,7 +31,7 @@ Gate run 22:10 (final tree): security, documentation boundary/structure, workflo
 
 ## Open lanes
 
-2. Source diversity: Taiwan (TWSE/TPEx monthly revenue) and Stockholm (SIVE via Cision; GO_WITH_LIMITS from its robots.txt, `%TEMP%\ii-live\gemini-cision-terms.result.md`; MFN RSS disallowed; the Sivers site is bot-blocked) done in code. Korea next: Samsung only via its IR statement PDF (needs a PDF parser outside the hash-locked requirements), SK hynix newsroom terms forbid robots (a curated per-quarter config, as the Hyosung orders); Yahoo matched both exactly for 2Q26 (`%TEMP%\ii-live\gemini-lane2-sweden-korea.result.md`). Japan/Korea price shards stay Yahoo daily closes; consensus outside the US Yahoo-only.
+2. Source diversity: official fundamentals now stand beside Yahoo for Taiwan (TWSE/TPEx monthly revenue), Stockholm (SIVE via Cision; robots.txt allows it; MFN RSS disallowed) and Korea (curated IR config; SK hynix's newsroom terms forbid robots). Refresh the Korea config after each earnings release. Still single: Japan fundamentals (EDINET needs a key), Japan/Korea price shards (Yahoo daily closes), consensus outside the US.
 3. Orders: MU fixed. CRWV (24M only) and SNDK (12M only) disclose no other horizon. AXTI ("through the first half of 2029") and NBIS (20-F/6-K, 28%→36% within 24M) have no deep report (only domestic SEC filers get one): DEFERRED_WITH_REASON until foreign-filer deep reports exist. Korea HD Hyundai Electric deck unreadable keylessly.
 5. Deferred: report-age gates for carried reports and federation readers (certified `cloud/src/qa.ts` needs recertification); the CI R75 route blocks release qualification.
 14. Deploy the commits above (Worker + runtime reinstall + seal + post gate), then refresh company reports so MU's schedule appears. Needs the operator's go.
@@ -54,7 +55,12 @@ Claude Code is master and single tracked writer (operator 2026-09-25). Herdr w9 
 - Pi `[Extension issues]`: `pi-mcp-adapter` failed because `~\.pi\agent\settings.json` had a UTF-8 BOM written by `Configure-Pi-NInfer.ps1` (Windows PowerShell `Set-Content -Encoding UTF8`). The kit and installed copies now write UTF-8 without BOM and read UTF-8; `models.json` BOM removed; the project `.pi/sol-pi.json` reducer that named the removed `tabby-local` provider is off. Receipt `_archive\extension-issues-fix-20260926T132956Z\RECEIPT.md`.
 - `.mcp.json` and workspace `AGENTS.md` preimages: `_archive\chatgpt-web-mcp-switch-20260926T135913Z`.
 
-## Handoff (2026-09-26 22:10)
+- `D:\chatgpt-web-mcp\src\selectors.js`: the zh-TW new-chat control is `<button aria-label="新對話">` (a collapsed sidebar keeps a hidden copy first), so new chats always failed their check; four `:visible` button selectors added (preimage in the switch archive; the MCP's tests 37/38 before and after, the failure is a pre-existing Windows path assertion).
 
-- Next: lane 14 deploy on the operator's go; lane 2 Korea; the ChatGPT review of `3ac39a1..28b9f94` is queued (`%TEMP%\ii-live\chatgpt-review-queue.sh`, result `chatgpt-review-2210.result.md`) behind another project's ChatGPT operation that has held the browser lock since 22:11.
+## Handoff (2026-09-26 23:50)
+
+- Next: lane 14 deploy on the operator's go (then a company-report refresh so MU's schedule appears).
+- ChatGPT review of `3ac39a1..d9d76bb` (packet `%TEMP%\ii-live\chatgpt-review-2210.prompt.txt`): another project drives the same
+  browser (Skyrim `tools/chatgpt_review.py`); `%TEMP%\ii-live\chatgpt-review-queue.sh` waits until the lock and its active
+  generation clear, then sends Pro first. Result `chatgpt-review-2210.result.md`; earlier refusals kept as `.attempt1-4.md`.
 - Scratch: `%TEMP%\ii-live` (tasks, results, diffs, offline runs).
