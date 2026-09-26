@@ -92,6 +92,15 @@ class TestV213MarketProducts(unittest.TestCase):
         # Validate through shared validator
         validate_macro_overview(report)
 
+    def test_a_higher_opportunity_score_never_ranks_lower(self) -> None:
+        # Rotation order puts confirmed phases first; the published rank must still follow the score the card shows.
+        candidates = copy.deepcopy(SYNTHETIC_FIVE_QUALIFIED)
+        for index, (cand, strength) in enumerate(zip(candidates, (35, 83, 57, 42, 70))):
+            cand["data_strength"], cand["rotation_rank"] = strength, index + 1
+        qualified, _ = evaluate_candidates(candidates)
+        self.assertEqual([c["opportunity_score"] for c in qualified], [83, 70, 57, 42, 35])
+        self.assertEqual([c["rank"] for c in qualified], [1, 2, 3, 4, 5])
+
     def test_macro_builder_ranks_by_opportunity_rubric(self) -> None:
         candidates = []
         for i in range(6):

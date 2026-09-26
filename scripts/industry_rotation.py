@@ -640,6 +640,9 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
     rows.sort(key=lambda r: (r["phase"]["preference_rank"], -r["strength"], r["industry_id"]))
     admitted = [r for r in rows if r["phase"]["phase"] in ADMITTED_PHASES and r["revenue"]["yoy_pct"] is not None
                 and r["strength"] >= int(config["thresholds"]["min_admission_strength"])]
+    # The TOP5 is ranked by the score the card shows (operator 2026-09-26: a higher opportunity score must never rank
+    # lower); the evidence phase is an admission condition and only breaks ties.
+    admitted.sort(key=lambda r: (-r["strength"], r["phase"]["preference_rank"], r["industry_id"]))
     cards, deep = [], {}
     for rank, row in enumerate(admitted, 1):
         cards.append({**to_macro_card(row, rank, config), "rotation_rank": rank})

@@ -330,8 +330,8 @@ def evaluate_candidates(candidates: list[dict]) -> tuple[list[dict], list[dict]]
             cand_copy["growth"] = None
             disqualified.append(cand_copy)
 
-    # Rotation order (phase, then data strength) when present; otherwise opportunity score.
-    qualified.sort(key=lambda c: (c.get("rotation_rank", 0), -c["opportunity_score"]))
+    # Ranked by the opportunity score the card shows; the rotation order (evidence phase) only breaks ties.
+    qualified.sort(key=lambda c: (-c["opportunity_score"], c.get("rotation_rank", 0)))
     for idx, cand in enumerate(qualified):
         cand["rank"] = idx + 1
 
