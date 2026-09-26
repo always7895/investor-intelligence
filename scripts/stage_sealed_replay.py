@@ -25,7 +25,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOUD = ROOT / "cloud"
-READER_CONTRACT_VERSION = "v213-reader-replay-v2"
+READER_CONTRACT_VERSION = "v213-reader-replay-v3"
 SEAL_MAX_AGE_SECONDS = "7200"
 
 Runner = Callable[[Path, Path], int]
@@ -114,7 +114,8 @@ def replay(run_dir: Path, runner: Runner = vitest_runner) -> dict[str, Any]:
     return {"status": "PASS" if not failed else "FAIL", "run_id": run_id, "top20_state": state, "failed": failed,
             **{key: result.get(key) for key in ("fresh", "top20_records", "test_only_admission", "report_generated_at",
                                                  "potential_ranking_records", "reader_contract_version", "identity_probe", "price_probe", "bottleneck_v3_zh_named",
-                                                 "bottleneck_v3_records")}}
+                                                 "bottleneck_v3_records", "v3_cross_checks", "v3_detail_probe", "order_probe", "option_probe",
+                                                 "alias_probe")}}  # product probes: rollout evidence bound to this run
 
 
 def main(argv: list[str] | None = None) -> int:

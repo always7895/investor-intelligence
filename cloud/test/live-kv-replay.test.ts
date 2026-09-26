@@ -18,11 +18,15 @@ import { parseV212Top20Report } from "../src/v212/top20-report";
 import { resolveGlobalIdentity } from "../src/v213/global-identity";
 import { loadIdentityCatalogForQuery } from "../src/v213/identity-shards";
 import { loadListingPrice } from "../src/v213/market-observations";
-import { buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "../src/v213/bottleneck-v3";
+import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, loadBottleneckV3 } from "../src/v213/bottleneck-v3";
+import { validateCoveredCallCycle } from "../src/v213/covered-call";
+import { loadOptionObservation, optionTickerKeys } from "../src/v213/market-observations";
+import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { asKv, MemoryKv } from "./fake-kv";
 
 // Bumped whenever the fields below change, so the gate and the staged replay can refuse an older reader.
-const READER_CONTRACT_VERSION = "v213-reader-replay-v2";
+// v3: product probes (v3 official cross-checks and detail lines, order schedules, covered-call status, LINE aliases).
+const READER_CONTRACT_VERSION = "v213-reader-replay-v3";
 const dir = process.env.V213_LIVE_REPLAY_DIR;
 const out = process.env.V213_LIVE_REPLAY_OUT;
 const query: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20" };
@@ -70,6 +74,34 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
         priceProbe[probe] = price ? `${price.price} ${price.currency} @${price.asof.slice(0, 10)}` : "NO_PRICE";
       }
     }
+    // Product probes (rollout evidence, not gate conditions): what users would see for the lanes of this release.
+    const crossChecks = Object.fromEntries((bottleneck?.top ?? []).filter(entry => entry.fundamentals?.cross_check)
+      .map(entry => [entry.symbol, `${entry.fundamentals!.cross_check!.source_id} ${entry.fundamentals!.cross_check!.period}`]));
+    const detailProbe: Record<string, string> = {};
+    for (const symbol of ["5351.TWO", "SIVE.ST", "000660.KS", "005930.KS", "MU"]) {
+      if (!bottleneck) break;
+      const detail = JSON.stringify(buildBottleneckDetail(bottleneck, symbol, "text"));
+      detailProbe[symbol] = (/(官方月營收|公司財報公告)：[^\\"]{0,80}/.exec(detail)?.[0] ?? (detail.includes("不在本輪") ? "NOT_IN_TOP20" : "NO_OFFICIAL_LINE"));
+    }
+    const orderProbe = Object.fromEntries(["MU", "CRWV", "SNDK"].map(symbol => {
+      const orders = (bottleneck?.deep_reports?.[symbol] as { orders?: { coverage_pct?: unknown } } | undefined)?.orders;
+      return [symbol, orders ? JSON.stringify(orders.coverage_pct ?? null) : "NONE"];
+    }));
+    const optionProbe: Record<string, string> = {};
+    for (const [ticker, period] of [["SIVE.ST", "monthly"], ["VOLV-B.ST", "monthly"], ["NVDA", "monthly"]] as const) {
+      const observed = await loadOptionObservation(view, optionTickerKeys(ticker), period);
+      if (!observed) optionProbe[ticker] = "NONE_OR_STALE";
+      else if ("unavailable" in observed) optionProbe[ticker] = `UNAVAILABLE ${observed.unavailable.slice(0, 60)}`;
+      else {
+        const cycle = validateCoveredCallCycle(observed.quote);
+        optionProbe[ticker] = cycle ? `VALID strike ${cycle.suggestions[0]!.strike} delta ${cycle.suggestions[0]!.delta} ${cycle.suggestions[0]!.delta_basis ?? ""}` : "REFUSED_BY_VALIDATOR";
+      }
+    }
+    const aliasProbe: Record<string, string> = {};
+    for (const command of ["瓶頸榜", "排名", "瓶頸詳情 5351", "SIVE.ST 每月期權"]) {
+      const answer = await v213PublicLineAnswer({ ...env, V213_LINE_PRESENTATION: "text" } as never, parseQuery(command));
+      aliasProbe[command] = (typeof answer === "string" ? answer : JSON.stringify(answer ?? null)).replace(/\s+/g, " ").slice(0, 90);
+    }
     const result = {
       reader_contract_version: READER_CONTRACT_VERSION,
       fresh, integrity: view.integrity, run_id: view.integrity === "sealed" ? view.runId : null,
@@ -86,6 +118,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       bottleneck_v3_records: bottleneck?.top.length ?? 0, bottleneck_v3_flex: bottleneck ? messageCount(buildBottleneckTop20Messages(bottleneck, "flex")) : 0,
       industry_v3_flex: bottleneck ? messageCount(buildIndustryExplosionMessages(bottleneck, "flex")) : 0,
       macro_overview_sealed: !!overview, potential_ranking_records: ranking?.records.length ?? 0,
+      v3_cross_checks: crossChecks, v3_detail_probe: detailProbe, order_probe: orderProbe, option_probe: optionProbe, alias_probe: aliasProbe,
       evaluated_at: new Date().toISOString(),
     };
     writeFileSync(out!, JSON.stringify(result, null, 1));

@@ -77,7 +77,7 @@ function ConvertTo-UtcAnchor([object]$Value) {
 # State-aware replay acceptance: 'PASS', 'PASS_INSUFFICIENT' or a failure reason.
 function Test-ReplayAcceptance([object]$Replay, [string]$RunId, [int]$ExpectTop20Records, [double]$ReportMaxAgeSeconds) {
     if ($null -eq $Replay) { return 'REPLAY_RESULT_MISSING' }
-    if ([string]$Replay.reader_contract_version -ne 'v213-reader-replay-v2') { return 'READER_CONTRACT_VERSION' }
+    if ([string]$Replay.reader_contract_version -ne 'v213-reader-replay-v3') { return 'READER_CONTRACT_VERSION' }
     if ([string]$Replay.run_id -ne $RunId -or [string]$Replay.integrity -ne 'sealed') { return 'REPLAY_RUN_MISMATCH' }
     if ([bool]$Replay.fresh) {
         if ($ExpectTop20Records -gt 0 -and [int]$Replay.top20_records -ne $ExpectTop20Records) {

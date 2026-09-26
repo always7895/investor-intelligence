@@ -152,7 +152,7 @@ class ReplayAcceptanceTests(unittest.TestCase):
         probe = functions
         now = datetime.now(timezone.utc)
         for name, (fields, expected, _) in self.CASES.items():
-            replay = {"reader_contract_version": "v213-reader-replay-v2", "run_id": RUN, "integrity": "sealed",
+            replay = {"reader_contract_version": "v213-reader-replay-v3", "run_id": RUN, "integrity": "sealed",
                       "macro_overview_sealed": True, **{k: v for k, v in fields.items() if k != "age_hours"}}
             if "age_hours" in fields:
                 replay["report_generated_at"] = (now - timedelta(hours=fields["age_hours"])).strftime("%Y-%m-%dT%H:%M:%S.000Z")
