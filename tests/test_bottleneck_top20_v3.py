@@ -202,11 +202,13 @@ class SealedFormTests(unittest.TestCase):
             "US": {"sources": [{"id": "nasdaq-us-screener", "url": "https://api.nasdaq.com/api/screener/stocks"}], "rows": {"NVDA": [224.58, -0.4, "2026-09-24", "USD", 0]}},
             "JAPAN": {"sources": [{"id": "yahoo-daily-close", "url": "https://finance.yahoo.com/"}], "rows": {"4062": [5000.0, 1.0, "2026-09-25", "JPY", 0]}},
             "UK": {"sources": [{"id": "lse-aim", "url": "https://www.londonstockexchange.com/"}], "generated_at": "2026-09-26T00:00:00Z", "rows": {"IQE": [46.4, 5.3, None, "GBX", 0]}},
-            "SWEDEN": {"sources": [{"id": "nasdaq-stockholm-main", "url": "https://api.nasdaq.com/api/nordic/"}], "rows": {"SIVE": [32.78, 0.0, None, "SEK", 0]}}}}
+            "SWEDEN": {"sources": [{"id": "nasdaq-stockholm-main", "url": "https://api.nasdaq.com/api/nordic/"}], "rows": {"SIVE": [32.78, 0.0, None, "SEK", 0]}},
+            "EUROPE": {"sources": [{"id": "euronext-equities", "url": "https://live.euronext.com/"}], "rows": {
+                "EURONEXT PARIS|SOI": [21.5, 0.1, "2026-09-25", "EUR", 0], "EURONEXT PARIS|DUP": [1.0, 0, None, "EUR", 0], "EURONEXT BRUSSELS|DUP": [2.0, 0, None, "EUR", 0]}}}}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "shards.json"
             path.write_text(json.dumps(shards), encoding="utf-8")
-            checks = publisher._exchange_cross_checks(["NVDA", "4062.T", "IQE.L", "SIVE.ST"], {
+            checks = publisher._exchange_cross_checks(["NVDA", "4062.T", "IQE.L", "SIVE.ST", "SOI.PA", "DUP.PA"], {
                 "NVDA": {"price": 225.07, "currency": "USD"}, "4062.T": {"price": 5010.0, "currency": "JPY"},
                 "IQE.L": {"price": 46.5, "currency": "GBp"}, "SIVE.ST": {"price": 33.0, "currency": "USD"}}, path)
         self.assertEqual(checks["NVDA"]["source_id"], "nasdaq-us-screener")
@@ -215,6 +217,8 @@ class SealedFormTests(unittest.TestCase):
         self.assertAlmostEqual(checks["IQE.L"]["diff"], round(46.5 / 46.4 - 1, 5))  # GBp and GBX are the same unit
         self.assertEqual(checks["IQE.L"]["asof"], "2026-09-26T00:00:00Z")
         self.assertIsNone(checks["SIVE.ST"]["diff"])  # different currencies are not compared
+        self.assertEqual(checks["SOI.PA"]["price"], 21.5)  # Euronext rows are keyed by venue
+        self.assertNotIn("DUP.PA", checks)  # a symbol on two venues is ambiguous
 
     def test_outlook_is_sealed_with_known_keys_only(self):
         raw = {"orders": {"kind": "RPO", "amount": 3.2e9, "currency": "USD", "as_of": "2026-07-26", "yoy": 0.68, "source": "SEC",

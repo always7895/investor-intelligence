@@ -416,7 +416,11 @@ def _exchange_cross_checks(symbols: "list[str]", market_prices: "dict[str, dict]
     for symbol in symbols:
         market, _, native = build_zh_names.listing_key(symbol).partition(":")
         shard = shards.get(market) if isinstance(shards, dict) else None
-        row = ((shard or {}).get("rows") or {}).get(native)
+        rows = (shard or {}).get("rows") or {}
+        row = rows.get(native)
+        if row is None and market == "EUROPE":  # Euronext rows are keyed "VENUE|SYMBOL"; only an unambiguous match counts
+            matches = [key for key in rows if key.endswith("|" + native)]
+            row = rows[matches[0]] if len(matches) == 1 else None
         if not isinstance(row, list) or len(row) < 5:
             continue
         try:
