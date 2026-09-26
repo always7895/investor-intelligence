@@ -10,6 +10,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { sourceZh } from "./source-labels";
 import {
   LINE_THEME as T, chip, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
   packCarousels, railTitle, rankBadge, richText, stackedBar, statTile, timelineStep, uiBox, uiText,
@@ -184,7 +185,7 @@ export function buildMacroDeepAnalysisBubble(analysis: MacroDeepAnalysis) {
 
 function deepAnalysisBubble(analysis: MacroDeepAnalysis, rt: Rich) {
   const sourcesText = analysis.source_references
-    .map(s => `• ${s.source}：${s.url}${s.passage ? `（${s.passage}）` : ""}`)
+    .map(s => `• ${sourceZh(s.source)}：${s.url}${s.passage ? `（${s.passage}）` : ""}`)
     .join("\n");
   const bodies: unknown[][] = [
     [rt(analysis.demand)], [rt(analysis.supply)], [rt(analysis.bottleneck)], [rt(analysis.pricing)],
@@ -365,7 +366,7 @@ export function buildMacroDeepAnalysisFlex(analysis: MacroDeepAnalysis): LineOut
 export function buildMacroDeepAnalysisText(analysis: MacroDeepAnalysis): LineOutboundMessage[] {
   const validated = validateMacroDeepAnalysis(analysis);
   const sourcesText = validated.source_references
-    .map(s => `• ${s.source}：${s.url}${s.passage ? `（${s.passage}）` : ""}`)
+    .map(s => `• ${sourceZh(s.source)}：${s.url}${s.passage ? `（${s.passage}）` : ""}`)
     .join("\n");
 
   const text = [

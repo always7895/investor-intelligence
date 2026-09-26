@@ -15,6 +15,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle, footerStyle } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
+import { quoteBasisZh, rightsZh, sourceZh } from "./source-labels";
 
 export const OPTIONS_PRODUCT_KEY = "v213:options-chain:latest";
 
@@ -64,7 +65,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
       ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: menuBox([
-      menuText(`時間戳記：${quote.timestamp}｜來源：${quote.source}｜憑證：${quote.provenance}｜權利：${quote.rights_status}`, "xxs", T.muted),
+      menuText(`時間戳記：${quote.timestamp}｜來源：${sourceZh(quote.source)}｜憑證：${quote.provenance}｜權利：${rightsZh(quote.rights_status)}`, "xxs", T.muted),
       menuText("本資料為公開行情觀察，非個人化投資建議、無委託下單功能。", "xxs", T.muted),
       menuAction("查看期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),
@@ -96,7 +97,7 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
   const text = [
     `【公開期權合約報價】${validated.ticker} ${validated.expiry} ${validated.strike}${validated.type.toUpperCase()}`,
     `報價性質：${nonexecTag}`,
-    `DTE：${validated.dte} 天｜基準：${validated.quote_basis}｜來源：${validated.source}｜幣別：${validated.currency}（乘數 ${validated.multiplier}）`,
+    `DTE：${validated.dte} 天｜基準：${quoteBasisZh(validated.quote_basis)}｜來源：${sourceZh(validated.source)}｜幣別：${validated.currency}（乘數 ${validated.multiplier}）`,
     `行情：Bid ${formatMoney(validated.bid, validated.currency)} ｜ Mid ${formatMoney(validated.mid, validated.currency)} ｜ Ask ${formatMoney(validated.ask, validated.currency)}`,
     `Spread：${formatMoney(validated.spread, validated.currency)}`,
     `Greeks：Delta ${validated.delta !== null ? validated.delta.toFixed(3) : "UNAVAILABLE"} ｜ IV ${validated.iv !== null ? (validated.iv * 100).toFixed(1) + "%" : "UNAVAILABLE"}`,

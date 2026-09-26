@@ -3,6 +3,7 @@
  * scripts/build_market_quotes_options.py from delayed public option chains and sealed in `v213:options:v2`.
  * Observation only: the bot never places an order. Mirror of validate_covered_call_cycle (Python). */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { sourceZh } from "./source-labels";
 import {
   LINE_THEME as T, chip, footerStyle, footnote, menuAction, meter, productHeader, section, statTile, uiBox, uiText,
 } from "./line-theme";
@@ -80,7 +81,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
         `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null ? "未提供" : item.delta.toFixed(2)}`,
       ].join("\n")),
       `前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`,
-      `來源：${cycle.source}（延遲報價，${cycle.timestamp}）${cycle.provenance}`,
+      `來源：${sourceZh(cycle.source)}（延遲報價，${cycle.timestamp}）${cycle.provenance}`,
       "公開行情觀察，非個人化投資建議；本服務不下單。",
     ];
     const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
@@ -97,7 +98,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
       footnote("前提：持有 100 股、賣出 1 口買權收取權利金；股價超過履約價可能被指派，上漲收益封頂於履約價。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([
-      footnote(`來源：${cycle.source}，${cycle.timestamp}`),
+      footnote(`來源：${sourceZh(cycle.source)}，${cycle.timestamp}`),
       footnote("公開行情觀察，非個人化投資建議；本服務不下單。"),
       menuAction("期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),

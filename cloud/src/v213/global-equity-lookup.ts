@@ -20,6 +20,7 @@ import {
 } from "./global-identity-reader";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
 import { loadDelayedQuote, loadListingPrice, observationSymbol } from "./market-observations";
+import { sourceZh } from "./source-labels";
 
 export type { SupportedMarket, GlobalIdentityRecord, GlobalIdentityResolution };
 
@@ -191,7 +192,7 @@ export function buildGlobalEquityLookupMessages(
     ...(identity.isAmbiguous && identity.ambiguityCandidates && identity.ambiguityCandidates.length > 0
       ? ["可選候選代號：", ...identity.ambiguityCandidates.map(c => `• ${c}`)]
       : []),
-    `資料來源：${result.source}`,
+    `資料來源：${sourceZh(result.source)}`,
     `說明：${result.disclaimer}`,
   ];
 
@@ -236,7 +237,7 @@ export function buildGlobalEquityLookupMessages(
       ], { spacing: "xs", paddingAll: "sm" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: menuBox([
-      menuText(`來源：${result.source}`, "xxs", T.muted),
+      menuText(`來源：${sourceZh(result.source)}`, "xxs", T.muted),
       menuText(result.disclaimer, "xxs", T.muted),
       ...footerActions,
     ], { backgroundColor: T.paper, paddingAll: "md", spacing: "xs" }),

@@ -7,6 +7,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { sourceZh } from "./source-labels";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
   LINE_THEME as T, chip, divider, footerStyle, footnote, menuAction, meter, packCarousels, productHeader, rankBadge,
@@ -145,16 +146,6 @@ const pct = (value: number | null | undefined, digits = 1) => value === null || 
 const pp = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}個百分點`;
 const cap = (value: number | null) => value === null ? "未揭露" : value >= 1e12 ? `US$${(value / 1e12).toFixed(2)}T` : value >= 1e9 ? `US$${(value / 1e9).toFixed(1)}B` : `US$${(value / 1e6).toFixed(0)}M`;
 const day = (value: string | null | undefined) => (value ?? "").slice(0, 10) || "未揭露";
-
-const SOURCE_ZH: Record<string, string> = {
-  "SEC EDGAR XBRL companyfacts": "SEC EDGAR XBRL 財報資料",
-  "Yahoo Finance quarterly income statement (unofficial)": "Yahoo Finance 季度損益表（非官方）",
-  "Yahoo Finance adjusted daily close (unofficial)": "Yahoo Finance 還原收盤價（非官方）",
-  "Yahoo Finance analyst estimates (unofficial)": "Yahoo Finance 分析師預估（非官方）",
-  "SEC EDGAR full-text search": "SEC EDGAR 全文檢索",
-};
-/** Chinese label of a known source; any other source keeps its own name. */
-export const sourceZh = (source: string | null | undefined) => source ? SOURCE_ZH[source] ?? source : "未載明";
 
 function money(amount: number, currency: string | null | undefined): string {
   const unit = (currency ?? "").toUpperCase();

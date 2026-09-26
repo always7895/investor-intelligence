@@ -1,5 +1,6 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { requirePublicCitation as safeCitation } from "./public-citation";
+import { sourceZh } from "./source-labels";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
 import { parseV213BottleneckReport, type V213BottleneckReport } from "./bottleneck-report";
 import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
@@ -83,7 +84,7 @@ function dataReportBlocks(report: { generated_at: string }, data: CompanyDataRep
     `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
       `資料計算日：${data.as_of}｜資料階段：${data.phase}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
     ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
-    `資料來源 / Sources\n` + data.source_references.map(ref => `• ${ref.source}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
+    `資料來源 / Sources\n` + data.source_references.map(ref => `• ${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
   ];
 }
 
@@ -312,7 +313,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox(data.source_references.slice(0, 10).flatMap((ref, index) => {
       const block = uiBox([
-        uiText(ref.source, "xs", T.ink, { weight: "bold" }),
+        uiText(sourceZh(ref.source), "xs", T.ink, { weight: "bold" }),
         ...(ref.period ? [uiText(`期間 ${ref.period}`, "xxs", T.muted)] : []),
         uiText(ref.url, "xxs", T.subtle),
       ], { spacing: "xs" });
