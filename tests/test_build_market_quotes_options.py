@@ -150,16 +150,20 @@ class BroadUniverseTests(unittest.TestCase):
         def fake_nordic(symbol, base, spot, today, stamp, orderbook=None):
             calls.append((symbol, orderbook))
             return {"weekly": {"unavailable": f"STO {base}"}}
-        saved = (sys.modules.get("yfinance"), builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe)
+        saved = (sys.modules.get("yfinance"), builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe,
+                 builder.nasdaq_us_options, builder.alpha_vantage_quote)
         sys.modules["yfinance"] = type(sys)("yfinance")
         sys.modules["yfinance"].Ticker = FakeTicker
         builder.us_options, builder.nordic_options = fake_us, fake_nordic
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": "Nasdaq 期權鏈讀取失敗"}}
+        builder.alpha_vantage_quote = lambda symbol, stamp: None
         builder.broad_universe = lambda now: {"us": ["AZN", "BAD", "BROKEN"], "sweden": {"AZN.ST": "TX9", "VOLV-B.ST": "TX100"}}
         builder.universe = lambda: ["NVDA", "SIVE.ST", "2330.TW"]
         try:
             document = builder.build(self.NOW)
         finally:
-            yf, builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe = saved
+            (yf, builder.us_options, builder.nordic_options, builder.broad_universe, builder.universe,
+             builder.nasdaq_us_options, builder.alpha_vantage_quote) = saved
             if yf is None:
                 sys.modules.pop("yfinance", None)
             else:
@@ -186,6 +190,110 @@ class BroadUniverseTests(unittest.TestCase):
                 builder.build_broad(self.NOW)
         finally:
             builder.http_json = saved
+
+
+class FallbackTests(unittest.TestCase):
+    TODAY = datetime(2026, 9, 26, tzinfo=timezone.utc).date()
+    STAMP = "2026-09-26T06:00:00Z"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = (builder.http_json, builder.us_options, builder.nasdaq_us_options, builder.alpha_vantage_key, builder.ALPHA_VANTAGE_BUDGET)
+        builder.ALPHA_VANTAGE_BUDGET = Path(self.tmp.name) / "budget.json"
+        self.urls = []
+
+    def tearDown(self):
+        (builder.http_json, builder.us_options, builder.nasdaq_us_options, builder.alpha_vantage_key, builder.ALPHA_VANTAGE_BUDGET) = self.saved
+        self.tmp.cleanup()
+
+    def test_nasdaq_us_chain_parses_expiry_groups_without_a_delta(self):
+        def fake_http(url):
+            self.urls.append(url)
+            rows = [{"expirygroup": "October 2, 2026"},
+                    {"expirygroup": "", "strike": "240.00", "c_Bid": "1.10", "c_Ask": "1.20", "c_Openinterest": "1,200", "c_Volume": "--"},
+                    {"expirygroup": "October 23, 2026"},
+                    {"expirygroup": "", "strike": "250.00", "c_Bid": "2.00", "c_Ask": "2.10", "c_Openinterest": "--", "c_Volume": "7"},
+                    {"expirygroup": "", "strike": "260.00", "c_Bid": "--", "c_Ask": "0.90", "c_Openinterest": "5", "c_Volume": "1"}]
+            return {"data": {"table": {"rows": rows}}}
+        builder.http_json = fake_http
+        out = builder.nasdaq_us_options("BRK-B", 225.0, self.TODAY, self.STAMP)
+        self.assertIn("/quote/brk.b/option-chain", self.urls[0])
+        self.assertIn("fromdate=2026-09-29", self.urls[0])
+        self.assertEqual((out["weekly"]["expiry"], out["weekly"]["dte"]), ("2026-10-02", 6))
+        self.assertEqual((out["monthly"]["expiry"], out["monthly"]["suggestions"][0]["strike"]), ("2026-10-23", 250.0))
+        self.assertIsNone(out["weekly"]["suggestions"][0]["delta"])
+        self.assertEqual(out["weekly"]["suggestions"][0]["oi"], 1200)
+        self.assertTrue(out["weekly"]["provenance"].startswith("https://www.nasdaq.com/"))
+        self.assertEqual(out["weekly"]["rights_status"], "candidate_local_review")
+        builder.http_json = lambda url: (_ for _ in ()).throw(OSError("blocked"))
+        self.assertEqual(builder.nasdaq_us_options("NVDA", 225.0, self.TODAY, self.STAMP)["monthly"]["unavailable"], "Nasdaq 期權鏈讀取失敗")
+
+    def test_only_cycles_yahoo_could_not_read_fall_back_to_nasdaq(self):
+        calls = []
+        good = {"ticker": "NVDA", "expiry": "2026-10-23"}
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: calls.append(symbol) or {"weekly": good, "monthly": good}
+        builder.us_options = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": "期權鏈讀取失敗"},
+                                                                 "monthly": {"unavailable": "2026-10-23 到期的價外買權中，沒有年化權利金達 6%"}}
+        out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
+        self.assertEqual(out["weekly"], good)
+        self.assertIn("沒有年化權利金", out["monthly"]["unavailable"])  # a read chain keeps its own reason
+        builder.us_options = lambda symbol, spot, today, stamp: {"weekly": good, "monthly": good}
+        builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
+        self.assertEqual(calls, ["NVDA"])  # no Nasdaq request when Yahoo read every cycle
+        builder.us_options = lambda symbol, spot, today, stamp: (_ for _ in ()).throw(ValueError("yahoo down"))
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: {c: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for c in builder.CYCLES}
+        out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
+        self.assertEqual(out["monthly"]["unavailable"], "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）")
+
+    def test_alpha_vantage_quote_needs_a_key_keeps_a_daily_budget_and_never_exposes_the_key(self):
+        def fake_http(url):
+            self.urls.append(url)
+            return {"Global Quote": {"05. price": "225.07", "08. previous close": "220.00", "07. latest trading day": "2026-09-25"}}
+        builder.http_json = fake_http
+        builder.alpha_vantage_key = lambda: None
+        self.assertIsNone(builder.alpha_vantage_quote("NVDA", self.STAMP))
+        self.assertEqual(self.urls, [])  # no key, no request
+        builder.alpha_vantage_key = lambda: "TESTKEY9"
+        quote = builder.alpha_vantage_quote("NVDA", self.STAMP)
+        self.assertEqual((quote["price"], quote["asof"], quote["currency"]), (225.07, "2026-09-25", "USD"))
+        self.assertAlmostEqual(quote["change_pct"], 225.07 / 220 - 1)
+        self.assertNotIn("TESTKEY9", json.dumps(quote))
+        self.assertTrue(quote["source_url"].startswith("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=NVDA"))
+        self.assertIn("apikey=TESTKEY9", self.urls[0])
+        for _ in range(builder.ALPHA_VANTAGE_DAILY_BUDGET - 1):
+            self.assertIsNotNone(builder.alpha_vantage_quote("NVDA", self.STAMP))
+        self.assertIsNone(builder.alpha_vantage_quote("NVDA", self.STAMP))
+        self.assertEqual(len(self.urls), builder.ALPHA_VANTAGE_DAILY_BUDGET)  # the budget stops requests, not only results
+        self.assertIsNotNone(builder.alpha_vantage_quote("NVDA", "2026-09-27T06:00:00Z"))  # a new UTC day
+
+    def test_observe_uses_the_alpha_vantage_quote_only_for_us_listings_yahoo_cannot_quote(self):
+        class DownTicker:
+            def __init__(self, symbol):
+                raise RuntimeError("yahoo down")
+        saved = (sys.modules.get("yfinance"), builder.alpha_vantage_quote, builder.us_cycles)
+        sys.modules["yfinance"] = type(sys)("yfinance")
+        sys.modules["yfinance"].Ticker = DownTicker
+        asked = []
+        builder.alpha_vantage_quote = lambda symbol, stamp: asked.append(symbol) or {"symbol": symbol, "price": 225.07, "source": "Alpha Vantage"}
+        builder.us_cycles = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": f"spot {spot}"}}
+        try:
+            quote, key, cycles = builder.observe("NVDA", self.TODAY, self.STAMP)
+            self.assertIsNone(builder.observe("2330.TW", self.TODAY, self.STAMP))
+        finally:
+            yf, builder.alpha_vantage_quote, builder.us_cycles = saved
+            if yf is None:
+                sys.modules.pop("yfinance", None)
+            else:
+                sys.modules["yfinance"] = yf
+        self.assertEqual((quote["source"], key, cycles["weekly"]["unavailable"]), ("Alpha Vantage", "NVDA", "spot 225.07"))
+        self.assertEqual(asked, ["NVDA"])
+
+    def test_a_rate_limit_reply_spends_the_day(self):
+        builder.alpha_vantage_key = lambda: "K"
+        builder.http_json = lambda url: self.urls.append(url) or {"Information": "standard API rate limit is 25 requests per day"}
+        self.assertIsNone(builder.alpha_vantage_quote("NVDA", self.STAMP))
+        self.assertIsNone(builder.alpha_vantage_quote("AMD", self.STAMP))
+        self.assertEqual(len(self.urls), 1)
 
 
 class SealingTests(unittest.TestCase):

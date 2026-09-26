@@ -5,8 +5,11 @@ Universe: the bottleneck Top20 v3 (top and watch), the carried seven-field Top20
 2026-09-26: more US names and Swedish large caps) the US_LARGEST largest US listings by market cap in the Nasdaq stock
 screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange options. The broad list is rebuilt daily
 (data/cache/options_universe.json); a failed rebuild keeps the previous list for up to BROAD_MAX_STALE_DAYS.
-- Quotes: Yahoo Finance last price, previous close and currency (unofficial, delayed; labelled).
-- US-listed options: Yahoo Finance option chains (unofficial, delayed).
+- Quotes: Yahoo Finance last price, previous close and currency (unofficial, delayed; labelled). A US listing Yahoo cannot
+  quote falls back to Alpha Vantage GLOBAL_QUOTE (operator 2026-09-26) with the free key from the user's DPAPI file,
+  at most ALPHA_VANTAGE_DAILY_BUDGET calls a day (the free key allows 25); without a key there is no fallback call.
+- US-listed options: Yahoo Finance option chains (unofficial, delayed); a cycle Yahoo cannot read falls back to the
+  Nasdaq US option chain (operator 2026-09-26: Nasdaq data stays in use). Alpha Vantage option chains are premium-only.
 - Nasdaq Stockholm options (for example SIVE.ST): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
 Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE): two covered-call sell suggestions for a holder of 100
 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the shares are not called away):
@@ -26,10 +29,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
+import threading
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -43,6 +48,12 @@ NORDIC_SEARCH = "https://api.nasdaq.com/api/nordic/search?searchText={symbol}"
 NORDIC_CHAIN = "https://api.nasdaq.com/api/nordic/instruments/{orderbook}/option-chain"
 US_SCREENER = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true"
 STOCKHOLM_LARGE_CAP = "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO&segment=LARGE_CAP"
+NASDAQ_US_CHAIN = ("https://api.nasdaq.com/api/quote/{symbol}/option-chain?assetclass=stocks&limit=5000&fromdate={start}"
+                   "&todate={end}&excode=oprac&callput=callput&money=all&type=all")
+ALPHA_VANTAGE_QUOTE = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}"  # the key is never part of it
+ALPHA_VANTAGE_DAILY_BUDGET = 20  # of the free key's 25 a day; a Yahoo outage would otherwise spend it in one run
+ALPHA_VANTAGE_BUDGET = ROOT / "data" / "cache" / "alphavantage-budget.json"
+ALPHA_VANTAGE_KEY_FILE = "alphavantage-key.local.txt"  # ConvertFrom-SecureString output under the user config root
 US_LARGEST = 100              # by market cap (floor about $166B on 2026-09-26); share classes each keep their own chain
 BROAD_MAX_AGE_HOURS = 24
 BROAD_MAX_STALE_DAYS = 7
@@ -233,6 +244,155 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
             "rights_status": rights, "suggestions": suggestions}
 
 
+def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, stamp: str, *, currency: str, source: str,
+                       provenance: str, rights: str, missing: str) -> dict[str, Any]:
+    """Weekly: the nearest expiry in its window; monthly: the expiry nearest 30 days. Standard 100-share contracts only."""
+    out: dict[str, Any] = {}
+    for cycle, (low, high) in CYCLES.items():
+        window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
+        if not window:
+            out[cycle] = {"unavailable": missing.format(low=low, high=high)}
+            continue
+        target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
+        chosen = [row for row in window if row["dte"] == target]
+        out[cycle] = cycle_result(ticker, chosen[0]["expiry"], target, spot, chosen, currency=currency, source=source,
+                                  provenance=provenance, rights=rights, stamp=stamp)
+    return out
+
+
+def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+    """Fallback US chain from Nasdaq's public quote-page API: two-sided call quotes without implied volatility, so no
+    delta (as for Nasdaq Stockholm). Class shares use a dot there (BRK-B -> brk.b)."""
+    low, high = min(window[0] for window in CYCLES.values()), max(window[1] for window in CYCLES.values())
+    url = NASDAQ_US_CHAIN.format(symbol=urllib.parse.quote(symbol.replace("-", ".").lower()),
+                                 start=(today + timedelta(days=low)).isoformat(), end=(today + timedelta(days=high)).isoformat())
+    try:
+        rows = http_json(url)["data"]["table"]["rows"] or []
+    except Exception:
+        return {cycle: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for cycle in CYCLES}
+    calls: list[dict[str, Any]] = []
+    expiry: date | None = None
+    for row in rows:
+        if row.get("expirygroup"):  # a header row ("October 2, 2026") precedes the strikes of each expiry
+            try:
+                expiry = datetime.strptime(str(row["expirygroup"]), "%B %d, %Y").date()
+            except ValueError:
+                expiry = None
+            continue
+        if expiry is None:
+            continue
+        calls.append({"expiry": expiry.isoformat(), "dte": (expiry - today).days, "strike": _float(row.get("strike")),
+                      "bid": _float(row.get("c_Bid")), "ask": _float(row.get("c_Ask")), "iv": None, "delta": None,
+                      "oi": _int(row.get("c_Openinterest")), "volume": _int(row.get("c_Volume")), "size": 100})
+    return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
+                              source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
+                              provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
+                              rights="candidate_local_review", missing="Nasdaq 無 {low}-{high} 天到期的上市期權")
+
+
+def _yahoo_unread(value: dict[str, Any] | None) -> bool:
+    reason = str((value or {"unavailable": "讀取失敗"}).get("unavailable", ""))
+    return "讀取失敗" in reason or "Yahoo Finance 期權到期日清單" in reason
+
+
+def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+    """Yahoo first; only the cycles Yahoo could not read (no expiry list, a failed chain) try the Nasdaq chain once.
+    A cycle Yahoo read without a qualifying strike keeps that reason."""
+    try:
+        out = us_options(symbol, spot, today, stamp)
+    except Exception:
+        out = {cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES}
+    retry = [cycle for cycle in CYCLES if _yahoo_unread(out.get(cycle))]
+    if not retry:
+        return out
+    fallback = nasdaq_us_options(symbol, spot, today, stamp)
+    for cycle in retry:
+        value = fallback.get(cycle) or {"unavailable": ""}
+        if "unavailable" not in value:
+            out[cycle] = value
+        elif "讀取失敗" in str((out.get(cycle) or {}).get("unavailable", "讀取失敗")):
+            out[cycle] = {"unavailable": "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）"}
+        else:
+            out[cycle] = {"unavailable": str(value["unavailable"])}
+    return out
+
+
+def _dpapi_unprotect(blob: bytes) -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    buffer = ctypes.create_string_buffer(blob, len(blob))  # kept referenced until the call returns
+    source = Blob(len(blob), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
+    target = Blob()
+    if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(source), None, None, None, None, 0, ctypes.byref(target)):
+        raise OSError("DPAPI_UNPROTECT_FAILED")
+    try:
+        return ctypes.string_at(target.pbData, target.cbData).decode("utf-16-le")
+    finally:
+        ctypes.windll.kernel32.LocalFree(target.pbData)
+
+
+def alpha_vantage_key() -> str | None:
+    """ALPHAVANTAGE_API_KEY, else the user's DPAPI file named by install-state.json; decrypted into this process only
+    (never printed, logged or written). None when neither exists."""
+    explicit = os.getenv("ALPHAVANTAGE_API_KEY", "").strip()
+    if explicit:
+        return explicit
+    try:
+        state = json.loads(Path(os.environ["LOCALAPPDATA"], "InvestorIntelligence", "install-state.json").read_text(encoding="utf-8-sig"))
+        text = (Path(state["user_config_root"]) / ALPHA_VANTAGE_KEY_FILE).read_text(encoding="utf-8-sig").strip()
+        return _dpapi_unprotect(bytes.fromhex(text)).strip() or None
+    except Exception:
+        return None
+
+
+_BUDGET_LOCK = threading.Lock()
+
+
+def _alpha_vantage_budget(day: str, exhaust: bool = False) -> bool:
+    """Takes one call from today's budget (UTC day); exhaust=True marks the day spent after a rate-limit reply."""
+    with _BUDGET_LOCK:
+        try:
+            state = json.loads(ALPHA_VANTAGE_BUDGET.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            state = {}
+        used = int(state.get("calls", 0)) if isinstance(state, dict) and state.get("date") == day else 0
+        if not exhaust and used >= ALPHA_VANTAGE_DAILY_BUDGET:
+            return False
+        ALPHA_VANTAGE_BUDGET.parent.mkdir(parents=True, exist_ok=True)
+        calls = ALPHA_VANTAGE_DAILY_BUDGET if exhaust else used + 1
+        ALPHA_VANTAGE_BUDGET.write_text(json.dumps({"date": day, "calls": calls}), encoding="utf-8")
+        return True
+
+
+def alpha_vantage_quote(symbol: str, stamp: str) -> dict[str, Any] | None:
+    """Fallback US quote (latest trading day's price and previous close). None without a key, beyond the day's budget,
+    on a rate-limit or error reply; the key never appears in the output or in an error."""
+    key = alpha_vantage_key()
+    if not key or not _alpha_vantage_budget(stamp[:10]):
+        return None
+    public_url = ALPHA_VANTAGE_QUOTE.format(symbol=urllib.parse.quote(symbol))
+    try:
+        document = http_json(public_url + "&" + urllib.parse.urlencode({"apikey": key}))
+    except Exception:
+        return None
+    if not isinstance(document, dict):
+        return None
+    if "Information" in document or "Note" in document:  # the free key's daily or per-minute limit
+        _alpha_vantage_budget(stamp[:10], exhaust=True)
+        return None
+    row = document.get("Global Quote") or {}
+    price, previous = _float(row.get("05. price")), _float(row.get("08. previous close"))
+    day = str(row.get("07. latest trading day") or "")
+    if not price or price <= 0 or len(day) != 10:
+        return None
+    return {"symbol": symbol, "display": symbol, "price": price, "previous_close": previous,
+            "change_pct": (price / previous - 1) if previous else None, "currency": "USD", "asof": day,
+            "source": "Alpha Vantage GLOBAL_QUOTE（免費金鑰，最近交易日；Yahoo 備援）", "source_url": public_url}
+
+
 def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
     import yfinance as yf
     ticker = yf.Ticker(symbol)
@@ -267,7 +427,6 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, A
 
 
 def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None) -> dict[str, Any]:
-    out: dict[str, Any] = {}
     native = base.replace("-", " ")  # VOLV-B is listed as "VOLV B"
     try:
         if not orderbook:
@@ -291,17 +450,10 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
         calls.append({"expiry": expiry, "dte": dte, "strike": _float(row.get("strikePrice")), "bid": _float(row.get("bidPrice")),
                       "ask": _float(row.get("askPrice")), "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume")),
                       "size": _int(row.get("contractSize"))})
-    for cycle, (low, high) in CYCLES.items():
-        window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
-        if not window:
-            out[cycle] = {"unavailable": f"Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權"}
-            continue
-        target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
-        chosen = [row for row in window if row["dte"] == target]
-        out[cycle] = cycle_result(base, chosen[0]["expiry"], target, spot, chosen, currency="SEK",
-                                  source="Nasdaq Nordic option chain (exchange public web API, delayed)",
-                                  provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review", stamp=stamp)
-    return out
+    return _cycles_from_calls(calls, base, spot, stamp, currency="SEK",
+                              source="Nasdaq Nordic option chain (exchange public web API, delayed)",
+                              provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
+                              missing="Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權")
 
 
 def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
@@ -314,16 +466,20 @@ def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) 
         price, previous = _float(info.get("lastPrice")), _float(info.get("previousClose"))
         currency = info.get("currency")
     except Exception:
-        return None
-    if not price:
-        return None
+        price = None
     base = symbol.split(".")[0] if symbol.endswith(".ST") else symbol
-    quote = {"symbol": symbol, "display": base, "price": price, "previous_close": previous,
-             "change_pct": (price / previous - 1) if previous else None, "currency": currency,
-             "asof": stamp, "source": "Yahoo Finance (unofficial, delayed)", "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
+    if price:
+        quote = {"symbol": symbol, "display": base, "price": price, "previous_close": previous,
+                 "change_pct": (price / previous - 1) if previous else None, "currency": currency,
+                 "asof": stamp, "source": "Yahoo Finance (unofficial, delayed)", "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
+    else:
+        fallback = alpha_vantage_quote(symbol, stamp) if "." not in symbol else None  # US listings only
+        if not fallback:
+            return None
+        quote, price = fallback, fallback["price"]
     try:
         if "." not in symbol:
-            return quote, symbol, us_options(symbol, price, today, stamp)
+            return quote, symbol, us_cycles(symbol, price, today, stamp)
         if symbol.endswith(".ST"):
             return quote, symbol, nordic_options(symbol, base, price, today, stamp, orderbook)
     except Exception:  # one malformed chain never aborts the other underlyings
