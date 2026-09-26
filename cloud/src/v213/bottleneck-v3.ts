@@ -254,37 +254,40 @@ function orderFloor(doc: BottleneckV3, entry: BottleneckEntry): unknown[] {
     : "最新 10-Q／10-K 未申報 RPO 認列時程。", "xxs", T.muted)];
 }
 
-/** The card form: three short lines, so twenty cards still fit one LINE reply (five carousels). */
-function compactOutlook(doc: BottleneckV3, entry: BottleneckEntry): string[] {
+/** The three card tiles, identical on every Top20 card (operator 2026-09-26: one layout; current orders, the future
+ * estimate and the price if realized): [label, value, sub]. */
+export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string, string, string][] {
   const outlook = entry.outlook;
   const o = outlook?.orders;
-  const { filer } = ordersOf(doc, entry.symbol);
-  const orders = !o ? (filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts" ? "目前訂單：未申報 RPO" : "目前訂單：未取得（非 SEC 申報）")
-    : o.kind === "NOT_DISCLOSED" ? "目前訂單：未揭露"
-    : `目前訂單：${o.kind === "RPO" ? "RPO" : "在手訂單"} ${money(o.amount, o.currency)}（${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : `，${pct(o.yoy, 0)}`}）`
-      + (o.kind === "BACKLOG" && o.guidance ? `；${o.guidance.year ?? ""}年接單指引 ${money(o.guidance.amount, o.currency)}` : "");
+  const secFiler = ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts";
+  const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
+    : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
+    : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
   const c = outlook?.consensus;
-  const future = !c ? "未來預估：無分析師共識"
-    : (c.revenue_analysts ?? 0) < MIN_ANALYSTS ? `未來預估：分析師樣本不足（${c.revenue_analysts ?? 0}位），見瓶頸詳情`
-    : `未來預估：下一財年營收 ${pct(c.revenue_growth, 0)}（${c.revenue_analysts}位分析師）`;
-  const rows = outlook?.scenarios ?? [];
-  const scenario = !c || rows.length === 0 ? "若實現股價情境：無共識可推算"
-    : (c.revenue_analysts ?? 0) < MIN_ANALYSTS ? `若實現股價情境：分析師樣本不足（${c.revenue_analysts ?? 0} 位），不列推算`
-    : `若下一財年共識實現，股價情境：${rows.map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("｜")}`;
-  return [orders, future, scenario];
+  const thin = !!c && (c.revenue_analysts ?? 0) < MIN_ANALYSTS;
+  const future: [string, string, string] = o && o.kind === "BACKLOG" && o.guidance
+    ? ["未來預估", money(o.guidance.amount, o.currency), `${o.guidance.year ?? ""}年接單指引`]
+    : !c ? ["未來預估", "未取得", "無分析師共識"]
+    : thin ? ["未來預估", "樣本不足", `${c.revenue_analysts ?? 0}位分析師`]
+    : ["未來預估", pct(c.revenue_growth, 0), `營收共識 ${c.revenue_analysts}位`];
+  const revenue = (outlook?.scenarios ?? []).find(row => row.kind === "REVENUE_CONSTANT_PS");
+  const target = (outlook?.scenarios ?? []).find(row => row.kind === "ANALYST_TARGET");
+  const price: [string, string, string] = !c || !revenue ? ["若實現股價", "—", "無共識可推算"]
+    : thin ? ["若實現股價", "—", "樣本不足"]
+    : ["若實現股價", pct(revenue.change, 0), target ? `目標價 ${pct(target.change, 0)}` : "營收×市銷率"];
+  return [orders, future, price];
 }
 
 /** Operator 2026-09-26: current orders, the future estimate and the price scenario if realized on every Top20 card
- * (compact) and in full on the detail card. */
+ * (the same three tiles) and in full on the detail card. */
 function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true) {
   const { filer } = ordersOf(doc, entry.symbol);
   const outlook = entry.outlook;
   const c = outlook?.consensus;
   if (compact) {
     return section("訂單與成長情境", [
-      uiText(compactOutlook(doc, entry).join("\n"), "xs", T.ink, { wrap: true }),
-      ...orderFloor(doc, entry).slice(0, 2),
-      footnote("情境＝共識成長×目前估值倍數的推算，未扣除市場已反映部分；非預測、非投資建議；詳見「瓶頸詳情」。"),
+      uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
+      footnote("未來預估＝公司接單指引，否則分析師下一財年營收共識（非訂單數）；若實現股價＝共識成長×目前市銷率，未扣除已反映部分；非預測、非投資建議；詳見「瓶頸詳情」。"),
     ], "key");
   }
   return section("訂單與成長情境", [
@@ -327,7 +330,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         footnote(fund ? `財報：${sourceZh(fund.source)}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
       ]),
-      lean ? section("訂單與成長情境", [uiText([compactOutlook(doc, entry)[0], compactOutlook(doc, entry)[2]].join("\n"), "xs", T.ink)], "key")
+      lean ? section("訂單與成長情境", [uiText(outlookTiles(doc, entry).map(([label, value, sub]) => `${label} ${value}（${sub}）`).join("\n"), "xs", T.ink)], "key")
         : orderSection(doc, entry),
       ...(entry.name_zh ? [footnote(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`)] : []),
     ], { paddingAll: "lg", spacing: "md" }),

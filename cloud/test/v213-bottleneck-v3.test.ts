@@ -1,7 +1,7 @@
 // Bottleneck-explosion Top20 v3 and the industry ranking: strict parsing, report-age bound, LINE rendering.
 import { describe, expect, it } from "vitest";
 import {
-  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, parseBottleneckV3,
+  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookTiles, parseBottleneckV3,
 } from "../src/v213/bottleneck-v3";
 
 const HOUR = 3600_000;
@@ -99,19 +99,21 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("2025-02-13起年化 +64%");
     // Lead scores are not shown; signed-order floors from the sealed SEC report are.
     expect(serialized).not.toMatch(/Serenity|Leopold 基金|"線索"/);
-    expect(serialized).toContain("訂單實現下限（已簽約 RPO）");
-    expect(serialized).toContain("≥+33%");
-    expect(serialized).toContain("非 SEC 定期申報公司");
+    expect(serialized).not.toContain("訂單實現下限（已簽約 RPO）");  // horizon floors are on the detail card only
     // Operator 2026-09-26: current orders, the future estimate and the price scenario if realized, on every card.
     expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
-    expect(serialized).toContain("目前訂單：RPO US$3.2B（2026-07-26，+68%）");
-    expect(serialized).toContain("目前訂單：在手訂單 17.51兆 KRW（2026-06-30，+63%）；2026年接單指引 12.00兆 KRW");
-    expect(serialized).toContain("目前訂單：未揭露");
-    expect(serialized).toContain("未來預估：下一財年營收 +70%（58位分析師）");
-    expect(serialized).toContain("若下一財年共識實現，股價情境：營收實現·市銷率不變 +70%｜EPS實現·本益比不變 +69%｜分析師目標價 +46%");
-    expect(serialized).toContain("分析師樣本不足（1 位），不列推算");  // one analyst: no scenario on the card
+    // One layout on every card: the same three tiles in the same order.
+    for (const label of ["現有訂單", "未來預估", "若實現股價"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
+    expect(serialized).toContain("RPO 2026-07-26 年增+68%");
+    expect(serialized).toContain("17.51兆 KRW");
+    expect(serialized).toContain("在手 2026-06-30 年增+63%");
+    expect(serialized).toContain("2026年接單指引");
+    expect(serialized).toContain("公司未公布");
+    expect(serialized).toContain("營收共識 58位");
+    expect(serialized).toContain("目標價 +46%");
+    expect(serialized).toContain("樣本不足");  // one analyst: no scenario on the card
     expect(serialized).not.toContain("+2860%");
-    expect(serialized).toContain("未來預估：分析師樣本不足（1位），見瓶頸詳情");
+    expect(serialized).toContain("1位分析師");
     expect(serialized).toContain("非預測、非投資建議");
     // Chinese first, the original kept; source labels in Chinese.
     expect(serialized).toContain("合成稀缺層角色");
@@ -136,6 +138,8 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(withReport[0]!.altText).toBe("瓶頸詳情｜S1 合成一號");  // the detail card first, then the company report
     const s1 = JSON.stringify(withReport);
     expect(s1).toContain("Synthetic One");
+    expect(s1).toContain("訂單實現下限（已簽約 RPO）");
+    expect(s1).toContain("≥+33%");
     for (const label of ["財報數據", "前一季年增", "加速度", "股數年增", "市場數據", "訂單與成長情境", "EPS實現·本益比不變",
       "50 位", "預估來源：https://finance.yahoo.com/quote/S1/analysis", "訂單來源：SEC EDGAR XBRL 財報資料"]) expect(s1).toContain(label);
     expect(s1).toContain("目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B（2026-07-26，年增 +68%）");
@@ -172,6 +176,8 @@ describe("bottleneck-explosion Top20 v3", () => {
       entry.role_source.url = `https://example.com/${"r".repeat(170)}`;
       entry.outlook = structuredClone(OUTLOOKS[1]);
       entry.name = "N".repeat(80);
+      entry.role = "r".repeat(200);
+      entry.role_zh = "角".repeat(200);
     }
     const parsed = parseBottleneckV3(heavy)!;
     const bubbles = buildBottleneckTop20Messages(parsed, "flex") as unknown as { contents: { contents: unknown[] } }[];
@@ -179,6 +185,8 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(bubbles.reduce((total, message) => total + message.contents.contents.length, 0)).toBe(20);
     const serialized = JSON.stringify(bubbles);
     expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
-    expect(serialized).toContain("目前訂單：RPO US$3.2B");
+    const s1 = parsed.top.find(entry => entry.symbol === "S1")!;
+    expect(outlookTiles(parsed, s1)).toEqual([["現有訂單", "US$3.2B", "RPO 2026-07-26 年增+68%"], ["未來預估", "+70%", "營收共識 58位"],
+      ["若實現股價", "+70%", "目標價 +46%"]]);  // full and lean cards are both built from these three items
   });
 });
