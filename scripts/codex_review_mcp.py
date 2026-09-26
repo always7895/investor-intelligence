@@ -17,9 +17,13 @@ Tools
 - chatgpt_review      prompt (required), cwd (under WORKSPACE, default the source repository), model (default
                       gpt-6-sol, only models the CLI lists), effort (default auto = ultra then xhigh; high, xhigh, max or
                       ultra). An exhausted quota names the reset time the CLI reports: CODEX_QUOTA_EXHAUSTED until <time>.
-- chatgpt_pro_packet  prompt (required), name, clipboard (default false): writes the review request to
-                      PACKET_DIR/chatgpt-pro-<name>.md for the operator to paste into ChatGPT with 6 Pro selected (and
-                      copies it to the clipboard on request). Nothing is sent; the reply comes back through the operator.
+- chatgpt_pro_packet  prompt (required), name, clipboard (default false), open_app (default false): writes the review
+                      request to PACKET_DIR/chatgpt-pro-<name>.md, copies it to the clipboard on request and brings the
+                      ChatGPT Windows app to the front (operator 2026-09-26), so the operator only pastes and sends it
+                      with 6 Pro selected. Nothing is typed into or read from the app.
+- chatgpt_pro_collect name (required): saves the reply the operator copied from ChatGPT (the clipboard) as
+                      PACKET_DIR/chatgpt-pro-<name>.reply.md and returns it; refused while the clipboard still holds
+                      the packet.
 """
 from __future__ import annotations
 
@@ -123,22 +127,51 @@ def _run_codex(prompt: str, cwd: Path, model: str, effort: str) -> str:
     return answer
 
 
+def _packet_name(args: dict[str, Any]) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(args.get("name") or "review")).strip("-.")[:60] or "review"
+
+
+def _powershell(command: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                          env={**os.environ, **(extra_env or {})}, capture_output=True, timeout=60)
+
+
+# The Microsoft Store ChatGPT app (package OpenAI.Codex); started through its Start menu entry, never automated.
+OPEN_CHATGPT = ("$app = Get-StartApps | Where-Object { $_.AppID -like 'OpenAI.Codex_*!App' } | Select-Object -First 1; "
+                "if (-not $app) { exit 3 }; Start-Process ('shell:AppsFolder\\' + $app.AppID)")
+
+
 def chatgpt_pro_packet(args: dict[str, Any]) -> dict[str, Any]:
     prompt = str(args.get("prompt") or "")
     if not prompt.strip() or len(prompt) > MAX_PROMPT:
         raise ToolError("PROMPT_REQUIRED_MAX_200000_CHARS")
-    name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(args.get("name") or "review")).strip("-.")[:60] or "review"
+    name = _packet_name(args)
     PACKET_DIR.mkdir(parents=True, exist_ok=True)
     path = PACKET_DIR / f"chatgpt-pro-{name}.md"
     path.write_text(prompt, encoding="utf-8")
-    copied = False
+    copied = opened = False
     if args.get("clipboard") is True:
-        completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                                    "Set-Clipboard -Value (Get-Content -LiteralPath $env:II_PACKET -Raw -Encoding utf8)"],
-                                   env={**os.environ, "II_PACKET": str(path)}, capture_output=True, timeout=60)
-        copied = completed.returncode == 0
-    return {"packet": str(path), "chars": len(prompt), "clipboard": copied,
-            "next": "Paste into ChatGPT with 6 Pro selected (極高 when Pro is used up) and paste the reply back."}
+        copied = _powershell("Set-Clipboard -Value (Get-Content -LiteralPath $env:II_PACKET -Raw -Encoding utf8)",
+                             {"II_PACKET": str(path)}).returncode == 0
+    if args.get("open_app") is True:
+        opened = _powershell(OPEN_CHATGPT).returncode == 0
+    return {"packet": str(path), "chars": len(prompt), "clipboard": copied, "app_opened": opened,
+            "next": "In ChatGPT: new chat, select 6 Pro (極高 when Pro is used up), Ctrl+V, send; copy the reply with the "
+                    "copy button, then call chatgpt_pro_collect with the same name."}
+
+
+def chatgpt_pro_collect(args: dict[str, Any]) -> dict[str, Any]:
+    name = _packet_name(args)
+    packet = PACKET_DIR / f"chatgpt-pro-{name}.md"
+    completed = _powershell("[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard -Raw")
+    reply = completed.stdout.decode("utf-8", errors="replace").strip() if completed.returncode == 0 else ""
+    if not reply:
+        raise ToolError("CLIPBOARD_EMPTY: copy the ChatGPT reply first")
+    if packet.exists() and reply == packet.read_text(encoding="utf-8").strip():
+        raise ToolError("CLIPBOARD_STILL_HOLDS_THE_PACKET: copy the ChatGPT reply first")
+    path = PACKET_DIR / f"chatgpt-pro-{name}.reply.md"
+    path.write_text(reply[:MAX_PROMPT], encoding="utf-8")
+    return {"reply_file": str(path), "chars": len(reply), "reply": reply[:20_000]}
 
 
 TOOLS = {
@@ -153,7 +186,12 @@ TOOLS = {
                            "request) for the operator to paste; nothing is sent automatically.",
                            {"type": "object", "additionalProperties": False, "required": ["prompt"], "properties": {
                                "prompt": {"type": "string"}, "name": {"type": "string"},
-                               "clipboard": {"type": "boolean", "description": "default false"}}}),
+                               "clipboard": {"type": "boolean", "description": "default false"},
+                               "open_app": {"type": "boolean", "description": "bring the ChatGPT app to the front; default false"}}}),
+    "chatgpt_pro_collect": (chatgpt_pro_collect, "Save the ChatGPT reply the operator copied to the clipboard for the packet "
+                            "`name` and return it.",
+                            {"type": "object", "additionalProperties": False, "required": ["name"], "properties": {
+                                "name": {"type": "string"}}}),
 }
 
 

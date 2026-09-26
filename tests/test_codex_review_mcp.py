@@ -112,6 +112,30 @@ class CodexReviewTests(unittest.TestCase):
             self.assertFalse(payload["clipboard"])
         self.assertEqual(self.commands, [])
 
+    def test_pro_packet_can_open_the_app_and_collect_refuses_the_packet_itself(self):
+        import tempfile
+        calls = []
+
+        def fake_powershell(command, extra_env=None):
+            calls.append(command)
+            out = self.clipboard.encode("utf-8") if "Get-Clipboard" in command else b""
+            return SimpleNamespace(returncode=0, stdout=out, stderr=b"")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(server, "PACKET_DIR", Path(tmp)), \
+                patch.object(server, "_powershell", fake_powershell):
+            opened = server.chatgpt_pro_packet({"prompt": "review diff", "name": "x", "clipboard": True, "open_app": True})
+            self.assertEqual((opened["clipboard"], opened["app_opened"]), (True, True))
+            self.assertIn("OpenAI.Codex_*!App", calls[1])  # the Store app, started through its Start menu entry
+            self.clipboard = "review diff"
+            with self.assertRaises(server.ToolError):
+                server.chatgpt_pro_collect({"name": "x"})
+            self.clipboard = "VERDICT: APPROVE"
+            reply = server.chatgpt_pro_collect({"name": "x"})
+            self.assertEqual(reply["reply"], "VERDICT: APPROVE")
+            self.assertTrue(Path(reply["reply_file"]).name.endswith("x.reply.md"))
+            self.clipboard = ""
+            with self.assertRaises(server.ToolError):
+                server.chatgpt_pro_collect({"name": "x"})
+
 
 if __name__ == "__main__":
     unittest.main()
