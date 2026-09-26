@@ -7,6 +7,23 @@ import {
 const HOUR = 3600_000;
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
+const CONSENSUS = { revenue_fy0: 400e9, revenue_fy1: 680e9, revenue_growth: 0.7, revenue_analysts: 58, eps_fy0: 9.3, eps_fy1: 15.7,
+  eps_growth: 0.688, eps_analysts: 50, target_mean: 327.7, target_analysts: 59, price: 225.07, target_upside: 0.456,
+  source: "Yahoo Finance analyst estimates (unofficial)", source_url: "https://finance.yahoo.com/quote/S1/analysis", asof: "2026-09-26" };
+const OUTLOOKS: Record<number, unknown> = {
+  0: { orders: null, consensus: { ...CONSENSUS, revenue_growth: 28.6, revenue_analysts: 1, eps_growth: null, eps_analysts: 1, target_analysts: 1,
+    target_upside: 0.9, source_url: "https://finance.yahoo.com/quote/SIVE.ST/analysis" },
+    scenarios: [{ kind: "REVENUE_CONSTANT_PS", change: 28.6 }, { kind: "ANALYST_TARGET", change: 0.9 }] },
+  1: { orders: { kind: "RPO", amount: 3.2e9, currency: "USD", as_of: "2026-07-26", yoy: 0.68, source: "SEC EDGAR XBRL companyfacts",
+    source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json" }, consensus: CONSENSUS,
+    scenarios: [{ kind: "REVENUE_CONSTANT_PS", change: 0.7 }, { kind: "EPS_CONSTANT_PE", change: 0.688 }, { kind: "ANALYST_TARGET", change: 0.456 }] },
+  4: { orders: { kind: "BACKLOG", amount: 17507e9, currency: "KRW", as_of: "2026-06-30", yoy: 0.63, scope: "重工業部門（連結）",
+    source: "효성중공업 26.2분기 p.9", source_url: "https://www.hyosungheavyindustries.com/download/5816",
+    intake_quarter: { amount: 3324.2e9, yoy: 0.51 }, guidance: { kind: "ANNUAL_NEW_ORDERS", year: 2026, amount: 12e12, previous: 8.4e12 } },
+    consensus: null, scenarios: [] },
+  5: { orders: { kind: "NOT_DISCLOSED", reason: "SK海力士未揭露在手訂單" }, consensus: null, scenarios: [] },
+};
+
 function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
   const top = Array.from({ length: 20 }, (_, index) => ({
     rank: index + 1, symbol: index === 0 ? "SIVE.ST" : `S${index}`, name: `Synthetic ${index}`, layer: index % 2 ? "optics" : "memory",
@@ -23,9 +40,12 @@ function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
     serenity: index % 3 === 0 ? null : { mentions: 30, bullish: 12, bearish: 1, stance: "BULLISH", latest_at: "2026-09-03T10:00:00Z",
       latest_url: "https://x.com/aleabitoreddit/status/1" },
     leopold: index === 1 ? { long_weight: 0.28, status: "HELD" } : null,
+    role_zh: index === 0 ? "合成稀缺層角色" : undefined,
+    outlook: OUTLOOKS[index] ? structuredClone(OUTLOOKS[index]) : null,
   }));
   const industries = ["memory", "optics", "power_generation"].map((id, index) => ({
     rank: index + 1, id, name_zh: `產業${index}`, chain: "chips_memory", leopold_constraint: "HBM and CoWoS are near-term constraints.",
+    leopold_constraint_zh: index === 0 ? "HBM 與 CoWoS 是近期限制。" : undefined,
     explosiveness: 90 - index * 10, median_revenue_yoy: 1.9, median_acceleration: 0.22, median_return_6m: 0.5,
     fund_13f_weight: 0.55, serenity_heat: 40, news: { source: "SEC EDGAR full-text search", source_url: "https://efts.sec.gov/LATEST/search-index?q=x",
       recent_30d: 296, prior_60d: 197, ratio: 3.0 },
@@ -53,6 +73,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     const translated = doc(now - HOUR); (translated.top[3] as any).name_zh = "機翻名"; (translated.top[3] as any).name_zh_source = "MACHINE";
     expect(parseBottleneckV3(translated)).toBeNull();
     const shuffled = doc(now - HOUR); (shuffled.top[0] as any).rank = 2; expect(parseBottleneckV3(shuffled)).toBeNull();
+    const insecure = doc(now - HOUR); (insecure.top[1] as any).outlook.orders.source_url = "http://x"; expect(parseBottleneckV3(insecure)).toBeNull();
+    const invented = doc(now - HOUR); (invented.top[1] as any).outlook.scenarios.push({ kind: "MOON", change: 9 }); expect(parseBottleneckV3(invented)).toBeNull();
+    const older = doc(now - HOUR); for (const entry of older.top as any[]) { delete entry.outlook; delete entry.role_zh; }
+    expect(parseBottleneckV3(older)?.top).toHaveLength(20);  // documents sealed before outlooks still render
     expect(parseBottleneckV3(doc(now - HOUR, { schema: "other" }))).toBeNull();
   });
 
@@ -78,21 +102,83 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("訂單實現下限（已簽約 RPO）");
     expect(serialized).toContain("≥+33%");
     expect(serialized).toContain("非 SEC 定期申報公司");
+    // Operator 2026-09-26: current orders, the future estimate and the price scenario if realized, on every card.
+    expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
+    expect(serialized).toContain("目前訂單：RPO US$3.2B（2026-07-26，+68%）");
+    expect(serialized).toContain("目前訂單：在手訂單 17.51兆 KRW（2026-06-30，+63%）；2026年接單指引 12.00兆 KRW");
+    expect(serialized).toContain("目前訂單：未揭露");
+    expect(serialized).toContain("未來預估：下一財年營收 +70%（58位分析師）");
+    expect(serialized).toContain("若實現股價情境：營收實現·市銷率不變 +70%｜EPS實現·本益比不變 +69%｜分析師目標價 +46%");
+    expect(serialized).toContain("分析師樣本不足（1 位），不列推算");  // one analyst: no scenario on the card
+    expect(serialized).not.toContain("+2860%");
+    expect(serialized).toContain("未來預估：分析師樣本不足（1位），見瓶頸詳情");
+    expect(serialized).toContain("非預測、非投資建議");
+    // Chinese first, the original kept; source labels in Chinese.
+    expect(serialized).toContain("合成稀缺層角色");
+    expect(serialized).not.toContain("原文：");  // the English original is on the detail card
+    expect(serialized).toContain("財報：SEC EDGAR XBRL 財報資料");
+    expect(serialized).toContain("股價：Yahoo Finance 還原收盤價（非官方）");
+    expect(flex.length).toBeLessThanOrEqual(5);  // one LINE reply
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
     expect(text[0]!.text).toContain("為負者排除");
     expect(text[0]!.text).toContain("S1 合成一號（Synthetic 1）");
     const detail = buildBottleneckDetail(parsed, "sive.st") as { text: string }[];
     expect(detail[0]!.text).toContain("https://data.sec.gov/api/xbrl/companyfacts/");
     expect(detail[0]!.text).not.toMatch(/Serenity|Leopold/);
+    expect(detail[0]!.text).toContain("瓶頸位置：合成稀缺層角色（原文：synthetic scarce layer role）");
+    expect(detail[0]!.text).toContain("僅 1 位分析師，參考性低");
     expect(buildBottleneckDetail(parsed, "ZZZ")).toContain("不在本輪");
-    const withReport = buildBottleneckDetail(parsed, "S1", "flex") as { type: string }[];
-    expect(withReport.length).toBeGreaterThanOrEqual(1);
-    expect(withReport[0]!.type).toBe("flex");  // the company report itself, not a repeat of the card
-    expect(JSON.stringify(withReport)).toContain("Synthetic One");
-    expect(buildBottleneckDetail(parsed, "SIVE.ST", "flex")).toHaveLength(1);  // no sealed report: filing figures only
+    // Operator 2026-09-26: every detail is a card with the full figures, orders, estimate, scenarios and sources;
+    // an SEC filer's sealed company report follows it.
+    const withReport = buildBottleneckDetail(parsed, "S1", "flex") as { type: string; altText: string }[];
+    expect(withReport.length).toBeGreaterThanOrEqual(2);
+    expect(withReport.length).toBeLessThanOrEqual(5);
+    expect(withReport[0]!.altText).toBe("瓶頸詳情｜S1 合成一號");  // the detail card first, then the company report
+    const s1 = JSON.stringify(withReport);
+    expect(s1).toContain("Synthetic One");
+    for (const label of ["財報數據", "前一季年增", "加速度", "股數年增", "市場數據", "訂單與成長情境", "EPS實現·本益比不變",
+      "50 位", "預估來源：https://finance.yahoo.com/quote/S1/analysis", "訂單來源：SEC EDGAR XBRL 財報資料"]) expect(s1).toContain(label);
+    expect(s1).toContain("目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B（2026-07-26，年增 +68%）");
+    expect(s1).toContain("下一財年營收 +70.0%（58 位）");
+    const korea = JSON.stringify(buildBottleneckDetail(parsed, "S4", "flex"));
+    expect(korea).toContain("目前訂單：在手訂單（重工業部門（連結）） 17.51兆 KRW（2026-06-30，年增 +63%）");
+    expect(korea).toContain("最新一季新接訂單 3.32兆 KRW（年增 +51%）");
+    expect(korea).toContain("公司指引：2026 年新接訂單 12.00兆 KRW（原 8.40兆 KRW）");
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S5", "flex"))).toContain("目前訂單：未揭露（SK海力士未揭露在手訂單）");
+    const sive = buildBottleneckDetail(parsed, "SIVE.ST", "flex") as { contents: unknown }[];
+    expect(sive).toHaveLength(1);  // no sealed report: the detail card only
+    const sivePayload = JSON.stringify(sive);
+    expect(sivePayload).toContain("+2860%");  // the detail shows the thin estimate, marked as such
+    expect(sivePayload).toContain("僅 1 位分析師，參考性低");
+    expect(sivePayload).toContain("原文：synthetic scarce layer role");
+    expect(sivePayload).not.toMatch(/Serenity|Leopold/);
+    expect(sivePayload).toContain("回瓶頸 TOP20");
+    expect(sivePayload).toContain("市場若已反映部分成長，實際漲幅較小");  // the scenario states its basis
+    const textWithReport = buildBottleneckDetail(parsed, "S1", "text") as { type: string; text: string }[];
+    expect(textWithReport.length).toBeLessThanOrEqual(5);
+    expect(textWithReport[0]!.text).toContain("若實現的股價情境：營收實現·市銷率不變 +70%");
+    expect(textWithReport.every(message => message.type === "text" && message.text.length <= 4900)).toBe(true);
     const industries = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
     expect(industries).toContain("Leopold 邏輯");
+    expect(industries).toContain("HBM 與 CoWoS 是近期限制。");
+    expect(industries).toContain("原文：HBM and CoWoS are near-term constraints.");
     expect(industries).toContain("3.00x");
     expect(industries).not.toMatch(/Serenity 熱度|基金13F占比/);
+  });
+
+  it("falls back to lean cards instead of a failed reply when twenty full cards exceed five carousels", () => {
+    const heavy = doc(Date.now() - HOUR);
+    for (const entry of heavy.top as any[]) {
+      entry.role_source.url = `https://example.com/${"r".repeat(170)}`;
+      entry.outlook = structuredClone(OUTLOOKS[1]);
+      entry.name = "N".repeat(80);
+    }
+    const parsed = parseBottleneckV3(heavy)!;
+    const bubbles = buildBottleneckTop20Messages(parsed, "flex") as unknown as { contents: { contents: unknown[] } }[];
+    expect(bubbles.length).toBeLessThanOrEqual(5);
+    expect(bubbles.reduce((total, message) => total + message.contents.contents.length, 0)).toBe(20);
+    const serialized = JSON.stringify(bubbles);
+    expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
+    expect(serialized).toContain("目前訂單：RPO US$3.2B");
   });
 });

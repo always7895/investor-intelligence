@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -387,10 +388,66 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
     return bodies
 
 
+BOTTLENECK_LAYERS_PATH = ROOT / "config" / "bottleneck-layers-v3.json"
+
+
+def _layer_translations(path: Path = BOTTLENECK_LAYERS_PATH) -> "tuple[dict[str, str], dict[str, str]]":
+    """Traditional Chinese roles by symbol and Leopold constraints by layer from the installed configuration, so a
+    corrected translation reaches the next seal without waiting for the three-hourly v3 rebuild."""
+    try:
+        layers = json.loads(path.read_text(encoding="utf-8"))["layers"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}, {}
+    roles = {cap["symbol"]: cap["role_zh"] for layer in layers for cap in layer.get("capturers", []) if isinstance(cap.get("role_zh"), str)}
+    constraints = {layer["id"]: layer["leopold_constraint_zh"] for layer in layers if isinstance(layer.get("leopold_constraint_zh"), str)}
+    return roles, constraints
+
+
+def _sealed_outlook(raw: "object") -> "dict | None":
+    """Orders, consensus and scenario figures from the v3 builder, reduced to known keys with finite numbers and https
+    sources; anything malformed is dropped rather than sealed."""
+    if not isinstance(raw, dict):
+        return None
+
+    def number(value: object) -> "float | None":
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+    def text(value: object, limit: int) -> "str | None":
+        return value[:limit] if isinstance(value, str) and value else None
+
+    orders = raw.get("orders") if isinstance(raw.get("orders"), dict) else None
+    sealed_orders = None
+    if orders and orders.get("kind") in ("RPO", "BACKLOG") and number(orders.get("amount")) and \
+            str(orders.get("source_url", "")).startswith("https://"):
+        sealed_orders = {"kind": orders["kind"], "amount": number(orders["amount"]), "currency": text(orders.get("currency"), 8),
+                         "as_of": text(orders.get("as_of"), 12), "yoy": number(orders.get("yoy")), "scope": text(orders.get("scope"), 40),
+                         "source": text(orders.get("source"), 120), "source_url": orders["source_url"][:400]}
+        for key in ("intake_quarter", "guidance"):
+            part = orders.get(key)
+            if isinstance(part, dict) and number(part.get("amount")):
+                sealed_orders[key] = {name: (number(value) if name != "kind" else text(value, 30)) for name, value in part.items()
+                                      if name in ("amount", "yoy", "year", "previous", "kind")}
+    elif orders and orders.get("kind") == "NOT_DISCLOSED":
+        sealed_orders = {"kind": "NOT_DISCLOSED", "reason": text(orders.get("reason"), 200)}
+    consensus = raw.get("consensus") if isinstance(raw.get("consensus"), dict) else None
+    sealed_consensus = None
+    if consensus and number(consensus.get("revenue_growth")) is not None and str(consensus.get("source_url", "")).startswith("https://"):
+        sealed_consensus = {key: number(consensus.get(key)) for key in ("revenue_fy0", "revenue_fy1", "revenue_growth", "revenue_analysts",
+                                                                     "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts",
+                                                                     "target_mean", "target_analysts", "price", "target_upside")}
+        sealed_consensus.update(source=text(consensus.get("source"), 80), source_url=consensus["source_url"][:400],
+                                asof=text(consensus.get("asof"), 12))
+    scenarios = [{"kind": row["kind"], "change": number(row.get("change"))} for row in raw.get("scenarios") or []
+                 if isinstance(row, dict) and row.get("kind") in ("REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET")
+                 and number(row.get("change")) is not None][:3]
+    return {"orders": sealed_orders, "consensus": sealed_consensus, "scenarios": scenarios if sealed_consensus else []}
+
+
 def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
     """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed."""
     try:
         doc = json.loads(path.read_bytes().decode("utf-8"))
+        roles_zh, constraints_zh = _layer_translations()
         generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if doc.get("schema") != "v213-bottleneck-top20-v3" or not timedelta(0) <= now - generated <= BOTTLENECK_V3_MAX_AGE:
             return {}
@@ -401,12 +458,14 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
             fund = entry.get("fundamentals")
+            role_zh = roles_zh.get(entry["symbol"]) or entry.get("role_zh")
             top.append({
                 "rank": entry["rank"], "symbol": entry["symbol"], "name": str(entry.get("name") or entry["symbol"])[:160],
                 "name_zh": zh[entry["symbol"]][0] if entry["symbol"] in zh else None,
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
-                "role": entry["role"][:200], "role_source": entry["role_source"],
+                "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
+                "role_source": entry["role_source"], "outlook": _sealed_outlook(entry.get("outlook")),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": None if not fund else pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev",
                                                                   "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy")),
@@ -418,6 +477,7 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
             })
         industries = [{**pick(row, ("rank", "id", "name_zh", "chain", "leopold_constraint", "explosiveness", "median_revenue_yoy",
                                     "median_acceleration", "median_return_6m", "fund_13f_weight", "serenity_heat")),
+                       "leopold_constraint_zh": constraints_zh.get(row["id"]) or row.get("leopold_constraint_zh") or None,
                        "news": None if not row.get("news") else pick(row["news"], ("source", "source_url", "recent_30d", "prior_60d", "ratio"))}
                       for row in doc["industries"]]
         serenity = (doc.get("leads") or {}).get("serenity") or {}

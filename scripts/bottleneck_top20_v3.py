@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
+KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
 SERENITY = ROOT / "data" / "cache" / "serenity_signals_latest.json"
 LEOPOLD = ROOT / "data" / "cache" / "leopold_positions_latest.json"
 TICKERS = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
@@ -211,7 +212,82 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
             "quarter": current.get("fp"), "quarter_end": current.get("end"), "filed": current.get("filed"), "form": current.get("form"),
             "revenue": current["val"], "revenue_unit": current["unit"], "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
             "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
-            "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy}
+            "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy,
+            "rpo": rpo[-1]["val"] if rpo else None, "rpo_unit": rpo[-1]["unit"] if rpo else None,
+            "rpo_end": rpo[-1]["end"] if rpo else None}
+
+
+# ---------------------------------------------------------------- order visibility and growth scenarios
+def _finite(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Analyst consensus for the current (0y) and next (+1y) fiscal year and the mean target price (Yahoo Finance,
+    unofficial). Each figure keeps its analyst count; None when Yahoo has no next-year revenue estimate."""
+    def row(frame: Any, period: str) -> tuple[float | None, int | None]:
+        if frame is None or getattr(frame, "empty", True) or period not in frame.index:
+            return None, None
+        count = _finite(frame.loc[period].get("numberOfAnalysts"))
+        return _finite(frame.loc[period].get("avg")), int(count) if count else None
+    revenue0, _ = row(ticker.revenue_estimate, "0y")
+    revenue1, revenue_n = row(ticker.revenue_estimate, "+1y")
+    if not revenue0 or not revenue1 or revenue0 <= 0:
+        return None
+    eps0, _ = row(ticker.earnings_estimate, "0y")
+    eps1, eps_n = row(ticker.earnings_estimate, "+1y")
+    info = info or {}
+    target, target_n = _finite(info.get("targetMeanPrice")), _finite(info.get("numberOfAnalystOpinions"))
+    return {"source": "Yahoo Finance analyst estimates (unofficial)", "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis",
+            "asof": utc_now().date().isoformat(), "revenue_fy0": revenue0, "revenue_fy1": revenue1,
+            "revenue_growth": revenue1 / revenue0 - 1, "revenue_analysts": revenue_n,
+            "eps_fy0": eps0, "eps_fy1": eps1, "eps_analysts": eps_n,
+            "eps_growth": eps1 / eps0 - 1 if eps0 and eps1 and eps0 > 0 and eps1 > 0 else None,
+            "target_mean": target, "target_analysts": int(target_n) if target_n else None,
+            "price": price, "target_upside": target / price - 1 if target and price and price > 0 else None}
+
+
+def korea_orders(symbol: str, path: Path = KOREA_ORDERS) -> dict[str, Any] | None:
+    """Order backlog and guidance from the company's IR deck (config/korea-ir-orders-v1.json), or the stated reason
+    why none is available."""
+    try:
+        document = load_json(path)
+    except (OSError, ValueError):
+        return None
+    entry = document.get("companies", {}).get(symbol)
+    if entry:
+        backlog, intake, guidance = entry["backlog"], entry.get("intake_quarter"), entry.get("guidance")
+        return {"kind": "BACKLOG", "amount": backlog["amount"], "currency": backlog["currency"], "as_of": entry["period_end"],
+                "yoy": backlog.get("yoy"), "scope": entry.get("scope"), "source": f"{entry['document']} p.{backlog['page']}",
+                "source_url": entry["source_url"],
+                "intake_quarter": None if not intake else {"amount": intake["amount"], "yoy": intake.get("yoy")},
+                "guidance": None if not guidance else {"kind": guidance["kind"], "year": guidance["year"], "amount": guidance["amount"],
+                                                       "previous": guidance.get("previous")}}
+    reason = document.get("unavailable", {}).get(symbol)
+    return {"kind": "NOT_DISCLOSED", "reason": reason} if reason else None
+
+
+def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] | None) -> dict[str, Any]:
+    """Current orders (SEC RPO or a Korean IR backlog), the consensus outlook and the price scenarios if it is realized
+    at unchanged valuation multiples (scenario arithmetic, not a forecast)."""
+    orders = None
+    if fund and fund.get("rpo"):
+        orders = {"kind": "RPO", "amount": fund["rpo"], "currency": fund.get("rpo_unit"), "as_of": fund.get("rpo_end"),
+                  "yoy": fund.get("rpo_yoy"), "source": fund["source"], "source_url": fund["source_url"]}
+    elif symbol.endswith((".KS", ".KQ")):
+        orders = korea_orders(symbol)
+    scenarios = []
+    if consensus:
+        scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
+        if consensus.get("eps_growth") is not None:
+            scenarios.append({"kind": "EPS_CONSTANT_PE", "change": consensus["eps_growth"]})
+        if consensus.get("target_upside") is not None:
+            scenarios.append({"kind": "ANALYST_TARGET", "change": consensus["target_upside"]})
+    return {"orders": orders, "consensus": consensus, "scenarios": scenarios}
 
 
 # ---------------------------------------------------------------- Yahoo Finance
@@ -249,11 +325,17 @@ def yahoo_data(symbol: str) -> dict[str, Any]:
         out["market"]["market_cap"] = float(info.get("marketCap")) if info.get("marketCap") else None
     except Exception:
         pass
+    info = None
     try:
-        name = ticker.info.get("shortName") or ticker.info.get("longName")
+        info = ticker.info
+        name = info.get("shortName") or info.get("longName")
         out["name"] = name
     except Exception:
         pass
+    try:
+        out["consensus"] = yahoo_consensus(ticker, symbol, last, info)
+    except Exception:
+        out["consensus"] = None
     try:
         statement = ticker.quarterly_income_stmt
         if statement is not None and not statement.empty and "Total Revenue" in statement.index:
@@ -371,7 +453,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         cap = market.get("market_cap") if market else None
         rate = usd_rate(market.get("currency") if market else None, fx)
         companies[symbol] = {"symbol": symbol, "name": data.get("name") or member["capturer"].get("role"), "layer": member["layer"]["id"],
-                             "role": member["capturer"]["role"], "role_source": {"url": member["capturer"]["source_url"], "date": member["capturer"]["source_date"]},
+                             "role": member["capturer"]["role"], "role_zh": member["capturer"].get("role_zh"),
+                             "role_source": {"url": member["capturer"]["source_url"], "date": member["capturer"]["source_date"]},
+                             "outlook": outlook(symbol, fund, data.get("consensus")),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
     # Layer heat and the Leopold-led industry ranking.
@@ -394,7 +478,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         leopold_score = (35 * chain_weight + 25 * clip(fund_weight, 0.0, 0.4) + 20 * clip(median_accel, -0.15, 0.25)
                          + 10 * clip((news or {}).get("ratio"), 0.8, 1.6) + 10 * clip(serenity_heat / max_intensity, 0.0, 2.0))
         industry.append({"id": layer["id"], "name_zh": layer["name_zh"], "chain": layer["chain"], "chain_rank": layer["chain_rank"],
-                         "leopold_constraint": layer["leopold_constraint"], "heat": round(heat, 2), "explosiveness": round(leopold_score, 1),
+                         "leopold_constraint": layer["leopold_constraint"], "leopold_constraint_zh": layer.get("leopold_constraint_zh"),
+                         "heat": round(heat, 2), "explosiveness": round(leopold_score, 1),
                          "companies": len(rows), "median_revenue_yoy": median_yoy, "median_acceleration": median_accel,
                          "median_return_6m": statistics.median(six) if six else None, "fund_13f_weight": round(fund_weight, 4),
                          "serenity_heat": round(serenity_heat, 2), "news": news})

@@ -54,6 +54,54 @@ class QuarterSeriesTests(unittest.TestCase):
         self.assertAlmostEqual(fundamentals["shares_yoy"], 0.2)
 
 
+class OutlookTests(unittest.TestCase):
+    """Operator 2026-09-26: every Top20 entry shows current orders, a future estimate and the price scenario if realized."""
+
+    def frame(self, rows):
+        import pandas as pd
+        return pd.DataFrame(rows, index=list(rows and ["0y", "+1y"][:len(rows)])) if rows else pd.DataFrame()
+
+    def test_consensus_scenarios_keep_analyst_counts_and_skip_negative_eps(self):
+        from types import SimpleNamespace
+        ticker = SimpleNamespace(
+            revenue_estimate=self.frame([{"avg": 400e9, "numberOfAnalysts": 53}, {"avg": 680e9, "numberOfAnalysts": 58}]),
+            earnings_estimate=self.frame([{"avg": 9.3, "numberOfAnalysts": 51}, {"avg": 15.7, "numberOfAnalysts": 50}]))
+        consensus = engine.yahoo_consensus(ticker, "NVDA", 225.0, {"targetMeanPrice": 327.7, "numberOfAnalystOpinions": 59})
+        self.assertAlmostEqual(consensus["revenue_growth"], 0.7)
+        self.assertEqual((consensus["revenue_analysts"], consensus["target_analysts"]), (58, 59))
+        self.assertTrue(consensus["source_url"].endswith("/NVDA/analysis"))
+        fund = {"rpo": 3.2e9, "rpo_unit": "USD", "rpo_end": "2026-07-26", "rpo_yoy": 0.68, "source": "SEC EDGAR XBRL companyfacts",
+                "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json"}
+        result = engine.outlook("NVDA", fund, consensus)
+        self.assertEqual((result["orders"]["kind"], result["orders"]["amount"], result["orders"]["as_of"]), ("RPO", 3.2e9, "2026-07-26"))
+        self.assertEqual([row["kind"] for row in result["scenarios"]], ["REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET"])
+        self.assertAlmostEqual(result["scenarios"][1]["change"], 15.7 / 9.3 - 1)
+        self.assertAlmostEqual(result["scenarios"][2]["change"], 327.7 / 225.0 - 1)
+        loss = SimpleNamespace(revenue_estimate=ticker.revenue_estimate,
+                               earnings_estimate=self.frame([{"avg": -0.23, "numberOfAnalysts": 1}, {"avg": -0.17, "numberOfAnalysts": 1}]))
+        kinds = [row["kind"] for row in engine.outlook("POET", None, engine.yahoo_consensus(loss, "POET", None, {}))["scenarios"]]
+        self.assertEqual(kinds, ["REVENUE_CONSTANT_PS"])  # no P/E scenario on losses, no target without a price
+        empty = SimpleNamespace(revenue_estimate=self.frame([]), earnings_estimate=self.frame([]))
+        self.assertIsNone(engine.yahoo_consensus(empty, "X", 1.0, {}))
+        self.assertEqual(engine.outlook("X", None, None), {"orders": None, "consensus": None, "scenarios": []})
+
+    def test_korean_backlog_comes_from_the_ir_config_or_states_why_not(self):
+        orders = engine.outlook("298040.KS", None, None)["orders"]
+        self.assertEqual((orders["kind"], orders["amount"], orders["currency"], orders["as_of"]), ("BACKLOG", 17507000000000, "KRW", "2026-06-30"))
+        self.assertEqual(orders["guidance"]["amount"], 12000000000000)
+        self.assertTrue(orders["source_url"].startswith("https://www.hyosungheavyindustries.com/"))
+        self.assertEqual(engine.outlook("267260.KS", None, None)["orders"]["kind"], "NOT_DISCLOSED")
+        self.assertIsNone(engine.outlook("999999.KS", None, None)["orders"])
+
+    def test_sec_fundamentals_carry_the_latest_rpo_amount(self):
+        facts = json.loads(json.dumps(FACTS))
+        facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": [
+            {"end": "2025-06-28", "val": 100}, {"end": "2026-06-27", "val": 150}]}}
+        fundamentals = engine.sec_fundamentals("X", 1, facts)
+        self.assertEqual((fundamentals["rpo"], fundamentals["rpo_end"], fundamentals["rpo_unit"]), (150, "2026-06-27", "USD"))
+        self.assertAlmostEqual(fundamentals["rpo_yoy"], 0.5)
+
+
 class ScoringTests(unittest.TestCase):
     def test_capture_normalizes_over_available_evidence(self):
         full, _ = engine.capture_score({"revenue_yoy": 1.0, "revenue_yoy_prev": 0.7, "gross_margin_change": 0.10, "rpo_yoy": 0.5})
@@ -132,6 +180,28 @@ class SealedFormTests(unittest.TestCase):
             self.assertNotIn("intensity", sealed["top"][0]["serenity"])
             self.assertEqual(publisher.lazy_bottleneck_v3_body(path, now + timedelta(hours=14)), {})
 
+    def test_outlook_is_sealed_with_known_keys_only(self):
+        raw = {"orders": {"kind": "RPO", "amount": 3.2e9, "currency": "USD", "as_of": "2026-07-26", "yoy": 0.68, "source": "SEC",
+                          "source_url": "https://data.sec.gov/x", "secret": "x"},
+               "consensus": {"revenue_growth": 0.66, "revenue_analysts": 58, "eps_growth": float("nan"), "source": "Yahoo",
+                             "source_url": "https://finance.yahoo.com/quote/NVDA/analysis", "asof": "2026-09-26"},
+               "scenarios": [{"kind": "REVENUE_CONSTANT_PS", "change": 0.66}, {"kind": "MOON", "change": 9.0},
+                             {"kind": "EPS_CONSTANT_PE", "change": float("inf")}]}
+        sealed = publisher._sealed_outlook(raw)
+        self.assertNotIn("secret", sealed["orders"])
+        self.assertIsNone(sealed["consensus"]["eps_growth"])
+        self.assertEqual(sealed["scenarios"], [{"kind": "REVENUE_CONSTANT_PS", "change": 0.66}])
+        self.assertIsNone(publisher._sealed_outlook({"orders": {"kind": "RPO", "amount": 1, "source_url": "http://x"}})["orders"])
+        self.assertEqual(publisher._sealed_outlook({"orders": {"kind": "NOT_DISCLOSED", "reason": "none"}})["orders"]["kind"], "NOT_DISCLOSED")
+        self.assertIsNone(publisher._sealed_outlook("x"))
+        backlog = publisher._sealed_outlook({"orders": {
+            "kind": "BACKLOG", "amount": 17507e9, "currency": "KRW", "as_of": "2026-06-30", "yoy": 0.63, "scope": "重工業部門",
+            "source": "deck p.9", "source_url": "https://www.hyosungheavyindustries.com/download/5816",
+            "intake_quarter": {"amount": 3324.2e9, "yoy": 0.51, "junk": "x"},
+            "guidance": {"kind": "ANNUAL_NEW_ORDERS", "year": 2026, "amount": 12e12, "previous": float("nan"), "note": "x"}}})["orders"]
+        self.assertEqual(backlog["intake_quarter"], {"amount": 3324.2e9, "yoy": 0.51})
+        self.assertEqual(backlog["guidance"], {"kind": "ANNUAL_NEW_ORDERS", "year": 2026.0, "amount": 12e12, "previous": None})
+
     def test_sealed_entries_carry_the_sourced_chinese_name_and_listing_age(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
         market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 1.9,
@@ -155,6 +225,9 @@ class SealedFormTests(unittest.TestCase):
         finally:
             publisher.build_zh_names.names_for = saved
         self.assertEqual((sealed["top"][0]["name_zh"], sealed["top"][0]["name_zh_source"]), ("晟碟", "ZHWIKI"))
+        self.assertEqual(sealed["top"][0]["role_zh"], "NAND快閃記憶體；FQ4毛利率84.6%")  # from the installed config
+        self.assertTrue(sealed["industries"][0]["leopold_constraint_zh"].startswith("CoWoS與HBM"))
+        self.assertIsNone(sealed["top"][0]["outlook"])  # a document built before outlooks existed
         self.assertIsNone(sealed["top"][1]["name_zh"])
         self.assertEqual((sealed["top"][0]["market"]["cagr_listed"], sealed["top"][0]["market"]["history_start"]), (4.1, "2025-02-13"))
 

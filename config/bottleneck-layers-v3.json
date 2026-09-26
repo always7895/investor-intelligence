@@ -13,52 +13,61 @@
    "chain": "chips_memory",
    "chain_rank": 4,
    "leopold_constraint": "CoWoS and HBM are the near-term chip constraints; memory is the fund's largest position (13F 2026-06-30).",
+   "leopold_constraint_zh": "CoWoS與HBM是近期的晶片瓶頸；記憶體為該基金最大持股（13F 2026-06-30）。",
    "capturers": [
     {
      "symbol": "MU",
      "role": "HBM/DRAM/NAND maker; HBM4 ramp",
+     "role_zh": "HBM/DRAM/NAND製造商；HBM4量產爬坡",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0000723125/000072312526000013/a2026q3ex991-pressrelease.htm",
      "source_date": "2026-06"
     },
     {
      "symbol": "SNDK",
      "role": "NAND flash; FQ4 gross margin 84.6%",
+     "role_zh": "NAND快閃記憶體；FQ4毛利率84.6%",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0002023554/000162828026053346/sndkq4-26ex991xpressrelease.htm",
      "source_date": "2026-08-05"
     },
     {
      "symbol": "000660.KS",
      "role": "HBM leader (SK hynix)",
+     "role_zh": "HBM領導廠（SK海力士）",
      "source_url": "https://www.prnewswire.com/news-releases/sk-hynix-announces-2q26-financial-results-302837085.html",
      "source_date": "2026-07-29"
     },
     {
      "symbol": "005930.KS",
      "role": "DRAM/HBM4 (Samsung Electronics)",
+     "role_zh": "DRAM/HBM4（三星電子）",
      "source_url": "https://news.samsung.com/global/samsung-electronics-announces-second-quarter-2026-results",
      "source_date": "2026-07-30"
     },
     {
      "symbol": "3006.TW",
      "role": "legacy DDR3/DDR4 DRAM (ESMT)",
+     "role_zh": "舊世代DDR3/DDR4 DRAM（晶豪科）",
      "source_url": "https://x.com/aleabitoreddit/status/2092851118233764178",
      "source_date": "2026-08-27"
     },
     {
      "symbol": "5351.TWO",
      "role": "legacy DRAM (Etron)",
+     "role_zh": "舊世代DRAM（鈺創）",
      "source_url": "https://x.com/aleabitoreddit/status/2092851118233764178",
      "source_date": "2026-08-27"
     },
     {
      "symbol": "STX",
      "role": "nearline HDD capacity allocated through 2027",
+     "role_zh": "近線HDD產能已分配至2027年",
      "source_url": "https://investors.seagate.com/",
      "source_date": "2026-07"
     },
     {
      "symbol": "WDC",
      "role": "nearline HDD",
+     "role_zh": "近線HDD",
      "source_url": "https://investor.wdc.com/",
      "source_date": "2026-07"
     }
@@ -76,58 +85,68 @@
    "chain": "network_optics",
    "chain_rank": 5,
    "leopold_constraint": "Scale-out and scale-up interconnect grow with cluster size; optics is on the path from 100k to 1M-GPU clusters.",
+   "leopold_constraint_zh": "水平與垂直擴展互連隨叢集規模成長；光通訊位於 100k 到 1M 顆 GPU 叢集的擴展路徑上。",
    "capturers": [
     {
      "symbol": "LITE",
      "role": "EML/CW lasers; supply gap above 30%",
+     "role_zh": "EML/CW雷射；供給缺口超過30%",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000162828026055726/lite_ex991xq4fy26.htm",
      "source_date": "2026-08-11"
     },
     {
      "symbol": "COHR",
      "role": "6-inch InP lasers and transceivers",
+     "role_zh": "6吋InP雷射與光收發器",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0000820318/000119312526346860/d128030dex991.htm",
      "source_date": "2026-08-12"
     },
     {
      "symbol": "AAOI",
      "role": "transceivers and lasers, capacity constrained",
+     "role_zh": "光收發器與雷射，產能受限",
      "source_url": "https://x.com/aleabitoreddit/status/2085606635834388515",
      "source_date": "2026-08-07"
     },
     {
      "symbol": "SIVE.ST",
      "role": "independent CW DFB InP laser supplier for CPO (GlobalFoundries SCALE reference laser)",
+     "role_zh": "CPO用獨立CW DFB InP雷射供應商（格羅方德 SCALE 參考雷射）",
      "source_url": "https://x.com/aleabitoreddit/status/2095064848031678648",
      "source_date": "2026-09-03"
     },
     {
      "symbol": "FN",
      "role": "optical assembly (Fabrinet)",
+     "role_zh": "光學組裝（Fabrinet）",
      "source_url": "https://investor.fabrinet.com/",
      "source_date": "2026-08-17"
     },
     {
      "symbol": "3363.TWO",
      "role": "fiber-attach units for CPO (FOCI)",
+     "role_zh": "CPO光纖耦合元件（上詮）",
      "source_url": "https://x.com/aleabitoreddit/status/2094298008955535500",
      "source_date": "2026-08-31"
     },
     {
      "symbol": "6451.TW",
      "role": "optical packaging (ShunSin)",
+     "role_zh": "光學封裝（訊芯-KY）",
      "source_url": "https://x.com/aleabitoreddit/status/2083274448845906083",
      "source_date": "2026-07-31"
     },
     {
      "symbol": "POET",
      "role": "optical interposer",
+     "role_zh": "光學中介層",
      "source_url": "https://x.com/aleabitoreddit/status/2087846074027295020",
      "source_date": "2026-08-13"
     },
     {
      "symbol": "138080.KQ",
      "role": "EML maker with own InP fabs (OE Solutions)",
+     "role_zh": "自備InP晶圓廠的EML製造商（OE Solutions）",
      "source_url": "https://x.com/aleabitoreddit/status/2083274448845906083",
      "source_date": "2026-07-31"
     }
@@ -145,34 +164,40 @@
    "chain": "network_optics",
    "chain_rank": 5,
    "leopold_constraint": "New interconnect needs specialised fabs; fab capacity is a decade-long constraint in the essay.",
+   "leopold_constraint_zh": "新型互連需要專門晶圓廠；文中指出晶圓廠產能是長達十年的限制。",
    "capturers": [
     {
      "symbol": "TSEM",
      "role": "silicon-photonics foundry",
+     "role_zh": "矽光子晶圓代工",
      "source_url": "https://x.com/aleabitoreddit/status/2069188398825566318",
      "source_date": "2026-06-22"
     },
     {
      "symbol": "GFS",
      "role": "silicon photonics (SCALE), SiGe capacity for Marvell",
+     "role_zh": "矽光子（SCALE），為Marvell提供SiGe產能",
      "source_url": "https://x.com/aleabitoreddit/status/2100735673561174047",
      "source_date": "2026-09-17"
     },
     {
      "symbol": "XFAB.PA",
      "role": "SiC for 800V and silicon-photonics foundry",
+     "role_zh": "800V用SiC及矽光子晶圓代工",
      "source_url": "https://x.com/aleabitoreddit/status/2061799291681956348",
      "source_date": "2026-06-02"
     },
     {
      "symbol": "SOI.PA",
      "role": "photonics-SOI substrates (Soitec)",
+     "role_zh": "光子SOI基板（Soitec）",
      "source_url": "https://x.com/aleabitoreddit/status/2061806782226604188",
      "source_date": "2026-06-02"
     },
     {
      "symbol": "AXTI",
      "role": "InP substrates; China export control chokepoint",
+     "role_zh": "InP基板；中國出口管制瓶頸",
      "source_url": "https://www.semiconductor-today.com/news_items/2026/aug/axt-040826.shtml",
      "source_date": "2026-08-04"
     }
@@ -188,34 +213,40 @@
    "chain": "network_optics",
    "chain_rank": 5,
    "leopold_constraint": "Cluster scale multiplies switch and link counts.",
+   "leopold_constraint_zh": "叢集規模放大交換機與連結數量。",
    "capturers": [
     {
      "symbol": "AVGO",
      "role": "custom XPUs and Ethernet switching",
+     "role_zh": "客製化XPU與乙太網路交換晶片",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001730168/000173016826000076/avgo-08022026x8kxex99.htm",
      "source_date": "2026-09"
     },
     {
      "symbol": "CRDO",
      "role": "AECs, DSPs and optics",
+     "role_zh": "AEC、DSP與光學元件",
      "source_url": "https://investors.credosemi.com/",
      "source_date": "2026-09"
     },
     {
      "symbol": "ALAB",
      "role": "PCIe/UALink switches and retimers",
+     "role_zh": "PCIe/UALink交換器與Retimer",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001736297/000173629726000033/q226exhibit991.htm",
      "source_date": "2026-08"
     },
     {
      "symbol": "MRVL",
      "role": "optical DSPs and custom silicon",
+     "role_zh": "光通訊DSP與客製化晶片",
      "source_url": "https://x.com/aleabitoreddit/status/2093947848580858123",
      "source_date": "2026-08-30"
     },
     {
      "symbol": "MTSI",
      "role": "analog/optical interconnect chips",
+     "role_zh": "類比/光學互連晶片",
      "source_url": "https://x.com/aleabitoreddit/status/2054076086452162675",
      "source_date": "2026-05-12"
     }
@@ -232,46 +263,54 @@
    "chain": "chips_memory",
    "chain_rank": 4,
    "leopold_constraint": "CoWoS packaging is named as a binding near-term chip constraint.",
+   "leopold_constraint_zh": "CoWoS封裝被點名為近期的硬性晶片瓶頸。",
    "capturers": [
     {
      "symbol": "TSM",
      "role": "CoWoS and N2; fund holding",
+     "role_zh": "CoWoS與N2；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001046179/000104617926000658/tsm-revenue20260910.htm",
      "source_date": "2026-09-10"
     },
     {
      "symbol": "ASX",
      "role": "CoWoS spillover, quotes up >20%",
+     "role_zh": "CoWoS外溢，報價上漲>20%",
      "source_url": "https://www.trendforce.com/news/",
      "source_date": "2026-07-01"
     },
     {
      "symbol": "AMKR",
      "role": "advanced packaging 2027-28",
+     "role_zh": "先進封裝2027-28",
      "source_url": "https://x.com/aleabitoreddit/status/2083274448845906083",
      "source_date": "2026-07-31"
     },
     {
      "symbol": "4062.T",
      "role": "AI ABF substrates (Ibiden)",
+     "role_zh": "AI用ABF載板（Ibiden）",
      "source_url": "https://insights.trendforce.com/p/glass-fiber-cloth-shortage",
      "source_date": "2026-08"
     },
     {
      "symbol": "3110.T",
      "role": "T-glass cloth, about 90% share (Nittobo)",
+     "role_zh": "T-glass玻纖布，市占率約90%（日東紡）",
      "source_url": "https://insights.trendforce.com/p/glass-fiber-cloth-shortage",
      "source_date": "2026-08"
     },
     {
      "symbol": "LPK.DE",
      "role": "glass-core substrate tooling (LPKF)",
+     "role_zh": "玻璃核心基板設備（LPKF）",
      "source_url": "https://x.com/aleabitoreddit/status/2083274448845906083",
      "source_date": "2026-07-31"
     },
     {
      "symbol": "3661.TW",
      "role": "ASIC design house (Alchip)",
+     "role_zh": "ASIC設計服務（世芯-KY）",
      "source_url": "https://x.com/aleabitoreddit/status/2094408196769423727",
      "source_date": "2026-08-31"
     }
@@ -289,16 +328,19 @@
    "chain": "compute",
    "chain_rank": 1,
    "leopold_constraint": "Largest training cluster about 1M H100-equivalents and about 1 GW by 2026, 10 GW by 2028.",
+   "leopold_constraint_zh": "最大訓練叢集到 2026 年約 1M 顆 H100 當量、約 1 GW，2028 年達 10 GW。",
    "capturers": [
     {
      "symbol": "NVDA",
      "role": "demand anchor; supply constrained",
+     "role_zh": "需求錨點；供給受限",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000073/q2fy27pr.htm",
      "source_date": "2026-08"
     },
     {
      "symbol": "AMD",
      "role": "GPUs; fund options reported 2026-09",
+     "role_zh": "GPU；基金 2026-09 申報持有選擇權",
      "source_url": "https://www.cnbc.com/2026/09/11/leopold-aschenbrenners-situational-awareness-is-active-in-options-market-sources-say.html",
      "source_date": "2026-09-11"
     }
@@ -315,40 +357,47 @@
    "chain": "power",
    "chain_rank": 2,
    "leopold_constraint": "Power is the binding constraint once chips exist: about 100 GW by 2030; natural gas and on-site generation.",
+   "leopold_constraint_zh": "晶片到位後電力成為硬瓶頸：2030年約100 GW；天然氣與場域自發電。",
    "capturers": [
     {
      "symbol": "GEV",
      "role": "gas turbines: 116 GW backlog plus slots",
+     "role_zh": "燃氣渦輪：116 GW在手訂單及產能配額",
      "source_url": "https://www.gevernova.com/news/press-releases/ge-vernova-reports-second-quarter-2026-financial-results-raises-2026-financial",
      "source_date": "2026-07-22"
     },
     {
      "symbol": "BE",
      "role": "on-site fuel-cell power; fund holding",
+     "role_zh": "場域燃料電池供電；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001664703/000162828026050150/ex991_q226financialresults.htm",
      "source_date": "2026-2Q"
     },
     {
      "symbol": "ENR.DE",
      "role": "gas turbines and grid; EUR 162B backlog (Siemens Energy)",
+     "role_zh": "燃氣渦輪與電網；EUR 162B在手訂單（Siemens Energy）",
      "source_url": "https://www.siemens-energy.com/global/en/home/press-releases/earnings-release-q3-fy-2026.html",
      "source_date": "2026-08-05"
     },
     {
      "symbol": "SEI",
      "role": "mobile gas power for datacenters; fund holding",
+     "role_zh": "資料中心行動式燃氣供電；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     },
     {
      "symbol": "LEU",
      "role": "only licensed US HALEU producer",
+     "role_zh": "美國唯一取得執照的HALEU生產商",
      "source_url": "https://www.ans.org/news/",
      "source_date": "2026-07-06"
     },
     {
      "symbol": "CCJ",
      "role": "uranium supply",
+     "role_zh": "鈾供應",
      "source_url": "https://www.cameco.com/invest/financial-information",
      "source_date": "2026-2Q"
     }
@@ -365,40 +414,47 @@
    "chain": "power",
    "chain_rank": 2,
    "leopold_constraint": "Grid interconnection and permitting limit how fast gigawatt clusters come online.",
+   "leopold_constraint_zh": "電網並網與許可程序限制吉瓦級叢集的上線速度。",
    "capturers": [
     {
      "symbol": "ETN",
      "role": "electrical equipment; backlog +43%",
+     "role_zh": "電氣設備；在手訂單+43%",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001551182/000155118226000027/etn06302026exhibit99.htm",
      "source_date": "2026-2Q"
     },
     {
      "symbol": "HPS-A.TO",
      "role": "dry-type transformers; Serenity holding",
+     "role_zh": "乾式變壓器；Serenity持股",
      "source_url": "https://x.com/aleabitoreddit/status/2089753753625018830",
      "source_date": "2026-08-18"
     },
     {
      "symbol": "267260.KS",
      "role": "765kV transformers (HD Hyundai Electric)",
+     "role_zh": "765kV變壓器（HD Hyundai Electric）",
      "source_url": "https://www.transformers-magazine.com/",
      "source_date": "2026-08"
     },
     {
      "symbol": "298040.KS",
      "role": "transformers, 105% utilization (Hyosung Heavy)",
+     "role_zh": "變壓器，稼動率105%（Hyosung Heavy）",
      "source_url": "https://www.transformers-magazine.com/",
      "source_date": "2026-08"
     },
     {
      "symbol": "6501.T",
      "role": "Hitachi Energy transformers",
+     "role_zh": "日立能源變壓器",
      "source_url": "https://www.datacenterdynamics.com/",
      "source_date": "2026-08"
     },
     {
      "symbol": "PWR",
      "role": "grid construction",
+     "role_zh": "電網建設",
      "source_url": "https://investors.quantaservices.com/",
      "source_date": "2026-2Q"
     }
@@ -415,34 +471,40 @@
    "chain": "datacenter",
    "chain_rank": 3,
    "leopold_constraint": "US siting and energized capacity; neoclouds and converted miners hold the scarce powered sites.",
+   "leopold_constraint_zh": "美國選址與已通電產能；新興雲端（neocloud）與轉型礦廠掌握稀缺的已供電場址。",
    "capturers": [
     {
      "symbol": "NBIS",
      "role": "neocloud; Serenity highest-conviction neocloud; fund holding",
+     "role_zh": "新興雲端（neocloud）；Serenity 最看好的 neocloud；基金持股",
      "source_url": "https://x.com/aleabitoreddit/status/2087515371750490383",
      "source_date": "2026-08-12"
     },
     {
      "symbol": "CRWV",
      "role": "neocloud; fund holding (Serenity bearish on debt)",
+     "role_zh": "新興雲端（neocloud）；基金持股（Serenity看空其負債）",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     },
     {
      "symbol": "CORZ",
      "role": "powered sites converted to AI hosting; fund holding",
+     "role_zh": "已供電場址轉AI主機託管；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     },
     {
      "symbol": "APLD",
      "role": "AI datacenter campuses; fund holding",
+     "role_zh": "AI資料中心園區；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     },
     {
      "symbol": "IREN",
      "role": "powered sites and GPU cloud; fund holding",
+     "role_zh": "已供電場址與GPU雲端；基金持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     }
@@ -459,22 +521,26 @@
    "chain": "datacenter",
    "chain_rank": 3,
    "leopold_constraint": "Every gigawatt of compute needs matching cooling and power distribution.",
+   "leopold_constraint_zh": "每吉瓦算力都需要對應的散熱與配電。",
    "capturers": [
     {
      "symbol": "VRT",
      "role": "thermal and power train; deferred revenue doubled",
+     "role_zh": "散熱與電力系統；遞延收入翻倍",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0001674101/000162828026050323/q22026exhibit991vrt07292026.htm",
      "source_date": "2026-07-29"
     },
     {
      "symbol": "NVT",
      "role": "liquid-cooling expansion",
+     "role_zh": "液冷擴產",
      "source_url": "https://investors.nvent.com/",
      "source_date": "2026-2Q"
     },
     {
      "symbol": "MOD",
      "role": "$4B cooling capacity agreement from 2027",
+     "role_zh": "2027年起$4B散熱產能協議",
      "source_url": "https://investors.modine.com/",
      "source_date": "2026-08"
     }
@@ -491,16 +557,19 @@
    "chain": "materials",
    "chain_rank": 6,
    "leopold_constraint": "Physical supply chain scaling: component lead times grow with server volume.",
+   "leopold_constraint_zh": "實體供應鏈擴展：元件交貨期隨伺服器量成長。",
    "capturers": [
     {
      "symbol": "6976.T",
      "role": "MLCC maker (Taiyo Yuden); Serenity position",
+     "role_zh": "MLCC製造商（太陽誘電）；Serenity持倉",
      "source_url": "https://x.com/aleabitoreddit/status/2087357522093260938",
      "source_date": "2026-08-12"
     },
     {
      "symbol": "VSH",
      "role": "passives; fund new position",
+     "role_zh": "被動元件；基金新增持股",
      "source_url": "https://www.sec.gov/Archives/edgar/data/2045724/000093583626000418/form13fInfoTable.xml",
      "source_date": "2026-08-14"
     }
@@ -516,16 +585,19 @@
    "chain": "materials",
    "chain_rank": 6,
    "leopold_constraint": "Industrial mobilisation needs metals; export controls make supply a security question.",
+   "leopold_constraint_zh": "產業動員需要金屬；出口管制使供應成為安全問題。",
    "capturers": [
     {
      "symbol": "FCX",
      "role": "copper near record, Grasberg recovery",
+     "role_zh": "銅價逼近歷史高點，Grasberg產能恢復",
      "source_url": "https://www.sec.gov/Archives/edgar/data/0000831259/000083125926000036/fcx-20260630.htm",
      "source_date": "2026-2Q"
     },
     {
      "symbol": "MP",
      "role": "US NdPr and magnets; China licensing catalyst 2026-11",
+     "role_zh": "美國NdPr與磁材；中國許可證催化劑2026-11",
      "source_url": "https://investors.mpmaterials.com/",
      "source_date": "2026-2Q"
     }
