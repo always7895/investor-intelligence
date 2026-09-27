@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-Updated 2026-09-27 (09:25 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
+Updated 2026-09-27 (09:40 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
 
 ## Identity
 
@@ -65,7 +65,8 @@ Claude Code is master writer (operator 2026-09-25): the single tracked writer th
 
 ## Handoff (2026-09-27 03:25)
 
-- Production is untouched by this session and recovered on its own (Production above). Astra is writing the contract for rollout driver v3 (`%TEMP%\ii-live\astra-contract-driver-v3.md`); Qwen implements it, Astra accepts it, then lane 14 needs the operator's explicit rollout authorization.
+- Production is untouched by this session and recovered on its own (Production above).
+- Lane 14 path (Astra contract `_archive\rollout-2026-09-27\reviews\astra-contract-driver-v3.md`): driver v3 in four batches, each needing Astra ACCEPT: A offline-only core (state machine, time/quota/identity/acceptance logic, ~30 fault tests, every live action disabled), B holder/task/install adapters with Windows job-object containment, C per-PUT guarded sync, D integration evidence. Even then a rollout needs the operator's explicit current-session authorization and Astra GO. Operator to choose: fund batches A-D (Qwen implements, Astra accepts), or authorize and supervise a rollout now.
 - Operator decisions pending: lane 14 (above); the plaintext Alpha Vantage note on the desktop.
 - Tooling left in place: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (git worktree at 16cb1b3, `cloud\node_modules` is a junction to the source checkout's); `chatgpt-web` lane `investor` with fixed selectors (branch `local/zh-tw-lanes` in `D:\chatgpt-web-mcp`, commits c46501a and d738974).
 - Scratch: `%TEMP%\ii-live`.
