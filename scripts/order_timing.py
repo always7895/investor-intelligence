@@ -29,7 +29,7 @@ from typing import Any, Callable, Mapping
 Fetch = Callable[[str], bytes]
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_ROOT = ROOT / "data" / "cache" / "v21" / "order_timing"
-EXTRACTOR_VERSION = 7  # 3: nothing from zero before the first horizon; 4: word fractions, "during"; 7: a fraction only as the subject of its own recognition
+EXTRACTOR_VERSION = 8  # 3: nothing from zero before the first horizon; 4: word fractions, "during"; 7: a fraction only as the subject of its own recognition; 8: schedules name their interpolated horizons ("derived")
 QUARTERLY_FORMS = ("10-Q", "10-K")
 _KEY = re.compile(r"remaining performance obligations?|\bRPO\b", re.I)
 _NUM = r"(\d{1,3}(?:\.\d+)?)"
@@ -147,7 +147,8 @@ def weighted_schedule(timing: Mapping[str, Any]) -> dict[str, Any]:
     if len(segments) > 1 and all(s.get("amount") for s in segments):
         parts = [(s["amount"], schedule(s["horizons"])) for s in segments]
         total = sum(amount for amount, _ in parts)
-        out: dict[str, Any] = {"premises": sorted({p for _, sch in parts for p in sch["premises"]})}
+        out: dict[str, Any] = {"premises": sorted({p for _, sch in parts for p in sch["premises"]}),
+                               "derived": sorted({key for _, sch in parts for key in sch["derived"]})}
         for key in ("m6", "m12", "m24"):
             values = [(amount, sch[key]) for amount, sch in parts]
             out[key] = None if any(v is None for _, v in values) else round(sum(a * v for a, v in values) / total, 2)
@@ -160,7 +161,7 @@ def schedule(horizons: Mapping[int, float]) -> dict[str, Any]:
     """6/12/24-month cumulative percent; linear only between two disclosed horizons, never before the first or
     beyond the last."""
     points = sorted((int(m), float(p)) for m, p in horizons.items() if 0 < float(p) <= 100)
-    out: dict[str, Any] = {"premises": []}
+    out: dict[str, Any] = {"premises": [], "derived": []}  # derived: horizons interpolated, not stated by the filing
     for target in (6, 12, 24):
         exact = dict(points).get(target)
         if exact is not None:
@@ -173,6 +174,7 @@ def schedule(horizons: Mapping[int, float]) -> dict[str, Any]:
             continue
         value = lower[1] + (upper[1] - lower[1]) * (target - lower[0]) / (upper[0] - lower[0])
         out[f"m{target}"] = round(value, 2)
+        out["derived"].append(f"m{target}")
         out["premises"].append(f"{target} 個月以揭露的 {lower[0]}–{upper[0]} 個月區間線性攤提")
     return out
 

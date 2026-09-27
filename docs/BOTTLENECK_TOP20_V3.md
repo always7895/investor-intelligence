@@ -51,8 +51,16 @@ with "<first regular-way session>–<as of> 正常交易以來年化 X%（非2�
 (e.g. "2025-02-21 自 Western Digital（WDC）分拆；2025-02-24 起正常交易") shows on every form, also when two years exist, and
 the detail lists its primary sources; an unverified short history reads 2年價格資料不足 (可得價格自 <date>；上市沿革未核實),
 never "new company". Serenity/Leopold lead scores weight the ranking but are not shown; the
-card shows the signed-order floor instead (RPO on the recognition schedule of the latest 10-Q/10-K: 6M/1Y/2Y coverage
-and the growth floor, or the explicit reason it cannot be computed). `瓶頸詳情` opens the SEC company report rather than
+card shows three order tiles instead (operator 2026-09-27; `scripts/order_forecast.py`, sealed as `outlook.order_forecast`,
+re-validated by `cloud/src/v213/order-forecast.ts`): 現有訂單; 未來訂單預估 for 6個月 and 1年 = the signed orders the company
+states it will recognize within that period (RPO × the disclosed share, from the balance-sheet date; an undisclosed horizon
+says so, interpolated shares are never used), or without a schedule an order book extrapolated at its year-on-year change
+from today; 若實現股價（變動） for the same periods = the conditional price change if those orders are realized (revenue at
+that level or following the book, P/S and share count unchanged). When the signed orders cover less than the period's
+revenue level (quarter × months / 3) no price is estimated and the coverage is shown. Analyst targets appear only in the
+detail as a labelled reference. Fixed-period figures (a 24-month schedule, annual new-order guidance) are references only.
+On 2026-09-27 filings: 1-year orders for SNDK, MU, NVDA, AVGO, AMD and CRDO (no 6-month schedule, all below the revenue
+level); CRWV/NBIS 24 months only; the others disclose no order book. `瓶頸詳情` opens the SEC company report rather than
 repeating the card; non-SEC filers get the filing and price figures with sources.
 
 Names: the symbol, the sourced Traditional Chinese name and the original name. Sources, in order: the company's own

@@ -43,6 +43,7 @@ import build_v213_macro_industry_research as macro_builder  # noqa: E402
 import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
 import listing_lineage  # noqa: E402
+import order_forecast  # noqa: E402
 import top20_carry_forward  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
@@ -512,6 +513,14 @@ def _sealed_outlook(raw: "object") -> "dict | None":
             "consensus_second": sealed_second}
 
 
+def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "object", recognition: "object", report_day: "date") -> "dict":
+    """The sealed outlook plus its versioned 6-month / 1-year order forecast (scripts/order_forecast.py); an entry without
+    an outlook still carries the forecast's explicit unavailability."""
+    sealed = outlook if outlook is not None else {"orders": None, "consensus": None, "scenarios": [], "consensus_second": None}
+    return {**sealed, "order_forecast": order_forecast.build(issuer, stock_orders if isinstance(stock_orders, dict) else None,
+                                                             recognition if isinstance(recognition, dict) else None, report_day)}
+
+
 def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
     """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed."""
     try:
@@ -523,6 +532,8 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]])
+        # The deep reports' full order scenarios (RPO recognition schedules) feed the 6-month / 1-year order forecast.
+        order_scenarios = company_deep_report.load_order_scenarios(tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]])
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
         for entry in doc["top"]:
@@ -536,7 +547,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
-                "role_source": entry["role_source"], "outlook": _sealed_outlook(entry.get("outlook")),
+                "role_source": entry["role_source"], "outlook": _with_order_forecast(
+                    entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
+                    order_scenarios.get(entry["symbol"]), generated.date()),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": None if not fund else {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",

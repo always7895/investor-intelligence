@@ -212,12 +212,12 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
         return None
     gm, gm_prior = margin(latest), margin(year_ago.get("end"))
     _, rpo = _instant_series(facts, RPO_TAGS)
-    rpo_yoy = None
+    rpo_yoy = rpo_prior = None
     if len(rpo) >= 2:
         last = rpo[-1]
         earlier = [row for row in rpo if abs((date.fromisoformat(last["end"]) - date.fromisoformat(row["end"])).days - 365) <= 45]
         if earlier and earlier[-1]["val"]:
-            rpo_yoy = last["val"] / earlier[-1]["val"] - 1
+            rpo_yoy, rpo_prior = last["val"] / earlier[-1]["val"] - 1, earlier[-1]  # the comparison is kept (order forecast lineage)
     _, shares = _instant_series(facts, SHARES_TAGS)
     shares_yoy = None
     if len(shares) >= 2:
@@ -258,7 +258,8 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
             "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
             "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
             "rpo": rpo[-1]["val"] if rpo else None, "rpo_unit": rpo[-1]["unit"] if rpo else None,
-            "rpo_end": rpo[-1]["end"] if rpo else None}
+            "rpo_end": rpo[-1]["end"] if rpo else None,
+            "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None}
 
 
 # ---------------------------------------------------------------- order visibility and growth scenarios
@@ -347,6 +348,8 @@ def korea_orders(symbol: str, path: Path = KOREA_ORDERS) -> dict[str, Any] | Non
         backlog, intake, guidance = entry["backlog"], entry.get("intake_quarter"), entry.get("guidance")
         return {"kind": "BACKLOG", "amount": backlog["amount"], "currency": backlog["currency"], "as_of": entry["period_end"],
                 "yoy": backlog.get("yoy"), "scope": entry.get("scope"), "source": f"{entry['document']} p.{backlog['page']}",
+                # A deck's backlog is a segment unless the config marks it company-wide; its YoY is the company's own statement.
+                "scope_kind": "COMPANY" if entry.get("scope_kind") == "COMPANY" else "SEGMENT", "yoy_evidence": backlog.get("evidence"),
                 "source_url": entry["source_url"],
                 "intake_quarter": None if not intake else {"amount": intake["amount"], "yoy": intake.get("yoy")},
                 "guidance": None if not guidance else {"kind": guidance["kind"], "year": guidance["year"], "amount": guidance["amount"],
@@ -361,8 +364,11 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
     at unchanged valuation multiples (scenario arithmetic, not a forecast)."""
     orders = None
     if fund and fund.get("rpo"):
+        # XBRL RevenueRemainingPerformanceObligation without dimensions is the company-wide total; its YoY comes from the
+        # same series (the year-ago value and date travel with it).
         orders = {"kind": "RPO", "amount": fund["rpo"], "currency": fund.get("rpo_unit"), "as_of": fund.get("rpo_end"),
-                  "yoy": fund.get("rpo_yoy"), "source": fund["source"], "source_url": fund["source_url"]}
+                  "yoy": fund.get("rpo_yoy"), "source": fund["source"], "source_url": fund["source_url"], "scope_kind": "COMPANY",
+                  "yoy_prior_amount": fund.get("rpo_prior"), "yoy_prior_as_of": fund.get("rpo_prior_end")}
     elif symbol.endswith((".KS", ".KQ")):
         orders = korea_orders(symbol)
     scenarios = []

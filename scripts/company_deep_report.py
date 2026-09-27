@@ -96,6 +96,42 @@ def _pct(now: float | None, prior: float | None) -> float | None:
     return round((now / prior - 1) * 100, 2)
 
 
+def _fiscal_fourth_quarter(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Fiscal fourth quarter of the latest fiscal year from the same revenue tag. A 10-K files the full year, so the
+    last quarter has no calendar frame: latest annual row (350-380 days) minus the nine-month YTD row (260-285 days)
+    that starts on the same date. The latest filing wins duplicates; nothing is produced when the inputs are
+    missing, non-positive or the result is not positive."""
+    dated: list[tuple[Mapping[str, Any], int]] = []
+    for row in rows:
+        start, end = row.get("start"), row.get("end")
+        if isinstance(start, str) and isinstance(end, str):
+            try:
+                span = (date.fromisoformat(end) - date.fromisoformat(start)).days
+            except ValueError:
+                continue
+            dated.append((row, span))
+
+    def latest(pairs: list[tuple[Mapping[str, Any], int]]) -> Mapping[str, Any]:
+        return max(pairs, key=lambda pair: (pair[0]["end"], str(pair[0].get("accn") or "")))[0]
+
+    annuals = [(row, span) for row, span in dated if 350 <= span <= 380 and row["val"] > 0]
+    if not annuals:
+        return None
+    annual = latest(annuals)
+    ytd = [(row, span) for row, span in dated if 260 <= span <= 285 and row["start"] == annual["start"] and row["val"] > 0]
+    if not ytd:
+        return None
+    nine_months = latest(ytd)
+    value = annual["val"] - nine_months["val"]
+    if value <= 0:
+        return None
+    start = (date.fromisoformat(nine_months["end"]) + timedelta(days=1)).isoformat()  # the day after the nine months
+    return {"val": value, "start": start, "end": annual["end"], "accession": annual.get("accn"), "basis": "DERIVED_Q4",
+            "derivation": {"annual": annual["val"], "annual_start": annual["start"], "annual_accession": annual.get("accn"),
+                           "nine_months": nine_months["val"], "nine_months_end": nine_months["end"],
+                           "nine_months_accession": nine_months.get("accn")}}
+
+
 def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
     """Same-quarter comparisons from calendar frames; missing facts stay None."""
     revenue_frames = _by_frame(_rows(facts, REVENUE_TAGS, "USD"), instant=False)
@@ -126,6 +162,20 @@ def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
         out[f"{key}_tag"] = latest and latest.get("tag")
         out[f"{key}_as_of"] = latest and latest["end"]
         out[f"{key}_yoy_pct"] = _pct(latest and latest["val"], prior and prior["val"])
+    # The order run rate needs the quarter that matches the RPO as-of date: the latest frame quarter, or the
+    # derived fiscal fourth quarter when it ends later (a fiscal Q4 is filed in the 10-K only as the full year).
+    fourth = _fiscal_fourth_quarter(_rows(facts, REVENUE_TAGS, "USD"))
+    order_candidates: list[dict[str, Any]] = []
+    if out["revenue"] is not None and out["quarter_end"]:
+        order_candidates.append({"val": out["revenue"], "start": revenue.get("start") if revenue else None, "end": out["quarter_end"],
+                                 "accession": out["revenue_accession"], "basis": "FRAME"})
+    if fourth is not None and (out["quarter_end"] is None or fourth["end"] > out["quarter_end"]):
+        order_candidates.append(fourth)
+    out["order_revenue"], out["order_quarter_end"], out["order_quarter"] = None, None, None
+    if order_candidates and out.get("rpo_as_of"):
+        chosen = min(order_candidates, key=lambda candidate:
+                     abs((date.fromisoformat(candidate["end"]) - date.fromisoformat(out["rpo_as_of"])).days))
+        out["order_revenue"], out["order_quarter_end"], out["order_quarter"] = chosen["val"], chosen["end"], chosen
     shares, shares_prior = _latest_pair(_by_frame(_rows(facts, TAGS["diluted_shares"], "shares"), instant=False))
     out["diluted_shares"] = shares and shares["val"]
     out["dilution_yoy_pct"] = _pct(shares and shares["val"], shares_prior and shares_prior["val"])
@@ -200,14 +250,22 @@ ORDER_PREMISES = ("目前營收水準＝最近一季營收 × 期間季數", "�
 
 def order_scenario(metrics: Mapping[str, Any], timing: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """If the signed orders are delivered on the disclosed schedule: contracted revenue per horizon versus the
-    current run rate. A growth floor exists only where the contracted revenue alone exceeds the run rate."""
+    current run rate. A growth floor exists only where the contracted revenue alone exceeds the run rate. The run
+    rate and period check use the order quarter (order_revenue / order_quarter_end) when extract_metrics has one,
+    falling back to the latest frame quarter."""
     if not timing:
         return None
     base = {"status": timing.get("status"), "form": timing.get("form"), "filed": timing.get("filed"), "url": timing.get("url")}
     if timing.get("status") != "DISCLOSED":
         return base
-    rpo, revenue = metrics.get("rpo"), metrics.get("revenue")
-    rpo_as_of, quarter_end = metrics.get("rpo_as_of"), metrics.get("quarter_end")
+    rpo = metrics.get("rpo")
+    revenue = metrics.get("order_revenue")
+    if revenue is None:
+        revenue = metrics.get("revenue")
+    rpo_as_of = metrics.get("rpo_as_of")
+    quarter_end = metrics.get("order_quarter_end")
+    if quarter_end is None:
+        quarter_end = metrics.get("quarter_end")
     if not rpo or not revenue or revenue <= 0 or not rpo_as_of or not quarter_end:
         return {**base, "status": "INPUTS_MISSING"}
     if abs((date.fromisoformat(rpo_as_of) - date.fromisoformat(quarter_end)).days) > 45:
@@ -215,6 +273,11 @@ def order_scenario(metrics: Mapping[str, Any], timing: Mapping[str, Any] | None)
     report_date = timing.get("report_date")
     if report_date and abs((date.fromisoformat(report_date) - date.fromisoformat(rpo_as_of)).days) > 45:
         return {**base, "status": "PERIOD_MISMATCH"}
+    # A horizon counts as disclosed only when the schedule says so explicitly; a schedule cached before the "derived" list
+    # existed is not qualified evidence (every horizon then reads as derived).
+    schedule = timing.get("schedule") or {}
+    derived = schedule.get("derived") if isinstance(schedule.get("derived"), list) else None
+    quarter = metrics.get("order_quarter") if isinstance(metrics.get("order_quarter"), Mapping) else {}
     horizons: dict[str, Any] = {}
     for months, key, _ in HORIZONS:
         share = (timing.get("schedule") or {}).get(key)
@@ -224,8 +287,15 @@ def order_scenario(metrics: Mapping[str, Any], timing: Mapping[str, Any] | None)
         contracted, run_rate = rpo * share / 100, revenue * months / 3
         coverage = round(contracted / run_rate * 100, 1)
         horizons[key] = {"share_pct": share, "contracted": round(contracted), "run_rate": round(run_rate), "coverage_pct": coverage,
-                         "floor_growth_pct": round(coverage - 100, 1) if coverage > 100 else None}
-    return {**base, "rpo": rpo, "rpo_as_of": rpo_as_of, "quarter_revenue": revenue, "horizons": horizons,
+                         "floor_growth_pct": round(coverage - 100, 1) if coverage > 100 else None,
+                         # interpolated between two stated horizons (order_timing.schedule), never company-disclosed evidence
+                         "derived": derived is None or key in derived}
+    passages = timing.get("passages") or []
+    return {**base, "rpo": rpo, "rpo_as_of": rpo_as_of, "quarter_revenue": revenue, "quarter_end": quarter_end,
+            "quarter_start": quarter.get("start"), "quarter_basis": quarter.get("basis") or "FRAME",
+            **({"quarter_derivation": quarter["derivation"]} if quarter.get("derivation") else {}),
+            "accession": timing.get("accession"), "passage": str(passages[0])[:300] if passages else None,
+            "report_date": timing.get("report_date"), "horizons": horizons,
             "premises": list(ORDER_PREMISES) + list((timing.get("schedule") or {}).get("premises") or [])}
 
 
@@ -268,6 +338,21 @@ def compact_orders(orders: Mapping[str, Any] | None) -> dict[str, Any] | None:
     pick = lambda field: {key: (row or {}).get(field) for key, row in orders["horizons"].items()}
     return {"as_of": orders["rpo_as_of"], "form": orders["form"], "filed": orders["filed"],
             "coverage_pct": pick("coverage_pct"), "floor_growth_pct": pick("floor_growth_pct")}
+
+
+def load_order_scenarios(path: Path = OUTPUT_PATH, *, tickers: Sequence[str], max_age_days: int = 7,
+                         today: date | None = None) -> dict[str, dict[str, Any]]:
+    """The full order scenario per ticker (scripts/order_forecast.py input: RPO, schedule shares, revenue quarter,
+    filing); the same freshness rule as load_reports."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if (today or date.today()) - date.fromisoformat(document["as_of"]) > timedelta(days=max_age_days):
+            return {}
+    except (OSError, ValueError, KeyError):
+        return {}
+    reports = document.get("reports") or {}
+    return {ticker: dict(reports[ticker]["orders"]) for ticker in tickers
+            if isinstance(reports.get(ticker), dict) and isinstance(reports[ticker].get("orders"), dict)}
 
 
 def industry_for(sic: str | None, rotation: Mapping[str, Any] | None, config: Mapping[str, Any] | None) -> dict[str, Any] | None:

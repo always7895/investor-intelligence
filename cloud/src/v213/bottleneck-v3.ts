@@ -4,6 +4,7 @@
  * but are never shown as company facts; every figure carries its source and date. A malformed or stale document
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
+import { forecastLines, forecastText, forecastTiles, parseOrderForecast, type OrderForecast } from "./order-forecast";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -70,6 +71,8 @@ export interface Outlook {
   orders: OrdersFigure | { kind: "NOT_DISCLOSED"; reason: string | null } | null;
   consensus: Consensus | null; scenarios: { kind: ScenarioKind; change: number }[];
   consensus_second?: SecondConsensus | null;
+  /** The sealed 6-month / 1-year order forecast (scripts/order_forecast.py), validated into `forecast` at parse time. */
+  order_forecast?: unknown;
 }
 interface LeopoldLead { long_weight: number; status: string; }
 export interface BottleneckEntry {
@@ -79,6 +82,8 @@ export interface BottleneckEntry {
   role: string; role_source: { url: string; date: string };
   /** Traditional Chinese rendering of our own role description (config/bottleneck-layers-v3.json); the English stays shown. */
   role_zh?: string | null; outlook?: Outlook | null;
+  /** The validated order forecast (set by parseBottleneckV3; unavailable when missing or invalid). */
+  forecast?: OrderForecast;
   parts: { layer_heat: number; capture: number; lead: number; confirmation: number; size: number; penalty: number };
   fundamentals: Fundamentals | null; market: Market; market_cap_usd: number | null;
   serenity: SerenityLead | null; leopold: LeopoldLead | null;
@@ -257,7 +262,9 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
-  const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, doc.generated_at.slice(0, 10)) }));
+  const reportDay = doc.generated_at.slice(0, 10);
+  const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, reportDay),
+    forecast: parseOrderForecast(entry.outlook?.order_forecast, reportDay, entry.symbol) }));
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
@@ -288,7 +295,7 @@ function money(amount: number, currency: string | null | undefined): string {
 const SCENARIO_LABEL: Record<ScenarioKind, string> = { REVENUE_CONSTANT_PS: "營收實現·市銷率不變", EPS_CONSTANT_PE: "EPS實現·本益比不變", ANALYST_TARGET: "分析師目標價" };
 /** Fewer analysts than this: the Top20 card lists no price scenario and the detail marks it as thin. */
 const MIN_ANALYSTS = 3;
-const SCENARIO_NOTE = "股價情境＝分析師本財年→下一財年共識成長，套用目前股價與估值倍數的算術推算；市場若已反映部分成長，實際漲幅較小。非預測、非投資建議。";
+const SCENARIO_NOTE = "分析師共識情境＝本財年→下一財年共識成長，套用目前股價與估值倍數的算術推算；市場若已反映部分成長，實際漲幅較小。非預測、非投資建議。";
 
 /** "目前訂單": SEC remaining performance obligations or the company's own order backlog, else why none is shown. */
 function currentOrders(outlook: Outlook | null | undefined, filer: boolean): string {
@@ -339,13 +346,13 @@ function futureOutlook(outlook: Outlook | null | undefined): string[] {
 function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): unknown[] {
   const c = outlook?.consensus;
   const rows = outlook?.scenarios ?? [];
-  if (!c || rows.length === 0) return [uiText("若實現的股價情境：無分析師共識可推算。", "xs", T.ink)];
+  if (!c || rows.length === 0) return [uiText("分析師共識情境（非訂單）：無分析師共識可推算。", "xs", T.ink)];
   const analysts = c.revenue_analysts ?? 0;
-  if (compact && analysts < MIN_ANALYSTS) return [uiText(`若實現的股價情境：分析師樣本不足（${analysts} 位），不列推算。`, "xs", T.ink)];
+  if (compact && analysts < MIN_ANALYSTS) return [uiText(`分析師共識情境（非訂單）：分析師樣本不足（${analysts} 位），不列推算。`, "xs", T.ink)];
   const sub = (kind: ScenarioKind) => kind === "ANALYST_TARGET" ? (c.target_analysts ? `${c.target_analysts} 位` : undefined)
     : kind === "EPS_CONSTANT_PE" ? (c.eps_analysts ? `${c.eps_analysts} 位` : undefined) : (c.revenue_analysts ? `${c.revenue_analysts} 位` : undefined);
   return [
-    uiText("若實現的股價情境", "xxs", T.ink, { weight: "bold" }),
+    uiText("分析師共識情境（非訂單）", "xxs", T.ink, { weight: "bold" }),
     uiBox(rows.map(row => statTile(SCENARIO_LABEL[row.kind], pct(row.change, 0), undefined, compact ? undefined : sub(row.kind))), { layout: "horizontal", spacing: "sm" }),
     ...(analysts < MIN_ANALYSTS ? [uiText(`僅 ${analysts} 位分析師，參考性低。`, "xxs", T.negative)] : []),
   ];
@@ -448,86 +455,8 @@ function orderFloor(doc: BottleneckV3, entry: BottleneckEntry): unknown[] {
     : "最新 10-Q／10-K 未申報 RPO 認列時程。", "xxs", T.muted)];
 }
 
-/** Order data older than this is not extrapolated (a stale order book says nothing about the next year). */
-const ORDER_EXTRAPOLATION_MAX_AGE_DAYS = 200;
-/** Above this year-on-year growth an order book usually changed scope (a new contract class, a restatement): no extrapolation. */
-const ORDER_EXTRAPOLATION_MAX_YOY = 1.0;
-const DAY_MS = 86_400_000;
-
-export interface HorizonForecast {
-  /** Rolling horizons from the report date (null when no supported input). */
-  m6: string | null; y1: string | null;
-  /** End months of the two horizons ("2027-03"), shown in the detail. */
-  ends: { m6: string; y1: string };
-  /** A figure for a stated fixed period (annual guidance) instead of rolling horizons. */
-  fixed?: { label: string; value: string };
-  basis: string;
-}
-
-/** Operator 2026-09-27: explicit 6-month and 1-year horizons, and a future ORDER estimate that is not the price scenario.
- * Both horizons run from the report date (Astra review: never from an older disclosure date, never a fiscal year relabelled).
- * Orders: the disclosed order book (RPO or backlog, a stock) extrapolated from its disclosure date to the report date + 6
- * months and + 12 months at its disclosed year-on-year growth, only for recent data (<= 200 days old, not after the report)
- * and growth in (-100%, +100%]; the company's own new-order guidance is shown for its stated year, not as a rolling horizon;
- * otherwise nothing. Price: the analysts' 12-month mean target (at least MIN_ANALYSTS), with 6 months as the time-proportional
- * share of that return (a stated assumption). Arithmetic, never a prediction. */
-export function horizonForecast(doc: BottleneckV3, entry: BottleneckEntry): { orders: HorizonForecast; price: HorizonForecast } {
-  const report = Date.parse(doc.generated_at);
-  const endM6 = report + 182.5 * DAY_MS;
-  const endY1 = report + 365 * DAY_MS;
-  const month = (ms: number) => new Date(ms).toISOString().slice(0, 7);
-  const ends = { m6: month(endM6), y1: month(endY1) };
-  const o = entry.outlook?.orders;
-  const { filer } = ordersOf(doc, entry.symbol);
-  const disclosed = o && o.kind !== "NOT_DISCLOSED" ? o : null;
-  // A real calendar date only (a malformed or partial date is never read leniently).
-  const asOf = disclosed && isoDay(disclosed.as_of) ? Date.parse(`${disclosed.as_of}T00:00:00Z`) : NaN;
-  const ageDays = (report - asOf) / DAY_MS;
-  const reportYear = new Date(report).getUTCFullYear();
-  let orders: HorizonForecast;
-  const guidance = newOrderGuidance(disclosed);  // annual new-order guidance only (the same rule as the detail line)
-  const grow = (end: number) => disclosed && num(disclosed.yoy) ? disclosed.amount * Math.pow(1 + disclosed.yoy, (end - asOf) / (365 * DAY_MS)) : NaN;
-  const extrapolated = [grow(endM6), grow(endY1)];
-  if (disclosed && num(disclosed.yoy) && disclosed.yoy > -1 && disclosed.yoy <= ORDER_EXTRAPOLATION_MAX_YOY && num(disclosed.amount)
-      && disclosed.amount > 0 && Number.isFinite(ageDays) && ageDays >= -1 && ageDays <= ORDER_EXTRAPOLATION_MAX_AGE_DAYS
-      && extrapolated.every(value => Number.isFinite(value) && value > 0)) {
-    orders = { m6: money(extrapolated[0]!, disclosed.currency), y1: money(extrapolated[1]!, disclosed.currency), ends,
-      basis: `${disclosed.kind === "RPO" ? "RPO" : "在手訂單"}餘額依年增${pct(disclosed.yoy, 0)}自${day(disclosed.as_of)}外推` };
-  } else if (guidance && guidance.year! >= reportYear && guidance.year! <= reportYear + 1) {
-    orders = { m6: null, y1: null, ends, fixed: { label: `${guidance.year}年全年`, value: money(guidance.amount, disclosed!.currency) },
-      basis: "公司新接訂單指引（全年，非滾動12個月）" };
-  } else {
-    const reason = !disclosed ? (filer ? "未申報 RPO" : "公司未公布訂單")
-      : !Number.isFinite(ageDays) ? "訂單日期不明，不外推"
-      : ageDays < -1 ? "訂單日期晚於報告日，不採用"
-      : ageDays > ORDER_EXTRAPOLATION_MAX_AGE_DAYS ? "訂單資料過舊，不外推"
-      : num(disclosed.yoy) && disclosed.yoy > ORDER_EXTRAPOLATION_MAX_YOY ? `年增${pct(disclosed.yoy, 0)}過高（多為口徑變動），不外推`
-      : num(disclosed.yoy) && disclosed.yoy <= -1 ? "訂單大幅萎縮，不外推"
-      : num(disclosed.yoy) ? "外推結果超出可表示範圍，不採用" : "無年增可外推";
-    orders = { m6: null, y1: null, ends, basis: reason };
-  }
-  const c = entry.outlook?.consensus;
-  const upside = c?.target_upside;
-  const analysts = c?.target_analysts ?? 0;
-  let price: HorizonForecast;
-  const halfYear = num(upside) && upside > -1 ? Math.pow(1 + upside, 0.5) - 1 : NaN;
-  const printable = (value: number) => Number.isFinite(value) && Number.isFinite(value * 100);
-  if (c && num(upside) && upside > -1 && printable(upside) && printable(halfYear) && num(analysts) && analysts >= MIN_ANALYSTS) {
-    price = { m6: pct(halfYear, 0), y1: pct(upside, 0), ends,
-      basis: `分析師12個月平均目標價（${analysts}位）；6個月按時間比例（假設）` };
-  } else {
-    price = { m6: null, y1: null, ends, basis: !c || !num(upside) ? "無分析師目標價" : upside <= -1 || !printable(upside) ? "目標價資料異常，不採用"
-      : `目標價樣本不足（${num(analysts) ? analysts : 0}位）` };
-  }
-  return { orders, price };
-}
-
-const horizonTile = (label: string, value: HorizonForecast): [string, string, string] =>
-  value.fixed ? [label, `${value.fixed.label} ${value.fixed.value}`, value.basis]
-    : [label, value.y1 === null ? "未揭露" : `1年 ${value.y1}`, value.m6 === null ? value.basis : `6個月 ${value.m6}・${value.basis}`];
-
-/** The three card tiles, identical on every Top20 card (operator 2026-09-26: one layout; current orders, the future
- * estimate and the price if realized): [label, value, sub]. */
+/** The three card tiles, identical on every Top20 card: current orders, the 6-month / 1-year order figures and the price
+ * change if those orders are realized (operator 2026-09-27; scripts/order_forecast.py): [label, value, sub]. */
 export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string, string, string][] {
   const outlook = entry.outlook;
   const o = outlook?.orders;
@@ -535,17 +464,12 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
     : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
     : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
-  const forecast = horizonForecast(doc, entry);
-  return [orders, horizonTile("未來訂單預估", forecast.orders), horizonTile("若實現股價", forecast.price)];
+  return [orders, ...forecastTiles(forecastOf(doc, entry), money)];
 }
 
-/** The two forecast lines of the detail card. */
-function horizonLines(doc: BottleneckV3, entry: BottleneckEntry): string[] {
-  const { orders, price } = horizonForecast(doc, entry);
-  const line = (label: string, value: HorizonForecast) => value.fixed ? `${label}：${value.fixed.label} ${value.fixed.value}（${value.basis}）。`
-    : value.y1 === null && value.m6 === null ? `${label}：未揭露（${value.basis}）。`
-    : `${label}：6個月（至${value.ends.m6}）${value.m6 ?? "未揭露"}、1年（至${value.ends.y1}）${value.y1 ?? "未揭露"}（${value.basis}）。`;
-  return [line("未來訂單預估", orders), line("若實現股價", price)];
+/** An entry's validated forecast (a parsed document always has one; a hand-built entry reads as unavailable). */
+function forecastOf(doc: BottleneckV3, entry: BottleneckEntry): OrderForecast {
+  return entry.forecast ?? parseOrderForecast(entry.outlook?.order_forecast, doc.generated_at.slice(0, 10), entry.symbol);
 }
 
 /** Operator 2026-09-26: current orders, the future estimate and the price scenario if realized on every Top20 card
@@ -557,13 +481,14 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   if (compact) {
     return section("訂單與成長情境", [
       uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
-      footnote("未來訂單預估＝已揭露訂單餘額自揭露日依年增外推至今日起6個月／1年（或公司全年接單指引）；若實現股價＝分析師12個月平均目標價，6個月按時間比例；皆為算術推算，非預測、非投資建議；營收情境與已簽約訂單的營收覆蓋見「瓶頸詳情」。"),
+      footnote("未來訂單預估＝公司揭露將於6個月／1年內認列的已簽約訂單（RPO×揭露比例，自揭露日起）；無揭露時以訂單餘額依年增外推。若實現股價（變動）＝訂單實現時的條件股價變動（P/S與股數不變），已簽約訂單不足以覆蓋同期營收時不估價；非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。"),
+
     ], "key");
   }
   return section("訂單與成長情境", [
     uiText(currentOrders(outlook, filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts"), "xs", T.ink),
     ...orderFloor(doc, entry),
-    ...horizonLines(doc, entry).map(line => uiText(line, "xs", T.ink, { weight: "bold" })),
+    ...forecastLines(forecastOf(doc, entry), money).map(line => uiText(line, "xs", T.ink, { weight: "bold" })),
     ...futureOutlook(outlook).map(line => uiText(line, "xs", T.ink)),
     ...scenarioBlocks(outlook, compact),
     footnote(c ? `${SCENARIO_NOTE}共識：${sourceZh(c.source)}，${day(c.asof)}` : SCENARIO_NOTE),
@@ -620,12 +545,18 @@ function longTermText(market: Market): string {
 
 export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}`);
-    const messages: LineOutboundMessage[] = [{ type: "text", text: [
-      `瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
+    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${forecastText(forecastOf(doc, entry), money)}`);
+    // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
+    const blocks = [`瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
-      ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。",
-    ].join("\n").slice(0, 4900) }];
+      ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。"];
+    const pages: string[] = [];
+    for (const block of blocks.map(text => text.slice(0, 1200))) {
+      const last = pages[pages.length - 1];
+      if (last !== undefined && last.length + 1 + block.length <= 4900) pages[pages.length - 1] = `${last}\n${block}`;
+      else pages.push(block);
+    }
+    const messages: LineOutboundMessage[] = pages.slice(0, 5).map(text => ({ type: "text", text }));
     assertLineMessages(messages);
     return messages;
   }
@@ -698,9 +629,9 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
-    ...horizonLines(doc, entry),
+    ...forecastLines(forecastOf(doc, entry), money),
     ...futureOutlook(outlook),
-    scenarios ? `若實現的股價情境：${scenarios}${analysts < MIN_ANALYSTS ? `（僅 ${analysts} 位分析師，參考性低）` : ""}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "若實現的股價情境：無分析師共識可推算。",
+    scenarios ? `分析師共識情境（非訂單）：${scenarios}${analysts < MIN_ANALYSTS ? `（僅 ${analysts} 位分析師，參考性低）` : ""}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "分析師共識情境（非訂單）：無分析師共識可推算。",
     `${SCENARIO_NOTE}不自動下單。`,
   ].join("\n");
 }

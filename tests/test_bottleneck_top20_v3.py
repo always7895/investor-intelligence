@@ -312,6 +312,11 @@ class LeadTests(unittest.TestCase):
 
 
 class SealedFormTests(unittest.TestCase):
+    def setUp(self):
+        saved = publisher.company_deep_report.load_order_scenarios
+        publisher.company_deep_report.load_order_scenarios = lambda *args, **kwargs: {}
+        self.addCleanup(setattr, publisher.company_deep_report, "load_order_scenarios", saved)
+
     def test_compact_sealed_form_and_age_bound(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
         entry = {"rank": 1, "symbol": "SIVE.ST", "name": "Sivers", "layer": "optics", "archetype": "EXPLOSION", "score": 60.9,
@@ -478,6 +483,27 @@ class SealedFormTests(unittest.TestCase):
                                        "cagr_listed_span_days": None, "long_term_basis": "TWO_YEAR"})
         self.assertEqual((verified_two["cagr_2y"], verified_two["long_term_basis"]), (0.8, "TWO_YEAR"))
 
+    def test_the_order_forecast_is_built_at_sealing_from_the_deep_report_schedule(self):
+        import order_forecast
+        market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 0.1,
+                  "ret_1y": 0.2, "cagr_2y": 0.3, "history_start": "2023-09-25", "currency": "USD"}
+        today = datetime.now(timezone.utc).date()  # the sealer's report day; the filing dates are relative to it
+        as_of, filed = today - timedelta(days=60), today - timedelta(days=20)
+        recognition = {"status": "DISCLOSED", "form": "10-K", "filed": str(filed), "url": "https://www.sec.gov/Archives/sndk-20260703.htm",
+                       "rpo": 59.8e9, "rpo_as_of": str(as_of), "quarter_revenue": 8.965e9, "quarter_start": str(as_of - timedelta(days=90)),
+                       "quarter_end": str(as_of), "quarter_basis": "FRAME", "accession": "0001628280-26-057406", "passage": "19% ... next twelve months",
+                       "report_date": str(as_of),
+                       "horizons": {"m6": None, "m12": {"share_pct": 19.0, "derived": False}, "m24": None}}
+        publisher.company_deep_report.load_order_scenarios = lambda *args, **kwargs: {"SNDK": recognition}
+        sealed = self._seal_one(market, None, "outlook")
+        self.assertEqual(sealed["order_forecast"], order_forecast.build("SNDK", None, recognition, today))
+        m12 = sealed["order_forecast"]["m12"]
+        self.assertEqual((m12["status"], m12["basis"], m12["amount"], m12["end"]),
+                         ("AVAILABLE", "RECOGNITION", 59.8e9 * 0.19, str(order_forecast.add_months(as_of, 12))))
+        self.assertEqual(m12["scenario"]["status"], "INSUFFICIENT_COVERAGE")  # 11.36B of a 35.86B year: about 32%
+        self.assertEqual(sealed["order_forecast"]["m6"]["reason"], "NOT_DISCLOSED_HORIZON")
+        self.assertEqual(sealed["order_forecast"]["issuer"], "SNDK")
+
     def test_the_share_count_basis_is_sealed_only_when_known(self):
         market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/POET", "asof": "2026-09-25", "ret_6m": 0.1,
                   "ret_1y": 0.2, "cagr_2y": 0.3, "history_start": "2023-09-25", "currency": "USD"}
@@ -528,7 +554,9 @@ class SealedFormTests(unittest.TestCase):
         self.assertEqual((sealed["top"][0]["name_zh"], sealed["top"][0]["name_zh_source"]), ("晟碟", "ZHWIKI"))
         self.assertEqual(sealed["top"][0]["role_zh"], "NAND快閃記憶體；FQ4毛利率84.6%")  # from the installed config
         self.assertTrue(sealed["industries"][0]["leopold_constraint_zh"].startswith("CoWoS與HBM"))
-        self.assertIsNone(sealed["top"][0]["outlook"])  # a document built before outlooks existed
+        # A document built before outlooks existed: no orders or consensus, and an explicit order-forecast unavailability.
+        self.assertEqual((sealed["top"][0]["outlook"]["orders"], sealed["top"][0]["outlook"]["consensus"]), (None, None))
+        self.assertEqual(sealed["top"][0]["outlook"]["order_forecast"]["reason"], "NO_ORDERS")
         self.assertIsNone(sealed["top"][1]["name_zh"])
         self.assertEqual((sealed["top"][0]["market"]["cagr_listed"], sealed["top"][0]["market"]["history_start"]), (4.1, "2025-02-13"))
         self.assertEqual(sealed["top"][0]["market"]["lineage"]["related_entity"], {"name": "Western Digital", "symbol": "WDC"})

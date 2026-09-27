@@ -85,6 +85,55 @@ class OrderScenarioTests(unittest.TestCase):
         self.assertEqual(tile[0]["value"], 96.2)
 
 
+class FiscalFourthQuarterTests(unittest.TestCase):
+    # Sandisk-like: fiscal Q4 ends 2026-04-03 (frame quarter, 5,950M); the 10-K files the full year, so the fourth
+    # quarter 2026-04-04..2026-07-03 (8,965M) has no frame and the RPO is as of 2026-07-03.
+    SNDK_REVENUE = [
+        fact(5_950_000_000, "2026-04-03", "CY2026Q2", "2026-01-03"),
+        fact(11_283_000_000, "2026-04-03", None, "2025-06-28", fp="Q3", form="10-Q"),
+        fact(20_248_000_000, "2026-07-03", None, "2025-06-28", fp="FY", form="10-K"),
+    ]
+    SNDK_RPO = {"RevenueRemainingPerformanceObligation": {"units": {"USD": [
+        fact(40_000_000_000, "2026-07-03", "CY2026Q3I"), fact(30_000_000_000, "2025-07-04", "CY2025Q3I")]}}}
+    SNDK_TIMING = {"status": "DISCLOSED", "form": "10-K", "filed": "2026-08-10", "report_date": "2026-07-03",
+                   "url": "https://www.sec.gov/Archives/edgar/data/2023554/00002600000001/10k.htm",
+                   "schedule": {"m6": None, "m12": 100.0, "m24": None, "premises": []}}
+
+    def sndk_facts(self, revenue_rows):
+        return {"entityName": "Sandisk Corp.", "facts": {"us-gaap": {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": list(revenue_rows)}},
+            **self.SNDK_RPO}}}
+
+    def test_derived_fourth_quarter_unblocks_the_order_scenario(self):
+        m = cdr.extract_metrics(self.sndk_facts(self.SNDK_REVENUE))
+        self.assertEqual(m["order_revenue"], 8_965_000_000)  # 20,248M FY minus 11,283M nine-month YTD
+        self.assertEqual(m["order_quarter_end"], "2026-07-03")
+        self.assertEqual((m["quarter_end"], m["revenue"]), ("2026-04-03", 5_950_000_000))  # unchanged
+        orders = cdr.order_scenario(m, self.SNDK_TIMING)
+        self.assertEqual(orders["status"], "DISCLOSED")
+        self.assertEqual(orders["horizons"]["m12"]["run_rate"], round(8_965_000_000 * 4))
+        self.assertEqual(orders["horizons"]["m12"]["contracted"], 40_000_000_000)
+        self.assertIsNone(orders["horizons"]["m6"])
+        self.assertIsNone(orders["horizons"]["m24"])
+
+    def test_no_derived_quarter_without_a_matching_year_to_date_row(self):
+        frame, ytd, fy = self.SNDK_REVENUE
+        cases = ([frame, fy],                                   # no YTD row
+                 [frame, dict(ytd, start="2025-07-01"), fy],    # YTD start does not match the annual start
+                 [frame, dict(ytd, val=25_000_000_000), fy])    # annual <= YTD
+        for rows in cases:
+            m = cdr.extract_metrics(self.sndk_facts(rows))
+            self.assertEqual((m["order_revenue"], m["order_quarter_end"]), (5_950_000_000, "2026-04-03"))
+            self.assertEqual(cdr.order_scenario(m, self.SNDK_TIMING)["status"], "PERIOD_MISMATCH")
+
+    def test_frame_quarter_matching_the_rpo_date_is_unchanged(self):
+        m = cdr.extract_metrics(FACTS)  # frame quarter ends 2026-06-30, the same date as the RPO
+        self.assertEqual((m["order_revenue"], m["order_quarter_end"]), (1000, "2026-06-30"))
+        orders = cdr.order_scenario(m, TIMING)
+        self.assertEqual(orders["status"], "DISCLOSED")
+        self.assertEqual(orders["horizons"]["m6"]["run_rate"], round(1000 * 2))
+
+
 class RankingOrdersTests(unittest.TestCase):
     def test_sealed_ranking_records_carry_order_coverage_only_when_disclosed(self):
         import build_v213_macro_industry_research as macro

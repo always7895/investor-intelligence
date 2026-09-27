@@ -1,10 +1,11 @@
 // Bottleneck-explosion Top20 v3 and the industry ranking: strict parsing, report-age bound, LINE rendering.
 import { describe, expect, it } from "vitest";
 import {
-  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, horizonForecast, outlookTiles, parseBottleneckV3,
+  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookTiles, parseBottleneckV3,
 } from "../src/v213/bottleneck-v3";
-import { doc, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
+import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
+import urlTable from "../../tests/fixtures/v213-order-forecast-urls.json";
 
 describe("bottleneck-explosion Top20 v3", () => {
   it("parses a fresh document and refuses stale, malformed or mis-ranked ones", () => {
@@ -23,7 +24,8 @@ describe("bottleneck-explosion Top20 v3", () => {
   });
 
   it("renders LINE carousels within limits, a sourced detail and the industry ranking", () => {
-    const parsed = parseBottleneckV3(doc(Date.now() - HOUR))!;
+    // The fixed report clock: the sealed order forecasts (tests/fixtures/v213-order-forecast-sealed.json) date from 2026-09.
+    const parsed = parseBottleneckV3(doc(REPORT), REPORT + HOUR)!;
     const flex = buildBottleneckTop20Messages(parsed, "flex");
     expect(flex.length).toBeGreaterThanOrEqual(4);
     const serialized = JSON.stringify(flex);
@@ -55,18 +57,18 @@ describe("bottleneck-explosion Top20 v3", () => {
     // Operator 2026-09-26: current orders, the future estimate and the price scenario if realized, on every card.
     expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
     // One layout on every card: the same three tiles in the same order.
-    for (const label of ["現有訂單", "未來訂單預估", "若實現股價"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
+    for (const label of ["現有訂單", "未來訂單預估", "若實現股價（變動）"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
     expect(serialized).toContain("RPO 2026-07-26 年增+68%");
     expect(serialized).toContain("17.51兆 KRW");
     expect(serialized).toContain("在手 2026-06-30 年增+63%");
-    expect(serialized).toContain("在手訂單餘額依年增+63%自2026-06-30外推");
+    expect(serialized).toContain("6個月 US$12.0B・已簽約預計認列，自揭露日2026-06-30起（非今日起）");  // S2: the filing's own 6-month schedule
+    expect(serialized).toContain("訂單（非全公司）自今日起外推至2027-09-27（非期間認列）");  // S8: a segment book says what it is
     expect(serialized).toContain("公司未公布");
-    expect(serialized).toContain("分析師12個月平均目標價（59位）");
-    expect(serialized).toContain("1年 +46%");
-    expect(serialized).toContain("樣本不足");  // one analyst: no scenario on the card
+    expect(serialized).not.toContain("分析師12個月平均目標價");  // analyst targets never fill an order tile
+    expect(serialized).not.toContain("1年 +46%");  // the analyst target (+46%) never appears as the order-linked price
     expect(serialized).not.toContain("+2860%");
-    expect(serialized).toContain("目標價樣本不足（1位）");
-    expect(serialized).toContain("非預測、非投資建議");
+    expect(serialized).not.toContain("目標價樣本不足");
+    expect(serialized).toContain("非目標價、非投資建議");
     // Chinese first, the original kept; source labels in Chinese.
     expect(serialized).toContain("合成稀缺層角色");
     expect(serialized).not.toContain("原文：");  // the English original is on the detail card
@@ -117,7 +119,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(sivePayload).toContain("市場若已反映部分成長，實際漲幅較小");  // the scenario states its basis
     const textWithReport = buildBottleneckDetail(parsed, "S1", "text") as { type: string; text: string }[];
     expect(textWithReport.length).toBeLessThanOrEqual(5);
-    expect(textWithReport[0]!.text).toContain("若實現的股價情境：營收實現·市銷率不變 +70%");
+    expect(textWithReport[0]!.text).toContain("分析師共識情境（非訂單）：營收實現·市銷率不變 +70%");  // the analyst scenario is labelled as such
     expect(textWithReport.every(message => message.type === "text" && message.text.length <= 4900)).toBe(true);
     const industries = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
     expect(industries).toContain("Leopold 邏輯");
@@ -276,15 +278,15 @@ describe("bottleneck-explosion Top20 v3", () => {
   });
 
   it("falls back to lean cards instead of a failed reply when twenty full cards exceed five carousels", () => {
-    const heavy = doc(Date.now() - HOUR);
+    const heavy = doc(REPORT);
     for (const entry of heavy.top as any[]) {
       entry.role_source.url = `https://example.com/${"r".repeat(170)}`;
-      entry.outlook = structuredClone(OUTLOOKS[1]);
+      entry.outlook = { ...(structuredClone(OUTLOOKS[1]) as object), order_forecast: { ...forecastCase("S1"), issuer: entry.symbol } };
       entry.name = "N".repeat(80);
       entry.role = "r".repeat(200);
       entry.role_zh = "角".repeat(200);
     }
-    const parsed = parseBottleneckV3(heavy)!;
+    const parsed = parseBottleneckV3(heavy, REPORT + HOUR)!;
     const bubbles = buildBottleneckTop20Messages(parsed, "flex") as unknown as { contents: { contents: unknown[] } }[];
     expect(bubbles.length).toBeLessThanOrEqual(5);
     expect(bubbles.reduce((total, message) => total + message.contents.contents.length, 0)).toBe(20);
@@ -293,13 +295,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("上市沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");  // lean cards keep the event
     const s1 = parsed.top.find(entry => entry.symbol === "S1")!;
     // Operator 2026-09-27: the future ORDER estimate and the price scenario are different figures, each with 6-month and 1-year horizons.
-    // (the extrapolated amounts depend on the clock; the fixed-clock tests below check them exactly)
     const [orders, future, price] = outlookTiles(parsed, s1);  // full and lean cards are both built from these three items
     expect(orders).toEqual(["現有訂單", "US$3.2B", "RPO 2026-07-26 年增+68%"]);
-    expect(future![0]).toBe("未來訂單預估");
-    expect(future![1]).toMatch(/^1年 US\$\d+\.\dB$/);
-    expect(future![2]).toMatch(/^6個月 US\$\d+\.\dB・RPO餘額依年增\+68%自2026-07-26外推$/);
-    expect(price).toEqual(["若實現股價", "1年 +46%", "6個月 +21%・分析師12個月平均目標價（59位）；6個月按時間比例（假設）"]);
+    expect(future).toEqual(["未來訂單預估", "1年 US$1.2B", "6個月 未揭露・已簽約預計認列，自揭露日2026-07-26起（非今日起）"]);
+    expect(price).toEqual(["若實現股價（變動）", "1年 無法估價", "6個月 無法估價（缺訂單依據）・1年：訂單僅覆蓋同期營收0.3%"]);
   });
 
   // The report time is fixed so the horizon arithmetic is exact.
@@ -308,66 +307,181 @@ describe("bottleneck-explosion Top20 v3", () => {
   const pick = (parsed: ReturnType<typeof fixed>, symbol: string) => parsed.top.find(item => item.symbol === symbol)!;
   const usd = (value: number) => `US$${(value / 1e9).toFixed(1)}B`;
 
-  it("extrapolates the order book from its disclosure date to the report date plus 6 and 12 months", () => {
+  it("renders the sealed 6-month / 1-year order forecast from the Python contract fixture on the card and the detail", () => {
     const parsed = fixed();
-    const age = (REPORT - Date.parse("2026-07-26")) / 86_400_000;
-    const at = (days: number) => usd(3.2e9 * Math.pow(1.68, (age + days) / 365));
-    expect(horizonForecast(parsed, pick(parsed, "S1")).orders).toEqual({ m6: at(182.5), y1: at(365), ends: { m6: "2027-03", y1: "2027-09" },
-      basis: "RPO餘額依年增+68%自2026-07-26外推" });
-    const detail = JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"));
-    expect(detail).toContain(`未來訂單預估：6個月（至2027-03）${at(182.5)}、1年（至2027-09）${at(365)}`);
-    expect(detail).toContain("若實現股價：6個月（至2027-03）+21%、1年（至2027-09）+46%");
-    const card = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
-    expect(card).toContain(`1年 ${at(365)}`);
-    expect(card).not.toMatch(/NaN|undefined/);
-  });
-
-  it("refuses stale, future-dated, extreme or collapsing order data and keeps guidance to its own year", () => {
-    const cases: [Record<string, unknown>, string | null][] = [
-      [{ as_of: "2021-04-03" }, "訂單資料過舊，不外推"], [{ as_of: "2026-12-01" }, "訂單日期晚於報告日，不採用"],
-      [{ yoy: 5.52 }, "年增+552%過高（多為口徑變動），不外推"], [{ yoy: -1.5 }, "訂單大幅萎縮，不外推"], [{ yoy: null }, "無年增可外推"],
-      [{ yoy: -0.3 }, null]];
-    for (const [change, basis] of cases) {
-      const parsed = fixed();
-      Object.assign(pick(parsed, "S1").outlook!.orders as object, change);
-      const orders = horizonForecast(parsed, pick(parsed, "S1")).orders;
-      if (basis) expect(orders, JSON.stringify(change)).toMatchObject({ m6: null, y1: null, basis });
-      else expect(orders.y1).toBe(usd(3.2e9 * Math.pow(0.7, ((REPORT - Date.parse("2026-07-26")) / 86_400_000 + 365) / 365)));  // declining
+    const tiles = (symbol: string) => outlookTiles(parsed, pick(parsed, symbol)).slice(1) as [[string, string, string], [string, string, string]];
+    const detail = (symbol: string) => JSON.stringify(buildBottleneckDetail(parsed, symbol, "text"));
+    // S1 NVDA: 12 months from the filing's schedule; 6 months not disclosed; no price (orders cover 0.3%); each reason on its horizon.
+    expect(tiles("S1")).toEqual([["未來訂單預估", "1年 US$1.2B", "6個月 未揭露・已簽約預計認列，自揭露日2026-07-26起（非今日起）"],
+      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價（缺訂單依據）・1年：訂單僅覆蓋同期營收0.3%"]]);
+    expect(detail("S1")).toContain("未來訂單預估・1年（2026-07-26–2027-07-26，自揭露日起算，非今日起）：US$1.2B，已簽約預計認列（RPO US$3.2B × 39%）。");
+    expect(detail("S1")).toContain("若實現股價・1年：無法估價，已簽約訂單僅覆蓋同期營收水準的 0.3%（同期營收水準＝2026-07-26 當季×4；其餘營收來自尚未簽約的訂單）。");
+    expect(detail("S1")).toContain("訂單來源：10-Q 2026-08-26（0000000000-26-000001） https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm");
+    // S2: explicit 6 and 12 months covering the revenue level: two order amounts, two price changes, never the same figure.
+    expect(tiles("S2")).toEqual([["未來訂單預估", "1年 US$22.0B", "6個月 US$12.0B・已簽約預計認列，自揭露日2026-06-30起（非今日起）"],
+      ["若實現股價（變動）", "1年 +38%", "6個月 +50%・假設營收達已簽約額、P/S與股數不變"]]);
+    expect(detail("S2")).toContain("非目標價，非今日起的報酬；未計新訂單、取消或遞延");
+    expect(tiles("S3")[0][2]).toBe("6個月 未揭露・已簽約預計認列，自揭露日2026-06-30起（非今日起）");  // an interpolated 6 months is not shown
+    expect(tiles("S5")).toEqual([["未來訂單預估", "1年 無資料", "6個月 無資料・無訂單資料"], ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・缺訂單依據"]]);
+    expect(tiles("S7")[0][1]).toBe("1年 未揭露");  // CRWV: 24 months is a labelled reference only
+    expect(detail("S7")).toContain("參考（固定期間，非6個月／1年）：24個月內認列 US$42.5B（RPO × 41%，2026-06-30–2028-06-30）。");
+    // S8: a segment's book is shown as such and never priced as the company.
+    expect(tiles("S8")).toEqual([["未來訂單預估", "1年 32.15兆 KRW", "6個月 25.13兆 KRW・重工業部門（連結）訂單（非全公司）自今日起外推至2027-09-27（非期間認列）"],
+      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・部門訂單不代表全公司"]]);
+    expect(detail("S8")).toContain("依年增+63%（公司自述：「수주잔고 전년 동기 +63%」）外推");
+    expect(detail("S8")).toContain("參考（固定期間）：公司2026年全年新接訂單指引 12.00兆 KRW。");
+    expect(tiles("S9")[0]).toEqual(["未來訂單預估", "1年 無法取得", "6個月 無法取得・訂單與營收期間不一致"]);
+    // S10: a company-wide book from today's level, with its comparison on record and its caveats.
+    expect(tiles("S10")[1]).toEqual(["若實現股價（變動）", "1年 +25%", "6個月 +12%・假設營收隨訂單、P/S與股數不變"]);
+    expect(detail("S10")).toContain("（對比 2025-06-30 的 US$1.6B）外推");
+    expect(detail("S10")).toContain("以今日餘額為基準；訂單可能取消、延遲或組合改變；非目標價");
+    // S11: the 6-month window ended before the report: not a future estimate; the 12-month one still stands.
+    expect(tiles("S11")[0]).toEqual(["未來訂單預估", "1年 US$22.0B", "6個月 已過期・已簽約預計認列，自揭露日2026-03-11起（非今日起）"]);
+    // S12: Sandisk's fourth quarter derived from the 10-K is named in the revenue level.
+    expect(tiles("S12")[0][1]).toBe("1年 US$11.4B");
+    expect(detail("S12")).toContain("同期營收水準＝2026-07-03 當季（第四季＝全年 US$20.2B − 前九個月 US$11.3B）×4");
+    for (const symbol of ["S1", "S2", "S3", "S5", "S7", "S8", "S9", "S10", "S11", "S12"]) {
+      const [orderTile, priceTile] = tiles(symbol);
+      expect(orderTile[1], symbol).not.toBe(priceTile[1]);
+      expect(orderTile[1].startsWith("1年 ") && orderTile[2].startsWith("6個月 ") && priceTile[2].startsWith("6個月 "), symbol).toBe(true);
     }
-    const korea = fixed();
-    expect(horizonForecast(korea, pick(korea, "S4")).orders.basis).toBe("在手訂單餘額依年增+63%自2026-06-30外推");
-    (pick(korea, "S4").outlook!.orders as any).yoy = null;  // guidance only: its own year, never relabelled as 1 year
-    expect(horizonForecast(korea, pick(korea, "S4")).orders).toMatchObject({ fixed: { label: "2026年全年", value: "12.00兆 KRW" },
-      basis: "公司新接訂單指引（全年，非滾動12個月）" });
-    expect(outlookTiles(korea, pick(korea, "S4"))[1]).toEqual(["未來訂單預估", "2026年全年 12.00兆 KRW", "公司新接訂單指引（全年，非滾動12個月）"]);
-    (pick(korea, "S4").outlook!.orders as any).guidance.year = 2020;
-    expect(horizonForecast(korea, pick(korea, "S4")).orders.fixed).toBeUndefined();
-    expect(outlookTiles(korea, pick(korea, "S5"))[1]).toEqual(["未來訂單預估", "未揭露", "公司未公布訂單"]);
+    // The text form of the Top20 carries both tiles for every entry.
+    const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
+    expect(text).toContain("未來訂單 1年 US$1.2B／6個月 未揭露（已簽約預計認列，自揭露日2026-07-26起（非今日起））｜若實現股價 1年 無法估價（訂單僅覆蓋同期營收0.3%）／6個月 無法估價（缺訂單依據）");
+    expect(text).toContain("未來訂單 1年 US$22.0B／6個月 US$12.0B（已簽約預計認列，自揭露日2026-06-30起（非今日起））｜若實現股價 1年 +38%（假設營收達已簽約額、P/S與股數不變）／6個月 +50%（假設營收達已簽約額、P/S與股數不變）");
+    expect(text).toContain("未來訂單 1年 32.15兆 KRW／6個月 25.13兆 KRW（重工業部門（連結）訂單（非全公司）自今日起外推至2027-09-27（非期間認列））｜若實現股價 1年 無法估價（部門訂單不代表全公司）");
+    expect(text).toContain("若實現股價 1年 +25%（假設營收隨訂單、P/S與股數不變）");
+    expect(text.match(/未來訂單 1年 /g)).toHaveLength(20);
   });
 
-  it("never prints an overflowing or malformed horizon on the public card or detail", () => {
-    const cases: [string, string, (parsed: ReturnType<typeof fixed>) => void, RegExp | string][] = [
-      ["order overflow", "S1", parsed => Object.assign(pick(parsed, "S1").outlook!.orders as object, { amount: Number.MAX_VALUE, yoy: 1 }),
-        "外推結果超出可表示範圍，不採用"],
-      ["huge target", "S1", parsed => Object.assign(pick(parsed, "S1").outlook!.consensus as object, { target_upside: 1e307 }), "目標價資料異常，不採用"],
-      ["partial order date", "S1", parsed => Object.assign(pick(parsed, "S1").outlook!.orders as object, { as_of: "2026-7-26" }), "訂單日期不明，不外推"],
-      ["fractional guidance year", "S4", parsed => {
-        Object.assign(pick(parsed, "S4").outlook!.orders as object, { yoy: null });
-        (pick(parsed, "S4").outlook!.orders as any).guidance.year = 2026.5;
-      }, "無年增可外推"],
-      ["unsupported guidance kind", "S4", parsed => {
-        Object.assign(pick(parsed, "S4").outlook!.orders as object, { yoy: null });
-        (pick(parsed, "S4").outlook!.orders as any).guidance.kind = "REVENUE";
-      }, "無年增可外推"],
+  it("shows a tampered, foreign or inconsistent sealed forecast as unavailable, never another figure", () => {
+    const orderTileOf = (mutate: (forecast: any) => void, issuer = "S1", index = 1) => {
+      const raw = doc(REPORT);
+      const forecast = forecastCase(issuer);
+      mutate(forecast);
+      (raw.top as any[])[index].outlook.order_forecast = forecast;
+      const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
+      return outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]];
+    };
+    const tamper: [string, (forecast: any) => void][] = [
+      ["amount", f => { f.m12.amount *= 2; }], ["share", f => { f.m12.share_pct = 120; }], ["coverage", f => { f.m12.scenario.coverage = 2; }],
+      ["price from nothing", f => { f.m12.scenario = { status: "AVAILABLE", coverage: 1.2, change: 0.2 }; }],
+      ["window", f => { f.m12.end = "2027-09-27"; }], ["stale", f => { f.m12.as_of = "2026-01-01"; f.m12.start = "2026-01-01"; f.m12.end = "2027-01-01"; }],
+      ["future filing", f => { f.m12.filed = "2026-12-01"; }], ["http source", f => { f.m12.source_url = "http://www.sec.gov/x"; }],
+      ["hostless source", f => { f.m12.source_url = "https://"; }], ["overflow", f => { f.m12.rpo = 1.7e308; f.m12.amount = Infinity; }],
+      ["unknown basis", f => { f.m12.basis = "ANALYST"; }], ["unknown version", f => { f.version = 2; }],
+      ["another issuer", f => { f.issuer = "NVDA"; }], ["segment recognition", f => { f.m12.scope = "SEGMENT"; }],
+      ["status says unavailable", f => { f.status = "UNAVAILABLE"; f.reason = "NO_ORDERS"; }],
+      ["unknown currency", f => { f.m12.currency = "BANANAS"; }],
     ];
-    for (const [label, symbol, mutate, expected] of cases) {
+    for (const [label, mutate] of tamper) expect(orderTileOf(mutate)[0][1], label).toBe("1年 無法取得");
+    // Mixed evidence across the horizons, a shrinking schedule, an ended window.
+    expect(orderTileOf(f => { f.m6.as_of = "2026-06-29"; f.m6.start = "2026-06-29"; f.m6.end = "2026-12-29"; }, "S2", 2)[0][1]).toBe("1年 無法取得");
+    expect(orderTileOf(f => { f.m6.share_pct = 60; f.m6.amount = 24e9; f.m6.scenario = { status: "AVAILABLE", coverage: 3, change: 2 }; }, "S2", 2)[0][1]).toBe("1年 無法取得");
+    expect(orderTileOf(f => { f.m6.status = "AVAILABLE"; f.m6.reason = undefined; Object.assign(f.m6, { ...f.m12, share_pct: 30, amount: 12e9,
+      end: "2026-09-11", scenario: { status: "AVAILABLE", coverage: 1.5, change: 0.5 } }); f.status = "AVAILABLE"; }, "S11", 11)[0][2]).toContain("6個月 已過期");
+    // A segment book priced as the company, or a book whose growth has no comparison on record.
+    expect(orderTileOf(f => { f.m12.scenario = { status: "AVAILABLE", change: 0.63 }; }, "S8", 8)[0][1]).toBe("1年 無法取得");
+    expect(orderTileOf(f => { f.m12.yoy_prior_amount = 1e9; }, "S10", 10)[0][1]).toBe("1年 無法取得");
+    expect(orderTileOf(f => { f.m12.scenario.change = 0.9; }, "S10", 10)[1][1]).toBe("1年 無法估價");
+    const legacy = doc(REPORT);  // a document sealed before the forecast existed: unavailable, never the old analyst tiles
+    delete (legacy.top as any[])[1].outlook.order_forecast;
+    const parsedLegacy = parseBottleneckV3(legacy, REPORT + HOUR)!;
+    expect(outlookTiles(parsedLegacy, pick(parsedLegacy, "S1")).slice(1)).toEqual([["未來訂單預估", "1年 無法取得", "6個月 無法取得・訂單預估尚未產生"],
+      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・缺訂單依據"]]);
+  });
+
+  it("requires the filing evidence, one filing for every horizon and reference, and a fully derived fourth quarter (Astra batch 33)", () => {
+    const view = (issuer: string, index: number, mutate: (forecast: any) => void) => {
+      const raw = doc(REPORT);
+      const forecast = forecastCase(issuer);
+      mutate(forecast);
+      (raw.top as any[])[index].outlook.order_forecast = forecast;
+      const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
+      return { tiles: outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]],
+        detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
+    };
+    const refused = "1年 無法取得";
+    for (const field of ["accession", "passage", "report_period", "quarter_start", "explicit", "form"]) {
+      expect(view("S1", 1, f => { delete f.m12[field]; }).tiles[0][1], field).toBe(refused);
+    }
+    for (const [label, change] of [["old report period", { report_period: "2025-01-01" }], ["not explicit", { explicit: false }],
+      ["bad accession", { accession: "123" }], ["8-K", { form: "8-K" }], ["userinfo URL", { source_url: "https://:password@example.com/x" }],
+      ["bad port", { source_url: "https://example.com:99999/x" }], ["quarter too long", { quarter_start: "2026-01-01" }]] as const) {
+      expect(view("S1", 1, f => Object.assign(f.m12, change)).tiles[0][1], label).toBe(refused);
+    }
+    // One filing for both horizons: a 6-month record from another accession or another quarter invalidates both.
+    expect(view("S2", 2, f => { f.m6.accession = "0000000000-26-000002"; }).tiles[0][1]).toBe(refused);
+    expect(view("S2", 2, f => { f.m6.quarter_start = "2026-04-02"; }).tiles[0][1]).toBe(refused);
+    // The top-level reason follows the horizons.
+    expect(view("S7", 7, f => { f.reason = "NO_ORDERS"; }).detail).not.toContain("24個月內認列");
+    // The fourth-quarter derivation is checked as a whole.
+    for (const [label, change] of [["ancient nine months", { nine_months_end: "1900-01-01" }], ["no accession", { annual_accession: null }],
+      ["negative inputs", { annual: -20.248e9, nine_months: -29.213e9 }], ["other fiscal year", { annual_start: "2025-01-01" }]] as const) {
+      expect(view("S12", 12, f => Object.assign(f.m12.quarter_derivation, change)).tiles[0][1], label).toBe(refused);
+    }
+    expect(view("S12", 12, f => { f.m12.quarter_start = "2026-04-05"; }).tiles[0][1]).toBe(refused);
+    // The 24-month reference is recomputed, fresh and from the same filing, even for a 24-month-only company.
+    const crwv = (mutate: (reference: any) => void) => view("S7", 7, f => mutate(f.references[0])).detail;
+    expect(crwv(() => {})).toContain("24個月內認列 US$42.5B");
+    expect(crwv(r => { r.amount = 1e99; })).not.toMatch(/24個月內認列|e\+/);
+    expect(crwv(r => { r.as_of = "2025-01-01"; r.start = "2025-01-01"; r.end = "2027-01-01"; })).not.toContain("24個月內認列");
+    expect(crwv(r => { r.accession = "bad"; })).not.toContain("24個月內認列");
+    expect(view("S2", 2, f => { f.references.push({ ...forecastCase("S7").references[0] }); }).tiles[0][1]).toBe(refused);  // another filing
+    expect(view("S7", 7, f => { f.references.push(f.references[0]); }).detail).not.toContain("24個月內認列");  // duplicated
+  });
+
+  it("binds a book's comparison and segment across horizons, requires a references array and shares the URL rule (Astra batch 34)", () => {
+    const tilesOf = (issuer: string, index: number, mutate: (forecast: any) => void) => {
+      const raw = doc(REPORT);
+      const forecast = forecastCase(issuer);
+      mutate(forecast);
+      (raw.top as any[])[index].outlook.order_forecast = forecast;
+      const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
+      return { tiles: outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]],
+        detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
+    };
+    const refused = "1年 無法取得";
+    expect(tilesOf("S10", 10, f => { f.m6.yoy_prior_as_of = "2025-06-01"; }).tiles[0][1]).toBe(refused);  // SERIES comparison differs
+    expect(tilesOf("S8", 8, f => { f.m6.scope_label = "造船部門"; }).tiles[0][1]).toBe(refused);  // another segment
+    expect(tilesOf("S8", 8, f => { f.m6.yoy_evidence = "another statement"; }).tiles[0][1]).toBe(refused);  // another company statement
+    for (const container of [{ kind: "RECOGNITION_24M", amount: 1e99 }, "broken", null]) {
+      expect(tilesOf("S1", 1, f => { f.references = container; }).tiles[0][1], JSON.stringify(container)).toBe(refused);
+      expect(tilesOf("S7", 7, f => { f.references = container; }).detail, JSON.stringify(container)).toContain("訂單資料未通過驗證");
+    }
+    for (const row of urlTable.cases) {  // the same table the Python tests use
+      expect(tilesOf("S1", 1, f => { f.m12.source_url = row.url; }).tiles[0][1], row.url).toBe(row.accepted ? "1年 US$1.2B" : refused);
+      expect(tilesOf("S10", 10, f => { f.m6.source_url = row.url; f.m12.source_url = row.url; }).tiles[0][1], row.url)
+        .toBe(row.accepted ? "1年 US$2.6B" : refused);
+      expect(tilesOf("S7", 7, f => { f.references[0].source_url = row.url; }).detail.includes("24個月內認列 US$42.5B"), row.url).toBe(row.accepted);
+    }
+  });
+
+  it("paginates the Top20 text form instead of cutting entries away, with long valid inputs", () => {
+    const long = doc(REPORT);
+    for (const entry of long.top as any[]) {
+      entry.name = "N".repeat(160);
+      entry.role = "r".repeat(200);
+    }
+    const messages = buildBottleneckTop20Messages(parseBottleneckV3(long, REPORT + HOUR)!, "text") as { type: string; text: string }[];
+    expect(messages.length).toBeLessThanOrEqual(5);
+    const all = messages.map(message => message.text).join("\n");
+    for (let rank = 1; rank <= 20; rank += 1) expect(all, `rank ${rank}`).toMatch(new RegExp(`(^|\n)${rank}\. `));
+    expect(all.match(/未來訂單 1年 /g)).toHaveLength(20);
+    for (const message of messages) expect(message.text.length).toBeLessThanOrEqual(4900);
+  });
+
+  it("never prints an overflowing or malformed figure on the public card or detail", () => {
+    for (const [label, mutate] of [
+      ["order overflow", (parsed: any) => Object.assign(pick(parsed, "S1").outlook!.orders as object, { amount: Number.MAX_VALUE, yoy: 1 })],
+      ["huge target", (parsed: any) => Object.assign(pick(parsed, "S1").outlook!.consensus as object, { target_upside: 1e307 })],
+      ["partial order date", (parsed: any) => Object.assign(pick(parsed, "S1").outlook!.orders as object, { as_of: "2026-7-26" })],
+    ] as const) {
       const parsed = fixed();
       mutate(parsed);
       const card = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
-      const detail = JSON.stringify(buildBottleneckDetail(parsed, symbol, "text")) + JSON.stringify(buildBottleneckDetail(parsed, symbol, "flex"));
+      const detail = JSON.stringify(buildBottleneckDetail(parsed, "S1", "text")) + JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"));
       for (const body of [card, detail]) expect(body, label).not.toMatch(/Infinity|NaN|undefined/);
-      expect(detail, label).toContain(expected);
-      expect(detail, label).not.toContain("2026.5");
     }
   });
 
@@ -389,14 +503,4 @@ describe("bottleneck-explosion Top20 v3", () => {
     const supported = JSON.stringify(buildBottleneckDetail(fixed(), "S4", "text"));  // the supported kind still shows
     expect(supported).toContain("公司指引：2026 年新接訂單 12.00兆 KRW（原 8.40兆 KRW）");
   });
-
-  it("takes the price horizon only from a 12-month target with enough analysts and a valid return", () => {
-    for (const [change, basis] of [[{ target_analysts: 1 }, "目標價樣本不足（1位）"], [{ target_upside: null }, "無分析師目標價"],
-      [{ target_upside: -1.5 }, "目標價資料異常，不採用"]] as const) {
-      const parsed = fixed();
-      Object.assign(pick(parsed, "S1").outlook!.consensus as object, change);
-      expect(horizonForecast(parsed, pick(parsed, "S1")).price, JSON.stringify(change)).toMatchObject({ m6: null, y1: null, basis });
-    }
-  });
-
 });

@@ -1,5 +1,7 @@
 // Synthetic sealed bottleneck-explosion Top20 v3 document shared by the v3 rendering and LINE routing tests.
 
+import orderForecastContract from "../../tests/fixtures/v213-order-forecast-sealed.json";
+
 export const HOUR = 3600_000;
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -33,6 +35,20 @@ export const LINEAGE_MARKETS: Record<number, Record<string, unknown>> = {
     history_request_start: "2023-09-25", cagr_listed_start: null, cagr_listed_span_days: null, long_term_basis: "TWO_YEAR" },
 };
 
+/** Entries carrying a sealed order forecast from the Python contract fixture (scripts/order_forecast.py output, report day
+ * 2026-09-27), each on the entry its `issuer` names: S1 NVDA (12 months, coverage 0.3%), S2 explicit 6/12 months covering the
+ * revenue level, S3 an interpolated 6 months, S5 no orders, S7 CRWV (24 months only), S8 a segment book, S9 a period mismatch,
+ * S10 a company-wide book, S11 an expired 6-month window, S12 Sandisk's derived fourth quarter. */
+export function forecastCase(issuer: string): any {
+  const found = orderForecastContract.cases.find(row => row.issuer === issuer);
+  if (!found) throw new Error(`missing forecast case ${issuer}`);
+  return structuredClone(found.sealed);
+}
+function withForecast(index: number, outlook: any): any {
+  if (!orderForecastContract.cases.some(row => row.issuer === `S${index}`)) return outlook;
+  return { ...(outlook ?? { orders: null, consensus: null, scenarios: [], consensus_second: null }), order_forecast: forecastCase(`S${index}`) };
+}
+
 export function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
   const top = Array.from({ length: 20 }, (_, index) => ({
     rank: index + 1, symbol: index === 0 ? "SIVE.ST" : `S${index}`, name: `Synthetic ${index}`, layer: index % 2 ? "optics" : "memory",
@@ -55,7 +71,7 @@ export function doc(generatedMs: number, overrides: Record<string, unknown> = {}
       latest_url: "https://x.com/aleabitoreddit/status/1" },
     leopold: index === 1 ? { long_weight: 0.28, status: "HELD" } : null,
     role_zh: index === 0 ? "合成稀缺層角色" : undefined,
-    outlook: OUTLOOKS[index] ? structuredClone(OUTLOOKS[index]) : null,
+    outlook: withForecast(index, OUTLOOKS[index] ? structuredClone(OUTLOOKS[index]) : null),
   }));
   const industries = ["memory", "optics", "power_generation"].map((id, index) => ({
     rank: index + 1, id, name_zh: `產業${index}`, chain: "chips_memory", leopold_constraint: "HBM and CoWoS are near-term constraints.",
