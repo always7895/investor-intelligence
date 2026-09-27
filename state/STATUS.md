@@ -1,16 +1,16 @@
 # Current state / 目前狀態
 
-Updated 2026-09-27 (03:25 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
+Updated 2026-09-27 (09:25 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
 
 ## Identity
 
 - Branch `fix/options-provenance-audit`, draft PR #37 to `main`; PR CI reports COMPLETED_SKIPPED (not PASS). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 
-## Production (unchanged since 20:45; stale since 22:45)
+## Production (recovered 2026-09-27 08:12; code unchanged since 2026-09-26 20:45)
 
-- Worker `25377354-0ff5-4a28-a78b-82ec2457729f` (source `16cb1b3`); runtime LOCAL_SOURCE_CHECKOUT `ff6dc42`, tx `75cc59dc…`; hourly task `InvestorIntelligenceSealedFreshness` (:12); LINE Q&A relay live on ninfer `Qwen3.8-27B` through the watchdog task. Rollback order and secrets: `git show 3ac39a1:state/STATUS.md`.
-- Every hourly seal since 21:12 fails: Cloudflare's free KV write quota (1,000/day, code 10048) was spent by five reinstalls, several manual seals and a Chinese-name cache fill that rewrote all 52 identity shards each hour (~70 writes per seal instead of ~20). The pointer stays on `20260926T124509Z-ad93b335bf24`; Top20 answers the stale notice. The quota resets 00:00 UTC (08:00 Taipei); the 08:12 hourly run should recover. `dc7c6f7` names the limit in the log and in `docs/OPERATOR_RUNBOOK.md`.
-- Not deployed: `bdd72e5` and every commit below.
+- Worker `25377354-0ff5-4a28-a78b-82ec2457729f` (source `16cb1b3`); runtime LOCAL_SOURCE_CHECKOUT `ff6dc42`, tx `75cc59dc…`; hourly task `InvestorIntelligenceSealedFreshness` (:12); LINE Q&A relay on ninfer `Qwen3.8-27B`. Rollback order: `git show 3ac39a1:state/STATUS.md`.
+- Outage 22:45-08:12: every seal failed on Cloudflare's free KV write quota (code 10048; five reinstalls, several manual seals and a Chinese-name cache fill that rewrote 52 identity shards an hour). The untouched hourly task recovered after the 08:00 reset: 08:12 seal (15 uploads), 09:12 seal `20260927T011233Z-80d7c5b186c1` (23 uploads), post gate `-ExpectTop20Records 20` PASS; read-only replay: seven-field Top20 fresh (20), v3 20, NVDA options VALID.
+- The new validators refuse the live SIVE.ST and VOLV-B.ST option cycles (no high-strike delta), so the new Worker must only go live after data built by the new runtime is sealed.
 
 ## Commits after 20:45 (tests and gates PASS; not deployed; details in the commit messages)
 
@@ -53,7 +53,7 @@ NATIVE_ATTEMPT_COUNT=0; NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQ
 
 ## Control plane
 
-Claude Code is master and single tracked writer (operator 2026-09-25). Reviews moved to Astra (operator 2026-09-27): Herdr `astra-review` (w9:p9, Pi `openai-codex/gpt-6-astra`, thinking high) gives the read-only acceptance verdict on every batch before commit, arbitrates disagreeing reviews and gives go/no-go on each rollout plan (workspace `AGENTS.md`). `qwen-local` (w9:p5, ninfer Qwen3.8-27B) proposes patches and analyses code; `gemini-review` (w9:p7, Gemini 3.8 flash) researches. ChatGPT Pro through `chatgpt-web` is an optional second opinion on large batches. Each Herdr task starts with `/new` (send it with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes and the Skyrim ChatGPT profile belong to another project.
+Claude Code is master writer (operator 2026-09-25): the single tracked writer that integrates, tests and commits. Astra (operator 2026-09-27; Herdr `astra-review`, w9:p9, Pi `openai-codex/gpt-6-astra`) writes bounded task contracts for complex lanes, prioritises lanes, gives the acceptance verdict on every batch before commit, arbitrates reviews and gives go/no-go on rollouts. `qwen-local` (w9:p5) implements contracts and proposes patches; `gemini-review` (w9:p7) researches; ChatGPT Pro via `chatgpt-web` is optional. Each Herdr task starts with `/new` (send with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes and the Skyrim ChatGPT profile belong to another project.
 
 ## Workspace fixes (outside the repository, logged)
 
@@ -65,7 +65,7 @@ Claude Code is master and single tracked writer (operator 2026-09-25). Reviews m
 
 ## Handoff (2026-09-27 03:25)
 
-- Production is untouched by this session. The hourly seal task was left running: after the KV quota reset at 08:00 its 08:12 run should restore a fresh pointer on its own (checked read-only afterwards; see below if recorded).
+- Production is untouched by this session and recovered on its own (Production above). Astra is writing the contract for rollout driver v3 (`%TEMP%\ii-live\astra-contract-driver-v3.md`); Qwen implements it, Astra accepts it, then lane 14 needs the operator's explicit rollout authorization.
 - Operator decisions pending: lane 14 (above); the plaintext Alpha Vantage note on the desktop.
 - Tooling left in place: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (git worktree at 16cb1b3, `cloud\node_modules` is a junction to the source checkout's); `chatgpt-web` lane `investor` with fixed selectors (branch `local/zh-tw-lanes` in `D:\chatgpt-web-mcp`, commits c46501a and d738974).
 - Scratch: `%TEMP%\ii-live`.
