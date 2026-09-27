@@ -72,7 +72,7 @@ while ($MaximumIterations -le 0 -or $iteration -lt $MaximumIterations) {
         Write-Host "V213_FREE_RELAY_HEARTBEAT = PASS; generation=$RouteGeneration; expires_at=$($record.expires_at)" -ForegroundColor Green
     }
     catch {
-        Write-Warning 'FREE_RELAY heartbeat failed; lease was not extended and will expire closed.'
+        Write-Warning ('FREE_RELAY heartbeat failed; lease was not extended and will expire closed. ' + [string]$_.Exception.Message)
     }
     if ($MaximumIterations -gt 0 -and $iteration -ge $MaximumIterations) { break }
     Start-Sleep -Seconds $interval

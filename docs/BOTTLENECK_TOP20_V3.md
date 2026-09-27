@@ -29,7 +29,7 @@ Leads weight conviction only; every figure users see comes from filings or marke
   size 10. EXPLOSION (< US$10B, often before volume revenue): 25 / 15 / 30 / 20 / 10.
 - Capture: latest-quarter revenue YoY, acceleration, gross-margin change, remaining performance obligations,
   normalized over the evidence available (fiscal quarters; a fourth quarter is annual minus nine-month YTD).
-- Penalties: share count +5% / +15% a year, repeated financing concerns in Serenity's posts.
+- Penalties: share count +5% / +15% a year (SEC shares outstanding; without it, as for dual-class filers and Yahoo-sourced listings, the quarter's diluted weighted-average shares against the same quarter a year earlier, labelled 稀釋加權平均股數; a change outside -50%..+500% is treated as a data error), repeated financing concerns in Serenity's posts.
 - Filters: one long-term standard — positive 2-year CAGR (an eligibility gate, not a score component). A security whose
   own regular-way trading is younger than two years because of a verified corporate event (spin-off, trading resumption,
   IPO, new equity after a reorganisation; `config/listing-lineage-v1.json`, every field backed by a primary source,

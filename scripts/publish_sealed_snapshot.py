@@ -46,6 +46,7 @@ import listing_lineage  # noqa: E402
 import top20_carry_forward  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
+SHARES_BASES = ("OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE")  # scripts/bottleneck_top20_v3.py shares_basis
 
 EVALUATED_AT = "2026-09-15T12:00:00Z"
 RETRIEVED_AT = "2026-09-15T11:00:00Z"
@@ -540,6 +541,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "fundamentals": None if not fund else {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
                                   "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    # What the share-count change measures; a figure without a known basis is not sealed.
+                    "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,
+                    **({"shares_yoy": None} if fund.get("shares_basis") not in SHARES_BASES and "shares_basis" in fund else {}),
                     **({"cross_check": check} if (check := _sealed_revenue_check(fund.get("cross_check"))) else {})},
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),

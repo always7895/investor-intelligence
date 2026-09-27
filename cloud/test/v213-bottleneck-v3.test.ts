@@ -177,6 +177,21 @@ describe("bottleneck-explosion Top20 v3", () => {
     }
   });
 
+  it("labels a share-count change measured on the diluted weighted average and refuses an unknown basis", () => {
+    const raw = doc(Date.now() - HOUR);
+    Object.assign((raw.top as any[])[3].fundamentals, { shares_yoy: 1.003, shares_basis: "DILUTED_WEIGHTED_AVERAGE" });
+    const parsed = parseBottleneckV3(raw)!;
+    for (const style of ["text", "flex"] as const) {
+      const detail = JSON.stringify(buildBottleneckDetail(parsed, "S3", style));
+      expect(detail, style).toContain("+100.3%");
+      expect(detail, style).toContain("稀釋加權平均股數");
+    }
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).not.toContain("稀釋加權平均股數");  // shares outstanding: no label
+    const invalid = doc(Date.now() - HOUR);
+    (invalid.top as any[])[3].fundamentals.shares_basis = "GUESSED";
+    expect(parseBottleneckV3(invalid)).toBeNull();
+  });
+
   it("renders the sealer's own output (wire contract fixture shared with the Python sealer tests)", () => {
     // tests/fixtures/v213-lineage-sealed-markets.json: each `sealed` object is what scripts/publish_sealed_snapshot.py emits
     // for its `input` (asserted in tests/test_bottleneck_top20_v3.py); here it goes through the Worker parser to the public forms.

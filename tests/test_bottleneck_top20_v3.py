@@ -407,13 +407,14 @@ class SealedFormTests(unittest.TestCase):
         self.assertIsNone(publisher._sealed_revenue_check({**report, "period": "2026-08"}))
         self.assertEqual(backlog["guidance"], {"kind": "ANNUAL_NEW_ORDERS", "year": 2026.0, "amount": 12e12, "previous": None})
 
-    def _seal_one(self, market):
-        """Seals twelve entries whose first is SNDK with the given market object; returns that sealed market object."""
+    def _seal_one(self, market, fundamentals=None, part="market"):
+        """Seals twelve entries whose first is SNDK with the given market object; returns that sealed market object
+        (or another part of the sealed entry)."""
         now = datetime.now(timezone.utc).replace(microsecond=0)
         entry = {"rank": 1, "symbol": "SNDK", "name": "Sandisk", "layer": "memory", "archetype": "COMPOUNDER", "score": 70.0,
                  "role": "NAND", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
                  "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
-                 "fundamentals": None, "market": market, "market_cap_usd": 5e10, "serenity": None, "leopold": None}
+                 "fundamentals": fundamentals, "market": market, "market_cap_usd": 5e10, "serenity": None, "leopold": None}
         doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "leads": {},
                "top": [{**entry, "rank": index + 1, "symbol": "SNDK" if index == 0 else f"S{index}"} for index in range(12)],
                "industries": [{"rank": 1, "id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "leopold_constraint": "x",
@@ -425,7 +426,7 @@ class SealedFormTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "v3.json"
                 path.write_text(json.dumps(doc), encoding="utf-8")
-                return json.loads(publisher.lazy_bottleneck_v3_body(path, now)[publisher.BOTTLENECK_V3_KEY])["top"][0]["market"]
+                return json.loads(publisher.lazy_bottleneck_v3_body(path, now)[publisher.BOTTLENECK_V3_KEY])["top"][0][part]
         finally:
             publisher.build_zh_names.names_for = saved
 
@@ -476,6 +477,19 @@ class SealedFormTests(unittest.TestCase):
                                        "history_request_start": "2023-09-25", "cagr_listed": None, "cagr_listed_start": None,
                                        "cagr_listed_span_days": None, "long_term_basis": "TWO_YEAR"})
         self.assertEqual((verified_two["cagr_2y"], verified_two["long_term_basis"]), (0.8, "TWO_YEAR"))
+
+    def test_the_share_count_basis_is_sealed_only_when_known(self):
+        market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/POET", "asof": "2026-09-25", "ret_6m": 0.1,
+                  "ret_1y": 0.2, "cagr_2y": 0.3, "history_start": "2023-09-25", "currency": "USD"}
+        fund = {"source": "Yahoo Finance quarterly income statement (unofficial)", "source_url": "https://finance.yahoo.com/quote/POET/financials",
+                "quarter_end": "2026-06-30", "revenue_yoy": 0.5, "revenue_yoy_prev": None, "gross_margin": None,
+                "gross_margin_change": None, "rpo_yoy": None, "shares_yoy": 1.003}
+        diluted = self._seal_one(market, {**fund, "shares_basis": "DILUTED_WEIGHTED_AVERAGE"}, "fundamentals")
+        self.assertEqual((diluted["shares_yoy"], diluted["shares_basis"]), (1.003, "DILUTED_WEIGHTED_AVERAGE"))
+        unknown = self._seal_one(market, {**fund, "shares_basis": "GUESSED"}, "fundamentals")
+        self.assertEqual((unknown["shares_yoy"], unknown["shares_basis"]), (None, None))  # an unknown basis is not published
+        legacy = self._seal_one(market, fund, "fundamentals")  # an older producer: shares outstanding only, basis unstated
+        self.assertEqual((legacy["shares_yoy"], legacy["shares_basis"]), (1.003, None))
 
     def test_the_sealed_long_term_fields_match_the_worker_contract_fixture(self):
         """tests/fixtures/v213-lineage-sealed-markets.json is the wire contract with the Worker: each case's input market
@@ -708,6 +722,170 @@ class YahooBoundaryTests(unittest.TestCase):
         calls, unverified = self.call_with_frame(frame, "SNDK", None)
         self.assertEqual(unverified["market"]["long_term_basis"], "UNAVAILABLE")
         self.assertTrue(unverified["market"]["history_truncated"])
+
+
+class SharesDilutionTests(unittest.TestCase):
+    """Batch 28: the dilution penalty keeps a figure when the dei share-count tag is absent (SEC dual-class filers)
+    or the Yahoo statement carries no share count: the diluted weighted average, quarterly rows only."""
+
+    DILUTED = "WeightedAverageNumberOfDilutedSharesOutstanding"
+
+    def _facts(self, dei=True, diluted=True, year_ago=True):
+        facts = json.loads(json.dumps(FACTS))
+        if not dei:
+            facts["facts"].pop("dei", None)
+        if not diluted:
+            return facts
+        rows = [  # quarterly rows on the FACTS fiscal calendar (latest 2026-06-27), plus the rows that must be ignored
+            {"start": "2024-06-30", "end": "2024-09-28", "val": 70e6, "filed": "2024-11-01"},
+            {"start": "2024-09-29", "end": "2024-12-28", "val": 72e6, "filed": "2025-02-01"},
+            {"start": "2024-12-29", "end": "2025-03-29", "val": 74e6, "filed": "2025-05-01"},
+            {"start": "2025-06-29", "end": "2025-09-27", "val": 82e6, "filed": "2025-11-01"},
+            {"start": "2025-09-28", "end": "2025-12-27", "val": 84e6, "filed": "2026-02-01"},
+            {"start": "2025-12-28", "end": "2026-03-28", "val": 90e6, "filed": "2026-05-01"},
+            {"start": "2026-03-29", "end": "2026-06-27", "val": 162e6, "filed": "2026-08-15"},
+            {"start": "2025-12-28", "end": "2026-06-27", "val": 130e6, "filed": "2026-08-15"},  # six-month YTD, same end: ignored
+            {"start": "2025-06-29", "end": "2026-06-27", "val": 420e6, "filed": "2026-08-15"}]  # annual: ignored
+        if year_ago:
+            rows.insert(3, {"start": "2025-03-30", "end": "2025-06-28", "val": 80e6, "filed": "2025-08-15"})
+        facts["facts"]["us-gaap"][self.DILUTED] = {"units": {"shares": rows}}
+        return facts
+
+    def test_sec_falls_back_to_the_diluted_weighted_average_quarters(self):
+        fundamentals = engine.sec_fundamentals("CRWV", 1, self._facts(dei=False))
+        self.assertAlmostEqual(fundamentals["shares_yoy"], 162e6 / 80e6 - 1)  # the YTD and annual rows are ignored
+        self.assertEqual(fundamentals["shares_basis"], "DILUTED_WEIGHTED_AVERAGE")
+
+    def test_sec_takes_the_latest_filing_of_a_quarter_reported_twice(self):
+        # Each 10-Q repeats the year-ago quarter as a comparative (real CRWV companyfacts): the latest filing wins, no crash.
+        facts = self._facts(dei=False)
+        facts["facts"]["us-gaap"][self.DILUTED]["units"]["shares"].append(
+            {"start": "2025-03-30", "end": "2025-06-28", "val": 81e6, "filed": "2026-08-15"})
+        fundamentals = engine.sec_fundamentals("CRWV", 1, facts)
+        self.assertAlmostEqual(fundamentals["shares_yoy"], 162e6 / 81e6 - 1)
+
+    def test_sec_dei_share_count_wins_over_the_diluted_fallback(self):
+        fundamentals = engine.sec_fundamentals("CRWV", 1, self._facts())
+        self.assertAlmostEqual(fundamentals["shares_yoy"], 0.2)  # dei 100 -> 120, not the diluted 162e6/80e6
+        self.assertEqual(fundamentals["shares_basis"], "OUTSTANDING")
+
+    def test_sec_without_a_year_ago_quarter_has_no_share_figure(self):
+        fundamentals = engine.sec_fundamentals("CRWV", 1, self._facts(dei=False, year_ago=False))
+        self.assertIsNone(fundamentals["shares_yoy"])
+        self.assertIsNone(fundamentals["shares_basis"])
+
+    def _yahoo(self, statement, symbol="POET"):
+        """engine.yahoo_data with a fake yfinance whose Ticker carries the given quarterly_income_stmt; sys.modules
+        is restored in finally (the YahooBoundaryTests pattern)."""
+        import types
+        frame = self._frame(daily("2024-01-02", "2026-09-25", lambda day: 12.0))
+
+        class Ticker:
+            def __init__(self, symbol):
+                self.symbol = symbol
+                self.quarterly_income_stmt = statement
+            def history(self, **kwargs):
+                return frame
+        module = types.ModuleType("yfinance")
+        module.Ticker = Ticker
+        saved = sys.modules.get("yfinance")
+        sys.modules["yfinance"] = module
+        try:
+            return engine.yahoo_data(symbol)
+        finally:
+            if saved is None:
+                sys.modules.pop("yfinance", None)
+            else:
+                sys.modules["yfinance"] = saved
+
+    def _frame(self, bars):
+        import pandas as pd
+        return pd.DataFrame({"Close": [close for _, close in bars]}, index=pd.DatetimeIndex([day for day, _ in bars]))
+
+    def _stmt(self, shares):
+        import pandas as pd  # like yfinance: metrics as the index, quarter-ends as the columns
+        periods = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"]
+        data = {}
+        for index, period in enumerate(periods):
+            row = {"Total Revenue": 30e6 * (index + 1)}
+            if shares is not None:  # a missing period stays NaN and is dropped, like the vendor's row
+                row["Diluted Average Shares"] = shares.get(period, float("nan"))
+            data[pd.Timestamp(period)] = row
+        return pd.DataFrame(data)
+
+    def test_yahoo_shares_come_from_the_diluted_average_shares_row(self):
+        # POET: 81.05M on 2025-06-30 -> 162.37M on 2026-06-30, about +1.003
+        fund = self._yahoo(self._stmt({"2025-06-30": 81_053_634, "2026-06-30": 162_367_291}))["fundamentals"]
+        self.assertAlmostEqual(fund["shares_yoy"], 162_367_291 / 81_053_634 - 1)
+        self.assertEqual(fund["shares_basis"], "DILUTED_WEIGHTED_AVERAGE")
+
+    def test_yahoo_without_the_shares_row_stays_none(self):
+        fund = self._yahoo(self._stmt(None))["fundamentals"]
+        self.assertIsNone(fund["shares_yoy"])
+        self.assertIsNone(fund["shares_basis"])
+
+    def test_yahoo_implausible_share_growth_is_a_data_error(self):
+        fund = self._yahoo(self._stmt({"2025-06-30": 8_000_000, "2026-06-30": 80_000_000}))["fundamentals"]
+        self.assertIsNone(fund["shares_yoy"])  # +900% is outside (-0.5, 5.0)
+        self.assertIsNone(fund["shares_basis"])
+
+    def test_shares_yoy_needs_strictly_positive_finite_counts(self):
+        self.assertIsNone(engine._shares_yoy(-120, -100))  # negative counts are not a -20% figure
+        self.assertIsNone(engine._shares_yoy(0, 100))
+        self.assertIsNone(engine._shares_yoy(100, 0))
+        self.assertIsNone(engine._shares_yoy(100, float("nan")))
+        self.assertAlmostEqual(engine._shares_yoy(120, 100), 0.2)
+
+    def test_sec_fallback_ignores_older_quarters_when_the_quarter_end_row_is_missing(self):
+        # Astra batch 28: with no diluted row ending on the financial quarter's end, an older quarter's growth
+        # (here March) must not be shown and penalised as the current one.
+        facts = self._facts(dei=False)
+        rows = facts["facts"]["us-gaap"][self.DILUTED]["units"]["shares"]
+        rows[:] = [row for row in rows if row["end"] != "2026-06-27"]
+        fundamentals = engine.sec_fundamentals("CRWV", 1, facts)
+        self.assertIsNone(fundamentals["shares_yoy"])
+        self.assertIsNone(fundamentals["shares_basis"])
+
+    def test_sec_quarter_filer_with_rows_only_to_the_third_quarter_has_no_share_figure(self):
+        # A fourth fiscal quarter is often filed only as the annual figure: the quarter-length rows stop at Q3, so
+        # the financial quarter (Q4, end 2026-06-27) has no diluted row of its own -> None, never the Q3 figure.
+        facts = self._facts(dei=False)
+        rows = facts["facts"]["us-gaap"][self.DILUTED]["units"]["shares"]
+        rows[:] = [row for row in rows if row["end"] < "2026-03-29"]  # the 2026-06-27 YTD/annual rows remain: ignored
+        fundamentals = engine.sec_fundamentals("CRWV", 1, facts)
+        self.assertIsNone(fundamentals["shares_yoy"])
+        self.assertIsNone(fundamentals["shares_basis"])
+
+    def test_sec_negative_share_counts_are_a_data_error(self):
+        facts = self._facts(dei=False)
+        for row in facts["facts"]["us-gaap"][self.DILUTED]["units"]["shares"]:
+            row["val"] = -row["val"]
+        fundamentals = engine.sec_fundamentals("CRWV", 1, facts)
+        self.assertIsNone(fundamentals["shares_yoy"])
+        self.assertIsNone(fundamentals["shares_basis"])
+
+    def test_sec_dei_negative_share_counts_are_a_data_error(self):
+        facts = self._facts(diluted=False)
+        for row in facts["facts"]["dei"]["EntityCommonStockSharesOutstanding"]["units"]["shares"]:
+            row["val"] = -row["val"]
+        fundamentals = engine.sec_fundamentals("CRWV", 1, facts)
+        self.assertIsNone(fundamentals["shares_yoy"])
+        self.assertIsNone(fundamentals["shares_basis"])
+
+    def test_yahoo_shares_only_in_older_quarters_are_not_substituted(self):
+        # Shares only for March 2025/2026 while the revenue runs to June 2026: the June quarter's column has no
+        # share count -> None, never the March figure.
+        fund = self._yahoo(self._stmt({"2025-03-31": 80_000_000, "2026-03-31": 160_000_000}))["fundamentals"]
+        self.assertIsNone(fund["shares_yoy"])
+        self.assertIsNone(fund["shares_basis"])
+
+    def test_yahoo_zero_or_negative_share_counts_are_data_errors(self):
+        fund = self._yahoo(self._stmt({"2025-06-30": 0, "2026-06-30": 162_367_291}))["fundamentals"]
+        self.assertIsNone(fund["shares_yoy"])
+        self.assertIsNone(fund["shares_basis"])
+        fund = self._yahoo(self._stmt({"2025-06-30": 81_053_634, "2026-06-30": -162_367_291}))["fundamentals"]
+        self.assertIsNone(fund["shares_yoy"])
+        self.assertIsNone(fund["shares_basis"])
 
 
 if __name__ == "__main__":

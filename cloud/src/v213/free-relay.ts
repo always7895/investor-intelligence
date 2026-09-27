@@ -45,6 +45,30 @@ const EXACT_KEYS = [
 ].sort();
 const ROUTE_KEY = "route:current";
 const SEEN_KEY = "route:seen-generations";
+/** The signature purpose of a route refresh (scripts/v213_free_relay.ps1 Publish-V213FreeRelayRoute signs with it). */
+export const FREE_RELAY_SIGNATURE_PURPOSE = "ii-v213-free-relay-route-v1";
+/** The route refresh's replay guard: the newest signed timestamp and the nonces claimed at that second. Only a refresh whose
+ * route record passes parseFreeRelayRoute is claimed, so the stored mark is at most about 120 s ahead of the Worker (a lease
+ * may end at most 300 s ahead and is 180 s long). A signer stepped back after running ahead is refused until it passes the
+ * mark again; see docs/OPERATOR_RUNBOOK.md for the other skew cases, which fail closed until the clock is corrected.
+ * If the Durable Object's storage were lost, a captured refresh still inside its 300 s signature window could be admitted once
+ * more; it can only re-publish the signed route (same tunnel, expiry <= 300 s ahead). */
+const CLAIM_KEY = "route:admin-claims";
+const CLAIM_NONCES_PER_SECOND = 16;
+
+export interface FreeRelayClaimState { timestamp: number; nonces: string[] }
+
+/** Admits a signed route refresh once: its timestamp may not be older than the newest admitted one, and a nonce is never
+ * admitted twice within the same second. Older requests (every captured and replayed one) are refused. */
+export function applyFreeRelayClaim(current: FreeRelayClaimState | null, timestamp: number, nonceSha256: string): FreeRelayClaimState {
+  if (!Number.isInteger(timestamp) || timestamp <= 0 || !/^[0-9a-f]{64}$/.test(nonceSha256)) throw new Error("FREE_RELAY_CLAIM_INVALID");
+  if (current && (timestamp < current.timestamp || (timestamp === current.timestamp && current.nonces.includes(nonceSha256)))) {
+    throw new Error("V21_SYNC_REPLAY");
+  }
+  const nonces = current && timestamp === current.timestamp ? [...current.nonces, nonceSha256] : [nonceSha256];
+  if (nonces.length > CLAIM_NONCES_PER_SECOND) throw new Error("V21_SYNC_REPLAY");
+  return { timestamp, nonces };
+}
 
 function enabled(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
@@ -223,6 +247,19 @@ export class V213FreeRelayRoute {
       }
       return new Response(JSON.stringify(route), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     }
+    if (request.method === "POST" && url.pathname === "/claim") {
+      const claim = await request.json<{ timestamp: number; nonce_sha256: string }>().catch(() => null);
+      try {
+        await this.state.storage.transaction(async (txn) => {
+          const current = (await txn.get<FreeRelayClaimState>(CLAIM_KEY)) ?? null;
+          await txn.put(CLAIM_KEY, applyFreeRelayClaim(current, Number(claim?.timestamp), String(claim?.nonce_sha256 ?? "")));
+        });
+        return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "FREE_RELAY_CLAIM_FAILED";
+        return new Response(JSON.stringify({ ok: false, code }), { status: 409, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+      }
+    }
     if (request.method !== "POST" || url.pathname !== "/update") return new Response("Not found", { status: 404 });
     const candidate = await request.json<FreeRelayRouteRecord>();
     try {
@@ -247,6 +284,16 @@ export class V213FreeRelayRoute {
 function routeStub(env: FreeRelayEnv): DurableObjectStub | null {
   if (!freeRelayEnabled(env) || !env.V213_FREE_RELAY_ROUTE) return null;
   return env.V213_FREE_RELAY_ROUTE.get(env.V213_FREE_RELAY_ROUTE.idFromName("current-local-route"));
+}
+
+/** Claims a signed route refresh's nonce in the relay Durable Object (no KV write), before any health check. */
+export async function claimFreeRelayRefresh(env: FreeRelayEnv, timestamp: number, nonce: string): Promise<void> {
+  const stub = routeStub(env);
+  if (!stub) throw new Error("FREE_RELAY_NOT_CONFIGURED");
+  const digest = toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(nonce)));
+  const response = await stub.fetch("https://free-relay.internal/claim", { method: "POST", body: JSON.stringify({ timestamp, nonce_sha256: digest }) });
+  const result = await response.json<Record<string, unknown>>().catch(() => ({ ok: false, code: "FREE_RELAY_CLAIM_RESPONSE_INVALID" }));
+  if (!response.ok || result.ok !== true) throw new Error(String(result.code ?? "FREE_RELAY_CLAIM_REJECTED"));
 }
 
 export async function updateFreeRelayRoute(body: string, env: FreeRelayEnv): Promise<Record<string, unknown>> {

@@ -20,6 +20,8 @@ export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
 interface Fundamentals {
   source: string; source_url: string; quarter_end: string; revenue_yoy: number | null; revenue_yoy_prev: number | null;
   gross_margin: number | null; gross_margin_change: number | null; rpo_yoy: number | null; shares_yoy: number | null;
+  /** What shares_yoy measures: shares outstanding (SEC dei) or the diluted weighted average of the quarter (a fallback). */
+  shares_basis?: "OUTSTANDING" | "DILUTED_WEIGHTED_AVERAGE" | null;
   /** Official revenue beside the Yahoo quarter, never replacing it: the exchange's monthly revenue for Taiwan listings
    * (TWSE/TPEx open data, period YYYY-MM) or the issuer's own interim report for Stockholm (Cision, period YYYY-Qn). */
   cross_check?: RevenueCheck | null;
@@ -153,6 +155,7 @@ function validEntry(raw: any): raw is BottleneckEntry {
     && raw.parts && ["layer_heat", "capture", "lead", "confirmation", "size", "penalty"].every(key => num(raw.parts[key]))
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
       && str(raw.fundamentals.quarter_end, 12) && ["revenue_yoy", "revenue_yoy_prev", "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy"].every(key => optNum(raw.fundamentals[key]))
+      && [undefined, null, "OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE"].includes(raw.fundamentals.shares_basis)
       && validRevenueCheck(raw.fundamentals.cross_check)))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
@@ -637,6 +640,8 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
 }
 
 const gmText = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${(value * 100).toFixed(1)}%`;
+/** The basis of a share-count change when it is not shares outstanding. */
+const sharesBasis = (fund: Fundamentals) => fund.shares_yoy !== null && fund.shares_basis === "DILUTED_WEIGHTED_AVERAGE" ? "稀釋加權平均股數" : undefined;
 const ppShort = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}pp`;
 const row = (...tiles: unknown[]) => uiBox(tiles, { layout: "horizontal", spacing: "sm" });
 
@@ -657,7 +662,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
         footnote(`角色來源 ${entry.role_source.date}：${entry.role_source.url}`.slice(0, 180))], "key"),
       section("財報數據", fund ? [
         row(statTile("最新季營收年增", pct(fund.revenue_yoy, 0)), statTile("前一季年增", pct(fund.revenue_yoy_prev, 0)), statTile("加速度", accel)),
-        row(statTile("毛利率", gmText(fund.gross_margin)), statTile("毛利率年變化", ppShort(fund.gross_margin_change)), statTile("股數年增", pct(fund.shares_yoy, 1))),
+        row(statTile("毛利率", gmText(fund.gross_margin)), statTile("毛利率年變化", ppShort(fund.gross_margin_change)), statTile("股數年增", pct(fund.shares_yoy, 1), undefined, sharesBasis(fund))),
         row(statTile("RPO 年增", pct(fund.rpo_yoy, 0)), statTile("季末", fund.quarter_end)),
         footnote(`${sourceZh(fund.source)}：${fund.source_url}`.slice(0, 220)),
         ...(fund.cross_check ? [footnote(`${revenueCheck(fund.cross_check)}：${fund.cross_check.source_url}`.slice(0, 220))] : []),
@@ -686,7 +691,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
-    fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
+    fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
     ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(long.event ? [`上市沿革：${long.event}\n沿革來源：${long.sources.join("；")}`] : []),

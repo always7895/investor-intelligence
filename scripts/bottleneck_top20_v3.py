@@ -63,6 +63,7 @@ GROSS_TAGS = [("us-gaap", "GrossProfit"), ("ifrs-full", "GrossProfit")]
 COST_TAGS = [("us-gaap", "CostOfRevenue"), ("us-gaap", "CostOfGoodsAndServicesSold"), ("ifrs-full", "CostOfSales")]
 RPO_TAGS = [("us-gaap", "RevenueRemainingPerformanceObligation")]
 SHARES_TAGS = [("dei", "EntityCommonStockSharesOutstanding")]
+DILUTED_SHARES_TAG = ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding")  # fallback, quarterly rows only
 SERENITY_LEAD_LIMIT = 80
 TOP_N = 20
 MAX_PER_LAYER = 5
@@ -175,6 +176,16 @@ def _instant_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
     return None, []
 
 
+def _shares_yoy(current: Any, prior: Any) -> float | None:
+    """Year-on-year share count (the dilution-penalty input): None when a value is missing, not strictly positive,
+    non-finite, or the change is outside (-0.5, 5.0) (a data error)."""
+    current, prior = _finite(current), _finite(prior)
+    if current is None or prior is None or current <= 0 or prior <= 0:
+        return None
+    yoy = current / prior - 1
+    return yoy if math.isfinite(yoy) and -0.5 < yoy < 5.0 else None
+
+
 def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, Any] | None:
     tag, revenue = _quarter_series(facts, REVENUE_TAGS)
     if not revenue:
@@ -213,12 +224,39 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
         last = shares[-1]
         earlier = [row for row in shares if 300 <= (date.fromisoformat(last["end"]) - date.fromisoformat(row["end"])).days <= 430]
         if earlier and earlier[-1]["val"]:
-            shares_yoy = last["val"] / earlier[-1]["val"] - 1
+            shares_yoy = _shares_yoy(last["val"], earlier[-1]["val"])
+    shares_basis = "OUTSTANDING" if shares_yoy is not None else None
+    if shares_basis is None:
+        # No dei share count (dual-class filers such as CRWV report theirs with dimensions): the diluted weighted
+        # average, quarterly rows only (year-to-date and annual rows are not a quarter)
+        diluted: dict[str, Any] = {}
+        taxonomy, diluted_tag = DILUTED_SHARES_TAG
+        for unit_rows in facts.get("facts", {}).get(taxonomy, {}).get(diluted_tag, {}).get("units", {}).values():
+            for row in unit_rows:
+                try:
+                    days = (date.fromisoformat(row["end"]) - date.fromisoformat(row.get("start"))).days
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if row.get("val") is None or not 80 <= days <= 100:
+                    continue
+                earlier = diluted.get(row["end"])  # the same quarter in several filings: the latest filing wins
+                if earlier is None or str(row.get("filed", "")) >= str(earlier.get("filed", "")):
+                    diluted[row["end"]] = row
+        # The figure must belong to the financial quarter it is published with: the current row must end on the
+        # revenue quarter's end exactly and the comparison row must end 365 +/- 20 days before it. No fallback to
+        # an older quarter (a fourth quarter filed only as annual and nine-month rows has no quarter-length row).
+        if latest in diluted:
+            target = date.fromisoformat(latest) - timedelta(days=365)
+            candidates = [end for end in diluted if end != latest and abs((date.fromisoformat(end) - target).days) <= 20]
+            if candidates:
+                prior = diluted[min(candidates, key=lambda end: abs((date.fromisoformat(end) - target).days))]
+                shares_yoy = _shares_yoy(diluted[latest]["val"], prior["val"])
+                shares_basis = "DILUTED_WEIGHTED_AVERAGE" if shares_yoy is not None else None
     return {"source": "SEC EDGAR XBRL companyfacts", "source_url": COMPANYFACTS.format(cik=cik), "revenue_tag": tag,
             "quarter": current.get("fp"), "quarter_end": current.get("end"), "filed": current.get("filed"), "form": current.get("form"),
             "revenue": current["val"], "revenue_unit": current["unit"], "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
             "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
-            "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy,
+            "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
             "rpo": rpo[-1]["val"] if rpo else None, "rpo_unit": rpo[-1]["unit"] if rpo else None,
             "rpo_end": rpo[-1]["end"] if rpo else None}
 
@@ -392,12 +430,25 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None) -> dict[str, 
                     gm = float(gross[latest_end] / revenue[latest_end])
                     if ago and ago[-1] in gross.index and revenue[ago[-1]]:
                         gm_prior = float(gross[ago[-1]] / revenue[ago[-1]])
+                shares_yoy = shares_basis = None
+                # The figure must belong to the financial quarter it is published with: the current value must sit
+                # in the revenue quarter's own column (exact timestamp) and the comparison column 365 +/- 20 days
+                # before it. No substitution from an older column.
+                if "Diluted Average Shares" in statement.index:
+                    diluted = statement.loc["Diluted Average Shares"].dropna().sort_index()
+                    if latest_end in diluted.index:
+                        target = latest_end - timedelta(days=365)
+                        candidates = [end for end in diluted.index if end != latest_end and abs((end - target).days) <= 20]
+                        if candidates:
+                            prior = min(candidates, key=lambda end: abs((end - target).days))
+                            shares_yoy = _shares_yoy(diluted[latest_end], diluted[prior])
+                            shares_basis = "DILUTED_WEIGHTED_AVERAGE" if shares_yoy is not None else None
                 out["fundamentals"] = {"source": "Yahoo Finance quarterly income statement (unofficial)",
                                        "source_url": f"https://finance.yahoo.com/quote/{symbol}/financials",
                                        "quarter_end": str(latest_end.date()), "revenue": float(revenue[latest_end]),
                                        "revenue_unit": out["market"].get("currency"), "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
                                        "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
-                                       "rpo_yoy": None, "shares_yoy": None}
+                                       "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis}
     except Exception:
         pass
     return out

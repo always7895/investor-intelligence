@@ -4,7 +4,7 @@ import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "..
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
 import { v213FieldLocale } from "./top20-report";
 import { v213PublicLineAnswer } from "./rich-menu";
-import { authenticateV21AdminRequest } from "../v21/admin";
+import { authenticateV21AdminRequest, verifyV21AdminSignature } from "../v21/admin";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
@@ -15,6 +15,9 @@ import {
   currentFreeRelayRoute,
   freeRelayEnabled,
   freeRelayRuntimeOverrides,
+  claimFreeRelayRefresh,
+  parseFreeRelayRoute,
+  FREE_RELAY_SIGNATURE_PURPOSE,
   updateFreeRelayRoute,
   type FreeRelayEnv,
 } from "./free-relay";
@@ -205,10 +208,39 @@ export default {
       return handleFreeRelaySmoke(request, env);
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-route") {
-      const authenticated = await authenticatedBody(request, env);
-      if (authenticated instanceof Response) return authenticated;
+      // The heartbeat refreshes this every minute. A purpose-bound signature (valid here only) claims its nonce in the relay
+      // Durable Object, not in KV (a KV nonce per heartbeat is ~1,400 writes a day, past the free plan's 1,000; 2026-09-26
+      // outage). A generic signature (runtimes installed before this release) keeps the KV nonce, so it can never be
+      // replayed at another admin endpoint either.
+      // The route record is checked (pure, no network) before the claim, so a refresh whose lease is refused (a PC clock far
+      // ahead) never advances the replay high-water mark and cannot delay recovery after the clock is corrected.
+      let body: string;
+      let signed;
       try {
-        return jsonResponse({ status: "accepted", ...(await updateFreeRelayRoute(authenticated, env)) });
+        signed = await verifyV21AdminSignature(request.clone() as unknown as Request, env, FREE_RELAY_SIGNATURE_PURPOSE);
+      } catch (error) {
+        if (errorCode(error, "") !== "V21_SYNC_SIGNATURE_INVALID") return jsonResponse({ ok: false, code: errorCode(error, "V213_AUTH_FAILED") }, 401);
+      }
+      if (signed) {
+        try {
+          parseFreeRelayRoute(signed.body, env);
+        } catch (error) {
+          const code = errorCode(error, "FREE_RELAY_ROUTE_INVALID");
+          return jsonResponse({ ok: false, code }, validationStatus(code));
+        }
+        try {
+          await claimFreeRelayRefresh(env, signed.timestamp, signed.nonce);
+        } catch (error) {
+          return jsonResponse({ ok: false, code: errorCode(error, "V213_AUTH_FAILED") }, 401);
+        }
+        body = signed.body;
+      } else {
+        const legacy = await authenticatedBody(request, env);  // an older runtime's generic signature: KV nonce
+        if (legacy instanceof Response) return legacy;
+        body = legacy;
+      }
+      try {
+        return jsonResponse({ status: "accepted", ...(await updateFreeRelayRoute(body, env)) });
       } catch (error) {
         const code = errorCode(error, "FREE_RELAY_UPDATE_FAILED");
         return jsonResponse({ ok: false, code }, validationStatus(code));
