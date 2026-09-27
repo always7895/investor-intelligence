@@ -6,6 +6,7 @@ Privacy-first public-market research: Python collectors, scoring and gates (`scr
 
 - `git fetch`, record the actual HEAD and branch, read `state/STATUS.md` (its history is not current acceptance) and check current CI. Then read only the caller, validators and tests relevant to the task.
 - Do not reopen ACCEPTED/CLOSED work without new regression evidence.
+- Operator 2026-09-27: replies to the operator are in Traditional Chinese; work is done only when the writer and Astra both accept the same snapshot (workspace `AGENTS.md`).
 
 ## Commands
 
