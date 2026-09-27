@@ -97,7 +97,8 @@ class UniverseTests(unittest.TestCase):
             saved = (builder.TOP20, builder.V3, builder.LAYERS)
             builder.TOP20, builder.V3, builder.LAYERS = lkg, lkg / "absent.json", lkg / "absent.json"
             try:
-                self.assertEqual(builder.universe(), ["PATH", "AFRM"])
+                self.assertEqual(builder.universe()[:2], ["PATH", "AFRM"])
+                self.assertEqual(builder.universe()[2:], ["TSM", "UMC", "ASX"])  # ADRs answering their home listings' option queries
             finally:
                 builder.TOP20, builder.V3, builder.LAYERS = saved
 
@@ -107,7 +108,7 @@ class BroadUniverseTests(unittest.TestCase):
 
     def fake_http(self, url):
         if url == builder.US_SCREENER:
-            rows = [{"symbol": f"S{i}", "marketCap": str(1000 - i)} for i in range(150)]
+            rows = [{"symbol": f"S{i}", "marketCap": str(1000 - i)} for i in range(250)]
             rows += [{"symbol": "BRK/B", "marketCap": "5000"}, {"symbol": "ZERO", "marketCap": ""}]
             return {"data": {"rows": rows}}
         if url == builder.STOCKHOLM_LARGE_CAP:
@@ -219,6 +220,197 @@ class BroadUniverseTests(unittest.TestCase):
         self.assertNotIn("BROKEN", document["quotes"])
         self.assertIn("2330.TW", document["quotes"])  # quote only: no listed-option source for Taiwan here
         self.assertEqual(sorted(calls), [("AZN.ST", "TX9"), ("SIVE.ST", None), ("VOLV-B.ST", "TX100")])
+
+    def _run_build(self, observe, symbols, deadline_seconds):
+        saved = (builder.observe, builder.broad_universe, builder.universe)
+        builder.observe = observe
+        builder.broad_universe = lambda now: {"us": [], "sweden": {}}
+        builder.universe = lambda: list(symbols)
+        try:
+            import time as clock
+            started = clock.monotonic()
+            document = builder.build(self.NOW, deadline_seconds=deadline_seconds)
+            return document, clock.monotonic() - started
+        finally:
+            builder.observe, builder.broad_universe, builder.universe = saved
+
+    @staticmethod
+    def _quote(symbol):
+        return {"symbol": symbol, "price": 100.0}
+
+    def test_a_slow_source_is_cut_at_the_deadline_and_never_blocks_the_run(self):
+        import threading
+        never = threading.Event()  # never set: the hung workers are abandoned, not released
+
+        def observe(symbol, today, stamp, orderbook=None):
+            if symbol.startswith("SLOW"):
+                never.wait()
+            return self._quote(symbol), symbol, {"weekly": {"unavailable": "x"}}
+        symbols = [f"FAST{i}" for i in range(12)] + [f"SLOW{i}" for i in range(8)]
+        document, elapsed = self._run_build(observe, symbols, deadline_seconds=0.5)
+        self.assertLess(elapsed, 2.0)  # bounded by the deadline, not by the hung requests
+        self.assertEqual(document["collection"]["underlyings"], 20)
+        # The snapshot and the count agree: every underlying is either in the document or counted unfinished.
+        self.assertEqual(len(document["quotes"]) + document["collection"]["unfinished"], 20)
+        self.assertFalse(any(symbol.startswith("SLOW") for symbol in document["quotes"]))
+
+    def _cli(self, script: str, timeout: float = 30.0):
+        """Runs a collector scenario in a separate interpreter and returns (exit code, seconds, stdout)."""
+        import subprocess
+        import time as clock
+        prelude = (f"import sys, threading, time, json\nsys.path.insert(0, {str(ROOT / 'scripts')!r})\n"
+                   "import build_market_quotes_options as b\n")
+        started = clock.monotonic()
+        done = subprocess.run([sys.executable, "-c", prelude + script], capture_output=True, text=True, timeout=timeout)
+        return done.returncode, clock.monotonic() - started, done.stdout + done.stderr
+
+    def test_the_cli_exits_at_the_deadline_with_hung_workers_and_keeps_the_last_good_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "market.json"
+            output.write_text('{"previous": true}', encoding="utf-8")
+            # Most underlyings hang forever: the run is incomplete, so the previous file stays and the process still exits.
+            code, seconds, log = self._cli(
+                "b.COLLECTION_DEADLINE_SECONDS = 1.0\n"
+                "b.broad_universe = lambda now: {'us': [], 'sweden': {}}\n"
+                "b.universe = lambda: [f'F{i}' for i in range(12)] + [f'H{i}' for i in range(30)]\n"
+                "def observe(symbol, today, stamp, orderbook=None):\n"
+                "    if symbol.startswith('H'): threading.Event().wait()\n"
+                "    return {'symbol': symbol, 'price': 1.0}, symbol, {}\n"
+                "b.observe = observe\n"
+                f"sys.exit(b.main(['--output', {str(output)!r}]))\n")
+            self.assertEqual(code, 1, log)
+            self.assertIn("DEADLINE_INCOMPLETE", log)
+            self.assertLess(seconds, 15.0, log)
+            self.assertEqual(output.read_text(encoding="utf-8"), '{"previous": true}')
+            # A few hung underlyings: the finished ones are published and the process exits despite the stuck workers.
+            code, seconds, log = self._cli(
+                "b.COLLECTION_DEADLINE_SECONDS = 1.0\n"
+                "b.broad_universe = lambda now: {'us': [], 'sweden': {}}\n"
+                "b.universe = lambda: [f'F{i}' for i in range(20)] + [f'H{i}' for i in range(3)]\n"
+                "def observe(symbol, today, stamp, orderbook=None):\n"
+                "    if symbol.startswith('H'): threading.Event().wait()\n"
+                "    return {'symbol': symbol, 'price': 1.0}, symbol, {}\n"
+                "b.observe = observe\n"
+                f"sys.exit(b.main(['--output', {str(output)!r}]))\n")
+            self.assertEqual(code, 0, log)
+            self.assertLess(seconds, 15.0, log)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(sorted(written["quotes"]), sorted(f"F{i}" for i in range(20)))
+            self.assertEqual(written["collection"]["unfinished"], 3)
+
+    # A fake urlopen for the universe sources: screener bodies in full or trickling one byte every 0.2 s forever.
+    _FAKE_SOURCES = (
+        "import urllib.request\n"
+        "class Body:\n"
+        "    def __init__(self, data=None): self.data = data\n"
+        "    def __enter__(self): return self\n"
+        "    def __exit__(self, *exc): return False\n"
+        "    def read(self, size=-1):\n"
+        "        if self.data is None:\n"
+        "            time.sleep(0.2); return b' '\n"
+        "        data, self.data = self.data, b''\n"
+        "        return data\n"
+        "US = json.dumps({'data': {'rows': [{'symbol': f'S{i}', 'marketCap': str(1000 - i)} for i in range(250)]}}).encode()\n"
+        "STO = json.dumps({'data': {'instrumentListing': {'rows': [{'symbol': f'N{i}', 'orderbookId': f'TX{i}', "
+        "'assetClass': 'SHARES', 'currency': 'SEK'} for i in range(10)]}}}).encode()\n")
+
+    def test_a_universe_body_that_never_finishes_is_cut_and_the_last_good_file_stays(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "market.json"
+            output.write_text('{"previous": true}', encoding="utf-8")
+            code, seconds, log = self._cli(
+                self._FAKE_SOURCES
+                + "urllib.request.urlopen = lambda request, timeout=None: Body()\n"  # headers arrive, the body never ends
+                "b.REQUEST_TIMEOUT_SECONDS = 1.0\n"
+                "b.COLLECTION_DEADLINE_SECONDS = 4.0\n"
+                f"b.BROAD = __import__('pathlib').Path({str(Path(folder) / 'universe.json')!r})\n"
+                "b.universe = lambda: []\n"
+                f"sys.exit(b.main(['--output', {str(output)!r}]))\n")
+            self.assertLess(seconds, 12.0, log)
+            self.assertEqual(code, 1, log)  # nothing observed
+            self.assertEqual(output.read_text(encoding="utf-8"), '{"previous": true}')
+            self.assertFalse((Path(folder) / "universe.json").exists())
+
+    def test_a_hanging_nordic_check_falls_back_to_the_cached_universe_within_the_deadline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output, cache = Path(folder) / "market.json", Path(folder) / "universe.json"
+            cached = {"schema": "v213-options-universe-v1", "generated_at": "2020-01-01T00:00:00Z",
+                      "us": [f"C{i}" for i in range(12)], "sweden": {"OLD.ST": "TX9"}}
+            code, seconds, log = self._cli(
+                self._FAKE_SOURCES
+                + "def urlopen(request, timeout=None):\n"
+                "    url = request.full_url\n"
+                "    if url == b.US_SCREENER: return Body(US)\n"
+                "    if url == b.STOCKHOLM_LARGE_CAP: return Body(STO)\n"
+                "    return Body()\n"  # every Nordic option-chain body trickles forever
+                "urllib.request.urlopen = urlopen\n"
+                "b.REQUEST_TIMEOUT_SECONDS = 1.0\n"
+                "b.COLLECTION_DEADLINE_SECONDS = 4.0\n"
+                f"b.BROAD = __import__('pathlib').Path({str(cache)!r})\n"
+                # the cache is older than a day (rebuild) but younger than a week (fallback): dated at run time
+                "doc = json.loads(" + repr(json.dumps(cached)) + ")\n"
+                "doc['generated_at'] = (__import__('datetime').datetime.now(__import__('datetime').timezone.utc)"
+                " - __import__('datetime').timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ')\n"
+                "b.BROAD.write_text(json.dumps(doc), encoding='utf-8')\n"
+                "before = b.BROAD.read_bytes()\n"
+                "b.universe = lambda: []\n"
+                "b.observe = lambda symbol, today, stamp, orderbook=None: ({'symbol': symbol, 'price': 1.0}, symbol, {})\n"
+                f"code = b.main(['--output', {str(output)!r}])\n"
+                "print(json.dumps({'cache_unchanged': b.BROAD.read_bytes() == before}))\n"
+                "sys.exit(code)\n")
+            self.assertLess(seconds, 12.0, log)
+            self.assertEqual(code, 0, log)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(sorted(written["quotes"]), sorted([f"C{i}" for i in range(12)] + ["OLD.ST"]))
+            self.assertTrue(json.loads(log.strip().splitlines()[-1])["cache_unchanged"])
+
+    def test_a_slow_universe_rebuild_is_inside_the_deadline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "market.json"
+            # Every public request hangs until its timeout: the universe rebuild and the observations share one deadline,
+            # each request's timeout is cut to the time left, and nothing starts after it.
+            code, seconds, log = self._cli(
+                "import urllib.request\n"
+                "b.COLLECTION_DEADLINE_SECONDS = 2.0\n"
+                f"b.BROAD = __import__('pathlib').Path({str(Path(folder) / 'universe.json')!r})\n"
+                "calls = []\n"
+                "def hang(request, timeout=None):\n"
+                "    calls.append(timeout); time.sleep(timeout); raise TimeoutError('hung source')\n"
+                "urllib.request.urlopen = hang\n"
+                "b.universe = lambda: []\n"
+                f"code = b.main(['--output', {str(output)!r}])\n"
+                "print(json.dumps({'calls': len(calls), 'max_timeout': max(calls or [0])}))\n"
+                "sys.exit(code)\n")
+            self.assertLess(seconds, 12.0, log)
+            self.assertNotEqual(code, 0, log)  # nothing observed: not published
+            self.assertFalse(output.exists())
+            stats = json.loads(log.strip().splitlines()[-1])
+            self.assertLessEqual(stats["max_timeout"], 2.0)
+
+    def test_a_rate_limited_underlying_is_left_out_and_the_others_complete(self):
+        import urllib.error
+
+        def observe(symbol, today, stamp, orderbook=None):
+            if symbol == "LIMITED":
+                raise urllib.error.HTTPError("https://example.invalid", 429, "Too Many Requests", {}, None)
+            return self._quote(symbol), symbol, {}
+        document, _ = self._run_build(observe, ["A", "LIMITED", "B"], deadline_seconds=5)
+        self.assertEqual(sorted(document["quotes"]), ["A", "B"])
+        self.assertEqual(document["collection"], {"underlyings": 3, "unfinished": 0, "deadline_seconds": 5})
+
+    def test_a_run_cut_short_for_most_underlyings_keeps_the_previous_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "market.json"
+            output.write_text('{"previous": true}', encoding="utf-8")
+            saved = builder.build
+            builder.build = lambda now: {"quotes": {f"S{i}": {} for i in range(40)}, "options": {},
+                                         "collection": {"underlyings": 100, "unfinished": 60, "deadline_seconds": 1200}}
+            try:
+                code = builder.main(["--output", str(output)])
+            finally:
+                builder.build = saved
+            self.assertEqual(code, 1)
+            self.assertEqual(output.read_text(encoding="utf-8"), '{"previous": true}')
 
     def test_an_unreadable_option_check_keeps_the_previous_list(self):
         def flaky(url):

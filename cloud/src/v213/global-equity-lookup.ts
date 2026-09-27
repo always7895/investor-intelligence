@@ -1,3 +1,4 @@
+import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
@@ -223,12 +224,14 @@ export function buildGlobalEquityLookupMessages(
 
   // Flex Presentation. A Stockholm listing asks for its own options (AZN.ST), never the US listing of the same symbol.
   const optionSymbol = identity.market === "SWEDEN" ? `${identity.canonicalSymbol.replace(/ /g, "-")}.ST` : identity.canonicalSymbol;
+  // Option buttons only where an answer exists: US and Stockholm listings, or a home listing with a mapped US ADR (TSMC).
+  const hasOptions = marketHasOptions(identity.market) || adrRoute(identity.canonicalSymbol) !== null;
   const footerActions = (identity.isAmbiguous && identity.ambiguityCandidates && identity.ambiguityCandidates.length > 0)
     ? identity.ambiguityCandidates.slice(0, 3).map(c => {
         const sym = c.split(" ")[0]!;
         return menuAction(`查詢 ${sym}`, sym);
       })
-    : result.quoteStatus === "AVAILABLE"
+    : result.quoteStatus === "AVAILABLE" && hasOptions
       ? [menuAction("每月期權", `${optionSymbol} 每月期權`), menuAction("每週期權", `${optionSymbol} 每週期權`), menuAction("返回 TOP20 榜單", "TOP20")]
       : [menuAction("返回 TOP20 榜單", "TOP20"), menuAction("回功能選單", "選單")];
 

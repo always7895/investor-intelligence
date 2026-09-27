@@ -34,17 +34,19 @@ import math
 import os
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "cache" / "market_quotes_options.json"
 BROAD = ROOT / "data" / "cache" / "options_universe.json"
 V3 = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
+ADR_MAP = ROOT / "config" / "option-adr-map-v1.json"  # listings answered with their US ADR's options
 TOP20 = ROOT / "data" / "cache" / "top20-lkg"
 NORDIC_SEARCH = "https://api.nasdaq.com/api/nordic/search?searchText={symbol}"
 NORDIC_CHAIN = "https://api.nasdaq.com/api/nordic/instruments/{orderbook}/option-chain"
@@ -56,10 +58,21 @@ ALPHA_VANTAGE_QUOTE = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&s
 ALPHA_VANTAGE_DAILY_BUDGET = 20  # of the free key's 25 a day; a Yahoo outage would otherwise spend it in one run
 ALPHA_VANTAGE_BUDGET = ROOT / "data" / "cache" / "alphavantage-budget.json"
 ALPHA_VANTAGE_KEY_FILE = "alphavantage-key.local.txt"  # ConvertFrom-SecureString output under the user config root
-US_LARGEST = 100              # by market cap (floor about $166B on 2026-09-26); share classes each keep their own chain
+US_LARGEST = 200              # by market cap (operator 2026-09-27: wider than 100); share classes each keep their own chain
 BROAD_MAX_AGE_HOURS = 24
 BROAD_MAX_STALE_DAYS = 7
 WORKERS = 4
+# The whole run must end well inside the hourly refresh (the task starts at :12 and the next seal follows). One absolute
+# deadline; universe discovery gets the first DISCOVERY_SHARE of it and falls back to the cached list when it overruns. All
+# network work runs on daemon threads the process never waits for; each thread carries its own deadline; no request starts
+# after it, a request's timeout never exceeds the time left, and a response body that trickles is cut at the deadline.
+COLLECTION_DEADLINE_SECONDS = 20 * 60
+DISCOVERY_SHARE = 0.25
+REQUEST_TIMEOUT_SECONDS = 20
+_DEADLINE = [math.inf]  # the run's deadline (monotonic), for threads that carry none of their own
+_LOCAL = threading.local()  # .deadline: the deadline of the work this thread does
+# A run that finished fewer underlyings than this is not published: the previous file stays (the sealer bounds its age).
+MIN_COMPLETED_SHARE = 0.5
 CYCLES = {"weekly": (3, 14), "monthly": (15, 60)}  # monthly: the expiry nearest 30 days
 RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
@@ -79,10 +92,26 @@ def iso(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _request_until() -> float:
+    """The absolute end of a request started now: REQUEST_TIMEOUT_SECONDS, never past this thread's deadline; past the
+    deadline no request starts."""
+    now = time.monotonic()
+    until = min(now + REQUEST_TIMEOUT_SECONDS, getattr(_LOCAL, "deadline", _DEADLINE[0]))
+    if until <= now:
+        raise TimeoutError("COLLECTION_DEADLINE")
+    return until
+
+
 def http_json(url: str) -> Any:
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (InvestorIntelligence public observation)"})
-    with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed public hosts
-        return json.loads(response.read().decode("utf-8"))
+    until = _request_until()
+    with urllib.request.urlopen(request, timeout=until - time.monotonic()) as response:  # noqa: S310 - fixed public hosts
+        body = bytearray()
+        while chunk := response.read(65536):  # a body that trickles is cut at the request's end, not only per read
+            body += chunk
+            if time.monotonic() > until:
+                raise TimeoutError("RESPONSE_BODY_DEADLINE")
+        return json.loads(bytes(body).decode("utf-8"))
 
 
 def universe() -> list[str]:
@@ -104,6 +133,10 @@ def universe() -> list[str]:
             bundle = json.loads(newest.read_text(encoding="utf-8"))
             symbols += [row["ticker"] for row in json.loads(bundle["payloads"]["top20_json"])]
     except (OSError, ValueError, KeyError, IndexError):
+        pass
+    try:  # the US ADRs that answer option queries for their home listings (TSMC -> TSM)
+        symbols += [row["adr"] for row in json.loads(ADR_MAP.read_text(encoding="utf-8"))["listings"].values()]
+    except (OSError, ValueError, KeyError, TypeError):
         pass
     seen: dict[str, None] = {}
     for symbol in symbols:
@@ -132,9 +165,9 @@ def build_broad(now: datetime) -> dict[str, Any]:
     us = [str(row["symbol"]).strip().upper().replace("/", "-") for row in largest]
     shares = http_json(STOCKHOLM_LARGE_CAP)["data"]["instrumentListing"]["rows"]
     shares = [row for row in shares if row.get("assetClass") == "SHARES" and row.get("currency") == "SEK" and row.get("orderbookId")]
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(WORKERS) as pool:
-        listed = list(pool.map(lambda row: _has_listed_options(row["orderbookId"]), shares))
+    # Daemon workers under this thread's deadline: a check that never finishes counts as unreadable.
+    checked = collect([row["orderbookId"] for row in shares], _has_listed_options, getattr(_LOCAL, "deadline", _DEADLINE[0]))
+    listed = [checked.get(row["orderbookId"]) for row in shares]
     if sum(1 for ok in listed if ok is None) * 10 > len(shares):
         raise ValueError("BROAD_OPTION_CHECK_FAILED")  # more than 10% unreadable: keep the previous list instead
     sweden = {str(row["symbol"]).strip().upper().replace(" ", "-") + ".ST": row["orderbookId"] for row, ok in zip(shares, listed) if ok}
@@ -142,6 +175,19 @@ def build_broad(now: datetime) -> dict[str, Any]:
         raise ValueError("BROAD_UNIVERSE_TOO_SMALL")
     return {"schema": "v213-options-universe-v1", "generated_at": iso(now), "us": us, "sweden": sweden,
             "sources": [US_SCREENER, STOCKHOLM_LARGE_CAP, NORDIC_CHAIN]}
+
+
+def cached_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
+    """The cached broad list while it is younger than BROAD_MAX_STALE_DAYS, else an empty list (no network)."""
+    try:
+        cached = json.loads((path or BROAD).read_text(encoding="utf-8"))
+        age = now - datetime.strptime(cached["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if cached.get("schema") == "v213-options-universe-v1" and isinstance(cached.get("us"), list) \
+                and isinstance(cached.get("sweden"), dict) and age.days < BROAD_MAX_STALE_DAYS:
+            return cached
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return {"us": [], "sweden": {}}
 
 
 def broad_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
@@ -535,22 +581,65 @@ def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) 
     return quote, symbol, {}
 
 
-def _observe_safely(symbol: str, today: date, stamp: str, orderbook: str | None) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
+def _observe_safely(symbol: str, today: date, stamp: str, orderbook: str | None,
+                    deadline: float = math.inf) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
+    if time.monotonic() > deadline:
+        return None
     try:
         return observe(symbol, today, stamp, orderbook)
     except Exception:
         return None
 
 
-def build(now: datetime) -> dict[str, Any]:
-    from concurrent.futures import ThreadPoolExecutor
+def collect(symbols: list[str], work: Callable[[str], Any], deadline: float) -> dict[str, Any]:
+    """Runs work(symbol) on WORKERS daemon threads until every symbol is done or the deadline passes, then returns a
+    snapshot of the finished results. A worker stuck in a request is abandoned (never joined, never blocks the exit); a
+    result arriving after the deadline is discarded, so the snapshot and the unfinished count always agree."""
+    pending = list(reversed(symbols))
+    results: dict[str, Any] = {}
+    lock = threading.Lock()
+
+    def worker() -> None:
+        _LOCAL.deadline = deadline
+        while True:
+            with lock:
+                if not pending or time.monotonic() > deadline:
+                    return
+                symbol = pending.pop()
+            result = work(symbol)
+            with lock:
+                if time.monotonic() <= deadline:
+                    results[symbol] = result
+    threads = [threading.Thread(target=worker, name=f"observe-{index}", daemon=True) for index in range(WORKERS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(None if math.isinf(deadline) else max(0.0, deadline - time.monotonic()))
+    with lock:
+        return dict(results)
+
+
+def build(now: datetime, deadline_seconds: float | None = None) -> dict[str, Any]:
+    try:
+        return _build(now, COLLECTION_DEADLINE_SECONDS if deadline_seconds is None else deadline_seconds)
+    finally:
+        _DEADLINE[0] = math.inf  # the next run (or a direct call) never inherits this run's deadline
+
+
+def _build(now: datetime, deadline_seconds: float) -> dict[str, Any]:
+    started = time.monotonic()
+    deadline = started + deadline_seconds
+    _DEADLINE[0] = deadline
     stamp = iso(now)
     today = now.date()
-    broad = broad_universe(now)
+    # Universe discovery on its own daemon thread within the first share of the budget; an overrun uses the cached list.
+    found = collect(["universe"], lambda _: broad_universe(now), started + deadline_seconds * DISCOVERY_SHARE)
+    broad = found.get("universe") or cached_universe(now)
     orderbooks: dict[str, str] = dict(broad.get("sweden") or {})
     symbols = list(dict.fromkeys(universe() + list(broad.get("us") or []) + list(orderbooks)))
-    with ThreadPoolExecutor(WORKERS) as pool:
-        results = list(pool.map(lambda symbol: _observe_safely(symbol, today, stamp, orderbooks.get(symbol)), symbols))
+    finished = collect(symbols, lambda symbol: _observe_safely(symbol, today, stamp, orderbooks.get(symbol), deadline), deadline)
+    results = [finished.get(symbol) for symbol in symbols]
+    unfinished = len(symbols) - len(finished)
     quotes: dict[str, Any] = {}
     options: dict[str, Any] = {}
     for symbol, result in zip(symbols, results):
@@ -561,7 +650,8 @@ def build(now: datetime) -> dict[str, Any]:
         if cycles:
             options[key] = cycles
     return {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": quotes, "options": options,
-            "note": "Delayed public observations; not an order, not a recommendation to trade."}
+            "note": "Delayed public observations; not an order, not a recommendation to trade.",
+            "collection": {"underlyings": len(symbols), "unfinished": unfinished, "deadline_seconds": deadline_seconds}}
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -584,6 +674,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     except Exception as error:
         print(json.dumps({"status": "FAILED", "error": type(error).__name__}))
         return 1
+    collection = document["collection"]
+    if collection["underlyings"] and collection["unfinished"] > collection["underlyings"] * (1 - MIN_COMPLETED_SHARE):
+        print(json.dumps({"status": "FAILED", "error": "DEADLINE_INCOMPLETE", **collection}))
+        return 1
     if len(document["quotes"]) < 10:
         print(json.dumps({"status": "FAILED", "error": "TOO_FEW_QUOTES", "quotes": len(document["quotes"])}))
         return 1
@@ -591,7 +685,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     temp.write_bytes(json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8"))
     temp.replace(args.output)
     available = sum(1 for cycles in document["options"].values() for value in cycles.values() if "unavailable" not in value)
-    print(json.dumps({"status": "OK", "quotes": len(document["quotes"]), "option_underlyings": len(document["options"]),
+    print(json.dumps({"status": "OK", **collection, "quotes": len(document["quotes"]), "option_underlyings": len(document["options"]),
                       "option_observations": available, "sive": document["options"].get("SIVE.ST")}, ensure_ascii=False)[:1500])
     return 0
 

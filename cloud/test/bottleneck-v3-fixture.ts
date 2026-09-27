@@ -22,6 +22,17 @@ export const OUTLOOKS: Record<number, unknown> = {
   5: { orders: { kind: "NOT_DISCLOSED", reason: "SK海力士未揭露在手訂單" }, consensus: null, scenarios: [] },
 };
 
+const SOURCE = (claims: string[]) => ({ url: "https://www.sec.gov/Archives/edgar/data/1/000000000000000001/synthetic8k.htm",
+  published_at: "2025-02-24", claims, evidence: "synthetic quotation of the filing that states the event and its dates" });
+export const LINEAGE_MARKETS: Record<number, Record<string, unknown>> = {
+  2: { lineage: { kind: "SPINOFF", event_date: "2025-02-21", regular_way_start: "2025-02-24",
+    related_entity: { name: "Synthetic Parent", symbol: "SPAR" }, sources: [SOURCE(["kind", "event_date", "regular_way_start", "related_entity"])] },
+    history_request_start: "2023-09-25", cagr_listed_start: "2025-02-24", cagr_listed_span_days: 578, long_term_basis: "SINCE_REGULAR_WAY" },
+  4: { lineage: { kind: "IPO", event_date: "2024-03-19", regular_way_start: "2024-03-20", related_entity: null,
+    sources: [SOURCE(["kind", "event_date", "regular_way_start"])] },
+    history_request_start: "2023-09-25", cagr_listed_start: null, cagr_listed_span_days: null, long_term_basis: "TWO_YEAR" },
+};
+
 export function doc(generatedMs: number, overrides: Record<string, unknown> = {}) {
   const top = Array.from({ length: 20 }, (_, index) => ({
     rank: index + 1, symbol: index === 0 ? "SIVE.ST" : `S${index}`, name: `Synthetic ${index}`, layer: index % 2 ? "optics" : "memory",
@@ -32,8 +43,11 @@ export function doc(generatedMs: number, overrides: Record<string, unknown> = {}
     fundamentals: { source: "SEC EDGAR XBRL companyfacts", source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json",
       quarter_end: "2026-06-30", revenue_yoy: 1.09, revenue_yoy_prev: 0.9, gross_margin: 0.42, gross_margin_change: 0.14, rpo_yoy: null, shares_yoy: 0.02 },
     market: { source: "Yahoo Finance adjusted daily close (unofficial)", source_url: "https://finance.yahoo.com/quote/X", asof: "2026-09-25",
-      ret_6m: 0.8, ret_1y: 2.1, cagr_2y: index === 2 ? null : 1.1, cagr_listed: index === 2 ? 0.64 : null,
-      history_start: index === 2 ? "2025-02-13" : "2023-09-26", currency: "USD",
+      ret_6m: 0.8, ret_1y: 2.1, cagr_2y: index === 2 || index === 6 ? null : 1.1, cagr_listed: index === 6 ? 7.77 : index === 2 ? 0.64 : null,
+      history_start: index === 2 ? "2025-02-13" : index === 6 ? "2025-01-06" : "2023-09-26", currency: "USD",
+      // S2: a verified spin-off (when-issued bars before its first regular-way session); S4: a verified IPO with two years;
+      // S6: an older document with an unverified since-listing figure (never shown); the rest: older documents, two years.
+      ...structuredClone(LINEAGE_MARKETS[index] ?? {}),  // a copy: tests mutate their document
       ...(index === 0 ? { cross_check: { source_id: "nasdaq-stockholm-main", source_url: "https://api.nasdaq.com/api/nordic/screener/shares",
         price: 32.78, asof: "2026-09-25", currency: "SEK", diff: 0.0012 } } : {}) },
     market_cap_usd: 1.05e9 * (index + 1),

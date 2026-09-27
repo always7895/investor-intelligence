@@ -30,9 +30,13 @@ Leads weight conviction only; every figure users see comes from filings or marke
 - Capture: latest-quarter revenue YoY, acceleration, gross-margin change, remaining performance obligations,
   normalized over the evidence available (fiscal quarters; a fourth quarter is annual minus nine-month YTD).
 - Penalties: share count +5% / +15% a year, repeated financing concerns in Serenity's posts.
-- Filters: one long-term standard — positive 2-year CAGR; a listing younger than two years (spin-off, IPO) uses the
-  annualized return since its first trading day and needs at least one year of history. No clearly bearish Serenity
-  stance; at most five names per layer.
+- Filters: one long-term standard — positive 2-year CAGR (an eligibility gate, not a score component). A security whose
+  own regular-way trading is younger than two years because of a verified corporate event (spin-off, trading resumption,
+  IPO, new equity after a reorganisation; `config/listing-lineage-v1.json`, every field backed by a primary source,
+  checked by `scripts/listing_lineage.py`) uses the annualized return from its first regular-way session, never from
+  when-issued trading or a parent's/predecessor's shares, and needs at least 365 days. A short history without a verified
+  record is excluded as `HISTORY_OR_LINEAGE_UNVERIFIED` (a verified segment under one year: `MARKET_HISTORY_UNDER_1Y`); a
+  missing figure is never read as a negative return. No clearly bearish Serenity stance; at most five names per layer.
 
 ## Industry ranking (產業爆發榜, Leopold-led)
 
@@ -42,8 +46,11 @@ layer's terms (last 30 days versus the prior 60) 10 + Serenity heat 10.
 
 ## LINE
 
-Every card shows the same two returns: 6-month return and 2-year CAGR (a younger listing reads 上市未滿2年 with its
-start date and annualized return since then). Serenity/Leopold lead scores weight the ranking but are not shown; the
+Every card shows the same two returns: 6-month return and 2-year CAGR. A verified short segment reads 獨立交易價格未滿2年
+with "<first regular-way session>–<as of> 正常交易以來年化 X%（非2年）" (a resumption: 恢復交易以來); the verified event
+(e.g. "2025-02-21 自 Western Digital（WDC）分拆；2025-02-24 起正常交易") shows on every form, also when two years exist, and
+the detail lists its primary sources; an unverified short history reads 2年價格資料不足 (可得價格自 <date>；上市沿革未核實),
+never "new company". Serenity/Leopold lead scores weight the ranking but are not shown; the
 card shows the signed-order floor instead (RPO on the recognition schedule of the latest 10-Q/10-K: 6M/1Y/2Y coverage
 and the growth floor, or the explicit reason it cannot be computed). `瓶頸詳情` opens the SEC company report rather than
 repeating the card; non-SEC filers get the filing and price figures with sources.

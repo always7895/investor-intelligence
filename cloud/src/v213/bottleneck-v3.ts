@@ -27,10 +27,20 @@ interface Fundamentals {
 interface RevenueCheck {
   source_id: string; source_url: string; period: string; revenue_yoy: number | null; cumulative_yoy: number | null; currency?: string | null;
 }
+/** A verified corporate event behind a standalone price history shorter than the request (config/listing-lineage-v1.json,
+ * scripts/listing_lineage.py): the company is not new, the security's regular-way trading is. */
+interface Lineage {
+  kind: "SPINOFF" | "RESUMPTION" | "IPO" | "NEW_EQUITY"; event_date: string; regular_way_start: string;
+  related_entity: { name: string; symbol: string | null } | null;
+  sources: { url: string; published_at: string; claims: string[]; evidence: string }[];
+}
+type LongTermBasis = "TWO_YEAR" | "SINCE_REGULAR_WAY" | "UNAVAILABLE";
 interface Market {
   source: string; source_url: string; asof: string; ret_6m: number | null; ret_1y: number | null; cagr_2y: number | null; currency: string | null;
-  /** Annualized since the first trading day, only for listings younger than two years (null otherwise). */
+  /** Annualized since the verified first regular-way session, only without a two-year figure (null otherwise). */
   cagr_listed?: number | null; history_start?: string | null;
+  lineage?: Lineage | { kind: "UNKNOWN" }; history_request_start?: string | null; cagr_listed_start?: string | null;
+  cagr_listed_span_days?: number | null; long_term_basis?: LongTermBasis;
   /** The exchange's own close for the listing (price shards), beside the Yahoo close the returns use. */
   cross_check?: { source_id: string; source_url: string; price: number; asof: string | null; currency: string; diff: number | null };
 }
@@ -164,6 +174,76 @@ function validIndustry(raw: any): raw is IndustryEntry {
 }
 
 /** The sealed v3 document when valid and inside the report-age bound; otherwise null. */
+const LINEAGE_KINDS = new Set(["SPINOFF", "RESUMPTION", "IPO", "NEW_EQUITY"]);
+const LINEAGE_CLAIMS = new Set(["kind", "event_date", "regular_way_start", "related_entity"]);
+const MIN_ANNUALIZE_DAYS = 365;
+const MAX_EVENT_TO_TRADING_DAYS = 60;
+const TWO_YEAR_MIN_DAYS = 725;  // eligible history the two-year return needs (scripts/listing_lineage.py)
+const FUTURE_TOLERANCE_DAYS = 1;
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/** A real ASCII YYYY-MM-DD date. */
+function isoDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/** An allowlisted copy of the lineage record under the sealer's rules (scripts/listing_lineage.py clean_record), or null. */
+function validLineage(raw: any): Lineage | null {
+  if (!raw || typeof raw !== "object" || !LINEAGE_KINDS.has(raw.kind) || !isoDay(raw.event_date) || !isoDay(raw.regular_way_start)) return null;
+  const gap = daysBetween(raw.event_date, raw.regular_way_start);
+  if (gap < 0 || gap > MAX_EVENT_TO_TRADING_DAYS) return null;
+  const entity = raw.related_entity;
+  if (raw.kind === "IPO" ? entity !== null
+    : !(entity && typeof entity === "object" && str(entity.name, 80) && (entity.symbol === null || (str(entity.symbol, 12) && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(entity.symbol))))) return null;
+  if (!Array.isArray(raw.sources) || raw.sources.length < 1 || raw.sources.length > 4) return null;
+  const covered = new Set<string>();
+  const sources: Lineage["sources"] = [];
+  for (const source of raw.sources) {
+    if (!source || typeof source !== "object" || !https(source.url) || source.url.length > 400 || !isoDay(source.published_at)
+      || !str(source.evidence, 400) || !Array.isArray(source.claims) || source.claims.length === 0
+      || !source.claims.every((claim: unknown) => typeof claim === "string" && LINEAGE_CLAIMS.has(claim))) return null;
+    source.claims.forEach((claim: string) => covered.add(claim));
+    sources.push({ url: source.url, published_at: source.published_at, claims: [...source.claims], evidence: source.evidence });
+  }
+  if (!["kind", "event_date", "regular_way_start"].every(claim => covered.has(claim)) || (entity && !covered.has("related_entity"))) return null;
+  return { kind: raw.kind, event_date: raw.event_date, regular_way_start: raw.regular_way_start,
+    related_entity: entity ? { name: entity.name, symbol: entity.symbol } : null, sources };
+}
+
+/** The long-term fields of one sealed market object under the sealer's rules (scripts/listing_lineage.py
+ * clean_market_lineage): an older document WITHOUT the fields keeps only its two-year value; PRESENT but malformed or
+ * contradictory metadata (dates out of order or after the report, a span that is not asof minus the start, two years
+ * claimed for a younger segment) suppresses every long-term figure, the two-year one included. */
+function closeLongTerm(market: Market, reportDay: string): Market {
+  const two = num(market.cagr_2y) ? market.cagr_2y : null;
+  const empty = { cagr_listed: null, cagr_listed_start: null, cagr_listed_span_days: null, history_request_start: null };
+  if (!Object.hasOwn(market, "lineage") && !Object.hasOwn(market, "long_term_basis")) {
+    return { ...market, ...empty, lineage: { kind: "UNKNOWN" }, cagr_2y: two, long_term_basis: two !== null ? "TWO_YEAR" : "UNAVAILABLE" };
+  }
+  const invalid: Market = { ...market, ...empty, lineage: { kind: "UNKNOWN" }, cagr_2y: null, long_term_basis: "UNAVAILABLE" };
+  const raw = market.lineage as any;
+  const unknown = !!raw && typeof raw === "object" && raw.kind === "UNKNOWN" && Object.keys(raw).length === 1;
+  const lineage = unknown ? null : validLineage(raw);
+  const asof = market.asof, requested = market.history_request_start;
+  if ((!unknown && lineage === null) || !isoDay(asof) || !isoDay(requested) || daysBetween(requested, asof) < 0
+    || !isoDay(reportDay) || daysBetween(reportDay, asof) > FUTURE_TOLERANCE_DAYS) return invalid;
+  if (lineage && daysBetween(lineage.regular_way_start, asof) < 0) return invalid;
+  const segmentStart = lineage ? lineage.regular_way_start : market.history_start;
+  const listed = market.cagr_listed ?? null, since = market.cagr_listed_start ?? null, span = market.cagr_listed_span_days ?? null;
+  const nothingListed = listed === null && since === null && span === null;
+  const basis = market.long_term_basis;
+  const consistent = basis === "TWO_YEAR" ? two !== null && nothingListed && isoDay(segmentStart) && daysBetween(segmentStart, asof) >= TWO_YEAR_MIN_DAYS
+    : basis === "UNAVAILABLE" ? two === null && nothingListed
+    : basis === "SINCE_REGULAR_WAY" ? two === null && lineage !== null && num(listed) && listed > -1 && since === lineage.regular_way_start
+      && Number.isInteger(span) && (span as number) >= MIN_ANNUALIZE_DAYS && span === daysBetween(lineage.regular_way_start, asof)
+    : false;
+  if (!consistent) return invalid;
+  return { ...market, lineage: lineage ?? { kind: "UNKNOWN" }, cagr_2y: two, cagr_listed: listed, cagr_listed_start: since,
+    cagr_listed_span_days: span, history_request_start: requested };
+}
+
 export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 | null {
   if (!raw || typeof raw !== "object") return null;
   const doc = raw as any;
@@ -174,7 +254,8 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
-  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top: doc.top, industries: doc.industries, deep_reports: deep };
+  const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, doc.generated_at.slice(0, 10)) }));
+  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
 export async function loadBottleneckV3(view: PublicSnapshotView): Promise<BottleneckV3 | null> {
@@ -216,6 +297,14 @@ function currentOrders(outlook: Outlook | null | undefined, filer: boolean): str
   return `目前訂單：${label} ${money(o.amount, o.currency)}（${day(o.as_of)}${yoy}）。`;
 }
 
+/** The company's annual new-order guidance when it is exactly that (kind ANNUAL_NEW_ORDERS, an integer year, a finite
+ * positive amount); any other guidance is withheld everywhere, never relabelled as new orders. */
+function newOrderGuidance(orders: OrdersFigure | null | undefined): NonNullable<OrdersFigure["guidance"]> | null {
+  const guidance = orders && orders.kind === "BACKLOG" ? orders.guidance : null;
+  return guidance && guidance.kind === "ANNUAL_NEW_ORDERS" && Number.isInteger(guidance.year) && num(guidance.amount) && guidance.amount > 0
+    && Number.isFinite(guidance.amount * 1e3) ? guidance : null;
+}
+
 /** "未來預估": the company's own order guidance and new orders where published, and the analyst consensus revenue
  * (an estimate of revenue, not of orders). */
 function futureOutlook(outlook: Outlook | null | undefined): string[] {
@@ -223,7 +312,8 @@ function futureOutlook(outlook: Outlook | null | undefined): string[] {
   const o = outlook?.orders;
   if (o && o.kind !== "NOT_DISCLOSED") {
     if (o.intake_quarter) lines.push(`最新一季新接訂單 ${money(o.intake_quarter.amount, o.currency)}${o.intake_quarter.yoy === null || o.intake_quarter.yoy === undefined ? "" : `（年增 ${pct(o.intake_quarter.yoy, 0)}）`}。`);
-    if (o.guidance) lines.push(`公司指引：${o.guidance.year ?? ""} 年新接訂單 ${money(o.guidance.amount, o.currency)}${o.guidance.previous ? `（原 ${money(o.guidance.previous, o.currency)}）` : ""}。`);
+    const guidance = newOrderGuidance(o);
+    if (guidance) lines.push(`公司指引：${guidance.year} 年新接訂單 ${money(guidance.amount, o.currency)}${num(guidance.previous) && guidance.previous > 0 ? `（原 ${money(guidance.previous, o.currency)}）` : ""}。`);
   }
   const c = outlook?.consensus;
   const s = outlook?.consensus_second;
@@ -236,8 +326,8 @@ function futureOutlook(outlook: Outlook | null | undefined): string[] {
       lines.push(`兩家來源目標價差距大（Yahoo ${pct(yahooTarget, 0)}／Nasdaq ${pct(s.target_upside, 0)}），請審慎參考。`);
     }
   }
-  if (!c) lines.push("未來預估：未取得分析師共識。");
-  else lines.push(`未來預估（分析師共識營收，非訂單數）：下一財年營收 ${pct(c.revenue_growth, 1)}${c.revenue_analysts ? `（${c.revenue_analysts} 位）` : ""}`
+  if (!c) lines.push("分析師營收共識：未取得。");
+  else lines.push(`分析師營收共識（非訂單）：下一財年營收 ${pct(c.revenue_growth, 1)}${c.revenue_analysts ? `（${c.revenue_analysts} 位）` : ""}`
     + `${c.eps_growth === null || c.eps_growth === undefined ? "" : `；EPS ${pct(c.eps_growth, 1)}${c.eps_analysts ? `（${c.eps_analysts} 位）` : ""}`}。`);
   return lines;
 }
@@ -289,11 +379,33 @@ export function chineseName(entry: Pick<BottleneckEntry, "name_zh" | "name_zh_so
   return entry.name_zh ? entry.name_zh : "無公認中文名";
 }
 
-/** The one long-term figure on every card: 2-year CAGR; a listing younger than two years says so and shows the
- * annualized return since its first trading day. */
-function longTerm(market: Market): { value: string; sub: string | undefined } {
-  if (market.cagr_2y !== null) return { value: pct(market.cagr_2y, 0), sub: undefined };
-  return { value: "上市未滿2年", sub: `${day(market.history_start)}起年化 ${pct(market.cagr_listed ?? null, 0)}` };
+/** The verified corporate event, in one line (never "new company"): a spin-off, a trading resumption, an IPO or new equity. */
+function lineageEvent(lineage: Lineage): string {
+  const entity = lineage.related_entity;
+  const named = entity ? `${entity.name}${entity.symbol ? `（${entity.symbol}）` : ""}` : "";
+  switch (lineage.kind) {
+    case "SPINOFF": return `${lineage.event_date} 自 ${named}分拆；${lineage.regular_way_start} 起正常交易`;
+    case "RESUMPTION": return `${lineage.regular_way_start} 恢復交易（前身 ${named}）`;
+    case "IPO": return `${lineage.event_date} IPO；${lineage.regular_way_start} 起交易`;
+    case "NEW_EQUITY": return `${lineage.event_date} 重整完成，${lineage.regular_way_start} 起新股交易（舊股 ${entity?.symbol ?? entity?.name ?? ""} 已註銷）`;
+  }
+}
+
+/** The one long-term figure on every card and in every form (operator 2026-09-27: Sandisk is not a new company): the
+ * 2-year CAGR; a verified spin-off, resumption, IPO or new equity without two years of its own prices says so and shows
+ * the annualized return since its first regular-way session (at least one year); an unverified short history says only
+ * that the price data are insufficient. The event line appears whenever the lineage is verified, with its sources. */
+function longTerm(market: Market): { value: string; sub: string | undefined; event: string | null; sources: string[] } {
+  const lineage = market.lineage && market.lineage.kind !== "UNKNOWN" ? market.lineage as Lineage : null;
+  const event = lineage ? lineageEvent(lineage) : null;
+  const sources = lineage ? lineage.sources.map(source => `${source.published_at} ${source.url}`) : [];
+  if (market.long_term_basis === "TWO_YEAR" && market.cagr_2y !== null) return { value: pct(market.cagr_2y, 0), sub: undefined, event, sources };
+  if (lineage && market.long_term_basis === "SINCE_REGULAR_WAY") {
+    return { value: "獨立交易價格未滿2年", event, sources,
+      sub: `${market.cagr_listed_start}–${market.asof} ${lineage.kind === "RESUMPTION" ? "恢復交易" : "正常交易"}以來年化 ${pct(market.cagr_listed ?? null, 0)}（非2年）` };
+  }
+  if (lineage) return { value: "獨立交易價格未滿2年", sub: "正常交易未滿1年或缺首日價格，不年化", event, sources };
+  return { value: "2年價格資料不足", sub: market.history_start ? `可得價格自 ${day(market.history_start)}；上市沿革未核實` : "上市沿革未核實", event, sources };
 }
 
 interface OrderView { as_of: string; form: string; filed: string; coverage: Record<string, number | null>; floor: Record<string, number | null> }
@@ -323,15 +435,93 @@ function orderFloor(doc: BottleneckV3, entry: BottleneckEntry): unknown[] {
         coverage === null || coverage === undefined ? "未揭露" : `已簽約覆蓋 ${coverage.toFixed(0)}%`);
     };
     return [
-      uiText("訂單實現下限（已簽約 RPO）", "xxs", T.ink, { weight: "bold" }),
+      uiText("已簽約訂單可支撐的營收成長（RPO 認列時程）", "xxs", T.ink, { weight: "bold" }),
       uiBox([tile("6個月", "m6"), tile("1年", "m12"), tile("2年", "m24")], { layout: "horizontal", spacing: "sm" }),
-      footnote(`${orders.form}（${orders.filed}）揭露的認列時程，RPO 基準日 ${orders.as_of}；營收成長下限＝已簽約金額÷目前營收水準−1，未計新訂單。`),
+      footnote(`${orders.form}（${orders.filed}）揭露的認列時程，RPO 基準日 ${orders.as_of}；＝該期間將認列之已簽約金額÷目前營收水準−1。僅指營收，不是股價下限；未計新訂單、取消或遞延。`),
     ];
   }
   if (!filer) return entry.outlook?.orders ? [] : [uiText("非 SEC 定期申報公司：無剩餘履約義務（RPO）認列時程，不推估訂單實現金額。", "xxs", T.muted)];
   return [uiText(rpoYoy !== null ? `RPO 年增 ${pct(rpoYoy, 0)}（${rpoPeriod ?? "最新季"}）；最新財報未揭露認列時程，不推估6個月／1年／2年實現金額。`
     : "最新 10-Q／10-K 未申報 RPO 認列時程。", "xxs", T.muted)];
 }
+
+/** Order data older than this is not extrapolated (a stale order book says nothing about the next year). */
+const ORDER_EXTRAPOLATION_MAX_AGE_DAYS = 200;
+/** Above this year-on-year growth an order book usually changed scope (a new contract class, a restatement): no extrapolation. */
+const ORDER_EXTRAPOLATION_MAX_YOY = 1.0;
+const DAY_MS = 86_400_000;
+
+export interface HorizonForecast {
+  /** Rolling horizons from the report date (null when no supported input). */
+  m6: string | null; y1: string | null;
+  /** End months of the two horizons ("2027-03"), shown in the detail. */
+  ends: { m6: string; y1: string };
+  /** A figure for a stated fixed period (annual guidance) instead of rolling horizons. */
+  fixed?: { label: string; value: string };
+  basis: string;
+}
+
+/** Operator 2026-09-27: explicit 6-month and 1-year horizons, and a future ORDER estimate that is not the price scenario.
+ * Both horizons run from the report date (Astra review: never from an older disclosure date, never a fiscal year relabelled).
+ * Orders: the disclosed order book (RPO or backlog, a stock) extrapolated from its disclosure date to the report date + 6
+ * months and + 12 months at its disclosed year-on-year growth, only for recent data (<= 200 days old, not after the report)
+ * and growth in (-100%, +100%]; the company's own new-order guidance is shown for its stated year, not as a rolling horizon;
+ * otherwise nothing. Price: the analysts' 12-month mean target (at least MIN_ANALYSTS), with 6 months as the time-proportional
+ * share of that return (a stated assumption). Arithmetic, never a prediction. */
+export function horizonForecast(doc: BottleneckV3, entry: BottleneckEntry): { orders: HorizonForecast; price: HorizonForecast } {
+  const report = Date.parse(doc.generated_at);
+  const endM6 = report + 182.5 * DAY_MS;
+  const endY1 = report + 365 * DAY_MS;
+  const month = (ms: number) => new Date(ms).toISOString().slice(0, 7);
+  const ends = { m6: month(endM6), y1: month(endY1) };
+  const o = entry.outlook?.orders;
+  const { filer } = ordersOf(doc, entry.symbol);
+  const disclosed = o && o.kind !== "NOT_DISCLOSED" ? o : null;
+  // A real calendar date only (a malformed or partial date is never read leniently).
+  const asOf = disclosed && isoDay(disclosed.as_of) ? Date.parse(`${disclosed.as_of}T00:00:00Z`) : NaN;
+  const ageDays = (report - asOf) / DAY_MS;
+  const reportYear = new Date(report).getUTCFullYear();
+  let orders: HorizonForecast;
+  const guidance = newOrderGuidance(disclosed);  // annual new-order guidance only (the same rule as the detail line)
+  const grow = (end: number) => disclosed && num(disclosed.yoy) ? disclosed.amount * Math.pow(1 + disclosed.yoy, (end - asOf) / (365 * DAY_MS)) : NaN;
+  const extrapolated = [grow(endM6), grow(endY1)];
+  if (disclosed && num(disclosed.yoy) && disclosed.yoy > -1 && disclosed.yoy <= ORDER_EXTRAPOLATION_MAX_YOY && num(disclosed.amount)
+      && disclosed.amount > 0 && Number.isFinite(ageDays) && ageDays >= -1 && ageDays <= ORDER_EXTRAPOLATION_MAX_AGE_DAYS
+      && extrapolated.every(value => Number.isFinite(value) && value > 0)) {
+    orders = { m6: money(extrapolated[0]!, disclosed.currency), y1: money(extrapolated[1]!, disclosed.currency), ends,
+      basis: `${disclosed.kind === "RPO" ? "RPO" : "在手訂單"}餘額依年增${pct(disclosed.yoy, 0)}自${day(disclosed.as_of)}外推` };
+  } else if (guidance && guidance.year! >= reportYear && guidance.year! <= reportYear + 1) {
+    orders = { m6: null, y1: null, ends, fixed: { label: `${guidance.year}年全年`, value: money(guidance.amount, disclosed!.currency) },
+      basis: "公司新接訂單指引（全年，非滾動12個月）" };
+  } else {
+    const reason = !disclosed ? (filer ? "未申報 RPO" : "公司未公布訂單")
+      : !Number.isFinite(ageDays) ? "訂單日期不明，不外推"
+      : ageDays < -1 ? "訂單日期晚於報告日，不採用"
+      : ageDays > ORDER_EXTRAPOLATION_MAX_AGE_DAYS ? "訂單資料過舊，不外推"
+      : num(disclosed.yoy) && disclosed.yoy > ORDER_EXTRAPOLATION_MAX_YOY ? `年增${pct(disclosed.yoy, 0)}過高（多為口徑變動），不外推`
+      : num(disclosed.yoy) && disclosed.yoy <= -1 ? "訂單大幅萎縮，不外推"
+      : num(disclosed.yoy) ? "外推結果超出可表示範圍，不採用" : "無年增可外推";
+    orders = { m6: null, y1: null, ends, basis: reason };
+  }
+  const c = entry.outlook?.consensus;
+  const upside = c?.target_upside;
+  const analysts = c?.target_analysts ?? 0;
+  let price: HorizonForecast;
+  const halfYear = num(upside) && upside > -1 ? Math.pow(1 + upside, 0.5) - 1 : NaN;
+  const printable = (value: number) => Number.isFinite(value) && Number.isFinite(value * 100);
+  if (c && num(upside) && upside > -1 && printable(upside) && printable(halfYear) && num(analysts) && analysts >= MIN_ANALYSTS) {
+    price = { m6: pct(halfYear, 0), y1: pct(upside, 0), ends,
+      basis: `分析師12個月平均目標價（${analysts}位）；6個月按時間比例（假設）` };
+  } else {
+    price = { m6: null, y1: null, ends, basis: !c || !num(upside) ? "無分析師目標價" : upside <= -1 || !printable(upside) ? "目標價資料異常，不採用"
+      : `目標價樣本不足（${num(analysts) ? analysts : 0}位）` };
+  }
+  return { orders, price };
+}
+
+const horizonTile = (label: string, value: HorizonForecast): [string, string, string] =>
+  value.fixed ? [label, `${value.fixed.label} ${value.fixed.value}`, value.basis]
+    : [label, value.y1 === null ? "未揭露" : `1年 ${value.y1}`, value.m6 === null ? value.basis : `6個月 ${value.m6}・${value.basis}`];
 
 /** The three card tiles, identical on every Top20 card (operator 2026-09-26: one layout; current orders, the future
  * estimate and the price if realized): [label, value, sub]. */
@@ -342,20 +532,17 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
     : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
     : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
-  const c = outlook?.consensus;
-  const thin = !!c && (c.revenue_analysts ?? 0) < MIN_ANALYSTS;
-  const future: [string, string, string] = o && o.kind === "BACKLOG" && o.guidance
-    ? ["未來預估", money(o.guidance.amount, o.currency), `${o.guidance.year ?? ""}年接單指引`]
-    : !c ? ["未來預估", "未取得", "無分析師共識"]
-    : thin ? ["未來預估", "樣本不足", `${c.revenue_analysts ?? 0}位分析師`]
-    : ["未來預估", pct(c.revenue_growth, 0), `營收共識 ${c.revenue_analysts}位`];
-  const revenue = (outlook?.scenarios ?? []).find(row => row.kind === "REVENUE_CONSTANT_PS");
-  const target = (outlook?.scenarios ?? []).find(row => row.kind === "ANALYST_TARGET");
-  const price: [string, string, string] = !c || !revenue ? ["若實現股價", "—", "無共識可推算"]
-    : thin ? ["若實現股價", "—", "樣本不足"]
-    : ["若實現股價", pct(revenue.change, 0), [target ? `目標價 ${pct(target.change, 0)}` : "營收×市銷率",
-      ...(outlook?.consensus_second?.target_upside != null ? [`Nasdaq ${pct(outlook.consensus_second.target_upside, 0)}`] : [])].join("／")];
-  return [orders, future, price];
+  const forecast = horizonForecast(doc, entry);
+  return [orders, horizonTile("未來訂單預估", forecast.orders), horizonTile("若實現股價", forecast.price)];
+}
+
+/** The two forecast lines of the detail card. */
+function horizonLines(doc: BottleneckV3, entry: BottleneckEntry): string[] {
+  const { orders, price } = horizonForecast(doc, entry);
+  const line = (label: string, value: HorizonForecast) => value.fixed ? `${label}：${value.fixed.label} ${value.fixed.value}（${value.basis}）。`
+    : value.y1 === null && value.m6 === null ? `${label}：未揭露（${value.basis}）。`
+    : `${label}：6個月（至${value.ends.m6}）${value.m6 ?? "未揭露"}、1年（至${value.ends.y1}）${value.y1 ?? "未揭露"}（${value.basis}）。`;
+  return [line("未來訂單預估", orders), line("若實現股價", price)];
 }
 
 /** Operator 2026-09-26: current orders, the future estimate and the price scenario if realized on every Top20 card
@@ -367,12 +554,13 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   if (compact) {
     return section("訂單與成長情境", [
       uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
-      footnote("未來預估＝公司接單指引，否則分析師下一財年營收共識（非訂單數）；若實現股價＝共識成長×目前市銷率，未扣除已反映部分；非預測、非投資建議；詳見「瓶頸詳情」。"),
+      footnote("未來訂單預估＝已揭露訂單餘額自揭露日依年增外推至今日起6個月／1年（或公司全年接單指引）；若實現股價＝分析師12個月平均目標價，6個月按時間比例；皆為算術推算，非預測、非投資建議；營收情境與已簽約訂單的營收覆蓋見「瓶頸詳情」。"),
     ], "key");
   }
   return section("訂單與成長情境", [
     uiText(currentOrders(outlook, filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts"), "xs", T.ink),
     ...orderFloor(doc, entry),
+    ...horizonLines(doc, entry).map(line => uiText(line, "xs", T.ink, { weight: "bold" })),
     ...futureOutlook(outlook).map(line => uiText(line, "xs", T.ink)),
     ...scenarioBlocks(outlook, compact),
     footnote(c ? `${SCENARIO_NOTE}共識：${sourceZh(c.source)}，${day(c.asof)}` : SCENARIO_NOTE),
@@ -407,6 +595,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
       section("公司數據", [
         uiBox([statTile("最新季營收年增", pct(fund?.revenue_yoy ?? null, 0)), statTile("毛利率變化", fund?.gross_margin_change === null || fund?.gross_margin_change === undefined ? "未揭露" : `${fund.gross_margin_change >= 0 ? "+" : ""}${(fund.gross_margin_change * 100).toFixed(1)}pp`)], { layout: "horizontal", spacing: "sm" }),
         uiBox([statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub)], { layout: "horizontal", spacing: "sm" }),
+        ...(long.event ? [footnote(`上市沿革：${long.event}`)] : []),
         footnote(fund ? `財報：${sourceZh(fund.source)}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
         ...(fund?.cross_check ? [footnote(revenueCheck(fund.cross_check))] : []),
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
@@ -420,12 +609,18 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
   };
 }
 
+/** The long-term figure in one line of text: value, its explanation and the verified event. */
+function longTermText(market: Market): string {
+  const long = longTerm(market);
+  return `${long.value}${long.sub ? `（${long.sub}）` : ""}${long.event ? `；${long.event}` : ""}`;
+}
+
 export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTerm(entry.market).value}`);
+    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}`);
     const messages: LineOutboundMessage[] = [{ type: "text", text: [
       `瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
-      "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬（未滿2年者為上市以來年化）為負者排除。非投資建議。",
+      "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
       ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。",
     ].join("\n").slice(0, 4900) }];
     assertLineMessages(messages);
@@ -469,6 +664,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
       ] : [uiText("未取得可比季度（不以估計替代）。", "xs", T.ink)]),
       section("市場數據", [
         row(statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub), statTile("市值", cap(entry.market_cap_usd))),
+        ...(long.event ? [uiText(`上市沿革：${long.event}`, "xs", T.ink), ...long.sources.map(source => footnote(`沿革來源 ${source}`.slice(0, 220)))] : []),
         footnote(`${sourceZh(entry.market.source)}，至 ${entry.market.asof}：${entry.market.source_url}`.slice(0, 220)),
         ...(entry.market.cross_check ? [footnote(`${exchangeCheck(entry.market.cross_check)}：${entry.market.cross_check.source_url}`.slice(0, 220))] : []),
       ]),
@@ -493,9 +689,11 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
     ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
+    ...(long.event ? [`上市沿革：${long.event}\n沿革來源：${long.sources.join("；")}`] : []),
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
+    ...horizonLines(doc, entry),
     ...futureOutlook(outlook),
     scenarios ? `若實現的股價情境：${scenarios}${analysts < MIN_ANALYSTS ? `（僅 ${analysts} 位分析師，參考性低）` : ""}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "若實現的股價情境：無分析師共識可推算。",
     `${SCENARIO_NOTE}不自動下單。`,

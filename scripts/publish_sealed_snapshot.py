@@ -42,6 +42,7 @@ import multilineage_claim_bundle as mlb  # noqa: E402
 import build_v213_macro_industry_research as macro_builder  # noqa: E402
 import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
+import listing_lineage  # noqa: E402
 import top20_carry_forward  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
@@ -540,8 +541,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
                                   "gross_margin_change", "rpo_yoy", "shares_yoy")),
                     **({"cross_check": check} if (check := _sealed_revenue_check(fund.get("cross_check"))) else {})},
-                "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "cagr_2y", "cagr_listed",
-                                                    "history_start", "currency")),
+                # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
+                "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
+                           **listing_lineage.clean_market_lineage(entry["market"], generated.date()),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),

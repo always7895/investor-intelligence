@@ -7,13 +7,14 @@ import json
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import bottleneck_top20_v3 as engine  # noqa: E402
+import listing_lineage as lineage  # noqa: E402
 import leopold_positions as leopold  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 import serenity_signals as serenity  # noqa: E402
@@ -406,10 +407,92 @@ class SealedFormTests(unittest.TestCase):
         self.assertIsNone(publisher._sealed_revenue_check({**report, "period": "2026-08"}))
         self.assertEqual(backlog["guidance"], {"kind": "ANNUAL_NEW_ORDERS", "year": 2026.0, "amount": 12e12, "previous": None})
 
+    def _seal_one(self, market):
+        """Seals twelve entries whose first is SNDK with the given market object; returns that sealed market object."""
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        entry = {"rank": 1, "symbol": "SNDK", "name": "Sandisk", "layer": "memory", "archetype": "COMPOUNDER", "score": 70.0,
+                 "role": "NAND", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
+                 "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
+                 "fundamentals": None, "market": market, "market_cap_usd": 5e10, "serenity": None, "leopold": None}
+        doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "leads": {},
+               "top": [{**entry, "rank": index + 1, "symbol": "SNDK" if index == 0 else f"S{index}"} for index in range(12)],
+               "industries": [{"rank": 1, "id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "leopold_constraint": "x",
+                               "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
+                               "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
+        saved = publisher.build_zh_names.names_for
+        publisher.build_zh_names.names_for = lambda symbols: {}
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "v3.json"
+                path.write_text(json.dumps(doc), encoding="utf-8")
+                return json.loads(publisher.lazy_bottleneck_v3_body(path, now)[publisher.BOTTLENECK_V3_KEY])["top"][0]["market"]
+        finally:
+            publisher.build_zh_names.names_for = saved
+
+    def test_sealed_long_term_fields_are_validated_consistent_and_fail_closed(self):
+        record = lineage.load()["SNDK"]
+        base = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 1.9,
+                "ret_1y": 17.8, "cagr_2y": None, "history_start": "2025-02-13", "currency": "USD"}
+        good = {**base, "lineage": {**record, "extra": "dropped"}, "history_request_start": "2023-09-25", "cagr_listed": 4.1,
+                "cagr_listed_start": "2025-02-24", "cagr_listed_span_days": 578, "long_term_basis": "SINCE_REGULAR_WAY", "price": 1.0}
+        sealed = self._seal_one(good)
+        self.assertEqual(sealed["lineage"], record)  # extras stripped, citations kept
+        self.assertEqual((sealed["cagr_listed"], sealed["cagr_listed_start"], sealed["cagr_listed_span_days"], sealed["long_term_basis"]),
+                         (4.1, "2025-02-24", 578, "SINCE_REGULAR_WAY"))
+        self.assertNotIn("price", sealed)
+        later = datetime.now(timezone.utc).date() + timedelta(days=30)
+        # PRESENT but broken metadata suppresses every long-term figure, the two-year one included.
+        closed = {"lineage": {"kind": "UNKNOWN"}, "cagr_2y": None, "cagr_listed": None, "cagr_listed_start": None,
+                  "cagr_listed_span_days": None, "long_term_basis": "UNAVAILABLE"}
+        for broken in ({"cagr_listed_start": "2025-02-13"},            # a when-issued base
+                       {"cagr_listed_span_days": 300},                 # too short to annualize
+                       {"cagr_listed_span_days": 579},                 # the span does not match asof - start
+                       {"asof": "2025-03-01"},                         # five days of history cannot carry a 578-day span
+                       {"long_term_basis": "TWO_YEAR"},                # the basis contradicts the values
+                       {"long_term_basis": "TWO_YEAR", "cagr_2y": 0.9, "cagr_listed": None, "cagr_listed_start": None,
+                        "cagr_listed_span_days": None},                # a 2025 segment cannot have two years
+                       {"asof": str(later), "cagr_listed_span_days": (later - date(2025, 2, 24)).days},  # after the report date
+                       {"lineage": {**record, "regular_way_start": "2025-02-30"}},
+                       {"lineage": {**record, "regular_way_start": "2025-06-24"}},  # 123 days after the event
+                       {"lineage": {**record, "sources": []}},
+                       {"lineage": {"kind": "UNKNOWN", "note": "extra"}},  # a malformed UNKNOWN object
+                       {"history_request_start": "not a date"},
+                       {"history_request_start": "2026-10-01"}):       # a request that starts after asof
+            self.assertEqual({key: self._seal_one({**good, **broken})[key] for key in closed}, closed, broken)
+        broken_two = self._seal_one({**good, "cagr_2y": 0.9, "long_term_basis": "TWO_YEAR", "cagr_listed": None,
+                                     "cagr_listed_start": None, "cagr_listed_span_days": None})
+        self.assertIsNone(broken_two["cagr_2y"])
+        # ABSENT metadata (an older producer): the two-year value stays, the unverified since-listing figure never, and
+        # no metadata is invented on the wire (the Worker applies the same legacy rule; resealing is idempotent).
+        legacy = self._seal_one({**base, "cagr_listed": 4.1})
+        self.assertEqual(legacy["cagr_2y"], None)
+        for key in ("lineage", "long_term_basis", "history_request_start", "cagr_listed", "cagr_listed_start", "cagr_listed_span_days"):
+            self.assertNotIn(key, legacy)
+        seasoned = self._seal_one({**base, "cagr_2y": 0.8, "cagr_listed": None})
+        self.assertEqual(seasoned["cagr_2y"], 0.8)
+        self.assertNotIn("long_term_basis", seasoned)
+        self.assertEqual(self._seal_one({key: value for key, value in seasoned.items() if key != "cross_check"}), seasoned)
+        verified_two = self._seal_one({**base, "cagr_2y": 0.8, "history_start": "2023-09-25", "lineage": {"kind": "UNKNOWN"},
+                                       "history_request_start": "2023-09-25", "cagr_listed": None, "cagr_listed_start": None,
+                                       "cagr_listed_span_days": None, "long_term_basis": "TWO_YEAR"})
+        self.assertEqual((verified_two["cagr_2y"], verified_two["long_term_basis"]), (0.8, "TWO_YEAR"))
+
+    def test_the_sealed_long_term_fields_match_the_worker_contract_fixture(self):
+        """tests/fixtures/v213-lineage-sealed-markets.json is the wire contract with the Worker: each case's input market
+        sealed here must equal its recorded sealed form, which cloud/test/v213-bottleneck-v3.test.ts parses and renders."""
+        golden = json.loads((ROOT / "tests" / "fixtures" / "v213-lineage-sealed-markets.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(golden["cases"]), 4)
+        for case in golden["cases"]:
+            sealed = self._seal_one(case["input"])
+            sealed.pop("cross_check", None)  # the exchange cross-check depends on local price shards, not on this contract
+            self.assertEqual(sealed, case["sealed"], case["name"])
+
     def test_sealed_entries_carry_the_sourced_chinese_name_and_listing_age(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
         market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 1.9,
-                  "ret_1y": 17.8, "cagr_2y": None, "cagr_listed": 4.1, "history_start": "2025-02-13", "currency": "USD"}
+                  "ret_1y": 17.8, "cagr_2y": None, "cagr_listed": 4.1, "history_start": "2025-02-13", "currency": "USD",
+                  "lineage": lineage.load()["SNDK"], "history_request_start": "2023-09-25", "cagr_listed_start": "2025-02-24",
+                  "cagr_listed_span_days": 578, "long_term_basis": "SINCE_REGULAR_WAY"}
         entry = {"rank": 1, "symbol": "SNDK", "name": "Sandisk", "layer": "memory", "archetype": "COMPOUNDER", "score": 70.0,
                  "role": "NAND", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
                  "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
@@ -434,6 +517,197 @@ class SealedFormTests(unittest.TestCase):
         self.assertIsNone(sealed["top"][0]["outlook"])  # a document built before outlooks existed
         self.assertIsNone(sealed["top"][1]["name_zh"])
         self.assertEqual((sealed["top"][0]["market"]["cagr_listed"], sealed["top"][0]["market"]["history_start"]), (4.1, "2025-02-13"))
+        self.assertEqual(sealed["top"][0]["market"]["lineage"]["related_entity"], {"name": "Western Digital", "symbol": "WDC"})
+
+
+def daily(start, end, price):
+    """Weekday closes from start to end (inclusive); price is a function of the date."""
+    day, bars = date.fromisoformat(start), []
+    while day <= date.fromisoformat(end):
+        if day.weekday() < 5:
+            bars.append((day, price(day)))
+        day += timedelta(days=1)
+    return bars
+
+
+class ListingLineageTests(unittest.TestCase):
+    REQUEST = date(2023, 9, 25)
+
+    def test_the_curated_records_are_complete_and_sourced(self):
+        records = lineage.load()
+        self.assertEqual(sorted(records), ["ALAB", "CORZ", "CRWV", "NBIS", "SNDK"])
+        self.assertEqual((records["SNDK"]["kind"], records["SNDK"]["event_date"], records["SNDK"]["regular_way_start"]),
+                         ("SPINOFF", "2025-02-21", "2025-02-24"))
+        self.assertEqual(records["NBIS"]["related_entity"], {"name": "Yandex N.V.", "symbol": "YNDX"})
+        self.assertIsNone(records["ALAB"]["related_entity"])
+        for record in records.values():
+            self.assertTrue(all(source["url"].startswith("https://") for source in record["sources"]))
+
+    def test_sandisk_counts_from_its_first_regular_way_session_not_when_issued_trading(self):
+        record = lineage.load()["SNDK"]
+        # When-issued SNDKV from 2025-02-13 at 36, regular way from 2025-02-24 at 50, 150 on the last day.
+        bars = daily("2025-02-13", "2025-02-21", lambda day: 36.0) + daily("2025-02-24", "2026-09-24", lambda day: 50.0) \
+            + [(date(2026, 9, 25), 150.0)]
+        out = lineage.long_term_returns(bars, record, self.REQUEST)
+        span = (date(2026, 9, 25) - date(2025, 2, 24)).days
+        self.assertEqual((out["history_start"], out["cagr_listed_start"], out["cagr_listed_span_days"]), ("2025-02-13", "2025-02-24", span))
+        self.assertAlmostEqual(out["cagr_listed"], 3.0 ** (365.25 / span) - 1, places=12)
+        self.assertEqual((out["cagr_2y"], out["long_term_basis"], out["lineage"]["kind"]), (None, "SINCE_REGULAR_WAY", "SPINOFF"))
+        self.assertAlmostEqual(out["ret_1y"], 2.0)
+        # Without the record the when-issued bar would be the base: an unverified history is never annualized.
+        unknown = lineage.long_term_returns(bars, None, self.REQUEST)
+        self.assertEqual((unknown["cagr_listed"], unknown["long_term_basis"], unknown["lineage"]), (None, "UNAVAILABLE", {"kind": "UNKNOWN"}))
+        self.assertTrue(lineage.truncated(unknown["history_start"], unknown["history_request_start"]))
+
+    def test_a_missing_regular_way_session_or_bad_prices_leave_the_figure_unavailable(self):
+        record = lineage.load()["SNDK"]
+        late = daily("2025-02-25", "2026-09-25", lambda day: 50.0)
+        self.assertEqual(lineage.long_term_returns(late, record, self.REQUEST)["long_term_basis"], "UNAVAILABLE")
+        for bars in ([], [(date(2025, 2, 24), float("nan"))], daily("2025-02-24", "2026-09-25", lambda day: 0.0)):
+            out = lineage.long_term_returns(bars, record, self.REQUEST)
+            self.assertEqual((out.get("asof"), out["cagr_listed"], out["long_term_basis"]), (None, None, "UNAVAILABLE"))
+
+    def test_annualization_needs_a_full_year_and_two_years_give_the_two_year_figure(self):
+        record = {**lineage.load()["ALAB"], "event_date": "2024-01-01", "regular_way_start": "2024-01-02"}
+        start = date(2024, 1, 2)
+        for days, basis in ((364, "UNAVAILABLE"), (365, "SINCE_REGULAR_WAY"), (730, "TWO_YEAR")):
+            bars = [(start, 10.0), (start + timedelta(days=days // 2), 12.0), (start + timedelta(days=days), 20.0)]
+            out = lineage.long_term_returns(bars, record, self.REQUEST)
+            self.assertEqual(out["long_term_basis"], basis, days)
+            if basis == "SINCE_REGULAR_WAY":
+                self.assertAlmostEqual(out["cagr_listed"], 2.0 ** (365.25 / 365) - 1)
+            if basis == "TWO_YEAR":
+                self.assertAlmostEqual(out["cagr_2y"], 2.0 ** 0.5 - 1)
+                self.assertIsNone(out["cagr_listed"])
+
+    def test_a_resumption_never_bridges_the_suspension(self):
+        record = lineage.load()["NBIS"]
+        bars = daily("2021-01-04", "2022-02-25", lambda day: 90.0) + daily("2024-10-21", "2026-09-25", lambda day: 20.0)
+        out = lineage.long_term_returns(bars, record, date(2021, 1, 1))
+        self.assertEqual((out["cagr_2y"], out["cagr_listed_start"], out["long_term_basis"]), (None, "2024-10-21", "SINCE_REGULAR_WAY"))
+        self.assertAlmostEqual(out["cagr_listed"], 0.0)  # flat since the resumption, not -78% against the 2022 price
+        late_vendor = daily("2024-10-23", "2026-09-25", lambda day: 20.0)  # a late first bar is not taken as the resumption
+        self.assertEqual(lineage.long_term_returns(late_vendor, record, self.REQUEST)["long_term_basis"], "UNAVAILABLE")
+
+    def test_two_year_listings_and_seasoned_listings_keep_the_two_year_figure(self):
+        records = lineage.load()
+        for symbol, start in (("ALAB", "2024-03-20"), ("CORZ", "2024-01-24"), (None, "2023-09-25")):
+            bars = daily(start, "2026-09-25", lambda day: 10.0 + (day.toordinal() % 7))
+            out = lineage.long_term_returns(bars, records.get(symbol), self.REQUEST)
+            self.assertEqual(out["long_term_basis"], "TWO_YEAR", symbol)
+            self.assertEqual(out["lineage"]["kind"], records[symbol]["kind"] if symbol else "UNKNOWN")
+        self.assertFalse(lineage.truncated("2023-09-28", "2023-09-23"))  # a weekend start is an ordinary session start
+        self.assertTrue(lineage.truncated("2023-10-03", "2023-09-23"))
+
+    def test_malformed_or_uncovered_records_are_refused(self):
+        good = json.loads(json.dumps(lineage.load()["SNDK"]))
+        for change in ({"event_date": "2025-02-30"}, {"regular_way_start": "2025-02-20"}, {"regular_way_start": "2025-06-24"},
+                       {"kind": "MERGER"}, {"related_entity": None}, {"sources": []},
+                       {"sources": [{**good["sources"][0], "url": "http://www.sec.gov/x"}]},
+                       {"sources": [{**good["sources"][0], "claims": ["kind", "event_date"]}]},
+                       {"sources": [{**good["sources"][0], "published_at": "2025-13-01"}]}):
+            self.assertIsNone(lineage.clean_record({**good, **change}), change)
+        ipo = json.loads(json.dumps(lineage.load()["ALAB"]))
+        self.assertIsNone(lineage.clean_record({**ipo, "related_entity": {"name": "Invented parent", "symbol": None}}))
+        self.assertIsNotNone(lineage.clean_record(ipo))
+
+    def test_the_gate_tells_missing_history_from_a_negative_return_and_adds_no_score(self):
+        self.assertEqual(engine.long_term_gate({"cagr_2y": 0.4}), (0.4, []))
+        self.assertEqual(engine.long_term_gate({"cagr_2y": None, "cagr_listed": 2.0, "lineage": {"kind": "SPINOFF"}}), (2.0, []))
+        self.assertEqual(engine.long_term_gate({"cagr_2y": -0.1}), (-0.1, ["LONG_TERM_RETURN_NOT_POSITIVE"]))
+        self.assertEqual(engine.long_term_gate({"cagr_2y": 0.0}), (0.0, ["LONG_TERM_RETURN_NOT_POSITIVE"]))
+        self.assertEqual(engine.long_term_gate({"cagr_2y": None, "cagr_listed": None, "lineage": {"kind": "UNKNOWN"}}),
+                         (None, ["HISTORY_OR_LINEAGE_UNVERIFIED"]))
+        self.assertEqual(engine.long_term_gate({"cagr_2y": None, "cagr_listed": None, "lineage": {"kind": "IPO"}}),
+                         (None, ["MARKET_HISTORY_UNDER_1Y"]))
+        self.assertEqual(engine.long_term_gate(None), (None, ["HISTORY_OR_LINEAGE_UNVERIFIED"]))
+
+
+class YahooBoundaryTests(unittest.TestCase):
+    """Astra batch 25 item 4: the history request names its explicit start (not a 3y period), vendor extremes never
+    crash (the market object is simply unavailable), no non-finite return leaks out, and the sealed lineage fields
+    stay consistent."""
+
+    def call_with_frame(self, frame, symbol="TEST", record=None):
+        """engine.yahoo_data with a fake yfinance: Ticker(symbol).history(**kwargs) records the kwargs and returns
+        `frame`; fast_info, info and quarterly_income_stmt are absent and must stay tolerated. sys.modules is
+        restored in finally."""
+        import types
+        calls = []
+
+        class Ticker:
+            def __init__(self, symbol):
+                self.symbol = symbol
+            def history(self, **kwargs):
+                calls.append(kwargs)
+                return frame
+        module = types.ModuleType("yfinance")
+        module.Ticker = Ticker
+        saved = sys.modules.get("yfinance")
+        sys.modules["yfinance"] = module
+        try:
+            return calls, engine.yahoo_data(symbol, record)
+        finally:
+            if saved is None:
+                sys.modules.pop("yfinance", None)
+            else:
+                sys.modules["yfinance"] = saved
+
+    def frame(self, bars):
+        import pandas as pd
+        return pd.DataFrame({"Close": [close for _, close in bars]}, index=pd.DatetimeIndex([day for day, _ in bars]))
+
+    def test_the_request_names_an_explicit_start_and_the_market_object_carries_it(self):
+        today = datetime.now(timezone.utc).date()
+        start = lineage.request_start(today)
+        calls, out = self.call_with_frame(self.frame(daily(start.isoformat(), today.isoformat(), lambda day: 12.0)))
+        self.assertEqual(calls, [{"start": start.isoformat(), "auto_adjust": True}])
+        self.assertEqual(out["market"]["history_request_start"], start.isoformat())
+
+    def test_vendor_extremes_leave_the_market_object_unavailable(self):
+        import pandas as pd
+        index = pd.DatetimeIndex([pd.Timestamp("2024-01-02"), pd.Timestamp("2024-01-03")])
+        for frame in (pd.DataFrame(),                                             # empty frame
+                      pd.DataFrame({"Open": [1.0]}, index=index),                # no Close column
+                      pd.DataFrame({"Close": [float("nan")] * 2}, index=index),  # all-NaN closes
+                      pd.DataFrame({"Close": [-1.0, 0.0]}, index=index),        # non-positive closes
+                      pd.DataFrame({"Close": [float("inf")]}, index=pd.DatetimeIndex([pd.Timestamp("2024-01-02")]))):
+            calls, out = self.call_with_frame(frame)
+            self.assertEqual(out, {"symbol": "TEST"}, frame)
+
+    def test_extreme_closes_never_leak_non_finite_returns(self):
+        import math
+        today = datetime.now(timezone.utc).date()
+        bars = [(today - timedelta(days=400), 1e-300), (today, 1e300)]
+        calls, out = self.call_with_frame(self.frame(bars))
+        market = out["market"]
+        self.assertEqual(market["price"], 1e300)
+        for key in ("ret_6m", "ret_1y", "cagr_2y", "cagr_listed"):
+            self.assertTrue(market[key] is None or math.isfinite(market[key]), key)
+
+    def test_a_seasoned_series_gives_the_two_year_basis_without_truncation(self):
+        import math
+        today = datetime.now(timezone.utc).date()
+        start = lineage.request_start(today)
+        calls, out = self.call_with_frame(self.frame(daily(start.isoformat(), today.isoformat(), lambda day: 12.0)))
+        self.assertEqual(out["market"]["long_term_basis"], "TWO_YEAR")
+        self.assertFalse(out["market"]["history_truncated"])
+        self.assertTrue(math.isfinite(out["market"]["cagr_2y"]))
+
+    def test_sandisk_counts_from_its_regular_way_session_and_not_before(self):
+        import math
+        record = lineage.load()["SNDK"]
+        today = datetime.now(timezone.utc).date()
+        # When-issued SNDKV from 2025-02-13 at 36, regular way from 2025-02-24 at 50, 150 on the last day.
+        bars = daily("2025-02-13", "2025-02-21", lambda day: 36.0) \
+            + daily("2025-02-24", (today - timedelta(days=1)).isoformat(), lambda day: 50.0) + [(today, 150.0)]
+        frame = self.frame(bars)
+        calls, out = self.call_with_frame(frame, "SNDK", record)
+        self.assertEqual((out["market"]["cagr_listed_start"], out["market"]["long_term_basis"]), ("2025-02-24", "SINCE_REGULAR_WAY"))
+        self.assertTrue(math.isfinite(out["market"]["cagr_listed"]))
+        calls, unverified = self.call_with_frame(frame, "SNDK", None)
+        self.assertEqual(unverified["market"]["long_term_basis"], "UNAVAILABLE")
+        self.assertTrue(unverified["market"]["history_truncated"])
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ from typing import Any, Callable, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import listing_lineage  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -337,34 +338,26 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
 
 
 # ---------------------------------------------------------------- Yahoo Finance
-def yahoo_data(symbol: str) -> dict[str, Any]:
+def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None) -> dict[str, Any]:
     import yfinance as yf
+    requested_from = listing_lineage.request_start(datetime.now(timezone.utc).date())
     ticker = yf.Ticker(symbol)
-    history = ticker.history(period="3y", auto_adjust=True)
+    history = ticker.history(start=requested_from.isoformat(), auto_adjust=True)
     out: dict[str, Any] = {"symbol": symbol}
-    if history is None or history.empty:
+    if history is None or history.empty or "Close" not in history.columns:
         return out
     closes = history["Close"].dropna()
-    last_day = closes.index[-1]
-
-    def back(days: int) -> float | None:
-        target = last_day - timedelta(days=days)
-        window = closes[closes.index <= target]
-        return float(window.iloc[-1]) if len(window) else None
-    last = float(closes.iloc[-1])
-    first_day = closes.index[0]
+    if closes.empty:  # all-NaN (or the empty frame's) closes: no market object, never an exception
+        return out
+    # Returns respect the listing's verified lineage (scripts/listing_lineage.py): a spin-off, resumption, IPO or new
+    # equity counts from its first regular-way session, never from when-issued trading; no two-year figure is made up.
+    returns = listing_lineage.long_term_returns(((stamp.date(), float(close)) for stamp, close in closes.items()), lineage,
+                                                requested_from)
+    if returns.get("asof") is None:
+        return out
+    last = returns["price"]
     out["market"] = {"source": "Yahoo Finance adjusted daily close (unofficial)", "source_url": f"https://finance.yahoo.com/quote/{symbol}",
-                     "asof": str(last_day.date()), "price": last, "history_start": str(first_day.date())}
-    for label, days in (("ret_6m", 182), ("ret_1y", 365), ("ret_2y", 730)):
-        base = back(days)
-        out["market"][label] = (last / base - 1) if base and (last_day - first_day).days >= days - 5 else None
-    two = out["market"].get("ret_2y")
-    out["market"]["cagr_2y"] = ((1 + two) ** 0.5 - 1) if two is not None and two > -1 else None
-    # Listings younger than two years (spin-offs, IPOs) have no 2-year figure; the same long-term standard then uses
-    # the annualized return since the first trading day, and only from one year of history on.
-    span, first = (last_day - first_day).days, float(closes.iloc[0])
-    out["market"]["cagr_listed"] = ((last / first) ** (365.25 / span) - 1) \
-        if out["market"]["cagr_2y"] is None and span >= 360 and first > 0 else None
+                     **returns}
     try:
         info = ticker.fast_info
         out["market"]["currency"] = info.get("currency")
@@ -686,6 +679,18 @@ def capture_score(fund: dict[str, Any] | None) -> tuple[float, dict[str, float]]
     return (30 * earned / available if available else 0.0), detail
 
 
+def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[str]]:
+    """The long-term eligibility gate (not a score component): the two-year CAGR, else the verified since-regular-way
+    figure; it must be positive. A missing figure is not a negative return: an unverified short history and a verified
+    segment under one year are told apart."""
+    long_term = (market or {}).get("cagr_2y")
+    long_term = long_term if long_term is not None else (market or {}).get("cagr_listed")
+    if long_term is None:
+        unknown = not market or (market.get("lineage") or {}).get("kind", "UNKNOWN") == "UNKNOWN"
+        return None, ["HISTORY_OR_LINEAGE_UNVERIFIED" if unknown else "MARKET_HISTORY_UNDER_1Y"]
+    return long_term, (["LONG_TERM_RETURN_NOT_POSITIVE"] if long_term <= 0 else [])
+
+
 def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True) -> dict[str, Any]:
     layers = load_json(LAYERS)["layers"]
     serenity = load_json(SERENITY) if SERENITY.exists() else {"signals": [], "source": None}
@@ -700,8 +705,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     fx: dict[str, float | None] = {}
     companies: dict[str, dict[str, Any]] = {}
     official = {**taiwan_monthly_revenue(members), **cision_interim_revenue(members, now)}
+    lineages = listing_lineage.load()
     for symbol, member in members.items():
-        data = yahoo_data(symbol)
+        data = yahoo_data(symbol, lineages.get(symbol))
         fund = None
         cik = ciks.get(symbol) if "." not in symbol else None
         if cik:
@@ -754,13 +760,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     scored, excluded = [], []
     for company in companies.values():
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
-        reasons = []
-        if not market or market.get("cagr_2y") is None and market.get("cagr_listed") is None:
-            reasons.append("MARKET_HISTORY_UNDER_1Y")
-        long_term = (market or {}).get("cagr_2y")
-        long_term = long_term if long_term is not None else (market or {}).get("cagr_listed")
-        if long_term is None or long_term <= 0:
-            reasons.append("LONG_TERM_RETURN_NOT_POSITIVE")
+        long_term, reasons = long_term_gate(market)
         if sig and sig.get("stance") == "BEARISH" and sig.get("bearish", 0) >= 3 and sig.get("bullish", 0) == 0:
             reasons.append("SERENITY_BEARISH")
         if reasons:

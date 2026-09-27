@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-Updated 2026-09-27 (09:40 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
+Updated 2026-09-27 (11:30 Asia/Taipei) by an operator-directed Claude Code session (master and single tracked writer; operator authority 2026-09-25/26). Earlier detail: `git show 5b15984:state/STATUS.md` (09:40, commits after 20:45, gate run 23), `git show 3ac39a1:state/STATUS.md` (20:45 seal, full production record), `git show a8c6e58:state/STATUS.md` (17:15), `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`.
 
 ## Identity
 
@@ -12,20 +12,11 @@ Updated 2026-09-27 (09:40 Asia/Taipei) by an operator-directed Claude Code sessi
 - Outage 22:45-08:12: every seal failed on Cloudflare's free KV write quota (code 10048; five reinstalls, several manual seals and a Chinese-name cache fill that rewrote 52 identity shards an hour). The untouched hourly task recovered after the 08:00 reset: 08:12 seal (15 uploads), 09:12 seal `20260927T011233Z-80d7c5b186c1` (23 uploads), post gate `-ExpectTop20Records 20` PASS; read-only replay: seven-field Top20 fresh (20), v3 20, NVDA options VALID.
 - The new validators refuse the live SIVE.ST and VOLV-B.ST option cycles (no high-strike delta), so the new Worker must only go live after data built by the new runtime is sealed.
 
-## Commits after 20:45 (tests and gates PASS; not deployed; details in the commit messages)
+## Commits after 20:45 (not deployed)
 
-| Commit | Change |
-| --- | --- |
-| `13d7c85` | lane 6: covered-call high strike needs delta <= 0.20; chains without Greeks use the quote-implied delta |
-| `b3f5e8d` | lane 3: RPO timing written as a word fraction (Micron) or with "during" (Nebius) |
-| `dee1a05` | lane 4: natural LINE phrasings reach Top20 v3, details, the industry ranking and covered calls; help texts |
-| `e8824ae` `4bae22f` `6503a8b` | lane 2: official revenue beside Yahoo: TWSE/TPEx monthly, SIVE via Cision, SK hynix/Samsung curated IR |
-| `dc7c6f7` | KV sync names Cloudflare's daily write limit (code 10048) and stops retrying it; runbook budget |
-| `bd0a879` | fixes from two ChatGPT Pro reviews, Astra ACCEPT after five rounds (delta cap in both validators, fraction grammar, Cision quarterly scope, one revenue contract, rendering) |
-| `441ce9f` | sealed reader replay contract v3 with product probes (gate and every staged seal); Astra ACCEPT (tooling) |
-| `ef9d221` | CRLF restored in two files rewritten as LF (no content change) |
+`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, two ChatGPT Pro reviews, reader replay v3 (table and gate run 23 in `git show 5b15984:state/STATUS.md`). This commit (batch 27): lanes 15 and 16.
 
-Gate run 02:35 (final tree): security, documentation boundary/structure, workflow supply-chain PASS; typecheck PASS; vitest 956 passed / 2 skipped; offline suite 2749 OK (run 23). Run 22 failed once in `test_v213_model_profile ... test_compiled_exe_profile_persistence_and_child_propagation (route='route_incomplete')`: an extra `/v1/models` request reached the test stub (receipt `%TEMP%\ii-live\offline-full-22.txt`); 3/3 isolated passes and seven other full runs passed; no launcher/model-profile change in this batch. Tracked as a suspected environmental flake (root cause unproven; Astra accepted the exception for this batch only, not as release qualification). 
+Batch 27 review record: Astra REJECT on the first horizons/options draft (5 items), REJECT on batch 25 (collector bound, lineage temporal consistency, horizon overflow, producer boundary; the producer part implemented by `qwen-local` in an isolated worktree), REJECT on batch 26 (universe discovery outside the deadline, legacy lineage erased across the sealer→Worker boundary, revenue guidance labelled as new orders, this file); batch 27 fixes all of them and adds a sealer↔Worker wire-contract fixture (`tests/fixtures/v213-lineage-sealed-markets.json`). Gates (Python 3.12.10, `PYTHONUTF8=1` as in CI): security, documentation boundary/structure, workflow supply chain PASS; typecheck PASS; vitest 969 passed / 2 skipped; focused unittest 59 OK; offline suite run 27 (`%TEMP%\ii-live\offline-full-27.txt`). Without `PYTHONUTF8=1` `test_v213_market_products.test_cli_builder_synthetic_fixture` fails (child output in cp950; run 25); `.venv-ci` lacks pandas although `requirements-ci.txt` pins it. Astra ACCEPT on batch 27 (`%TEMP%\ii-livestra-accept-batch27.result.md`). Known limits: process exit is bounded by daemon containment, not by cancelling every socket read (yfinance and a blocked read may outlive the deadline inside abandoned workers; not a guarantee for a resident process); a new IPO/spin-off stays excluded until curated. Next: any rollout still needs the operator's current-session authorization and an Astra go/no-go (lane 14).
 
 ## Operator decisions (2026-09-26)
 
@@ -38,6 +29,9 @@ Gate run 02:35 (final tree): security, documentation boundary/structure, workflo
 3. Orders: MU fixed. CRWV (24M only) and SNDK (12M only) disclose no other horizon. AXTI ("through the first half of 2029") and NBIS (20-F/6-K, 28%→36% within 24M) have no deep report (only domestic SEC filers get one): DEFERRED_WITH_REASON until foreign-filer deep reports exist. Korea HD Hyundai Electric deck unreadable keylessly.
 5. Deferred: report-age gates for carried reports and federation readers (certified `cloud/src/qa.ts` needs recertification); the CI R75 route blocks release qualification.
 14. Rollout of `3ac39a1..ef9d221`: DEFERRED_WITH_REASON, blocked at the go/no-go gate. Astra reviewed four rollout plans (NO_GO each: concurrency with the hourly seal, pointer rollback not executable, content only checked after publication, then a driver-level recovery state machine, continuous lease monitoring, conservative quota accounting) and every verdict adds that a production mutation needs explicit current-session authorization it cannot establish from a quoted instruction. Ready for the operator: driver v2 with 15 fault-injection tests, plan v4 and all reviews in `_archive\rollout-2026-09-27` (Astra NO_GO 4 lists the remaining ten changes); live compatibility: the new Worker reads today's sealed v3, refuses 76 Stockholm options cycles without a high-strike delta (options are already past their 6 h bound); the old 16cb1b3 reader reads a full-tier candidate built by the new code path. Decide: authorize and supervise the rollout (the driver's phases or the earlier manual procedure), or have the driver finished first.
+
+15. Listing lineage (operator 2026-09-27: "Sandisk is not a new company"): `config/listing-lineage-v1.json` (SNDK spin-off from WDC, regular way 2025-02-24; NBIS resumption after Yandex N.V.; ALAB/CRWV IPO; CORZ new equity), primary sources re-read; `scripts/listing_lineage.py` shared by producer and sealer, same rules in the Worker. The long-term figure starts at the first regular-way session (Yahoo's first SNDK bar 2025-02-13 is when-issued: +1027%/yr → +872%/yr), needs 365 days, never fabricates two years; unverified short history is excluded (`HISTORY_OR_LINEAGE_UNVERIFIED`). Ranking on 2026-09-27 closes: no inclusion change (gate only). A new IPO/spin-off in a layer is excluded until curated: check `excluded` after each v3 build.
+16. Top20 horizons and options (operator 2026-09-27): future ORDER estimate and price scenario with 6-month/1-year horizons from the report date; RPO coverage labelled as revenue only; option answers for Chinese names, ADR routes (TSMC→TSM 1:5, UMC, ASX) and a coverage statement elsewhere (IQE); options universe 200 largest US names under one 20-minute run deadline (daemon workers, last-good file kept when >50% unfinished; live run 313 underlyings in 285 s).
 
 Closed today: lanes 1, 4, 6, 7, 8, 9, 10, 11, 12, 13.
 
@@ -53,15 +47,11 @@ NATIVE_ATTEMPT_COUNT=0; NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQ
 
 ## Control plane
 
-Claude Code is master writer (operator 2026-09-25): the single tracked writer that integrates, tests and commits. Astra (operator 2026-09-27; Herdr `astra-review`, w9:p9, Pi `openai-codex/gpt-6-astra`) writes bounded task contracts for complex lanes, prioritises lanes, gives the acceptance verdict on every batch before commit, arbitrates reviews and gives go/no-go on rollouts. `qwen-local` (w9:p5) implements contracts and proposes patches; `gemini-review` (w9:p7) researches; ChatGPT Pro via `chatgpt-web` is optional. Each Herdr task starts with `/new` (send with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes and the Skyrim ChatGPT profile belong to another project.
+Claude Code is master writer (operator 2026-09-25): the single tracked writer that integrates, tests and commits. Panes (operator 2026-09-27, JEV-selected minimal loads, receipt `_archive\pane-slimming-20260927T022638Z`): tab w9:t4 `astra-review` (pA), `gemini-review` (pB, + antigravity, web access, serenity skill), `qwen-local` (pC, isolated worktree patches). Astra (operator 2026-09-27; Pi `openai-codex/gpt-6-astra`) writes bounded task contracts for complex lanes, prioritises lanes, gives the acceptance verdict on every batch before commit, arbitrates reviews and gives go/no-go on rollouts. `qwen-local` implements contracts and proposes patches; `gemini-review` researches; ChatGPT Pro via `chatgpt-web` is optional. Each Herdr task starts with `/new` (send with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes and the Skyrim ChatGPT profile belong to another project.
 
 ## Workspace fixes (outside the repository, logged)
 
-- Pi `[Extension issues]`: `pi-mcp-adapter` failed because `~\.pi\agent\settings.json` had a UTF-8 BOM written by `Configure-Pi-NInfer.ps1` (Windows PowerShell `Set-Content -Encoding UTF8`). The kit and installed copies now write UTF-8 without BOM and read UTF-8; `models.json` BOM removed; the project `.pi/sol-pi.json` reducer that named the removed `tabby-local` provider is off. Receipt `_archive\extension-issues-fix-20260926T132956Z\RECEIPT.md`.
-- `.mcp.json` and workspace `AGENTS.md` preimages: `_archive\chatgpt-web-mcp-switch-20260926T135913Z`.
-
-- `D:\chatgpt-web-mcp\src\selectors.js`: the zh-TW new-chat control is `<button aria-label="新對話">` (a collapsed sidebar keeps a hidden copy first), so new chats always failed their check; four `:visible` button selectors added (preimage in the switch archive; the MCP's tests 37/38 before and after, the failure is a pre-existing Windows path assertion).
-- `D:\chatgpt-web-mcp` local branch `local/zh-tw-lanes` (c46501a, not pushed): per-project lanes on one browser (`CHATGPT_WEB_LANE`, own tab/lock/state, shared circuit breaker), zh-TW new-chat button. `.mcp.json` sets `CHATGPT_WEB_LANE=investor`. The MCP's message selectors do not match the current ChatGPT page (`data-content-search-unit-key` replaced `data-message-author-role`): sends work but it never sees the answer, so read answers from the tab (as for `%TEMP%\ii-live\chatgpt-review-6ab7*.answer.md`) until the selectors are updated.
+Pi extension BOM fix, `chatgpt-web` MCP switch and its zh-TW lane branch `local/zh-tw-lanes` in `D:\chatgpt-web-mcp` (details: `git show 5b15984:state/STATUS.md`); its message selectors do not see answers (`data-content-search-unit-key` replaced `data-message-author-role`), so read answers from the tab. Pane slimming: `_archive\pane-slimming-20260927T022638Z`.
 
 ## Handoff (2026-09-27 03:25)
 

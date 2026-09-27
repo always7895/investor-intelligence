@@ -3,7 +3,10 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import {
   buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, findBottleneckEntry, loadBottleneckV3,
 } from "./bottleneck-v3";
-import { loadOptionObservation, optionTickerKeys } from "./market-observations";
+import { loadOptionObservation, observationSymbol, optionTickerKeys } from "./market-observations";
+import { adrNote, adrRoute, marketHasOptions, uncoveredReason } from "./option-routes";
+import { resolveGlobalIdentity, type GlobalIdentityRecord } from "./global-identity";
+import { loadIdentityCatalogForQuery } from "./identity-shards";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
@@ -491,28 +494,61 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   // A ticker may carry a share class after a space as the stock lookup shows it (VOLV B, NDA SE, OCTV SDB).
   // Without a cycle word only the Chinese option words count after a ticker ("NVDA 期權"), so English such as
   // "call options" is never read as a ticker.
-  const quoteMatch = /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)\s*(?:期權|期权|選擇權|选择权|options?)(?:\s*文字)?$/i.exec(command)
-    || /^([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*()(?:期權|期权|選擇權|选择权)(?:\s*文字)?$/i.exec(command)
-    || /^(?:(?:期權|期权|選擇權|选择权)\s*|options?\s+)([A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?)\s*(每週|每周|每月|weekly|monthly)?(?:\s*文字)?$/i.exec(command);
+  // A ticker, or (operator 2026-09-27) a Chinese company name such as 台積電, resolved through the sealed identity shards.
+  const TICKER = String.raw`[A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?|[\u4e00-\u9fff]{2,8}`;
+  const quoteMatch = new RegExp(`^(${TICKER})\\s*(每週|每周|每月|weekly|monthly)\\s*(?:期權|期权|選擇權|选择权|options?)(?:\\s*文字)?$`, "i").exec(command)
+    || new RegExp(`^(${TICKER})\\s*()(?:期權|期权|選擇權|选择权)(?:\\s*文字)?$`, "i").exec(command)
+    || new RegExp(`^(?:(?:期權|期权|選擇權|选择权)\\s*|options?\\s+)(${TICKER})\\s*(每週|每周|每月|weekly|monthly)?(?:\\s*文字)?$`, "i").exec(command);
   if (quoteMatch) {
     const isText = isEnvText || /文字\s*$/i.test(command);
-    const ticker = quoteMatch[1]!.toUpperCase();
+    const typed = quoteMatch[1]!;
+    const ticker = typed.toUpperCase();
     const periodRaw = quoteMatch[2];  // both forms: group 1 ticker, group 2 period (optional after 期權; weekly by default)
     const period = periodRaw && /每月|monthly/i.test(periodRaw) ? "monthly" : "weekly";
 
     // Non-ticker words filter
-    if (!["教學", "試算說明", "HELP", "TOP20"].includes(ticker)) {
+    if (!["教學", "試算說明", "HELP", "TOP20"].includes(ticker) && !/每[週周月]|期[權权]|選擇權|选择权|教學|試算/.test(typed)) {
       const view = await pinPublicSnapshot(env);
       if (view.integrity === "sealed") {
-        // Sealed delayed observations of the watch universe (US options and Nasdaq Stockholm options).
-        const observed = await loadOptionObservation(view, optionTickerKeys(ticker), period);
-        if (observed && "unavailable" in observed) {
-          return optionsUnavailableReport(ticker, period, `${observed.unavailable}（已封存之公開觀察）`, isText);
-        }
-        if (observed && "quote" in observed) {
+        const label = period === "weekly" ? "每週期權" : "每月期權";
+        // Sealed delayed observations of the watch universe (US options and Nasdaq Stockholm options); a note (the ADR
+        // route) is shown above the suggestion.
+        const answer = async (keys: string[], shown: string, note: string | null): Promise<LineOutboundMessage[] | null> => {
+          const observed = await loadOptionObservation(view, keys, period);
+          if (!observed) return null;
+          if ("unavailable" in observed) {
+            return optionsUnavailableReport(shown, period, `${note ? `${note}` : ""}${observed.unavailable}（已封存之公開觀察）`, isText);
+          }
           const cycle = validateCoveredCallCycle(observed.quote);
-          return cycle ? buildCoveredCallMessages(cycle, period === "weekly" ? "每週期權" : "每月期權", isText ? "text" : "flex")
-            : optionsUnavailableReport(ticker, period, "封存之期權觀察未通過驗證，已拒絕顯示。", isText);
+          if (!cycle) return optionsUnavailableReport(shown, period, "封存之期權觀察未通過驗證，已拒絕顯示。", isText);
+          const messages = buildCoveredCallMessages(cycle, label, isText ? "text" : "flex");
+          return note ? [{ type: "text", text: note } as LineOutboundMessage, ...messages].slice(0, 5) : messages;
+        };
+        let route = adrRoute(typed);
+        if (!route && /^[A-Z0-9]/i.test(typed)) {
+          const direct = await answer(optionTickerKeys(ticker), ticker, null);
+          if (direct) return direct;
+        }
+        let record: GlobalIdentityRecord | null = null;
+        if (!route) {
+          const resolution = resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, typed), typed);
+          if (resolution.status === "RESOLVED") {
+            record = resolution.record;
+            route = adrRoute(observationSymbol(record));
+          } else if (resolution.status === "NEEDS_MARKET_SELECTION") {
+            const listed = resolution.candidates.slice(0, 5).map(c => `${c.symbol}（${c.venue}）`).join("、");
+            return optionsUnavailableReport(ticker, period, `此名稱對應多個掛牌：${listed}；請以精確代號查詢期權。`, isText);
+          }
+        }
+        if (route) {
+          const viaAdr = await answer(optionTickerKeys(route.adr), route.adr, adrNote(route));
+          return viaAdr ?? optionsUnavailableReport(ticker, period, `${adrNote(route)}本輪封存資料沒有 ${route.adr} 的期權觀察。`, isText);
+        }
+        if (record && !marketHasOptions(record.market)) return optionsUnavailableReport(ticker, period, uncoveredReason(record), isText);
+        if (record) {  // a name resolved to a US or Stockholm listing: that listing's own key only (no fallback to another market)
+          const symbol = observationSymbol(record);
+          return await answer([symbol], symbol, null)
+            ?? optionsUnavailableReport(ticker, period, `${symbol}（${record.venue}）：本輪封存資料沒有此掛牌的期權觀察（可能沒有掛牌期權，或不在觀察範圍）。`, isText);
         }
         const quote = await view.json<OptionContractQuote>([`options:${ticker}:${period}:latest`]);
         if (quote) {
