@@ -10,7 +10,7 @@ Privacy-first public-market research: Python collectors, scoring and gates (`scr
 
 ## Commands
 
-Python: CPython 3.12 from `scripts/resolve_python.ps1` (`$env:PROJECT_PYTHON`), hash-locked `requirements-ci.txt`. Worker, from `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`.
+Python: CPython 3.12.10 with hash-locked `requirements-ci.txt`; locally `& .\scripts\resolve_python.ps1 -VenvPath .venv-local-gates -InstallLockedDependencies` sets `$env:PROJECT_PYTHON` (without the switch nothing is installed). Gates run with `PYTHONUTF8=1`. Worker, from `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`.
 
 ```powershell
 & $env:PROJECT_PYTHON scripts/security_check.py

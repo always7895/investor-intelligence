@@ -6,19 +6,33 @@ Exact dependencies are in [requirements-ci.txt](../requirements-ci.txt) and [clo
 
 ## Python
 
-Use the existing approved CPython3.12.10 resolved by [bootstrap](../scripts/bootstrap_portable_python.ps1) / [resolver](../scripts/resolve_python.ps1), with the reviewed transitive hash lock:
+Use the existing approved CPython3.12.10 resolved by [bootstrap](../scripts/bootstrap_portable_python.ps1) / [resolver](../scripts/resolve_python.ps1), with the reviewed transitive hash lock. CI bootstraps the portable runtime itself. Locally the resolver has two modes, both setting `$env:PROJECT_PYTHON` in the calling process only on success, reusing a compatible existing venv and never deleting or replacing anything at `-VenvPath`:
+
+- generic (default, activation fallbacks): any 64-bit Python >= `-MinimumVersion`; installs nothing;
+- `-InstallLockedDependencies`: only 64-bit CPython 3.12.10 (implementation checked), for the base and a reused venv; installs `requirements-ci.txt` with the command below and runs `pip check` on every call.
+
+`-BasePython` pins the base interpreter only when a venv is created; a reused venv is judged by its own interpreter. An existing destination, even an empty directory, must already be a compatible venv. If an optional GitHub file cannot be written the call fails with `PROJECT_PYTHON` unset; an earlier append to the other file is not undone.
+
+Local gates use a dedicated checkout venv (ignored by `.venv-*/`), not `.venv-ci`. A run on an unpinned base interpreter is diagnostic, not locked acceptance.
 
 ```powershell
-& $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
-& $env:PROJECT_PYTHON -m pip check
+& .\scripts\resolve_python.ps1 -VenvPath .venv-local-gates -InstallLockedDependencies
+$env:PYTHONUTF8 = '1'
 & $env:PROJECT_PYTHON scripts/security_check.py
 & $env:PROJECT_PYTHON scripts/documentation_boundary_gate.py
 & $env:PROJECT_PYTHON scripts/documentation_structure_gate.py
 & $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
-& $env:PROJECT_PYTHON -m unittest discover -s tests -p 'test_*.py' -v
+& $env:PROJECT_PYTHON scripts/run_offline_tests.py --repository
 ```
 
-Commands run from the development root; stop at each nonzero exit. R75's existing validator enforces failures. Live providers require separate access/rights and source-bound acceptance; successful dependency installation is not that proof.
+The locked install the resolver runs (also what CI and R70 run explicitly):
+
+```powershell
+& $env:PROJECT_PYTHON -m pip install --isolated --disable-pip-version-check --only-binary=:all: --index-url https://pypi.org/simple --require-hashes -r requirements-ci.txt
+& $env:PROJECT_PYTHON -m pip check
+```
+
+Commands run from the development root; stop at each nonzero exit. `PYTHONUTF8=1` matches CI (without it a CLI test fails on cp950 consoles). R75's existing validator enforces failures. Live providers require separate access/rights and source-bound acceptance; successful dependency installation is not that proof.
 
 [scripts/run_offline_tests.py](../scripts/run_offline_tests.py) supplies import stubs **only for absent optional packages**. It is not a network sandbox: installed requests/yfinance are real modules. Tests must mock live transport; never interpret the runner name as permission to fetch or publish. Distribution mode excludes repository-only metadata tests, not production acceptance requirements.
 
