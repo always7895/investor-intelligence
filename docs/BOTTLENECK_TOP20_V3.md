@@ -98,3 +98,30 @@ outage there never blocks the other markets.
 
 `TOP20` (v3 when sealed and fresh, else the seven-field Top20), `瓶頸詳情 代號`, `產業爆發榜`, `七欄Top20`.
 The Worker refuses a v3 document older than the report bound (14 h) and falls back rather than showing stale data.
+
+## Official previous-quarter comparator (Astra contract L18-5351-CURATED-01)
+
+Yahoo's quarterly income statement has five quarters, so the preceding quarter of some listings has no year-earlier
+comparator and its YoY (and the acceleration) stays null. `config/official-quarterly-revenue-v1.json` holds reviewed
+records that supply both operands of that previous-quarter YoY from the issuer's CPA-reviewed interim reports;
+`scripts/official_quarterly_revenue.py` validates them for the builder and the sealer. One record exists: 5351.TWO
+(Etron), current quarter 2026-06-30, previous 2026-03-31 (Q1 report note 六(二十四) p.39: 2,735,412 / 627,130 TWD
+thousands; Q2 report p.42: 4,898,686 / 744,722, half-year 7,634,098 / 1,371,852). No other listing is covered.
+
+- Applies only when Yahoo lacks the comparator (an available, zero or conflicting one is never replaced), for the exact
+  symbol, the exact Yahoo quarter pair and a Yahoo financial statement currency (`financialCurrency`, not the quote
+  currency) equal to the record's. A later Yahoo quarter makes the record inapplicable.
+- Yahoo's `Total Revenue` is in base currency units; the official thousands are multiplied by exactly 1000. All three
+  overlapping quarters must agree within 1000 TWD (one reporting unit) and the current YoY within 0.00001; the half-year
+  minus the second quarter must equal each first-quarter claim. Failures leave the previous YoY null with a local
+  reason (`revenue_yoy_prev_reason`: NO_RECORD, PERIOD_MISMATCH, CURRENCY_UNVERIFIED, CROSS_CHECK_MISMATCH,
+  INVALID_RECORD, AMBIGUOUS_RECORD); the rest of the Yahoo fundamentals stay.
+- Wire: `revenue_yoy_prev_basis` (`YAHOO`, `OFFICIAL_CURATED` or null) and `revenue_yoy_prev_source` (evidence
+  `official-quarterly-revenue-evidence-v1`: record, documents with hashes, claims with page/note/row, restatement
+  reconciliation, observed Yahoo overlaps and the SHA-256 of the config bytes). The sealer rebuilds the evidence from its
+  own config and refuses the v3 object on any difference; the Worker repeats the checks and refuses the document.
+  Older documents carry neither field and keep their meaning.
+- Display: the current quarter stays attributed to Yahoo; the card notes 前一季採官方合併季報 and the detail (text and
+  card) names the official report, quarters, note and page and links the Q1 report.
+- Rollout: the deployed reader predates these fields and would attribute the figure to Yahoo, so a Worker that knows
+  them must serve before data carrying them is published.

@@ -46,6 +46,7 @@ import listing_lineage  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import top20_carry_forward  # noqa: E402
+import official_quarterly_revenue  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
 SHARES_BASES = ("OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE")  # scripts/bottleneck_top20_v3.py shares_basis
@@ -547,6 +548,31 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
             sig, pos = entry.get("serenity"), entry.get("leopold")
             fund = entry.get("fundamentals")
             role_zh = roles_zh.get(entry["symbol"]) or entry.get("role_zh")
+            sealed_fund = None
+            if fund:
+                # The previous-quarter YoY from a reviewed official pair travels only with evidence rebuilt from the local
+                # config (scripts/official_quarterly_revenue.py); a figure without it, or evidence without that basis,
+                # refuses the whole object rather than keeping a number the reader would attribute to Yahoo.
+                basis, source = fund.get("revenue_yoy_prev_basis"), fund.get("revenue_yoy_prev_source")
+                if basis == "OFFICIAL_CURATED":
+                    try:
+                        source = official_quarterly_revenue.seal_evidence(
+                            source, symbol=entry["symbol"], quarter=fund.get("quarter_end"), current_yoy=fund.get("revenue_yoy"),
+                            prev_yoy=fund.get("revenue_yoy_prev"), as_of=generated)
+                    except official_quarterly_revenue.RecordError:
+                        return {}
+                elif basis not in (None, "YAHOO") or source is not None:
+                    return {}
+                sealed_fund = {
+                    **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
+                                  "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    # What the share-count change measures; a figure without a known basis is not sealed.
+                    "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,
+                    **({"shares_yoy": None} if fund.get("shares_basis") not in SHARES_BASES and "shares_basis" in fund else {}),
+                    **({"cross_check": check} if (check := _sealed_revenue_check(fund.get("cross_check"))) else {})}
+                if "revenue_yoy_prev_basis" in fund:  # older builds carry neither field and keep their legacy meaning
+                    sealed_fund["revenue_yoy_prev_basis"] = basis
+                    sealed_fund["revenue_yoy_prev_source"] = source
             top.append({
                 "rank": entry["rank"], "symbol": entry["symbol"], "name": str(entry.get("name") or entry["symbol"])[:160],
                 "name_zh": zh[entry["symbol"]][0] if entry["symbol"] in zh else None,
@@ -557,13 +583,7 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                     entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
-                "fundamentals": None if not fund else {
-                    **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
-                                  "gross_margin_change", "rpo_yoy", "shares_yoy")),
-                    # What the share-count change measures; a figure without a known basis is not sealed.
-                    "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,
-                    **({"shares_yoy": None} if fund.get("shares_basis") not in SHARES_BASES and "shares_basis" in fund else {}),
-                    **({"cross_check": check} if (check := _sealed_revenue_check(fund.get("cross_check"))) else {})},
+                "fundamentals": sealed_fund,
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),

@@ -6,6 +6,7 @@ import {
 import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
 import urlTable from "../../tests/fixtures/v213-order-forecast-urls.json";
+import officialRevenueFixture from "../../tests/fixtures/v213-official-quarterly-revenue.json";
 
 describe("bottleneck-explosion Top20 v3", () => {
   it("parses a fresh document and refuses stale, malformed or mis-ranked ones", () => {
@@ -509,5 +510,82 @@ describe("bottleneck-explosion Top20 v3", () => {
     }
     const supported = JSON.stringify(buildBottleneckDetail(fixed(), "S4", "text"));  // the supported kind still shows
     expect(supported).toContain("公司指引：2026 年新接訂單 12.00兆 KRW（原 8.40兆 KRW）");
+  });
+
+  it("attributes an official previous-quarter YoY separately and refuses contradictory evidence (L18-5351-CURATED-01)", () => {
+    // The fundamentals the Python sealer emitted (tests/test_bottleneck_top20_v3.py OfficialPreviousQuarterTests).
+    const sealed = (officialRevenueFixture as any).fundamentals;
+    const BUILT = Date.parse((officialRevenueFixture as any).generated_at);  // the sealer's build instant, after retrieval
+    const withOfficial = (mutate: (fund: any, entry: any) => void = () => {}, built = BUILT) => {
+      const d = doc(built);
+      const entry = (d.top as any[])[1];
+      Object.assign(entry, { symbol: "5351.TWO", name: "Etron Technology", fundamentals: structuredClone(sealed) });
+      mutate(entry.fundamentals, entry);
+      return parseBottleneckV3(d, built + HOUR);
+    };
+    const parsed = withOfficial()!;
+    expect(parsed).not.toBeNull();
+    const label = "前一季年增來源：鈺創官方合併季報（2026Q1／2025Q1，附註六(二十四) p.39），已核對同基準";
+    const q1 = "https://etron.com/wp-content/uploads/2026/05/115Q1%E5%90%88%E4%BD%B5%E8%B2%A1%E5%A0%B1.pdf";
+    const text = buildBottleneckDetail(parsed, "5351.TWO", "text") as { type: string; text: string }[];
+    const body = text.map(message => message.text).join("\n");
+    expect(body).toContain("財報（Yahoo Finance 季度損益表（非官方）；前一季年增採官方合併季報，季末 2026-06-30）：營收年增 +557.8%，前一季年增 +336.2%（加速度 +221.6個百分點）");
+    expect(body).toContain(`來源：https://finance.yahoo.com/quote/5351.TWO/financials\n${label}\n前一季來源：${q1}`);
+    expect(text.every(message => message.type === "text" && message.text.length <= 4900)).toBe(true);
+    const flex = JSON.stringify(buildBottleneckDetail(parsed, "5351.TWO", "flex"));
+    expect(flex).toContain(label);
+    expect(flex).toContain(`前一季來源：${q1}`);
+    expect(flex).toContain("https://finance.yahoo.com/quote/5351.TWO/financials");  // the current quarter stays Yahoo's
+    const cards = buildBottleneckTop20Messages(parsed, "flex") as unknown[];
+    expect(cards.length).toBeLessThanOrEqual(5);
+    expect(JSON.stringify(cards)).toContain("財報：Yahoo Finance 季度損益表（非官方）（前一季採官方合併季報），季末 2026-06-30");
+    // Every other entry keeps its unchanged attribution.
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"))).not.toContain("官方合併季報");
+
+    const refused: [string, (fund: any, entry: any) => void][] = [
+      ["no evidence", fund => { fund.revenue_yoy_prev_source = null; }],
+      ["evidence under a Yahoo basis", fund => { fund.revenue_yoy_prev_basis = "YAHOO"; }],
+      ["unknown basis", fund => { fund.revenue_yoy_prev_basis = "OFFICIAL"; }],
+      ["another symbol", (_fund, entry) => { entry.symbol = "5351.TW"; }],
+      ["out of period", fund => { fund.quarter_end = "2026-09-30"; }],
+      ["previous YoY", fund => { fund.revenue_yoy_prev += 1e-9; }],
+      ["current YoY", fund => { fund.revenue_yoy += 0.001; }],
+      ["digest format", fund => { fund.revenue_yoy_prev_source.config_sha256 = "A".repeat(64); }],
+      ["unknown field", fund => { fund.revenue_yoy_prev_source.extra = 1; }],
+      ["claim amount", fund => { fund.revenue_yoy_prev_source.previous_pair.current.amount = 2735413; }],
+      ["claim float", fund => { fund.revenue_yoy_prev_source.previous_pair.prior_year.amount = 627130.5; }],
+      ["claim period", fund => { fund.revenue_yoy_prev_source.current_pair.prior_year.end = "2025-06-29"; }],
+      ["claim document", fund => { fund.revenue_yoy_prev_source.current_pair.current.document_id = "X"; }],
+      ["http document", fund => { fund.revenue_yoy_prev_source.documents[0].url = "http://etron.com/a.pdf"; }],
+      ["foreign host", fund => { fund.revenue_yoy_prev_source.documents[0].url = "https://etron.com.example/a.pdf"; }],
+      ["document hash", fund => { fund.revenue_yoy_prev_source.documents[1].sha256 = "z".repeat(64); }],
+      ["restatement", fund => { fund.revenue_yoy_prev_source.restatement_check.half_year_claims.current.amount = 7634099; }],
+      ["reconciliation", fund => { fund.revenue_yoy_prev_source.restatement_check.reconciliations[0].difference = 1; }],
+      ["overlap delta", fund => { fund.revenue_yoy_prev_source.cross_check.current_current.delta_twd = 1001; }],
+      ["overlap observation", fund => { fund.revenue_yoy_prev_source.cross_check.previous_current.yahoo_twd = 2735412000 + 1001; }],
+      ["overlap official", fund => { fund.revenue_yoy_prev_source.cross_check.current_prior_year.official_twd = 744722; }],
+      ["looser threshold", fund => { fund.revenue_yoy_prev_source.cross_check.max_overlap_delta_twd = 2000; }],
+      ["ratio observation", fund => { fund.revenue_yoy_prev_source.cross_check.current_yoy.yahoo_ratio += 1e-9; }],
+      ["currency", fund => { fund.revenue_yoy_prev_source.cross_check.financial_currency = "USD"; }],
+      // Chronology and text as strict as the sealer (Astra review r1, fix 2).
+      ["impossible published date", fund => { fund.revenue_yoy_prev_source.documents[0].published_date = "2026-02-31"; }],
+      ["impossible retrieval", fund => { fund.revenue_yoy_prev_source.documents[0].retrieved_at = "2026-99-99T99:99:99Z"; }],
+      ["retrieval after the report", fund => { fund.revenue_yoy_prev_source.documents[0].retrieved_at = "2099-01-01T00:00:00Z"; }],
+      ["published after retrieval", fund => { fund.revenue_yoy_prev_source.documents[0].published_date = "2026-09-28"; }],
+      ["published before 1990", fund => { fund.revenue_yoy_prev_source.documents[0].published_date = "1989-12-31"; }],
+      ["multi-line note", fund => { fund.revenue_yoy_prev_source.previous_pair.current.note = "six\nFAKE"; }],
+      ["blank row", fund => { fund.revenue_yoy_prev_source.current_pair.current.row = "   "; }],
+      ["control character in a title", fund => { fund.revenue_yoy_prev_source.documents[1].title += "\u0007"; }],
+      ["lone surrogate", fund => { fund.revenue_yoy_prev_source.issuer_short_name_zh = "\ud800"; }],
+      ["space in the URL", fund => { fund.revenue_yoy_prev_source.documents[0].url += " x"; }],
+    ];
+    for (const [name, mutate] of refused) expect(withOfficial(mutate), name).toBeNull();
+    // A report generated before the documents were retrieved cannot carry them (fresh at its own read clock).
+    expect(withOfficial(() => {}, Date.parse("2026-09-27T10:00:00Z"))).toBeNull();
+    expect(withOfficial(() => {}, Date.parse("2026-09-27T10:14:53Z"))).not.toBeNull();
+    // Legacy documents (neither field) and Yahoo-basis ones parse as before.
+    expect(withOfficial(fund => { delete fund.revenue_yoy_prev_basis; delete fund.revenue_yoy_prev_source; fund.revenue_yoy_prev = null; })).not.toBeNull();
+    const yahoo = withOfficial(fund => { fund.revenue_yoy_prev_basis = "YAHOO"; fund.revenue_yoy_prev_source = null; })!;
+    expect(JSON.stringify(buildBottleneckDetail(yahoo, "5351.TWO", "flex"))).not.toContain("官方合併季報");
   });
 });

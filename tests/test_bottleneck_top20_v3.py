@@ -1040,5 +1040,194 @@ class SharesDilutionTests(unittest.TestCase):
         self.assertIsNone(fund["shares_basis"])
 
 
+class OfficialPreviousQuarterTests(unittest.TestCase):
+    """Astra contract L18-5351-CURATED-01: the reviewed official pair supplies Yahoo's missing previous-quarter comparator
+    through the actual yahoo_data, build and sealer paths (fake yfinance, no network)."""
+
+    NOW = datetime(2026, 9, 27, 12, 0, 0, tzinfo=timezone.utc)
+    FIXTURE = ROOT / "tests" / "fixtures" / "v213-official-quarterly-revenue.json"
+    OFFICIAL = {"2025-06-30": 744722000.0, "2025-09-30": 1.1e9, "2025-12-31": 1.9e9, "2026-03-31": 2735412000.0,
+                "2026-06-30": 4898686000.0}
+
+    # Yahoo's own shape for 5351.TWO on 2026-09-27 (_archive yahoo-5351-shape-20260927T1530Z.txt): six columns, the
+    # 2025-03-31 revenue cell empty (NaN). OFFICIAL above omits that column; YAHOO_SHAPE keeps it.
+    YAHOO_SHAPE = {**OFFICIAL, "2025-03-31": None}
+
+    def _statement(self, revenue):
+        import pandas as pd  # like yfinance: metrics as the index, quarter-ends as the columns, float cells (None -> NaN)
+        return pd.DataFrame({pd.Timestamp(end): {"Total Revenue": value, "Gross Profit": None if value is None else value * 0.3}
+                             for end, value in sorted(revenue.items())}).astype(float)
+
+    def _fake_yfinance(self, statements, currency="TWD"):
+        import types
+        import pandas as pd
+        bars = daily("2024-01-02", "2026-09-25", lambda day: 10.0 + (day - date(2024, 1, 1)).days * 0.02)
+        frame = pd.DataFrame({"Close": [close for _, close in bars]}, index=pd.DatetimeIndex([day for day, _ in bars]))
+
+        class Ticker:
+            def __init__(self, symbol):
+                self.quarterly_income_stmt = statements.get(symbol)
+                self.fast_info = {"currency": "TWD", "marketCap": 3e10}
+                self.info = {"financialCurrency": currency, "shortName": symbol}
+
+            def history(self, **kwargs):
+                return frame
+        module = types.ModuleType("yfinance")
+        module.Ticker = Ticker
+        saved = sys.modules.get("yfinance")
+        sys.modules["yfinance"] = module
+        self.addCleanup(lambda: sys.modules.__setitem__("yfinance", saved) if saved is not None else sys.modules.pop("yfinance", None))
+
+    def _fund(self, revenue=None, symbol="5351.TWO", currency="TWD", config_path=None):
+        self._fake_yfinance({symbol: self._statement(self.YAHOO_SHAPE if revenue is None else revenue)}, currency)
+        return engine.yahoo_data(symbol, as_of=self.NOW, config_path=config_path)["fundamentals"]
+
+    def test_five_yahoo_quarters_take_the_official_previous_pair(self):
+        fund = self._fund()
+        self.assertEqual(fund["revenue_yoy"], 4898686000.0 / 744722000.0 - 1)   # the current YoY stays Yahoo's
+        self.assertEqual(fund["revenue_yoy_prev"], 2735412 / 627130 - 1)          # both operands official
+        self.assertEqual((fund["revenue_yoy_prev_basis"], fund["source"]),
+                         ("OFFICIAL_CURATED", "Yahoo Finance quarterly income statement (unofficial)"))
+        self.assertEqual(fund["revenue_yoy_prev_source"]["record_id"], "5351.TWO-2026Q2-prev-2026Q1")
+        self.assertNotIn("revenue_yoy_prev_reason", fund)
+        self.assertEqual(fund["revenue"], 4898686000.0)
+
+    def test_an_empty_comparator_cell_is_absent_as_yahoo_reports_it(self):
+        for empty in (None, float("nan")):
+            fund = self._fund({**self.OFFICIAL, "2025-03-31": empty})
+            self.assertEqual((fund["revenue_yoy_prev"], fund["revenue_yoy_prev_basis"]), (2735412 / 627130 - 1, "OFFICIAL_CURATED"))
+
+    def test_a_later_empty_column_withholds_the_record(self):
+        for later in ({"2026-09-30": None}, {"2026-09-30": None, "2025-03-31": None}):
+            fund = self._fund({**self.OFFICIAL, **later})
+            self.assertEqual((fund["quarter_end"], fund["revenue_yoy_prev"], fund["revenue_yoy_prev_basis"],
+                              fund["revenue_yoy_prev_source"], fund["revenue_yoy_prev_reason"]),
+                             ("2026-06-30", None, None, None, "PERIOD_MISMATCH"))
+            self.assertIsNotNone(fund["revenue_yoy"])
+
+    def test_an_available_or_zero_yahoo_comparator_is_never_replaced(self):
+        own = self._fund({**self.OFFICIAL, "2025-03-31": 600000000.0})
+        self.assertEqual((own["revenue_yoy_prev"], own["revenue_yoy_prev_basis"], own["revenue_yoy_prev_source"]),
+                         (2735412000.0 / 600000000.0 - 1, "YAHOO", None))
+        zero = self._fund({**self.OFFICIAL, "2025-03-31": 0.0})
+        self.assertEqual((zero["revenue_yoy_prev"], zero["revenue_yoy_prev_basis"], zero["revenue_yoy_prev_source"]),
+                         (None, "YAHOO", None))
+        for invalid in (-5e8, float("inf")):   # present invalid values keep Yahoo's own (pre-existing) arithmetic
+            fund = self._fund({**self.OFFICIAL, "2025-03-31": invalid})
+            self.assertEqual((fund["revenue_yoy_prev_basis"], fund["revenue_yoy_prev_source"]), ("YAHOO", None), invalid)
+            self.assertNotEqual(fund["revenue_yoy_prev"], 2735412 / 627130 - 1)
+
+    def test_rejections_keep_the_yahoo_fundamentals_with_a_null_previous_yoy(self):
+        bad = Path(tempfile.mkdtemp()) / "official.json"
+        self.addCleanup(bad.unlink, missing_ok=True)
+        bad.write_text("{ not json", encoding="utf-8")
+        cases = {"NO_RECORD": dict(symbol="3008.TW"), "CURRENCY_UNVERIFIED": dict(currency="USD"),
+                 "CROSS_CHECK_MISMATCH": dict(revenue={**self.OFFICIAL, "2026-03-31": 2735412000.0 + 1001}),
+                 "PERIOD_MISMATCH": dict(revenue={**{k.replace("2026", "2027").replace("2025", "2026"): v
+                                                     for k, v in self.OFFICIAL.items()}}),
+                 "INVALID_RECORD": dict(config_path=bad)}
+        for reason, arguments in cases.items():
+            fund = self._fund(**arguments)
+            self.assertIsNotNone(fund["revenue_yoy"], reason)
+            self.assertEqual((fund["revenue_yoy_prev"], fund["revenue_yoy_prev_basis"], fund["revenue_yoy_prev_source"],
+                              fund["revenue_yoy_prev_reason"]), (None, None, None, reason))
+
+    def _build(self, currency, revenue=None):
+        from unittest import mock
+        layer = {"id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "chain_rank": 4, "leopold_constraint": "x",
+                 "filing_terms": ["HBM"], "capturers": [
+                     {"symbol": symbol, "role": "memory", "source_url": "https://x.com/a/status/1", "source_date": "2026-09"}
+                     for symbol in ("5351.TWO", "8299.TWO")]}
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "layers.json").write_text(json.dumps({"layers": [layer]}), encoding="utf-8")
+        other = {**self.OFFICIAL, "2025-03-31": 7e8}   # a listing with its own six quarters
+        self._fake_yfinance({"5351.TWO": self._statement(revenue or self.YAHOO_SHAPE), "8299.TWO": self._statement(other)}, currency)
+        with mock.patch.multiple(engine, LAYERS=tmp / "layers.json", SERENITY=tmp / "none.json", LEOPOLD=tmp / "none.json",
+                                 cik_index=lambda: {}, taiwan_monthly_revenue=lambda members: {},
+                                 cision_interim_revenue=lambda members, now: {}, korea_ir_revenue=lambda *args: None,
+                                 nasdaq_consensus=lambda *args: None, usd_rate=lambda currency, cache: 1 / 30), \
+                mock.patch.object(engine.listing_lineage, "load", lambda: {}):
+            document = engine.build(None, self.NOW, with_news=False)
+        scores = {row["symbol"]: row["parts"] for row in document["all_scores"]}
+        return document, scores
+
+    def test_build_carries_the_supplement_into_capture_and_the_industry_acceleration(self):
+        document, scores = self._build("TWD")
+        accel = (4898686000.0 / 744722000.0 - 1) - (2735412 / 627130 - 1)
+        own = 2735412000.0 / 7e8 - 1
+        self.assertEqual(scores["5351.TWO"]["capture_detail"]["acceleration"], round(6 * engine.clip(accel, -0.2, 0.3), 2))
+        self.assertAlmostEqual(document["industries"][0]["median_acceleration"],
+                               __import__("statistics").median([accel, (4898686000.0 / 744722000.0 - 1) - own]))
+        for rejected, rejected_scores in (self._build("USD"), self._build("TWD", {**self.YAHOO_SHAPE, "2026-09-30": None})):
+            self.assertNotIn("acceleration", rejected_scores["5351.TWO"]["capture_detail"])
+            self.assertAlmostEqual(rejected["industries"][0]["median_acceleration"], (4898686000.0 / 744722000.0 - 1) - own)
+
+    def _seal(self, fund):
+        entry = {"rank": 1, "symbol": "5351.TWO", "name": "Etron", "layer": "memory", "archetype": "EXPLOSION", "score": 70.0,
+                 "role": "DRAM", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
+                 "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
+                 "fundamentals": fund, "market": {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/5351.TWO",
+                                                  "asof": "2026-09-25", "ret_6m": 0.1, "ret_1y": 0.2, "cagr_2y": 0.3,
+                                                  "history_start": "2023-09-25", "currency": "TWD"},
+                 "market_cap_usd": 1e9, "serenity": None, "leopold": None}
+        doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": "2026-09-27T12:00:00Z", "leads": {},
+               "top": [{**entry, "rank": index + 1, "symbol": "5351.TWO" if index == 0 else f"S{index}",
+                        "fundamentals": fund if index == 0 else None} for index in range(12)],
+               "industries": [{"rank": 1, "id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "leopold_constraint": "x",
+                               "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1,
+                               "median_return_6m": 0.5, "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(publisher.build_zh_names, "names_for", lambda symbols: {}), \
+                mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *args, **kwargs: {}):
+            path = Path(tmp) / "v3.json"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            body = publisher.lazy_bottleneck_v3_body(path, self.NOW)
+        return json.loads(body[publisher.BOTTLENECK_V3_KEY])["top"][0]["fundamentals"] if body else None
+
+    def test_the_sealer_keeps_the_rebuilt_evidence_and_is_the_worker_fixture(self):
+        import os
+        fund = self._fund()
+        noisy = json.loads(json.dumps(fund))
+        noisy["revenue_yoy_prev_source"]["documents"][0]["raw"] = "dropped"
+        sealed = self._seal(noisy)
+        self.assertEqual(sealed["revenue_yoy_prev_source"], fund["revenue_yoy_prev_source"])   # extras stripped
+        self.assertEqual((sealed["revenue_yoy_prev_basis"], sealed["revenue_yoy_prev"]), ("OFFICIAL_CURATED", 2735412 / 627130 - 1))
+        for key in ("revenue", "revenue_unit", "revenue_yoy_prev_reason"):
+            self.assertNotIn(key, sealed)
+        self.assertEqual(self._seal(sealed), sealed)   # resealing is idempotent
+        if os.environ.get("II_WRITE_OFFICIAL_REVENUE_FIXTURE") == "1":
+            self.FIXTURE.write_text(json.dumps({"generated_at": "2026-09-27T12:00:00Z", "symbol": "5351.TWO", "fundamentals": sealed},
+                                               ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+        self.assertEqual(json.loads(self.FIXTURE.read_text(encoding="utf-8"))["fundamentals"], sealed)
+
+    def test_the_sealer_refuses_the_object_on_any_contradiction(self):
+        fund = self._fund()
+        mutations = [
+            lambda f: f.update(revenue_yoy_prev_source=None),
+            lambda f: f.update(revenue_yoy_prev_basis="YAHOO"),
+            lambda f: f.update(revenue_yoy_prev_basis="OFFICIAL"),
+            lambda f: f.update(revenue_yoy_prev=3.3),
+            lambda f: f.update(revenue_yoy=f["revenue_yoy"] + 0.001),
+            lambda f: f.update(quarter_end="2026-09-30"),
+            lambda f: f["revenue_yoy_prev_source"].update(config_sha256="a" * 64),
+            lambda f: f["revenue_yoy_prev_source"]["previous_pair"]["prior_year"].update(amount=627131),
+            lambda f: f["revenue_yoy_prev_source"]["documents"][1].update(sha256="b" * 64),
+            lambda f: f["revenue_yoy_prev_source"]["cross_check"]["previous_current"].update(yahoo_twd=1.0),
+        ]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                broken = json.loads(json.dumps(fund))
+                mutate(broken)
+                self.assertIsNone(self._seal(broken))
+        legacy = {key: value for key, value in fund.items() if not key.startswith("revenue_yoy_prev_")}
+        legacy["revenue_yoy_prev"] = 0.4
+        sealed = self._seal(legacy)   # an older build carries neither field and keeps its legacy meaning
+        self.assertEqual(sealed["revenue_yoy_prev"], 0.4)
+        self.assertNotIn("revenue_yoy_prev_basis", sealed)
+        yahoo = self._seal({**legacy, "revenue_yoy_prev_basis": "YAHOO", "revenue_yoy_prev_source": None})
+        self.assertEqual((yahoo["revenue_yoy_prev_basis"], yahoo["revenue_yoy_prev_source"]), ("YAHOO", None))
+
+
 if __name__ == "__main__":
     unittest.main()

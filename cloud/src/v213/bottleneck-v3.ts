@@ -20,12 +20,40 @@ export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
 
 interface Fundamentals {
   source: string; source_url: string; quarter_end: string; revenue_yoy: number | null; revenue_yoy_prev: number | null;
+  /** Where revenue_yoy_prev comes from: Yahoo's own columns, or a reviewed official pair (config/official-quarterly-revenue-v1.json)
+   * with its evidence in revenue_yoy_prev_source. Older documents carry neither field. */
+  revenue_yoy_prev_basis?: "YAHOO" | "OFFICIAL_CURATED" | null;
+  revenue_yoy_prev_source?: OfficialRevenueEvidence | null;
   gross_margin: number | null; gross_margin_change: number | null; rpo_yoy: number | null; shares_yoy: number | null;
   /** What shares_yoy measures: shares outstanding (SEC dei) or the diluted weighted average of the quarter (a fallback). */
   shares_basis?: "OUTSTANDING" | "DILUTED_WEIGHTED_AVERAGE" | null;
   /** Official revenue beside the Yahoo quarter, never replacing it: the exchange's monthly revenue for Taiwan listings
    * (TWSE/TPEx open data, period YYYY-MM) or the issuer's own interim report for Stockholm (Cision, period YYYY-Qn). */
   cross_check?: RevenueCheck | null;
+}
+
+/** A claim of an official interim report (amount in the record's unit), located by printed page, note and row. */
+interface OfficialClaim {
+  amount: number; start: string; end: string; period_kind: "QUARTER" | "HALF_YEAR";
+  document_id: string; page_label: string; note: string; row: string;
+}
+interface OfficialOverlap { period_end: string; official_twd: number; yahoo_twd: number; delta_twd: number }
+/** Evidence of a previous-quarter YoY from a reviewed official pair (scripts/official_quarterly_revenue.py evidence()). */
+export interface OfficialRevenueEvidence {
+  version: "official-quarterly-revenue-evidence-v1"; config_sha256: string; record_id: string; symbol: string;
+  issuer_short_name_zh: string; applies_to_quarter_end: string; previous_quarter_end: string;
+  currency: "TWD"; unit: "THOUSANDS"; unit_multiplier: 1000; scope: "CONSOLIDATED"; accounting_standard: "IAS34_TW_FSC";
+  metric: "TOTAL_REVENUE";
+  documents: { id: string; title: string; url: string; publisher: string; published_date: string; retrieved_at: string;
+    byte_size: number; sha256: string; assurance: "CPA_REVIEWED" }[];
+  previous_pair: { current: OfficialClaim; prior_year: OfficialClaim };
+  current_pair: { current: OfficialClaim; prior_year: OfficialClaim };
+  restatement_check: { status: string; document_id: string; half_year_claims: { current: OfficialClaim; prior_year: OfficialClaim };
+    reconciliations: { period: string; half_year_amount: number; current_quarter_amount: number; derived_q1_amount: number;
+      q1_claim_amount: number; difference: 0 }[] };
+  cross_check: { financial_currency: "TWD"; max_overlap_delta_twd: number; max_current_yoy_ratio_delta: number;
+    current_current: OfficialOverlap; current_prior_year: OfficialOverlap; previous_current: OfficialOverlap;
+    current_yoy: { official_ratio: number; yahoo_ratio: number; delta_ratio: number } };
 }
 interface RevenueCheck {
   source_id: string; source_url: string; period: string; revenue_yoy: number | null; cumulative_yoy: number | null; currency?: string | null;
@@ -121,6 +149,137 @@ const REVENUE_SOURCES: Record<string, { period: RegExp; currency: string }> = {
   COMPANY_IR_KR: { period: /^[0-9]{4}-Q[1-4]$/, currency: "KRW" },
 };
 
+/** Official comparative-quarter evidence (scripts/official_quarterly_revenue.py, Astra L18-5351-CURATED-01): the
+ * previous-quarter YoY computed from a reviewed official pair. Mirrors the sealer: exact shapes, admitted issuer hosts,
+ * claim periods, restatement arithmetic, recomputed overlaps and both YoYs; anything else refuses the document. */
+const OFFICIAL_REVENUE_HOSTS = ["etron.com"];
+const OFFICIAL_EVIDENCE_VERSION = "official-quarterly-revenue-evidence-v1";
+const ISO_DAY = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const ISO_UTC = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+/** A real calendar day 1990-2100 (the sealer's bounds), canonical YYYY-MM-DD. */
+function calendarDay(value: unknown): value is string {
+  if (typeof value !== "string" || !ISO_DAY.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const day = Date.parse(`${value}T00:00:00Z`);
+  return year >= 1990 && year <= 2100 && !Number.isNaN(day) && new Date(day).toISOString().slice(0, 10) === value;
+}
+
+/** A real UTC instant YYYY-MM-DDTHH:MM:SSZ on such a day. */
+function utcInstant(value: unknown): value is string {
+  return typeof value === "string" && ISO_UTC.test(value) && calendarDay(value.slice(0, 10))
+    && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === `${value.slice(0, 19)}.000Z`;
+}
+
+/** Nonblank single-line text of at most max code points, as the sealer's _text. */
+function sourceText(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.trim().length > 0 && [...value].length <= max
+    && !/[\u0000-\u001f\u007f-\u009f]/.test(value) && !LONE_SURROGATE.test(value);
+}
+
+function keysExactly(value: any, keys: string[]): boolean {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+const positiveInt = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
+
+function quarterStart(end: string): string {
+  return `${end.slice(0, 4)}-${String(Number(end.slice(5, 7)) - 2).padStart(2, "0")}-01`;
+}
+
+function yearEarlier(end: string): string {
+  return `${Number(end.slice(0, 4)) - 1}${end.slice(4)}`;
+}
+
+function previousQuarterEnd(end: string): string | null {
+  const year = end.slice(0, 4);
+  return ({ "03-31": `${Number(year) - 1}-12-31`, "06-30": `${year}-03-31`, "09-30": `${year}-06-30`,
+    "12-31": `${year}-09-30` } as Record<string, string>)[end.slice(5)] ?? null;
+}
+
+export function quarterLabel(end: string): string {
+  return `${end.slice(0, 4)}Q${Math.floor((Number(end.slice(5, 7)) - 1) / 3) + 1}`;
+}
+
+function validCuratedRevenue(fund: any, symbol: string, generatedAt: string): boolean {
+  const basis = fund.revenue_yoy_prev_basis;
+  if (![undefined, null, "YAHOO", "OFFICIAL_CURATED"].includes(basis)) return false;
+  const s = fund.revenue_yoy_prev_source;
+  if (basis !== "OFFICIAL_CURATED") return s === undefined || s === null;
+  if (!keysExactly(s, ["version", "config_sha256", "record_id", "symbol", "issuer_short_name_zh", "applies_to_quarter_end",
+    "previous_quarter_end", "currency", "unit", "unit_multiplier", "scope", "accounting_standard", "metric", "documents",
+    "previous_pair", "current_pair", "restatement_check", "cross_check"])) return false;
+  const current = s.applies_to_quarter_end, previous = s.previous_quarter_end;
+  if (s.version !== OFFICIAL_EVIDENCE_VERSION || s.symbol !== symbol || current !== fund.quarter_end
+    || typeof s.config_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(s.config_sha256)
+    || !sourceText(s.record_id, 80) || !sourceText(s.issuer_short_name_zh, 120) || !calendarDay(current) || !utcInstant(generatedAt)
+    || previousQuarterEnd(current) !== previous || s.currency !== "TWD" || s.unit !== "THOUSANDS"
+    || s.unit_multiplier !== 1000 || s.scope !== "CONSOLIDATED" || s.accounting_standard !== "IAS34_TW_FSC"
+    || s.metric !== "TOTAL_REVENUE") return false;
+  if (!Array.isArray(s.documents) || s.documents.length < 1 || s.documents.length > 4) return false;
+  const docIds = new Set<string>();
+  for (const d of s.documents) {
+    if (!keysExactly(d, ["id", "title", "url", "publisher", "published_date", "retrieved_at", "byte_size", "sha256", "assurance"])
+      || !sourceText(d.id, 60) || docIds.has(d.id) || !sourceText(d.title, 160) || !sourceText(d.publisher, 120)
+      || !sourceText(d.url, 400) || !OFFICIAL_REVENUE_HOSTS.some(host => d.url.startsWith(`https://${host}/`)) || /[?#@\s\\]/.test(d.url)
+      // Published on or before the retrieval day; retrieved no later than the report that carries it.
+      || !calendarDay(d.published_date) || !utcInstant(d.retrieved_at) || d.published_date > d.retrieved_at.slice(0, 10)
+      || Date.parse(d.retrieved_at) > Date.parse(generatedAt)
+      || !positiveInt(d.byte_size) || d.byte_size >= 1e15 || typeof d.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(d.sha256)
+      || d.assurance !== "CPA_REVIEWED") return false;
+    docIds.add(d.id);
+  }
+  const claim = (c: any, kind: string, start: string, end: string) => keysExactly(c, ["amount", "start", "end", "period_kind",
+    "document_id", "page_label", "note", "row"]) && positiveInt(c.amount) && c.amount < 1e15 && c.start === start && c.end === end
+    && c.period_kind === kind && docIds.has(c.document_id) && sourceText(c.page_label, 60) && sourceText(c.note, 60)
+    && sourceText(c.row, 60);
+  const pair = (p: any, end: string) => keysExactly(p, ["current", "prior_year"])
+    && claim(p.current, "QUARTER", quarterStart(end), end)
+    && claim(p.prior_year, "QUARTER", quarterStart(yearEarlier(end)), yearEarlier(end));
+  if (!pair(s.previous_pair, previous) || !pair(s.current_pair, current)) return false;
+  const rest = s.restatement_check;
+  if (!keysExactly(rest, ["status", "document_id", "half_year_claims", "reconciliations"])
+    || !["06-30", "12-31"].includes(current.slice(5)) || rest.status !== `MATCHED_THROUGH_${quarterLabel(current)}`
+    || !docIds.has(rest.document_id) || !keysExactly(rest.half_year_claims, ["current", "prior_year"])
+    || !Array.isArray(rest.reconciliations) || rest.reconciliations.length !== 2) return false;
+  const roles = [["current", current], ["prior_year", yearEarlier(current)]] as const;
+  for (const [index, [role, end]] of roles.entries()) {
+    const half = rest.half_year_claims[role];
+    const first = s.previous_pair[role].amount, second = s.current_pair[role].amount;
+    const row = rest.reconciliations[index];
+    const earlier = previousQuarterEnd(end)!;
+    if (!claim(half, "HALF_YEAR", quarterStart(earlier), end) || half.document_id !== rest.document_id
+      || half.amount - second !== first || !keysExactly(row, ["period", "half_year_amount", "current_quarter_amount",
+        "derived_q1_amount", "q1_claim_amount", "difference"]) || row.period !== quarterLabel(earlier)
+      || row.half_year_amount !== half.amount || row.current_quarter_amount !== second || row.derived_q1_amount !== first
+      || row.q1_claim_amount !== first || row.difference !== 0) return false;
+  }
+  // Both YoYs: the previous one is the official pair's; the current (Yahoo) one agrees with the official current pair.
+  const officialCurrent = s.current_pair.current.amount / s.current_pair.prior_year.amount - 1;
+  if (!num(fund.revenue_yoy_prev) || !num(fund.revenue_yoy)
+    || Math.abs(fund.revenue_yoy_prev - (s.previous_pair.current.amount / s.previous_pair.prior_year.amount - 1)) > 1e-12
+    || Math.abs(fund.revenue_yoy - officialCurrent) > 0.00001) return false;
+  const cross = s.cross_check;
+  if (!keysExactly(cross, ["financial_currency", "max_overlap_delta_twd", "max_current_yoy_ratio_delta", "current_current",
+    "current_prior_year", "previous_current", "current_yoy"]) || cross.financial_currency !== "TWD"
+    || cross.max_overlap_delta_twd !== 1000 || cross.max_current_yoy_ratio_delta !== 0.00001) return false;
+  const overlaps = [["current_current", s.current_pair.current], ["current_prior_year", s.current_pair.prior_year],
+    ["previous_current", s.previous_pair.current]] as const;
+  for (const [name, official] of overlaps) {
+    const row = cross[name];
+    if (!keysExactly(row, ["period_end", "official_twd", "yahoo_twd", "delta_twd"]) || row.period_end !== official.end
+      || row.official_twd !== official.amount * 1000 || !num(row.yahoo_twd) || row.yahoo_twd <= 0 || !num(row.delta_twd)
+      || Math.abs(row.delta_twd - Math.abs(row.yahoo_twd - row.official_twd)) > 1e-6 || row.delta_twd > 1000) return false;
+  }
+  const yoy = cross.current_yoy;
+  return keysExactly(yoy, ["official_ratio", "yahoo_ratio", "delta_ratio"]) && num(yoy.official_ratio)
+    && Math.abs(yoy.official_ratio - officialCurrent) <= 1e-12 && yoy.yahoo_ratio === fund.revenue_yoy
+    && num(yoy.delta_ratio) && Math.abs(yoy.delta_ratio - Math.abs(yoy.yahoo_ratio - yoy.official_ratio)) <= 1e-12
+    && yoy.delta_ratio <= 0.00001;
+}
+
 function validRevenueCheck(raw: any): boolean {
   if (raw === undefined || raw === null) return true;
   const rule = typeof raw === "object" && typeof raw.source_id === "string" && Object.hasOwn(REVENUE_SOURCES, raw.source_id)
@@ -151,7 +310,7 @@ function validOutlook(raw: any): boolean {
   return ordersOk && consensusOk && secondOk;
 }
 
-function validEntry(raw: any): raw is BottleneckEntry {
+function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
   return raw && Number.isInteger(raw.rank) && str(raw.symbol, 16) && str(raw.name, 160) && str(raw.layer, 40)
     && (raw.name_zh === undefined || raw.name_zh === null || (str(raw.name_zh, 40) && ZH_SOURCES.has(String(raw.name_zh_source))))
     && (raw.archetype === "EXPLOSION" || raw.archetype === "COMPOUNDER") && num(raw.score) && str(raw.role, 200)
@@ -161,6 +320,7 @@ function validEntry(raw: any): raw is BottleneckEntry {
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
       && str(raw.fundamentals.quarter_end, 12) && ["revenue_yoy", "revenue_yoy_prev", "gross_margin", "gross_margin_change", "rpo_yoy", "shares_yoy"].every(key => optNum(raw.fundamentals[key]))
       && [undefined, null, "OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE"].includes(raw.fundamentals.shares_basis)
+      && validCuratedRevenue(raw.fundamentals, raw.symbol, generatedAt)
       && validRevenueCheck(raw.fundamentals.cross_check)))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
@@ -256,7 +416,7 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   if (!raw || typeof raw !== "object") return null;
   const doc = raw as any;
   if (doc.schema !== "v213-bottleneck-top20-v3-sealed" || !str(doc.generated_at, 30) || !v213ReportAgeFresh([doc.generated_at], now)) return null;
-  if (!Array.isArray(doc.top) || doc.top.length < 10 || doc.top.length > 20 || !doc.top.every(validEntry)) return null;
+  if (!Array.isArray(doc.top) || doc.top.length < 10 || doc.top.length > 20 || !doc.top.every((entry: any) => validEntry(entry, doc.generated_at))) return null;
   if (!doc.top.every((entry: BottleneckEntry, index: number) => entry.rank === index + 1)) return null;
   if (!Array.isArray(doc.industries) || doc.industries.length < 3 || doc.industries.length > 20 || !doc.industries.every(validIndustry)) return null;
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
@@ -503,12 +663,23 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   ], "key");
 }
 
+/** Where a previous-quarter YoY from an official pair comes from (the current quarter stays Yahoo's). */
+function officialPrevious(fund: Fundamentals | null | undefined): { label: string; url: string } | null {
+  const s = fund?.revenue_yoy_prev_basis === "OFFICIAL_CURATED" ? fund.revenue_yoy_prev_source : null;
+  if (!s) return null;
+  const claim = s.previous_pair.current;
+  const url = s.documents.find(d => d.id === claim.document_id)?.url ?? "";
+  return { url, label: `前一季年增來源：${s.issuer_short_name_zh}官方合併季報（${quarterLabel(claim.end)}／${quarterLabel(s.previous_pair.prior_year.end)}，`
+    + `附註${claim.note} p.${claim.page_label}），已核對同基準` };
+}
+
 /** lean: the fallback form when twenty full cards would not fit five carousels (one LINE reply); the outlook keeps its
  * first and last line (current orders, the scenario) and the order floors move to the detail card. */
 function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) {
   const fund = entry.fundamentals;
   const lead = entry.rank === 1;
   const long = longTerm(entry.market);
+  const official = officialPrevious(fund);
   return {
     type: "bubble", size: "mega",
     header: productHeader(`瓶頸爆發 TOP20 · ${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
@@ -530,7 +701,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         uiBox([statTile("最新季營收年增", pct(fund?.revenue_yoy ?? null, 0)), statTile("毛利率變化", fund?.gross_margin_change === null || fund?.gross_margin_change === undefined ? "未揭露" : `${fund.gross_margin_change >= 0 ? "+" : ""}${(fund.gross_margin_change * 100).toFixed(1)}pp`)], { layout: "horizontal", spacing: "sm" }),
         uiBox([statTile("6個月報酬", pct(entry.market.ret_6m, 0)), statTile("2年年化", long.value, undefined, long.sub)], { layout: "horizontal", spacing: "sm" }),
         ...(long.event ? [footnote(`上市沿革：${long.event}`)] : []),
-        footnote(fund ? `財報：${sourceZh(fund.source)}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
+        footnote(fund ? `財報：${sourceZh(fund.source)}${official ? "（前一季採官方合併季報）" : ""}，季末 ${fund.quarter_end}` : "財報：未取得可比季度"),
         ...(fund?.cross_check ? [footnote(revenueCheck(fund.cross_check))] : []),
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
         ...(entry.market.cross_check ? [footnote(exchangeCheck(entry.market.cross_check))] : []),
@@ -589,6 +760,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
   const fund = entry.fundamentals;
   const long = longTerm(entry.market);
   const accel = fund ? ppShort(accelOf(fund)) : "未揭露";
+  const official = officialPrevious(fund);
   return {
     type: "bubble", size: "mega",
     header: productHeader(`瓶頸詳情 · #${entry.rank} · ${entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型"}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
@@ -603,6 +775,7 @@ function detailBubble(doc: BottleneckV3, entry: BottleneckEntry) {
         row(statTile("毛利率", gmText(fund.gross_margin)), statTile("毛利率年變化", ppShort(fund.gross_margin_change)), statTile("股數年增", pct(fund.shares_yoy, 1), undefined, sharesBasis(fund))),
         row(statTile("RPO 年增", pct(fund.rpo_yoy, 0)), statTile("季末", fund.quarter_end)),
         footnote(`${sourceZh(fund.source)}：${fund.source_url}`.slice(0, 220)),
+        ...(official ? [footnote(official.label.slice(0, 220)), footnote(`前一季來源：${official.url}`.slice(0, 220))] : []),
         ...(fund.cross_check ? [footnote(`${revenueCheck(fund.cross_check)}：${fund.cross_check.source_url}`.slice(0, 220))] : []),
       ] : [uiText("未取得可比季度（不以估計替代）。", "xs", T.ink)]),
       section("市場數據", [
@@ -625,11 +798,12 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   const outlook = entry.outlook;
   const scenarios = (outlook?.scenarios ?? []).map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("、");
   const analysts = outlook?.consensus?.revenue_analysts ?? 0;
+  const official = officialPrevious(fund);
   return [
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
-    fund ? `財報（${sourceZh(fund.source)}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
+    fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
     ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(long.event ? [`上市沿革：${long.event}\n沿革來源：${long.sources.join("；")}`] : []),

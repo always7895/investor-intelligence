@@ -44,6 +44,7 @@ from typing import Any, Callable, Iterable
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import listing_lineage  # noqa: E402
+import official_quarterly_revenue  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -382,7 +383,7 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
 
 
 # ---------------------------------------------------------------- Yahoo Finance
-def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None) -> dict[str, Any]:
+def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_path: Path | None = None, as_of: datetime | None = None) -> dict[str, Any]:
     import yfinance as yf
     requested_from = listing_lineage.request_start(datetime.now(timezone.utc).date())
     ticker = yf.Ticker(symbol)
@@ -431,6 +432,25 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None) -> dict[str, 
                 prev_ago = [end for end in revenue.index if abs((prev_end - end).days - 365) <= 20]
                 yoy = float(revenue[latest_end] / revenue[ago[-1]] - 1) if ago and revenue[ago[-1]] else None
                 yoy_prev = float(revenue[prev_end] / revenue[prev_ago[-1]] - 1) if prev_ago and revenue[prev_ago[-1]] else None
+                prev_basis, prev_source, prev_reason = "YAHOO", None, None
+                if not prev_ago and max(statement.columns) != latest_end:
+                    # A later statement column without a value: the record's quarter is no longer Yahoo's latest period.
+                    prev_basis, prev_reason = None, "PERIOD_MISMATCH"
+                elif not prev_ago:
+                    # Only an absent comparator may take the reviewed official pair (scripts/official_quarterly_revenue.py):
+                    # no column near a year before, or one whose cell is empty (NaN/None, which is how Yahoo reports a value
+                    # it lacks; 5351.TWO 2025-03-31 on 2026-09-27). A zero, negative or other present value keeps Yahoo's
+                    # own result above. The financial statement currency, not the quote's, must match.
+                    try:
+                        currency = info.get("financialCurrency") if isinstance(info, dict) else None
+                        curated = official_quarterly_revenue.evaluate(
+                            symbol, revenue, currency, yoy, as_of=as_of or datetime.now(timezone.utc), path=config_path)
+                    except Exception:  # never lose the Yahoo fundamentals to the supplement
+                        curated = official_quarterly_revenue.Result("INVALID_RECORD")
+                    if curated.reason is None:
+                        yoy_prev, prev_basis, prev_source = curated.revenue_yoy_prev, "OFFICIAL_CURATED", curated.source
+                    else:
+                        prev_basis, prev_reason = None, curated.reason
                 gm = gm_prior = None
                 if gross is not None and latest_end in gross.index and revenue[latest_end]:
                     gm = float(gross[latest_end] / revenue[latest_end])
@@ -453,6 +473,8 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None) -> dict[str, 
                                        "source_url": f"https://finance.yahoo.com/quote/{symbol}/financials",
                                        "quarter_end": str(latest_end.date()), "revenue": float(revenue[latest_end]),
                                        "revenue_unit": out["market"].get("currency"), "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
+                                       "revenue_yoy_prev_basis": prev_basis, "revenue_yoy_prev_source": prev_source,
+                                       **({"revenue_yoy_prev_reason": prev_reason} if prev_reason else {}),  # local only
                                        "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
                                        "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis}
     except Exception:
@@ -764,7 +786,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     official = {**taiwan_monthly_revenue(members), **cision_interim_revenue(members, now)}
     lineages = listing_lineage.load()
     for symbol, member in members.items():
-        data = yahoo_data(symbol, lineages.get(symbol))
+        data = yahoo_data(symbol, lineages.get(symbol), as_of=now)
         fund = None
         cik = ciks.get(symbol) if "." not in symbol else None
         if cik:

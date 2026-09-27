@@ -1,21 +1,23 @@
 # Current state / 目前狀態
 
-Updated 2026-09-27 22:30 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show 349a332:state/STATUS.md` (NINFER-DEFAULTS-01); `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show dec7bd0:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
+Updated 2026-09-27 23:20 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show 4be0888:state/STATUS.md` (ORDERS-V2-01 detail); `git show 349a332:state/STATUS.md`; `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
 
 ## Identity
 
-- This batch is an uncommitted candidate on `fix/options-provenance-audit` at `349a332` (NINFER-DEFAULTS-01, pushed). Planned after writer and Astra acceptance: commit and push. CI on this branch ends COMPLETED_SKIPPED by design (`final-release-candidate-v3-pre-rewrite-audit.yml` runs only for head `integration/final-release-candidate-v3`): not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
+- This batch is an uncommitted candidate on `fix/options-provenance-audit` at `4be0888` (ORDERS-V2-01, pushed). Planned after writer and Astra acceptance: commit and push. CI on this branch ends COMPLETED_SKIPPED by design (`final-release-candidate-v3-pre-rewrite-audit.yml` runs only for head `integration/final-release-candidate-v3`): not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 
-## This batch: ORDERS-V2-01 revision 6 (Astra contract `_archive\lane-dispatch-20260927T0905Z\astra-orders-v2.result.md`)
+## This batch: L18-5351-CURATED-01 (Astra contract `_archive\lane-dispatch-20260927T0905Z\astra-5351-contract.result.md`)
 
-Operator 2026-09-27: "未來預估修正為未來訂單預估，根據現有最新消息隨時修正，若實現股價要註明時間（半年、1年）". Revisions 1–5 were REJECTED by Astra (`astra-accept-orders-v2.result.md`, `-r2` … `-r5`); the amendment of revision 2 was accepted: explicit recognition amounts, schedules with their own period, backlog schedules and schedules of the filing's stock are refused at load (deferred, not implemented).
-- Registry `config/order-claims-v2.json` + `scripts/order_claims.py`: primary documents (hash, size, retrieval; issuer URL prefixes with canonical paths; SEC kinds paired with forms and exhibits) and dated claims; total validation in both languages (dates 1990–2100, optional fields omitted not null, bounded numbers incl. units, code-point lengths, one text policy refusing format characters, byte-order marks and unpaired surrogates, numbers compared by value, zero unsigned); selection at the exact build instant; only a company USD RPO on ASC 606 is comparable with the filing, and its schedule must share its basis; equal stock observations are one observation whose attached schedules are all compared (ids never decide); same-date differences in figure or schedule are conflicts; `FILING:<accession>` corrections must be on ASC 606 and resolve only against the actual filing after its filing date (else UNRESOLVED_REVISION); zero/unquantified/range observations withhold calculations. Per issuer at most 8 claims, 4 documents and a presentation budget of 2,400 UTF-16 units are sealed (else EVIDENCE_LIMIT); the text detail pages losslessly at line boundaries instead of cutting. One record: MU prepared remarks p.7, reference only.
-- `scripts/order_forecast.py` decide/build_v2 seals the allowlisted periodic input, order book, claims and selection; a registry schedule is priced only with the filing's validated quarter. `cloud/src/v213/order-forecast.ts` recomputes the selection and the whole forecast and refuses the record on any difference; the build instant must equal `generated_at`.
-- Wording: 半年內／1年內預計認列 with 起算日（非今日起）, 若半年內／1年內實現訂單 → 股價預估 ±X% with the condition; dates of the actual inputs; stock lines explain the rows from their actual relationship (同日同額, 早於申報量測, 認列時程見上); ranges keep their unit; details show metric, scope, measurement date, period and revision reason of every disclosure. Cards and the text form show one later disclosure and a count.
-- Evidence: shared fixture `tests/fixtures/v213-order-forecast-v2.json` (S1–S19, each case described in `tests/test_order_claims.py`) and the sealer's fixed-cutoff output `tests/fixtures/v213-order-forecast-v2-sealed.json`, both through `parseBottleneckV3`; twenty cards and both detail forms keep every source and check line at the budget edge (asserted per claim).
-- Coverage (2026-09-27): MU one verified reference; CRDO BLOCKED_INPUTS; 5351.TWO evidence verified for lane 18; other Top20 issuers are research leads only (Gemini survey, not writer-verified); no 6-month schedule found by that survey (not a verified absence).
+Gemini drafted the patch in worktree `_workspace\gemini-l18-5351` (`gemini-l18-5351.patch`); the writer reworked it before acceptance (sealer rebuild and strip, integer claims, exact shapes, reconciliations tied to claims, half-year claims in the evidence, no digest or issuer hard-coded in the Worker, Python-emitted fixture, real `build` test).
+- `config/official-quarterly-revenue-v1.json`: one record, 5351.TWO current 2026-06-30 / previous 2026-03-31, TWD thousands, consolidated IAS 34, CPA-reviewed Etron Q1/Q2 reports (hashes, sizes, retrieval, printed page 39/42, note 六(二十四)); transcription re-checked against `evidence-5351\writer-pdftotext-115Q*.txt`.
+- `scripts/official_quarterly_revenue.py`: total validation (exact keys, bounded single-line text, issuer host `etron.com`, dates and clock, integer amounts, adjacent calendar quarters, half-year minus Q2 equals each Q1 claim); `evaluate` for the builder (financialCurrency TWD, all three overlaps within 1000 TWD, current YoY within 0.00001, else a bounded reason); `seal_evidence` rebuilds the evidence from the local config digest and refuses any difference.
+- `scripts/bottleneck_top20_v3.py`: only an absent comparator takes the official pair (previous YoY 3.3618 = 2,735,412/627,130 − 1); rejections keep the Yahoo fundamentals, previous YoY null, local `revenue_yoy_prev_reason`. `publish_sealed_snapshot.py` refuses the v3 object on any contradiction. `cloud/src/v213/bottleneck-v3.ts` repeats the checks (document refused) and attributes the previous quarter separately (card, text and card detail).
+- Tests: `tests/test_official_quarterly_revenue.py`, `OfficialPreviousQuarterTests` (yahoo_data, build, sealer, fixture `tests/fixtures/v213-official-quarterly-revenue.json`), Worker case in `cloud/test/v213-bottleneck-v3.test.ts`.
+- Review: Astra REJECT r1 (`astra-accept-l18-5351.result.md`): (1) the absence test ran after `dropna()`, so an empty comparator cell or a later empty column revived the record; (2) the Worker lacked calendar, chronology (published ≤ retrieved ≤ `generated_at`) and single-line text checks; (3) this evidence summary. Revision 2: a later statement column withholds the record (PERIOD_MISMATCH); an empty (NaN/None) cell counts as absent because that is Yahoo's own shape for 5351.TWO (`yahoo-5351-shape-20260927T1530Z.txt`: 2025-03-31 present, NaN) — submitted for Astra's ruling; present zero/negative/inf values keep Yahoo's arithmetic; Worker checks mirror the sealer.
+- Evidence: r1 gates `gates-l18-5351\` — security, documentation, supply-chain 0; `npm test` 991 passed; `run_offline_tests.py --repository` 2901 tests with 1 failure (this file lacked the `38860e7` pointer; fixed, module rerun OK — not a full-suite PASS). Revision 2 gates: `gates-l18-5351-r2\` (writer result r2).
+- Rollout order for this batch: Worker before data (the deployed reader would attribute the figure to Yahoo). Not part of rollout v6.
 
-Previous batches: NINFER-DEFAULTS-01 (`349a332`, local model defaults to ninfer); PY-LOCAL-01 (`914f0e6`, local Python resolver).
+Previous batch: ORDERS-V2-01 (`4be0888`, Astra ACCEPT r6 after five REJECTs; detail in `git show 4be0888:state/STATUS.md`).
 
 ## Production — read back 2026-09-27 18:30–18:45 (operator: 授權回讀核對; read-only)
 
@@ -26,18 +28,17 @@ Receipt `_archive\lane14-readback-20260927T1036Z\RECEIPT.md` supersedes the earl
 
 ## Authorization and queue
 
-Operator 2026-09-27 18:51 "繼續並核准相關授權" (`_archive\authorization-20260927T1051Z\AUTHORIZATION.md`, writer-interpreted scope): runtime/EXE installation, the task pause/resume that install needs, Worker deployment, KV publication/seal within a stated write budget, transaction/rollback/finalize and read-back — each only after an Astra GO on a fixed-snapshot rollout plan. Excluded: real LINE delivery, credentials, billing, broker actions, merge/tag/release. It does not approve any review or an unspecified snapshot.
+Operator 2026-09-27 18:51 "繼續並核准相關授權" (`_archive\authorization-20260927T1051Z\AUTHORIZATION.md`, writer-interpreted scope) was given in an earlier session; the executing session must re-obtain it (Astra v6 condition 1). Excluded: real LINE delivery, credentials, billing, broker actions, merge/tag/release.
 
-1. ORDERS-V2-01: this batch; complete only after writer and Astra acceptance, commit and push.
-2. Rollout of the accepted snapshot: a fixed plan for Astra GO. The deployed 16cb1b3 reader ignores the order forecast (keeps its analyst tiles), the eca78a1 reader shows version 2 as unavailable; the order of data and Worker is decided in that review.
-3. L18-5351-CURATED-01 (contract `astra-5351-contract.result.md`, evidence verified): queued after ORDERS-V2; the other four lane-18 listings DEFERRED_WITH_REASON.
-4. Lane 19 CRDO: CRDO-RPO-01 closed BLOCKED_INPUTS by Astra (RPO only as an extension XBRL concept; not COMPLETE). MU waits for its FQ4 FY26 10-K (report 2026-09-30).
-5. Local Qwen: available on ninfer when idle; dispatch delays LINE answers.
-6. DEFERRED_WITH_REASON: lanes 2, 3, 5 (below), driver v3 A–D.
+1. L18-5351-CURATED-01: this batch; complete only after writer and Astra acceptance, commit and push. The other four lane-18 listings DEFERRED_WITH_REASON.
+2. Rollout v6 of `4be0888db6a15edd6776f9dc1a32bb3af2b1f563` (`_archive\rollout-2026-09-28\rollout-plan-v6.md`): Astra conditional GO for one supervised window after 2026-09-28 00:00 UTC with eleven mandatory conditions (`astra-rollout6.result.md`); needs current-session operator authorization. Until the new Worker serves, each night's hourly seals fail once the free KV writes are spent (22:12 SYNC ABORT; last recorded successful pointer `20260927T121233Z-55793fcead2e`).
+3. Lane 19 CRDO: CRDO-RPO-01 closed BLOCKED_INPUTS by Astra (not COMPLETE). MU waits for its FQ4 FY26 10-K (report 2026-09-30).
+4. Local Qwen: available on ninfer when idle; dispatch delays LINE answers.
+5. DEFERRED_WITH_REASON: lanes 2, 3, 5 (below), driver v3 A–D.
 
 ## Commits since 2026-09-26 20:45
 
-`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. `349a332`: NINFER-DEFAULTS-01. None deployed.
+`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19 v1. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. `349a332`: NINFER-DEFAULTS-01. `4be0888`: ORDERS-V2-01. None deployed.
 
 ## Operator decisions (2026-09-26)
 
@@ -49,8 +50,8 @@ ChatGPT review MCP is `chatgpt-web` (workspace `AGENTS.md`); `scripts/codex_revi
 3. Orders: CRWV (24M only) and SNDK (12M only) disclose no other horizon. AXTI and NBIS have no deep report (domestic SEC filers only). Korea HD Hyundai Electric deck unreadable keylessly.
 5. Deferred: report-age gates for carried reports and federation readers (certified `cloud/src/qa.ts` needs recertification); the CI R75 route blocks release qualification.
 17. LINE Q&A relay (Worker → quick tunnel → gateway :8814 → ninfer :8080): gateway health OK at 18:25. Nightly heartbeat failures from one KV nonce per heartbeat are fixed in 33d7938 (undeployed).
-18. Dilution: shares_yoy from the quarter's diluted weighted average when shares outstanding are missing. Previous-quarter YoY for Yahoo listings: see queue item 3.
-19. Order forecast: v1 in `eca78a1`, v2 this batch (both undeployed). No Top20 company discloses a 6-month schedule (2026-09-27 survey).
+18. Dilution: shares_yoy from the quarter's diluted weighted average when shares outstanding are missing. Previous-quarter YoY for Yahoo listings: 5351.TWO from the official pair in this batch; the other four listings DEFERRED_WITH_REASON.
+19. Order forecast: v1 in `eca78a1`, v2 in `4be0888` (both undeployed). No Top20 company discloses a 6-month schedule (2026-09-27 survey).
 
 Closed: lanes 1, 4, 6–13, 15, 16. Lane 15 upkeep: a new IPO or spin-off stays excluded (`HISTORY_OR_LINEAGE_UNVERIFIED`) until `config/listing-lineage-v1.json` has its primary-source record; check `excluded` after each v3 build.
 
@@ -70,6 +71,6 @@ Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, g
 
 ## Handoff
 
-- Next: Astra acceptance of this snapshot (and of the contract amendment), commit and push; then the rollout plan for an Astra GO; then L18-5351-CURATED-01.
+- Next: Astra acceptance of this snapshot, commit and push; rollout v6 of `4be0888` in the window after 2026-09-28 08:00 Asia/Taipei once the operator re-authorizes it in that session; a later rollout carries this batch (Worker first).
 - Operator: the plaintext Alpha Vantage note; whether a 6-month figure may ever be a labelled model estimate (currently shown as 未揭露 when undisclosed).
-- Tooling: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (`cloud\node_modules` is a junction to the source checkout's); Qwen worktree `_workspace\qwen-ninfer-defaults` (branch merged); `chatgpt-web` lane `investor` (branch `local/zh-tw-lanes`). Scratch: `%TEMP%\ii-live`.
+- Tooling: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (`cloud\node_modules` is a junction to the source checkout's); Qwen worktree `_workspace\qwen-ninfer-defaults` and Gemini worktree `_workspace\gemini-l18-5351` (patch integrated, branch not merged); `chatgpt-web` lane `investor` (branch `local/zh-tw-lanes`). Scratch: `%TEMP%\ii-live`.
