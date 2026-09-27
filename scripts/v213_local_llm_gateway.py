@@ -97,7 +97,7 @@ class LoopbackRedirectRefused(RuntimeError):
 
 def local_llm_base_url() -> str:
     """Documented precedence: II_LLAMA_BASE_URL override, else the config
-    primary_reasoner.base_url (default http://127.0.0.1:5000/v1)."""
+    primary_reasoner.base_url (default http://127.0.0.1:8080/v1)."""
     override = os.getenv("II_LLAMA_BASE_URL", "").strip()
     base = override or _load_local_ai_config()["primary_reasoner"]["base_url"]
     _assert_loopback_url(base)
@@ -106,7 +106,7 @@ def local_llm_base_url() -> str:
 
 def _endpoint_suffixes(base: str) -> tuple[str, str, list[str]]:
     """Endpoint paths derive from the ACTUAL base shape: a base that already
-    ends in /v1 (TabbyAPI style, e.g. http://127.0.0.1:5000/v1) takes bare
+    ends in /v1 (e.g. http://127.0.0.1:8080/v1) takes bare
     paths; a bare base takes /v1-prefixed paths."""
     if base.rstrip("/").endswith("/v1"):
         return "/model", "/chat/completions", ["/models"]
@@ -115,7 +115,7 @@ def _endpoint_suffixes(base: str) -> tuple[str, str, list[str]]:
 
 def selected_model_id() -> str:
     """Documented precedence: II_LOCAL_LLM_MODEL override, else the config
-    primary_reasoner.model (default Qwen3.8-27B-EXL3-5.5bpw-v2)."""
+    primary_reasoner.model (default Qwen3.8-27B)."""
     override = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
     return override or _load_local_ai_config()["primary_reasoner"]["model"]
 
@@ -239,9 +239,12 @@ def capability_report(selected: str) -> dict:
 def _reasoner_decision_gate(context: dict, canonical: str) -> dict:
     """Pre-generation decision gate: the reasoner product completion may run
     ONLY after approval. Failed source evidence is authoritative (denied
-    without consulting the decider); healthy evidence requires an explicit
-    decider approval. Unavailable/low-confidence/NOT_SUFFICIENT/malformed
-    decisions deny (fail closed)."""
+    without consulting the decider). The decider applies only when a
+    non-retired decision router is configured; the shipped config retires it
+    (decision_router.retired: true), so source qualification alone suffices.
+    In the legacy non-retired configuration healthy evidence required an
+    explicit decider approval; unavailable/low-confidence/NOT_SUFFICIENT/
+    malformed decisions then deny (fail closed)."""
     ctx = context if isinstance(context, dict) else {}
     status = str(ctx.get("source_diversity_status", "UNKNOWN"))
     if status in ("CONFLICTED", "STALE", "UNAVAILABLE"):
@@ -287,7 +290,9 @@ def _format_decision_annotation(gate: dict) -> dict:
 
 
 def _decision_seam(context: dict, canonical: str) -> dict:
-    """Standalone helper (queries the CPU once); shares the formatter with
+    """Standalone helper (consults the decider only when a non-retired
+    decision router is configured — the shipped config retires it, so this
+    resolves by source qualification alone); shares the formatter with
     do_POST so the two cannot diverge."""
     return _format_decision_annotation(_reasoner_decision_gate(context, canonical))
 
@@ -329,7 +334,9 @@ def _decider_retired() -> bool:
 
 
 def _screen_client() -> DecisionBackendClient | None:
-    """Short-timeout System One client for the reasoning screen; None when not configured or retired."""
+    """Short-timeout System One client for the reasoning screen; None when not
+    configured or retired (the shipped config retires the decider, so the
+    screen is inactive and this returns None)."""
     global _SCREEN_CLIENT
     if _decider_retired():
         return None
@@ -923,7 +930,8 @@ class V213GatewayHandler(base.GatewayHandler):
             if canonical is None:
                 self._json(503, {"error": "MODEL_CATALOG_IDENTITY_UNAVAILABLE"})
                 return
-            # Pre-generation gates: decision approval, served-context
+            # Pre-generation gates: the decision gate (source qualification;
+            # the decider is retired in the shipped config), served-context
             # capability, and structured-JSON readiness (both lanes) must
             # all pass BEFORE any reasoner product completion.
             gate = _reasoner_decision_gate(context, canonical)
@@ -940,8 +948,9 @@ class V213GatewayHandler(base.GatewayHandler):
                 if not structured_json_probe(canonical):
                     self._json(503, {"error": "REASONER_CAPABILITY_STRUCTURED_JSON_UNSUPPORTED"})
                     return
-            # Adaptive thinking: the profile effort is the ceiling; time budget,
-            # measured decode rate and the System One screen pick this call's effort.
+            # Adaptive thinking: the profile effort is the ceiling; time budget
+            # and the measured decode rate pick this call's effort (the System
+            # One screen is retired in the shipped config, so it is inactive).
             plan = _reasoning_plan(body, upstream, runtime_profile) if is_compact else None
             completion_url = local_llm_base_url() + _endpoint_suffixes(local_llm_base_url())[1]
             started = time.monotonic()
@@ -1130,7 +1139,7 @@ def _self_test() -> None:
 
 def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
     """Fail-closed startup gate (TASK0 2J-B1): the EXACT pinned model id must be
-    served by the tabbyAPI / list endpoint before the gateway accepts traffic.
+    served by the /v1/models list endpoint before the gateway accepts traffic.
     A name that is never served (e.g. a stale LOCAL_LLM_MODEL) must refuse to
     start instead of silencing every request downstream. Zero secrets in any
     output; model IDs only."""

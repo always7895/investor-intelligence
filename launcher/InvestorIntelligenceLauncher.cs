@@ -120,7 +120,7 @@ namespace InvestorIntelligence
             catch { throw new InvalidOperationException("MODEL_PROFILE_INVALID"); }
         }
 
-        const string DefaultLlamaBase = "http://127.0.0.1:5000"; // TabbyAPI; llama.cpp :8080 retired 2026-09-16
+        const string DefaultLlamaBase = "http://127.0.0.1:8080"; // ninfer; TabbyAPI :5000 removed 2026-09-27
         const int MaxModelCatalogBytes = 1024 * 1024;
 
         static string LastPowerShellSummary = "";
@@ -354,7 +354,8 @@ namespace InvestorIntelligence
 
         // Operator request 2026-09-25: follow the local model server when its address or model changes.
         // Loopback only, read-only /models or /v1/models, well-known OpenAI-compatible ports:
-        // TabbyAPI, llama.cpp, Ollama, LM Studio and common alternates. 8000 (System One decider) is never probed.
+        // ninfer 8080, Ollama 11434, LM Studio 1234 and common alternates; 5000 was TabbyAPI (removed 2026-09-27,
+        // now the IBKR Client Portal, no model catalog). 8000 (System One decider) is never probed.
         static readonly int[] KnownModelPorts = { 5000, 8080, 11434, 1234, 5001, 8081 };
 
         static List<string> ModelBaseCandidates(string saved, bool includeListeners = false)
@@ -1392,7 +1393,7 @@ namespace InvestorIntelligence
                 Controls.Add(new Label { Left = 24, Top = 165, Width = 140, Height = 24, Text = "THINK / 推理上限" });
                 Controls.Add(thinkingBox);
                 Controls.Add(new Label { Left = 340, Top = 160, Width = 335, Height = 48,
-                    Text = "none = 關閉；其他 = 上限，每題依反應時間\n與 System One 篩選自動調整 / Auto below cap" });
+                    Text = "none = 關閉；其他 = 上限，每題依反應時間\n自動調整 / Auto below cap" });
                 thinkingBox.SelectedIndexChanged += delegate {
                     status.Text = "THINK 設定尚未儲存／驗證 / Pending, unqualified";
                 };
@@ -1601,7 +1602,7 @@ namespace InvestorIntelligence
                         "Local model server: not detected / 未偵測  |  Typed model: " +
                         modelBox.Text;
                     status.Text =
-                        "未讀到模型清單；啟動本機模型伺服器（TabbyAPI、llama.cpp、Ollama、LM Studio）後再掃描。\r\n" +
+                        "未讀到模型清單；啟動本機模型伺服器（ninfer、llama.cpp、Ollama、LM Studio）後再掃描。\r\n" +
                         catalog.Error;
                 }
 

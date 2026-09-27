@@ -25,8 +25,10 @@
 param(
     [switch]$CarryForwardTop20,
     [int]$RefreshTimeoutSeconds = 1800,
-    [string]$TabbyUrl = 'http://127.0.0.1:5000',
-    [string]$TabbyModel = 'Qwen3.8-27B-EXL3-5.5bpw-v2',
+    # Parameter names stay $TabbyUrl/$TabbyModel for compatibility with installed task actions; the defaults are
+    # now ninfer (TabbyAPI :5000 removed 2026-09-27).
+    [string]$TabbyUrl = 'http://127.0.0.1:8080',
+    [string]$TabbyModel = 'Qwen3.8-27B',
     # Sealed runs directory (default state\v213-snapshots); an installed runtime uses data\v213-snapshots so its
     # attested payload never changes. Exported as II_SNAPSHOT_ROOT for the publisher and the company reports.
     [string]$SnapshotRoot = '',

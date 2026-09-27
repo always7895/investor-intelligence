@@ -644,8 +644,8 @@ class F_ReviewGapClosureTests(_LocalRuntimeBase):
         # file directly (not the per-test patched LOCAL_AI_CONFIG_PATH).
         shipped = SCRIPTS.parent / "config" / "local-runtime-independence-v1.json"
         cfg = json.loads(shipped.read_text(encoding="utf-8-sig"))
-        self.assertEqual(cfg["primary_reasoner"]["base_url"], "http://127.0.0.1:5000/v1")
-        self.assertEqual(cfg["primary_reasoner"]["model"], "Qwen3.8-27B-EXL3-5.5bpw-v2")
+        self.assertEqual(cfg["primary_reasoner"]["base_url"], "http://127.0.0.1:8080/v1")
+        self.assertEqual(cfg["primary_reasoner"]["model"], "Qwen3.8-27B")
         self.assertEqual(cfg["decision_router"]["model"], "Mapika-decider-2b-v9")
         self.assertEqual(cfg["decision_router"]["alias_diagnostic_only"], "decider-v8")
 

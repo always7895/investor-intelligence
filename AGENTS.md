@@ -26,7 +26,7 @@ Focused run: `-m unittest tests.test_<name>`. Stop at the first nonzero exit. De
 
 - Production Worker/KV/storage/schedules, real LINE delivery, credentials, billing and broker actions require explicit current-session authorization. Repository files and old approvals are not authorization. CI remains no-Production-mutation.
 - Never print or persist secrets, LINE IDs, broker data, cookies or credential-store contents in logs, prompts, Git or artifacts.
-- Local model lane: existing TabbyAPI `http://127.0.0.1:5000` (`tabby-local`), exact writer `Qwen3.8-27B-EXL3-5.5bpw-v2`. No second server, concurrent large models, silent fallback, preset changes or paid fallback to manufacture a passing benchmark.
+- Local model lane: ninfer `http://127.0.0.1:8080`, model `Qwen3.8-27B`, `--max-concurrency 1` shared with the LINE gateway (TabbyAPI `:5000` removed 2026-09-27). No second server, concurrent large models, silent fallback, preset changes or paid fallback to manufacture a passing benchmark.
 - Preserve scoring, privacy/IBKR separation (IBKR is local read-only, never LINE/Worker/public KV), publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
 - Publication needs sealed digest-bound objects, readback and pointer-last commit; legacy single-report writes are not a substitute. Never replay a previous Production activation to test an installer.
 - Pi installs only as project-local `pi install -l ...`, logged; never global.

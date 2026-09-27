@@ -7,10 +7,19 @@ This is a LOCAL-gateway capability, not a Cloudflare Worker change.
 
 Two roles, one runtime config (`config/local-runtime-independence-v1.json`):
 
-- **PRIMARY_REASONER** — the local reasoner (default `http://127.0.0.1:5000/v1`,
-  exact `Qwen3.8-27B-EXL3-5.5bpw-v2`).
-- **DECISION_ROUTER** — the existing local Mapika CPU sidecar
-  (`Mapika-decider-2b-v9`; `alias_diagnostic_only: decider-v8`).
+- **PRIMARY_REASONER** — the local reasoner (current default ninfer
+  `http://127.0.0.1:8080/v1`, model `Qwen3.8-27B`), run with
+  `--max-concurrency 1` and shared with the LINE gateway on `:8814` — a local
+  task delays LINE answers. No live qualification of ninfer is claimed here.
+- **DECISION_ROUTER** — the Mapika / System One CPU decider
+  (`Mapika-decider-2b-v9`; `alias_diagnostic_only: decider-v8`) is retired in
+  the shipped config (`decision_router.retired: true`): the gateway's gate uses
+  source qualification alone, and no decider approval is required.
+
+Before 2026-09-27 the defaults were TabbyAPI `http://127.0.0.1:5000/v1` with
+exact `Qwen3.8-27B-EXL3-5.5bpw-v2`, and the Mapika decider was the active
+DECISION_ROUTER (legacy, non-retired configuration: healthy evidence
+additionally required an explicit decider approval).
 
 Strict hard flags (JSON boolean tokens; numeric `1`/`0` rejected):
 `LOCAL_AI_ONLY=true`, `PAID_INFERENCE_ALLOWED=false`, `CLOUD_AI_FALLBACK=false`.
@@ -21,10 +30,12 @@ Missing/invalid flags fail closed (no healthy default).
 The v213 gateway runs these BEFORE any reasoner product completion:
 
 1. **Decision gate** — failed source evidence (CONFLICTED/STALE/UNAVAILABLE)
-   denies via `source_qualification` without consulting the decider; healthy
-   evidence requires an explicit decider approval. The pre-generation gate
-   result is reused for the `ii_decision` annotation (no CPU re-query after
-   generation).
+   denies via `source_qualification` without consulting the decider. With the
+   shipped `decision_router.retired: true`, source qualification alone is
+   sufficient — no decider approval is required for healthy evidence. (Legacy,
+   non-retired configuration: healthy evidence additionally required an
+   explicit decider approval.) The pre-generation gate result is reused for
+   the `ii_decision` annotation (no CPU re-query after generation).
 2. **Served-context capability** — observed from the actual served metadata
    API (`/v1/model` → `parameters.max_seq_len`), compared to the resolved
    canonical identity. Missing/mismatched evidence → `CAPABILITY_UNKNOWN`
@@ -44,15 +55,21 @@ admission threshold. Strict finite numeric 0..1 (not bool/string); missing or
 invalid fails closed. A decider confidence below 0.70 denies locally (never
 Astra, never cloud). The client also strictly validates the probability vector
 (empty / wrong keys / bool / non-numeric / NaN / inf / out-of-range /
-unnormalized / choice-confidence mismatch), tolerating legitimate 4dp rounding.
+unnormalized / choice-confidence mismatch), tolerating legitimate 4dp
+rounding. In the shipped retired configuration the decider is never consulted,
+so this minimum applies only when a non-retired decision router is
+configured.
 
 ## Failure behavior
 
 Malformed, offline, low-confidence, or NOT_SUFFICIENT decisions return an
 explicit **503 `REASONER_DECISION_DENIED`** (or the capability error) with
 **zero reasoner product generation** — degraded/fail-closed, no Astra, no cloud
-fallback, no healthy default. The natural-prose LINE reply format is unchanged;
-only the required structured output/probe is validated.
+fallback, no healthy default. In the shipped retired configuration only the
+failed-source-qualification denial and the capability errors can fire; the
+decider denial paths above are legacy (non-retired configuration only). The
+natural-prose LINE reply format is unchanged; only the required structured
+output/probe is validated.
 
 ## Replacement semantics
 
