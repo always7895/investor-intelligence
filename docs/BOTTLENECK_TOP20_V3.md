@@ -51,16 +51,33 @@ with "<first regular-way session>–<as of> 正常交易以來年化 X%（非2�
 (e.g. "2025-02-21 自 Western Digital（WDC）分拆；2025-02-24 起正常交易") shows on every form, also when two years exist, and
 the detail lists its primary sources; an unverified short history reads 2年價格資料不足 (可得價格自 <date>；上市沿革未核實),
 never "new company". Serenity/Leopold lead scores weight the ranking but are not shown; the
-card shows three order tiles instead (operator 2026-09-27; `scripts/order_forecast.py`, sealed as `outlook.order_forecast`,
-re-validated by `cloud/src/v213/order-forecast.ts`): 現有訂單; 未來訂單預估 for 6個月 and 1年 = the signed orders the company
-states it will recognize within that period (RPO × the disclosed share, from the balance-sheet date; an undisclosed horizon
-says so, interpolated shares are never used), or without a schedule an order book extrapolated at its year-on-year change
-from today; 若實現股價（變動） for the same periods = the conditional price change if those orders are realized (revenue at
-that level or following the book, P/S and share count unchanged). When the signed orders cover less than the period's
-revenue level (quarter × months / 3) no price is estimated and the coverage is shown. Analyst targets appear only in the
-detail as a labelled reference. Fixed-period figures (a 24-month schedule, annual new-order guidance) are references only.
-On 2026-09-27 filings: 1-year orders for SNDK, MU, NVDA, AVGO, AMD and CRDO (no 6-month schedule, all below the revenue
-level); CRWV/NBIS 24 months only; the others disclose no order book. `瓶頸詳情` opens the SEC company report rather than
+card shows the current-orders tile and an order block instead (operator 2026-09-27; Astra contract ORDERS-V2-01;
+`scripts/order_forecast.py` build_v2, sealed as `outlook.order_forecast` version 2, re-validated by
+`cloud/src/v213/order-forecast.ts`): 未來訂單預估 with 半年內預計認列 and 1年內預計認列 = the signed orders the company states
+it will recognize within that period (RPO × the disclosed share, from the measurement date, 起算日…（非今日起）; an undisclosed
+horizon reads 未揭露, interpolated shares are never used); 訂單實現後股價情境 with 若半年內／1年內實現訂單 → 股價預估 ±X% = the
+conditional price change if those orders are realized (revenue at that level, P/S and share count unchanged; 非目標價、非今日起報酬).
+When the signed orders cover less than the period's revenue level (quarter × months / 3) no price is estimated and the
+coverage is shown. An order book extrapolated at its year-on-year change is a labelled model sensitivity
+(訂單餘額外推敏感度, never a price). Later issuer disclosures come from the reviewed registry `config/order-claims-v2.json`
+(`scripts/order_claims.py`: primary documents with hashes and reviewed publisher URL prefixes, verbatim passages,
+measurement and publication dates; selected at the exact build instant; a company US-dollar RPO measured later than the
+filing on ASC 606, or correcting/cancelling it via `FILING:<accession>` (published after that filing), is current: with its own schedule it replaces the filing's,
+without one both horizons read 未揭露 and the filing's schedule stays a dated reference; a zero, unquantified or range
+figure withholds every calculation; a same-date figure differing from the filing without a correction is a conflict;
+contracts, intake, guidance and backlog are dated references 期後訂單消息（不併入 RPO）). A registry schedule is priced only
+with the filing's validated quarter. The sealed record carries the allowlisted periodic input, order book and claims, and
+the Worker recomputes every figure and refuses the whole record on any difference. Not supported (contract amendment):
+explicit recognition amounts, schedules with their own period, schedules for a backlog or for the filing's stock. Each
+card names 訂單資料截至／來源公布（／本次查核 for reviewed claims) and shows one later disclosure with a count; the detail lists
+all with revision reasons. Per issuer at most 8 claims and 4 documents are sealed (EVIDENCE_LIMIT beyond), so twenty
+cards fit the LINE limits; a presentation budget of 2,400 UTF-16 units per issuer and lossless pagination of the text detail keep every source line. Analyst targets appear only in the detail as a labelled reference. Fixed-period figures
+(24-month schedules, annual new-order guidance) are references only. On 2026-09-27 filings: 1-year schedules for SNDK, MU,
+NVDA, AVGO, AMD and CRDO; CRWV/NBIS 24 months only; Gemini's survey found no 6-month schedule and no later order
+disclosure except MU's (writer-verified: MU, CRDO and 5351.TWO only); the registry holds one verified MU reference (SCA RPO
+about US$100B incl. post-FQ3 agreements). The deployed reader 16cb1b3 ignores the field and keeps its analyst tiles; the
+eca78a1 reader shows version 2 as unavailable; rollout order is decided in the rollout review.
+`瓶頸詳情` opens the SEC company report rather than
 repeating the card; non-SEC filers get the filing and price figures with sources.
 
 Names: the symbol, the sourced Traditional Chinese name and the original name. Sources, in order: the company's own

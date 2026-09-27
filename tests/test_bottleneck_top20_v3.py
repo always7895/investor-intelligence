@@ -316,6 +316,14 @@ class SealedFormTests(unittest.TestCase):
         saved = publisher.company_deep_report.load_order_scenarios
         publisher.company_deep_report.load_order_scenarios = lambda *args, **kwargs: {}
         self.addCleanup(setattr, publisher.company_deep_report, "load_order_scenarios", saved)
+        # A temporary, valid and empty order-claim registry: sealing never reads the packaged config in these tests.
+        registry_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(registry_dir.cleanup)
+        registry = Path(registry_dir.name) / "order-claims-v2.json"
+        registry.write_text(json.dumps({"schema": "order-claims-v2", "issuers": {}, "documents": [], "claims": []}), encoding="utf-8")
+        saved_registry = publisher.order_claims.REGISTRY_PATH
+        publisher.order_claims.REGISTRY_PATH = registry
+        self.addCleanup(setattr, publisher.order_claims, "REGISTRY_PATH", saved_registry)
 
     def test_compact_sealed_form_and_age_bound(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -483,6 +491,117 @@ class SealedFormTests(unittest.TestCase):
                                        "cagr_listed_span_days": None, "long_term_basis": "TWO_YEAR"})
         self.assertEqual((verified_two["cagr_2y"], verified_two["long_term_basis"]), (0.8, "TWO_YEAR"))
 
+    def test_a_fixed_cutoff_seal_carries_a_numeric_revision_to_the_worker_fixture(self):
+        """Astra ORDERS-V2-01 review fix 10: the real sealing path at a fixed build instant, with a deep-report filing and a
+        reviewed later RPO with its own schedule; a numeric revision of the registry changes the sealed figures; the
+        sealed forecast is the Worker's caller fixture (cloud/test/v213-order-forecast-v2.test.ts)."""
+        import os
+        import order_forecast
+        now = datetime(2026, 9, 27, 1, 0, 0, tzinfo=timezone.utc)
+        fixture = ROOT / "tests" / "fixtures" / "v213-order-forecast-v2-sealed.json"
+        recognition = {"status": "DISCLOSED", "form": "10-Q", "filed": "2026-08-10", "url": "https://www.sec.gov/Archives/sndk-q.htm",
+                       "rpo": 40e9, "rpo_as_of": "2026-06-30", "quarter_revenue": 8e9, "quarter_start": "2026-04-01",
+                       "quarter_end": "2026-06-30", "quarter_basis": "FRAME", "accession": "0000000000-26-000001",
+                       "passage": "30% within six months and 55% within twelve months", "report_date": "2026-06-30",
+                       "horizons": {"m6": {"share_pct": 30.0, "derived": False}, "m12": {"share_pct": 55.0, "derived": False}, "m24": None}}
+        registry = {"schema": "order-claims-v2", "issuers": {"SNDK": {"name": "Sandisk", "url_prefixes": ["https://investor.sandisk.com/"]}},
+                    "documents": [{"id": "SNDK-8K", "issuer": "SNDK", "publisher": "Sandisk", "title": "Results", "source_kind": "SEC_8K_EXHIBIT",
+                                   "url": "https://www.sec.gov/Archives/edgar/data/2023554/sndk-8k.htm", "published_date": "2026-08-12",
+                                   "retrieved_at": "2026-09-20T00:00:00Z", "sha256": "c" * 64, "byte_size": 800, "lineage_id": "SNDK-Q",
+                                   "sec": {"accession": "0000000000-26-000002", "form": "8-K", "exhibit": "99.1"}}],
+                    "claims": [{"id": "SNDK-RPO", "symbol": "SNDK", "document_id": "SNDK-8K", "locator": "table 3", "passage": "RPO was $44.0 billion",
+                                "metric": "RPO_STOCK", "assertion_kind": "DISCLOSED_FACT", "currency": "USD", "unit_multiplier": 1000000000,
+                                "amount": 44, "as_of": "2026-07-31", "scope": "COMPANY", "series_id": "SNDK:RPO", "basis": "ASC 606",
+                                "revision": {"kind": "ORIGINAL"}, "review": {"checked_at": "2026-09-21T00:00:00Z", "receipt": "fixture"}},
+                               {"id": "SNDK-SCHED", "symbol": "SNDK", "document_id": "SNDK-8K", "locator": "table 3",
+                                "passage": "about 35% within six months and 60% within twelve months", "metric": "RECOGNITION_SCHEDULE",
+                                "assertion_kind": "DISCLOSED_FACT", "currency": "USD", "unit_multiplier": 1000000000, "amount": None,
+                                "as_of": "2026-07-31", "scope": "COMPANY", "series_id": "SNDK:SCHEDULE", "basis": "ASC 606",
+                                "stock_claim_id": "SNDK-RPO", "shares": {"m6": 35.0, "m12": 60.0},
+                                "revision": {"kind": "ORIGINAL"}, "review": {"checked_at": "2026-09-21T00:00:00Z", "receipt": "fixture"}}]}
+        publisher.company_deep_report.load_order_scenarios = lambda *args, **kwargs: {"SNDK": recognition}
+        path = publisher.order_claims.REGISTRY_PATH
+
+        def seal() -> dict:
+            path.write_text(json.dumps(registry), encoding="utf-8")
+            entry = {"rank": 1, "symbol": "SNDK", "name": "Sandisk", "layer": "memory", "archetype": "COMPOUNDER", "score": 70.0,
+                     "role": "NAND", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
+                     "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
+                     "fundamentals": None, "market": {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK",
+                                                      "asof": "2026-09-25", "ret_6m": 0.1, "ret_1y": 0.2, "cagr_2y": 0.3,
+                                                      "history_start": "2023-09-25", "currency": "USD"},
+                     "market_cap_usd": 5e10, "serenity": None, "leopold": None}
+            doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": "2026-09-27T01:00:00Z", "leads": {},
+                   "top": [{**entry, "rank": index + 1, "symbol": "SNDK" if index == 0 else f"S{index}"} for index in range(12)],
+                   "industries": [{"rank": 1, "id": "memory", "name_zh": "記憶體", "chain": "chips_memory", "leopold_constraint": "x",
+                                   "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
+                                   "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
+            saved = publisher.build_zh_names.names_for
+            publisher.build_zh_names.names_for = lambda symbols: {}
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    v3 = Path(tmp) / "v3.json"
+                    v3.write_text(json.dumps(doc), encoding="utf-8")
+                    return json.loads(publisher.lazy_bottleneck_v3_body(v3, now)[publisher.BOTTLENECK_V3_KEY])["top"][0]["outlook"]["order_forecast"]
+            finally:
+                publisher.build_zh_names.names_for = saved
+
+        sealed = seal()
+        expected = order_forecast.build_v2("SNDK", None, recognition, now.date(), now, publisher.order_claims.load())
+        self.assertEqual(sealed, json.loads(json.dumps(expected)))
+        self.assertEqual((sealed["evidence"]["cutoff"], sealed["m12"]["source"], sealed["m12"]["amount"]), ("2026-09-27T01:00:00Z", "REGISTRY", 44e9 * 0.6))
+        self.assertEqual(sealed["m12"]["scenario"]["status"], "INSUFFICIENT_COVERAGE")  # the filing's quarter is within 45 days
+        if os.environ.get("II_WRITE_ORDER_V2_FIXTURE") == "1":
+            fixture.write_text(json.dumps({"generated_at": "2026-09-27T01:00:00Z", "issuer": "SNDK", "forecast": sealed},
+                                          ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+        self.assertEqual(json.loads(fixture.read_text(encoding="utf-8"))["forecast"], sealed)
+        registry["claims"][0]["amount"] = 46  # a numeric revision at the same cutoff
+        revised = seal()
+        self.assertEqual(revised["m12"]["amount"], 46e9 * 0.6)
+        self.assertNotEqual(revised["evidence"]["registry_sha256"], sealed["evidence"]["registry_sha256"])
+
+    def test_sealing_reads_the_reviewed_order_claims_and_binds_their_digest(self):
+        """Astra ORDERS-V2-01: the real sealing path loads the registry once, at the build cutoff, with no network; a
+        changed registry changes the evidence and its digest; a malformed one is named, never replaced by old output."""
+        import hashlib
+        market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 0.1,
+                  "ret_1y": 0.2, "cagr_2y": 0.3, "history_start": "2023-09-25", "currency": "USD"}
+        today = datetime.now(timezone.utc).date()
+        published = str(today - timedelta(days=3))
+        registry = {"schema": "order-claims-v2", "issuers": {"SNDK": {"name": "Sandisk", "url_prefixes": ["https://investor.sandisk.com/news/"]}},
+                    "documents": [{"id": "SNDK-PR", "issuer": "SNDK", "publisher": "Sandisk", "title": "Release", "source_kind":
+                                   "ISSUER_CONTRACT_ANNOUNCEMENT", "url": "https://investor.sandisk.com/news/1", "published_date": published,
+                                   "retrieved_at": f"{published}T12:00:00Z", "sha256": "b" * 64, "byte_size": 900, "lineage_id": "SNDK-PR"}],
+                    "claims": [{"id": "SNDK-DEAL", "symbol": "SNDK", "document_id": "SNDK-PR", "locator": "para 2", "passage": "a supply agreement",
+                                "summary": "長期供貨合約", "metric": "SIGNED_CONTRACT_VALUE", "assertion_kind": "DISCLOSED_FACT", "currency": "USD",
+                                "unit_multiplier": 1000000000, "amount": 3, "as_of": published, "scope": "CONTRACT", "scope_label": "供貨合約",
+                                "series_id": "SNDK:DEAL", "basis": "contract value",
+                                "revision": {"kind": "SUPPLEMENTS", "overlap": "UNKNOWN"},
+                                "review": {"checked_at": f"{published}T13:00:00Z", "receipt": "fixture"}}]}
+        path = publisher.order_claims.REGISTRY_PATH
+        path.write_text(json.dumps(registry), encoding="utf-8")
+        forecast = self._seal_one(market, None, "outlook")["order_forecast"]
+        evidence = forecast["evidence"]
+        self.assertEqual((evidence["registry_status"], evidence["registry_sha256"]), ("OK", hashlib.sha256(path.read_bytes()).hexdigest()))
+        self.assertEqual(forecast["references"], [{"kind": "CLAIM", "claim_id": "SNDK-DEAL"}])
+        self.assertNotIn("review", evidence["claims"][0])  # the receipt reference stays private; the check time is sealed
+        self.assertEqual(evidence["claims"][0]["checked_at"], f"{published}T13:00:00Z")
+        self.assertEqual(evidence["url_prefixes"], ["https://investor.sandisk.com/news/"])
+        # Only the issuer's own evidence is sealed with each entry.
+        self.assertEqual(self._seal_one(market, None, "outlook")["order_forecast"]["evidence"]["documents"][0]["issuer"], "SNDK")
+        # A changed registry at the same cutoff changes the evidence; a malformed one is explicit, not yesterday's output.
+        registry["claims"][0]["amount"] = 4
+        path.write_text(json.dumps(registry), encoding="utf-8")
+        changed = self._seal_one(market, None, "outlook")["order_forecast"]["evidence"]
+        self.assertEqual(changed["claims"][0]["amount"], 4)
+        self.assertNotEqual(changed["registry_sha256"], evidence["registry_sha256"])
+        path.write_text("{not json", encoding="utf-8")
+        broken = self._seal_one(market, None, "outlook")["order_forecast"]
+        self.assertEqual((broken["evidence"]["registry_status"], broken["evidence"]["claims"], broken["references"]), ("INVALID", [], []))
+        path.unlink()
+        missing = self._seal_one(market, None, "outlook")["order_forecast"]["evidence"]
+        self.assertEqual((missing["registry_status"], missing["registry_sha256"]), ("UNAVAILABLE", None))
+
     def test_the_order_forecast_is_built_at_sealing_from_the_deep_report_schedule(self):
         import order_forecast
         market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 0.1,
@@ -496,7 +615,12 @@ class SealedFormTests(unittest.TestCase):
                        "horizons": {"m6": None, "m12": {"share_pct": 19.0, "derived": False}, "m24": None}}
         publisher.company_deep_report.load_order_scenarios = lambda *args, **kwargs: {"SNDK": recognition}
         sealed = self._seal_one(market, None, "outlook")
-        self.assertEqual(sealed["order_forecast"], order_forecast.build("SNDK", None, recognition, today))
+        legacy = order_forecast.build("SNDK", None, recognition, today)
+        self.assertEqual(sealed["order_forecast"]["version"], 2)
+        # The filing's schedule, unchanged, now tagged with its source; an empty registry adds nothing.
+        self.assertEqual(sealed["order_forecast"]["m12"], {**legacy["m12"], "source": "PERIODIC"})
+        self.assertEqual(sealed["order_forecast"]["evidence"]["registry_status"], "EMPTY")
+        self.assertEqual(sealed["order_forecast"]["references"], [])
         m12 = sealed["order_forecast"]["m12"]
         self.assertEqual((m12["status"], m12["basis"], m12["amount"], m12["end"]),
                          ("AVAILABLE", "RECOGNITION", 59.8e9 * 0.19, str(order_forecast.add_months(as_of, 12))))

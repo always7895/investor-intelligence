@@ -4,7 +4,7 @@
  * but are never shown as company facts; every figure carries its source and date. A malformed or stale document
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
-import { forecastLines, forecastText, forecastTiles, parseOrderForecast, type OrderForecast } from "./order-forecast";
+import { forecastCard, forecastLines, forecastText, parseOrderForecast, type OrderForecast } from "./order-forecast";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -264,7 +264,7 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
   const reportDay = doc.generated_at.slice(0, 10);
   const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, reportDay),
-    forecast: parseOrderForecast(entry.outlook?.order_forecast, reportDay, entry.symbol) }));
+    forecast: parseOrderForecast(entry.outlook?.order_forecast, reportDay, entry.symbol, doc.generated_at) }));
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
@@ -455,8 +455,7 @@ function orderFloor(doc: BottleneckV3, entry: BottleneckEntry): unknown[] {
     : "最新 10-Q／10-K 未申報 RPO 認列時程。", "xxs", T.muted)];
 }
 
-/** The three card tiles, identical on every Top20 card: current orders, the 6-month / 1-year order figures and the price
- * change if those orders are realized (operator 2026-09-27; scripts/order_forecast.py): [label, value, sub]. */
+/** The current-orders tile of every Top20 card: [label, value, sub]. The future order block follows it (outlookForecast). */
 export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string, string, string][] {
   const outlook = entry.outlook;
   const o = outlook?.orders;
@@ -464,12 +463,18 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
     : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
     : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
-  return [orders, ...forecastTiles(forecastOf(doc, entry), money)];
+  return [orders];
+}
+
+/** The future order block of every Top20 card, line by line ([text, heading]): 半年 and 1年 realization rows with their
+ * windows, the conditional price rows, the data dates and later disclosures (Astra contract ORDERS-V2-01). */
+export function outlookForecast(doc: BottleneckV3, entry: BottleneckEntry): [string, boolean][] {
+  return forecastCard(forecastOf(doc, entry), money);
 }
 
 /** An entry's validated forecast (a parsed document always has one; a hand-built entry reads as unavailable). */
 function forecastOf(doc: BottleneckV3, entry: BottleneckEntry): OrderForecast {
-  return entry.forecast ?? parseOrderForecast(entry.outlook?.order_forecast, doc.generated_at.slice(0, 10), entry.symbol);
+  return entry.forecast ?? parseOrderForecast(entry.outlook?.order_forecast, doc.generated_at.slice(0, 10), entry.symbol, doc.generated_at);
 }
 
 /** Operator 2026-09-26: current orders, the future estimate and the price scenario if realized on every Top20 card
@@ -481,7 +486,8 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   if (compact) {
     return section("訂單與成長情境", [
       uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
-      footnote("未來訂單預估＝公司揭露將於6個月／1年內認列的已簽約訂單（RPO×揭露比例，自揭露日起）；無揭露時以訂單餘額依年增外推。若實現股價（變動）＝訂單實現時的條件股價變動（P/S與股數不變），已簽約訂單不足以覆蓋同期營收時不估價；非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。"),
+      ...outlookForecast(doc, entry).map(([text, heading]) => uiText(text, "xs", T.ink, heading ? { weight: "bold" } : {})),
+      footnote("預計認列＝公司揭露將於半年／1年內認列的已簽約訂單（RPO×揭露比例，自量測日起，非今日起）；公司未揭露時顯示未揭露，不以外推代替。股價情境＝訂單如期實現時的條件變動，非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。"),
 
     ], "key");
   }
@@ -529,7 +535,8 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         footnote(`股價：${sourceZh(entry.market.source)}，至 ${entry.market.asof}；市值 ${cap(entry.market_cap_usd)}`),
         ...(entry.market.cross_check ? [footnote(exchangeCheck(entry.market.cross_check))] : []),
       ]),
-      lean ? section("訂單與成長情境", [uiText(outlookTiles(doc, entry).map(([label, value, sub]) => `${label} ${value}（${sub}）`).join("\n"), "xs", T.ink)], "key")
+      lean ? section("訂單與成長情境", [uiText([...outlookTiles(doc, entry).map(([label, value, sub]) => `${label} ${value}（${sub}）`),
+        ...outlookForecast(doc, entry).map(([text]) => text)].join("\n"), "xs", T.ink)], "key")
         : orderSection(doc, entry),
       ...(entry.name_zh ? [footnote(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`)] : []),
     ], { paddingAll: "lg", spacing: "md" }),
@@ -636,11 +643,19 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   ].join("\n");
 }
 
-/** Cut at the last whole line within the limit, so a source line is never broken off mid-URL. */
-function atLineBoundary(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  const cut = text.lastIndexOf("\n", limit - 2);
-  return `${text.slice(0, cut > 0 ? cut : limit - 1)}…`;
+/** Whole lines into pages of at most `limit` UTF-16 units (a continuation page says so); nothing is cut away. */
+function pagesAtLineBoundary(text: string, limit: number): string[] {
+  const pages: string[] = [];
+  let page = "";
+  for (const line of text.split("\n")) {
+    const next = page ? `${page}\n${line}` : line;
+    if (next.length <= limit) { page = next; continue; }
+    if (page) pages.push(page);
+    page = `（續）${line}`;
+    while (page.length > limit) { pages.push(page.slice(0, limit)); page = `（續）${page.slice(limit)}`; }
+  }
+  if (page) pages.push(page);
+  return pages;
 }
 
 /** The Top20 entry for a typed symbol: exact, else the one listing whose symbol before the venue suffix matches
@@ -662,7 +677,7 @@ export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: 
   const report = raw ? validateCompanyDataReport(raw, entry.symbol) : null;
   const detail: LineOutboundMessage[] = style === "flex"
     ? packCarousels([detailBubble(doc, entry)], () => `瓶頸詳情｜${entry.symbol} ${chineseName(entry)}`.slice(0, 400))
-    : [{ type: "text", text: atLineBoundary(detailText(doc, entry), 4900) }];
+    : pagesAtLineBoundary(detailText(doc, entry), 4900).map(text => ({ type: "text" as const, text }));
   const reportMessages = report ? (style === "flex" ? buildCompanyDataReportFlex(report, doc.generated_at, ["回瓶頸 TOP20", "TOP20"])
     : buildCompanyDataReportMessages(report, doc.generated_at)) : [];
   const messages = [...detail, ...reportMessages].slice(0, 5);

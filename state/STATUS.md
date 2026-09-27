@@ -1,20 +1,21 @@
 # Current state / 目前狀態
 
-Updated 2026-09-27 19:40 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show dec7bd0:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
+Updated 2026-09-27 22:30 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show 349a332:state/STATUS.md` (NINFER-DEFAULTS-01); `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show dec7bd0:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
 
 ## Identity
 
-- This batch is an uncommitted candidate on the isolated worktree branch `qwen/ninfer-defaults` at base `914f0e6a26033af3e5af0b406995bc84aaafe06d`. Planned after writer and Astra acceptance: commit there, fast-forward the integration target `fix/options-provenance-audit` (draft PR #37 to `main`) and push it. CI on the working branch ends COMPLETED_SKIPPED by design (`final-release-candidate-v3-pre-rewrite-audit.yml` runs only for head `integration/final-release-candidate-v3`): not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
+- This batch is an uncommitted candidate on `fix/options-provenance-audit` at `349a332` (NINFER-DEFAULTS-01, pushed). Planned after writer and Astra acceptance: commit and push. CI on this branch ends COMPLETED_SKIPPED by design (`final-release-candidate-v3-pre-rewrite-audit.yml` runs only for head `integration/final-release-candidate-v3`): not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 
-## This batch: NINFER-DEFAULTS-01
+## This batch: ORDERS-V2-01 revision 6 (Astra contract `_archive\lane-dispatch-20260927T0905Z\astra-orders-v2.result.md`)
 
-Operator 2026-09-27: TabbyAPI `:5000` and `Qwen3.8-27B-EXL3-5.5bpw-v2` were removed; the local model is ninfer (`D:\ninfer\ninfer-serve.exe`, `http://127.0.0.1:8080`, `Qwen3.8-27B`, `--max-concurrency 1`, shared with the LINE gateway :8814). Implemented by qwen-local on ninfer; revision 2 after an Astra REJECT for missing current-doc corrections.
-- Defaults: `config/local-runtime-independence-v1.json` (primary reasoner `http://127.0.0.1:8080/v1`, `Qwen3.8-27B`), launcher `DefaultLlamaBase` :8080, `scripts/run_v213_local_llm_bridge_core.ps1`, `scripts/run_production_sealed_refresh.ps1` (defaults only; parameter names kept for the installed task actions); two tests.
-- Current wording: `docs/LOCAL_RUNTIME_INDEPENDENCE.md`, `docs/MODEL_RUNTIME_MIGRATION.md`, gateway docstrings/comments (no logic change), source `AGENTS.md`: the System One decider is retired (source qualification alone); dated history kept.
-- Open, not in this batch: `scripts/v213_qa_capacity.py` still pins the removed model (recertification decision); the opt-in manual live harness `cloud/test/manual/v213-task0-general-qa-live.manual.ts`; port 5000 in the known-port lists (now the IBKR Client Portal; a discovery-policy follow-up across launcher, bridge and detector). The installed EXE (2026-09-07) has no port/model discovery; the source launcher and `scripts/local_model_endpoint.py` do (live: ninfer :8080 `Qwen3.8-27B`, gateway health OK at 18:25). A rebuilt EXE needs the install step of the authorized rollout and an Astra GO.
-- Gates (`.venv-local-gates`, PYTHONUTF8=1) ran on the revision-2 candidate with its earlier STATUS text: security, documentation boundary/structure, workflow supply-chain exit 0; `run_offline_tests.py --repository` 2,854 OK (19:17–19:27, overlapping the :12–:25 seal window without an operation-lock collision). Revision 3 changes only this file; on it the writer reran `tests.test_agent_skill_structure` and the documentation structure gate. No Worker change.
+Operator 2026-09-27: "未來預估修正為未來訂單預估，根據現有最新消息隨時修正，若實現股價要註明時間（半年、1年）". Revisions 1–5 were REJECTED by Astra (`astra-accept-orders-v2.result.md`, `-r2` … `-r5`); the amendment of revision 2 was accepted: explicit recognition amounts, schedules with their own period, backlog schedules and schedules of the filing's stock are refused at load (deferred, not implemented).
+- Registry `config/order-claims-v2.json` + `scripts/order_claims.py`: primary documents (hash, size, retrieval; issuer URL prefixes with canonical paths; SEC kinds paired with forms and exhibits) and dated claims; total validation in both languages (dates 1990–2100, optional fields omitted not null, bounded numbers incl. units, code-point lengths, one text policy refusing format characters, byte-order marks and unpaired surrogates, numbers compared by value, zero unsigned); selection at the exact build instant; only a company USD RPO on ASC 606 is comparable with the filing, and its schedule must share its basis; equal stock observations are one observation whose attached schedules are all compared (ids never decide); same-date differences in figure or schedule are conflicts; `FILING:<accession>` corrections must be on ASC 606 and resolve only against the actual filing after its filing date (else UNRESOLVED_REVISION); zero/unquantified/range observations withhold calculations. Per issuer at most 8 claims, 4 documents and a presentation budget of 2,400 UTF-16 units are sealed (else EVIDENCE_LIMIT); the text detail pages losslessly at line boundaries instead of cutting. One record: MU prepared remarks p.7, reference only.
+- `scripts/order_forecast.py` decide/build_v2 seals the allowlisted periodic input, order book, claims and selection; a registry schedule is priced only with the filing's validated quarter. `cloud/src/v213/order-forecast.ts` recomputes the selection and the whole forecast and refuses the record on any difference; the build instant must equal `generated_at`.
+- Wording: 半年內／1年內預計認列 with 起算日（非今日起）, 若半年內／1年內實現訂單 → 股價預估 ±X% with the condition; dates of the actual inputs; stock lines explain the rows from their actual relationship (同日同額, 早於申報量測, 認列時程見上); ranges keep their unit; details show metric, scope, measurement date, period and revision reason of every disclosure. Cards and the text form show one later disclosure and a count.
+- Evidence: shared fixture `tests/fixtures/v213-order-forecast-v2.json` (S1–S19, each case described in `tests/test_order_claims.py`) and the sealer's fixed-cutoff output `tests/fixtures/v213-order-forecast-v2-sealed.json`, both through `parseBottleneckV3`; twenty cards and both detail forms keep every source and check line at the budget edge (asserted per claim).
+- Coverage (2026-09-27): MU one verified reference; CRDO BLOCKED_INPUTS; 5351.TWO evidence verified for lane 18; other Top20 issuers are research leads only (Gemini survey, not writer-verified); no 6-month schedule found by that survey (not a verified absence).
 
-Previous batch PY-LOCAL-01 (`914f0e6`, writer and Astra ACCEPT): non-destructive local Python resolver with `-InstallLockedDependencies`; local gates run from `.venv-local-gates` (`docs/DEPENDENCY_LOCKING.md`).
+Previous batches: NINFER-DEFAULTS-01 (`349a332`, local model defaults to ninfer); PY-LOCAL-01 (`914f0e6`, local Python resolver).
 
 ## Production — read back 2026-09-27 18:30–18:45 (operator: 授權回讀核對; read-only)
 
@@ -27,8 +28,8 @@ Receipt `_archive\lane14-readback-20260927T1036Z\RECEIPT.md` supersedes the earl
 
 Operator 2026-09-27 18:51 "繼續並核准相關授權" (`_archive\authorization-20260927T1051Z\AUTHORIZATION.md`, writer-interpreted scope): runtime/EXE installation, the task pause/resume that install needs, Worker deployment, KV publication/seal within a stated write budget, transaction/rollback/finalize and read-back — each only after an Astra GO on a fixed-snapshot rollout plan. Excluded: real LINE delivery, credentials, billing, broker actions, merge/tag/release. It does not approve any review or an unspecified snapshot.
 
-1. ORDERS-V2-01 (Astra contract `_archive\lane-dispatch-20260927T0905Z\astra-orders-v2.result.md`): in progress in the working tree (dated issuer claims registry, two-horizon wording, model sensitivity); needs writer and Astra acceptance.
-2. Rollout of the accepted snapshot: plan for Astra GO; deploy the reader before sealing version-2 data (the deployed 16cb1b3 reader ignores the field; the eca78a1 reader shows version 2 as unavailable).
+1. ORDERS-V2-01: this batch; complete only after writer and Astra acceptance, commit and push.
+2. Rollout of the accepted snapshot: a fixed plan for Astra GO. The deployed 16cb1b3 reader ignores the order forecast (keeps its analyst tiles), the eca78a1 reader shows version 2 as unavailable; the order of data and Worker is decided in that review.
 3. L18-5351-CURATED-01 (contract `astra-5351-contract.result.md`, evidence verified): queued after ORDERS-V2; the other four lane-18 listings DEFERRED_WITH_REASON.
 4. Lane 19 CRDO: CRDO-RPO-01 closed BLOCKED_INPUTS by Astra (RPO only as an extension XBRL concept; not COMPLETE). MU waits for its FQ4 FY26 10-K (report 2026-09-30).
 5. Local Qwen: available on ninfer when idle; dispatch delays LINE answers.
@@ -36,7 +37,7 @@ Operator 2026-09-27 18:51 "繼續並核准相關授權" (`_archive\authorization
 
 ## Commits since 2026-09-26 20:45
 
-`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. None deployed.
+`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. `349a332`: NINFER-DEFAULTS-01. None deployed.
 
 ## Operator decisions (2026-09-26)
 
@@ -49,7 +50,7 @@ ChatGPT review MCP is `chatgpt-web` (workspace `AGENTS.md`); `scripts/codex_revi
 5. Deferred: report-age gates for carried reports and federation readers (certified `cloud/src/qa.ts` needs recertification); the CI R75 route blocks release qualification.
 17. LINE Q&A relay (Worker → quick tunnel → gateway :8814 → ninfer :8080): gateway health OK at 18:25. Nightly heartbeat failures from one KV nonce per heartbeat are fixed in 33d7938 (undeployed).
 18. Dilution: shares_yoy from the quarter's diluted weighted average when shares outstanding are missing. Previous-quarter YoY for Yahoo listings: see queue item 3.
-19. Order forecast: v1 in `eca78a1` (undeployed); v2 is queue item 1. No Top20 company discloses a 6-month schedule (2026-09-27 survey).
+19. Order forecast: v1 in `eca78a1`, v2 this batch (both undeployed). No Top20 company discloses a 6-month schedule (2026-09-27 survey).
 
 Closed: lanes 1, 4, 6–13, 15, 16. Lane 15 upkeep: a new IPO or spin-off stays excluded (`HISTORY_OR_LINEAGE_UNVERIFIED`) until `config/listing-lineage-v1.json` has its primary-source record; check `excluded` after each v3 build.
 
@@ -65,10 +66,10 @@ NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQUALIFIED; publication_el
 
 ## Control plane (root `AGENTS.md`, operator 2026-09-27)
 
-Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, go/no-go; read-only. Claude Code: sole tracked writer. Gemini (`gemini-review`, w9:pB): research and audits. Both load JEV (`pi-typesafe`, daily cap 60; `_archive\jev-panes-20260927T0930Z\RECEIPT.md`). Qwen (`qwen-local`, w9:pC) was started at 18:52 on ninfer `Qwen3.8-27B` without JEV (JEV .74) and implemented this batch; pane state changes, so check it before dispatch. Each Herdr task starts with `/new` (send with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes belong to another project. `chatgpt-web` selectors do not see answers; read them from the tab.
+Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, go/no-go; read-only. Claude Code: sole tracked writer. Gemini (`gemini-review`, w9:pB): research and audits. Both load JEV (`pi-typesafe`, daily cap 60; `_archive\jev-panes-20260927T0930Z\RECEIPT.md`). Qwen (`qwen-local`, w9:pC) was started at 18:52 on ninfer `Qwen3.8-27B` without JEV (JEV .74) and implemented NINFER-DEFAULTS-01; pane state changes, so check it before dispatch. Each Herdr task starts with `/new` (send with `MSYS_NO_PATHCONV=1` from Git Bash). The wB panes belong to another project. `chatgpt-web` selectors do not see answers; read them from the tab.
 
 ## Handoff
 
-- Next: Astra acceptance of this snapshot, commit on `qwen/ninfer-defaults`, fast-forward and push the working branch; then ORDERS-V2-01 acceptance, then the rollout plan for Astra GO.
+- Next: Astra acceptance of this snapshot (and of the contract amendment), commit and push; then the rollout plan for an Astra GO; then L18-5351-CURATED-01.
 - Operator: the plaintext Alpha Vantage note; whether a 6-month figure may ever be a labelled model estimate (currently shown as 未揭露 when undisclosed).
-- Tooling: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (`cloud\node_modules` is a junction to the source checkout's); Qwen worktree `_workspace\qwen-ninfer-defaults`; `chatgpt-web` lane `investor` (branch `local/zh-tw-lanes`). Scratch: `%TEMP%\ii-live`.
+- Tooling: old-reader worktree `%TEMP%\ii-live\wt-16cb1b3` (`cloud\node_modules` is a junction to the source checkout's); Qwen worktree `_workspace\qwen-ninfer-defaults` (branch merged); `chatgpt-web` lane `investor` (branch `local/zh-tw-lanes`). Scratch: `%TEMP%\ii-live`.

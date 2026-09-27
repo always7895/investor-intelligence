@@ -1,7 +1,7 @@
 // Bottleneck-explosion Top20 v3 and the industry ranking: strict parsing, report-age bound, LINE rendering.
 import { describe, expect, it } from "vitest";
 import {
-  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookTiles, parseBottleneckV3,
+  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookForecast, outlookTiles, parseBottleneckV3,
 } from "../src/v213/bottleneck-v3";
 import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
@@ -56,13 +56,15 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).not.toContain("已簽約訂單可支撐的營收成長");  // revenue coverage are on the detail card only
     // Operator 2026-09-26: current orders, the future estimate and the price scenario if realized, on every card.
     expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
-    // One layout on every card: the same three tiles in the same order.
-    for (const label of ["現有訂單", "未來訂單預估", "若實現股價（變動）"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
+    // One layout on every card (Astra ORDERS-V2-01): the current-orders tile, both realization rows and both price rows.
+    for (const label of ["現有訂單", "未來訂單預估", "訂單實現後股價情境"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
+    for (const row of ["半年內預計認列：", "1年內預計認列：", "若半年內實現訂單 → ", "若1年內實現訂單 → "]) expect(serialized.match(new RegExp(`"${row}`, "g"))).toHaveLength(20);
     expect(serialized).toContain("RPO 2026-07-26 年增+68%");
     expect(serialized).toContain("17.51兆 KRW");
     expect(serialized).toContain("在手 2026-06-30 年增+63%");
-    expect(serialized).toContain("6個月 US$12.0B・已簽約預計認列，自揭露日2026-06-30起（非今日起）");  // S2: the filing's own 6-month schedule
-    expect(serialized).toContain("訂單（非全公司）自今日起外推至2027-09-27（非期間認列）");  // S8: a segment book says what it is
+    expect(serialized).toContain("半年內預計認列：US$12.0B（起算日 2026-06-30（非今日起），至 2026-12-30）");  // S2: the filing's own 6-month schedule
+    expect(serialized).toContain("半年後訂單餘額外推：25.13兆 KRW（至 2027-03-27）");  // S8: a book extrapolation is a labelled sensitivity
+    expect(serialized).toContain("模型推估，非公司揭露、非期間認列");
     expect(serialized).toContain("公司未公布");
     expect(serialized).not.toContain("分析師12個月平均目標價");  // analyst targets never fill an order tile
     expect(serialized).not.toContain("1年 +46%");  // the analyst target (+46%) never appears as the order-linked price
@@ -295,10 +297,12 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("上市沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");  // lean cards keep the event
     const s1 = parsed.top.find(entry => entry.symbol === "S1")!;
     // Operator 2026-09-27: the future ORDER estimate and the price scenario are different figures, each with 6-month and 1-year horizons.
-    const [orders, future, price] = outlookTiles(parsed, s1);  // full and lean cards are both built from these three items
+    const [orders] = outlookTiles(parsed, s1);  // full and lean cards are both built from the tile and the order block
     expect(orders).toEqual(["現有訂單", "US$3.2B", "RPO 2026-07-26 年增+68%"]);
-    expect(future).toEqual(["未來訂單預估", "1年 US$1.2B", "6個月 未揭露・已簽約預計認列，自揭露日2026-07-26起（非今日起）"]);
-    expect(price).toEqual(["若實現股價（變動）", "1年 無法估價", "6個月 無法估價（缺訂單依據）・1年：訂單僅覆蓋同期營收0.3%"]);
+    expect(outlookForecast(parsed, s1).map(([text]) => text)).toEqual(["未來訂單預估", "半年內預計認列：未揭露", "1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）", "訂單實現後股價情境",
+      "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）", "RPO 為剩餘履約義務，非全部訂單；預計認列非保證",
+      "訂單資料截至 2026-07-26｜來源公布 2026-08-26"]);
+    expect(serialized).toContain("若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）");  // the lean card keeps both horizons
   });
 
   // The report time is fixed so the horizon arithmetic is exact.
@@ -307,51 +311,55 @@ describe("bottleneck-explosion Top20 v3", () => {
   const pick = (parsed: ReturnType<typeof fixed>, symbol: string) => parsed.top.find(item => item.symbol === symbol)!;
   const usd = (value: number) => `US$${(value / 1e9).toFixed(1)}B`;
 
+  const card = (parsed: ReturnType<typeof fixed>, symbol: string) => outlookForecast(parsed, pick(parsed, symbol)).map(([text]) => text);
+  const REFUSED = "1年內預計認列：資料未通過驗證";
+
   it("renders the sealed 6-month / 1-year order forecast from the Python contract fixture on the card and the detail", () => {
     const parsed = fixed();
-    const tiles = (symbol: string) => outlookTiles(parsed, pick(parsed, symbol)).slice(1) as [[string, string, string], [string, string, string]];
     const detail = (symbol: string) => JSON.stringify(buildBottleneckDetail(parsed, symbol, "text"));
-    // S1 NVDA: 12 months from the filing's schedule; 6 months not disclosed; no price (orders cover 0.3%); each reason on its horizon.
-    expect(tiles("S1")).toEqual([["未來訂單預估", "1年 US$1.2B", "6個月 未揭露・已簽約預計認列，自揭露日2026-07-26起（非今日起）"],
-      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價（缺訂單依據）・1年：訂單僅覆蓋同期營收0.3%"]]);
-    expect(detail("S1")).toContain("未來訂單預估・1年（2026-07-26–2027-07-26，自揭露日起算，非今日起）：US$1.2B，已簽約預計認列（RPO US$3.2B × 39%）。");
-    expect(detail("S1")).toContain("若實現股價・1年：無法估價，已簽約訂單僅覆蓋同期營收水準的 0.3%（同期營收水準＝2026-07-26 當季×4；其餘營收來自尚未簽約的訂單）。");
+    // S1 NVDA: 12 months from the filing's schedule; 6 months not disclosed; no price (orders cover 0.3%); each reason on its row.
+    expect(card(parsed, "S1")).toEqual(["未來訂單預估", "半年內預計認列：未揭露", "1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）", "訂單實現後股價情境",
+      "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）", "RPO 為剩餘履約義務，非全部訂單；預計認列非保證",
+      "訂單資料截至 2026-07-26｜來源公布 2026-08-26"]);
+    expect(detail("S1")).toContain("1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）＝RPO US$3.2B（截至 2026-07-26）× 公司揭露1年內認列 39%；全公司");
+    expect(detail("S1")).toContain("同期營收水準＝2026-07-26 當季 ");
+    expect(detail("S1")).toContain("覆蓋率 0.3%；其餘營收來源未由本訂單資料涵蓋");
     expect(detail("S1")).toContain("訂單來源：10-Q 2026-08-26（0000000000-26-000001） https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm");
+    expect(detail("S1")).not.toContain("揭露日");  // the as-of date is the measurement date, never called the disclosure date
     // S2: explicit 6 and 12 months covering the revenue level: two order amounts, two price changes, never the same figure.
-    expect(tiles("S2")).toEqual([["未來訂單預估", "1年 US$22.0B", "6個月 US$12.0B・已簽約預計認列，自揭露日2026-06-30起（非今日起）"],
-      ["若實現股價（變動）", "1年 +38%", "6個月 +50%・假設營收達已簽約額、P/S與股數不變"]]);
-    expect(detail("S2")).toContain("非目標價，非今日起的報酬；未計新訂單、取消或遞延");
-    expect(tiles("S3")[0][2]).toBe("6個月 未揭露・已簽約預計認列，自揭露日2026-06-30起（非今日起）");  // an interpolated 6 months is not shown
-    expect(tiles("S5")).toEqual([["未來訂單預估", "1年 無資料", "6個月 無資料・無訂單資料"], ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・缺訂單依據"]]);
-    expect(tiles("S7")[0][1]).toBe("1年 未揭露");  // CRWV: 24 months is a labelled reference only
-    expect(detail("S7")).toContain("參考（固定期間，非6個月／1年）：24個月內認列 US$42.5B（RPO × 41%，2026-06-30–2028-06-30）。");
-    // S8: a segment's book is shown as such and never priced as the company.
-    expect(tiles("S8")).toEqual([["未來訂單預估", "1年 32.15兆 KRW", "6個月 25.13兆 KRW・重工業部門（連結）訂單（非全公司）自今日起外推至2027-09-27（非期間認列）"],
-      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・部門訂單不代表全公司"]]);
-    expect(detail("S8")).toContain("依年增+63%（公司自述：「수주잔고 전년 동기 +63%」）外推");
-    expect(detail("S8")).toContain("參考（固定期間）：公司2026年全年新接訂單指引 12.00兆 KRW。");
-    expect(tiles("S9")[0]).toEqual(["未來訂單預估", "1年 無法取得", "6個月 無法取得・訂單與營收期間不一致"]);
-    // S10: a company-wide book from today's level, with its comparison on record and its caveats.
-    expect(tiles("S10")[1]).toEqual(["若實現股價（變動）", "1年 +25%", "6個月 +12%・假設營收隨訂單、P/S與股數不變"]);
-    expect(detail("S10")).toContain("（對比 2025-06-30 的 US$1.6B）外推");
-    expect(detail("S10")).toContain("以今日餘額為基準；訂單可能取消、延遲或組合改變；非目標價");
+    expect(card(parsed, "S2")).toEqual(["未來訂單預估", "半年內預計認列：US$12.0B（起算日 2026-06-30（非今日起），至 2026-12-30）",
+      "1年內預計認列：US$22.0B（起算日 2026-06-30（非今日起），至 2027-06-30）", "訂單實現後股價情境", "若半年內實現訂單 → 股價預估 +50%",
+      "若1年內實現訂單 → 股價預估 +38%", "條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬", "RPO 為剩餘履約義務，非全部訂單；預計認列非保證",
+      "訂單資料截至 2026-06-30｜來源公布 2026-08-10"]);
+    expect(detail("S2")).toContain("條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬；未計新訂單、取消或遞延");
+    expect(card(parsed, "S3")[1]).toBe("半年內預計認列：未揭露");  // an interpolated 6 months is not shown
+    expect(card(parsed, "S5").slice(1, 3)).toEqual(["半年內預計認列：未取得訂單資料", "1年內預計認列：未取得訂單資料"]);  // not acquired, never 0 or 無
+    expect(card(parsed, "S7")[2]).toBe("1年內預計認列：未揭露");  // CRWV: 24 months is a labelled reference only
+    expect(detail("S7")).toContain("參考（固定期間，非半年／1年）：24個月內認列 US$42.5B（RPO × 41%，2026-06-30–2028-06-30）。");
+    // S8: a segment's book is a model sensitivity, never a realization or a price.
+    expect(card(parsed, "S8")).toEqual(["未來訂單預估", "半年內預計認列：未揭露", "1年內預計認列：未揭露", "訂單實現後股價情境",
+      "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（缺認列時程）", "訂單餘額外推敏感度（非訂單實現情境）",
+      "半年後訂單餘額外推：25.13兆 KRW（至 2027-03-27）", "1年後訂單餘額外推：32.15兆 KRW（至 2027-09-27）", "模型推估，非公司揭露、非期間認列"]);
+    expect(detail("S8")).toContain("依年增+63%（公司自述：「수주잔고 전년 동기 +63%」）自今日起外推；期末餘額，非期間認列");
+    expect(detail("S8")).toContain("參考（固定期間，公司指引，非已簽約訂單）：2026年全年新接訂單指引 12.00兆 KRW。");
+    expect(card(parsed, "S9")[2]).toBe("1年內預計認列：資料未通過驗證");  // period mismatch: the detail names it
+    expect(detail("S9")).toContain("訂單與營收期間不一致");
+    // S10: a company-wide book is a sensitivity too: no "若…實現訂單" price from an extrapolation (contract ORDERS-V2-01).
+    expect(card(parsed, "S10").slice(4, 6)).toEqual(["若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（缺認列時程）"]);
+    expect(card(parsed, "S10")).toContain("1年後訂單餘額外推：US$2.6B（至 2027-09-27）");
+    expect(detail("S10")).toContain("（對比 2025-06-30 的 US$1.6B）自今日起外推");
     // S11: the 6-month window ended before the report: not a future estimate; the 12-month one still stands.
-    expect(tiles("S11")[0]).toEqual(["未來訂單預估", "1年 US$22.0B", "6個月 已過期・已簽約預計認列，自揭露日2026-03-11起（非今日起）"]);
+    expect(card(parsed, "S11").slice(1, 6)).toEqual(["半年內預計認列：期間已結束", "1年內預計認列：US$22.0B（起算日 2026-03-11（非今日起），至 2027-03-11）",
+      "訂單實現後股價情境", "若半年內實現訂單 → 無法估價（期間已結束）", "若1年內實現訂單 → 股價預估 +38%"]);
     // S12: Sandisk's fourth quarter derived from the 10-K is named in the revenue level.
-    expect(tiles("S12")[0][1]).toBe("1年 US$11.4B");
-    expect(detail("S12")).toContain("同期營收水準＝2026-07-03 當季（第四季＝全年 US$20.2B − 前九個月 US$11.3B）×4");
-    for (const symbol of ["S1", "S2", "S3", "S5", "S7", "S8", "S9", "S10", "S11", "S12"]) {
-      const [orderTile, priceTile] = tiles(symbol);
-      expect(orderTile[1], symbol).not.toBe(priceTile[1]);
-      expect(orderTile[1].startsWith("1年 ") && orderTile[2].startsWith("6個月 ") && priceTile[2].startsWith("6個月 "), symbol).toBe(true);
-    }
-    // The text form of the Top20 carries both tiles for every entry.
+    expect(card(parsed, "S12")[2]).toBe("1年內預計認列：US$11.4B（起算日 2026-07-03（非今日起），至 2027-07-03）");
+    expect(detail("S12")).toContain("同期營收水準＝2026-07-03 當季（第四季＝全年 US$20.2B − 前九個月 US$11.3B）");
+    // The text form of the Top20 carries both rows of both blocks for every entry.
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
-    expect(text).toContain("未來訂單 1年 US$1.2B／6個月 未揭露（已簽約預計認列，自揭露日2026-07-26起（非今日起））｜若實現股價 1年 無法估價（訂單僅覆蓋同期營收0.3%）／6個月 無法估價（缺訂單依據）");
-    expect(text).toContain("未來訂單 1年 US$22.0B／6個月 US$12.0B（已簽約預計認列，自揭露日2026-06-30起（非今日起））｜若實現股價 1年 +38%（假設營收達已簽約額、P/S與股數不變）／6個月 +50%（假設營收達已簽約額、P/S與股數不變）");
-    expect(text).toContain("未來訂單 1年 32.15兆 KRW／6個月 25.13兆 KRW（重工業部門（連結）訂單（非全公司）自今日起外推至2027-09-27（非期間認列））｜若實現股價 1年 無法估價（部門訂單不代表全公司）");
-    expect(text).toContain("若實現股價 1年 +25%（假設營收隨訂單、P/S與股數不變）");
-    expect(text.match(/未來訂單 1年 /g)).toHaveLength(20);
+    expect(text).toContain("未來訂單預估：半年內預計認列：未揭露／1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）｜訂單實現後股價情境：若半年內實現訂單 → 無法估價（缺認列時程）／若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）｜RPO 為剩餘履約義務，非全部訂單；預計認列非保證｜訂單資料截至 2026-07-26｜來源公布 2026-08-26");
+    expect(text).toContain("訂單實現後股價情境：若半年內實現訂單 → 股價預估 +50%／若1年內實現訂單 → 股價預估 +38%（條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬）");
+    expect(text).toContain("訂單餘額外推敏感度（非訂單實現情境）：半年後訂單餘額外推：25.13兆 KRW（至 2027-03-27）／1年後訂單餘額外推：32.15兆 KRW（至 2027-09-27）（模型推估，非公司揭露、非期間認列）");
+    expect(text.match(/未來訂單預估：半年內預計認列：/g)).toHaveLength(20);
   });
 
   it("shows a tampered, foreign or inconsistent sealed forecast as unavailable, never another figure", () => {
@@ -361,7 +369,7 @@ describe("bottleneck-explosion Top20 v3", () => {
       mutate(forecast);
       (raw.top as any[])[index].outlook.order_forecast = forecast;
       const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
-      return outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]];
+      return card(parsed, `S${index}`);
     };
     const tamper: [string, (forecast: any) => void][] = [
       ["amount", f => { f.m12.amount *= 2; }], ["share", f => { f.m12.share_pct = 120; }], ["coverage", f => { f.m12.scenario.coverage = 2; }],
@@ -374,21 +382,23 @@ describe("bottleneck-explosion Top20 v3", () => {
       ["status says unavailable", f => { f.status = "UNAVAILABLE"; f.reason = "NO_ORDERS"; }],
       ["unknown currency", f => { f.m12.currency = "BANANAS"; }],
     ];
-    for (const [label, mutate] of tamper) expect(orderTileOf(mutate)[0][1], label).toBe("1年 無法取得");
+    for (const [label, mutate] of tamper) expect(orderTileOf(mutate)[2], label).toBe(label === "stale" ? "1年內預計認列：資料逾200天" : REFUSED);
     // Mixed evidence across the horizons, a shrinking schedule, an ended window.
-    expect(orderTileOf(f => { f.m6.as_of = "2026-06-29"; f.m6.start = "2026-06-29"; f.m6.end = "2026-12-29"; }, "S2", 2)[0][1]).toBe("1年 無法取得");
-    expect(orderTileOf(f => { f.m6.share_pct = 60; f.m6.amount = 24e9; f.m6.scenario = { status: "AVAILABLE", coverage: 3, change: 2 }; }, "S2", 2)[0][1]).toBe("1年 無法取得");
+    expect(orderTileOf(f => { f.m6.as_of = "2026-06-29"; f.m6.start = "2026-06-29"; f.m6.end = "2026-12-29"; }, "S2", 2)[2]).toBe(REFUSED);
+    expect(orderTileOf(f => { f.m6.share_pct = 60; f.m6.amount = 24e9; f.m6.scenario = { status: "AVAILABLE", coverage: 3, change: 2 }; }, "S2", 2)[2]).toBe(REFUSED);
     expect(orderTileOf(f => { f.m6.status = "AVAILABLE"; f.m6.reason = undefined; Object.assign(f.m6, { ...f.m12, share_pct: 30, amount: 12e9,
-      end: "2026-09-11", scenario: { status: "AVAILABLE", coverage: 1.5, change: 0.5 } }); f.status = "AVAILABLE"; }, "S11", 11)[0][2]).toContain("6個月 已過期");
+      end: "2026-09-11", scenario: { status: "AVAILABLE", coverage: 1.5, change: 0.5 } }); f.status = "AVAILABLE"; }, "S11", 11)[1]).toBe("半年內預計認列：期間已結束");
     // A segment book priced as the company, or a book whose growth has no comparison on record.
-    expect(orderTileOf(f => { f.m12.scenario = { status: "AVAILABLE", change: 0.63 }; }, "S8", 8)[0][1]).toBe("1年 無法取得");
-    expect(orderTileOf(f => { f.m12.yoy_prior_amount = 1e9; }, "S10", 10)[0][1]).toBe("1年 無法取得");
-    expect(orderTileOf(f => { f.m12.scenario.change = 0.9; }, "S10", 10)[1][1]).toBe("1年 無法估價");
+    // A tampered book horizon is invalid in the sensitivity too; a book is never priced.
+    expect(orderTileOf(f => { f.m12.scenario = { status: "AVAILABLE", change: 0.63 }; }, "S8", 8)).toContain("1年後訂單餘額外推：資料未通過驗證");
+    expect(orderTileOf(f => { f.m12.yoy_prior_amount = 1e9; }, "S10", 10)).toContain("1年後訂單餘額外推：資料未通過驗證");
+    expect(orderTileOf(f => { f.m12.scenario.change = 0.9; }, "S10", 10)).toContain("1年後訂單餘額外推：資料未通過驗證");
+    expect(orderTileOf(() => {}, "S10", 10).some(line => line.includes("股價預估"))).toBe(false);
     const legacy = doc(REPORT);  // a document sealed before the forecast existed: unavailable, never the old analyst tiles
     delete (legacy.top as any[])[1].outlook.order_forecast;
     const parsedLegacy = parseBottleneckV3(legacy, REPORT + HOUR)!;
-    expect(outlookTiles(parsedLegacy, pick(parsedLegacy, "S1")).slice(1)).toEqual([["未來訂單預估", "1年 無法取得", "6個月 無法取得・訂單預估尚未產生"],
-      ["若實現股價（變動）", "1年 無法估價", "6個月 無法估價・缺訂單依據"]]);
+    expect(card(parsedLegacy, "S1")).toEqual(["未來訂單預估", "半年內預計認列：尚未產生", "1年內預計認列：尚未產生", "訂單實現後股價情境",
+      "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（缺認列時程）"]);
   });
 
   it("requires the filing evidence, one filing for every horizon and reference, and a fully derived fourth quarter (Astra batch 33)", () => {
@@ -398,36 +408,34 @@ describe("bottleneck-explosion Top20 v3", () => {
       mutate(forecast);
       (raw.top as any[])[index].outlook.order_forecast = forecast;
       const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
-      return { tiles: outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]],
-        detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
+      return { rows: card(parsed, `S${index}`), detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
     };
-    const refused = "1年 無法取得";
     for (const field of ["accession", "passage", "report_period", "quarter_start", "explicit", "form"]) {
-      expect(view("S1", 1, f => { delete f.m12[field]; }).tiles[0][1], field).toBe(refused);
+      expect(view("S1", 1, f => { delete f.m12[field]; }).rows[2], field).toBe(REFUSED);
     }
     for (const [label, change] of [["old report period", { report_period: "2025-01-01" }], ["not explicit", { explicit: false }],
       ["bad accession", { accession: "123" }], ["8-K", { form: "8-K" }], ["userinfo URL", { source_url: "https://:password@example.com/x" }],
       ["bad port", { source_url: "https://example.com:99999/x" }], ["quarter too long", { quarter_start: "2026-01-01" }]] as const) {
-      expect(view("S1", 1, f => Object.assign(f.m12, change)).tiles[0][1], label).toBe(refused);
+      expect(view("S1", 1, f => Object.assign(f.m12, change)).rows[2], label).toBe(REFUSED);
     }
     // One filing for both horizons: a 6-month record from another accession or another quarter invalidates both.
-    expect(view("S2", 2, f => { f.m6.accession = "0000000000-26-000002"; }).tiles[0][1]).toBe(refused);
-    expect(view("S2", 2, f => { f.m6.quarter_start = "2026-04-02"; }).tiles[0][1]).toBe(refused);
+    expect(view("S2", 2, f => { f.m6.accession = "0000000000-26-000002"; }).rows[2]).toBe(REFUSED);
+    expect(view("S2", 2, f => { f.m6.quarter_start = "2026-04-02"; }).rows[2]).toBe(REFUSED);
     // The top-level reason follows the horizons.
     expect(view("S7", 7, f => { f.reason = "NO_ORDERS"; }).detail).not.toContain("24個月內認列");
     // The fourth-quarter derivation is checked as a whole.
     for (const [label, change] of [["ancient nine months", { nine_months_end: "1900-01-01" }], ["no accession", { annual_accession: null }],
       ["negative inputs", { annual: -20.248e9, nine_months: -29.213e9 }], ["other fiscal year", { annual_start: "2025-01-01" }]] as const) {
-      expect(view("S12", 12, f => Object.assign(f.m12.quarter_derivation, change)).tiles[0][1], label).toBe(refused);
+      expect(view("S12", 12, f => Object.assign(f.m12.quarter_derivation, change)).rows[2], label).toBe(REFUSED);
     }
-    expect(view("S12", 12, f => { f.m12.quarter_start = "2026-04-05"; }).tiles[0][1]).toBe(refused);
+    expect(view("S12", 12, f => { f.m12.quarter_start = "2026-04-05"; }).rows[2]).toBe(REFUSED);
     // The 24-month reference is recomputed, fresh and from the same filing, even for a 24-month-only company.
     const crwv = (mutate: (reference: any) => void) => view("S7", 7, f => mutate(f.references[0])).detail;
     expect(crwv(() => {})).toContain("24個月內認列 US$42.5B");
     expect(crwv(r => { r.amount = 1e99; })).not.toMatch(/24個月內認列|e\+/);
     expect(crwv(r => { r.as_of = "2025-01-01"; r.start = "2025-01-01"; r.end = "2027-01-01"; })).not.toContain("24個月內認列");
     expect(crwv(r => { r.accession = "bad"; })).not.toContain("24個月內認列");
-    expect(view("S2", 2, f => { f.references.push({ ...forecastCase("S7").references[0] }); }).tiles[0][1]).toBe(refused);  // another filing
+    expect(view("S2", 2, f => { f.references.push({ ...forecastCase("S7").references[0] }); }).rows[2]).toBe(REFUSED);  // another filing
     expect(view("S7", 7, f => { f.references.push(f.references[0]); }).detail).not.toContain("24個月內認列");  // duplicated
   });
 
@@ -438,21 +446,20 @@ describe("bottleneck-explosion Top20 v3", () => {
       mutate(forecast);
       (raw.top as any[])[index].outlook.order_forecast = forecast;
       const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
-      return { tiles: outlookTiles(parsed, pick(parsed, `S${index}`)).slice(1) as [[string, string, string], [string, string, string]],
-        detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
+      return { rows: card(parsed, `S${index}`), detail: JSON.stringify(buildBottleneckDetail(parsed, `S${index}`, "text")) };
     };
-    const refused = "1年 無法取得";
-    expect(tilesOf("S10", 10, f => { f.m6.yoy_prior_as_of = "2025-06-01"; }).tiles[0][1]).toBe(refused);  // SERIES comparison differs
-    expect(tilesOf("S8", 8, f => { f.m6.scope_label = "造船部門"; }).tiles[0][1]).toBe(refused);  // another segment
-    expect(tilesOf("S8", 8, f => { f.m6.yoy_evidence = "another statement"; }).tiles[0][1]).toBe(refused);  // another company statement
+    expect(tilesOf("S10", 10, f => { f.m6.yoy_prior_as_of = "2025-06-01"; }).rows[2]).toBe(REFUSED);  // SERIES comparison differs
+    expect(tilesOf("S8", 8, f => { f.m6.scope_label = "造船部門"; }).rows[2]).toBe(REFUSED);  // another segment
+    expect(tilesOf("S8", 8, f => { f.m6.yoy_evidence = "another statement"; }).rows[2]).toBe(REFUSED);  // another company statement
     for (const container of [{ kind: "RECOGNITION_24M", amount: 1e99 }, "broken", null]) {
-      expect(tilesOf("S1", 1, f => { f.references = container; }).tiles[0][1], JSON.stringify(container)).toBe(refused);
-      expect(tilesOf("S7", 7, f => { f.references = container; }).detail, JSON.stringify(container)).toContain("訂單資料未通過驗證");
+      expect(tilesOf("S1", 1, f => { f.references = container; }).rows[2], JSON.stringify(container)).toBe(REFUSED);
+      expect(tilesOf("S7", 7, f => { f.references = container; }).detail, JSON.stringify(container)).toContain("1年內預計認列：資料未通過驗證");
     }
     for (const row of urlTable.cases) {  // the same table the Python tests use
-      expect(tilesOf("S1", 1, f => { f.m12.source_url = row.url; }).tiles[0][1], row.url).toBe(row.accepted ? "1年 US$1.2B" : refused);
-      expect(tilesOf("S10", 10, f => { f.m6.source_url = row.url; f.m12.source_url = row.url; }).tiles[0][1], row.url)
-        .toBe(row.accepted ? "1年 US$2.6B" : refused);
+      expect(tilesOf("S1", 1, f => { f.m12.source_url = row.url; }).rows[2], row.url)
+        .toBe(row.accepted ? "1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）" : REFUSED);
+      expect(tilesOf("S10", 10, f => { f.m6.source_url = row.url; f.m12.source_url = row.url; }).rows.includes("1年後訂單餘額外推：US$2.6B（至 2027-09-27）"), row.url)
+        .toBe(row.accepted);
       expect(tilesOf("S7", 7, f => { f.references[0].source_url = row.url; }).detail.includes("24個月內認列 US$42.5B"), row.url).toBe(row.accepted);
     }
   });
@@ -467,7 +474,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(messages.length).toBeLessThanOrEqual(5);
     const all = messages.map(message => message.text).join("\n");
     for (let rank = 1; rank <= 20; rank += 1) expect(all, `rank ${rank}`).toMatch(new RegExp(`(^|\n)${rank}\. `));
-    expect(all.match(/未來訂單 1年 /g)).toHaveLength(20);
+    expect(all.match(/未來訂單預估：半年內預計認列：/g)).toHaveLength(20);
     for (const message of messages) expect(message.text.length).toBeLessThanOrEqual(4900);
   });
 

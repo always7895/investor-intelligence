@@ -44,6 +44,7 @@ import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
 import listing_lineage  # noqa: E402
 import order_forecast  # noqa: E402
+import order_claims  # noqa: E402
 import top20_carry_forward  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
@@ -513,12 +514,15 @@ def _sealed_outlook(raw: "object") -> "dict | None":
             "consensus_second": sealed_second}
 
 
-def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "object", recognition: "object", report_day: "date") -> "dict":
-    """The sealed outlook plus its versioned 6-month / 1-year order forecast (scripts/order_forecast.py); an entry without
-    an outlook still carries the forecast's explicit unavailability."""
+def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "object", recognition: "object",
+                         cutoff: "datetime", claims: "dict") -> "dict":
+    """The sealed outlook plus its version-2 6-month / 1-year order forecast (scripts/order_forecast.py build_v2) at the
+    build cutoff with the reviewed order-claim registry (scripts/order_claims.py); an entry without an outlook still
+    carries the forecast's explicit unavailability."""
     sealed = outlook if outlook is not None else {"orders": None, "consensus": None, "scenarios": [], "consensus_second": None}
-    return {**sealed, "order_forecast": order_forecast.build(issuer, stock_orders if isinstance(stock_orders, dict) else None,
-                                                             recognition if isinstance(recognition, dict) else None, report_day)}
+    return {**sealed, "order_forecast": order_forecast.build_v2(
+        issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
+        cutoff.date(), cutoff, claims)}
 
 
 def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
@@ -533,6 +537,8 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]])
         # The deep reports' full order scenarios (RPO recognition schedules) feed the 6-month / 1-year order forecast.
+        # The reviewed order claims after the filings, loaded once per document (never fetched while sealing).
+        order_claim_registry = order_claims.load()
         order_scenarios = company_deep_report.load_order_scenarios(tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]])
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
@@ -549,7 +555,7 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
-                    order_scenarios.get(entry["symbol"]), generated.date()),
+                    order_scenarios.get(entry["symbol"]), generated, order_claim_registry),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": None if not fund else {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
