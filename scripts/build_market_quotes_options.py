@@ -24,6 +24,10 @@ and spread. Delta is Black-Scholes from the quoted implied volatility (a labelle
 (delta_basis QUOTE_IMPLIED), so every high strike carries the same assignment cap. Prices are never modelled. A cycle
 without two-sided quotes stays unavailable with its reason.
 
+Raw two-sided quote health is measured before strategy filtering per venue (US and STOCKHOLM). When coverage is depleted
+(R > 0 and 10*H < R for any venue), the candidate is rejected with OPTION_TWO_SIDED_COVERAGE_LOW and exit code 1 to
+preserve the previous observation file without modification.
+
 Output: data/cache/market_quotes_options.json. Observation only; nothing here is an order.
 """
 from __future__ import annotations
@@ -82,6 +86,54 @@ BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5
 TICK = 0.01
 MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
 WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
+OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR = 1
+OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR = 10
+# Policy threshold: strictly below 1/10 (10%) two-sided coverage across read chains triggers guard
+OPTION_TWO_SIDED_COVERAGE_THRESHOLD = OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR / OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR
+
+
+def _is_finite_positive(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+
+
+def _is_two_sided(bid: Any, ask: Any) -> bool:
+    return (isinstance(bid, (int, float)) and not isinstance(bid, bool)
+            and isinstance(ask, (int, float)) and not isinstance(ask, bool)
+            and math.isfinite(bid) and math.isfinite(ask)
+            and 0 < bid <= ask)
+
+
+def is_venue_coverage_depleted(read_count: int, healthy_count: int) -> bool:
+    """True when read_count > 0 and healthy_count / read_count < 1/10 (strictly below 10%).
+
+    Exact integer ratio comparison avoids floating point imprecision:
+    healthy_count * DENOMINATOR < read_count * NUMERATOR.
+    1/10 (10/100) -> 1 * 10 < 10 * 1 is False (admitted).
+    1/11 -> 1 * 10 < 11 * 1 is True (10 < 11, rejected).
+    """
+    return (read_count > 0
+            and healthy_count * OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR < read_count * OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR)
+
+
+class CyclesResult(dict):
+    """Cycle observation mapping carrying run-local raw chain health evidence."""
+    def __init__(self, *args, health: list[dict[str, Any]] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.health: list[dict[str, Any]] = list(health or [])
+
+
+class Observation(tuple):
+    """(quote, symbol, cycles) 3-tuple carrying run-local raw chain health evidence."""
+    def __new__(cls, quote: dict[str, Any], symbol: str, cycles: dict[str, Any],
+                health: list[dict[str, Any]] | None = None):
+        return super().__new__(cls, (quote, symbol, cycles))
+
+    def __init__(self, quote: dict[str, Any], symbol: str, cycles: dict[str, Any],
+                 health: list[dict[str, Any]] | None = None):
+        self.quote = quote
+        self.symbol = symbol
+        self.cycles = cycles
+        self.health: list[dict[str, Any]] = list(health if health is not None else getattr(cycles, "health", []))
 
 
 def utc_now() -> datetime:
@@ -339,31 +391,54 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
 
 
 def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, stamp: str, *, currency: str, source: str,
-                       provenance: str, rights: str, missing: str) -> dict[str, Any]:
+                       provenance: str, rights: str, missing: str, venue: str = "US",
+                       underlying: str | None = None) -> CyclesResult:
     """Weekly: the nearest expiry in its window; monthly: the expiry nearest 30 days. Standard 100-share contracts only."""
     out: dict[str, Any] = {}
+    health_records: list[dict[str, Any]] = []
+    und = underlying or ticker
     for cycle, (low, high) in CYCLES.items():
         window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
         if not window:
+            health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
+                                   "status": "NO_EXPIRY", "read": False, "two_sided": False})
             out[cycle] = {"unavailable": missing.format(low=low, high=high)}
             continue
         target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
         chosen = [row for row in window if row["dte"] == target]
-        out[cycle] = cycle_result(ticker, chosen[0]["expiry"], target, spot, chosen, currency=currency, source=source,
+        chosen_expiry = chosen[0]["expiry"]
+        eligible = [r for r in chosen if _is_finite_positive(r.get("strike")) and r.get("size") == 100]
+        if not eligible:
+            health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
+                                   "status": "EMPTY", "read": False, "two_sided": False})
+        else:
+            two_sided = any(_is_two_sided(r.get("bid"), r.get("ask")) for r in eligible)
+            health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
+                                   "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible)})
+        out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
                                   provenance=provenance, rights=rights, stamp=stamp)
-    return out
+    return CyclesResult(out, health=health_records)
 
 
-def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
     """Fallback US chain from Nasdaq's public quote-page API: two-sided call quotes without implied volatility, so no
     delta (as for Nasdaq Stockholm). Class shares use a dot there (BRK-B -> brk.b)."""
     low, high = min(window[0] for window in CYCLES.values()), max(window[1] for window in CYCLES.values())
     url = NASDAQ_US_CHAIN.format(symbol=urllib.parse.quote(symbol.replace("-", ".").lower()),
                                  start=(today + timedelta(days=low)).isoformat(), end=(today + timedelta(days=high)).isoformat())
     try:
-        rows = http_json(url)["data"]["table"]["rows"] or []
+        rows = http_json(url)["data"]["table"]["rows"]
+        if rows is None:
+            rows = []
     except Exception:
-        return {cycle: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for cycle in CYCLES}
+        err_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
+                       "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
+        return CyclesResult({cycle: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health)
+    if not rows:
+        empty_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
+                         "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
+        return CyclesResult({c: {"unavailable": f"Nasdaq 無 {CYCLES[c][0]}-{CYCLES[c][1]} 天到期的上市期權"} for c in CYCLES},
+                            health=empty_health)
     calls: list[dict[str, Any]] = []
     expiry: date | None = None
     for row in rows:
@@ -381,7 +456,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> dict
     return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
-                              rights="candidate_local_review", missing="Nasdaq 無 {low}-{high} 天到期的上市期權")
+                              rights="candidate_local_review", missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
+                              venue="US", underlying=symbol)
 
 
 def _yahoo_unread(value: dict[str, Any] | None) -> bool:
@@ -389,17 +465,23 @@ def _yahoo_unread(value: dict[str, Any] | None) -> bool:
     return "讀取失敗" in reason or "Yahoo Finance 期權到期日清單" in reason
 
 
-def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
     """Yahoo first; only the cycles Yahoo could not read (no expiry list, a failed chain) try the Nasdaq chain once.
     A cycle Yahoo read without a qualifying strike keeps that reason."""
     try:
         out = us_options(symbol, spot, today, stamp)
     except Exception:
-        out = {cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES}
+        out = CyclesResult({cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES},
+                           health=[{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
+                                    "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES])
+    yahoo_health = list(getattr(out, "health", []) or [])
     retry = [cycle for cycle in CYCLES if _yahoo_unread(out.get(cycle))]
     if not retry:
-        return out
+        return out if isinstance(out, CyclesResult) else CyclesResult(out, health=yahoo_health)
     fallback = nasdaq_us_options(symbol, spot, today, stamp)
+    fallback_health = list(getattr(fallback, "health", []) or [])
+    combined_health = [h for h in yahoo_health if h.get("cycle") not in retry]
+    combined_health += [h for h in fallback_health if h.get("cycle") in retry]
     for cycle in retry:
         value = fallback.get(cycle) or {"unavailable": ""}
         if "unavailable" not in value:
@@ -408,7 +490,7 @@ def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> dict[str, An
             out[cycle] = {"unavailable": "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）"}
         else:
             out[cycle] = {"unavailable": str(value["unavailable"])}
-    return out
+    return CyclesResult(out, health=combined_health)
 
 
 def _dpapi_unprotect(blob: bytes) -> str:
@@ -487,40 +569,73 @@ def alpha_vantage_quote(symbol: str, stamp: str) -> dict[str, Any] | None:
             "source": "Alpha Vantage GLOBAL_QUOTE（免費金鑰，最近交易日；Yahoo 備援）", "source_url": public_url}
 
 
-def us_options(symbol: str, spot: float, today: date, stamp: str) -> dict[str, Any]:
+def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
     import yfinance as yf
     ticker = yf.Ticker(symbol)
     out: dict[str, Any] = {}
+    health_records: list[dict[str, Any]] = []
     try:
-        expiries = list(ticker.options or [])
+        expiries_raw = ticker.options
+        expiries = list(expiries_raw) if expiries_raw is not None else []
+        expiry_list_error = False
     except Exception:
         expiries = []
+        expiry_list_error = True
     for cycle, (low, high) in CYCLES.items():
+        if expiry_list_error:
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
+                                   "status": "EXPIRY_LIST_ERROR", "read": False, "two_sided": False})
+            out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
+            continue
+        if not expiries:
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
+                                   "status": "EMPTY_RESPONSE", "read": False, "two_sided": False})
+            out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
+            continue
         candidates = [(expiry, (date.fromisoformat(expiry) - today).days) for expiry in expiries]
         candidates = [item for item in candidates if low <= item[1] <= high]
         if not candidates:
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
+                                   "status": "NO_EXPIRY", "read": False, "two_sided": False})
             out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
             continue
         expiry, dte = min(candidates, key=lambda item: item[1]) if cycle == "weekly" else min(candidates, key=lambda item: abs(item[1] - 30))
         try:
             chain = ticker.option_chain(expiry).calls
         except Exception:
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
+                                   "status": "READ_ERROR", "read": False, "two_sided": False})
             out[cycle] = {"unavailable": "期權鏈讀取失敗"}
             continue
         rows = []
+        eligible_rows = []
         for row in chain.itertuples():
-            iv = _float(row.impliedVolatility)
-            rows.append({"strike": float(row.strike), "bid": _float(row.bid), "ask": _float(row.ask), "iv": iv,
-                         "delta": bs_call_delta(spot, float(row.strike), dte / 365, iv), "oi": _int(row.openInterest),
-                         "volume": _int(row.volume)})
+            strike = _float(getattr(row, "strike", None))
+            bid = _float(getattr(row, "bid", None))
+            ask = _float(getattr(row, "ask", None))
+            iv = _float(getattr(row, "impliedVolatility", None))
+            oi = _int(getattr(row, "openInterest", None))
+            vol = _int(getattr(row, "volume", None))
+            if strike is not None and _is_finite_positive(strike):
+                r_dict = {"strike": float(strike), "bid": bid, "ask": ask, "iv": iv,
+                          "delta": bs_call_delta(spot, float(strike), dte / 365, iv), "oi": oi, "volume": vol}
+                rows.append(r_dict)
+                eligible_rows.append(r_dict)
+        if not eligible_rows:
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
+                                   "status": "EMPTY", "read": False, "two_sided": False})
+        else:
+            two_sided = any(_is_two_sided(r["bid"], r["ask"]) for r in eligible_rows)
+            health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
+                                   "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible_rows)})
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
                                   provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
                                   rights="unadmitted_third_party", stamp=stamp)
-    return out
+    return CyclesResult(out, health=health_records)
 
 
-def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None) -> dict[str, Any]:
+def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None) -> CyclesResult:
     native = base.replace("-", " ")  # VOLV-B is listed as "VOLV B"
     try:
         if not orderbook:
@@ -528,8 +643,17 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
             orderbook = next(item["orderbookId"] for group in groups for item in group["instruments"]
                              if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == native.upper())
         rows = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
+        if rows is None:
+            rows = []
     except Exception:
-        return {cycle: {"unavailable": "Nasdaq Nordic 期權鏈讀取失敗"} for cycle in CYCLES}
+        err_health = [{"venue": "STOCKHOLM", "underlying": symbol, "expiry": None, "cycle": c,
+                       "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
+        return CyclesResult({cycle: {"unavailable": "Nasdaq Nordic 期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health)
+    if not rows:
+        empty_health = [{"venue": "STOCKHOLM", "underlying": symbol, "expiry": None, "cycle": c,
+                         "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
+        return CyclesResult({c: {"unavailable": f"Nasdaq Stockholm 無 {CYCLES[c][0]}-{CYCLES[c][1]} 天到期的上市期權"} for c in CYCLES},
+                            health=empty_health)
     calls = []
     for row in rows:
         name = str(row.get("fullName") or "")
@@ -547,10 +671,11 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     return _cycles_from_calls(calls, base, spot, stamp, currency="SEK",
                               source="Nasdaq Nordic option chain (exchange public web API, delayed)",
                               provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
-                              missing="Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權")
+                              missing="Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權",
+                              venue="STOCKHOLM", underlying=symbol)
 
 
-def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> tuple[dict[str, Any], str, dict[str, Any]] | None:
+def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> Observation | None:
     """One underlying: the delayed quote and, for US and Stockholm listings, its covered-call cycles. Options keys never
     collide across markets: US listings by their Yahoo symbol (class shares use "-": BRK-B; dotted symbols are other
     markets such as 2330.TW), Stockholm listings with the suffix (SIVE.ST, VOLV-B.ST, AZN.ST next to the US AZN)."""
@@ -573,12 +698,17 @@ def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) 
         quote, price = fallback, fallback["price"]
     try:
         if "." not in symbol:
-            return quote, symbol, us_cycles(symbol, price, today, stamp)
+            cycles = us_cycles(symbol, price, today, stamp)
+            return Observation(quote, symbol, cycles)
         if symbol.endswith(".ST"):
-            return quote, symbol, nordic_options(symbol, base, price, today, stamp, orderbook)
+            cycles = nordic_options(symbol, base, price, today, stamp, orderbook)
+            return Observation(quote, symbol, cycles)
     except Exception:  # one malformed chain never aborts the other underlyings
-        return quote, symbol, {cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES}
-    return quote, symbol, {}
+        venue = "STOCKHOLM" if symbol.endswith(".ST") else "US"
+        err_health = [{"venue": venue, "underlying": symbol, "expiry": None, "cycle": c,
+                       "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
+        return Observation(quote, symbol, CyclesResult({cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health))
+    return Observation(quote, symbol, {})
 
 
 def _observe_safely(symbol: str, today: date, stamp: str, orderbook: str | None,
@@ -642,16 +772,55 @@ def _build(now: datetime, deadline_seconds: float) -> dict[str, Any]:
     unfinished = len(symbols) - len(finished)
     quotes: dict[str, Any] = {}
     options: dict[str, Any] = {}
+    all_health: list[dict[str, Any]] = []
     for symbol, result in zip(symbols, results):
         if result is None:
             continue
-        quote, key, cycles = result
+        quote, key, cycles = result[0], result[1], result[2]
         quotes[symbol] = quote
         if cycles:
             options[key] = cycles
+        item_health = getattr(result, "health", None)
+        if item_health is None:
+            item_health = getattr(cycles, "health", None)
+        if item_health is None and len(result) >= 4:
+            item_health = result[3]
+        if item_health:
+            all_health.extend(item_health)
+
+    deduped_chains: dict[tuple[str, str, str], bool] = {}
+    chain_health = {
+        "US": {"read": 0, "healthy": 0, "expiry_list_error": 0, "empty_response": 0, "no_expiry": 0, "read_error": 0, "empty": 0},
+        "STOCKHOLM": {"read": 0, "healthy": 0, "expiry_list_error": 0, "empty_response": 0, "no_expiry": 0, "read_error": 0, "empty": 0},
+    }
+    for item in all_health:
+        venue = item.get("venue")
+        if venue not in chain_health:
+            continue
+        status = item.get("status")
+        if status == "EXPIRY_LIST_ERROR":
+            chain_health[venue]["expiry_list_error"] += 1
+        elif status == "EMPTY_RESPONSE":
+            chain_health[venue]["empty_response"] += 1
+        elif status == "NO_EXPIRY":
+            chain_health[venue]["no_expiry"] += 1
+        elif status == "READ_ERROR":
+            chain_health[venue]["read_error"] += 1
+        elif status == "EMPTY":
+            chain_health[venue]["empty"] += 1
+        if item.get("read") and item.get("expiry"):
+            k = (venue, item["underlying"], item["expiry"])
+            deduped_chains[k] = deduped_chains.get(k, False) or bool(item.get("two_sided"))
+
+    for (venue, _, _), two_sided in deduped_chains.items():
+        chain_health[venue]["read"] += 1
+        if two_sided:
+            chain_health[venue]["healthy"] += 1
+
     return {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": quotes, "options": options,
             "note": "Delayed public observations; not an order, not a recommendation to trade.",
-            "collection": {"underlyings": len(symbols), "unfinished": unfinished, "deadline_seconds": deadline_seconds}}
+            "collection": {"underlyings": len(symbols), "unfinished": unfinished, "deadline_seconds": deadline_seconds,
+                           "chain_health": chain_health}}
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -659,10 +828,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--if-older-than-hours", type=float, default=0.0)
     args = parser.parse_args(list(argv) if argv is not None else None)
+    output_path = Path(args.output)
     now = utc_now()
-    if args.if_older_than_hours > 0 and args.output.exists():
+    if args.if_older_than_hours > 0 and output_path.exists():
         try:
-            previous = json.loads(args.output.read_text(encoding="utf-8"))
+            previous = json.loads(output_path.read_text(encoding="utf-8"))
             age = (now - datetime.strptime(previous["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
             if age < args.if_older_than_hours:
                 print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
@@ -681,9 +851,31 @@ def main(argv: Iterable[str] | None = None) -> int:
     if len(document["quotes"]) < 10:
         print(json.dumps({"status": "FAILED", "error": "TOO_FEW_QUOTES", "quotes": len(document["quotes"])}))
         return 1
-    temp = args.output.with_name(args.output.name + ".tmp")
+    chain_health = collection.get("chain_health") or {}
+    venues_data = {}
+    affected_venues = []
+    for venue in ("US", "STOCKHOLM"):
+        v_data = chain_health.get(venue) or {}
+        r = v_data.get("read", 0)
+        h = v_data.get("healthy", 0)
+        venues_data[venue] = {"read": r, "healthy": h}
+        if is_venue_coverage_depleted(r, h):
+            affected_venues.append(venue)
+    if affected_venues:
+        available = sum(1 for cycles in document["options"].values() for value in cycles.values() if "unavailable" not in value)
+        print(json.dumps({
+            "status": "FAILED",
+            "error": "OPTION_TWO_SIDED_COVERAGE_LOW",
+            "venues": venues_data,
+            "affected_venues": affected_venues,
+            "quotes": len(document["quotes"]),
+            "available_cycles": available,
+            "previous_file_present": output_path.exists(),
+        }, ensure_ascii=False))
+        return 1
+    temp = output_path.with_name(output_path.name + ".tmp")
     temp.write_bytes(json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8"))
-    temp.replace(args.output)
+    temp.replace(output_path)
     available = sum(1 for cycles in document["options"].values() for value in cycles.values() if "unavailable" not in value)
     print(json.dumps({"status": "OK", **collection, "quotes": len(document["quotes"]), "option_underlyings": len(document["options"]),
                       "option_observations": available, "sive": document["options"].get("SIVE.ST")}, ensure_ascii=False)[:1500])
