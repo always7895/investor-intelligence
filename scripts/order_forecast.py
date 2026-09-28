@@ -15,8 +15,10 @@ Tile 3, the price change if those orders are realized (a conditional scenario, n
   coverage - 1 (that revenue level, P/S and share count unchanged, new orders not counted); below 1 no price is estimated
   and the coverage is shown instead.
 - STOCK_EXTRAPOLATION (company-wide only): O(end) / O(report date) - 1 (revenue follows the book, P/S and shares unchanged).
-Fixed-period figures (a 24-month schedule, annual new-order guidance) are references only. No analyst figure is used.
-Every record names its issuer, scope, currency and evidence; cloud/src/v213/order-forecast.ts re-validates all of it.
+Fixed-period figures (a 24-month schedule, annual new-order guidance) are references only. No analyst figure is used in
+v1/v2; version 3 (Astra contract ORDERS-V3-01, below) adds a separate total-revenue model from company guidance or a
+validated quarterly analyst consensus, kept distinct from orders. Every record names its issuer, scope, currency and
+evidence; cloud/src/v213/order-forecast.ts re-validates all of it.
 """
 from __future__ import annotations
 
@@ -301,6 +303,10 @@ def build(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_order
 # - an order-book extrapolation is a labelled model sensitivity that never feeds the price rows;
 # - every other active claim is a dated reference, never added to any figure.
 VERSION2 = 2
+VERSION3 = 3
+HORIZON_CONVENTION_V3 = "FISCAL_2Q_4Q"
+FORMULA_V3 = "ORDERS-V3-01"
+ASSUMPTIONS_V3 = "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬"
 V2_EXTRA_REASONS = ("NO_REALIZATION_SCHEDULE", "CONFLICTING_DISCLOSURES", "EVIDENCE_LIMIT", "UNQUANTIFIED_STOCK", "UNRESOLVED_REVISION")
 DOCUMENT_FIELDS = ("id", "issuer", "publisher", "title", "source_kind", "url", "published_date", "published_at", "retrieved_at",
                    "sha256", "byte_size", "lineage_id", "sec")
@@ -487,3 +493,544 @@ def build_v2(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
                             selection=order_claims.select(documents, claims, cutoff, filing_of(periodic_input)))
     return {**decide(issuer, periodic_input, stock_input, report_day, evidence["selection"] if not limited else None, claims, limited),
             "evidence": evidence}
+
+
+# ---------------------------------------------------------------- version 3 (Astra contract ORDERS-V3-01)
+# Version 3 distinguishes orders from revenue:
+# Tile 2: 訂單認列／營收推估 (basis: 公司營收財測＋模型（非訂單） / 非公司揭露、非訂單：分析師季度營收共識＋模型 / 已簽約預計認列)
+# Tile 3: 營收實現後股價情境 (TTM constant-P/S formula: TTM6/B - 1, TTM12/B - 1)
+# Contracted recognition from v2 is retained independently and never added to guidance or consensus.
+
+
+def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_orders: Mapping[str, Any] | None,
+             report_day: date, cutoff: datetime, claims: Mapping[str, Any],
+             revenue_registry: Mapping[str, Any] | None = None,
+             consensus_cache: Mapping[str, Any] | None = None,
+             v2_forecast: Mapping[str, Any] | None = None,
+             release_checks_cache: Mapping[str, Any] | None = None,
+             revenue_approval: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The version-3 revenue and order forecast for one Top20 entry at the build cutoff.
+    Reuses the unchanged build_v2 order view and incorporates reviewed revenue guidance / consensus.
+
+    A1 (Astra acceptance r7): the enforced reviewed profile (``revenue_approval``, the schema of
+    config/revenue-guidance-approval-v1.json) is the admission boundary: a missing/malformed approval, a changed
+    registry or record, a missing decision or a time incoherence suspends the revenue path as UNAVAILABLE / INVALID
+    with the distinct UNREVIEWED_INPUTS diagnostic, while the independent order recognition is never affected.
+    A3/A6: the registry root's ``consensus_enabled`` gate (missing fails closed to disabled) defers the Korean
+    analyst-consensus route for the first rollout: NOT_DISCLOSED records then seal the CONSENSUS_DEFERRED
+    diagnostic and build_v3 never routes to the consensus cache, even when a capture exists."""
+    import revenue_guidance
+
+    if v2_forecast is None:
+        v2_forecast = build_v2(issuer, stock_orders, recognition_orders, report_day, cutoff, claims)
+
+    # 1. Inspect reviewed revenue guidance registry
+    reg = revenue_registry or revenue_guidance.load_registry()
+    reg_status = reg.get("status")
+    reg_sha256 = reg.get("sha256")
+    issuers_map = reg.get("issuers", {}) if isinstance(reg, Mapping) else {}
+    record = issuers_map.get(issuer) if isinstance(issuers_map, Mapping) else None
+    reported_quarters = record.get("reported_quarters", []) if isinstance(record, Mapping) else []
+    anchor_date = None
+    start_date = None
+
+    revenue_status = "UNAVAILABLE"
+    revenue_basis: str | None = None
+    revenue_reason = "INPUTS_MISSING"
+    revenue_diagnostic: str | None = None
+    rec_status = None
+    fw_result: dict[str, Any] | None = None
+
+    # A1: the reviewed profile beside the registry (loaded once by the caller, default the tracked config file).
+    approval: Mapping[str, Any] | None = None
+    profile_err: str | None = None
+    consensus_enabled = False
+    if reg_status == "OK" and record is not None:
+        approval = revenue_approval if revenue_approval is not None else revenue_guidance.load_approval()
+        profile_err = revenue_guidance.check_reviewed_profile(issuer, record, approval, reg_sha256, cutoff)
+        # A3/A6: the explicit registry gate; a missing flag fails closed to disabled (first-rollout deferral).
+        consensus_enabled = bool(reg.get("consensus_enabled", False))
+
+    if reg_status == "INVALID":
+        revenue_reason = "INVALID"
+    elif reg_status in ("UNAVAILABLE", "EMPTY") or record is None:
+        revenue_reason = "INPUTS_MISSING"
+    elif profile_err is not None:
+        # A1: the record's inputs are not covered by an enforced reviewed profile (changed registry/record,
+        # missing decision, time incoherence, missing approval). The revenue path suspends, orders stay.
+        revenue_status = "UNAVAILABLE"
+        revenue_reason = "INVALID"
+        revenue_diagnostic = "UNREVIEWED_INPUTS"
+    else:
+        rec_status = record.get("status") if isinstance(record, Mapping) else None
+        if rec_status not in revenue_guidance.STATUSES:
+            revenue_reason = "INVALID"
+        elif rec_status == "NOT_DISCLOSED":
+            revenue_reason = "NOT_DISCLOSED"
+        elif rec_status in ("WITHDRAWN", "STALE", "CONFLICTING_DISCLOSURES", "UNAVAILABLE"):
+            # WITHDRAWN, STALE, and CONFLICTING_DISCLOSURES can NEVER be overridden to NOT_DISCLOSED
+            revenue_reason = rec_status
+        else:
+            try:
+                valid_record = revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
+                fw_result = revenue_guidance.build_forward_quarters(issuer, valid_record, cutoff, release_checks_cache)
+                if fw_result["status"] == "AVAILABLE":
+                    revenue_status = "AVAILABLE"
+                    revenue_reason = None
+                    revenue_basis = fw_result["basis_type"]
+                else:
+                    revenue_status = "UNAVAILABLE"
+                    revenue_reason = fw_result["reason"]
+                    # The distinct diagnostic (Astra W1 ruling): a company-guidance path suspended for missing
+                    # official-IR coverage is sealed as IR_COVERAGE_MISSING and rendered as 官方IR查核未完成，暫停營收推估.
+                    revenue_diagnostic = fw_result.get("diagnostic")
+            except revenue_guidance.GuidanceError:
+                revenue_status = "UNAVAILABLE"
+                revenue_reason = "INVALID"
+            except Exception:
+                revenue_status = "UNAVAILABLE"
+                revenue_reason = "INVALID"
+
+    # 2. If genuinely NOT_DISCLOSED, attempt the quarterly consensus adapter - only while the registry gate allows it.
+    # Typed scoped channel faults (Astra r5 item 9): a malformed/missing consensus cache or release-check cache is a
+    # channel failure, never equated with a genuine empty/nondisclosed success; the fault travels sealed so the
+    # Worker re-derives the same scoped failure without aborting unrelated issuers.
+    consensus_fault = consensus_cache.get("__fault__") if isinstance(consensus_cache, Mapping) and "__fault__" in consensus_cache else None
+    release_fault = release_checks_cache.get("__fault__") if isinstance(release_checks_cache, Mapping) and "__fault__" in release_checks_cache else None
+    consensus_entry = (consensus_cache or {}).get(issuer) if isinstance(consensus_cache, Mapping) else None
+    if revenue_status != "AVAILABLE" and rec_status == "NOT_DISCLOSED" and revenue_reason == "NOT_DISCLOSED" and not consensus_enabled:
+        # A3/A6 (Astra's authorized first-rollout option): the Korean consensus route and its collector are
+        # explicitly off. The genuine nondisclosure stands with the distinct CONSENSUS_DEFERRED diagnostic
+        # (rendered 公司未提供營收財測；分析師共識路線本次未啟用 on every surface); a capture, if any, is never routed.
+        try:
+            revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
+            revenue_diagnostic = "CONSENSUS_DEFERRED"
+        except revenue_guidance.GuidanceError:
+            revenue_reason = "INVALID"
+            revenue_diagnostic = None
+    elif revenue_status != "AVAILABLE" and rec_status == "NOT_DISCLOSED" and revenue_reason == "NOT_DISCLOSED" and consensus_fault:
+        revenue_status = "UNAVAILABLE"
+        revenue_reason = "INVALID"
+    elif revenue_status != "AVAILABLE" and rec_status == "NOT_DISCLOSED" and revenue_reason == "NOT_DISCLOSED" and consensus_entry:
+        try:
+            valid_record = revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
+            # Check all Korean/nondisclosure documents: retrieved at or before cutoff, and a date-only publication is
+            # only eligible after the end of its UTC day (Astra r5 item 12: end-of-day eligibility, not <= reportDay).
+            cutoff_day = cutoff.date()
+            for doc in valid_record.get("documents", []):
+                ret_inst = revenue_guidance.parse_instant(doc.get("retrieved_at"))
+                if not ret_inst or ret_inst > cutoff:
+                    raise revenue_guidance.GuidanceError("FUTURE_DOCUMENT_RETRIEVAL")
+                pub_d = revenue_guidance.parse_day(doc.get("published_date"))
+                if not pub_d:
+                    raise revenue_guidance.GuidanceError("INVALID_DOCUMENT_PUBLISHED_DATE")
+                pub_inst = revenue_guidance.parse_instant(doc.get("published_at"))
+                if pub_inst is not None:
+                    if pub_inst > cutoff or pub_inst > ret_inst or pub_inst.date() != pub_d:
+                        raise revenue_guidance.GuidanceError("INVALID_DOCUMENT_PUBLISHED_INSTANT")
+                elif pub_d >= cutoff_day:
+                    raise revenue_guidance.GuidanceError("FUTURE_DOCUMENT_PUBLISHED")
+            # Calendar links on every branch (Astra r5 item 10): the consensus model runs on the record's validated
+            # forward intervals, each bound to a calendar document and locator, anchored at the latest actual end.
+            intervals = valid_record.get("forward_intervals", [])
+            if not isinstance(intervals, list) or len(intervals) != 4:
+                raise revenue_guidance.GuidanceError("FORWARD_INTERVALS_MUST_BE_4")
+            doc_ids = {d["id"] for d in valid_record.get("documents", []) if isinstance(d, Mapping)}
+            prev_end = None
+            for intv in intervals:
+                if not isinstance(intv, Mapping):
+                    raise revenue_guidance.GuidanceError("INVALID_FORWARD_INTERVAL")
+                s, e = revenue_guidance.parse_day(intv.get("start")), revenue_guidance.parse_day(intv.get("end"))
+                if not s or not e or s > e:
+                    raise revenue_guidance.GuidanceError("INVALID_FORWARD_INTERVAL_DATES")
+                if prev_end is not None and s != prev_end + timedelta(days=1):
+                    raise revenue_guidance.GuidanceError("FORWARD_INTERVAL_GAP_OR_OVERLAP")
+                prev_end = e
+                cal_doc = intv.get("calendar_document_id")
+                if not cal_doc or cal_doc not in doc_ids:
+                    raise revenue_guidance.GuidanceError("CALENDAR_DOC_REQUIRED")
+                if not revenue_guidance.clean_text(intv.get("calendar_locator"), revenue_guidance.MAX_PASSAGE):
+                    raise revenue_guidance.GuidanceError("CALENDAR_LOCATOR_REQUIRED")
+            if reported_quarters:
+                anchor = revenue_guidance.parse_day(reported_quarters[-1].get("end"))
+                if anchor and intervals[0].get("start") != str(anchor + timedelta(days=1)):
+                    raise revenue_guidance.GuidanceError("FORWARD_INTERVALS_NOT_ANCHORED")
+            c_res = revenue_guidance.build_consensus_forward_quarters(
+                issuer, consensus_entry, intervals, cutoff,
+                expected_currency=reported_quarters[0].get("currency") if reported_quarters else None)
+            if c_res["status"] == "AVAILABLE":
+                # Validate actuals against consensus currency and accounting basis
+                c_curr = consensus_entry.get("currency")
+                for q in reported_quarters:
+                    if q.get("currency") != c_curr:
+                        raise revenue_guidance.GuidanceError(f"ACTUAL_CURRENCY_MISMATCH {q.get('currency')} != {c_curr}")
+                    if q.get("accounting_basis") not in revenue_guidance.ACCOUNTING_BASES:
+                        raise revenue_guidance.GuidanceError("INVALID_ACTUAL_BASIS")
+                fw_result = c_res
+                revenue_status = "AVAILABLE"
+                revenue_reason = None
+                revenue_diagnostic = None
+                revenue_basis = "CONSENSUS"
+            else:
+                revenue_status = "UNAVAILABLE"
+                revenue_reason = c_res["reason"]
+        except revenue_guidance.GuidanceError:
+            revenue_status = "UNAVAILABLE"
+            revenue_reason = "INVALID"
+        except Exception:
+            revenue_status = "UNAVAILABLE"
+            revenue_reason = "INVALID"
+    elif revenue_status != "AVAILABLE" and rec_status == "NOT_DISCLOSED" and revenue_reason == "NOT_DISCLOSED" and not consensus_entry:
+        # No consensus capture for this issuer: the genuine nondisclosure stands, but only for a fully validated record.
+        try:
+            revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
+        except revenue_guidance.GuidanceError:
+            revenue_reason = "INVALID"
+
+    # 3. Extract order recognition view from v2
+    order_m6 = (v2_forecast.get("m6") or {}) if isinstance(v2_forecast.get("m6"), Mapping) else {}
+    order_m12 = (v2_forecast.get("m12") or {}) if isinstance(v2_forecast.get("m12"), Mapping) else {}
+    has_rec_m6 = order_m6.get("status") == "AVAILABLE" and order_m6.get("basis") == "RECOGNITION"
+    has_rec_m12 = order_m12.get("status") == "AVAILABLE" and order_m12.get("basis") == "RECOGNITION"
+
+    contracted_rec = None
+    if has_rec_m6 or has_rec_m12:
+        contracted_rec = {
+            "m6": {
+                "amount": order_m6.get("amount"), "currency": order_m6.get("currency"),
+                "start": order_m6.get("start"), "end": order_m6.get("end"),
+                "as_of": order_m6.get("as_of"), "share_pct": order_m6.get("share_pct"),
+                "rpo": order_m6.get("rpo"),
+            } if has_rec_m6 else None,
+            "m12": {
+                "amount": order_m12.get("amount"), "currency": order_m12.get("currency"),
+                "start": order_m12.get("start"), "end": order_m12.get("end"),
+                "as_of": order_m12.get("as_of"), "share_pct": order_m12.get("share_pct"),
+                "rpo": order_m12.get("rpo"),
+            } if has_rec_m12 else None,
+        }
+
+    # 4. Reported quarters and arithmetic (scoped failure handling)
+    tiles: dict[str, Any] = {}
+    arith: dict[str, Any] | None = None
+
+    try:
+        if isinstance(reported_quarters, list) and len(reported_quarters) >= 4:
+            anchor_date = reported_quarters[-1].get("end")
+        elif isinstance(record, Mapping) and record.get("anchor_end"):
+            anchor_date = record.get("anchor_end")
+        elif isinstance(record, Mapping) and record.get("anchor_quarter"):
+            anchor_date = record.get("anchor_quarter", {}).get("end")
+
+        if anchor_date:
+            start_date = str(date.fromisoformat(anchor_date) + timedelta(days=1))
+
+        if revenue_status == "AVAILABLE" and fw_result is not None:
+            f_quarters = fw_result["forward_quarters"]
+            if f_quarters:
+                start_date = f_quarters[0]["start"]
+            f_amts = [fw_result["f1"], fw_result["f2"], fw_result["f3"], fw_result["f4"]]
+            actuals = [float(q["revenue"]) for q in reported_quarters if _number(q.get("revenue")) is not None]
+            arith = revenue_guidance.compute_v3_arithmetic(actuals, f_amts)
+
+            if arith.get("status") not in ("AVAILABLE", "MISSING_HISTORY"):
+                revenue_status = "UNAVAILABLE"
+                revenue_reason = "INVALID"
+            else:
+                if revenue_basis == "CONSENSUS":
+                    currency = consensus_entry.get("currency") if consensus_entry else None
+                elif record.get("claims") and record["claims"][0].get("currency"):
+                    currency = record["claims"][0]["currency"]
+                elif reported_quarters and reported_quarters[0].get("currency"):
+                    currency = reported_quarters[0]["currency"]
+                elif record.get("currency"):
+                    currency = record["currency"]
+                else:
+                    currency = None
+
+                if not currency or currency not in revenue_guidance.CURRENCIES:
+                    revenue_status = "UNAVAILABLE"
+                    revenue_reason = "INVALID"
+                elif any(q.get("currency") != currency for q in reported_quarters):
+                    revenue_status = "UNAVAILABLE"
+                    revenue_reason = "INVALID"
+                else:
+                    basis_label = "公司營收財測＋模型（非訂單）" if revenue_basis == "COMPANY_GUIDANCE" else "非公司揭露、非訂單：分析師季度營收共識＋模型"
+
+                    for key, (f_end_idx, amt, ttm_val, chg_val, h_lbl) in (
+                        ("m6", (1, arith["amount6"], arith.get("ttm6"), arith.get("change6"), "約6個月（2財季）")),
+                        ("m12", (3, arith["amount12"], arith.get("ttm12"), arith.get("change12"), "約1年（4財季）")),
+                    ):
+                        f_end = f_quarters[f_end_idx]["end"] if len(f_quarters) > f_end_idx else None
+                        if chg_val is not None:
+                            scenario = {"status": "AVAILABLE", "change": chg_val}
+                        else:
+                            scenario = {"status": "NO_BASIS", "reason": "NO_REVENUE_HISTORY"}
+                        tile_rec = contracted_rec.get(key) if contracted_rec else None
+
+                        tiles[key] = {
+                            "status": "AVAILABLE",
+                            "basis": revenue_basis,
+                            "basis_label": basis_label,
+                            "amount": amt,
+                            "currency": currency,
+                            "start": start_date,
+                            "end": f_end,
+                            "horizon_label": h_lbl,
+                            "qualifier": f"自{start_date}起，非今日起" if start_date else "",
+                            "ttm_revenue": ttm_val,
+                            "scenario": scenario,
+                            "warning": fw_result.get("warning"),
+                            "contracted_recognition": tile_rec,
+                        }
+    except Exception:
+        revenue_status = "UNAVAILABLE"
+        revenue_reason = "INVALID"
+
+    if revenue_status != "AVAILABLE":
+        if has_rec_m6 or has_rec_m12:
+            # Fallback to contracted recognition on Tile 2 with no price basis on Tile 3
+            for key, (order_h, h_lbl) in (("m6", (order_m6, "半年")), ("m12", (order_m12, "1年"))):
+                if order_h.get("status") == "AVAILABLE" and order_h.get("basis") == "RECOGNITION":
+                    tiles[key] = {
+                        "status": "AVAILABLE",
+                        "basis": "RECOGNITION",
+                        "basis_label": "已簽約預計認列",
+                        "amount": order_h.get("amount"),
+                        "currency": order_h.get("currency"),
+                        "start": order_h.get("start"),
+                        "end": order_h.get("end"),
+                        "horizon_label": h_lbl,
+                        "qualifier": f"自{order_h.get('start')}起，非今日起",
+                        "rpo": order_h.get("rpo"),
+                        "share_pct": order_h.get("share_pct"),
+                        "scenario": {"status": "NO_BASIS", "reason": "NO_REVENUE_BASIS"},
+                        "warning": None,
+                    }
+                else:
+                    # The unretained horizon echoes the top-level revenue reason (the Worker's unavailable state
+                    # machine re-derives it on every surface); the order side's own state stays in the order view.
+                    tiles[key] = _unavailable(revenue_reason or "NOT_DISCLOSED_HORIZON", "NO_REVENUE_BASIS")
+        else:
+            reason = revenue_reason or v2_forecast.get("reason") or "NOT_DISCLOSED"
+            if reason not in revenue_guidance.REASONS_V3:
+                reason = "INVALID"
+            tiles["m6"] = _unavailable(reason, "NO_REVENUE_BASIS")
+            tiles["m12"] = _unavailable(reason, "NO_REVENUE_BASIS")
+
+    available = any(tiles[k]["status"] == "AVAILABLE" for k in ("m6", "m12"))
+    overall_reason = top_reason(tiles["m6"], tiles["m12"]) if not available else None
+
+    ALLOWED_DOC_KEYS = (
+        "id", "issuer", "publisher", "title", "source_kind", "url",
+        "published_date", "published_at", "retrieved_at", "sha256", "byte_size", "lineage_id"
+    )
+    raw_docs = record.get("documents", []) if isinstance(record, Mapping) else []
+    projected_docs = []
+    if isinstance(raw_docs, list):
+        for doc in raw_docs:
+            if isinstance(doc, dict):
+                projected_docs.append({k: doc[k] for k in ALLOWED_DOC_KEYS if k in doc})
+
+    ALLOWED_CLAIM_KEYS = (
+        "id", "document_id", "locator", "passage", "quote", "metric", "assertion_kind",
+        "currency", "unit_multiplier", "amount", "low", "high", "stated_point",
+        "plus_minus_amount", "plus_minus_percent", "original_representation",
+        "scope", "scope_label", "fiscal_label", "period_kind", "period_start",
+        "period_end", "start", "end", "accounting_basis", "reaffirmed_by", "corroborated_by", "revision", "checked_at"
+    )
+    raw_claims = record.get("claims", []) if isinstance(record, Mapping) else []
+    projected_claims = []
+    if isinstance(raw_claims, list):
+        for c in raw_claims:
+            if isinstance(c, dict):
+                projected_claims.append({k: c[k] for k in ALLOWED_CLAIM_KEYS if k in c})
+
+    ALLOWED_ACTUAL_KEYS = (
+        "fiscal_label", "start", "end", "revenue", "currency", "scope",
+        "accounting_basis", "document_id", "locator", "derivation"
+    )
+    projected_actuals = []
+    if isinstance(reported_quarters, list):
+        for q in reported_quarters:
+            if isinstance(q, dict):
+                projected_actuals.append({k: q[k] for k in ALLOWED_ACTUAL_KEYS if k in q})
+
+    # A4: every outer duplicate travels as the projected, bounded copy - never the raw record fields (an unknown
+    # actual field, e.g. a multi-megabyte extra key, must not reach the sealed Top20 object or the evidence).
+    ALLOWED_INTERVAL_KEYS = ("fiscal_label", "start", "end", "calendar_document_id", "calendar_locator")
+    projected_intervals = []
+    raw_intervals = record.get("forward_intervals", []) if isinstance(record, Mapping) else []
+    if isinstance(raw_intervals, list):
+        for intv in raw_intervals:
+            if isinstance(intv, dict):
+                projected_intervals.append({k: intv[k] for k in ALLOWED_INTERVAL_KEYS if k in intv})
+
+    ALLOWED_FY_REC_KEYS = ("fy_claim_id", "ytd_start", "ytd_end", "ytd_revenue", "ytd_quarter_ends")
+    raw_fy_rec = record.get("fy_reconciliation") if isinstance(record, Mapping) else None
+    projected_fy_rec = {k: raw_fy_rec[k] for k in ALLOWED_FY_REC_KEYS if k in raw_fy_rec} if isinstance(raw_fy_rec, dict) else None
+
+    ALLOWED_REVIEWED_KEYS = ("id", "disposition", "reviewed_at", "note")
+    raw_reviewed = record.get("reviewed_later_documents") if isinstance(record, Mapping) else None
+    projected_reviewed = []
+    if isinstance(raw_reviewed, list):
+        for rld in raw_reviewed:
+            if isinstance(rld, dict):
+                projected_reviewed.append({k: rld[k] for k in ALLOWED_REVIEWED_KEYS if k in rld})
+
+    def _consensus_projection(entry: Any) -> dict[str, Any] | None:
+        """The bounded consensus capture: the sealed metadata the Worker re-validates (item 15), nothing else."""
+        if not isinstance(entry, Mapping):
+            return None
+        out: dict[str, Any] = {"symbol": entry.get("symbol"), "currency": entry.get("currency")}
+        for key in ("scope", "captured_at", "retrieved_at", "source_url"):
+            if entry.get(key) is not None:
+                out[key] = entry[key]
+        quarters = entry.get("quarters")
+        if isinstance(quarters, list):
+            ALLOWED_CONSENSUS_Q_KEYS = ("period", "scope", "currency", "start", "end", "revenue", "avg", "analysts")
+            out["quarters"] = [{k: q[k] for k in ALLOWED_CONSENSUS_Q_KEYS if k in q} for q in quarters if isinstance(q, dict)][:2]
+        return out
+
+    def _release_channels_projection(rec: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        """The reviewed release-channel wiring (item 2): channel identity the receipt validators bind to.
+        Only the validated shapes travel sealed; anything else is not channel wiring."""
+        rc = rec.get("release_channels") if isinstance(rec, Mapping) else None
+        if not isinstance(rc, Mapping):
+            return None
+        out: dict[str, Any] = {}
+        cik = rc.get("sec_cik")
+        if isinstance(cik, int) and not isinstance(cik, bool) and cik > 0:
+            out["sec_cik"] = cik
+        wire_symbol = rc.get("wire_symbol")
+        if isinstance(wire_symbol, str) and wire_symbol:
+            out["wire_symbol"] = wire_symbol
+        wire_names = rc.get("wire_names")
+        if isinstance(wire_names, list) and wire_names and all(isinstance(n, str) for n in wire_names):
+            out["wire_names"] = wire_names[:8]
+        # The official IR channel (Astra W1 ruling, astra-ir-coverage): the validated kind + https feed URL pair and the
+        # reviewed guidance-release title travel sealed, so the Worker binds the receipt's ISSUER_IR channel to the
+        # registry's own IR host and derives the IR_COVERAGE_MISSING diagnostic.
+        ir = rc.get("ir")
+        if isinstance(ir, Mapping) and ir.get("kind") in ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML") \
+                and isinstance(ir.get("url"), str) and ir["url"].startswith("https://") and len(ir["url"]) <= 400:
+            out["ir"] = {"kind": ir["kind"], "url": ir["url"]}
+        ir_title = rc.get("ir_guidance_release_title")
+        if isinstance(ir_title, str) and ir_title and len(ir_title) <= 200:
+            out["ir_guidance_release_title"] = ir_title
+        return out or None
+
+    # A1: the approval's identity and this record's review decisions seal beside the evidence (the Worker validates
+    # their presence, shape and time coherence); they are null exactly when the profile did not admit the record.
+    approval_record = None
+    if isinstance(approval, Mapping) and isinstance(approval.get("records"), Mapping):
+        approval_record = approval["records"].get(issuer)
+    profile_sealed = profile_err is None
+    evidence: dict[str, Any] = {
+        "revenue_registry_status": reg_status,
+        "revenue_registry_sha256": reg_sha256,
+        "cutoff": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "formula": FORMULA_V3,
+        "horizon_convention": HORIZON_CONVENTION_V3,
+        "consensus_enabled": consensus_enabled,
+        "url_prefixes": list(record.get("url_prefixes", []))[:8] if isinstance(record, Mapping) else [],
+        "documents": projected_docs,
+        "claims": projected_claims,
+        "reported_quarters": projected_actuals,
+        "forward_intervals": projected_intervals,
+        "fy_reconciliation": projected_fy_rec,
+        "latest_release_check": fw_result.get("receipt") if fw_result else None,
+        "reviewed_later_documents": projected_reviewed,
+        "consensus": _consensus_projection(fw_result.get("consensus")) if (fw_result and revenue_basis == "CONSENSUS") else None,
+        "order_evidence": v2_forecast.get("evidence"),
+        "release_channels": _release_channels_projection(record),
+        "consensus_fault": consensus_fault,
+        "release_check_fault": release_fault if (release_fault and release_checks_cache is not None) else None,
+        "approval_sha256": approval.get("sha256") if (profile_sealed and isinstance(approval, Mapping)) else None,
+        "approval_approved_at": approval.get("approved_at") if (profile_sealed and isinstance(approval, Mapping)) else None,
+        "approval_decisions": (list(approval_record["decisions"]) if isinstance(approval_record, Mapping) else None)
+        if profile_sealed else None,
+    }
+
+    # Bounded allowlisted projection on the evidence-limit path (Astra r5 item 20, A4 r7): the scoped failure must
+    # stay small. The oversized revenue originals are cleared, and a canonicalization failure is itself the limit
+    # signal (never swallowed and continued with unsafe originals). The independently validated sibling order
+    # recognition (e.g. NVDA's m12 USD 1,248,000,000) is PRESERVED: its tile keeps its own bounded evidence through
+    # the retained order_evidence subtree, so the Worker re-derives exactly that scoped state - never INVALID and
+    # never a wiped Top20 entry.
+    ev_bytes = 0
+    canonicalized = True
+    try:
+        ev_bytes = len(revenue_guidance.canonical_json(evidence).encode("utf-8"))
+    except Exception:
+        canonicalized = False
+    evidence_limited = (not canonicalized) or ev_bytes > 100_000
+    if evidence_limited:
+        revenue_status = "UNAVAILABLE"
+        revenue_reason = "EVIDENCE_LIMIT"
+        revenue_diagnostic = None
+        for key, (has_rec, order_h) in (("m6", (has_rec_m6, order_m6)), ("m12", (has_rec_m12, order_m12))):
+            if has_rec:
+                tiles[key] = {
+                    "status": "AVAILABLE",
+                    "basis": "RECOGNITION",
+                    "basis_label": "已簽約預計認列",
+                    "amount": order_h.get("amount"),
+                    "currency": order_h.get("currency"),
+                    "start": order_h.get("start"),
+                    "end": order_h.get("end"),
+                    "horizon_label": "半年" if key == "m6" else "1年",
+                    "qualifier": f"自{order_h.get('start')}起，非今日起",
+                    "rpo": order_h.get("rpo"),
+                    "share_pct": order_h.get("share_pct"),
+                    "scenario": {"status": "NO_BASIS", "reason": "NO_REVENUE_BASIS"},
+                    "warning": None,
+                }
+            else:
+                tiles[key] = _unavailable("EVIDENCE_LIMIT", "NO_REVENUE_BASIS")
+        available = any(tiles[k]["status"] == "AVAILABLE" for k in ("m6", "m12"))
+        overall_reason = None if available else "EVIDENCE_LIMIT"
+        for key in ("documents", "claims", "reported_quarters", "forward_intervals", "consensus",
+                    "latest_release_check", "reviewed_later_documents"):
+            evidence[key] = [] if key in ("documents", "claims", "reported_quarters", "forward_intervals") else None
+        # order_evidence stays sealed (the bounded v2 projection): the preserved recognition re-derives from it.
+        evidence["fy_reconciliation"] = None
+        evidence["release_channels"] = None
+        evidence["approval_sha256"] = None
+        evidence["approval_approved_at"] = None
+        evidence["approval_decisions"] = None
+        fw_result = None
+        # contracted_rec stays: it is the bounded projection of the validated sibling v2 recognition, which the
+        # Worker re-derives from order_evidence and requires beside it (acceptance r7 A4).
+
+    return {
+        "version": VERSION3,
+        "issuer": issuer,
+        "formula": FORMULA_V3,
+        "status": "AVAILABLE" if available else "UNAVAILABLE",
+        "reason": overall_reason,
+        "revenue_status": revenue_status,
+        "revenue_basis": revenue_basis,
+        "revenue_reason": revenue_reason,
+        "revenue_diagnostic": revenue_diagnostic,
+        "horizon_convention": HORIZON_CONVENTION_V3,
+        "anchor_date": anchor_date,
+        "cutoff": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "m6": tiles["m6"],
+        "m12": tiles["m12"],
+        "reported_quarters": [] if evidence_limited else projected_actuals,
+        "baseline_b": arith.get("baseline_b") if arith else None,
+        "forward_quarters": [] if evidence_limited else (fw_result.get("forward_quarters") if fw_result else []),
+        "warning": None if evidence_limited else (fw_result.get("warning") if fw_result else None),
+        "contracted_recognition": contracted_rec,
+        "stock_sensitivity": v2_forecast.get("stock_sensitivity"),
+        "order_view": {
+            "status": v2_forecast.get("status"),
+            "reason": v2_forecast.get("reason"),
+            "m6": v2_forecast.get("m6"),
+            "m12": v2_forecast.get("m12"),
+        },
+        "references": v2_forecast.get("references", []),
+        "assumptions": ASSUMPTIONS_V3,
+        "evidence": evidence,
+    }

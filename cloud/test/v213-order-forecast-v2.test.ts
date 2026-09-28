@@ -188,7 +188,10 @@ describe("version-2 order forecast", () => {
     ];
     for (const [label, mutate] of tamper) {
       const parsed = parsedWith(forecasts => mutate(forecasts.S1));
-      expect(card(parsed, "S1")[2], label).toBe(REFUSED);
+      // A record claiming version 3 is routed to the v3 reader (contract section 6: the old reader never reads
+      // a v3 record as v1/v2); the v3 reader refuses the v2 content with its own refusal line.
+      const refused = label === "unknown version" ? "約1年（4財季）：資料未通過驗證" : REFUSED;
+      expect(card(parsed, "S1")[2], label).toBe(refused);
       expect(card(parsed, "S1").some(line => line.startsWith("期後訂單") || line.startsWith("已由")), label).toBe(false);
     }
     // A mixed-baseline price on the filing's own horizons, and a conflict claimed without evidence for it.

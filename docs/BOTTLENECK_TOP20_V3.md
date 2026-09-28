@@ -77,6 +77,226 @@ NVDA, AVGO, AMD and CRDO; CRWV/NBIS 24 months only; Gemini's survey found no 6-m
 disclosure except MU's (writer-verified: MU, CRDO and 5351.TWO only); the registry holds one verified MU reference (SCA RPO
 about US$100B incl. post-FQ3 agreements). The deployed reader 16cb1b3 ignores the field and keeps its analyst tiles; the
 eca78a1 reader shows version 2 as unavailable; rollout order is decided in the rollout review.
+
+### ORDERS-V3-01: 訂單認列／營收推估與營收實現後股價情境 (Astra contract ORDERS-V3-01 & staleness amendment)
+
+Separates company-wide total revenue models from contractual order recognition (Tile 2: `訂單認列／營收推估`,
+Tile 3: `營收實現後股價情境`; operator 2026-09-27; Astra contract ORDERS-V3-01 and amendment 2026-09-28):
+- **Tile 2: 訂單認列／營收推估**
+  - Company guidance: `公司營收財測＋模型（非訂單）`
+  - Analyst consensus: `非公司揭露、非訂單：分析師季度營收共識＋模型`
+  - Contracted recognition only: `已簽約預計認列`
+  - Contracted recognition beside revenue projection defaults to `另列已簽約預計認列：半年期 X（起訖日；不相加）` / `1年期 X（起訖日；不相加）` (`其中` requires matching issuer, currency, scope, window and proven inclusion).
+- **Tile 3: 營收實現後股價情境**
+  - Dimensionless constant-P/S formula:
+    `B = a1 + a2 + a3 + a4` (latest four standalone reported quarters)
+    `amount6 = f1 + f2`, `amount12 = f1 + f2 + f3 + f4`
+    `TTM6 = a3 + a4 + f1 + f2`, `TTM12 = f1 + f2 + f3 + f4`
+    `change6 = TTM6 / B - 1`, `change12 = TTM12 / B - 1`
+  - If 4 reported actuals are missing, price scenario is `NO_BASIS` (`缺完整四季營收基準，無法估算`).
+  - If revenue model is unavailable but contracted recognition is valid, Tile 3 is `NO_BASIS` (`缺完整營收推估，無法估算股價情境`).
+  - Card assumptions on all surfaces: `條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬`.
+- **Time semantics & Post-quarter-end bridge (Astra amendment):**
+  - Fiscal 2Q / 4Q convention (`horizon_convention: FISCAL_2Q_4Q`), anchored at latest reported quarter end A. Strict adjacency is required: `f1.start == A + 1 day`, all four forward intervals must be strictly contiguous without gap, and no forward interval may overlap reported actuals. The post-quarter-end bridge (+70-day cap) governs freshness of an ended, unreported quarter after A, not fiscal placement. Endpoints are second and fourth forward quarter ends: `約6個月（2財季）` and `約1年（4財季）` with `自{start}起，非今日起`.
+  - Latest-release receipt age <= 24 hours at cutoff C, sourced exclusively from the runtime release-check cache (`data/cache/revenue_guidance_release_checks.json`), covering SEC and wire channels (`SEC_AND_WIRE`; missing/failed/incomplete: `FRESHNESS_UNVERIFIED`).
+  - Canonical digest: SHA-256 over keys-sorted canonical JSON using `ensure_ascii=False` (preserving Unicode titles in Korean/Chinese across Python and Worker).
+  - Guidance publication age <= 200 days at cutoff C.
+  - For each ended, unreported quarter after A used by the path (`UTC_date(C) > quarter.end`): requires `UTC_date(C) <= quarter.end + 70 calendar days`. Day +70 is eligible; day +71 is STALE.
+  - Warning on all surfaces: `財測季度已於{end}結束，實際營收尚未公布` (or FY allocation: `全年財測推算季度已於{end}結束，實際營收尚未公布`) together with `截至{checked_at}查核；仍為財測／模型，非實績`.
+  - Consensus adapter does not get the +70d bridge (expired if guided period ended at cutoff).
+- **First-rollout profile (Astra scope ruling 2026-09-28, `astra-scope.result.md`; W1 ruling `astra-ir-coverage.result.md`):**
+  - A company-guidance projection needs three checked channels (`SEC_WIRE_IR`): EDGAR submissions, the Nasdaq wire feed and the issuer's official IR press-release channel (`release_channels.ir`: Q4 feed, RSS or newsroom list, read by `scripts/issuer_ir_feeds.py`; the same-day IR item whose title equals `ir_guidance_release_title` is the guidance release itself). Admitted with IR: NVDA CRWV LITE CRDO MU BE AMD MRVL NBIS. AVGO, SNDK, AAOI, ALAB and MTSI block automated IR access: their projection shows 「官方IR查核未完成，暫停營收推估」 (`IR_COVERAGE_MISSING`) and any contracted recognition stays.
+  - Items dated on the guidance day are ambiguous (feeds are day-granular) and stay review items until the writer records them in `reviewed_later_documents` (the guidance filing itself, the same-day periodic report of the anchor quarter, wire copies of the same release). Ownership, registration and proxy filings, and 8-Ks carrying only items 1.01/1.02/2.03/3.02/5.02/5.03/5.07/9.01, are never review items.
+  - Document hashes (W2): SHA-256 of the exact public bytes, with EDGAR's per-response watermark attribute value (`bazadebezolkohpepadr="…"`) zeroed at equal length, since EDGAR varies it between requests while the filing is immutable. The byte inventory lives with the writer's evidence (`_archive\lane-orders-v3\sources`, `w2-manifest.json`).
+  - Reviewed profile (A1): `config/revenue-guidance-approval-v1.json` binds the exact registry bytes and each record's canonical hash to the writer's decisions (claims verbatim in source, actuals and derivation operands found in their documents, calendar rules quoted, FY reconciliation, routing), all re-verified against the kept source bytes by `_archive\lane-orders-v3\verify\make_approval.py`. A changed registry or record, a missing decision or a decision later than the build cutoff suspends that issuer's revenue path (`UNREVIEWED_INPUTS`, 「營收輸入未經審核，暫停營收推估」); any change to the registry needs a new approval.
+  - Official IR coverage is conservative (A2): a feed that does not list the reviewed guidance release on its day, an empty answer or malformed/truncated RSS is incomplete; a title is exempt only when it is, as a whole, one of the known nonmaterial notices (a results-date notice, a date or conference-call announcement, a meeting-vote outcome, a dividend declaration) naming only the issuer before the notice; any other title with financial wording (results, revenue, earnings, sales, guidance, outlook, targets, forecasts, expectations or an expectation verb, preliminary, a financial model/update, a business update), or with an amount or percentage next to period wording, is a review item. For a figure reaffirmed later (NBIS) the interval before the reaffirmation was checked once by the writer (`verify
+bis-pre-reaffirmation.txt`).
+  - Korean quarterly consensus is disabled for the first rollout (`consensus_enabled: false` in the registry, collector not scheduled): 000660.KS and 005930.KS show 「公司未提供營收財測；分析師共識路線本次未啟用」 (`CONSENSUS_DEFERRED`). The adapter stays in the tree (yfinance session transport; a plain request gets HTTP 401) for ORDERS-V3-CONSENSUS-01.
+  - Deferred lanes (Astra scope ruling; owner: Claude Code for integration and evidence, implementation by the workspace routing, Astra accepts each fixed snapshot):
+    | Lane | Scope | Residual risk | Enforcement / test receipt now | Re-entry trigger |
+    |---|---|---|---|---|
+    | ORDERS-V3-HARDEN-01 | Worker re-validation of duplicates and metadata the producer already rejects | a future producer regression is caught later | producer projection + approval gate, real-caller tests, W3 replay | another producer, an unsealed input, use of ignored fields |
+    | ORDERS-V3-SCHEMA-01 | general revision graphs, other actual/calendar/FY shapes | valid new shapes stay unavailable | approval gate refuses unreviewed records; tests for refused shapes | before admitting a new shape |
+    | ORDERS-V3-CONSENSUS-01 | Korean quarterly consensus | no Korean numeric projection | `consensus_enabled: false`, unscheduled collector, gate-off tests | before enabling the collector or the path |
+    | ORDERS-V3-TRANSPORT-01 | streaming byte caps; IR adapters for AVGO SNDK AAOI ALAB MTSI | those five stay suspended | IR_COVERAGE_MISSING tests; post-decode bounds | before enabling consensus or any new adapter |
+    | ORDERS-V3-TESTS-01 | exhaustive combinations, older non-rollback readers, cosmetic variants | less coverage outside the profile | focused suites, golden, W3 | before widening the profile |
+- **Runtime inputs and refresh (writer integration):**
+  - `scripts/revenue_guidance_release_check.py` writes the receipts (EDGAR submissions of the issuer + Nasdaq's press-release feed for the symbol, items naming the issuer; the newest 8 per issuer). 8-K item 2.02 or a periodic report for a later period is `RESULTS_RELEASE`; 8-Ks carrying only items 1.01/1.02/2.03/3.02/5.02/5.03/5.07/9.01 are irrelevant; any other 8-K/6-K and wire titles about results/revenue/guidance/outlook are `POSSIBLY_RELEVANT` until the writer records them in `reviewed_later_documents` (id: accession or `https://www.nasdaq.com/press-release/...`). A channel read completely back to the guidance date is checked through the day of the check.
+  - The check starts from the guidance reference document: the claim's own document or, when the company later reaffirmed the figure without restating it (`reaffirmed_by`, e.g. NBIS: figure in the May letter, reaffirmed in August), the latest reaffirmation.
+  - `scripts/revenue_consensus_quarterly.py` serves only the registry's `NOT_DISCLOSED` issuers through the project's yfinance session and keeps the newest 8 captures per issuer.
+  - `scripts/run_daily_data_refresh.ps1` runs both collectors immediately before `bottleneck_v3`; the sealer binds, per issuer, the newest receipt and the newest consensus capture taken at or before the v3 document's `generated_at` (a later capture never feeds an older build).
+  - Curated records need review after every earnings release (the receipt turns `RESULTS_PUBLISHED`/`REVIEW_REQUIRED` and the card shows the reason until the record is updated). The Worker golden `tests/fixtures/v213-orders-v3-golden-sealed.json` is regenerated by `tests/fixtures/make_orders_v3_golden.py` (a test asserts it is reproducible).
+- **Dual fields & Reader order:**
+  - Sealed additive dual fields: `outlook.order_forecast` (v2, built by unchanged `build_v2`) and `outlook.order_forecast_v3` (v3, built by `build_v3`).
+  - New reader validates `order_forecast_v3` if present in outlook; never falls back `v3 || v2`. A tampered or present-invalid v3 fails as INVALID (does not downgrade to v2). Genuine absence of v3 allows v2 parsing. Old readers ignore v3 and read v2 unchanged.
+
+#### `config/revenue-guidance-v1.json` Schema Specification
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RevenueGuidanceV1Registry",
+  "type": "object",
+  "required": ["schema", "version", "issuers"],
+  "properties": {
+    "schema": { "type": "string", "const": "revenue-guidance-v1" },
+    "version": { "type": "integer", "const": 1 },
+    "issuers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "company_name", "status", "url_prefixes", "documents", "claims", "reported_quarters", "forward_intervals"],
+        "properties": {
+          "symbol": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9.\\-]{0,19}$" },
+          "company_name": { "type": "string" },
+          "status": { "type": "string", "enum": ["GUIDANCE", "NOT_DISCLOSED", "INPUTS_MISSING", "STALE", "CONFLICTING_DISCLOSURES", "WITHDRAWN", "INVALID"] },
+          "reason": { "type": ["string", "null"] },
+          "url_prefixes": { "type": "array", "items": { "type": "string", "format": "uri" }, "maxItems": 4 },
+          "documents": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "required": ["id", "issuer", "publisher", "title", "source_kind", "url", "published_date", "retrieved_at", "sha256", "byte_size", "lineage_id"],
+              "properties": {
+                "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$" },
+                "issuer": { "type": "string" },
+                "publisher": { "type": "string" },
+                "title": { "type": "string" },
+                "source_kind": { "type": "string", "enum": ["SEC_PERIODIC", "SEC_8K_EXHIBIT", "SEC_6K_EXHIBIT", "ISSUER_EARNINGS_RELEASE", "ISSUER_TRANSCRIPT", "ISSUER_PRESENTATION", "OFFICIAL_FISCAL_CALENDAR", "OFFICIAL_FINANCIAL_STATEMENT"] },
+                "url": { "type": "string", "maxLength": 400 },
+                "published_date": { "type": "string", "format": "date" },
+                "published_at": { "type": ["string", "null"], "format": "date-time" },
+                "retrieved_at": { "type": "string", "format": "date-time" },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "byte_size": { "type": "integer", "maximum": 52428800 },
+                "lineage_id": { "type": "string" }
+              }
+            }
+          },
+          "claims": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": ["id", "document_id", "locator", "passage", "metric", "assertion_kind", "currency", "unit_multiplier", "scope", "fiscal_label", "period_kind", "period_start", "period_end"],
+              "properties": {
+                "id": { "type": "string" },
+                "document_id": { "type": "string" },
+                "locator": { "type": "string" },
+                "passage": { "type": "string", "maxLength": 1000 },
+                "metric": { "type": "string", "const": "REVENUE" },
+                "assertion_kind": { "type": "string", "const": "COMPANY_GUIDANCE" },
+                "currency": { "type": "string", "enum": ["USD", "KRW", "TWD", "SEK", "JPY", "EUR", "GBP", "HKD", "CNY"] },
+                "unit_multiplier": { "type": "integer", "enum": [1, 1000, 1000000, 1000000000] },
+                "amount": { "type": ["number", "null"] },
+                "low": { "type": ["number", "null"] },
+                "high": { "type": ["number", "null"] },
+                "stated_point": { "type": ["number", "null"] },
+                "scope": { "type": "string", "enum": ["COMPANY", "SEGMENT"] },
+                "fiscal_label": { "type": "string" },
+                "period_kind": { "type": "string", "enum": ["QUARTER", "FISCAL_YEAR"] },
+                "period_start": { "type": "string", "format": "date" },
+                "period_end": { "type": "string", "format": "date" },
+                "accounting_basis": { "type": "string", "enum": ["GAAP", "NON_GAAP", "IFRS", "K-IFRS"] }
+              }
+            }
+          },
+          "reported_quarters": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": ["fiscal_label", "start", "end", "revenue", "currency", "scope", "accounting_basis", "document_id", "locator"],
+              "properties": {
+                "fiscal_label": { "type": "string" },
+                "start": { "type": "string", "format": "date" },
+                "end": { "type": "string", "format": "date" },
+                "revenue": { "type": "number" },
+                "currency": { "type": "string" },
+                "scope": { "type": "string", "enum": ["COMPANY", "CONSOLIDATED"] },
+                "accounting_basis": { "type": "string", "enum": ["GAAP", "NON_GAAP", "IFRS", "K-IFRS"] },
+                "document_id": { "type": "string" },
+                "locator": { "type": "string", "maxLength": 120 },
+                "derivation": {
+                  "type": ["object", "null"],
+                  "description": "XBRL YTD-difference derivation: revenue = longer_value - shorter_value (re-validated), citing the longer/shorter YTD documents."
+                }
+              }
+            }
+          },
+          "forward_intervals": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "fiscal_label": { "type": "string" },
+                "start": { "type": "string", "format": "date" },
+                "end": { "type": "string", "format": "date" },
+                "calendar_locator": { "type": "string", "maxLength": 1000 }
+              }
+            }
+          },
+          "fy_reconciliation": {
+            "type": ["object", "null"],
+            "description": "Dated YTD basis for the FY allocation: fy_claim_id, ytd_start/ytd_end, ytd_revenue (reconciled against the reported quarters inside the window) and the optional ytd_quarter_ends list (each a day inside the YTD window).",
+            "properties": {
+              "fy_claim_id": { "type": "string" },
+              "ytd_start": { "type": "string", "format": "date" },
+              "ytd_end": { "type": "string", "format": "date" },
+              "ytd_revenue": { "type": "number" },
+              "ytd_quarter_ends": { "type": "array", "maxItems": 8, "items": { "type": "string", "format": "date" } }
+            }
+          },
+          "release_channels": {
+            "type": ["object", "null"],
+            "description": "Collector wiring for the latest-release check (writer-owned targets); validated when present.",
+            "properties": {
+              "sec_cik": { "type": "integer", "minimum": 1 },
+              "news_query": { "type": "string", "maxLength": 40 }
+            }
+          },
+          "reviewed_later_documents": {
+            "type": "array",
+            "maxItems": 16,
+            "description": "The writer's review of a receipt's later_documents: each entry {id, disposition: REVIEWED_IRRELEVANT, reviewed_at?, note?}; a REVIEWED_IRRELEVANT entry may suppress a POSSIBLY_RELEVANT later document in the status recomputation.",
+            "items": {
+              "type": "object",
+              "required": ["id", "disposition"],
+              "properties": {
+                "id": { "type": "string" },
+                "disposition": { "type": "string", "const": "REVIEWED_IRRELEVANT" },
+                "reviewed_at": { "type": "string", "format": "date-time" },
+                "note": { "type": "string", "maxLength": 300 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The runtime release-check cache (`revenue-guidance-release-checks-v1`, `release-check-cache-spec`) seals one
+receipt per issuer: `channels` (SEC submissions index + wire/press channel, each with status/completeness and
+checked-through day), `later_documents`, `coverage: SEC_AND_WIRE`, `anchor_end`, `guidance_document_id` and a
+`digest` over the receipt's own canonical JSON without digest (`ensure_ascii=False`). Both readers (Python `revenue_guidance.validate_receipt` and the Worker's
+`parseV3`) recompute the digest and the status from the channels; a missing, stale (> 24h at the build cutoff),
+future-dated, digest-mismatched, or status-mismatched receipt reads `FRESHNESS_UNVERIFIED`/`STALE`, never "no newer
+release". Receipts are runtime-cache only; no legacy registry-embedded receipt fallback is permitted.
+
+The post-quarter-end bridge governs staleness per ended, unreported quarter after the anchor A used by the path:
+each such quarter's end must be within 70 calendar days of the cutoff's UTC day (day +70 eligible, +71 STALE), with
+the mandatory warning on all surfaces. Strict A-to-f1 adjacency (`f1.start == A + 1 day`) and interval contiguity are
+strictly required. Guidance publication age must be <= 200 days at cutoff C.
+anchor quarter (the registry's fiscal calendar places the guided quarter); the 70-day cap, the 24h receipt age and
+the 200-day guidance-publication cap (200 eligible, 201 not) remain the fail-closed bounds. Consensus does not get
+the bridge: a consensus path whose guided quarter has ended at the cutoff is STALE.
+
 `瓶頸詳情` opens the SEC company report rather than
 repeating the card; non-SEC filers get the filing and price figures with sources.
 

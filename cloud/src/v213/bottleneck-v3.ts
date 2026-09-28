@@ -4,7 +4,7 @@
  * but are never shown as company facts; every figure carries its source and date. A malformed or stale document
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
-import { forecastCard, forecastLines, forecastText, parseOrderForecast, type OrderForecast } from "./order-forecast";
+import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, type OrderForecast } from "./order-forecast";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -101,6 +101,8 @@ export interface Outlook {
   consensus_second?: SecondConsensus | null;
   /** The sealed 6-month / 1-year order forecast (scripts/order_forecast.py), validated into `forecast` at parse time. */
   order_forecast?: unknown;
+  /** Additive dual field v3 (Astra contract ORDERS-V3-01 section 6): revenue + order view. */
+  order_forecast_v3?: unknown;
 }
 interface LeopoldLead { long_weight: number; status: string; }
 export interface BottleneckEntry {
@@ -424,7 +426,7 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
   const reportDay = doc.generated_at.slice(0, 10);
   const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, reportDay),
-    forecast: parseOrderForecast(entry.outlook?.order_forecast, reportDay, entry.symbol, doc.generated_at) }));
+    forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at) }));
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
@@ -632,9 +634,20 @@ export function outlookForecast(doc: BottleneckV3, entry: BottleneckEntry): [str
   return forecastCard(forecastOf(doc, entry), money);
 }
 
+/** Reader order (Astra contract ORDERS-V3-01 section 6):
+ * If order_forecast_v3 is present, validate v3 (including null, wrong version, stale/unavailable and malformed cases).
+ * Never use v3 || v2. Only genuine absence permits the existing v2/v1 parser. */
+function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: string, symbol: string, generatedAt?: string): OrderForecast {
+  if (outlook && Object.prototype.hasOwnProperty.call(outlook, "order_forecast_v3")) {
+    const rawV3 = (outlook as any).order_forecast_v3;
+    return parseOrderForecastV3(rawV3, reportDay, symbol, generatedAt, (outlook as any).order_forecast);
+  }
+  return parseOrderForecast(outlook?.order_forecast, reportDay, symbol, generatedAt);
+}
+
 /** An entry's validated forecast (a parsed document always has one; a hand-built entry reads as unavailable). */
 function forecastOf(doc: BottleneckV3, entry: BottleneckEntry): OrderForecast {
-  return entry.forecast ?? parseOrderForecast(entry.outlook?.order_forecast, doc.generated_at.slice(0, 10), entry.symbol, doc.generated_at);
+  return entry.forecast ?? parseOutlookForecast(entry.outlook, doc.generated_at.slice(0, 10), entry.symbol, doc.generated_at);
 }
 
 /** Operator 2026-09-26: current orders, the future estimate and the price scenario if realized on every Top20 card
@@ -643,11 +656,15 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   const { filer } = ordersOf(doc, entry.symbol);
   const outlook = entry.outlook;
   const c = outlook?.consensus;
+  const forecast = forecastOf(doc, entry);
+  const footnoteText = forecast.version === 3
+    ? "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬。預估推算不代表公司保證或實際回報。"
+    : "預計認列＝公司揭露將於半年／1年內認列的已簽約訂單（RPO×揭露比例，自量測日起，非今日起）；公司未揭露時顯示未揭露，不以外推代替。股價情境＝訂單如期實現時的條件變動，非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。";
   if (compact) {
     return section("訂單與成長情境", [
       uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
       ...outlookForecast(doc, entry).map(([text, heading]) => uiText(text, "xs", T.ink, heading ? { weight: "bold" } : {})),
-      footnote("預計認列＝公司揭露將於半年／1年內認列的已簽約訂單（RPO×揭露比例，自量測日起，非今日起）；公司未揭露時顯示未揭露，不以外推代替。股價情境＝訂單如期實現時的條件變動，非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。"),
+      footnote(footnoteText),
 
     ], "key");
   }

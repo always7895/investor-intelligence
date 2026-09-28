@@ -7,9 +7,10 @@ fixtures mirror the v3 outlook.orders shape (kind RPO/BACKLOG, amount, currency,
 """
 from __future__ import annotations
 
+import json
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,33 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import order_forecast as ofc  # noqa: E402
 
 REPORT_DAY = date(2026, 9, 27)
+
+
+def make_synthetic_approval(registry_sha256: str, issuers: dict, reviewed_at: str = "2026-09-28T11:00:00Z") -> dict:
+    """A1: a synthetic enforced reviewed profile covering every operative input of a synthetic registry record
+    (the same decision set tests/fixtures/make_orders_v3_golden.py seals). The writer-owned real file is
+    config/revenue-guidance-approval-v1.json; tests pass this shape through build_v3's revenue_approval."""
+    import hashlib as _hashlib
+    import revenue_guidance as _rg
+    records: dict[str, dict] = {}
+    for sym, rec in issuers.items():
+        record_sha = _hashlib.sha256(_rg.canonical_json(rec).encode("utf-8")).hexdigest()
+        decisions: list[dict] = []
+        for claim in rec.get("claims", []):
+            decisions.append({"kind": "CLAIM", "ref": claim["id"], "decision": "VERBATIM_IN_SOURCE", "reviewed_at": reviewed_at})
+            if claim.get("reaffirmed_by"):
+                decisions.append({"kind": "REAFFIRMATION", "ref": claim["id"], "decision": "VERBATIM_IN_SOURCE", "reviewed_at": reviewed_at})
+        for actual in rec.get("reported_quarters", []):
+            decisions.append({"kind": "ACTUAL", "ref": actual["end"], "decision": "VALUE_IN_SOURCE", "reviewed_at": reviewed_at})
+        decisions.append({"kind": "CALENDAR", "ref": "calendar", "decision": "RULE_QUOTED", "reviewed_at": reviewed_at})
+        if rec.get("fy_reconciliation") is not None:
+            decisions.append({"kind": "FY_RECONCILIATION", "ref": "fy_reconciliation",
+                              "decision": "DERIVATION_OPERANDS_IN_SOURCE", "reviewed_at": reviewed_at})
+        routing = "NONDISCLOSURE_CONFIRMED" if rec.get("status") == "NOT_DISCLOSED" else "RULE_QUOTED"
+        decisions.append({"kind": "ROUTING", "ref": "routing", "decision": routing, "reviewed_at": reviewed_at})
+        records[sym] = {"record_sha256": record_sha, "decisions": decisions}
+    return {"status": "OK", "sha256": "f" * 64, "registry_sha256": registry_sha256, "approved_at": reviewed_at,
+            "reviewer": "test", "records": records}
 
 
 def recognition(status="DISCLOSED", rpo=3.2e9, revenue=96.221e9, as_of="2026-07-26",
@@ -459,3 +487,447 @@ class AstraBatch34ProbeTests(unittest.TestCase):
                 self.assertEqual(ofc.from_stock("FIX", stock(source_url=case["url"]), REPORT_DAY)["reason"], "INVALID", case["url"])
             crwv = ofc.from_recognition("FIX", {**CRWV, "url": case["url"]}, REPORT_DAY)  # a 24-month-only schedule: the reference alone
             self.assertEqual(len(crwv["references"]) == 1, case["accepted"], case["url"])
+
+
+class OrderForecastV3Tests(unittest.TestCase):
+    """Astra contract ORDERS-V3-01: build_v3 tests, revenue vs orders separation, dual fields."""
+
+    def setUp(self):
+        self.cutoff = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
+        self.report_day = date(2026, 9, 28)
+        self.claims = {"status": "EMPTY", "sha256": "0" * 64, "issuers": {}}
+
+    def _sample_receipt_cache(self, symbol="TEST", anchor_end="2026-07-31", guidance_doc="DOC-1", pub="2026-08-20"):
+        import revenue_guidance
+        rc = {
+            "issuer": symbol, "checked_at": "2026-09-28T09:00:00Z", "status": "OK",
+            "guidance_document_id": guidance_doc, "guidance_published_date": pub, "anchor_end": anchor_end,
+            "coverage": "SEC_WIRE_IR",
+            "channels": [
+                {"kind": "SEC_SUBMISSIONS", "url": "https://data.sec.gov/submissions/CIK0000000000.json", "status": "OK", "checked_through": "2026-09-28", "complete": True},
+                {"kind": "WIRE_PRESS_RELEASES", "url": "https://api.nasdaq.com/api/news/topic/press_release?q=symbol:" + symbol, "status": "OK", "checked_through": "2026-09-28", "complete": True},
+                # The official IR channel (Astra W1 ruling, astra-ir-coverage): the company-guidance path requires
+                # SEC_WIRE_IR coverage with the ISSUER_IR channel on the record's own IR host.
+                {"kind": "ISSUER_IR", "url": "https://investor.test.com/feed/PressRelease.svc/GetPressReleaseList", "status": "OK", "checked_through": "2026-09-28", "complete": True},
+            ],
+            "later_documents": [],
+        }
+        rc["digest"] = revenue_guidance.compute_receipt_digest(rc)
+        return {"schema": "revenue-guidance-release-checks-v1", "generated_at": "2026-09-28T09:00:00Z", "issuers": {symbol: [rc]}}
+
+    def _sample_registry(self, q_end="2026-10-31", stated_point=32.5):
+        return {
+            "status": "OK",
+            "sha256": "a" * 64,
+            "issuers": {
+                "TEST": {
+                    "symbol": "TEST",
+                    "company_name": "Test Co",
+                    "status": "GUIDANCE",
+                    "url_prefixes": ["https://investor.test.com/"],
+                    "documents": [
+                        {
+                            "id": "DOC-1",
+                            "issuer": "TEST",
+                            "publisher": "Test Co",
+                            "title": "Release",
+                            "source_kind": "ISSUER_EARNINGS_RELEASE",
+                            "url": "https://investor.test.com/q2.pdf",
+                            "published_date": "2026-08-20",
+                            "retrieved_at": "2026-08-20T12:00:00Z",
+                            "sha256": "1" * 64,
+                            "byte_size": 2048,
+                            "lineage_id": "L1",
+                        }
+                    ],
+                    "claims": [
+                        {
+                            "id": "CLAIM-1",
+                            "document_id": "DOC-1",
+                            "locator": "p.1",
+                            "passage": f"Revenue outlook is {stated_point} billion",
+                            "metric": "REVENUE",
+                            "assertion_kind": "COMPANY_GUIDANCE",
+                            "currency": "USD",
+                            "unit_multiplier": 1000000000,
+                            "stated_point": stated_point,
+                            "original_representation": f"{stated_point} billion",
+                            "scope": "COMPANY",
+                            "accounting_basis": "GAAP",
+                            "fiscal_label": "Q3 FY26",
+                            "period_kind": "QUARTER",
+                            "period_start": "2026-08-01",
+                            "period_end": q_end,
+                        }
+                    ],
+                    "reported_quarters": [
+                        {"fiscal_label": "Q3 FY25", "start": "2025-08-01", "end": "2025-10-31", "revenue": 18.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.1"},
+                        {"fiscal_label": "Q4 FY25", "start": "2025-11-01", "end": "2026-01-31", "revenue": 22.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.2"},
+                        {"fiscal_label": "Q1 FY26", "start": "2026-02-01", "end": "2026-04-30", "revenue": 26.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.3"},
+                        {"fiscal_label": "Q2 FY26", "start": "2026-05-01", "end": "2026-07-31", "revenue": 30.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.4"},
+                    ],
+                    "forward_intervals": [
+                        {"fiscal_label": "Q3 FY26", "start": "2026-08-01", "end": q_end, "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q4 FY26", "start": "2026-11-01", "end": "2027-01-31", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q1 FY27", "start": "2027-02-01", "end": "2027-04-30", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q2 FY27", "start": "2027-05-01", "end": "2027-07-31", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                    ],
+                    # The official IR channel (Astra W1 ruling, astra-ir-coverage): the company-guidance path
+                    # requires SEC_WIRE_IR coverage, so the record carries its IR feed.
+                    "release_channels": {
+                        "ir": {"kind": "Q4_PRESS_RELEASES",
+                               "url": "https://investor.test.com/feed/PressRelease.svc/GetPressReleaseList"},
+                        "ir_guidance_release_title": "Test Co Reports Financial Results",
+                    },
+                }
+            },
+        }
+
+    def test_build_v3_with_quarter_company_guidance(self):
+        reg = self._sample_registry(stated_point=32.0)
+        cache = self._sample_receipt_cache()
+        approval = make_synthetic_approval(reg["sha256"], reg["issuers"])
+        v3 = ofc.build_v3("TEST", None, None, self.report_day, self.cutoff, self.claims, revenue_registry=reg, release_checks_cache=cache,
+                          revenue_approval=approval)
+
+        self.assertEqual(v3["version"], 3)
+        self.assertEqual(v3["status"], "AVAILABLE")
+        self.assertEqual(v3["revenue_status"], "AVAILABLE")
+        self.assertEqual(v3["revenue_basis"], "COMPANY_GUIDANCE")
+        self.assertEqual(v3["horizon_convention"], "FISCAL_2Q_4Q")
+
+        # Baseline B = 18 + 22 + 26 + 30 = 96B
+        self.assertAlmostEqual(v3["baseline_b"], 96.0e9)
+        # Forward quarters: 4 quarters flat at 32B: [32B, 32B, 32B, 32B]
+        # amount6 = 64B, amount12 = 128B
+        self.assertAlmostEqual(v3["m6"]["amount"], 64.0e9)
+        self.assertAlmostEqual(v3["m12"]["amount"], 128.0e9)
+        # TTM6 = 26 + 30 + 32 + 32 = 120B. change6 = 120 / 96 - 1 = 0.25 (+25%)
+        self.assertAlmostEqual(v3["m6"]["scenario"]["change"], 0.25, places=9)
+        # TTM12 = 32 * 4 = 128B. change12 = 128 / 96 - 1 = 32 / 96 = 1/3 (+33.33%)
+        self.assertAlmostEqual(v3["m12"]["scenario"]["change"], 32.0 / 96.0, places=9)
+
+    def test_build_v3_retains_contracted_recognition_when_revenue_nondisclosed(self):
+        reg = {"status": "OK", "sha256": "0" * 64, "issuers": {}}  # no revenue guidance
+        rec_order = recognition(horizons={"m6": {"share_pct": 20, "derived": False}, "m12": {"share_pct": 50, "derived": False}})
+        v3 = ofc.build_v3("FIX", None, rec_order, REPORT_DAY, self.cutoff, self.claims, revenue_registry=reg)
+
+        self.assertEqual(v3["version"], 3)
+        self.assertEqual(v3["status"], "AVAILABLE")
+        self.assertEqual(v3["revenue_status"], "UNAVAILABLE")
+        # Tile 2 shows contracted recognition
+        self.assertEqual(v3["m6"]["status"], "AVAILABLE")
+        self.assertEqual(v3["m6"]["basis"], "RECOGNITION")
+        self.assertEqual(v3["m6"]["basis_label"], "已簽約預計認列")
+        # Tile 3 has no revenue basis
+        self.assertEqual(v3["m6"]["scenario"]["status"], "NO_BASIS")
+        self.assertEqual(v3["m6"]["scenario"]["reason"], "NO_REVENUE_BASIS")
+
+    def test_build_v3_uses_consensus_when_guidance_not_disclosed(self):
+        # Issuer record has status NOT_DISCLOSED; the registry gate explicitly enables the consensus route here.
+        reg = {
+            "status": "OK", "sha256": "b" * 64, "consensus_enabled": True,
+            "issuers": {
+                "000660.KS": {
+                    "symbol": "000660.KS",
+                    "company_name": "SK hynix Inc.",
+                    "status": "NOT_DISCLOSED",
+                    "reason": "COMPANY_DOES_NOT_GUIDE",
+                    "url_prefixes": ["https://www.skhynix.com/"],
+                    "documents": [
+                        {
+                            "id": "DOC-1", "issuer": "000660.KS", "publisher": "SK hynix",
+                            "source_kind": "OFFICIAL_FINANCIAL_STATEMENT", "url": "https://www.skhynix.com/q.pdf",
+                            "published_date": "2026-08-01", "retrieved_at": "2026-08-01T12:00:00Z",
+                            "sha256": "0" * 64, "byte_size": 1000, "lineage_id": "L1",
+                        },
+                        # The fiscal calendar the forward intervals are bound to (Astra r5 item 10: calendar links on
+                        # every branch, including the NOT_DISCLOSED consensus path).
+                        {
+                            "id": "DOC-CAL", "issuer": "000660.KS", "publisher": "SK hynix",
+                            "source_kind": "OFFICIAL_FISCAL_CALENDAR", "url": "https://www.skhynix.com/calendar.pdf",
+                            "published_date": "2026-08-01", "retrieved_at": "2026-08-01T12:00:00Z",
+                            "sha256": "1" * 64, "byte_size": 2000, "lineage_id": "L2",
+                        },
+                    ],
+                    "claims": [],
+                    "nondisclosure_evidence": {"document_ids": ["DOC-1"], "note": "No numeric revenue guidance"},
+                    "reported_quarters": [
+                        {"fiscal_label": "Q3 25", "start": "2025-07-01", "end": "2025-09-30", "revenue": 10e12, "currency": "KRW", "scope": "COMPANY", "accounting_basis": "K-IFRS", "document_id": "DOC-1", "locator": "p.1"},
+                        {"fiscal_label": "Q4 25", "start": "2025-10-01", "end": "2025-12-31", "revenue": 11e12, "currency": "KRW", "scope": "COMPANY", "accounting_basis": "K-IFRS", "document_id": "DOC-1", "locator": "p.2"},
+                        {"fiscal_label": "Q1 26", "start": "2026-01-01", "end": "2026-03-31", "revenue": 12e12, "currency": "KRW", "scope": "COMPANY", "accounting_basis": "K-IFRS", "document_id": "DOC-1", "locator": "p.3"},
+                        {"fiscal_label": "Q2 26", "start": "2026-04-01", "end": "2026-06-30", "revenue": 13e12, "currency": "KRW", "scope": "COMPANY", "accounting_basis": "K-IFRS", "document_id": "DOC-1", "locator": "p.4"},
+                    ],
+                    "forward_intervals": [
+                        {"fiscal_label": "Q3 26", "start": "2026-07-01", "end": "2026-09-30",
+                         "calendar_document_id": "DOC-CAL", "calendar_locator": "p.5"},
+                        {"fiscal_label": "Q4 26", "start": "2026-10-01", "end": "2026-12-31",
+                         "calendar_document_id": "DOC-CAL", "calendar_locator": "p.5"},
+                        {"fiscal_label": "Q1 27", "start": "2027-01-01", "end": "2027-03-31",
+                         "calendar_document_id": "DOC-CAL", "calendar_locator": "p.5"},
+                        {"fiscal_label": "Q2 27", "start": "2027-04-01", "end": "2027-06-30",
+                         "calendar_document_id": "DOC-CAL", "calendar_locator": "p.5"},
+                    ],
+                }
+            }
+        }
+        consensus_cache = {
+            "000660.KS": {
+                "symbol": "000660.KS",
+                "captured_at": "2026-09-28T08:00:00Z",
+                "currency": "KRW",
+                "quarters": [
+                    {"period": "0q", "end": "2026-09-30", "revenue": 15e12, "analysts": 25},
+                    {"period": "+1q", "end": "2026-12-31", "revenue": 16e12, "analysts": 24},
+                ],
+            }
+        }
+        v3 = ofc.build_v3("000660.KS", None, None, self.report_day, self.cutoff, self.claims,
+                          revenue_registry=reg, consensus_cache=consensus_cache,
+                          revenue_approval=make_synthetic_approval(reg["sha256"], reg["issuers"]))
+
+        self.assertEqual(v3["status"], "AVAILABLE")
+        self.assertEqual(v3["revenue_basis"], "CONSENSUS")
+        self.assertEqual(v3["m6"]["basis_label"], "非公司揭露、非訂單：分析師季度營收共識＋模型")
+        # amount6 = 15e12 + 16e12 = 31e12
+        self.assertAlmostEqual(v3["m6"]["amount"], 31e12)
+        # amount12 = 15 + 16 + 16 + 16 = 63e12
+        self.assertAlmostEqual(v3["m12"]["amount"], 63e12)
+
+
+class OrdersV3ContainmentTests(unittest.TestCase):
+    """A4 (Astra acceptance r7): the sealed envelope is a projected, bounded copy - unknown record fields never
+    reach the outer object, and a revenue EVIDENCE_LIMIT produces a small, coherent scoped state that PRESERVES
+    the independently validated sibling order recognition (NVDA m12 USD 1,248,000,000), so
+    lazy_bottleneck_v3_body keeps all 20 Top20 entries."""
+
+    def setUp(self):
+        import revenue_guidance
+        self.revenue_guidance = revenue_guidance
+        self.cutoff = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
+        self.report_day = date(2026, 9, 28)
+        self.claims = {"status": "EMPTY", "sha256": "0" * 64, "issuers": {}}
+
+    def _receipt_cache(self, symbol="TEST"):
+        rc = {
+            "issuer": symbol, "checked_at": "2026-09-28T09:00:00Z", "status": "OK",
+            "guidance_document_id": "DOC-1", "guidance_published_date": "2026-08-20", "anchor_end": "2026-07-31",
+            "coverage": "SEC_WIRE_IR",
+            "channels": [
+                {"kind": "SEC_SUBMISSIONS", "url": "https://data.sec.gov/submissions/CIK0000000000.json", "status": "OK", "checked_through": "2026-09-28", "complete": True},
+                {"kind": "WIRE_PRESS_RELEASES", "url": "https://api.nasdaq.com/api/news/topic/press_release?q=symbol:" + symbol, "status": "OK", "checked_through": "2026-09-28", "complete": True},
+                {"kind": "ISSUER_IR", "url": "https://investor.test.com/feed/PressRelease.svc/GetPressReleaseList", "status": "OK", "checked_through": "2026-09-28", "complete": True},
+            ],
+            "later_documents": [],
+        }
+        rc["digest"] = self.revenue_guidance.compute_receipt_digest(rc)
+        return {"schema": "revenue-guidance-release-checks-v1", "generated_at": "2026-09-28T09:00:00Z", "issuers": {symbol: [rc]}}
+
+    def _registry(self, symbol="TEST", claim_id="CLAIM-1"):
+        return {
+            "status": "OK", "sha256": "a" * 64,
+            "issuers": {
+                symbol: {
+                    "symbol": symbol, "company_name": "Test Co", "status": "GUIDANCE",
+                    "url_prefixes": ["https://investor.test.com/"],
+                    "documents": [{
+                        "id": "DOC-1", "issuer": symbol, "publisher": "Test Co", "title": "Release",
+                        "source_kind": "ISSUER_EARNINGS_RELEASE", "url": "https://investor.test.com/q2.pdf",
+                        "published_date": "2026-08-20", "retrieved_at": "2026-08-20T12:00:00Z",
+                        "sha256": "1" * 64, "byte_size": 2048, "lineage_id": "L1",
+                    }],
+                    "claims": [{
+                        "id": claim_id, "document_id": "DOC-1", "locator": "p.1",
+                        "passage": "Revenue outlook is 32.5 billion", "metric": "REVENUE",
+                        "assertion_kind": "COMPANY_GUIDANCE", "currency": "USD", "unit_multiplier": 1000000000,
+                        "stated_point": 32.5, "original_representation": "32.5 billion", "scope": "COMPANY",
+                        "accounting_basis": "GAAP", "fiscal_label": "Q3 FY26", "period_kind": "QUARTER",
+                        "period_start": "2026-08-01", "period_end": "2026-10-31",
+                    }],
+                    "reported_quarters": [
+                        {"fiscal_label": "Q3 FY25", "start": "2025-08-01", "end": "2025-10-31", "revenue": 18.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.1"},
+                        {"fiscal_label": "Q4 FY25", "start": "2025-11-01", "end": "2026-01-31", "revenue": 22.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.2"},
+                        {"fiscal_label": "Q1 FY26", "start": "2026-02-01", "end": "2026-04-30", "revenue": 26.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.3"},
+                        {"fiscal_label": "Q2 FY26", "start": "2026-05-01", "end": "2026-07-31", "revenue": 30.0e9, "currency": "USD", "scope": "COMPANY", "accounting_basis": "GAAP", "document_id": "DOC-1", "locator": "p.4"},
+                    ],
+                    "forward_intervals": [
+                        {"fiscal_label": "Q3 FY26", "start": "2026-08-01", "end": "2026-10-31", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q4 FY26", "start": "2026-11-01", "end": "2027-01-31", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q1 FY27", "start": "2027-02-01", "end": "2027-04-30", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                        {"fiscal_label": "Q2 FY27", "start": "2027-05-01", "end": "2027-07-31", "calendar_document_id": "DOC-1", "calendar_locator": "Fiscal calendar (p.5)"},
+                    ],
+                    "release_channels": {
+                        "ir": {"kind": "Q4_PRESS_RELEASES", "url": "https://investor.test.com/feed/PressRelease.svc/GetPressReleaseList"},
+                        "ir_guidance_release_title": "Test Co Reports Financial Results",
+                    },
+                }
+            },
+        }
+
+    def test_unknown_actual_fields_do_not_reach_the_outer_object(self):
+        # A forged, oversized unknown field on a used actual stays out of every outer duplicate: the top-level
+        # reported_quarters and the evidence copy are the projected bounded projection (allowed keys only).
+        reg = self._registry()
+        reg["issuers"]["TEST"]["reported_quarters"][0]["forged_multimegabyte"] = "x" * 200_000
+        approval = make_synthetic_approval(reg["sha256"], reg["issuers"])
+        v3 = ofc.build_v3("TEST", None, None, self.report_day, self.cutoff, self.claims, revenue_registry=reg,
+                         release_checks_cache=self._receipt_cache(), revenue_approval=approval)
+        blob = json.dumps(v3)
+        self.assertNotIn("x" * 1000, blob)
+        allowed = {"fiscal_label", "start", "end", "revenue", "currency", "scope", "accounting_basis",
+                   "document_id", "locator", "derivation"}
+        for actuals in (v3["reported_quarters"], v3["evidence"]["reported_quarters"]):
+            for q in actuals:
+                self.assertTrue(set(q) <= allowed, q)
+
+    def test_evidence_limit_preserves_sister_recognition(self):
+        # The scoped EVIDENCE_LIMIT state: the oversized/canonicalization-failed revenue originals are cleared to a
+        # small coherent envelope, while the independently validated m12 recognition (3.2B x 39% = 1.248B, Astra's
+        # executed NVDA case) stays AVAILABLE beside it.
+        import revenue_guidance
+        reg = self._registry(claim_id="CLAIM-OVER")
+        approval = make_synthetic_approval(reg["sha256"], reg["issuers"])
+        saved_canonical = revenue_guidance.canonical_json
+
+        def flaky_canonical_json(obj):
+            # The canonicalization-failure signal (the same branch the >100KB byte check raises): a claim marked
+            # CLAIM-OVER simulates the oversized evidence the bounds check refuses to carry sealed.
+            if isinstance(obj, dict) and any(isinstance(c, dict) and c.get("id") == "CLAIM-OVER" for c in obj.get("claims", [])):
+                raise ValueError("simulated canonicalization failure (oversized evidence)")
+            return saved_canonical(obj)
+
+        revenue_guidance.canonical_json = flaky_canonical_json
+        try:
+            v3 = ofc.build_v3("TEST", None, recognition(horizons={"m6": None, "m12": {"share_pct": 39, "derived": False}}),
+                              self.report_day, self.cutoff, self.claims, revenue_registry=reg,
+                              release_checks_cache=self._receipt_cache(), revenue_approval=approval)
+        finally:
+            revenue_guidance.canonical_json = saved_canonical
+
+        self.assertEqual(v3["revenue_status"], "UNAVAILABLE")
+        self.assertEqual(v3["revenue_reason"], "EVIDENCE_LIMIT")
+        self.assertEqual(v3["status"], "AVAILABLE")  # the recognition keeps the entry alive
+        self.assertEqual(v3["m12"]["status"], "AVAILABLE")
+        self.assertEqual(v3["m12"]["basis"], "RECOGNITION")
+        self.assertAlmostEqual(v3["m12"]["amount"], 1.248e9)  # 3.2B x 39%
+        self.assertEqual(v3["m6"]["status"], "UNAVAILABLE")
+        self.assertEqual(v3["m6"]["reason"], "EVIDENCE_LIMIT")
+        # The scoped envelope is small and coherent: the revenue originals are cleared, the bounded v2 order view
+        # and the approval nulls stay sealed so the Worker re-derives exactly this state (never INVALID).
+        self.assertEqual(v3["reported_quarters"], [])
+        self.assertEqual(v3["evidence"]["documents"], [])
+        self.assertEqual(v3["evidence"]["claims"], [])
+        self.assertEqual(v3["evidence"]["reported_quarters"], [])
+        self.assertEqual(v3["evidence"]["forward_intervals"], [])
+        self.assertIsNone(v3["evidence"]["consensus"])
+        self.assertIsNone(v3["evidence"]["latest_release_check"])
+        self.assertIsNone(v3["evidence"]["fy_reconciliation"])
+        self.assertIsNone(v3["evidence"]["approval_sha256"])
+        self.assertIsNone(v3["evidence"]["approval_decisions"])
+        self.assertTrue(v3["evidence"].get("order_evidence"))  # the preserved recognition re-derives from it
+
+    def test_lazy_bottleneck_keeps_all_20_entries_when_one_is_limited(self):
+        # Astra's executed A4 case through the real caller: one Top20 issuer's revenue evidence limits while its
+        # m12 recognition survives - all 20 entries stay sealed, none is wiped from the document.
+        import json as _json
+        import tempfile
+        from pathlib import Path
+        import publish_sealed_snapshot as publisher
+
+        reg = self._registry(symbol="S5", claim_id="CLAIM-OVER")
+        approval = make_synthetic_approval(reg["sha256"], reg["issuers"])
+        saved = {
+            "load_registry": publisher.revenue_guidance.load_registry,
+            "load_approval": publisher.revenue_guidance.load_approval,
+            "select_for_cutoff": publisher.revenue_consensus_quarterly.select_for_cutoff,
+            "load_release_checks_cache": publisher.revenue_guidance.load_release_checks_cache,
+            "load_order_scenarios": publisher.company_deep_report.load_order_scenarios,
+            "load_reports": publisher.company_deep_report.load_reports,
+            "canonical_json": self.revenue_guidance.canonical_json,
+        }
+        publisher.revenue_guidance.load_registry = lambda *a, **k: reg
+        publisher.revenue_guidance.load_approval = lambda *a, **k: approval
+        publisher.revenue_consensus_quarterly.select_for_cutoff = lambda *a, **k: {}
+        publisher.revenue_guidance.load_release_checks_cache = lambda *a, **k: {}
+        publisher.company_deep_report.load_order_scenarios = lambda *a, **k: {
+            "S5": recognition(horizons={"m6": None, "m12": {"share_pct": 39, "derived": False}})}
+        publisher.company_deep_report.load_reports = lambda *a, **k: {}
+
+        def flaky_canonical_json(obj):
+            if isinstance(obj, dict) and any(isinstance(c, dict) and c.get("id") == "CLAIM-OVER" for c in obj.get("claims", [])):
+                raise ValueError("simulated canonicalization failure (oversized evidence)")
+            return saved["canonical_json"](obj)
+
+        self.revenue_guidance.canonical_json = flaky_canonical_json
+
+        registry_dir = tempfile.TemporaryDirectory()
+        registry_path = Path(registry_dir.name) / "order-claims-v2.json"
+        registry_path.write_text(_json.dumps({"schema": "order-claims-v2", "issuers": {}, "documents": [], "claims": []}), encoding="utf-8")
+        saved_registry_path = publisher.order_claims.REGISTRY_PATH
+        publisher.order_claims.REGISTRY_PATH = registry_path
+
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        entry = {"rank": 1, "symbol": "S1", "name": "S One", "layer": "optics", "archetype": "EXPLOSION", "score": 60.9,
+                 "role": "CW laser", "role_source": {"url": "https://x.com/a/status/1", "date": "2026-09-03"},
+                 "score_parts": {"layer_heat": 5, "capture": 4, "lead": 14, "confirmation": 15, "size": 10, "penalty": 0},
+                 "fundamentals": None, "market": {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/S1",
+                                                  "asof": "2026-09-25", "ret_6m": 0.9, "ret_1y": 0.5, "cagr_2y": 0.6,
+                                                  "currency": "USD", "price": 1.0},
+                 "market_cap_usd": 1.05e9, "serenity": None, "leopold": None}
+        doc = {"schema": "v213-bottleneck-top20-v3", "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+               "leads": {"serenity": {"url": None, "latest_post_at": None}, "leopold": {"filing": None}},
+               "top": [{**entry, "rank": index + 1, "symbol": f"S{index + 1}"} for index in range(20)],
+               "industries": []}
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "v3.json"
+                path.write_text(_json.dumps(doc), encoding="utf-8")
+                body = publisher.lazy_bottleneck_v3_body(path, now)
+        finally:
+            publisher.revenue_guidance.load_registry = saved["load_registry"]
+            publisher.revenue_guidance.load_approval = saved["load_approval"]
+            publisher.revenue_consensus_quarterly.select_for_cutoff = saved["select_for_cutoff"]
+            publisher.revenue_guidance.load_release_checks_cache = saved["load_release_checks_cache"]
+            publisher.company_deep_report.load_order_scenarios = saved["load_order_scenarios"]
+            publisher.company_deep_report.load_reports = saved["load_reports"]
+            self.revenue_guidance.canonical_json = saved["canonical_json"]
+            publisher.order_claims.REGISTRY_PATH = saved_registry_path
+            registry_dir.cleanup()
+
+        self.assertTrue(body, "the 20-entry document must seal even with one scoped EVIDENCE_LIMIT issuer")
+        sealed = _json.loads(body[publisher.BOTTLENECK_V3_KEY])
+        self.assertEqual(len(sealed["top"]), 20)  # every entry kept
+        by_symbol = {row["symbol"]: row for row in sealed["top"]}
+        s5 = by_symbol["S5"]["outlook"]["order_forecast_v3"]
+        self.assertEqual(s5["revenue_status"], "UNAVAILABLE")
+        self.assertEqual(s5["revenue_reason"], "EVIDENCE_LIMIT")
+        self.assertEqual(s5["m12"]["status"], "AVAILABLE")
+        self.assertEqual(s5["m12"]["basis"], "RECOGNITION")
+        self.assertAlmostEqual(s5["m12"]["amount"], 1.248e9)
+        # The unreviewed-record entries keep their own (independent) state beside the limited one.
+        for sym in ("S1", "S20"):
+            self.assertIsNotNone(by_symbol[sym]["outlook"]["order_forecast_v3"])
+            self.assertEqual(by_symbol[sym]["outlook"]["order_forecast_v3"]["revenue_reason"], "INPUTS_MISSING")
+
+
+class OrdersV3ProbeFixtureTests(unittest.TestCase):
+    """Astra r7 acceptance A1/A2/A4: the producer-to-reader probe fixture is reproducible from its frozen real inputs
+    and carries the required producer states (the Worker test parses the same outlooks)."""
+
+    def test_probe_fixture_is_current_and_states_hold(self):
+        import subprocess
+        root = Path(__file__).resolve().parents[1]
+        done = subprocess.run([sys.executable, str(root / "tests" / "fixtures" / "make_orders_v3_probes.py"), "--check"], cwd=root)
+        self.assertEqual(done.returncode, 0, "run tests/fixtures/make_orders_v3_probes.py")
+        cases = json.loads((root / "tests" / "fixtures" / "v213-orders-v3-probes.json").read_text(encoding="utf-8"))["cases"]
+        states = {name: (c["outlook"]["order_forecast_v3"]["revenue_status"], c["outlook"]["order_forecast_v3"]["revenue_reason"],
+                         c["outlook"]["order_forecast_v3"].get("revenue_diagnostic"), c["outlook"]["order_forecast_v3"]["m12"].get("basis"))
+                  for name, c in cases.items()}
+        self.assertEqual(states["control"], ("AVAILABLE", None, None, "COMPANY_GUIDANCE"))
+        self.assertEqual(states["unreviewed_extra_field"], ("UNAVAILABLE", "INVALID", "UNREVIEWED_INPUTS", "RECOGNITION"))
+        self.assertEqual(states["unreviewed_without_orders"][:3], ("UNAVAILABLE", "INVALID", "UNREVIEWED_INPUTS"))
+        self.assertEqual(states["evidence_limit_fiscal_label"], ("UNAVAILABLE", "EVIDENCE_LIMIT", None, "RECOGNITION"))
+        self.assertIsNotNone(cases["evidence_limit_fiscal_label"]["outlook"]["order_forecast_v3"]["contracted_recognition"])
+        for name, c in cases.items():
+            if name.startswith("title_"):
+                self.assertEqual(c["receipt_status"], "REVIEW_REQUIRED" if c["material"] else "OK", c["title"])

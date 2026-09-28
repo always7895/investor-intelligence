@@ -51,6 +51,10 @@ try {
             # Company reports use the rotation just written; a failure keeps the last good file.
             Invoke-Step 'company_reports' @('scripts\company_deep_report.py', '--refresh', '--if-older-than-hours', "$IfOlderThanHours")
             Invoke-Step 'leopold_13f' @('scripts\leopold_positions.py', '--if-older-than-hours', '24')
+            # Revenue-guidance latest-release receipts (EDGAR + wire + official IR) run before the v3 build, so every
+            # receipt the sealer binds to that build's cutoff was captured at or before it (ORDERS-V3-01). The quarterly
+            # consensus collector is not scheduled: that path is disabled for the first rollout (ORDERS-V3-CONSENSUS-01).
+            Invoke-Step 'guidance_release_check' @('scripts\revenue_guidance_release_check.py', '--if-older-than-hours', '0.9')
             Invoke-Step 'bottleneck_v3' @('scripts\bottleneck_top20_v3.py', '--if-older-than-hours', '3')
         } catch {
             Write-Host ('STEP sec_contact exit=1 ' + $_.Exception.GetType().Name)

@@ -602,6 +602,18 @@ class SealedFormTests(unittest.TestCase):
         missing = self._seal_one(market, None, "outlook")["order_forecast"]["evidence"]
         self.assertEqual((missing["registry_status"], missing["registry_sha256"]), ("UNAVAILABLE", None))
 
+    def test_sealing_produces_dual_fields_v2_and_v3(self):
+        """Astra contract ORDERS-V3-01 section 6: dual fields order_forecast (v2) and order_forecast_v3 (v3)."""
+        market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 0.1,
+                  "ret_1y": 0.2, "cagr_2y": 0.3, "history_start": "2023-09-25", "currency": "USD"}
+        outlook = self._seal_one(market, None, "outlook")
+        self.assertIn("order_forecast", outlook)
+        self.assertIn("order_forecast_v3", outlook)
+        self.assertEqual(outlook["order_forecast"]["version"], 2)
+        self.assertEqual(outlook["order_forecast_v3"]["version"], 3)
+        self.assertEqual(outlook["order_forecast_v3"]["formula"], "ORDERS-V3-01")
+        self.assertEqual(outlook["order_forecast_v3"]["horizon_convention"], "FISCAL_2Q_4Q")
+
     def test_the_order_forecast_is_built_at_sealing_from_the_deep_report_schedule(self):
         import order_forecast
         market = {"source": "Yahoo", "source_url": "https://finance.yahoo.com/quote/SNDK", "asof": "2026-09-25", "ret_6m": 0.1,

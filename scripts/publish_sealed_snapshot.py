@@ -45,6 +45,8 @@ import company_deep_report  # noqa: E402
 import listing_lineage  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
+import revenue_guidance  # noqa: E402
+import revenue_consensus_quarterly  # noqa: E402
 import top20_carry_forward  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
 
@@ -516,14 +518,24 @@ def _sealed_outlook(raw: "object") -> "dict | None":
 
 
 def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "object", recognition: "object",
-                         cutoff: "datetime", claims: "dict") -> "dict":
-    """The sealed outlook plus its version-2 6-month / 1-year order forecast (scripts/order_forecast.py build_v2) at the
-    build cutoff with the reviewed order-claim registry (scripts/order_claims.py); an entry without an outlook still
-    carries the forecast's explicit unavailability."""
+                         cutoff: "datetime", claims: "dict",
+                         revenue_registry: "dict | None" = None,
+                         consensus_cache: "dict | None" = None,
+                         release_checks_cache: "dict | None" = None,
+                         revenue_approval: "dict | None" = None) -> "dict":
+    """The sealed outlook plus dual fields (Astra contract ORDERS-V3-01 section 6):
+    - order_forecast: existing version:2, built by unchanged build_v2
+    - order_forecast_v3: new version:3, separate revenue+order view
+    at the build cutoff with reviewed registries, receipts and the enforced reviewed profile (A1) loaded once."""
     sealed = outlook if outlook is not None else {"orders": None, "consensus": None, "scenarios": [], "consensus_second": None}
-    return {**sealed, "order_forecast": order_forecast.build_v2(
+    v2 = order_forecast.build_v2(
         issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
-        cutoff.date(), cutoff, claims)}
+        cutoff.date(), cutoff, claims)
+    v3 = order_forecast.build_v3(
+        issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
+        cutoff.date(), cutoff, claims, revenue_registry=revenue_registry, consensus_cache=consensus_cache, v2_forecast=v2,
+        release_checks_cache=release_checks_cache, revenue_approval=revenue_approval)
+    return {**sealed, "order_forecast": v2, "order_forecast_v3": v3}
 
 
 def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
@@ -540,6 +552,31 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
         # The deep reports' full order scenarios (RPO recognition schedules) feed the 6-month / 1-year order forecast.
         # The reviewed order claims after the filings, loaded once per document (never fetched while sealing).
         order_claim_registry = order_claims.load()
+        try:
+            revenue_guidance_registry = revenue_guidance.load_registry()
+        except Exception:
+            revenue_guidance_registry = {"status": "INVALID", "sha256": None, "issuers": {}}
+        try:
+            # A1: the enforced reviewed profile beside the registry (loaded once; a missing/malformed file fails
+            # every issuer's revenue path closed as UNREVIEWED_INPUTS while the order view stays independent).
+            revenue_approval_profile = revenue_guidance.load_approval()
+        except Exception:
+            revenue_approval_profile = {"status": "UNAVAILABLE", "sha256": None, "registry_sha256": None,
+                                       "approved_at": None, "reviewer": None, "records": {}}
+        try:
+            # The newest capture per issuer taken at or before this build's cutoff (captures keep a short history).
+            # A corrupted or missing cache is a typed channel fault, never conflated with a genuine empty/nondisclosed
+            # success (Astra r5 item 9): the fault travels sealed so the Worker re-derives the same scoped failure.
+            consensus_cache = revenue_consensus_quarterly.select_for_cutoff(revenue_consensus_quarterly.load_cache(), generated)
+        except Exception:
+            consensus_cache = {"__fault__": "CONSENSUS_CACHE_LOAD_FAILED"}
+        try:
+            release_checks_cache = revenue_guidance.load_release_checks_cache()
+            if not isinstance(release_checks_cache, dict):
+                raise ValueError("not an object")
+        except Exception:
+            release_checks_cache = {"schema": "revenue-guidance-release-checks-v1", "generated_at": None, "issuers": {},
+                                    "__fault__": "RELEASE_CHECK_CACHE_LOAD_FAILED"}
         order_scenarios = company_deep_report.load_order_scenarios(tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]])
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
@@ -581,7 +618,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
-                    order_scenarios.get(entry["symbol"]), generated, order_claim_registry),
+                    order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
+                    revenue_registry=revenue_guidance_registry, consensus_cache=consensus_cache,
+                    release_checks_cache=release_checks_cache, revenue_approval=revenue_approval_profile),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": sealed_fund,
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
