@@ -4,11 +4,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import stat
 import subprocess
-import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,52 +48,11 @@ def assert_plain_path(path):
         raise RuntimeError("FIXTURE_HARDLINK_REJECTED")
 
 
-# Cases stay for a day as failure evidence; older ones are pruned once per process
-# so repeated full runs cannot grow the audit area without bound.
-CASE_RETENTION_SECONDS = 24 * 60 * 60
-CASE_NAME = re.compile(r"^[a-z0-9-]+-[0-9a-f]{32}$")
-_pruned_roots = set()
-
-
-def _remove_tree_no_follow(path):
-    """Delete a case tree; links and junctions are removed as links, never traversed."""
-    with os.scandir(path) as entries:
-        for entry in entries:
-            try:
-                if entry.is_junction() or entry.is_symlink():
-                    try:
-                        os.unlink(entry.path)
-                    except OSError:
-                        os.rmdir(entry.path)
-                elif entry.is_dir(follow_symlinks=False):
-                    _remove_tree_no_follow(entry.path)
-                else:
-                    os.chmod(entry.path, stat.S_IWRITE)
-                    os.unlink(entry.path)
-            except OSError:
-                continue  # e.g. an ACL test case denying deletion; leave it
-    try:
-        os.rmdir(path)
-    except OSError:
-        pass
-
-
-def prune_stale_cases(root, retention_seconds=CASE_RETENTION_SECONDS, now=None):
-    """Remove case directories older than the retention; returns the pruned names."""
-    cutoff = (time.time() if now is None else now) - retention_seconds
-    pruned = []
-    with os.scandir(root) as entries:
-        for entry in entries:
-            try:
-                if not CASE_NAME.fullmatch(entry.name) or entry.is_junction() or entry.is_symlink():
-                    continue
-                if not entry.is_dir(follow_symlinks=False) or entry.stat(follow_symlinks=False).st_mtime >= cutoff:
-                    continue
-                _remove_tree_no_follow(entry.path)
-            except OSError:
-                continue  # removed concurrently or not accessible; never fail a test run on pruning
-            pruned.append(entry.name)
-    return pruned
+# Cases are never pruned by the tests (project audit 2026-09-29 round 3): a case root may hold retained failure
+# receipts, journals and preimages of earlier runs, and neither a name nor a directory age proves that a case is
+# disposable. Clearing a case root is a separate maintenance action under docs/WORKSPACE_MAINTENANCE.md; gate runs
+# point V213_INSTALLER_TEST_AUDIT_ROOT at a fresh per-run directory with a short path (no longer than the default root:
+# the installer cases copy deep trees under the Windows path limit) so the retained default root does not grow.
 
 
 def new_case(label):
@@ -109,9 +66,6 @@ def new_case(label):
     assert_plain_path(root.parent)
     root.mkdir(exist_ok=True)
     assert_plain_path(root)
-    if root not in _pruned_roots:
-        _pruned_roots.add(root)
-        prune_stale_cases(root)
     case = root / (label + "-" + uuid.uuid4().hex)
     case.mkdir()
     assert_plain_path(case)
@@ -120,7 +74,7 @@ def new_case(label):
 
 @contextmanager
 def persistent_fixture(label):
-    # No cleanup on exit: failure evidence and links stay; new_case prunes cases after CASE_RETENTION_SECONDS.
+    # No cleanup on exit: failure evidence and links stay; nothing in the tests removes a case.
     yield str(new_case(label.rstrip(" -")))
 
 

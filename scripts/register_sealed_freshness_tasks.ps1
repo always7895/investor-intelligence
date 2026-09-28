@@ -86,53 +86,11 @@ if ($ValidateOnly) {
     exit 0
 }
 
-$backup = @{}
-try {
-    foreach ($Definition in $definitions) {
-        $existing = Get-ScheduledTask -TaskName $Definition.Name -ErrorAction SilentlyContinue
-        if ($existing) { $backup[$Definition.Name] = Export-ScheduledTask -TaskName $Definition.Name -ErrorAction Stop }
-        else { $backup[$Definition.Name] = $null }
-    }
-
-    $logonType = 'Interactive'
-    foreach ($Definition in $definitions) {
-        $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType $logonType -RunLevel Limited
-        $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Definition.RepetitionMinutes) -RepetitionDuration (New-TimeSpan -Days 10000)
-        Register-ScheduledTask -TaskName $Definition.Name -Action (Build-Action $Definition) -Trigger $trigger -Settings $settings -Principal $principal -Description $Definition.Description -Force | Out-Null
-    }
-
-    foreach ($Definition in $definitions) {
-        $Task = Get-ScheduledTask -TaskName $Definition.Name -ErrorAction Stop
-        if ([string]$Task.Principal.LogonType -ne $logonType) { throw "LOGON_TYPE_INVALID: $($Definition.Name)" }
-        $TaskSettings = $Task.Settings
-        if (-not $TaskSettings.StartWhenAvailable) { throw "START_WHEN_AVAILABLE_MISSING: $($Definition.Name)" }
-        $limitSpan = if ($TaskSettings.ExecutionTimeLimit -is [TimeSpan]) { $TaskSettings.ExecutionTimeLimit } else { [System.Xml.XmlConvert]::ToTimeSpan([string]$TaskSettings.ExecutionTimeLimit) }
-        if ($limitSpan -ne (New-TimeSpan -Hours 1)) { throw "EXECUTION_TIME_LIMIT_INVALID: $($Definition.Name)" }
-        $repetition = $Task.Triggers[0].Repetition
-        $repSpan = if ($repetition -and $repetition.Interval -is [TimeSpan]) { $repetition.Interval } elseif ($repetition) { [System.Xml.XmlConvert]::ToTimeSpan([string]$repetition.Interval) } else { $null }
-        if (-not $repSpan -or $repSpan -ne (New-TimeSpan -Minutes $Definition.RepetitionMinutes)) {
-            throw "REPETITION_INTERVAL_INVALID: $($Definition.Name)"
-        }
-    }
-}
-catch {
-    $failure = $_.Exception.Message
-    $rollbackFailed = $false
-    foreach ($Definition in $definitions) {
-        try {
-            if ($backup[$Definition.Name]) {
-                Register-ScheduledTask -TaskName $Definition.Name -Xml ([string]$backup[$Definition.Name]) -Force -ErrorAction Stop | Out-Null
-            }
-            elseif (Get-ScheduledTask -TaskName $Definition.Name -ErrorAction SilentlyContinue) {
-                Unregister-ScheduledTask -TaskName $Definition.Name -Confirm:$false -ErrorAction Stop
-            }
-        }
-        catch { $rollbackFailed = $true }
-    }
-    if ($rollbackFailed) { throw "SEALED_FRESHNESS_TASKS_UPGRADE_FAILED; rollback_unverified=true" }
-    throw "SEALED_FRESHNESS_TASKS_UPGRADE_FAILED; rollback commands completed. $failure"
-}
+# Capture every preimage first (any lookup/export failure changes nothing), then register and verify; recovery
+# touches only the attempted definitions (scripts/sealed_freshness_task_transaction.ps1).
+. (Join-Path $PSScriptRoot 'sealed_freshness_task_transaction.ps1')
+$logonType = 'Interactive'
+Invoke-SealedFreshnessTaskTransaction -Definitions $definitions -BuildAction ${function:Build-Action} -CurrentUser $currentUser -LogonType $logonType
 
 $statusDir = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\status'
 New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
@@ -147,8 +105,13 @@ $receiptPath = Join-Path $statusDir 'sealed-freshness-tasks.json'
     startWhenAvailable = $true
     executionTimeLimitMinutes = 60
     logonType = $logonType
-    ownerLoggedInRequired = $false
-    productionMutation = $false
+    # Interactive tasks run only while the owning user is logged on. Registration itself changes production schedules
+    # and activates the publishing task (which writes KV when it runs); the registration writes no KV directly.
+    ownerLoggedInRequired = ($logonType -eq 'Interactive')
+    productionMutation = $true
+    scheduleMutation = $true
+    activatesPublishingTask = $true
+    directKvWrite = $false
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 
 Write-Host "SEALED_FRESHNESS_TASKS = PASS; hourly sealed refresh + 30min read-only watchdog registered." -ForegroundColor Green

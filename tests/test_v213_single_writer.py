@@ -83,6 +83,22 @@ class HourlyRegistrationTests(unittest.TestCase):
                 bad = self.validate(shell, "-SnapshotRoot", 'data" -X "')
                 self.assertNotEqual(bad.returncode, 0)
 
+    def test_registration_receipt_states_the_owner_session_and_the_schedule_mutation(self):
+        # Project audit 2026-09-29 finding 4: the tasks are registered Interactive (owner logged on) and a real
+        # registration changes production schedules; only -ValidateOnly is non-mutating. Checked on the script text,
+        # never by touching the real Task Scheduler.
+        text = (ROOT / "scripts/register_sealed_freshness_tasks.ps1").read_text(encoding="utf-8")
+        receipt = text[text.index("schemaVersion = 1"):text.index("ConvertTo-Json -Depth 6")]
+        self.assertIn("$logonType = 'Interactive'", text)
+        self.assertIn("ownerLoggedInRequired = ($logonType -eq 'Interactive')", receipt)
+        self.assertIn("productionMutation = $true", receipt)
+        self.assertIn("scheduleMutation = $true", receipt)
+        self.assertIn("directKvWrite = $false", receipt)
+        self.assertNotIn("productionMutation = $false", text)
+        validate = text[text.index("if ($ValidateOnly) {"):text.index("# Capture every preimage first")]
+        self.assertIn("production_mutation=false", validate)
+        self.assertNotIn("Register-ScheduledTask", validate)
+
     def test_receipt_is_written_outside_the_script_root(self):
         text = (ROOT / "scripts/register_sealed_freshness_tasks.ps1").read_text(encoding="utf-8")
         self.assertNotIn("state\\sealed-freshness-tasks.json", text)

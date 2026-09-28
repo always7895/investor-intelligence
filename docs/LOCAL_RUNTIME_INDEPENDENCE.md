@@ -115,6 +115,8 @@ requires no Pi/Herdr/Astra/cloud-AI fallback.
 
 ## Release status (LOCAL_DEVELOPMENT_GATES_PASS; NOT final acceptance)
 
+> **Historical record** of the batch at `977057d` (2026-09-2x), kept as evidence. It is not the current state: current identity, acceptance and release status live in `state/STATUS.md`. Nothing below authorizes resuming the paused bootstrap or provisioning a decider.
+
 - Verification base `977057d`. **NINE** runtime/config/test paths:
   `scripts/v213_local_llm_gateway.py`, `scripts/v213_decision_backend_client.py`,
   `scripts/v212_local_llm_gateway.py` (transport seam),
