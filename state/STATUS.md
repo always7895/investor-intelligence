@@ -1,32 +1,31 @@
 # Current state / 目前狀態
 
-Updated 2026-09-28 10:45 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show 06a7f28:state/STATUS.md` (L18-5351 detail); `git show 4be0888:state/STATUS.md` (ORDERS-V2-01); `git show 349a332:state/STATUS.md`; `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
+Updated 2026-09-28 14:40 Asia/Taipei by Claude Code (sole tracked writer). Previous text: `git show ca571aa:state/STATUS.md` (rollout v6); `git show 06a7f28:state/STATUS.md` (L18-5351 detail); `git show 4be0888:state/STATUS.md` (ORDERS-V2-01); `git show 349a332:state/STATUS.md`; `git show 914f0e6:state/STATUS.md`; earlier `git show e2365cd:state/STATUS.md`, `git show 5b15984:state/STATUS.md`, `git show 3ac39a1:state/STATUS.md` (full production record), `git show a8c6e58:state/STATUS.md`, `git show 59049db:state/STATUS.md`, `git show 38860e7:state/STATUS.md`; V12 `git show 0f5358b:state/STATUS.md`. Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in this file's history.
 
 ## Identity
 
-- Branch `fix/options-provenance-audit` at `06a7f28` (L18-5351-CURATED-01, pushed; writer + Astra ACCEPT r2). Production runs `4be0888` (rollout v6, below). CI on this branch ends COMPLETED_SKIPPED by design: not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
-- Last batches: L18-5351-CURATED-01 (`06a7f28`: official previous-quarter comparator for 5351.TWO; Astra REJECT r1, ACCEPT r2 with the ruling that an empty Yahoo cell is absent); ORDERS-V2-01 (`4be0888`); NINFER-DEFAULTS-01 (`349a332`); PY-LOCAL-01 (`914f0e6`).
+- Branch `fix/options-provenance-audit` at `ca571aa` (STATUS after rollout v6; code = `06a7f28`, L18-5351-CURATED-01, writer + Astra ACCEPT r2). Production runs `ca571aa` (rollout v7, below). CI on this branch ends COMPLETED_SKIPPED by design: not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
+- Last batches: L18-5351-CURATED-01 (`06a7f28`); ORDERS-V2-01 (`4be0888`); NINFER-DEFAULTS-01 (`349a332`); PY-LOCAL-01 (`914f0e6`).
 
-## Production — rollout v6 executed 2026-09-28 00:35–02:25Z (receipt `_archive\rollout-2026-09-28\RECEIPT-rollout6.md`)
+## Production — rollout v7 executed 2026-09-28 05:40–06:20Z (receipt `_archive\rollout-2026-09-28\RECEIPT-rollout7.md`)
 
-Operator authorized rollout v6 in the executing session, approved the availability-tolerant budget contract (section A of `command-sheet-v6-r5.md`) and explicitly overrode Astra's NO_GO on the command sheet (r1–r5). Astra's post-execution review ACCEPTs the resulting combination, scoped (`astra-rollout6-acceptance.result.md`).
-- Runtime `4be0888` (tx `fca52e17b6784bcba3dd9ae37eeb031d`, FINALIZED); Worker `02ef0276-2aaa-491e-ae98-a238744b8ea2` (100 %); pointer after the first hourly seal `20260928T021234Z-297fd3172895` (CARRIED_FORWARD, seven-field report 2026-09-28T00:21:49Z); four tasks enabled; LINE Q&A relay up.
-- Live now: order forecast v2 (半年內／1年內預計認列, 若半年內／1年內實現訂單 → 股價預估), listing lineage, dilution basis, route-bound relay heartbeat (P7: 17 accepted heartbeats, no generic KV nonce observed under a 180 s visibility assumption — the nightly quota exhaustion cause), options validators (SIVE.ST/VOLV-B.ST cycles valid).
-- Before publication the 08:12 hourly seal had sealed Top20 INSUFFICIENT (`TOP20_REPORT_TOO_OLD`); the candidate carried the new LKG and restored it.
-- Recovery: runtime `-RestorePrevious fca52e17b6784bcba3dd9ae37eeb031d` (old root ff6dc42 retained, preimages in `evidence\preimage`); Worker rollback `25377354-0ff5-4a28-a78b-82ec2457729f` (restores the KV-nonce heartbeat). Re-evaluate compatibility first; the 08:12 baseline run is not a healthy target.
-- Limits: section-A accounting not fully executed (post-reset start); readiness bodies executor-attested; evidence `_archive\rollout-2026-09-28\evidence\` with `evidence-inventory.sha256`.
+Worker first, then data, under an Astra GO with six conditions (`astra-rollout7.result.md`). Astra's post-execution review REJECTs on execution compliance, not data (`astra-rollout7-acceptance.result.md`): (1) the section-A budget estimate (1135 > 1000) required a stop, and the writer's substitution of the 300 webhook allowance by a count of completed LINE event keys was not demonstrated; (2) the published candidate kept four open option assertions (NVDA/SIVE.ST monthly missing; options cache with 1 valid cycle versus 210 before, zero refused); (3) no budget gate before the relay/task resume. The operator accepted the result as a scoped risk acceptance after the fact, with these deviations recorded as non-compliance and no recovery (`DISPOSITION-rollout7.md`). Not a PASS.
+- Worker `ce9859bb-b6a1-4c89-9113-9927e00e0ae7` (100 %); runtime `ca571aa` (tx `4863346e15894db9b9f944bda6025c10`, FINALIZED); first hourly seal after resume `20260928T061234Z-91870edbac2d` verified (EXACT, ca571aa replay, readiness, 5351 attribution); four tasks enabled; relay up.
+- Live now: everything from rollout v6 (order forecast v2, lineage, dilution basis, route-bound heartbeat) plus the official previous-quarter comparator for 5351.TWO (前一季年增 +336.2%, attributed 「前一季年增來源：鈺創官方合併季報（2026Q1／2025Q1，附註六(二十四) p.39），已核對同基準」).
+- Degraded: options suggestions since the 05:13Z options build (1 valid cycle); lane OPTIONS-PRESESSION-01.
+- Recovery (needs then-current compatibility, budget and authorization): Worker rollback `02ef0276-2aaa-491e-ae98-a238744b8ea2` (reads current data, drops the official attribution); runtime `-RestorePrevious 4863346e15894db9b9f944bda6025c10` (4be0888; preimages `evidence-v7\preimage`). Rollout v6 history: `git show ca571aa:state/STATUS.md`.
 
 ## Authorization and queue
 
-1. Rollout v6 follow-ups (Astra): read back a later hourly seal with actual-reader replay and readiness; runbook: the relay bridge needs the operation mutex (release the holder before starting the relay), record gate/census at each activation, keep a serving-reader-compatible recovery candidate.
-2. `06a7f28` (L18-5351) is undeployed; it needs Worker first, then data, and a new current-session authorization.
+1. OPTIONS-PRESESSION-01: `build_market_quotes_options.py` replaced a snapshot of 210 valid cycles by one with 1 valid cycle (chains without two-sided quotes, diagnosed as Yahoo's pre-session reset; not established). Needs an Astra contract: keep last-good quotes within their original age/provenance limits, regression tests; not a freshness bypass.
+2. Runbook: the relay bridge needs the operation mutex (release the holder before starting the relay); a failed budget/candidate gate stops a rollout and goes to the operator before any write; record gate and census at each activation.
 3. Lane 19 CRDO: CRDO-RPO-01 closed BLOCKED_INPUTS by Astra (not COMPLETE). MU waits for its FQ4 FY26 10-K (report 2026-09-30).
 4. Local Qwen: available on ninfer when idle; dispatch delays LINE answers.
 5. DEFERRED_WITH_REASON: lanes 2, 3, 5 (below), driver v3 A–D; the other four lane-18 listings.
 
 ## Commits since 2026-09-26 20:45
 
-`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19 v1. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. `349a332`: NINFER-DEFAULTS-01. `4be0888`: ORDERS-V2-01 (deployed 2026-09-28). `06a7f28`: L18-5351 (not deployed).
+`13d7c85` … `5b15984`: lanes 2/3/4/6, KV quota handling, ChatGPT Pro reviews, reader replay v3. `aa54416`/`bb95f97`: lanes 15/16. `33d7938`: lanes 17/18. `eca78a1`: lane 19 v1. `dec7bd0`: `AGENTS.md`. `e2365cd`: STATUS reconcile. `914f0e6`: PY-LOCAL-01. `349a332`: NINFER-DEFAULTS-01. `4be0888`: ORDERS-V2-01 (deployed in rollout v6). `06a7f28`: L18-5351 and `ca571aa`: STATUS (deployed in rollout v7).
 
 ## Operator decisions (2026-09-26)
 
@@ -59,6 +58,6 @@ Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, g
 
 ## Handoff
 
-- Next: rollout v6 follow-ups (queue 1); then a Worker-first rollout plan for `06a7f28` when the operator authorizes it; MU after its 10-K.
+- Next: OPTIONS-PRESESSION-01 contract (Astra) and implementation; runbook updates (queue 2); MU after its 10-K.
 - Operator: the plaintext Alpha Vantage note; whether a 6-month figure may ever be a labelled model estimate (currently shown as 未揭露 when undisclosed).
-- Tooling: rollout worktree `_workspace\rollout-4be0888` (detached 4be0888, git-ignored production config copy inside); old-reader worktree `%TEMP%\ii-live\wt-16cb1b3`; rollout tools `%TEMP%\ii-live\rollout6`; Gemini worktree `_workspace\gemini-l18-5351` and Qwen worktree `_workspace\qwen-ninfer-defaults` (integrated); `chatgpt-web` lane `investor`.
+- Tooling: rollout worktrees `_workspace\rollout-ca571aa` and `_workspace\rollout-4be0888` (detached 4be0888, git-ignored production config copy inside); old-reader worktree `%TEMP%\ii-live\wt-16cb1b3`; rollout tools `%TEMP%\ii-live\rollout6`; Gemini worktree `_workspace\gemini-l18-5351` and Qwen worktree `_workspace\qwen-ninfer-defaults` (integrated); `chatgpt-web` lane `investor`.
