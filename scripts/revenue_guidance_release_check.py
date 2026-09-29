@@ -280,10 +280,10 @@ def receipt_for(record: Mapping[str, Any], now: datetime, sec_fetch: Callable[[s
         return None
     # The check starts from the validated selected/current claim set (Astra r5 item 2): deterministic, order-independent,
     # never claims[0] with a hardcoded fallback.
-    active = revenue_guidance.select_active_guidance_claims(record)
-    ref_doc_id = None
-    if active:
-        ref_doc_id = revenue_guidance.guidance_reference_document_id(active[0], docs_by_id)
+    # One reference for the whole active claim set (ORDERS-V3-AUTOUPDATE-01 B0): claims with distinct references
+    # are not checkable from one reference (no receipt, so the record stays unavailable), never checked from the
+    # first or the newest claim alone.
+    ref_doc_id = revenue_guidance.guidance_reference(record)["document_id"]
     if not ref_doc_id or ref_doc_id not in docs_by_id:
         return None
     since, anchor_end = docs_by_id[ref_doc_id]["published_date"], quarters[-1]["end"]

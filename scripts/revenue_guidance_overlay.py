@@ -5,7 +5,10 @@ immutable generations, admission by re-derivation and the release-check gate.
 Layout under one state root (the runtime's data/cache/revenue_guidance_autoupdate, a temporary root in tests):
   captures/<aa>/<raw sha256>        exact HTTP entity bytes
   captures/<aa>/<raw sha256>.json   capture metadata (url, retrieved_at, bytes, digests, role ...)
-  generations/<id>.json             one immutable generation (the complete per-issuer attempt history)
+  segments/<sha256>.json            immutable, content-addressed segments of an issuer's attempt history
+  generations/<id>.json             one immutable generation (per issuer: sealed segments + open attempts,
+                                    detections)
+  queue.json                        the updater's fair-queue position (a scheduling hint only, never an admission input)
   current.json                      pointer {schema, generation_id, sha256}, replaced atomically
 
 The updater is the only writer. Nothing stored is trusted as an outcome: an issuer's automatic record is admitted
@@ -27,7 +30,7 @@ from typing import Any, Mapping
 import revenue_guidance
 import revenue_guidance_auto_verify as verify
 
-STATE_SCHEMA = "revenue-guidance-auto-state-v2"
+STATE_SCHEMA = "revenue-guidance-auto-state-v3"
 POINTER_SCHEMA = "revenue-guidance-auto-pointer-v1"
 CAPTURE_META_KEYS = {"url", "accession", "form", "filed", "retrieved_at", "bytes", "raw_sha256", "sha256", "content_type", "role"}
 ATTEMPT_KEYS = {"event_key", "attempted_at", "predecessor_sha256", "event", "captures", "outcome", "reason", "detail",
@@ -39,7 +42,28 @@ ITEM_KEYS = {"id", "title", "date"}
 GENERATION_KEYS = {"schema", "generation_id", "parent", "created_at", "verifier_version", "normalizer_version",
                    "implementation_sha256", "profiles_sha256", "baseline_registry_sha256", "baseline_approval_sha256", "issuers",
                    "detections"}
-DETECTION_KEYS = {"predecessor_sha256", "documents", "overflow"}
+# History: attempts are sealed into immutable segments of at most SEGMENT_SIZE; a generation references them by digest
+# and keeps the newest attempts open (a trailing wait can still be superseded). No lifetime attempt limit, nothing
+# deleted; a missing or altered segment blocks that issuer.
+SEGMENT_SIZE = 32
+MAX_OPEN = 64
+MAX_SEGMENTS = 4096
+# The machine decision contract: exact operand keys per decision kind (and per ACTUAL shape).
+OPERAND_KEYS = {
+    "CLAIM": ({"offsets", "point", "low", "high", "quarter", "fiscal_year"},),
+    "ACTUAL": ({"concept", "start", "end", "value"}, {"concept", "longer", "shorter_concept", "shorter", "shorter_capture"}, {"label", "value"}),
+    "CALENDAR": ({"rule", "offsets", "allocation"},),
+    "ROUTING": ({"adapter", "accession", "form", "items", "filed", "exhibit", "package", "ir_item", "wire_item", "consumed",
+                 "report_period", "reference"},),
+}
+CONSUMED_KEYS = {"channel", "id", "date"}
+DETECTION_KEYS = {"documents", "overflow"}
+INDEX_KEYS = {"verified", "truncated", "settled"}
+ENTRY_KEYS = {"head", "sealed", "open", "index"}
+INDEX_TAIL = 8
+LOCATOR_KEYS = {"segment", "position"}
+MAX_VERIFIED = 4096
+MAX_SETTLED = 256
 MAX_DETECTIONS = 256
 IDENTITY_KEYS = ("verifier_version", "normalizer_version", "implementation_sha256", "profiles_sha256",
                  "baseline_registry_sha256", "baseline_approval_sha256")
@@ -55,7 +79,6 @@ CHANNELS = ("SEC_SUBMISSIONS", "WIRE_PRESS_RELEASES", "ISSUER_IR")
 MATERIAL = ("RESULTS_RELEASE", "POSSIBLY_RELEVANT")
 DECISION_KINDS = ("CLAIM", "ACTUAL", "CALENDAR", "ROUTING")
 MAX_GENERATION_BYTES = 8 * 1024 * 1024
-MAX_ATTEMPTS_PER_ISSUER = 64
 
 
 class StateError(Exception):
@@ -128,22 +151,89 @@ def store_capture(root: Path, raw: bytes, meta: Mapping[str, Any]) -> str:
         if verify.sha256(path.read_bytes()) != raw_sha:
             raise StateError(f"CAPTURE_BYTES {raw_sha[:12]}")
         # Same bytes captured again (another URL or time): keep the first metadata; the attempt names the URL it used.
+        # (The bytes were counted when the object was reserved.)
         if not path.with_name(raw_sha + ".json").exists():
             _durable_write(path.with_name(raw_sha + ".json"), json.dumps(full, sort_keys=True).encode("utf-8"))
         return raw_sha
+    # Reservation first: the counter already includes these bytes (and names them pending) before any file is written,
+    # so an interruption at any later point can only over-count; `reconcile_usage` settles pending reservations.
+    usage = _read_usage_file(root)
+    if usage is None:
+        if (root / "captures").exists():
+            raise StateError("STORE_ACCOUNTING_UNKNOWN")
+        usage = {"bytes": 0, "files": 0, "pending": {}}
+    if len(usage["pending"]) >= MAX_PENDING:
+        raise StateError("STORE_ACCOUNTING_PENDING")
+    usage["bytes"] += len(raw)
+    usage["files"] += 1
+    usage["pending"][raw_sha] = {"bytes": len(raw), "pid": os.getpid()}
+    _write_usage(root, usage)
     _durable_write(path, raw)
     _durable_write(path.with_name(raw_sha + ".json"), json.dumps(full, sort_keys=True).encode("utf-8"))
+    del usage["pending"][raw_sha]
+    _write_usage(root, usage)
     return raw_sha
 
 
-def capture_bytes_total(root: Path) -> int:
-    total = 0
-    for meta in (root / "captures").glob("*/*.json"):
-        try:
-            total += int(json.loads(meta.read_text(encoding="utf-8"))["bytes"])
-        except (OSError, ValueError, KeyError, TypeError):
-            raise StateError("CAPTURE_META_UNREADABLE") from None
-    return total
+USAGE_FILE = "store_usage.json"
+MAX_PENDING = 16
+
+
+def _read_usage_file(root: Path) -> dict[str, Any] | None:
+    """The store's accounting journal: raw bytes and objects held (reservations included) and the pending reservations
+    (object digest -> reserved bytes and the writing process id). None when missing or malformed."""
+    try:
+        data = json.loads((root / USAGE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(data, dict) or set(data) != {"bytes", "files", "pending"} or type(data["bytes"]) is not int or data["bytes"] < 0
+            or type(data["files"]) is not int or data["files"] < 0 or not isinstance(data["pending"], dict) or len(data["pending"]) > MAX_PENDING
+            or not all(SHA_RE.match(str(k)) and isinstance(v, dict) and set(v) == {"bytes", "pid"} and type(v["bytes"]) is int
+                       and v["bytes"] >= 0 and type(v["pid"]) is int for k, v in data["pending"].items())):
+        return None
+    return data
+
+
+def _write_usage(root: Path, usage: Mapping[str, Any]) -> None:
+    _durable_write(root / USAGE_FILE, json.dumps({"bytes": usage["bytes"], "files": usage["files"], "pending": usage["pending"]},
+                                                 sort_keys=True).encode("utf-8"))
+
+
+def reconcile_usage(root: Path) -> int | None:
+    """Raw bytes held by the capture store, from the accounting journal (under the updater's lock, at the start of a
+    run). Pending reservations are settled: an object that was written stays counted; one that was not is released
+    and its temporary file (an incomplete write, never referenced) removed. Work is bounded by MAX_PENDING; nothing is
+    enumerated. None when the journal is missing or malformed for a non-empty store: new captures then wait until
+    `recount_usage` (the `--recount-store` maintenance command) rebuilds it."""
+    usage = _read_usage_file(root)
+    if usage is None:
+        return 0 if not (root / "captures").exists() else None
+    if usage["pending"]:
+        for raw_sha, reserved in list(usage["pending"].items()):
+            path = capture_path(root, raw_sha)
+            if not path.exists():
+                usage["bytes"] = max(0, usage["bytes"] - reserved["bytes"])
+                usage["files"] = max(0, usage["files"] - 1)
+                path.with_name(f"{raw_sha}.tmp-{reserved['pid']}").unlink(missing_ok=True)
+            path.with_name(f"{raw_sha}.json.tmp-{reserved['pid']}").unlink(missing_ok=True)
+            del usage["pending"][raw_sha]
+        _write_usage(root, usage)
+    return usage["bytes"]
+
+
+def recount_usage(root: Path) -> dict[str, int]:
+    """Maintenance (not part of an ordinary run): rebuild the journal from the objects on disk - every raw object and
+    every leftover temporary file is counted (conservative; nothing is deleted)."""
+    total = files = 0
+    captures = root / "captures"
+    for bucket in sorted(captures.iterdir()) if captures.exists() else []:
+        for item in bucket.iterdir():
+            if item.is_file() and not item.name.endswith(".json"):
+                total += item.stat().st_size
+                files += 1
+    usage = {"bytes": total, "files": files, "pending": {}}
+    _write_usage(root, usage)
+    return {"bytes": total, "files": files}
 
 
 # ------------------------------------------------------------------------------------------------ generations
@@ -216,11 +306,23 @@ def validate_attempt(a: Any) -> None:
     if not isinstance(decisions, list) or len(decisions) > 32 or not all(
             isinstance(d, dict) and set(d) == DECISION_KEYS and d["kind"] in DECISION_KINDS and _text(d["ref"], 80)
             and _text(d["decision"], 40) and d["capture"] in caps and isinstance(d["operands"], dict)
-            and d["reviewed_at"] == a["attempted_at"] for d in decisions):
+            and d["reviewed_at"] == a["attempted_at"] and set(d["operands"]) in OPERAND_KEYS[d["kind"]] for d in decisions):
         raise StateError("ATTEMPT_DECISIONS")
     if a["outcome"] == "VERIFIED":
         if a["reason"] is not None or not isinstance(a["record"], dict) or a["record_sha256"] != record_sha256(a["record"]) or not decisions:
             raise StateError("ATTEMPT_RECORD")
+        kinds = [d["kind"] for d in decisions]
+        if kinds.count("ROUTING") != 1 or kinds.count("CLAIM") != 1 or kinds.count("CALENDAR") != 1 or kinds.count("ACTUAL") < 5:
+            raise StateError("ATTEMPT_DECISION_SET")
+        routing = next(d["operands"] for d in decisions if d["kind"] == "ROUTING")
+        consumed = routing["consumed"]
+        if not isinstance(consumed, list) or not 1 <= len(consumed) <= 32 or not all(
+                isinstance(c, dict) and set(c) == CONSUMED_KEYS and c["channel"] in CHANNELS and _text(c["id"], 400)
+                and _text(c["date"], 10, DAY_RE) for c in consumed):
+            raise StateError("ATTEMPT_CONSUMED")
+        if (not _text(routing["filed"], 10, DAY_RE) or not _text(routing["accession"], 20, ACCESSION_RE)
+                or not isinstance(routing["reference"], dict) or not isinstance(routing["report_period"], dict)):
+            raise StateError("ATTEMPT_ROUTING")
         for key in ("submissions", "index", "exhibit", "ir_copy"):
             if key not in caps:
                 raise StateError("ATTEMPT_INPUTS")
@@ -235,10 +337,172 @@ def _later_ok(docs: Any) -> bool:
 
 
 def validate_detections(entry: Any) -> None:
-    """The monotonic set of material documents observed against one effective record (issuer-local)."""
-    if (not isinstance(entry, dict) or set(entry) != DETECTION_KEYS or not _text(entry["predecessor_sha256"], 64, SHA_RE)
-            or not _later_ok(entry["documents"]) or not isinstance(entry["overflow"], bool)):
+    """An issuer's monotonic set of observed material documents (issuer-local). Only the admitted, re-derived producer
+    accounts for items (its consumed identities, and items dated strictly before its filing day)."""
+    if not isinstance(entry, dict) or set(entry) != DETECTION_KEYS or not _later_ok(entry["documents"]) or not isinstance(entry["overflow"], bool):
         raise StateError("ATTEMPT_DETECTIONS")
+
+
+def segment_path(root: Path, digest: str) -> Path:
+    if not SHA_RE.match(str(digest)):
+        raise StateError("SEGMENT_ID")
+    return root / "segments" / f"{digest}.json"
+
+
+def write_segment(root: Path, attempts: list[Mapping[str, Any]], previous: str | None) -> str:
+    """Seal attempts into an immutable content-addressed segment linked to the previous segment (a hash chain)."""
+    if not 1 <= len(attempts) <= SEGMENT_SIZE:
+        raise StateError("SEGMENT_SIZE")
+    for a in attempts:
+        validate_attempt(a)
+    data = json.dumps({"previous": previous, "attempts": list(attempts)}, ensure_ascii=False, sort_keys=True, indent=1).encode("utf-8")
+    digest = verify.sha256(data)
+    path = segment_path(root, digest)
+    if path.exists():
+        if verify.sha256(path.read_bytes()) != digest:
+            raise StateError("SEGMENT_BYTES")
+    else:
+        _durable_write(path, data)
+    return digest
+
+
+def load_segment(root: Path, digest: str) -> tuple[str | None, list[dict[str, Any]]]:
+    path = segment_path(root, digest)
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise StateError(f"SEGMENT_MISSING {digest[:12]}") from error
+    if len(data) > MAX_GENERATION_BYTES or verify.sha256(data) != digest:
+        raise StateError(f"SEGMENT_BYTES {digest[:12]}")
+    try:
+        body = json.loads(data.decode("utf-8"))
+    except ValueError as error:
+        raise StateError(f"SEGMENT_JSON {digest[:12]}") from error
+    if (not isinstance(body, dict) or set(body) != {"previous", "attempts"} or not (body["previous"] is None or _text(body["previous"], 64, SHA_RE))
+            or not isinstance(body["attempts"], list) or not 1 <= len(body["attempts"]) <= SEGMENT_SIZE):
+        raise StateError("SEGMENT_SHAPE")
+    return body["previous"], body["attempts"]
+
+
+def _locator_ok(loc: Any, entry: Mapping[str, Any]) -> bool:
+    if not isinstance(loc, dict) or set(loc) != LOCATOR_KEYS or type(loc["position"]) is not int or loc["position"] < 0:
+        return False
+    if loc["segment"] is None:
+        return loc["position"] < len(entry["open"])
+    return _text(loc["segment"], 64, SHA_RE) and loc["position"] < SEGMENT_SIZE
+
+
+def validate_entry(entry: Any) -> None:
+    """One issuer's history, constant size: the head of its hash-linked chain of sealed segments (audit history), the
+    number of sealed attempts, open attempts, and the index admission reads - the locations of the newest verified
+    attempts (at most 8; `truncated` when older ones exist) and the events settled since the producer's filing day."""
+    if (not isinstance(entry, dict) or set(entry) != ENTRY_KEYS or not (entry["head"] is None or _text(entry["head"], 64, SHA_RE))
+            or type(entry["sealed"]) is not int or entry["sealed"] < 0 or (entry["sealed"] == 0) != (entry["head"] is None)
+            or not isinstance(entry["open"], list) or len(entry["open"]) > MAX_OPEN or not (entry["head"] or entry["open"])):
+        raise StateError("ATTEMPT_ENTRY")
+    index = entry["index"]
+    if (not isinstance(index, dict) or set(index) != INDEX_KEYS or not isinstance(index["verified"], list)
+            or len(index["verified"]) > INDEX_TAIL or not all(_locator_ok(loc, entry) for loc in index["verified"])
+            or not isinstance(index["truncated"], bool)
+            or not isinstance(index["settled"], list) or len(index["settled"]) > MAX_SETTLED
+            or not all(isinstance(x, dict) and set(x) == {"key", "date"} and _text(x["key"], 60) and _text(x["date"], 10, DAY_RE)
+                       for x in index["settled"])):
+        raise StateError("ATTEMPT_INDEX")
+
+
+def new_entry() -> dict[str, Any]:
+    return {"head": None, "sealed": 0, "open": [], "index": {"verified": [], "truncated": False, "settled": []}}
+
+
+def attempt_at(root: Path, entry: Mapping[str, Any], loc: Mapping[str, Any]) -> dict[str, Any]:
+    if loc["segment"] is None:
+        return entry["open"][loc["position"]]
+    _, sealed = load_segment(root, loc["segment"])
+    if loc["position"] >= len(sealed):
+        raise StateError("SEGMENT_POSITION")
+    return sealed[loc["position"]]
+
+
+def last_attempt(root: Path, entry: Mapping[str, Any]) -> dict[str, Any] | None:
+    if entry["open"]:
+        return entry["open"][-1]
+    return load_segment(root, entry["head"])[1][-1] if entry["head"] else None
+
+
+def append_attempt(entry: dict[str, Any], attempt: dict[str, Any]) -> None:
+    """Append to the open attempts and keep the index: a verified attempt becomes the producer (settled events dated
+    before its filing day are dropped), a verified or blocked event is settled."""
+    entry["open"].append(attempt)
+    index = entry["index"]
+    if attempt["outcome"] == "VERIFIED":
+        index["verified"].append({"segment": None, "position": len(entry["open"]) - 1})
+        if len(index["verified"]) > INDEX_TAIL:
+            index["verified"] = index["verified"][-INDEX_TAIL:]
+            index["truncated"] = True
+        filed = routing_filed(attempt)
+        index["settled"] = [x for x in index["settled"] if x["date"] >= filed]
+    if attempt["outcome"] in ("VERIFIED", "BLOCKED") and not attempt["event_key"].startswith("unresolved:"):
+        date = attempt["event"]["filed"] or attempt["attempted_at"][:10]
+        if not any(x["key"] == attempt["event_key"] for x in index["settled"]):
+            index["settled"].append({"key": attempt["event_key"], "date": date})
+        if len(index["settled"]) > MAX_SETTLED:
+            raise StateError("SETTLED_OVERFLOW")
+
+
+def seal(root: Path, entry: dict[str, Any]) -> list[str]:
+    """Move the oldest open attempts into new chained segments while more than SEGMENT_SIZE are open (locators follow);
+    returns the digests written."""
+    written = []
+    while len(entry["open"]) > SEGMENT_SIZE:
+        chunk = entry["open"][:SEGMENT_SIZE]
+        digest = write_segment(root, chunk, entry["head"])
+        written.append(digest)
+        entry["head"] = digest
+        entry["sealed"] += len(chunk)
+        entry["open"] = entry["open"][SEGMENT_SIZE:]
+        for loc in entry["index"]["verified"]:
+            if loc["segment"] is None:
+                if loc["position"] < SEGMENT_SIZE:
+                    loc["segment"] = digest
+                else:
+                    loc["position"] -= SEGMENT_SIZE
+    return written
+
+
+def verify_history(root: Path, entry: Any) -> int:
+    """Structural audit of a whole history, off the admission path: walks the segment chain from its head (every
+    segment present, hash-verified, correctly linked), validates every attempt's shape and time order, checks the sealed
+    count and that the index tail locates the newest verified attempts. It does not re-derive sources (admission
+    re-derives the producer). Returns the number of attempts."""
+    validate_entry(entry)
+    segments = []
+    digest = entry["head"]
+    while digest is not None:
+        previous, attempts = load_segment(root, digest)
+        segments.append((digest, attempts))
+        digest = previous
+        if len(segments) > MAX_SEGMENTS:
+            raise StateError("SEGMENT_CHAIN")
+    ordered = [(d, pos, a) for d, attempts in reversed(segments) for pos, a in enumerate(attempts)]
+    ordered += [(None, pos, a) for pos, a in enumerate(entry["open"])]
+    if len(ordered) - len(entry["open"]) != entry["sealed"]:
+        raise StateError("SEGMENT_COUNT")
+    previous_at = ""
+    verified = []
+    for d, pos, a in ordered:
+        validate_attempt(a)
+        if a["attempted_at"] < previous_at:
+            raise StateError("ATTEMPT_ORDER")
+        previous_at = a["attempted_at"]
+        if a["outcome"] == "VERIFIED":
+            verified.append({"segment": d, "position": pos})
+    # The index tail locates verified attempts in history order (a producer that a re-verification did not reproduce
+    # is superseded by the newer decision and leaves the index, so the tail may skip it).
+    tail = entry["index"]["verified"]
+    positions = [verified.index(loc) if loc in verified else -1 for loc in tail]
+    if any(p < 0 for p in positions) or positions != sorted(set(positions)):
+        raise StateError("ATTEMPT_INDEX_MISMATCH")
+    return len(ordered)
 
 
 def validate_generation(gen: Any) -> None:
@@ -261,8 +525,8 @@ def validate_generation(gen: Any) -> None:
         raise StateError("GENERATION_ISSUERS")
     if not isinstance(gen["detections"], dict) or len(gen["detections"]) > 32:
         raise StateError("GENERATION_DETECTIONS")
-    for sym, attempts in issuers.items():
-        if not _text(sym, 16, re.compile(r"^[A-Z][A-Z0-9.\-]{0,15}$")) or not isinstance(attempts, list) or not 1 <= len(attempts) <= MAX_ATTEMPTS_PER_ISSUER:
+    for sym in issuers:
+        if not _text(sym, 16, re.compile(r"^[A-Z][A-Z0-9.\-]{0,15}$")):
             raise StateError("GENERATION_ATTEMPTS")
 
 
@@ -296,12 +560,23 @@ def generation_at(root: Path, cutoff: str) -> dict[str, Any] | None:
     return gen
 
 
-def publish_generation(root: Path, gen: Mapping[str, Any], expected_parent: Mapping[str, Any] | None) -> str:
-    """Write the immutable generation file, then move the pointer; a pre-existing id or a moved pointer refuses."""
+def publish_generation(root: Path, gen: Mapping[str, Any], expected_parent: Mapping[str, Any] | None,
+                       carried: set[str] | frozenset[str] = frozenset(), written: set[str] | frozenset[str] = frozenset()) -> str:
+    """Write the immutable generation file, then move the pointer; a pre-existing id or a moved pointer refuses.
+    `carried` issuers are unreadable histories carried forward unchanged as their fail-closed barrier. Only the
+    segments `written` by this publication are checked here (older segments are immutable references carried on;
+    admission reads the ones it needs and `verify_history` audits the rest), so missing audit history never stops
+    another issuer."""
     validate_generation(gen)
-    for attempts in gen["issuers"].values():
-        for a in attempts:
+    for sym, entry in gen["issuers"].items():
+        if sym in carried:
+            continue
+        validate_entry(entry)
+        for a in entry["open"]:
             validate_attempt(a)
+    for digest in written:
+        if not segment_path(root, digest).exists():
+            raise StateError("SEGMENT_MISSING")
     for entry in gen["detections"].values():
         validate_detections(entry)
     current = read_pointer(root)
@@ -321,31 +596,43 @@ def publish_generation(root: Path, gen: Mapping[str, Any], expected_parent: Mapp
 
 # ------------------------------------------------------------------------------------------------ admission
 
+def predecessor_view(effective: Mapping[str, Any], baseline: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What a successor may take from its predecessor: its anchor (ordering) only. Release channels come from the
+    curated baseline record, never from a stored machine record; no number is inherited."""
+    return dict(effective, release_channels=dict((baseline or {}).get("release_channels") or {}))
+
+
 def rederive(root: Path, profile: Mapping[str, Any], effective: Mapping[str, Any], attempt: Mapping[str, Any],
-             allow_replay: bool = False) -> dict[str, Any]:
+             allow_replay: bool = False, baseline: Mapping[str, Any] | None = None) -> dict[str, Any]:
     captures = {key: load_capture(root, raw_sha) for key, raw_sha in attempt["captures"].items()}
     if not allow_replay and any(str(c["role"]).startswith("REPLAY_") for c in captures.values()):
         raise StateError("REPLAY_CAPTURE")
-    return verify.build_successor(profile, effective, attempt["event"], captures, attempt["attempted_at"])
+    return verify.build_successor(profile, predecessor_view(effective, baseline), attempt["event"], captures, attempt["attempted_at"])
 
 
 def admit(root: Path, gen: Mapping[str, Any] | None, cutoff: str, profiles: Mapping[str, Mapping[str, Any]],
-          curated: Mapping[str, Mapping[str, Any]], ident: Mapping[str, str], allow_replay: bool = False) -> dict[str, dict[str, Any]]:
-    """Per enabled issuer: {"mode", "reason", "detail", "effective", "producer", "attempts", "detections"} at the cutoff.
+          curated: Mapping[str, Mapping[str, Any]], ident: Mapping[str, str], allow_replay: bool = False,
+          entries: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
+    """Per enabled issuer: {"mode", "reason", "detail", "effective", "producer", "attempt", "detections", "overflow"}.
 
-    `effective` is the newest admitted record of the chain (curated or automatic, also while waiting/blocked: the
-    release checker and the updater continue from it; never a display input by itself); `producer` the admitted
-    attempt that made it; `detections` the material documents recorded as unresolved against it."""
+    Bounded work per issuer: the index's producer (newest verified attempt) is re-derived from its stored bytes with its
+    predecessor (the verified attempt before it, or the curated record) as the only input; the newest attempt gives the
+    mode; open attempts (at most 64) are validated; the issuer's monotonic detection set, plus the open attempts'
+    observations, minus what the re-derived producer accounts for (its consumed identities, items dated strictly before
+    its filing day), is what remains unresolved. No older decision is operative. `effective` is the record the release
+    checker and the updater continue from; never a display input by itself. `entries` replaces the generation's
+    issuer entries (the updater's in-memory state)."""
     out: dict[str, dict[str, Any]] = {}
     for sym in profiles:
         out[sym] = {"mode": "CURATED", "reason": None, "detail": None, "effective": curated.get(sym), "producer": None,
-                    "attempt": None, "attempts": [], "detections": [], "overflow": False,
-                    "generation_id": None if gen is None else gen["generation_id"]}
+                    "attempt": None, "detections": [], "overflow": False, "generation_id": None if gen is None else gen["generation_id"]}
     if gen is None:
         return out
     identity_ok = all(gen[k] == ident[k] for k in IDENTITY_KEYS)
-    for sym in sorted(set(gen["issuers"]) | set(gen.get("detections") or {})):
-        attempts = gen["issuers"].get(sym, [])
+    issuers = entries if entries is not None else gen["issuers"]
+    # Every attempt admission reads must precede both the requested cutoff and the generation that holds it.
+    horizon = min(cutoff, gen.get("created_at") or cutoff)
+    for sym in sorted(set(issuers) | set(gen.get("detections") or {})):
         state = out.get(sym)
         if state is None:
             continue  # history of a profile no longer enabled: never admitted
@@ -353,66 +640,87 @@ def admit(root: Path, gen: Mapping[str, Any] | None, cutoff: str, profiles: Mapp
             state.update(mode="BLOCKED", reason="APPROVAL_BINDING", effective=None, detail="implementation, policy or baseline changed; awaiting re-verification")
             continue
         effective, producer = curated.get(sym), None
-        mode, reason, detail, detections, kept = "CURATED", None, None, [], []
+        mode, reason, detail, last = "CURATED", None, None, None
+        detections: list[dict[str, Any]] = []
+        overflow = False
         try:
-            previous = ""
-            for attempt in attempts:
-                validate_attempt(attempt)
-                if attempt["attempted_at"] < previous:
-                    raise StateError("ATTEMPT_ORDER")
-                previous = attempt["attempted_at"]
-                if attempt["attempted_at"] > cutoff:
-                    break
-                if effective is None or attempt["predecessor_sha256"] != record_sha256(effective):
-                    raise StateError("PREDECESSOR_CHAIN")
-                if attempt["outcome"] == "VERIFIED":
-                    # Admission: the installed verifier must reproduce this exact outcome from the stored bytes.
-                    again = rederive(root, profiles[sym], effective, attempt, allow_replay)
-                    if again["outcome"] != "VERIFIED" or (verify.canonical_json(again["record"]) != verify.canonical_json(attempt["record"])
-                                                          or verify.canonical_json(again["decisions"]) != verify.canonical_json(attempt["decisions"])):
-                        raise StateError("REDERIVATION_RECORD")
-                    # Detections carry across the reference change: a verified release accounts only for what it
-                    # consumed and for documents dated strictly before its own filing day (it supersedes them); a
-                    # same-day or later document stays unresolved.
-                    carried = detections + list(attempt["event"]["later_documents"])
-                    consumed = consumed_identities(attempt)
-                    filed = routing_filed(attempt)
-                    detections = [d for d in _material_documents([{"later_documents": carried}])
-                                  if (str(d["channel"]), str(d["id"]), str(d["date"])) not in consumed and not str(d["date"]) < filed]
-                    effective, producer, mode, reason, detail = attempt["record"], attempt, "AUTO_VERIFIED", None, None
-                else:
-                    # A waiting or blocked attempt only ever suspends the issuer; its detections persist until a
-                    # verified successor supersedes the record they were detected against.
-                    mode, reason, detail = attempt["outcome"], attempt["reason"], attempt["detail"]
-                    detections = detections + list(attempt["event"]["later_documents"])
-                kept.append(attempt)
-                state["attempt"] = attempt
-            entry = (gen.get("detections") or {}).get(sym)
-            overflow = False
+            entry = issuers.get(sym)
             if entry is not None:
-                validate_detections(entry)
-                if effective is not None and entry["predecessor_sha256"] == record_sha256(effective):
-                    detections = _material_documents([{"later_documents": detections + list(entry["documents"])}])
-                    overflow = entry["overflow"]
-        except (StateError, KeyError, TypeError, ValueError, AttributeError) as error:
+                validate_entry(entry)
+                previous_at = ""
+                for attempt in entry["open"]:
+                    validate_attempt(attempt)
+                    if attempt["attempted_at"] < previous_at:
+                        raise StateError("ATTEMPT_ORDER")
+                    previous_at = attempt["attempted_at"]
+                    if attempt["attempted_at"] > horizon:
+                        raise StateError("ATTEMPT_AFTER_CUTOFF")
+                    detections.extend(attempt["event"]["later_documents"])
+                verified = entry["index"]["verified"]
+                if not verified and entry["index"]["truncated"]:
+                    raise StateError("ATTEMPT_INDEX_EXHAUSTED")
+                if verified:
+                    producer = attempt_at(root, entry, verified[-1])
+                    validate_attempt(producer)
+                    if producer["attempted_at"] > horizon:
+                        raise StateError("ATTEMPT_AFTER_CUTOFF")
+                    if len(verified) > 1:
+                        before = attempt_at(root, entry, verified[-2])
+                        validate_attempt(before)
+                        if before["outcome"] != "VERIFIED" or before["attempted_at"] > producer["attempted_at"]:
+                            raise StateError("ATTEMPT_INDEX_MISMATCH")
+                        predecessor = before["record"]
+                    elif entry["index"]["truncated"]:
+                        raise StateError("ATTEMPT_INDEX_EXHAUSTED")
+                    else:
+                        predecessor = curated.get(sym)
+                    if producer["outcome"] != "VERIFIED" or predecessor is None or producer["predecessor_sha256"] != record_sha256(predecessor):
+                        raise StateError("PREDECESSOR_CHAIN")
+                    # Admission: the installed verifier must reproduce the producing release exactly from its stored bytes.
+                    again = rederive(root, profiles[sym], predecessor, producer, allow_replay, curated.get(sym))
+                    if again["outcome"] != "VERIFIED" or (verify.canonical_json(again["record"]) != verify.canonical_json(producer["record"])
+                                                          or verify.canonical_json(again["decisions"]) != verify.canonical_json(producer["decisions"])):
+                        raise StateError("REDERIVATION_RECORD")
+                    effective = producer["record"]
+                last = last_attempt(root, entry)
+                if last is not None:
+                    validate_attempt(last)
+                    if last["attempted_at"] > horizon:
+                        raise StateError("ATTEMPT_AFTER_CUTOFF")
+                    if last["outcome"] == "VERIFIED":
+                        if producer is None or verify.canonical_json(last) != verify.canonical_json(producer):
+                            raise StateError("ATTEMPT_INDEX_MISMATCH")
+                        mode = "AUTO_VERIFIED"
+                    else:
+                        mode, reason, detail = last["outcome"], last["reason"], last["detail"]
+                        if producer is None and effective is None:
+                            raise StateError("PREDECESSOR_CHAIN")
+            store = (gen.get("detections") or {}).get(sym)
+            if store is not None:
+                validate_detections(store)
+                detections.extend(store["documents"])
+                overflow = store["overflow"]
+            detections = _material_documents([{"later_documents": detections}])
+            if producer is not None:
+                consumed, filed = consumed_identities(producer), routing_filed(producer)
+                detections = [d for d in detections if (str(d["channel"]), str(d["id"]), str(d["date"])) not in consumed and not str(d["date"]) < filed]
+        except (StateError, KeyError, TypeError, ValueError, AttributeError, IndexError) as error:
             # Malformed stored state is corrupt; well-formed state that the sources do not reproduce is unbound.
-            malformed = not isinstance(error, StateError) or str(error).startswith(("ATTEMPT_", "EVENT_"))
+            malformed = not isinstance(error, StateError) or str(error).startswith(("ATTEMPT_", "EVENT_", "SEGMENT_"))
             state.update(mode="BLOCKED", reason="STATE_CORRUPT" if malformed else "APPROVAL_BINDING", effective=None, producer=None,
                          detail=f"{type(error).__name__}: {error}"[:300])
             continue
-        state.update(mode=mode, reason=reason, detail=detail, effective=effective, producer=producer, attempts=kept, detections=detections,
-                     overflow=overflow)
+        state.update(mode=mode, reason=reason, detail=detail, effective=effective, producer=producer, attempt=last,
+                     detections=detections, overflow=overflow)
     return out
 
 
 # ------------------------------------------------------------------------------------------------ release-check gate
 
 def reference(record: Mapping[str, Any]) -> tuple[str | None, str | None]:
-    """(guidance reference document id, its published date) by the registry's own active-claim selection."""
-    docs = {d.get("id"): d for d in record.get("documents") or [] if isinstance(d, Mapping)}
-    active = revenue_guidance.select_active_guidance_claims(record)
-    ref = revenue_guidance.guidance_reference_document_id(active[0], docs) if active else None
-    return ref, (docs.get(ref) or {}).get("published_date") if ref else None
+    """(guidance reference document id, its published date) of the whole active claim set (the registry's helper)."""
+    ref = revenue_guidance.guidance_reference(record)
+    return ref["document_id"], ref["published_date"]
 
 
 def routing_filed(attempt: Mapping[str, Any]) -> str:

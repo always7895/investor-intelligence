@@ -70,6 +70,10 @@ TRANSITIONS = (
                             r"[^.;]{0,60}?\b" + _OBJECT + r"\b", re.I)),
 )
 RULE_KINDS = ("LAST_SUNDAY_OF_JANUARY", "THURSDAY_CLOSEST_TO_AUGUST_31")
+# Enumerated, versioned source/event/actuals modes. Only implemented modes are accepted; each fixes its event form,
+# evidence roles and actuals reader. NBIS's 6-K table mode and CRWV's IR-package/PDF mode are later slices.
+SEC_8K_202_INLINE_XBRL_V1 = "SEC_8K_202_INLINE_XBRL_V1"
+ADAPTERS = (SEC_8K_202_INLINE_XBRL_V1,)
 COVER_FACTS = ("dei:DocumentType", "dei:DocumentPeriodEndDate")
 # Reviewed namespace identities: a prefix is only a spelling; names are compared as (namespace URI, local name).
 NAMESPACES = {
@@ -409,7 +413,7 @@ def parse_document(raw: bytes) -> Document:
 # Profiles (reviewed policy; strict keys; regexes are reviewed configuration, never taken from documents)
 # ----------------------------------------------------------------------------------------------------------------
 
-PROFILE_KEYS = {"symbol", "profile_id", "revision", "company_name", "cik", "currency", "accounting_basis", "scope",
+PROFILE_KEYS = {"symbol", "profile_id", "revision", "adapter", "company_name", "cik", "currency", "accounting_basis", "scope",
                 "release", "guidance", "actuals", "calendar", "ir_title_pattern", "wire_title_pattern", "ir_host",
                 "ir_page_pattern", "wire_page_pattern"}
 RELEASE_KEYS = {"form", "item", "exhibit_name_pattern", "summary_table_units_pattern", "summary_revenue_row_pattern"}
@@ -450,6 +454,8 @@ def validate_profiles(data: Any) -> dict[str, dict[str, Any]]:
             raise ValueError(f"PROFILE_BASIS {sym}")
         if not isinstance(prof["revision"], int) or not isinstance(prof["profile_id"], str):
             raise ValueError(f"PROFILE_ID {sym}")
+        if prof["adapter"] not in ADAPTERS:
+            raise ValueError(f"PROFILE_ADAPTER {sym}: {str(prof['adapter'])[:40]}")
         rel, gui, act, cal = prof["release"], prof["guidance"], prof["actuals"], prof["calendar"]
         if not isinstance(rel, dict) or set(rel) != RELEASE_KEYS or rel["form"] != "8-K" or rel["item"] != "2.02":
             raise ValueError(f"PROFILE_RELEASE {sym}")
@@ -629,6 +635,18 @@ def extract_guidance(doc: Document, profile: Mapping[str, Any]) -> dict[str, Any
         raise _block("UNIT_MISMATCH", "range order")
     return {"quarter": quarter, "fiscal_year": fiscal_year, "point": point, "low": low, "high": high,
             "representation": representation, "passage": passage, "offsets": [start, end]}
+
+
+def a1_report_period(guidance: Mapping[str, Any], profile: Mapping[str, Any]) -> dict[str, Any]:
+    """SEC_8K_202_INLINE_XBRL_V1: the quarter a release reports is the one before its single quarterly outlook (the
+    verifier then proves it from the release's own summary table and the quarter's periodic filing). Other adapters
+    will prove the report period from their own statements."""
+    quarter, fiscal_year = next_quarter(guidance["quarter"], guidance["fiscal_year"], -1)
+    try:
+        start, end = fiscal_quarter(profile["calendar"]["rule"], fiscal_year, quarter)
+    except ValueError as error:
+        raise _block("CALENDAR_RULE_UNPROVEN", str(error)) from None
+    return {"quarter": quarter, "fiscal_year": fiscal_year, "start": start, "end": end}
 
 
 def detect_transitions(doc: Document) -> list[tuple[str, str]]:
@@ -852,7 +870,9 @@ def build_successor(profile: Mapping[str, Any], predecessor: Mapping[str, Any], 
     keys "submissions", "index", "exhibit", "package:<name>", "ir_copy", "wire_copy"; bytes are re-hashed and re-parsed
     here, nothing is trusted from a stored digest or outcome. Malformed input is a typed BLOCKED outcome."""
     try:
-        return _build(profile, predecessor, event, captures, verified_at)
+        if profile.get("adapter") not in BUILDERS:
+            raise _block("UNSUPPORTED_TEMPLATE", f"adapter {str(profile.get('adapter'))[:40]}")
+        return BUILDERS[profile["adapter"]](profile, predecessor, event, captures, verified_at)
     except Blocked as b:
         return {"outcome": b.outcome, "reason": b.reason, "detail": b.detail, "record": None, "decisions": []}
     except (KeyError, TypeError, ValueError, AttributeError, IndexError, InvalidOperation) as error:
@@ -926,12 +946,9 @@ def _build(profile, predecessor, event, captures, verified_at):
     # ---- guidance and the quarter it implies
     guidance = extract_guidance(rel, profile)
     gq, gfy = guidance["quarter"], guidance["fiscal_year"]
-    aq, afy = next_quarter(gq, gfy, -1)                       # the quarter this release reports
+    report = a1_report_period(guidance, profile)
+    aq, afy, a_start, a_end = report["quarter"], report["fiscal_year"], report["start"], report["end"]
     rule = cal["rule"]
-    try:
-        a_start, a_end = fiscal_quarter(rule, afy, aq)
-    except ValueError as error:
-        raise _block("CALENDAR_RULE_UNPROVEN", str(error)) from None
     if a_end.isoformat() >= filing.filed:
         raise _block("PERIOD_MISMATCH", "reported quarter does not end before the release")
     # Every trailing actual is re-derived from its own filing below, so a later release may follow a predecessor
@@ -1111,11 +1128,6 @@ def _build(profile, predecessor, event, captures, verified_at):
         consumed.append({"channel": "WIRE_PRESS_RELEASES", "id": wire_item["id"], "date": wire_item["date"]})
     channels = dict(predecessor.get("release_channels") or {})
     channels["ir_guidance_release_title"] = ir_item["title"]
-    decisions.append({"kind": "ROUTING", "ref": "routing", "decision": "EVENT_CONSUMED", "capture": "submissions",
-                      "operands": {"accession": acc, "form": filing.form, "items": ",".join(filing.items), "filed": filing.filed,
-                                   "exhibit": exhibits[0], "package": package, "ir_item": dict(ir_item),
-                                   "wire_item": dict(wire_item) if wire_proven else None,
-                                   "consumed": sorted(consumed, key=lambda c: (c["channel"], c["id"]))}})
     record = {"symbol": sym, "company_name": company, "status": "GUIDANCE", "reason": None,
               "url_prefixes": [SEC_ARCHIVES], "documents": sorted(documents.values(), key=lambda d: d["id"]),
               "claims": [claim], "reported_quarters": reported, "forward_intervals": intervals, "fy_reconciliation": None,
@@ -1124,5 +1136,19 @@ def _build(profile, predecessor, event, captures, verified_at):
         revenue_guidance.validate_issuer_record(record, sym)
     except ValueError as error:
         raise _block("RECORD_INVALID", str(error)) from None
+    # The whole active claim set must share one release-check reference: this results release.
+    reference = revenue_guidance.guidance_reference(record)
+    if reference["conflict"] or reference["document_id"] != rel_id:
+        raise _block("RECORD_INVALID", "the successor's active claims do not share this release as their reference")
+    decisions.append({"kind": "ROUTING", "ref": "routing", "decision": "EVENT_CONSUMED", "capture": "submissions",
+                      "operands": {"adapter": profile["adapter"], "accession": acc, "form": filing.form, "items": ",".join(filing.items),
+                                   "filed": filing.filed, "exhibit": exhibits[0], "package": package, "ir_item": dict(ir_item),
+                                   "wire_item": dict(wire_item) if wire_proven else None,
+                                   "consumed": sorted(consumed, key=lambda c: (c["channel"], c["id"])),
+                                   "report_period": {"quarter": aq, "fiscal_year": afy, "start": a_start.isoformat(), "end": a_end.isoformat()},
+                                   "reference": {"document_id": reference["document_id"], "claims": reference["claims"]}}})
     return {"outcome": "VERIFIED", "reason": None, "detail": "", "record": record,
             "decisions": [dict(d, reviewed_at=verified_at) for d in decisions]}
+
+
+BUILDERS = {SEC_8K_202_INLINE_XBRL_V1: _build}

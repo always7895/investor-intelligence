@@ -412,6 +412,32 @@ def guidance_reference_document_id(claim: Mapping[str, Any], docs_by_id: Mapping
     return best
 
 
+def guidance_reference(record: Mapping[str, Any]) -> dict[str, Any]:
+    """The one release-check reference of a record's whole active claim set (ORDERS-V3-AUTOUPDATE-01 B0): every
+    active claim's reference document (its own document, or its latest reaffirmation) must be the same document;
+    distinct references are a conflict (no reference, never the first or the newest). The descriptor binds every
+    active claim (period, basis, scope, numeric source digest and reference) independent of claim order. The
+    release-check collector, the sealer's model gate and the auto-update admission all use this one helper."""
+    docs_by_id = {d.get("id"): d for d in record.get("documents") or [] if isinstance(d, Mapping)}
+    active = select_active_guidance_claims(record)
+    descriptor = []
+    refs = set()
+    for c in active:
+        ref = guidance_reference_document_id(c, docs_by_id)
+        refs.add(ref)
+        source = docs_by_id.get(c.get("document_id")) or {}
+        descriptor.append({"id": str(c.get("id")), "period_kind": c.get("period_kind"),
+                           "period_start": c.get("period_start") or c.get("start"), "period_end": c.get("period_end") or c.get("end"),
+                           "scope": c.get("scope"), "accounting_basis": c.get("accounting_basis"),
+                           "document_id": c.get("document_id"), "source_sha256": source.get("sha256"), "reference_document_id": ref})
+    descriptor.sort(key=lambda d: (str(d["period_kind"]), str(d["period_start"]), d["id"]))
+    reference = next(iter(refs)) if len(refs) == 1 else None
+    if reference is not None and reference not in docs_by_id:
+        reference = None
+    return {"document_id": reference, "published_date": (docs_by_id.get(reference) or {}).get("published_date") if reference else None,
+            "conflict": len(refs) > 1, "claims": descriptor}
+
+
 def select_active_guidance_claims(record: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     """The deterministic active guidance-claim set of a reviewed record (Astra r5 items 2 and 11): the QUARTER /
     FISCAL_YEAR claims that are not superseded or withdrawn, selected independent of array order (canonical period
@@ -1654,8 +1680,8 @@ def build_forward_quarters(
                 "warning": None, "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None,
                 "claims_used": [], "receipt": receipt}
 
-    active_claim = quarter_claim or fy_claim
-    active_doc_id = guidance_reference_document_id(active_claim, docs_by_id) if active_claim else None
+    # One reference for the whole active claim set (B0): distinct references never pick one claim's document.
+    active_doc_id = guidance_reference(record)["document_id"]
     active_doc = docs_by_id.get(active_doc_id) if active_doc_id else None
     active_doc_pub = active_doc.get("published_date") if active_doc else None
     reviewed_later = record.get("reviewed_later_documents")

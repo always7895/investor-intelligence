@@ -61,7 +61,10 @@ PACING_SECONDS = 0.5
 MAX_RETRY_AFTER = 30
 CYCLE_CAPTURE_BYTES = 128 * 1024 * 1024
 STORE_QUOTA_BYTES = 2 * 1024 * 1024 * 1024
-STATE_ENTRIES = {"captures", "generations", "current.json", "lock"}
+# Network failures that a later ordinary run can overcome (as opposed to a refused resource).
+RETRYABLE = ("RUN_BUDGET", "RUN_REQUEST_BUDGET", "ISSUER_REQUEST_BUDGET", "TRANSIENT", "UNREACHABLE", "DNS")
+STATE_ENTRIES = {"captures", "generations", "segments", "current.json", "queue.json", "lock", "store_usage.json"}
+TEMP_ENTRY_RE = re.compile(r"^(current|queue|store_usage)\.json\.tmp-\d+$")  # an interrupted atomic write
 
 
 class SystemicFailure(Exception):
@@ -164,8 +167,10 @@ class Transport:
     def _budget(self, symbol: str) -> None:
         if self.monotonic() - self.started > RUN_BUDGET_SECONDS:
             raise NetworkBlocked("RUN_BUDGET")
-        if self.requests >= PER_RUN_REQUESTS or self.issuer_requests.get(symbol, 0) >= PER_ISSUER_REQUESTS:
-            raise NetworkBlocked("REQUEST_BUDGET")
+        if self.requests >= PER_RUN_REQUESTS:
+            raise NetworkBlocked("RUN_REQUEST_BUDGET")
+        if self.issuer_requests.get(symbol, 0) >= PER_ISSUER_REQUESTS:
+            raise NetworkBlocked("ISSUER_REQUEST_BUDGET")
         wait = PACING_SECONDS - (self.monotonic() - self.last)
         if wait > 0:
             self.sleep(wait)
@@ -314,17 +319,66 @@ def candidate_events(documents: list[Mapping[str, Any]], ref_accession: str | No
     return sorted(events, key=lambda e: (e["filed"], e["accession"]))
 
 
+def read_queue(root: Path) -> dict[str, Any]:
+    """The fair-queue position; unreadable or foreign content only resets the order (it is not an admission input)."""
+    try:
+        data = json.loads((root / "queue.json").read_text(encoding="utf-8"))
+        if isinstance(data, dict) and set(data) == {"last_served"} and (data["last_served"] is None or isinstance(data["last_served"], str)):
+            return data
+    except (OSError, ValueError):
+        pass
+    return {"last_served": None}
+
+
+def write_queue(root: Path, queue: Mapping[str, Any]) -> None:
+    try:
+        overlay._durable_write(root / "queue.json", json.dumps({"last_served": queue.get("last_served")}).encode("utf-8"))
+    except OSError as error:
+        raise SystemicFailure(f"QUEUE {type(error).__name__}") from error
+
+
+def archive_captures(root: Path, attempts: list[Mapping[str, Any]]) -> dict[str, str]:
+    """URL -> raw digest of stored EDGAR archive captures referenced by the given attempts (the open attempts and the
+    admitted producers: bounded). Accession-bound documents never change; reuse re-hashes them and the verifier
+    re-verifies them. Feeds, IR and wire pages are always fetched again."""
+    out: dict[str, str] = {}
+    for a in attempts:
+        for raw_sha in (a.get("captures") or {}).values():
+            try:
+                meta = json.loads(overlay.capture_path(root, raw_sha).with_name(raw_sha + ".json").read_text(encoding="utf-8"))
+            except (OSError, ValueError, overlay.StateError):
+                continue
+            url = str(meta.get("url", ""))
+            if url.startswith("https://www.sec.gov/Archives/edgar/data/"):
+                out[url] = raw_sha
+    return out
+
+
 def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Mapping[str, Any], today: str,
-               clock: Callable[[], datetime], budget: dict[str, int]) -> tuple[dict[str, Any], dict[str, str]]:
-    """Capture what the verifier needs for this event; returns (event for the verifier, {capture key: raw sha})."""
+               clock: Callable[[], datetime], budget: dict[str, int], reuse: Mapping[str, str] | None = None,
+               captures: dict[str, str] | None = None) -> tuple[dict[str, Any], dict[str, str]]:
+    """SEC_8K_202_INLINE_XBRL_V1: capture what the verifier needs for this event; returns (event for the verifier,
+    {capture key: raw sha}). The caller's `captures` map is filled as each document is stored, so an interrupted plan
+    still records what it captured (a later retry reuses it). Stored EDGAR archive documents are reused (re-hashed),
+    not fetched again; feeds and IR/wire pages are always fetched again."""
     cik, sym = profile["cik"], profile["symbol"]
-    captures: dict[str, str] = {}
+    captures = {} if captures is None else captures
 
     def fetch(key: str, url: str, role: str) -> bytes:
+        if reuse and url in reuse:
+            try:
+                captures[key] = reuse[url]
+                return overlay.load_capture(root, reuse[url])["raw"]
+            except overlay.StateError:
+                del captures[key]
         data, ctype = transport.get(url, profile, sym)
         budget["bytes"] += len(data)
-        if budget["bytes"] > CYCLE_CAPTURE_BYTES or budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
-            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "cycle or store byte budget")
+        if budget["bytes"] > CYCLE_CAPTURE_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "RUN_CAPTURE_BUDGET")
+        if budget["store"] is None:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown (--recount-store)")
+        if budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store quota")
         if getattr(transport, "replay", False):
             role = "REPLAY_" + role
         captures[key] = overlay.store_capture(root, data, {"url": url, "retrieved_at": now_instant(clock), "content_type": ctype, "role": role})
@@ -351,8 +405,8 @@ def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Map
     rule = profile["calendar"]["rule"]
     needed: set[str] = set()
     try:
-        g = verify.extract_guidance(verify.parse_document(exhibit_raw), profile)
-        aq, afy = verify.next_quarter(g["quarter"], g["fiscal_year"], -1)
+        report = verify.a1_report_period(verify.extract_guidance(verify.parse_document(exhibit_raw), profile), profile)
+        aq, afy = report["quarter"], report["fiscal_year"]
         for q, fy in [verify.next_quarter(aq, afy, -k) for k in (3, 2, 1, 0)]:
             needed.add(verify.fiscal_quarter(rule, fy, q)[1].isoformat())
             if q == 4:
@@ -389,13 +443,18 @@ def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Map
     if lead["wire_item"]:
         try:
             fetch("wire_copy", lead["wire_item"]["id"], "WIRE_RELEASE_PAGE")
-        except NetworkBlocked:
-            pass  # an unproven wire copy is simply not consumed (it keeps the issuer suspended if it is listed)
+        except NetworkBlocked as error:
+            if str(error).startswith(RETRYABLE):
+                raise  # a budget or transient failure waits for the next run instead of giving up the copy
+            # a refused page (for example HTTP 404) is simply not consumed; it keeps the issuer suspended if it is listed
     event = dict(lead, periodic=periodic, calendar=calendar, allocation_sources=allocation)
     return event, captures
 
 
 # ------------------------------------------------------------------------------------------------ run
+
+PLANNERS = {verify.SEC_8K_202_INLINE_XBRL_V1: plan_event}
+
 
 def _new_generation_id(clock: Callable[[], datetime]) -> str:
     return f"{clock().astimezone(timezone.utc):%Y%m%dT%H%M%SZ}-{secrets.token_hex(6)}"
@@ -413,42 +472,57 @@ def _attempt(key: str, decided: str, effective: Mapping[str, Any], event: Mappin
             "record": record, "decisions": result["decisions"]}
 
 
-def _record(attempts: list[dict[str, Any]], new: dict[str, Any]) -> bool:
-    """Append an attempt, superseding a trailing wait of the same event; an unchanged wait changes nothing."""
-    last = attempts[-1] if attempts else None
-    if (last is not None and last["event_key"] == new["event_key"] and last["outcome"] == "WAITING" == new["outcome"]
-            and last["reason"] == new["reason"] and last["detail"] == new["detail"] and last["event"] == new["event"]):
-        return False
+def _record(entry: dict[str, Any], new: dict[str, Any]) -> bool:
+    """Append an attempt to an issuer's entry, superseding a trailing wait of the same event (a superseding wait keeps
+    the captures already referenced, so interrupted plans accumulate progress); an identical wait changes nothing."""
+    last = entry["open"][-1] if entry["open"] else None
     if last is not None and last["event_key"] == new["event_key"] and last["outcome"] == "WAITING":
-        attempts.pop()
-    attempts.append(new)
+        if new["outcome"] == "WAITING":
+            new = dict(new, captures={**last["captures"], **new["captures"]})
+            if all(last[k] == new[k] for k in ("reason", "detail", "event", "captures")):
+                return False
+        entry["open"].pop()
+    overlay.append_attempt(entry, new)
     return True
 
 
 def reverify(root: Path, profiles: Mapping[str, Mapping[str, Any]], curated: Mapping[str, Mapping[str, Any]],
-             history: Mapping[str, list[Mapping[str, Any]]], allow_replay: bool) -> dict[str, list[dict[str, Any]]]:
-    """Re-run every stored attempt with captures under the installed policy and code, in order, from the stored bytes
-    (earlier generations keep the original history). A VERIFIED attempt without captures cannot be proven: blocked."""
-    out: dict[str, list[dict[str, Any]]] = {}
-    for sym, attempts in history.items():
-        if sym not in profiles or curated.get(sym) is None:
+             entries: dict[str, dict[str, Any]], readable: set[str], allow_replay: bool, now: str) -> None:
+    """After a change of reviewed policy, code or baseline: re-derive each readable issuer's producer under the
+    installed identity from its stored bytes (one per issuer). If it reproduces the stored decision nothing changes;
+    otherwise a new decision is taken now from the same captures and appended (VERIFIED becomes the producer, anything
+    else leaves the index so the verified attempt before it becomes the producer). Stored attempts and segments are
+    never rewritten."""
+    for sym in sorted(readable):
+        entry = entries[sym]
+        verified = entry["index"]["verified"]
+        if sym not in profiles or curated.get(sym) is None or not verified:
             continue
-        effective, rebuilt = curated[sym], []
-        for a in attempts:
-            if a.get("captures"):
-                try:
-                    result = overlay.rederive(root, profiles[sym], effective, a, allow_replay)
-                except overlay.StateError as error:
-                    result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": str(error), "record": None, "decisions": []}
-            elif a.get("outcome") == "VERIFIED":
-                result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": "verified attempt without captures", "record": None, "decisions": []}
+        try:
+            a = overlay.attempt_at(root, entry, verified[-1])
+            if len(verified) > 1:
+                previous = overlay.attempt_at(root, entry, verified[-2])["record"]
+            elif entry["index"]["truncated"]:
+                raise overlay.StateError("ATTEMPT_INDEX_EXHAUSTED")
             else:
-                result = {k: a[k] for k in ("outcome", "reason", "detail", "record", "decisions")}
-            rebuilt.append(_attempt(a["event_key"], a["attempted_at"], effective, a["event"], a.get("captures") or {}, result))
-            if result["outcome"] == "VERIFIED":
-                effective = result["record"]
-        out[sym] = rebuilt
-    return out
+                previous = curated[sym]
+            again = overlay.rederive(root, profiles[sym], previous, a, allow_replay, curated[sym]) if a.get("captures") else None
+        except (overlay.StateError, KeyError, TypeError, IndexError):
+            readable.discard(sym)  # unreadable history: carried unchanged, admission blocks it
+            continue
+        if (again is not None and again["outcome"] == "VERIFIED" and verify.canonical_json(again["record"]) == verify.canonical_json(a["record"])
+                and verify.canonical_json(again["decisions"]) == verify.canonical_json(a["decisions"])):
+            continue
+        if a.get("captures"):
+            try:
+                captures = {k: overlay.load_capture(root, v) for k, v in a["captures"].items()}
+                result = verify.build_successor(profiles[sym], overlay.predecessor_view(previous, curated[sym]), a["event"], captures, now)
+            except overlay.StateError as error:
+                result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": str(error), "record": None, "decisions": []}
+        else:
+            result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": "verified attempt without captures", "record": None, "decisions": []}
+        verified.pop()
+        overlay.append_attempt(entry, _attempt(a["event_key"], now, previous, a["event"], a.get("captures") or {}, result))
 
 
 def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profiles_path: Path = PROFILES_PATH,
@@ -471,17 +545,35 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
         except overlay.StateError as error:
             raise SystemicFailure(f"STATE {error}") from error
         ident = overlay.identity(profiles_bytes, registry_bytes, approval_bytes)
-        history: dict[str, list[dict[str, Any]]] = {s: list(a) for s, a in (base or {}).get("issuers", {}).items()}
-        detections: dict[str, dict[str, Any]] = {s: dict(d) for s, d in (base or {}).get("detections", {}).items()}
+        entries: dict[str, dict[str, Any]] = json.loads(json.dumps((base or {}).get("issuers", {})))  # a private copy
+        readable: set[str] = set()
+        for sym, entry in entries.items():
+            try:
+                overlay.validate_entry(entry)
+                for a in entry["open"]:
+                    overlay.validate_attempt(a)
+                readable.add(sym)
+            except overlay.StateError:
+                pass  # carried unchanged as its own fail-closed barrier; admission blocks it and nothing is fetched for it
+        detections: dict[str, dict[str, Any]] = json.loads(json.dumps((base or {}).get("detections", {})))
+        queue = read_queue(state_root)
         summary: dict[str, Any] = {"status": "OK", "at": now, "issuers": {}, "reverified": False}
         state = {"pointer": pointer, "changed": False}
 
         def publish() -> None:
-            gen = dict(ident, schema=overlay.STATE_SCHEMA, generation_id=_new_generation_id(clock),
-                       parent=None if state["pointer"] is None else {"generation_id": state["pointer"]["generation_id"], "sha256": state["pointer"]["sha256"]},
-                       created_at=now_instant(clock), issuers={s: a for s, a in history.items() if a}, detections=dict(detections))
             try:
-                digest = overlay.publish_generation(state_root, gen, state["pointer"])
+                stored, written = {}, set()
+                for s, entry in entries.items():
+                    if s in readable and not (entry["head"] or entry["open"]):
+                        continue  # nothing recorded for this issuer yet
+                    if s in readable:
+                        written.update(overlay.seal(state_root, entry))
+                    stored[s] = entry
+                gen = dict(ident, schema=overlay.STATE_SCHEMA, generation_id=_new_generation_id(clock),
+                           parent=None if state["pointer"] is None else {"generation_id": state["pointer"]["generation_id"], "sha256": state["pointer"]["sha256"]},
+                           created_at=now_instant(clock), issuers=stored, detections=dict(detections))
+                digest = overlay.publish_generation(state_root, gen, state["pointer"], carried=frozenset(set(stored) - readable),
+                                                    written=frozenset(written))
             except overlay.StateError as error:
                 raise SystemicFailure(f"PUBLISH {error}") from error
             state["pointer"] = {"schema": overlay.POINTER_SCHEMA, "generation_id": gen["generation_id"], "sha256": digest}
@@ -489,16 +581,29 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             state["changed"] = False
 
         if base is not None and any(base[k] != ident[k] for k in overlay.IDENTITY_KEYS):
-            history = reverify(state_root, profiles, curated, history, replay)  # new reviewed policy, code or baseline
+            reverify(state_root, profiles, curated, entries, readable, replay, now)  # new reviewed policy, code or baseline
             summary["reverified"] = True
             state["changed"] = True
-        virtual = dict(ident, generation_id=None, issuers=history, detections=detections)
-        admitted = overlay.admit(state_root, virtual, now, profiles, curated, ident, allow_replay=replay)
-        budget = {"bytes": 0, "store": overlay.capture_bytes_total(state_root)}
+        virtual = dict(ident, generation_id=None, issuers=entries, detections=detections)
+        admitted = overlay.admit(state_root, virtual, now, profiles, curated, ident, allow_replay=replay, entries=entries)
+        for sym, adm in admitted.items():
+            if adm["mode"] == "BLOCKED" and adm["reason"] in ("APPROVAL_BINDING", "STATE_CORRUPT"):
+                readable.discard(sym)  # carried unchanged: its references stay the fail-closed barrier
+        # Store usage comes from the reservation journal (bounded reconciliation, nothing enumerated). When it is unknown
+        # new captures wait and the summary says so; detections and everything else proceed.
+        try:
+            usage = overlay.reconcile_usage(state_root)
+        except (OSError, overlay.StateError) as error:
+            raise SystemicFailure(f"STORE {type(error).__name__}") from error
+        if usage is None:
+            summary["store_accounting"] = "UNKNOWN"
+        budget = {"bytes": 0, "store": usage}
+        reuse = archive_captures(state_root, [a for s in readable for a in entries[s]["open"]]
+                                 + [admitted[s]["producer"] for s in admitted if admitted[s]["producer"]])
         # Phase 1, for every issuer before anything is fetched: every material document observed against the
-        # effective record joins its monotonic detection set, committed in one generation. Later feed reads, receipt
-        # retention, a crash while another issuer is fetched or a retry can no longer make it disappear; overflow is
-        # kept as a fail-closed barrier.
+        # effective record joins the issuer's monotonic detection set, committed in one generation (items the admitted
+        # producer accounts for are pruned). Later feed reads, receipt retention, a crash while another issuer is
+        # fetched or a retry can no longer make one disappear; overflow is kept as a fail-closed barrier.
         work: dict[str, tuple[Mapping[str, Any], list[dict[str, Any]], list[dict[str, Any]]]] = {}
         for sym in profiles:
             adm = admitted[sym]
@@ -512,14 +617,14 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             ref, _ = overlay.reference(effective)
             rows = overlay.receipt_rows(receipts, sym, ref, now)
             material = overlay.unaccounted(effective, rows, adm["producer"], adm["detections"])
-            pred = overlay.record_sha256(effective)
-            entry = detections.get(sym)
-            prior = list(entry["documents"]) if entry and entry["predecessor_sha256"] == pred else []
-            union = overlay._material_documents([{"later_documents": prior + material}])
-            overflow = len(union) > overlay.MAX_DETECTIONS or bool(entry and entry["predecessor_sha256"] == pred and entry["overflow"])
-            updated = {"predecessor_sha256": pred, "documents": [{k: d[k] for k in overlay.LATER_KEYS} for d in union[:overlay.MAX_DETECTIONS]],
-                       "overflow": overflow}
-            if material and updated != entry:
+            store = detections.get(sym) or {"documents": [], "overflow": False}
+            union = overlay._material_documents([{"later_documents": list(store["documents"]) + material}])
+            if adm["producer"] is not None:
+                consumed, filed = overlay.consumed_identities(adm["producer"]), overlay.routing_filed(adm["producer"])
+                union = [d for d in union if (str(d["channel"]), str(d["id"]), str(d["date"])) not in consumed and not str(d["date"]) < filed]
+            overflow = len(union) > overlay.MAX_DETECTIONS or store["overflow"]
+            updated = {"documents": [{k: d[k] for k in overlay.LATER_KEYS} for d in union[:overlay.MAX_DETECTIONS]], "overflow": overflow}
+            if updated != store and (material or sym in detections):
                 detections[sym] = updated
                 state["changed"] = True
             if overflow:
@@ -531,57 +636,89 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             work[sym] = (effective, rows, material)
         if state["changed"]:
             publish()
-        # Phase 2: events, one issuer at a time.
-        for sym, profile in profiles.items():
+        # Phase 2: events, one issuer at a time, in a persisted fair order (starting after the issuer served last).
+        order = list(profiles)
+        if queue.get("last_served") in order:
+            start = order.index(queue["last_served"]) + 1
+            order = order[start:] + order[:start]
+        exhausted = False
+        for sym in order:
+            profile = profiles[sym]
             if sym not in work:
                 continue
+            if exhausted:
+                # The run's shared budget is spent: this issuer is not served and keeps its place at the queue head.
+                summary["issuers"][sym] = {"action": "WAITING", "reason": "RUN_BUDGET"}
+                continue
             adm = admitted[sym]
-            attempts = history.setdefault(sym, [])
+            entry = entries.setdefault(sym, overlay.new_entry())
+            readable.add(sym)
             effective, rows, material = work[sym]
             listed = overlay._material_documents(rows + [{"later_documents": adm["detections"]}]) + [
                 dict(d) for r in rows for d in r.get("later_documents") or [] if d.get("disposition") not in overlay.MATERIAL]
             all_events = candidate_events(listed, reference_accession(effective), profile)
-            settled = {a["event_key"] for a in attempts if a["outcome"] in ("VERIFIED", "BLOCKED")}
+            settled = {x["key"] for x in entry["index"]["settled"]}
             events = [e for e in all_events if e["accession"] not in settled]
+            documents = list((detections.get(sym) or {"documents": []})["documents"])
             if not all_events:
                 # Material documents but no supported results filing (a 10-Q alone, a 6-K, an unrelated same-day
                 # release, an unclassified 8-K): the issuer waits until a verified successor supersedes the record.
                 key = "unresolved:" + verify.sha256(verify.canonical_json(sorted(
                     [str(d.get("channel")), str(d.get("id")), str(d.get("date"))] for d in material)).encode("utf-8"))[:16]
-                if not attempts or attempts[-1]["event_key"] != key:
-                    state["changed"] |= _record(attempts, _attempt(key, now, effective, {"later_documents": list(detections[sym]["documents"])}, {}, {
+                last = entry["open"][-1] if entry["open"] else None
+                if last is None or last["event_key"] != key:
+                    if last is not None and last["outcome"] == "WAITING" and last["event_key"].startswith("unresolved:"):
+                        entry["open"].pop()
+                    overlay.append_attempt(entry, _attempt(key, now, effective, {"later_documents": documents}, {}, {
                         "outcome": "WAITING", "reason": "EVENT_UNRESOLVED", "record": None, "decisions": [],
                         "detail": f"{len(material)} material later documents, no supported results filing"}))
+                    state["changed"] = True
                 summary["issuers"][sym] = {"action": "WAITING", "reason": "EVENT_UNRESOLVED"}
                 continue
             if not events:
-                summary["issuers"][sym] = {"action": "SETTLED", "outcome": attempts[-1]["outcome"] if attempts else None}
+                last = entry["open"][-1] if entry["open"] else None
+                summary["issuers"][sym] = {"action": "SETTLED", "outcome": last["outcome"] if last else None}
                 continue
-            # The complete unresolved material set is persisted with the event before anything is fetched, so it
-            # survives the reference change a verified successor makes.
-            lead = dict(events[0], later_documents=list(detections[sym]["documents"]))
-            if not any(a["event_key"] == lead["accession"] for a in attempts):
+            # The complete unresolved material set is persisted with the event before anything is fetched.
+            lead = dict(events[0], later_documents=documents)
+            if not any(a["event_key"] == lead["accession"] for a in entry["open"]):
                 # Detection is committed before anything is fetched: a failure after this point cannot forget it.
-                _record(attempts, _attempt(lead["accession"], now, effective, lead, {}, {
+                state["changed"] |= _record(entry, _attempt(lead["accession"], now, effective, lead, {}, {
                     "outcome": "WAITING", "reason": "EVENT_DETECTED", "record": None, "decisions": [], "detail": "results filing detected"}))
-                publish()
+            if state["changed"]:
+                publish()  # the detection (and anything else pending) before any fetch
+            # The queue position is written before fetching, so a crash or a stuck source for this issuer never makes
+            # the next run start with it again.
+            before = queue.get("last_served")
+            if before != sym:
+                queue["last_served"] = sym
+                write_queue(state_root, queue)
+            captures: dict[str, str] = {}
             try:
-                event, captures = plan_event(transport, state_root, profile, lead, now[:10], clock, budget)
+                if profile["adapter"] not in PLANNERS:
+                    raise verify.Blocked("BLOCKED", "UNSUPPORTED_TEMPLATE", f"adapter {profile['adapter']}")
+                event, captures = PLANNERS[profile["adapter"]](transport, state_root, profile, lead, now[:10], clock, budget, reuse, captures)
                 decided = now_instant(clock)
-                result = verify.build_successor(profile, effective, event,
+                result = verify.build_successor(profile, overlay.predecessor_view(effective, curated.get(sym)), event,
                                                 {k: overlay.load_capture(state_root, v) for k, v in captures.items()}, decided)
             except verify.Blocked as b:
-                decided, event, captures = now_instant(clock), lead, {}
+                decided, event = now_instant(clock), lead  # the captures made so far stay referenced (resume)
                 result = {"outcome": b.outcome, "reason": b.reason, "detail": b.detail, "record": None, "decisions": []}
             except NetworkBlocked as nb:
-                decided, event, captures = now_instant(clock), lead, {}
+                decided, event = now_instant(clock), lead
                 result = {"outcome": "WAITING", "reason": "NETWORK_UNAVAILABLE", "detail": str(nb)[:120], "record": None, "decisions": []}
             except overlay.StateError as error:
                 raise SystemicFailure(f"STATE {error}") from error
-            state["changed"] |= _record(attempts, _attempt(lead["accession"], decided, effective, event, captures, result))
+            if result["outcome"] == "WAITING" and str(result["detail"]).startswith(("RUN_BUDGET", "RUN_REQUEST_BUDGET", "RUN_CAPTURE_BUDGET")):
+                exhausted = True
+                if not captures and before != sym:
+                    queue["last_served"] = before  # not served: keep this issuer at the head of the next run
+                    write_queue(state_root, queue)
+            try:
+                state["changed"] |= _record(entry, _attempt(lead["accession"], decided, effective, event, captures, result))
+            except overlay.StateError as error:
+                raise SystemicFailure(f"STATE {error}") from error
             summary["issuers"][sym] = {"action": "ATTEMPTED", "event": lead["accession"], "outcome": result["outcome"], "reason": result["reason"]}
-        for sym in [s for s, a in history.items() if not a]:
-            del history[sym]
         if state["changed"]:
             publish()
         return summary
@@ -598,12 +735,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--receipts", type=Path, default=RECEIPTS_PATH)
     parser.add_argument("--replay", type=Path, help="hermetic replay directory (inventory.json + raw/); no network")
     parser.add_argument("--as-of", help="replay clock (UTC instant, only with --replay)")
+    parser.add_argument("--recount-store", action="store_true",
+                        help="maintenance: rebuild the capture-store accounting from the objects on disk, then exit")
     args = parser.parse_args(argv)
     if args.as_of and not args.replay:
         parser.error("--as-of is only valid with --replay")
     root = args.state_root
-    if root.exists() and (not root.is_dir() or any(c.name not in STATE_ENTRIES for c in root.iterdir())):
+    if root.exists() and (not root.is_dir() or any(c.name not in STATE_ENTRIES and not TEMP_ENTRY_RE.match(c.name) for c in root.iterdir())):
         parser.error("--state-root must be empty or an existing auto-update state root")
+    if args.recount_store:
+        try:
+            lock = StateLock(root)
+        except SystemicFailure as error:
+            print(json.dumps({"status": "SYSTEMIC_FAILURE", "error": str(error)[:200]}))
+            return 2
+        try:
+            print(json.dumps(dict(overlay.recount_usage(root), status="RECOUNTED")))
+        finally:
+            lock.release()
+        return 0
     try:
         if args.as_of:
             fixed = datetime.strptime(args.as_of, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)

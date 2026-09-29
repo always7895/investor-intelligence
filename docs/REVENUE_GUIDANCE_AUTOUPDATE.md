@@ -1,7 +1,7 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
-Status: **Part A slice 1 (framework + NVDA + MU), shadow only.** Nothing here is wired into the daily caller, the
-sealer or the Worker; production still reads only the curated registry and its human approval
+Status: **Part A slice 1 (framework + NVDA + MU) accepted (`e89936f`); B0 shared prerequisites for Part B; shadow
+only.** Nothing here is wired into the daily caller, the sealer or the Worker; production still reads only the curated registry and its human approval
 (`config/revenue-guidance-v1.json`, `config/revenue-guidance-approval-v1.json`, see
 [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md)). The contract is Astra's `astra-contract.result.md` Part 2 in the lane
 archive `_archive\lane-orders-v3-autoupdate\`; this page describes what slice 1 implements and what is still open.
@@ -14,12 +14,20 @@ never guessed and old numbers never return after a newer results event has been 
 
 | File | Role |
 | --- | --- |
-| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs writer + Astra review. |
+| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: the enumerated source/event/actuals adapter (only `SEC_8K_202_INLINE_XBRL_V1` is implemented; any other value is refused), enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs writer + Astra review. |
 | `scripts/revenue_guidance_auto_verify.py` | Pure verifier: captured bytes of one results event + profile + predecessor -> successor record and one decision per input, or a typed WAITING/BLOCKED outcome. No network, no writes, no clock. |
 | `scripts/revenue_guidance_overlay.py` | State root: content-addressed captures, immutable generations, pointer; admission by re-derivation (`admit`, shared by readers and the updater); per-issuer resolution at a cutoff; the release-check gate. |
 | `scripts/revenue_guidance_autoupdate.py` | Updater: reads the release-check cache, discovers the results filing, captures under hard limits, runs the verifier, publishes generations. CLI with an explicit state root and a hermetic replay mode. |
 | `tests/test_revenue_guidance_autoupdate.py` | Replay chains through the real checker, adversarial cases, transport, lock, CLI and state tests. |
 | `tests/fixtures/revenue-guidance-autoupdate/` | Public SEC, IR and wire bytes (gzip, named by the SHA-256 of the exact entity bytes), `inventory.json` with the genuine capture instants, `bootstrap-registry.json` (test baseline). Built by `tests/fixtures/make_revenue_guidance_autoupdate_fixtures.py` and `make_revenue_guidance_autoupdate_bootstrap.py` from the writer's capture directory `_workspace\audit-runtime\autoupdate-fixtures`. |
+
+**One reference for the whole active claim set.** `revenue_guidance.guidance_reference(record)` returns the release-
+check reference only when every active claim (its own document, or its latest reaffirmation) shares it, plus an
+order-independent descriptor of all active claims (period, scope, basis, numeric source digest, reference); distinct
+references are a conflict (no reference, so no receipt and no revenue), never the first or the newest claim's. The
+release checker, the sealer's model gate and the auto-update admission use this one helper; every curated record is
+unchanged by it. An automatic successor must have the single-reference shape (its release), and its ROUTING decision
+binds the adapter, the proven report period and the reference descriptor.
 
 The profile file and the state files are validated in code (`validate_profiles`; `validate_generation` for the
 envelope, `validate_attempt` for every nested event, capture map, decision and detected document). There are no
@@ -42,9 +50,10 @@ release check (existing checker, over the effective records)
    waits). A later document is *material* when its disposition is `RESULTS_RELEASE` or `POSSIBLY_RELEVANT` in any
    receipt of that reference up to the cutoff, or was recorded as detected earlier, and the record did not consume it.
    At the start of every run, before anything is fetched for any issuer, the updater adds every material document to
-   the issuer's monotonic detection set for its effective record (`detections` in the generation, at most 256 entries;
-   beyond that the issuer is suspended as `DETECTIONS_OVERFLOW`) and commits it. A later feed read that no longer lists
-   an item, the checker's receipt retention, a retry or a crash while another issuer is fetched never clears it. When a verified successor becomes
+   the issuer's monotonic detection set (`detections` in the generation, at most 256 entries; beyond that the issuer is
+   suspended as `DETECTIONS_OVERFLOW`) and commits it. A later feed read that no longer lists an item, the checker's
+   receipt retention, a retry or a crash while another issuer is fetched never clears it; only the admitted,
+   re-derived producer accounts for an item (below), no older decision does. When a verified successor becomes
    the reference, everything detected against the old reference is carried over: a document leaves only when the
    successor consumed it (typed identity) or when it is dated strictly before the successor's own filing day (that
    later, complete release supersedes it); a same-day or later document stays unresolved. A human
@@ -98,17 +107,33 @@ release check (existing checker, over the effective records)
    canonical release text (`canonical[a:b] rg-canon-1`) and one decision per input (`CLAIM`, `ACTUAL` per quarter and
    for the release row, `CALENDAR`, `ROUTING` with the typed consumed identities `(channel, id, date)`), each naming
    its own capture. Nothing numeric is inherited from the predecessor.
-6. **Generations.** Each run that changes anything writes a new immutable generation (the complete attempt history
-   and detection set per issuer, parent digest, verifier/normalizer versions, the digest of the installed implementation files
+6. **Generations.** Each run that changes anything writes a new immutable generation (per issuer a constant-size
+   entry: the head of a hash-linked chain of immutable segments of 32 attempts in `segments/<sha256>.json`, the sealed
+   count, up to 32 open attempts - no lifetime limit, nothing deleted - and an index of the newest verified attempts'
+   locations (at most 8) and of the events settled since the current producer's filing day; its detection set; parent digest, verifier/normalizer versions, the digest of the installed implementation files
    `revenue_guidance.py`, `revenue_guidance_auto_verify.py`, `revenue_guidance_overlay.py`, and the digests of the
    profile, baseline registry and approval files) and then atomically moves `current.json`. An operating-system lock
-   excludes a second updater. When any identity changes, the updater re-verifies every stored attempt from its
-   captures before anything else (earlier generations keep the original history); a verified attempt without captures
-   becomes `BLOCKED`.
+   excludes a second updater. When any identity changes, the updater first re-derives each issuer's producer under
+   the installed identity from its captures (one per issuer). If it reproduces the stored decision nothing changes;
+   otherwise a new decision is taken from the same captures and appended (never rewriting a stored attempt or
+   segment): verified, it becomes the producer; otherwise the verified attempt before it becomes the producer,
+   re-derived at admission. Publication checks only the segments it writes; older segments are immutable references
+   carried on, so missing audit history never stops another issuer.
 7. **Resolution** (`overlay.resolve_issuers`) at a cutoff selects the newest generation created at or before it and
-   admits each issuer's attempts made at or before it (`admit`): a `VERIFIED` attempt counts only when the installed
-   verifier re-derives exactly the stored record and decisions from the stored capture bytes, along an unbroken
-   predecessor chain from the curated record, under unchanged identities. With the release-check cache, every usable
+   admits its issuers' state (`admit`; every attempt admission reads - open attempts, producer, predecessor, newest -
+   must be dated at or before both the cutoff and the generation's creation, else the issuer is `STATE_CORRUPT`; every decision must match the machine decision
+   contract: exact operand keys per kind, one CLAIM/CALENDAR/ROUTING and the ACTUALs, typed consumed identities).
+   Admission work is bounded per issuer: it validates the open attempts (at most 64), re-derives the producer (the
+   newest verified attempt, located by the index) from its stored bytes with its predecessor record (the verified
+   attempt before it, or the curated record) as the only input, and reads the newest attempt for the mode - at most
+   three sealed segments, independent of history length. A missing or altered segment it needs blocks that issuer. Older attempts are not operative: a
+   successor inherits no number, only the predecessor's anchor for ordering, its release channels come from the
+   curated baseline record, and unresolved detections are accounted for only by the re-derived producer (its consumed
+   identities and items dated strictly before its filing day). A `VERIFIED` attempt counts only when the installed
+   verifier re-derives exactly the stored record and decisions from the stored capture bytes, from its hash-linked
+   predecessor record, under unchanged identities. `verify_history` is a structural audit off this path (the segment
+   chain present, hash-verified and linked, every attempt's shape and time order, the sealed count, the index); it does
+   not re-derive sources. With the release-check cache, every usable
    record - curated or automatic, with or without any auto-update state - must pass `receipt_gate`: the newest check
    of its own reference passes the registry's strict `validate_receipt` (issuer, digest, coverage, channel set and
    hosts, anchor, reference, age at most 24 h, recomputed status), and no material document ever listed or detected
@@ -139,6 +164,18 @@ manual steps are added.
 
 ## Limits (updater)
 
+Scheduling: after the detection phase, issuers with work are served in a fair order that starts after the issuer
+served last; that position (`queue.json`, a scheduling hint, never an admission input) is written before fetching
+for an issuer, so a source that crashes or exhausts its own budget cannot starve the others across runs. When the
+run's shared budget (wall time, requests, new capture bytes) is spent, the remaining issuers are not attempted and an
+issuer that got no service keeps its place at the head of the next run. A plan interrupted by a budget, quota or
+network failure keeps the captures it stored referenced by its attempt; EDGAR archive documents captured by any
+earlier attempt are reused from the store (re-hashed and re-verified), feeds and IR/wire pages are always read again,
+so repeated interruptions still make progress (a superseding wait keeps the captures already referenced). A wire
+page that cannot be fetched because of a budget or a transient failure makes the attempt wait for the next run; only a
+refused page (for example HTTP 404) leaves the wire copy unconsumed. An issuer whose history cannot be read (for example a missing or
+altered segment) is carried forward unchanged as its own fail-closed barrier while the other issuers keep committing.
+
 HTTPS on 443 only; hosts `www.sec.gov`, `data.sec.gov`, the profile's IR host and `www.nasdaq.com`, each with
 issuer-bound or reviewed path patterns; no query, userinfo, percent-encoding or traversal; **no redirects are
 followed** (a 3xx refuses); every resolved address must be public and the connection is made to that checked address
@@ -147,7 +184,13 @@ plain public user agent; `Accept-Encoding: identity`, other encodings and unexpe
 streamed under 8 MiB (submissions), 1 MiB (index), 16 MiB (documents), 4 MiB (IR and wire pages), error bodies read at
 most 64 KiB; 30 s timeout; at most 2 attempts for a transient failure, `Retry-After` honoured up to 30 s; 24 requests
 per issuer and 120 per run; 10 minute wall budget; 0.5 s pacing; 128 MiB new captures per run; 2 GiB store quota
-(reaching it waits, nothing is deleted). Parser: 16 MiB document, 4 MiB canonical text, 1,000-character passages,
+(reaching it waits, nothing is deleted). Usage comes from a reservation journal, `store_usage.json`: a new object's
+bytes are added and named pending before any file is written, and cleared after its raw and metadata commits, so an
+interruption in any window only over-counts; each run first settles the pending reservations (at most 16: a written
+object stays counted, an unwritten one is released and its incomplete temporary file removed) and enumerates nothing.
+If the journal is missing or malformed for a non-empty store, new captures wait (`store_accounting: UNKNOWN` in the
+summary; detections still commit) until the maintenance command `--recount-store` rebuilds it from the objects on disk
+(temporary leftovers counted too, nothing deleted). Parser: 16 MiB document, 4 MiB canonical text, 1,000-character passages,
 reviewed regexes of at most 400 characters. SEC contact headers come from the existing in-memory `sec_contact_headers`
 handoff.
 
@@ -195,7 +238,10 @@ receipt-cache or persistence failures and any unexpected error.
   results date proven, whole-item exclusion checks, a distinct machine disposition bound to the bytes and replayed at
   admission). Unrelated same-day press releases and generic 8-Ks stay suspended until a later verified release or a
   human review; keyword absence never clears an item.
-- **Part B:** wire the checker over effective records and the updater into `run_daily_data_refresh.ps1`; the shared
+- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (this batch: adapter enum, shared reference,
+  decision contract, fair queue, history segments), then B1 effective-input loader, B2 daily caller and dirty state,
+  B3 sealed evidence and Worker readers, B4 package/end-to-end/rollout plan, all for NVDA/MU; then A2a NBIS and A2b
+  CRWV (`astra-contract-a2.result.md`) and A3. In detail: wire the checker over effective records and the updater into `run_daily_data_refresh.ps1`; the shared
   effective-input loader for `order_forecast.py`/`publish_sealed_snapshot.py` with the release-check gate; the
   guidance-input dirty marker and ranking rebuild; the sealed `auto_update` evidence subrecord and Worker readers
   (`「官方財報自動核對（發布 YYYY-MM-DD）」`, typed `AUTO_UPDATE_BLOCKED`/`AUTO_UPDATE_WAITING` reasons); packaging;
