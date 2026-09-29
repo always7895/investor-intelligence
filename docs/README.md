@@ -65,6 +65,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — measured source activation (1 of 158 enabled) and the wave plan for diversified sources
 - [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — data-driven macro industry rotation from BLS PPI and SEC XBRL, refreshed daily
 - [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck-explosion Top20 (Serenity/Leopold leads, filings and market data) and the Leopold-led industry ranking
+- [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — machine renewal of revenue guidance from official filings after each results release (Part A slice 1, shadow only)
 - [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — single-writer Top20: hourly seal of the validated LKG bundle, report-age contract, refresh after the pointer, rollback
 - [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — no single-source dependency: product-by-source matrix, rejected sources and the remediation order
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
