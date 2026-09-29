@@ -58,6 +58,6 @@ Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, g
 
 ## Handoff
 
-- Next: ORDERS-V3-AUTOUPDATE-01 B0 in review, B1-B4 (NVDA/MU), rollout plan for GO; MU suspends on its FQ4 release until then.
+- Next: ORDERS-V3-AUTOUPDATE-01 B0 done (839f2f8, Astra r5), B1-B4 (NVDA/MU), rollout plan for GO; MU suspends on FQ4 until then.
 - Operator: the plaintext Alpha Vantage note; whether a 6-month figure may ever be a labelled model estimate (currently shown as 未揭露 when undisclosed).
 - Tooling: worktrees, their roles and the four scheduled tasks: `_archive\project-audit-20260929\worktree-inventory.md`; rollout tools `%TEMP%\ii-live\rollout6` and `rollout7`, rollout v9 folder `%TEMP%\ii-live\rollout9`; `chatgpt-web` lane `investor`.
