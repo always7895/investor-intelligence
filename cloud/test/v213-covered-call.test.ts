@@ -54,7 +54,7 @@ describe("covered-call suggestions", () => {
     const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
     expect(flex).toContain("Delta 0.06（約 6%，模型值，波動率由買賣報價反推 157%）");
     const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
-    expect(text).toContain("Delta 0.06（由報價反推）");
+    expect(text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
     const unknown = structuredClone(implied); (unknown.suggestions as any)[0].delta_basis = "GUESSED";
     expect(validateCoveredCallCycle(unknown)).toBeNull();
     const badVol = structuredClone(implied); (badVol.suggestions as any)[0].iv = -1;

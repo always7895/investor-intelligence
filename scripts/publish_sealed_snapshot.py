@@ -681,13 +681,17 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
             return {}
         options: dict = {}
         for ticker, cycles in doc["options"].items():
+            if not isinstance(cycles, dict):
+                continue  # a malformed ticker entry does not drop the healthy siblings
             options[ticker] = {}
             for cycle, value in cycles.items():
-                if "unavailable" in value:
-                    options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
-                    continue
                 try:
-                    validate_covered_call_cycle(value, evaluated_at=doc["generated_at"])
+                    if isinstance(value, dict) and "unavailable" in value:
+                        options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
+                        continue
+                    # A non-record cycle (e.g. suggestions=[null]) must raise the domain error here, not an
+                    # AttributeError that escapes to the whole-document catch and discards healthy cycles.
+                    validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle)
                     options[ticker][cycle] = value
                 except MarketProductValidationError as error:
                     options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}

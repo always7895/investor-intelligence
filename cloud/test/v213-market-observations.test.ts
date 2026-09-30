@@ -159,7 +159,8 @@ describe("sealed market observations", () => {
     // An explicit Stockholm suffix never falls back to another key (here only the older unsuffixed SIVE exists).
     expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE.ST 每月期權")))).not.toContain("0.23 SEK");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("NVDA weekly options")));
-    expect(weekly).toContain("OPTION_DATA_NOT_ADMITTED");  // no observation for NVDA in this fixture
+    expect(weekly).toContain("本輪封存快照未包含 NVDA 之期權觀察");  // no observation for NVDA in this fixture
+    expect(weekly).not.toContain("OPTION_DATA_NOT_ADMITTED");
   });
 
   it("offers the Stockholm listing's own options from the stock lookup", async () => {

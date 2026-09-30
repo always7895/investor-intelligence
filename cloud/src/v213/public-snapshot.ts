@@ -8,10 +8,16 @@ export interface PublicSnapshotView {
   readonly integrity: "sealed" | "legacy" | "invalid";
   json<T>(logicalKeys: string[]): Promise<T | null>;
   text(logicalKeys: string[]): Promise<string | null>;
+  hasSealedObject?(logicalKey: string): boolean;
+}
+
+export function hasSealedManifestObject(view: PublicSnapshotView, logicalKey: string): boolean {
+  return typeof view.hasSealedObject === "function" && view.hasSealedObject(logicalKey);
 }
 
 function invalidView(): PublicSnapshotView {
   return Object.freeze({ runId: null, kind: "invalid", integrity: "invalid",
+    hasSealedObject() { return false; },
     async json<T>() { return null as T | null; }, async text() { return null; } });
 }
 
@@ -63,6 +69,9 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
         };
         return Object.freeze<PublicSnapshotView>({
           runId: verified.pointer.run_id, kind: "snapshot", integrity: "sealed",
+          hasSealedObject(key: string) {
+            return verified.objects.has(key) || verified.lazy.has(key);
+          },
           async text(logicalKeys) {
             for (const key of logicalKeys) {
               const body = await sealedBody(key);
@@ -111,6 +120,7 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
   const keys = (logicalKeys: string[]) => runId === null ? [...logicalKeys] : logicalKeys.map(key => `snapshot:${runId}:${key}`);
   return Object.freeze<PublicSnapshotView>({
     runId, kind: runId === null ? "legacy" : "snapshot", integrity: "legacy",
+    hasSealedObject() { return false; },
     async json<T>(logicalKeys: string[]): Promise<T | null> {
       for (const key of keys(logicalKeys)) {
         const value = await env.PUBLIC_CACHE.get<T>(key, "json");

@@ -3,6 +3,7 @@
  * Observation only: never an order. Documents older than MAX_AGE_MS are ignored (the caller shows unavailable). */
 import type { PublicSnapshotView } from "./public-snapshot";
 import type { GlobalIdentityRecord } from "./global-identity";
+import { validateCoveredCallCycle, isValidUtcIsoInstant, type CoveredCallCycle } from "./covered-call";
 
 export const QUOTES_KEY = "v213:quotes:v1";
 export const OPTIONS_KEY = "v213:options:v2";
@@ -85,16 +86,91 @@ export function optionTickerKeys(raw: string): string[] {
 /** A covered-call cycle (validated by the caller), an explicit unavailability reason, or null. */
 export type OptionObservation = { quote: unknown } | { unavailable: string } | null;
 
+export type OptionDiagnosticStatus =
+  | "SNAPSHOT_UNAVAILABLE"
+  | "DOCUMENT_ABSENT"
+  | "DOCUMENT_INVALID_OR_UNREADABLE"
+  | "DOCUMENT_STALE"
+  | "TICKER_NOT_IN_SNAPSHOT"
+  | "PERIOD_UNAVAILABLE"
+  | "QUOTE_INVALID_OR_STALE"
+  | "FOUND";
+
+export interface DetailedOptionObservation {
+  status: OptionDiagnosticStatus;
+  quote?: CoveredCallCycle;
+  unavailable?: string;
+  docGeneratedAt?: string;
+  ticker?: string;
+  period?: "weekly" | "monthly";
+}
+
+/** Detailed sealed observation for underlying candidate keys and cycle with typed diagnostic status. */
+export async function loadDetailedOptionObservation(
+  view: PublicSnapshotView,
+  candidateKeys: string | readonly string[],
+  period: "weekly" | "monthly",
+  now = Date.now(),
+): Promise<DetailedOptionObservation> {
+  if (view.integrity !== "sealed") {
+    return { status: "SNAPSHOT_UNAVAILABLE", period };
+  }
+  if (typeof view.hasSealedObject === "function" && !view.hasSealedObject(OPTIONS_KEY)) {
+    return { status: "DOCUMENT_ABSENT", period };
+  }
+  const doc = await view.json<{ schema?: unknown; generated_at?: unknown; options?: Record<string, Record<string, unknown>> }>([OPTIONS_KEY]);
+  if (!doc || typeof doc !== "object" || doc.schema !== "v213-options-v2" || !doc.options || typeof doc.options !== "object" || Array.isArray(doc.options)) {
+    return { status: "DOCUMENT_INVALID_OR_UNREADABLE", period };
+  }
+  // The document instant must be a real UTC instant before any age judgement: an unparseable generated_at is an invalid
+  // document, not a measured stale age (which would otherwise print "produced at not-a-time, over 6h").
+  if (!isValidUtcIsoInstant(doc.generated_at)) {
+    return { status: "DOCUMENT_INVALID_OR_UNREADABLE", period };
+  }
+  const docGeneratedAt = String(doc.generated_at);
+  const docTime = Date.parse(docGeneratedAt);  // finite: isValidUtcIsoInstant already accepted it
+  // Distinguish a future-invalid document from a measured past-age staleness. A document more than the <=5min clock
+  // tolerance in the future is invalid (not "produced at <future>, over the 6h limit"); only a genuinely too-old
+  // document is stale. The exact 5min tolerance and 6h maximum are unchanged (amendment-02 / I3).
+  if (docTime - now > 300_000) {
+    return { status: "DOCUMENT_INVALID_OR_UNREADABLE", docGeneratedAt, period };
+  }
+  if (now - docTime > MAX_AGE_MS) {
+    return { status: "DOCUMENT_STALE", docGeneratedAt, period };
+  }
+  const keys = typeof candidateKeys === "string" ? [candidateKeys] : candidateKeys;
+  const matchedKey = keys.find(k => Object.hasOwn(doc.options!, k));
+  if (matchedKey === undefined) {
+    return { status: "TICKER_NOT_IN_SNAPSHOT", docGeneratedAt, period };
+  }
+  const cycles = doc.options[matchedKey];
+  if (!cycles || typeof cycles !== "object" || Array.isArray(cycles)) {
+    // A present ticker whose value is not a cycle record is a corrupt document, not a missing period.
+    return { status: "DOCUMENT_INVALID_OR_UNREADABLE", docGeneratedAt, period };
+  }
+  if (!Object.hasOwn(cycles, period)) {
+    return { status: "PERIOD_UNAVAILABLE", ticker: matchedKey, docGeneratedAt, period };
+  }
+  const entry = cycles[period] as Record<string, unknown> | undefined;
+  if (entry && typeof entry === "object" && !Array.isArray(entry) && typeof entry.unavailable === "string") {
+    return { status: "PERIOD_UNAVAILABLE", unavailable: entry.unavailable.slice(0, 200), ticker: matchedKey, docGeneratedAt, period };
+  }
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    // The period key is present but its value is malformed: distinct from a producer-declared unavailable/missing period.
+    return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
+  }
+  const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period);
+  if (!cycle) {
+    return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
+  }
+  return { status: "FOUND", quote: cycle, ticker: matchedKey, docGeneratedAt, period };
+}
+
 /** The sealed observation for one underlying and cycle (the first of the given keys that exists): a quote, an explicit
  * unavailability reason, or null. */
 export async function loadOptionObservation(view: PublicSnapshotView, ticker: string | readonly string[], period: "weekly" | "monthly", now = Date.now()): Promise<OptionObservation> {
-  if (view.integrity !== "sealed") return null;
-  const doc = await view.json<{ schema?: unknown; generated_at?: unknown; options?: Record<string, Record<string, unknown>> }>([OPTIONS_KEY]);
-  if (!doc || doc.schema !== "v213-options-v2" || !fresh(doc.generated_at, now) || !doc.options || typeof doc.options !== "object") return null;
-  const key = (typeof ticker === "string" ? [ticker] : ticker).find(candidate => Object.hasOwn(doc.options!, candidate));
-  const cycles = key !== undefined ? doc.options[key] : undefined;
-  const entry = cycles && Object.hasOwn(cycles, period) ? cycles[period] as Record<string, unknown> : undefined;
-  if (!entry || typeof entry !== "object") return null;
-  if (typeof entry.unavailable === "string") return { unavailable: entry.unavailable.slice(0, 200) };
-  return { quote: entry };
+  const detailed = await loadDetailedOptionObservation(view, ticker, period, now);
+  if (detailed.status === "FOUND") return { quote: detailed.quote };
+  if (detailed.status === "PERIOD_UNAVAILABLE" && detailed.unavailable) return { unavailable: detailed.unavailable };
+  return null;
 }

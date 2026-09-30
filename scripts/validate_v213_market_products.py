@@ -242,15 +242,31 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
 
 # The high-strike suggestion's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA).
 MAX_HIGH_STRIKE_DELTA = 0.20
+# Producer DTE buckets for the requested cycle window (scripts/build_market_quotes_options.py): a weekly/monthly request
+# must carry a DTE inside its own bucket. Not a third-Friday calendar classification.
+PERIOD_DTE_BUCKETS = {"weekly": (3, 14), "monthly": (21, 45)}
 
 
-def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) -> None:
+def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None = None, document_at: str | datetime | None = None,
+                                period: str | None = None) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
     strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices."""
     def finite(value, name):
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        # Strict finite scalar, robust to every out-of-range numeric *representation*, not just one spelling. Reject
+        # bool/str/collections up front, then convert to float inside a guard so an out-of-float-range magnitude in
+        # either JSON form maps to the per-cycle domain error rather than escaping: an exponent literal (1e309) parses
+        # to inf and is caught by math.isfinite below, while a bare big-integer literal (10**309) is a valid Python int
+        # whose float() raises OverflowError -- previously an uncaught crash that neither the per-cycle nor the outer
+        # publisher handler swallowed. ValueError/TypeError are translated for the same reason; NaN/inf fail isfinite.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}")
-        return float(value)
+        try:
+            number = float(value)
+        except (OverflowError, ValueError, TypeError) as error:
+            raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}") from error
+        if not math.isfinite(number):
+            raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}")
+        return number
 
     if not isinstance(cycle, dict) or cycle.get("strategy") != "COVERED_CALL":
         raise MarketProductValidationError("COVERED_CALL_CYCLE_INVALID")
@@ -258,21 +274,70 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) ->
         raise MarketProductValidationError("COVERED_CALL_CONTRACT_TERMS_INVALID")
     if not str(cycle.get("source", "")).strip() or not str(cycle.get("provenance", "")).startswith("https://"):
         raise MarketProductValidationError("MISSING_QUOTE_PROVENANCE")
+
+    # Row timestamp validation: robust UTC instant, no future, max 5h publisher age, document tolerance
+    ts_str = str(cycle.get("timestamp", "")).strip()
+    if not ts_str or not ISO_INSTANT_RE.match(ts_str) or not ts_str.endswith("Z"):
+        raise MarketProductValidationError("INVALID_QUOTE_TIMESTAMP")
+    try:
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise MarketProductValidationError("INVALID_QUOTE_TIMESTAMP") from error
+
+    if isinstance(evaluated_at, datetime):
+        eval_dt = evaluated_at if evaluated_at.tzinfo else evaluated_at.replace(tzinfo=timezone.utc)
+    elif isinstance(evaluated_at, str):
+        try:
+            eval_dt = datetime.fromisoformat(evaluated_at.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise MarketProductValidationError("INVALID_EVALUATION_TIMESTAMP") from error
+    else:
+        eval_dt = datetime.now(timezone.utc)
+
+    # Publisher policy: no future timestamp allowed
+    if dt > eval_dt:
+        raise MarketProductValidationError("FUTURE_TIMESTAMP_REJECTED")
+
+    # Publisher max observation age: 5 hours
+    if (eval_dt - dt).total_seconds() > 5 * 3600:
+        raise MarketProductValidationError("STALE_TIMESTAMP_REJECTED")
+
+    # Row time cannot be later than document time beyond 5 min (300s) tolerance
+    if document_at is not None:
+        if isinstance(document_at, datetime):
+            doc_dt = document_at if document_at.tzinfo else document_at.replace(tzinfo=timezone.utc)
+        elif isinstance(document_at, str):
+            try:
+                doc_dt = datetime.fromisoformat(document_at.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise MarketProductValidationError("INVALID_DOCUMENT_TIMESTAMP") from error
+        else:
+            doc_dt = None
+        if doc_dt and (dt - doc_dt).total_seconds() > 300:
+            raise MarketProductValidationError("ROW_TIMESTAMP_LATER_THAN_DOCUMENT")
+
     dte = cycle.get("dte")
     if not isinstance(dte, int) or isinstance(dte, bool) or not 1 <= dte <= 60:
         raise MarketProductValidationError("INVALID_DTE")
+    if period is not None:
+        bucket = PERIOD_DTE_BUCKETS.get(period)
+        if bucket is not None and not bucket[0] <= dte <= bucket[1]:
+            raise MarketProductValidationError("DTE_OUTSIDE_PERIOD_BUCKET")
     try:
         expiry = datetime.strptime(str(cycle.get("expiry")), "%Y-%m-%d").replace(tzinfo=timezone.utc)
     except ValueError as error:
         raise MarketProductValidationError("INVALID_EXPIRY_FORMAT") from error
+    if expiry.date() < eval_dt.date():
+        raise MarketProductValidationError("EXPIRED_CONTRACT_REJECTED")
     if evaluated_at:
-        clock = datetime.strptime(evaluated_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if abs((expiry.date() - clock.date()).days - dte) > 1:
+        if abs((expiry.date() - eval_dt.date()).days - dte) > 1:
             raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
     spot = finite(cycle.get("spot"), "spot")
     suggestions = cycle.get("suggestions")
     if not isinstance(suggestions, list) or not 1 <= len(suggestions) <= 2:
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
+    if not all(isinstance(item, dict) for item in suggestions):
+        raise MarketProductValidationError("COVERED_CALL_SUGGESTION_SHAPE")
     roles = [item.get("role") for item in suggestions]
     if roles not in (["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
         raise MarketProductValidationError("COVERED_CALL_ROLES")
@@ -296,6 +361,15 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | None = None) ->
             raise MarketProductValidationError("INVALID_DELTA_BASIS")
         if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:
             raise MarketProductValidationError("INVALID_IMPLIED_VOLATILITY")
+        # Optional liquidity/spread fields, when supplied, must be a finite non-negative number (amendment-02): a
+        # nonfinite value in any representation (exponent JSON 1e309 -> inf, or a bare big-integer JSON 10**309 that
+        # overflows float()), a wrong type (bool/str/collection) or a negative raises the per-cycle domain error here,
+        # so publish_sealed_snapshot marks only this cycle unavailable and healthy siblings/quotes survive instead of
+        # allow_nan=False collapsing the whole document or an OverflowError crashing it. A legitimate null/missing stays unknown.
+        for key in ("oi", "volume", "spread_pct"):
+            value = item.get(key)
+            if value is not None and finite(value, key) < 0:
+                raise MarketProductValidationError(f"INVALID_LIQUIDITY_FIELD: {key}")
     if len(suggestions) == 2 and not suggestions[0]["strike"] > suggestions[1]["strike"]:
         raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_NOT_HIGHER")
 

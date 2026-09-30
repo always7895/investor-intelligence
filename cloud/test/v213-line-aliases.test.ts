@@ -103,7 +103,7 @@ describe("LINE aliases for the current products", () => {
     for (const text of ["SIVE.ST 每月選擇權", "SIVE.ST 每月期權！", "期權SIVE.ST 每月", "選擇權 SIVE.ST 每月"]) {
       const body = await answer(env, text);
       expect(body, text).toContain("62.00 SEK");
-      expect(body, text).toContain("Delta 0.06（由報價反推）");
+      expect(body, text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
     }
     for (const text of ["SIVE.ST 期權", "SIVE.ST期權", "SIVE.ST 選擇權"]) {
       expect(await answer(env, text), text).toContain("無 3-14 天到期的上市期權");  // no cycle word: weekly, as before

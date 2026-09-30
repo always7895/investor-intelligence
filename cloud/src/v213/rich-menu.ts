@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import {
   buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, findBottleneckEntry, loadBottleneckV3,
 } from "./bottleneck-v3";
-import { loadOptionObservation, observationSymbol, optionTickerKeys } from "./market-observations";
+import { loadDetailedOptionObservation, loadOptionObservation, observationSymbol, optionTickerKeys } from "./market-observations";
 import { adrNote, adrRoute, marketHasOptions, uncoveredReason } from "./option-routes";
 import { resolveGlobalIdentity, type GlobalIdentityRecord } from "./global-identity";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
@@ -154,6 +154,48 @@ const STRATEGY_ALIASES: Record<string, "covered_call" | "cash_secured_put" | "bu
   "保護性賣權": "protective_put",
   "現股配賣權": "protective_put",
 };
+
+const ALIAS_SUFFIX = String.raw`期權指引|期权指引|期權建議|期权建议|選擇權推薦|选择权推荐|covered\s+call`;
+const CYCLE_WORDS = String.raw`每週|每周|每月|weekly|monthly`;
+const UNSUPPORTED_STRATEGY = String.raw`put|puts|call|calls|spread|spreads|csp|straddle|strangle|condor|iron condor|賣權|买权|買權|买权|價差|价差|現金擔保賣權|现金担保卖权|裸賣|裸卖|跨式|勒式`;
+
+function optionsAliasHelp(isText: boolean): LineOutboundMessage[] {
+  return panel(
+    "期權指引指令說明",
+    "公開備兌買權行情觀察",
+    [
+      "指令格式：輸入「股票代號 選擇權推薦」或「股票代號 covered call」（例：NVDA covered call、NVDA 每月期權指引）。",
+      "週期設定：未指定週期時預設顯示「每週期權」；亦可指定「每週」或「每月」。",
+      "策略範圍：本服務僅提供已封存之公開備兌買權（Covered Call）延遲行情觀察，非個人化投資建議，不下單。",
+      "教學資源：如欲了解不同期權策略原理，請輸入「期權教學」。",
+    ],
+    [
+      ["範例：NVDA covered call", "NVDA covered call"],
+      ["期權策略教學", "期權教學"],
+      ["回功能選單", "選單"],
+    ],
+    isText,
+  );
+}
+
+function optionsUnsupportedStrategyHelp(ticker: string, strategy: string, isText: boolean): LineOutboundMessage[] {
+  return panel(
+    "策略尚未支援",
+    `${ticker}｜僅提供備兌買權`,
+    [
+      `您查詢的策略「${strategy}」目前非公開行情觀察支援範圍。`,
+      "本服務目前僅提供已封存之公開「備兌買權（Covered Call）」延遲行情觀察，無裸賣（Naked Option）、賣權（Put）、價差（Spread）等其他策略之報價或推估，且不下單、不連券商。",
+      "如欲了解各類標準期權策略之損益模型與教學範例，請輸入「期權教學」。",
+    ],
+    [
+      [`查 ${ticker} 每週期權`, `${ticker} 每週期權`],
+      [`查 ${ticker} 每月期權`, `${ticker} 每月期權`],
+      ["期權策略教學", "期權教學"],
+      ["回功能選單", "選單"],
+    ],
+    isText,
+  );
+}
 
 /** Exact rich-menu commands only. Runs AFTER real LINE admission/rate limiting,
  * in the same request-pinned public view as Top20. No model or private fallback.
@@ -496,38 +538,75 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   // "call options" is never read as a ticker.
   // A ticker, or (operator 2026-09-27) a Chinese company name such as 台積電, resolved through the sealed identity shards.
   const TICKER = String.raw`[A-Z0-9][A-Z0-9./-]{0,14}(?: [A-Z]{1,3})?|[\u4e00-\u9fff]{2,8}`;
+
+  // Check alias-only query without ticker
+  if (new RegExp(`^(?:(?:${CYCLE_WORDS})\\s*)?(?:${ALIAS_SUFFIX})(?:\\s*文字)?$`, "i").test(command)) {
+    return optionsAliasHelp(isEnvText || /文字\s*$/i.test(command));
+  }
+
+  // Check unsupported strategy query for a ticker
+  const unsupportedMatch = new RegExp(`^(${TICKER})\\s*(?:(${CYCLE_WORDS})\\s*)?(${UNSUPPORTED_STRATEGY})(?:\\s*文字)?$`, "i").exec(command);
+  if (unsupportedMatch && !["教學", "試算說明", "HELP", "TOP20"].includes(unsupportedMatch[1]!.toUpperCase())
+    && !/每[週周月]|期[權权]|選擇權|选择权|教學|試算|指引|建議|建议|推薦|推荐|covered|options?/i.test(unsupportedMatch[1]!)) {
+    return optionsUnsupportedStrategyHelp(unsupportedMatch[1]!.toUpperCase(), unsupportedMatch[3]!, isEnvText || /文字\s*$/i.test(command));
+  }
+
   const quoteMatch = new RegExp(`^(${TICKER})\\s*(每週|每周|每月|weekly|monthly)\\s*(?:期權|期权|選擇權|选择权|options?)(?:\\s*文字)?$`, "i").exec(command)
     || new RegExp(`^(${TICKER})\\s*()(?:期權|期权|選擇權|选择权)(?:\\s*文字)?$`, "i").exec(command)
-    || new RegExp(`^(?:(?:期權|期权|選擇權|选择权)\\s*|options?\\s+)(${TICKER})\\s*(每週|每周|每月|weekly|monthly)?(?:\\s*文字)?$`, "i").exec(command);
+    || new RegExp(`^(?:(?:期權|期权|選擇權|选择权)\\s*|options?\\s+)(${TICKER})\\s*(每週|每周|每月|weekly|monthly)?(?:\\s*文字)?$`, "i").exec(command)
+    || new RegExp(`^(${TICKER})\\s*(?:(${CYCLE_WORDS})\\s*)?(${ALIAS_SUFFIX})(?:\\s*文字)?$`, "i").exec(command);
   if (quoteMatch) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const typed = quoteMatch[1]!;
     const ticker = typed.toUpperCase();
     const periodRaw = quoteMatch[2];  // both forms: group 1 ticker, group 2 period (optional after 期權; weekly by default)
+    const isAlias = Boolean(new RegExp(ALIAS_SUFFIX, "i").test(command));
     const period = periodRaw && /每月|monthly/i.test(periodRaw) ? "monthly" : "weekly";
 
     // Non-ticker words filter
-    if (!["教學", "試算說明", "HELP", "TOP20"].includes(ticker) && !/每[週周月]|期[權权]|選擇權|选择权|教學|試算/.test(typed)) {
+    if (!["教學", "試算說明", "HELP", "TOP20"].includes(ticker)
+      && !/每[週周月]|期[權权]|選擇權|选择权|教學|試算|指引|建議|建议|推薦|推荐|covered|options?/i.test(typed)) {
+      const now = Date.now();
       const view = await pinPublicSnapshot(env);
       if (view.integrity === "sealed") {
-        const label = period === "weekly" ? "每週期權" : "每月期權";
+        const label = period === "weekly" ? (isAlias && !periodRaw ? "每週期權（預設）" : "每週期權") : "每月期權";
         // Sealed delayed observations of the watch universe (US options and Nasdaq Stockholm options); a note (the ADR
         // route) is shown above the suggestion.
-        const answer = async (keys: string[], shown: string, note: string | null): Promise<LineOutboundMessage[] | null> => {
-          const observed = await loadOptionObservation(view, keys, period);
-          if (!observed) return null;
-          if ("unavailable" in observed) {
-            return optionsUnavailableReport(shown, period, `${note ? `${note}` : ""}${observed.unavailable}（已封存之公開觀察）`, isText);
+        const answer = async (keys: string[], shown: string, note: string | null): Promise<{ handled: boolean; messages: LineOutboundMessage[] | null }> => {
+          const detailed = await loadDetailedOptionObservation(view, keys, period, now);
+          if (detailed.status === "FOUND") {
+            const messages = buildCoveredCallMessages(detailed.quote!, label, isText ? "text" : "flex");
+            return { handled: true, messages: note ? [{ type: "text", text: note } as LineOutboundMessage, ...messages].slice(0, 5) : messages };
           }
-          const cycle = validateCoveredCallCycle(observed.quote);
-          if (!cycle) return optionsUnavailableReport(shown, period, "封存之期權觀察未通過驗證，已拒絕顯示。", isText);
-          const messages = buildCoveredCallMessages(cycle, label, isText ? "text" : "flex");
-          return note ? [{ type: "text", text: note } as LineOutboundMessage, ...messages].slice(0, 5) : messages;
+          if (detailed.status === "QUOTE_INVALID_OR_STALE") {
+            return { handled: true, messages: optionsUnavailableReport(shown, period, "封存之期權觀察未通過驗證（報價無效或逾時），已拒絕顯示。", isText) };
+          }
+          if (detailed.status === "PERIOD_UNAVAILABLE") {
+            const reason = detailed.unavailable
+              ? `${note ? `${note}` : ""}${detailed.unavailable}（已封存之公開觀察）`
+              : `${note ? `${note}` : ""}本輪封存資料沒有 ${shown} 的${period === "weekly" ? "每週期權" : "每月期權"}觀察。`;
+            return { handled: true, messages: optionsUnavailableReport(shown, period, reason, isText) };
+          }
+          if (detailed.status === "DOCUMENT_STALE") {
+            return { handled: true, messages: optionsUnavailableReport(shown, period, `期權快照已逾時（產生於 ${detailed.docGeneratedAt}，超過 6 小時有效上限）；已拒絕顯示過期報價。`, isText) };
+          }
+          if (detailed.status === "DOCUMENT_INVALID_OR_UNREADABLE") {
+            return { handled: true, messages: optionsUnavailableReport(shown, period, "封存期權物件無法驗證或讀取，已拒絕顯示。", isText) };
+          }
+          if (detailed.status === "DOCUMENT_ABSENT") {
+            return { handled: true, messages: optionsUnavailableReport(shown, period, "當輪已封存快照不含期權物件（OPTION_DATA_NOT_ADMITTED）；無已驗證之公開報價。", isText) };
+          }
+          if (detailed.status === "SNAPSHOT_UNAVAILABLE") {
+            return { handled: true, messages: optionsUnavailableReport(shown, period, "目前無已封存驗收之公開期權快照（OPTION_DATA_UNAVAILABLE）；殘留鍵不構成可用報價。", isText) };
+          }
+          // TICKER_NOT_IN_SNAPSHOT
+          return { handled: false, messages: null };
         };
+
         let route = adrRoute(typed);
         if (!route && /^[A-Z0-9]/i.test(typed)) {
           const direct = await answer(optionTickerKeys(ticker), ticker, null);
-          if (direct) return direct;
+          if (direct.handled) return direct.messages;
         }
         let record: GlobalIdentityRecord | null = null;
         if (!route) {
@@ -542,25 +621,22 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         }
         if (route) {
           const viaAdr = await answer(optionTickerKeys(route.adr), route.adr, adrNote(route));
-          return viaAdr ?? optionsUnavailableReport(ticker, period, `${adrNote(route)}本輪封存資料沒有 ${route.adr} 的期權觀察。`, isText);
+          return viaAdr.handled ? viaAdr.messages : optionsUnavailableReport(ticker, period, `${adrNote(route)}本輪封存資料沒有 ${route.adr} 的期權觀察。`, isText);
         }
         if (record && !marketHasOptions(record.market)) return optionsUnavailableReport(ticker, period, uncoveredReason(record), isText);
         if (record) {  // a name resolved to a US or Stockholm listing: that listing's own key only (no fallback to another market)
           const symbol = observationSymbol(record);
-          return await answer([symbol], symbol, null)
-            ?? optionsUnavailableReport(ticker, period, `${symbol}（${record.venue}）：本輪封存資料沒有此掛牌的期權觀察（可能沒有掛牌期權，或不在觀察範圍）。`, isText);
+          const viaSymbol = await answer([symbol], symbol, null);
+          return viaSymbol.handled ? viaSymbol.messages
+            : optionsUnavailableReport(ticker, period, `${symbol}（${record.venue}）：本輪封存資料沒有此掛牌的期權觀察（可能沒有掛牌期權，或不在觀察範圍）。`, isText);
         }
-        const quote = await view.json<OptionContractQuote>([`options:${ticker}:${period}:latest`]);
-        if (quote) {
-          return isText ? buildOptionContractText(quote) : buildOptionContractFlex(quote);
-        }
+        return optionsUnavailableReport(ticker, period, `本輪封存快照未包含 ${ticker} 之期權觀察；不推估無報價標的。`, isText);
       }
       return optionsUnavailableReport(
         ticker,
         period,
-        view.integrity === "sealed"
-          ? "當輪已封存快照不含期權物件（OPTION_DATA_NOT_ADMITTED）；無已驗證之公開報價。"
-          : "目前無已封存驗收之公開期權快照（OPTION_DATA_UNAVAILABLE）；殘留鍵不構成可用報價。",
+        // Reached only when the pinned snapshot is not sealed (the sealed branch above always returns).
+        "目前無已封存驗收之公開期權快照（OPTION_DATA_UNAVAILABLE）；殘留鍵不構成可用報價。",
         isText,
       );
     }
