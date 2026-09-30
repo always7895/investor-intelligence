@@ -4,7 +4,7 @@ Updated 2026-09-29 20:50 Asia/Taipei by Claude Code (sole tracked writer). Previ
 
 ## Identity
 
-- Branch `fix/options-provenance-audit` at `d0a3348` (B0 `839f2f8`, A1 `e89936f`), pushed; production runs `e049261` (= `902d893` ORDERS-V3-01 + project-audit repairs) since rollout v9 (below). CI on this branch ends COMPLETED_SKIPPED by design: not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
+- Branch `fix/options-provenance-audit` at B1 (B0 `839f2f8`, A1 `e89936f`), pushed; production runs `e049261` (= `902d893` ORDERS-V3-01 + project-audit repairs) since rollout v9 (below). CI on this branch ends COMPLETED_SKIPPED by design: not PASS. Non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false.
 - Last batches: project-audit repairs (`e049261`, Astra NO_BLOCKING_GAPS round 4, `_archive\project-audit-20260929\`); ORDERS-V3-01 (`902d893`, joint acceptance r11, `_archive\lane-orders-v3\`); RUNBOOK-ROLLOUT-01 (`b0860c9`); OPTIONS-PRESESSION-01 (`c7059d6`); L18-5351-CURATED-01 (`06a7f28`).
 
 ## Production — rollout v9 executed 2026-09-29 00:04–02:35Z (receipt `_archive\rollout-2026-09-29\RECEIPT-rollout9.md`)
@@ -58,6 +58,6 @@ Astra (`astra-review`, w9:pA): priorities, contracts, acceptance, arbitration, g
 
 ## Handoff
 
-- Next: ORDERS-V3-AUTOUPDATE-01 B1 in review (B0 839f2f8), B2-B4 (NVDA/MU), rollout plan for GO; MU suspends on FQ4 until then.
+- Next: ORDERS-V3-AUTOUPDATE-01 B1 done (Astra r2), B2-B4 (NVDA/MU), rollout plan for GO; MU suspends on FQ4 until then.
 - Operator: the plaintext Alpha Vantage note; whether a 6-month figure may ever be a labelled model estimate (currently shown as 未揭露 when undisclosed).
 - Tooling: worktrees, their roles and the four scheduled tasks: `_archive\project-audit-20260929\worktree-inventory.md`; rollout tools `%TEMP%\ii-live\rollout6` and `rollout7`, rollout v9 folder `%TEMP%\ii-live\rollout9`; `chatgpt-web` lane `investor`.
