@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import issuer_ir_feeds  # noqa: E402
 import revenue_guidance  # noqa: E402
+import revenue_guidance_overlay as overlay  # noqa: E402
 
 REGISTRY = ROOT / "config" / "revenue-guidance-v1.json"
 OUTPUT = ROOT / "data" / "cache" / "revenue_guidance_release_checks.json"
@@ -326,24 +327,52 @@ def receipt_for(record: Mapping[str, Any], now: datetime, sec_fetch: Callable[[s
     return receipt
 
 
-def run(registry_path: Path, output: Path, now: datetime, sec_fetch: Callable[[str], Any], wire_fetch: Callable[[str], Any],
-        ir_fetch: Callable[[str], bytes] | None = None) -> dict:
-    registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    if registry.get("schema") != "revenue-guidance-v1" or not isinstance(registry.get("issuers"), list):
-        raise ValueError("REGISTRY_INVALID")
+def retained_history(output: Path, snapshot: Any) -> dict[str, list[dict]]:
+    """The retained receipt history, exactly the bytes the snapshot captured (ORDERS-V3-AUTOUPDATE-01 B1). Only a
+    missing file is a first use; an unreadable, malformed or differently shaped history - or one that changed since
+    the snapshot read it - stops the run and leaves the file as it is (a corrupt history is never replaced by a clean
+    one: an item it listed may no longer appear in any feed)."""
     try:
-        previous = json.loads(output.read_text(encoding="utf-8"))
-        history = previous.get("issuers") if previous.get("schema") == SCHEMA and isinstance(previous.get("issuers"), dict) else {}
-    except (OSError, ValueError):
-        history = {}
+        raw = output.read_bytes()
+    except FileNotFoundError:
+        raw = None
+    except OSError as error:
+        raise ValueError("RECEIPTS_HISTORY_UNREADABLE") from error
+    captured = (snapshot.manifest.get("inputs") or {}).get("receipts")
+    if captured is not None and captured != (hashlib.sha256(raw).hexdigest() if raw is not None else "FAULT:MISSING"):
+        raise ValueError("RECEIPTS_HISTORY_CHANGED_OR_INVALID")
+    if raw is None:
+        return {}
+    try:
+        previous = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError("RECEIPTS_HISTORY_INVALID") from error
+    if not overlay.valid_receipt_history(previous):
+        raise ValueError("RECEIPTS_HISTORY_INVALID")
+    return previous["issuers"]
+
+
+def run(registry_path: Path, output: Path, now: datetime, sec_fetch: Callable[[str], Any], wire_fetch: Callable[[str], Any],
+        ir_fetch: Callable[[str], bytes] | None = None, effective_inputs: Any = None, state_root: Path | None = None) -> dict:
+    """Check every GUIDANCE discovery record of the shared effective-input snapshot (ORDERS-V3-AUTOUPDATE-01 B1): the
+    curated records, and for the automatic issuers the record the updater continues from - also while waiting,
+    blocked or suspended, and after a change of reviewed identity (the re-derived producer's reference, or the
+    baseline's as a conservative rescan). The raw receipt is collected as always; nothing here consumes machine
+    decisions or turns a status into OK."""
+    if effective_inputs is None:
+        effective_inputs = overlay.load_effective_inputs(
+            cutoff=now, state_root=state_root if state_root is not None else overlay.DEFAULT_STATE_ROOT,
+            registry_path=registry_path, receipts_path=output)
+    snapshot = overlay.require_snapshot(effective_inputs, now)
+    if snapshot.registry.get("status") != "OK":
+        raise ValueError("REGISTRY_INVALID")
+    history = retained_history(output, snapshot)
     issuers: dict[str, list] = {}
     counts: dict[str, int] = {}
     failed: list[str] = []
-    for record in registry["issuers"]:
-        if not isinstance(record, dict) or record.get("status") != "GUIDANCE":
-            continue
-        receipt = receipt_for(record, now, sec_fetch, wire_fetch, ir_fetch)
-        symbol = str(record.get("symbol"))
+    for symbol, record, _origin in snapshot.discovery_records():
+        # A discovery input that cannot be checked (no valid record to take a reference from) is an explicit outcome.
+        receipt = receipt_for(record, now, sec_fetch, wire_fetch, ir_fetch) if record is not None else None
         kept = [r for r in history.get(symbol) or [] if isinstance(r, dict) and r.get("checked_at", "") < stamp(now)]
         issuers[symbol] = (kept + ([receipt] if receipt else []))[-KEEP:]
         if receipt is None:
@@ -371,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--registry", type=Path, default=REGISTRY)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--if-older-than-hours", type=float, default=0.0)
+    parser.add_argument("--state-root", type=Path, default=overlay.DEFAULT_STATE_ROOT,
+                        help="auto-update state root whose discovery records are checked (absent: curated records only)")
     args = parser.parse_args(argv)
     now = utc_now()
     if args.if_older_than_hours > 0 and args.output.exists():
@@ -391,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run(args.registry, args.output, now, lambda url: _get_json(url, sec_headers),
                      lambda url: _get_json(url, {"User-Agent": WIRE_USER_AGENT, "Accept": "application/json"}),
-                     issuer_ir_feeds.fetch_bytes)
+                     issuer_ir_feeds.fetch_bytes, state_root=args.state_root)
     except Exception as error:  # noqa: BLE001 - keep the previous file and its original times
         print(json.dumps({"status": "FAILED", "error": type(error).__name__}))
         return 1

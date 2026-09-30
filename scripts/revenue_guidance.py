@@ -556,18 +556,29 @@ def validate_receipt(
     return True, status, None
 
 
-def load_release_checks_cache(path: Path | None = None) -> dict[str, Any]:
-    """Load runtime release-check cache (data/cache/revenue_guidance_release_checks.json)."""
-    target = path or RELEASE_CHECKS_CACHE_PATH
-    if not target.exists():
+def parse_release_checks_cache(raw: bytes | None) -> dict[str, Any]:
+    """The release-check cache from its exact bytes (None: no file); malformed content is the empty cache."""
+    if raw is None:
         return {"schema": RELEASE_CHECKS_SCHEMA, "generated_at": None, "issuers": {}}
     try:
-        data = json.loads(target.read_bytes().decode("utf-8"))
+        data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict) or data.get("schema") != RELEASE_CHECKS_SCHEMA:
             return {"schema": RELEASE_CHECKS_SCHEMA, "generated_at": None, "issuers": {}}
         return data
     except Exception:
         return {"schema": RELEASE_CHECKS_SCHEMA, "generated_at": None, "issuers": {}}
+
+
+def load_release_checks_cache(path: Path | None = None) -> dict[str, Any]:
+    """Load runtime release-check cache (data/cache/revenue_guidance_release_checks.json)."""
+    target = path or RELEASE_CHECKS_CACHE_PATH
+    if not target.exists():
+        return parse_release_checks_cache(None)
+    try:
+        raw = target.read_bytes()
+    except Exception:
+        return parse_release_checks_cache(None)
+    return parse_release_checks_cache(raw)
 
 
 def load_approval(path: Path | None = None) -> dict[str, Any]:
@@ -582,14 +593,21 @@ def load_approval(path: Path | None = None) -> dict[str, Any]:
     file that approves nothing: every issuer then fails closed as UNREVIEWED_INPUTS. A missing file is
     UNAVAILABLE; a malformed file is INVALID. All of those suspend the revenue path, never the order view.
     """
-    pending = {"status": "UNAVAILABLE", "sha256": None, "registry_sha256": None, "approved_at": None,
-               "reviewer": None, "records": {}}
     target = path or APPROVAL_PATH
     if not target.exists():
-        return pending
+        return parse_approval(None)
     try:
         raw = target.read_bytes()
     except OSError:
+        return parse_approval(None)
+    return parse_approval(raw)
+
+
+def parse_approval(raw: bytes | None) -> dict[str, Any]:
+    """The reviewed profile from its exact bytes (None: no readable file, UNAVAILABLE); see load_approval."""
+    pending = {"status": "UNAVAILABLE", "sha256": None, "registry_sha256": None, "approved_at": None,
+               "reviewer": None, "records": {}}
+    if raw is None:
         return pending
     sha256 = hashlib.sha256(raw).hexdigest()
     try:
@@ -888,9 +906,14 @@ def load_registry(path: Path | None = None) -> dict[str, Any]:
     """Load and validate config/revenue-guidance-v1.json. Returns a registry dictionary."""
     target_path = path or REGISTRY_PATH
     if not target_path.exists():
-        return {"status": "UNAVAILABLE", "sha256": None, "issuers": {}}
+        return parse_registry(None)
+    return parse_registry(target_path.read_bytes(), target_path)
 
-    raw_bytes = target_path.read_bytes()
+
+def parse_registry(raw_bytes: bytes | None, target_path: Path | None = None) -> dict[str, Any]:
+    """The reviewed registry from its exact bytes (None: no file, UNAVAILABLE); see load_registry."""
+    if raw_bytes is None:
+        return {"status": "UNAVAILABLE", "sha256": None, "issuers": {}}
     sha256 = hashlib.sha256(raw_bytes).hexdigest()
     try:
         data = json.loads(raw_bytes.decode("utf-8"))
@@ -1417,8 +1440,27 @@ def build_forward_quarters(
     record: Mapping[str, Any],
     cutoff: datetime,
     release_checks_cache: Mapping[str, Any] | None = None,
+    *,
+    effective_inputs: Any = None,
 ) -> dict[str, Any]:
-    """Build the 4 forward quarters model and check staleness / post-quarter-end bridge."""
+    """Build the 4 forward quarters model and check staleness / post-quarter-end bridge.
+
+    With ``effective_inputs`` (ORDERS-V3-AUTOUPDATE-01 B1) the record must be that snapshot's machine-admitted record
+    for this issuer and cutoff; its freshness proof is the snapshot's own-reference receipt admission (the raw receipt,
+    strictly validated, with only a terminal raw status accounted for by the re-derived producer), never the
+    issuer-wide newest receipt and never a human review list. Every other check below applies unchanged."""
+    auto_item = None
+    if effective_inputs is not None:
+        import revenue_guidance_overlay
+        _invalid = {"status": "UNAVAILABLE", "reason": "INVALID", "warning": None, "forward_quarters": [],
+                    "f1": 0.0, "f2": 0.0, "f3": 0.0, "f4": 0.0, "basis_type": None, "claims_used": [], "receipt": None}
+        try:
+            auto_item = revenue_guidance_overlay.require_snapshot(effective_inputs, cutoff).issuer(issuer)
+        except revenue_guidance_overlay.EffectiveInputsError:
+            return _invalid
+        if (auto_item is None or auto_item.admission_kind != "MACHINE_REPLAY" or auto_item.usable_record is None
+                or revenue_guidance_overlay.record_sha256(record) != auto_item.record_sha256):
+            return _invalid
     if record.get("symbol") != issuer:
         return {
             "status": "UNAVAILABLE",
@@ -1669,7 +1711,11 @@ def build_forward_quarters(
     if not isinstance(ir_spec, Mapping):
         ir_spec = None
 
-    receipt = select_latest_release_receipt(issuer, release_checks_cache, cutoff)
+    if auto_item is not None:
+        admission = auto_item.receipt_admission or {}
+        receipt = admission.get("receipt")
+    else:
+        receipt = select_latest_release_receipt(issuer, release_checks_cache, cutoff)
     if not receipt:
         return {"status": "UNAVAILABLE", "reason": "FRESHNESS_UNVERIFIED", "diagnostic": "IR_COVERAGE_MISSING",
                 "warning": None, "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None,
@@ -1684,7 +1730,8 @@ def build_forward_quarters(
     active_doc_id = guidance_reference(record)["document_id"]
     active_doc = docs_by_id.get(active_doc_id) if active_doc_id else None
     active_doc_pub = active_doc.get("published_date") if active_doc else None
-    reviewed_later = record.get("reviewed_later_documents")
+    # A machine-admitted record carries no human review list (and would never be credited one).
+    reviewed_later = [] if auto_item is not None else record.get("reviewed_later_documents")
     # Channel identity is bound to the reviewed issuer wiring (Astra r5 item 2): the receipt's SEC feed must be the
     # issuer's own CIK submissions feed and the wire feed its own symbol, not merely any URL of that shape; the IR
     # channel must read the registry's own IR host (Astra W1 ruling).
@@ -1694,21 +1741,35 @@ def build_forward_quarters(
         receipt, issuer, str(anchor_end_day), active_doc_id, cutoff, reviewed_later, active_doc_pub,
         expected_cik=expected_cik, expected_wire_symbol=expected_wire, expected_ir=ir_spec)
 
-    if not valid_rc:
+    if auto_item is not None:
+        # Machine admission: every structural/time/channel/digest/reference check above must pass; only the terminal
+        # raw statuses are eligible, and only when the snapshot's admission of this very receipt left nothing
+        # unaccounted. The raw receipt stays exactly as collected.
+        if not valid_rc and rc_err not in ("RESULTS_PUBLISHED", "REVIEW_REQUIRED"):
+            reason = "FRESHNESS_UNVERIFIED" if rc_status == "FRESHNESS_UNVERIFIED" else rc_status
+            diagnostic = "IR_COVERAGE_MISSING" if rc_err == "IR_COVERAGE_MISSING" else None
+            return {"status": "UNAVAILABLE", "reason": reason, "diagnostic": diagnostic, "warning": None,
+                    "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
+        if (admission.get("decision") is not None or admission.get("reference") != active_doc_id
+                or admission.get("receipt_digest") != receipt.get("digest")):
+            return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
+                    "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
+    elif not valid_rc:
         reason = "FRESHNESS_UNVERIFIED" if rc_status == "FRESHNESS_UNVERIFIED" else rc_status
         diagnostic = "IR_COVERAGE_MISSING" if rc_err == "IR_COVERAGE_MISSING" else None
         return {"status": "UNAVAILABLE", "reason": reason, "diagnostic": diagnostic, "warning": None,
                 "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
 
-    if rc_status == "RESULTS_PUBLISHED":
-        return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
-                "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
-    if rc_status == "REVIEW_REQUIRED":
-        return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
-                "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
-    if rc_status != "OK":
-        return {"status": "UNAVAILABLE", "reason": "FRESHNESS_UNVERIFIED", "warning": None,
-                "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
+    if auto_item is None:
+        if rc_status == "RESULTS_PUBLISHED":
+            return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
+                    "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
+        if rc_status == "REVIEW_REQUIRED":
+            return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
+                    "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
+        if rc_status != "OK":
+            return {"status": "UNAVAILABLE", "reason": "FRESHNESS_UNVERIFIED", "warning": None,
+                    "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
 
     # 5. Model construction
     f_amounts: list[float] = [0.0, 0.0, 0.0, 0.0]

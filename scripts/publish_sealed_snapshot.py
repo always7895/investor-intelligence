@@ -46,6 +46,7 @@ import listing_lineage  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import revenue_guidance  # noqa: E402
+import revenue_guidance_overlay  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
 import top20_carry_forward  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
@@ -522,11 +523,13 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
                          revenue_registry: "dict | None" = None,
                          consensus_cache: "dict | None" = None,
                          release_checks_cache: "dict | None" = None,
-                         revenue_approval: "dict | None" = None) -> "dict":
+                         revenue_approval: "dict | None" = None,
+                         effective_inputs: "object | None" = None) -> "dict":
     """The sealed outlook plus dual fields (Astra contract ORDERS-V3-01 section 6):
     - order_forecast: existing version:2, built by unchanged build_v2
     - order_forecast_v3: new version:3, separate revenue+order view
-    at the build cutoff with reviewed registries, receipts and the enforced reviewed profile (A1) loaded once."""
+    at the build cutoff with reviewed registries, receipts and the enforced reviewed profile (A1) loaded once - or, from
+    B1 on, with the one pinned effective-input snapshot (`effective_inputs`) of the lazy build."""
     sealed = outlook if outlook is not None else {"orders": None, "consensus": None, "scenarios": [], "consensus_second": None}
     v2 = order_forecast.build_v2(
         issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
@@ -534,12 +537,17 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
     v3 = order_forecast.build_v3(
         issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
         cutoff.date(), cutoff, claims, revenue_registry=revenue_registry, consensus_cache=consensus_cache, v2_forecast=v2,
-        release_checks_cache=release_checks_cache, revenue_approval=revenue_approval)
+        release_checks_cache=release_checks_cache, revenue_approval=revenue_approval, effective_inputs=effective_inputs)
     return {**sealed, "order_forecast": v2, "order_forecast_v3": v3}
 
 
-def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
-    """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed."""
+def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object | None" = None,
+                            state_root: "Path | None" = None) -> "dict[str, str]":
+    """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed.
+
+    B1: one effective-input snapshot per build, taken at the ranking document's `generated_at` (not the wall clock)
+    and passed unchanged to every model call (`effective_inputs` injects one for tests and replay; `state_root`
+    selects the auto-update state root, default revenue_guidance_overlay.DEFAULT_STATE_ROOT)."""
     try:
         doc = json.loads(path.read_bytes().decode("utf-8"))
         roles_zh, constraints_zh = _layer_translations()
@@ -552,17 +560,15 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
         # The deep reports' full order scenarios (RPO recognition schedules) feed the 6-month / 1-year order forecast.
         # The reviewed order claims after the filings, loaded once per document (never fetched while sealing).
         order_claim_registry = order_claims.load()
-        try:
-            revenue_guidance_registry = revenue_guidance.load_registry()
-        except Exception:
-            revenue_guidance_registry = {"status": "INVALID", "sha256": None, "issuers": {}}
-        try:
-            # A1: the enforced reviewed profile beside the registry (loaded once; a missing/malformed file fails
-            # every issuer's revenue path closed as UNREVIEWED_INPUTS while the order view stays independent).
-            revenue_approval_profile = revenue_guidance.load_approval()
-        except Exception:
-            revenue_approval_profile = {"status": "UNAVAILABLE", "sha256": None, "registry_sha256": None,
-                                       "approved_at": None, "reviewer": None, "records": {}}
+        # B1: the registry, the enforced reviewed profile (A1), the release-check receipts and the auto-update state are
+        # read once into one pinned snapshot at this build's cutoff; a missing/malformed file stays a typed fault (the
+        # curated path keeps its UNREVIEWED_INPUTS / freshness semantics, the automatic lane fails closed).
+        if effective_inputs is None:
+            effective_inputs = revenue_guidance_overlay.load_effective_inputs(
+                cutoff=generated, state_root=state_root if state_root is not None else revenue_guidance_overlay.DEFAULT_STATE_ROOT,
+                symbols=[entry["symbol"] for entry in doc["top"]])
+        else:
+            revenue_guidance_overlay.require_snapshot(effective_inputs, generated)
         try:
             # The newest capture per issuer taken at or before this build's cutoff (captures keep a short history).
             # A corrupted or missing cache is a typed channel fault, never conflated with a genuine empty/nondisclosed
@@ -570,13 +576,6 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
             consensus_cache = revenue_consensus_quarterly.select_for_cutoff(revenue_consensus_quarterly.load_cache(), generated)
         except Exception:
             consensus_cache = {"__fault__": "CONSENSUS_CACHE_LOAD_FAILED"}
-        try:
-            release_checks_cache = revenue_guidance.load_release_checks_cache()
-            if not isinstance(release_checks_cache, dict):
-                raise ValueError("not an object")
-        except Exception:
-            release_checks_cache = {"schema": "revenue-guidance-release-checks-v1", "generated_at": None, "issuers": {},
-                                    "__fault__": "RELEASE_CHECK_CACHE_LOAD_FAILED"}
         order_scenarios = company_deep_report.load_order_scenarios(tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]])
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
@@ -619,8 +618,7 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime) -> "dict[str, str]":
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
-                    revenue_registry=revenue_guidance_registry, consensus_cache=consensus_cache,
-                    release_checks_cache=release_checks_cache, revenue_approval=revenue_approval_profile),
+                    consensus_cache=consensus_cache, effective_inputs=effective_inputs),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": sealed_fund,
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.

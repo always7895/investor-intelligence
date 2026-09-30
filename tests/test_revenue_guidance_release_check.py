@@ -149,7 +149,7 @@ class ReleaseCheckTests(unittest.TestCase):
     def test_run_keeps_history_and_a_bad_registry_changes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             reg, out = Path(tmp) / "reg.json", Path(tmp) / "out.json"
-            reg.write_text(json.dumps({"schema": "revenue-guidance-v1", "issuers": [record(), {"symbol": "X", "status": "NOT_DISCLOSED"}]}))
+            reg.write_text(json.dumps({"schema": "revenue-guidance-v1", "version": 1, "issuers": [record(), {"symbol": "X", "status": "NOT_DISCLOSED"}]}))
             for hour in range(10):
                 check.run(reg, out, NOW.replace(hour=hour), sec(BASE_SEC), wire(BASE_WIRE))
             doc = json.loads(out.read_text())

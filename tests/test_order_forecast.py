@@ -837,18 +837,12 @@ class OrdersV3ContainmentTests(unittest.TestCase):
         reg = self._registry(symbol="S5", claim_id="CLAIM-OVER")
         approval = make_synthetic_approval(reg["sha256"], reg["issuers"])
         saved = {
-            "load_registry": publisher.revenue_guidance.load_registry,
-            "load_approval": publisher.revenue_guidance.load_approval,
             "select_for_cutoff": publisher.revenue_consensus_quarterly.select_for_cutoff,
-            "load_release_checks_cache": publisher.revenue_guidance.load_release_checks_cache,
             "load_order_scenarios": publisher.company_deep_report.load_order_scenarios,
             "load_reports": publisher.company_deep_report.load_reports,
             "canonical_json": self.revenue_guidance.canonical_json,
         }
-        publisher.revenue_guidance.load_registry = lambda *a, **k: reg
-        publisher.revenue_guidance.load_approval = lambda *a, **k: approval
         publisher.revenue_consensus_quarterly.select_for_cutoff = lambda *a, **k: {}
-        publisher.revenue_guidance.load_release_checks_cache = lambda *a, **k: {}
         publisher.company_deep_report.load_order_scenarios = lambda *a, **k: {
             "S5": recognition(horizons={"m6": None, "m12": {"share_pct": 39, "derived": False}})}
         publisher.company_deep_report.load_reports = lambda *a, **k: {}
@@ -882,12 +876,11 @@ class OrdersV3ContainmentTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "v3.json"
                 path.write_text(_json.dumps(doc), encoding="utf-8")
-                body = publisher.lazy_bottleneck_v3_body(path, now)
+                # B1: the synthetic curated inputs travel as one sealed curated-only snapshot (the fixture adapter).
+                body = publisher.lazy_bottleneck_v3_body(
+                    path, now, effective_inputs=publisher.revenue_guidance_overlay.curated_snapshot(now, reg, approval, {}))
         finally:
-            publisher.revenue_guidance.load_registry = saved["load_registry"]
-            publisher.revenue_guidance.load_approval = saved["load_approval"]
             publisher.revenue_consensus_quarterly.select_for_cutoff = saved["select_for_cutoff"]
-            publisher.revenue_guidance.load_release_checks_cache = saved["load_release_checks_cache"]
             publisher.company_deep_report.load_order_scenarios = saved["load_order_scenarios"]
             publisher.company_deep_report.load_reports = saved["load_reports"]
             self.revenue_guidance.canonical_json = saved["canonical_json"]

@@ -529,10 +529,12 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
         registry_path: Path = REGISTRY_PATH, approval_path: Path = APPROVAL_PATH, receipts_path: Path = RECEIPTS_PATH) -> dict[str, Any]:
     """One updater cycle. Returns a summary; raises SystemicFailure for integrity/lock/persistence failures."""
     profiles_bytes, registry_bytes, approval_bytes = profiles_path.read_bytes(), registry_path.read_bytes(), approval_path.read_bytes()
-    profiles = verify.validate_profiles(json.loads(profiles_bytes.decode("utf-8")))
+    profiles = {sym: prof for sym, prof in verify.validate_profiles(json.loads(profiles_bytes.decode("utf-8"))).items()
+                if sym in overlay.SUPPORTED_AUTO}  # automatic mode is limited to the supported issuers (B1)
     curated = {r["symbol"]: r for r in json.loads(registry_bytes.decode("utf-8"))["issuers"]}
     try:
-        receipts = json.loads(receipts_path.read_text(encoding="utf-8")) if receipts_path.exists() else {"issuers": {}}
+        receipts_raw = receipts_path.read_bytes() if receipts_path.exists() else None
+        receipts = json.loads(receipts_raw.decode("utf-8")) if receipts_raw is not None else {"issuers": {}}
     except (OSError, ValueError) as error:
         raise SystemicFailure("RECEIPTS_UNREADABLE") from error
     replay = bool(getattr(transport, "replay", False))
@@ -556,9 +558,42 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             except overlay.StateError:
                 pass  # carried unchanged as its own fail-closed barrier; admission blocks it and nothing is fetched for it
         detections: dict[str, dict[str, Any]] = json.loads(json.dumps((base or {}).get("detections", {})))
+        # Phase 0 (B1): the shared discovery view at entry (the same snapshot the release checker used), from the inputs
+        # read above and the pinned current generation. Material items listed for its discovery reference join the
+        # monotonic detection set before any re-verification switches the reference or anything is fetched, so an item
+        # collected during an identity change or while an issuer is unadmitted is never lost; only a currently
+        # re-derived producer accounts for it later (phase 1).
+        entry_view = overlay.load_effective_inputs(
+            cutoff=now, state_root=state_root, registry_bytes=registry_bytes, approval_bytes=approval_bytes,
+            profiles_bytes=profiles_bytes, receipts_bytes=receipts_raw, receipts_path=receipts_path if receipts_raw is None else None,
+            # the generation just read (unless the clock is behind it: then the loader walks to the one at `now`)
+            expected_generation={"generation_id": pointer["generation_id"], "sha256": pointer["sha256"]}
+            if pointer and base is not None and base["created_at"] <= now else None,
+            allow_replay=replay)
+        if entry_view.condition == "STATE_FAILURE":
+            # Damaged state (a lost pointer or generations beside recognizable state, a foreign root, ...) is never
+            # overwritten or re-initialized: stop before any detection, re-verification, capture or publication.
+            raise SystemicFailure(f"STATE {entry_view.manifest['state']['error']}")
+        entry_changed = False
+        for sym in profiles:
+            item = entry_view.issuer(sym)
+            if item is None or item.discovery_record is None:
+                continue
+            ref = item.discovery_reference["document_id"] if item.discovery_reference else None
+            seen = overlay.unaccounted(item.discovery_record, overlay.receipt_rows(receipts, sym, ref, now),
+                                       item.producer if item.discovery_origin == "READMITTED_AUTO" else None, [])
+            if not seen:
+                continue
+            store = detections.get(sym) or {"documents": [], "overflow": False}
+            union = overlay._material_documents([{"later_documents": list(store["documents"]) + seen}])
+            updated = {"documents": [{k: d[k] for k in overlay.LATER_KEYS} for d in union[:overlay.MAX_DETECTIONS]],
+                       "overflow": store["overflow"] or len(union) > overlay.MAX_DETECTIONS}
+            if updated != store:
+                detections[sym] = updated
+                entry_changed = True
         queue = read_queue(state_root)
         summary: dict[str, Any] = {"status": "OK", "at": now, "issuers": {}, "reverified": False}
-        state = {"pointer": pointer, "changed": False}
+        state = {"pointer": pointer, "changed": entry_changed}
 
         def publish() -> None:
             try:

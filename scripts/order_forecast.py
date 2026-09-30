@@ -502,13 +502,29 @@ def build_v2(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
 # Contracted recognition from v2 is retained independently and never added to guidance or consensus.
 
 
+def _auto_barrier_reason(disposition: str, reason: str | None) -> str:
+    """The v3 unavailable reason of an automatic-lane barrier (the typed disposition travels in evidence.auto_update):
+    a newer release awaiting verification or an unaccounted item is STALE, a missing or unverifiable freshness proof
+    FRESHNESS_UNVERIFIED, an unadmitted proof INVALID."""
+    reason = str(reason or "")
+    if disposition == "WAITING":
+        return "STALE"
+    if disposition == "SUSPENDED":
+        if reason.startswith(("RECEIPT_RESULTS_PUBLISHED", "RECEIPT_REVIEW_REQUIRED", "RECEIPT_RECEIPT_AGE_EXCEEDED", "DETECTIONS_")):
+            return "STALE"
+        if reason.startswith(("RECEIPT_MISSING", "RECEIPTS_", "RECEIPT_CHECKED_AT", "RECEIPT_IR_COVERAGE", "RECEIPT_CHANNELS")):
+            return "FRESHNESS_UNVERIFIED"
+    return "INVALID"
+
+
 def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_orders: Mapping[str, Any] | None,
              report_day: date, cutoff: datetime, claims: Mapping[str, Any],
              revenue_registry: Mapping[str, Any] | None = None,
              consensus_cache: Mapping[str, Any] | None = None,
              v2_forecast: Mapping[str, Any] | None = None,
              release_checks_cache: Mapping[str, Any] | None = None,
-             revenue_approval: Mapping[str, Any] | None = None) -> dict[str, Any]:
+             revenue_approval: Mapping[str, Any] | None = None,
+             effective_inputs: Any = None) -> dict[str, Any]:
     """The version-3 revenue and order forecast for one Top20 entry at the build cutoff.
     Reuses the unchanged build_v2 order view and incorporates reviewed revenue guidance / consensus.
 
@@ -518,18 +534,46 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     with the distinct UNREVIEWED_INPUTS diagnostic, while the independent order recognition is never affected.
     A3/A6: the registry root's ``consensus_enabled`` gate (missing fails closed to disabled) defers the Korean
     analyst-consensus route for the first rollout: NOT_DISCLOSED records then seal the CONSENSUS_DEFERRED
-    diagnostic and build_v3 never routes to the consensus cache, even when a capture exists."""
+    diagnostic and build_v3 never routes to the consensus cache, even when a capture exists.
+
+    B1 (ORDERS-V3-AUTOUPDATE-01): ``effective_inputs`` is the one pinned snapshot of every revenue-guidance input at
+    this cutoff (revenue_guidance_overlay.load_effective_inputs). Its curated registry, reviewed profile and receipts
+    feed the unchanged curated path; for NVDA/MU its per-issuer disposition decides: a machine-admitted record takes
+    the separate machine branch (no human approval is claimed for it), a waiting/blocked/suspended issuer has no
+    revenue (never the older curated numbers or v2 revenue). Without a snapshot and without explicit curated inputs
+    the shared loader is used; explicit curated inputs (the fixture interface) keep the legacy curated path."""
     import revenue_guidance
 
     if v2_forecast is None:
         v2_forecast = build_v2(issuer, stock_orders, recognition_orders, report_day, cutoff, claims)
 
+    # 0. The effective-input snapshot (B1)
+    snapshot = None
+    auto_item = None
+    if effective_inputs is None and revenue_registry is None and revenue_approval is None and release_checks_cache is None:
+        import revenue_guidance_overlay
+        effective_inputs = revenue_guidance_overlay.load_effective_inputs(
+            cutoff=cutoff, state_root=revenue_guidance_overlay.DEFAULT_STATE_ROOT, symbols=[issuer])
+    if effective_inputs is not None:
+        import revenue_guidance_overlay
+        if revenue_registry is not None or revenue_approval is not None or release_checks_cache is not None:
+            raise ValueError("build_v3: an effective-input snapshot or explicit curated inputs, not both")
+        snapshot = revenue_guidance_overlay.require_snapshot(effective_inputs, cutoff)
+        revenue_registry, revenue_approval, release_checks_cache = snapshot.registry, snapshot.approval, snapshot.release_checks
+        auto_item = snapshot.issuer(issuer)
+    machine = auto_item is not None and auto_item.admission_kind == "MACHINE_REPLAY" and auto_item.disposition == "AUTO_VERIFIED"
+    auto_barrier = auto_item is not None and auto_item.disposition in ("WAITING", "BLOCKED", "SUSPENDED")
+
     # 1. Inspect reviewed revenue guidance registry
-    reg = revenue_registry or revenue_guidance.load_registry()
+    reg = revenue_registry if revenue_registry is not None else revenue_guidance.load_registry()
     reg_status = reg.get("status")
     reg_sha256 = reg.get("sha256")
     issuers_map = reg.get("issuers", {}) if isinstance(reg, Mapping) else {}
     record = issuers_map.get(issuer) if isinstance(issuers_map, Mapping) else None
+    if machine:
+        record = auto_item.usable_record  # the source-rederived successor, never a merged or hand-approved record
+    elif auto_barrier:
+        record = None  # no older curated numbers while a newer event is unresolved or the proof is not admitted
     reported_quarters = record.get("reported_quarters", []) if isinstance(record, Mapping) else []
     anchor_date = None
     start_date = None
@@ -545,13 +589,22 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     approval: Mapping[str, Any] | None = None
     profile_err: str | None = None
     consensus_enabled = False
-    if reg_status == "OK" and record is not None:
+    if machine and reg_status == "OK":
+        # Machine admission replaces the human profile for this record (the snapshot's re-derived producer, its own
+        # receipt and typed consumption); the human profile is not consulted and its slots stay empty.
+        consensus_enabled = bool(reg.get("consensus_enabled", False))
+    elif reg_status == "OK" and record is not None:
         approval = revenue_approval if revenue_approval is not None else revenue_guidance.load_approval()
         profile_err = revenue_guidance.check_reviewed_profile(issuer, record, approval, reg_sha256, cutoff)
         # A3/A6: the explicit registry gate; a missing flag fails closed to disabled (first-rollout deferral).
         consensus_enabled = bool(reg.get("consensus_enabled", False))
 
-    if reg_status == "INVALID":
+    if auto_barrier:
+        revenue_status = "UNAVAILABLE"
+        revenue_reason = _auto_barrier_reason(auto_item.disposition, auto_item.reason)
+    elif machine and reg_status != "OK":
+        revenue_reason = "INVALID"
+    elif reg_status == "INVALID":
         revenue_reason = "INVALID"
     elif reg_status in ("UNAVAILABLE", "EMPTY") or record is None:
         revenue_reason = "INPUTS_MISSING"
@@ -573,7 +626,10 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
         else:
             try:
                 valid_record = revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
-                fw_result = revenue_guidance.build_forward_quarters(issuer, valid_record, cutoff, release_checks_cache)
+                if machine:
+                    fw_result = revenue_guidance.build_forward_quarters(issuer, valid_record, cutoff, effective_inputs=snapshot)
+                else:
+                    fw_result = revenue_guidance.build_forward_quarters(issuer, valid_record, cutoff, release_checks_cache)
                 if fw_result["status"] == "AVAILABLE":
                     revenue_status = "AVAILABLE"
                     revenue_reason = None
@@ -925,7 +981,7 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     approval_record = None
     if isinstance(approval, Mapping) and isinstance(approval.get("records"), Mapping):
         approval_record = approval["records"].get(issuer)
-    profile_sealed = profile_err is None
+    profile_sealed = profile_err is None and not machine
     evidence: dict[str, Any] = {
         "revenue_registry_status": reg_status,
         "revenue_registry_sha256": reg_sha256,
@@ -951,6 +1007,10 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
         "approval_decisions": (list(approval_record["decisions"]) if isinstance(approval_record, Mapping) else None)
         if profile_sealed else None,
     }
+    if auto_item is not None and auto_item.evidence is not None:
+        # B1 in-memory AutoAdmissionEvidence (B3 defines the sealed schema and the Worker readers; not published).
+        evidence["auto_update"] = {**auto_item.evidence, "cutoff": snapshot.cutoff, "input_digest": snapshot.input_digest,
+                                   "generation_sha256": snapshot.generation_sha256}
 
     # Bounded allowlisted projection on the evidence-limit path (Astra r5 item 20, A4 r7): the scoped failure must
     # stay small. The oversized revenue originals are cleared, and a canonicalization failure is itself the limit

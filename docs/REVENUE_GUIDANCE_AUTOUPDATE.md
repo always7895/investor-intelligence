@@ -1,9 +1,10 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
-Status: **Part A slice 1 (framework + NVDA + MU) accepted (`e89936f`); B0 shared prerequisites for Part B; shadow
-only.** Nothing here is wired into the daily caller, the sealer or the Worker; production still reads only the curated registry and its human approval
-(`config/revenue-guidance-v1.json`, `config/revenue-guidance-approval-v1.json`, see
-[BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md)). The contract is Astra's `astra-contract.result.md` Part 2 in the lane
+Status: **Part A slice 1 (framework + NVDA + MU) accepted (`e89936f`); B0 accepted (`839f2f8`); B1 effective-input
+boundary under review; not deployed.** The daily caller does not run the updater yet (B2) and the Worker does not read
+automatic evidence (B3); with no auto-update state root (the production case until B2) every build is byte-identical
+to the curated path over the curated registry and its human approval (`config/revenue-guidance-v1.json`,
+`config/revenue-guidance-approval-v1.json`, see [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md)). The contract is Astra's `astra-contract.result.md` Part 2 in the lane
 archive `_archive\lane-orders-v3-autoupdate\`; this page describes what slice 1 implements and what is still open.
 
 Goal (operator 2026-09-29): after each results release the revenue-guidance record renews itself from official
@@ -28,6 +29,60 @@ references are a conflict (no reference, so no receipt and no revenue), never th
 release checker, the sealer's model gate and the auto-update admission use this one helper; every curated record is
 unchanged by it. An automatic successor must have the single-reference shape (its release), and its ROUTING decision
 binds the adapter, the proven report period and the reference descriptor.
+
+## Effective inputs (B1)
+
+`revenue_guidance_overlay.load_effective_inputs(cutoff=, state_root=, ...)` is the one input boundary shared by the
+release checker, the updater, `order_forecast.build_v3` / `revenue_guidance.build_forward_quarters` and the lazy sealer
+(`publish_sealed_snapshot.lazy_bottleneck_v3_body`, one snapshot per build at the ranking's `generated_at`). It reads
+the registry, the reviewed profile, the extraction profiles and the release-check cache once each (one explicit path
+or exact bytes, else the project default; `revenue_guidance.parse_*` validate the same bytes the old `load_*`
+wrappers do), reads the state pointer once and pins the generation at the cutoff through its verified parent chain
+(or an `expected_generation` replay pin). It returns a sealed, immutable `EffectiveInputs` (parts kept as JSON text,
+an HMAC with a per-process key re-checked on every access, copies returned): a dictionary claiming automatic
+admission, a rebound field or another cutoff is refused (`EffectiveInputsError`).
+
+Per issuer (`IssuerInputs`): the disposition `CURATED | AUTO_VERIFIED | WAITING | BLOCKED | SUSPENDED` with a typed
+reason; the **discovery record** (what the checker and the updater check); the **usable record** (the only model
+input, set only for CURATED and AUTO_VERIFIED); the admission kind (`HUMAN_PROFILE` or `MACHINE_REPLAY`); producer
+and last attempt separately; unresolved detections and overflow; the structured own-reference receipt admission; and
+the in-memory `auto_update` evidence (B3 defines its sealed schema). Automatic mode is limited to NVDA and MU
+(`SUPPORTED_AUTO`); every other issuer is its curated record under the unchanged human-profile path.
+
+- **State.** An absent or empty root is `BOOTSTRAP` (the curated path, byte-identical to before). Recognizable state
+  without its pointer, a missing or corrupt pointer/generation, a root that is a file or holds foreign entries,
+  `state_required` with no state, or an unreadable pin is `STATE_FAILURE`: NVDA/MU are BLOCKED (no numbers, never the
+  curated ones), the other issuers are unaffected. Deleting the whole root cannot be told apart from a new install
+  inside one process: B2 persists that expectation (`state_required`).
+- **Discovery.** The re-derived producer's record (origin `READMITTED_AUTO`), else the curated record (`CURATED`).
+  After a change of reviewed identity the stored producer is re-derived under the current code, profiles and baseline
+  for discovery only (still `READMITTED_AUTO`, never usable before the updater re-verifies); if it no longer
+  reproduces, or the issuer's history is unreadable, the structurally valid baseline record is used as a conservative
+  `CURATED_RESCAN` reference. The checker therefore keeps checking waiting, blocked and suspended issuers
+  (`revenue_guidance_release_check.py --state-root`, default `data/cache/revenue_guidance_autoupdate`); the updater
+  first folds every material item listed for the entry snapshot's discovery reference into the durable detection set
+  (before re-verification can switch the reference or anything is fetched).
+- **Integrity at the callers.** The checker keeps exactly the receipt history the snapshot captured: only a missing
+  file is a first use; an unreadable, malformed or differently shaped history, or one that changed since the snapshot
+  read it, fails the run and leaves the file untouched (the loader reports it as `RECEIPTS_INVALID`). The updater stops
+  with `SYSTEMIC_FAILURE` before any work when its entry snapshot is `STATE_FAILURE` (for example a lost pointer and
+  generations beside recognizable state, or foreign entries): damaged state is never re-initialized.
+- **Model.** A usable `AUTO_VERIFIED` record takes a separate machine branch: the human profile is not consulted and
+  its slots stay null; the proof of freshness is the snapshot's own-reference receipt, strictly validated, where only
+  a terminal raw status (`RESULTS_PUBLISHED`/`REVIEW_REQUIRED`) is accepted and only if the re-derived producer's
+  typed consumption leaves nothing unaccounted. The raw receipt is sealed unchanged; `validate_receipt` is not
+  relaxed. Every other check of `build_forward_quarters` applies unchanged. WAITING/BLOCKED/SUSPENDED issuers have no
+  revenue (`STALE`, `INVALID` or `FRESHNESS_UNVERIFIED`; the typed disposition travels in `evidence.auto_update`),
+  never the older curated or v2 revenue; an independently valid contracted-recognition horizon (RPO) still shows.
+- **Pinning.** `input_digest` is the SHA-256 of a versioned manifest: cutoff, replay/state-required policy, the exact
+  input digests or typed faults, the installed verifier identity, the pinned generation (id and file digest), and per
+  issuer the disposition, discovery origin/reference, usable-record digest, producer bindings (event, attempt,
+  decisions, predecessor, record, report period, reference, the segments read, every capture's raw and metadata
+  digest), the last attempt, detections and the selected receipt rows. Paths, the queue cursor and non-operative
+  history are excluded; nothing enumerates the capture store. A build finishes on its pin even if the pointer moves.
+- **Fixture interface.** `overlay.curated_snapshot(cutoff, registry, approval, release_checks)` wraps explicit parsed
+  curated inputs (tests, the legacy `build_v3` arguments) as a sealed curated-only snapshot; it can never produce an
+  automatic disposition.
 
 The profile file and the state files are validated in code (`validate_profiles`; `validate_generation` for the
 envelope, `validate_attempt` for every nested event, capture map, decision and detected document). There are no
@@ -238,8 +293,9 @@ receipt-cache or persistence failures and any unexpected error.
   results date proven, whole-item exclusion checks, a distinct machine disposition bound to the bytes and replayed at
   admission). Unrelated same-day press releases and generic 8-Ks stay suspended until a later verified release or a
   human review; keyword absence never clears an item.
-- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (this batch: adapter enum, shared reference,
-  decision contract, fair queue, history segments), then B1 effective-input loader, B2 daily caller and dirty state,
+- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (accepted: adapter enum, shared reference,
+  decision contract, fair queue, history segments), B1 effective-input loader (this batch, `astra-contract-b1.result.md`;
+  frozen production golden in the lane archive `b1-golden\`), then B2 daily caller and dirty state,
   B3 sealed evidence and Worker readers, B4 package/end-to-end/rollout plan, all for NVDA/MU; then A2a NBIS and A2b
   CRWV (`astra-contract-a2.result.md`) and A3. In detail: wire the checker over effective records and the updater into `run_daily_data_refresh.ps1`; the shared
   effective-input loader for `order_forecast.py`/`publish_sealed_snapshot.py` with the release-check gate; the

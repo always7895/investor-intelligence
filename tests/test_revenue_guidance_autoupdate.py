@@ -148,15 +148,16 @@ class Chain:
                                        self.curated(), json.loads(self.receipts.read_text(encoding="utf-8")) if receipts else None,
                                        allow_replay=True)
 
+    def snapshot(self, instant: str, **kwargs) -> "overlay.EffectiveInputs":
+        """The shared effective-input snapshot (B1) of this runtime at the instant."""
+        return overlay.load_effective_inputs(cutoff=instant, state_root=self.state, registry_path=self.registry, approval_path=self.approval,
+                                             profiles_path=PROFILES, receipts_path=self.receipts, allow_replay=True, **kwargs)
+
     def check(self, instant: str) -> dict:
-        """The real release checker over the current effective records (what Part B wires into the daily caller)."""
-        states = self.resolve(instant)
-        effective = [s["effective"] for s in states.values() if s["effective"] is not None]
-        reg = self.base / "effective-registry.json"
-        reg.write_text(json.dumps({"schema": "revenue-guidance-v1", "version": 1, "issuers": effective}, ensure_ascii=False), encoding="utf-8")
+        """The real release checker over the shared discovery records (B1: the production entry point, no merge)."""
         day = instant[:10]
-        return checker.run(reg, self.receipts, datetime.strptime(instant, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc),
-                           sec_fetch_as_of(day), wire_fetch_as_of(day), ir_fetch_as_of(day))
+        return checker.run(self.registry, self.receipts, datetime.strptime(instant, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc),
+                           sec_fetch_as_of(day), wire_fetch_as_of(day), ir_fetch_as_of(day), effective_inputs=self.snapshot(instant))
 
     def update(self, instant: str) -> dict:
         return updater.run(self.state, ReplayAsOf(instant[:10]), at(instant), PROFILES, self.registry, self.approval, self.receipts)
@@ -1629,9 +1630,18 @@ class B0Tests(unittest.TestCase):
                 self.assertEqual(overlay.reconcile_usage(root), self.raw_on_disk(root))
                 self.assertEqual(overlay.reconcile_usage(root), len(b"first object") + len(b"second object " * 1000))
 
+    def initialize(self, when: str = "2025-01-01T00:00:00Z") -> None:
+        """An initialized state root (one empty generation), as the updater leaves it before it ever captures: captures
+        without a pointer are damaged state (B1 R2)."""
+        ident = overlay.identity(PROFILES.read_bytes(), self.chain.registry.read_bytes(), self.chain.approval.read_bytes())
+        gen = dict(ident, schema=overlay.STATE_SCHEMA, generation_id=updater._new_generation_id(at(when)), parent=None,
+                   created_at=when, issuers={}, detections={})
+        overlay.publish_generation(self.chain.state, gen, None)
+
     def test_the_updater_keeps_its_quota_after_an_interrupted_capture(self):
         """B0-R4-1 through the actual updater (quota lowered to 1 MiB for the test): a capture interrupted after its
         metadata leaves no under-count, so the release waits and nothing is stored beyond the quota."""
+        self.initialize()
         with self.interrupted("clear"), self.assertRaises(KeyboardInterrupt):
             overlay.store_capture(self.chain.state, b"x" * (1 << 20), {"url": "https://www.sec.gov/Archives/edgar/data/1/y",
                                                                         "retrieved_at": "2026-01-01T00:00:00Z"})
@@ -1645,6 +1655,7 @@ class B0Tests(unittest.TestCase):
     def test_ordinary_runs_enumerate_nothing_and_unknown_accounting_waits(self):
         """B0-R4-2: no ordinary run enumerates the capture store, however large; an unknown journal makes captures wait
         (detections still commit) until the --recount-store maintenance command rebuilds it."""
+        self.initialize()
         for i in range(128):
             overlay.store_capture(self.chain.state, f"synthetic {i}".encode(), {"url": f"https://www.sec.gov/Archives/edgar/data/1/{i}",
                                                                               "retrieved_at": "2025-01-01T00:00:00Z"})
