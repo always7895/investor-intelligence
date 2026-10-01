@@ -58,6 +58,30 @@ class V213LocalGatewayFidelityTests(unittest.TestCase):
         enriched, _ = MODULE.enrich_messages([{"role": "user", "content": "這個供應鏈瓶頸怎麼判斷"}])
         self.assertIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", enriched[0]["content"])
 
+    def test_leopold_is_context_only_and_does_not_certify_full_skill(self) -> None:
+        enriched, context = MODULE.enrich_messages([{"role": "user", "content": "Leopold Aschenbrenner 的方法"}])
+        self.assertIn("CONTEXT_ONLY", enriched[0]["content"])
+        self.assertIn("6/12/24-month", enriched[0]["content"])
+        self.assertIn("a filing/retrieval date is not delivery", enriched[0]["content"])
+        proof = MODULE.methodology_execution_evidence(None, context)
+        self.assertEqual(proof["lane"], "LEGACY_SYSTEM_DIRECTIVE")
+        self.assertFalse(proof["full_skill_executed"])
+        self.assertFalse(proof["model_adherence_verified"])
+        self.assertEqual(proof["reference_files_loaded"], [])
+        self.assertRegex(proof["directive_sha256"], r"^[a-f0-9]{64}$")
+        self.assertEqual(proof["aschenbrenner_role"], "CONTEXT_ONLY")
+
+    def test_compact_and_smoke_cannot_borrow_legacy_methodology_evidence(self) -> None:
+        _, context = MODULE.enrich_messages([{"role": "user", "content": "Serenity"}])
+        for mode, lane in (("compact_public_v1", "COMPACT_POLICY_ONLY"),
+                           ("transport_smoke_v1", "TRANSPORT_SMOKE")):
+            proof = MODULE.methodology_execution_evidence(mode, context)
+            self.assertEqual(proof["lane"], lane)
+            self.assertIsNone(proof["directive_sha256"])
+            self.assertFalse(proof["full_skill_executed"])
+            self.assertEqual(proof["reference_files_loaded"], [])
+        self.assertEqual(MODULE.methodology_execution_evidence(None, {})["lane"], "NO_RESEARCH_ENRICHMENT")
+
     def test_non_stock_general_question_does_not_force_serenity_method(self) -> None:
         enriched, context = MODULE.enrich_messages([{"role": "user", "content": "你好"}])
         self.assertNotIn("SERENITY PUBLIC-LOGIC HIGH-FIDELITY RECONSTRUCTION", enriched[0]["content"])

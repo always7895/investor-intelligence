@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -109,6 +111,61 @@ class FinalCleanupGateTests(unittest.TestCase):
         policy["git_cleanup"]["github_managed_pull_refs_are_read_only"] = False
         findings = module.audit_policy(policy)
         self.assertTrue(any("github_managed_pull_refs" in finding for finding in findings))
+
+    def test_consumer_cli_default_policy_only_passes_locked(self) -> None:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "final_cleanup_gate.py"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn(
+            "FINAL CLEANUP GATE PASSED: cleanup remains locked and no deletion was performed",
+            proc.stdout,
+        )
+        self.assertNotIn("authorizes a separate cleanup transaction", proc.stdout)
+
+    def test_consumer_cli_require_unlocked_fails_closed_with_self_asserted_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            receipt_file = Path(temporary) / "receipt.json"
+            receipt_file.write_text(
+                json.dumps(self.receipt, indent=2), encoding="utf-8"
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "final_cleanup_gate.py"),
+                    "--receipt",
+                    str(receipt_file),
+                    "--require-unlocked",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("FINAL CLEANUP GATE FAILED", proc.stdout)
+            self.assertIn(
+                "cleanup cannot be unlocked: no source-bound proof is accepted by this legacy tool",
+                proc.stdout,
+            )
+            self.assertNotIn("authorizes a separate cleanup transaction", proc.stdout)
+
+    def test_consumer_cli_require_unlocked_fails_closed_without_receipt(self) -> None:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "final_cleanup_gate.py"),
+                "--require-unlocked",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("FINAL CLEANUP GATE FAILED", proc.stdout)
+        self.assertNotIn("authorizes a separate cleanup transaction", proc.stdout)
 
 
 if __name__ == "__main__":

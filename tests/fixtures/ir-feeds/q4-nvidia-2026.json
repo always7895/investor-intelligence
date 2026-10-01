@@ -1,0 +1,419 @@
+{
+ "GetPressReleaseListResult": [
+  {
+   "PressReleaseDate": "09/28/2026 07:00:00",
+   "Headline": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/28/2026 05:00:00",
+   "Headline": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Open-Agent-Safety-Platform-to-Secure-Agents-From-Testing-to-Deployment/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/14/2026 09:00:00",
+   "Headline": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-Open-Source-CUDA-Q-Platform-for-Fault-Tolerant-Quantum-Computing/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/09/2026 20:00:00",
+   "Headline": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-AI-Infrastructure-Capacity-in-Partnership-With-Australias-Data-Center-Ecosystem/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/31/2026 08:30:00",
+   "Headline": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-MediaTek-Deepen-Long-Standing-Partnership-to-Build-AI-Edge-to-Cloud-Computing-Platforms/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/27/2026 17:00:00",
+   "Headline": "NVIDIA Announces Upcoming Event for Financial Community",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Upcoming-Event-for-Financial-Community/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/26/2026 17:05:00",
+   "Headline": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/26/2026 16:20:00",
+   "Headline": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/25/2026 11:00:00",
+   "Headline": "NVIDIA Announces Jetson Orin Nano 2 Robotics Computer to Redefine Entry-Level Edge AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Jetson-Orin-Nano-2-Robotics-Computer-to-Redefine-Entry-Level-Edge-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/24/2026 11:00:00",
+   "Headline": "NVIDIA Groq 3 LPX Now in Full Production With World-Class Speed for Agentic AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Groq-3-LPX-Now-in-Full-Production-With-World-Class-Speed-for-Agentic-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/24/2026 11:00:00",
+   "Headline": "SpaceXAI Adopts NVIDIA Vera CPU to Accelerate Agentic AI at Massive Scale",
+   "LinkToDetailPage": "/news/press-release-details/2026/SpaceXAI-Adopts-NVIDIA-Vera-CPU-to-Accelerate-Agentic-AI-at-Massive-Scale/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/17/2026 08:33:00",
+   "Headline": "NVIDIA Guarantees SB Energy's PORTS-Pike Technology Campus in Ohio to Exclusively Host NVIDIA AI Compute",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Guarantees-SB-Energys-PORTS-Pike-Technology-Campus-in-Ohio-to-Exclusively-Host-NVIDIA-AI-Compute/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/10/2026 16:01:00",
+   "Headline": "NVIDIA Partners With Apollo, BlackRock, Blackstone, Brookfield, Goldman Sachs and KKR to Establish AI Compute Infrastructure Financing Platforms to Mobilize Over $500 Billion of Third-Party Capital",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Partners-With-Apollo-BlackRock-Blackstone-Brookfield-Goldman-Sachs-and-KKR-to-Establish-AI-Compute-Infrastructure-Financing-Platforms-to-Mobilize-Over-500-Billion-of-Third-Party-Capital/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/29/2026 17:00:00",
+   "Headline": "NVIDIA Sets Conference Call for Second-Quarter Financial Results",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Sets-Conference-Call-for-Second-Quarter-Financial-Results/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/27/2026 09:00:00",
+   "Headline": "Ilya Sutskever’s Safe Superintelligence Inc. and NVIDIA Announce Long-Term Strategic Partnership",
+   "LinkToDetailPage": "/news/press-release-details/2026/Ilya-Sutskevers-Safe-Superintelligence-Inc--and-NVIDIA-Announce-Long-Term-Strategic-Partnership/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/26/2026 20:45:00",
+   "Headline": "NVIDIA Expands NVIDIA Agent Toolkit With NVIDIA PhysicsNeMo and CUDA-X Libraries to Transform How the World Engineers, Designs and Builds",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-NVIDIA-Agent-Toolkit-With-NVIDIA-PhysicsNeMo-and-CUDA-X-Libraries-to-Transform-How-the-World-Engineers-Designs-and-Builds/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/25/2026 01:10:00",
+   "Headline": "SK Group and NVIDIA Expand Strategic Partnership Across AI Factories and Next-Generation Memory",
+   "LinkToDetailPage": "/news/press-release-details/2026/SK-Group-and-NVIDIA-Expand-Strategic-Partnership-Across-AI-Factories-and-Next-Generation-Memory/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/25/2026 01:10:00",
+   "Headline": "NAVER, NVIDIA and Brookfield to Expand Korea’s National AI Factory Infrastructure Buildout",
+   "LinkToDetailPage": "/news/press-release-details/2026/NAVER-NVIDIA-and-Brookfield-to-Expand-Koreas-National-AI-Factory-Infrastructure-Buildout/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/23/2026 19:00:00",
+   "Headline": "NVIDIA and KAIST Launch Joint AI Research Lab to Accelerate AI Innovation in Korea",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-KAIST-Launch-Joint-AI-Research-Lab-to-Accelerate-AI-Innovation-in-Korea/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/20/2026 11:00:00",
+   "Headline": "NVIDIA Agent Toolkit Expands With New Omniverse Libraries, Putting AI Agents to Work Building Simulation-Ready Worlds",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Agent-Toolkit-Expands-With-New-Omniverse-Libraries-Putting-AI-Agents-to-Work-Building-Simulation-Ready-Worlds/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/16/2026 04:00:00",
+   "Headline": "Japan Government, Industrial Leaders and NVIDIA Launch the World’s First National AI Infrastructure",
+   "LinkToDetailPage": "/news/press-release-details/2026/Japan-Government-Industrial-Leaders-and-NVIDIA-Launch-the-Worlds-First-National-AI-Infrastructure/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/15/2026 23:40:00",
+   "Headline": "Japan’s Robotics and Manufacturing Leaders Build on NVIDIA Cosmos to Advance Physical AI Frontier",
+   "LinkToDetailPage": "/news/press-release-details/2026/Japans-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier/default.aspx"
+  },
+  {
+   "PressReleaseDate": "07/15/2026 19:00:00",
+   "Headline": "Japan’s Enterprises and Startups Build Industry-Specialized AI With NVIDIA Nemotron Open Models",
+   "LinkToDetailPage": "/news/press-release-details/2026/Japans-Enterprises-and-Startups-Build-Industry-Specialized-AI-With-NVIDIA-Nemotron-Open-Models/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/23/2026 09:00:00",
+   "Headline": "NVIDIA Announces BioNeMo Agent Toolkit — Tools for Agents to Accelerate Scientific Discovery",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-BioNeMo-Agent-Toolkit--Tools-for-Agents-to-Accelerate-Scientific-Discovery/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/22/2026 09:00:00",
+   "Headline": "NVIDIA Vera Rubin Delivers World-Class Supercomputers for Science",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Vera-Rubin-Delivers-World-Class-Supercomputers-for-Science/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/22/2026 09:00:00",
+   "Headline": "Europe Unveils a Record 35 New NVIDIA AI Supercomputers",
+   "LinkToDetailPage": "/news/press-release-details/2026/Europe-Unveils-a-Record-35-New-NVIDIA-AI-Supercomputers/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/22/2026 09:00:00",
+   "Headline": "NVIDIA Announces Halos for Robotics, the Industry’s First Full-Stack Safety System for Physical AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Halos-for-Robotics-the-Industrys-First-Full-Stack-Safety-System-for-Physical-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/11/2026 17:32:00",
+   "Headline": "NVIDIA Stockholder Meeting Set for June 24; Individuals Can Participate Online",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Stockholder-Meeting-Set-for-June-24-Individuals-Can-Participate-Online/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/07/2026 19:00:00",
+   "Headline": "NVIDIA and SK hynix Announce Multiyear Technology Partnership to Advance Memory for AI Factories",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-SK-hynix-Announce-Multiyear-Technology-Partnership-to-Advance-Memory-for-AI-Factories/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/07/2026 19:00:00",
+   "Headline": "NAVER Expands AI Infrastructure With NVIDIA to Serve Surging Global AI Demand",
+   "LinkToDetailPage": "/news/press-release-details/2026/NAVER-Expands-AI-Infrastructure-With-NVIDIA-to-Serve-Surging-Global-AI-Demand/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/07/2026 19:00:00",
+   "Headline": "SK Telecom and NVIDIA Build AI Infrastructure to Power Korea’s AI Innovation",
+   "LinkToDetailPage": "/news/press-release-details/2026/SK-Telecom-and-NVIDIA-Build-AI-Infrastructure-to-Power-Koreas-AI-Innovation/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:00:00",
+   "Headline": "NVIDIA and TSMC Bring AI Into Fabs to Advance Semiconductor Design and Manufacturing",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-TSMC-Bring-AI-Into-Fabs-to-Advance-Semiconductor-Design-and-Manufacturing/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:59:00",
+   "Headline": "NVIDIA, Foxconn and Taiwan Medical Centers Bring Agentic and Physical AI to ‘Healthy Taiwan’",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Foxconn-and-Taiwan-Medical-Centers-Bring-Agentic-and-Physical-AI-to-Healthy-Taiwan/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:53:00",
+   "Headline": "NVIDIA Releases Major Collection of Open Source Agent Tools and Skills for Physical AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Releases-Major-Collection-of-Open-Source-Agent-Tools-and-Skills-for-Physical-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:50:00",
+   "Headline": "NVIDIA Announces NVIDIA Isaac GR00T Reference Humanoid Robot for Academic Research",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-NVIDIA-Isaac-GR00T-Reference-Humanoid-Robot-for-Academic-Research/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:48:00",
+   "Headline": "NVIDIA DRIVE Hyperion Becomes the Global Platform for a Robotaxi-Ready World",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-DRIVE-Hyperion-Becomes-the-Global-Platform-for-a-Robotaxi-Ready-World/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:46:00",
+   "Headline": "NVIDIA Launches Alpamayo 2 Super Open Reasoning Model for Robotaxis",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Alpamayo-2-Super-Open-Reasoning-Model-for-Robotaxis/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:42:00",
+   "Headline": "NVIDIA Launches Cosmos 3, the Open Frontier Foundation Model for Physical AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Cosmos-3-the-Open-Frontier-Foundation-Model-for-Physical-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:35:00",
+   "Headline": "NVIDIA DGX Station for Windows Puts a Trillion-Parameter AI Supercomputer on Every Enterprise Desk",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-DGX-Station-for-Windows-Puts-a-Trillion-Parameter-AI-Supercomputer-on-Every-Enterprise-Desk/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:26:00",
+   "Headline": "NVIDIA and Microsoft Reinvent Windows PCs for the Age of Personal AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Microsoft-Reinvent-Windows-PCs-for-the-Age-of-Personal-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "06/01/2026 00:21:00",
+   "Headline": "Enterprise Software Leaders Build AI Agents With NVIDIA",
+   "LinkToDetailPage": "/news/press-release-details/2026/Enterprise-Software-Leaders-Build-AI-Agents-With-NVIDIA/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/31/2026 23:57:00",
+   "Headline": "NVIDIA Unveils Vera, the CPU for Agents",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Unveils-Vera-the-CPU-for-Agents/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/31/2026 23:47:00",
+   "Headline": "NVIDIA Vera BlueField-4 STX Brings Agentic AI Storage Processing With In-Silicon Security",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Vera-BlueField-4-STX-Brings-Agentic-AI-Storage-Processing-With-In-Silicon-Security/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/31/2026 23:43:00",
+   "Headline": "NVIDIA Vera Rubin Ramps Into Full Production to Power Agentic AI Factories Worldwide",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Vera-Rubin-Ramps-Into-Full-Production-to-Power-Agentic-AI-Factories-Worldwide/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/31/2026 23:30:00",
+   "Headline": "NVIDIA DSX Gives Infrastructure Builders the Playbook for AI Factories",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-DSX-Gives-Infrastructure-Builders-the-Playbook-for-AI-Factories/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/21/2026 17:00:00",
+   "Headline": "NVIDIA Announces Upcoming Events for Financial Community",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Upcoming-Events-for-Financial-Community/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/20/2026 16:20:00",
+   "Headline": "NVIDIA Announces Financial Results for First Quarter Fiscal 2027",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-First-Quarter-Fiscal-2027/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/08/2026 16:30:00",
+   "Headline": "NVIDIA Names Suzanne Nora Johnson to Board of Directors",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Names-Suzanne-Nora-Johnson-to-Board-of-Directors/default.aspx"
+  },
+  {
+   "PressReleaseDate": "05/07/2026 16:34:00",
+   "Headline": "NVIDIA and IREN Announce Strategic Partnership to Accelerate Deployment of up to 5 Gigawatts of AI Infrastructure",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-IREN-Announce-Strategic-Partnership-to-Accelerate-Deployment-of-up-to-5-Gigawatts-of-AI-Infrastructure/default.aspx"
+  },
+  {
+   "PressReleaseDate": "04/29/2026 17:00:00",
+   "Headline": "NVIDIA Sets Conference Call for First-Quarter Financial Results",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Sets-Conference-Call-for-First-Quarter-Financial-Results/default.aspx"
+  },
+  {
+   "PressReleaseDate": "04/14/2026 10:00:00",
+   "Headline": "NVIDIA Launches Ising, the World’s First Open AI Models to Accelerate the Path to Useful Quantum Computers",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Ising-the-Worlds-First-Open-AI-Models-to-Accelerate-the-Path-to-Useful-Quantum-Computers/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/31/2026 08:00:00",
+   "Headline": "NVIDIA AI Ecosystem Expands as Marvell Joins Forces Through NVLink Fusion",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-AI-Ecosystem-Expands-as-Marvell-Joins-Forces-Through-NVLink-Fusion/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/23/2026 07:00:00",
+   "Headline": "NVIDIA and Emerald AI Join Leading Energy Companies to Pioneer Flexible AI Factories as Grid Assets",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Emerald-AI-Join-Leading-Energy-Companies-to-Pioneer-Flexible-AI-Factories-as-Grid-Assets/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:41:00",
+   "Headline": "NVIDIA and Global Robotics Leaders Take Physical AI to the Real World",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Global-Robotics-Leaders-Take-Physical-AI-to-the-Real-World/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:40:00",
+   "Headline": "NVIDIA and Global Industrial Software Giants Bring Design, Engineering and Manufacturing Into the AI Era",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Global-Industrial-Software-Giants-Bring-Design-Engineering-and-Manufacturing-Into-the-AI-Era/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:39:00",
+   "Headline": "Hyundai Motor, Kia and NVIDIA Expand Strategic Partnership for Next-Generation Autonomous Driving Technology",
+   "LinkToDetailPage": "/news/press-release-details/2026/Hyundai-Motor-Kia-and-NVIDIA-Expand-Strategic-Partnership-for-Next-Generation-Autonomous-Driving-Technology/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:37:00",
+   "Headline": "NVIDIA Announces Open Physical AI Data Factory Blueprint to Accelerate Robotics, Vision AI Agents and Autonomous Vehicle Development",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Open-Physical-AI-Data-Factory-Blueprint-to-Accelerate-Robotics-Vision-AI-Agents-and-Autonomous-Vehicle-Development/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:36:00",
+   "Headline": "NVIDIA Enters Production With Dynamo, the Broadly Adopted Inference Operating System for AI Factories",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Enters-Production-With-Dynamo-the-Broadly-Adopted-Inference-Operating-System-for-AI-Factories/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:24:00",
+   "Headline": "BYD, Geely, Isuzu and Nissan Adopt NVIDIA DRIVE Hyperion for Level 4 Vehicles",
+   "LinkToDetailPage": "/news/press-release-details/2026/BYD-Geely-Isuzu-and-Nissan-Adopt-NVIDIA-DRIVE-Hyperion-for-Level-4-Vehicles/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:22:00",
+   "Headline": "NVIDIA Ignites the Next Industrial Revolution in Knowledge Work With Open Agent Development Platform",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Ignites-the-Next-Industrial-Revolution-in-Knowledge-Work-With-Open-Agent-Development-Platform/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:18:00",
+   "Headline": "NVIDIA Launches Nemotron Coalition of Leading Global AI Labs to Advance Open Frontier Models",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Nemotron-Coalition-of-Leading-Global-AI-Labs-to-Advance-Open-Frontier-Models/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:15:00",
+   "Headline": "NVIDIA Expands Open Model Families to Power the Next Wave of Agentic, Physical and Healthcare AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-Open-Model-Families-to-Power-the-Next-Wave-of-Agentic-Physical-and-Healthcare-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:13:00",
+   "Headline": "NVIDIA Announces NemoClaw for the OpenClaw Community",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-NemoClaw-for-the-OpenClaw-Community/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:03:00",
+   "Headline": "NVIDIA Launches Space Computing, Rocketing AI Into Orbit",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Space-Computing-Rocketing-AI-Into-Orbit/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 16:01:00",
+   "Headline": "NVIDIA Releases Vera Rubin DSX AI Factory Reference Design and Omniverse DSX Digital Twin Blueprint With Broad Industry Support",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Releases-Vera-Rubin-DSX-AI-Factory-Reference-Design-and-Omniverse-DSX-Digital-Twin-Blueprint-With-Broad-Industry-Support/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 15:30:00",
+   "Headline": "NVIDIA Launches Vera CPU, Purpose-Built for Agentic AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Vera-CPU-Purpose-Built-for-Agentic-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 15:29:00",
+   "Headline": "NVIDIA Launches BlueField-4 STX Storage Architecture With Broad Industry Adoption",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-BlueField-4-STX-Storage-Architecture-With-Broad-Industry-Adoption/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 15:28:00",
+   "Headline": "NVIDIA Vera Rubin Opens Agentic AI Frontier",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Vera-Rubin-Opens-Agentic-AI-Frontier/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/16/2026 14:30:00",
+   "Headline": "NVIDIA DLSS 5 Delivers AI-Powered Breakthrough in Visual Fidelity for Games",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-DLSS-5-Delivers-AI-Powered-Breakthrough-in-Visual-Fidelity-for-Games/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/11/2026 08:00:00",
+   "Headline": "NVIDIA and Nebius Partner to Scale Full-Stack AI Cloud",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Nebius-Partner-to-Scale-Full-Stack-AI-Cloud/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/03/2026 09:00:00",
+   "Headline": "NVIDIA CEO Jensen Huang and Global Technology Leaders to Showcase Age of AI at GTC 2026",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-CEO-Jensen-Huang-and-Global-Technology-Leaders-to-Showcase-Age-of-AI-at-GTC-2026/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/02/2026 08:00:00",
+   "Headline": "NVIDIA and Coherent Announce Strategic Partnership to Develop Optics Technology to Scale Next-Generation Data Center Architecture",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Coherent-Announce-Strategic-Partnership-to-Develop-Optics-Technology-to-Scale-Next-Generation-Data-Center-Architecture/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/02/2026 08:00:00",
+   "Headline": "NVIDIA Announces Strategic Partnership With Lumentum to Develop State-of-the-Art Optics Technology",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Strategic-Partnership-With-Lumentum-to-Develop-State-of-the-Art-Optics-Technology/default.aspx"
+  },
+  {
+   "PressReleaseDate": "03/01/2026 02:00:00",
+   "Headline": "NVIDIA and Global Telecom Leaders Commit to Build 6G on Open and Secure AI-Native Platforms",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Global-Telecom-Leaders-Commit-to-Build-6G-on-Open-and-Secure-AI-Native-Platforms/default.aspx"
+  },
+  {
+   "PressReleaseDate": "02/25/2026 16:31:00",
+   "Headline": "NVIDIA Announces Financial Results for Fourth Quarter and Fiscal 2026",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Fourth-Quarter-and-Fiscal-2026/default.aspx"
+  },
+  {
+   "PressReleaseDate": "02/17/2026 16:15:00",
+   "Headline": "Meta Builds AI Infrastructure With NVIDIA",
+   "LinkToDetailPage": "/news/press-release-details/2026/Meta-Builds-AI-Infrastructure-With-NVIDIA/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/28/2026 17:00:00",
+   "Headline": "NVIDIA Sets Conference Call for Fourth-Quarter Financial Results",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Sets-Conference-Call-for-Fourth-Quarter-Financial-Results/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/12/2026 10:00:00",
+   "Headline": "NVIDIA and Lilly Announce Co-Innovation AI Lab to Reinvent Drug Discovery in the Age of AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Lilly-Announce-Co-Innovation-AI-Lab-to-Reinvent-Drug-Discovery-in-the-Age-of-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/12/2026 10:00:00",
+   "Headline": "NVIDIA BioNeMo Platform Adopted by Life Sciences Leaders to Accelerate AI-Driven Drug Discovery",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-BioNeMo-Platform-Adopted-by-Life-Sciences-Leaders-to-Accelerate-AI-Driven-Drug-Discovery/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/05/2026 17:37:00",
+   "Headline": "NVIDIA BlueField-4 Powers New Class of AI-Native Storage Infrastructure for the Next Frontier of AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-BlueField-4-Powers-New-Class-of-AI-Native-Storage-Infrastructure-for-the-Next-Frontier-of-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/05/2026 17:20:00",
+   "Headline": "NVIDIA Kicks Off the Next Generation of AI With Rubin — Six New Chips, One Incredible AI Supercomputer",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Kicks-Off-the-Next-Generation-of-AI-With-Rubin--Six-New-Chips-One-Incredible-AI-Supercomputer/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/05/2026 17:04:00",
+   "Headline": "NVIDIA Releases New Physical AI Models as Global Partners Unveil Next-Generation Robots",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Releases-New-Physical-AI-Models-as-Global-Partners-Unveil-Next-Generation-Robots/default.aspx"
+  },
+  {
+   "PressReleaseDate": "01/05/2026 16:49:00",
+   "Headline": "NVIDIA Announces Alpamayo Family of Open-Source AI Models and Tools to Accelerate Safe, Reasoning-Based Autonomous Vehicle Development",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Alpamayo-Family-of-Open-Source-AI-Models-and-Tools-to-Accelerate-Safe-Reasoning-Based-Autonomous-Vehicle-Development/default.aspx"
+  }
+ ]
+}

@@ -10,6 +10,8 @@ Set-StrictMode -Version Latest
 if([string]::IsNullOrWhiteSpace($RuntimeRoot)){$RuntimeRoot=Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\V213Runtime'}
 $RuntimeRoot=[IO.Path]::GetFullPath($RuntimeRoot)
 $run=Join-Path $RuntimeRoot 'run-v213-local.ps1'
+# Receipts name the installed package origin (LOCAL-SOURCE-REFS.json marks a local, non-release-qualified install).
+$runtimeLabel=if(Test-Path -LiteralPath (Join-Path $RuntimeRoot 'LOCAL-SOURCE-REFS.json') -PathType Leaf){'LOCAL_SOURCE_CHECKOUT'}else{'R75'}
 $lockScript=Join-Path $RuntimeRoot 'scripts\v213_operation_lock.ps1'
 if(-not(Test-Path -LiteralPath $lockScript -PathType Leaf)){throw "R75 operation-lock module is missing: $lockScript"}
 . $lockScript
@@ -49,7 +51,7 @@ $finished=(Get-Date).ToUniversalTime()
 $receipt=[ordered]@{
     schema_version=1
     product_version='2.1.3'
-    runtime_profile='R75'
+    runtime_profile=$runtimeLabel
     slot=$Slot
     status=$status
     exit_code=$exitCode

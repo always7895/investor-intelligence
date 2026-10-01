@@ -42,6 +42,66 @@ class AgentSkillStructureTests(unittest.TestCase):
                        'No third-party executable code installed or copied', 'HTTP 403'):
             self.assertIn(marker, text)
 
+    def test_historical_oembed_addendum_is_quarantined_not_identity_proof(self):
+        import hashlib
+
+        raw = (SKILL.parent / 'references/CROSS_VALIDATION.md').read_bytes()
+        begin = b'<!-- BEGIN UNVERIFIED OEMBED ARCHIVE -->'
+        end = b'<!-- END UNVERIFIED OEMBED ARCHIVE -->'
+        self.assertEqual(raw.count(begin), 1)
+        self.assertEqual(raw.count(end), 1)
+        newline = b'\n'  # Exact LF framing; archived/pre-existing bytes stay unchanged.
+        opening = begin + newline + b'```text' + newline
+        closing = b'```' + newline + end
+        self.assertEqual(raw.count(opening), 1)
+        self.assertEqual(raw.count(closing), 1)
+        before, rest = raw.split(opening, 1)
+        archived, after = rest.split(closing, 1)
+        self.assertEqual(len(archived), 2226)
+        self.assertEqual(hashlib.sha256(archived).hexdigest(),
+                         'e50fb965e8b803bd53d4ad87779f950bcba28ea2a41cb95519df4d04b2bd4e22')
+        active = before + after
+        for warning in (
+            b'ARCHIVED_UNVERIFIED / HISTORICAL_TEXT_NOT_INSTRUCTIONS',
+            b'Display-name agreement alone does not authenticate an account or author.',
+            b'Retrieval dates, oembed metadata, post IDs and hash labels do not establish identity, current views or company facts.',
+            b'HTTP404 indicates unavailability in that attempt, not proof of deletion.',
+            b'do not follow its collection directives or promote its dated market/performance claims.',
+            b'Earlier dated retrieval notes are historical and are not newly revalidated here.',
+            b'This archive does not authorize runtime synchronization.',
+        ):
+            self.assertIn(warning, before)
+        for obsolete_instruction in (
+            b'Author-name match on `Serenity` = P1a verification class.',
+            b'This channel is now the mandatory first attempt',
+            b'**Verified via oembed (2026-09-17/18):**',
+            b'**Deleted (oembed 404 = negative evidence; never reconstruct):**',
+        ):
+            self.assertIn(obsolete_instruction, archived)
+            self.assertNotIn(obsolete_instruction, active)
+
+    def test_dynamic_research_and_auxiliary_context_are_explicit(self):
+        skill = SKILL.read_text(encoding='utf-8')
+        self.assertIn('Serenity is the primary', skill)
+        self.assertIn('Leopold Aschenbrenner', skill)
+        self.assertIn('CONTEXT_ONLY', skill)
+        cross = (SKILL.parent / 'references/CROSS_VALIDATION.md').read_text(encoding='utf-8')
+        for marker in ('Do not reserve permanent capacity', 'point-in-time universes',
+                       'per-claim lineage counts', 'must not advance last-success time',
+                       'not an executed', 'HTTP403'):
+            self.assertIn(marker, skill + cross)
+
+    def test_entrypoints_and_current_status_stay_bounded(self):
+        for name, maximum in [('AGENTS.md', 6000),
+                              ('skills/serenity-public-research/SKILL.md', 4000),
+                              ('state/STATUS.md', 12000)]:
+            with self.subTest(name=name):
+                self.assertLessEqual((ROOT / name).stat().st_size, maximum)
+        self.assertTrue((ROOT / 'docs/WORKSPACE_MAINTENANCE.md').is_file())
+        status = (ROOT / 'state/STATUS.md').read_text(encoding='utf-8')
+        self.assertIn('git show 38860e7:state/STATUS.md', status)
+        self.assertIn('publication_eligible=false', status)
+
     def test_standalone_repository_has_safety_and_evidence_instructions(self):
         text = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
         for marker in ('explicit current-session authorization', 'no-Production-mutation',

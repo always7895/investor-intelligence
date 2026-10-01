@@ -14,6 +14,7 @@ param(
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
+    [switch]$AllowSealedActivation,
     [switch]$Synthetic,
     [switch]$SelfTest
 )

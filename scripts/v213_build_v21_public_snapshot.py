@@ -112,10 +112,8 @@ def _timestamp(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
-        try:
-            parsed = datetime.fromisoformat(text[:10] + "T00:00:00+00:00")
-        except ValueError:
-            return None
+        # Invalid suffixes/times are failed evidence, not date-only evidence.
+        return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
@@ -301,6 +299,7 @@ def apply_latest_evidence_factor_guard() -> dict[str, Any]:
     _atomic_json(V213_PATH, v213)
     _atomic_json(FEDERATION_PATH, federation)
     _atomic_json(SOURCE_AUDIT_PATH, audit)
+    base.REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     base.REPORT_PATH.write_text(
         scorer.markdown_report(guarded, federation) + "\n",
         encoding="utf-8",

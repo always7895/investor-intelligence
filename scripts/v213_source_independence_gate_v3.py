@@ -59,8 +59,18 @@ v4 = _load_v4()
 
 
 def _load_json(path: Path) -> Any:
+    target = path
+    if not target.is_file():
+        candidate = path.with_name(path.name + ".source-v1.json")
+        if candidate.is_file():
+            target = candidate
     try:
-        return json.loads(path.read_text(encoding="utf-8-sig"))
+        data = json.loads(target.read_text(encoding="utf-8-sig"))
+        if isinstance(data, dict) and data.get("schema_version") == 1 and "last_success" in data:
+            success = data.get("last_success")
+            if isinstance(success, dict) and "body_utf8" in success:
+                return json.loads(success["body_utf8"])
+        return data
     except (OSError, json.JSONDecodeError) as exc:
         raise FederationOrderError(f"Unable to read qualified publication input: {path}") from exc
 
@@ -221,7 +231,7 @@ def enrich_top20_with_latest_sec_filing_provenance() -> None:
         ticker = str(row.get("ticker") or "").strip().upper()
         cik = cik_map.get(ticker, "")
         cache_path = SEC_COMPANYFACTS_DIR / f"CIK{cik}.json"
-        if not cik or not cache_path.is_file():
+        if not cik or not (cache_path.is_file() or cache_path.with_name(cache_path.name + ".source-v1.json").is_file()):
             missing.append(ticker)
             continue
         filing = _latest_sec_filing(_load_object(cache_path), cik, ticker)

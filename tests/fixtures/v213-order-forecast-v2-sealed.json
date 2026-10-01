@@ -1,0 +1,187 @@
+{
+ "generated_at": "2026-09-27T01:00:00Z",
+ "issuer": "SNDK",
+ "forecast": {
+  "version": 2,
+  "issuer": "SNDK",
+  "status": "AVAILABLE",
+  "reason": null,
+  "m6": {
+   "status": "AVAILABLE",
+   "basis": "RECOGNITION",
+   "source": "REGISTRY",
+   "amount": 15400000000.0,
+   "currency": "USD",
+   "scope": "COMPANY",
+   "start": "2026-07-31",
+   "end": "2027-01-31",
+   "as_of": "2026-07-31",
+   "rpo": 44000000000.0,
+   "share_pct": 35.0,
+   "stock_claim_id": "SNDK-RPO",
+   "schedule_claim_id": "SNDK-SCHED",
+   "quarter_revenue": 8000000000.0,
+   "quarter_start": "2026-04-01",
+   "quarter_end": "2026-06-30",
+   "quarter_basis": "FRAME",
+   "scenario": {
+    "status": "INSUFFICIENT_COVERAGE",
+    "coverage": 0.9625
+   }
+  },
+  "m12": {
+   "status": "AVAILABLE",
+   "basis": "RECOGNITION",
+   "source": "REGISTRY",
+   "amount": 26400000000.0,
+   "currency": "USD",
+   "scope": "COMPANY",
+   "start": "2026-07-31",
+   "end": "2027-07-31",
+   "as_of": "2026-07-31",
+   "rpo": 44000000000.0,
+   "share_pct": 60.0,
+   "stock_claim_id": "SNDK-RPO",
+   "schedule_claim_id": "SNDK-SCHED",
+   "quarter_revenue": 8000000000.0,
+   "quarter_start": "2026-04-01",
+   "quarter_end": "2026-06-30",
+   "quarter_basis": "FRAME",
+   "scenario": {
+    "status": "INSUFFICIENT_COVERAGE",
+    "coverage": 0.825
+   }
+  },
+  "stock_sensitivity": null,
+  "references": [
+   {
+    "kind": "SUPERSEDED_SCHEDULE",
+    "as_of": "2026-06-30",
+    "rpo": 40000000000.0,
+    "share_pct": 55.0,
+    "currency": "USD",
+    "start": "2026-06-30",
+    "end": "2027-06-30",
+    "form": "10-Q",
+    "filed": "2026-08-10",
+    "accession": "0000000000-26-000001",
+    "source_url": "https://www.sec.gov/Archives/sndk-q.htm",
+    "by_claim_id": "SNDK-RPO",
+    "filing": "ACTIVE"
+   }
+  ],
+  "evidence": {
+   "registry_status": "OK",
+   "registry_sha256": "52e74b8f60d132eb1e96c2dd4ab42e04fb60ccacaee8f403996b4dcf27e8fe42",
+   "cutoff": "2026-09-27T01:00:00Z",
+   "url_prefixes": [
+    "https://investor.sandisk.com/"
+   ],
+   "documents": [
+    {
+     "id": "SNDK-8K",
+     "issuer": "SNDK",
+     "publisher": "Sandisk",
+     "title": "Results",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/2023554/sndk-8k.htm",
+     "published_date": "2026-08-12",
+     "retrieved_at": "2026-09-20T00:00:00Z",
+     "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "byte_size": 800,
+     "lineage_id": "SNDK-Q",
+     "sec": {
+      "accession": "0000000000-26-000002",
+      "form": "8-K",
+      "exhibit": "99.1"
+     }
+    }
+   ],
+   "claims": [
+    {
+     "id": "SNDK-RPO",
+     "symbol": "SNDK",
+     "document_id": "SNDK-8K",
+     "locator": "table 3",
+     "passage": "RPO was $44.0 billion",
+     "metric": "RPO_STOCK",
+     "assertion_kind": "DISCLOSED_FACT",
+     "currency": "USD",
+     "unit_multiplier": 1000000000,
+     "amount": 44,
+     "as_of": "2026-07-31",
+     "scope": "COMPANY",
+     "series_id": "SNDK:RPO",
+     "basis": "ASC 606",
+     "revision": {
+      "kind": "ORIGINAL"
+     },
+     "checked_at": "2026-09-21T00:00:00Z"
+    },
+    {
+     "id": "SNDK-SCHED",
+     "symbol": "SNDK",
+     "document_id": "SNDK-8K",
+     "locator": "table 3",
+     "passage": "about 35% within six months and 60% within twelve months",
+     "metric": "RECOGNITION_SCHEDULE",
+     "assertion_kind": "DISCLOSED_FACT",
+     "currency": "USD",
+     "unit_multiplier": 1000000000,
+     "amount": null,
+     "as_of": "2026-07-31",
+     "scope": "COMPANY",
+     "series_id": "SNDK:SCHEDULE",
+     "basis": "ASC 606",
+     "stock_claim_id": "SNDK-RPO",
+     "shares": {
+      "m6": 35.0,
+      "m12": 60.0
+     },
+     "revision": {
+      "kind": "ORIGINAL"
+     },
+     "checked_at": "2026-09-21T00:00:00Z"
+    }
+   ],
+   "selection": {
+    "status": "OK",
+    "active": [
+     "SNDK-RPO",
+     "SNDK-SCHED"
+    ],
+    "current_stock": "SNDK-RPO",
+    "schedule": "SNDK-SCHED",
+    "filing": "ACTIVE",
+    "excluded": []
+   },
+   "periodic": {
+    "status": "DISCLOSED",
+    "form": "10-Q",
+    "filed": "2026-08-10",
+    "url": "https://www.sec.gov/Archives/sndk-q.htm",
+    "rpo": 40000000000.0,
+    "rpo_as_of": "2026-06-30",
+    "quarter_revenue": 8000000000.0,
+    "quarter_start": "2026-04-01",
+    "quarter_end": "2026-06-30",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "30% within six months and 55% within twelve months",
+    "report_date": "2026-06-30",
+    "horizons": {
+     "m6": {
+      "share_pct": 30.0,
+      "derived": false
+     },
+     "m12": {
+      "share_pct": 55.0,
+      "derived": false
+     },
+     "m24": null
+    }
+   },
+   "stock_orders": null
+  }
+ }
+}

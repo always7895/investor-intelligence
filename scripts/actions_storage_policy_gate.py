@@ -150,6 +150,11 @@ def audit_workflows(root: Path = ROOT) -> list[str]:
                     findings.append(
                         f"{relative}:{line_number}: upload-artifact lacks retention-days"
                     )
+                elif int(retention.group(1)) < 1:
+                    findings.append(
+                        f"{relative}:{line_number}: retention-days 0 means repository default "
+                        f"retention, not the reviewed explicit {maximum_retention}-day limit"
+                    )
                 elif int(retention.group(1)) > maximum_retention:
                     findings.append(
                         f"{relative}:{line_number}: artifact retention exceeds {maximum_retention} day"

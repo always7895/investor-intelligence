@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,7 +98,8 @@ class BuildLinePublicOptionsTests(unittest.TestCase):
             "periods": {},
         }
         record = module.to_public_record(raw)
-        self.assertTrue(record["line_public_eligible"])
+        # Public-only privacy projection is not provider redistribution approval.
+        self.assertFalse(record["line_public_eligible"])
         self.assertEqual(record["provider_scope"], "public_only")
         self.assertFalse(record["ibkr_connected"])
         self.assertFalse(record["brokerage_data_included"])
@@ -123,6 +125,25 @@ class BuildLinePublicOptionsTests(unittest.TestCase):
         self.assertIn("PUBLIC_CANDIDATE_FIELDS", text)
         self.assertIn("Unknown option candidate field", text)
         self.assertIn("Non-neutral private field", text)
+
+    def test_actual_builder_never_promotes_development_quotes_to_line(self) -> None:
+        symbols = [{'ticker': 'TEST', 'market_data_ticker': 'TEST', 'currency': 'USD'}]
+        raw = {'ticker': 'TEST', 'provider_symbol': 'TEST', 'current_price': 100.0,
+               'retrieved_at': '2026-09-09T00:00:00Z', 'status': 'OK',
+               'quote_source': 'yfinance', 'periods': {}}
+        for price in (100.0, None):
+            with self.subTest(price=price), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'public.json'
+                with patch.object(module, 'load_public_symbols', return_value=symbols), \
+                     patch.object(module, 'load_policy', return_value={}), \
+                     patch.object(module, 'load_market_prices', return_value={'TEST': price}), \
+                     patch.object(module, 'get_option_suggestion', return_value=raw), \
+                     patch.object(module.yf, 'Ticker', side_effect=RuntimeError('synthetic unavailable')):
+                    records = module.build_public_options(output_path=output, sleep_seconds=0)
+                self.assertEqual(len(records), 1)
+                self.assertFalse(records[0]['line_public_eligible'])
+                self.assertFalse(json.loads(output.read_text(encoding='utf-8'))[0]['line_public_eligible'])
+                self.assertEqual(records[0]['status'], 'OK' if price else 'NO_UNDERLYING_PRICE')
 
     def test_empty_public_symbol_catalog_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

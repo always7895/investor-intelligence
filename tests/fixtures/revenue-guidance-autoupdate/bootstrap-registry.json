@@ -1,0 +1,404 @@
+{
+ "schema": "revenue-guidance-v1",
+ "version": 1,
+ "issuers": [
+  {
+   "symbol": "NVDA",
+   "company_name": "NVIDIA Corporation",
+   "status": "GUIDANCE",
+   "reason": null,
+   "url_prefixes": [
+    "https://www.sec.gov/Archives/edgar/data/"
+   ],
+   "documents": [
+    {
+     "id": "NVDA-0001045810-25-000228",
+     "issuer": "NVDA",
+     "publisher": "NVIDIA Corporation",
+     "title": "NVIDIA Corporation earnings release with outlook",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000228/q3fy26pr.htm",
+     "published_date": "2025-11-19",
+     "retrieved_at": "2026-09-29T04:53:54Z",
+     "sha256": "1960ff3019ed63acfc6237f7f3b4c747522da9cbf7ca53e0af9f1c663093c4bb",
+     "byte_size": 368698,
+     "lineage_id": "NVDA-0001045810-25-000228"
+    },
+    {
+     "id": "NVDA-0001045810-25-000116",
+     "issuer": "NVDA",
+     "publisher": "NVIDIA Corporation",
+     "title": "NVIDIA Corporation Form 10-Q (0001045810-25-000116)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000116/nvda-20250427.htm",
+     "published_date": "2025-05-28",
+     "retrieved_at": "2026-09-29T06:51:57Z",
+     "sha256": "a63bfd1900d7095be7b2e2b47f60e6919ab19142bc7cec34b7dc7dffae6501af",
+     "byte_size": 1132670,
+     "lineage_id": "NVDA-0001045810-25-000116"
+    },
+    {
+     "id": "NVDA-0001045810-25-000209",
+     "issuer": "NVDA",
+     "publisher": "NVIDIA Corporation",
+     "title": "NVIDIA Corporation Form 10-Q (0001045810-25-000209)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000209/nvda-20250727.htm",
+     "published_date": "2025-08-27",
+     "retrieved_at": "2026-09-29T06:51:56Z",
+     "sha256": "180a857a439e6e2700297120b2b54389fb4978082842c7e3c7177aa0c0ce7cb7",
+     "byte_size": 1349904,
+     "lineage_id": "NVDA-0001045810-25-000209"
+    },
+    {
+     "id": "NVDA-0001045810-25-000230",
+     "issuer": "NVDA",
+     "publisher": "NVIDIA Corporation",
+     "title": "NVIDIA Corporation Form 10-Q (0001045810-25-000230)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm",
+     "published_date": "2025-11-19",
+     "retrieved_at": "2026-09-29T06:51:55Z",
+     "sha256": "9f1ba4e56762fb8e3dd34579ad4c431af5a630af2971c345add34b0dd7727242",
+     "byte_size": 1381811,
+     "lineage_id": "NVDA-0001045810-25-000230"
+    },
+    {
+     "id": "NVDA-0001045810-26-000021",
+     "issuer": "NVDA",
+     "publisher": "NVIDIA Corporation",
+     "title": "NVIDIA Corporation Form 10-K (0001045810-26-000021)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+     "published_date": "2026-02-25",
+     "retrieved_at": "2026-09-29T06:51:54Z",
+     "sha256": "187708921836801f1f2bebadeee452cf2d2d94544a401c626924aca365f476d7",
+     "byte_size": 1968297,
+     "lineage_id": "NVDA-0001045810-26-000021"
+    }
+   ],
+   "claims": [
+    {
+     "id": "NVDA-Q-GUIDANCE",
+     "document_id": "NVDA-0001045810-25-000228",
+     "locator": "Outlook",
+     "passage": "NVIDIA’s outlook for the fourth quarter of fiscal 2026 is as follows: •Revenue is expected to be $65.0 billion, plus or minus 2%.",
+     "metric": "REVENUE",
+     "assertion_kind": "COMPANY_GUIDANCE",
+     "currency": "USD",
+     "unit_multiplier": 1,
+     "amount": null,
+     "low": 63700000000.0,
+     "high": 66300000000.0,
+     "stated_point": 65000000000.0,
+     "original_representation": "$65.0 billion, plus or minus 2%",
+     "scope": "COMPANY",
+     "scope_label": "全公司",
+     "accounting_basis": "GAAP",
+     "fiscal_label": "Q4 FY26",
+     "period_kind": "QUARTER",
+     "period_start": "2025-10-27",
+     "period_end": "2026-01-25"
+    }
+   ],
+   "reported_quarters": [
+    {
+     "fiscal_label": "Q4 FY25",
+     "start": "2024-10-28",
+     "end": "2025-01-26",
+     "revenue": 39331000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "NVDA-0001045810-26-000021",
+     "locator": "XBRL us-gaap:Revenues 2024-01-29..2025-01-26 minus ..2024-10-27",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "NVDA-0001045810-26-000021",
+      "longer_value": 130497000000.0,
+      "longer_start": "2024-01-29",
+      "shorter_document_id": "NVDA-0001045810-25-000230",
+      "shorter_value": 91166000000.0,
+      "shorter_end": "2024-10-27"
+     }
+    },
+    {
+     "fiscal_label": "Q1 FY26",
+     "start": "2025-01-27",
+     "end": "2025-04-27",
+     "revenue": 44062000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "NVDA-0001045810-25-000116",
+     "locator": "XBRL us-gaap:Revenues 2025-01-27..2025-04-27"
+    },
+    {
+     "fiscal_label": "Q2 FY26",
+     "start": "2025-04-28",
+     "end": "2025-07-27",
+     "revenue": 46743000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "NVDA-0001045810-25-000209",
+     "locator": "XBRL us-gaap:Revenues 2025-04-28..2025-07-27"
+    },
+    {
+     "fiscal_label": "Q3 FY26",
+     "start": "2025-07-28",
+     "end": "2025-10-26",
+     "revenue": 57006000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "NVDA-0001045810-25-000230",
+     "locator": "XBRL us-gaap:Revenues 2025-07-28..2025-10-26"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "Q4 FY26",
+     "start": "2025-10-27",
+     "end": "2026-01-25",
+     "calendar_document_id": "NVDA-0001045810-25-000230",
+     "calendar_locator": "We operate on a 52- or 53-week year, ending on the last Sunday in January."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2026-01-26",
+     "end": "2026-04-26",
+     "calendar_document_id": "NVDA-0001045810-25-000230",
+     "calendar_locator": "We operate on a 52- or 53-week year, ending on the last Sunday in January."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2026-04-27",
+     "end": "2026-07-26",
+     "calendar_document_id": "NVDA-0001045810-25-000230",
+     "calendar_locator": "We operate on a 52- or 53-week year, ending on the last Sunday in January."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2026-07-27",
+     "end": "2026-10-25",
+     "calendar_document_id": "NVDA-0001045810-25-000230",
+     "calendar_locator": "We operate on a 52- or 53-week year, ending on the last Sunday in January."
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {
+    "sec_cik": 1045810,
+    "wire_symbol": "NVDA",
+    "wire_names": [
+     "NVIDIA"
+    ],
+    "ir": {
+     "kind": "Q4_PRESS_RELEASES",
+     "url": "https://investor.nvidia.com/feed/PressRelease.svc/GetPressReleaseList"
+    },
+    "ir_guidance_release_title": "NVIDIA Announces Financial Results for Third Quarter Fiscal 2026"
+   },
+   "reviewed_later_documents": []
+  },
+  {
+   "symbol": "MU",
+   "company_name": "Micron Technology, Inc.",
+   "status": "GUIDANCE",
+   "reason": null,
+   "url_prefixes": [
+    "https://www.sec.gov/Archives/edgar/data/"
+   ],
+   "documents": [
+    {
+     "id": "MU-0000723125-25-000024",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. earnings release with outlook",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000024/a2025q4ex991-pressrelease.htm",
+     "published_date": "2025-09-23",
+     "retrieved_at": "2026-09-29T04:50:03Z",
+     "sha256": "488b7605ae5994c0297ae875fe01837a330ce850048739db42e7d5c119a53f0b",
+     "byte_size": 362173,
+     "lineage_id": "MU-0000723125-25-000024"
+    },
+    {
+     "id": "MU-0000723125-25-000046",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. Form 10-Q (0000723125-25-000046)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000046/mu-20251127.htm",
+     "published_date": "2025-12-18",
+     "retrieved_at": "2026-09-29T06:51:59Z",
+     "sha256": "59661c7303debd33802d050b376cda4accf370316d0d2011012c7b42463f813f",
+     "byte_size": 1327637,
+     "lineage_id": "MU-0000723125-25-000046"
+    },
+    {
+     "id": "MU-0000723125-25-000009",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. Form 10-Q (0000723125-25-000009)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000009/mu-20250227.htm",
+     "published_date": "2025-03-21",
+     "retrieved_at": "2026-09-29T06:52:01Z",
+     "sha256": "8c98999ad9f2fac5cbdfc9041194540fbc9a4669e6592683e26e031162408380",
+     "byte_size": 1566800,
+     "lineage_id": "MU-0000723125-25-000009"
+    },
+    {
+     "id": "MU-0000723125-25-000021",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. Form 10-Q (0000723125-25-000021)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000021/mu-20250529.htm",
+     "published_date": "2025-06-26",
+     "retrieved_at": "2026-09-29T06:52:00Z",
+     "sha256": "95243781412b0dd49b8f8510832feb8d33406be0f3ffe24d3e0a3cbebcd18b0d",
+     "byte_size": 1656547,
+     "lineage_id": "MU-0000723125-25-000021"
+    },
+    {
+     "id": "MU-0000723125-25-000028",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. Form 10-K (0000723125-25-000028)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
+     "published_date": "2025-10-03",
+     "retrieved_at": "2026-09-29T06:52:00Z",
+     "sha256": "cb89c0e7ecedd6e8d56dc7c2dd21caaba32ee6ceb81f2c663a4f75af43e3c9fd",
+     "byte_size": 2439591,
+     "lineage_id": "MU-0000723125-25-000028"
+    }
+   ],
+   "claims": [
+    {
+     "id": "MU-Q-GUIDANCE",
+     "document_id": "MU-0000723125-25-000024",
+     "locator": "Outlook",
+     "passage": "FQ1-26 GAAP(1) Outlook Non-GAAP(2) Outlook Revenue $12.50 billion ± $300 million $12.50 billion ± $300 million",
+     "metric": "REVENUE",
+     "assertion_kind": "COMPANY_GUIDANCE",
+     "currency": "USD",
+     "unit_multiplier": 1,
+     "amount": null,
+     "low": 12200000000.0,
+     "high": 12800000000.0,
+     "stated_point": 12500000000.0,
+     "original_representation": "$12.50 billion ± $300 million",
+     "scope": "COMPANY",
+     "scope_label": "全公司",
+     "accounting_basis": "GAAP",
+     "fiscal_label": "FQ1-26",
+     "period_kind": "QUARTER",
+     "period_start": "2025-08-29",
+     "period_end": "2025-11-27"
+    }
+   ],
+   "reported_quarters": [
+    {
+     "fiscal_label": "FQ1-25",
+     "start": "2024-08-30",
+     "end": "2024-11-28",
+     "revenue": 8709000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "MU-0000723125-25-000046",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-08-30..2024-11-28"
+    },
+    {
+     "fiscal_label": "FQ2-25",
+     "start": "2024-11-29",
+     "end": "2025-02-27",
+     "revenue": 8053000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "MU-0000723125-25-000009",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-11-29..2025-02-27"
+    },
+    {
+     "fiscal_label": "FQ3-25",
+     "start": "2025-02-28",
+     "end": "2025-05-29",
+     "revenue": 9301000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "MU-0000723125-25-000021",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-02-28..2025-05-29"
+    },
+    {
+     "fiscal_label": "FQ4-25",
+     "start": "2025-05-30",
+     "end": "2025-08-28",
+     "revenue": 11315000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "MU-0000723125-25-000028",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-08-30..2025-08-28 minus ..2025-05-29",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "MU-0000723125-25-000028",
+      "longer_value": 37378000000.0,
+      "longer_start": "2024-08-30",
+      "shorter_document_id": "MU-0000723125-25-000021",
+      "shorter_value": 26063000000.0,
+      "shorter_end": "2025-05-29"
+     }
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "FQ1-26",
+     "start": "2025-08-29",
+     "end": "2025-11-27",
+     "calendar_document_id": "MU-0000723125-25-000028",
+     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2025-11-28",
+     "end": "2026-02-26",
+     "calendar_document_id": "MU-0000723125-25-000028",
+     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2026-02-27",
+     "end": "2026-05-28",
+     "calendar_document_id": "MU-0000723125-25-000028",
+     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2026-05-29",
+     "end": "2026-09-03",
+     "calendar_document_id": "MU-0000723125-25-000028",
+     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {
+    "sec_cik": 723125,
+    "wire_symbol": "MU",
+    "wire_names": [
+     "Micron"
+    ],
+    "ir": {
+     "kind": "Q4_PRESS_RELEASES",
+     "url": "https://investors.micron.com/feed/PressRelease.svc/GetPressReleaseList"
+    },
+    "ir_guidance_release_title": "Micron Technology, Inc. Reports Results for the Fourth Quarter and Full Year of Fiscal 2025"
+   },
+   "reviewed_later_documents": []
+  }
+ ]
+}

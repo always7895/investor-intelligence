@@ -1,0 +1,24 @@
+{
+ "schema_version": 1,
+ "rule": "Korean order figures from the companies' own quarterly IR decks (keyless; operator 2026-09-26: no OpenDART key). Each figure is copied from the cited page and was checked against the PDF text; nothing is estimated. Refresh after each quarterly deck; a company whose deck cannot be read keylessly is listed under unavailable with the reason.",
+ "verified_at": "2026-09-26",
+ "companies": {
+  "298040.KS": {
+   "company": "Hyosung Heavy Industries",
+   "document": "효성중공업 26.2분기 경영실적 IR 발표자료",
+   "source_url": "https://www.hyosungheavyindustries.com/download/5816",
+   "published": "2026-07-31",
+   "period_end": "2026-06-30",
+   "scope": "重工業部門（連結）",
+   "backlog": {"amount": 17507000000000, "currency": "KRW", "yoy": 0.63, "page": 9, "evidence": "2026년 2분기말 중공업 수주잔고(연결) 175,070 억원 (17.5조원) 전년 동기 +63%"},
+   "intake_quarter": {"amount": 3324200000000, "currency": "KRW", "yoy": 0.51, "page": 8, "evidence": "2026년 2분기 중공업 신규수주(연결) 33,242 억원 전년 동기 +51%"},
+   "guidance": {"kind": "ANNUAL_NEW_ORDERS", "year": 2026, "amount": 12000000000000, "previous": 8400000000000, "currency": "KRW", "page": 6, "evidence": "연간 신규수주 가이던스 12조원으로 상향(기존 8.4조원)"}
+  }
+ },
+ "unavailable": {
+  "267260.KS": "HD Hyundai Electric 2026 年 IR 簡報無法免金鑰讀取（第三方框架托管，2026-09-26 查核）",
+  "005930.KS": "三星電子未揭露半導體事業在手訂單",
+  "000660.KS": "SK海力士未揭露在手訂單",
+  "138080.KQ": "OE Solutions 未揭露在手訂單"
+ }
+}

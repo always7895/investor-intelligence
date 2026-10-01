@@ -1,0 +1,255 @@
+{
+  "schema": "options-global-publisher-bridge-v1",
+  "clock": "2026-09-30T12:00:00Z",
+  "note": "Real lazy_market_bodies emitted bodies; regenerate with tests/fixtures/options_global_publisher_cases.py.",
+  "cases": {
+    "healthy": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "stale_row": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STALE_TIMESTAMP_REJECTED）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "invalid_row": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（INVALID_QUOTE_TIMESTAMP）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "rollover_row": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（INVALID_QUOTE_TIMESTAMP）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "future_row": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（FUTURE_TIMESTAMP_REJECTED）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "edge_5h": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T07:00:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "beyond_5h": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STALE_TIMESTAMP_REJECTED）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "expired": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（EXPIRED_CONTRACT_REJECTED）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "impossible_expiry": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（INVALID_EXPIRY_FORMAT）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "fractional_dte": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（INVALID_DTE）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "expiry_dte_mismatch": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（EXPIRY_DTE_INCONSISTENT）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "suggestions_null_entry": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（COVERED_CALL_SUGGESTION_SHAPE）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "suggestions_object": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（COVERED_CALL_SUGGESTION_COUNT）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "weekly_dte_2": {
+      "period": "weekly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"weekly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "weekly_dte_3": {
+      "period": "weekly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"weekly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-03\",\"dte\":3,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.8313888888888888,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "weekly_dte_14": {
+      "period": "weekly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"weekly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-14\",\"dte\":14,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.1781547619047619,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "weekly_dte_15": {
+      "period": "weekly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"weekly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "weekly_dte_21": {
+      "period": "weekly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"weekly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "monthly_dte_7": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "monthly_dte_20": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "monthly_dte_21": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "monthly_dte_45": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": true,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"ticker\":\"TSM\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-11-14\",\"dte\":45,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.05542592592592593,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "monthly_dte_46": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（DTE_OUTSIDE_PERIOD_BUCKET）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "actual_now_not_doc": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T09:00:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STALE_TIMESTAMP_REJECTED）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T08:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T09:00:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "row_after_document": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:24:59Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（ROW_TIMESTAMP_LATER_THAN_DOCUMENT）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:20:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:24:59Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "overflow_oi": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: oi）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "overflow_volume": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: volume）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "overflow_spread_pct": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: spread_pct）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "bigint_oi": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: oi）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "bigint_volume": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: volume）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    },
+    "bigint_spread_pct": {
+      "period": "monthly",
+      "query_ticker": "TSM",
+      "admitted": false,
+      "sibling_healthy": true,
+      "options_body": "{\"schema\":\"v213-options-v2\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"options\":{\"TSM\":{\"monthly\":{\"unavailable\":\"報價未通過驗證（STRICT_FINITE_NUMBER_REQUIRED: spread_pct）\"}},\"GOOD\":{\"monthly\":{\"ticker\":\"GOOD\",\"strategy\":\"COVERED_CALL\",\"expiry\":\"2026-10-21\",\"dte\":21,\"spot\":300.0,\"currency\":\"USD\",\"multiplier\":100,\"quote_basis\":\"delayed\",\"timestamp\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"provenance\":\"https://finance.yahoo.com/quote/TSM/options\",\"rights_status\":\"unadmitted_third_party\",\"suggestions\":[{\"role\":\"HIGH_STRIKE\",\"strike\":330.0,\"bid\":2.0,\"ask\":2.1,\"mid\":2.05,\"limit_price\":2.05,\"premium_per_contract\":204.99999999999997,\"period_yield\":0.006833333333333333,\"annualized_yield\":0.11876984126984128,\"upside_to_strike\":0.10000000000000009,\"delta\":0.18,\"delta_basis\":\"QUOTED_IV\",\"iv\":0.4,\"oi\":900,\"volume\":50,\"spread_pct\":0.0488}]}}}}",
+      "quotes_body": "{\"schema\":\"v213-quotes-v1\",\"generated_at\":\"2026-09-30T11:59:00Z\",\"quotes\":{\"TSM\":{\"symbol\":\"TSM\",\"price\":300.0,\"currency\":\"USD\",\"asof\":\"2026-09-30T11:30:00Z\",\"source\":\"Yahoo Finance (unofficial, delayed)\",\"source_url\":\"https://finance.yahoo.com/quote/TSM\"}}}"
+    }
+  }
+}

@@ -3,18 +3,21 @@ export { V213FreeRelayRoute } from "./free-relay";
 import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "../v211/worker";
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
 import { v213FieldLocale } from "./top20-report";
-import { v213Top20LineAnswer } from "./top20-presentation";
-import { authenticateV21AdminRequest } from "../v21/admin";
+import { v213PublicLineAnswer } from "./rich-menu";
+import { authenticateV21AdminRequest, verifyV21AdminSignature } from "../v21/admin";
 import {
   finalizeV213Activation,
   ingestV213ActivationBundle,
   rollbackV213Activation,
-} from "./activation-v2";
+} from "./activation-v3";
 import { broadcastV213Top20, scheduledV213Broadcast } from "./broadcast";
 import {
   currentFreeRelayRoute,
   freeRelayEnabled,
   freeRelayRuntimeOverrides,
+  claimFreeRelayRefresh,
+  parseFreeRelayRoute,
+  FREE_RELAY_SIGNATURE_PURPOSE,
   updateFreeRelayRoute,
   type FreeRelayEnv,
 } from "./free-relay";
@@ -92,12 +95,12 @@ export async function freeRelayRequestEnv(env: V213ProductionEnv): Promise<V213P
   // v213 uses one compact path. Explicit false is an operational rollback,
   // not a second model or paid fallback. Legacy qa.ts safety checks still run.
   const handler = env.V213_COMPACT_QA_ENABLED !== "false" ? compactGeneralAnswer : undefined;
-  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler, [V211_TOP20_REPORT]: v213Top20LineAnswer };
+  if (!freeRelayEnabled(env)) return { ...env, [V211_GENERAL_QA]: handler, [V211_TOP20_REPORT]: v213PublicLineAnswer };
   const overrides = await freeRelayRuntimeOverrides(env);
   return {
     ...env,
     [V211_GENERAL_QA]: handler,
-    [V211_TOP20_REPORT]: v213Top20LineAnswer,
+    [V211_TOP20_REPORT]: v213PublicLineAnswer,
     LOCAL_LLM_BASE_URL: overrides?.LOCAL_LLM_BASE_URL ?? "",
     LOCAL_LLM_ALLOWED_HOSTS: overrides?.LOCAL_LLM_ALLOWED_HOSTS ?? "",
     LOCAL_LLM_MODEL: overrides?.LOCAL_LLM_MODEL ?? "qwen38-q6",
@@ -142,9 +145,14 @@ async function handleFreeRelaySmoke(request: Request, env: V213ProductionEnv): P
 
 async function handleActivationTransaction(
   request: Request,
-  env: V211Env & VersionEnv,
+  env: V211Env & VersionEnv & { V213_ACTIVATION_COMMIT_ENABLED?: string },
   action: "commit" | "rollback" | "finalize",
 ): Promise<Response> {
+  // One Production writer (the hourly sealed publisher): a new activation commit is refused unless explicitly
+  // enabled, before authentication, so a refused call writes no nonce and touches no KV. Rollback/finalize stay.
+  if (action === "commit" && String(env.V213_ACTIVATION_COMMIT_ENABLED ?? "false").toLowerCase() !== "true") {
+    return jsonResponse({ ok: false, code: "V213_ACTIVATION_COMMIT_DISABLED", action }, 403);
+  }
   const authenticated = await authenticatedBody(request, env);
   if (authenticated instanceof Response) return authenticated;
   try {
@@ -200,10 +208,39 @@ export default {
       return handleFreeRelaySmoke(request, env);
     }
     if (request.method === "POST" && url.pathname === "/v213/admin/free-relay-route") {
-      const authenticated = await authenticatedBody(request, env);
-      if (authenticated instanceof Response) return authenticated;
+      // The heartbeat refreshes this every minute. A purpose-bound signature (valid here only) claims its nonce in the relay
+      // Durable Object, not in KV (a KV nonce per heartbeat is ~1,400 writes a day, past the free plan's 1,000; 2026-09-26
+      // outage). A generic signature (runtimes installed before this release) keeps the KV nonce, so it can never be
+      // replayed at another admin endpoint either.
+      // The route record is checked (pure, no network) before the claim, so a refresh whose lease is refused (a PC clock far
+      // ahead) never advances the replay high-water mark and cannot delay recovery after the clock is corrected.
+      let body: string;
+      let signed;
       try {
-        return jsonResponse({ status: "accepted", ...(await updateFreeRelayRoute(authenticated, env)) });
+        signed = await verifyV21AdminSignature(request.clone() as unknown as Request, env, FREE_RELAY_SIGNATURE_PURPOSE);
+      } catch (error) {
+        if (errorCode(error, "") !== "V21_SYNC_SIGNATURE_INVALID") return jsonResponse({ ok: false, code: errorCode(error, "V213_AUTH_FAILED") }, 401);
+      }
+      if (signed) {
+        try {
+          parseFreeRelayRoute(signed.body, env);
+        } catch (error) {
+          const code = errorCode(error, "FREE_RELAY_ROUTE_INVALID");
+          return jsonResponse({ ok: false, code }, validationStatus(code));
+        }
+        try {
+          await claimFreeRelayRefresh(env, signed.timestamp, signed.nonce);
+        } catch (error) {
+          return jsonResponse({ ok: false, code: errorCode(error, "V213_AUTH_FAILED") }, 401);
+        }
+        body = signed.body;
+      } else {
+        const legacy = await authenticatedBody(request, env);  // an older runtime's generic signature: KV nonce
+        if (legacy instanceof Response) return legacy;
+        body = legacy;
+      }
+      try {
+        return jsonResponse({ status: "accepted", ...(await updateFreeRelayRoute(body, env)) });
       } catch (error) {
         const code = errorCode(error, "FREE_RELAY_UPDATE_FAILED");
         return jsonResponse({ ok: false, code }, validationStatus(code));

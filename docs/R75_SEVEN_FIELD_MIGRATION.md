@@ -1,6 +1,33 @@
 # 七欄修正與更新鏈遷移 / Seven-field repair and refresh migration
 
-## 2026-09-06 migration checkpoint / 遷移現況
+Current acceptance is recorded in [`state/STATUS.md`](../state/STATUS.md); historical checkpoints below do not qualify newer source.
+
+## Delivery integrity candidate / 投遞完整性候選修正
+
+- 同輪 `date + slot + run_id` 的 LINE transport／完成回執失敗可能發生在提供者已接受之後。候選程式保留 `delivery_unknown`，不因失敗、十分鐘 lease 或舊72小時計時器自動重送；舊 `release` 請求拒絕刪除紀錄。壞狀態不得當成沒有紀錄。
+- `sent` 表示推送呼叫成功且完成紀錄已確認，**不是手機實收證明，也不是 exactly-once 保證**。不確定結果必須保留並核對；不得清空紀錄、改用 test slot／新 run ID 來強迫重送。回滾到舊的失敗即釋放版本時不能保持 delivery enabled。
+- 排程、互動 Flex／文字及文字報告共用實際執行時鐘的新鮮度規則。整批輸出必須逐列檢查 `retrieved_at`；新的報告／pipeline 時間不能更新舊公司的取得時間。個股詳情仍先驗證 snapshot／SHA／主體，再檢查該列。
+- These are local candidate safeguards, not deployment or received-message evidence. Retrieval freshness is not quote timeliness, rights or claim qualification. PLAN G11 still needs actual free-entitlement and isolated/native acceptance; code/tests do not authorize a send.
+
+### Shared free-only push gate / 共用免費推送閘
+
+All push paths use `v21/line-push.ts`, including manual/test aliases and retained historical helpers. Reply APIs are separate and are not converted to pushes. Missing admission stops before any LINE request; a healthy model or authenticated admin request cannot substitute for a free-plan review.
+
+`LINE_FREE_PUSH_POLICY` is a trusted operator-reviewed JSON attestation, **not billing proof by itself**. It has exactly: `schema_version`1, `channel_sha256`, `billing_month` (`YYYY-MM`), `billing_timezone`, positive integer `free_message_limit`, canonical UTC `reviewed_at`, boolean `free_plan_verified:true` and `paid_expansion_disabled:true`. Review must be within the current billing month and no older than31 days. No default allowance, locale-derived billing zone, automatic review renewal or generated Production approval exists. The new month needs a genuinely verified review; test fixtures cannot supply it.
+
+Before configuring this under explicit authorization, verify the account's zero-fee plan, country/region, actual billing period/free allowance and inability to incur paid expansion. An included allowance on a paid monthly plan is NOT a free plan. Bind the token's bot identity by computing SHA256 of `GET /v2/bot/info`'s `userId` in memory; never log/store that raw identifier. A review cannot certify later out-of-band account changes or other senders; recheck/revoke when those change.
+
+At send time the same token must match that fingerprint; `quota.type` must be `limited` and `quota.value` must exactly equal the reviewed free allowance. Unknown, expanded, missing, malformed or exhausted quota is unavailable. Both quota and consumption are read without redirects; flat JSON, duplicate keys (including escaped keys), types and body bounds are validated. These APIs alone do not identify the billing plan or provide a transactionally current account-wide count.
+
+The **existing** `V213_BROADCAST_DEDUPE` namespace reserves a channel-wide ledger and immutable body-hash/retry-key attempt in one storage transaction before POST. No new namespace/class/scheduler is provisioned. The local conservative ceiling is `max(observed usage, prior high-water usage) + this month's reserved attempts + 1`; it may double-count attempts already reflected by LINE and therefore stop early. It never refunds uncertain, rejected or unacknowledged attempts. Taipei-day reservations are capped at2 across scheduled AND manual/test calls; four message objects to one direct-chat recipient reserve one unit, not four. This is not a claim about receipt time or exact remaining provider allowance.
+
+Scheduled identity is one date/slot per channel, independent of changing run IDs; different bodies for that slot conflict. Manual identity binds the exact recipient/message bytes, so a fresh admin nonce or alternate alias cannot replay the same body. Records are not deleted when LINE's24-hour retry window expires. `X-Line-Retry-Key` is present on the first POST; this candidate performs **no automatic retry**, including on409/5xx/timeout. Unknown outcomes remain fenced; do not clear records, change scope or deploy older bypass code to force delivery.
+
+A single10-second deadline covers preflight, reservation and POST. Abort plus post-await checks prevent late continuation from issuing a POST after deadline/day rollover. Provider bodies, quote tokens and request identifiers are not logged or persisted. HTTP200 remains provider acceptance only, not phone receipt. Current proof uses mocked LINE and transactional DO fixtures; actual namespace transactions, billing admission, release/install alignment and both real slots remain release gates.
+
+Official references: [pricing and recipient counting](https://developers.line.biz/en/docs/messaging-api/pricing/), [retry key semantics](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/), [LINE OpenAPI quota schemas](https://github.com/line/line-openapi/blob/main/messaging-api.yml). API/source reads are not permission to modify billing, credentials, Production or schedules.
+
+## 2026-09-06 historical migration checkpoint / 歷史遷移紀錄
 
 七欄／Q6／封存發布已正式切換；07:20/20:20 更新任務已驗證讀回，08:00/21:00 Worker cron 不變。實際已安裝 wrapper 的資料產生＋Commit＋Finalize PASS，20 LIMITED／0 qualified；尚未額外發送真實 LINE。完整當前範圍：[中英狀態](CURRENT_STATUS_BILINGUAL.md)。
 

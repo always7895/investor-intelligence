@@ -1,0 +1,1 @@
+{"schema_version": 1, "model": "Qwen3.8-27B-EXL3-SC5-H6-V6", "enable_thinking": false, "reasoning_effort": "none", "max_output_tokens": 1024, "smoke_output_tokens": 128, "timeout_ms": 18000}

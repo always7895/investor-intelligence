@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "scope": "PINNED_RUNTIME_LOCAL_DIRECT_CLI_SOURCE_PROBE",
+  "recorded_at": "2026-09-08T16:45:10.782495+00:00",
+  "parent_head": "ab5c7a58175e457baa060b4cf4e9ac1b5e9c81ca",
+  "source_files_sha256": {
+    "scripts/fetch_public_source_observations.py": "a907d750889b41d17bd42176998c7116a46e960b05348fc8d908705fd67de02c",
+    "scripts/adapters/staged_public.py": "9d616f24820e6e2e76303e4ee3eb583d03bdf2ded1128f67607c462d4caa3ebd",
+    "scripts/adapters/official_rss.py": "dce706bd4e4fe6f185dda91670170ab36dc5b971138725286c7caf5ec85f0709",
+    "scripts/adapters/taiwan_equities.py": "a2f9fd1f63ab3e10673c64948d853488be215359d75ee6c92f1045757df1b745",
+    "scripts/adapters/base.py": "f43aac6772cbefdb6272f998341bc6c54761b949e19489eb83476dea0cc03aa9",
+    "scripts/source_observation.py": "3a8a154d8fc6be80faa3f0d609056675cb61e62bfcc33697f16b094d4624d16b",
+    "scripts/source_registry.py": "746fc0443b52aefa40998cd167b581dc904c9899c5da3c3b7df7e29459e7d2cf",
+    "scripts/bootstrap_portable_python.ps1": "98b8eaef4d4a318d304e8d4007a14c7f525bbae571c99cd3e264a2b6db5b3534",
+    "requirements-ci.txt": "54b7d4edbd37329ecab3c9b374c18e6fb35796d9ec26aeaa3d711a8a985566c7"
+  },
+  "probe_output_sha256": "12df8f9b2e791350c0c4bbc23b9ad5f6c1061d0a506d89feb576154809d7fc59",
+  "status": "OK",
+  "runtime": {
+    "openssl": "OpenSSL 3.0.16 11 Feb 2025",
+    "python": "3.12.10",
+    "transport": "SYSTEM_PLUS_CERTIFI"
+  },
+  "certifi_version": "2026.07.22",
+  "certifi_ca_bundle_sha256": "9cc2a774b5198dcff14d9be1e66091f538975d867ce029a96bce15a55dfd730f",
+  "python_executable_sha256": "4d6f5f81a4bca11191c4c7c6b43632694d0a4ce74e068619d8fdc161d469859a",
+  "sources": [
+    {
+      "record_count": 20,
+      "source_id": "federal_reserve_news",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "record_count": 15,
+      "source_id": "ecb_news",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "record_count": 25,
+      "source_id": "sec_news",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "record_count": 1382,
+      "records_with_close": 1373,
+      "source_id": "twse_equity_eod",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "record_count": 10991,
+      "records_with_close": 5375,
+      "source_id": "tpex_equity_eod",
+      "status": "OK",
+      "warning_count": 0
+    }
+  ],
+  "observations": 12433,
+  "direct_cli_from_unrelated_cwd": true,
+  "pythonpath_required": false,
+  "tls_hostname_verification": true,
+  "tls_certificate_verification": "CERT_REQUIRED",
+  "verify_flags_modified": false,
+  "global_trust_store_modified": false,
+  "publication_eligible": false,
+  "production_mutation": false,
+  "release_qualified": false,
+  "historical_failure_proof": "state/public-source-development-proof.json"
+}

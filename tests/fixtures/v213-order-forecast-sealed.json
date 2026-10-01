@@ -1,0 +1,710 @@
+{
+ "schema": "v213-order-forecast-sealed-v1",
+ "report_day": "2026-09-27",
+ "note": "Wire contract between scripts/order_forecast.py (tests/test_order_forecast.py ContractFixtureTests) and the Worker (cloud/test/v213-bottleneck-v3.test.ts renders these exact records on the fixture entry named by `issuer`).",
+ "cases": [
+  {
+   "issuer": "S1",
+   "name": "NVDA recognition, 12 months only, coverage 0.3%",
+   "stock": {
+    "kind": "RPO",
+    "amount": 3200000000.0,
+    "currency": "USD",
+    "as_of": "2026-07-26",
+    "yoy": 0.6842105263157894,
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+    "scope_kind": "COMPANY",
+    "yoy_prior_amount": 1900000000.0,
+    "yoy_prior_as_of": "2025-07-27"
+   },
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-08-26",
+    "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+    "rpo": 3200000000.0,
+    "rpo_as_of": "2026-07-26",
+    "quarter_revenue": 96221000000.0,
+    "quarter_start": "2026-04-27",
+    "quarter_end": "2026-07-26",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-07-26",
+    "horizons": {
+     "m6": null,
+     "m12": {
+      "share_pct": 39.0,
+      "derived": false
+     },
+     "m24": null
+    },
+    "form": "10-Q"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S1",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 1248000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-07-26",
+     "end": "2027-07-26",
+     "as_of": "2026-07-26",
+     "rpo": 3200000000.0,
+     "share_pct": 39.0,
+     "quarter_revenue": 96221000000.0,
+     "quarter_start": "2026-04-27",
+     "quarter_end": "2026-07-26",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+     "form": "10-Q",
+     "filed": "2026-08-26",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-07-26",
+     "explicit": true,
+     "scenario": {
+      "status": "INSUFFICIENT_COVERAGE",
+      "coverage": 0.0032425354132673743
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S2",
+   "name": "synthetic recognition with explicit 6 and 12 months covering the revenue level",
+   "stock": null,
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-08-10",
+    "url": "https://www.sec.gov/Archives/synthetic-s2.htm",
+    "rpo": 40000000000.0,
+    "rpo_as_of": "2026-06-30",
+    "quarter_revenue": 4000000000.0,
+    "quarter_start": "2026-04-01",
+    "quarter_end": "2026-06-30",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-06-30",
+    "horizons": {
+     "m6": {
+      "share_pct": 30.0,
+      "derived": false
+     },
+     "m12": {
+      "share_pct": 55.0,
+      "derived": false
+     },
+     "m24": null
+    },
+    "form": "10-Q"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S2",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 12000000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-06-30",
+     "end": "2026-12-30",
+     "as_of": "2026-06-30",
+     "rpo": 40000000000.0,
+     "share_pct": 30.0,
+     "quarter_revenue": 4000000000.0,
+     "quarter_start": "2026-04-01",
+     "quarter_end": "2026-06-30",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/synthetic-s2.htm",
+     "form": "10-Q",
+     "filed": "2026-08-10",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-06-30",
+     "explicit": true,
+     "scenario": {
+      "status": "AVAILABLE",
+      "coverage": 1.5,
+      "change": 0.5
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 22000000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-06-30",
+     "end": "2027-06-30",
+     "as_of": "2026-06-30",
+     "rpo": 40000000000.0,
+     "share_pct": 55.0,
+     "quarter_revenue": 4000000000.0,
+     "quarter_start": "2026-04-01",
+     "quarter_end": "2026-06-30",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/synthetic-s2.htm",
+     "form": "10-Q",
+     "filed": "2026-08-10",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-06-30",
+     "explicit": true,
+     "scenario": {
+      "status": "AVAILABLE",
+      "coverage": 1.375,
+      "change": 0.375
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S3",
+   "name": "interpolated 6 months is not evidence",
+   "stock": null,
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-08-10",
+    "url": "https://www.sec.gov/Archives/synthetic-s3.htm",
+    "rpo": 40000000000.0,
+    "rpo_as_of": "2026-06-30",
+    "quarter_revenue": 4000000000.0,
+    "quarter_start": "2026-04-01",
+    "quarter_end": "2026-06-30",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-06-30",
+    "horizons": {
+     "m6": {
+      "share_pct": 20.0,
+      "derived": true
+     },
+     "m12": {
+      "share_pct": 55.0,
+      "derived": false
+     },
+     "m24": null
+    },
+    "form": "10-Q"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S3",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 22000000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-06-30",
+     "end": "2027-06-30",
+     "as_of": "2026-06-30",
+     "rpo": 40000000000.0,
+     "share_pct": 55.0,
+     "quarter_revenue": 4000000000.0,
+     "quarter_start": "2026-04-01",
+     "quarter_end": "2026-06-30",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/synthetic-s3.htm",
+     "form": "10-Q",
+     "filed": "2026-08-10",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-06-30",
+     "explicit": true,
+     "scenario": {
+      "status": "AVAILABLE",
+      "coverage": 1.375,
+      "change": 0.375
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S5",
+   "name": "no orders at all",
+   "stock": null,
+   "recognition": null,
+   "sealed": {
+    "version": 1,
+    "issuer": "S5",
+    "status": "UNAVAILABLE",
+    "reason": "NO_ORDERS",
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NO_ORDERS",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "UNAVAILABLE",
+     "reason": "NO_ORDERS",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S7",
+   "name": "CRWV 24 months only",
+   "stock": null,
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-08-12",
+    "url": "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000366/crwv-20260630.htm",
+    "rpo": 103700000000.0,
+    "rpo_as_of": "2026-06-30",
+    "quarter_revenue": 2575000000.0,
+    "quarter_start": "2026-04-01",
+    "quarter_end": "2026-06-30",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-06-30",
+    "horizons": {
+     "m6": null,
+     "m12": null,
+     "m24": {
+      "share_pct": 41.0,
+      "derived": false
+     }
+    },
+    "form": "10-Q"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S7",
+    "status": "UNAVAILABLE",
+    "reason": "NOT_DISCLOSED_HORIZON",
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "references": [
+     {
+      "kind": "RECOGNITION_24M",
+      "amount": 42517000000.0,
+      "currency": "USD",
+      "start": "2026-06-30",
+      "end": "2028-06-30",
+      "as_of": "2026-06-30",
+      "rpo": 103700000000.0,
+      "share_pct": 41.0,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000366/crwv-20260630.htm",
+      "form": "10-Q",
+      "filed": "2026-08-12",
+      "accession": "0000000000-26-000001",
+      "passage": "synthetic passage stating the recognition schedule",
+      "report_period": "2026-06-30",
+      "explicit": true
+     }
+    ]
+   }
+  },
+  {
+   "issuer": "S8",
+   "name": "a segment order book is shown but never priced as the company",
+   "stock": {
+    "kind": "BACKLOG",
+    "amount": 17510000000000.0,
+    "currency": "KRW",
+    "as_of": "2026-06-30",
+    "yoy": 0.63,
+    "source_url": "https://www.hd-hyundai.com/ir/deck.pdf",
+    "scope": "重工業部門（連結）",
+    "scope_kind": "SEGMENT",
+    "yoy_evidence": "수주잔고 전년 동기 +63%",
+    "guidance": {
+     "kind": "ANNUAL_NEW_ORDERS",
+     "year": 2026,
+     "amount": 12000000000000.0
+    }
+   },
+   "recognition": {
+    "status": "NOT_DISCLOSED",
+    "form": "10-Q",
+    "filed": "2026-08-01",
+    "url": "https://www.sec.gov/x.htm"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S8",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "AVAILABLE",
+     "basis": "STOCK_EXTRAPOLATION",
+     "amount": 25133145170308.36,
+     "currency": "KRW",
+     "scope": "SEGMENT",
+     "scope_label": "重工業部門（連結）",
+     "start": "2026-09-27",
+     "end": "2027-03-27",
+     "as_of": "2026-06-30",
+     "stock": 17510000000000.0,
+     "yoy": 0.63,
+     "baseline": 19725364692162.098,
+     "source_url": "https://www.hd-hyundai.com/ir/deck.pdf",
+     "kind": "BACKLOG",
+     "lineage": "COMPANY_STATED",
+     "yoy_evidence": "수주잔고 전년 동기 +63%",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "SCOPE_PARTIAL"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "STOCK_EXTRAPOLATION",
+     "amount": 32152344448224.22,
+     "currency": "KRW",
+     "scope": "SEGMENT",
+     "scope_label": "重工業部門（連結）",
+     "start": "2026-09-27",
+     "end": "2027-09-27",
+     "as_of": "2026-06-30",
+     "stock": 17510000000000.0,
+     "yoy": 0.63,
+     "baseline": 19725364692162.098,
+     "source_url": "https://www.hd-hyundai.com/ir/deck.pdf",
+     "kind": "BACKLOG",
+     "lineage": "COMPANY_STATED",
+     "yoy_evidence": "수주잔고 전년 동기 +63%",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "SCOPE_PARTIAL"
+     }
+    },
+    "references": [
+     {
+      "kind": "ANNUAL_NEW_ORDERS_GUIDANCE",
+      "amount": 12000000000000.0,
+      "currency": "KRW",
+      "year": 2026,
+      "source_url": "https://www.hd-hyundai.com/ir/deck.pdf"
+     }
+    ]
+   }
+  },
+  {
+   "issuer": "S9",
+   "name": "period mismatch never falls back",
+   "stock": {
+    "kind": "RPO",
+    "amount": 59800000000.0,
+    "currency": "USD",
+    "as_of": "2026-07-03",
+    "yoy": 0.5,
+    "source_url": "https://www.sec.gov/sndk.htm",
+    "scope_kind": "COMPANY",
+    "yoy_evidence": "x"
+   },
+   "recognition": {
+    "status": "PERIOD_MISMATCH",
+    "form": "10-K",
+    "filed": "2026-08-17",
+    "url": "https://www.sec.gov/sndk.htm"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S9",
+    "status": "UNAVAILABLE",
+    "reason": "PERIOD_MISMATCH",
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "PERIOD_MISMATCH",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "UNAVAILABLE",
+     "reason": "PERIOD_MISMATCH",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S10",
+   "name": "a company-wide order book extrapolated from today when no schedule is filed",
+   "stock": {
+    "kind": "RPO",
+    "amount": 2000000000.0,
+    "currency": "USD",
+    "as_of": "2026-06-30",
+    "yoy": 0.25,
+    "source_url": "https://www.sec.gov/Archives/synthetic-s10.htm",
+    "scope_kind": "COMPANY",
+    "yoy_prior_amount": 1600000000.0,
+    "yoy_prior_as_of": "2025-06-30"
+   },
+   "recognition": null,
+   "sealed": {
+    "version": 1,
+    "issuer": "S10",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "AVAILABLE",
+     "basis": "STOCK_EXTRAPOLATION",
+     "amount": 2358939782.309935,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "scope_label": null,
+     "start": "2026-09-27",
+     "end": "2027-03-27",
+     "as_of": "2026-06-30",
+     "stock": 2000000000.0,
+     "yoy": 0.25,
+     "baseline": 2111835608.539685,
+     "source_url": "https://www.sec.gov/Archives/synthetic-s10.htm",
+     "kind": "RPO",
+     "lineage": "SERIES",
+     "yoy_prior_amount": 1600000000.0,
+     "yoy_prior_as_of": "2025-06-30",
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.11700918990617848
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "STOCK_EXTRAPOLATION",
+     "amount": 2639794510.6746063,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "scope_label": null,
+     "start": "2026-09-27",
+     "end": "2027-09-27",
+     "as_of": "2026-06-30",
+     "stock": 2000000000.0,
+     "yoy": 0.25,
+     "baseline": 2111835608.539685,
+     "source_url": "https://www.sec.gov/Archives/synthetic-s10.htm",
+     "kind": "RPO",
+     "lineage": "SERIES",
+     "yoy_prior_amount": 1600000000.0,
+     "yoy_prior_as_of": "2025-06-30",
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.25
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S11",
+   "name": "an expired 6-month window is not a future estimate",
+   "stock": null,
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-04-20",
+    "url": "https://www.sec.gov/Archives/synthetic-s11.htm",
+    "rpo": 40000000000.0,
+    "rpo_as_of": "2026-03-11",
+    "quarter_revenue": 4000000000.0,
+    "quarter_start": "2025-12-12",
+    "quarter_end": "2026-03-11",
+    "quarter_basis": "FRAME",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-03-11",
+    "horizons": {
+     "m6": {
+      "share_pct": 30.0,
+      "derived": false
+     },
+     "m12": {
+      "share_pct": 55.0,
+      "derived": false
+     },
+     "m24": null
+    },
+    "form": "10-Q"
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S11",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "EXPIRED",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 22000000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-03-11",
+     "end": "2027-03-11",
+     "as_of": "2026-03-11",
+     "rpo": 40000000000.0,
+     "share_pct": 55.0,
+     "quarter_revenue": 4000000000.0,
+     "quarter_start": "2025-12-12",
+     "quarter_end": "2026-03-11",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/synthetic-s11.htm",
+     "form": "10-Q",
+     "filed": "2026-04-20",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-03-11",
+     "explicit": true,
+     "scenario": {
+      "status": "AVAILABLE",
+      "coverage": 1.375,
+      "change": 0.375
+     }
+    },
+    "references": []
+   }
+  },
+  {
+   "issuer": "S12",
+   "name": "a fiscal fourth quarter derived from the 10-K (Sandisk)",
+   "stock": null,
+   "recognition": {
+    "status": "DISCLOSED",
+    "filed": "2026-08-17",
+    "url": "https://www.sec.gov/Archives/edgar/data/2023554/000162828026057406/sndk-20260703.htm",
+    "rpo": 59800000000.0,
+    "rpo_as_of": "2026-07-03",
+    "quarter_revenue": 8965000000.0,
+    "quarter_start": "2026-04-04",
+    "quarter_end": "2026-07-03",
+    "quarter_basis": "DERIVED_Q4",
+    "accession": "0000000000-26-000001",
+    "passage": "synthetic passage stating the recognition schedule",
+    "report_date": "2026-07-03",
+    "horizons": {
+     "m6": null,
+     "m12": {
+      "share_pct": 19.0,
+      "derived": false
+     },
+     "m24": null
+    },
+    "form": "10-K",
+    "quarter_derivation": {
+     "annual": 20248000000.0,
+     "annual_start": "2025-06-28",
+     "annual_accession": "0001628280-26-057406",
+     "nine_months": 11283000000.0,
+     "nine_months_end": "2026-04-03",
+     "nine_months_accession": "0001628280-26-040001"
+    }
+   },
+   "sealed": {
+    "version": 1,
+    "issuer": "S12",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 11362000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-07-03",
+     "end": "2027-07-03",
+     "as_of": "2026-07-03",
+     "rpo": 59800000000.0,
+     "share_pct": 19.0,
+     "quarter_revenue": 8965000000.0,
+     "quarter_start": "2026-04-04",
+     "quarter_end": "2026-07-03",
+     "quarter_basis": "DERIVED_Q4",
+     "quarter_derivation": {
+      "annual": 20248000000.0,
+      "annual_start": "2025-06-28",
+      "annual_accession": "0001628280-26-057406",
+      "nine_months": 11283000000.0,
+      "nine_months_end": "2026-04-03",
+      "nine_months_accession": "0001628280-26-040001"
+     },
+     "source_url": "https://www.sec.gov/Archives/edgar/data/2023554/000162828026057406/sndk-20260703.htm",
+     "form": "10-K",
+     "filed": "2026-08-17",
+     "accession": "0000000000-26-000001",
+     "passage": "synthetic passage stating the recognition schedule",
+     "report_period": "2026-07-03",
+     "explicit": true,
+     "scenario": {
+      "status": "INSUFFICIENT_COVERAGE",
+      "coverage": 0.31684327941996654
+     }
+    },
+    "references": []
+   }
+  }
+ ]
+}
