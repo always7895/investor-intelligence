@@ -36,11 +36,13 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
+from decimal import Decimal
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -77,7 +79,7 @@ _DEADLINE = [math.inf]  # the run's deadline (monotonic), for threads that carry
 _LOCAL = threading.local()  # .deadline: the deadline of the work this thread does
 # A run that finished fewer underlyings than this is not published: the previous file stays (the sealer bounds its age).
 MIN_COMPLETED_SHARE = 0.5
-CYCLES = {"weekly": (3, 14), "monthly": (15, 60)}  # monthly: the expiry nearest 30 days
+CYCLES = {"weekly": (3, 14), "monthly": (21, 45)}  # monthly: the expiry nearest 30 days within 21-45 DTE
 RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
@@ -101,6 +103,12 @@ def _is_two_sided(bid: Any, ask: Any) -> bool:
             and isinstance(ask, (int, float)) and not isinstance(ask, bool)
             and math.isfinite(bid) and math.isfinite(ask)
             and 0 < bid <= ask)
+
+
+def _cent_exact(strike: Any) -> bool:
+    """True when the strike is exactly representable with two decimals (15.5, 15.50, 15.5000, 0.07 yes; 15.505, 15.5049 no):
+    the immutable reader formats money with two decimals, so only such a strike may be RECOMMENDED; nothing is ever rounded."""
+    return (isinstance(strike, (int, float)) and not isinstance(strike, bool) and math.isfinite(strike) and strike == round(strike, 2))
 
 
 def is_venue_coverage_depleted(read_count: int, healthy_count: int) -> bool:
@@ -352,15 +360,17 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
             "spread_pct": round((ask - bid) / mid, 4) if mid > 0 else None}
 
 
-def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int) -> list[dict[str, Any]]:
+def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, *, cent_exact_only: bool = True) -> list[dict[str, Any]]:
     """Up to two sell-call suggestions for a holder of 100 shares: the highest strike still worth selling, then a
     balanced strike below it. Only out-of-the-money strikes with a two-sided quote qualify, and the high strike needs a
-    delta (quoted or implied by its quote) within MAX_HIGH_STRIKE_DELTA."""
+    delta (quoted or implied by its quote) within MAX_HIGH_STRIKE_DELTA. Only a strike the two-decimal display represents exactly
+    is recommended (cent_exact_only); health is computed before and never depends on this fence."""
     if dte <= 0:
         return []
     usable = [with_delta(row, spot, dte) for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid")
               and row.get("ask") and row["ask"] >= row["bid"] > 0
-              and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT]
+              and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT
+              and (not cent_exact_only or _cent_exact(row["strike"]))]
     if not usable:
         return []
     annual = lambda row: row["bid"] / spot * 365 / dte  # noqa: E731 - on the bid: premium that is actually collectable
@@ -384,6 +394,8 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
                  provenance: str, rights: str, stamp: str) -> dict[str, Any]:
     suggestions = covered_call_suggestions(rows, spot, dte)
     if not suggestions:
+        if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):  # the unchanged filters accept it; only the display precision cannot
+            return {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含兩位以上小數，顯示無法如實呈現；不提供建議")}
         return {"unavailable": f"{expiry} 到期的價外買權中，沒有年化權利金達 {MIN_ANNUALIZED_YIELD:.0%} 且有雙邊報價的履約價"}
     return {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
             "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
@@ -392,17 +404,21 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
 
 def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, stamp: str, *, currency: str, source: str,
                        provenance: str, rights: str, missing: str, venue: str = "US",
-                       underlying: str | None = None) -> CyclesResult:
-    """Weekly: the nearest expiry in its window; monthly: the expiry nearest 30 days. Standard 100-share contracts only."""
+                       underlying: str | None = None,
+                       no_window: Callable[[str, int, int], tuple[str, str]] | None = None) -> CyclesResult:
+    """Weekly: the nearest expiry in its window; monthly: the expiry nearest 30 days within 21-45 DTE. Standard 100-share
+    contracts only. A cycle without a qualifying expiry takes its reason and health status from no_window(cycle, low,
+    high) when the caller proved more about its source than 'nothing listed'."""
     out: dict[str, Any] = {}
     health_records: list[dict[str, Any]] = []
     und = underlying or ticker
     for cycle, (low, high) in CYCLES.items():
         window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
         if not window:
+            message, status = no_window(cycle, low, high) if no_window else (missing.format(low=low, high=high), "NO_EXPIRY")
             health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
-                                   "status": "NO_EXPIRY", "read": False, "two_sided": False})
-            out[cycle] = {"unavailable": missing.format(low=low, high=high)}
+                                   "status": status, "read": False, "two_sided": False})
+            out[cycle] = {"unavailable": _diag(message)}
             continue
         target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
         chosen = [row for row in window if row["dte"] == target]
@@ -411,12 +427,16 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
         if not eligible:
             health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
                                    "status": "EMPTY", "read": False, "two_sided": False})
+            out[cycle] = {"unavailable": _diag(f"{chosen_expiry} 到期之上市買權無有效履約價")}
+            continue
+        two_sided = any(_is_two_sided(r.get("bid"), r.get("ask")) for r in eligible)
+        health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
+                               "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible)})
+        if not two_sided:
+            out[cycle] = {"unavailable": _diag(f"本次回應有 {chosen_expiry}（{target}天）標準買權上市，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）")}
         else:
-            two_sided = any(_is_two_sided(r.get("bid"), r.get("ask")) for r in eligible)
-            health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
-                                   "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible)})
-        out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
-                                  provenance=provenance, rights=rights, stamp=stamp)
+            out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
+                                      provenance=provenance, rights=rights, stamp=stamp)
     return CyclesResult(out, health=health_records)
 
 
@@ -628,6 +648,9 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             two_sided = any(_is_two_sided(r["bid"], r["ask"]) for r in eligible_rows)
             health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
                                    "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible_rows)})
+        if eligible_rows and not two_sided:  # read chain, no usable quote: say so, not a strategy-yield failure
+            out[cycle] = {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）買權，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）")}
+            continue
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
                                   provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
@@ -635,44 +658,192 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
     return CyclesResult(out, health=health_records)
 
 
-def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None) -> CyclesResult:
+SEK = "SEK"
+_NO_SEARCH = object()
+_NORDIC_CALL_NAME = re.compile(r"^([A-Z0-9]{1,12}) ([0-3][0-9])([A-Z]{3})([0-9]{2}) ([0-9]{1,6}(?:\.[0-9]{1,4})?)C$")
+_MONTH_NUMBER = {name: number for number, name in enumerate(("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"), 1)}
+NORDIC_SOURCE = "Nasdaq Nordic option chain (exchange public web API, delayed)"
+
+
+def _diag(text: str) -> str:
+    """Generated diagnostics are bounded (the sealer and the Worker both cap strings at 200; the reason stays first)."""
+    return text if len(text) <= 180 else text[:180]
+
+
+def _typed_currency(value: Any) -> str:
+    """OK only for the exact canonical SEK string. CONFLICT for another canonical three-letter currency. UNKNOWN for
+    everything else: missing, null, empty, whitespace, non-canonical text, bool, number (incl. non-finite), list, dict."""
+    if not isinstance(value, str) or not value.strip():
+        return "UNKNOWN"
+    if value == SEK:
+        return "OK"
+    return "CONFLICT" if re.fullmatch(r"[A-Z]{3}", value) else "UNKNOWN"
+
+
+_CANONICAL_DECIMAL = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?")
+_MAX_DECIMAL_TEXT = 32  # bounded lexical size: a longer decimal is an unsupported precision, refused, never rounded
+_HUNDRED = Decimal(100)
+
+
+def _typed_size(value: Any) -> str:
+    """OK only for a validated exact quantity of 100 shares: int 100 (exact integer comparison, never a float conversion), float
+    100.0, or canonical bounded decimal text compared EXACTLY as a Decimal ("100", "100.0", "100.00" are 100;
+    "100.000000000000000001" is not). NONSTANDARD only for another positive exact quantity in a supported representation (never
+    truncated or rounded: 100.5 is not 100). UNKNOWN for a missing, empty, non-canonical ("0100", "1e2", padded, signed), over-long
+    (unsupported precision), malformed or non-numeric size: an unsupported encoding is unconfirmed, never a proven share count."""
+    if value is None or isinstance(value, bool):
+        return "UNKNOWN"
+    if isinstance(value, int):
+        return "OK" if value == 100 else ("NONSTANDARD" if value > 0 else "UNKNOWN")
+    if isinstance(value, float):
+        if not math.isfinite(value) or value <= 0:
+            return "UNKNOWN"
+        return "OK" if value == 100.0 else "NONSTANDARD"
+    if isinstance(value, str) and len(value) <= _MAX_DECIMAL_TEXT and _CANONICAL_DECIMAL.fullmatch(value):
+        number = Decimal(value)
+        if number <= 0:
+            return "UNKNOWN"
+        return "OK" if number == _HUNDRED else "NONSTANDARD"
+    return "UNKNOWN"
+
+
+_CALL_MONTH_LETTERS = "ABCDEFGHIJKL"  # the source's call series letter: January .. December (puts use M..X)
+_SUPPORTED_WEEKLY_TAG = "Y"  # the ONLY weekly series tag the retained VOLVB receipt proves; any other tag is unproven, not a free slot
+_STRIKE_TEXT = r"(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,4})?"  # bounded strike text shared by call names and native symbols
+_NATIVE_SYMBOL_SUFFIX = re.compile(r"([0-9])([A-L])(?:([0-9]{2})" + _SUPPORTED_WEEKLY_TAG + r")?(" + _STRIKE_TEXT + r")")
+
+
+def _native_symbol_matches(symbol: str, root: str, expiry: date, strike: Decimal) -> bool:
+    """The COMPLETE encoded identity of the two source forms the retained receipts prove: ROOT + year digit + call-month
+    letter + strike (SIVE6J15.50, SIVE6J16) and the weekly ROOT + year digit + call-month letter + day + tag Y + strike
+    (VOLVB6J02Y280). Root, year, month/type, day (weekly) and the EXACT decimal strike (no float tolerance) must ALL agree with
+    the row's expiry and strike; a prefix, another contract of the same root, a put letter, any other weekly tag, an unsupported
+    encoding or precision is not identity."""
+    if not symbol.startswith(root):
+        return False
+    match = _NATIVE_SYMBOL_SUFFIX.fullmatch(symbol[len(root):])
+    if not match:
+        return False
+    year_digit, month_letter, day, strike_text = match.groups()
+    if int(year_digit) != expiry.year % 10 or month_letter != _CALL_MONTH_LETTERS[expiry.month - 1]:
+        return False
+    if day is not None and int(day) != expiry.day:
+        return False
+    return Decimal(strike_text) == strike
+
+
+def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[str, Any] | None]:
+    """('IGNORE'|'MALFORMED'|'CALL', call). A call is proven only by assetClass OPTIONS and a call name whose underlying
+    root, date and strike agree with the row's own expiry and strike fields and with the requested underlying; a trailing
+    'C' alone (FUTC, futures, combinations, a missing or unknown class) proves nothing."""
+    if not isinstance(row, dict):
+        return "MALFORMED", None
+    if row.get("assetClass") != "OPTIONS":
+        return "IGNORE", None
+    name = row.get("fullName")
+    if not isinstance(name, str):
+        return "MALFORMED", None
+    if not name.endswith("C") or name.endswith("FUTC"):
+        return "IGNORE", None
+    match = _NORDIC_CALL_NAME.match(name)
+    if not match or match.group(1) != root or match.group(3) not in _MONTH_NUMBER:
+        return "MALFORMED", None
+    raw_strike = row.get("strikePrice")  # exact decimal text (bounded) or an int; a float has already lost the source's digits
+    if isinstance(raw_strike, bool) or not (isinstance(raw_strike, int) or (isinstance(raw_strike, str) and len(raw_strike) <= 16
+                                                                          and _CANONICAL_DECIMAL.fullmatch(raw_strike))):
+        return "MALFORMED", None
+    try:
+        name_date = date(2000 + int(match.group(4)), _MONTH_NUMBER[match.group(3)], int(match.group(2)))
+        expiry_text = row.get("expirationDate")
+        if not isinstance(expiry_text, str) or len(expiry_text) != 10:
+            return "MALFORMED", None
+        expiry = date.fromisoformat(expiry_text)
+    except ValueError:
+        return "MALFORMED", None
+    strike_exact = Decimal(raw_strike)
+    if expiry != name_date or strike_exact <= 0 or strike_exact != Decimal(match.group(5)):
+        return "MALFORMED", None
+    native_symbol = row.get("symbol")
+    if not isinstance(native_symbol, str) or not _native_symbol_matches(native_symbol, root, expiry, strike_exact):
+        return "MALFORMED", None  # a missing, unsupported or contradictory native identity proves nothing
+    strike = float(strike_exact)
+    return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
+                    "ccy": _typed_currency(row.get("currency")), "size": _typed_size(row.get("contractSize")),
+                    "bid": _float(row.get("bidPrice")), "ask": _float(row.get("askPrice")),
+                    "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
+
+
+def _nordic_unavailable(symbol: str, status: str, message: str) -> CyclesResult:
+    health = [{"venue": "STOCKHOLM", "underlying": symbol, "expiry": None, "cycle": c, "status": status, "read": False,
+               "two_sided": False} for c in CYCLES]
+    return CyclesResult({cycle: {"unavailable": _diag(message)} for cycle in CYCLES}, health=health)
+
+
+def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None,
+                   *, spot_currency: Any = None) -> CyclesResult:
+    """Stockholm covered calls. Every claim rests on typed source evidence: the underlying's quote currency (spot_currency,
+    and the search result's share currency when the search ran) and each CONTRACT's own currency and size must all be the
+    canonical SEK / 100 before a strategy is offered; an unknown or conflicting term is a source-scoped unavailable reason,
+    never a SEK recommendation that merely ends in .ST."""
     native = base.replace("-", " ")  # VOLV-B is listed as "VOLV B"
+    root = re.sub(r"[^A-Z0-9]", "", base.upper())
+    share_currency: Any = _NO_SEARCH
     try:
         if not orderbook:
             groups = http_json(NORDIC_SEARCH.format(symbol=urllib.parse.quote(native)))["data"] or []
-            orderbook = next(item["orderbookId"] for group in groups for item in group["instruments"]
-                             if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == native.upper())
+            share = next(item for group in groups for item in group["instruments"]
+                         if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == native.upper())
+            orderbook = share["orderbookId"]
+            share_currency = share.get("currency")
         rows = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
-        if rows is None:
-            rows = []
     except Exception:
-        err_health = [{"venue": "STOCKHOLM", "underlying": symbol, "expiry": None, "cycle": c,
-                       "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
-        return CyclesResult({cycle: {"unavailable": "Nasdaq Nordic 期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health)
+        return _nordic_unavailable(symbol, "READ_ERROR", "Nasdaq Nordic 期權鏈讀取或解析失敗")
+    if not isinstance(rows, list):
+        return _nordic_unavailable(symbol, "READ_ERROR", "Nasdaq Nordic 期權鏈回應格式無效（讀取或解析失敗）")
+    states = [_typed_currency(spot_currency)] + ([] if share_currency is _NO_SEARCH else [_typed_currency(share_currency)])
+    if "CONFLICT" in states:
+        return _nordic_unavailable(symbol, "UNDERLYING_CURRENCY_CONFLICT", "標的報價或上市幣別與 SEK 不符；不推薦")
+    if any(state != "OK" for state in states):
+        return _nordic_unavailable(symbol, "UNDERLYING_CURRENCY_UNCONFIRMED", "標的報價或上市幣別未確認為 SEK；不推薦")
     if not rows:
-        empty_health = [{"venue": "STOCKHOLM", "underlying": symbol, "expiry": None, "cycle": c,
-                         "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
-        return CyclesResult({c: {"unavailable": f"Nasdaq Stockholm 無 {CYCLES[c][0]}-{CYCLES[c][1]} 天到期的上市期權"} for c in CYCLES},
-                            health=empty_health)
-    calls = []
+        return _nordic_unavailable(symbol, "EMPTY_RESPONSE", "本次來源回應無可用之買權紀錄；是否上市未確認")
+    listed: list[dict[str, Any]] = []
+    malformed = 0
     for row in rows:
-        name = str(row.get("fullName") or "")
-        # Futures ("VOLVB 16OCT26 FUTC") and combinations share the chain; only options are calls here.
-        if not name.endswith("C") or row.get("assetClass") not in (None, "", "OPTIONS"):
-            continue
-        expiry = str(row.get("expirationDate") or "")
-        try:
-            dte = (date.fromisoformat(expiry) - today).days
-        except ValueError:
-            continue
-        calls.append({"expiry": expiry, "dte": dte, "strike": _float(row.get("strikePrice")), "bid": _float(row.get("bidPrice")),
-                      "ask": _float(row.get("askPrice")), "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume")),
-                      "size": _int(row.get("contractSize"))})
-    return _cycles_from_calls(calls, base, spot, stamp, currency="SEK",
-                              source="Nasdaq Nordic option chain (exchange public web API, delayed)",
+        kind, call = _nordic_row_evidence(row, root, today)
+        if kind == "CALL":
+            listed.append(call)
+        elif kind == "MALFORMED":
+            malformed += 1
+    if not listed:
+        if malformed:
+            return _nordic_unavailable(symbol, "MALFORMED_ROWS", "本次來源回應之買權資料無法解析；不推斷是否上市")
+        return _nordic_unavailable(symbol, "NO_EXPIRY", "本次來源回應無可用之買權紀錄；是否上市未確認")
+
+    def no_window(cycle: str, low: int, high: int) -> tuple[str, str]:
+        inside = [call for call in listed if low <= call["dte"] <= high]
+        if inside:  # listed in the window, but no contract with confirmed standard terms
+            parts = []
+            if any(call["size"] == "NONSTANDARD" for call in inside):
+                parts.append("合約單位非標準100股")
+            if any(call["ccy"] == "CONFLICT" for call in inside):
+                parts.append("合約幣別與 SEK 不符")
+            if any(call["size"] == "UNKNOWN" or call["ccy"] == "UNKNOWN" for call in inside):
+                parts.append("合約單位或幣別來源未確認")
+            return f"本次回應有 {low}–{high} 天上市買權；{'、'.join(parts)}，不推薦", "TERMS_REFUSED"
+        if malformed:
+            return f"本次來源回應含無法解析之列；無法確認 {low}–{high} 天是否有買權", "MALFORMED_ROWS"
+        upcoming = {call["expiry"]: call["dte"] for call in listed if call["dte"] >= 0}
+        nearest = sorted(upcoming.items(), key=lambda item: (min(abs(item[1] - low), abs(item[1] - high)), item[1]))[:2]
+        context = "、".join(f"{expiry}（{days}天）" for expiry, days in nearest)
+        return f"本次回應有上市買權；所列到期不在{low}–{high}天策略範圍" + (f"（最近到期 {context}）" if context else ""), "NO_EXPIRY"
+
+    usable = [{"expiry": call["expiry"], "dte": call["dte"], "strike": call["strike"], "bid": call["bid"], "ask": call["ask"],
+               "oi": call["oi"], "volume": call["volume"], "size": 100}
+              for call in listed if call["ccy"] == "OK" and call["size"] == "OK"]
+    return _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
                               provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
-                              missing="Nasdaq Stockholm 無 {low}-{high} 天到期的上市期權",
-                              venue="STOCKHOLM", underlying=symbol)
+                              missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window)
 
 
 def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> Observation | None:
@@ -701,7 +872,7 @@ def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) 
             cycles = us_cycles(symbol, price, today, stamp)
             return Observation(quote, symbol, cycles)
         if symbol.endswith(".ST"):
-            cycles = nordic_options(symbol, base, price, today, stamp, orderbook)
+            cycles = nordic_options(symbol, base, price, today, stamp, orderbook, spot_currency=quote.get("currency"))
             return Observation(quote, symbol, cycles)
     except Exception:  # one malformed chain never aborts the other underlyings
         venue = "STOCKHOLM" if symbol.endswith(".ST") else "US"

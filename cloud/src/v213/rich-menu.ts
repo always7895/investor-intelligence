@@ -582,10 +582,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
             return { handled: true, messages: optionsUnavailableReport(shown, period, "封存之期權觀察未通過驗證（報價無效或逾時），已拒絕顯示。", isText) };
           }
           if (detailed.status === "PERIOD_UNAVAILABLE") {
+            const displayTicker = detailed.ticker ?? shown;
             const reason = detailed.unavailable
               ? `${note ? `${note}` : ""}${detailed.unavailable}（已封存之公開觀察）`
-              : `${note ? `${note}` : ""}本輪封存資料沒有 ${shown} 的${period === "weekly" ? "每週期權" : "每月期權"}觀察。`;
-            return { handled: true, messages: optionsUnavailableReport(shown, period, reason, isText) };
+              : `${note ? `${note}` : ""}本輪封存資料沒有 ${displayTicker} 的${period === "weekly" ? "每週期權" : "每月期權"}觀察。`;
+            return { handled: true, messages: optionsUnavailableReport(displayTicker, period, reason, isText) };
           }
           if (detailed.status === "DOCUMENT_STALE") {
             return { handled: true, messages: optionsUnavailableReport(shown, period, `期權快照已逾時（產生於 ${detailed.docGeneratedAt}，超過 6 小時有效上限）；已拒絕顯示過期報價。`, isText) };
@@ -628,7 +629,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
           const symbol = observationSymbol(record);
           const viaSymbol = await answer([symbol], symbol, null);
           return viaSymbol.handled ? viaSymbol.messages
-            : optionsUnavailableReport(ticker, period, `${symbol}（${record.venue}）：本輪封存資料沒有此掛牌的期權觀察（可能沒有掛牌期權，或不在觀察範圍）。`, isText);
+            : optionsUnavailableReport(ticker, period, `${symbol}（${record.venue}）：本輪封存資料沒有此掛牌的期權觀察。`, isText);
         }
         return optionsUnavailableReport(ticker, period, `本輪封存快照未包含 ${ticker} 之期權觀察；不推估無報價標的。`, isText);
       }
