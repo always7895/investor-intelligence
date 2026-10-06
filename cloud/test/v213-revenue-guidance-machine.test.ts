@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { BOTTLENECK_V3_KEY, loadBottleneckV3, parseBottleneckV3 } from "../src/v213/bottleneck-v3";
+import type { PublicSnapshotView } from "../src/v213/public-snapshot";
 import { describe, expect, it } from "vitest";
 import { parseOrderForecastV3Machine } from "../src/v213/order-forecast";
 import {
   MACHINE_SCHEMA,
+  GUIDANCE_BINDING_KEY,
   machineContextIsValid,
   resolveSealedMachineBindings,
   validateMachineEnvelope,
@@ -111,4 +116,106 @@ describe("TYPEFIX1 revenue-guidance machine fail-closed typing", () => {
     expect(dated.cutoff).toBe(CUTOFF);
     expect(dated.revenueDiagnostic).toBe("MACHINE_INPUTS_UNAVAILABLE");
   });
+
+  it.each<[string, (v: any) => void]>([
+    ["forged-input", v => { v.machine.input_digest = "d".repeat(64); v.payload.evidence.auto_update.input_digest = "d".repeat(64); }],
+    ["replayed-cutoff", v => { v.machine.cutoff = "2026-09-27T15:00:00Z"; }],
+    ["forged-record", v => { v.machine.record_canonical_json = "{}"; }],
+    ["malformed-history", v => { v.machine.receipt_history = {}; }],
+    ["wrong-mode", v => { v.admission_mode = "EXISTING_V3_ONLY"; }],
+  ])("rejects attachment %s despite a matching report digest", async (name, corrupt) => {
+    const savedNow = Date.now;
+    Date.now = () => Date.parse(CUTOFF);
+    try {
+      const report = JSON.parse(pythonFixture.report);
+      corrupt(report.top[0].outlook.order_forecast_v3);
+      const reportText = JSON.stringify(report);
+      const binding = JSON.parse(pythonFixture.binding);
+      binding.report_sha256 = sha(reportText); // exercise inner semantics, not just outer mismatch
+      const f = nvdaForecast(await loadBottleneckV3(fixtureView(reportText, JSON.stringify(binding)).view,
+        { guidanceMachineEnabled: true }));
+      expect(f.revenueDiagnostic, name).toBe("MACHINE_INPUTS_UNAVAILABLE");
+      expect(f.revenueStatus, name).toBe("UNAVAILABLE");
+      expect(f.machineAdmitted, name).toBe(false);
+    } finally { Date.now = savedNow; }
+  });
+
+  it.each(["missing-binding", "mixed-report", "replayed-binding", "malformed-binding", "unsealed", "missing-object"])(
+    "rejects selection %s despite caller-supplied bindings", async name => {
+      const selected = resolveSealedMachineBindings(pythonFixture.report, pythonFixture.binding);
+      if (!selected) throw new Error("fixture binding missing");
+      const savedNow = Date.now;
+      Date.now = () => Date.parse(CUTOFF);
+      try {
+        const replay = JSON.parse(pythonFixture.binding);
+        replay.cutoff = "2026-09-27T15:00:00Z";
+        const input = fixtureView(
+          name === "mixed-report" ? pythonFixture.report + " " : pythonFixture.report,
+          name === "missing-binding" ? null : name === "replayed-binding" ? JSON.stringify(replay) :
+            name === "malformed-binding" ? "{bad-json" : pythonFixture.binding);
+        if (name === "unsealed") input.view = { ...input.view, integrity: "legacy" };
+        if (name === "missing-object") input.view.hasSealedObject = () => false;
+        expect(await loadBottleneckV3(input.view, { guidanceMachineEnabled: true, machineBindings: selected })).toBeNull();
+        if (name === "unsealed" || name === "missing-object") expect(input.requested).toEqual([]);
+      } finally { Date.now = savedNow; }
+    });
+});
+
+/** Actual Python producer + serializer output, from a genuine EffectiveInputs
+ * loaded with missing required state and synthetic invalid baselines. This is
+ * BARRIER parity only, never AUTO revenue, native admission or live freshness. */
+const pythonFixture = JSON.parse(readFileSync(resolve(__dirname, "../../tests/fixtures/revenue-guidance-machine-barrier-functional.json"), "utf8")) as {
+  scope: string; report: string; binding: string;
+};
+function fixtureView(report = pythonFixture.report, binding: string | null = pythonFixture.binding) {
+  const requested: string[][] = [];
+  const view: PublicSnapshotView = {
+    runId: "synthetic-machine-barrier", kind: "snapshot", integrity: "sealed",
+    hasSealedObject: key => key === BOTTLENECK_V3_KEY || (key === GUIDANCE_BINDING_KEY && binding !== null),
+    json: async () => { throw new Error("machine loader must select exact texts, not fallback JSON"); },
+    text: async keys => {
+      requested.push([...keys]);
+      if (keys.length !== 1) throw new Error("unexpected key selection");
+      if (keys[0] === BOTTLENECK_V3_KEY) return report;
+      if (keys[0] === GUIDANCE_BINDING_KEY) return binding;
+      throw new Error("unexpected key");
+    },
+  };
+  return { view, requested };
+}
+function nvdaForecast(doc: Awaited<ReturnType<typeof loadBottleneckV3>>) {
+  const forecast = doc?.top.find(row => row.symbol === "NVDA")?.forecast;
+  if (!forecast) throw new Error("expected full report and NVDA forecast");
+  return forecast;
+}
+
+describe("BATCH03B genuine Python BARRIER through the real machine loader", () => {
+  it("preserves producer unavailability without downgrading to the machine-input fallback", async () => {
+    const savedNow = Date.now;
+    Date.now = () => Date.parse(CUTOFF);
+    try {
+      expect(pythonFixture.scope).toBe("SYNTHETIC_BARRIER_ONLY_NOT_AUTO_OR_NATIVE");
+      const { view, requested } = fixtureView();
+      const loaded = await loadBottleneckV3(view, { guidanceMachineEnabled: true });
+      expect(requested).toEqual([[BOTTLENECK_V3_KEY], [GUIDANCE_BINDING_KEY]]);
+      const f = nvdaForecast(loaded);
+      const envelope = JSON.parse(pythonFixture.report).top[0].outlook.order_forecast_v3;
+      expect(f.revenueStatus).toBe(envelope.payload.revenue_status);
+      expect(f.revenueReason).toBe(envelope.payload.revenue_reason);
+      expect(f.revenueDiagnostic).toBeNull();
+      expect(f.machineAdmitted).toBe(false);
+      expect(f.cutoff).toBe(CUTOFF);
+      expect(f.m6).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+      expect(f.m12).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+      const selected = resolveSealedMachineBindings(pythonFixture.report, pythonFixture.binding);
+      expect(selected).not.toBeNull();
+      if (!selected) throw new Error("binding missing");
+      expect(loaded).toEqual(parseBottleneckV3(JSON.parse(pythonFixture.report), Date.parse(CUTOFF),
+        { guidanceMachineEnabled: true, machineBindings: selected }));
+      const disabled = nvdaForecast(parseBottleneckV3(JSON.parse(pythonFixture.report), Date.parse(CUTOFF)));
+      expect(disabled.m6).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+      expect(disabled.machineAdmitted).not.toBe(true);
+    } finally { Date.now = savedNow; }
+  });
+
 });

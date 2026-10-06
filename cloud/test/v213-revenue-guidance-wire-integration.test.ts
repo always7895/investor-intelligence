@@ -44,6 +44,34 @@ const forecastOf = (entry: BottleneckV3["top"][number]) => {
 const forecastsOf = (doc: BottleneckV3) => doc.top.map(entry => forecastOf(entry));
 
 describe("B3-WIRE-01 transport-v1 through the real bottleneck-v3 reader", () => {
+  // Negotiation validation is explicitly deferred by B3-WIRE-01. These are
+  // negative admission tests, NOT permission to enable machine or trust labels.
+  it.each([undefined, "UNKNOWN", "DISABLED"])("admission_mode=%s cannot enable transport or machine admission", async mode => {
+    const raw = JSON.parse(getFixtureString(fixture.expected_wire_body, BOTTLENECK_V3_KEY));
+    for (const row of raw.top) {
+      if (mode === undefined) delete row.outlook.order_forecast_v3.admission_mode;
+      else row.outlook.order_forecast_v3.admission_mode = mode;
+    }
+    const disabled = requiredDoc(parseBottleneckV3(raw, NOW));
+    for (const entry of disabled.top) {
+      expect(forecastOf(entry).m6).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+      expect(forecastOf(entry).m12).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+    }
+    // The label is currently ignored, but the independent explicit option and
+    // untouched strict payload parser are still required. Lock this limitation.
+    const enabled = requiredDoc(parseBottleneckV3(raw, NOW, { guidanceWireEnabled: true }));
+    expect(forecastsOf(enabled)).toEqual(forecastsOf(requiredDoc(parseBottleneckV3(legacyRaw, NOW))));
+    expect(enabled.top.every(e => e.forecast?.machineAdmitted !== true)).toBe(true);
+
+    // A spoofed label never rescues an invalid payload or falls back to valid sibling v2.
+    for (const row of raw.top) row.outlook.order_forecast_v3.payload = { version: 3, issuer: "FOREIGN" };
+    const invalid = requiredDoc(parseBottleneckV3(raw, NOW, { guidanceWireEnabled: true }));
+    for (const entry of invalid.top) {
+      expect(forecastOf(entry).m6).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+      expect(forecastOf(entry).m12).toMatchObject({ status: "UNAVAILABLE", reason: "INVALID" });
+    }
+  });
+
   it("legacy body parses identically with options omitted, explicit false and true", () => {
     const omitted = requiredDoc(parseBottleneckV3(legacyRaw, NOW));
     const disabled = parseBottleneckV3(legacyRaw, NOW, { guidanceWireEnabled: false });

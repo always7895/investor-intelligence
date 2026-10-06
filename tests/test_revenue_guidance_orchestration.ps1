@@ -1,9 +1,9 @@
 # tests/test_revenue_guidance_orchestration.ps1
 #
-# B2-ORCH-01 - six ordinary in-memory functional cases for the staged daily orchestration.
+# B2-ORCH-01 / F02D - in-memory caller cases; no native/platform certification.
 # Dot-sources the REAL scripts/run_daily_data_refresh.ps1 (definition-only path: no contact lookup,
 # environment change, native launch, cwd change or exit) and invokes the REAL Invoke-DailyDataRefresh
-# with fake RunStep/WithSecContact collaborators and an ordinary in-memory provider. Testing only the
+# with separate fake RunStep/RunGuidanceRanking/WithSecContact collaborators and an in-memory provider. Testing only the
 # module would be insufficient: the public daily function and its step-logging adapter are exercised.
 # No real Python steps, no contact/native adapters, no network, no credentials, no state files, no
 # existing test imports. Self-contained assertions, no Pester. Exits nonzero on the first assertion
@@ -42,6 +42,9 @@ function New-B2Store {
         ChangedThisRun  = $ChangedThisRun
         NewPending      = $NewPending
         TraceSteps      = $false
+        RankingCompleted = $true
+        AckCompleted   = $true
+        RankingCalls   = New-Object System.Collections.Generic.List[object]
         Operations      = New-Object System.Collections.Generic.List[string]
         Acknowledged    = New-Object System.Collections.Generic.List[string]
         ClosedCount     = 0
@@ -95,7 +98,7 @@ function New-B2InMemoryProvider {
                     $script:Store.Operations.Add('AcknowledgeRebuild')
                     $script:Store.Acknowledged.Add([string]$Revision)
                     # Clears only the revision that is both the current input and the pending work, and only then.
-                    if (($script:Store.PendingRevision -eq $Revision) -and ($script:Store.InputRevision -eq $Revision)) {
+                    if ($script:Store.AckCompleted -and ($script:Store.PendingRevision -eq $Revision) -and ($script:Store.InputRevision -eq $Revision)) {
                         $script:Store.PendingRevision = $null
                         [pscustomobject]@{
                             Completed = $true
@@ -136,6 +139,27 @@ function New-FakeRunStep {
         }
         [pscustomobject]@{ ExitCode = 0; Lines = @() }
     }
+}
+
+function New-FakeRunGuidanceRanking {
+    # Independent SAME-owner collaborator: never delegated to generic RunStep or a CLI.
+    {
+        param([string]$Mode, [object]$Revision)
+        $completed = $script:Store.RankingCompleted
+        $script:Store.RankingCalls.Add([pscustomobject]@{
+            Mode = $Mode; Revision = $Revision; Completed = $completed
+        })
+        $script:Store.Operations.Add('Ranking:' + $Mode)
+        [pscustomobject]@{ ExitCode = 0; Completed = $completed; Revision = $Revision }
+    }
+}
+
+function Assert-RankingCall {
+    param([int]$Index, [string]$Mode, [object]$Revision)
+    $call = $script:Store.RankingCalls[$Index]
+    Assert-Equal $call.Mode $Mode 'same-owner ranking mode'
+    Assert-True ([object]::Equals($call.Revision, $Revision)) 'same-owner exact revision'
+    Assert-True ($call.Completed -is [bool] -and $call.Completed) 'same-owner completed trace'
 }
 
 function New-FakeWithSecContact {
@@ -186,6 +210,7 @@ Assert-Equal $r2.ExitCode 0 'case1 explicit-false aggregate success'
 Assert-Equal $r1.B2.Disposition 'DISABLED' 'case1 omitted-options B2 disposition'
 Assert-Equal $r2.B2.Disposition 'DISABLED' 'case1 explicit-false B2 disposition'
 Assert-Equal $script:Store.Operations.Count 0 'case1 provider never acquired in disabled mode'
+Assert-Equal $script:Store.RankingCalls.Count 0 'case1 same-owner ranking unused'
 
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 2: auto true, provider available, ordinary unchanged/clean refresh -> ordered check then updater, normal 3h ranking exactly once, NO_CHANGE'
@@ -194,13 +219,15 @@ $script:Store.TraceSteps = $true
 $provider2 = New-B2InMemoryProvider
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider2
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider2 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'NO_CHANGE' 'case2 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case2 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case2 aggregate success'
 Assert-True ($sigs -notlike '*guidance_release_check*') 'case2 no legacy checker step in enabled mode'
-Assert-Equal ([regex]::Matches($sigs, [regex]::Escape($ranking3h)).Count) 1 'case2 normal 3h ranking exactly once'
+Assert-True ($sigs -notlike '*bottleneck_v3*') 'case2 no generic ranking fallback'
+Assert-Equal $script:Store.RankingCalls.Count 1 'case2 same-owner ranking exactly once'
+Assert-RankingCall 0 'Cadence' $null
 Assert-True $r.B2.ReleaseCheckAttempted 'case2 release check attempted flag'
 Assert-True $r.B2.UpdateAttempted 'case2 updater attempted flag'
 Assert-True $r.B2.RankingAttempted 'case2 ranking attempted flag'
@@ -208,7 +235,7 @@ Assert-True (-not $r.B2.ForcedRebuildAttempted) 'case2 no forced rebuild flag'
 Assert-True (-not $r.B2.RebuildCompleted) 'case2 rebuild not completed'
 Assert-True ($r.B2.Changed -eq $false) 'case2 Changed=false known'
 Assert-True ($null -eq $r.B2.PendingRevision) 'case2 no pending revision'
-Assert-Equal ($script:Store.Operations -join ',') 'Acquire,ReadState,BeginRefresh,CheckRelease,Update,FinishRefresh,Ranking3h,Close' 'case2 ordered shared trace incl. ranking before close'
+Assert-Equal ($script:Store.Operations -join ',') 'Acquire,ReadState,BeginRefresh,CheckRelease,Update,FinishRefresh,Ranking:Cadence,Close' 'case2 ordered shared trace incl. ranking before close'
 
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 3: ordinary changed inputs, rebuild false -> pending retained, no ranking/acknowledgement, independent trailing steps still run, CHANGED_REBUILD_PENDING'
@@ -217,7 +244,7 @@ $script:Store.TraceSteps = $true
 $provider3 = New-B2InMemoryProvider
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider3
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider3 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'CHANGED_REBUILD_PENDING' 'case3 disposition'
 Assert-Equal $r.B2.ExitCode 1 'case3 B2 nonzero'
@@ -232,6 +259,7 @@ Assert-True (($sigs.IndexOf('price_shards') -gt 0) -and ($sigs.IndexOf('leopold_
 Assert-Equal $script:Store.PendingRevision 'input-v2' 'case3 store pending retained (no acknowledgement issued)'
 Assert-Equal $script:Store.InputRevision 'input-v2' 'case3 successful changed transition updates the current input to the same pending revision'
 Assert-Equal $script:Store.Acknowledged.Count 0 'case3 no acknowledgement'
+Assert-Equal $script:Store.RankingCalls.Count 0 'case3 no same-owner ranking'
 
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 4: ordinary changed inputs, rebuild true -> check/update precede 0h ranking, acknowledgement of the same revision, REBUILD_COMPLETED'
@@ -240,13 +268,14 @@ $script:Store.TraceSteps = $true
 $provider4 = New-B2InMemoryProvider
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider $provider4
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider $provider4 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'REBUILD_COMPLETED' 'case4 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case4 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case4 aggregate success'
-Assert-Equal ([regex]::Matches($sigs, [regex]::Escape($ranking0h)).Count) 1 'case4 forced 0h ranking exactly once'
-Assert-Equal ([regex]::Matches($sigs, [regex]::Escape($ranking3h)).Count) 0 'case4 no ordinary 3h ranking'
+Assert-True ($sigs -notlike '*bottleneck_v3*') 'case4 no generic ranking fallback'
+Assert-Equal $script:Store.RankingCalls.Count 1 'case4 same-owner ranking exactly once'
+Assert-RankingCall 0 'Dirty' 'input-v2'
 Assert-True ($sigs -notlike '*guidance_release_check*') 'case4 no legacy checker step'
 Assert-True $r.B2.RankingAttempted 'case4 ranking attempted flag'
 Assert-True $r.B2.ForcedRebuildAttempted 'case4 forced rebuild attempted flag'
@@ -256,7 +285,7 @@ Assert-Equal $script:Store.Acknowledged[0] 'input-v2' 'case4 acknowledged the ex
 Assert-True ($null -eq $script:Store.PendingRevision) 'case4 pending cleared after completed rebuild'
 Assert-Equal $script:Store.InputRevision 'input-v2' 'case4 final cleared state keeps the new current input revision'
 $ops = $script:Store.Operations -join ','
-Assert-True (($ops.IndexOf('CheckRelease') -lt $ops.IndexOf('Update')) -and ($ops.IndexOf('Update') -lt $ops.IndexOf('Ranking0h')) -and ($ops.IndexOf('Ranking0h') -lt $ops.IndexOf('AcknowledgeRebuild'))) 'case4 shared-trace order: check/update -> ranking -> acknowledgement'
+Assert-True (($ops.IndexOf('CheckRelease') -lt $ops.IndexOf('Update')) -and ($ops.IndexOf('Update') -lt $ops.IndexOf('Ranking:Dirty')) -and ($ops.IndexOf('Ranking:Dirty') -lt $ops.IndexOf('AcknowledgeRebuild'))) 'case4 shared-trace order: check/update -> ranking -> acknowledgement'
 
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 5: previously pending state, this refresh unchanged, rebuild true -> retained pending forces 0h ranking and is acknowledged, never dropped'
@@ -265,19 +294,21 @@ $script:Store.TraceSteps = $true
 $provider5 = New-B2InMemoryProvider
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider $provider5
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider $provider5 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'REBUILD_COMPLETED' 'case5 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case5 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case5 aggregate success'
-Assert-Equal ([regex]::Matches($sigs, [regex]::Escape($ranking0h)).Count) 1 'case5 retained pending forces 0h ranking exactly once'
+Assert-True ($sigs -notlike '*bottleneck_v3*') 'case5 no generic ranking fallback'
+Assert-Equal $script:Store.RankingCalls.Count 1 'case5 same-owner ranking exactly once'
+Assert-RankingCall 0 'Dirty' 'input-v2'
 Assert-Equal $script:Store.Acknowledged.Count 1 'case5 exactly one acknowledgement'
 Assert-Equal $script:Store.Acknowledged[0] 'input-v2' 'case5 acknowledged the retained revision'
 Assert-True ($null -eq $script:Store.PendingRevision) 'case5 pending cleared, not dropped by Changed=false'
 Assert-Equal $script:Store.InputRevision 'input-v2' 'case5 current input revision remains the acknowledged revision'
 Assert-True $r.B2.RebuildCompleted 'case5 rebuild completed flag'
 $ops = $script:Store.Operations -join ','
-Assert-True (($ops.IndexOf('Update') -lt $ops.IndexOf('Ranking0h')) -and ($ops.IndexOf('Ranking0h') -lt $ops.IndexOf('AcknowledgeRebuild'))) 'case5 shared-trace order: update -> ranking -> acknowledgement'
+Assert-True (($ops.IndexOf('Update') -lt $ops.IndexOf('Ranking:Dirty')) -and ($ops.IndexOf('Ranking:Dirty') -lt $ops.IndexOf('AcknowledgeRebuild'))) 'case5 shared-trace order: update -> ranking -> acknowledgement'
 
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 6: repeated clean no-change invocations with the same in-memory provider -> stable command order/result, no forced rebuild or invented pending state, per-invocation isolation'
@@ -286,18 +317,21 @@ $script:Store.TraceSteps = $true
 $provider6 = New-B2InMemoryProvider
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $ra = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider6
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider6 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigsA = (Get-StepSignatures $script:Rec) -join '; '
 $script:Rec = New-Object System.Collections.Generic.List[object]
 $rb = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
-    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider6
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $false -GuidanceProvider $provider6 -RunGuidanceRanking (New-FakeRunGuidanceRanking)
 $sigsB = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $ra.B2.Disposition 'NO_CHANGE' 'case6 first invocation NO_CHANGE'
 Assert-Equal $rb.B2.Disposition 'NO_CHANGE' 'case6 second invocation NO_CHANGE'
 Assert-Equal $ra.ExitCode 0 'case6 first aggregate success'
 Assert-Equal $rb.ExitCode 0 'case6 second aggregate success'
 Assert-True ($sigsA -eq $sigsB) 'case6 stable command order across invocations'
-Assert-Equal ([regex]::Matches($sigsB, [regex]::Escape($ranking3h)).Count) 1 'case6 normal 3h ranking once in second invocation'
+Assert-True ($sigsB -notlike '*bottleneck_v3*') 'case6 no generic ranking fallback'
+Assert-Equal $script:Store.RankingCalls.Count 2 'case6 one same-owner ranking per invocation'
+Assert-RankingCall 0 'Cadence' $null
+Assert-RankingCall 1 'Cadence' $null
 Assert-True (-not $ra.B2.ForcedRebuildAttempted) 'case6 first no forced rebuild flag'
 Assert-True (-not $rb.B2.ForcedRebuildAttempted) 'case6 second no forced rebuild flag'
 Assert-True ($null -eq $script:Store.PendingRevision) 'case6 no invented pending state after repeated clean runs'
@@ -305,5 +339,59 @@ Assert-Equal $script:Store.Acknowledged.Count 0 'case6 no acknowledgements'
 Assert-Equal $script:Store.ClosedCount 2 'case6 each invocation closed its own session'
 Assert-True ([object]::ReferenceEquals($ra.B2, $rb.B2) -eq $false) 'case6 per-invocation result isolation'
 
-Write-Output 'B2 ORCHESTRATION: 6/6 ordinary functional cases passed'
+# No Completed=true means no success, even when ExitCode=0. Dirty work must survive
+# this failed invocation and can only be acknowledged by a later completed same-owner call.
+Write-Output 'CASE 7: incomplete ranking refuses success; pending survives and recovers'
+foreach ($dirty in @($false, $true)) {
+    foreach ($completion in @($false, $null, 'true')) {
+        $script:Store = if ($dirty) {
+            New-B2Store -InputRevision 'input-v2' -InitialPending 'input-v2'
+        } else { New-B2Store }
+        $script:Store.RankingCompleted = $completion
+        $script:Rec = New-Object System.Collections.Generic.List[object]
+        $provider7 = New-B2InMemoryProvider
+        $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+            -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $dirty -GuidanceProvider $provider7 `
+            -RunGuidanceRanking (New-FakeRunGuidanceRanking)
+        Assert-Equal $r.ExitCode 1 'case7 exit-0 ranking without boolean completion must fail'
+        Assert-Equal $r.B2.Disposition 'FAILED' 'case7 not a success'
+        $reason = if ($dirty) { 'FAILED_AT_REBUILD_RANKING' } else { 'FAILED_AT_RANKING' }
+        Assert-Equal $r.B2.Reason $reason 'case7 bounded ranking failure'
+        Assert-True (-not $r.B2.RebuildCompleted) 'case7 no false rebuild completion'
+        Assert-Equal $script:Store.RankingCalls.Count 1 'case7 fake must actually run'
+        Assert-Equal $script:Store.Acknowledged.Count 0 'case7 failed ranking never acknowledged'
+        Assert-Equal $script:Store.ClosedCount 1 'case7 failed invocation closes'
+        Assert-True (((Get-StepSignatures $script:Rec) -join ';') -notlike '*bottleneck_v3*') 'case7 no CLI fallback'
+        if ($dirty) {
+            Assert-Equal $r.B2.PendingRevision 'input-v2' 'case7 result retains pending'
+            Assert-Equal $script:Store.PendingRevision 'input-v2' 'case7 failure preserves recoverable state'
+            $script:Store.RankingCompleted = $true
+            $recovered = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+                -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider $provider7 `
+                -RunGuidanceRanking (New-FakeRunGuidanceRanking)
+            Assert-Equal $recovered.B2.Disposition 'REBUILD_COMPLETED' 'case7 later completed invocation recovers'
+            Assert-RankingCall 1 'Dirty' 'input-v2'
+            Assert-Equal $script:Store.Acknowledged.Count 1 'case7 exactly one eventual acknowledgement'
+            Assert-True ($null -eq $script:Store.PendingRevision) 'case7 clear only after successful recovery'
+        }
+    }
+}
+
+Write-Output 'CASE 8: incomplete acknowledgement cannot complete recovery or drop pending'
+$script:Store = New-B2Store -InputRevision 'input-v2' -InitialPending 'input-v2'
+$script:Store.AckCompleted = $false
+$script:Rec = New-Object System.Collections.Generic.List[object]
+$r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+    -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider (New-B2InMemoryProvider) `
+    -RunGuidanceRanking (New-FakeRunGuidanceRanking)
+Assert-Equal $r.ExitCode 1 'case8 recovery not complete'
+Assert-Equal $r.B2.Disposition 'CHANGED_REBUILD_PENDING' 'case8 incomplete ack not success'
+Assert-True (-not $r.B2.RebuildCompleted) 'case8 completed ranking is not completed recovery'
+Assert-Equal $r.B2.PendingRevision 'input-v2' 'case8 result retains pending'
+Assert-Equal $script:Store.PendingRevision 'input-v2' 'case8 store retains pending'
+Assert-Equal $script:Store.ClosedCount 1 'case8 incomplete recovery closes session'
+Assert-Equal $script:Store.Acknowledged.Count 1 'case8 actual acknowledgement attempted'
+Assert-RankingCall 0 'Dirty' 'input-v2'
+
+Write-Output 'B2 ORCHESTRATION: 8/8 caller case groups passed (synthetic collaborators only)'
 exit 0
