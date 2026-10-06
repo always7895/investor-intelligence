@@ -6,6 +6,7 @@ import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -90,11 +91,7 @@ class QualifyClaimEvidenceTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         import tempfile
 
-        scratch_root = ROOT / ".tmp"
-        scratch_root.mkdir(parents=True, exist_ok=True)
-        cls._tmp = tempfile.TemporaryDirectory(
-            prefix="source-registry-semantics-", dir=scratch_root
-        )
+        cls._tmp = tempfile.TemporaryDirectory(prefix="source-registry-semantics-")
         cls.addClassCleanup(cls._tmp.cleanup)
         root = Path(cls._tmp.name)
         src = root / "src"
@@ -141,7 +138,10 @@ class QualifyClaimEvidenceTests(unittest.TestCase):
         )
         policy_path = root / "registry-policy.json"
         policy_path.write_bytes(DEFAULT_POLICY_PATH.read_bytes())
-        cls.registry = load_registry(src, policy_path)
+        # Keep the production relative_to containment check; only this fixture
+        # load uses its own base, restored before any other registry operation.
+        with patch("source_registry.BASE_DIR", root):
+            cls.registry = load_registry(src, policy_path)
         cls.registry_by_id = cls.registry.by_id()
         claim_policy = json.loads(json.dumps(CLAIM_POLICY))
         # Add the T3 source's actual authority class as a candidate so the

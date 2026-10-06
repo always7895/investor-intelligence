@@ -483,7 +483,7 @@ class ReplayChainTests(unittest.TestCase):
         got = self._resolve(self.snapshot, profiles=json.dumps(profiles).encode("utf-8"))
         self.assertEqual((got["NVDA"]["mode"], got["NVDA"]["reason"]), ("BLOCKED", "APPROVAL_BINDING"))
         original = overlay.implementation_sha256
-        overlay.implementation_sha256 = lambda: "0" * 64  # a changed installed verifier/overlay byte
+        overlay.implementation_sha256 = lambda root=None: "0" * 64  # a changed installed verifier/overlay byte
         try:
             self.assertEqual(self._resolve(self.snapshot)["MU"]["mode"], "BLOCKED")
         finally:

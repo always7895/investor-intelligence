@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -70,8 +71,11 @@ class ProductionKvAddressingTests(unittest.TestCase):
         import sync_sealed_snapshot_kv as sync
         calls = []
         fake = lambda args, **kw: calls.append(list(args)) or subprocess.CompletedProcess(args, 0, "{}", "")
-        (ROOT / "data" / "cache").mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=ROOT / "data" / "cache") as tmp:  # sync stages repo-relative paths
+        # Both staging and fake CLI cwd belong to this fixture, never the checkout.
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(rollback, "ROOT", Path(tmp)), \
+                patch.object(sync, "ROOT", Path(tmp)), \
+                patch.object(sync, "CLOUD_DIR", Path(tmp) / "cloud"):
             source = Path(tmp) / "body.bin"
             source.write_bytes(b"{}")
             originals = (sync.subprocess.run, rollback.subprocess.run)

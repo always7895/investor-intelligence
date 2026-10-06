@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import copy
 import json
-import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -106,14 +107,23 @@ def _nonmacro_source(source_id):
 class DeclaredCandidatesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        scratch_root = ROOT / ".tmp"
-        scratch_root.mkdir(parents=True, exist_ok=True)
-        cls._tmp = tempfile.TemporaryDirectory(
-            prefix="source-declared-candidates-", dir=scratch_root
-        )
+        cls._tmp = tempfile.TemporaryDirectory(prefix="source-declared-candidates-")
         cls.addClassCleanup(cls._tmp.cleanup)
         cls._fixture_counter = 0
         root = Path(cls._tmp.name)
+        # Unchanged CLI modules derive their base from the owned mirror. Both
+        # default and explicit catalog paths remain subject to relative_to.
+        scripts = root / "scripts"
+        scripts.mkdir()
+        for name in ("source_declared_candidates.py", "source_registry.py", "source_claim_taxonomy_inventory.py"):
+            (scripts / name).write_bytes((ROOT / "scripts" / name).read_bytes())
+        shutil.copytree(ROOT / "scripts" / "adapters", scripts / "adapters",
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        config = root / "config"
+        config.mkdir()
+        shutil.copytree(ROOT / "config" / "sources", config / "sources")
+        for source in (DEFAULT_TAXONOMY_PATH, DEFAULT_CLAIM_POLICY_PATH, DEFAULT_FEDERATION_POLICY_PATH):
+            (config / source.name).write_bytes(source.read_bytes())
         cls.taxonomy = load_json_strict(DEFAULT_TAXONOMY_PATH)
         cls.claim_policy = load_json_strict(DEFAULT_CLAIM_POLICY_PATH)
         cls.federation_policy = load_json_strict(DEFAULT_FEDERATION_POLICY_PATH)
@@ -154,7 +164,8 @@ class DeclaredCandidatesTests(unittest.TestCase):
             json.dumps({"schema_version": 1, "sources": sources}, ensure_ascii=False),
             encoding="utf-8",
         )
-        return load_registry(root, DEFAULT_POLICY_PATH)
+        with patch("source_registry.BASE_DIR", Path(cls._tmp.name)):
+            return load_registry(root, DEFAULT_POLICY_PATH)
 
     def _macro_fixture(self, source_id):
         return _macro_source(
@@ -174,10 +185,9 @@ class DeclaredCandidatesTests(unittest.TestCase):
         return root
 
     def _run_cli(self, args):
-        cmd = [sys.executable, str(ROOT / "scripts" / "source_declared_candidates.py")] + args
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
-        return subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT), env=env)
+        root = Path(self._tmp.name)
+        cmd = [sys.executable, str(root / "scripts" / "source_declared_candidates.py")] + args
+        return subprocess.run(cmd, capture_output=True, text=True, cwd=str(root), timeout=120)
 
     # ------------------------------------------------------------------
     # Direct helper: positive + delegation.

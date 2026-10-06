@@ -5,13 +5,17 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('parse_evidence_harness', ROOT / 'tests/installer_parse_harness.py')
 h = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(h)
+# Fresh per-import evidence root; retain all cases (including failures), never
+# append to or clean the historical default audit directory.
+with patch.dict(os.environ, {"V213_INSTALLER_TEST_AUDIT_ROOT": tempfile.mkdtemp(prefix="parse-evidence-")}):
+    spec.loader.exec_module(h)
 
 
 @unittest.skipUnless(os.name == 'nt', 'BLOCKED: Windows parse evidence requires both native hosts')

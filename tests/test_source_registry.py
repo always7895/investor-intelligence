@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import shutil
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -192,8 +194,8 @@ class SourceRegistryTests(unittest.TestCase):
 class SourceRegistryCoverageCliTests(unittest.TestCase):
     """Actual user-facing caller: `python scripts/source_registry.py coverage`.
 
-    No registry/runtime writes; fixture writes are allowed inside a fresh
-    test-owned directory under the untracked .tmp/ scratch root (no network).
+    No registry/runtime writes; fixtures and the byte-identical CLI mirror live
+    inside a fresh OS temp directory, never inside the checkout (no network).
     """
 
     @classmethod
@@ -205,15 +207,9 @@ class SourceRegistryCoverageCliTests(unittest.TestCase):
         fixture_sources = source_document["sources"][:3]
         cls._json = json
         cls.fixture_source_ids = [source["source_id"] for source in fixture_sources]
-        # The loader records catalog paths relative to the repo BASE_DIR, so the
-        # fixture lives under the untracked .tmp/ scratch root. Create the shared
-        # root if absent (clean-checkout CI does not guarantee it); never remove it.
-        scratch_root = ROOT / ".tmp"
-        scratch_root.mkdir(parents=True, exist_ok=True)
-        # The TemporaryDirectory handle owns exactly this fresh directory; register
-        # its cleanup immediately so even a later setUpClass failure deletes only
-        # this test-owned fixture, never a reused dir/evidence.
-        cls._tmp = tempfile.TemporaryDirectory(prefix="source-registry-cli-", dir=scratch_root)
+        # The actual CLI derives BASE_DIR from __file__. Mirror its unchanged
+        # entrypoint and adapter package so the fixture stays beneath that base.
+        cls._tmp = tempfile.TemporaryDirectory(prefix="source-registry-cli-")
         cls.addClassCleanup(cls._tmp.cleanup)
         root = Path(cls._tmp.name)
         cls.fixture_src = root / "src"
@@ -225,7 +221,12 @@ class SourceRegistryCoverageCliTests(unittest.TestCase):
         # Every *.json inside the source dir is a catalog, so the policy lives outside it.
         cls.fixture_policy = root / "registry-policy.json"
         cls.fixture_policy.write_bytes(DEFAULT_POLICY_PATH.read_bytes())
-        cls.script = ROOT / "scripts" / "source_registry.py"
+        scripts = root / "scripts"
+        scripts.mkdir()
+        cls.script = scripts / "source_registry.py"
+        cls.script.write_bytes((ROOT / "scripts" / "source_registry.py").read_bytes())
+        shutil.copytree(ROOT / "scripts" / "adapters", scripts / "adapters",
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
     def _run_coverage(self, source_dir: Path) -> "subprocess.CompletedProcess[str]":
         import subprocess
@@ -246,7 +247,8 @@ class SourceRegistryCoverageCliTests(unittest.TestCase):
         )
 
     def test_coverage_cli_matches_in_process_ledger_with_fixture_ids_only(self) -> None:
-        expected = coverage_ledger(load_registry(self.fixture_src, self.fixture_policy))
+        with patch("source_registry.BASE_DIR", Path(self._tmp.name)):
+            expected = coverage_ledger(load_registry(self.fixture_src, self.fixture_policy))
         first = self._run_coverage(self.fixture_src)
         second = self._run_coverage(self.fixture_src)
         self.assertEqual(first.returncode, 0)
