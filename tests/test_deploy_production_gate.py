@@ -75,7 +75,8 @@ class ProductionKvAddressingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(rollback, "ROOT", Path(tmp)), \
                 patch.object(sync, "ROOT", Path(tmp)), \
-                patch.object(sync, "CLOUD_DIR", Path(tmp) / "cloud"):
+                patch.object(sync, "CLOUD_DIR", Path(tmp) / "cloud"), \
+                patch.object(sync, "_cli_command", return_value=["synthetic-cli"]):
             source = Path(tmp) / "body.bin"
             source.write_bytes(b"{}")
             originals = (sync.subprocess.run, rollback.subprocess.run)
@@ -92,11 +93,53 @@ class ProductionKvAddressingTests(unittest.TestCase):
 
     def test_watchdog_reads_production_with_the_gate_anchor_parser(self):
         watchdog = (ROOT / "scripts" / "freshness_watchdog.ps1").read_text(encoding="utf-8")
-        reads = re.findall(r"wrangler kv key get[^\n]*", watchdog)
-        self.assertTrue(reads and all("--remote" in line for line in reads))
-        self.assertNotRegex(watchdog, r"kv key put|kv bulk|kv key delete")
+        self.assertIn("$helper = Join-Path $RepoRoot 'scripts/sync_sealed_snapshot_kv.py'", watchdog)
+        self.assertIn("& $python $helper --read-freshness --outcome-path $resultPath", watchdog)
+        self.assertIn("$record = Get-Content -LiteralPath $resultPath -Raw -Encoding utf8 | ConvertFrom-Json",
+                      watchdog)
+        self.assertIn("$anchor = ConvertTo-UtcAnchor $record.anchor", watchdog)
+        self.assertIn("$generated = ConvertTo-UtcAnchor $record.report_generated_at", watchdog)
+        self.assertNotRegex(watchdog, r"wrangler|kv key put|kv bulk|kv key delete")
         parser = re.compile(r"function ConvertTo-UtcAnchor.*?\n}\n", re.S)
-        self.assertEqual(parser.search(watchdog).group(0), parser.search(GATE).group(0))
+        gate_parser, watch_parser = (parser.search(text).group(0) for text in (GATE, watchdog))
+        # The adapter supplies strictly zoned strings. The watchdog tightens its
+        # input guard, but retains the gate's DateTime and invariant UTC conversion.
+        date_branch = re.compile(r"    if \(\$Value -is \[DateTime\]\).*?\n    }", re.S)
+        self.assertEqual(date_branch.search(watch_parser).group(0), date_branch.search(gate_parser).group(0))
+        parse_tail = re.compile(r"    \$parsed = \[DateTime\]::MinValue.*?return \$parsed", re.S)
+        self.assertEqual(parse_tail.search(watch_parser).group(0),
+                         parse_tail.search(gate_parser).group(0).replace("[string]$Value", "$Value"))
+        self.assertIn("if ($null -eq $anchor) { throw 'ANCHOR_PARSE_FAILED' }", watchdog)
+
+        import sync_sealed_snapshot_kv as sync
+        pointer = {"run_id": RUN, "public_data_as_of": "2026-09-25T12:56:15Z"}
+        report = {"records": [{}] * 20, "generated_at": "2026-09-25T12:00:00Z"}
+        bodies = {"snapshot:current": json.dumps(pointer),
+                  f"snapshot:{RUN}:v213:top20-report:latest": json.dumps(report)}
+        calls = []
+
+        def fake(args, **kwargs):
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args, 0, bodies[args[4]], "")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sync, "CLOUD_DIR", Path(tmp)), \
+                patch.object(sync, "_cli_command", return_value=["synthetic-cli"]), \
+                patch.object(sync.subprocess, "run", side_effect=fake):
+            outcome = Path(tmp) / "outcome.json"
+            with patch.object(sys, "argv", ["sync", "--read-freshness", "--outcome-path", str(outcome)]), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(sync.main(), 0)
+            record = json.loads(outcome.read_text(encoding="utf-8"))
+        self.assertEqual(record["operation"], "WATCHDOG")
+        self.assertEqual(record["status"], "SUCCEEDED")
+        self.assertEqual(record["anchor"], "2026-09-25T12:56:15+00:00")
+        self.assertEqual(record["report_generated_at"], "2026-09-25T12:00:00+00:00")
+        self.assertEqual(record["top20_state"], "RECORDS_20")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([call[4] for call in calls], list(bodies))
+        self.assertTrue(all(call[1:4] == ["kv", "key", "get"] and "--remote" in call
+                            and "--local" not in call for call in calls))
 
 
 class LiveSnapshotCopyTests(unittest.TestCase):
@@ -207,7 +250,8 @@ class SyncLedgerTests(unittest.TestCase):
 
         blob_body = '{"x": 1}'
         blob_key = "blob:v1:" + sync.sha(blob_body)
-        objects = {"v213:run:aaaa": "run-body", blob_key: blob_body}
+        run_key = "snapshot:20260926T010000Z-aaaaaaaaaaaa:v213:top20-report:latest"
+        objects = {run_key: "run-body", blob_key: blob_body}
         pointer = json.dumps({"run_id": "20260926T010000Z-aaaaaaaaaaaa", "seal_sha256": "ab" * 32})
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "20260926T010000Z-aaaaaaaaaaaa"
@@ -220,14 +264,15 @@ class SyncLedgerTests(unittest.TestCase):
             try:
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(sync.main(), 0)
-                self.assertEqual(dict(puts), {"v213:run:aaaa": sync.RUN_KEY_TTL_SECONDS, blob_key: sync.BLOB_TTL_SECONDS,
+                self.assertEqual(dict(puts), {run_key: sync.RUN_KEY_TTL_SECONDS, blob_key: sync.BLOB_TTL_SECONDS,
                                               "snapshot:current": None})
                 self.assertIn(blob_key[len("blob:v1:"):], json.loads((Path(tmp) / "ledger.json").read_text(encoding="utf-8")))
                 self.assertFalse((run_dir / ".kv-stage").exists())
                 puts.clear()
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(sync.main(), 0)
-                self.assertNotIn(blob_key, dict(puts))  # reused from the ledger, no KV call
+                self.assertEqual(dict(puts), {run_key: sync.RUN_KEY_TTL_SECONDS, "snapshot:current": None})
+                self.assertNotIn(blob_key, dict(puts))  # reuse avoids PUT; readback is still mandatory
             finally:
                 sync.client_put, sync.client_get, sync.LEDGER, sys.argv = saved
 
@@ -239,28 +284,56 @@ class SyncRetryTests(unittest.TestCase):
         import sync_sealed_snapshot_kv as sync
         calls = []
         outcomes = []
+        # Entirely synthetic diagnostic, never an account ID or credential.
+        diagnostic = "ECONNRESET SYNTHETIC_PRIVATE_DIAGNOSTIC"
 
         def fake(args, **kw):
             calls.append(list(args))
             code = outcomes.pop(0)
-            return subprocess.CompletedProcess(args, code, "{}", "" if code == 0 else
-                                               "X [ERROR] A request to the Cloudflare API failed: account 0123456789abcdef0123456789abcdef\n")
+            return subprocess.CompletedProcess(args, code, "{}", "" if code == 0 else diagnostic)
 
-        original, delay = sync.subprocess.run, sync.RETRY_SECONDS
-        sync.subprocess.run, sync.RETRY_SECONDS = fake, 0
-        try:
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sync, "CLOUD_DIR", Path(tmp)), \
+                patch.object(sync, "_cli_command", return_value=["synthetic-cli"]), \
+                patch.object(sync.subprocess, "run", side_effect=fake), \
+                patch.object(sync.time, "sleep") as sleep:
+            source = Path(tmp) / "body.json"
+            source.write_text("{}", encoding="utf-8")
+            self.assertEqual(sync.ATTEMPTS, 3)
             outcomes[:] = [1, 1, 0]
-            self.assertTrue(sync.client_put("snapshot:current", ROOT / "README.md"))
+            self.assertTrue(sync.client_put("snapshot:current", source))
             self.assertEqual(len(calls), 3)
+            self.assertEqual(outcomes, [])
+            self.assertEqual(sync.LAST_CALL, dict(attempts=3, exit_code=0, error_category="NONE"))
+            self.assertEqual([call.args[0] for call in sleep.call_args_list],
+                             [sync.RETRY_SECONDS, 2 * sync.RETRY_SECONDS])
+            self.assertTrue(all("--remote" in call and "--local" not in call for call in calls))
             calls.clear()
+            sleep.reset_mock()
             outcomes[:] = [1, 1, 1]
-            self.assertFalse(sync.client_put("snapshot:current", ROOT / "README.md"))
-            self.assertEqual(len(calls), sync.ATTEMPTS)
-            self.assertIn("<id>", sync.LAST_ERROR[0])
-            self.assertNotIn("0123456789abcdef0123456789abcdef", sync.LAST_ERROR[0])
-            self.assertTrue(all("--remote" in call for call in calls))
-        finally:
-            sync.subprocess.run, sync.RETRY_SECONDS = original, delay
+            self.assertFalse(sync.client_put("snapshot:current", source))
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(outcomes, [])
+            self.assertEqual(sync.LAST_ERROR, ["NETWORK_FAILURE"])
+            self.assertEqual(sync.LAST_CALL, dict(attempts=3, exit_code=1, error_category="NETWORK_FAILURE"))
+            self.assertEqual(sleep.call_count, 2)
+            self.assertTrue(all("--remote" in call and "--local" not in call for call in calls))
+            for diagnostic, category in (("SYNTHETIC_PRIVATE_DIAGNOSTIC", "UNKNOWN"),
+                                         ("AuthenticationError: SYNTHETIC_PRIVATE_DIAGNOSTIC", "AUTHENTICATION_ERROR"),
+                                         ("[ERROR] free usage limit SYNTHETIC_PRIVATE_DIAGNOSTIC", "DAILY_KV_LIMIT")):
+                with self.subTest(category=category):
+                    calls.clear()
+                    sleep.reset_mock()
+                    outcomes[:] = [1, 0]
+                    self.assertFalse(sync.client_put("snapshot:current", source))
+                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(outcomes, [0])  # terminal: the would-be success is never consumed
+                    sleep.assert_not_called()
+                    self.assertEqual(sync.LAST_ERROR, [category])
+                    self.assertEqual(sync.LAST_CALL, dict(attempts=1, exit_code=1, error_category=category))
+                    self.assertNotIn("SYNTHETIC_PRIVATE_DIAGNOSTIC", json.dumps(sync.LAST_CALL))
+                    self.assertIn("--remote", calls[0])
+                    self.assertNotIn("--local", calls[0])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Regression for the release ZIP that removed activation's npm test inputs."""
 import importlib.util
+import hashlib
 import json
 import copy
 import subprocess
@@ -19,13 +20,23 @@ SPEC.loader.exec_module(VERIFIER)
 
 class PackagedWorkerPayloadTests(unittest.TestCase):
     def payload(self):
-        paths = sorted((ROOT / "cloud/test").glob("*.ts")) + sorted(
-            (ROOT / "tests/fixtures/v213-r75-publication-mode").glob("*.json")
-        )
-        files = {p.relative_to(ROOT).as_posix().lower():
-                 (p.relative_to(ROOT).as_posix(), p.read_bytes()) for p in paths}
+        paths = set((ROOT / "cloud/test").glob("*.ts"))
+        fixtures = set(VERIFIER.ALWAYS_FIXTURES)
+        wire = ROOT / VERIFIER.WIRE_TEST in paths
+        if wire:
+            fixtures.add(VERIFIER.WIRE_FIXTURE)
+        paths.update(ROOT / name for name in fixtures)
+        files = {p.relative_to(ROOT).as_posix().casefold():
+                 (p.relative_to(ROOT).as_posix(), p.read_bytes()) for p in sorted(paths)}
         refs = {"worker_test_payload": [v[0] for v in files.values()],
-                "packaged_worker_test_count": 113}
+                "packaged_worker_test_count": 113,  # synthetic positive receipt count, not a live test result
+                "revenue_guidance_wire_pair_present": wire,
+                "worker_test_fixture_sha256": {name: VERIFIER.sha(files[name][1]) for name in sorted(fixtures)},
+                "worker_test_fixture_git": {
+                    name: {"mode": "100644",
+                           "blob": hashlib.sha1(b"blob " + str(len(files[name][1])).encode("ascii")
+                                                + b"\0" + files[name][1]).hexdigest()}
+                    for name in sorted(fixtures)}}
         return files, refs
 
     def test_only_reviewed_public_skill_and_all_its_references_are_packaged(self):
@@ -74,6 +85,20 @@ class PackagedWorkerPayloadTests(unittest.TestCase):
             with self.subTest(count=count), self.assertRaises(VERIFIER.VerificationError):
                 VERIFIER.verify_worker_test_payload(files, dict(refs, packaged_worker_test_count=count))
 
+    def test_fixture_digest_git_identity_and_wire_binding_are_required(self):
+        files, refs = self.payload()
+        fixture = VERIFIER.ALWAYS_FIXTURES[0]
+        for field, value, reason in (
+                ("worker_test_fixture_sha256", {}, "fixture digests"),
+                ("worker_test_fixture_sha256", {**refs["worker_test_fixture_sha256"], fixture: "0" * 64},
+                 "fixture digests"),
+                ("worker_test_fixture_git", {}, "Git identity"),
+                ("worker_test_fixture_git", {**refs["worker_test_fixture_git"],
+                                            fixture: {"mode": "120000", "blob": "a" * 40}}, "Git identity"),
+                ("revenue_guidance_wire_pair_present", not refs["revenue_guidance_wire_pair_present"], "wire pair")):
+            with self.subTest(field=field, reason=reason), self.assertRaisesRegex(VERIFIER.VerificationError, reason):
+                VERIFIER.verify_worker_test_payload(files, {**refs, field: value})
+
     def test_non_runtime_tests_rejected(self):
         files, refs = self.payload()
         extra = "tests/internal.py"
@@ -85,6 +110,45 @@ class PackagedWorkerPayloadTests(unittest.TestCase):
 
 class ArchiveModelBindingTests(unittest.TestCase):
     """Synthetic ZIPs/receipts test admission, not real PE/install qualification."""
+    @staticmethod
+    def profile():
+        return dict(schema_version=1, model="synthetic-profile-model", enable_thinking=False,
+                    reasoning_effort="none", max_output_tokens=1024, smoke_output_tokens=128, timeout_ms=18000)
+
+    @staticmethod
+    def synthetic_qa(manifest, profile):
+        """Build test data from scratch; never copy/restamp a historical live receipt."""
+        from datetime import datetime, timedelta, timezone
+        from v213_compact_qa_gateway import POLICY
+        now = datetime.now(timezone.utc)
+        profile_hash = VERIFIER.profile_sha256(profile)
+        policy_hash = VERIFIER.sha(json.dumps(POLICY, ensure_ascii=False, separators=(",", ":")).encode())
+        version = "synthetic-worker-version"
+        return dict(
+            fixture_only=True, schema_version=2, status="PASS", scope="FULL_LIVE",
+            started_at=(now - timedelta(minutes=1)).isoformat(), completed_at=now.isoformat(),
+            model_profile=profile, model_profile_sha256=profile_hash, profile_mismatch="PASS",
+            isolated_resources_deleted=True, preset_unchanged=True, source_unchanged_during_benchmark=True,
+            synthetic_public_fixture=True, production_mutation=False, real_line_sent=False,
+            request_enable_thinking=False, exact_model=profile["model"], model_catalog=[profile["model"]],
+            source_manifest={k.casefold(): v for k, v in manifest.items()}, router={"models_max": 1},
+            compact_policy_sha256=policy_hash, active_percentage=100, convergence="PASS_REAL_ISOLATED",
+            worker_version=version, readiness=[dict(
+                ready=True, no_write=True, worker_version=version, model_profile_sha256=profile_hash,
+                parser_schema="v213-r75-sec-filing-provenance-v1", compact_policy_sha256=policy_hash,
+                publication_contract_sha256="9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd")],
+            results=[dict(case=case, phase=phase, **{"pass": True}, finish_reason="stop",
+                          model=profile["model"], http_status=200, total_ms=1,
+                          usage={"prompt_tokens": 1, "completion_tokens": 1}, reasoning_present=False,
+                          answer="Synthetic fixture answer; no real model was queried.")
+                     for case in ("smoke", "general", "ticker", "methodology", "evidence")
+                     for phase in ("cold", "warm")],
+            seven_field_line_reply="PASS_REAL_WORKER_MOCK_LINE", bilingual_field_count=7, top20_rows=20,
+            production_health_presentation="seven_fields", line_presentation="flex_carousel",
+            line_message_count=4, line_values_match=True, text_fallback_values_match=True, text_message_count=1,
+            reference_job="PASS_REAL_WAITUNTIL_SYNTHETIC_LINE", stale_lease="PASS", replay="PASS",
+            exact_model_mismatch="PASS")
+
     def fixture(self, directory, modern=True, mutate=None):
         commit, run = 'a' * 40, '12345'
         files, refs = PackagedWorkerPayloadTests().payload()
@@ -119,8 +183,7 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
                          packaged_worker_tests=refs['packaged_worker_test_count'], extracted_zip_runtime_install='PASS'),
                     dict(common, status='PASS')]
         if modern:
-            profile = dict(schema_version=1, model='synthetic-profile-model', enable_thinking=False,
-                           reasoning_effort='none', max_output_tokens=1024, smoke_output_tokens=128, timeout_ms=18000)
+            profile = self.profile()
             files['config/v213-model-profile-v1.json'] = json.dumps(profile).encode()
             for p in ('scripts/v213_model_profile.py', 'scripts/v213_compact_qa_gateway.py',
                       'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts',
@@ -157,13 +220,13 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
         for variant in ('valid', 'missing', 'tampered', 'runtime_drift', 'stale', 'missing_reference', 'windows_drift'):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as d:
                 directory = Path(d)
-                # In-memory synthetic verifier fixture; real receipts are never changed.
-                qa = json.loads((ROOT / 'state/r75-qa-live-direct-20260909.json').read_text(encoding='utf-8'))
-                now = datetime.now(timezone.utc)
-                qa['started_at'] = (now - timedelta(minutes=1)).isoformat()
-                qa['completed_at'] = now.isoformat()
+                # Synthetic qualification data binds to this synthetic profile/archive,
+                # never to a historical live receipt or the installed model.
                 manifest = source_manifest()
-                qa['source_manifest'] = {k.casefold(): v for k, v in manifest.items()}
+                profile_raw = json.dumps(self.profile()).encode()
+                manifest['config/v213-model-profile-v1.json'] = VERIFIER.sha(profile_raw)
+                qa = self.synthetic_qa(manifest, self.profile())
+                now = datetime.now(timezone.utc)
                 if variant == 'stale':
                     qa['started_at'] = (now - timedelta(days=2)).isoformat()
                     qa['completed_at'] = (now - timedelta(days=2, minutes=-1)).isoformat()
@@ -171,6 +234,7 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
                 qa_path = directory / 'synthetic-qa.json'; qa_path.write_bytes(raw)
                 def mutate(files, refs, receipts):
                     for p in manifest: files[p.casefold()] = (ROOT / p).read_bytes()
+                    files['config/v213-model-profile-v1.json'] = profile_raw
                     files['scripts/r75_release_inputs.py'] = (ROOT / 'scripts/r75_release_inputs.py').read_bytes()
                     for record in (refs, receipts[0], receipts[1]):
                         record.update(exact_model=qa['exact_model'], model_profile_sha256=qa['model_profile_sha256'])
