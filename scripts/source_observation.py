@@ -129,15 +129,24 @@ def compute_independent_lineages(observations: Iterable[Mapping[str, Any]]) -> i
     """Compute connected components of observations to deduplicate same-issuer families.
 
     Observations sharing origin_group, independence_group, or content_sha256 collapse
-    transitively into a single evidence family.
+    transitively into a single evidence family. Identity values must be strings
+    and are stripped; a non-string value is ignored, never coerced with str().
+    An observation without any usable key is skipped, not counted as its own
+    anonymous family. The result is a metadata-overlap count, not proof of
+    authenticity or independence; for invalid or mixed metadata it can be higher
+    or lower than before. Upstream acquisition, registry and context checks
+    remain mandatory.
     """
     components: list[set[str]] = []
     for obs in observations:
         if not isinstance(obs, Mapping):
             continue
-        indep = str(obs.get("independence_group") or "").strip()
-        origin = str(obs.get("origin_group") or (obs.get("payload") or {}).get("origin_group") or "").strip()
-        sha = str(obs.get("content_sha256") or "").strip()
+        indep = obs.get("independence_group")
+        indep = indep.strip() if isinstance(indep, str) else ""
+        origin = obs.get("origin_group") or (obs.get("payload") or {}).get("origin_group")
+        origin = origin.strip() if isinstance(origin, str) else ""
+        sha = obs.get("content_sha256")
+        sha = sha.strip() if isinstance(sha, str) else ""
 
         keys: set[str] = set()
         if indep:
@@ -148,7 +157,7 @@ def compute_independent_lineages(observations: Iterable[Mapping[str, Any]]) -> i
             keys.add(f"hash:{sha}")
 
         if not keys:
-            keys.add(f"anon:{id(obs)}")
+            continue
 
         matched = [comp for comp in components if comp & keys]
         for comp in matched:

@@ -102,13 +102,16 @@ def sec_fetch_factory() -> Callable[[str], bytes]:
     return fetch
 
 
-def cik_index() -> dict[str, int]:
-    document = load_json(TICKERS)
+def cik_index(captured=None) -> dict[str, int]:
+    document = load_json(captured.operand("tickers") if captured else TICKERS)
     fields = document["fields"]
     return {str(dict(zip(fields, row))["ticker"]).upper(): int(dict(zip(fields, row))["cik"]) for row in document["data"]}
 
 
-def companyfacts(cik: int, fetch: Callable[[str], bytes] | None, max_age_hours: float = 20) -> dict[str, Any] | None:
+def companyfacts(cik: int, fetch: Callable[[str], bytes] | None, max_age_hours: float = 20, *, captured=None) -> dict[str, Any] | None:
+    if captured is not None:
+        item = captured.operand(f"facts/CIK{cik:010d}")
+        return load_json(item) if item.exists() else None  # actual host capture/fetch, never reopen
     path = CACHE / "companyfacts" / f"CIK{cik:010d}.json"
     if path.exists() and time.time() - path.stat().st_mtime < max_age_hours * 3600:
         return load_json(path)
@@ -360,7 +363,7 @@ def korea_orders(symbol: str, path: Path = KOREA_ORDERS) -> dict[str, Any] | Non
 
 
 def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] | None,
-            second: dict[str, Any] | None = None) -> dict[str, Any]:
+            second: dict[str, Any] | None = None, *, captured=None) -> dict[str, Any]:
     """Current orders (SEC RPO or a Korean IR backlog), the consensus outlook and the price scenarios if it is realized
     at unchanged valuation multiples (scenario arithmetic, not a forecast)."""
     orders = None
@@ -371,7 +374,7 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
                   "yoy": fund.get("rpo_yoy"), "source": fund["source"], "source_url": fund["source_url"], "scope_kind": "COMPANY",
                   "yoy_prior_amount": fund.get("rpo_prior"), "yoy_prior_as_of": fund.get("rpo_prior_end")}
     elif symbol.endswith((".KS", ".KQ")):
-        orders = korea_orders(symbol)
+        orders = korea_orders(symbol, captured.operand("korea_orders") if captured else KOREA_ORDERS)
     scenarios = []
     if consensus:
         scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
@@ -480,6 +483,141 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_pat
     except Exception:
         pass
     return out
+
+
+def _chart_bars(raw):
+    doc = json.loads(raw.decode("utf-8"))
+    result = doc["chart"]["result"][0]
+    times = result["timestamp"]
+    closes = result["indicators"].get("adjclose", [{}])[0].get("adjclose")
+    if closes is None:
+        # Never label an unadjusted series as adjusted lineage returns.
+        raise ValueError("ADJUSTED_HISTORY_UNAVAILABLE")
+    if len(times) != len(closes) or len(times) > 4096:
+        raise ValueError("MARKET_HISTORY_BOUND")
+    bars = [(datetime.fromtimestamp(t, timezone.utc).date(), float(c)) for t, c in zip(times, closes)
+            if type(t) is int and c is not None and _finite(c) is not None and float(c) > 0]
+    return result.get("meta") or {}, bars
+
+
+def captured_yahoo_data(symbol, captured, lineage, as_of):
+    """Actual public Yahoo chart/quote/timeseries bytes -> same ranking quantities.
+
+    Stateless HTTPS has no cookie/credential persistence or writable import/cache.
+    Refused/unavailable provider data stays missing, never manufactured fundamentals.
+    """
+    out = {"symbol": symbol}
+    chart = captured.operand("yahoo/chart/" + symbol)
+    if not chart.exists():
+        return out
+    try:
+        meta, bars = _chart_bars(chart.read_bytes())
+        returns = listing_lineage.long_term_returns(bars, lineage, listing_lineage.request_start(as_of.date()))
+        if returns.get("asof") is None:
+            return out
+        summary = captured.operand("yahoo/summary/" + symbol)
+        modules = json.loads(summary.read_text())["quoteSummary"]["result"][0] if summary.exists() else {}
+        quote = modules.get("price") or {}
+        number = lambda value: _finite(value.get("raw")) if isinstance(value, dict) else _finite(value)
+        currency = quote.get("currency") or meta.get("currency")
+        price = returns["price"]
+        out["market"] = {"source": "Yahoo Finance adjusted daily close (unofficial)",
+            "source_url": f"https://finance.yahoo.com/quote/{symbol}", **returns,
+            "currency": currency, "market_cap": number(quote.get("marketCap"))}
+        out["name"] = quote.get("shortName") or quote.get("longName") or meta.get("shortName")
+        financial = modules.get("financialData") or {}
+        trends = (modules.get("earningsTrend") or {}).get("trend") or []
+        fy0 = next((x for x in trends if x.get("period") == "0y"), {})
+        fy1 = next((x for x in trends if x.get("period") == "+1y"), {})
+        r0, r1 = number((fy0.get("revenueEstimate") or {}).get("avg")), number((fy1.get("revenueEstimate") or {}).get("avg"))
+        e0, e1 = number((fy0.get("earningsEstimate") or {}).get("avg")), number((fy1.get("earningsEstimate") or {}).get("avg"))
+        target = number(financial.get("targetMeanPrice"))
+        if r0 and r0 > 0 and r1 is not None:
+            out["consensus"] = {"source": "Yahoo Finance analyst consensus (unofficial)",
+                "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis", "asof": iso(as_of)[:10],
+                "revenue_fy0": r0, "revenue_fy1": r1, "revenue_growth": r1 / r0 - 1,
+                "revenue_analysts": number((fy1.get("revenueEstimate") or {}).get("numberOfAnalysts")),
+                "eps_fy0": e0, "eps_fy1": e1, "eps_growth": e1 / e0 - 1 if e0 and e0 > 0 and e1 is not None else None,
+                "eps_analysts": number((fy1.get("earningsEstimate") or {}).get("numberOfAnalysts")),
+                "target_mean": target, "target_analysts": number(financial.get("numberOfAnalystOpinions")),
+                "price": price, "target_upside": target / price - 1 if target and price else None}
+        series = captured.operand("yahoo/financials/" + symbol)
+        if series.exists():
+            rows = json.loads(series.read_text())["timeseries"]["result"]
+            values = {}
+            for item in rows:
+                kind = (item.get("meta") or {}).get("type", [None])[0]
+                if kind in ("quarterlyTotalRevenue", "quarterlyGrossProfit", "quarterlyDilutedAverageShares"):
+                    values[kind] = {date.fromisoformat(v["asOfDate"]): number(v["reportedValue"]) for v in item.get(kind, [])}
+            revenue = {day: amount for day, amount in values.get("quarterlyTotalRevenue", {}).items() if amount is not None}
+            if len(revenue) >= 5:
+                ends = sorted(revenue)
+                end, previous = ends[-1], ends[-2]
+                # Legacy selects the last sorted eligible revenue column, not
+                # the nearest share comparator. Empty values are absent; zero
+                # and negative PRESENT values must not enable curated fallback.
+                eligible = lambda day: [d for d in ends if abs((day - d).days - 365) <= 20]
+                ago, prev_ago = eligible(end), eligible(previous)
+                year, prev_year = (ago[-1] if ago else None), (prev_ago[-1] if prev_ago else None)
+                yoy = revenue[end] / revenue[year] - 1 if year and revenue[year] else None
+                prior_yoy = revenue[previous] / revenue[prev_year] - 1 if prev_year and revenue[prev_year] else None
+                # Retain ALL statement periods before dropping null cells,
+                # including the provider's explicit timestamp columns. A later
+                # empty revenue period is the existing PERIOD_MISMATCH veto.
+                statement_periods = {d for columns in values.values() for d in columns}
+                for item in rows:
+                    statement_periods.update(datetime.fromtimestamp(t, timezone.utc).date()
+                                             for t in item.get("timestamp", []) if type(t) is int)
+                latest_statement = max(statement_periods) if statement_periods else end
+                basis, evidence, reason = "YAHOO", None, None
+                if prev_year is None and latest_statement != end:
+                    basis, reason = None, "PERIOD_MISMATCH"
+                elif prev_year is None:
+                    try:
+                        evaluated = official_quarterly_revenue.evaluate(symbol, revenue, financial.get("financialCurrency"), yoy, as_of=as_of,
+                                                                       path=captured.operand("official_quarters"))
+                    except Exception:
+                        evaluated = official_quarterly_revenue.Result("INVALID_RECORD")
+                    if evaluated.reason is None:
+                        prior_yoy, basis, evidence = evaluated.revenue_yoy_prev, "OFFICIAL_CURATED", evaluated.source
+                    else:
+                        basis, reason = None, evaluated.reason
+                gross = values.get("quarterlyGrossProfit", {})
+                gm = gross[end] / revenue[end] if gross.get(end) is not None and revenue[end] else None
+                gm_prior = gross[year] / revenue[year] if year and gross.get(year) is not None and revenue[year] else None
+                shares = values.get("quarterlyDilutedAverageShares", {})
+                # Independent eligible diluted-share dates, exact current
+                # revenue period and nearest prior date (legacy semantics).
+                candidates = [d for d in sorted(shares) if shares[d] is not None and d != end
+                              and abs((end - d).days - 365) <= 20]
+                share_prior = min(candidates, key=lambda d: abs((end - d).days - 365)) if candidates else None
+                dilution = _shares_yoy(shares.get(end), shares.get(share_prior)) if share_prior else None
+                out["fundamentals"] = {"source": "Yahoo Finance quarterly income statement (unofficial)",
+                    "source_url": f"https://finance.yahoo.com/quote/{symbol}/financials", "quarter_end": end.isoformat(),
+                    "revenue": revenue[end], "revenue_unit": out["market"].get("currency"), "revenue_yoy": yoy,
+                    "revenue_yoy_prev": prior_yoy, "revenue_yoy_prev_basis": basis, "revenue_yoy_prev_source": evidence,
+                    **({"revenue_yoy_prev_reason": reason} if reason else {}),
+                    "gross_margin": gm, "gross_margin_change": gm - gm_prior if gm is not None and gm_prior is not None else None,
+                    "rpo_yoy": None, "shares_yoy": dilution,
+                    "shares_basis": "DILUTED_WEIGHTED_AVERAGE" if dilution is not None else None}
+    except (KeyError, ValueError, TypeError, IndexError):
+        # No substitute rows/numbers; whatever independent admitted channel was
+        # obtained remains visible, matching existing graceful Yahoo availability.
+        pass
+    return out
+
+
+def captured_usd_rate(currency, captured, cache):
+    if not currency or currency == "USD":
+        return 1.0
+    if currency not in cache:
+        item = captured.operand("fx/" + currency)
+        try:
+            _, bars = _chart_bars(item.read_bytes())
+            cache[currency] = bars[-1][1] if bars else None
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            cache[currency] = None
+    return cache[currency]
 
 
 # Official monthly revenue of Taiwan listings (政府資料開放授權條款第1版): the latest reported month, filed by the 10th.
@@ -615,7 +753,7 @@ def _report_check(title: str, link: str, page: str) -> dict[str, Any] | None:
 
 
 def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Callable[[str], str] | None = None,
-                           cache_path: Path | None = CISION_CACHE) -> dict[str, dict[str, Any]]:
+                           cache_path: Path | None = CISION_CACHE, *, captured_cache=None, output_store=None) -> dict[str, dict[str, Any]]:
     """Symbol -> the latest interim report's net sales change from the issuer's own Cision release ("Net sales amounted
     to SEK 53.8 m (61.4)"), beside the Yahoo quarter. The feed is read at most once in CISION_RSS_MIN_HOURS and a new
     report's page at most three times, counted before each request so failures count too; the last good report keeps
@@ -628,13 +766,19 @@ def cision_interim_revenue(symbols: Iterable[str], now: datetime, fetch_text: Ca
             return response.read().decode("utf-8-sig", "replace")
 
     try:
-        cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path and cache_path.exists() else {}
+        cache = (json.loads(captured_cache.read_text()) if captured_cache is not None and captured_cache.exists() else
+                 json.loads(cache_path.read_text(encoding="utf-8")) if cache_path and cache_path.exists() else {})
         cache = cache if isinstance(cache, dict) else {}
     except (OSError, ValueError):
         cache = {}
 
     def save() -> None:
-        if cache_path:
+        if output_store is not None:
+            import revenue_guidance_overlay
+            if type(output_store) is not revenue_guidance_overlay.B1Outputs:
+                raise ValueError("CISION_OUTPUT_OPERAND")
+            output_store.save_cision(json.dumps(cache, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        elif cache_path:
             try:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -770,40 +914,60 @@ def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[st
     return long_term, (["LONG_TERM_RETURN_NOT_POSITIVE"] if long_term <= 0 else [])
 
 
-def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True) -> dict[str, Any]:
-    layers = load_json(LAYERS)["layers"]
-    serenity = load_json(SERENITY) if SERENITY.exists() else {"signals": [], "source": None}
-    leopold = load_json(LEOPOLD) if LEOPOLD.exists() else {"positions": [], "filing": None}
+def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True, *, captured=None,
+          cision_outputs=None) -> dict[str, Any]:
+    if captured is not None:
+        from publish_sealed_snapshot import CapturedPublicationInputs
+        if type(captured) is not CapturedPublicationInputs:
+            raise ValueError("RANKING_CAPTURE_OPERAND")
+    layers = load_json(captured.operand("layers") if captured else LAYERS)["layers"]
+    source_serenity = captured.operand("serenity") if captured else SERENITY
+    source_leopold = captured.operand("leopold") if captured else LEOPOLD
+    serenity = load_json(source_serenity) if source_serenity.exists() else {"signals": [], "source": None}
+    leopold = load_json(source_leopold) if source_leopold.exists() else {"positions": [], "filing": None}
     serenity_by = {row["symbol"]: row for row in serenity["signals"]}
     leopold_by = {row["ticker"]: row for row in leopold["positions"] if row.get("ticker")}
-    ciks = cik_index()
+    ciks = cik_index(captured)
     members: dict[str, dict[str, Any]] = {}
     for layer in layers:
         for capturer in layer["capturers"]:
             members.setdefault(capturer["symbol"], {"layer": layer, "capturer": capturer})
     fx: dict[str, float | None] = {}
     companies: dict[str, dict[str, Any]] = {}
-    official = {**taiwan_monthly_revenue(members), **cision_interim_revenue(members, now)}
-    lineages = listing_lineage.load()
+    if captured:
+        # These are actual captured exchange responses, not a cached ranking.
+        exchange_json = lambda url: json.loads(captured.operand("http/" + url).read_bytes().decode("utf-8-sig"))
+        official = {**taiwan_monthly_revenue(members, exchange_json),
+                    **cision_interim_revenue(members, now,
+                       lambda url: fetch(url).decode("utf-8-sig", "replace"), cache_path=None,
+                       captured_cache=captured.operand("cision"), output_store=cision_outputs)}
+    else:
+        official = {**taiwan_monthly_revenue(members), **cision_interim_revenue(members, now)}
+    lineages = listing_lineage.load(captured.operand("lineage") if captured else None)
     for symbol, member in members.items():
-        data = yahoo_data(symbol, lineages.get(symbol), as_of=now)
+        data = (captured_yahoo_data(symbol, captured, lineages.get(symbol), now) if captured else
+                yahoo_data(symbol, lineages.get(symbol), as_of=now))
         fund = None
         cik = ciks.get(symbol) if "." not in symbol else None
         if cik:
-            facts = companyfacts(cik, fetch)
+            facts = companyfacts(cik, fetch, captured=captured)
             fund = sec_fundamentals(symbol, cik, facts) if facts else None
         fund = fund or data.get("fundamentals")
-        check = official.get(symbol) or (korea_ir_revenue(symbol, fund.get("quarter_end")) if fund else None)
+        check = official.get(symbol) or (korea_ir_revenue(symbol, fund.get("quarter_end"),
+                 captured.operand("korea_fundamentals") if captured else KOREA_FUNDAMENTALS) if fund else None)
         if fund and check:
             fund = {**fund, "cross_check": check}
         market = data.get("market")
         cap = market.get("market_cap") if market else None
-        rate = usd_rate(market.get("currency") if market else None, fx)
+        rate = (captured_usd_rate(market.get("currency") if market else None, captured, fx) if captured else
+                usd_rate(market.get("currency") if market else None, fx))
         companies[symbol] = {"symbol": symbol, "name": data.get("name") or member["capturer"].get("role"), "layer": member["layer"]["id"],
                              "role": member["capturer"]["role"], "role_zh": member["capturer"].get("role_zh"),
                              "role_source": {"url": member["capturer"]["source_url"], "date": member["capturer"]["source_date"]},
                              "outlook": outlook(symbol, fund, data.get("consensus"),
-                                                 nasdaq_consensus(symbol, (data.get("market") or {}).get("price"))),
+                                                 nasdaq_consensus(symbol, (data.get("market") or {}).get("price"),
+                                                     (lambda url: json.loads(captured.operand("http/" + url).read_text())) if captured else None),
+                                                 captured=captured),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
     # Layer heat and the Leopold-led industry ranking.

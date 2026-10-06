@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
 import { processAuthorizedLineEvent } from "../src/v211/worker";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
@@ -18,6 +18,18 @@ import {
   optionsUnavailableReport,
 } from "../src/v213/options-product";
 import { asKv, MemoryKv } from "./fake-kv";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { OptionRightsNotAdmittedError } from "../src/v213/public-options-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
 
 function createValidBareQuote(overrides: Record<string, unknown> = {}): OptionContractQuote {
   return {
@@ -53,6 +65,15 @@ function createValidBareQuote(overrides: Record<string, unknown> = {}): OptionCo
 }
 
 describe("v213 Market Product Financial Safety Suite", () => {
+  it("TESTFIX1 rights NONE: denies the financial-safety renderer without opt-in", () => {
+    const quote = createValidBareQuote();
+    for (const render of [buildOptionContractText, buildOptionContractFlex]) {
+      let rendered: unknown;
+      expect(() => { rendered = render(quote, { evaluatedAt: "2026-09-14T12:00:00Z" }); }).toThrow(OptionRightsNotAdmittedError);
+      expect(JSON.stringify(rendered) ?? "").not.toContain("非即時可執行報價");
+    }
+  });
+
   // Review Finding A: Prohibit caller-supplied strategy metrics on bare contract quotes
   describe("Review Finding A: Payoff and Strategy Metric Separation", () => {
     it("rejects caller-supplied breakeven on bare option quote", () => {
@@ -79,6 +100,7 @@ describe("v213 Market Product Financial Safety Suite", () => {
     });
 
     it("normalizes absent/null strategy metrics to explicitly UNAVAILABLE in renderer without leaking raw numbers", () => {
+      admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
       const bare = createValidBareQuote();
       const validated = validateOptionContractQuote(bare, { evaluatedAt: "2026-09-14T12:00:00Z" });
       expect(validated.breakeven).toBeNull();
@@ -177,6 +199,7 @@ describe("v213 Market Product Financial Safety Suite", () => {
     });
 
     it("clearly labels delayed and as-of-close quotes as non-executable", () => {
+      admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
       const delayedQuote = createValidBareQuote({ quote_basis: "delayed" });
       const text = JSON.stringify(buildOptionContractText(delayedQuote, { evaluatedAt: "2026-09-14T12:00:00Z" }));
       expect(text).toContain("非即時可執行報價");

@@ -29,7 +29,7 @@ import ssl
 import sys
 import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -154,6 +154,34 @@ class Transport:
         self.requests = 0
         self.issuer_requests: dict[str, int] = {}
         self.last = -PACING_SECONDS
+        self.lease = None
+
+    def bind_capability(self, store):
+        if (type(self) is not Transport or self.connector is not _connect or self.resolver is not _public_resolver
+                or self.sleep is not time.sleep or self.monotonic is not time.monotonic):
+            raise SystemicFailure("CAPABILITY_TRANSPORT_REQUIRED")
+        store.require_live()
+        self.lease = store.lease
+        self.started = max(self.started, self.lease.budget.start_time)
+        if not hasattr(self.lease, "_network_work"):
+            self.lease._network_work = {"requests": 0, "bytes": 0, "last": -PACING_SECONDS, "issuers": {}}
+
+    def account_bytes(self, count):
+        if self.lease is not None:
+            work = self.lease._network_work
+            work["bytes"] += count
+            if work["bytes"] > CYCLE_CAPTURE_BYTES:
+                raise NetworkBlocked("RUN_CAPTURE_BUDGET")
+
+    def remaining(self):
+        deadline = self.started + RUN_BUDGET_SECONDS
+        if self.lease is not None:
+            self.lease.budget._check_time()
+            deadline = min(deadline, self.lease.budget.deadline)
+        left = deadline - self.monotonic()
+        if left <= 0:
+            raise NetworkBlocked("RUN_BUDGET")
+        return left
 
     def _address(self, host: str) -> str:
         try:
@@ -165,16 +193,26 @@ class Transport:
         return addresses[0]
 
     def _budget(self, symbol: str) -> None:
-        if self.monotonic() - self.started > RUN_BUDGET_SECONDS:
-            raise NetworkBlocked("RUN_BUDGET")
-        if self.requests >= PER_RUN_REQUESTS:
+        self.remaining()
+        work = self.lease._network_work if self.lease is not None else None
+        requests = work["requests"] if work is not None else self.requests
+        issuers = work["issuers"] if work is not None else self.issuer_requests
+        if requests >= PER_RUN_REQUESTS:
             raise NetworkBlocked("RUN_REQUEST_BUDGET")
-        if self.issuer_requests.get(symbol, 0) >= PER_ISSUER_REQUESTS:
+        if issuers.get(symbol, 0) >= PER_ISSUER_REQUESTS:
             raise NetworkBlocked("ISSUER_REQUEST_BUDGET")
-        wait = PACING_SECONDS - (self.monotonic() - self.last)
+        last = work["last"] if work is not None else self.last
+        wait = PACING_SECONDS - (self.monotonic() - last)
         if wait > 0:
+            if wait >= self.remaining():
+                raise NetworkBlocked("RUN_BUDGET")
             self.sleep(wait)
+        self.remaining()
         self.last = self.monotonic()
+        if work is not None:
+            work["requests"] += 1
+            work["issuers"][symbol] = work["issuers"].get(symbol, 0) + 1
+            work["last"] = self.last
         self.requests += 1
         self.issuer_requests[symbol] = self.issuer_requests.get(symbol, 0) + 1
 
@@ -188,7 +226,7 @@ class Transport:
             try:
                 address = self._address(host)
                 self._budget(symbol)
-                response = self.connector(host, address, parts.path, headers, REQUEST_TIMEOUT)
+                response = self.connector(host, address, parts.path, headers, min(REQUEST_TIMEOUT, self.remaining()))
                 try:
                     status = response.status
                     if 300 <= status < 400:
@@ -212,10 +250,10 @@ class Transport:
                         if not chunk:
                             break
                         total += len(chunk)
+                        self.account_bytes(len(chunk))
                         if total > CAPS[kind]:
                             raise NetworkBlocked(f"CAP {kind}")
-                        if self.monotonic() - self.started > RUN_BUDGET_SECONDS:
-                            raise NetworkBlocked("RUN_BUDGET")
+                        self.remaining()
                         chunks.append(chunk)
                     return b"".join(chunks), ctype
                 finally:
@@ -223,10 +261,14 @@ class Transport:
             except _Transient as transient:
                 if attempt == MAX_ATTEMPTS or transient.retry_after > MAX_RETRY_AFTER:
                     raise NetworkBlocked("TRANSIENT") from None
+                if transient.retry_after >= self.remaining():
+                    raise NetworkBlocked("RUN_BUDGET")
                 self.sleep(transient.retry_after)
             except (OSError, http.client.HTTPException) as error:
                 if attempt == MAX_ATTEMPTS:
                     raise NetworkBlocked(f"UNREACHABLE {type(error).__name__}") from None
+                if 2 >= self.remaining():
+                    raise NetworkBlocked("RUN_BUDGET")
                 self.sleep(2)
         raise NetworkBlocked("UNREACHABLE")
 
@@ -305,17 +347,27 @@ def candidate_events(documents: list[Mapping[str, Any]], ref_accession: str | No
     for item in documents:
         if item.get("channel") != "SEC_SUBMISSIONS" or item.get("id") == ref_accession or item.get("disposition") not in overlay.MATERIAL:
             continue
-        m = re.fullmatch(r"8-K items ([0-9.,]+)", str(item.get("label", "")))
-        if not m or "2.02" not in m.group(1).split(","):
-            continue
+        nbis = profile["adapter"] == verify.NBIS_6K_TABLE_REAFFIRMATION_V1
+        if nbis:
+            # REVIEW_REQUIRED / POSSIBLY_RELEVANT is an inspection lead, not
+            # fabricated 8-K item metadata or a results classification.
+            if not re.fullmatch(r"6-K(?: items [0-9.,]+)?", str(item.get("label", ""))):
+                continue
+        else:
+            m = re.fullmatch(r"8-K items ([0-9.,]+)", str(item.get("label", "")))
+            if not m or "2.02" not in m.group(1).split(","):
+                continue
 
         def lead(channel: str, pattern: str) -> dict[str, str] | None:
             same = [x for x in documents if x.get("channel") == channel and x.get("date") == item.get("date")
                     and re.fullmatch(pattern, str(x.get("label", "")))]
             return {"id": same[0]["id"], "title": same[0]["label"], "date": same[0]["date"]} if len(same) == 1 else None
-        events.append({"accession": item["id"], "filed": item["date"], "periodic": {}, "calendar": None, "allocation_sources": [],
-                       "ir_item": lead("ISSUER_IR", profile["ir_title_pattern"]),
-                       "wire_item": lead("WIRE_PRESS_RELEASES", profile["wire_title_pattern"]), "later_documents": []})
+        event = {"accession": item["id"], "filed": item["date"],
+                 "ir_item": lead("ISSUER_IR", profile["ir_title_pattern"]),
+                 "wire_item": lead("WIRE_PRESS_RELEASES", profile["wire_title_pattern"]), "later_documents": []}
+        event.update({"adapter": profile["adapter"], "packages": [], "channel_history": []} if nbis else
+                     {"periodic": {}, "calendar": None, "allocation_sources": []})
+        events.append(event)
     return sorted(events, key=lambda e: (e["filed"], e["accession"]))
 
 
@@ -345,7 +397,7 @@ def archive_captures(root: Path, attempts: list[Mapping[str, Any]]) -> dict[str,
     for a in attempts:
         for raw_sha in (a.get("captures") or {}).values():
             try:
-                meta = json.loads(overlay.capture_path(root, raw_sha).with_name(raw_sha + ".json").read_text(encoding="utf-8"))
+                meta = overlay.load_capture(root, raw_sha)
             except (OSError, ValueError, overlay.StateError):
                 continue
             url = str(meta.get("url", ""))
@@ -453,7 +505,134 @@ def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Map
 
 # ------------------------------------------------------------------------------------------------ run
 
-PLANNERS = {verify.SEC_8K_202_INLINE_XBRL_V1: plan_event}
+def plan_nbis_event(transport, root, profile, lead, today, clock, budget, reuse=None, captures=None):
+    """Report-body-driven 6-K planning on the SAME held B1Store/transport.
+
+    Captures are charged/stored immediately and survive any interruption. Archive
+    reuse rechecks original metadata/bytes; feeds/channel pages are never reused.
+    No predecessor financial values, inferred report month or generated filenames.
+    """
+    captures = {} if captures is None else captures
+    event = dict(lead, adapter=verify.NBIS_6K_TABLE_REAFFIRMATION_V1, packages=[], channel_history=[])
+    cik, sym = profile["cik"], profile["symbol"]
+
+    def fetch(key, url, role):
+        # An alias occupies this attempt's slot even if the raw bytes are cached.
+        # Admission BEFORE either branch: no request/persist/assignment on a full
+        # domain, no clipping of already accumulated original witnesses.
+        if key not in captures and len(captures) >= 32:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "NBIS capture domain")
+        if reuse and url in reuse:
+            try:
+                cap = overlay.load_capture(root, reuse[url])
+                if (cap["url"] == url and cap["role"] in (role, "REPLAY_" + role)
+                        and verify.revenue_guidance.parse_instant(cap["retrieved_at"]) is not None
+                        and cap["retrieved_at"] <= now_instant(clock)):
+                    captures[key] = reuse[url]
+                    return cap["raw"]
+            except overlay.StateError:
+                pass
+        data, content_type = transport.get(url, profile, sym)
+        budget["bytes"] += len(data)
+        if budget["bytes"] > CYCLE_CAPTURE_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "RUN_CAPTURE_BUDGET")
+        if budget["store"] is None or budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown or quota")
+        role = "REPLAY_" + role if getattr(transport, "replay", False) else role
+        captures[key] = overlay.store_capture(root, data, {"url": url, "retrieved_at": now_instant(clock),
+                                              "content_type": content_type, "role": role})
+        return data
+
+    filings = verify.parse_submissions(fetch("submissions", f"https://data.sec.gov/submissions/CIK{cik:010d}.json",
+                                             "SEC_SUBMISSIONS"), cik, foreign_items_absence=True)
+    current = filings.get(lead["accession"])
+    if current is None or current.form != "6-K" or current.filed != lead["filed"] or current.filed > today:
+        raise verify.Blocked("BLOCKED", "EVENT_UNRESOLVED", "NBIS actual issuer/submissions 6-K lead")
+
+    def package(filing, selected=False):
+        base = f"{verify.SEC_ARCHIVES}{cik}/{filing.accession.replace('-', '')}/"
+        prefix = "nbis:" + filing.accession + ":"
+        names = verify.parse_index(fetch(prefix + "index", base + "index.json", "SEC_INDEX"))
+        members = verify.nbis_members(names, filing.accession)
+        statements = [n for n in members if re.fullmatch(profile["release"]["statement_name_pattern"], n)]
+        letters = [n for n in members if re.fullmatch(profile["release"]["letter_name_pattern"], n)]
+        if len(statements) != 1 or len(letters) != 1 or filing.primary not in members:
+            if selected:
+                raise verify.Blocked("BLOCKED", "EVENT_UNRESOLVED", "NBIS nonresults or unsupported whole package")
+            return None  # not consumed, remains in the material detection set
+        mapping = {}
+        for name in members:
+            suffix = "form" if name == filing.primary else "statement" if name == statements[0] else "letter" if name == letters[0] else "member:" + name
+            key = prefix + suffix
+            data = fetch(key, base + name, verify.NBIS_ROLES[suffix if suffix in verify.NBIS_ROLES else "member"])
+            verify._nbis_package_links(data, base + name)  # unknown operative formats fail closed
+            mapping[name] = key
+        statement_raw = overlay.load_capture(root, captures[mapping[statements[0]]])["raw"]
+        _, values, end = verify.nbis_statement(statement_raw, filing.filed)
+        form_raw = overlay.load_capture(root, captures[mapping[filing.primary]])["raw"]
+        verify._nbis_form_report(verify.parse_document(form_raw), profile["company_name"], end)
+        return ({"accession": filing.accession, "filed": filing.filed, "index": prefix + "index",
+                 "form": mapping[filing.primary], "statement": mapping[statements[0]],
+                 "letter": mapping[letters[0]], "members": mapping}, values, end)
+
+    first = package(current, True)
+    event["packages"].append(first[0])
+    anchor = date.fromisoformat(first[2])
+    needed = set()
+    for step in (3, 2, 1, 0):
+        q, year = verify.next_quarter(anchor.month // 3, anchor.year, -step)
+        start, end = verify.nbis_quarter(year, q)
+        needed.add((start.isoformat(), end.isoformat()))
+        if q == 4:
+            needed.update({(f"{year}-01-01", f"{year}-12-31"), (f"{year}-01-01", f"{year}-09-30")})
+        if q == 1 and anchor >= date(year, 6, 30):
+            needed.update({(f"{year}-01-01", f"{year}-06-30"), (f"{year}-04-01", f"{year}-06-30")})
+    # Full-year calendar proof and the original guidance letter must be captured,
+    # not inherited from a predecessor/oracle. Bounded historical candidates are
+    # positively inspected using their form + statement periods.
+    collected = list(first[1])
+    candidates = sorted((f for f in filings.values() if f.form == "6-K" and f.filed <= current.filed
+                          and f.accession != current.accession), key=lambda f: (f.filed, f.accession), reverse=True)
+    for filing in candidates:
+        intervals = {(o["start"], o["end"]) for o in collected}
+        has_year = any(o["start"] == o["end"][:4] + "-01-01" and o["end"].endswith("-12-31") for o in collected)
+        fy = (anchor + timedelta(days=1)).year
+        has_original = any(f"{fy} Guidance update" in verify.parse_document(
+            overlay.load_capture(root, captures[p["letter"]])["raw"]).text for p in event["packages"])
+        if needed <= intervals and has_year and has_original:
+            break
+        if len(event["packages"]) >= 8:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "NBIS bounded historical package domain")
+        candidate = package(filing)
+        if candidate is not None:
+            if candidate[2] > first[2]:
+                raise verify.Blocked("BLOCKED", "OUT_OF_ORDER", "NBIS newer actual period in earlier filing")
+            event["packages"].append(candidate[0])
+            collected.extend(candidate[1])
+    for p in event["packages"]:
+        if p["accession"] == current.accession:
+            continue
+        for channel, suffix, role, pattern in (("ISSUER_IR", "ir_copy", "IR_RELEASE_PAGE", profile["ir_title_pattern"]),
+                                                ("WIRE_PRESS_RELEASES", "wire_copy", "WIRE_RELEASE_PAGE", profile["wire_title_pattern"])):
+            rows = [d for d in lead["later_documents"] if d["channel"] == channel and d["date"] == p["filed"]
+                    and re.search(pattern, str(d.get("label", "")))]
+            if len(rows) > 1:
+                raise verify.Blocked("BLOCKED", "AMBIGUOUS", "NBIS historical channel item")
+            if rows:
+                d = rows[0]
+                item = {"id": d["id"], "date": d["date"], "title": d["label"]}
+                key = "nbis:" + p["accession"] + ":" + suffix
+                fetch(key, item["id"], role)
+                event["channel_history"].append({"accession": p["accession"], "channel": channel, "item": item, "capture": key})
+    if lead["ir_item"] is not None:
+        fetch("ir_copy", lead["ir_item"]["id"], "IR_RELEASE_PAGE")
+    if lead["wire_item"] is not None:
+        fetch("wire_copy", lead["wire_item"]["id"], "WIRE_RELEASE_PAGE")
+    return event, captures
+
+
+PLANNERS = {verify.SEC_8K_202_INLINE_XBRL_V1: plan_event,
+            verify.NBIS_6K_TABLE_REAFFIRMATION_V1: plan_nbis_event}
 
 
 def _new_generation_id(clock: Callable[[], datetime]) -> str:
@@ -463,9 +642,13 @@ def _new_generation_id(clock: Callable[[], datetime]) -> str:
 def _attempt(key: str, decided: str, effective: Mapping[str, Any], event: Mapping[str, Any], captures: Mapping[str, str],
              result: Mapping[str, Any]) -> dict[str, Any]:
     record = result["record"]
-    full_event = {"accession": None, "filed": None, "periodic": {}, "calendar": None, "allocation_sources": [], "ir_item": None,
-                  "wire_item": None, "later_documents": []}
-    full_event.update({k: v for k, v in event.items() if k in overlay.EVENT_KEYS})
+    nbis = event.get("adapter") == verify.NBIS_6K_TABLE_REAFFIRMATION_V1
+    full_event = ({"adapter": verify.NBIS_6K_TABLE_REAFFIRMATION_V1, "accession": None, "filed": None,
+                   "packages": [], "channel_history": [], "ir_item": None, "wire_item": None, "later_documents": []} if nbis else
+                  {"accession": None, "filed": None, "periodic": {}, "calendar": None, "allocation_sources": [],
+                   "ir_item": None, "wire_item": None, "later_documents": []})
+    domain = verify.NBIS_EVENT_KEYS if nbis else overlay.EVENT_KEYS
+    full_event.update({k: v for k, v in event.items() if k in domain})
     return {"event_key": key, "attempted_at": decided, "predecessor_sha256": overlay.record_sha256(effective),
             "event": full_event, "captures": dict(captures), "outcome": result["outcome"], "reason": result["reason"],
             "detail": str(result["detail"])[:300], "record_sha256": overlay.record_sha256(record) if record else None,
@@ -477,11 +660,17 @@ def _record(entry: dict[str, Any], new: dict[str, Any]) -> bool:
     the captures already referenced, so interrupted plans accumulate progress); an identical wait changes nothing."""
     last = entry["open"][-1] if entry["open"] else None
     if last is not None and last["event_key"] == new["event_key"] and last["outcome"] == "WAITING":
+        nbis = new["event"].get("adapter") == verify.NBIS_6K_TABLE_REAFFIRMATION_V1
         if new["outcome"] == "WAITING":
-            new = dict(new, captures={**last["captures"], **new["captures"]})
+            merged = {**last["captures"], **new["captures"]}
+            if nbis and len(merged) > 32:
+                overlay.append_attempt(entry, new)  # retain BOTH bounded incomplete evidence sets, no silent clipping
+                return True
+            new = dict(new, captures=merged)
             if all(last[k] == new[k] for k in ("reason", "detail", "event", "captures")):
                 return False
-        entry["open"].pop()
+        if not nbis or new["outcome"] == "WAITING":
+            entry["open"].pop()  # A1 unchanged; terminal NBIS preserves its interrupted raw-evidence predecessor
     overlay.append_attempt(entry, new)
     return True
 
@@ -527,8 +716,19 @@ def reverify(root: Path, profiles: Mapping[str, Mapping[str, Any]], curated: Map
 
 def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profiles_path: Path = PROFILES_PATH,
         registry_path: Path = REGISTRY_PATH, approval_path: Path = APPROVAL_PATH, receipts_path: Path = RECEIPTS_PATH) -> dict[str, Any]:
-    """One updater cycle. Returns a summary; raises SystemicFailure for integrity/lock/persistence failures."""
-    profiles_bytes, registry_bytes, approval_bytes = profiles_path.read_bytes(), registry_path.read_bytes(), approval_path.read_bytes()
+    """One cycle; the capability branch uses only its held control/B1 operands."""
+    capability = type(state_root) is overlay.B1Store
+    if capability:
+        state_root.require_live()
+        if (profiles_path, registry_path, approval_path, receipts_path) != (PROFILES_PATH, REGISTRY_PATH, APPROVAL_PATH, RECEIPTS_PATH):
+            raise SystemicFailure("CAPABILITY_INPUT_SOURCE_CONFLICT")
+        if type(transport) is not Transport or getattr(transport, "replay", False):
+            raise SystemicFailure("CAPABILITY_TRANSPORT_REQUIRED")
+        transport.bind_capability(state_root)
+        profiles_bytes, registry_bytes, approval_bytes = (state_root.input(n) for n in ("profiles", "registry", "approval"))
+        receipts_path = state_root / "receipts.json"
+    else:
+        profiles_bytes, registry_bytes, approval_bytes = profiles_path.read_bytes(), registry_path.read_bytes(), approval_path.read_bytes()
     profiles = {sym: prof for sym, prof in verify.validate_profiles(json.loads(profiles_bytes.decode("utf-8"))).items()
                 if sym in overlay.SUPPORTED_AUTO}  # automatic mode is limited to the supported issuers (B1)
     curated = {r["symbol"]: r for r in json.loads(registry_bytes.decode("utf-8"))["issuers"]}
@@ -538,7 +738,7 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
     except (OSError, ValueError) as error:
         raise SystemicFailure("RECEIPTS_UNREADABLE") from error
     replay = bool(getattr(transport, "replay", False))
-    lock = StateLock(state_root)
+    lock = None if capability else StateLock(state_root)
     try:
         now = now_instant(clock)
         try:
@@ -546,7 +746,7 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             base = overlay.read_generation(state_root, pointer["generation_id"], pointer["sha256"]) if pointer else None
         except overlay.StateError as error:
             raise SystemicFailure(f"STATE {error}") from error
-        ident = overlay.identity(profiles_bytes, registry_bytes, approval_bytes)
+        ident = overlay.identity(profiles_bytes, registry_bytes, approval_bytes, state_root)
         entries: dict[str, dict[str, Any]] = json.loads(json.dumps((base or {}).get("issuers", {})))  # a private copy
         readable: set[str] = set()
         for sym, entry in entries.items():
@@ -563,9 +763,10 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
         # monotonic detection set before any re-verification switches the reference or anything is fetched, so an item
         # collected during an identity change or while an issuer is unadmitted is never lost; only a currently
         # re-derived producer accounts for it later (phase 1).
+        source_args = {} if capability else dict(registry_bytes=registry_bytes, approval_bytes=approval_bytes,
+                    profiles_bytes=profiles_bytes, receipts_bytes=receipts_raw, receipts_path=receipts_path if receipts_raw is None else None)
         entry_view = overlay.load_effective_inputs(
-            cutoff=now, state_root=state_root, registry_bytes=registry_bytes, approval_bytes=approval_bytes,
-            profiles_bytes=profiles_bytes, receipts_bytes=receipts_raw, receipts_path=receipts_path if receipts_raw is None else None,
+            cutoff=now, state_root=state_root, **source_args,
             # the generation just read (unless the clock is behind it: then the loader walks to the one at `now`)
             expected_generation={"generation_id": pointer["generation_id"], "sha256": pointer["sha256"]}
             if pointer and base is not None and base["created_at"] <= now else None,
@@ -704,7 +905,9 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
                 if last is None or last["event_key"] != key:
                     if last is not None and last["outcome"] == "WAITING" and last["event_key"].startswith("unresolved:"):
                         entry["open"].pop()
-                    overlay.append_attempt(entry, _attempt(key, now, effective, {"later_documents": documents}, {}, {
+                    overlay.append_attempt(entry, _attempt(key, now, effective,
+                        {"later_documents": documents, **({"adapter": profile["adapter"]} if
+                         profile["adapter"] == verify.NBIS_6K_TABLE_REAFFIRMATION_V1 else {})}, {}, {
                         "outcome": "WAITING", "reason": "EVENT_UNRESOLVED", "record": None, "decisions": [],
                         "detail": f"{len(material)} material later documents, no supported results filing"}))
                     state["changed"] = True
@@ -758,7 +961,8 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             publish()
         return summary
     finally:
-        lock.release()
+        if lock is not None:
+            lock.release()
 
 
 def main(argv: list[str] | None = None) -> int:

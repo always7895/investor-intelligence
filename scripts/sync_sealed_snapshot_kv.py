@@ -1,15 +1,9 @@
-"""Sync one sealed snapshot run to the production PUBLIC_CACHE namespace.
+"""Locked-CLI sealed sync and read-only freshness observations.
 
-Strict fail-closed contract (Task #23 PRODUCTION_FRESHNESS_REPAIR):
-  1. upload ALL object keys of the run dir's objects.json (plus the 14th
-     audited bottleneck key when present);
-  2. read every uploaded key back and verify byte-identical sha256;
-  3. ONLY after all verifications pass, write `snapshot:current` LAST;
-  4. on ANY failure: exit non-zero WITHOUT touching the pointer — the
-     previous sealed run keeps serving.
-
-No credentials are read or printed; the wrangler CLI's cached session is
-used. The namespace id is the operator-provided PUBLIC_CACHE id.
+Objects -> all-object readback -> pointer LAST -> pointer readback. Failures
+never manufacture success; a failed pointer call/readback leaves its state
+unconfirmed, not "untouched". CLI streams stay in memory and only fixed safe
+categories/counters are emitted. No login, credential inspection or install.
 """
 from __future__ import annotations
 
@@ -17,90 +11,172 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import re
+import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOUD_DIR = ROOT / "cloud"
 NS = "96142af40b5d4213862d5483fe3a66da"
-# Wrangler 4 KV commands default to the local Miniflare store; Production is always addressed explicitly
-# (every hourly sync from 2026-09-16 to 2026-09-25 wrote only the local store).
 REMOTE = "--remote"
-
-NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
-# A transient Cloudflare API or network error failed the 2026-09-25 16:56Z hourly put; an immediate manual retry
-# of the same run passed. Each KV call gets bounded retries; the pointer still moves only after full readback.
 ATTEMPTS = 3
 RETRY_SECONDS = 5.0
 LAST_ERROR: list[str] = []
+LAST_CALL: dict = {"attempts": 0, "exit_code": None, "error_category": "NONE"}
+TOTAL_ATTEMPTS = 0
 BLOB_PREFIX = "blob:v1:"
-# KV growth is bounded: per-run keys expire after 14 days (only the pointer's run is ever read), content-addressed
-# blobs after 30 days. A local ledger remembers blobs this machine stored; one stored in the last 20 days is reused
-# without a KV read, an older or unknown one is (re)put, which also renews its expiry while it is still referenced.
 RUN_KEY_TTL_SECONDS = 14 * 86400
 BLOB_TTL_SECONDS = 30 * 86400
 BLOB_REUSE_SECONDS = 20 * 86400
 LEDGER = ROOT / "data" / "cache" / "kv-blob-ledger.json"
+RUN_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
+KV_DAILY_LIMIT = "DAILY_KV_LIMIT"
+TRANSIENT_CATEGORIES = {"NETWORK_FAILURE", "TRANSIENT_HTTP", "TIMEOUT"}
+
+
+class CliUnavailable(RuntimeError):
+    """A local locked CLI could not be selected; no CLI launch occurred."""
+
+
+def _cli_command() -> list[str]:
+    """Use the already-installed Wrangler matching BOTH manifest and lock.
+
+    Reuse managed Node selection; never use npx --yes or install a dependency.
+    Missing or mismatched components are an explicit unavailable outcome.
+    """
+    try:
+        declared = json.loads((CLOUD_DIR / "package.json").read_text(encoding="utf-8"))["devDependencies"]["wrangler"]
+        locked = json.loads((CLOUD_DIR / "package-lock.json").read_text(encoding="utf-8"))["packages"]["node_modules/wrangler"]["version"]
+        package = CLOUD_DIR / "node_modules" / "wrangler"
+        installed = json.loads((package / "package.json").read_text(encoding="utf-8"))["version"]
+        cli = package / "bin" / "wrangler.js"
+        node = os.getenv("PROJECT_NODE") or os.getenv("NODE_FOR_RUNNER") or shutil.which("node")
+        if not node or not Path(node).is_file() or not cli.is_file() or declared != locked or installed != locked:
+            raise CliUnavailable()
+        return [str(Path(node).resolve()), str(cli)]
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise CliUnavailable() from error
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [NPX, "--yes", "wrangler", *args],
-        cwd=str(CLOUD_DIR), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+        [*_cli_command(), *args], cwd=str(CLOUD_DIR), capture_output=True,
+        text=True, encoding="utf-8", errors="replace", timeout=300,
     )
 
 
-# Cloudflare's free plan allows 1,000 KV writes a day (reset 00:00 UTC). An hourly seal writes about 20 keys; a rollout
-# day with reinstalls and manual seals can spend the rest (2026-09-26: every seal after 21:12 local failed on it).
-KV_DAILY_LIMIT = "KV_DAILY_WRITE_LIMIT_REACHED (Cloudflare code 10048, free plan; resets 00:00 UTC; the last seal keeps serving)"
+def _known_error_markers(stdout: str, stderr: str) -> tuple[set[int], bool]:
+    """Cloudflare failure envelopes / Wrangler markers, NOT bare numbers.
+
+    Full JSON or a JSON log line must be a success:false/errors envelope to
+    contribute numeric codes. A named exception envelope/class marker is also
+    recognized. Bare counters and unstructured numeric fragments prove nothing.
+    """
+    codes: set[int] = set()
+    auth_class = False
+    for stream in (stdout or "", stderr or ""):
+        text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stream)
+        codes.update(int(code) for code in re.findall(r"\[\s*code\s*:\s*(10000|10048)\s*\]", text, re.IGNORECASE))
+        if re.search(r"(?m)^\s*AuthenticationError(?:\s*:|\s*$)|\[ERROR\][^\r\n]*\bAuthenticationError\b", text, re.IGNORECASE):
+            auth_class = True
+        for candidate in [text, *text.splitlines()]:
+            try:
+                envelope = json.loads(candidate)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(envelope, dict):
+                continue
+            if envelope.get("success") is False and isinstance(envelope.get("errors"), list):
+                for error in envelope["errors"]:
+                    if isinstance(error, dict) and type(error.get("code")) is int:
+                        codes.add(error["code"])
+            if envelope.get("name") == "AuthenticationError" and (
+                    isinstance(envelope.get("message"), str) or isinstance(envelope.get("stack"), str)):
+                auth_class = True
+    return codes, auth_class
+
+
+def classify_cli_error(stdout: str, stderr: str) -> str:
+    """Classification only: never return any fragment of either CLI stream."""
+    text = f"{stdout or ''}\n{stderr or ''}"
+    codes, auth_class = _known_error_markers(stdout, stderr)
+    if 10000 in codes or auth_class:
+        return "AUTHENTICATION_ERROR"
+    if 10048 in codes or re.search(r"\[ERROR\][^\r\n]*\bfree usage limit\b", text, re.IGNORECASE):
+        return KV_DAILY_LIMIT
+    if re.search(r"\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|FetchError)\b|fetch failed|network error", text, re.IGNORECASE):
+        return "NETWORK_FAILURE"
+    if re.search(r"(?:HTTP(?:\s+status)?|status(?:\s+code)?)[\s:=]+(?:429|5\d\d)\b", text, re.IGNORECASE):
+        return "TRANSIENT_HTTP"
+    return "UNKNOWN"
 
 
 def _daily_limit(p: subprocess.CompletedProcess) -> bool:
-    text = f"{p.stdout or ''}\n{p.stderr or ''}"
-    return "10048" in text or "free usage limit" in text
+    return classify_cli_error(p.stdout, p.stderr) == KV_DAILY_LIMIT
 
 
 def _error_summary(p: subprocess.CompletedProcess) -> str:
-    """The daily write limit by name, else the last non-empty stderr line, truncated; ids and emails masked (logs never
-    carry account details)."""
-    if _daily_limit(p):
-        return KV_DAILY_LIMIT
-    lines = [line.strip() for line in (p.stderr or "").splitlines() if line.strip()]
-    text = lines[-1] if lines else f"exit {p.returncode}"
-    text = re.sub(r"[0-9a-f]{32}", "<id>", text)
-    return re.sub(r"[^\s@]+@[^\s@]+", "<email>", text)[:200]
+    return classify_cli_error(p.stdout, p.stderr)
 
 
 def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
+    global TOTAL_ATTEMPTS
+    launched = 0
+    LAST_ERROR.clear()
     for attempt in range(1, ATTEMPTS + 1):
-        p = _run_cli(args)
+        try:
+            p = _run_cli(args)
+            launched += 1
+            category = "NONE" if p.returncode == 0 else _error_summary(p)
+        except CliUnavailable:
+            p = subprocess.CompletedProcess(args, None, "", "")
+            category = "CLI_UNAVAILABLE"
+        except subprocess.TimeoutExpired as error:
+            launched += 1
+            out = error.stdout.decode("utf-8", "replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
+            err = error.stderr.decode("utf-8", "replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
+            p = subprocess.CompletedProcess(args, None, out, err)
+            category = classify_cli_error(out, err)
+            if category == "UNKNOWN":
+                category = "TIMEOUT"
+        except OSError:
+            launched += 1  # an attempted launch, not a fabricated native exit
+            p = subprocess.CompletedProcess(args, None, "", "")
+            category = "CLI_LAUNCH_FAILED"
+        LAST_CALL.update(attempts=launched, exit_code=p.returncode, error_category=category)
         if p.returncode == 0:
-            return p
-        LAST_ERROR[:] = [_error_summary(p)]
-        if _daily_limit(p):
-            return p  # retrying cannot succeed before the reset
-        if attempt < ATTEMPTS:
-            time.sleep(RETRY_SECONDS * attempt)
+            break
+        LAST_ERROR[:] = [category]
+        # Auth/quota/UNKNOWN/local launch failures are terminal. Only a named
+        # transient gets bounded retries; there is no credential/account fallback.
+        if category not in TRANSIENT_CATEGORIES or attempt == ATTEMPTS:
+            break
+        time.sleep(RETRY_SECONDS * attempt)
+    TOTAL_ATTEMPTS += launched
     return p
 
 
 def client_put(key: str, local_path: Path, ttl: int | None = None) -> bool:
-    rel = os.path.relpath(local_path, str(ROOT)).replace("\\", "/")
+    # Absolute staged paths also work for an explicit SnapshotRoot outside ROOT.
     extra = ["--ttl", str(ttl)] if ttl else []
-    p = _run_with_retry(["kv", "key", "put", key, "--path", "../" + rel, "--namespace-id", NS, REMOTE, *extra])
+    p = _run_with_retry(["kv", "key", "put", key, "--path", str(local_path), "--namespace-id", NS, REMOTE, *extra])
     return p.returncode == 0
 
 
+def client_get(key: str) -> str | None:
+    p = _run_with_retry(["kv", "key", "get", key, "--namespace-id", NS, REMOTE])
+    return p.stdout.rstrip("\r\n") if p.returncode == 0 else None
+
+
 def load_ledger(path: Path | None = None) -> dict[str, float]:
-    path = path or LEDGER
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads((path or LEDGER).read_text(encoding="utf-8"))
         return {str(k): float(v) for k, v in value.items()} if isinstance(value, dict) else {}
-    except (OSError, ValueError):
+    except (OSError, ValueError, TypeError):
         return {}
 
 
@@ -114,84 +190,184 @@ def save_ledger(ledger: dict[str, float], path: Path | None = None) -> None:
     temp.replace(path)
 
 
-def client_get(key: str) -> str | None:
-    p = _run_with_retry(["kv", "key", "get", key, "--namespace-id", NS, REMOTE])
-    if p.returncode != 0:
-        return None
-    body = p.stdout
-    while body and body[-1] in "\r\n":
-        body = body[:-1]
-    return body
-
-
 def sha(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--run-dir", required=True, help="state/v213-snapshots/<run>/")
-    args = ap.parse_args()
-    run_dir = Path(args.run_dir).resolve()
-    objects_file = run_dir / "objects.json"
-    pointer_file = run_dir / "pointer.raw.json"
-    objects = json.loads(objects_file.read_text(encoding="utf-8"))
-    entries = [(k, v) for k, v in sorted(objects.items())]
+def _outcome(operation: str) -> dict:
+    return {"schema_version": 1, "operation": operation, "status": "FAILED",
+            "phase": "INPUT", "error_category": "UNKNOWN", "pointer_state": "NOT_ATTEMPTED",
+            "run_id": "", "cli_attempts_total": 0, "last_cli_attempts": 0,
+            "last_cli_exit_code": None, "objects_uploaded": 0, "objects_reused": 0,
+            "objects_verified": 0}
+
+
+def _finish_call(record: dict, category: str | None = None) -> None:
+    record.update(cli_attempts_total=TOTAL_ATTEMPTS, last_cli_attempts=LAST_CALL["attempts"],
+                  last_cli_exit_code=LAST_CALL["exit_code"],
+                  error_category=category or LAST_CALL["error_category"])
+
+
+def sync_run(run_dir: Path, record: dict) -> int:
+    objects = json.loads((run_dir / "objects.json").read_text(encoding="utf-8"))
+    ptr_raw = (run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
+    pointer = json.loads(ptr_raw)
+    if not isinstance(objects, dict) or not objects or not all(isinstance(k, str) and isinstance(v, str) for k, v in objects.items()):
+        raise ValueError()
+    if not isinstance(pointer, dict) or not RUN_ID.fullmatch(str(pointer.get("run_id", ""))):
+        raise ValueError()
+    record["run_id"] = pointer["run_id"]
+    prefix = f"snapshot:{record['run_id']}:"
+    # Even malformed input must never smuggle the serving pointer into the
+    # object-upload phase or cross a run boundary. Lazy blob bytes bind to key.
+    for key, body in objects.items():
+        if key.startswith(BLOB_PREFIX):
+            digest = key[len(BLOB_PREFIX):]
+            if not re.fullmatch(r"[0-9a-f]{64}", digest) or sha(body) != digest:
+                raise ValueError()
+        elif not key.startswith(prefix) or key == prefix:
+            raise ValueError()
+    entries = sorted(objects.items())
     staged = run_dir / ".kv-stage"
     staged.mkdir(exist_ok=True)
-
-    # Stage exact bytes (no trailing-newline drift).
-    staged_files: dict[str, Path] = {}
-    for key, body in entries:
-        safe = key.rstrip(":").replace("snapshot:", "").replace(":", "_")[:80]
-        fp = staged / (safe + ".bin")
+    staged_files = {}
+    for index, (key, body) in enumerate(entries):
+        fp = staged / f"object-{index}.bin"
         fp.write_bytes(body.encode("utf-8"))
         staged_files[key] = fp
-    ptr_raw = pointer_file.read_text(encoding="utf-8").strip()
     ptr_fp = staged / "__pointer.bin"
     ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
-
-    # 1) objects FIRST (pointer must never lead). Content-addressed lazy blobs (blob:v1:<sha256>) are immutable:
-    # one this machine stored recently (ledger) is reused without a KV call; others are put with an expiry.
     ledger = load_ledger()
     now = time.time()
-    reused: set[str] = set()
+    reused = set()
+    record["phase"] = "OBJECT_PUT"
     for key, fp in staged_files.items():
         blob = key.startswith(BLOB_PREFIX)
-        if blob and now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS:
+        if blob and 0 <= now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS:
             reused.add(key)
+            record["objects_reused"] += 1
             continue
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
-            print(f"SYNC ABORT (object put failed after {ATTEMPTS} attempts): {key} {LAST_ERROR[:1]}", file=sys.stderr)
+            _finish_call(record)
             return 1
-    print(f"OBJECTS_UPLOADED {len(staged_files) - len(reused)}" + (f" BLOBS_REUSED {len(reused)}" if reused else ""))
-
-    # 2) verify every object by live readback (reused blobs were verified just above).
+        record["objects_uploaded"] += 1
+    print(f"OBJECTS_UPLOADED {record['objects_uploaded']} BLOBS_REUSED {len(reused)}")
+    record["phase"] = "OBJECT_READBACK"
+    # A ledger is not live custody proof. Reused blobs MUST also pass readback.
     for key, body in entries:
-        if key in reused:
-            continue
         live = client_get(key)
         if live is None or sha(live) != sha(body):
-            print(f"SYNC ABORT (readback mismatch, pointer untouched): {key}", file=sys.stderr)
+            _finish_call(record, "READBACK_MISMATCH" if live is not None else None)
             return 1
-
-    print(f"READBACK_VERIFIED {len(entries)}")
-
-    # 3) pointer LAST, only after full verification.
+        record["objects_verified"] += 1
+    print(f"READBACK_VERIFIED {record['objects_verified']}")
+    record["phase"] = "POINTER_PUT"
+    record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
     if not client_put("snapshot:current", ptr_fp):
-        print(f"SYNC ABORT (pointer put failed after {ATTEMPTS} attempts) {LAST_ERROR[:1]}", file=sys.stderr)
+        _finish_call(record)
         return 1
+    record["phase"] = "POINTER_READBACK"
     live_ptr = client_get("snapshot:current")
     if live_ptr is None or sha(live_ptr) != sha(ptr_raw):
-        print("SYNC ABORT (pointer readback mismatch)", file=sys.stderr)
+        _finish_call(record, "READBACK_MISMATCH" if live_ptr is not None else None)
         return 1
-    print(f"POINTER_LAST {json.loads(ptr_raw)['run_id']} seal {json.loads(ptr_raw)['seal_sha256'][:12]}")
+    record["pointer_state"] = "READBACK_CONFIRMED"
+    print(f"POINTER_LAST {record['run_id']}")
+    record["phase"] = "LOCAL_LEDGER"
     for key in staged_files:
         if key.startswith(BLOB_PREFIX) and key not in reused:
             ledger[key[len(BLOB_PREFIX):]] = now
     save_ledger(ledger)
-    shutil.rmtree(staged, ignore_errors=True)  # the staged copies are only needed until the pointer moved
+    shutil.rmtree(staged, ignore_errors=True)
+    _finish_call(record, "NONE")
+    record.update(status="SUCCEEDED", phase="COMPLETE")
     return 0
+
+
+def _safe_instant(value) -> str | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)", value):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def read_freshness(record: dict) -> int:
+    """Read-only shared CLI adapter; export safe metadata, never raw KV bodies."""
+    record["phase"] = "POINTER_READ"
+    raw = client_get("snapshot:current")
+    if raw is None:
+        _finish_call(record)
+        return 1
+    record["phase"] = "POINTER_PARSE"
+    pointer = json.loads(raw)
+    if not isinstance(pointer, dict) or not RUN_ID.fullmatch(str(pointer.get("run_id", ""))):
+        raise ValueError()
+    anchor = _safe_instant(pointer.get("public_data_as_of")) or _safe_instant(pointer.get("promoted_at"))
+    if anchor is None:
+        raise ValueError()
+    record.update(run_id=pointer["run_id"], anchor=anchor, top20_state="UNKNOWN", report_generated_at=None)
+    record["phase"] = "REPORT_READ"
+    raw = client_get(f"snapshot:{record['run_id']}:v213:top20-report:latest")
+    if raw is None:
+        _finish_call(record)
+        record["top20_state"] = "REPORT_READ_FAILED"
+        return 1
+    record["phase"] = "REPORT_PARSE"
+    report = json.loads(raw)
+    if not isinstance(report, dict):
+        raise ValueError()
+    if report.get("status") == "INSUFFICIENT_EVIDENCE":
+        record["top20_state"] = "INSUFFICIENT"
+    else:
+        rows = report.get("records")
+        generated = _safe_instant(report.get("generated_at"))
+        if not isinstance(rows, list) or generated is None:
+            raise ValueError()
+        record.update(top20_state=f"RECORDS_{len(rows)}", report_generated_at=generated)
+    _finish_call(record, "NONE")
+    record.update(status="SUCCEEDED", phase="COMPLETE")
+    return 0
+
+
+def main() -> int:
+    global TOTAL_ATTEMPTS
+    TOTAL_ATTEMPTS = 0
+    LAST_CALL.update(attempts=0, exit_code=None, error_category="NONE")
+    ap = argparse.ArgumentParser()
+    modes = ap.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--run-dir")
+    modes.add_argument("--read-freshness", action="store_true")
+    ap.add_argument("--outcome-path", type=Path, help="New safe outcome file; never overwrite an older result")
+    args = ap.parse_args()
+    record = _outcome("WATCHDOG" if args.read_freshness else "SYNC")
+    try:
+        code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir).resolve(), record)
+    except (ValueError, KeyError, TypeError):
+        _finish_call(record, "PARSE_FAILED" if args.read_freshness else "INPUT_INVALID")
+        code = 1
+    except OSError:
+        _finish_call(record, "LOCAL_IO_FAILURE")
+        code = 1
+    except Exception:
+        # Fail closed without serializing exception messages, CLI arguments or streams.
+        _finish_call(record, "UNKNOWN")
+        code = 1
+    if args.outcome_path is not None:
+        try:
+            # Caller owns a unique path. CreateNew prevents stale-result replacement.
+            with args.outcome_path.open("x", encoding="utf-8") as stream:
+                json.dump(record, stream, separators=(",", ":"), allow_nan=False)
+        except (OSError, ValueError):
+            record.update(status="FAILED", error_category="OUTCOME_WRITE_FAILED")
+            code = 1
+    marker = "WATCHDOG_OUTCOME" if args.read_freshness else "SYNC_OUTCOME"
+    print(marker + " " + json.dumps(record, separators=(",", ":"), allow_nan=False))
+    if code:
+        print(f"{marker}_FAILED phase={record['phase']} category={record['error_category']} "
+              f"attempts={record['last_cli_attempts']} pointer_state={record['pointer_state']}", file=sys.stderr)
+    return code
 
 
 if __name__ == "__main__":

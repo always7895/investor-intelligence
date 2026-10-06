@@ -1,135 +1,141 @@
-# Read-only freshness watchdog for the InvestorIntelligenceV213 public pointer.
-#
-# Contract (production-safety):
-#   * NEVER writes to any KV namespace; NEVER Promotes, rolls back, or re-seals.
-#   * Reads snapshot:current via the cached Wrangler CLI session (network only).
-#   * Computes the ASSEMBLY anchor age (public_data_as_of) against the 7200s
-#     reader cap and appends one durable line per run to
-#     data/cache/freshness-watch.jsonl (append-only transition record).
-#   * Also records the sealed Top20 report age (generated_at, never re-stamped
-#     by hourly re-seals) and its record count or INSUFFICIENT state; the
-#     report bound is config/v213-top20-report-freshness-v1.json.
-#   * Exit code is always 0 for logging-type failures; a NON-ZERO (3) exit is
-#     reserved for STALE detection so Task Scheduler LastTaskResult becomes the
-#     alert signal. No secret, tenant, or credential material is read or printed.
-
+# Read-only pointer/report observation through the shared locked-CLI adapter.
+# CLI/auth/parse failure is UNKNOWN, never an old FRESH or measured STALE.
 [CmdletBinding()]
-param(
-    [string]$RepoRoot = '',
-    [int]$CapSeconds = 7200)
-
+param([string]$RepoRoot = '', [int]$CapSeconds = 7200)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
-
-if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
-    $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
+$raw = $null
+$nativeExit = $null
+$record = $null
+$logPath = $null
+$exitCode = 1
+$entry = [ordered]@{
+    utc = [DateTime]::UtcNow.ToString('o'); status = 'UNKNOWN'; run_id = ''; anchor = ''
+    ageSeconds = $null; capSeconds = $CapSeconds; note = ''; top20State = 'UNKNOWN'
+    reportAgeSeconds = $null; errorCategory = 'UNKNOWN'; failedPhase = 'ROOT'
+    cliAttempts = 0; cliExitCode = $null; secondaryError = ''
 }
-$RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
-$cacheDir = Join-Path $RepoRoot 'data\cache'
-if (-not (Test-Path -LiteralPath $cacheDir)) {
-    New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+function Assert-PlainLocalPath([string]$Path) {
+    if ($Path -notmatch '^[A-Za-z]:[\\/]' -or $Path -match '[\x00-\x1f]') { throw 'UNSAFE_ROOT' }
+    $cursor = [IO.Path]::GetFullPath($Path)
+    while ($cursor) {
+        if (Test-Path -LiteralPath $cursor) {
+            if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'UNSAFE_ROOT' }
+        }
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
 }
-$logPath = Join-Path $cacheDir 'freshness-watch.jsonl'
-
-$namespaceId = '96142af40b5d4213862d5483fe3a66da'
-
-# Pointer anchors are UTC ISO-8601. PowerShell 7 ConvertFrom-Json already yields a DateTime whose string form
-# drops the zone, so never re-parse that string; an unzoned value is UTC by contract (same as the deploy gate).
+function Test-OutcomeInteger([object]$Value, [long]$Minimum, [long]$Maximum) {
+    # ConvertFrom-Json supports Int32/Int64 on the admitted hosts. No coercion:
+    # Boolean, strings, Decimal/Double and out-of-range BigInteger are not integers here.
+    if ($Value -isnot [int32] -and $Value -isnot [int64]) { return $false }
+    return ($Value -ge $Minimum -and $Value -le $Maximum)
+}
 function ConvertTo-UtcAnchor([object]$Value) {
-    if ($null -eq $Value) { return $null }
     if ($Value -is [DateTime]) {
         if ($Value.Kind -eq [DateTimeKind]::Local) { return $Value.ToUniversalTime() }
         return [DateTime]::SpecifyKind($Value, [DateTimeKind]::Utc)
     }
-    if ([string]::IsNullOrWhiteSpace([string]$Value)) { return $null }
+    if ($Value -isnot [string] -or $Value -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|\+00:00)$') { return $null }
     $parsed = [DateTime]::MinValue
     $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
-    if (-not [DateTime]::TryParse([string]$Value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $null }
+    if (-not [DateTime]::TryParse($Value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $null }
     return $parsed
 }
-if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
-
-$entry = [ordered]@{
-    utc        = (Get-Date).ToUniversalTime().ToString('o')
-    status     = 'UNKNOWN'
-    run_id     = ''
-    anchor     = ''
-    ageSeconds = $null
-    capSeconds = $CapSeconds
-    note       = ''
-    top20State = ''
-    reportAgeSeconds = $null
-}
-
 try {
-    # Wrangler 4 KV commands default to the local Miniflare store; the watchdog must read Production.
-    $raw = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $namespaceId --remote --cwd (Join-Path $RepoRoot 'cloud') 2>$null
-    if ($null -eq $raw -or $raw -is [string] -and -not $raw) { $raw = $null }
-} catch {
-    $entry.note = 'WRANGLER_READ_FAILED'
-}
-
-$rawText = ($raw -join '').Trim()
-if ($rawText -match '\{') {
+    $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
+    Assert-PlainLocalPath $RepoRoot
+    $cacheDir = Join-Path $RepoRoot 'data\cache'
+    Assert-PlainLocalPath $cacheDir
+    New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+    $logPath = Join-Path $cacheDir 'freshness-watch.jsonl'
+    Assert-PlainLocalPath $logPath
+    $entry.failedPhase = 'POLICY'
+    if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
+    $policy = Get-Content -LiteralPath (Join-Path $RepoRoot 'config/v213-top20-report-freshness-v1.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    $reportHours = [double]$policy.report_max_age_hours
+    if ([double]::IsNaN($reportHours) -or [double]::IsInfinity($reportHours) -or $reportHours -lt 1 -or $reportHours -gt 24) { throw 'REPORT_POLICY_INVALID' }
+    $reportCap = $reportHours * 3600
+    $entry.failedPhase = 'CLI_ADAPTER'
+    $helper = Join-Path $RepoRoot 'scripts/sync_sealed_snapshot_kv.py'
+    Assert-PlainLocalPath $helper
+    $resultPath = Join-Path $cacheDir ('freshness-read-' + [guid]::NewGuid().ToString('N') + '.json')
+    $python = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
+    $previous = $ErrorActionPreference
     try {
-        $pointer = $rawText | ConvertFrom-Json
-        $entry.run_id = [string]$pointer.run_id
-        $anchor = ConvertTo-UtcAnchor $pointer.public_data_as_of
-        if ($null -eq $anchor) { $anchor = ConvertTo-UtcAnchor $pointer.promoted_at }
-        if ($null -ne $anchor) {
-            $anchorRaw = $anchor.ToString('o')
-            $age = [int]((Get-Date).ToUniversalTime() - $anchor).TotalSeconds
-            $entry.anchor = $anchorRaw
-            $entry.ageSeconds = $age
-            if ($age -lt -300) {
-                $entry.status = 'CLOCK_ANOMALY'
-                $entry.note = 'anchor in future beyond 300s skew; no product mutation performed'
-            }
-            elseif ($age -le [int]($CapSeconds * 0.8)) {
-                $entry.status = 'FRESH'
-            }
-            elseif ($age -le $CapSeconds) {
-                $entry.status = 'AT_RISK'
-            }
-            else {
-                $entry.status = 'STALE'
-                $entry.note = 'pointer exceeds reader cap; Top20 fails until the next healthy automated re-point'
-            }
-            if ($entry.run_id -match '^\d{8}T\d{6}Z-[0-9a-f]{12}$') {
-                # Report bodies carry UTF-8 text; Windows PowerShell 5.1 decodes native output with the console code page.
-                $consoleEncoding = [Console]::OutputEncoding
-                try {
-                    [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
-                    $reportRaw = & npx --yes wrangler kv key get ('snapshot:' + $entry.run_id + ':v213:top20-report:latest') --namespace-id $namespaceId --remote --cwd (Join-Path $RepoRoot 'cloud') 2>$null
-                    $report = (($reportRaw -join "`n").Trim()) | ConvertFrom-Json
-                    if ($report.PSObject.Properties.Name -contains 'status' -and [string]$report.status -eq 'INSUFFICIENT_EVIDENCE') {
-                        $entry.top20State = 'INSUFFICIENT'
-                    } else {
-                        $entry.top20State = ('RECORDS_' + @($report.records).Count)
-                        $generated = ConvertTo-UtcAnchor $report.generated_at
-                        if ($null -ne $generated) { $entry.reportAgeSeconds = [int]((Get-Date).ToUniversalTime() - $generated).TotalSeconds }
-                    }
-                } catch { $entry.top20State = 'REPORT_READ_FAILED' }
-                finally { [Console]::OutputEncoding = $consoleEncoding }
-            }
-        }
-        else {
-            $entry.note = 'ANCHOR_PARSE_FAILED'
+        $ErrorActionPreference = 'Continue'
+        # Native commands update the global automatic variable. Clear/read that
+        # same scope immediately; do not create a local LASTEXITCODE shadow.
+        $global:LASTEXITCODE = $null
+        & $python $helper --read-freshness --outcome-path $resultPath 2>$null | Out-Null
+        $nativeExit = $global:LASTEXITCODE
+    } finally { $ErrorActionPreference = $previous }
+    if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+        $entry.errorCategory = 'CLI_ADAPTER_UNAVAILABLE'
+        throw 'NO_SAFE_OUTCOME'
+    }
+    Assert-PlainLocalPath $resultPath
+    if ((Get-Item -LiteralPath $resultPath).Length -gt 8192) { throw 'OUTCOME_INVALID' }
+    # Not raw CLI stdout: the shared adapter checked the native exit before
+    # parsing any KV body and persisted only whitelist metadata, even on failure.
+    $record = Get-Content -LiteralPath $resultPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $categories = @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','PARSE_FAILED','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED')
+    $phases = @('INPUT','POINTER_READ','POINTER_PARSE','REPORT_READ','REPORT_PARSE','COMPLETE')
+    if (-not (Test-OutcomeInteger $record.schema_version 1 1) -or $record.operation -cne 'WATCHDOG' -or $record.status -cnotin @('SUCCEEDED','FAILED') -or
+        $record.error_category -cnotin $categories -or $record.phase -cnotin $phases -or
+        -not (Test-OutcomeInteger $record.cli_attempts_total 0 6) -or
+        -not (Test-OutcomeInteger $record.last_cli_attempts 0 3) -or
+        $record.last_cli_attempts -gt $record.cli_attempts_total -or
+        -not (Test-OutcomeInteger $record.objects_uploaded 0 0) -or
+        -not (Test-OutcomeInteger $record.objects_reused 0 0) -or
+        -not (Test-OutcomeInteger $record.objects_verified 0 0) -or
+        ($null -ne $record.last_cli_exit_code -and -not (Test-OutcomeInteger $record.last_cli_exit_code -2147483648 4294967295))) { throw 'OUTCOME_INVALID' }
+    $entry.errorCategory = $record.error_category
+    $entry.failedPhase = $record.phase
+    $entry.cliAttempts = $record.cli_attempts_total
+    $entry.cliExitCode = $record.last_cli_exit_code
+    if ($nativeExit -ne 0 -or $record.status -cne 'SUCCEEDED' -or $record.error_category -cne 'NONE') {
+        if ($entry.errorCategory -eq 'NONE') { $entry.errorCategory = 'UNKNOWN' }
+        $entry.note = 'READ_UNAVAILABLE'
+    } else {
+        $entry.failedPhase = 'METADATA'
+        if ($record.run_id -cnotmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$' -or $record.top20_state -cnotmatch '^(INSUFFICIENT|RECORDS_[0-9]{1,6})$') { throw 'OUTCOME_INVALID' }
+        $anchor = ConvertTo-UtcAnchor $record.anchor
+        if ($null -eq $anchor) { throw 'ANCHOR_PARSE_FAILED' }
+        $entry.run_id = $record.run_id
+        $entry.anchor = $anchor.ToString('o')
+        $entry.ageSeconds = [int]([DateTime]::UtcNow - $anchor).TotalSeconds
+        $entry.top20State = $record.top20_state
+        $entry.failedPhase = ''
+        $exitCode = 0
+        if ($entry.ageSeconds -lt -300) { $entry.status = 'CLOCK_ANOMALY'; $exitCode = 3 }
+        elseif ($entry.ageSeconds -gt $CapSeconds) { $entry.status = 'STALE'; $exitCode = 3 }
+        elseif ($entry.ageSeconds -gt [int]($CapSeconds * 0.8)) { $entry.status = 'AT_RISK' }
+        else { $entry.status = 'FRESH' }
+        if ($record.top20_state -eq 'INSUFFICIENT' -or $record.top20_state -ne 'RECORDS_20') {
+            $entry.note = 'TOP20_UNAVAILABLE'
+            if ($exitCode -eq 0) { $entry.status = 'UNAVAILABLE'; $exitCode = 1 }
+        } else {
+            $generated = ConvertTo-UtcAnchor $record.report_generated_at
+            if ($null -eq $generated) { throw 'REPORT_PARSE_FAILED' }
+            $entry.reportAgeSeconds = [int]([DateTime]::UtcNow - $generated).TotalSeconds
+            if ($entry.reportAgeSeconds -lt -300) { $entry.status = 'CLOCK_ANOMALY'; $exitCode = 3 }
+            elseif ($entry.reportAgeSeconds -gt $reportCap) { $entry.status = 'STALE'; $entry.note = 'REPORT_AGE_EXCEEDED'; $exitCode = 3 }
         }
     }
-    catch {
-        $entry.note = 'POINTER_PARSE_FAILED'
-    }
+} catch {
+    # Fixed branch identifiers only; exception messages/types and CLI text are not logged.
+    $entry.status = 'UNKNOWN'
+    $entry.note = 'OBSERVATION_FAILED'
+    if ($entry.errorCategory -eq 'NONE' -or $entry.errorCategory -eq 'UNKNOWN') { $entry.errorCategory = 'OBSERVATION_FAILED' }
+    $exitCode = 1
 }
-else {
-    if ($entry.note -eq '') { $entry.note = 'NO_POINTER_READ' }
+if ($null -ne $logPath) {
+    try { Add-Content -LiteralPath $logPath -Value ($entry | ConvertTo-Json -Compress) -Encoding utf8 }
+    catch { $entry.secondaryError = 'STATUS_WRITE_FAILED'; $exitCode = 1 }
 }
-
-$line = ($entry | ConvertTo-Json -Compress)
-Add-Content -LiteralPath $logPath -Value $line -Encoding utf8
-
-$exitCode = 0
-if ($entry.status -eq 'STALE' -or $entry.status -eq 'CLOCK_ANOMALY') { $exitCode = 3 }
-Write-Host ("FRESHNESS_WATCH {0} run={1} anchor={2} age={3}s top20={4} report_age={5}s" -f $entry.status, $entry.run_id, $entry.anchor, $entry.ageSeconds, $entry.top20State, $entry.reportAgeSeconds)
+# Always emit a sanitized structured status, including when durable storage is unavailable.
+Write-Host ('FRESHNESS_WATCH ' + ($entry | ConvertTo-Json -Compress))
 exit $exitCode

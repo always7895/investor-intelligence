@@ -58,7 +58,8 @@ export function validatePotentialRanking(raw: unknown): PotentialRanking | null 
   const seen = new Set<string>();
   for (const [index, row] of value.records.entries()) {
     if (!row || row.rank !== index + 1 || !TICKER.test(String(row.ticker)) || seen.has(row.ticker)) return null;
-    if (!text(row.name, 200) || !text(row.industry_name, 80) || !(row.phase in PHASE_ZH)) return null;
+    if (!text(row.name, 200) || !text(row.industry_name, 80)
+      || typeof row.phase !== "string" || !Object.prototype.hasOwnProperty.call(PHASE_ZH, row.phase)) return null;
     if (!Number.isInteger(row.strength) || row.strength < 0 || row.strength > 100) return null;
     for (const key of ["revenue_yoy_pct", "rpo_yoy_pct", "gross_margin_change_pp", "operating_margin_change_pp", "dilution_yoy_pct"]) {
       if (!num(row[key])) return null;
@@ -82,7 +83,7 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
       uiText(row.ticker, "3xl", T.headerText, { weight: "bold" }),
       uiText(row.name, "md", T.headerText, { weight: "bold" }),
       uiText(row.industry_name, "xxs", T.headerSubtle),
-      uiText(`階段：${PHASE_ZH[row.phase]}`, "xxs", T.headerMuted, { weight: "bold" }),
+      uiText(`舊版准入狀態：${PHASE_ZH[row.phase]}`, "xxs", T.headerMuted, { weight: "bold" }),
     ], { ...headerStyle, spacing: "md" }),
     body: uiBox([
       section("關鍵數據 / Key data", [
@@ -98,7 +99,7 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
         labelValue("稀釋後股數年變化", pct(row.dilution_yoy_pct)),
       ], "detail"),
       ordersSection(row),
-      section("資料階段 / Phase", [
+      section("舊版准入狀態 / Legacy gate", [
         phaseLadder(row.phase),
         uiBox([labelValue("資料季度", ranking.quarter), labelValue("下次檢查", row.next_review_at ?? "下一份財報")], { layout: "horizontal", spacing: "md" }),
       ], "context"),
@@ -195,14 +196,30 @@ export function buildPotentialRankingFlex(ranking: PotentialRanking): LineOutbou
   return messages;
 }
 
+/** Packs whole lines, in order, into text messages of at most 4,900 UTF-16 units and at most 5 messages. A line is never
+ * split, dropped or truncated: an oversized line or a sixth message fails closed with a named error instead. */
+function packCompleteLines(lines: readonly string[]): LineOutboundMessage[] {
+  const packed: string[] = [];
+  let current: string | null = null;
+  for (const line of lines) {
+    if (line.length > 4900) throw new Error("POTENTIAL_RANKING_LINE_TOO_LONG");
+    if (current === null) current = line;
+    else if (current.length + 1 + line.length <= 4900) current += `\n${line}`;
+    else { packed.push(current); current = line; }
+  }
+  if (current !== null) packed.push(current);
+  if (packed.length < 1 || packed.length > 5) throw new Error("POTENTIAL_RANKING_MESSAGE_COUNT_EXCEEDED");
+  return packed.map(body => ({ type: "text", text: body }));
+}
+
 export function buildPotentialRankingText(ranking: PotentialRanking): LineOutboundMessage[] {
   const lines = [`【資料驅動潛力榜】資料季度 ${ranking.quarter}｜計算日 ${ranking.as_of}`,
-    "排序：階段准入（排除擁擠、緩解、失效）→ 雙來源確認優先 → 公開的資料強度公式；每產業最多 5 家。非預測、非投資建議。",
-    ...ranking.records.map(r => `#${r.rank} ${r.ticker} ${r.name}｜${r.industry_name}｜${PHASE_ZH[r.phase]}｜強度 ${r.strength}｜營收 ${pct(r.revenue_yoy_pct)}｜RPO ${pct(r.rpo_yoy_pct)}`
+    "排序：舊版准入狀態（排除擁擠、緩解、受阻；受阻可能含融資條件，不等同營運論點失效）→ 雙來源確認優先 → 公開的資料強度公式；每產業最多 5 家。非預測、非投資建議。",
+    ...ranking.records.map(r => `#${r.rank} ${r.ticker} ${r.name}｜${r.industry_name}｜舊版准入狀態 ${PHASE_ZH[r.phase]}｜強度 ${r.strength}｜營收 ${pct(r.revenue_yoy_pct)}｜RPO ${pct(r.rpo_yoy_pct)}`
       + (r.orders ? `｜1Y 已簽約覆蓋 ${coverageText(r.orders.coverage_pct.m12)}` : "")),
     "訂單實現排序：輸入「訂單實現榜」。",
     "詳細報告：輸入「潛力報告 代號」，例如：潛力報告 " + ranking.records[0]!.ticker];
-  const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
+  const messages = packCompleteLines(lines);
   assertLineMessages(messages);
   return messages;
 }

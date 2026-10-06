@@ -4,10 +4,12 @@
  * but are never shown as company facts; every figure carries its source and date. A malformed or stale document
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
-import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, type OrderForecast } from "./order-forecast";
+import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, type OrderForecast } from "./order-forecast";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { unwrapTransportV1 } from "./revenue-guidance-wire";
+import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
@@ -17,6 +19,16 @@ import {
 } from "./line-theme";
 
 export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
+
+/** B3-WIRE-01 reader options. `guidanceWireEnabled` (default off) is the only explicit opt-in to the
+ * transport-v1 envelope decode at the existing present-v3 branch; it authorizes no forecast admission
+ * by itself - the final forecast is always produced by the unchanged strict `parseOrderForecastV3`. */
+export interface BottleneckReadOptions {
+  guidanceWireEnabled?: boolean;
+  guidanceMachineEnabled?: boolean;
+  /** Pure parser operand ONLY. Actual ordinary loader always resolves from SAME sealed view; no override. */
+  machineBindings?: MachineBindings;
+}
 
 interface Fundamentals {
   source: string; source_url: string; quarter_end: string; revenue_yoy: number | null; revenue_yoy_prev: number | null;
@@ -414,7 +426,7 @@ function closeLongTerm(market: Market, reportDay: string): Market {
     cagr_listed_span_days: span, history_request_start: requested };
 }
 
-export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 | null {
+export function parseBottleneckV3(raw: unknown, now = Date.now(), options: BottleneckReadOptions = {}): BottleneckV3 | null {
   if (!raw || typeof raw !== "object") return null;
   const doc = raw as any;
   if (doc.schema !== "v213-bottleneck-top20-v3-sealed" || !str(doc.generated_at, 30) || !v213ReportAgeFresh([doc.generated_at], now)) return null;
@@ -426,13 +438,22 @@ export function parseBottleneckV3(raw: unknown, now = Date.now()): BottleneckV3 
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
   const reportDay = doc.generated_at.slice(0, 10);
   const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, reportDay),
-    forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at) }));
+    forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at, options) }));
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
-export async function loadBottleneckV3(view: PublicSnapshotView): Promise<BottleneckV3 | null> {
+export async function loadBottleneckV3(view: PublicSnapshotView, options: BottleneckReadOptions = {}): Promise<BottleneckV3 | null> {
   if (view.integrity !== "sealed") return null;
-  return parseBottleneckV3(await view.json<unknown>([BOTTLENECK_V3_KEY]));
+  if (options.guidanceMachineEnabled === true) {
+    if (view.kind !== "snapshot" || !view.hasSealedObject?.(BOTTLENECK_V3_KEY) || !view.hasSealedObject?.(GUIDANCE_BINDING_KEY)) return null;
+    const [report, binding] = await Promise.all([view.text([BOTTLENECK_V3_KEY]), view.text([GUIDANCE_BINDING_KEY])]);
+    if (report === null || binding === null) return null;
+    const selected = resolveSealedMachineBindings(report, binding);
+    if (selected === null) return null; // no second latest/KV read/legacy single object or packet-chosen expected data
+    try { return parseBottleneckV3(JSON.parse(report), Date.now(), {...options, machineBindings: selected}); }
+    catch { return null; }
+  }
+  return parseBottleneckV3(await view.json<unknown>([BOTTLENECK_V3_KEY]), Date.now(), options);
 }
 
 const pct = (value: number | null | undefined, digits = 1) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
@@ -637,11 +658,21 @@ export function outlookForecast(doc: BottleneckV3, entry: BottleneckEntry): [str
 /** Reader order (Astra contract ORDERS-V3-01 section 6):
  * If order_forecast_v3 is present, validate v3 (including null, wrong version, stale/unavailable and malformed cases).
  * Never use v3 || v2. Only genuine absence permits the existing v2/v1 parser. */
-function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: string, symbol: string, generatedAt?: string): OrderForecast {
+function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: string, symbol: string, generatedAt?: string, options: BottleneckReadOptions = {}): OrderForecast {
   if (outlook && Object.prototype.hasOwnProperty.call(outlook, "order_forecast_v3")) {
-    const rawV3 = (outlook as any).order_forecast_v3;
+    let rawV3 = (outlook as any).order_forecast_v3;
+    if (rawV3 && typeof rawV3 === "object" && rawV3.schema === MACHINE_SCHEMA) {
+      if (options.guidanceMachineEnabled === true)
+        return parseOrderForecastV3Machine(rawV3, reportDay, symbol, generatedAt, (outlook as any).order_forecast, options.machineBindings);
+      return parseOrderForecastV3(rawV3, reportDay, symbol, generatedAt, (outlook as any).order_forecast); // false stays strict, no v2 fallback
+    }
+    if (options.guidanceMachineEnabled === true && options.machineBindings?.issuers[symbol]?.disposition !== "CURATED")
+      return parseOrderForecastV3Machine(rawV3, reportDay, symbol, generatedAt, (outlook as any).order_forecast, options.machineBindings);
+    if (options.guidanceWireEnabled === true) rawV3 = unwrapTransportV1(rawV3);
     return parseOrderForecastV3(rawV3, reportDay, symbol, generatedAt, (outlook as any).order_forecast);
   }
+  if (options.guidanceMachineEnabled === true && options.machineBindings?.issuers[symbol]?.disposition !== "CURATED")
+    return parseOrderForecastV3Machine(null, reportDay, symbol, generatedAt, outlook?.order_forecast, options.machineBindings);
   return parseOrderForecast(outlook?.order_forecast, reportDay, symbol, generatedAt);
 }
 

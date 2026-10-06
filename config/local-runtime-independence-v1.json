@@ -5,7 +5,7 @@
  "CLOUD_AI_FALLBACK": false,
  "primary_reasoner": {
   "base_url": "http://127.0.0.1:8080/v1",
-  "model": "Qwen3.8-27B",
+  "model": "qwen3.8-flash-next-iq3_s",
   "role": "PRIMARY_REASONER",
   "label_kind": "diagnostic_selection_only"
  },

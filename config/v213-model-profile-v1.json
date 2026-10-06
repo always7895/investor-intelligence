@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "model": "Qwen3.8-27B-UD-Q5_K_XL-7a1459e88548",
+  "model": "qwen3.8-flash-next-iq3_s",
   "enable_thinking": false,
   "reasoning_effort": "none",
   "max_output_tokens": 1024,

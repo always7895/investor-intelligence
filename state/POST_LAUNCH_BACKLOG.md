@@ -11,6 +11,9 @@ Do NOT block the minimal safe LINE launch on noncritical features. 不得以非�
 5. EXE best-mode auto-selection / UI polish EXE最佳模式自选/UI美化
 6. Refactor / cleanup / docs beautification 重构/清理/文档美化
 
+## Explicit reprioritization 明確重排優先級 (operator 2026-10-03, NOT completed 未完成)
+The operator reprioritized, ahead of this deferred list: (a) whole-project gap closure; (b) diverse, independent data sources; (c) global options coverage with real per-market, venue, instrument, timing and rights evidence (a denied or unavailable quote is not coverage; a US-only feed is never assumed to cover other markets; a user request is not a license); (d) EXE automatic local-model selection/replacement or manual choice among several candidates (item 5 above, explicit user enablement, no unowned GPU/model action). Source work may proceed under the current functions-first phase; none of it is complete, verified or released. 操作者已將上述事項提前於本清單；皆未完成、未驗證、未發布；使用者請求不等於授權。
+
 ## Never Deferred 永不延后
 Privacy, source/freshness/provenance gates, truthful unavailable/error fallback, webhook/command correctness, actual LINE launch smoke. 隐私、来源/新鲜度/溯源门禁、真实不可用/错误回退、webhook/命令正确性、真实LINE上线冒烟。
 

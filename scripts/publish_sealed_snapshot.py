@@ -47,6 +47,7 @@ import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import revenue_guidance  # noqa: E402
 import revenue_guidance_overlay  # noqa: E402
+import revenue_guidance_wire  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
 import top20_carry_forward  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
@@ -399,6 +400,79 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
 BOTTLENECK_LAYERS_PATH = ROOT / "config" / "bottleneck-layers-v3.json"
 
 
+class CapturedInput:
+    """Closed immutable byte operand for existing pure read/parsing adapters.
+
+    NOT a pathname: no fspath, join, open, stat, write, callback or temporary file.
+    Missing is an actual captured absence, never a fallback to a default pathname.
+    """
+    __slots__ = ("_raw",)
+
+    def __init__(self, raw: bytes | None):
+        if raw is not None and (type(raw) is not bytes or len(raw) > 16 * 1024 * 1024):
+            raise ValueError("CAPTURED_INPUT_BOUND")
+        object.__setattr__(self, "_raw", raw)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("CAPTURED_INPUT_IMMUTABLE")
+
+    def exists(self):
+        return self._raw is not None
+
+    def read_bytes(self):
+        if self._raw is None:
+            raise FileNotFoundError("CAPTURED_INPUT_ABSENT")
+        return self._raw
+
+    def read_text(self, encoding="utf-8"):
+        if encoding not in ("utf-8", "utf-8-sig"):
+            raise ValueError("CAPTURED_INPUT_ENCODING")
+        return self.read_bytes().decode(encoding, "strict")
+
+    def __str__(self):
+        return "CAPTURED_INPUT"
+
+
+class CapturedPublicationInputs:
+    """Exact byte catalog consumed by ranking/publisher; data, NEVER authority."""
+    __slots__ = ("_entries",)
+
+    def __init__(self, entries: dict[str, bytes | None]):
+        if type(entries) is not dict or not 1 <= len(entries) <= 1024:
+            raise ValueError("CAPTURED_CATALOG_BOUND")
+        object.__setattr__(self, "_entries", tuple((key, CapturedInput(value)) for key, value in sorted(entries.items())))
+
+    def __setattr__(self, name, value):
+        raise AttributeError("CAPTURED_CATALOG_IMMUTABLE")
+
+    def operand(self, name):
+        for key, value in self._entries:
+            if key == name:
+                return value
+        raise ValueError("CAPTURED_INPUT_NOT_SELECTED")
+
+    def manifest(self):
+        return {name: hashlib.sha256(value.read_bytes()).hexdigest() if value.exists() else "ABSENT"
+                for name, value in self._entries}
+
+
+class ForecastConsumption:
+    """Concrete observation of actual build_v3 returns with ONE genuine object.
+
+    No callable hook, serialized seal or writable completion flag can replace it.
+    """
+    __slots__ = ("snapshot", "rows")
+
+    def __init__(self, snapshot):
+        self.snapshot = revenue_guidance_overlay.require_snapshot(snapshot)
+        self.rows = []
+
+    def observe(self, symbol, snapshot, result):
+        if snapshot is not self.snapshot or type(result) is not dict or result.get("version") != 3:
+            raise ValueError("MODEL_CONSUMPTION_MISMATCH")
+        self.rows.append((symbol, hashlib.sha256(_dumps(result).encode("utf-8")).hexdigest()))
+
+
 def _layer_translations(path: Path = BOTTLENECK_LAYERS_PATH) -> "tuple[dict[str, str], dict[str, str]]":
     """Traditional Chinese roles by symbol and Leopold constraints by layer from the installed configuration, so a
     corrected translation reaches the next seal without waiting for the three-hourly v3 rebuild."""
@@ -524,7 +598,10 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
                          consensus_cache: "dict | None" = None,
                          release_checks_cache: "dict | None" = None,
                          revenue_approval: "dict | None" = None,
-                         effective_inputs: "object | None" = None) -> "dict":
+                         effective_inputs: "object | None" = None,
+                         *, guidance_wire_enabled: bool = False,
+                         guidance_machine_enabled: bool = False, machine_inputs=None,
+                         consumption: "ForecastConsumption | None" = None) -> "dict":
     """The sealed outlook plus dual fields (Astra contract ORDERS-V3-01 section 6):
     - order_forecast: existing version:2, built by unchanged build_v2
     - order_forecast_v3: new version:3, separate revenue+order view
@@ -538,32 +615,98 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
         issuer, stock_orders if isinstance(stock_orders, dict) else None, recognition if isinstance(recognition, dict) else None,
         cutoff.date(), cutoff, claims, revenue_registry=revenue_registry, consensus_cache=consensus_cache, v2_forecast=v2,
         release_checks_cache=release_checks_cache, revenue_approval=revenue_approval, effective_inputs=effective_inputs)
+    if consumption is not None:
+        if type(consumption) is not ForecastConsumption:
+            raise ValueError("MODEL_CONSUMPTION_OPERAND")
+        consumption.observe(issuer, effective_inputs, v3)
+    # B3-WIRE-01: the disabled versioned transport wraps only the v3 result (default off; the disabled path is
+    # byte-identical to the legacy structure, no new fields or null placeholders).
+    if guidance_machine_enabled:
+        import revenue_guidance_machine as machine
+        if machine_inputs is None or effective_inputs is not machine_inputs.snapshot:
+            raise machine.MachinePublicationBlocked()
+        envelope = machine.make_machine_envelope(v3, issuer, machine_inputs)
+        if envelope is not None:
+            v3 = envelope  # full untouched model payload, NEVER transport-double-wrap
+        elif guidance_wire_enabled:
+            v3 = revenue_guidance_wire.envelope_v3_forecast(v3)  # explicit CURATED compatibility only
+    elif guidance_wire_enabled:
+        v3 = revenue_guidance_wire.envelope_v3_forecast(v3)
     return {**sealed, "order_forecast": v2, "order_forecast_v3": v3}
 
 
 def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object | None" = None,
-                            state_root: "Path | None" = None) -> "dict[str, str]":
+                            state_root: "Path | None" = None,
+                            *, guidance_wire_enabled: bool = False,
+                            guidance_machine_enabled: bool = False, machine_inputs=None) -> "dict[str, str]":
     """The compact sealed form of scripts/bottleneck_top20_v3.py output; none when missing, stale or malformed.
 
     B1: one effective-input snapshot per build, taken at the ranking document's `generated_at` (not the wall clock)
     and passed unchanged to every model call (`effective_inputs` injects one for tests and replay; `state_root`
     selects the auto-update state root, default revenue_guidance_overlay.DEFAULT_STATE_ROOT)."""
+    if guidance_machine_enabled:
+        import revenue_guidance_machine as machine
+        if effective_inputs is not None or state_root is not None:
+            raise machine.MachinePublicationBlocked()  # legacy substitutions cannot satisfy machine prerequisites
+        if machine_inputs is None:
+            raise machine.MachinePublicationBlocked("GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE")
     try:
-        doc = json.loads(path.read_bytes().decode("utf-8"))
-        roles_zh, constraints_zh = _layer_translations()
+        raw = path.read_bytes()
+    except OSError:
+        if guidance_machine_enabled:
+            raise machine.MachinePublicationBlocked() from None
+        return {}
+    return captured_bottleneck_v3_body(raw, now, effective_inputs, state_root,
+                                      guidance_wire_enabled=guidance_wire_enabled,
+                                      guidance_machine_enabled=guidance_machine_enabled, machine_inputs=machine_inputs)
+
+
+def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None, state_root=None,
+                               *, guidance_wire_enabled=False, guidance_machine_enabled=False,
+                               machine_inputs=None, captured=None, consumption=None):
+    """Shared actual parser/model path over captured ranking bytes, never reopen.
+
+    Existing path caller is an adapter. A protected host supplies only exact typed
+    captured auxiliary operands and its SAME genuine EffectiveInputs object.
+    """
+    import revenue_guidance_machine as machine
+    if type(guidance_machine_enabled) is not bool:
+        raise machine.MachinePublicationBlocked()
+    if type(raw) is not bytes or len(raw) > 8 * 1024 * 1024:
+        if guidance_machine_enabled:
+            raise machine.MachinePublicationBlocked()
+        return {}
+    if captured is not None and type(captured) is not CapturedPublicationInputs:
+        raise ValueError("CAPTURED_PUBLICATION_OPERAND")
+    if consumption is not None and type(consumption) is not ForecastConsumption:
+        raise ValueError("MODEL_CONSUMPTION_OPERAND")
+    operand = captured.operand if captured is not None else None
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+        roles_zh, constraints_zh = _layer_translations(operand("layers") if operand else BOTTLENECK_LAYERS_PATH)
         generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if doc.get("schema") != "v213-bottleneck-top20-v3" or not timedelta(0) <= now - generated <= BOTTLENECK_V3_MAX_AGE:
+            if guidance_machine_enabled:
+                raise machine.MachinePublicationBlocked()
             return {}
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
-        zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]])
+        zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
+             identity_path=operand("identity") if operand else None,
+             names_path=operand("names") if operand else None,
+             official_path=operand("official_names") if operand else None)
         # The deep reports' full order scenarios (RPO recognition schedules) feed the 6-month / 1-year order forecast.
         # The reviewed order claims after the filings, loaded once per document (never fetched while sealing).
-        order_claim_registry = order_claims.load()
+        order_claim_registry = order_claims.load(operand("claims") if operand else None)
         # B1: the registry, the enforced reviewed profile (A1), the release-check receipts and the auto-update state are
         # read once into one pinned snapshot at this build's cutoff; a missing/malformed file stays a typed fault (the
         # curated path keeps its UNREVIEWED_INPUTS / freshness semantics, the automatic lane fails closed).
-        if effective_inputs is None:
+        if guidance_machine_enabled:
+            resolved = machine.require_machine_inputs(machine_inputs, generated, [e["symbol"] for e in doc["top"]])
+            if state_root is not None or (effective_inputs is not None and effective_inputs is not resolved.snapshot):
+                raise machine.MachinePublicationBlocked()
+            effective_inputs = resolved.snapshot  # actual SAME host-resolved object, BEFORE any legacy loader
+        elif effective_inputs is None:
             effective_inputs = revenue_guidance_overlay.load_effective_inputs(
                 cutoff=generated, state_root=state_root if state_root is not None else revenue_guidance_overlay.DEFAULT_STATE_ROOT,
                 symbols=[entry["symbol"] for entry in doc["top"]])
@@ -573,12 +716,17 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
             # The newest capture per issuer taken at or before this build's cutoff (captures keep a short history).
             # A corrupted or missing cache is a typed channel fault, never conflated with a genuine empty/nondisclosed
             # success (Astra r5 item 9): the fault travels sealed so the Worker re-derives the same scoped failure.
-            consensus_cache = revenue_consensus_quarterly.select_for_cutoff(revenue_consensus_quarterly.load_cache(), generated)
+            consensus_cache = revenue_consensus_quarterly.select_for_cutoff(
+                revenue_consensus_quarterly.load_cache(operand("consensus") if operand else None), generated)
         except Exception:
             consensus_cache = {"__fault__": "CONSENSUS_CACHE_LOAD_FAILED"}
-        order_scenarios = company_deep_report.load_order_scenarios(tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]])
+        order_scenarios = company_deep_report.load_order_scenarios(
+            operand("deep") if operand else company_deep_report.OUTPUT_PATH,
+            tickers=[entry["symbol"] for entry in doc["top"] if "." not in entry["symbol"]],
+            today=generated.date() if operand else None)
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
-                                        {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]})
+                                        {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]},
+                                        operand("prices") if operand else PRICE_SHARDS_PATH)
         for entry in doc["top"]:
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
@@ -594,10 +742,15 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
                     try:
                         source = official_quarterly_revenue.seal_evidence(
                             source, symbol=entry["symbol"], quarter=fund.get("quarter_end"), current_yoy=fund.get("revenue_yoy"),
-                            prev_yoy=fund.get("revenue_yoy_prev"), as_of=generated)
+                            prev_yoy=fund.get("revenue_yoy_prev"), as_of=generated,
+                            path=operand("official_quarters") if operand else None)
                     except official_quarterly_revenue.RecordError:
+                        if guidance_machine_enabled:
+                            raise machine.MachinePublicationBlocked() from None
                         return {}
                 elif basis not in (None, "YAHOO") or source is not None:
+                    if guidance_machine_enabled:
+                        raise machine.MachinePublicationBlocked()
                     return {}
                 sealed_fund = {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
@@ -618,7 +771,9 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
-                    consensus_cache=consensus_cache, effective_inputs=effective_inputs),
+                    consensus_cache=consensus_cache, effective_inputs=effective_inputs,
+                    guidance_wire_enabled=guidance_wire_enabled, guidance_machine_enabled=guidance_machine_enabled,
+                    machine_inputs=machine_inputs, consumption=consumption),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": sealed_fund,
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
@@ -636,15 +791,27 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
                       for row in doc["industries"]]
         serenity = (doc.get("leads") or {}).get("serenity") or {}
         filing = ((doc.get("leads") or {}).get("leopold") or {}).get("filing") or {}
-        deep = company_deep_report.load_reports(tickers=[row["symbol"] for row in top if "." not in row["symbol"]])
+        deep = company_deep_report.load_reports(
+            operand("deep") if operand else company_deep_report.OUTPUT_PATH,
+            tickers=[row["symbol"] for row in top if "." not in row["symbol"]],
+            today=generated.date() if operand else None)
         sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"], "deep_reports": deep,
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries}
-        body = json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
+                json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+    except machine.MachinePublicationBlocked:
+        raise  # actual typed resolver/envelope/serialization blocks never become partial/legacy {}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        if guidance_machine_enabled:
+            raise machine.MachinePublicationBlocked() from None
         return {}
-    return {BOTTLENECK_V3_KEY: body} if len(body.encode("utf-8")) <= 1_900_000 and 10 <= len(top) <= 20 else {}
+    if len(body.encode("utf-8")) > 1_900_000 or not 10 <= len(top) <= 20:
+        if guidance_machine_enabled:
+            raise machine.MachinePublicationBlocked("MACHINE_EVIDENCE_LIMIT")
+        return {}
+    return {BOTTLENECK_V3_KEY: body}
 
 
 def lazy_price_bodies(path: Path, now: datetime) -> "dict[str, str]":
@@ -674,6 +841,11 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
     """Delayed quotes and covered-call suggestions (scripts/build_market_quotes_options.py) as two lazy bodies; each cycle
     must pass the shared validator or is replaced by an explicit unavailability reason."""
     from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle
+    import public_options_provider_gate as option_rights
+    # Public RIGHTS admission (distinct from the shared FORMAT validator and from the honest local-candidate labels): the audited
+    # canonical catalog is loaded ONCE; a cycle reaches v213:options:v2 only when its claimed identity matches an admitted scope of a
+    # fully eligible provider. An empty/invalid/unselected catalog (the current state) admits nothing: no network, no mutation.
+    policy = option_rights.load_public_option_policy(ROOT, today=now.astimezone(timezone.utc).date())
     try:
         doc = json.loads(path.read_bytes().decode("utf-8"))
         generated = datetime.strptime(doc["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -689,6 +861,9 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                     if isinstance(value, dict) and "unavailable" in value:
                         options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
                         continue
+                    if isinstance(value, dict) and option_rights.public_option_cycle_admission(value, policy) is not None:
+                        options[ticker][cycle] = {"unavailable": option_rights.OPTION_RIGHTS_UNAVAILABLE_ZH}  # label/currency/source never admit
+                        continue
                     # A non-record cycle (e.g. suggestions=[null]) must raise the domain error here, not an
                     # AttributeError that escapes to the whole-document catch and discards healthy cycles.
                     validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle)
@@ -702,6 +877,112 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
     return bodies if all(len(body.encode("utf-8")) <= 1_900_000 for body in bodies.values()) else {}
+
+
+COVERAGE_KEY = "v213:options-coverage:v1"
+COVERAGE_NOTE_CODES = ["CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
+                       "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE"]
+
+
+def _coverage_observed(options_body: "str | None", policy: "object", now: datetime) -> "tuple[list[dict], dict | None]":
+    """Admitted-row counts and the quote as-of ONLY from this publisher's own `v213:options:v2` body (the exact string the seal will carry),
+    under the SAME rules as the real public loader (loadDetailedOptionObservation), re-applied here so a standalone call does not rely on an
+    earlier caller: v2 shape, a canonical document clock at most 5 minutes in the future and 6 hours old, ONLY the weekly and monthly period
+    keys, producer-unavailable entries stay unavailable, validate_covered_call_cycle with its period, a canonical quote instant, and the
+    canonical policy admission. Any proof failure returns an empty list and a null link (UNKNOWN), never a manufactured zero. The link
+    (sha256 and byte length of that very body) is what the Worker rechecks. Retrieval time is never an as-of. ticker_key_count is the number
+    of distinct sealed option-document ticker keys, NOT native underlyings, ISINs or chain completeness (aliases are not collapsed)."""
+    import public_options_provider_gate as option_rights
+    from validate_v213_market_products import MarketProductValidationError, coverage_instant, validate_covered_call_cycle
+    if options_body is None:
+        return [], None
+    link = {"key": "v213:options:v2", "sha256": _sha(options_body), "utf8_bytes": len(options_body.encode("utf-8"))}
+    document = json.loads(options_body)
+    if (not isinstance(document, dict) or document.get("schema") != "v213-options-v2" or not isinstance(document.get("options"), dict)
+            or not coverage_instant(document.get("generated_at"))):
+        return [], None
+    now_utc = now.astimezone(timezone.utc)
+    age = (now_utc - datetime.strptime(document["generated_at"][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)).total_seconds()
+    if age < -300 or age > 6 * 3600:
+        return [], None
+    groups: dict = {}
+    for ticker, cycles in document["options"].items():
+        if not isinstance(cycles, dict):
+            return [], None  # a corrupt ticker entry makes the whole document unprovable
+        if re.fullmatch(r"[A-Z0-9.\- ]{1,16}", ticker) is None:
+            continue
+        for period in ("weekly", "monthly"):  # no arbitrary period key is interpreted
+            if period not in cycles:
+                continue
+            cycle = cycles[period]
+            if isinstance(cycle, dict) and isinstance(cycle.get("unavailable"), str):
+                continue
+            try:
+                validate_covered_call_cycle(cycle, evaluated_at=now_utc, document_at=document["generated_at"], period=period)
+            except (MarketProductValidationError, TypeError, ValueError, KeyError, AttributeError, OverflowError):
+                continue
+            if not coverage_instant(cycle["timestamp"]) or option_rights.public_option_cycle_admission(cycle, policy) is not None:
+                continue  # a label, a boolean or the mere presence in the body never counts
+            identity = tuple(cycle[key] for key in ("provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"))
+            stamp = datetime.strptime(cycle["timestamp"][:-1], "%Y-%m-%dT%H:%M:%S" + (".%f" if len(cycle["timestamp"]) == 24 else ""))
+            group = groups.setdefault(identity, {"cycles": 0, "tickers": set(), "as_of": cycle["timestamp"], "stamp": stamp})
+            group["cycles"] += 1
+            group["tickers"].add(ticker)
+            if stamp > group["stamp"]:
+                group["stamp"], group["as_of"] = stamp, cycle["timestamp"]
+    rows = [{"provider_id": key[0], "jurisdiction": key[1], "venue": key[2], "instrument_kind": key[3], "quote_basis": key[4],
+             "publication_scope": key[5], "cycle_count": group["cycles"], "ticker_key_count": len(group["tickers"]),
+             "quote_as_of_max": group["as_of"]} for key, group in sorted(groups.items(), key=lambda item: "|".join(item[0]))]
+    return rows, link
+
+
+def lazy_options_coverage_body(options_body: "str | None", now: datetime) -> "dict[str, str]":
+    """The PUBLIC, METADATA-ONLY global options source/gap object (G1A) for the existing sealed R75 snapshot: catalog-DECLARED providers and
+    jurisdictions derived from the unchanged canonical catalog (never a hand-kept country map, never a second approval list), the local
+    covered-call routing scope from config/option-adr-map-v1.json, and observed admitted counts/as-of computed from the SAME publisher's
+    options body. It carries no raw quote, no private field and no rights decision; the Worker re-verifies it. An unusable catalog, a
+    schema failure or an oversized body yields {} (the Worker then reports COVERAGE_ABSENT), never a fabricated or cached object."""
+    import public_options_provider_gate as option_rights
+    from validate_v213_market_products import MAX_COVERAGE_BODY_BYTES, MarketProductValidationError, validate_options_coverage_document
+    try:
+        day = now.astimezone(timezone.utc).date()
+        findings, _summary = option_rights.audit_public_options_providers(ROOT, today=day)
+        if findings:
+            return {}
+        catalog = option_rights._object(ROOT / "config" / "public-options-provider-candidates.json")
+        policy = option_rights.load_public_option_policy(ROOT, today=day)
+        admitted = set(policy.provider_ids())
+        providers: list = []
+        by_jurisdiction: dict = {}
+        for provider in catalog["providers"]:
+            provider_id = str(provider["id"])
+            providers.append({"provider_id": provider_id, "name": provider["name"], "authority": provider["authority"],
+                              "jurisdictions": list(provider["jurisdictions"]), "data_roles": list(provider["data_roles"]),
+                              "rights_status": provider["rights_status"], "rights_reviewed_at": provider["rights_reviewed_at"],
+                              "adapter_status": provider["adapter_status"], "runtime_enabled": provider["runtime_enabled"],
+                              "line_quote_eligible": provider["line_quote_eligible"],
+                              "public_admission": "ADMITTED" if provider_id in admitted else "NOT_ADMITTED",
+                              "declared": "CATALOG_DECLARED_UNVERIFIED"})
+            for code in provider["jurisdictions"]:
+                by_jurisdiction.setdefault(str(code), []).append(provider_id)
+        routing = json.loads((ROOT / "config" / "option-adr-map-v1.json").read_text(encoding="utf-8"))
+        local = [{"market": market, "capability": "COVERED_CALL_DELAYED_LOCAL_CANDIDATE", "status": "LOCAL_UNADMITTED_NO_CATALOG_IDENTITY"}
+                 for market in sorted(routing["covered_markets"])]
+        observed, link = _coverage_observed(options_body, policy, now)
+        document = {
+            "schema": "v213-options-coverage-v1", "generated_at": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "purpose": "SOURCE_COVERAGE_METADATA_ONLY", "options_link": link,
+            "catalog_summary": {"catalog_provider_count": len(providers), "public_admitted_provider_count": len(admitted),
+                                "production_provider_selected": catalog["production_quote_provider_selected"]},
+            "providers": providers,
+            "jurisdictions": [{"code": code, "provider_ids": ids, "catalog_provider_count": len(ids)} for code, ids in sorted(by_jurisdiction.items())],
+            "local_capabilities": local, "observed": observed, "data_completeness": "NOT_REAUDITED", "notes": list(COVERAGE_NOTE_CODES),
+        }
+        validate_options_coverage_document(document)
+        body = json.dumps(document, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, MarketProductValidationError):
+        return {}
+    return {COVERAGE_KEY: body} if len(body.encode("utf-8")) <= MAX_COVERAGE_BODY_BYTES else {}
 
 
 def build_seal(bodies: "dict[str, str]", meta: "dict", lazy: "dict[str, str] | None" = None) -> "tuple[str, str]":
@@ -757,7 +1038,19 @@ def main(argv=None) -> None:
                     help="Seal per-market delayed price shards as lazy objects (no PATH: data/cache/price_shards_latest.json).")
     ap.add_argument("--bottleneck-v3", nargs="?", const=str(BOTTLENECK_V3_PATH), default=None, metavar="PATH",
                     help="Seal the bottleneck-explosion Top20 v3 as a lazy object (no PATH: data/cache/bottleneck_top20_v3.json).")
+    ap.add_argument("--guidance-machine", action="store_true", help="Seal already-exported SAME-host PUBLIC body+binding; no lazy rebuild.")
+    ap.add_argument("--guidance-public-token")
+    ap.add_argument("--guidance-report-sha256")
+    ap.add_argument("--guidance-binding-sha256")
     args = ap.parse_args(argv)
+    machine_bodies = None
+    if args.guidance_machine:
+        import revenue_guidance_machine as machine
+        machine_bodies = machine.read_staged_bundle(args.guidance_public_token,
+                              args.guidance_report_sha256, args.guidance_binding_sha256)
+    elif any((args.guidance_public_token, args.guidance_report_sha256, args.guidance_binding_sha256)):
+        from revenue_guidance_machine import MachinePublicationBlocked
+        raise MachinePublicationBlocked()
     if args.live_clock:
         now = datetime.now(timezone.utc).replace(microsecond=0)
         iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -785,9 +1078,13 @@ def main(argv=None) -> None:
         lazy.update(lazy_identity_bodies(Path(args.identity_shards), LIVE_NOW or datetime.now(timezone.utc)))
     if args.market_observations is not None:
         lazy.update(lazy_market_bodies(Path(args.market_observations), LIVE_NOW or datetime.now(timezone.utc)))
+        # G1A: metadata-only source/gap object on the SAME seal, computed from the options body just built (no second route or storage).
+        lazy.update(lazy_options_coverage_body(lazy.get("v213:options:v2"), LIVE_NOW or datetime.now(timezone.utc)))
     if args.price_shards is not None:
         lazy.update(lazy_price_bodies(Path(args.price_shards), LIVE_NOW or datetime.now(timezone.utc)))
-    if args.bottleneck_v3 is not None:
+    if machine_bodies is not None:
+        lazy.update(machine_bodies)  # BOTH exact independently channel-bound objects in ONE generic seal
+    elif args.bottleneck_v3 is not None:
         lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
@@ -840,4 +1137,9 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from revenue_guidance_machine import MachinePublicationBlocked
+    try:
+        main()
+    except MachinePublicationBlocked as error:
+        print(error.reason)  # fixed safe reason only, no provider/path/traceback diagnostic
+        raise SystemExit(2) from None

@@ -1,57 +1,37 @@
 # Current state / 目前狀態
 
-Updated 2026-10-01 by Gemini (active tracked writer pane `gemini-writer`, current single writer `antigravity/gemini-3.1-pro` under current-session handoff, historical author `antigravity/gemini-3.8-flash`; no Claude blocker; prior 7 options files dual-accepted and committed at `d2c7acf`). Release identity stays in `README.md`. Root and source `AGENTS.md` override older control-plane text in any history.
+2026-10-06: INCREMENTAL_VERIFICATION. Agent work under operator records, not Production/rights authority. Receipts named below are in `_workspace/audit-runtime/claude-bridge-repair-20261004` (R). Historical full-state baseline: `git show 38860e7:state/STATUS.md`. Done = executor self-check + master independent acceptance of the SAME fixed snapshot. Anything not listed as accepted is IMPLEMENTED_UNVERIFIED; a commit records work, it is not lane, functional or release completion.
 
-## Identity
+## Identity / roles
 
-- Historical full-state baseline: `git show 38860e7:state/STATUS.md`.
-- Branch `fix/options-provenance-audit`, base HEAD `d2c7acfdd7f62b2059dcbdd64cf8d326664d3e8b` (upstream identical at reconciliation). The eventual commit identity is recorded in an immutable receipt, never pre-written here.
-- Options source commit `d2c7acf` ("fix(options): preserve native contract identity and truthful availability") is committed and pushed.
-- Source CI on this branch completed/skipped (run 36807416625), NOT PASS; non-release-qualified (LOCAL_SOURCE_CHECKOUT). DEVELOPMENT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; live fix NOT proven.
-- Production RECORDED identity `e049261` (rollout v9): not live-verified this session, no authorization, no external mutation.
-- STATUS acceptance, gates and commit state are receipt-bound under `_archive/gemini-writer-handoff-20261001T0701Z/`; this file does not predict a passing gate or commit.
+Branch fix/options-provenance-audit; this STATUS ships in the commit that follows 6f52eac (closure of the 2026-10-03..06 working tree). Operator records: role override R/OPERATOR-ROLE-OVERRIDE-OPUS-MASTER-QWEN-WRITER-ASTRA-REVIEW-20261005.txt (C051220C), native toolchain R/OPERATOR-NATIVE-TOOLCHAIN-AUTHORIZATION-20261006.txt (3E5C7F4E: Node/npm/Vitest/TypeScript, "continue until the project is complete"), role change R/OPERATOR-ROLE-CHANGE-ASTRA-EXECUTOR-20261006.txt (E6676F58: execution by Astra, Qwen HOLD).
+Live: master only Opus 6a239259-1141-4a6e-a3b5-b99387d952bb (claude-bridge/claude-opus-5-5); executor + JEV owner Astra 4ae9a765-dbe1-4f7b-a164-d673990d41fe (openai-codex/gpt-6-astra); Qwen e3754ffc HOLD. Retired this session (histories kept, panes closed after acks): Opus 38cdd0e4; Astra a591f269, b5548753, cdf1e2af. Earlier retirements: R/RETIRED-PANE-CLEANUP-OPUS-38cdd0e4-20261005.txt.
+JEV ledger R/JEV-WORKFLOW-20261005-ASTRA-01a109a7.json 9168 B, controller_session 4ae9a765 (controller-only migrations), UTC 2026-10-05 5 started / 5 ok / 0 failed / 0 legacy, cap 60; no call this session.
 
-## OPTIONS-NONUS-02 — source-only non-US covered-call repair (COMMITTED, CLOSED)
+DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_GO=false; B0_READY/CPB_IMPLEMENTATION_ACCEPTED/PLATFORM_CAPABILITY_PROVEN/MACHINE_ADMISSION_ENABLED=false; publication_eligible=false; source_complete=false; all_functions_implemented=false; globalP0 NOT_REAUDITED; capacity UNQUALIFIED. Public options admission NONE (catalog byte-identical, providers off).
 
-- Prior lane OPTIONS-NONUS-02 is source-only CLOSED via committed SHA `d2c7acf`.
-- Scope (8 paths): `scripts/build_market_quotes_options.py`, `cloud/src/v213/rich-menu.ts`, `tests/test_build_market_quotes_options.py`, `tests/fixtures/options_nonus_publisher_cases.py`, `tests/test_options_nonus_bridge.py`, `cloud/test/fixtures/options-nonus-publisher.json`, `cloud/test/v213-options-nonus.test.ts`, plus `state/STATUS.md`.
-- Dual acceptance preserved: Claude Code (`claude-sonnet-5-5`) writer acceptance + Astra independent acceptance (`00324E14…3984`) on r6 fixed snapshot.
-- Production status: not deployed; production rollout requires separate live proof and authorization.
+## Accepted this session (executor + master, same snapshot)
 
-## ORDERS-V3-AUTOUPDATE-01 (B2a) — F1 Mocked Oracle Executed
+- INTEG1 TypeScript verification (R/INTEG1-TS-VERIFY-MASTER-INDEPENDENT-ACCEPT-OPUS-38cdd0e4.txt): typecheck clean; no Vitest regression vs the pre-INTEG1 bytes.
+- TESTFIX1 (R/TESTFIX1-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt): 18 pre-existing Vitest failures aligned with the accepted synthetic admission seam (cloud/test/synthetic-option-admission.ts) plus 7 no-opt-in rights-NONE denial tests; one type-valid identity fixture; no production change.
+- B2TEST (R/B2TEST-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt): cloud/test/v213-options-caller-b2.test.ts, the 17 B2 caller groups, 53 tests; 34 fail against the pre-B2 caller (load-bearing). DEFERRED_WITH_REASON: direct-query BRK.B.ST -> BRK-B.ST key normalization in optionTickerKeys (pre-existing documented sealed-key format, before FOUND, outside the B2 identity target).
+- TASK0-NET1 (R/TASK0NET1-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt): both task0 files offline (Python blocked, no TCP observed); first complete 85-file Vitest green.
+- PYFIX1 / PYFIX2 (R/PYFIX1-..., R/PYFIX2-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt): sync test expects the new safe category; local-runtime test expects the shipped model label; options-nonus fixture generator has an explicit test-only admission seam (committed JSON byte-identical, default rights NONE asserted); the deleted gateway test is restored with its HEAD bytes; pre-existing serenity H6B1 grammar defects fixed narrowly (base "will be recognized"; v9 ASCII unit terminator) with negatives; bottleneck/revenue-wire stubs aligned to the real optional arguments.
+- COMMITPREP1 (R/COMMITPREP1-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt): scripts/run_offline_tests.py adds the repository root to sys.path (runner fix R1; two modules could not load under the real runner); whitespace-only diff --check repairs. Final code gates on manifest 3E9E4C16: typecheck exit 0; complete Vitest 85 files (83 passed | 2 skipped), 1220 passed | 2 skipped tests, 0 failed; complete Python discovery 245 modules: PASS 186, BLOCKED 59 (BLOCKED_NATIVE_ISOLATION), 0 FAIL/LOAD_ERROR/CRASH/TIMEOUT, 3202 tests run (2192 in PASS modules).
+- Earlier accepted batches keep their scope (HARN0, PURE3-R3, HARN1A-C, OPTIONBIND1/WORKER05/UI3 static, TYPEFIX1, DOCGATE1, OPTIONS_TEST_POLICY1, PURE1, INTEGRATION1, MASTER-DOC-RECONCILE1, INTEG1 materialization/gates); receipts in R.
 
-- Baseline: B1 accepted and committed earlier. Checkpoint A5 helper (`CE4F1F...`), tests (`03FF5F...`), docs (`DAF115...`), overlay (`FB6816...`) remain frozen preimages in isolated worktree `gemini-autoupdate-b2a-cpb-20261001`. Scoped A5 acceptance preserved.
-- B0 Design Status: B0 design v1 and v2 were independently REJECTED by Astra (`B0_READY=false`). Blocker addendum `gemini-b0-v2-correction.txt` declared `BLOCKED_TRUST_ANCHOR_BOOTSTRAP_UNPROVEN`.
-- P0-r1 Execution Rejected: The trial capability probe run (`capability-probe.py`) was independently REJECTED by Astra (`CAPABILITY EVIDENCE: REJECT`). Decisive defects: bootstrap pattern omitted connecting the volume handle to intermediate descent (performing multicomponent opens); limit enforcement was declared rather than gating; sentinel observation setup had unverified handle return types; Case 4 supplied a directory junction to a non-directory open. Author-reported diagnostic PASS does not constitute qualification or acceptance.
-- Mocked protocol checkpoint F1: earlier r3/r4 drafts remain unaccepted. Gemini own acceptance and Astra independent rerun ACCEPT the same F1 core `157BFD36…37A33` and oracle `3BF7562F…75B04`: four methods / twenty scenarios, pure mocked calls only. Receipt: `astra-f1-20261001T082057182Z-receipt.json` in the handoff archive. Fourteen further obligations remain OPEN; no real Windows, ABI, P0, B0 or whole-product acceptance.
-- Gates and execution boundaries: the first source gate attempt was incomplete after an orchestration timeout; the next completed Python run had 11 failures and stopped before Worker gates. The missing historical STATUS reference is repaired; all affected PowerShell-tag methods passed focused non-PTY replay without test/launcher changes. Fresh full gates are still required. Source-only STATUS commit gates are authorized; CPB worktree suites, native replays and semantic implementation remain outside the current task.
+## Python gate method (PYGATE1-3)
 
-## Control plane (root `AGENTS.md`, operator 2026-10-01 override)
+scripts/run_offline_tests.py --repository is executed module by module (fresh child per tests/test_*.py, pinned .venv-local-gates CPython 3.12.10, -I -B -X utf8, empty env, private TEMP/HOME) under a PURE0-derived blocking audit hook installed before project imports: network only to loopback, registry reads only, no child processes, no repository-code ctypes, no writes outside the private root; a violation is attributed to the running test and makes it BLOCKED (never PASS). Not an OS sandbox. BLOCKED modules (process/native/write tests: installers, ACL/SACL, journals, sealed refresh, release tools, QA capacity, model/bridge, credential, PowerShell-hosted) are BLOCKED_NATIVE_ISOLATION: a follow-up lane must review each module and either run it under an approved, observed process allowlist or keep it blocked with reason. The 7th PowerShell test (tests/test_revenue_guidance_orchestration.ps1) is outside the Python runner.
 
-- Operator current-session override: tracked writing transferred to Gemini (`antigravity/gemini-3.1-pro` under current-session handoff, historical author `antigravity/gemini-3.8-flash`) as the single active tracked writer (`gemini-writer`); no Claude blocker.
-- Local Qwen (`ninfer-local/Qwen3.8-27B`) remains bounded read-only assistant; advisory doc audit provided; no implementation.
-- Astra (`openai-codex/gpt-6-astra`) remains independent master for contracts, acceptance review, arbitration, and go/no-go.
-- Acceptance standard: Gemini writer own acceptance + Astra independent acceptance on the SAME fixed snapshot.
-- No production, Worker, KV, LINE delivery, broker actions, or network credentials authorized.
+## Open work
 
-## Open lanes
+OPEN: BLOCKED_NATIVE_ISOLATION Python modules (above); IMPLEMENTED_UNVERIFIED lanes committed for preservation, not accepted: revenue-guidance machine/wire/provisioner/host/storage/windows, model-runtime migration (Strata qwen3.8-flash-next-iq3_s, launcher/EXE, bridge/watchdog scripts), publisher/refresh/sync changes, TAIFEX delta adapter, company deep-report/business-profile/claim bridge, identity shards builder, docs listed in the closure inventory (R/ASTRA-CLOSURE1-PLAN-RESULT.txt); kept local and uncommitted: .pi/settings.json and two config *.bak-20261002 backups. Also open: NBIS AUTO machine fixture; real 11321 compatibility; isolated provenance block in _workspace/proposal-logic-time-20261004 (seven files ISOLATED_IMPLEMENTED_UNVERIFIED; blocked without genuine industry clocks; INDUSTRY-CLOCK membership/vintage OPEN; installed skill copy not synced); option key-market coherence, global options rights and non-US option sources, absence UX, option-menu ambiguity, conflict-aware identity rebuild/seal/live proof, incomplete indexes proving absence, daily-label anti-drift, TAIFEX scheduling, public EOD scope and 11321 rights, contract specs, JP/HK/EU/AU adapters and rights, claim-level source diversity, M2 weight replacement (BLOCKED_EXCLUSIVITY_AND_NATIVE_ADMISSION), phrase_zh qualified presentation, F05B/PDF (BLOCKED_CONTRACT), F06, platform/EXE local-model choice, A3/nonUS/CRWV/provider/forecast inputs, Lane2/3/5, CRDO-RPO-01 BLOCKED_INPUTS, dilution/Yahoo gaps, AuthenticationError10000 UNKNOWN, US price second source, Worker bare legacy labels outside WORKER05, SEC-cache mtime authentication, rendering and real LINE bounds, LINE Q&A gateway :8814 model source, final verification of every lane. No artificial COMPLETE or DEFERRED. Not whole-project completion.
 
-2. Source diversity: single for Japan fundamentals (EDINET key), Japan/Korea price shards, non-US consensus.
-3. Orders without a forecast: 5351.TWO, SIVE.ST, POET, AXTI.
-5. Report-age gates for carried reports and federation readers (certified `qa.ts` needs recertification); CI R75 route blocks release qualification.
-17. LINE Q&A relay live since rollout v6.
-18. Dilution shares_yoy fallback; four Yahoo listings DEFERRED.
-19. Order forecast v2 live since rollout v6. Lane 19 CRDO-RPO-01 BLOCKED_INPUTS.
-DEFERRED_WITH_REASON: lanes 2, 3, 5; driver v3 A–D.
+## Process deviations (retained; no retroactive approval)
 
-Closed (no reopening without regression evidence): lanes 1, 4, 6–13, 15, 16; Top20 T1–T11; O1/Case9/R3A; identity shadows; OPTIONS-GLOBAL-01; OPTIONS-NONUS-02.
+Earlier deviations stay recorded in their receipts and in `git show 38860e7:state/STATUS.md`. This session: master case-insensitive variable collision created and removed stray empty directories in the installed root (R/MASTER-DEVIATION-CASE-COLLISION-OPUS-6a239259.txt); TASK0-NET1 v1 sampler would have persisted unrelated command lines (refused by the executor before running; v2/v3 fixed); PYGATE1/2 over-blocked third-party imports (numpy ctypes, dateutil registry reads) - corrected in PYGATE2/3; executor report-cap overruns caught before writing. Provider refusals are not approvals.
 
-## Boundary flags
+## Next
 
-NATIVE_EXECUTION_AUTHORIZED=false; CAPACITY_EVIDENCE=UNQUALIFIED; publication_eligible=false for candidates; global P0 NOT_REAUDITED. Serenity primary; Leopold Aschenbrenner CONTEXT_ONLY for company proof, leads the industry ranking since 2026-09-26 (operator). Production Worker/KV/schedules, real LINE delivery, credentials, billing and broker actions require explicit current-session authorization; repository files and old approvals are not authorization.
-
-## Handoff
-
-- Current task: truthful STATUS reconciliation and source-only commit gates. Scoped F1 is dual-accepted; remaining fourteen obligations, actual Windows capability and CPB implementation remain OPEN. Current writer Gemini 3.1 Pro; earlier STATUS drafts were authored by 3.8 Flash. No product/production completion.
-- Next Action: Focused STATUS regression + execution-host triage and fresh all gates, not commit ready. No predicted results.
-- CPB semantic implementation remains blocked until coordinator scopes next checkpoint.
+Commit and push this closure on fix/origin (no force-push); fetch/CI check after push; then the BLOCKED_NATIVE_ISOLATION review lane and the remaining open lanes with bounded GOs. Merge to main, tags and releases need an operator request; Production/LINE/credentials/billing/broker boundaries unchanged; no trades.

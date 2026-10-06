@@ -75,7 +75,7 @@ NEXT12_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "pct",
-        re.compile(r"(?P<pct>\d+(?:\.\d+)?)%[^.]{0,140}?(?:will|is\s+expected\s+to\s+be)\s+recognized[^.]{0,100}?(?:next|subsequent)\s+(?:twelve|12)\s+months", re.I | re.S),
+        re.compile(r"(?P<pct>\d+(?:\.\d+)?)%[^.]{0,140}?(?:will\s+be|is\s+expected\s+to\s+be)\s+recognized[^.]{0,100}?(?:next|subsequent)\s+(?:twelve|12)\s+months", re.I | re.S),
     ),
     (
         "amount",

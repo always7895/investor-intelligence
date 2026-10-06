@@ -40,7 +40,7 @@ from historical_return_evidence import (
     build_two_year_return_evidence, ReturnEvidenceError, validate_return_observation,
 )
 from v213_v21_progress_runner import profitability_evidence, cashflow_evidence, liquidity_evidence, debt_evidence, FINANCIAL_V5_LIMITATIONS
-from company_business_profile import compose_industry, local_translator, resolve_business_profile, sec_fetcher
+from company_business_profile import FRESH_SOURCE_FACTS, resolve_business_profile, sec_fetcher
 from company_financial_products import build_financial_products, verify_financial_products, _json as parse_candidate_json
 from report_source_acquisition import (FIELDS, SourceAcquisitionError, digest, field_clock,
                                        row_time, unavailable, utc_time, validate_company_receipt,
@@ -375,11 +375,46 @@ def _market_observation(ticker: str, fallback_industry: str, *, evidence_sink: d
         return None, None, translate_industry(fallback_industry)
 
 
+def _utf16_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2  # a lone surrogate raises UnicodeEncodeError
+
+
+def compose_industry_detail(label: Any, excerpt: Any, *, limit: int = 100, minimum: int = 24) -> str | None:
+    """Operator rule 4: 「標籤：English excerpt」 inside the field's UTF-16 limit, or None. The excerpt is the fresh PRIMARY English
+    business text, automatically selected and clipped at a word boundary with 「…」 (an extract, not an exact quotation); astral
+    characters are never split; column separators are refused; a label that leaves fewer than ``minimum`` units, or any invalid
+    text, yields None (the gap is handled by the caller, never filled)."""
+    if not isinstance(label, str) or not isinstance(excerpt, str):
+        return None
+    try:
+        prefix = f"{label}："
+        room = limit - _utf16_units(prefix)
+        text = " ".join(excerpt.split())
+        if room < minimum or len(text) < 30 or "|" in text or "｜" in text:
+            return None
+        if _utf16_units(text) > room:
+            shown, used = "", 0
+            for char in text:
+                width = 2 if ord(char) > 0xFFFF else 1
+                if used + width > room - 1:
+                    break
+                shown, used = shown + char, used + width
+            cut = shown.rfind(" ")
+            text = (shown[:cut] if cut >= minimum else shown).rstrip(" ,;:-") + "…"
+        composed = prefix + text
+        return composed if _utf16_units(composed) <= limit else None
+    except UnicodeEncodeError:
+        return None
+
+
+# build(): ``business_details`` is the ONLY switch that requests the English business detail (CLI --business-profile). ``translate`` is
+# kept for API compatibility only: it neither enables the profile nor certifies anything, is never called, and no model is activated.
 def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = None,
           financial_evidence_sink: dict | None = None, debt_precision_bundle: bytes | None = None,
           require_known_acquisition: bool = False, translate: Callable[[str], str | None] | None = None,
           business_profile_sink: dict | None = None, profile_fetch: Callable[[str], bytes] | None = None,
-          profile_cache_root: Path | None = None, profit_display_sink: dict | None = None) -> dict[str, Any]:
+          profile_cache_root: Path | None = None, profit_display_sink: dict | None = None,
+          business_details: bool = False) -> dict[str, Any]:
     from debt_source_precision import prepare_bundle, LIMITATIONS as PRECISION_LIMITATIONS
     precision = prepare_bundle(debt_precision_bundle) if debt_precision_bundle is not None else None
     precision_used = False
@@ -437,16 +472,25 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
             precision_used = True
         if financial_evidence_sink is not None:
             financial_evidence_sink[ticker] = financial
-        # Operator rule 2026-09-25: the industry field says what the company does,
-        # from the latest SEC annual report, translated locally; label kept otherwise.
+        # Operator rule 2026-09-25 (docs/TOP20_UPSIDE_BRIDGE_V1.md rule 4): the industry field says what the company does. BIZ1: only the
+        # fresh PRIMARY English business excerpt (automatically selected and clipped, not an exact quotation) may say so (composition
+        # below). The explicit ``business_details`` switch requests it; no translator or model is ever used or inferred here.
         business = None
-        if official and translate is not None and 'sec' not in getattr(http, '_public_json_blocked_sources', ()):
-            profile_fetch = profile_fetch or sec_fetcher(headers)
-            try:
-                business = resolve_business_profile(str(official.get("cik") or "").zfill(10), profile_fetch, translate,
-                                                    **({'cache_root': profile_cache_root} if profile_cache_root else {}))
-            except Exception:
-                business = None  # label-only industry; the failure stays visible in the sidecar
+        detail_reason = None
+        if business_details:
+            if not official:
+                detail_reason = 'NO_OFFICIAL_IDENTITY'
+            elif 'sec' in getattr(http, '_public_json_blocked_sources', ()):
+                detail_reason = 'SEC_BLOCKED'
+            else:
+                profile_fetch = profile_fetch or sec_fetcher(headers)
+                try:
+                    business = resolve_business_profile(str(official.get("cik") or "").zfill(10), profile_fetch, None,
+                                                        **({'cache_root': profile_cache_root} if profile_cache_root else {}))
+                except Exception:
+                    business = None  # the gap is recorded below, never filled
+                if business is None:
+                    detail_reason = 'PROFILE_UNAVAILABLE'
         if business_profile_sink is not None:
             business_profile_sink[ticker] = business
         # Displayed profit metrics are current-state company claims: filed inside the evidence window
@@ -493,18 +537,45 @@ def build(*, top20_path: Path = TOP20_PATH, return_evidence_sink: dict | None = 
                 clocks[key] = field_clock(key, row[key])
             else:
                 clocks[key] = field_clock(key, row[key])
-        if business and business.get("phrase_zh"):
-            # Every part stays sourced: a receipted label is composed with the SEC
-            # phrase (older clock, joint digest); an unreceipted label is dropped.
+        if business_details:
+            # Operator rule 4 with PRIMARY evidence only. A receipted label is paired with the fresh primary English business excerpt
+            # (automatically selected, clipped to the 100-unit field) under the older of the two clocks and a joint digest of the label
+            # proof, the primary source commitment and the displayed text. EVERY missing-detail reason (no official identity, SEC
+            # blocked, fetch/extraction/cache failure, unreceipted label, stale or cache-only content, uncomposable excerpt) is handled
+            # alike: with require_known_acquisition the row uses the per-row UNAVAILABLE convention (industry 未分類, no clock) and the
+            # original label and receipt stay only in the local sidecar audit; otherwise the original label keeps an UNKNOWN clock
+            # (never a bare KNOWN). A label is never upgraded by composition.
             label = clocks['industry']
-            if label['status'] == 'KNOWN':
-                row['industry'] = compose_industry(row['industry'], business['phrase_zh'])
-                retrieved = min(label['retrieved_at'], business['retrieved_at'], key=utc_time)
-                evidence = digest({'label': label['evidence_sha256'], 'business': business['evidence_sha256']})
+            if detail_reason is None and label['status'] != 'KNOWN':
+                detail_reason = 'LABEL_NOT_RECEIPTED'
+            elif detail_reason is None and not (business and business.get('source_facts') == FRESH_SOURCE_FACTS):
+                detail_reason = 'NO_FRESH_SOURCE'
+            composed, clock = None, None
+            if detail_reason is None:
+                composed = compose_industry_detail(row['industry'], business.get('sentence_en'))
+                if composed is not None:
+                    try:
+                        clock = field_clock('industry', composed,
+                                            retrieved_at=min(label['retrieved_at'], business['retrieved_at'], key=utc_time),
+                                            evidence_sha256=digest({'label': label['evidence_sha256'],
+                                                                    'business': business['source_evidence_sha256'], 'shown': composed}))
+                    except (KeyError, TypeError, SourceAcquisitionError):
+                        composed = None
+                if composed is None:
+                    detail_reason = 'DETAIL_UNCOMPOSABLE'
+            audit = {'reason': detail_reason, 'original_industry': industry[:100], 'original_clock': label, 'publication_evidence': False}
+            if composed is not None:
+                row['industry'], clocks['industry'], audit['state'] = composed, clock, 'COMPOSED'
+            elif require_known_acquisition:
+                row['industry'], audit['state'] = '未分類', 'UNAVAILABLE_PER_ROW'
+                clocks['industry'] = field_clock('industry', row['industry'])
+            elif label['status'] == 'KNOWN':
+                clocks['industry'] = field_clock('industry', row['industry'])
+                audit['state'] = 'LABEL_WITH_UNKNOWN_CLOCK'
             else:
-                row['industry'] = business['phrase_zh'][:100]
-                retrieved, evidence = business['retrieved_at'], business['evidence_sha256']
-            clocks['industry'] = field_clock('industry', row['industry'], retrieved_at=retrieved, evidence_sha256=evidence)
+                audit['state'] = 'LABEL_CLOCK_UNCHANGED'
+            if business_profile_sink is not None:
+                business_profile_sink[ticker] = {**(business or {}), 'industry_audit': audit}
         clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'])
         if receipt and clocks['profit_summary']['status'] != 'UNAVAILABLE':
             clocks['profit_summary'] = field_clock('profit_summary', row['profit_summary'],
@@ -624,7 +695,7 @@ def main() -> int:
     parser.add_argument('--debt-precision-bundle', type=Path, help='Optional original-file bundle; conditional precision only, never debt reconciliation or publication')
     parser.add_argument('--require-known-acquisition', action='store_true', help='Refuse unverified market clocks and fail closed to UNAVAILABLE')
     parser.add_argument('--business-profile-output', type=Path, help='Local SEC business-profile sidecar (source sentence, URL, translation)')
-    parser.add_argument('--business-profile', action='store_true', help='Add the SEC annual-report business phrase (local loopback translation) to the industry field')
+    parser.add_argument('--business-profile', action='store_true', help='Request the English business detail in the industry field: a receipted label plus the fresh primary SEC excerpt (automatically selected, not an exact quotation); no model is called and an unverified Chinese candidate is never written')
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -646,14 +717,9 @@ def main() -> int:
         options = {'debt_precision_bundle':precision_raw} if precision_raw is not None else {}
         profiles: dict[str, Any] = {}
         displays: dict[str, Any] = {}
-        translator = None
-        if args.business_profile:
-            try:
-                translator = local_translator()
-            except (OSError, ValueError, KeyError):
-                translator = None  # label-only industry; never a cloud or paid fallback
+        # BIZ1: --business-profile is an explicit request for the English business detail; no translator is built and no model is called.
         document = build(return_evidence_sink=observations, financial_evidence_sink=financials,
-                         require_known_acquisition=args.require_known_acquisition, translate=translator,
+                         require_known_acquisition=args.require_known_acquisition, business_details=args.business_profile,
                          business_profile_sink=profiles, profit_display_sink=displays, **options)
         report_body = json_bytes(document)
         financial_document = {
@@ -680,8 +746,11 @@ def main() -> int:
         atomic_write(profile_output, {
             "schema_version": 1, "status": "CANDIDATE_NOT_PUBLICATION_QUALIFIED",
             "publication_eligible": False, "generated_at": document["generated_at"],
-            "source": "SEC EDGAR latest annual report, Item 1 / Item 4",
-            "translation": "local loopback model; phrase validated against the source sentence",
+            "source": "SEC EDGAR latest annual report, Item 1 / Item 4: an automatically selected English excerpt (clipped in the industry field), "
+                      "not an exact quotation; filing facts fetched fresh this run; industry_audit keeps the original label and receipt for local audit only",
+            "translation": "research candidate only, taken from a cache (no model is called here): UNVERIFIED, format-checked against the source "
+                           "sentence, model identity UNKNOWN, no review; never verbatim or authenticated SEC text and withheld from every "
+                           "final report surface",
             "records": profiles,
         })
         atomic_write(display_output, {

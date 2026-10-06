@@ -9,7 +9,8 @@ Verifies evidence integrity, math, schemas, and safety boundaries:
 - Stale and future timestamp rejection.
 - Midpoint and spread integrity.
 - Prohibition of caller-supplied payoff metrics on bare quotes.
-- Currency USD, multiplier 100, rights_status binding.
+- Currency USD, multiplier 100, rights_status label FORMAT only. These validators are format checks for local
+   candidate data: a rights label never admits a row for public display (scripts/public_options_provider_gate.py decides).
 - Expiry calendar DTE consistency & expired contract rejection.
 """
 
@@ -372,6 +373,137 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
                 raise MarketProductValidationError(f"INVALID_LIQUIDITY_FIELD: {key}")
     if len(suggestions) == 2 and not suggestions[0]["strike"] > suggestions[1]["strike"]:
         raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_NOT_HIGHER")
+
+
+COVERAGE_SCHEMA = "v213-options-coverage-v1"
+COVERAGE_PURPOSE = "SOURCE_COVERAGE_METADATA_ONLY"
+COVERAGE_OPTIONS_KEY = "v213:options:v2"
+MAX_COVERAGE_BODY_BYTES = 200_000
+COVERAGE_NOTES = frozenset({
+    "CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
+    "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
+})
+_COVERAGE_RIGHTS = frozenset({"review_before_enable", "reviewed_public_access", "automated_access_prohibited"})
+_COVERAGE_ADAPTERS = frozenset({"not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"})
+_COVERAGE_ID = re.compile(r"[a-z0-9_]{1,64}")
+_COVERAGE_CODE = re.compile(r"[A-Z0-9_]{1,12}")
+_COVERAGE_VENUE = re.compile(r"[A-Z0-9][A-Z0-9_.-]{0,31}")
+_COVERAGE_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+_COVERAGE_INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z")
+
+
+def coverage_instant(value) -> bool:
+    """The G1 canonical UTC instant: seconds or exactly three fractional digits (length 20 or 24), a REAL calendar date and time (no
+    February 30, no year 0000: datetime accepts years 1..9999 only). Scoped to the G1 object; older product validators are unchanged."""
+    if not isinstance(value, str) or len(value) not in (20, 24) or _COVERAGE_INSTANT.fullmatch(value) is None:
+        return False
+    try:
+        datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return False
+    return True
+
+
+def validate_options_coverage_document(doc: dict) -> None:
+    """FORMAT validation of the PUBLIC, METADATA-ONLY global options source/gap object (sealed lazy key v213:options-coverage:v1; mirror of
+    cloud/src/v213/options-coverage.ts validateOptionsCoverage). Exact closed keys at every level, fixed vocabularies and declared row,
+    string and byte bounds; no strike/bid/ask/settlement/Delta/premium or private field can exist because no such key is allowed. This is
+    NOT a rights decision and no label in it admits anything: the Worker re-verifies against its own canonical catalog and policy."""
+    def fail(code: str):
+        raise MarketProductValidationError(code)
+
+    def exact(value, keys, code):
+        if not isinstance(value, dict) or set(value) != set(keys):
+            fail(code)
+
+    def text(value, maximum):
+        return isinstance(value, str) and 1 <= len(value) <= maximum and not any(ord(ch) < 32 for ch in value)
+
+    def pattern_list(value, pattern, low, high, code):
+        if not isinstance(value, list) or not low <= len(value) <= high or not all(isinstance(item, str) and pattern.fullmatch(item) for item in value):
+            fail(code)
+        return value
+
+    def instant(value):
+        return coverage_instant(value)
+
+    exact(doc, ("schema", "generated_at", "purpose", "options_link", "catalog_summary", "providers", "jurisdictions", "local_capabilities",
+                "observed", "data_completeness", "notes"), "COVERAGE_SCHEMA_INVALID")
+    if (doc["schema"] != COVERAGE_SCHEMA or doc["purpose"] != COVERAGE_PURPOSE or doc["data_completeness"] != "NOT_REAUDITED"
+            or not instant(doc["generated_at"])):
+        fail("COVERAGE_HEADER_INVALID")
+    link = doc["options_link"]
+    if link is not None:
+        exact(link, ("key", "sha256", "utf8_bytes"), "COVERAGE_LINK_INVALID")
+        if (link["key"] != COVERAGE_OPTIONS_KEY or not isinstance(link["sha256"], str) or not _COVERAGE_HEX.fullmatch(link["sha256"])
+                or type(link["utf8_bytes"]) is not int or not 1 <= link["utf8_bytes"] <= 1_900_000):
+            fail("COVERAGE_LINK_INVALID")
+    summary = doc["catalog_summary"]
+    exact(summary, ("catalog_provider_count", "public_admitted_provider_count", "production_provider_selected"), "COVERAGE_SUMMARY_INVALID")
+    for key in ("catalog_provider_count", "public_admitted_provider_count"):
+        if type(summary[key]) is not int or not 0 <= summary[key] <= 32:
+            fail("COVERAGE_SUMMARY_INVALID")
+    if type(summary["production_provider_selected"]) is not bool:
+        fail("COVERAGE_SUMMARY_INVALID")
+    notes = doc["notes"]
+    if not isinstance(notes, list) or len(notes) > 8 or len(set(notes)) != len(notes) or not all(isinstance(note, str) and note in COVERAGE_NOTES for note in notes):
+        fail("COVERAGE_NOTES_INVALID")
+    for key, limit in (("providers", 32), ("jurisdictions", 32), ("local_capabilities", 8), ("observed", 64)):
+        if not isinstance(doc[key], list) or len(doc[key]) > limit:
+            fail("COVERAGE_BOUNDS_INVALID")
+    provider_ids = []
+    for row in doc["providers"]:
+        exact(row, ("provider_id", "name", "authority", "jurisdictions", "data_roles", "rights_status", "rights_reviewed_at", "adapter_status",
+                    "runtime_enabled", "line_quote_eligible", "public_admission", "declared"), "COVERAGE_PROVIDER_INVALID")
+        pattern_list(row["jurisdictions"], _COVERAGE_CODE, 1, 8, "COVERAGE_PROVIDER_INVALID")
+        pattern_list(row["data_roles"], _COVERAGE_ID, 1, 8, "COVERAGE_PROVIDER_INVALID")
+        reviewed = row["rights_reviewed_at"]
+        if reviewed is not None:
+            try:
+                datetime.strptime(reviewed, "%Y-%m-%d")
+            except (TypeError, ValueError):
+                fail("COVERAGE_PROVIDER_INVALID")
+        if (not isinstance(row["provider_id"], str) or not _COVERAGE_ID.fullmatch(row["provider_id"]) or not text(row["name"], 120)
+                or not text(row["authority"], 120) or row["rights_status"] not in _COVERAGE_RIGHTS or row["adapter_status"] not in _COVERAGE_ADAPTERS
+                or type(row["runtime_enabled"]) is not bool or type(row["line_quote_eligible"]) is not bool
+                or row["public_admission"] not in ("ADMITTED", "NOT_ADMITTED") or row["declared"] != "CATALOG_DECLARED_UNVERIFIED"):
+            fail("COVERAGE_PROVIDER_INVALID")
+        provider_ids.append(row["provider_id"])
+    if len(set(provider_ids)) != len(provider_ids):
+        fail("COVERAGE_PROVIDER_INVALID")
+    for row in doc["jurisdictions"]:
+        exact(row, ("code", "provider_ids", "catalog_provider_count"), "COVERAGE_JURISDICTION_INVALID")
+        ids = pattern_list(row["provider_ids"], _COVERAGE_ID, 1, 32, "COVERAGE_JURISDICTION_INVALID")
+        if (not isinstance(row["code"], str) or not _COVERAGE_CODE.fullmatch(row["code"]) or row["catalog_provider_count"] != len(ids)
+                or type(row["catalog_provider_count"]) is not int):
+            fail("COVERAGE_JURISDICTION_INVALID")
+    # The jurisdiction -> unique provider-id relation must be exactly the one the provider rows imply (literal codes only, no expansion).
+    expected: dict = {}
+    for provider in doc["providers"]:
+        for code in provider["jurisdictions"]:
+            ids = expected.setdefault(code, [])
+            if provider["provider_id"] not in ids:
+                ids.append(provider["provider_id"])
+    if [(row["code"], row["provider_ids"]) for row in doc["jurisdictions"]] != sorted(expected.items()):
+        fail("COVERAGE_JURISDICTION_INVALID")
+    if summary["catalog_provider_count"] != len(doc["providers"]):
+        fail("COVERAGE_SUMMARY_INVALID")
+    for row in doc["local_capabilities"]:
+        exact(row, ("market", "capability", "status"), "COVERAGE_LOCAL_INVALID")
+        if (not isinstance(row["market"], str) or not re.fullmatch(r"[A-Z]{2,12}", row["market"])
+                or row["capability"] != "COVERED_CALL_DELAYED_LOCAL_CANDIDATE" or row["status"] != "LOCAL_UNADMITTED_NO_CATALOG_IDENTITY"):
+            fail("COVERAGE_LOCAL_INVALID")
+    for row in doc["observed"]:
+        exact(row, ("provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope", "cycle_count",
+                    "ticker_key_count", "quote_as_of_max"), "COVERAGE_OBSERVED_INVALID")
+        if (not isinstance(row["provider_id"], str) or not _COVERAGE_ID.fullmatch(row["provider_id"]) or not isinstance(row["jurisdiction"], str)
+                or not _COVERAGE_CODE.fullmatch(row["jurisdiction"]) or not isinstance(row["venue"], str) or not _COVERAGE_VENUE.fullmatch(row["venue"])
+                or row["instrument_kind"] != "equity_option" or row["quote_basis"] != "delayed" or row["publication_scope"] != "public_line_quote"
+                or type(row["cycle_count"]) is not int or not 1 <= row["cycle_count"] <= 100000
+                or type(row["ticker_key_count"]) is not int or not 1 <= row["ticker_key_count"] <= 100000 or not instant(row["quote_as_of_max"])):
+            fail("COVERAGE_OBSERVED_INVALID")
 
 
 def main():

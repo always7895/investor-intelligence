@@ -4,10 +4,12 @@ import {
   buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, findBottleneckEntry, loadBottleneckV3,
 } from "./bottleneck-v3";
 import { loadDetailedOptionObservation, loadOptionObservation, observationSymbol, optionTickerKeys } from "./market-observations";
-import { adrNote, adrRoute, marketHasOptions, uncoveredReason } from "./option-routes";
-import { resolveGlobalIdentity, type GlobalIdentityRecord } from "./global-identity";
+import { adrNote, adrRoute, GLOBAL_SOURCE_STATUS_COMMAND, isGlobalSourceStatusCommand, marketHasOptions, uncoveredReason } from "./option-routes";
+import { buildOptionsCoverageMessages, loadOptionsCoverage } from "./options-coverage";
+import { findUsIdentityConflict, parseIdentityRequest, resolveGlobalIdentity, type GlobalIdentityCatalog, type GlobalIdentityRecord } from "./global-identity";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
+import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
@@ -24,12 +26,14 @@ import {
   buildMacroTop5OverviewFlex,
   buildMacroTop5OverviewText,
   MACRO_PRODUCT_KEY,
+  macroHomeShortfallLine,
+  macroOverviewState,
   macroShortfallReport,
+  phaseKnowledgeWithheldNotice,
 } from "./macro-industry-product";
 import type {
   MacroDeepAnalysis,
   MacroIndustryCard,
-  MacroTop5Overview,
   OptionContractQuote,
 } from "./market-product-schema";
 import { validateMacroDeepAnalysis, validateMacroIndustryCard } from "./market-product-schema";
@@ -206,12 +210,17 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   // Trailing punctuation never changes a command ("TOP20。", "NVDA 每月期權！"; NFKC already folded full-width forms).
   const command = query.normalized.replace(/[\s。.!?~～]+$/u, "");
   const commandText = isEnvText || /文字\s*$/i.test(command);
+  const guidanceOptions = {guidanceMachineEnabled: env.V213_GUIDANCE_MACHINE_ENABLED === "1",
+    guidanceWireEnabled: env.V213_GUIDANCE_WIRE_ENABLED === "1"};
+  let guidanceView: ReturnType<typeof pinPublicSnapshot> | undefined;
+  const guidanceDocument = async () => loadBottleneckV3(await (guidanceView ??= pinPublicSnapshot(env)), guidanceOptions);
 
   // --- Bottleneck-explosion Top20 v3 and the Leopold-led industry ranking (sealed lazy object) ---
   // It replaced the original ranking, so the plain ranking words lead here too ("七欄Top20" keeps the old report).
   if (/^(?:top\s*20|瓶頸爆發榜|瓶頸\s*top\s*20|瓶頸(?:排名|排行|榜)|前\s*(?:20|二十)\s*名?|排名|排行榜?)(?:\s*文字)?$/i.test(command)) {
-    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    const doc = await guidanceDocument();
     if (doc) return buildBottleneckTop20Messages(doc, commandText ? "text" : "flex");
+    if (guidanceOptions.guidanceMachineEnabled) return V3_UNAVAILABLE; // requested sealed binding failure cannot reach older seven-field fallback
     // Without a valid, fresh v3 document: the words that reached the certified Top20 path before v3 (TOP20, 前20, 排行,
     // 排名; the matcher of loadV213FreshTop20Report) keep it; every other v3 word names the unavailable product instead of
     // reaching an older list (Astra review 2026-09-27).
@@ -219,18 +228,19 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   }
   const bottleneckDetail = /^(?:瓶頸詳情|瓶颈详情|瓶頸|瓶颈)\s*([A-Za-z0-9][A-Za-z0-9.\-]{0,15})(?:\s*文字)?$/i.exec(command);
   if (bottleneckDetail) {
-    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    const doc = await guidanceDocument();
     return doc ? buildBottleneckDetail(doc, bottleneckDetail[1]!, commandText ? "text" : "flex")
       : "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。";
   }
   // "NVDA 詳情" opens the detail only for a current Top20 company; any other ticker keeps its research answer.
   const tickerDetail = /^([A-Za-z0-9][A-Za-z0-9.\-]{0,15})\s*(?:詳情|详情)(?:\s*文字)?$/i.exec(command);
   if (tickerDetail) {
-    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    const doc = await guidanceDocument();
+    if (!doc && guidanceOptions.guidanceMachineEnabled) return V3_UNAVAILABLE;
     if (doc && findBottleneckEntry(doc, tickerDetail[1]!)) return buildBottleneckDetail(doc, tickerDetail[1]!, commandText ? "text" : "flex");
   }
   if (/^(?:產業爆發榜|产业爆发榜|產業爆發|产业爆发|產業(?:排名|排行榜?|榜)|产业(?:排名|排行榜?|榜))(?:\s*文字)?$/i.test(command)) {
-    const doc = await loadBottleneckV3(await pinPublicSnapshot(env));
+    const doc = await guidanceDocument();
     return doc ? buildIndustryExplosionMessages(doc, commandText ? "text" : "flex") : "產業爆發榜目前沒有已封存且在時效內的資料，未以舊資料替代。";
   }
   if (/^(?:七欄\s*top\s*20|舊版\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
@@ -251,13 +261,19 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
 
-    // 1. If sealed snapshot has admitted TOP5 overview, show it
-    if (view.integrity === "sealed") {
-      const overview = await view.json<MacroTop5Overview>([MACRO_PRODUCT_KEY]);
-      if (overview && overview.status === "ADMITTED_TOP5" && overview.qualified_count >= 5) {
-        return isText ? buildMacroTop5OverviewText(overview) : buildMacroTop5OverviewFlex(overview);
-      }
+    // 1. Route choice and counts come only from the shared root validator, never from a raw claimed status or count.
+    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
+      return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
+    // Only a validated overview carries its time metadata; an absent or invalid root shows the UNKNOWN notice.
+    const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
+    const shortfallLine = macroHomeShortfallLine(macro);
+    const productLine = macro.kind === "VALID"
+      ? "MACRO_PRODUCT_NOT_ADMITTED：本輪已封存之宏觀總覽未達 5 個合格產業，不構成已驗收的 TOP5 報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。"
+      : macro.kind === "INVALID"
+        ? "MACRO_PRODUCT_INVALID：本輪已封存之宏觀總覽未通過驗證，已拒絕使用，不據以推論任何合格產業數。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。"
+        : "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。";
 
     // 2. Check Top20 fresh report for company industry distribution context
     const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
@@ -270,9 +286,10 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
     if (!report || typeof report === "string") {
       const errLines = [
-        "MACRO_TOP5_SHORTFALL：目前尚無已驗收封存之 TOP5 宏觀產業報告（短缺通報：5/5）。",
+        shortfallLine,
         `當輪產業資料不可用：${typeof report === "string" ? report : "TOP20_UNAVAILABLE"}。`,
         "不以舊快照、候選宏觀資料或模型猜測補齊。",
+        ...(knowledgeNotice ? [knowledgeNotice] : []),
         "工程規範：系統拒絕捏造未查證之行業、拒絕以候選公司家數占比冒充市場成長率、拒絕湊數發布偽 TOP5。",
       ];
       return panel("宏觀產業分析", "當輪產業資料不可用 · 短缺通報", errLines, navActions, isText);
@@ -280,8 +297,9 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
     if (!(await v213EvidenceWithinWindow(report.records.map(r => ({ freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at }))))) {
       const staleLines = [
-        "MACRO_TOP5_SHORTFALL：目前尚無已驗收封存之 TOP5 宏觀產業報告（短缺通報：5/5）。",
+        shortfallLine,
         "公司資料過期：" + V213_STALE_RECORDS_MESSAGE,
+        ...(knowledgeNotice ? [knowledgeNotice] : []),
       ];
       return panel("宏觀產業分析", "公司資料過期 · 短缺通報", staleLines, navActions, isText);
     }
@@ -293,9 +311,10 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
     const visibleGroups = groups.slice(0, 5);
     const lines = [
-      "TOP5 宏觀產業總覽准入門檻未達成（MACRO_TOP5_SHORTFALL：短缺通報 5/5）。",
-      "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
+      shortfallLine,
+      productLine,
       "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
+      ...(knowledgeNotice ? [knowledgeNotice] : []),
       `當輪時間：${report.generated_at}；樣本20家公司。`,
       ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
@@ -306,9 +325,10 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     if (isText) {
       const fullLines = [
         "【宏觀產業分析｜TOP5 准入門檻未達成 · 短缺通報】",
-        "TOP5 宏觀產業總覽准入門檻未達成（MACRO_TOP5_SHORTFALL：短缺通報 5/5）。",
-        "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
+        shortfallLine,
+        productLine,
         "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
+        ...(knowledgeNotice ? [knowledgeNotice] : []),
         `當輪時間：${report.generated_at}；樣本20家公司。`,
         ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
         "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
@@ -326,13 +346,13 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:TOP5(?:產業總覽|產業)?|宏觀(?:產業)?總覽)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    if (view.integrity === "sealed") {
-      const overview = await view.json<MacroTop5Overview>([MACRO_PRODUCT_KEY]);
-      if (overview && overview.status === "ADMITTED_TOP5" && overview.qualified_count >= 5) {
-        return isText ? buildMacroTop5OverviewText(overview) : buildMacroTop5OverviewFlex(overview);
-      }
+    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
+      return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
-    return macroShortfallReport(0, isText);
+    // A validated partial overview reports its own N (never a fixed 0); an absent or invalid root reports an UNKNOWN count.
+    return macroShortfallReport(macro.kind === "VALID" ? macro.overview.qualified_count : null, isText,
+      macro.kind === "VALID" ? macro.overview : null);
   }
 
   // Compatibility route: 当轮候选公司产业分布 (preserved separately)
@@ -382,13 +402,22 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     "Serenity是主要公開研究視角；Leopold為CONTEXT_ONLY。宏觀情境不能直接證明單一公司訂單、瓶頸或股價漲幅。",
   ], NAV, isEnvText);
 
+  // --- Global options SOURCE and GAP status (metadata only; an exact command handled BEFORE the broad options matching) ---
+  // The loader validates the sealed `v213:options-coverage:v1` object, cross-checks the canonical catalog and recomputes any admitted
+  // row from the sealed options body of the same snapshot; the formatter prints only that verified result. It adds no market support.
+  if (isGlobalSourceStatusCommand(command)) {
+    const view = await pinPublicSnapshot(env);
+    return buildOptionsCoverageMessages(await loadOptionsCoverage(view, Date.now()), true);
+  }
+
   // --- Primary Options Entry: 期權 / 期權與個股快查 ---
   if (/^(?:期權|期权|選擇權|选择权|期權與個股快查|期权与个股快查)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    const statusText = view.integrity === "sealed"
+    const statusTextBase = view.integrity === "sealed"
       ? "備兌買權建議（持有100股賣買權收權利金）：觀察清單內美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm（交易所公開 API，延遲）每小時更新；每個週期給兩個價格：高履約價（不易被賣掉）與平衡型。清單外標的或無雙邊報價時維持不可用。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
+    const statusText = `${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`;
 
     const navActions = [
       ["範例：NVDA 每月期權", "NVDA 每月期權"],
@@ -463,9 +492,12 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const overview = view.integrity === "sealed" ? await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]) : null;
     const ranking = validatePotentialRanking(overview?.potential_ranking);
     if (!ranking) {
+      const macro = macroOverviewState(overview);
+      const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
       return panel("資料驅動潛力榜", "本輪未封存", [
         "POTENTIAL_RANKING_UNAVAILABLE：本輪封存快照沒有可驗證的資料驅動潛力榜。",
         "不以模型生成、舊資料或其他清單代替。",
+        ...(knowledgeNotice ? [knowledgeNotice] : []),
       ], [["TOP5 產業總覽", "TOP5產業總覽"], ["回功能選單", "選單"]], isText);
     }
     if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of), isText);
@@ -575,11 +607,69 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         const answer = async (keys: string[], shown: string, note: string | null): Promise<{ handled: boolean; messages: LineOutboundMessage[] | null }> => {
           const detailed = await loadDetailedOptionObservation(view, keys, period, now);
           if (detailed.status === "FOUND") {
-            const messages = buildCoveredCallMessages(detailed.quote!, label, isText ? "text" : "flex");
+            // CALLER-B2: the identity target is ONLY the exact matched key the FOUND loader guarantees (quote + matchedKey): no case
+            // folding, no separator rewriting, no invented alias, no fallback to the typed or shown text.
+            const matchedKey = typeof detailed.ticker === "string" ? detailed.ticker : "";
+            const stockholmQuery = matchedKey.endsWith(".ST")
+              ? matchedKey                                                        // an existing .ST key stays exact as the query
+              : (detailed.quote!.currency === "SEK" ? `${matchedKey}.ST` : "");   // a legacy key gets ONLY ".ST" appended
+            const identityQuery = matchedKey.trim() === "" ? null : (stockholmQuery || `ticker ${matchedKey}`);
+            let identityCatalog: GlobalIdentityCatalog | null = null;
+            if (identityQuery !== null) {
+              // Channel safety is decided BEFORE any read and outside the read catch: the proposed query must parse into the one
+              // channel this branch supports (an exact .ST suffix scheme, or the explicit ticker prefix). Not a catalog or rights
+              // proof; it keeps an unsupported suffix body out of the name channel. No alias, no forced prefix/suffix metadata,
+              // no generic US resolver for a Stockholm key.
+              const parsedTarget = parseIdentityRequest(identityQuery).parsed;
+              const channelOk = parsedTarget !== undefined
+                && (stockholmQuery !== ""
+                  ? parsedTarget.suffixHint?.rawSuffix === ".ST"
+                  : parsedTarget.isTickerPrefix === true);
+              if (channelOk) {
+                try {
+                  identityCatalog = await loadIdentityCatalogForQuery(view, identityQuery);  // at most one await; only this await is caught
+                } catch {
+                  identityCatalog = null;  // a validated loader builds well-formed indexes; a malformed shard is already null
+                }
+              }
+            }
+            // Unconditional rights recheck: after the optional lookup or its read exception, and before any conflict decision, report
+            // or quote - even when the identity lookup was skipped. The renderer keeps its own recheck and typed-error catch.
+            if (!admitPublicOption(detailed.quote!, Date.now()).ok) {
+              return { handled: true, messages: optionsUnavailableReport(detailed.ticker ?? shown, period, OPTION_RIGHTS_NOT_ADMITTED_ZH, isText) };
+            }
+            // An empty, whitespace-only or unsupported-suffix target stays NO_EVIDENCE: no identity absence or verified claim.
+            let conflictReason: string | null = null;
+            if (identityCatalog) {
+              const identity = stockholmQuery !== ""
+                ? resolveGlobalIdentity(identityCatalog, stockholmQuery)   // existing canonical Stockholm venue resolver, semantics unchanged
+                : findUsIdentityConflict(identityCatalog, matchedKey);     // accepted R2 helper: US rows of this exact matched spelling
+              if (identity && identity.status === "UNAVAILABLE" && identity.reason.startsWith("IDENTITY_CONFLICT:")) {
+                conflictReason = identity.reason;
+              }
+            }
+            // null / no evidence / spelling mismatch keep the admitted-quote behaviour: no verified identity, absence or rights
+            // admission is claimed. Bounded diagnostic only, never a numeric quote or a partial candidate.
+            if (conflictReason) {
+              return { handled: true, messages: optionsUnavailableReport(detailed.ticker ?? shown, period, `${conflictReason}（期權查詢不選擇其中任何一筆。）`, isText) };
+            }
+            let messages: LineOutboundMessage[];
+            try {
+              messages = buildCoveredCallMessages(detailed.quote!, label, isText ? "text" : "flex");
+            } catch (error) {
+              // Only the dedicated typed rights denial (the review window can close between the loader and the renderer) becomes the
+              // truthful unavailable report; every other error still propagates and no older data is substituted.
+              if (!(error instanceof OptionRightsNotAdmittedError)) throw error;
+              return { handled: true, messages: optionsUnavailableReport(detailed.ticker ?? shown, period, OPTION_RIGHTS_NOT_ADMITTED_ZH, isText) };
+            }
             return { handled: true, messages: note ? [{ type: "text", text: note } as LineOutboundMessage, ...messages].slice(0, 5) : messages };
           }
           if (detailed.status === "QUOTE_INVALID_OR_STALE") {
             return { handled: true, messages: optionsUnavailableReport(shown, period, "封存之期權觀察未通過驗證（報價無效或逾時），已拒絕顯示。", isText) };
+          }
+          if (detailed.status === "RIGHTS_NOT_ADMITTED") {
+            // Truthful fixed reason: format-valid local observation without public rights admission is refused, never relabeled.
+            return { handled: true, messages: optionsUnavailableReport(detailed.ticker ?? shown, period, OPTION_RIGHTS_NOT_ADMITTED_ZH, isText) };
           }
           if (detailed.status === "PERIOD_UNAVAILABLE") {
             const displayTicker = detailed.ticker ?? shown;
@@ -618,6 +708,12 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
           } else if (resolution.status === "NEEDS_MARKET_SELECTION") {
             const listed = resolution.candidates.slice(0, 5).map(c => `${c.symbol}（${c.venue}）`).join("、");
             return optionsUnavailableReport(ticker, period, `此名稱對應多個掛牌：${listed}；請以精確代號查詢期權。`, isText);
+          } else if (resolution.status === "UNAVAILABLE" && resolution.reason.startsWith("IDENTITY_CONFLICT:")) {
+            // ICON1: contradictory sealed identity rows; no listing is chosen. This name-resolution conflict stays separate from the
+            // direct ticker answer and the configured ADR route above (separate contract), and the ADR route only ever tests its
+            // QUOTED target. It is no longer a bypass of every conflict decision: a FOUND quote is checked on its own matched key
+            // inside answer() (CALLER-B2), with rights admission taking precedence there.
+            return optionsUnavailableReport(ticker, period, `${resolution.reason}（期權查詢不選擇其中任何一筆。）`, isText);
           }
         }
         if (route) {

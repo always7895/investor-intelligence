@@ -9,8 +9,9 @@ from .official_rss import RSS_ADAPTERS
 from .taiwan_equities import EQUITY_ADAPTERS
 from .issuer_directory import ISSUER_ADAPTERS
 from .taifex_options_eod import TAIFEX_EOD_ADAPTERS
+from .taifex_options_delta import TAIFEX_DELTA_ADAPTERS
 
-STAGED_ADAPTERS = {**RSS_ADAPTERS, **EQUITY_ADAPTERS, **ISSUER_ADAPTERS, **TAIFEX_EOD_ADAPTERS}
+STAGED_ADAPTERS = {**RSS_ADAPTERS, **EQUITY_ADAPTERS, **ISSUER_ADAPTERS, **TAIFEX_EOD_ADAPTERS, **TAIFEX_DELTA_ADAPTERS}
 
 
 def parse_source_payload(source_id: str, content: bytes, *, content_type: str,

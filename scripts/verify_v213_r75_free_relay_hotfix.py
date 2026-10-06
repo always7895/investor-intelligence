@@ -83,14 +83,33 @@ def verify_public_research_payload(files: dict[str, tuple[str, bytes]]) -> None:
             raise VerificationError('packaged research reference is missing or unsafe')
 
 
+WIRE_TEST = "cloud/test/v213-revenue-guidance-wire-integration.test.ts"
+WIRE_FIXTURE = "tests/fixtures/revenue-guidance-wire-v1-functional.json"
+# Bounds mirrored from the packager for these exact fixture entries only (not a global archive policy).
+FIXTURE_MAX_BYTES = 2 * 1024 * 1024
+FIXTURE_TOTAL_MAX_BYTES = 16 * 1024 * 1024
+GIT_REGULAR_MODES = ("100644", "100755")
+GIT_BLOB = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+# The exact fixtures the default Worker collection reads from tests/, required in every package.
+ALWAYS_FIXTURES = (
+    "tests/fixtures/v213-order-forecast-sealed.json", "tests/fixtures/v213-order-forecast-urls.json",
+    "tests/fixtures/v213-order-forecast-v2.json", "tests/fixtures/v213-order-forecast-v2-sealed.json",
+    "tests/fixtures/v213-lineage-sealed-markets.json", "tests/fixtures/v213-official-quarterly-revenue.json",
+    "tests/fixtures/source-acquisition-reports.json", "tests/fixtures/v213-orders-v3-golden-sealed.json",
+    "tests/fixtures/v213-orders-v3-proof-rpo.json", "tests/fixtures/v213-orders-v3-proof-states.json",
+    "tests/fixtures/v213-orders-v3-probes.json",
+    "tests/fixtures/v213-r75-publication-mode/all-limited.json",
+    "tests/fixtures/v213-r75-publication-mode/mixed.json",
+)
+
+
 def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) -> None:
     """Activation must remain executable after extracting the delivered ZIP."""
     required = {
         "cloud/test/fake-kv.ts", "cloud/test/qa.test.ts",
         "cloud/test/v213-activation.test.ts", "cloud/test/v213-free-relay.test.ts",
         "cloud/test/v213-publication-mode.test.ts",
-        "tests/fixtures/v213-r75-publication-mode/all-limited.json",
-        "tests/fixtures/v213-r75-publication-mode/mixed.json",
+        *ALWAYS_FIXTURES,
     }
     inventory = refs.get("worker_test_payload")
     if not isinstance(inventory, list) or not all(isinstance(p, str) for p in inventory):
@@ -99,8 +118,28 @@ def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) 
     actual = {p for p in files if p.startswith(("cloud/test/", "tests/"))}
     if len(expected) != len(inventory) or expected != actual or not required.issubset(actual):
         raise VerificationError("activation test payload missing or inconsistent")
-    if any(p.startswith("tests/") and p not in required for p in actual):
+    # The revenue-guidance wire consumer and its fixture travel together or not at all.
+    wire_test, wire_fixture = WIRE_TEST in actual, WIRE_FIXTURE in actual
+    if wire_test != wire_fixture or refs.get("revenue_guidance_wire_pair_present") is not wire_fixture:
+        raise VerificationError("revenue guidance wire pair inconsistent")
+    allowed = set(ALWAYS_FIXTURES) | ({WIRE_FIXTURE} if wire_fixture else set())
+    if any(p.startswith("tests/") and p not in allowed for p in actual):
         raise VerificationError("non-runtime Python test content leaked")
+    digests = refs.get("worker_test_fixture_sha256")
+    if (not isinstance(digests, dict) or len(digests) != len(allowed)
+            or {safe_name(k).casefold() for k in digests} != allowed
+            or any(not isinstance(v, str) or not HEX64.fullmatch(v) or v != sha(files[safe_name(k).casefold()][1])
+                   for k, v in digests.items())):
+        raise VerificationError("activation test fixture digests missing or inconsistent")
+    git_meta = refs.get("worker_test_fixture_git")
+    if (not isinstance(git_meta, dict) or len(git_meta) != len(allowed)
+            or {safe_name(k).casefold() for k in git_meta} != allowed
+            or any(not isinstance(v, dict) or set(v) != {"mode", "blob"} or v["mode"] not in GIT_REGULAR_MODES
+                   or not isinstance(v["blob"], str) or not GIT_BLOB.fullmatch(v["blob"]) for v in git_meta.values())):
+        raise VerificationError("activation test fixture Git identity metadata missing or not a regular blob")
+    sizes = [len(files[p][1]) for p in allowed]
+    if any(size > FIXTURE_MAX_BYTES for size in sizes) or sum(sizes) > FIXTURE_TOTAL_MAX_BYTES:
+        raise VerificationError("activation test fixture size bound exceeded")
     count = refs.get("packaged_worker_test_count")
     if type(count) is not int or count <= 0:
         raise VerificationError("packaged Worker test count invalid")

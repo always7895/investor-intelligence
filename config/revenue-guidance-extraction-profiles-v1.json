@@ -99,5 +99,43 @@
       "ir_page_pattern": "^https://investors\\.micron\\.com/news/press-release/20[0-9]{2}/[A-Za-z0-9-]{1,200}/default\\.aspx$",
       "wire_page_pattern": "^https://www\\.nasdaq\\.com/press-release/[a-z0-9-]{1,200}$"
     }
+    ,
+    {
+      "symbol": "NBIS",
+      "profile_id": "NBIS-SEC-6K-TABLE-REAFFIRMATION",
+      "revision": 1,
+      "adapter": "NBIS_6K_TABLE_REAFFIRMATION_V1",
+      "company_name": "Nebius Group N.V.",
+      "cik": 1513845,
+      "currency": "USD",
+      "accounting_basis": "GAAP",
+      "scope": "COMPANY",
+      "release": {
+        "form": "6-K",
+        "statement_name_pattern": "^tm[0-9]+d[0-9]+_ex99-1\\.htm$",
+        "letter_name_pattern": "^tm[0-9]+d[0-9]+_ex99-2\\.htm$"
+      },
+      "guidance": {
+        "kind": "FY_RANGE_ALL_METRICS_REAFFIRMATION",
+        "scope_rule": "EXPLICIT_GROUP_GAAP"
+      },
+      "actuals": {
+        "mode": "NBIS_CONSOLIDATED_TABLE_V1",
+        "heading": "Unaudited Condensed Consolidated Statements of Operations",
+        "row": "Revenues",
+        "unit": "USD_MILLIONS",
+        "precision": "0.1",
+        "rounding": "HALF_UP_HALF_OPEN"
+      },
+      "calendar": {
+        "rule": "CALENDAR_YEAR_TABLE_V1",
+        "label_format": "Q{q} FY{yy}"
+      },
+      "ir_title_pattern": "Nebius reports (?:first|second|third|fourth) quarter 20[0-9]{2} financial results",
+      "wire_title_pattern": "Nebius reports (?:first|second|third|fourth) quarter 20[0-9]{2} financial results",
+      "ir_host": "group.nebius.com",
+      "ir_page_pattern": "^https://group\\.nebius\\.com/newsroom/[a-z0-9-]{1,200}$",
+      "wire_page_pattern": "^https://www\\.nasdaq\\.com/press-release/[a-z0-9-]{1,200}$"
+    }
   ]
 }

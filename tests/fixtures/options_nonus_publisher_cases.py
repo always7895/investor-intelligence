@@ -4,6 +4,8 @@ Every case runs the REAL scripts.build_market_quotes_options.main (build/observe
 transports (Yahoo module, Nasdaq HTTP) and the universe stubbed, then the REAL scripts.publish_sealed_snapshot.lazy_market_bodies
 and captures the exact emitted body strings and hashes. Nothing here hand-builds a final cycle DTO, mocks the health guard or
 the sealer, or restamps an old file. The intended outcome of every case is asserted BEFORE the fixture is written.
+An explicit test-only admission seam at sealing admits only the scenario's exact ticker set; the real format
+validator still runs and the real rights predicate is restored on exit. The canonical catalog stays NONE.
 
 Provenance labels: rows marked RETAINED are the sanitized sample fields of the archived 2026-09-30 Nasdaq Nordic SIVE option
 chain (bid/ask empty, contract currency empty; the archive is NOT needed at test time, its hash is embedded). Everything else is
@@ -32,6 +34,7 @@ if str(ROOT / "scripts") not in sys.path:
 
 import build_market_quotes_options as builder  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
+import public_options_provider_gate as option_rights  # noqa: E402
 
 FIXTURE_PATH = ROOT / "cloud" / "test" / "fixtures" / "options-nonus-publisher.json"
 BRIDGE_SCHEMA = "options-nonus-publisher-bridge-v2"
@@ -274,8 +277,21 @@ def run_main(specs: list[dict[str, Any]], now: datetime, directory: Path, *, pri
     return _Result(rc, status, doc, output, requests)
 
 
-def seal(path: Path, at: datetime) -> dict[str, str]:
-    bodies = publisher.lazy_market_bodies(path, at)
+def seal(path: Path, at: datetime, *, synthetic_tickers: frozenset[str]) -> dict[str, str]:
+    """Explicit fixture-only seam; no catalog mutation or production admission claim."""
+    tickers = frozenset(synthetic_tickers)
+    if not tickers or set(json.loads(path.read_bytes())["options"]) != tickers:
+        raise AssertionError("synthetic admission must match the exact sealed scenario tickers")
+    real_admission = option_rights.public_option_cycle_admission
+
+    def admit_fixture_cycle(cycle: Any, policy: Any) -> str | None:
+        if isinstance(cycle, dict) and cycle.get("ticker") in tickers:
+            return None
+        return real_admission(cycle, policy)
+
+    # Patch the predicate the real publisher calls, never main/build/health/format/sealer.
+    with mock.patch.object(option_rights, "public_option_cycle_admission", side_effect=admit_fixture_cycle):
+        bodies = publisher.lazy_market_bodies(path, at)
     if set(bodies) != {"v213:options:v2", "v213:quotes:v1"}:
         raise AssertionError("the real sealer refused the file")
     return bodies
@@ -619,7 +635,7 @@ def _prior_bytes(directory: Path) -> tuple[bytes, dict[str, str]]:
     result = run_main(specs, PRIOR_NOW, directory)
     if result.rc != 0 or result.output is None:
         raise AssertionError(f"the legitimate prior run must be admitted: {result.status}")
-    return result.output.read_bytes(), seal(result.output, NOW)
+    return result.output.read_bytes(), seal(result.output, NOW, synthetic_tickers=frozenset(spec["symbol"] for spec in specs))
 
 
 def _depletion_specs(venue: str, chains: int, healthy: int) -> list[dict[str, Any]]:
@@ -646,7 +662,7 @@ def generate_fixture_document() -> dict[str, Any]:
             directory.mkdir()
             result = run_main(specs, NOW, directory)
             assert result.rc == 0, f"{case_id}: main exit {result.rc} {result.status}"
-            bodies = seal(result.output, NOW)
+            bodies = seal(result.output, NOW, synthetic_tickers=frozenset(spec["symbol"] for spec in specs))
             check(case_id, result, bodies)
             cases[case_id] = {"description": description, "kind": "ADMITTED", "producer_exit": 0, "collection": result.doc["collection"],
                               "bodies": {"options": bodies["v213:options:v2"], "quotes": bodies["v213:quotes:v1"]},
@@ -664,7 +680,7 @@ def generate_fixture_document() -> dict[str, Any]:
                 assert result.rc == 0, f"{case_id}: a {healthy}/{chains} venue must be admitted: {result.status}"
                 got = result.doc["collection"]["chain_health"][venue]
                 assert (got["read"], got["healthy"]) == (chains, healthy), f"{case_id}: {got}"
-                bodies = seal(result.output, NOW)
+                bodies = seal(result.output, NOW, synthetic_tickers=frozenset(spec["symbol"] for spec in specs))
                 cases[case_id] = {"description": f"SYNTHETIC: {venue} {healthy}/{chains} chains two-sided is admitted (boundary)", "kind": "ADMITTED",
                                   "producer_exit": 0, "collection": result.doc["collection"],
                                   "bodies": {"options": bodies["v213:options:v2"], "quotes": bodies["v213:quotes:v1"]},
@@ -675,7 +691,7 @@ def generate_fixture_document() -> dict[str, Any]:
                 assert result.status["venues"][venue] == {"read": chains, "healthy": healthy}, f"{case_id}: {result.status}"
                 assert result.status["affected_venues"] == [venue], f"{case_id}: {result.status}"
                 assert result.output is not None and result.output.read_bytes() == prior, f"{case_id}: old bytes must be unchanged"
-                assert publisher.lazy_market_bodies(result.output, NOW) == prior_bodies, f"{case_id}: the retained old file is sealed unchanged"
+                assert seal(result.output, NOW, synthetic_tickers=frozenset(json.loads(prior)["options"])) == prior_bodies, f"{case_id}: the retained old file is sealed unchanged"
                 cases[case_id] = {"description": f"SYNTHETIC: {venue} {healthy}/{chains} chains two-sided REJECTS the whole candidate; the candidate is NOT published",
                                   "kind": "REJECTED", "producer_exit": 1, "status": result.status, "prior_file_unchanged": True,
                                   "prior_sha256": hashlib.sha256(prior).hexdigest(),

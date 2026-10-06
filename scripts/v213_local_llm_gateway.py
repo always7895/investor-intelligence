@@ -31,7 +31,8 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import v212_local_llm_gateway as base
 from v213_compact_qa_gateway import POLICY as COMPACT_POLICY, compact_upstream, complete_compact_response, resolve_model_id
-from v213_model_profile import parse_profile, profile_sha256
+from v213_model_profile import (parse_profile, profile_sha256, resolve_binding, selected_metadata,
+                                binding_json_http, strict_object, BindingUnavailable, OMITTED)
 from v213_decision_backend_client import DecisionBackendClient, DeciderError
 import v213_adaptive_reasoning as adaptive
 from urllib.parse import urlsplit
@@ -39,6 +40,36 @@ from urllib.parse import urlsplit
 LOCAL_AI_CONFIG_PATH = ROOT / "config" / "local-runtime-independence-v1.json"
 _LOOPBACK_SESSION = requests.Session()
 _LOOPBACK_SESSION.trust_env = False  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY ignored for all AI HTTP
+
+
+_START_BINDING_STATE = OMITTED
+
+
+def _explicit_runtime():
+    current = resolve_binding(ROOT)
+    explicit = current if current['mode'] == 'EXPLICIT_STRATA' else None
+    if _START_BINDING_STATE is not OMITTED:
+        if (explicit is None) != (_START_BINDING_STATE is None) or (explicit is not None and
+                explicit['binding_sha256'] != _START_BINDING_STATE['binding_sha256']):
+            raise BindingUnavailable('BINDING_CHANGED_RESTART_REQUIRED')
+    return explicit
+
+
+def _explicit_metadata(state):
+    metadata = selected_metadata(state['binding'], state['profile'], _load_local_ai_config()['capability_requirements']['min_context'])
+    current = _explicit_runtime()
+    if current is None or current['binding_sha256'] != state['binding_sha256']:
+        raise BindingUnavailable('BINDING_CHANGED_RESTART_REQUIRED')
+    return metadata
+
+
+class _BindingResponse:
+    def __init__(self, value):
+        self.status_code, self.ok, self.text, self._value = 200, True, '', value
+    def json(self):
+        return self._value
+    def raise_for_status(self):
+        return None
 
 
 def _strict_bool_flags_check(raw_text: str) -> None:
@@ -81,6 +112,28 @@ def _assert_loopback_url(url: str) -> str:
 
 def _loopback_http(method: str, url: str, *, timeout, **kwargs):
     """All AI HTTP: loopback-validated, no proxy environment, no redirects."""
+    state = _explicit_runtime()
+    if state is not None:
+        root = state['binding']['base_url']
+        if not isinstance(url, str) or not url.startswith(root + '/'):
+            raise BindingUnavailable('BINDING_TRANSPORT_ENDPOINT_CONFLICT')
+        suffix = url[len(root):]
+        payload = kwargs.get('json')
+        if method == 'POST' and (not isinstance(payload, dict) or payload.get('model') != state['binding']['model']):
+            raise BindingUnavailable('BINDING_REQUEST_MODEL_MISMATCH')
+        if set(kwargs) - {'json', 'headers'}:
+            raise BindingUnavailable('BINDING_TRANSPORT_ARGUMENT_INVALID')
+        if 'headers' in kwargs and kwargs['headers'] != {'content-type': 'application/json'}:
+            raise BindingUnavailable('BINDING_TRANSPORT_HEADERS_INVALID')
+        seconds = timeout[-1] if isinstance(timeout, tuple) else timeout
+        value = binding_json_http(state['binding'], method, suffix, payload=payload,
+                                  timeout=seconds, max_bytes=1048576 if method == 'POST' else 262144)
+        if method == 'POST' and (not isinstance(value, dict) or value.get('model') != state['binding']['model']):
+            raise BindingUnavailable('BINDING_RESPONSE_MODEL_MISMATCH')
+        current = _explicit_runtime()
+        if current is None or current['binding_sha256'] != state['binding_sha256']:
+            raise BindingUnavailable('BINDING_CHANGED_RESTART_REQUIRED')
+        return _BindingResponse(value)
     _assert_loopback_url(url)
     response = _LOOPBACK_SESSION.request(
         method, url, timeout=timeout, allow_redirects=False,
@@ -98,6 +151,9 @@ class LoopbackRedirectRefused(RuntimeError):
 def local_llm_base_url() -> str:
     """Documented precedence: II_LLAMA_BASE_URL override, else the config
     primary_reasoner.base_url (default http://127.0.0.1:8080/v1)."""
+    explicit = _explicit_runtime()
+    if explicit is not None:
+        return explicit['binding']['base_url']
     override = os.getenv("II_LLAMA_BASE_URL", "").strip()
     base = override or _load_local_ai_config()["primary_reasoner"]["base_url"]
     _assert_loopback_url(base)
@@ -116,6 +172,9 @@ def _endpoint_suffixes(base: str) -> tuple[str, str, list[str]]:
 def selected_model_id() -> str:
     """Documented precedence: II_LOCAL_LLM_MODEL override, else the config
     primary_reasoner.model (default Qwen3.8-27B)."""
+    explicit = _explicit_runtime()
+    if explicit is not None:
+        return explicit['binding']['model']
     override = os.getenv("II_LOCAL_LLM_MODEL", "").strip()
     return override or _load_local_ai_config()["primary_reasoner"]["model"]
 
@@ -126,6 +185,11 @@ def capability_context_evidence(canonical: str) -> int | None:
     parameters.max_seq_len must be a strict positive int. Catalog cards and
     training-context metadata (n_ctx_train/n_ctx) are NOT served-runtime
     proof. Any missing/mismatched/typed-differently evidence => None."""
+    explicit = _explicit_runtime()
+    if explicit is not None:
+        if canonical != explicit['binding']['model'] or 'II_CAPABILITY_METADATA_URL' in os.environ:
+            raise BindingUnavailable('BINDING_CAPABILITY_ARGUMENT_CONFLICT')
+        return _explicit_metadata(explicit)['declared_context']
     base = local_llm_base_url()
     override = os.getenv("II_CAPABILITY_METADATA_URL", "").strip()
     url = override or (base + _endpoint_suffixes(base)[0])
@@ -154,12 +218,36 @@ def capability_context_evidence(canonical: str) -> int | None:
 
 def _catalog_context_evidence(canonical: str) -> int | None:
     """Servers without the TabbyAPI /v1/model card (ninfer, vLLM; operator 2026-09-26) report the configured served
-    context as max_model_len on their /v1/models row. Only that row, for exactly the resolved identity, counts."""
+    context as max_model_len on their /v1/models row. Only that row, for exactly the resolved identity, counts.
+    Strata (operator 2026-10-02, ninfer removed) serves neither field: it reports the served context as
+    meta.n_ctx on that same row. That counts only when the server's own /health states the identical
+    max_context for the identical model id, so two served endpoints must agree."""
     for row in _available_model_catalog():
         if isinstance(row, dict) and str(row.get("id", "")).casefold() == str(canonical).casefold():
             value = row.get("max_model_len")
-            return value if type(value) is int and value > 0 else None
+            if type(value) is int and value > 0:
+                return value
+            meta = row.get("meta")
+            if isinstance(meta, dict):
+                value = meta.get("n_ctx")
+                if type(value) is int and value > 0 and _health_agrees_on_context(canonical, value):
+                    return value
+            return None
     return None
+
+
+def _health_agrees_on_context(canonical: str, value: int) -> bool:
+    """Second served endpoint: /health must report the same max_context for the same model id."""
+    try:
+        response = _loopback_http("GET", local_llm_base_url().rstrip("/") + "/health", timeout=(2, 8))
+        if response.status_code != 200:
+            return False
+        data = response.json()
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    return data.get("model") == canonical and data.get("max_context") == value
 
 
 CAPABILITY_PROBE_PROMPT = "Respond with a JSON object."
@@ -759,6 +847,11 @@ def methodology_execution_evidence(mode: object, context: Mapping[str, Any]) -> 
 def _available_model_catalog() -> list[dict[str, Any]]:
     # Router /models carries aliases; OpenAI /v1/models may omit them. Never
     # turn an invalid catalog into a permissive direct-ID fallback.
+    explicit = _explicit_runtime()
+    if explicit is not None:
+        # Keep the actual validated selected-row projection from THIS bounded
+        # check. A second unvalidated catalog fetch could race loading/reconfig.
+        return _explicit_metadata(explicit)['selected_catalog']
     for suffix in _endpoint_suffixes(local_llm_base_url())[2]:
         try:
             response = _loopback_http("GET", local_llm_base_url() + suffix, timeout=(2, 8))
@@ -834,10 +927,20 @@ class V213GatewayHandler(base.GatewayHandler):
             super().do_GET()
             return
         try:
+            explicit = _explicit_runtime()
+            if explicit is not None:
+                metadata = _explicit_metadata(explicit)
+                selected = explicit['binding']['model']
+                self._json(200, {'ok': True, 'service': 'v213-local-llm-gateway', 'health_schema_version': 2,
+                    'llama_reachable': True, 'selected_model': selected, 'canonical_model': selected,
+                    'selected_model_available': True, 'available_model_count': 1,
+                    'model_profile_sha256': explicit['profile_sha256'], 'runtime_binding_sha256': explicit['binding_sha256'],
+                    'binding_metadata': metadata, 'qualification': 'UNQUALIFIED', **_source_audit_health()})
+                return
             raw_profile = os.environ.get('V213_MODEL_PROFILE_JSON')
             runtime_profile = parse_profile(raw_profile) if raw_profile is not None else None
         except ValueError:
-            self._json(503, {'error': 'MODEL_PROFILE_INVALID', 'llama_reachable': False})
+            self._json(503, {'error': 'MODEL_PROFILE_OR_BINDING_UNAVAILABLE', 'llama_reachable': False})
             return
         selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         try:
@@ -863,6 +966,11 @@ class V213GatewayHandler(base.GatewayHandler):
         if self.path.split("?", 1)[0] != "/v1/chat/completions":
             self._json(404, {"error": "NOT_FOUND"})
             return
+        try:
+            explicit = _explicit_runtime()  # fail before request credentials/content if identity changed
+        except ValueError:
+            self._json(503, {'error': 'RUNTIME_BINDING_UNAVAILABLE'})
+            return
         expected = os.getenv("II_LOCAL_LLM_SHARED_SECRET", "")
         provided = self.headers.get("x-investor-shared-secret", "")
         if len(expected) < 32 or not hmac.compare_digest(expected, provided):
@@ -876,7 +984,8 @@ class V213GatewayHandler(base.GatewayHandler):
             self._json(413, {"error": "BODY_SIZE_INVALID"})
             return
         try:
-            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+            body = strict_object(raw_body, base.MAX_BODY) if explicit is not None else json.loads(raw_body)
         except Exception:
             self._json(400, {"error": "JSON_INVALID"})
             return
@@ -889,12 +998,14 @@ class V213GatewayHandler(base.GatewayHandler):
         except ValueError:
             self._json(503, {'error': 'MODEL_PROFILE_INVALID'})
             return
+        if explicit is not None:
+            runtime_profile = explicit['profile']
         selected = runtime_profile['model'] if runtime_profile else selected_model_id()
         requested = str(body.get("model") or "").strip()
         if not selected:
             self._json(503, {"error": "SELECTED_MODEL_NOT_CONFIGURED"})
             return
-        if requested and requested.casefold() != selected.casefold():
+        if (explicit is not None and ('model' not in body or type(body['model']) is not str or body['model'] != selected)) or (explicit is None and requested and requested.casefold() != selected.casefold()):
             self._json(409, {"error": "MODEL_PIN_MISMATCH", "selected_model": selected})
             return
         if not GENERATION_SLOTS.acquire(blocking=False):
@@ -926,7 +1037,7 @@ class V213GatewayHandler(base.GatewayHandler):
                     "stream": False,
                 }
             catalog = _available_model_catalog()
-            canonical = resolve_model_id(selected, catalog)
+            canonical = selected if explicit is not None else resolve_model_id(selected, catalog)
             if canonical is None:
                 self._json(503, {"error": "MODEL_CATALOG_IDENTITY_UNAVAILABLE"})
                 return
@@ -992,6 +1103,8 @@ class V213GatewayHandler(base.GatewayHandler):
                     "identity_proof": "unique_router_catalog",
                     "request_model_substitution_allowed": False,
                     **({'model_profile_sha256': profile_sha256(runtime_profile)} if runtime_profile else {}),
+                    **({'runtime_binding_sha256': explicit['binding_sha256'], 'engine': 'strata',
+                        'qualification': 'UNQUALIFIED'} if explicit is not None else {}),
                 }
                 result["ii_methodology_execution"] = methodology_execution_evidence(body.get("ii_context_mode"), context)
                 result["ii_source_ensemble"] = {
@@ -1185,6 +1298,15 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--skip-model-pin", action="store_true")
     args = parser.parse_args()
+    global _START_BINDING_STATE
+    try:
+        _START_BINDING_STATE = _explicit_runtime()
+        if _START_BINDING_STATE is not None:
+            if args.skip_model_pin or args.self_test:
+                raise BindingUnavailable('BINDING_START_ARGUMENT_CONFLICT')
+            _explicit_metadata(_START_BINDING_STATE)
+    except (ValueError, KeyError, TypeError):
+        raise SystemExit('RUNTIME_BINDING_PREFLIGHT_UNAVAILABLE') from None
     if args.self_test:
         _self_test()
         return 0
@@ -1196,7 +1318,7 @@ def main() -> int:
         raise SystemExit("II_LOCAL_LLM_MODEL must be configured")
     # Strict local-AI policy (LOCAL_AI_ONLY / no paid / no cloud fallback).
     _load_local_ai_config()
-    if not args.skip_model_pin:
+    if _START_BINDING_STATE is None and not args.skip_model_pin:
         pin_deadline = 30.0
         try:
             pin_deadline = max(6.0, float(os.getenv("II_MODEL_PIN_TIMEOUT_S", "30") or "30"))

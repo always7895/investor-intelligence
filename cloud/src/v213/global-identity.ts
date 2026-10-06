@@ -358,6 +358,93 @@ function safeGetRecordsByName(catalog: GlobalIdentityCatalog, normName: string):
   return result;
 }
 
+/** ICON1 identity fields compared within one exact venue:symbol key. source_feed and source_url are provenance: a difference in
+ * them alone is not a conflict and is never treated as independent corroboration. A missing optional field equals null. */
+const IDENTITY_VARIANT_FIELDS = ["native_symbol", "market", "country", "security_name", "native_name", "security_class",
+  "currency", "name_zh", "name_zh_source"] as const;
+/** Conflict diagnostics show at most this many complete keys; the decision always uses the complete relevant set. */
+const IDENTITY_CONFLICT_SHOWN_MAX = 5;
+
+function sameIdentityVariant(left: GlobalIdentityRecord, right: GlobalIdentityRecord): boolean {
+  return IDENTITY_VARIANT_FIELDS.every(field => (left[field] ?? null) === (right[field] ?? null));
+}
+
+/** Spellings under which the existing indexes list a record: the shard loader's symbol spellings ("VOLV B", "VOLV-B", "VOLV.B")
+ * and the legacy reader's upper-case symbol and native symbol. */
+function indexedSpellings(record: GlobalIdentityRecord): string[] {
+  return [record.symbol, record.native_symbol].map(value => value.toUpperCase())
+    .flatMap(value => value.includes(" ") ? [value, value.replace(/ /g, "-"), value.replace(/ /g, ".")] : [value]);
+}
+
+/** Request-local venue:symbol groups reachable from one by_symbol entry. Each distinct index symbol is read once and each row is
+ * grouped once (a Set skips repeated references): linear in the touched index entries. Only rows the index lists under that
+ * exact spelling count; an incomplete or malformed index cannot prove that an unobserved conflict is absent. */
+function keyGroupReader(catalog: GlobalIdentityCatalog): (indexSymbol: string) => Map<string, GlobalIdentityRecord[]> {
+  const cache = new Map<string, Map<string, GlobalIdentityRecord[]>>();
+  return indexSymbol => {
+    let groups = cache.get(indexSymbol);
+    if (!groups) {
+      groups = new Map();
+      const seen = new Set<GlobalIdentityRecord>();
+      for (const record of safeGetRecordsBySymbol(catalog, indexSymbol)) {
+        if (seen.has(record) || !indexedSpellings(record).includes(indexSymbol)) continue;
+        seen.add(record);
+        const key = `${record.venue}:${record.symbol}`;
+        const group = groups.get(key);
+        if (group) group.push(record);
+        else groups.set(key, [record]);
+      }
+      cache.set(indexSymbol, groups);
+    }
+    return groups;
+  };
+}
+
+/** The relevant keys of a query with ALL their known rows: the seed rows (from the query's own channels) grouped by exact key, each
+ * key completed ONCE with its complete same-key group from the canonical symbol index. Members = canonical group (index order)
+ * plus every observed seed it lacks, de-duplicated by reference, so a native alias or an incomplete canonical index never hides an
+ * already observed contradictory row; unobserved rows are not invented. Linear in the seeds plus the touched index entries. */
+function relevantKeyGroups(readGroups: (indexSymbol: string) => Map<string, GlobalIdentityRecord[]>,
+  seeds: readonly GlobalIdentityRecord[]): Map<string, GlobalIdentityRecord[]> {
+  const observed = new Map<string, GlobalIdentityRecord[]>();
+  for (const row of seeds) {
+    const key = `${row.venue}:${row.symbol}`;
+    const rows = observed.get(key);
+    if (rows) rows.push(row);
+    else observed.set(key, [row]);
+  }
+  const result = new Map<string, GlobalIdentityRecord[]>();
+  for (const [key, rows] of observed) {
+    const members: GlobalIdentityRecord[] = [];
+    const seen = new Set<GlobalIdentityRecord>();
+    for (const row of [...(readGroups(rows[0]!.symbol.toUpperCase()).get(key) ?? []), ...rows]) {
+      if (seen.has(row)) continue;
+      seen.add(row);
+      members.push(row);
+    }
+    result.set(key, members);
+  }
+  return result;
+}
+
+/** Whether one key's rows contradict each other (equality is transitive, so comparing with the first row suffices). */
+function groupConflicts(group: readonly GlobalIdentityRecord[]): boolean {
+  return group.some(record => !sameIdentityVariant(group[0]!, record));
+}
+
+/** UNAVAILABLE for contradictory identity rows of the relevant keys: the complete key set decides; only the shown list is capped
+ * (deterministic O(K log K) sort of the complete keys, exact shown/total). No candidate is chosen. */
+function identityConflict(rawQuery: string, keys: Iterable<string>, attemptedMarket?: SupportedMarket): GlobalIdentityResolution {
+  const sorted = [...new Set(keys)].sort();
+  const shown = sorted.slice(0, IDENTITY_CONFLICT_SHOWN_MAX);
+  return {
+    status: "UNAVAILABLE",
+    query: rawQuery,
+    reason: `IDENTITY_CONFLICT: 本快照對 ${sorted.length} 個掛牌有互相矛盾的身分紀錄（顯示 ${shown.length}/${sorted.length}）：${shown.join("、")}；不選擇任何一筆。`,
+    ...(attemptedMarket ? { attemptedMarket } : {}),
+  };
+}
+
 /**
  * Strictly resolves identity query against the admitted Global Identity Catalog.
  *
@@ -407,11 +494,19 @@ export function resolveGlobalIdentity(
   // 1. Suffixed Query (e.g. 2330.TW, 7203.T, 0700.HK, SIVE.ST, IQE.L, ASML.AS)
   if (suffixHint) {
     const { symbolBody, scheme } = suffixHint;
-    const records = safeGetRecordsBySymbol(catalog, symbolBody);
-    // Filter records matching the exact canonical venues of the suffix scheme
-    const matchingVenue = records.filter(r =>
-      scheme.canonicalVenues.has(r.venue.trim().toUpperCase()),
-    );
+    // ICON1: seeds = rows indexed under this exact spelling on the scheme's canonical venues; each of their keys is completed with
+    // its canonical same-key rows (a native alias may index only one variant). Contradictory rows of any relevant key make the
+    // query UNAVAILABLE; conflicts of other venues or symbols do not poison it. Equal variants collapse to the first row.
+    const readGroups = keyGroupReader(catalog);
+    const seeds = [...readGroups(symbolBody).values()].flat()
+      .filter(r => scheme.canonicalVenues.has(r.venue.trim().toUpperCase()));
+    const conflictKeys: string[] = [];
+    const matchingVenue: GlobalIdentityRecord[] = [];
+    for (const [key, group] of relevantKeyGroups(readGroups, seeds)) {
+      if (groupConflicts(group)) conflictKeys.push(key);
+      else matchingVenue.push(group[0]!);
+    }
+    if (conflictKeys.length > 0) return identityConflict(rawQuery, conflictKeys, scheme.market);
     if (matchingVenue.length === 1) {
       return { status: "RESOLVED", record: matchingVenue[0]!, candidateCount: 1, query: rawQuery };
     }
@@ -443,32 +538,15 @@ export function resolveGlobalIdentity(
     nameMatches = safeGetRecordsByName(catalog, normalizeCompanyName(cleanInput));
   }
 
-  // Combine and deduplicate candidates by unique canonical identity key: `${venue}:${symbol}`
-  const candidateMap = new Map<string, GlobalIdentityRecord>();
-  const conflictedKeys = new Set<string>();
+  // ICON1: every candidate row of the existing channels is a seed; each relevant key is completed ONCE with its canonical same-key
+  // rows (a name may match only ONE variant) and keeps every observed row even if the canonical index lacks it. Any relevant key
+  // with contradictory rows makes the query UNAVAILABLE; no remaining candidate is resolved. Equal variants collapse to the first
+  // row. The legacy catalog.conflicts metadata is not evidence and is ignored.
+  const candidateGroups = relevantKeyGroups(keyGroupReader(catalog), [...symbolMatches, ...nameMatches]);
+  const conflictKeys = [...candidateGroups].filter(([, group]) => groupConflicts(group)).map(([key]) => key);
+  if (conflictKeys.length > 0) return identityConflict(rawQuery, conflictKeys);
 
-  for (const c of [...symbolMatches, ...nameMatches]) {
-    const key = `${c.venue}:${c.symbol}`;
-    const existing = candidateMap.get(key);
-    if (existing) {
-      if (
-        existing.security_name !== c.security_name ||
-        existing.security_class !== c.security_class ||
-        existing.country !== c.country ||
-        existing.currency !== c.currency
-      ) {
-        conflictedKeys.add(key);
-      }
-    } else {
-      candidateMap.set(key, c);
-    }
-  }
-
-  for (const key of conflictedKeys) {
-    candidateMap.delete(key);
-  }
-
-  const allCandidates = Array.from(candidateMap.values());
+  const allCandidates = [...candidateGroups.values()].map(group => group[0]!);
 
   if (allCandidates.length === 1) {
     return { status: "RESOLVED", record: allCandidates[0]!, candidateCount: 1, query: rawQuery };
@@ -485,4 +563,49 @@ export function resolveGlobalIdentity(
       ? `COMPANY_NAME_UNAVAILABLE: 公司名稱「${cleanInput}」未在已封存公開身分目錄中找到精確符合項目。`
       : `IDENTIFIER_UNAVAILABLE: 代號「${cleanInput.toUpperCase()}」目前未在已封存公開身分目錄中。`,
   };
+}
+
+/* -- OPTIONICON R2 (integrated by INTEG1 with the B2 caller; exercised by the bounded HARN1A-1C harnesses; Vitest NOT_RUN) --
+ * Pure read-only helper for a later caller patch: do the rows the existing index already lists for THIS
+ * quoted spelling contradict each other inside the US market? null means NO_EVIDENCE_OF_CONFLICT only -
+ * never a verified identity, an absence claim, or any rights/publication admission. The input is the
+ * matched spelling of an already FOUND quote, never a company name and never a raw user query.
+ * Every step reuses the existing helpers (parseIdentityRequest, keyGroupReader, relevantKeyGroups,
+ * groupConflicts, identityConflict); none of them is changed here. No all-catalog scan, no by_name read,
+ * no preference of a first variant, and the legacy catalog.conflicts metadata is never evidence.
+ * R1 F1: the declared type is the full existing union; the discriminant is checked at runtime and an
+ * impossible wrong status fails explicitly instead of being masked by an unchecked assertion.
+ * R1 F5: one closed ASCII quoted-identity spelling gate (the existing shard alphabet and length, no slash
+ * alias) on top of the shared parser's invalid/reserved/company/suffix rejection; explicit prefixes and
+ * company prefixes are rejected rather than read as symbols. The diagnostic query stays "ticker <spelling>".
+ */
+const QUOTED_IDENTITY_SPELLING = /^[A-Za-z0-9][A-Za-z0-9 .-]{0,14}$/;
+
+/** R2 correctes only this helper; the resolver and every existing helper above stay byte-for-byte unchanged. */
+export function findUsIdentityConflict(
+  catalog: GlobalIdentityCatalog | null,
+  symbolSpelling: string,
+): GlobalIdentityResolution | null {
+  if (!catalog) return null;
+  const { parsed, error } = parseIdentityRequest(symbolSpelling);
+  if (error || !parsed) return null;
+  const { cleanInput, isExplicitPrefix, isCompanyQuery, isCompanyPrefix, suffixHint } = parsed;
+  if (suffixHint || isExplicitPrefix || isCompanyQuery || isCompanyPrefix) return null;
+  if (!QUOTED_IDENTITY_SPELLING.test(cleanInput)) return null;
+  if (DANGEROUS_OBJECT_KEYS.has(cleanInput) || DANGEROUS_OBJECT_KEYS.has(cleanInput.toLowerCase())) return null;
+  const indexSymbol = cleanInput.toUpperCase();
+  const readGroups = keyGroupReader(catalog);
+  const seeds = [...readGroups(indexSymbol).values()].flat();
+  if (seeds.length === 0) return null;
+  // R1 F2/F3: the whole observed key is completed first, US relevance is decided on the completed group and
+  // the decision uses that whole group, so a same-key market contradiction is exactly one key (shown 1/1).
+  const relevant = [...relevantKeyGroups(readGroups, seeds)]
+    .filter(([, group]) => group.some(row => row.market === "US"));
+  const conflictKeys = relevant.filter(([, group]) => groupConflicts(group)).map(([key]) => key);
+  if (conflictKeys.length === 0) return null;
+  const resolution = identityConflict(`ticker ${symbolSpelling}`, conflictKeys, "US");
+  if (resolution.status !== "UNAVAILABLE") {
+    throw new Error(`OPTIONICON_R2_UNEXPECTED_STATUS:${resolution.status}`);
+  }
+  return resolution;
 }

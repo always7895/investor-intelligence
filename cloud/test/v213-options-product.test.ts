@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
 import type { OptionContractQuote } from "../src/v213/market-product-schema";
 import { validateOptionContractQuote } from "../src/v213/market-product-schema";
@@ -7,6 +7,18 @@ import {
   buildOptionContractText,
   optionsUnavailableReport,
 } from "../src/v213/options-product";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { OptionRightsNotAdmittedError } from "../src/v213/public-options-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
 
 const validQuote: OptionContractQuote = {
   ticker: "NVDA",
@@ -39,6 +51,14 @@ const validQuote: OptionContractQuote = {
 };
 
 describe("Options Product Contract and Validation", () => {
+  it("TESTFIX1 rights NONE: denies the option product renderers without opt-in", () => {
+    for (const render of [buildOptionContractText, buildOptionContractFlex]) {
+      let rendered: unknown;
+      expect(() => { rendered = render(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" }); }).toThrow(OptionRightsNotAdmittedError);
+      expect(JSON.stringify(rendered) ?? "").not.toContain("Bid $4.20");
+    }
+  });
+
   it("validates a compliant option quote contract", () => {
     const validated = validateOptionContractQuote(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     expect(validated.ticker).toBe("NVDA");
@@ -82,6 +102,7 @@ describe("Options Product Contract and Validation", () => {
   });
 
   it("retains missing Greeks and volume as null without zero coercion", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
     const missingGreeks = {
       ...validQuote,
       delta: null,
@@ -119,6 +140,7 @@ describe("Options Product Contract and Validation", () => {
   });
 
   it("renders valid Flex and text contracts without payoff placeholder rows", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
     const flex = buildOptionContractFlex(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);

@@ -82,7 +82,7 @@ function dataReportBlocks(report: { generated_at: string }, data: CompanyDataRep
   const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return [
     `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
-      `資料計算日：${data.as_of}｜資料階段：${data.phase}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
+      `資料計算日：${data.as_of}｜舊版准入狀態：${legacyGateLabel(data.phase)}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
     ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
     `資料來源 / Sources\n` + data.source_references.map(ref => `• ${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
   ];
@@ -241,8 +241,14 @@ export function buildTop20DeepAnalysisMessages(
 const PHASE_NAME: Record<string, string> = {
   INSUFFICIENT_EVIDENCE: "資料不足", DISCOVERY: "初現（單一來源）", EARLY_VALIDATION: "驗證中（雙來源確認）",
   COMMERCIAL_VALIDATION: "商業驗證（公司開始獲利）", INSTITUTIONAL_VALIDATION: "法人進場", CONSENSUS: "共識擁擠",
-  RELIEVING: "緩解中", BROKEN: "已失效",
+  RELIEVING: "緩解中", BROKEN: "受阻（可能含融資條件，不等同營運論點失效）",
 };
+
+/** Fixed label of the compact legacy phase (the admission gate, not the operating phase): own keys of PHASE_NAME only;
+ * anything else reads 未知 and is never echoed. Operating/financing observations are not in the compact report. */
+function legacyGateLabel(phase: unknown): string {
+  return typeof phase === "string" && Object.prototype.hasOwnProperty.call(PHASE_NAME, phase) ? (PHASE_NAME[phase] ?? "未知") : "未知";
+}
 const NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
 
 const kpiValue = (kpi: CompanyKpi) => kpi.value === null ? "未申報"
@@ -276,7 +282,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
       uiText(`資料計算日 ${data.as_of}｜快照 ${generatedAt}`, "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
-      uiBox([railTitle("資料階段", PHASE_NAME[data.phase] ?? data.phase), phaseLadder(data.phase),
+      uiBox([railTitle("舊版准入狀態", legacyGateLabel(data.phase)), phaseLadder(data.phase),
         labelValue("下次檢查", data.next_review_at ?? "下一份財報", { weight: "bold" })], { spacing: "md" }),
       ...(data.kpis.length > 0 ? [uiBox([railTitle("關鍵數據", "SEC XBRL 同季年比較"), ...kpiRows(data.kpis)], { spacing: "sm" })] : []),
       panel([footnote(`研究邊界：${data.boundary}`), footnote(`左滑看詳細報告 2–${total}/${total}`)], "soft"),

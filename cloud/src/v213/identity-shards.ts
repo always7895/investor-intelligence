@@ -110,12 +110,22 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
     if (!shards.has(bucket)) shards.set(bucket, parseSymbolShard(await view.json<unknown>([identitySymbolKey(bucket)]), bucket));
     return shards.get(bucket)!;
   };
-  const selected = new Map<string, GlobalIdentityRecord>();
+  // ICON1: every selected row of a venue:symbol key is kept, in first-encounter order, so contradictory identity variants stay
+  // visible to the resolver; a repeated visit of the SAME row object (symbol and name channels, repeated name refs) is not a variant.
+  const selected = new Map<string, GlobalIdentityRecord[]>();
+  const visited = new Set<GlobalIdentityRecord>();
   let generatedAt: string | null = null;
   let feedDigest: string | null = null;
   const take = (shard: SymbolShard, match: (record: GlobalIdentityRecord) => boolean) => {
     generatedAt ??= shard.generated_at; feedDigest ??= shard.feeds[0]!.sha256;
-    for (const record of shard.rows) if (match(record)) selected.set(`${record.venue}:${record.symbol}`, record);
+    for (const record of shard.rows) {
+      if (!match(record) || visited.has(record)) continue;
+      visited.add(record);
+      const key = `${record.venue}:${record.symbol}`;
+      const group = selected.get(key);
+      if (group) group.push(record);
+      else selected.set(key, [record]);
+    }
   };
   const body = (parsed.suffixHint ? parsed.suffixHint.symbolBody : parsed.cleanInput).toUpperCase();
   if (!parsed.isCompanyPrefix && SYMBOL.test(body)) {
@@ -135,8 +145,9 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
     }
   }
   // Bare numeric codes are Taiwan-first (4-digit Tokyo codes overlap Taiwan's); `.T` or another suffix selects others.
-  if (parsed.isNumericTicker && !parsed.suffixHint && [...selected.values()].some(record => record.market === "TAIWAN")) {
-    for (const [key, record] of selected) if (record.market !== "TAIWAN") selected.delete(key);
+  // Whole keys are classified (ICON1): a key with ANY Taiwan variant stays with all its variants, contradictory siblings included.
+  if (parsed.isNumericTicker && !parsed.suffixHint && [...selected.values()].some(group => group.some(record => record.market === "TAIWAN"))) {
+    for (const [key, group] of selected) if (!group.some(record => record.market === "TAIWAN")) selected.delete(key);
   }
   if (generatedAt === null) {
     // A sealed but empty result still proves the shards exist: an empty catalog resolves to honest UNAVAILABLE.
@@ -144,12 +155,13 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
     if (!probe) return null;
     generatedAt = probe.generated_at; feedDigest = probe.feeds[0]!.sha256;
   }
-  const records = [...selected.values()];
+  // All variants in first-encounter order; the resolver, not this loader, decides whether a key's variants contradict each other.
+  const records = [...selected.values()].flat();
   const bySymbol: Record<string, number[]> = Object.create(null);
   const byName: Record<string, number[]> = Object.create(null);
   const byVenue: Record<string, number> = Object.create(null);
   records.forEach((record, index) => {
-    byVenue[`${record.venue}:${record.symbol}`] = index;
+    byVenue[`${record.venue}:${record.symbol}`] ??= index;  // first variant only; the resolver never reads this index
     for (const spelling of spellings(record.symbol)) (bySymbol[spelling] ??= []).push(index);
     for (const name of new Set([record.security_name, record.native_name ?? ""].map(normalizeCompanyName).filter(Boolean))) {
       (byName[name] ??= []).push(index);

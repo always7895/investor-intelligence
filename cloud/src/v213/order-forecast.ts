@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { validateMachineEnvelope, machineContextIsValid, machineEffectiveReceipt,
+  type MachineBindings, type MachineAdmissionContext } from "./revenue-guidance-machine";
 
 /** The Top20 card's 6-month and 1-year ORDER figures and the price change if those orders are realized (operator
  * 2026-09-27; Astra contract "order horizons and order-linked price scenarios"). The sealer computes them with
@@ -40,6 +42,8 @@ export interface ForecastReference { kind: "RECOGNITION_24M" | "ANNUAL_NEW_ORDER
 /** The validated forecast of either version, normalized for rendering: m6 / m12 are realization (recognition) horizons
  * only; an order-book extrapolation is a separate model sensitivity that never carries a price. */
 export interface OrderForecast {
+  /** Distinct semantic data admission, never human approval/native certification. */
+  machineAdmitted?: boolean;
   version: 1 | 2 | 3; issuer?: string; m6: ForecastHorizon; m12: ForecastHorizon; sensitivity: Sensitivity | null; references: ForecastReference[];
   supplements: ClaimView[]; superseded: SupersededView[]; registry24: RegistryReference[]; registry: string | null; cutoff: string | null;
   claims: ClaimView[]; currentStock: string | null; schedule: string | null;
@@ -48,8 +52,9 @@ export interface OrderForecast {
   /** v3 (Astra W1 ruling, astra-ir-coverage; acceptance r7 A1/A3): the distinct diagnostic on an unavailable revenue
    * path - "IR_COVERAGE_MISSING" (官方IR查核未完成，暫停營收推估), "UNREVIEWED_INPUTS" (營收輸入未經審核，
    * 暫停營收推估) or "CONSENSUS_DEFERRED" (公司未提供營收財測；分析師共識路線本次未啟用); null for every other
-   * state. Independent order recognition is never suppressed by any of them. */
-  revenueDiagnostic?: "IR_COVERAGE_MISSING" | "UNREVIEWED_INPUTS" | "CONSENSUS_DEFERRED" | null;
+   * state. Independent order recognition is never suppressed by any of them. "MACHINE_INPUTS_UNAVAILABLE" marks the
+   * machine route's fail-closed fallback (missing or invalid sealed machine inputs); it adds no display line. */
+  revenueDiagnostic?: "IR_COVERAGE_MISSING" | "UNREVIEWED_INPUTS" | "CONSENSUS_DEFERRED" | "MACHINE_INPUTS_UNAVAILABLE" | null;
   anchorDate?: string | null; baselineB?: number | null; reportedQuarters?: any[];
   forwardQuarters?: any[]; contractedRecognition?: any | null; assumptions?: string | null;
   latestReleaseCheck?: any; warning?: any | null;
@@ -1113,6 +1118,7 @@ interface V3EvidenceCheck {
   scopedLimit: boolean;
   hasRecordEvidence: boolean;
   approvalSealed: boolean;
+  machineAdmitted: boolean;
 }
 
 const V3_DECISION_KINDS = new Set(["CLAIM", "ACTUAL", "CALENDAR", "FY_RECONCILIATION", "REAFFIRMATION", "ROUTING"]);
@@ -1138,9 +1144,11 @@ function v3ClaimCheckedAt(c: any, doc: any, cutoffMs: number): void {
   if (retMs !== null) need(chk! >= retMs, "V3_CLAIM_REVIEW_BEFORE_RETRIEVAL");
 }
 
-function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string, cutoffMs: number): V3EvidenceCheck {
+function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string, cutoffMs: number,
+  machine?: MachineAdmissionContext): V3EvidenceCheck {
+  if (machine) need(machineContextIsValid(machine), "V3_MACHINE_CONTEXT");
   need(onlyKeys(value, V3_TOP_REQUIRED, V3_TOP_OPTIONAL), "V3_TOP_KEYS");
-  need(onlyKeys(ev, V3_EV_REQUIRED, V3_EV_OPTIONAL), "V3_EV_KEYS");
+  need(onlyKeys(ev, V3_EV_REQUIRED, machine ? [...V3_EV_OPTIONAL, "auto_update"] : V3_EV_OPTIONAL), "V3_EV_KEYS");
   // Typed scoped channel-fault markers (item 9): a malformed/missing cache is a channel fault, never equated with a
   // genuine empty/nondisclosed success; the marker travels sealed so the scoped failure is re-derived here.
   for (const marker of [ev.consensus_fault, ev.release_check_fault]) {
@@ -1309,8 +1317,9 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
     && actuals.length === 0 && Array.isArray(intervals) && intervals.length === 0
     && (value.forward_quarters === undefined || (Array.isArray(value.forward_quarters) && value.forward_quarters.length === 0))
     && (ev.release_channels ?? null) === null && (ev.latest_release_check ?? null) === null && (ev.consensus ?? null) === null
-    && (ev.fy_reconciliation ?? null) === null && ev.revenue_registry_status === "OK"
-    && value.revenue_status === "UNAVAILABLE" && value.revenue_reason === "INPUTS_MISSING";
+    && (ev.fy_reconciliation ?? null) === null && (ev.revenue_registry_status === "OK" || machine?.kind === "BARRIER")
+    && value.revenue_status === "UNAVAILABLE" && (value.revenue_reason === "INPUTS_MISSING" ||
+      (machine?.kind === "BARRIER" && value.revenue_reason === machine.barrierReason));
   // A4 r7: the scoped evidence-limit envelope - the oversized revenue originals were cleared by the sealer, but the
   // bounded v2 order view stays sealed so the independently validated sibling recognition (e.g. NVDA m12 USD
   // 1,248,000,000) re-derives as exactly that scoped state, never INVALID and never a wiped entry.
@@ -1368,7 +1377,9 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
       rc && Number.isInteger(rc.sec_cik) ? rc.sec_cik : undefined,
       rc && typeof rc.wire_symbol === "string" ? rc.wire_symbol : undefined,
       irSpec ? irHost : undefined);
+    recStatus = machineEffectiveReceipt(machine, receipt, recStatus); // same unchanged raw classifier, separate accounted freshness
   }
+  if (machine?.kind === "BARRIER" && machine.barrierReason === "FRESHNESS_UNVERIFIED") recStatus = "FRESHNESS_UNVERIFIED";
   // Missing/uncovered official IR coverage suspends the company-guidance revenue path (Astra W1 ruling): it applies
   // only where a company-guidance path was actually attempted (an active guidance claim) - a NOT_DISCLOSED or
   // consensus record carries no such path and never the IR diagnostic. A record without any reviewed IR wiring
@@ -1459,7 +1470,8 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
     const age = days(doc.published_date, reportDay);
     return age > 200;
   });
-  const staleEvidence = (recStatus === "RESULTS_PUBLISHED" || recStatus === "REVIEW_REQUIRED" || consensusStale || guidanceStale);
+  const staleEvidence = (recStatus === "RESULTS_PUBLISHED" || recStatus === "REVIEW_REQUIRED" || consensusStale || guidanceStale
+    || (machine?.kind === "BARRIER" && machine.barrierReason === "STALE"));
 
   // A3/A6 (Astra acceptance r7): the registry's explicit consensus gate travels sealed. While it is false the
   // Korean consensus route is deferred for this rollout: a sealed CONSENSUS basis is invalid, and the deferred
@@ -1474,7 +1486,11 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
   // re-derives below. The empty (noRecord) and scoped-limit envelopes seal explicit nulls.
   const approvalSealed = typeof ev.approval_sha256 === "string" && ev.approval_approved_at != null && ev.approval_decisions != null;
   const hasRecordEvidence = !noRecord && !scopedLimit;
-  if (hasRecordEvidence && approvalSealed) {
+  const machineAdmitted = machine?.kind === "AUTO";
+  if (machineAdmitted) {
+    need(ev.approval_sha256 === null && ev.approval_approved_at === null && ev.approval_decisions === null,
+      "V3_MACHINE_HUMAN_APPROVAL_NULL");
+  } else if (hasRecordEvidence && approvalSealed) {
     need(typeof ev.approval_sha256 === "string" && /^[0-9a-f]{64}$/.test(ev.approval_sha256), "V3_APPROVAL_SHA");
     const approvedMs = instantMs(ev.approval_approved_at);
     need(approvedMs !== null && approvedMs <= cutoffMs, "V3_APPROVAL_TIME");
@@ -1498,7 +1514,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
   return {
     limit: false, docMap, claims, eligibleActive, activeQuarter, activeFy, hasWithdrawn, conflict,
     actuals, intervals, receipt, recStatus, irCoverageMissing, consensus, currency, lowSample, staleEvidence, periodMismatch: false,
-    scopedLimit, hasRecordEvidence, approvalSealed,
+    scopedLimit, hasRecordEvidence, approvalSealed, machineAdmitted,
   };
 }
 
@@ -1506,10 +1522,11 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
 function v3EvidenceLimitShape(): Omit<V3EvidenceCheck, "limit"> {
   return { docMap: new Map(), claims: [], eligibleActive: [], activeQuarter: [], activeFy: [], hasWithdrawn: false,
     conflict: false, actuals: [], intervals: [], receipt: null, recStatus: null, irCoverageMissing: false, consensus: null, currency: null,
-    lowSample: false, staleEvidence: false, periodMismatch: false, scopedLimit: false, hasRecordEvidence: true, approvalSealed: false };
+    lowSample: false, staleEvidence: false, periodMismatch: false, scopedLimit: false, hasRecordEvidence: true, approvalSealed: false, machineAdmitted: false };
 }
 
-function parseV3(value: any, reportDay: string, issuer: string, generatedAt: string | undefined, outerV2?: unknown): OrderForecast {
+function parseV3(value: any, reportDay: string, issuer: string, generatedAt: string | undefined, outerV2?: unknown,
+  machine?: MachineAdmissionContext): OrderForecast {
   const invalid = normalized(3, unavailable("INVALID"), unavailable("INVALID"));
   try {
     need(isObject(value) && value.version === 3 && value.issuer === issuer, "V3_HEADER");
@@ -1659,7 +1676,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
 
     // (Astra r5 items 8/9) the unavailable outcome is derived from the fully validated inputs, never trusted from a
     // sealed early return: every evidence field was validated above the sealed status, on every branch.
-    const evc = checkV3Evidence(value, ev, issuer, reportDay, cutoffMs);
+    const evc = checkV3Evidence(value, ev, issuer, reportDay, cutoffMs, machine);
     if (evc.limit && !evc.scopedLimit) return v3EvidenceLimitResult(issuer);
 
     // If overall status is UNAVAILABLE:
@@ -1672,7 +1689,8 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       else if (ev.revenue_registry_status === "EMPTY" || ev.revenue_registry_status === "UNAVAILABLE") expectedReason = "INPUTS_MISSING";
       // A1 (Astra acceptance r7): the record's inputs seal without the reviewed profile's admission - the A1
       // admission boundary overrides the routing inputs, and the reason is INVALID, never the routed outcome.
-      if (evc.hasRecordEvidence && !evc.approvalSealed) expectedReason = "INVALID";
+      if (machine?.kind === "BARRIER") expectedReason = (machine.scoped ? "EVIDENCE_LIMIT" : machine.barrierReason!) as ForecastReason;
+      if (evc.hasRecordEvidence && !evc.approvalSealed && !evc.machineAdmitted) expectedReason = "INVALID";
       // An enum is not proof of the reason (items 8/9): each sealed reason must be backed by the validated evidence.
       if (expectedReason === "NOT_DISCLOSED") {
         need(evc.activeQuarter.length === 0 && evc.activeFy.length === 0, "V3_NOT_DISCLOSED_DESPITE_CLAIMS");
@@ -1714,7 +1732,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       // Same precedence as the producer: the reviewed-profile gate runs before any routing (build_v3), so an
       // unreviewed record seals no receipt and its diagnostic wins over the IR-coverage one derived from it.
       let expectedDiag: string | null = null;
-      if (evc.hasRecordEvidence && !evc.approvalSealed) expectedDiag = "UNREVIEWED_INPUTS";
+      if (evc.hasRecordEvidence && !evc.approvalSealed && !evc.machineAdmitted) expectedDiag = "UNREVIEWED_INPUTS";
       else if (evc.irCoverageMissing) expectedDiag = "IR_COVERAGE_MISSING";
       else if (evc.hasRecordEvidence && ev.consensus_enabled === false && evc.consensus === null && expectedReason === "NOT_DISCLOSED")
         expectedDiag = "CONSENSUS_DEFERRED";
@@ -1850,7 +1868,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       need(revDiag === null || revDiag === "IR_COVERAGE_MISSING" || revDiag === "UNREVIEWED_INPUTS" || revDiag === "CONSENSUS_DEFERRED",
         "V3_DIAGNOSTIC_ENUM");
       let expectedRecDiag: string | null = null;
-      if (evc.hasRecordEvidence && !evc.approvalSealed) expectedRecDiag = "UNREVIEWED_INPUTS";
+      if (evc.hasRecordEvidence && !evc.approvalSealed && !evc.machineAdmitted) expectedRecDiag = "UNREVIEWED_INPUTS";
       else if (evc.irCoverageMissing) expectedRecDiag = "IR_COVERAGE_MISSING";
       else if (evc.hasRecordEvidence && ev.consensus_enabled === false && evc.consensus === null && revReason === "NOT_DISCLOSED")
         expectedRecDiag = "CONSENSUS_DEFERRED";
@@ -1983,7 +2001,8 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         rc && Number.isInteger(rc.sec_cik) ? rc.sec_cik : undefined,
         rc && typeof rc.wire_symbol === "string" ? rc.wire_symbol : undefined,
         irHostBind);
-      need(receipt.status === recomputedStatus && receipt.status === "OK", "V3_RECEIPT_STATUS_OK");
+      const effectiveStatus = machineEffectiveReceipt(machine, receipt, recomputedStatus);
+      need(machine ? effectiveStatus === "OK" : receipt.status === recomputedStatus && receipt.status === "OK", "V3_RECEIPT_STATUS_OK");
 
       // Derive forward amounts
       if (quarterClaim && !fyClaim) {
@@ -1995,7 +2014,18 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         const mp = validateModelPoint(fyClaim);
         const recObj = ev.fy_reconciliation;
         need(isObject(recObj) && recObj.fy_claim_id === fyClaim.id, "V3_FY_CLAIM_ID");
-        need(recObj.ytd_end === anchorDate, "V3_FY_YTD_END_MATCH");
+        // SAME Python exact zero-reported-YTD rollover; the WeakSet-created
+        // context, not a payload flag, owns machine admission. All fiscal,
+        // receipt, interval, residual and sealed-model checks still run below.
+        const zeroYtdRollover = machineContextIsValid(machine) && machine.kind === "AUTO" && !machine.scoped
+          && Array.isArray(recObj.ytd_quarter_ends) && recObj.ytd_quarter_ends.length === 0
+          && typeof recObj.ytd_revenue === "number" && Number.isFinite(recObj.ytd_revenue) && recObj.ytd_revenue === 0
+          && claimDay(fyClaim.period_start) && recObj.ytd_start === fyClaim.period_start
+          && recObj.ytd_end === recObj.ytd_start && recObj.ytd_start === dayAfter(anchorDate)
+          && actualObjs.length >= 4 && actualObjs.every((q: any) => q.end < recObj.ytd_start)
+          && intervalObjs.length === 4 && intervalObjs[0].start === recObj.ytd_start
+          && intervalObjs[3].end === (fyClaim.period_end ?? fyClaim.end);
+        need(recObj.ytd_end === anchorDate || zeroYtdRollover, "V3_FY_YTD_END_MATCH");
         need(claimDay(recObj.ytd_start) && recObj.ytd_start <= recObj.ytd_end, "V3_FY_YTD_DATES");
         need(fyClaim.period_start === recObj.ytd_start, "V3_FY_YTD_START_MISMATCH");
         const fyEnd = fyClaim.period_end ?? fyClaim.end;
@@ -2403,6 +2433,38 @@ export function parseOrderForecastV3(raw: unknown, reportDay: string, issuer: st
   const value = raw as any;
   if (value.version !== 3) return invalidV3;
   return parseV3(value, reportDay, issuer, generatedAt, outerV2);
+}
+
+function machineUnavailable(outerV2: unknown, reportDay: string, issuer: string, generatedAt?: string): OrderForecast {
+  // Independent unchanged v2 recognition checks only; never old revenue/consensus.
+  const sibling = parseOrderForecast(outerV2, reportDay, issuer, generatedAt);
+  const tile = (h: ForecastHorizon): ForecastHorizon => h.status === "AVAILABLE" && h.basis === "RECOGNITION"
+    ? {...h, scenario: {status: "NO_BASIS", reason: "NO_REVENUE_BASIS"}}
+    : unavailable("FRESHNESS_UNVERIFIED");
+  return {...normalized(3, tile(sibling.m6), tile(sibling.m12)), issuer, cutoff: generatedAt ?? null, // absence stays null
+    revenueStatus: "UNAVAILABLE", revenueBasis: null, revenueReason: "FRESHNESS_UNVERIFIED",
+    revenueDiagnostic: "MACHINE_INPUTS_UNAVAILABLE", machineAdmitted: false};
+}
+
+export function parseOrderForecastV3Machine(raw: unknown, reportDay: string, issuer: string, generatedAt?: string,
+  outerV2?: unknown, expected?: MachineBindings): OrderForecast {
+  const context = validateMachineEnvelope(raw, expected, issuer, generatedAt, {
+    digest: sha256Hex, receiptDigest: computeReceiptDigest,
+    receiptStatus(receipt, record, cutoff) {
+      const rc = record.release_channels;
+      if (!isObject(rc) || !isObject(rc.ir) || receipt.coverage !== "SEC_WIRE_IR") return "FRESHNESS_UNVERIFIED";
+      let host: string; try { host = new URL(rc.ir.url).host; } catch { return "FRESHNESS_UNVERIFIED"; }
+      if (!["Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML"].includes(rc.ir.kind)) return "FRESHNESS_UNVERIFIED";
+      const doc = record.documents.find((d: any) => d.id === receipt.guidance_document_id);
+      if (!doc) return "FRESHNESS_UNVERIFIED";
+      return recomputeReceiptStatus(receipt, [], cutoff.slice(0,10), doc.published_date, Date.parse(cutoff), rc.sec_cik, rc.wire_symbol, host);
+    },
+  });
+  if (!context) return machineUnavailable(outerV2, reportDay, issuer, generatedAt);
+  const result = parseV3((raw as any).payload, reportDay, issuer, generatedAt, outerV2, context);
+  if (result.m6.reason === "INVALID" && result.m12.reason === "INVALID" && result.revenueStatus === undefined)
+    return machineUnavailable(outerV2, reportDay, issuer, generatedAt);
+  return {...result, machineAdmitted: context.kind === "AUTO"};
 }
 
 function parseV2(value: any, reportDay: string, issuer: string, generatedAt: string | undefined): OrderForecast {

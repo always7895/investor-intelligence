@@ -56,6 +56,9 @@ It enforces that candidate text matches (e.g. from `company_evidence_candidates.
    Multiple chapters, sections, or filings from the same issuer annual report family (such as 4 chapters of an annual report) share origin/lineage/hash keys and transitively collapse into **one** evidence family.
    - Each factor claim requires at least **two** independent evidence families computed via connected components.
    - Caller-invented duplicate lineages from the same underlying issuer document fail closed.
+   - Identity values (`independence_group`, `origin_group`, `content_sha256`) must be strings. They are stripped, and a non-string value is ignored instead of being coerced with `str()`. A truthy top-level `origin_group` is used first (even if it is not a string, in which case it is ignored); only otherwise does the legacy `payload.origin_group` fallback apply, and a truthy malformed `payload` still raises instead of being skipped silently.
+   - A well-formed observation with no usable key is skipped and no longer counts as its own anonymous family. A non-mapping observation was already skipped.
+   - The family count is a metadata-overlap count, not proof of authenticity or independence. For invalid or mixed metadata it can be higher or lower than the earlier coercing behavior: for example, two observations with a numeric `independence_group` of 7 and origins A and B formerly shared an invented `publisher:7` key and counted as 1, and now count as 2. Fixture threshold outcomes can therefore change. The upstream acquisition binding, the source registry (a non-empty string `independence_group`) and the context checks stay mandatory and unchanged.
 
 6. **Domain-Specific Economic Rules:**
    - **Generic OEM Count != Effective Alternatives:** Merely listing nominal competitors does not establish qualified substitutes or relief of switching friction.

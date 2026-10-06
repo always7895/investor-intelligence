@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import hashlib
 import json
 import re
 import sys
@@ -333,7 +332,10 @@ def retained_history(output: Path, snapshot: Any) -> dict[str, list[dict]]:
     the snapshot read it - stops the run and leaves the file as it is (a corrupt history is never replaced by a clean
     one: an item it listed may no longer appear in any feed)."""
     try:
-        raw = output.read_bytes()
+        if type(output) is overlay.B1Object:
+            raw = output.store.capture_mutable(output.components).data
+        else:
+            raw = output.read_bytes()
     except FileNotFoundError:
         raw = None
     except OSError as error:
@@ -352,14 +354,26 @@ def retained_history(output: Path, snapshot: Any) -> dict[str, list[dict]]:
     return previous["issuers"]
 
 
-def run(registry_path: Path, output: Path, now: datetime, sec_fetch: Callable[[str], Any], wire_fetch: Callable[[str], Any],
-        ir_fetch: Callable[[str], bytes] | None = None, effective_inputs: Any = None, state_root: Path | None = None) -> dict:
+def run(registry_path: Path | None, output: Path, now: datetime, sec_fetch: Callable[[str], Any] | None = None,
+        wire_fetch: Callable[[str], Any] | None = None, ir_fetch: Callable[[str], bytes] | None = None,
+        effective_inputs: Any = None, state_root: Path | None = None, *, network=None) -> dict:
     """Check every GUIDANCE discovery record of the shared effective-input snapshot (ORDERS-V3-AUTOUPDATE-01 B1): the
     curated records, and for the automatic issuers the record the updater continues from - also while waiting,
     blocked or suspended, and after a change of reviewed identity (the re-derived producer's reference, or the
     baseline's as a conservative rescan). The raw receipt is collected as always; nothing here consumes machine
     decisions or turns a status into OK."""
-    if effective_inputs is None:
+    capability = type(state_root) is overlay.B1Store
+    if capability:
+        state_root.require_live()
+        if (registry_path is not None or type(output) is not overlay.B1Object or output.store is not state_root
+                or output.components != ("receipts.json",) or any(f is not None for f in (sec_fetch, wire_fetch, ir_fetch))
+                or type(network) is not ReceiptTransport or network.store is not state_root):
+            raise ValueError("CAPABILITY_CHECKER_OPERANDS")
+        if effective_inputs is None:
+            effective_inputs = overlay.load_effective_inputs(cutoff=now, state_root=state_root, state_required=True)
+        sec_fetch, wire_fetch, ir_fetch = network.json, network.json, network.get
+        network.bind_records(overlay.require_snapshot(effective_inputs, now))
+    elif effective_inputs is None:
         effective_inputs = overlay.load_effective_inputs(
             cutoff=now, state_root=state_root if state_root is not None else overlay.DEFAULT_STATE_ROOT,
             registry_path=registry_path, receipts_path=output)
@@ -385,14 +399,95 @@ def run(registry_path: Path, output: Path, now: datetime, sec_fetch: Callable[[s
             status = receipt["status"]
         counts[status] = counts.get(status, 0) + 1
     document = {"schema": SCHEMA, "generated_at": stamp(now), "issuers": issuers}
-    temp = output.with_name(output.name + ".tmp")
-    temp.parent.mkdir(parents=True, exist_ok=True)
-    temp.write_bytes(json.dumps(document, ensure_ascii=False, indent=1).encode("utf-8"))
-    temp.replace(output)
+    encoded = json.dumps(document, ensure_ascii=False, indent=1).encode("utf-8")
+    if capability:
+        overlay._durable_write(output, encoded)  # same-epoch captured expected state + native readback
+    else:
+        temp = output.with_name(output.name + ".tmp")
+        temp.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_bytes(encoded)
+        temp.replace(output)
     # Scheduler semantics (Astra r5 item 17): a run in which no GUIDANCE issuer produced a verifiable receipt is a
     # failed run, not an OK one (the previous file keeps its original times; the caller may retry).
     return {"status": "FAILED" if not any(v == "OK" or v == "RESULTS_PUBLISHED" or v == "REVIEW_REQUIRED" for v in counts) else "OK",
             "issuers": len(issuers), "receipts": counts, "failed": failed}
+
+
+class ReceiptTransport:
+    """Actual bounded HTTPS transport for the controlled capability checker.
+
+    Only exact SEC/wire URLs and admitted reviewed IR channels, public pinned DNS,
+    no redirect/proxy, bounded response/request/cycle bytes and the lease deadline.
+    No externally injected file/network callbacks in this capability branch.
+    """
+    def __init__(self, store, sec_headers):
+        import revenue_guidance_autoupdate as updater
+        if type(store) is not overlay.B1Store:
+            raise ValueError("CAPABILITY_CHECKER_OPERANDS")
+        store.require_live()
+        self.store = store
+        self.transport = updater.Transport(sec_headers)
+        self.transport.bind_capability(store)
+        self.allowed = {}
+        self.bytes = 0
+
+    def bind_records(self, snapshot):
+        import urllib.parse
+        for issuer, record, _origin in snapshot.discovery_records():
+            if record is None:
+                continue
+            channels = record.get("release_channels") or {}
+            cik = channels.get("sec_cik")
+            if type(cik) is int:
+                self.allowed[f"https://data.sec.gov/submissions/CIK{cik:010d}.json"] = issuer
+            symbol = channels.get("wire_symbol") or record.get("symbol")
+            if isinstance(symbol, str) and re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,15}", symbol):
+                base = f"https://api.nasdaq.com/api/news/topic/press_release?q=symbol:{symbol.lower()}|assetclass:stocks"
+                for page in range(WIRE_MAX_PAGES):
+                    self.allowed[f"{base}&limit={WIRE_PAGE}&offset={page * WIRE_PAGE}"] = issuer
+            ir = channels.get("ir") or {}
+            url = ir.get("url")
+            if ir.get("kind") in issuer_ir_feeds.KINDS and isinstance(url, str):
+                parts = urllib.parse.urlsplit(url)
+                if parts.scheme == "https" and not parts.username and not parts.password and parts.port in (None, 443) and not parts.fragment:
+                    self.allowed[url] = issuer
+
+    def get(self, url):
+        import urllib.parse
+        import revenue_guidance_autoupdate as updater
+        self.store.require_live()
+        if url not in self.allowed:
+            raise ValueError("CAPABILITY_CHECKER_URL")
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname
+        transport = self.transport
+        address = transport._address(host)
+        transport._budget(self.allowed[url])
+        headers = dict(transport.sec_headers) if host in updater.SEC_HOSTS else {"User-Agent": WIRE_USER_AGENT}
+        headers.update({"Host": host, "Accept-Encoding": "identity"})
+        path = parts.path + ("?" + parts.query if parts.query else "")
+        response = updater._connect(host, address, path, headers, min(updater.REQUEST_TIMEOUT, transport.remaining()))
+        try:
+            if response.status != 200 or str(response.headers.get("content-encoding", "identity")).lower() != "identity":
+                raise ValueError("CAPABILITY_CHECKER_NETWORK")
+            chunks, total = [], 0
+            while True:
+                transport.remaining()
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                self.bytes += len(chunk)
+                transport.account_bytes(len(chunk))
+                if total > 8 * 1024 * 1024 or self.bytes > updater.CYCLE_CAPTURE_BYTES:
+                    raise ValueError("CAPABILITY_CHECKER_CAPACITY_UNAVAILABLE")
+                chunks.append(chunk)
+            return b"".join(chunks)
+        finally:
+            response.close()
+
+    def json(self, url):
+        return json.loads(self.get(url).decode("utf-8"))
 
 
 def main(argv: list[str] | None = None) -> int:

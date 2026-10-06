@@ -129,7 +129,8 @@ export function v213FieldLocale(value?: string): FieldLocale {
   return ["en", "english"].includes(locale) ? "en" : ["zh-tw", "zh"].includes(locale) ? "zh-TW" : "bilingual";
 }
 
-export type V213Top20Env = StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string };
+export type V213Top20Env = StorageEnv & { V213_FIELD_LOCALE?: string; V21_TOP20_MAX_AGE_SECONDS?: string;
+  V213_GUIDANCE_MACHINE_ENABLED?: string; V213_GUIDANCE_WIRE_ENABLED?: string; };
 
 export interface V213ReportReference {
   readonly snapshot: string;

@@ -3,7 +3,7 @@
 
 Every section is computed from primary data at run time and cites it:
 
-- business      latest 10-K / 20-F business excerpt and validated phrase (company_business_profile)
+- business      latest 10-K / 20-F business excerpt (English, extractor-selected, SEC-cited); an unverified translation is never public text
 - momentum      single-quarter revenue, gross and operating margin versus the same quarter a
                 year earlier (SEC XBRL company facts, calendar ``frame`` tags)
 - visibility    remaining performance obligations (RPO) now versus a year earlier
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -132,8 +133,149 @@ def _fiscal_fourth_quarter(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] 
                            "nine_months_accession": nine_months.get("accn")}}
 
 
-def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """Same-quarter comparisons from calendar frames; missing facts stay None."""
+IFRS_ANNUAL_FORMS = ("20-F", "20-F/A")  # 40-F and 6-K are not claimed: the annual-report parser does not cover them
+MAX_IFRS_ROWS = 4000  # per unit list; a longer list is a typed gap, never a truncation
+MAX_IFRS_UNITS = 16
+
+
+def _ifrs_day(value: Any) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _ifrs_units(facts: Mapping[str, Any], concept: str) -> Mapping[str, Any] | None:
+    container = facts.get("facts") if isinstance(facts, Mapping) else None
+    taxonomy = container.get("ifrs-full") if isinstance(container, Mapping) else None
+    entry = taxonomy.get(concept) if isinstance(taxonomy, Mapping) else None
+    units = entry.get("units") if isinstance(entry, Mapping) else None
+    return units if isinstance(units, Mapping) and units else None
+
+
+def _ifrs_rows(facts: Mapping[str, Any], concept: str, today: date) -> tuple[list[dict[str, Any]], bool]:
+    """Eligible annual 20-F rows of ONE ifrs-full concept in monetary units (three uppercase letters, as the facts name them). A
+    row with a missing, future or inconsistent date, a non-annual span or form, an unmappable accession or a non-finite value is
+    excluded, never repaired. The flag is True when a list is over the bound (nothing is truncated)."""
+    units = _ifrs_units(facts, concept) or {}
+    monetary = [unit for unit in units if isinstance(unit, str) and re.fullmatch(r"[A-Z]{3}", unit)]
+    if len(monetary) > MAX_IFRS_UNITS:
+        return [], True
+    rows: list[dict[str, Any]] = []
+    for unit in monetary:
+        source = units[unit]
+        if not isinstance(source, list):
+            continue
+        if len(source) > MAX_IFRS_ROWS:
+            return [], True
+        for row in source:
+            if not isinstance(row, Mapping):
+                continue
+            value = row.get("val")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            try:
+                number = float(value)
+            except OverflowError:
+                continue
+            if not math.isfinite(number) or abs(number) >= 1e18:
+                continue
+            start, end, filed = _ifrs_day(row.get("start")), _ifrs_day(row.get("end")), _ifrs_day(row.get("filed"))
+            accession = row.get("accn")
+            if start is None or end is None or filed is None or filed > today or end > filed or not 350 <= (end - start).days <= 380:
+                continue
+            if row.get("form") not in IFRS_ANNUAL_FORMS or row.get("fp") not in (None, "FY"):
+                continue
+            if not isinstance(accession, str) or not re.fullmatch(r"[0-9]{10}-[0-9]{2}-[0-9]{6}", accession):
+                continue
+            rows.append({"unit": unit, "val": number, "start": start, "end": end, "filed": filed, "accession": accession,
+                         "form": row["form"]})
+    return rows, False
+
+
+def ifrs_annual(facts: Mapping[str, Any], today: date) -> dict[str, Any] | None:
+    """Annual-only IFRS fallback for an issuer WITHOUT any us-gaap USD revenue row (None: no ifrs-full Revenue facts, nothing to
+    show). Every value is bound to ONE selected accession, period, reporting unit and taxonomy; a missing, mixed or ambiguous
+    context is a typed gap, never a first-row, first-currency or last-write guess. No FX conversion, no quarter inference and no
+    concept alias beyond the ifrs-full Revenue / GrossProfit that bottleneck_top20_v3 already recognises."""
+    if _ifrs_units(facts, "Revenue") is None:
+        return None
+    base = {"basis": "ANNUAL_20F", "taxonomy": "ifrs-full", "revenue_concept": "Revenue"}
+    revenue, too_large = _ifrs_rows(facts, "Revenue", today)
+    if too_large:
+        return {**base, "status": "IFRS_INPUT_TOO_LARGE"}
+    if not revenue:
+        return {**base, "status": "IFRS_NO_ELIGIBLE_ANNUAL"}
+    end = max(row["end"] for row in revenue)
+    latest = [row for row in revenue if row["end"] == end]
+    if len({row["start"] for row in latest}) != 1:
+        return {**base, "status": "IFRS_AMBIGUOUS_PERIOD"}
+    if len({row["unit"] for row in latest}) != 1:
+        return {**base, "status": "IFRS_AMBIGUOUS_UNIT"}
+    start, unit = latest[0]["start"], latest[0]["unit"]
+    filed = max(row["filed"] for row in latest)
+    accessions = {row["accession"] for row in latest if row["filed"] == filed}
+    if len(accessions) != 1:
+        return {**base, "status": "IFRS_AMBIGUOUS_ACCESSION"}
+    accession = next(iter(accessions))
+    selected = [row for row in latest if row["accession"] == accession]
+    if len({(row["val"], row["form"]) for row in selected}) != 1:
+        return {**base, "status": "IFRS_CONFLICTING_DUPLICATE"}
+    revenue_value, form = selected[0]["val"], selected[0]["form"]
+    if revenue_value < 0:
+        return {**base, "status": "IFRS_INVALID_VALUE"}
+    gaps: list[str] = []
+    # Comparable preceding annual revenue: the SAME accession and unit, starts and ends one year (350-380 days) earlier.
+    prior = {(row["start"], row["end"], row["val"]) for row in revenue
+             if row["accession"] == accession and row["unit"] == unit
+             and 350 <= (end - row["end"]).days <= 380 and 350 <= (start - row["start"]).days <= 380}
+    yoy, prior_value, prior_end = None, None, None
+    if not prior:
+        gaps.append("IFRS_PRIOR_MISSING")
+    elif len({(row_start, row_end) for row_start, row_end, _ in prior}) != 1:
+        gaps.append("IFRS_PRIOR_AMBIGUOUS")
+    elif len({row_value for _, _, row_value in prior}) != 1:
+        gaps.append("IFRS_PRIOR_CONFLICTING")
+    else:
+        _, candidate_end, candidate = next(iter(prior))
+        try:
+            growth = (revenue_value / candidate - 1) * 100 if candidate > 0 else None
+        except (OverflowError, ZeroDivisionError):
+            growth = None
+        if growth is None or not math.isfinite(growth):
+            gaps.append("IFRS_PRIOR_INVALID_DENOMINATOR")
+        else:
+            yoy, prior_value, prior_end = round(growth, 2), candidate, candidate_end
+    gross_rows, gross_too_large = _ifrs_rows(facts, "GrossProfit", today)
+    gross_values = {row["val"] for row in gross_rows if row["accession"] == accession and row["unit"] == unit
+                    and row["start"] == start and row["end"] == end}
+    gross, margin = None, None
+    if gross_too_large:
+        gaps.append("IFRS_GROSS_TOO_LARGE")
+    elif not gross_values:
+        gaps.append("IFRS_GROSS_MISSING")
+    elif len(gross_values) != 1:
+        gaps.append("IFRS_GROSS_CONFLICTING")
+    else:
+        gross = next(iter(gross_values))
+        ratio = gross / revenue_value * 100 if revenue_value > 0 else None
+        if ratio is None or not math.isfinite(ratio):
+            gaps.append("IFRS_MARGIN_UNAVAILABLE")
+        else:
+            margin = round(ratio, 2)
+    return {**base, "status": "OK", "unit": unit, "form": form, "accession": accession, "filed": filed.isoformat(),
+            "period_start": start.isoformat(), "period_end": end.isoformat(), "revenue": revenue_value,
+            "revenue_prior": prior_value, "revenue_prior_period_end": prior_end.isoformat() if prior_end else None,
+            "revenue_yoy_pct": yoy, "gross_profit": gross, "gross_profit_concept": "GrossProfit" if gross is not None else None,
+            "gross_margin_pct": margin, "gaps": gaps}
+
+
+def extract_metrics(facts: Mapping[str, Any], today: date | None = None) -> dict[str, Any]:
+    """Same-quarter comparisons from calendar frames; missing facts stay None. ``annual_context`` is added ONLY when the annual-only
+    IFRS fallback produced a result (an issuer without any us-gaap USD revenue row); it never writes a quarterly key, and other us-gaap
+    facts the issuer carries (RPO, cash, debt, ...) are computed as before. ``today`` bounds the IFRS filing dates."""
     revenue_frames = _by_frame(_rows(facts, REVENUE_TAGS, "USD"), instant=False)
     revenue, revenue_prior = _latest_pair(revenue_frames)
     frame = revenue["frame"] if revenue else None
@@ -188,6 +330,10 @@ def extract_metrics(facts: Mapping[str, Any]) -> dict[str, Any]:
                                          if capex and fy_revenue and fy_revenue[0]["val"] else None)
     out["inventory_minus_revenue_pp"] = (round(out["inventory_yoy_pct"] - out["revenue_yoy_pct"], 2)
                                          if out["inventory_yoy_pct"] is not None and out["revenue_yoy_pct"] is not None else None)
+    # Annual-only IFRS fallback: only without any us-gaap USD revenue row, and the key exists only when there is an IFRS result.
+    ifrs_context = None if _rows(facts, REVENUE_TAGS, "USD") else ifrs_annual(facts, today or date.today())
+    if ifrs_context is not None:
+        out["annual_context"] = ifrs_context
     return out
 
 
@@ -365,10 +511,112 @@ def industry_for(sic: str | None, rotation: Mapping[str, Any] | None, config: Ma
     return None
 
 
+FRESH_BUSINESS_SOURCE = "FRESH_FETCH_THIS_RUN"  # same literal as company_business_profile.FRESH_SOURCE_FACTS
+MAX_SECTION_UNITS = 700  # the Worker's SHORT(section.text, 700) counts UTF-16 code units
+BUSINESS_GAP_TEXT = "最新年報業務英文擷取不可用；未驗證的中文翻譯不納入報告"
+
+
+def business_section_text(business: Mapping[str, Any] | None) -> str:
+    """Public 公司業務 text: the FRESH primary English excerpt (up to 600 characters on the Overview path) with its SEC form and
+    filing date, or an explicit gap text. An unverified Chinese candidate is never public text. The WHOLE section must fit the
+    Worker's 700 UTF-16 units (astral characters count 2): invalid metadata or an oversized section is a gap, never a truncation."""
+    if not business or business.get("source_facts") != FRESH_BUSINESS_SOURCE:
+        return BUSINESS_GAP_TEXT
+    sentence, form, filed = business.get("sentence_en"), business.get("form"), business.get("filed")
+    if (not isinstance(sentence, str) or not isinstance(form, str) or not isinstance(filed, str)
+            or form not in ("10-K", "20-F") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", filed)
+            or len(sentence) < 30 or "\r" in sentence or "\n" in sentence):
+        return BUSINESS_GAP_TEXT
+    text = f"SEC EDGAR {form} {filed} 年報業務段落英文擷取（自動選取、非逐字、未翻譯）：{sentence}"
+    try:
+        units = len(text.encode("utf-16-le")) // 2
+    except UnicodeEncodeError:
+        return BUSINESS_GAP_TEXT
+    return text if units <= MAX_SECTION_UNITS else BUSINESS_GAP_TEXT
+
+
+IFRS_GAP_ZH = {"IFRS_INPUT_TOO_LARGE": "年度營收資料列數超過處理上限", "IFRS_NO_ELIGIBLE_ANNUAL": "沒有通過期間、申報形式與編號檢查的 20-F 年度營收列",
+               "IFRS_AMBIGUOUS_PERIOD": "最新年度期間不唯一", "IFRS_AMBIGUOUS_UNIT": "最新年度營收同時有多種幣別單位",
+               "IFRS_AMBIGUOUS_ACCESSION": "最新年度營收的申報編號不唯一", "IFRS_CONFLICTING_DUPLICATE": "同一期間、申報與幣別有互相衝突的重複營收值",
+               "IFRS_INVALID_VALUE": "最新年度營收為負值"}
+IFRS_LIMIT_TEXT = "本年度路徑未擷取或計算單季營收、毛利率與營業利益率；年度數字不可當作單季資料"  # a limit of this implementation, not a filing claim
+IFRS_GAP_TEXT = "年度／IFRS 營收不可用；" + IFRS_LIMIT_TEXT
+
+
+def _finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _unit_money(value: float, unit: str) -> str:
+    """An amount in the issuer's own reported unit: the unit is on every amount, never a dollar sign, never converted."""
+    return f"{unit} {value / 1e9:,.2f}B" if abs(value) >= 1e8 else f"{unit} {value / 1e6:,.1f}M"
+
+
+def annual_section_text(annual: Mapping[str, Any]) -> str:
+    """營運動能 for an annual-only IFRS issuer: labelled annual / IFRS / reporting unit / period, with the single-quarter figures stated
+    as not extracted by this path. The WHOLE text must fit the Worker's 700 UTF-16 units: invalid fields or an oversized text is a short
+    gap, never a truncation. A non-finite numeric field is refused rather than shown as nan or inf (hardening only)."""
+    status = annual.get("status")
+    if status != "OK":
+        reason = IFRS_GAP_ZH.get(status) if isinstance(status, str) else None
+        text = f"年度／IFRS 營收不可用（{reason}）；" + IFRS_LIMIT_TEXT if reason else IFRS_GAP_TEXT
+    else:
+        try:
+            unit, revenue, growth = annual["unit"], annual["revenue"], annual.get("revenue_yoy_pct")
+            gross, margin = annual.get("gross_profit"), annual.get("gross_margin_pct")
+            if not re.fullmatch(r"[A-Z]{3}", unit) or not _finite_number(revenue):
+                return IFRS_GAP_TEXT
+            if any(value is not None and not _finite_number(value) for value in (growth, gross, margin)):
+                return IFRS_GAP_TEXT
+            text = (f"年度／IFRS（SEC {annual['form']} {annual['filed']}，申報編號 {annual['accession']}；"
+                    f"期間 {annual['period_start']} 至 {annual['period_end']}；幣別 {unit}，為申報單位、未換算匯率）：營收 {_unit_money(revenue, unit)}")
+            text += (f"，年增 {_pctx(growth)}（對比同一申報的前一年度 {annual['revenue_prior_period_end']} 止）" if growth is not None
+                     else "，年增 無法計算（同一申報缺少可比的前一年度或其值不明確）")
+            if gross is None:
+                text += "；毛利與毛利率 未申報或不明確"
+            else:
+                text += f"；毛利 {_unit_money(gross, unit)}（ifrs-full GrossProfit）"
+                text += f"，毛利率 {margin:.1f}%" if margin is not None else "，毛利率 無法計算"
+            text += "。" + IFRS_LIMIT_TEXT
+        except (KeyError, TypeError, ValueError):
+            return IFRS_GAP_TEXT
+    try:
+        units = len(text.encode("utf-16-le")) // 2
+    except UnicodeEncodeError:
+        return IFRS_GAP_TEXT
+    return text if units <= MAX_SECTION_UNITS and "\r" not in text and "\n" not in text else IFRS_GAP_TEXT
+
+
+def momentum_section_text(metrics: Mapping[str, Any], frame: str) -> str:
+    """營運動能: the single-quarter text (us-gaap, unchanged) or, only for an issuer without any us-gaap USD revenue row that has an
+    IFRS result, the labelled annual IFRS text."""
+    annual = metrics.get("annual_context")
+    if isinstance(annual, Mapping):
+        return annual_section_text(annual)
+    return (f"{frame} 營收 {_money(metrics['revenue'])}，年增 {_pctx(metrics['revenue_yoy_pct'])}；"
+            f"毛利率 {_pctx(metrics['gross_margin_pct'], '%').lstrip('+')}（年變化 {_pctx(metrics['gross_margin_change_pp'], ' 個百分點')}）；"
+            f"營業利益率 {_pctx(metrics['operating_margin_pct'], '%').lstrip('+')}（年變化 {_pctx(metrics['operating_margin_change_pp'], ' 個百分點')}）")
+
+
+def ifrs_annual_reference(metrics: Mapping[str, Any], cik: str) -> dict[str, str] | None:
+    """A SEPARATE citation of the annual IFRS Revenue / GrossProfit context: the same SEC company-facts URL, so the same SEC lineage and
+    not an independent source. The generic company-facts citation keeps its own period. A field above the limits (source 80 here, period
+    40) is omitted, never shortened or relabelled."""
+    annual = metrics.get("annual_context")
+    if not isinstance(annual, Mapping) or annual.get("status") != "OK":
+        return None
+    start, end = annual.get("period_start"), annual.get("period_end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        return None
+    reference = {"source": "SEC XBRL company facts (ifrs-full annual Revenue/GrossProfit)", "url": FACTS_URL.format(cik=cik),
+                 "period": f"ifrs-full 年度 {start}/{end}"}
+    return reference if len(reference["source"]) <= 80 and len(reference["period"]) <= 40 else None
+
+
 def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions: Mapping[str, Any],
                  business: Mapping[str, Any] | None, rotation: Mapping[str, Any] | None,
                  rotation_config: Mapping[str, Any] | None, today: date, timing: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    metrics = extract_metrics(facts)
+    metrics = extract_metrics(facts, today)
     orders = order_scenario(metrics, timing)
     sic = str(submissions.get("sic") or "") or None
     industry = industry_for(sic, rotation, rotation_config)
@@ -377,11 +625,8 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
     frame = metrics.get("quarter_frame") or "未知季度"
     name = facts.get("entityName") or submissions.get("name") or ticker
     sections = [
-        ("公司業務", (f"{business['phrase_zh']}（{business.get('form')} {business.get('filed')}，SEC EDGAR）"
-                   if business and business.get("phrase_zh") else "最新年報業務描述尚未完成翻譯核對")),
-        ("營運動能", (f"{frame} 營收 {_money(metrics['revenue'])}，年增 {_pctx(metrics['revenue_yoy_pct'])}；"
-                   f"毛利率 {_pctx(metrics['gross_margin_pct'], '%').lstrip('+')}（年變化 {_pctx(metrics['gross_margin_change_pp'], ' 個百分點')}）；"
-                   f"營業利益率 {_pctx(metrics['operating_margin_pct'], '%').lstrip('+')}（年變化 {_pctx(metrics['operating_margin_change_pp'], ' 個百分點')}）")),
+        ("公司業務", business_section_text(business)),
+        ("營運動能", momentum_section_text(metrics, frame)),
         ("訂單能見度", (f"剩餘履約義務（RPO）{_money(metrics['rpo'])}（{metrics['rpo_as_of']}），年增 {_pctx(metrics['rpo_yoy_pct'])}"
                     if metrics.get("rpo") is not None else "未申報剩餘履約義務（RPO），訂單能見度無法量化")),
         ("訂單實現情境", order_text(orders)),
@@ -404,9 +649,12 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
     ]
     references = [{"source": "SEC XBRL company facts", "url": FACTS_URL.format(cik=cik), "period": frame},
                   {"source": "SEC EDGAR submissions", "url": SUBMISSIONS_URL.format(cik=cik)}]
+    annual_reference = ifrs_annual_reference(metrics, cik)
+    if annual_reference:
+        references.append(annual_reference)
     if orders and orders.get("url"):
         references.append({"source": f"SEC {orders.get('form')} RPO recognition timing", "url": orders["url"], "period": orders.get("filed")})
-    if business and business.get("url"):
+    if business and business.get("source_facts") == FRESH_BUSINESS_SOURCE and business.get("url"):
         references.append({"source": f"SEC {business.get('form')} business section", "url": business["url"], "period": business.get("filed")})
     if industry:
         references.extend({"source": f"BLS PPI {row['series']}", "url": f"https://data.bls.gov/timeseries/{row['series']}", "period": row["month"]}
@@ -527,12 +775,10 @@ def kpis(metrics: Mapping[str, Any], orders: Mapping[str, Any] | None = None) ->
 
 
 def cached_business(cik: str) -> Mapping[str, Any] | None:
-    """Business profile from the per-accession cache written by company_business_profile (no network)."""
+    """Audit-only filing identifiers of the cached profile (bounded strict read, no network), marked CACHE_ONLY_NOT_FRESH with no
+    sentence and no phrase: build_report never presents it, so a stale or tampered cache cannot become a current SEC fact."""
     import company_business_profile as profile
-    try:
-        return json.loads((profile.CACHE_ROOT / f"CIK{cik}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    return profile.cache_entry(cik)
 
 
 def main() -> int:
@@ -560,10 +806,7 @@ def main() -> int:
         wanted = list(dict.fromkeys(sealed_tickers() + v3_tickers() + [r["ticker"] for r in rotation_doc.get("company_ranking", [])]))
     fetch = profile.sec_fetcher(sec_identity_headers())
     ciks = ticker_ciks(fetch, today=date.today())
-    try:
-        translate = profile.local_translator()
-    except (OSError, ValueError, KeyError):
-        translate = None
+    translate = None  # BIZ1: a translation would only create a research candidate; no model is activated for final report text
 
     def timing(cik: str, submissions: Mapping[str, Any]) -> Mapping[str, Any] | None:
         # Per-accession cache: the 10-Q/10-K text is read again only when a new periodic filing appears.
@@ -573,11 +816,12 @@ def main() -> int:
             return None
 
     def business(cik: str) -> Mapping[str, Any] | None:
-        # Per-accession cache; only a new annual report triggers a (loopback) translation.
+        # Every call re-reads the filing index and the annual document (an extra existing request on a cache hit); the cache only
+        # offers an UNVERIFIED phrase candidate that is never public text. A failed fetch shows the explicit gap text (no stale fallback).
         try:
             return profile.resolve_business_profile(cik, fetch, translate)
         except Exception:
-            return cached_business(cik)
+            return None
 
     document = build_reports({t: ciks[t] for t in wanted if t in ciks}, fetch, today=date.today(), business_loader=business,
                              rotation=industry_rotation.load_rotation(), rotation_config=industry_rotation.load_config(),

@@ -1,6 +1,6 @@
 // Natural LINE phrasings reach the current products: bottleneck Top20 v3, its detail, the industry ranking and the
 // covered-call observations. Sealed synthetic snapshot through the real public routes; synthetic values only.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { BOTTLENECK_V3_KEY } from "../src/v213/bottleneck-v3";
@@ -9,6 +9,17 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
 
 const RUN = "20260926T040000Z-abcdefabcde1";
 const now = Date.now();
@@ -60,6 +71,12 @@ async function answer(env: Awaited<ReturnType<typeof sealedEnv>>, text: string):
 }
 
 describe("LINE aliases for the current products", () => {
+  it("TESTFIX1 rights NONE: denies an option alias without opt-in", async () => {
+    const body = await answer(await sealedEnv(), "SIVE.ST 每月選擇權");
+    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).not.toContain("62.00 SEK");
+  });
+
   it("sends the plain ranking words and punctuated or full-width TOP20 to the bottleneck Top20 v3", async () => {
     const env = await sealedEnv();
     for (const text of ["TOP20。", "ＴＯＰ２０！", "top 20?", "排名", "排行榜", "前20", "前 20 名", "前二十", "瓶頸排名", "瓶頸榜", "TOP20 文字"]) {
@@ -99,6 +116,7 @@ describe("LINE aliases for the current products", () => {
   });
 
   it("answers option phrasings without a cycle word, with 選擇權, trailing punctuation or no space", async () => {
+    admitSyntheticTickers("SIVE.ST"); // Explicit quote subjects for this test only.
     const env = await sealedEnv();
     for (const text of ["SIVE.ST 每月選擇權", "SIVE.ST 每月期權！", "期權SIVE.ST 每月", "選擇權 SIVE.ST 每月"]) {
       const body = await answer(env, text);

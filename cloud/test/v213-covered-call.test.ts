@@ -1,6 +1,18 @@
 // Covered-call suggestions: strict validation mirror and LINE rendering. Synthetic values only.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/covered-call";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { OptionRightsNotAdmittedError } from "../src/v213/public-options-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
 
 function suggestion(role: "HIGH_STRIKE" | "BALANCED", strike: number, bid: number, ask: number, limit: number, spot = 225, dte = 27) {
   return { role, strike, bid, ask, mid: (bid + ask) / 2, limit_price: limit, premium_per_contract: limit * 100,
@@ -16,6 +28,15 @@ function cycle(overrides: Record<string, unknown> = {}) {
 }
 
 describe("covered-call suggestions", () => {
+  it("TESTFIX1 rights NONE: denies the covered-call renderer without opt-in", () => {
+    const valid = validateCoveredCallCycle(cycle())!;
+    for (const presentation of ["text", "flex"] as const) {
+      let rendered: unknown;
+      expect(() => { rendered = buildCoveredCallMessages(valid, "每月期權", presentation); }).toThrow(OptionRightsNotAdmittedError);
+      expect(JSON.stringify(rendered) ?? "").not.toContain("$245.00");
+    }
+  });
+
   it("accepts a consistent cycle and refuses inconsistent ones", () => {
     expect(validateCoveredCallCycle(cycle())).not.toBeNull();
     const aboveMid = cycle(); (aboveMid.suggestions[0] as any).limit_price = 1.6; expect(validateCoveredCallCycle(aboveMid)).toBeNull();
@@ -33,6 +54,7 @@ describe("covered-call suggestions", () => {
   });
 
   it("renders two sell suggestions with limit, premium, yield and assignment reference, no payoff placeholders", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
     const valid = validateCoveredCallCycle(cycle())!;
     const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
     expect(flex).toContain("建議一：高履約價（不易被賣掉）");
@@ -47,6 +69,7 @@ describe("covered-call suggestions", () => {
   });
 
   it("labels a delta implied by the quote itself and refuses unknown bases or volatilities", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
     const implied = cycle({ currency: "SEK", spot: 32.78, suggestions: [{ ...suggestion("HIGH_STRIKE", 62, 0.2, 0.35, 0.27, 32.78, 20),
       delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658 }], dte: 20 });
     const valid = validateCoveredCallCycle(implied)!;

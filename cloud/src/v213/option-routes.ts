@@ -26,6 +26,13 @@ export function marketHasOptions(market: string): boolean {
   return Object.hasOwn(COVERED, market);
 }
 
+/** The exact command of the global options SOURCE-status page (options-coverage.ts, metadata only). It adds no market support and does
+ * not touch covered_markets, which stays the actual covered-call routing scope. */
+export const GLOBAL_SOURCE_STATUS_COMMAND = "全球期權來源與缺口";
+export function isGlobalSourceStatusCommand(command: string): boolean {
+  return /^(?:全球期權來源與缺口|全球期權來源|期權來源與缺口)(?:\s*文字)?$/.test(command.trim());
+}
+
 /** The note shown above an ADR's covered-call suggestion. */
 export function adrNote(route: AdrRoute): string {
   return `${route.name_zh}（${route.listing}）以其美國 ADR ${route.adr}（1 ADR＝${route.ratio} 股普通股）的掛牌期權顯示；`
@@ -36,5 +43,6 @@ export function adrNote(route: AdrRoute): string {
 export function uncoveredReason(record: Pick<GlobalIdentityRecord, "symbol" | "market" | "venue">): string {
   const market = MARKET_NAMES[record.market] ?? record.market;
   return `${record.symbol} 在${market}（${record.venue}）掛牌；本服務的公開掛牌期權報價只涵蓋${Object.values(COVERED).join("與")}，`
-    + "本服務尚未採用此市場的個股期權報價來源（該股也可能沒有掛牌期權）；不以模型推估。";
+    + "本服務尚未採用此市場的個股期權報價來源（該股也可能沒有掛牌期權）；不以模型推估。"
+    + `各市場的來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，不代表已涵蓋）。`;
 }

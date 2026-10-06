@@ -20,6 +20,14 @@ import publish_sealed_snapshot as publisher  # noqa: E402
 import serenity_signals as serenity  # noqa: E402
 
 
+def fixture_names_for(rows):
+    def names_for(symbols, identity_path=None, names_path=None, official_path=None):
+        # These ordinary-path fixtures do not inject captured publication operands.
+        assert (identity_path, names_path, official_path) == (None, None, None)
+        return dict(rows)
+    return names_for
+
+
 def fact(start: str, end: str, value: float, filed: str) -> dict:
     return {"start": start, "end": end, "val": value, "filed": filed, "form": "10-Q", "fp": "Q"}
 
@@ -434,7 +442,7 @@ class SealedFormTests(unittest.TestCase):
                                "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
                                "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
         saved = publisher.build_zh_names.names_for
-        publisher.build_zh_names.names_for = lambda symbols: {}
+        publisher.build_zh_names.names_for = fixture_names_for({})
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "v3.json"
@@ -537,7 +545,7 @@ class SealedFormTests(unittest.TestCase):
                                    "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
                                    "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
             saved = publisher.build_zh_names.names_for
-            publisher.build_zh_names.names_for = lambda symbols: {}
+            publisher.build_zh_names.names_for = fixture_names_for({})
             try:
                 with tempfile.TemporaryDirectory() as tmp:
                     v3 = Path(tmp) / "v3.json"
@@ -679,7 +687,7 @@ class SealedFormTests(unittest.TestCase):
                                "explosiveness": 52.1, "median_revenue_yoy": 0.3, "median_acceleration": 0.1, "median_return_6m": 0.5,
                                "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
         saved = publisher.build_zh_names.names_for
-        publisher.build_zh_names.names_for = lambda symbols: {"SNDK": ["晟碟", "ZHWIKI"]}
+        publisher.build_zh_names.names_for = fixture_names_for({"SNDK": ["晟碟", "ZHWIKI"]})
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "v3.json"
@@ -1154,11 +1162,19 @@ class OfficialPreviousQuarterTests(unittest.TestCase):
         (tmp / "layers.json").write_text(json.dumps({"layers": [layer]}), encoding="utf-8")
         other = {**self.OFFICIAL, "2025-03-31": 7e8}   # a listing with its own six quarters
         self._fake_yfinance({"5351.TWO": self._statement(revenue or self.YAHOO_SHAPE), "8299.TWO": self._statement(other)}, currency)
+        def cik_index(captured=None):
+            self.assertIsNone(captured)
+            return {}
+
+        def load_lineages(path=None):
+            self.assertIsNone(path)
+            return {}
+
         with mock.patch.multiple(engine, LAYERS=tmp / "layers.json", SERENITY=tmp / "none.json", LEOPOLD=tmp / "none.json",
-                                 cik_index=lambda: {}, taiwan_monthly_revenue=lambda members: {},
+                                 cik_index=cik_index, taiwan_monthly_revenue=lambda members: {},
                                  cision_interim_revenue=lambda members, now: {}, korea_ir_revenue=lambda *args: None,
                                  nasdaq_consensus=lambda *args: None, usd_rate=lambda currency, cache: 1 / 30), \
-                mock.patch.object(engine.listing_lineage, "load", lambda: {}):
+                mock.patch.object(engine.listing_lineage, "load", load_lineages):
             document = engine.build(None, self.NOW, with_news=False)
         scores = {row["symbol"]: row["parts"] for row in document["all_scores"]}
         return document, scores
@@ -1190,7 +1206,7 @@ class OfficialPreviousQuarterTests(unittest.TestCase):
                                "median_return_6m": 0.5, "fund_13f_weight": 0.0, "serenity_heat": 12.0, "news": None}]}
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(publisher.build_zh_names, "names_for", lambda symbols: {}), \
+                mock.patch.object(publisher.build_zh_names, "names_for", fixture_names_for({})), \
                 mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *args, **kwargs: {}):
             path = Path(tmp) / "v3.json"
             path.write_text(json.dumps(doc), encoding="utf-8")

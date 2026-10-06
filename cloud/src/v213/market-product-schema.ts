@@ -4,6 +4,8 @@
  * no ungrounded probability scores, no fake live quotes, and strict validation.
  */
 
+import { admitPublicOption } from "./public-options-admission";
+
 export interface MacroGrowthRate {
   readonly rate_pct: number;
   readonly units: string;
@@ -76,6 +78,8 @@ export interface MacroTop5Overview {
   readonly shortfall: number;
   readonly status: "ADMITTED_TOP5" | "SHORTFALL_NOT_QUALIFIED";
   readonly shortfall_report?: string;
+  /** Absence is UNKNOWN; explicit zero requires validated processed-subject coverage. */
+  readonly phase_knowledge_withheld?: PhaseKnowledgeWithheld;
   readonly industries: readonly MacroIndustryCard[];
 }
 
@@ -107,6 +111,12 @@ export interface OptionContractQuote {
   readonly multiplier: 100;
   readonly rights_status: "reviewed_public_access" | "candidate_local_review" | "unadmitted_third_party" | "review_before_enable" | "automated_access_prohibited";
   readonly admission_status: "ADMITTED" | "NOT_ADMITTED";
+  /** Producer-CLAIMED join identity (never authority): only the trusted catalog in public-options-admission.ts admits. */
+  readonly provider_id?: string;
+  readonly jurisdiction?: string;
+  readonly venue?: string;
+  readonly instrument_kind?: string;
+  readonly publication_scope?: string;
 }
 
 export interface OptionEducationalStrategyCard {
@@ -362,6 +372,30 @@ export function validateMacroIndustryCard(
   };
 }
 
+export interface PhaseKnowledgeWithheld {
+  readonly affected_industries: number;
+  readonly signals: number;
+}
+
+/** One closed strict predicate shared by root reconstruction and coverage presentation. */
+export function validatePhaseKnowledgeWithheld(raw: unknown): PhaseKnowledgeWithheld {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("INVALID_PHASE_KNOWLEDGE_WITHHELD");
+  }
+  const obj = raw as Record<string, unknown>;
+  if (Reflect.ownKeys(obj).length !== 2 || !Object.hasOwn(obj, "affected_industries") || !Object.hasOwn(obj, "signals")) {
+    throw new Error("INVALID_PHASE_KNOWLEDGE_WITHHELD");
+  }
+  const affected = obj.affected_industries;
+  const signals = obj.signals;
+  if (typeof affected !== "number" || !Number.isSafeInteger(affected) || affected < 0
+    || typeof signals !== "number" || !Number.isSafeInteger(signals) || signals < 0
+    || (affected === 0) !== (signals === 0) || affected > signals) {
+    throw new Error("INVALID_PHASE_KNOWLEDGE_WITHHELD");
+  }
+  return { affected_industries: affected, signals };
+}
+
 export function validateMacroTop5Overview(
   raw: unknown,
   validationOptions?: { evaluatedAt?: string },
@@ -384,11 +418,34 @@ export function validateMacroTop5Overview(
   }
 
   const validatedIndustries = obj.industries.map(c => validateMacroIndustryCard(c, validationOptions));
-  // Count only truly admitted industries (with non-null rank and admitted growth)
+  // MACRO-COUNT-01 root bound: the overview shows at most five cards; trimmed industry ids are non-empty and distinct.
+  if (validatedIndustries.length > 5) {
+    throw new Error("OVERVIEW_CARD_LIMIT");
+  }
+  const seenIndustryIds = new Set<string>();
+  for (const card of validatedIndustries) {
+    const id = card.industry_id.trim();
+    if (!id || seenIndustryIds.has(id)) {
+      throw new Error("OVERVIEW_INDUSTRY_ID_EMPTY_OR_DUPLICATE");
+    }
+    seenIndustryIds.add(id);
+  }
+  // qualified_count is the VISIBLE validated admitted count N, never an unsupported upstream aggregate:
+  // a legacy raw count above five distinct admitted cards still yields N=5; an empty list with a claimed 5 yields N=0.
   const admittedIndustries = validatedIndustries.filter(ind => ind.admission_status === "ADMITTED" && ind.rank !== null);
-  const qualifiedCount = typeof obj.qualified_count === "number" ? obj.qualified_count : admittedIndustries.length;
+  const qualifiedCount = admittedIndustries.length;
+  // Admitted ranks must be unique positive integers forming exactly 1..N; non-admitted cards must carry rank null.
+  const admittedRanks = admittedIndustries.map(ind => ind.rank as number);
+  if (admittedRanks.some(rank => !Number.isInteger(rank) || rank <= 0)
+    || new Set(admittedRanks).size !== qualifiedCount
+    || [...admittedRanks].sort((a, b) => a - b).join(",") !== Array.from({ length: qualifiedCount }, (_, k) => String(k + 1)).join(",")) {
+    throw new Error("OVERVIEW_ADMITTED_RANKS_INVALID");
+  }
+  if (validatedIndustries.some(ind => ind.admission_status !== "ADMITTED" && ind.rank !== null)) {
+    throw new Error("OVERVIEW_NON_ADMITTED_RANK_PRESENT");
+  }
   const shortfall = Math.max(0, 5 - qualifiedCount);
-  const status = shortfall === 0 && qualifiedCount >= 5 ? "ADMITTED_TOP5" : "SHORTFALL_NOT_QUALIFIED";
+  const status = qualifiedCount === 5 ? "ADMITTED_TOP5" : "SHORTFALL_NOT_QUALIFIED";
 
   return {
     title: "TOP5產業總覽",
@@ -398,6 +455,9 @@ export function validateMacroTop5Overview(
     shortfall,
     status,
     shortfall_report: typeof obj.shortfall_report === "string" ? obj.shortfall_report.trim() : undefined,
+    ...(Object.hasOwn(obj, "phase_knowledge_withheld")
+      ? { phase_knowledge_withheld: validatePhaseKnowledgeWithheld(obj.phase_knowledge_withheld) }
+      : {}),
     industries: validatedIndustries,
   };
 }
@@ -634,7 +694,11 @@ export function validateOptionContractQuote(
     throw new Error("INVALID_RIGHTS_STATUS");
   }
 
-  const admission_status = rights_status === "reviewed_public_access" ? "ADMITTED" : "NOT_ADMITTED";
+  // Admission comes ONLY from the trusted catalog join (a rights label, a caller-supplied admission_status or any payload boolean
+  // is ignored); this validator stays reusable for local data. Admission uses the REAL current clock, never evaluatedAt/evalClock, so a
+  // caller- or payload-supplied time cannot extend a review window.
+  const admission_status: "ADMITTED" | "NOT_ADMITTED" = admitPublicOption({ ...obj, quote_basis }).ok ? "ADMITTED" : "NOT_ADMITTED";
+  const claimed = (key: string): string | undefined => (typeof obj[key] === "string" ? (obj[key] as string) : undefined);
 
   // Strict ISO Instant timestamp validation
   const timestamp = String(obj.timestamp ?? "");
@@ -678,6 +742,11 @@ export function validateOptionContractQuote(
     multiplier,
     rights_status,
     admission_status,
+    provider_id: claimed("provider_id"),
+    jurisdiction: claimed("jurisdiction"),
+    venue: claimed("venue"),
+    instrument_kind: claimed("instrument_kind"),
+    publication_scope: claimed("publication_scope"),
   };
 }
 

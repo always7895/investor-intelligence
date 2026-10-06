@@ -15,10 +15,65 @@ param(
     [string]$FreeRelayConfigPath = '',
     [int]$FreeRelayLeaseTtlSeconds = 180,
     [switch]$SelfTest,
-    [switch]$RoutingCheckOnly
+    [switch]$RoutingCheckOnly,
+    [AllowNull()][AllowEmptyString()][string]$BindingJson,
+    [switch]$BindingMetadataCheckOnly,
+    [switch]$BindingPreflightOnly
 )
 $ErrorActionPreference = 'Stop'
-if ($RoutingCheckOnly -and @($PSBoundParameters.Keys | Where-Object { $_ -notin @('ProjectRoot','LlamaBaseUrl','Model','RoutingCheckOnly') }).Count) {
+# Explicit mode resolution precedes helper dot-sourcing, state/lock/credential
+# reads and actuation. This path NEVER bootstraps/installs/discovers Python.
+$script:ExplicitBinding = $null
+$script:ExplicitPython = $null
+$intentRoot = if ($ProjectRoot) { [IO.Path]::GetFullPath($ProjectRoot) } else { Split-Path -Parent $PSScriptRoot }
+$intentFolder = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config'
+$intentPath = Join-Path $intentFolder 'v213-runtime-binding-v1.json'
+$intentSelection = Join-Path $intentFolder 'v213-model-selection.json'
+$intentPresent = $PSBoundParameters.ContainsKey('BindingJson') -or $null -ne [Environment]::GetEnvironmentVariable('V213_RUNTIME_BINDING_JSON') -or (Test-Path -LiteralPath $intentPath)
+if (Test-Path -LiteralPath $intentSelection) {
+    if (-not (Test-Path -LiteralPath $intentSelection -PathType Leaf) -or (Get-Item -LiteralPath $intentSelection).Length -gt 16384) { throw 'MODEL_SELECTION_INVALID' }
+    # The raw text must open a top-level object BEFORE decoding: a singleton array must not be enumerated by the pipeline into
+    # an object (version-independent); the shared helper still validates the original bytes.
+    try {
+        $savedIntentText = [IO.File]::ReadAllText($intentSelection)
+        if ($savedIntentText -cnotmatch '\A[ \t\r\n]*\{') { throw 'MODEL_SELECTION_INVALID' }
+        $savedIntentSelection = $savedIntentText | ConvertFrom-Json -ErrorAction Stop
+    } catch { throw 'MODEL_SELECTION_INVALID' }
+    if ($null -eq $savedIntentSelection -or $savedIntentSelection -is [array] -or $savedIntentSelection -isnot [pscustomobject]) { throw 'MODEL_SELECTION_INVALID' }
+    # Decode escaped property names before mode detection; shared Python still
+    # checks the original bytes/duplicates/closed explicit shape, before acts.
+    $intentPresent = $intentPresent -or $null -ne $savedIntentSelection.PSObject.Properties['engine'] -or $null -ne $savedIntentSelection.PSObject.Properties['runtime_binding_sha256']
+}
+if ($intentPresent -or $BindingMetadataCheckOnly -or $BindingPreflightOnly) {
+    if ($SelfTest -or ($RoutingCheckOnly -and ($BindingMetadataCheckOnly -or $BindingPreflightOnly))) { throw 'BINDING_OPERATION_CONFLICT' }
+    if ($BindingMetadataCheckOnly -and @($PSBoundParameters.Keys | Where-Object { $_ -notin @('ProjectRoot','Model','LlamaBaseUrl','BindingJson','BindingMetadataCheckOnly') }).Count) { throw 'BINDING_CHECK_ARGUMENT_CONFLICT' }
+    $intentPython = $env:PROJECT_PYTHON
+    if ([string]::IsNullOrWhiteSpace($intentPython)) { $intentPython = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime\python-3.12.10\python.exe' }
+    if (-not (Test-Path -LiteralPath $intentPython -PathType Leaf)) { throw 'BINDING_PYTHON_PREREQUISITE_UNAVAILABLE' }
+    # The validated interpreter is pinned by its resolved path for preflight, marker helper and the
+    # spawned gateway. Legacy Resolve-Python is never consulted once explicit intent is present.
+    $script:ExplicitPython = (Resolve-Path -LiteralPath $intentPython).ProviderPath
+    $intentPython = $script:ExplicitPython
+    $intentRequest = @{ root=$intentRoot }
+    if ($PSBoundParameters.ContainsKey('BindingJson')) { $intentRequest.binding_json=$BindingJson }
+    if ($PSBoundParameters.ContainsKey('Model')) { $intentRequest.model=$Model }
+    if ($PSBoundParameters.ContainsKey('LlamaBaseUrl')) { $intentRequest.base_url=$LlamaBaseUrl }
+    $intentArgs = @((Join-Path $intentRoot 'scripts\v213_model_profile.py'),'--resolve-stdin')
+    # Normal START preflight also checks the selected metadata, before any
+    # locks/credentials/StopExisting. PreflightOnly is pure local validation.
+    if (-not $BindingPreflightOnly) { $intentArgs += '--metadata-check' }
+    if (-not $BindingPreflightOnly -and -not $BindingMetadataCheckOnly -and -not $RoutingCheckOnly) { $intentArgs += '--require-gateway-deps' }
+    $intentOutput = ($intentRequest | ConvertTo-Json -Compress -Depth 8) | & $intentPython @intentArgs
+    if ($LASTEXITCODE -ne 0) { throw 'BINDING_PREFLIGHT_UNAVAILABLE' }
+    $script:ExplicitBinding = $intentOutput | ConvertFrom-Json
+    if ($script:ExplicitBinding.mode -ne 'EXPLICIT_STRATA') { throw 'EXPLICIT_BINDING_REQUIRED' }
+    if ($BindingMetadataCheckOnly -or $BindingPreflightOnly) { $intentOutput; return }
+    $python = $intentPython
+    $Model = [string]$script:ExplicitBinding.binding.model
+    $LlamaBaseUrl = [string]$script:ExplicitBinding.binding.base_url
+    $BindingJson = $script:ExplicitBinding.binding | ConvertTo-Json -Compress
+}
+if ($RoutingCheckOnly -and @($PSBoundParameters.Keys | Where-Object { $_ -notin @('ProjectRoot','LlamaBaseUrl','Model','RoutingCheckOnly','BindingJson') }).Count) {
     throw 'ROUTING_CHECK_ARGUMENT_CONFLICT'
 }
 $script:RuntimeProfileHash = ''
@@ -118,6 +173,13 @@ function Test-HealthModel {
     $reportedModel = [string](Get-ObjectPropertyValue $Health 'selected_model' '')
     $reportedProfile = [string](Get-ObjectPropertyValue $Health 'model_profile_sha256' '')
     $profileMatches = if ($ExpectedProfileHash) { $ExpectedProfileHash -cmatch '^[0-9a-f]{64}$' -and $reportedProfile -ceq $ExpectedProfileHash } else { $reportedProfile -ceq '' }
+    if ($script:ExplicitBinding) {
+        return ($profileMatches -and $ok -is [bool] -and $ok -eq $true -and $reachable -is [bool] -and $reachable -eq $true
+            -and $available -is [bool] -and $available -eq $true -and $service -ceq 'v213-local-llm-gateway' -and $schema -ge 2
+            -and $reportedModel -ceq $SelectedModel
+            -and [string](Get-ObjectPropertyValue $Health 'runtime_binding_sha256' '') -ceq [string]$script:ExplicitBinding.binding_sha256
+            -and [string](Get-ObjectPropertyValue $Health 'qualification' '') -ceq 'UNQUALIFIED')
+    }
     return (
         $profileMatches -and
         $ok -eq $true -and
@@ -246,7 +308,8 @@ function Resolve-Llama {
     }
     if ($candidate -notmatch '\Ahttp://(?:127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?/?\z') { throw 'MODEL_ROUTER_URL_INVALID' }
     $port = if ($Matches[1]) { [int]$Matches[1] } else { 80 }
-    if ($port -lt 1 -or $port -gt 65535) { throw 'MODEL_ROUTER_URL_INVALID' }
+    # 5000 (IBKR Client Portal, a broker endpoint) and 8000 (retired System One decider) are never a model server, whatever the source.
+    if ($port -lt 1 -or $port -gt 65535 -or $port -eq 5000 -or $port -eq 8000) { throw 'MODEL_ROUTER_URL_INVALID' }
     return $candidate.TrimEnd('/')
 }
 
@@ -266,10 +329,10 @@ function Get-ModelCatalog {
 
 # Operator request 2026-09-25: follow the local model server when its address changes.
 # Loopback only, read-only catalogs, well-known OpenAI-compatible ports (TabbyAPI, llama.cpp,
-# Ollama, LM Studio, alternates); 8000 is the System One decider and is never probed.
+# Ollama, LM Studio, alternates); 5000 (IBKR Client Portal) and 8000 (retired System One decider) are never probed.
 function Find-LocalModelServer {
     param([string]$Current, [string]$WantedModel)
-    foreach ($port in @(5000, 8080, 11434, 1234, 5001, 8081)) {
+    foreach ($port in @(8080, 11434, 1234, 5001, 8081)) {
         $candidate = "http://127.0.0.1:$port"
         if ($candidate -eq $Current.TrimEnd('/')) { continue }
         try { $catalog = @(Get-ModelCatalog $candidate) } catch { continue }
@@ -317,6 +380,10 @@ function Invoke-SharedModelIdentity {
 }
 
 function Get-RuntimeModelProfile {
+    if ($script:ExplicitBinding) {
+        $script:RuntimeProfileHash = [string]$script:ExplicitBinding.profile_sha256
+        return $script:ExplicitBinding.profile
+    }
     $script:RuntimeProfileHash = ''
     if ($null -eq [Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')) { return $null }
     $raw = & $python (Join-Path $ProjectRoot 'scripts/v213_model_profile.py') --env
@@ -374,6 +441,19 @@ function Resolve-Model {
 
 function Test-SelectedModelRoute {
     param([string]$Base, [string]$SelectedModel, [object[]]$Catalog)
+    if ($script:ExplicitBinding) {
+        if ($Base -cne $script:ExplicitBinding.binding.base_url -or $SelectedModel -cne $script:ExplicitBinding.binding.model) { throw 'BINDING_ROUTE_ARGUMENT_CONFLICT' }
+        $request = @{root=$ProjectRoot;binding_json=$BindingJson;base_url=$Base;model=$SelectedModel;
+            profile_json=($script:ExplicitBinding.profile | ConvertTo-Json -Compress)}
+        # Protected selected transport + freshly validated real catalog + shared
+        # finish/content/marker gates. No raw response or legacy alias resolver.
+        $result = ($request | ConvertTo-Json -Compress -Depth 8) | & $python (Join-Path $ProjectRoot 'scripts/v213_model_profile.py') --routing-check-stdin
+        if ($LASTEXITCODE -ne 0) { throw 'BINDING_COMPLETE_ROUTING_CHECK_UNAVAILABLE' }
+        $proof = $result | ConvertFrom-Json
+        if ($proof.complete_exact_marker -ne $true -or $proof.binding_sha256 -cne $script:ExplicitBinding.binding_sha256) { throw 'BINDING_ROUTE_IDENTITY_UNAVAILABLE' }
+        Write-Host 'II_PROGRESS selected Strata route marker complete; UNQUALIFIED (not source/capacity acceptance)'
+        return
+    }
     $policy=Get-Content -LiteralPath (Join-Path $ProjectRoot 'config/v213-compact-qa-v1.json') -Raw -Encoding utf8 | ConvertFrom-Json
     $profile = Get-RuntimeModelProfile
     if ($profile -and $profile.model -cne $SelectedModel) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
@@ -606,9 +686,12 @@ if ($RoutingCheckOnly) {
     # No deployment credential reads, runtime config writes, gateway/tunnel start,
     # registration or publication. Requests stay on the resolved loopback Router.
     [Net.WebRequest]::DefaultWebProxy = $null
-    $python = $env:PROJECT_PYTHON
-    if ([string]::IsNullOrWhiteSpace($python)) {
-        $python = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime\python-3.12.10\python.exe'
+    if ($script:ExplicitBinding) { $python = $script:ExplicitPython }
+    else {
+        $python = $env:PROJECT_PYTHON
+        if ([string]::IsNullOrWhiteSpace($python)) {
+            $python = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\Runtime\python-3.12.10\python.exe'
+        }
     }
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'ROUTING_CHECK_PYTHON_UNAVAILABLE' }
     & $python -c "import requests,sys,struct; assert sys.version_info[:3] == (3,12,10) and struct.calcsize('P') == 8" 2>$null
@@ -616,7 +699,9 @@ if ($RoutingCheckOnly) {
     $checkProfile = Get-RuntimeModelProfile
     if (-not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
     if ($Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
-    $checkFound = Resolve-ModelWithDiscovery (Resolve-Llama) ([string]$checkProfile.model)
+    $checkFound = if ($script:ExplicitBinding) {
+        [pscustomobject]@{base=$LlamaBaseUrl;resolution=[pscustomobject]@{model=$Model;identity_catalog=@($script:ExplicitBinding.metadata.selected_catalog)}}
+    } else { Resolve-ModelWithDiscovery (Resolve-Llama) ([string]$checkProfile.model) }
     $checkBase = [string]$checkFound.base
     $checkModel = $checkFound.resolution
     Test-SelectedModelRoute $checkBase ([string]$checkModel.model) @($checkModel.identity_catalog)
@@ -645,22 +730,29 @@ if ($tunnelPolicy.mode -eq 'FreeRelay') {
     $routeConnectedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
 $GatewayPort = Resolve-GatewayPort $GatewayPort
-$python = Resolve-Python
+# Explicit intent keeps the interpreter already validated at preflight (no PATH/py re-resolution).
+$python = if ($script:ExplicitBinding) { $script:ExplicitPython } else { Resolve-Python }
 $runtimeProfile = Get-RuntimeModelProfile
 if ($runtimeProfile) {
     if ($Model -and $Model -cne $runtimeProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
     $Model = [string]$runtimeProfile.model
 }
-$llama = Resolve-Llama
+$llama = if ($script:ExplicitBinding) { $LlamaBaseUrl } else { Resolve-Llama }
 # Operator 2026-09-26: without a profile the model is -Model, else the saved selection (launcher or desktop model
 # selector), else the preferred id, else the only model served; a changed port or model is auto-detected. The Worker
 # accepts the route's model when LOCAL_LLM_MODEL_FROM_ROUTE is on and refuses the route otherwise.
-$discovered = Resolve-ModelWithDiscovery $llama $Model
+$discovered = if ($script:ExplicitBinding) {
+    # Exact id already proven loaded at selected metadata preflight; no alias/
+    # family/only-model/port discovery. Marker inference remains normal START.
+    [pscustomobject]@{base=$llama;resolution=[pscustomobject]@{model=$Model;
+        catalog=@($script:ExplicitBinding.metadata.selected_catalog | ForEach-Object { $_.id });
+        identity_catalog=@($script:ExplicitBinding.metadata.selected_catalog)}}
+} else { Resolve-ModelWithDiscovery $llama $Model }
 $llama = [string]$discovered.base
 $modelResolution = $discovered.resolution
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if ($tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile) { $runtimeProfile = Set-FollowingModelProfile $Model }
+if (-not $script:ExplicitBinding -and $tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile) { $runtimeProfile = Set-FollowingModelProfile $Model }
 # A validated profile owns the exact model; Test-SelectedModelRoute below rechecks profile agreement and requires a
 # complete response with the exact served identity before the gateway or a route is started.
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)
@@ -668,6 +760,8 @@ $bridgeMaterial = if ($tunnelPolicy.mode -eq 'FreeRelay') { Get-V213FreeRelayGat
 $oldSecret = $env:II_LOCAL_LLM_SHARED_SECRET
 $oldLlama = $env:II_LLAMA_BASE_URL
 $oldModel = $env:II_LOCAL_LLM_MODEL
+$oldBinding = [Environment]::GetEnvironmentVariable('V213_RUNTIME_BINDING_JSON')
+$oldProfileJson = [Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')
 $gateway = $null
 $tunnel = $null
 $heartbeat = $null
@@ -677,6 +771,10 @@ try {
     $env:II_LOCAL_LLM_SHARED_SECRET = $bridgeMaterial
     $env:II_LLAMA_BASE_URL = $llama
     $env:II_LOCAL_LLM_MODEL = $Model
+    if ($script:ExplicitBinding) {
+        $env:V213_RUNTIME_BINDING_JSON = $BindingJson
+        $env:V213_MODEL_PROFILE_JSON = $script:ExplicitBinding.profile | ConvertTo-Json -Compress
+    }
     $stdout = Join-Path $logRoot 'gateway.stdout.log'
     $stderr = Join-Path $logRoot 'gateway.stderr.log'
     Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
@@ -767,16 +865,20 @@ try {
         connected_at = (Get-Date).ToUniversalTime().ToString('o')
         shared_secret_plaintext_persisted = $false
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
-    [ordered]@{
-        schema_version = 2
-        product_version = '2.1.3'
-        model = $Model
-        llama_base_url = $llama
-        available_models = $modelCatalog
-        selected_utc = (Get-Date).ToUniversalTime().ToString('o')
-        source = 'verified_bridge'
-        preferred_model = $preferredModel
-    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $selectionPath -Encoding utf8
+    # Explicit selection is an offline intent transaction, NOT a runtime status
+    # envelope. Do not destroy its digest/profile/qualification on normal START.
+    if (-not $script:ExplicitBinding) {
+        [ordered]@{
+            schema_version = 2
+            product_version = '2.1.3'
+            model = $Model
+            llama_base_url = $llama
+            available_models = $modelCatalog
+            selected_utc = (Get-Date).ToUniversalTime().ToString('o')
+            source = 'verified_bridge'
+            preferred_model = $preferredModel
+        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $selectionPath -Encoding utf8
+    }
     if ($FinalizeCutover -and $null -ne $oldState) { Stop-RecordedBridge $oldState }
     Write-Host "V213_LOCAL_MODEL = PASS; model=$Model; llama=$llama; gateway=127.0.0.1:$GatewayPort; selected_model_verified=true; health_schema_version=2; blue_green=$(Get-BlueGreenDecision $true $FinalizeCutover.IsPresent)" -ForegroundColor Green
     if ($publicUrl) {
@@ -799,6 +901,8 @@ finally {
     $env:II_LOCAL_LLM_SHARED_SECRET = $oldSecret
     $env:II_LLAMA_BASE_URL = $oldLlama
     $env:II_LOCAL_LLM_MODEL = $oldModel
+    [Environment]::SetEnvironmentVariable('V213_RUNTIME_BINDING_JSON', $oldBinding)
+    [Environment]::SetEnvironmentVariable('V213_MODEL_PROFILE_JSON', $oldProfileJson)
     $bridgeMaterial = $null
     $freeRelayConfiguration = $null
     Exit-V213OperationLock

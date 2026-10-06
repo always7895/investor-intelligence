@@ -10,6 +10,17 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
+
 const RUN = "20260926T030000Z-abcdefabcde0";
 const FIXED_NOW = new Date("2026-09-28T12:00:00.000Z").getTime();
 
@@ -106,6 +117,12 @@ async function sealedEnv(options: {
 }
 
 describe("sealed market observations", () => {
+  it("TESTFIX1 rights NONE: denies the sealed observation route without opt-in", async () => {
+    const body = JSON.stringify(await v213PublicLineAnswer(await sealedEnv() as never, parseQuery("SIVE 每月期權")));
+    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).not.toContain("62.00 SEK");
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
@@ -125,6 +142,7 @@ describe("sealed market observations", () => {
   });
 
   it("answers SIVE monthly options with the SEK observation and weekly with the exchange reason", async () => {
+    admitSyntheticTickers("SIVE"); // Explicit quote subjects for this test only.
     const env = await sealedEnv();
     const monthly = await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")) as { text: string }[];
     expect(monthly[0]!.text).toContain("SIVE");
@@ -179,6 +197,7 @@ describe("sealed market observations", () => {
   });
 
   it("renders original source, timestamp and prices when observation is within 6h", async () => {
+    admitSyntheticTickers("SIVE"); // Explicit quote subjects for this test only.
     const fixedStamp = new Date(FIXED_NOW - 5.5 * 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
     const env = await sealedEnv({ observationGeneratedAt: fixedStamp });
     const monthly = await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")) as { text: string }[];
@@ -192,6 +211,7 @@ describe("sealed market observations", () => {
   });
 
   it("exercises actual option route at exactly 6h boundary and 6h + 1s", async () => {
+    admitSyntheticTickers("SIVE"); // Explicit quote subjects for this test only.
     const boundaryStamp = new Date(FIXED_NOW - 6 * 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
     const env = await sealedEnv({ observationGeneratedAt: boundaryStamp });
     const view = await pinPublicSnapshot(env as never);

@@ -54,6 +54,24 @@ class BridgeFixtureTests(unittest.TestCase):
         self.assertIn("builder.main([", source)
         self.assertIn("publisher.lazy_market_bodies(", source)
 
+    def test_synthetic_admission_is_explicit_and_rights_none_is_restored(self):
+        specs = [generator.healthy_st("VOLV-B.ST", 310.0), *generator.healthy_us(10)]
+        tickers = frozenset(spec["symbol"] for spec in specs)
+        real_admission = generator.option_rights.public_option_cycle_admission
+        with tempfile.TemporaryDirectory(prefix="bridge_rights_none_") as tmp:
+            result = generator.run_main(specs, generator.NOW, Path(tmp))
+            self.assertEqual(result.rc, 0)
+            without = generator.publisher.lazy_market_bodies(result.output, generator.NOW)
+            self.assertIn("OPTION_RIGHTS_NOT_ADMITTED",
+                          generator.cycle_of(without, "VOLV-B.ST", "monthly")["unavailable"])
+            admitted = generator.seal(result.output, generator.NOW, synthetic_tickers=tickers)
+            self.assertNotIn("unavailable", generator.cycle_of(admitted, "VOLV-B.ST", "monthly"))
+            self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
+            self.assertEqual(generator.publisher.lazy_market_bodies(result.output, generator.NOW), without)
+            with self.assertRaisesRegex(AssertionError, "exact sealed scenario tickers"):
+                generator.seal(result.output, generator.NOW, synthetic_tickers=tickers | {"OUTSIDE-SCENARIO"})
+            self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
+
     def test_policy_constants_agree_with_the_validator_and_worker_windows(self):
         self.assertEqual(builder.CYCLES, {"weekly": (3, 14), "monthly": (21, 45)})
 
@@ -207,7 +225,8 @@ class BridgeFixtureTests(unittest.TestCase):
                     self.assertEqual(result.rc, 1, case_id)
                     self.assertEqual(result.output.read_bytes(), prior, f"{case_id}: nothing was written over the old file")
                     self.assertFalse((directory / "market_quotes_options.json.tmp").exists())
-                    self.assertEqual(generator.publisher.lazy_market_bodies(result.output, generator.NOW), prior_bodies)
+                    self.assertEqual(generator.seal(result.output, generator.NOW,
+                                                    synthetic_tickers=frozenset(json.loads(prior)["options"])), prior_bodies)
                     self.assertEqual(self.doc["cases"][case_id]["retained_old_bodies"]["options"], prior_bodies["v213:options:v2"])
 
 

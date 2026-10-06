@@ -1,7 +1,7 @@
 // Options queries for listings outside the sealed option markets (operator 2026-09-27: TSMC and IQE had no answer): a mapped
 // US ADR answers with its own options and a note; another market states that no public listed-option source covers it.
 // Sealed synthetic snapshot through the real public routes; synthetic values only.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { normalizeCompanyName } from "../src/v213/global-identity";
@@ -11,6 +11,17 @@ import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
 
 const RUN = "20260927T040000Z-abcdefabcde2";
 const now = Date.now();
@@ -89,6 +100,12 @@ async function sealedEnv() {
 const answer = async (env: Awaited<ReturnType<typeof sealedEnv>>, text: string) => JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery(text)));
 
 describe("option routes outside the sealed option markets", () => {
+  it("TESTFIX1 rights NONE: denies the ADR option route without opt-in", async () => {
+    const body = await answer(await sealedEnv(), "TSMC 每月期權");
+    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).not.toContain("330.00");
+  });
+
   it("maps home listings and their aliases to the US ADR", () => {
     expect(adrRoute("TSMC")).toEqual({ listing: "2330.TW", adr: "TSM", ratio: 5, name_zh: "台積電" });
     expect(adrRoute("2330.tw")?.adr).toBe("TSM");
@@ -97,6 +114,7 @@ describe("option routes outside the sealed option markets", () => {
   });
 
   it("answers TSMC, 2330 and 台積電 with the TSM ADR's options and says so", async () => {
+    admitSyntheticTickers("TSM"); // Explicit quote subjects for this test only.
     const env = await sealedEnv();
     for (const text of ["TSMC 每月期權", "2330 每月期權", "台積電 每月期權", "2330.TW 每月選擇權"]) {
       const body = await answer(env, text);

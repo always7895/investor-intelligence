@@ -13,6 +13,33 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { loadDetailedOptionObservation } from "../src/v213/market-observations";
+import * as admission from "../src/v213/public-options-admission";
+
+// OPTIONS_TEST_POLICY1: the reviewed public-options policy is rights NONE (the real catalog admits no provider), so a sealed,
+// format-valid covered-call row now renders OPTION_RIGHTS_NOT_ADMITTED instead of its quote; the former unconditional "330.00"
+// expectations predate that policy. This file tests routing, identity/ADR mapping, freshness, validation and formatting, which
+// are decided before (loader) or after (renderer) the rights decision, so it keeps ONE explicit test-only seam:
+// admitPublicOption is partially mocked (the real OptionRightsNotAdmittedError class and constants are kept) and is reset to
+// the REAL predicate before every test. Only a test that calls admitSyntheticTickers(...) admits exactly the named sealed
+// tickers under a synthetic, non-catalog provider id; every other row still goes through the real catalog. No catalog or
+// provider is changed. The real rights-NONE policy at the actual direct/ADR callers, with no mock at all, is tested in
+// v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+const realAdmission = await vi.importActual<typeof import("../src/v213/public-options-admission")>("../src/v213/public-options-admission");
+const SYNTHETIC_PROVIDER_ID = "synthetic-test-only-not-in-catalog";
+/** Per-test opt-in: admit only these sealed tickers (synthetic provider id); all other rows keep the real catalog decision. */
+function admitSyntheticTickers(...tickers: string[]): void {
+  const allowed = new Set(tickers);
+  vi.mocked(admission.admitPublicOption).mockImplementation((subject: unknown, nowMs?: number) => {
+    const ticker = typeof subject === "object" && subject !== null ? (subject as { ticker?: unknown }).ticker : undefined;
+    return typeof ticker === "string" && allowed.has(ticker)
+      ? { ok: true, provider_id: SYNTHETIC_PROVIDER_ID }
+      : realAdmission.admitPublicOption(subject, nowMs);
+  });
+}
 
 const RUN = "20260927T040000Z-abcdefabcde2";
 const FIXED_NOW = new Date("2026-09-30T12:00:00.000Z").getTime();
@@ -116,7 +143,11 @@ async function sealedEnv(mutate: (lazy: Record<string, any>) => void = () => {},
 }
 
 afterEach(() => vi.unstubAllGlobals());
-beforeEach(() => { vi.setSystemTime(FIXED_NOW); });
+beforeEach(() => {
+  vi.setSystemTime(FIXED_NOW);
+  // Reset the admission seam to the REAL predicate before every test; positive admission is a per-test opt-in only.
+  vi.mocked(admission.admitPublicOption).mockImplementation(realAdmission.admitPublicOption);
+});
 
 async function actualReply(env: any, command: string) {
   let messages: any[] = [];
@@ -152,6 +183,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
 
   for (const command of ["NVDA 期權指引", "NVDA 選擇權推薦", "NVDA covered call", "NVDA 每月期權指引", "NVDA monthly covered call"]) {
     it(`${command} reaches existing sealed covered-call observation`, async () => {
+      admitSyntheticTickers("NVDA"); // routing/formatting check; rights NONE is asserted below and in the regression file
       const env = await sealedEnv(lazy => {
         const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
         const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
@@ -165,7 +197,23 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     });
   }
 
+  it("without the opt-in the same aliases reach the real rights-NONE denial and show no quote", async () => {
+    const env = await sealedEnv(lazy => {
+      const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
+      const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
+      weekly.suggestions[0]!.annualized_yield = weekly.suggestions[0]!.limit_price / weekly.spot * 365 / 7;
+      lazy["v213:options:v2"].options.NVDA = { weekly, monthly };
+    });
+    for (const command of ["NVDA 期權指引", "NVDA 選擇權推薦", "NVDA covered call", "NVDA 每月期權指引", "NVDA monthly covered call"]) {
+      const reply = await actualReply(env, command);
+      expect(reply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+      expect(reply).not.toContain("330.00");
+      expect(reply).not.toContain("$2.05");
+    }
+  });
+
   it("stale row timestamp in fresh document rejects numeric suggestion", async () => {
+    admitSyntheticTickers("TSM"); // the rejection must come from validation, not from rights
     const env = await sealedEnv(lazy => {
       lazy["v213:options:v2"].options.TSM.monthly.timestamp = "2020-01-01T00:00:00Z";
     });
@@ -175,6 +223,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("invalid row timestamp rejects numeric suggestion", async () => {
+    admitSyntheticTickers("TSM");
     const env = await sealedEnv(lazy => {
       lazy["v213:options:v2"].options.TSM.monthly.timestamp = "not-a-time";
     });
@@ -184,6 +233,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("future row timestamp beyond 5min tolerance rejects numeric suggestion", async () => {
+    admitSyntheticTickers("TSM");
     const futureStamp = new Date(FIXED_NOW + 600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
     const env = await sealedEnv(lazy => {
       lazy["v213:options:v2"].options.TSM.monthly.timestamp = futureStamp;
@@ -194,6 +244,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("text mode and trailing punctuation work on covered call aliases", async () => {
+    admitSyntheticTickers("NVDA");
     const env = await sealedEnv(lazy => {
       const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
       const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
@@ -259,6 +310,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("ADR and identity mapping integrity", async () => {
+    admitSyntheticTickers("TSM"); // ADR route/note formatting; the real ADR denial is in the regression file
     const env = await sealedEnv();
     // TSMC -> TSM ADR note
     const tsmcReply = await actualReply(env, "TSMC 每月期權");
@@ -280,6 +332,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("B1: Worker rejects expired, DTE-inconsistent and impossible-calendar expiries on a digest-valid row", async () => {
+    admitSyntheticTickers("TSM");
     const mutations: ((lazy: any) => void)[] = [
       lazy => { lazy["v213:options:v2"].options.TSM.monthly.expiry = new Date(FIXED_NOW - 86400000).toISOString().slice(0, 10); },
       lazy => { lazy["v213:options:v2"].options.TSM.monthly.expiry = new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10); },
@@ -294,6 +347,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("B2: Worker rejects a DTE outside the requested weekly/monthly bucket in both directions", async () => {
+    admitSyntheticTickers("TSM", "NVDA");
     const weeklyReply = await actualReply(await sealedEnv(lazy => {
       lazy["v213:options:v2"].options.TSM.weekly = structuredClone(TSM_MONTHLY);
     }), "TSM 每週期權");
@@ -332,6 +386,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("B4: healthy flex exposes provenance, currency, mid, liquidity and delta basis with no NaN", async () => {
+    admitSyntheticTickers("TSM");
     const reply = await actualReply({ ...(await sealedEnv()), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
     expect(reply).toContain("https://finance.yahoo.com/quote/TSM/options");
     expect(reply).toContain("計價 USD");
@@ -343,6 +398,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   });
 
   it("B4: an omitted spread renders unknown, never NaN, in both flex and text", async () => {
+    admitSyntheticTickers("TSM");
     const drop = (lazy: any) => { delete lazy["v213:options:v2"].options.TSM.monthly.suggestions[0].spread_pct; };
     const flexReply = await actualReply({ ...(await sealedEnv(drop)), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
     expect(flexReply).toContain("330.00");
@@ -375,6 +431,7 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
   for (const style of ["text", "flex"] as const) {
     for (const field of ["oi", "volume", "spread_pct"] as const) {
       it(`${style}: raw JSON 1e309 ${field} fails closed and preserves the healthy sibling`, async () => {
+        admitSyntheticTickers("TSM", "GOOD");
         const env = await sealedEnv(l => { l[KEY] = rawOptionsBody(field, "1e309"); });
         env.V213_LINE_PRESENTATION = style;
         const tsm = await actualReply(env, "TSM 每月期權");
@@ -389,6 +446,7 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
   }
   for (const [label, token] of [["bool", "true"], ["string", '"5"'], ["array", "[]"], ["object", "{}"], ["negative", "-5"]] as const) {
     it(`rejects a wrong-type/negative oi (${label})`, async () => {
+      admitSyntheticTickers("TSM", "GOOD");
       const env = await sealedEnv(l => { l[KEY] = rawOptionsBody("oi", token); });
       const reply = await actualReply(env, "TSM 每月期權");
       expect(reply).not.toContain("330.00");
@@ -398,6 +456,7 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
   }
   for (const style of ["text", "flex"] as const) {
     it(`${style}: null and missing optional fields stay 未提供, never NaN`, async () => {
+      admitSyntheticTickers("TSM");
       const nulled = await sealedEnv(l => {
         for (const k of ["oi", "volume", "spread_pct"]) l[KEY].options.TSM.monthly.suggestions[0][k] = null;
       });
@@ -427,6 +486,7 @@ describe("OPTIONS-GLOBAL-01 round2 I3 future vs stale document classification", 
     return { status, reply };
   }
   it("a future document just beyond tolerance is invalid, not stale", async () => {
+    admitSyntheticTickers("TSM");
     const { status, reply } = await docCase("2026-09-30T12:05:01Z", stamp);
     expect(status).toBe("DOCUMENT_INVALID_OR_UNREADABLE");
     expect(reply).toContain("無法驗證或讀取");
@@ -434,16 +494,19 @@ describe("OPTIONS-GLOBAL-01 round2 I3 future vs stale document classification", 
     expect(reply).not.toContain("330.00");
   });
   it("a future document at exactly +5min tolerance is admitted", async () => {
+    admitSyntheticTickers("TSM"); // "admitted" here means freshness-admitted; rights are the synthetic seam
     const { status, reply } = await docCase("2026-09-30T12:05:00Z", stamp);
     expect(status).toBe("FOUND");
     expect(reply).toContain("330.00");
   });
   it("a document exactly 6h old is admitted", async () => {
+    admitSyntheticTickers("TSM");
     const { status, reply } = await docCase("2026-09-30T06:00:00Z", "2026-09-30T06:00:00Z");
     expect(status).toBe("FOUND");
     expect(reply).toContain("330.00");
   });
   it("a document 6h+1s old is stale, not invalid", async () => {
+    admitSyntheticTickers("TSM");
     const { status, reply } = await docCase("2026-09-30T05:59:59Z", stamp);
     expect(status).toBe("DOCUMENT_STALE");
     expect(reply).toContain("已逾時");
@@ -464,6 +527,7 @@ describe("OPTIONS-GLOBAL-01 round2 Python publisher -> sealed Worker bridge", ()
   });
   for (const [name, fixture] of Object.entries(BRIDGE.cases)) {
     it(`${name}: exact emitted body sealed and consumed (admitted=${fixture.admitted})`, async () => {
+      admitSyntheticTickers("TSM", "GOOD"); // publisher validation outcome only; rights NONE is tested without mocks
       const env = await sealedEnv(l => { l[KEY] = fixture.options_body; });
       // Pinned body equality: the sealed bytes are exactly the publisher's emitted string.
       expect(await (await pinPublicSnapshot(env as never)).text([KEY])).toBe(fixture.options_body);

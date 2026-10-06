@@ -7,6 +7,7 @@ Importing data is not a rights review or an admission to the public LINE DTO.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -17,11 +18,13 @@ from typing import Any
 
 # Embedded Python ignores the caller's cwd/PYTHONPATH. Admit this script directory only.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from taifex_contract import TAIFEX_DAILY_URL, daily_identity
+from taifex_contract import (TAIFEX_DAILY_URL, TAIFEX_DELTA_ENVELOPE, TAIFEX_DELTA_MAX_BYTES, TAIFEX_DELTA_MAX_OUTPUT_BYTES,
+                             TAIFEX_DELTA_URL, daily_identity, delta_reference_records, delta_reference_rows)
 
 SOURCE_URLS = {
     "taifex_eod": TAIFEX_DAILY_URL,
     "alpaca_indicative": "https://data.alpaca.markets/v1beta1/options/quotes/latest",
+    "taifex_delta": TAIFEX_DELTA_URL,
 }
 OCC = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$")
 
@@ -59,6 +62,8 @@ def normalize(source: str, payload: Any, *, now: datetime | None = None) -> dict
     if now.tzinfo is None:
         raise ValueError("CLOCK_REQUIRES_OFFSET")
     now = now.astimezone(timezone.utc)
+    if source == "taifex_delta":
+        return normalize_delta(payload, now)
     if source == "taifex_eod":
         if not isinstance(payload, list):
             raise ValueError("EXPECTED_DAILY_ROWS")
@@ -125,6 +130,23 @@ def normalize(source: str, payload: Any, *, now: datetime | None = None) -> dict
             "observations": observations, "failures": failures}
 
 
+def normalize_delta(payload: Any, now: datetime, *, input_sha256: str | None = None) -> dict:
+    """LOCAL reference import of a user-supplied export shaped like TAIFEX dataset 11321 (DailyOptionsDelta). It reuses the ONE shared
+    reference parser (the bounded raw-bytes decoder lives in main). A manual file stays LOCAL_ONLY with UNVERIFIED origin even if it claims
+    TAIFEX, a URL, a receipt or a hash: no transport receipt is minted, accepted or read, and imported_at is the import time only (never a
+    retrieval time, quote as-of or Delta as-of). The optional input_sha256 is computed by this importer over the exact bytes it read; it
+    identifies those bytes and is NOT an authenticated origin. Nothing here is joined into EOD observations, rights-reviewed or
+    published. All-or-nothing: an unsupported export raises."""
+    records = delta_reference_records(payload, origin_verification="UNVERIFIED_LOCAL_FILE")
+    return {"schema_version": 1, "mode": "LOCAL_REFERENCE_IMPORT_ONLY", "provider": "taifex_delta", "status": "OK",
+            "publication_eligible": False, "rights_status": "NOT_REVIEWED_BY_IMPORTER", "origin_verification": "UNVERIFIED_LOCAL_FILE",
+            "imported_at": now.isoformat(),
+            "input_binding": ({"sha256": input_sha256, "scope": "EXACT_BYTES_READ_BY_THIS_IMPORT", "authenticated_origin": False}
+                              if input_sha256 else None),
+            "reference_envelope": {**TAIFEX_DELTA_ENVELOPE, "identity_status": "EXPECTED_DATASET_UNVERIFIED_FOR_A_MANUAL_FILE"},
+            "reference_rows": records, "failures": []}
+
+
 def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -140,13 +162,28 @@ def main() -> int:
     parser.add_argument("--input", type=Path, required=True)
     args = parser.parse_args()
     try:
-        if args.input.stat().st_size > 20_000_000:
-            raise ValueError("INPUT_TOO_LARGE")
-        result = normalize(args.source, json.loads(args.input.read_text(encoding="utf-8"), object_pairs_hook=unique_object))
+        if args.source == "taifex_delta":
+            # ONE binary handle and a bounded read (never stat-then-read of a file that may change): an overflow is refused before any
+            # decode, and the reported hash binds exactly the bytes read. The origin stays UNVERIFIED_LOCAL_FILE.
+            with args.input.open("rb") as handle:
+                content = handle.read(TAIFEX_DELTA_MAX_BYTES + 1)
+            result = normalize_delta(delta_reference_rows(content), datetime.now(timezone.utc),
+                                     input_sha256=hashlib.sha256(content).hexdigest())
+        else:
+            if args.input.stat().st_size > 20_000_000:
+                raise ValueError("INPUT_TOO_LARGE")
+            result = normalize(args.source, json.loads(args.input.read_text(encoding="utf-8"), object_pairs_hook=unique_object))
     except (OSError, ValueError):
         print(json.dumps({"status": "FAILED", "error": "INVALID_PROVIDER_EXPORT"}))
         return 1
-    print(json.dumps(result, ensure_ascii=True, allow_nan=False))
+    rendered = json.dumps(result, ensure_ascii=True, allow_nan=False)
+    if args.source == "taifex_delta" and len(rendered) + 2 > TAIFEX_DELTA_MAX_OUTPUT_BYTES:
+        # Checked on the in-memory Delta result after it is built and before anything is printed. This CLI prints (it does not write a
+        # file): ensure_ascii makes len(rendered) the byte count, +2 covers a CRLF newline. A fixed error only, never a partial Delta
+        # rows. Only a Delta result is bounded; other importer sources print exactly as before.
+        print(json.dumps({"status": "FAILED", "error": "TAIFEX_DELTA_OUTPUT_TOO_LARGE"}))
+        return 1
+    print(rendered)
     return 0 if result["status"] == "OK" else 1
 
 

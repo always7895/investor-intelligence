@@ -4,6 +4,7 @@
 import type { PublicSnapshotView } from "./public-snapshot";
 import type { GlobalIdentityRecord } from "./global-identity";
 import { validateCoveredCallCycle, isValidUtcIsoInstant, type CoveredCallCycle } from "./covered-call";
+import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH } from "./public-options-admission";
 
 export const QUOTES_KEY = "v213:quotes:v1";
 export const OPTIONS_KEY = "v213:options:v2";
@@ -94,6 +95,7 @@ export type OptionDiagnosticStatus =
   | "TICKER_NOT_IN_SNAPSHOT"
   | "PERIOD_UNAVAILABLE"
   | "QUOTE_INVALID_OR_STALE"
+  | "RIGHTS_NOT_ADMITTED"
   | "FOUND";
 
 export interface DetailedOptionObservation {
@@ -160,8 +162,15 @@ export async function loadDetailedOptionObservation(
     return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
   }
   const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period);
-  if (!cycle) {
+  // OPTIONBIND1: the cycle must belong to the key it was selected under (exact string equality; no trim, case folding or alias
+  // repair). A foreign cycle under this key is an invalid row, decided before rights admission, with no fallback to another key.
+  if (!cycle || cycle.ticker !== matchedKey) {
     return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
+  }
+  // Format-valid is NOT public-admitted: the trusted catalog (public-options-admission.ts) decides, after the safe structural read and
+  // before any quote is returned or rendered. A rights label, source text or sealed-document membership never admits a row.
+  if (!admitPublicOption(cycle, now).ok) {
+    return { status: "RIGHTS_NOT_ADMITTED", ticker: matchedKey, docGeneratedAt, period };
   }
   return { status: "FOUND", quote: cycle, ticker: matchedKey, docGeneratedAt, period };
 }
@@ -172,5 +181,6 @@ export async function loadOptionObservation(view: PublicSnapshotView, ticker: st
   const detailed = await loadDetailedOptionObservation(view, ticker, period, now);
   if (detailed.status === "FOUND") return { quote: detailed.quote };
   if (detailed.status === "PERIOD_UNAVAILABLE" && detailed.unavailable) return { unavailable: detailed.unavailable };
+  if (detailed.status === "RIGHTS_NOT_ADMITTED") return { unavailable: OPTION_RIGHTS_NOT_ADMITTED_ZH };
   return null;
 }

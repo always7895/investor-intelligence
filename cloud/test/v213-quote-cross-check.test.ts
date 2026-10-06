@@ -23,12 +23,21 @@ describe("quote cross-check", () => {
         currency: "SEK", isAmbiguous: false, leadingZeroPreserved: false },
       admittedInSealedSnapshot: true, nameUnverified: true, quoteStatus: "AVAILABLE", price: primary!.price, changePct: primary!.change_pct ?? undefined,
       asOf: primary!.asof, priceSource: primary!.source, crossCheck, source: "sealed_snapshot:x", disclaimer: "公開研究資訊",
-      resolution: { status: "RESOLVED" } as any,
+      resolution: {
+        status: "RESOLVED", query: "SIVE", candidateCount: 1,
+        record: {
+          venue: "NASDAQ STOCKHOLM（瑞典）", market: "SWEDEN", country: "瑞典",
+          symbol: "SIVE", native_symbol: "SIVE", security_name: "Sivers Semiconductors",
+          native_name: null, name_zh: null, name_zh_source: null, security_class: "COMMON_STOCK", currency: "SEK",
+          source_feed: "test-fixture-nasdaq-nordic", source_url: "https://api.nasdaq.com/api/nordic/",
+        },
+      },
     };
     const text = (buildGlobalEquityLookupMessages(result, "text") as { text: string }[])[0]!.text;
     expect(text).toContain("價格 32.78 SEK（+1.20%），來源 Nasdaq Nordic 斯德哥爾摩（延遲）");
     expect(text).toContain("交叉比對：Yahoo Finance（非官方，延遲） 32.9（差 +0.37%");
     expect(text).not.toContain("差異超過 5%");
+    expect(text).not.toContain("身分備援");
     const far = combineQuotes(exchange, { ...yahoo, price: 36.0 });
     const farText = (buildGlobalEquityLookupMessages({ ...result, crossCheck: far.crossCheck }, "text") as { text: string }[])[0]!.text;
     expect(farText).toContain("差異超過 5%，請以交易所價格為準");

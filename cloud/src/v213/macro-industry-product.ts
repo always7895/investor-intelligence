@@ -25,6 +25,7 @@ import {
   validateMacroDeepAnalysis,
   validateMacroIndustryCard,
   validateMacroTop5Overview,
+  validatePhaseKnowledgeWithheld,
 } from "./market-product-schema";
 
 export const MACRO_PRODUCT_KEY = "v213:macro-industry:latest";
@@ -64,7 +65,24 @@ const tagged = (tag: string, text: string, rt: Rich = richText) => uiBox([
 const SCORE_PARTS = [{ label: "需求能見度", weight: 25 }, { label: "瓶頸緊繃度", weight: 25 }, { label: "定價權", weight: 20 },
   { label: "價值鏈捕獲", weight: 15 }, { label: "催化劑清晰度", weight: 15 }] as const;
 
+/** Carrier API: absence is UNKNOWN; only the shared strict validator can establish zero. */
+export function phaseKnowledgeWithheldNotice(carrier?: unknown): string | null {
+  const unknown = "階段知悉時間覆蓋未確認（不假設零；不代表公司論點失效）。";
+  if (!carrier || typeof carrier !== "object" || Array.isArray(carrier)
+    || !Object.hasOwn(carrier, "phase_knowledge_withheld")) return unknown;
+  try {
+    const knowledge = validatePhaseKnowledgeWithheld((carrier as Record<string, unknown>).phase_knowledge_withheld);
+    if (knowledge.signals === 0) return null;
+    const shown = (value: number) => value > 9999 ? "9999+" : String(value);
+    return `部分階段時間證據未計入本次判斷：至少 ${shown(knowledge.affected_industries)} 個產業、至少 ${shown(knowledge.signals)} 筆訊號（非完整覆蓋；缺口本身不代表公司論點失效）。`;
+  } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_PHASE_KNOWLEDGE_WITHHELD") return unknown;
+    throw error;
+  }
+}
+
 export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
+  const knowledgeNotice = phaseKnowledgeWithheldNotice(overview);
   const isShortfall = overview.status === "SHORTFALL_NOT_QUALIFIED" || overview.qualified_count < 5;
   const statusBadge = isShortfall
     ? `【未達准入門檻 · 短缺通報】合格產業僅 ${overview.qualified_count}/5`
@@ -105,6 +123,7 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
             : "本總覽由候選產業池依量化機會準則動態評選產生，非固定前五大產業清單，絕不以候選公司家數占比冒充市場成長率。",
           "xxs", isShortfall ? T.negative : T.muted,
         ),
+        ...(knowledgeNotice ? [uiText(knowledgeNotice, "xxs", T.muted)] : []),
       ], { backgroundColor: isShortfall ? T.paleNegative : T.soft, paddingAll: "md", cornerRadius: "md", spacing: "sm" }),
       railTitle("評選名單", "條長＝機會分數（0–100）"),
       ...(rows.length > 0 ? rows : [uiText("（當前無合格准入產業）", "xs", T.muted)]),
@@ -242,6 +261,7 @@ export function buildMacroTop5OverviewFlex(overview: MacroTop5Overview): LineOut
 
 export function buildMacroTop5OverviewText(overview: MacroTop5Overview): LineOutboundMessage[] {
   const validated = validateMacroTop5Overview(overview);
+  const knowledgeNotice = phaseKnowledgeWithheldNotice(validated);
   const lines = [
     `【${validated.title}】`,
     `報告產生時間：${validated.generated_at}｜觀察週期：${validated.horizon}`,
@@ -254,6 +274,7 @@ export function buildMacroTop5OverviewText(overview: MacroTop5Overview): LineOut
           "",
         ]
       : []),
+    ...(knowledgeNotice ? [knowledgeNotice, ""] : []),
     "評選名單摘要：",
     ...validated.industries.map(ind => {
       const g = formatGrowthRate(ind.growth);
@@ -397,16 +418,62 @@ export function buildMacroDeepAnalysisText(analysis: MacroDeepAnalysis): LineOut
   return messages;
 }
 
+/** Known root-validation failures thrown by validateMacroTop5Overview (market-product-schema.ts); any other error propagates. */
+const KNOWN_OVERVIEW_VALIDATION_ERRORS: ReadonlySet<string> = new Set([
+  "INVALID_MACRO_TOP5_OVERVIEW", "INVALID_OVERVIEW_TITLE", "INVALID_GENERATED_AT", "INVALID_HORIZON", "INVALID_INDUSTRIES_LIST",
+  "OVERVIEW_CARD_LIMIT", "OVERVIEW_INDUSTRY_ID_EMPTY_OR_DUPLICATE", "OVERVIEW_ADMITTED_RANKS_INVALID",
+  "OVERVIEW_NON_ADMITTED_RANK_PRESENT", "INVALID_PHASE_KNOWLEDGE_WITHHELD",
+  "INVALID_MACRO_INDUSTRY_CARD", "STRICT_FINITE_NUMBER_REQUIRED: rank", "STRICT_INTEGER_REQUIRED: rank", "INVALID_INDUSTRY_RANK",
+  "INVALID_INDUSTRY_ID", "INVALID_INDUSTRY_NAME", "INVALID_CURRENT_STATE", "INVALID_OUTLOOK_12_36M", "INVALID_DEMAND_DRIVERS",
+  "INVALID_SUPPLY_CONSTRAINT", "INVALID_PRICING", "INVALID_VALUE_CHAIN_POSITION", "INVALID_BENEFICIARIES", "INVALID_CATALYSTS",
+  "INVALID_RISKS_LIFECYCLE", "STRICT_FINITE_NUMBER_REQUIRED: opportunity_score", "INVALID_OPPORTUNITY_SCORE", "INVALID_CONFIDENCE",
+  "STRICT_FINITE_NUMBER_REQUIRED: rate_pct", "MISSING_GROWTH_UNITS", "INVALID_GROWTH_PERIOD", "INVALID_GROWTH_TYPE",
+  "MISSING_GROWTH_PUBLISHER", "INVALID_GROWTH_DATE", "FUTURE_GROWTH_DATE_REJECTED",
+  "COMPANY_COUNT_PERCENTAGE_CANNOT_BE_MARKET_GROWTH", "UNADMITTED_GROWTH_SOURCE", "SOURCE_BINDING_REQUIRED",
+]);
+
+/** Route state of a pinned macro overview: VALID only through the shared root validator; ABSENT and INVALID carry no count. */
+export type MacroOverviewState =
+  | { readonly kind: "VALID"; readonly overview: MacroTop5Overview }
+  | { readonly kind: "ABSENT" }
+  | { readonly kind: "INVALID" };
+
+export function macroOverviewState(raw: unknown): MacroOverviewState {
+  if (raw === null || raw === undefined) return { kind: "ABSENT" };
+  try {
+    return { kind: "VALID", overview: validateMacroTop5Overview(raw) };
+  } catch (error) {
+    if (error instanceof Error && KNOWN_OVERVIEW_VALIDATION_ERRORS.has(error.message)) return { kind: "INVALID" };
+    throw error;
+  }
+}
+
+/** Macro-home status line: the validated count N (never a fixed 5/5) or an UNKNOWN count, without raw payload or error text. */
+export function macroHomeShortfallLine(state: MacroOverviewState): string {
+  if (state.kind === "VALID") {
+    return `MACRO_TOP5_SHORTFALL：本輪已封存並通過驗證之 TOP5 宏觀產業總覽僅 ${state.overview.qualified_count} 個合格產業（短缺 ${state.overview.shortfall}/5；未達准入門檻，不排名發布）。`;
+  }
+  return state.kind === "INVALID"
+    ? "MACRO_TOP5_SHORTFALL：本輪已封存之 TOP5 宏觀產業總覽未通過驗證，已拒絕使用；合格產業數未知（不假設為 0）。"
+    : "MACRO_TOP5_SHORTFALL：目前沒有已封存之 TOP5 宏觀產業總覽；合格產業數未知（不假設為 0）。";
+}
+
+/** admittedCount null means UNKNOWN (absent or invalid root); a known validated integer keeps the legacy text. */
 export function macroShortfallReport(
-  admittedCount: number,
+  admittedCount: number | null,
   isText = false,
+  overview?: unknown,
 ): LineOutboundMessage[] {
+  const knowledgeNotice = phaseKnowledgeWithheldNotice(overview);
   const title = "TOP5產業總覽 · 准入門檻未達成";
   const lines = [
-    `MACRO_TOP5_SHORTFALL：當輪合格產業候選僅 ${admittedCount} 個（不足 5 個）。`,
+    admittedCount === null
+      ? "MACRO_TOP5_SHORTFALL：當輪合格產業候選數未知（封存總覽缺少或未通過驗證；不假設為 0）。"
+      : `MACRO_TOP5_SHORTFALL：當輪合格產業候選僅 ${admittedCount} 個（不足 5 個）。`,
     "依據工程規範，系統拒絕捏造未查證之行業、拒絕以公司家數占比冒充市場成長率、拒絕湊數發布偽 TOP5。",
     "必須具備發布者、日期、計算期間、口徑與成長率 RATE 之客觀公開文獻，方可准入評選。",
     "目前正式封存契約尚未包含已驗收的 5 個產業產物。",
+    ...(knowledgeNotice ? [knowledgeNotice] : []),
   ];
   const actions = [["宏觀數據要求", "宏觀資料說明"], ["回功能選單", "選單"]] as const;
 
@@ -435,7 +502,7 @@ export function macroShortfallReport(
         header: menuBox([
           menuText("韭菜守護者 · 宏觀產業研究", "xs", T.headerMuted),
           { ...menuText("TOP5 准入門檻未達成", "xl", T.headerText), weight: "bold" },
-          menuText(`短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.headerAlert),
+          menuText(admittedCount === null ? "短缺通報：合格數未知" : `短缺通報：合格僅 ${admittedCount}/5 個`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: menuBox(lines.map(p => menuText(p, "sm", T.ink)), { backgroundColor: T.paper, paddingAll: "lg" }),
         footer: menuBox(actions.map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),

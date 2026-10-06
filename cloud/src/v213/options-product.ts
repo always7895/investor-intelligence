@@ -15,6 +15,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle, footerStyle } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
+import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { quoteBasisZh, rightsZh, sourceZh } from "./source-labels";
 
 export const OPTIONS_PRODUCT_KEY = "v213:options-chain:latest";
@@ -23,7 +24,15 @@ function formatMoney(val: number, currency: string = "USD"): string {
   return currency === "USD" ? `$${val.toFixed(2)}` : `${val.toFixed(2)} ${currency}`;
 }
 
+/** Independent public-rights guard for every renderer: the trusted catalog join decides; a rights label or an admission_status
+ * carried by the object (even "ADMITTED") is never sufficient. Format validation stays reusable for local data. */
+function requireAdmitted(quote: OptionContractQuote): void {
+  // Always the real current clock: a caller-supplied evaluatedAt (or any payload time) can never extend a review window.
+  if (!admitPublicOption(quote).ok) throw new OptionRightsNotAdmittedError();
+}
+
 export function buildOptionContractBubble(quote: OptionContractQuote) {
+  requireAdmitted(quote);
   const greeksStr = [
     `Delta: ${quote.delta !== null ? quote.delta.toFixed(3) : "UNAVAILABLE"}`,
     `IV: ${quote.iv !== null ? (quote.iv * 100).toFixed(1) + "%" : "UNAVAILABLE"}`,
@@ -75,6 +84,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
 
 export function buildOptionContractFlex(quote: OptionContractQuote, validationOptions?: Parameters<typeof validateOptionContractQuote>[1]): LineOutboundMessage[] {
   const validated = validateOptionContractQuote(quote, validationOptions);
+  requireAdmitted(validated);
   const bubble = buildOptionContractBubble(validated);
   const messages: LineOutboundMessage[] = [{
     type: "flex",
@@ -90,6 +100,7 @@ export function buildOptionContractFlex(quote: OptionContractQuote, validationOp
 
 export function buildOptionContractText(quote: OptionContractQuote, validationOptions?: Parameters<typeof validateOptionContractQuote>[1]): LineOutboundMessage[] {
   const validated = validateOptionContractQuote(quote, validationOptions);
+  requireAdmitted(validated);
   const nonexecTag = validated.quote_basis !== "realtime"
     ? "【非即時可執行報價 · 僅供參考】"
     : "【即時參考報價】";

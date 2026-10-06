@@ -4,6 +4,7 @@
  * Observation only: the bot never places an order. Mirror of validate_covered_call_cycle (Python). */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
+import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
   LINE_THEME as T, chip, footerStyle, footnote, menuAction, meter, productHeader, section, statTile, uiBox, uiText,
 } from "./line-theme";
@@ -19,6 +20,8 @@ export interface CoveredCallSuggestion {
 export interface CoveredCallCycle {
   ticker: string; strategy: "COVERED_CALL"; expiry: string; dte: number; spot: number; currency: "USD" | "SEK";
   multiplier: 100; quote_basis: "delayed"; timestamp: string; source: string; provenance: string; rights_status: string;
+  /** Producer-CLAIMED join identity for public admission (never authority; absent on local candidates). */
+  provider_id?: string; jurisdiction?: string; venue?: string; instrument_kind?: string; publication_scope?: string;
   suggestions: CoveredCallSuggestion[];
 }
 
@@ -160,6 +163,11 @@ function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion)
 }
 
 export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: string, style: "flex" | "text"): LineOutboundMessage[] {
+  // Independent public-rights guard (validateCoveredCallCycle stays format-only for local data): the trusted catalog decides, never
+  // rights_status, source text or a caller flag, so a new caller cannot bypass the loader's enforcement.
+  // Judged against the real current time: if the review window closes after the loader admitted the row, this dedicated typed error
+  // (the only one a public caller converts to an unavailable report) denies instead of rendering.
+  if (!admitPublicOption(cycle).ok) throw new OptionRightsNotAdmittedError();
   if (style === "text") {
     const lines = [
       `【備兌買權建議｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${cycle.dte} 天）｜現價 ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,

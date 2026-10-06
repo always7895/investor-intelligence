@@ -13,6 +13,13 @@ import company_deep_report as cdr  # noqa: E402
 
 TODAY = date(2026, 9, 25)
 
+# Explicitly synthetic BIZ1 business input (scripts/company_deep_report.py business_section_text): a fresh English excerpt with
+# its SEC form and filing date. phrase_zh is an unverified Chinese candidate that must never become public text.
+SYNTHETIC_SENTENCE = "Synthetic Devices designs synthetic test chips used only as a unit-test fixture."
+SYNTHETIC_FRESH_BUSINESS = {"source_facts": "FRESH_FETCH_THIS_RUN", "sentence_en": SYNTHETIC_SENTENCE, "form": "10-K",
+                            "filed": "2026-02-01", "url": "https://www.sec.gov/Archives/edgar/data/1/x.htm",
+                            "phrase_zh": "設計合成晶片"}
+
 
 def fact(val, end, frame, start=None, fp="Q2", form="10-Q"):
     row = {"val": val, "end": end, "frame": frame, "fp": fp, "form": form, "accn": "0000000001-26-000001"}
@@ -161,12 +168,14 @@ class DeepReportTests(unittest.TestCase):
         self.assertIsNone(m["long_term_debt"])
 
     def test_report_sections_phase_and_sources(self):
+        # The former phrase_zh-only business fixture predates BIZ1; the positive case now uses the fresh English contract.
         report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"},
-                                  business={"phrase_zh": "設計合成晶片", "form": "10-K", "filed": "2026-02-01",
-                                            "url": "https://www.sec.gov/Archives/edgar/data/1/x.htm"},
-                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
+                                  business=SYNTHETIC_FRESH_BUSINESS, rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
         text = {s["title"]: s["text"] for s in report["sections"]}
-        self.assertIn("設計合成晶片", text["公司業務"])
+        self.assertIn(SYNTHETIC_SENTENCE, text["公司業務"])
+        self.assertIn("SEC EDGAR 10-K 2026-02-01", text["公司業務"])
+        self.assertNotIn("設計合成晶片", text["公司業務"])
+        self.assertIn(SYNTHETIC_FRESH_BUSINESS["url"], [ref["url"] for ref in report["source_references"]])
         self.assertIn("年增 +25.0%", text["營運動能"])
         self.assertIn("年增 +100.0%", text["訂單能見度"])
         self.assertIn("合成半導體", text["所屬產業訊號"])
@@ -174,6 +183,16 @@ class DeepReportTests(unittest.TestCase):
         self.assertEqual(report["phase"]["phase"], "COMMERCIAL_VALIDATION")
         self.assertTrue(report["phase"]["dilution_overhang"])  # +6% diluted shares
         self.assertTrue(all(ref["url"].startswith("https://") for ref in report["source_references"]))
+
+    def test_phrase_zh_only_business_is_a_gap_at_the_report_caller(self):
+        unverified = {"phrase_zh": "設計合成晶片", "form": "10-K", "filed": "2026-02-01",
+                      "url": "https://www.sec.gov/Archives/edgar/data/1/x.htm"}
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=unverified,
+                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
+        text = {s["title"]: s["text"] for s in report["sections"]}
+        self.assertEqual(text["公司業務"], cdr.BUSINESS_GAP_TEXT)
+        self.assertNotIn("設計合成晶片", text["公司業務"])
+        self.assertNotIn(unverified["url"], [ref["url"] for ref in report["source_references"]])
 
     def test_missing_facts_are_stated_and_stale_evidence_downgrades(self):
         empty = {"entityName": "Empty Co", "facts": {"us-gaap": {}}}
@@ -196,6 +215,75 @@ class DeepReportTests(unittest.TestCase):
         self.assertEqual(list(document["reports"]), ["SYN"])
         self.assertEqual(document["failures"], {"BAD": "OSError"})
         self.assertFalse(document["publication_eligible"])
+
+
+class BusinessSectionTextTests(unittest.TestCase):
+    """Focused boundaries of business_section_text as currently documented (BIZ1): fresh source marker, typed metadata, 10-K/20-F
+    form, YYYY-MM-DD filed SHAPE only (no calendar-validity claim), >= 30 characters, no CR/LF, and the WHOLE section within 700
+    UTF-16 code units; anything else is the fixed gap text, never a truncation."""
+
+    def business(self, **overrides):
+        base = {"source_facts": "FRESH_FETCH_THIS_RUN", "sentence_en": SYNTHETIC_SENTENCE, "form": "10-K", "filed": "2026-02-01"}
+        base.update(overrides)
+        return base
+
+    @staticmethod
+    def units(text):
+        return len(text.encode("utf-16-le")) // 2
+
+    def overhead(self):
+        # Prefix units measured from the function's own output, not a hard-coded copy of its format string.
+        return self.units(cdr.business_section_text(self.business())) - self.units(SYNTHETIC_SENTENCE)
+
+    def test_fresh_10k_and_20f_render_form_date_and_english(self):
+        for form in ("10-K", "20-F"):
+            text = cdr.business_section_text(self.business(form=form))
+            self.assertTrue(text.startswith(f"SEC EDGAR {form} 2026-02-01 "), text)
+            self.assertTrue(text.endswith(SYNTHETIC_SENTENCE))
+            self.assertNotEqual(text, cdr.BUSINESS_GAP_TEXT)
+
+    def test_missing_or_wrong_freshness_is_a_gap(self):
+        missing = self.business()
+        del missing["source_facts"]
+        for business in (None, {}, missing, self.business(source_facts=None), self.business(source_facts="CACHED"),
+                         self.business(source_facts="fresh_fetch_this_run")):
+            with self.subTest(business=business):
+                self.assertEqual(cdr.business_section_text(business), cdr.BUSINESS_GAP_TEXT)
+
+    def test_invalid_types_form_and_filed_shape_are_gaps(self):
+        cases = [dict(sentence_en=None), dict(sentence_en=123), dict(sentence_en=[SYNTHETIC_SENTENCE]),
+                 dict(form=None), dict(form=10), dict(filed=None), dict(filed=20260201),
+                 dict(form="10-Q"), dict(form="10-K/A"), dict(form="20-f"), dict(form=""),
+                 dict(filed="2026-2-01"), dict(filed="20260201"), dict(filed="2026-02-01T00:00:00Z"),
+                 dict(filed=" 2026-02-01"), dict(filed="2026-02-01\n"), dict(filed="")]
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                self.assertEqual(cdr.business_section_text(self.business(**overrides)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_short_or_multiline_sentences_are_gaps(self):
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en="x" * 29)), cdr.BUSINESS_GAP_TEXT)
+        self.assertNotEqual(cdr.business_section_text(self.business(sentence_en="x" * 30)), cdr.BUSINESS_GAP_TEXT)
+        for broken in (SYNTHETIC_SENTENCE + "\nmore", SYNTHETIC_SENTENCE + "\rmore", "\r\n" + SYNTHETIC_SENTENCE):
+            with self.subTest(broken=broken):
+                self.assertEqual(cdr.business_section_text(self.business(sentence_en=broken)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_whole_section_limit_is_700_utf16_units_including_astral(self):
+        room = 700 - self.overhead()
+        exact = "a" * room
+        text = cdr.business_section_text(self.business(sentence_en=exact))
+        self.assertEqual(self.units(text), 700)
+        self.assertTrue(text.endswith(exact))
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=exact + "a")), cdr.BUSINESS_GAP_TEXT)
+        astral = "\U0001F600"  # one code point, two UTF-16 units
+        fits = astral + "a" * (room - 2)
+        self.assertEqual(self.units(cdr.business_section_text(self.business(sentence_en=fits))), 700)
+        over = astral + "a" * (room - 1)  # Python length is only `room`, but the whole section is 701 UTF-16 units
+        self.assertEqual(len(over), room)
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=over)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_lone_surrogate_is_refused_not_rendered(self):
+        broken = SYNTHETIC_SENTENCE + "\ud800"
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=broken)), cdr.BUSINESS_GAP_TEXT)
 
 
 class SealingTests(unittest.TestCase):

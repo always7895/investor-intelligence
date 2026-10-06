@@ -92,15 +92,15 @@ def record_sha256(record: Mapping[str, Any]) -> str:
     return verify.sha256(verify.canonical_json(record).encode("utf-8"))
 
 
-def implementation_sha256() -> str:
+def implementation_sha256(root=None) -> str:
     here = Path(__file__).resolve().parent
-    parts = [f"{name}:{hashlib.sha256((here / name).read_bytes()).hexdigest()}" for name in IMPLEMENTATION_FILES]
+    parts = [f"{name}:{hashlib.sha256(root.implementation(name) if type(root) is B1Store else (here / name).read_bytes()).hexdigest()}" for name in IMPLEMENTATION_FILES]
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def identity(profiles_bytes: bytes, registry_bytes: bytes, approval_bytes: bytes) -> dict[str, str]:
+def identity(profiles_bytes: bytes, registry_bytes: bytes, approval_bytes: bytes, root=None) -> dict[str, str]:
     return {"verifier_version": verify.VERIFIER_VERSION, "normalizer_version": verify.NORMALIZER_VERSION,
-            "implementation_sha256": implementation_sha256(), "profiles_sha256": verify.sha256(profiles_bytes),
+            "implementation_sha256": implementation_sha256(root), "profiles_sha256": verify.sha256(profiles_bytes),
             "baseline_registry_sha256": verify.sha256(registry_bytes), "baseline_approval_sha256": verify.sha256(approval_bytes)}
 
 
@@ -133,6 +133,9 @@ def load_capture(root: Path, raw_sha: str) -> dict[str, Any]:
 
 def _durable_write(path: Path, data: bytes) -> None:
     """Write to a temporary sibling, flush and fsync, then atomically replace (never a half-written file)."""
+    if type(path) is B1Object:
+        path.store.write(path.components, data)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + f".tmp-{os.getpid()}")
     with open(tmp, "wb") as handle:
@@ -151,6 +154,9 @@ def store_capture(root: Path, raw: bytes, meta: Mapping[str, Any]) -> str:
             "sha256": verify.sha256(verify.canonical_bytes(raw)), "content_type": meta.get("content_type", ""),
             "role": meta.get("role", "")}
     if path.exists():
+        if type(root) is B1Store:
+            load_capture(root, raw_sha)  # reuse only admitted original metadata/time
+            return raw_sha
         if verify.sha256(path.read_bytes()) != raw_sha:
             raise StateError(f"CAPTURE_BYTES {raw_sha[:12]}")
         # Same bytes captured again (another URL or time): keep the first metadata; the attempt names the URL it used.
@@ -171,6 +177,8 @@ def store_capture(root: Path, raw: bytes, meta: Mapping[str, Any]) -> str:
     usage["files"] += 1
     usage["pending"][raw_sha] = {"bytes": len(raw), "pid": os.getpid()}
     _write_usage(root, usage)
+    if type(root) is B1Store:
+        root.ensure_capture_bucket(raw_sha)
     _durable_write(path, raw)
     _durable_write(path.with_name(raw_sha + ".json"), json.dumps(full, sort_keys=True).encode("utf-8"))
     del usage["pending"][raw_sha]
@@ -202,6 +210,28 @@ def _write_usage(root: Path, usage: Mapping[str, Any]) -> None:
                                                  sort_keys=True).encode("utf-8"))
 
 
+def _capability_pending_usage(root, usage):
+    """Shared admission of real reservations, not absence/partial-byte settlement.
+
+    None means missing/incoherent accounting identity; never reconstruct it from
+    enumeration. Native capacity/pending/cleanup exceptions propagate unchanged.
+    """
+    if (usage is None or usage["bytes"] < sum(v["bytes"] for v in usage["pending"].values())
+            or usage["files"] < len(usage["pending"])):
+        return None
+    pending = {digest: dict(reserved) for digest, reserved in usage["pending"].items()}
+    for digest, reserved in usage["pending"].items():
+        if not SHA_RE.fullmatch(digest):
+            return None
+        try:
+            captured = load_capture(root, digest)  # original metadata/time, shared validator
+        except (StateError, ValueError):
+            continue  # EXACT original identity/amount/pid remains unresolved
+        if len(captured["raw"]) == reserved["bytes"]:
+            del pending[digest]
+    return pending
+
+
 def reconcile_usage(root: Path) -> int | None:
     """Raw bytes held by the capture store, from the accounting journal (under the updater's lock, at the start of a
     run). Pending reservations are settled: an object that was written stays counted; one that was not is released
@@ -209,6 +239,17 @@ def reconcile_usage(root: Path) -> int | None:
     enumerated. None when the journal is missing or malformed for a non-empty store: new captures then wait until
     `recount_usage` (the `--recount-store` maintenance command) rebuilds it."""
     usage = _read_usage_file(root)
+    if type(root) is B1Store:
+        if usage is None:
+            return None
+        # No delete-by-name/refund. Incoherent identity or ANY unresolved original
+        # reservation stays UNKNOWN; successful admission never lowers counters.
+        pending = _capability_pending_usage(root, usage)
+        if pending is None or pending:
+            return None
+        usage["pending"] = pending
+        _write_usage(root, usage)
+        return usage["bytes"]
     if usage is None:
         return 0 if not (root / "captures").exists() else None
     if usage["pending"]:
@@ -224,15 +265,58 @@ def reconcile_usage(root: Path) -> int | None:
     return usage["bytes"]
 
 
-def recount_usage(root: Path) -> dict[str, int]:
-    """Maintenance (not part of an ordinary run): rebuild the journal from the objects on disk - every raw object and
-    every leftover temporary file is counted (conservative; nothing is deleted)."""
+def recount_usage(root: Path) -> dict[str, Any]:
+    """Non-destructive maintenance. Legacy rebuild is explicit; capability recount
+    requires the original ledger and cannot refund unresolved reservations."""
+    if type(root) is B1Store:
+        # Actual captured mutable state also binds the eventual conditional write.
+        root.capture_mutable((USAGE_FILE,))
+        usage = _read_usage_file(root)
+        pending = _capability_pending_usage(root, usage)
+        if pending is None:
+            return {"status": "UNKNOWN", "bytes": None, "files": None, "pending": None}
+        total = files = 0
+        observed_raw = {}
+        unknown = bool(pending)
+        for bucket in sorted((root / "captures").iterdir(), key=lambda x: x.name):
+            for item in bucket.iterdir():
+                if not item.is_file():
+                    raise StateError("STORE_ACCOUNTING_UNKNOWN")
+                is_meta = item.name.endswith(".json")
+                digest = item.name[:-5] if is_meta else item.name
+                named_raw = bool(SHA_RE.fullmatch(digest)) and bucket.name == digest[:2]
+                if not is_meta:
+                    size = len(item.read_bytes())
+                    total += size  # actual raw/temp bytes, never guessed/published evidence
+                    files += 1
+                    if named_raw:
+                        observed_raw[digest] = size
+                if named_raw:
+                    try:
+                        load_capture(root, digest)  # complete bytes + ORIGINAL admitted metadata
+                    except (StateError, ValueError):
+                        unknown = True
+                else:
+                    unknown = True  # leftover/foreign identity is counted, not repaired/admitted
+        for digest, reserved in pending.items():
+            # Raw already counted (even if partial/unadmitted) covers that part
+            # only. Retain full original obligation without counting it twice.
+            total += max(0, reserved["bytes"] - observed_raw.get(digest, 0))
+            if digest not in observed_raw:
+                files += 1
+        # An unexplained old high-water count is not proven settled by absence;
+        # retain it and UNKNOWN rather than inventing the missing accounting.
+        unknown = unknown or total < usage["bytes"] or files < usage["files"]
+        usage = {"bytes": max(usage["bytes"], total), "files": max(usage["files"], files), "pending": pending}
+        _write_usage(root, usage)  # same-epoch captured expected identity/bytes + native readback
+        return {"status": "UNKNOWN" if unknown else "RECOUNTED", "bytes": usage["bytes"],
+                "files": usage["files"], "pending": len(pending)}
     total = files = 0
     captures = root / "captures"
-    for bucket in sorted(captures.iterdir()) if captures.exists() else []:
+    for bucket in sorted(captures.iterdir(), key=lambda x: x.name) if captures.exists() else []:
         for item in bucket.iterdir():
             if item.is_file() and not item.name.endswith(".json"):
-                total += item.stat().st_size
+                total += len(item.read_bytes()) if type(item) is B1Object else item.stat().st_size
                 files += 1
     usage = {"bytes": total, "files": files, "pending": {}}
     _write_usage(root, usage)
@@ -280,9 +364,34 @@ def validate_attempt(a: Any) -> None:
     if not _text(a["detail"], 400):
         raise StateError("ATTEMPT_DETAIL")
     caps = a["captures"]
-    if not isinstance(caps, dict) or len(caps) > 32 or not all(_text(k, 140, KEY_RE) and _text(v, 64, SHA_RE) for k, v in caps.items()):
-        raise StateError("ATTEMPT_CAPTURES")
     e = a["event"]
+    nbis = isinstance(e, dict) and e.get("adapter") == verify.NBIS_6K_TABLE_REAFFIRMATION_V1
+    capture_domain = re.compile(r"^(?:submissions|ir_copy|wire_copy|nbis:[0-9]{10}-[0-9]{2}-[0-9]{6}:(?:index|form|statement|letter|ir_copy|wire_copy|member:[A-Za-z0-9._-]{1,100}))$") if nbis else KEY_RE
+    if not isinstance(caps, dict) or len(caps) > 32 or not all(_text(k, 140, capture_domain) and _text(v, 64, SHA_RE) for k, v in caps.items()):
+        raise StateError("ATTEMPT_CAPTURES")
+    if nbis:
+        try:
+            if revenue_guidance.parse_instant(a["attempted_at"]) is None:
+                raise StateError("ATTEMPT_TIME")
+            verify.validate_nbis_event(e, complete=a["outcome"] == "VERIFIED")
+            if e["filed"] is not None and e["filed"] > a["attempted_at"][:10]:
+                raise StateError("EVENT_AFTER_CUTOFF")
+            if a["outcome"] == "VERIFIED":
+                if (a["reason"] is not None or not isinstance(a["record"], dict) or a["record"].get("symbol") != "NBIS"
+                        or a["record_sha256"] != record_sha256(a["record"]) or a["event_key"] != e["accession"]):
+                    raise StateError("ATTEMPT_RECORD")
+                revenue_guidance.validate_issuer_record(a["record"], "NBIS")
+                verify.validate_nbis_decisions(a["decisions"], caps, e, a["record"], a["attempted_at"])
+                if "submissions" not in caps or "ir_copy" not in caps or any(
+                        p[k] not in caps for p in e["packages"] for k in ("index", "form", "statement", "letter")):
+                    raise StateError("ATTEMPT_INPUTS")
+            elif (a["record"] is not None or a["record_sha256"] is not None or a["decisions"] != [] or a["reason"] not in verify.REASONS
+                  or (e["accession"] is not None and a["event_key"] != e["accession"])):
+                raise StateError("ATTEMPT_OUTCOME")
+        except (verify.Blocked, revenue_guidance.GuidanceError, KeyError, TypeError, ValueError, AttributeError, IndexError) as error:
+            raise StateError("ATTEMPT_NBIS_SCHEMA") from error
+        return  # exact distinct dialect; never the union of A1/NBIS fields
+
     if not isinstance(e, dict) or set(e) != EVENT_KEYS:
         raise StateError("ATTEMPT_EVENT")
     if e["accession"] is not None and not _text(e["accession"], 20, ACCESSION_RE):
@@ -537,6 +646,8 @@ def read_pointer(root: Path) -> dict[str, Any] | None:
     """None when the state root has never been written; StateError when it exists but is unusable."""
     pointer = root / "current.json"
     generations = root / "generations"
+    if type(root) is B1Store:
+        root.pointer_capture = root.capture_mutable(("current.json",))
     if not pointer.exists():
         if generations.exists() and any(generations.glob("*.json")):
             raise StateError("POINTER_MISSING")
@@ -589,8 +700,7 @@ def publish_generation(root: Path, gen: Mapping[str, Any], expected_parent: Mapp
         for a in entry["open"]:
             validate_attempt(a)
     for digest in written:
-        if not segment_path(root, digest).exists():
-            raise StateError("SEGMENT_MISSING")
+        load_segment(root, digest)  # actual digest-bound readback, also in the capability lane
     for entry in gen["detections"].values():
         validate_detections(entry)
     current = read_pointer(root)
@@ -604,7 +714,12 @@ def publish_generation(root: Path, gen: Mapping[str, Any], expected_parent: Mapp
     _durable_write(path, data)
     digest = verify.sha256(data)
     pointer = {"schema": POINTER_SCHEMA, "generation_id": gen["generation_id"], "sha256": digest}
-    _durable_write(root / "current.json", json.dumps(pointer, sort_keys=True).encode("utf-8"))
+    if type(root) is B1Store:
+        # Compare the exact captured current pointer, not a newly adopted later value.
+        root.write(("current.json",), json.dumps(pointer, sort_keys=True).encode("utf-8"),
+                   expected=root.pointer_capture)
+    else:
+        _durable_write(root / "current.json", json.dumps(pointer, sort_keys=True).encode("utf-8"))
     return digest
 
 
@@ -877,12 +992,672 @@ def resolve_issuers(root: Path, cutoff: str, profiles_bytes: bytes, registry_byt
 # The one effective-input boundary shared by the release checker, the updater, the order model and the lazy sealer
 # (ORDERS-V3-AUTOUPDATE-01 B1). Automatic mode is limited to these issuers in this integration; every other issuer
 # keeps its curated path unchanged.
-SUPPORTED_AUTO = ("MU", "NVDA")
+SUPPORTED_AUTO = ("MU", "NVDA", "NBIS")  # recognized capability, NOT default profile activation
 DEFAULT_STATE_ROOT = revenue_guidance.ROOT / "data" / "cache" / "revenue_guidance_autoupdate"
 PROFILES_DEFAULT = revenue_guidance.ROOT / "config" / "revenue-guidance-extraction-profiles-v1.json"
 MANIFEST_SCHEMA = "revenue-guidance-effective-inputs-v1"
 AUTO_EVIDENCE_VERSION = "auto-admission-evidence-v1"
 DISPOSITIONS = ("CURATED", "AUTO_VERIFIED", "WAITING", "BLOCKED", "SUSPENDED")
+class B1Store:
+    """Typed held-capability operands, never a filesystem path or callback adapter.
+
+    Must be constructed inside the lease's ONE namespace epoch. Every byte comes
+    from held descent or native readback; caches are confined to that live epoch.
+    Control baseline/code bytes are protected and independently release-bound.
+    """
+    def __init__(self, lease):
+        import revenue_guidance_storage as storage
+        if type(lease) not in (storage.NativeStorageLease, storage.NativeIssuerContext):
+            raise EffectiveInputsError("CAPABILITY_TYPE")
+        if lease.limits.profile != "b1" or lease.anchor.schema_version != "guidance-provider-storage-v2":
+            raise EffectiveInputsError("CAPABILITY_LAYOUT")
+        lease._namespace_guard()
+        self.lease, self.epoch = lease, lease._live_operation
+        self._bytes = {}
+        self._mutables = {}
+        self.pointer_capture = None
+
+    def require_live(self):
+        self.lease._namespace_guard()
+        if self.epoch is not self.lease._live_operation:
+            raise EffectiveInputsError("CAPABILITY_EPOCH")
+
+    def __truediv__(self, name):
+        return B1Object(self, (name,))
+
+    def exists(self):
+        self.require_live()
+        return True
+
+    def is_dir(self):
+        return self.exists()
+
+    def iterdir(self):
+        return self.children(())
+
+    def _directory(self, components):
+        self.require_live()
+        if not components:
+            return self.lease.b1_handle, False
+        return self.lease.open_directory(("b1",) + tuple(components)), True
+
+    def children(self, components):
+        h, close = self._directory(components)
+        try:
+            return tuple(B1Object(self, tuple(components) + (n,)) for n in self.lease.enumerate_directory(h))
+        finally:
+            if close:
+                self.lease.close_owned(h)
+
+    def read(self, components):
+        import revenue_guidance_windows as windows
+        self.require_live()
+        names = tuple(components)
+        if names in self._bytes:
+            return self._bytes[names]
+        raw = len(names) == 3 and (names[0] == "captures" or names[:2] == ("outputs", "cache")) and bool(SHA_RE.fullmatch(names[-1]))
+        try:
+            data, _ = self.lease.capture_bytes(("b1",) + names, 16 * 1024 * 1024 if raw else MAX_GENERATION_BYTES,
+                                               raw_document=raw, historical=raw)
+        except windows.StorageObjectMissingError:
+            raise FileNotFoundError("CAPABILITY_OBJECT_MISSING") from None
+        self._bytes[names] = data
+        return data
+
+    def input(self, name):
+        self.require_live()
+        if name == "receipts":
+            return self.read(("receipts.json",))
+        if name not in ("registry", "approval", "profiles", "config"):
+            raise EffectiveInputsError("CAPABILITY_INPUT_NAME")
+        return self._control(name + ".json")
+
+    def implementation(self, name):
+        if name not in IMPLEMENTATION_FILES:
+            raise EffectiveInputsError("CAPABILITY_IMPLEMENTATION_NAME")
+        return self._control(name)
+
+    def _control(self, name):
+        self.require_live()
+        expected = dict(self.lease.anchor.input_digests).get(name)
+        if expected is None:
+            raise EffectiveInputsError("CAPABILITY_CONTROL_BINDING")
+        key = ("control", name)
+        if key not in self._bytes:
+            self._bytes[key] = self.lease.capture_bytes(key, MAX_GENERATION_BYTES, bytes.fromhex(expected))[0]
+        return self._bytes[key]
+
+    def capture_mutable(self, components):
+        names = tuple(components)
+        h, close = self._directory(names[:-1])
+        try:
+            expected = self.lease.capture_mutable(h, names[-1])
+            self._mutables[names] = expected
+            if expected.data is not None:
+                self._bytes[names] = expected.data
+            else:
+                self._bytes.pop(names, None)
+            return expected
+        finally:
+            if close:
+                self.lease.close_owned(h)
+
+    def write(self, components, data, *, expected=None):
+        self.require_live()
+        names = tuple(components)
+        if type(data) is not bytes:
+            raise EffectiveInputsError("CAPABILITY_WRITE_BYTES")
+        mutable = (len(names) == 1 and names[0] in ("current.json", "queue.json", "store_usage.json", "receipts.json")) or (
+            len(names) == 2 and names[0] == "outputs" and names[1] in ("ledger.json", "cision.json", "capture-index.json"))
+        h, close = self._directory(names[:-1])
+        try:
+            stage = "stage-" + secrets.token_hex(12)
+            if mutable:
+                if expected is None:
+                    expected = self._mutables.get(names)
+                if expected is None:
+                    expected = self.lease.capture_mutable(h, names[-1])
+                actual = self.lease.replace_mutable(h, names[-1], stage, data, expected)
+            else:
+                raw = len(names) == 3 and (names[0] == "captures" or names[:2] == ("outputs", "cache")) and bool(SHA_RE.fullmatch(names[-1]))
+                if raw:
+                    self.lease.budget.admit_capture(len(data), raw_document=True)
+                actual = self.lease.publish_named_immutable(h, names[-1], stage, data, hashlib.sha256(data).digest(), raw_document=raw)
+            self._bytes[names] = data
+            self._mutables.pop(names, None)
+        finally:
+            if close:
+                self.lease.close_owned(h)
+        return actual  # ORIGINAL native verified/readback result, only after confirmed owned close
+
+    def ensure_capture_bucket(self, digest):
+        import revenue_guidance_windows as windows
+        parent, close = self._directory(("captures",))
+        try:
+            try:
+                bucket = self.lease.create_directory(parent, digest[:2])
+            except windows.StorageObjectExistsError:
+                bucket = self.lease.open_directory(("b1", "captures", digest[:2]))
+            self.lease.close_owned(bucket)
+        finally:
+            if close:
+                self.lease.close_owned(parent)
+
+
+class B1OutputControlFault(BaseException):
+    """Original output custody/control failure, not optional market absence."""
+
+
+class B1Outputs:
+    """Explicit bounded output-only subtree; no authority/pointer/gir1 projection.
+
+    Original native publication, independent digest, actual captured mutable
+    compare/readback. Unknown reservations/layouts remain unavailable; no deletion.
+    """
+    MAX_BUNDLES = 64
+    MAX_BYTES = 64 * 1024 * 1024
+    _ARTIFACT = re.compile(r"^(rank|body|record)-[0-9a-f]{64}\.json$")
+
+    def __new__(cls, store):
+        # Data/readback cache ONLY, bound to the ORIGINAL actual lease/epoch.
+        # Fresh B1Store input snapshots must not rescan all retained output bytes.
+        if cls is not B1Outputs or type(store) is not B1Store:
+            raise EffectiveInputsError("OUTPUT_OPERAND")
+        store.require_live()
+        old = getattr(store.lease, "_guidance_outputs_owner", None)
+        if old is not None:
+            if type(old) is not cls or old.store.lease is not store.lease:
+                raise StateError("OUTPUT_ADMISSION_UNKNOWN")
+            if old.store.epoch is store.epoch:
+                if old._initialization != "READY":
+                    raise StateError("OUTPUT_ADMISSION_UNKNOWN")  # no retry/repair after interrupted admission
+                old.store.require_live()
+                return old
+        owner = super().__new__(cls)
+        owner.store, owner._initialization = store, "INITIALIZING"
+        store.lease._guidance_outputs_owner = owner  # actual readback graph rooted BEFORE admission
+        return owner
+
+    def __init__(self, store):
+        import revenue_guidance_windows as windows
+        if type(store) is not B1Store:
+            raise EffectiveInputsError("OUTPUT_OPERAND")
+        store.require_live()
+        if self._initialization == "READY":
+            self.store.require_live()
+            self._ledger()  # same-epoch owner still refuses unknown reservations
+            return
+        self.store = store
+        self._artifact_bytes, self._payload_sizes = {}, {}
+        self._payload_bytes = 0
+        self._ledger_value = self._index_value = self._inventory = None
+        self._ledger_raw = self._index_raw = self._cache_inventory = None
+        self._ledger_identity = self._index_identity = self._parent_identity = None
+        self._cision_raw = self._cision_identity = None
+        self._cision_admitted = False
+        self._pack_bytes = {}  # one actual SHA read per pack per live epoch
+        created = False
+        try:
+            directory = store.lease.open_directory(("b1", "outputs"))
+        except windows.StorageObjectMissingError:
+            directory = store.lease.create_directory(store.lease.b1_handle, "outputs")
+            created = True  # only positively NEW may initialize honest machine accounting
+        store.lease.close_owned(directory)
+        if created:
+            self._save_ledger({"schema": "guidance-output-accounting-v1", "bytes": 0,
+                               "entries": [], "captures": [], "pending": None})
+            parent, owned = store._directory(("outputs",))
+            try:
+                cache = store.lease.create_directory(parent, "cache")
+                store.lease.close_owned(cache)
+            finally:
+                if owned:
+                    store.lease.close_owned(parent)
+            store.capture_mutable(("outputs", "capture-index.json"))
+            store.write(("outputs", "capture-index.json"), b'{"schema":"guidance-public-capture-index-v2","entries":{},"progress":{}}')
+            # Initialization writes are not a substitute for the first actual
+            # namespace inventory. Re-admit the positively new completed layout.
+            self._ledger_value = None
+        self._ledger()
+        self._capture_index()
+        self.load_cision()  # bounded control overhead admitted BEFORE any payload publication
+        self._initialization = "READY"
+
+    @staticmethod
+    def _output_json(raw):
+        def pairs(items):
+            out = {}
+            for key, value in items:
+                if key in out:
+                    raise StateError("OUTPUT_JSON_UNKNOWN")
+                out[key] = value
+            return out
+        if type(raw) is not bytes or len(raw) > MAX_GENERATION_BYTES:
+            raise StateError("OUTPUT_JSON_UNKNOWN")
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(StateError("OUTPUT_JSON_UNKNOWN")))
+        stack, nodes = [(value, 0)], 0
+        while stack:
+            item, depth = stack.pop()
+            nodes += 1
+            if depth > 32 or nodes > 1000000:
+                raise StateError("OUTPUT_JSON_UNKNOWN")
+            if type(item) is dict:
+                stack.extend((child, depth + 1) for child in item.values())
+            elif type(item) is list:
+                stack.extend((child, depth + 1) for child in item)
+        return value
+
+    def _ledger(self):
+        self.store.require_live()
+        if self._ledger_value is not None:
+            if (self._ledger_value["pending"] is not None or
+                    not self._payload_bytes <= self._ledger_value["bytes"] <= self.MAX_BYTES):
+                raise StateError("OUTPUT_ACCOUNTING_UNKNOWN")
+            return self._ledger_value
+        expected = self.store.capture_mutable(("outputs", "ledger.json"))
+        if (expected.data is None or (self._ledger_raw is not None and
+                (expected.data != self._ledger_raw or expected.identity != self._ledger_identity))):
+            raise StateError("OUTPUT_ACCOUNTING_UNKNOWN")
+        try:
+            ledger = self._output_json(expected.data)
+            if (type(ledger) is not dict or set(ledger) != {"schema", "bytes", "entries", "captures", "pending"}
+                    or ledger["schema"] != "guidance-output-accounting-v1" or type(ledger["bytes"]) is not int
+                    or not 0 <= ledger["bytes"] <= self.MAX_BYTES or type(ledger["entries"]) is not list
+                    or len(ledger["entries"]) > self.MAX_BUNDLES or ledger["pending"] is not None
+                    or any(type(x) is not str or not SHA_RE.fullmatch(x) for x in ledger["entries"])
+                    or len(set(ledger["entries"])) != len(ledger["entries"]) or type(ledger["captures"]) is not list
+                    or len(ledger["captures"]) > 256 or len(set(ledger["captures"])) != len(ledger["captures"])
+                    or any(type(x) is not str or not SHA_RE.fullmatch(x) for x in ledger["captures"])):
+                raise ValueError()
+            names = {item.name for item in (self.store / "outputs").iterdir()}
+            if len(names) > 3 * self.MAX_BUNDLES + 4 or any(
+                    name not in ("ledger.json", "cision.json", "cache", "capture-index.json") and not self._ARTIFACT.fullmatch(name) for name in names):
+                raise ValueError()
+            accounted = {"ledger.json", "cache", "capture-index.json"}
+            if "cision.json" in names:
+                accounted.add("cision.json")
+            for record_digest in ledger["entries"]:
+                record_name = "record-" + record_digest + ".json"
+                if record_name not in names:
+                    raise ValueError()
+                raw_record = self._admit_artifact("record", record_digest)
+                if self._payload_bytes > ledger["bytes"]:
+                    raise ValueError()
+                record = self._output_json(raw_record)
+                if (type(record) is not dict or record.get("schema") != "guidance-local-completion-v1" or
+                        not SHA_RE.fullmatch(str(record.get("ranking_sha256"))) or
+                        not SHA_RE.fullmatch(str(record.get("output_sha256")))):
+                    raise ValueError()
+                accounted.update((record_name, "rank-" + record["ranking_sha256"] + ".json",
+                                  "body-" + record["output_sha256"] + ".json"))
+            if names != accounted:
+                raise ValueError()  # orphan/missing/foreign immutable output, never guessed repair
+            # Every UNIQUE artifact name contributes its actual held/digest-bound
+            # length once, even if many completion records reference the same rank/body.
+            for name in names:
+                if self._ARTIFACT.fullmatch(name):
+                    kind, tail = name.split("-", 1)
+                    self._admit_artifact(kind, tail[:-5])
+                    if self._payload_bytes > ledger["bytes"]:
+                        raise ValueError()  # understated writable accounting is NOT capacity proof
+            if self._parent_identity is not None and expected.parent_identity != self._parent_identity:
+                raise ValueError()
+            self._ledger_value, self._ledger_raw = ledger, expected.data
+            self._ledger_identity, self._parent_identity = expected.identity, expected.parent_identity
+            self._inventory = names
+            return ledger
+        except (ValueError, UnicodeError):
+            raise StateError("OUTPUT_ACCOUNTING_UNKNOWN") from None
+
+    def _remember_payload(self, key, raw):
+        # key is the actual immutable namespace name, not a logical observation
+        # or repeated record reference. A higher old counter is NEVER refunded.
+        if key in self._payload_sizes:
+            if self._payload_sizes[key] != len(raw):
+                raise StateError("OUTPUT_PAYLOAD_CHANGED")
+            return
+        self._payload_sizes[key] = len(raw)
+        self._payload_bytes += len(raw)
+        if self._payload_bytes > self.MAX_BYTES:
+            raise StateError("OUTPUT_CAPACITY_UNAVAILABLE")
+
+    def _admit_artifact(self, kind, sha):
+        name = kind + "-" + sha + ".json"
+        if name not in self._artifact_bytes:
+            raw = self.read(kind, sha)  # ORIGINAL held read, independent digest, actual size
+            self._remember_payload(("artifact", name), raw)
+            self._artifact_bytes[name] = raw
+        return self._artifact_bytes[name]
+
+    def _save_ledger(self, ledger):
+        expected = self.store.capture_mutable(("outputs", "ledger.json"))
+        if (expected.data != self._ledger_raw or expected.identity != self._ledger_identity or
+                (self._parent_identity is not None and expected.parent_identity != self._parent_identity)):
+            raise StateError("OUTPUT_ACCOUNTING_CHANGED")
+        raw = json.dumps(ledger, sort_keys=True, allow_nan=False).encode("utf-8")
+        actual = self.store.write(("outputs", "ledger.json"), raw, expected=expected)
+        self._ledger_identity, self._parent_identity = actual.identity, expected.parent_identity
+        # Detached confirmed value: a caller clearing its local pending field
+        # before a fallible final save must NOT clear the live unknown latch.
+        self._ledger_value, self._ledger_raw = self._output_json(raw), raw
+
+    def _capture_index(self):
+        self.store.require_live()
+        ledger = self._ledger()  # cached index may not bypass an unresolved reservation
+        if self._index_value is not None:
+            return self._index_value
+        expected = self.store.capture_mutable(("outputs", "capture-index.json"))
+        try:
+            if expected.parent_identity != self._parent_identity:
+                raise ValueError()
+            index = self._output_json(expected.data)
+            if (type(index) is not dict or set(index) != {"schema", "entries", "progress"} or index["schema"] != "guidance-public-capture-index-v2"
+                    or type(index["entries"]) is not dict or len(index["entries"]) > 1024):
+                raise ValueError()
+            names = {item.name for item in self.store.children(("outputs", "cache"))}
+            if names != set(ledger["captures"]) or len(names) > 256:
+                raise ValueError()
+            for key, row in index["entries"].items():
+                if (type(key) is not str or not SHA_RE.fullmatch(key) or type(row) is not dict or
+                        set(row) != {"url", "sha256", "pack", "offset", "retrieved_at", "bytes", "status", "http_status"} or
+                        type(row["url"]) is not str or len(row["url"]) > 4096 or
+                        type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 16 * 1024 * 1024 or
+                        type(row["offset"]) is not int or row["offset"] < 0 or
+                        type(row["retrieved_at"]) is not str or not INSTANT_RE.fullmatch(row["retrieved_at"]) or
+                        row["status"] not in ("CAPTURED", "HTTP_UNAVAILABLE", "TRANSPORT_UNAVAILABLE") or
+                        (row["http_status"] is not None and (type(row["http_status"]) is not int or not 100 <= row["http_status"] <= 599))):
+                    raise ValueError()
+                if ((row["status"] == "CAPTURED" and row["http_status"] != 200) or
+                        (row["status"] == "HTTP_UNAVAILABLE" and (row["http_status"] is None or row["http_status"] == 200)) or
+                        (row["status"] == "TRANSPORT_UNAVAILABLE" and row["http_status"] is not None)):
+                    raise ValueError()
+                datetime.strptime(row["retrieved_at"], "%Y-%m-%dT%H:%M:%SZ")
+                if row["status"] == "CAPTURED":
+                    if (type(row["sha256"]) is not str or not SHA_RE.fullmatch(row["sha256"]) or
+                            type(row["pack"]) is not str or row["pack"] not in names or
+                            row["offset"] + row["bytes"] > 16 * 1024 * 1024):
+                        raise ValueError()
+                elif row["pack"] is not None or row["sha256"] is not None or row["bytes"] != 0 or row["offset"] != 0:
+                    raise ValueError()
+            # All retained packs count, including old packs no active URL slot
+            # references. Native actual sizes/digests, NOT index row lengths or
+            # ledger totals, establish the conservative retained-payload minimum.
+            for sha in names:
+                self.store.require_live()
+                raw = self.store.lease.capture_bytes(("b1", "outputs", "cache", sha),
+                    16 * 1024 * 1024, bytes.fromhex(sha), raw_document=True, historical=True)[0]
+                self._remember_payload(("cache", sha), raw)
+                self._pack_bytes[sha] = raw
+                if self._payload_bytes > ledger["bytes"]:
+                    raise ValueError()  # reject BEFORE any new reservation/capture/publication
+            for row in index["entries"].values():
+                if row["status"] == "CAPTURED":
+                    self.store.require_live()
+                    pack = self._pack_bytes[row["pack"]]
+                    if row["offset"] + row["bytes"] > len(pack):
+                        raise ValueError()
+                    part = pack[row["offset"]:row["offset"] + row["bytes"]]
+                    if hashlib.sha256(part).hexdigest() != row["sha256"]:
+                        raise ValueError()
+            progress = index["progress"]
+            if type(progress) is not dict or len(progress) > 8:
+                raise ValueError()
+            for plan, cursor in progress.items():
+                if type(plan) is not str or not SHA_RE.fullmatch(plan) or type(cursor) is not int or not 0 <= cursor < 1024:
+                    raise ValueError()
+            self._index_value, self._index_raw = index, expected.data
+            self._index_identity = expected.identity
+            self._cache_inventory = names
+            return index
+        except (ValueError, AttributeError, TypeError, KeyError, UnicodeError):
+            raise StateError("OUTPUT_CAPTURE_UNKNOWN") from None
+
+    def captured_public(self, key, url, moment, max_age_hours):
+        row = self._capture_index()["entries"].get(key)
+        if row is None or row["url"] != url:
+            return None
+        captured_at = datetime.strptime(row["retrieved_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if not 0 <= (moment - captured_at).total_seconds() <= max_age_hours * 3600:
+            return None
+        raw = None
+        if row["status"] == "CAPTURED":
+            sha = row["pack"]
+            if sha not in self._pack_bytes:
+                raise StateError("OUTPUT_CAPTURE_UNKNOWN")  # no lazy second admission/read sweep
+            pack = self._pack_bytes[sha]
+            if row["offset"] + row["bytes"] > len(pack):
+                raise StateError("OUTPUT_CAPTURE_UNKNOWN")  # including zero-length out-of-pack slices
+            raw = pack[row["offset"]:row["offset"] + row["bytes"]]
+            if len(raw) != row["bytes"] or hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                raise StateError("OUTPUT_CAPTURE_UNKNOWN")
+        return raw, dict(row)  # original claimed time/status, no authenticated freshness claim
+
+    def progress(self, plan, count):
+        if type(count) is not int or not 0 < count <= 1024:
+            raise StateError("OUTPUT_PLAN_BOUND")
+        if type(plan) is not str or not SHA_RE.fullmatch(plan):
+            raise StateError("OUTPUT_PLAN_BOUND")
+        return self._capture_index()["progress"].get(plan, 0) % count
+
+    def capture_batch(self, observations, plan, cursor):
+        """Finite logical slots -> packed immutable bytes, index/progress LAST.
+
+        URL slots are NOT raw-directory entries. Up to1024 observations share
+        <=256 packs with the SAME64MiB high-water limit and native caps. Only
+        actual newly observed bodies/times/statuses enter a batch. No eviction.
+        """
+        ledger, index = self._ledger(), self._capture_index()
+        if (plan is not None and (type(plan) is not str or not SHA_RE.fullmatch(plan) or
+                type(cursor) is not int or not 0 <= cursor < 1024)) or (plan is None and cursor is not None):
+            raise StateError("OUTPUT_PLAN_BOUND")
+        if type(observations) is not list or len(observations) > 120:
+            raise StateError("OUTPUT_CAPTURE_BOUND")
+        if not observations and (plan is None or index["progress"].get(plan) == cursor):
+            return  # full warm traversals need no duplicate mutation/reservation
+        pending, packs, pack, size = {}, [], bytearray(), 0
+        def seal():
+            nonlocal pack
+            if pack:
+                packs.append(bytes(pack))
+                pack = bytearray()
+        for key, url, raw, moment, status, http_status in observations:
+            if (type(key) is not str or not SHA_RE.fullmatch(key) or key in pending or
+                    type(url) is not str or len(url) > 4096 or type(moment) is not datetime or moment.tzinfo != timezone.utc or
+                    status not in ("CAPTURED", "HTTP_UNAVAILABLE", "TRANSPORT_UNAVAILABLE") or
+                    (raw is not None and (type(raw) is not bytes or len(raw) > 16 * 1024 * 1024)) or
+                    (status == "CAPTURED") != (raw is not None) or
+                    (http_status is not None and (type(http_status) is not int or not 100 <= http_status <= 599)) or
+                    (status == "CAPTURED" and http_status != 200) or
+                    (status == "HTTP_UNAVAILABLE" and (http_status is None or http_status == 200)) or
+                    (status == "TRANSPORT_UNAVAILABLE" and http_status is not None)):
+                raise StateError("OUTPUT_CAPTURE_BOUND")
+            # Empty successful bodies occupy a real sentinel byte in the pack,
+            # while their indexed slice remains zero length with its actual SHA.
+            stored = raw if raw else b"\x00"
+            if raw is not None and len(pack) + len(stored) > 16 * 1024 * 1024:
+                seal()
+            pending[key] = {"url": url, "sha256": hashlib.sha256(raw).hexdigest() if raw is not None else None,
+                "pack": len(packs) if raw is not None else None, "offset": len(pack) if raw is not None else 0,
+                "bytes": len(raw) if raw is not None else 0, "retrieved_at": moment.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "status": status, "http_status": http_status}
+            if raw is not None:
+                pack.extend(stored)
+                size += len(stored)
+        seal()
+        hashes = [hashlib.sha256(raw).hexdigest() for raw in packs]
+        if (len(set(index["entries"]) | set(pending)) > 1024 or
+                len(set(ledger["captures"]) | set(hashes)) > 256 or ledger["bytes"] + size > self.MAX_BYTES):
+            raise StateError("OUTPUT_CAPACITY_UNAVAILABLE")
+        ledger["bytes"] += size
+        ledger["pending"] = {"kind": "capture_batch", "bytes": size, "packs": hashes}
+        self._save_ledger(ledger)  # no refund even if any following step is UNKNOWN
+        for sha, raw in zip(hashes, packs):
+            self.store.write(("outputs", "cache", sha), raw)
+            actual = self.store.lease.capture_bytes(("b1", "outputs", "cache", sha),
+                16 * 1024 * 1024, bytes.fromhex(sha), raw_document=True, historical=True)[0]
+            if actual != raw:
+                raise StateError("OUTPUT_CAPTURE_READBACK")
+            self._remember_payload(("cache", sha), actual)
+            self._pack_bytes[sha] = actual
+            self._cache_inventory.add(sha)  # ONLY confirmed owned immutable/readback
+            if sha not in ledger["captures"]:
+                ledger["captures"].append(sha)
+        for row in pending.values():
+            if row["pack"] is not None:
+                row["pack"] = hashes[row["pack"]]
+        index["entries"].update(pending)
+        if plan is not None:
+            if plan not in index["progress"] and len(index["progress"]) >= 8:
+                raise StateError("OUTPUT_PLAN_BOUND")
+            index["progress"][plan] = cursor
+        # Fresh CAS token must still match the exact previously captured/readback
+        # bytes. A foreign mutable change is refused, not silently overwritten.
+        expected = self.store.capture_mutable(("outputs", "capture-index.json"))
+        if (expected.data != self._index_raw or expected.identity != self._index_identity or
+                expected.parent_identity != self._parent_identity):
+            raise StateError("OUTPUT_CAPTURE_CHANGED")
+        raw_index = json.dumps(index, sort_keys=True, allow_nan=False).encode()
+        actual = self.store.write(("outputs", "capture-index.json"), raw_index, expected=expected)
+        self._index_raw, self._index_identity = raw_index, actual.identity
+        ledger["pending"] = None
+        self._save_ledger(ledger)
+        self._index_value = index  # only confirmed publication/readback advances fair cursor
+
+    def load_cision(self):
+        self._ledger()
+        if self._cision_admitted:
+            return self._cision_raw  # exact once-admitted control bytes in SAME actual epoch
+        expected = self.store.capture_mutable(("outputs", "cision.json"))
+        if expected.parent_identity != self._parent_identity:
+            raise StateError("OUTPUT_CISION_CHANGED")
+        if expected.data is not None and len(expected.data) > 1024 * 1024:
+            raise StateError("OUTPUT_CISION_BOUND")
+        self._cision_raw, self._cision_identity = expected.data, expected.identity
+        self._cision_admitted = True
+        return expected.data
+
+    def save_cision(self, raw):
+        try:
+            if type(raw) is not bytes or len(raw) > 1024 * 1024:
+                raise StateError("OUTPUT_CISION_BOUND")
+            self._ledger()
+            if not self._cision_admitted:
+                self.load_cision()
+            expected = self.store.capture_mutable(("outputs", "cision.json"))
+            if (expected.data != self._cision_raw or expected.identity != self._cision_identity or
+                    expected.parent_identity != self._parent_identity):
+                raise StateError("OUTPUT_CISION_CHANGED")
+            actual = self.store.write(("outputs", "cision.json"), raw, expected=expected)
+            self._cision_raw, self._cision_identity = raw, actual.identity
+            self._inventory.add("cision.json")  # only actual owned conditional/readback mutation
+        except Exception:
+            # Legacy Cision's optional fetch catch must not swallow/retry a
+            # failed output compare/publication or original native UNKNOWN.
+            raise B1OutputControlFault("OUTPUT_CISION_UNAVAILABLE") from None
+
+    def read(self, kind, digest):
+        if kind not in ("rank", "body", "record") or type(digest) is not str or not SHA_RE.fullmatch(digest):
+            raise StateError("OUTPUT_NAME")
+        self.store.require_live()
+        # Fresh actual read, NOT the write-side epoch cache or public metadata.
+        raw, actual = self.store.lease.capture_bytes(("b1", "outputs", kind + "-" + digest + ".json"),
+                                                    MAX_GENERATION_BYTES, bytes.fromhex(digest))
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise StateError("OUTPUT_READBACK")
+        return raw
+
+    def publish(self, ranking, body, record):
+        items = (("rank", ranking), ("body", body), ("record", record))
+        if any(type(raw) is not bytes or not raw or len(raw) > MAX_GENERATION_BYTES for _, raw in items):
+            raise StateError("OUTPUT_BYTES")
+        ledger = self._ledger()
+        size = sum(len(raw) for _, raw in items)
+        if len(ledger["entries"]) >= self.MAX_BUNDLES or ledger["bytes"] + size > self.MAX_BYTES:
+            raise StateError("OUTPUT_CAPACITY_UNAVAILABLE")
+        digests = {kind: hashlib.sha256(raw).hexdigest() for kind, raw in items}
+        # Reservation FIRST, never refunded on partial/UNKNOWN. Record is LAST.
+        ledger["bytes"] += size
+        ledger["pending"] = {"bytes": size, "digests": digests}
+        self._save_ledger(ledger)
+        for kind, raw in items:
+            self.store.write(("outputs", kind + "-" + digests[kind] + ".json"), raw)
+            actual = self.read(kind, digests[kind])  # fresh publication/witness readback stays mandatory
+            if actual != raw:
+                raise StateError("OUTPUT_READBACK")
+            name = kind + "-" + digests[kind] + ".json"
+            self._remember_payload(("artifact", name), actual)
+            self._artifact_bytes[name] = actual
+            self._inventory.add(name)
+        if digests["record"] not in ledger["entries"]:
+            ledger["entries"].append(digests["record"])
+        ledger["pending"] = None  # only ALL actual immutable readbacks settle it
+        self._save_ledger(ledger)
+        self._ledger()
+        return digests
+
+
+class B1Object:
+    """Closed typed operand; deliberately no __fspath__, arbitrary open or unlink."""
+    def __init__(self, store, components):
+        import revenue_guidance_windows as windows
+        if type(store) is not B1Store or type(components) is not tuple or not components:
+            raise EffectiveInputsError("CAPABILITY_OPERAND")
+        for n in components:
+            windows._namespace_name(n)
+        self.store, self.components = store, components
+
+    def __truediv__(self, name):
+        return B1Object(self.store, self.components + (name,))
+
+    @property
+    def name(self):
+        return self.components[-1]
+
+    def with_name(self, name):
+        return B1Object(self.store, self.components[:-1] + (name,))
+
+    def read_bytes(self):
+        return self.store.read(self.components)
+
+    def read_text(self, encoding="utf-8"):
+        return self.read_bytes().decode(encoding)
+
+    def exists(self):
+        if self.is_directory_operand():
+            return self.is_dir()
+        try:
+            self.read_bytes()
+            return True
+        except FileNotFoundError:
+            return False
+
+    def is_directory_operand(self):
+        return self.components in (("captures",), ("segments",), ("generations",), ("outputs",)) or (
+            len(self.components) == 2 and self.components[0] == "captures" and bool(re.fullmatch("[0-9a-f]{2}", self.name)))
+
+    def is_dir(self):
+        import revenue_guidance_windows as windows
+        try:
+            h, close = self.store._directory(self.components)
+        except windows.StorageObjectMissingError:
+            return False
+        if close:
+            self.store.lease.close_owned(h)
+        return True
+
+    def is_file(self):
+        return not self.is_directory_operand() and self.exists()
+
+    def iterdir(self):
+        return self.store.children(self.components)
+
+    def glob(self, pattern):
+        if pattern != "*.json":
+            raise EffectiveInputsError("CAPABILITY_GLOB")
+        return tuple(x for x in self.iterdir() if x.name.endswith(".json"))
+
+
 STATE_ARTIFACTS = {"captures", "generations", "segments", "store_usage.json", "queue.json"}
 STATE_ROOT_ENTRIES = STATE_ARTIFACTS | {"current.json", "lock"}
 _TEMP_ENTRY = re.compile(r"^(current|queue|store_usage)\.json\.tmp-\d+$")
@@ -1109,11 +1884,22 @@ def load_effective_inputs(*, cutoff: datetime | str, state_root: Path,
     faults are typed dispositions, never exceptions and never a fallback to curated numbers for the automatic lane;
     argument errors raise EffectiveInputsError."""
     moment, instant = _normalize_cutoff(cutoff)
-    root = Path(state_root)
-    reg_raw, reg_fault, reg_path = _read_input("registry", registry_path, registry_bytes, revenue_guidance.REGISTRY_PATH)
-    appr_raw, appr_fault, _ = _read_input("approval", approval_path, approval_bytes, revenue_guidance.APPROVAL_PATH)
-    prof_raw, prof_fault, _ = _read_input("profiles", profiles_path, profiles_bytes, PROFILES_DEFAULT)
-    rec_raw, rec_fault, _ = _read_input("receipts", receipts_path, receipts_bytes, revenue_guidance.RELEASE_CHECKS_CACHE_PATH)
+    root = state_root if type(state_root) is B1Store else Path(state_root)
+    if type(root) is B1Store:
+        root.require_live()
+        if any(x is not None for x in (registry_path, registry_bytes, approval_path, approval_bytes,
+                                       profiles_path, profiles_bytes, receipts_path, receipts_bytes)) or allow_replay:
+            raise EffectiveInputsError("CAPABILITY_INPUT_SOURCE_CONFLICT")
+        state_required = True
+        reg_raw, reg_fault, reg_path = root.input("registry"), None, None
+        appr_raw, appr_fault = root.input("approval"), None
+        prof_raw, prof_fault = root.input("profiles"), None
+        rec_raw, rec_fault = root.input("receipts"), None
+    else:
+        reg_raw, reg_fault, reg_path = _read_input("registry", registry_path, registry_bytes, revenue_guidance.REGISTRY_PATH)
+        appr_raw, appr_fault, _ = _read_input("approval", approval_path, approval_bytes, revenue_guidance.APPROVAL_PATH)
+        prof_raw, prof_fault, _ = _read_input("profiles", profiles_path, profiles_bytes, PROFILES_DEFAULT)
+        rec_raw, rec_fault, _ = _read_input("receipts", receipts_path, receipts_bytes, revenue_guidance.RELEASE_CHECKS_CACHE_PATH)
 
     registry = revenue_guidance.parse_registry(reg_raw, reg_path) if reg_raw is not None else revenue_guidance.parse_registry(None)
     approval = revenue_guidance.parse_approval(appr_raw)
@@ -1148,7 +1934,8 @@ def load_effective_inputs(*, cutoff: datetime | str, state_root: Path,
         if root.exists() and not root.is_dir():
             raise StateError("STATE_ROOT_NOT_DIRECTORY")
         present = {c.name for c in root.iterdir()} if root.exists() else set()
-        foreign = {n for n in present if n not in STATE_ROOT_ENTRIES and not _TEMP_ENTRY.match(n)}
+        allowed = STATE_ROOT_ENTRIES | {"receipts.json", "outputs"} if type(root) is B1Store else STATE_ROOT_ENTRIES
+        foreign = {n for n in present if n not in allowed and not _TEMP_ENTRY.match(n)}
         if foreign:
             raise StateError("STATE_ROOT_FOREIGN")
         if "current.json" not in present and present & STATE_ARTIFACTS:
@@ -1183,7 +1970,7 @@ def load_effective_inputs(*, cutoff: datetime | str, state_root: Path,
     elif registry.get("status") != "OK" or appr_raw is None:
         lane_fault = "BASELINE_INVALID"
     supported = [sym for sym in SUPPORTED_AUTO if profiles is not None and sym in profiles]
-    ident = identity(prof_raw, reg_raw, appr_raw) if lane_fault is None else None
+    ident = identity(prof_raw, reg_raw, appr_raw, root) if lane_fault is None else None
     admitted: dict[str, dict[str, Any]] = {}
     discovery_admitted: dict[str, dict[str, Any]] = {}
     if lane_fault is None and supported:
@@ -1297,7 +2084,7 @@ def load_effective_inputs(*, cutoff: datetime | str, state_root: Path,
         "inputs": {"registry": _digest(reg_raw, reg_fault), "approval": _digest(appr_raw, appr_fault),
                    "profiles": _digest(prof_raw, prof_fault) if prof_fault != "INVALID" else f"FAULT:INVALID:{_digest(prof_raw, None)}",
                    "receipts": _digest(rec_raw, rec_fault) if rec_fault != "INVALID" else f"FAULT:INVALID:{_digest(rec_raw, None)}"},
-        "implementation": {"implementation_sha256": implementation_sha256(), "verifier_version": verify.VERIFIER_VERSION,
+        "implementation": {"implementation_sha256": implementation_sha256(root), "verifier_version": verify.VERIFIER_VERSION,
                            "normalizer_version": verify.NORMALIZER_VERSION},
         "state": {"condition": condition, "error": state_error,
                   "generation_id": (gen or {}).get("generation_id"),

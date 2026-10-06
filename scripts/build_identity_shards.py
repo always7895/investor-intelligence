@@ -4,7 +4,11 @@
 Reads the official listing directories and writes compact shards the Worker loads on demand (sealed as
 content-addressed lazy objects; see scripts/publish_sealed_snapshot.py --identity-shards):
 
-- US: Nasdaq Trader symbol directories (nasdaqlisted.txt, otherlisted.txt; test issues excluded);
+- US: Nasdaq Trader symbol directories (nasdaqlisted.txt, otherlisted.txt; test issues excluded). Only when either
+  directory fails or is too small are BOTH replaced as one unit by the already cached SEC raw file
+  company_tickers_exchange.json (Nasdaq and NYSE rows only, class REVIEW_REQUIRED, the cache's file mtime as retrieval
+  time, at most 7 days old; local read only, no new request). That build is DEGRADED_US_FALLBACK (exit 2): partial US
+  coverage, availability only, not independent corroboration;
 - Taiwan: TWSE listed companies (t187ap03_L) and TPEx listed companies (mopsfin_t187ap03_O);
 - Sweden: Nasdaq Nordic share screener for Stockholm Main Market and First North (public exchange web API);
 - Japan: JPX list of TSE-listed issues (data_e.xlsx, read with the standard library);
@@ -23,6 +27,7 @@ time and the SHA-256 of the raw download. A feed that fails keeps its previous r
 build fails when a required feed is missing, so the last good shards keep serving.
 
 Usage: build_identity_shards.py [--output data/cache/identity_shards_latest.json]
+Exit status: 0 OK or skipped fresh; 1 failed (the last good shards keep serving); 2 DEGRADED_US_FALLBACK written.
 """
 from __future__ import annotations
 
@@ -37,8 +42,9 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,6 +82,15 @@ MINIMUM_ROWS = {"nasdaq-listed": 3000, "other-us-listed": 3000, "twse-listed": 8
                 "nasdaq-stockholm-main": 250, "nasdaq-stockholm-first-north": 150, "jpx-listed": 3000, "krx-listed": 1500,
                 "euronext-equities": 800, "lse-main-market": 800, "lse-aim": 400}
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9 .\-]{0,14}$")
+US_FEEDS = ("nasdaq-listed", "other-us-listed")
+# US availability fallback: the raw SEC file that company_deep_report.ticker_ciks already keeps; read locally, never fetched here.
+SEC_FEED = "sec-company-tickers-exchange"
+SEC_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+SEC_CACHE = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
+SEC_MAX_BYTES = 32 * 1024 * 1024
+SEC_MAX_AGE = timedelta(days=7)  # the age policy of company_deep_report.ticker_ciks
+SEC_VENUES = {"Nasdaq": "NASDAQ", "NYSE": "NYSE"}  # exact SEC exchange names; every other value is skipped, never guessed
+SEC_FIELDS = ("cik", "name", "ticker", "exchange")
 
 Fetch = Callable[[str], bytes]
 
@@ -240,6 +255,97 @@ def parse_feed(feed: str, raw: bytes) -> list[list[Any]]:
     return [row for row in rows if _SYMBOL.fullmatch(row[0]) and row[4]]
 
 
+def _sec_cik(value: Any) -> int | None:
+    """A positive integral CIK from an int or a digit string; bool, float and every other type are refused."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]{1,10}", value):
+        number = int(value)
+    else:
+        return None
+    return number if 0 < number <= 9_999_999_999 else None
+
+
+def load_sec_cache(path: Path, now: datetime, minimum: int) -> tuple[bytes, datetime, list[list[Any]], int]:
+    """Rows of the already cached SEC company_tickers_exchange.json: (exact raw bytes, file mtime, rows, skipped count).
+
+    Local read only: no request, no write, no SEC contact. The file's mtime is the only retrieval time (LOCAL_CACHE_MTIME);
+    it is neither an authenticated acquisition time nor proof of origin, and a before/after metadata comparison only observes
+    drift (it is not a lock). Only the exact SEC exchanges in SEC_VENUES are kept, every row is REVIEW_REQUIRED (no class is
+    guessed), unusable rows are skipped and counted, a malformed layout or conflicting duplicate rejects the file, and the
+    unique accepted rows must reach `minimum` and cover both exchanges. A name must be 1..300 UTF-16 code units (the Worker's
+    unit) both as stripped and in its normalized form, strictly encoded: a lone surrogate, an overlong name or a name that
+    grows when normalized skips the row before any de-duplication or count, and is never cut or repaired. Anything
+    unusable raises IdentityShardError.
+    """
+    try:
+        before = path.stat()
+        if not S_ISREG(before.st_mode):
+            raise IdentityShardError("IDENTITY_SEC_CACHE_NOT_A_FILE")
+        if before.st_size > SEC_MAX_BYTES:
+            raise IdentityShardError("IDENTITY_SEC_CACHE_TOO_LARGE")
+        with path.open("rb") as handle:
+            raw = handle.read(SEC_MAX_BYTES + 1)
+        if len(raw) > SEC_MAX_BYTES:
+            raise IdentityShardError("IDENTITY_SEC_CACHE_TOO_LARGE")
+        after = path.stat()
+        if len(raw) != before.st_size or (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+            raise IdentityShardError("IDENTITY_SEC_CACHE_CHANGED")
+        modified = datetime.fromtimestamp(before.st_mtime, timezone.utc)
+        if now - modified < timedelta(0):
+            raise IdentityShardError("IDENTITY_SEC_CACHE_FUTURE")
+        if now - modified > SEC_MAX_AGE:
+            raise IdentityShardError("IDENTITY_SEC_CACHE_STALE")
+        document = json.loads(raw.decode("utf-8"))
+        if not isinstance(document, dict) or not isinstance(document.get("fields"), list) or not isinstance(document.get("data"), list):
+            raise IdentityShardError("IDENTITY_SEC_CACHE_SCHEMA")
+        fields = document["fields"]
+        if (not all(isinstance(name, str) for name in fields) or len(set(fields)) != len(fields)
+                or any(fields.count(name) != 1 for name in SEC_FIELDS)):
+            raise IdentityShardError("IDENTITY_SEC_CACHE_SCHEMA")
+        at = {name: fields.index(name) for name in SEC_FIELDS}
+        accepted: dict[tuple[str, str], tuple[str, int]] = {}
+        skipped = 0
+        for item in document["data"]:
+            if not isinstance(item, list) or len(item) != len(fields):
+                raise IdentityShardError("IDENTITY_SEC_CACHE_SCHEMA")
+            exchange, symbol, name, cik = item[at["exchange"]], item[at["ticker"]], item[at["name"]], _sec_cik(item[at["cik"]])
+            if (not isinstance(exchange, str) or exchange not in SEC_VENUES or not isinstance(symbol, str)
+                    or not isinstance(name, str) or cik is None):
+                skipped += 1
+                continue
+            symbol, name = symbol.strip(), name.strip()
+            if _SYMBOL.fullmatch(symbol) is None:
+                skipped += 1
+                continue
+            try:  # the Worker counts UTF-16 code units: the stripped AND the normalized name must be 1..300, never cut
+                units = len(name.encode("utf-16-le", "strict")) // 2
+                normalized_units = len(normalize_name(name).encode("utf-16-le", "strict")) // 2
+            except UnicodeEncodeError:  # a lone surrogate (a JSON escape can decode to one): unusable, never repaired
+                skipped += 1
+                continue
+            if not 0 < units <= 300 or not 0 < normalized_units <= 300:
+                skipped += 1
+                continue
+            key = (SEC_VENUES[exchange], symbol)
+            if key in accepted:
+                if accepted[key] != (name, cik):
+                    raise IdentityShardError("IDENTITY_SEC_CACHE_CONFLICT")
+                continue  # an exact duplicate collapses
+            accepted[key] = (name, cik)
+        rows = [[symbol, venue, "US", "United States", name, None, "REVIEW_REQUIRED", "USD"]
+                for (venue, symbol), (name, _cik) in sorted(accepted.items(), key=lambda item: (item[0][1], item[0][0]))]
+        if len(rows) < minimum or {row[1] for row in rows} != set(SEC_VENUES.values()):
+            raise IdentityShardError(f"IDENTITY_SEC_CACHE_COVERAGE {len(rows)}")
+        return raw, modified.replace(microsecond=0), rows, skipped
+    except IdentityShardError:
+        raise
+    except Exception as error:  # unreadable, undecodable or otherwise malformed: unusable, never silently ignored
+        raise IdentityShardError(f"IDENTITY_SEC_CACHE_FAILED {type(error).__name__}") from None
+
+
 def load_zh_names(path: Path | None = None) -> tuple[dict[str, list[str]], dict[str, Any] | None]:
     """Sourced Chinese names by "<MARKET>:<SYMBOL>" and the feed entry describing them (None when absent)."""
     path = path or ZH_NAMES
@@ -264,19 +370,57 @@ def zh_name(row: list[Any], names: dict[str, list[str]]) -> list[str] | None:
     return names.get(f"{row[2]}:{row[0]}")
 
 
-def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[str, list[str]], dict[str, Any] | None] | None = None) -> dict[str, Any]:
+def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[str, list[str]], dict[str, Any] | None] | None = None,
+          *, sec_cache: Path | None = SEC_CACHE, minimum_rows: dict[str, int] | None = None) -> dict[str, Any]:
+    """The shard document. The two US directories are read first; only when either fails or is too small are both replaced
+    as a unit by the local SEC raw cache `sec_cache` (None disables the fallback; a small `minimum_rows` override, used by
+    isolated tests, also sets the fallback's row minimum). An unusable cache re-raises the original US error. Any other
+    required feed failing still fails the whole build; the healthy path never reads the local file."""
     now = now or datetime.now(timezone.utc)
+    minimums = MINIMUM_ROWS if minimum_rows is None else {**MINIMUM_ROWS, **minimum_rows}
     zh_names, zh_feed = zh if zh is not None else load_zh_names()
     stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     feeds: list[dict[str, Any]] = []
     records: list[list[Any]] = []
-    seen: dict[tuple[str, str], int] = {}
+    # ICON2: the identities already kept per (venue, symbol); a contradictory variant is kept too, an equal one is not.
+    seen: dict[tuple[str, str], set[tuple[Any, ...]]] = {}
     skipped: list[str] = []
+    entries: list[tuple[dict[str, Any], list[list[Any]]]] = []  # (feed record, parsed rows) in feed order
+    us_entries: list[tuple[dict[str, Any], list[list[Any]]]] = []
+    us_error: IdentityShardError | None = None
+    for feed in US_FEEDS:  # a failure is held back: the pair is replaced as a unit, never mixed with a fallback
+        try:
+            raw = fetch(FEEDS[feed])
+            parsed = parse_feed(feed, raw)
+            if len(parsed) < minimums[feed]:
+                raise IdentityShardError(f"IDENTITY_FEED_TOO_SMALL {feed}: {len(parsed)}")
+        except IdentityShardError as error:
+            us_error = error
+            break
+        except Exception as error:  # fetch or parse failure of a required US directory
+            us_error = IdentityShardError(f"IDENTITY_FEED_FAILED {feed}: {type(error).__name__}")
+            break
+        us_entries.append(({"id": feed, "url": FEEDS[feed], "retrieved_at": stamp, "sha256": hashlib.sha256(raw).hexdigest(),
+                            "rows": len(parsed)}, parsed))
+    if us_error is None:
+        entries.extend(us_entries)
+    else:
+        if sec_cache is None:
+            raise us_error
+        try:
+            raw, retrieved, parsed, rows_skipped = load_sec_cache(sec_cache, now, minimums["nasdaq-listed"])
+        except IdentityShardError as sec_error:
+            raise us_error from sec_error  # the original US error stays the reported one
+        entries.append(({"id": SEC_FEED, "url": SEC_URL, "retrieved_at": retrieved.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                         "sha256": hashlib.sha256(raw).hexdigest(), "rows": len(parsed), "retrieval_basis": "LOCAL_CACHE_MTIME",
+                         "fallback_for": list(US_FEEDS), "fallback_reason": str(us_error), "rows_skipped": rows_skipped}, parsed))
     for feed, url in FEEDS.items():
+        if feed in US_FEEDS:
+            continue
         try:
             raw = fetch(url)
             parsed = parse_feed(feed, raw)
-            if len(parsed) < MINIMUM_ROWS[feed]:
+            if len(parsed) < minimums[feed]:
                 raise IdentityShardError(f"IDENTITY_FEED_TOO_SMALL {feed}: {len(parsed)}")
         except IdentityShardError:
             if feed in OPTIONAL_FEEDS:
@@ -288,22 +432,40 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[s
                 skipped.append(feed)
                 continue
             raise IdentityShardError(f"IDENTITY_FEED_FAILED {feed}: {type(error).__name__}") from None
+        entries.append(({"id": feed, "url": url, "retrieved_at": stamp, "sha256": hashlib.sha256(raw).hexdigest(),
+                         "rows": len(parsed)}, parsed))
+    for record, parsed in entries:
         index = len(feeds)
-        feeds.append({"id": feed, "url": url, "retrieved_at": stamp, "sha256": hashlib.sha256(raw).hexdigest(),
-                      "rows": len(parsed)})
+        feeds.append(record)
         for row in parsed:
             key = (row[1], row[0])
-            if key in seen:
-                continue  # first feed wins for an exact venue:symbol duplicate within one directory
-            seen[key] = len(records)
-            records.append([*row, index, zh_name(row, zh_names)])
+            zh = zh_name(row, zh_names)
+            # Identity = market, country, name, native name, class, currency and the Chinese-name pair (the Worker compares the
+            # same fields; the symbol is the key). A later row or feed with an equal identity adds provenance only: the first row
+            # stays the representative, as before. A contradictory variant is kept after it (stable first-encounter order).
+            identity = (*row[2:8], tuple(zh) if zh else None)
+            kept = seen.setdefault(key, set())
+            if identity in kept:
+                continue
+            kept.add(identity)
+            records.append([*row, index, zh])
+    if any(feed.get("fallback_for") for feed in feeds):
+        # Old SEC content must not look fresh: the root and every shard carry the oldest main-feed retrieval time, so the
+        # publisher's age check (publish_sealed_snapshot.IDENTITY_MAX_AGE) judges the cache's age, not the build time.
+        stamp = min(feed["retrieved_at"] for feed in feeds)
     symbol_shards: dict[str, dict[str, Any]] = {}
     name_shards: dict[str, dict[str, Any]] = {}
+    # "records" below counts retained rows (contradictory variants of one venue:symbol included), not unique listings. The sort is
+    # stable, so each key's first-encountered row stays first for consumers that take the first row.
+    name_rows_seen: set[tuple[str, str, str, str]] = set()
     for row in sorted(records, key=lambda item: (item[0], item[1])):
         bucket = symbol_bucket(row[0])
         symbol_shards.setdefault(bucket, {"schema": SCHEMA, "kind": "symbol", "bucket": bucket, "generated_at": stamp,
                                           "feeds": feeds, "rows": []})["rows"].append(row)
         for name in {normalize_name(row[4]), normalize_name(row[5] or ""), normalize_name(row[9][0] if row[9] else "")} - {""}:
+            if (name, bucket, row[0], row[1]) in name_rows_seen:
+                continue  # variants of one key share name rows; the loader reads every variant of that key anyway
+            name_rows_seen.add((name, bucket, row[0], row[1]))
             name_bucket = str(fnv1a_utf16(name) % NAME_BUCKETS)
             name_shards.setdefault(name_bucket, {"schema": SCHEMA, "kind": "name", "bucket": name_bucket,
                                                  "generated_at": stamp, "rows": []})["rows"].append(
@@ -329,7 +491,10 @@ def main(argv: list[str] | None = None) -> int:
             age = (datetime.now(timezone.utc) - datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
             current_zh = load_zh_names()[1]
             zh_changed = (current_zh or {}).get("sha256") != ((previous.get("zh_names") or {}).get("sha256"))
-            if age < args.if_older_than_hours and not zh_changed:
+            previous_feeds = previous.get("feeds") if isinstance(previous.get("feeds"), list) else []
+            degraded = any(isinstance(feed, dict) and feed.get("id") == SEC_FEED and feed.get("fallback_for") == list(US_FEEDS)
+                           for feed in previous_feeds)  # a degraded file is never fresh: the next run retries the primary feeds
+            if age < args.if_older_than_hours and not zh_changed and not degraded:
                 print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
                 return 0
         except (OSError, ValueError, KeyError):
@@ -348,10 +513,15 @@ def main(argv: list[str] | None = None) -> int:
     temp = args.output.with_name(args.output.name + ".tmp")
     temp.write_bytes(dumps(document).encode("utf-8"))
     temp.replace(args.output)
-    print(json.dumps({"status": "OK", "records": document["records"], "symbol_shards": len(document["symbol_shards"]),
-                      "name_shards": len(document["name_shards"]), "largest_shard_bytes": largest,
-                      "feeds": {feed["id"]: feed["rows"] for feed in document["feeds"]}}))
-    return 0
+    fallback = [feed for feed in document["feeds"] if feed.get("fallback_for")]
+    summary = {"status": "DEGRADED_US_FALLBACK" if fallback else "OK", "records": document["records"],
+               "symbol_shards": len(document["symbol_shards"]), "name_shards": len(document["name_shards"]),
+               "largest_shard_bytes": largest, "feeds": {feed["id"]: feed["rows"] for feed in document["feeds"]}}
+    if fallback:  # partial NASDAQ/NYSE REVIEW_REQUIRED rows from the local SEC cache, written like a normal build
+        summary["fallback"] = {"feed": fallback[0]["id"], "retrieved_at": fallback[0]["retrieved_at"],
+                               "retrieval_basis": fallback[0]["retrieval_basis"], "reason": fallback[0]["fallback_reason"]}
+    print(json.dumps(summary))
+    return 2 if fallback else 0
 
 
 if __name__ == "__main__":

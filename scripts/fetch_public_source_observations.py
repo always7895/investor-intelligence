@@ -26,12 +26,15 @@ from adapters.official_rss import FEEDS
 from adapters.taiwan_equities import EQUITY_FEEDS
 from adapters.issuer_directory import ISSUER_FEEDS
 from adapters.taifex_options_eod import TAIFEX_EOD_FEEDS
+from adapters.taifex_options_delta import TAIFEX_DELTA_ENVELOPE, TAIFEX_DELTA_FEEDS, TAIFEX_DELTA_MAX_OUTPUT_BYTES
 from adapters.ecb_fx_reference import ECBFxReferenceAdapter
 from source_observation import atomic_write_json
 
 ENDPOINTS = {**{key: value[0] for key, value in FEEDS.items()}, **EQUITY_FEEDS, **ISSUER_FEEDS}
 DEFAULT_SOURCES = tuple(ENDPOINTS)  # Preserve existing default collection; no implicit options activation.
-ENDPOINTS = {**ENDPOINTS, **TAIFEX_EOD_FEEDS}
+# Explicit named endpoints only, merged AFTER DEFAULT_SOURCES was captured above: neither TAIFEX feed is ever a default source, and a
+# --fetch capability here is not a schedule, a Production activation or a public-quote approval.
+ENDPOINTS = {**ENDPOINTS, **TAIFEX_EOD_FEEDS, **TAIFEX_DELTA_FEEDS}
 ACQUISITION_ONLY_ENDPOINTS = {
     ECBFxReferenceAdapter.source_id: ECBFxReferenceAdapter.REQUEST_URL,
 }
@@ -165,6 +168,29 @@ def fetch_bytes(url: str) -> bytes:
     return body
 
 
+def _written_size(document: dict) -> int:
+    # Exactly what main() writes through source_observation.atomic_write_json (UTF-8, ensure_ascii=False, indent=2, sort_keys=True,
+    # one trailing newline, no newline translation); keep in step with that function.
+    return len((json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+
+
+def _bound_delta_output(result: dict) -> dict:
+    """Runs only when a Delta source was requested (collections without one are returned untouched), on the bounded in-memory result of
+    collect() and before main() writes it. A result that RETAINS Delta rows must be <= TAIFEX_DELTA_MAX_OUTPUT_BYTES as atomic_write_json
+    would write it (every requested source counts toward that size). Over budget, ALL Delta rows are dropped (never a partial Delta set),
+    their health rows become FAILED with a fixed code and the envelope is not emitted, and the other sources keep exactly what they
+    collected. This is NOT a universal cap: the legacy-only remainder may still exceed the budget and is preserved unchanged (no legacy
+    source is truncated or reordered)."""
+    if _written_size(result) <= TAIFEX_DELTA_MAX_OUTPUT_BYTES:
+        return result
+    items = [row for row in result["items"] if row.get("source_id") not in TAIFEX_DELTA_FEEDS]
+    health = [{"source_id": row["source_id"], "status": "FAILED", "record_count": 0, "failure_kind": "INVALID_PAYLOAD",
+               "failure_code": "TAIFEX_DELTA_OUTPUT_TOO_LARGE"}
+              if row["source_id"] in TAIFEX_DELTA_FEEDS and row["status"] != "FAILED" else row for row in result["sources"]]
+    status = "OK" if all(row["status"] == "OK" for row in health) else "PARTIAL" if items else "FAILED"
+    return {**result, "status": status, "sources": health, "items": items}
+
+
 def collect(sources: list[str], *, transport: Callable[[str], bytes] = fetch_bytes) -> dict:
     if not sources or any(source not in ENDPOINTS for source in sources):
         raise ValueError("UNKNOWN_NEWS_SOURCE")
@@ -179,7 +205,8 @@ def collect(sources: list[str], *, transport: Callable[[str], bytes] = fetch_byt
             health.append({"source_id": source, "status": "PARTIAL" if batch.warnings else "OK",
                            "record_count": batch.record_count, "warnings": list(batch.warnings),
                            **({"records_with_close": sum(row.get("close") is not None for row in batch.records)}
-                              if source in EQUITY_FEEDS else {})})
+                              if source in EQUITY_FEEDS else {}),
+                           **({"reference_envelope": TAIFEX_DELTA_ENVELOPE} if source in TAIFEX_DELTA_FEEDS else {})})
         except Exception as exc:
             # Preserve failures, never dump provider exceptions/HTML into output.
             diagnostic = diagnose_transport_exception(exc)
@@ -194,10 +221,12 @@ def collect(sources: list[str], *, transport: Callable[[str], bytes] = fetch_byt
                 health_row["http_status"] = diagnostic.http_status
             health.append(health_row)
     status = "OK" if all(row["status"] == "OK" for row in health) else "PARTIAL" if items else "FAILED"
-    return {"schema_version": 1, "status": status, "mode": "LOCAL_PUBLIC_SOURCE_OBSERVATIONS",
-            "runtime": {"python": platform.python_version(), "openssl": ssl.OPENSSL_VERSION,
-                        "transport": "SYSTEM_PLUS_CERTIFI" if transport is fetch_bytes else "INJECTED_TEST_TRANSPORT"},
-            "publication_eligible": False, "sources": health, "items": items}
+    result = {"schema_version": 1, "status": status, "mode": "LOCAL_PUBLIC_SOURCE_OBSERVATIONS",
+              "runtime": {"python": platform.python_version(), "openssl": ssl.OPENSSL_VERSION,
+                          "transport": "SYSTEM_PLUS_CERTIFI" if transport is fetch_bytes else "INJECTED_TEST_TRANSPORT"},
+              "publication_eligible": False, "sources": health, "items": items}
+    # Collections that do not request a Delta source keep the byte-identical legacy result.
+    return _bound_delta_output(result) if any(source in TAIFEX_DELTA_FEEDS for source in sources) else result
 
 
 class ReceiptMintingTransport:

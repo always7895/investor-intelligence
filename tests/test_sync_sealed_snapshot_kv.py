@@ -35,12 +35,12 @@ class DailyLimitTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(sync.LAST_ERROR, [sync.KV_DAILY_LIMIT])
 
-    def test_other_failures_keep_their_retries_and_masked_last_line(self):
+    def test_other_failures_keep_their_retries_and_safe_category(self):
         calls = []
         sync._run_cli = lambda args: calls.append(args) or completed(1, "✘ [ERROR] fetch failed for 0123456789abcdef0123456789abcdef")
         sync._run_with_retry(["kv", "key", "get"])
         self.assertEqual(len(calls), sync.ATTEMPTS)
-        self.assertEqual(sync.LAST_ERROR, ["✘ [ERROR] fetch failed for <id>"])
+        self.assertEqual(sync.LAST_ERROR, ["NETWORK_FAILURE"])
 
 
 if __name__ == "__main__":

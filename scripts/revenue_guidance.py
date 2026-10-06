@@ -1808,7 +1808,22 @@ def build_forward_quarters(
             return {"status": "UNAVAILABLE", "reason": fy_violation, "warning": None,
                     "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
 
-        if ytd_e_d != anchor_end_day:
+        # Only the require_snapshot/current-record-digest admitted machine path may
+        # use the canonical zero-reported-YTD point at the NEXT FY start. Never
+        # change the actual anchor, dates, intervals, receipts or allocation below.
+        zero_ytd_rollover = (
+            auto_item is not None and auto_item.admission_kind == "MACHINE_REPLAY"
+            and isinstance(reconcil.get("ytd_quarter_ends"), list)
+            and len(reconcil["ytd_quarter_ends"]) == 0
+            and is_finite_number(reconcil.get("ytd_revenue")) and reconcil["ytd_revenue"] == 0
+            and ytd_s_d == ytd_e_d == anchor_end_day + timedelta(days=1)
+            and len(reported_quarters) >= 4
+            and all(isinstance(q, Mapping) and parse_day(q.get("end")) is not None
+                    and parse_day(q["end"]) < ytd_s_d for q in reported_quarters)
+            and len(interval_objs) == 4 and interval_objs[0]["start"] == ytd_s_d
+            and interval_objs[-1]["end"] == parse_day(fy_claim.get("period_end") or fy_claim.get("end"))
+        )
+        if ytd_e_d != anchor_end_day and not zero_ytd_rollover:
             return {"status": "UNAVAILABLE", "reason": "PERIOD_MISMATCH", "warning": None,
                     "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "claims_used": [], "receipt": receipt}
 
