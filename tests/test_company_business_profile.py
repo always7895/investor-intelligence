@@ -7,7 +7,7 @@ import unittest
 from contextlib import ExitStack, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -136,12 +136,15 @@ class ResolveProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             profile.resolve_business_profile("1", self.fetch, None, cache_root=self.root)
 
-    def test_same_accession_reuses_document_and_translation_but_rechecks_index(self):
+    def test_same_accession_refetches_document_and_index_but_reuses_unverified_candidate(self):
         self.resolve(self.translate)
         self.urls.clear()
         again = self.resolve(self.translate)
-        self.assertEqual(self.urls, ["https://data.sec.gov/submissions/CIK0000000001.json"])
+        self.assertEqual(self.urls, ["https://data.sec.gov/submissions/CIK0000000001.json",
+                                    "https://www.sec.gov/Archives/edgar/data/1/000000000126000001/k.htm"])
         self.assertEqual((again["phrase_zh"], len(self.translations)), (PHRASE, 1))
+        self.assertEqual(again["translation"], profile.TRANSLATION_UNVERIFIED)
+        self.assertEqual(again["derived"]["method"], "CACHED_CANDIDATE")
 
     def test_failed_translation_is_retried_and_tampered_cache_is_revalidated(self):
         self.assertEqual(self.resolve(lambda sentence: None)["translation"], "UNAVAILABLE")
@@ -208,6 +211,12 @@ class PhraseTests(unittest.TestCase):
 
 class SelectorRegressionTests(unittest.TestCase):
     """Failure patterns seen 2026-09-25 on a non-technology Top20 (shortened synthetic excerpts)."""
+
+    def setUp(self):
+        # Exercise only the legacy adapter contract, never the installed endpoint/native probe.
+        intent = patch("local_model_endpoint.selected_intent", return_value={"mode": "LEGACY_ABSENT"})
+        intent.start()
+        self.addCleanup(intent.stop)
 
     def pick(self, text: str, name: str, tickers=("SYN",)) -> str | None:
         return profile.business_sentence(text, name, list(tickers))
@@ -340,7 +349,7 @@ class SelectorRegressionTests(unittest.TestCase):
 
 
 class ReportIntegrationTests(unittest.TestCase):
-    def report(self, *, translate, label_clock: bool, _build=None, **kwargs):
+    def report(self, *, translate=None, label_clock: bool, _build=None, **kwargs):
         rows = [{"ticker": f"T{i:02}", "rank": i + 1} for i in range(20)]
 
         def market(ticker, fallback, *, evidence_sink=None):
@@ -366,19 +375,22 @@ class ReportIntegrationTests(unittest.TestCase):
                                                  **kwargs)
             return document, sink
 
-    def test_receipted_label_is_composed_with_sec_phrase(self):
-        document, sink = self.report(translate=lambda sentence: PHRASE, label_clock=True)
+    def test_receipted_label_ignores_legacy_translator_without_detail_opt_in(self):
+        translate = Mock(return_value=PHRASE)
+        document, sink = self.report(translate=translate, label_clock=True)
         row = document["records"][0]
-        self.assertEqual(row["industry"], "半導體設備與材料：" + PHRASE)
+        self.assertEqual(row["industry"], "半導體設備與材料")
         clock = row["source_acquisition"]["industry"]
         self.assertEqual((clock["status"], clock["retrieved_at"]), ("KNOWN", "2026-09-25T00:00:00Z"))
-        self.assertEqual(sink["T00"]["phrase_zh"], PHRASE)
-        self.assertEqual(sink["T00"]["url"], "https://www.sec.gov/Archives/edgar/data/1/000000000126000001/k.htm")
+        self.assertIsNone(sink["T00"])
+        translate.assert_not_called()
         row_time(row, generated_at=document["generated_at"])
 
-    def test_composed_industry_passes_the_seven_field_caller_and_preview(self):
+    def test_label_only_passes_the_seven_field_caller_and_preview(self):
         import build_v213_scheduled_top20_report as scheduled
-        document, _ = self.report(translate=lambda sentence: PHRASE, label_clock=True)
+        translate = Mock(return_value=PHRASE)
+        document, _ = self.report(translate=translate, label_clock=True)
+        translate.assert_not_called()
         baseline = {"product_version": "2.1.3", "records": [
             {"rank": row["rank"], "ticker": row["ticker"], "current_order_source_urls": [],
              "future_order_source_urls": [], "current_orders": "未揭露（無可靠公開訂單數字）",
@@ -386,29 +398,36 @@ class ReportIntegrationTests(unittest.TestCase):
             for row in document["records"]]}
         names = {row["ticker"]: f"Synthetic Company {i}" for i, row in enumerate(document["records"])}
         seven = scheduled.build(document, baseline, names, **evidence_inputs(document))
-        self.assertEqual(seven["records"][0]["industry"], "半導體設備與材料：" + PHRASE)
-        self.assertIn("半導體設備與材料：" + PHRASE, scheduled.preview(seven))
+        self.assertEqual(seven["records"][0]["industry"], "半導體設備與材料")
+        self.assertIn("半導體設備與材料", scheduled.preview(seven))
+        self.assertNotIn(PHRASE, scheduled.preview(seven))
 
-    def test_unreceipted_label_is_replaced_by_sourced_phrase(self):
-        document, sink = self.report(translate=lambda sentence: PHRASE, label_clock=False)
+    def test_unreceipted_label_stays_unknown_without_detail_opt_in(self):
+        translate = Mock(return_value=PHRASE)
+        document, sink = self.report(translate=translate, label_clock=False)
         row = document["records"][0]
-        self.assertEqual(row["industry"], PHRASE)
-        self.assertEqual(row["source_acquisition"]["industry"]["evidence_sha256"], sink["T00"]["evidence_sha256"])
+        self.assertEqual(row["industry"], "半導體設備與材料")
+        self.assertEqual(row["source_acquisition"]["industry"]["status"], "UNKNOWN")
+        self.assertIsNone(sink["T00"])
+        translate.assert_not_called()
 
-    def test_failed_or_invalid_translation_keeps_label_and_records_failure(self):
-        for translate in (lambda sentence: None, lambda sentence: "市場很大的化合物半導體基板"):
+    def test_failed_or_invalid_legacy_translator_is_never_called(self):
+        for translate in (Mock(side_effect=AssertionError("translator must stay inert")),
+                          Mock(return_value="市場很大的化合物半導體基板")):
             document, sink = self.report(translate=translate, label_clock=False)
             self.assertEqual(document["records"][0]["industry"], "半導體設備與材料")
             self.assertEqual(document["records"][0]["source_acquisition"]["industry"]["status"], "UNKNOWN")
-            self.assertEqual(sink["T00"]["translation"], "UNAVAILABLE")
+            self.assertIsNone(sink["T00"])
+            translate.assert_not_called()
 
     def test_cli_profile_is_opt_in_and_sidecar_is_not_publishable(self):
         original = builder.build
         calls = []
 
         def run(**kw):
-            calls.append(kw["translate"])
-            return self.report(label_clock=False, _build=original, **kw)[0]
+            self.assertNotIn("translate", kw)
+            calls.append(kw["business_details"])
+            return self.report(label_clock=True, _build=original, **kw)[0]
 
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "report.json"
@@ -416,20 +435,25 @@ class ReportIntegrationTests(unittest.TestCase):
                     patch.object(sys, "argv", ["build", "--output", str(output)]), \
                     redirect_stdout(StringIO()):
                 self.assertEqual(builder.main(), 0)
-            self.assertEqual(calls, [None])
+            self.assertEqual(calls, [False])
             sidecar = json.loads((Path(tmp) / "report.business-profile-candidate.json").read_text(encoding="utf-8"))
             self.assertFalse(sidecar["publication_eligible"])
             self.assertEqual(sidecar["status"], "CANDIDATE_NOT_PUBLICATION_QUALIFIED")
             with patch.object(builder, "build", side_effect=run), \
-                    patch.object(builder, "local_translator", return_value=lambda sentence: PHRASE), \
+                    patch.object(profile, "local_translator", side_effect=AssertionError("no model activation")) as translator, \
                     patch.object(sys, "argv", ["build", "--output", str(output), "--business-profile"]), \
                     redirect_stdout(StringIO()):
                 self.assertEqual(builder.main(), 0)
-            self.assertIsNotNone(calls[-1])
+            self.assertEqual(calls, [False, True])
+            translator.assert_not_called()
             sidecar = json.loads((Path(tmp) / "report.business-profile-candidate.json").read_text(encoding="utf-8"))
-            self.assertEqual(sidecar["records"]["T00"]["phrase_zh"], PHRASE)
+            self.assertFalse(sidecar["publication_eligible"])
+            self.assertIsNone(sidecar["records"]["T00"]["phrase_zh"])
+            self.assertEqual(sidecar["records"]["T00"]["sentence_en"], SELF)
+            self.assertEqual(sidecar["records"]["T00"]["industry_audit"]["state"], "COMPOSED")
             report = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(report["records"][0]["industry"], PHRASE)
+            self.assertEqual(report["records"][0]["industry"], builder.compose_industry_detail("半導體設備與材料", SELF))
+            self.assertNotIn(PHRASE, report["records"][0]["industry"])
 
 
 if __name__ == "__main__":

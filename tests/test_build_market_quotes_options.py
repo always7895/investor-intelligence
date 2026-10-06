@@ -572,7 +572,12 @@ class SealingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "obs.json"
             path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-            bodies = publisher.lazy_market_bodies(path, now)
+            from tests.synthetic_option_admission import synthetic_option_admission, rights
+            denied = json.loads(publisher.lazy_market_bodies(path, now)["v213:options:v2"])
+            self.assertEqual(denied["options"]["NVDA"]["monthly"]["unavailable"], rights.OPTION_RIGHTS_UNAVAILABLE_ZH)
+            self.assertNotIn("suggestions", denied["options"]["NVDA"]["monthly"])
+            with synthetic_option_admission({"NVDA"}):
+                bodies = publisher.lazy_market_bodies(path, now)
             options = json.loads(bodies["v213:options:v2"])
             self.assertEqual(options["schema"], "v213-options-v2")
             self.assertEqual(options["options"]["NVDA"]["monthly"]["suggestions"][0]["strike"], 245)
@@ -1600,7 +1605,12 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
 
             # Exactly 5 hours: admitted
             t_5h = t_gen + timedelta(hours=5)
-            bodies_5h = publisher.lazy_market_bodies(out_path, t_5h)
+            from tests.synthetic_option_admission import synthetic_option_admission, rights
+            denied = json.loads(publisher.lazy_market_bodies(out_path, t_5h)["v213:options:v2"])
+            self.assertEqual(denied["options"]["PRIOR"]["monthly"]["unavailable"], rights.OPTION_RIGHTS_UNAVAILABLE_ZH)
+            self.assertNotIn("suggestions", denied["options"]["PRIOR"]["monthly"])
+            with synthetic_option_admission({"PRIOR"}):
+                bodies_5h = publisher.lazy_market_bodies(out_path, t_5h)
             self.assertIn("v213:quotes:v1", bodies_5h)
             self.assertIn("v213:options:v2", bodies_5h)
 

@@ -531,7 +531,12 @@ class TestV213MarketProducts(unittest.TestCase):
             json.dump(doc, handle)
             path = handle.name
         try:
-            bodies = lazy_market_bodies(Path(path), now)
+            from tests.synthetic_option_admission import synthetic_option_admission, rights
+            denied = json.loads(lazy_market_bodies(Path(path), now)["v213:options:v2"])
+            self.assertEqual(denied["options"]["TSM"]["monthly"]["unavailable"], rights.OPTION_RIGHTS_UNAVAILABLE_ZH)
+            self.assertNotIn("suggestions", denied["options"]["TSM"]["monthly"])
+            with synthetic_option_admission({"TSM"}):
+                bodies = lazy_market_bodies(Path(path), now)
         finally:
             os.unlink(path)
         self.assertIn("v213:options:v2", bodies)  # document not collapsed to {}
@@ -584,7 +589,15 @@ class TestV213MarketProducts(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "tests" / "fixtures"))
         import options_global_publisher_cases as bridgegen
 
-        regenerated = bridgegen.serialize(bridgegen.generate_bridge())
+        from tests.synthetic_option_admission import synthetic_option_admission, rights
+        denied = bridgegen.generate_bridge()
+        for case in denied["cases"].values():
+            self.assertFalse(case["admitted"])
+            good = json.loads(case["options_body"])["options"]["GOOD"]["monthly"]
+            self.assertNotIn("suggestions", good)
+            self.assertEqual(good["unavailable"], rights.OPTION_RIGHTS_UNAVAILABLE_ZH)
+        with synthetic_option_admission({"TSM", "GOOD"}):
+            regenerated = bridgegen.serialize(bridgegen.generate_bridge())
         committed = bridgegen.FIXTURE_PATH.read_text(encoding="utf-8")
         self.assertEqual(regenerated, committed, "cloud/test/fixtures/options-global-publisher.json is stale; regenerate "
                          "with python tests/fixtures/options_global_publisher_cases.py")
