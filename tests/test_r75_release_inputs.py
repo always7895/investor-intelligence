@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import json
 import os
@@ -19,6 +20,7 @@ class ReleaseInputsTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'repo'
         self.root.mkdir()
+        self.enterContext(contextlib.chdir(self.root))
         self.git('init', '-q')
         (self.root / 'state').mkdir()
         (self.root / 'scripts').mkdir()
