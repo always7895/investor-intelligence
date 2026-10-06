@@ -48,7 +48,7 @@ class DocumentationStructureTests(unittest.TestCase):
     def test_new_untracked_docs_broken_link_and_budget_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            subprocess.run(['git', 'init', '-q', str(root)], cwd=root, check=True)
             (root / 'docs').mkdir()
             (root / 'docs/README.md').write_text('[guide](guide.md)\n', encoding='utf-8')
             (root / 'docs/guide.md').write_text('# Guide\n[missing](missing.md)\n', encoding='utf-8')
