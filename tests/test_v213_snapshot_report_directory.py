@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -27,6 +27,15 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+FIXTURE_NOW = datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+
+
+class FixtureClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return FIXTURE_NOW if tz else FIXTURE_NOW.replace(tzinfo=None)
+
 
 SYNTHETIC_TICKERS = [f"SYNTH{i:02d}" for i in range(20)]
 SYNTHETIC_MARKDOWN_REPORT = "# Synthetic Public Briefing Report\n\n- Ticker: SYNTH00\n"
@@ -103,7 +112,7 @@ def _synthetic_top20_rows() -> list[dict[str, Any]]:
 
 
 def _synthetic_source_audit() -> dict[str, Any]:
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = FIXTURE_NOW.isoformat()
     synth00_sources = [
         {
             "family": "regulator_filing",
@@ -130,12 +139,27 @@ def _synthetic_source_audit() -> dict[str, Any]:
             "rank": index + 1,
             "sources": sources,
         })
+    expiry = (FIXTURE_NOW + timedelta(hours=1)).isoformat()
+    records[0]["claim_evidence_audit"] = {
+        "schema_version": 2, "all_material_claims_supported": True,
+        "validated_at": now_iso, "valid_until": expiry,
+        "claims": [{"claim_id": "SYNTH00:revenue", "status": "SUPPORTED",
+                    "high_confidence_eligible": True, "value": 100, "conflict_set": [],
+                    "evidence_ids": ["syn-0", "syn-1"]}],
+        "evidence": [{"observation_id": f"syn-{i}", "claim_ids": ["SYNTH00:revenue"],
+                      "admitted": True, "freshness": "CURRENT", "value": 100,
+                      "valid_until": expiry, "independence_group": f"publisher-{i}",
+                      "origin_group": f"origin-{i}", "content_sha256": str(i + 1) * 64}
+                     for i in range(2)],
+    }
     return {"records": records}
 
 
 def _synthetic_freshness_policy() -> dict[str, Any]:
     return {
         "current_state_claim_max_age_days": 135.0,
+        "minimum_claim_source_families_per_ticker": 2,
+        "clock_skew_tolerance_minutes": 5,
         "sensitive_advantage_factors": [
             "demand_wave",
             "chokepoint",
@@ -180,6 +204,9 @@ def _write_json(path: Path, value: Any) -> None:
 
 class SnapshotReportDirectoryTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.clock_patcher = patch.object(MODULE, "datetime", FixtureClock)
+        self.clock_patcher.start()
+        self.addCleanup(self.clock_patcher.stop)
         self.req_patcher = patch.object(requests.Session, "request", side_effect=_forbid_network)
         self.url_patcher = patch.object(urllib.request, "urlopen", side_effect=_forbid_network)
         self.mock_req = self.req_patcher.start()

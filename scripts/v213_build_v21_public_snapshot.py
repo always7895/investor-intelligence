@@ -6,7 +6,8 @@ Serenity advantage factors against the exact source-level audit produced in the
 same run. A positive demand-wave, chokepoint, pricing-power,
 replacement-friction or TAM-capture factor is retained only when the ticker has
 fresh claim evidence from at least two independent source units and domains,
-including primary evidence. Unsupported positives are withheld, scores are
+including primary evidence, AND policy-qualified per-claim lineages with a
+30-minute validity reserve for the subsequent bundle build. Unsupported positives are withheld, scores are
 recomputed, and every rank-coupled document is atomically reordered.
 
 This is a fail-closed evidence guard, not a source-discovery shortcut. It never
@@ -27,6 +28,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from claim_lineage_qualification import GUARD_VALIDITY_MARGIN, claim_lineage_qualified
+
 ROOT = SCRIPT_DIR.parent
 BASE_PATH = SCRIPT_DIR / "build_v21_public_snapshot.py"
 SCORER_PATH = SCRIPT_DIR / "v213_apply_diversified_operationalization.py"
@@ -205,7 +211,9 @@ def _guard_row(
         now=now,
         maximum_age_days=float(policy.get("current_state_claim_max_age_days") or 135.0),
     )
-    if support["supported"]:
+    if support["supported"] and claim_lineage_qualified(
+        audit_row, policy, now, validity_margin=GUARD_VALIDITY_MARGIN,
+    ):
         return []
 
     for name in positive:

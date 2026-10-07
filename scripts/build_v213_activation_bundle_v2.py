@@ -29,7 +29,7 @@ import secrets
 import sys
 import tempfile
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Iterable, Mapping
@@ -39,6 +39,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from report_source_acquisition import FIELDS, SourceAcquisitionError, field_clock, utc_time, validate_report_acquisition
+from claim_lineage_qualification import claim_lineage_qualified as _claim_lineage_qualified
 
 ROOT = SCRIPT_DIR.parent
 CORE_PATH = SCRIPT_DIR / "build_v213_activation_bundle.py"
@@ -683,6 +684,7 @@ def _validate_record_evidence(
         and len(claim_primary) >= min_primary
         and dated_ratio >= min_dated_ratio
         and current_units
+        and _claim_lineage_qualified(audit_row, policy, now)
     )
     positive_support = bool(
         len(current_units) >= min_advantage_units
@@ -1378,6 +1380,31 @@ def _synthetic_documents() -> tuple[dict[str, Any], ...]:
             {
                 "rank": index + 1,
                 "ticker": ticker,
+                "claim_evidence_audit": {
+                    "schema_version": 2,
+                    "all_material_claims_supported": True,
+                    "validated_at": stamp,
+                    "valid_until": (generated + timedelta(hours=1)).isoformat(),
+                    "claims": [{
+                        "claim_id": ticker + ":revenue",
+                        "status": "SUPPORTED",
+                        "high_confidence_eligible": True,
+                        "value": 100,
+                        "conflict_set": [],
+                        "evidence_ids": ["synthetic-primary", "synthetic-research"],
+                    }],
+                    "evidence": [{
+                        "observation_id": "synthetic-" + origin,
+                        "claim_ids": [ticker + ":revenue"],
+                        "admitted": True,
+                        "freshness": "CURRENT",
+                        "valid_until": (generated + timedelta(hours=1)).isoformat(),
+                        "value": 100,
+                        "independence_group": origin,
+                        "origin_group": origin,
+                        "content_sha256": hashlib.sha256(origin.encode()).hexdigest(),
+                    } for origin in ("primary", "research")],
+                },
                 "source_metrics": {
                     "claim_relevant_independent_families": 2,
                     "claim_relevant_independent_domains": 2,

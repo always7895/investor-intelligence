@@ -65,6 +65,7 @@ COST_TAGS = [("us-gaap", "CostOfRevenue"), ("us-gaap", "CostOfGoodsAndServicesSo
 RPO_TAGS = [("us-gaap", "RevenueRemainingPerformanceObligation")]
 SHARES_TAGS = [("dei", "EntityCommonStockSharesOutstanding")]
 DILUTED_SHARES_TAG = ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding")  # fallback, quarterly rows only
+DEI_COVER_MAX_LAG_DAYS = 105  # longest 10-K deadline (90 days) plus Rule 12b-25 NT extension (15)
 SERENITY_LEAD_LIMIT = 80
 TOP_N = 20
 MAX_PER_LAYER = 5
@@ -222,13 +223,38 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
         earlier = [row for row in rpo if abs((date.fromisoformat(last["end"]) - date.fromisoformat(row["end"])).days - 365) <= 45]
         if earlier and earlier[-1]["val"]:
             rpo_yoy, rpo_prior = last["val"] / earlier[-1]["val"] - 1, earlier[-1]  # the comparison is kept (order forecast lineage)
-    _, shares = _instant_series(facts, SHARES_TAGS)
+    # DEI amendments: latest filed wins per end, ties go to the later listed row.
+    # Validate before sorting: malformed/non-string dates must not discard fundamentals.
+    shares = []
+    for taxonomy, shares_tag in SHARES_TAGS:
+        units = facts.get("facts", {}).get(taxonomy, {}).get(shares_tag, {}).get("units", {})
+        for unit, rows in units.items():
+            by_end: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                try:
+                    date.fromisoformat(row["end"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if row.get("val") is None:
+                    continue
+                previous_share = by_end.get(row["end"])
+                if previous_share is None or str(row.get("filed", "")) >= str(previous_share.get("filed", "")):
+                    by_end[row["end"]] = {**row, "unit": unit}
+            if by_end:
+                shares = [by_end[end] for end in sorted(by_end)]
+                break
+        if shares:
+            break
     shares_yoy = None
-    if len(shares) >= 2:
-        last = shares[-1]
+    cover = [row for row in shares
+             if 0 <= (date.fromisoformat(row["end"]) - date.fromisoformat(latest)).days <= DEI_COVER_MAX_LAG_DAYS]
+    if cover:
+        last = cover[0]  # earliest cover date aligned with this revenue quarter, not a later quarter
         earlier = [row for row in shares if 300 <= (date.fromisoformat(last["end"]) - date.fromisoformat(row["end"])).days <= 430]
-        if earlier and earlier[-1]["val"]:
-            shares_yoy = _shares_yoy(last["val"], earlier[-1]["val"])
+        if earlier:
+            # Equal-distance priors choose the earlier end (ascending, deduplicated series).
+            prior = min(earlier, key=lambda row: abs((date.fromisoformat(last["end"]) - date.fromisoformat(row["end"])).days - 365))
+            shares_yoy = _shares_yoy(last["val"], prior["val"])
     shares_basis = "OUTSTANDING" if shares_yoy is not None else None
     if shares_basis is None:
         # No dei share count (dual-class filers such as CRWV report theirs with dimensions): the diluted weighted
