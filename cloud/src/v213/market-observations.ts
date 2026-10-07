@@ -2,7 +2,7 @@
  * (scripts/build_market_quotes_options.py), sealed as lazy objects `v213:quotes:v1` and `v213:options:v2`.
  * Observation only: never an order. Documents older than MAX_AGE_MS are ignored (the caller shows unavailable). */
 import type { PublicSnapshotView } from "./public-snapshot";
-import type { GlobalIdentityRecord } from "./global-identity";
+import { MARKET_SUFFIX_SCHEMES, type GlobalIdentityRecord } from "./global-identity";
 import { validateCoveredCallCycle, isValidUtcIsoInstant, type CoveredCallCycle } from "./covered-call";
 import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH } from "./public-options-admission";
 
@@ -82,6 +82,27 @@ export function optionTickerKeys(raw: string): string[] {
   const upper = raw.trim().toUpperCase();
   const base = upper.replace(/\.ST$/, "").replace(/[\s./]+/g, "-");
   return upper.endsWith(".ST") ? [`${base}.ST`] : [base, `${base}.ST`];
+}
+
+/** Preserve the caller's exact Stockholm target, including the legacy unsuffixed SEK key. No identity-query grammar. */
+export function optionStockholmQuery(matchedKey: string, currency: string): string {
+  return matchedKey.endsWith(".ST") ? matchedKey : (currency === "SEK" ? `${matchedKey}.ST` : "");
+}
+
+/** Positive incoherence only: unknown suffixes have no market evidence. The format contract defines only USD/SEK. */
+function optionMarketIsCoherent(cycle: CoveredCallCycle): boolean {
+  const dot = cycle.ticker.lastIndexOf(".");
+  const stockholmMarket = MARKET_SUFFIX_SCHEMES[".ST"]?.market;
+  const market = dot >= 0
+    ? MARKET_SUFFIX_SCHEMES[cycle.ticker.slice(dot)]?.market
+    : (optionStockholmQuery(cycle.ticker, cycle.currency) ? stockholmMarket : "US");
+  if (!market || market === "UNKNOWN") return true;
+  // Contract jurisdictions use ISO alpha-2 codes, not identity-catalog market names.
+  const contract = market === "US" ? { currency: "USD", jurisdictions: ["US"] }
+    : market === stockholmMarket ? { currency: "SEK", jurisdictions: ["SE"] } : undefined;
+  if (!contract) return true; // Other markets have no contract-defined currency/jurisdiction vocabulary here.
+  return cycle.currency === contract.currency
+    && (cycle.jurisdiction === undefined || contract.jurisdictions.includes(cycle.jurisdiction));
 }
 
 /** A covered-call cycle (validated by the caller), an explicit unavailability reason, or null. */
@@ -171,6 +192,10 @@ export async function loadDetailedOptionObservation(
   // before any quote is returned or rendered. A rights label, source text or sealed-document membership never admits a row.
   if (!admitPublicOption(cycle, now).ok) {
     return { status: "RIGHTS_NOT_ADMITTED", ticker: matchedKey, docGeneratedAt, period };
+  }
+  // O3: rights denial keeps precedence over the new market/currency/jurisdiction check.
+  if (!optionMarketIsCoherent(cycle)) {
+    return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
   }
   return { status: "FOUND", quote: cycle, ticker: matchedKey, docGeneratedAt, period };
 }

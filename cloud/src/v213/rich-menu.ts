@@ -3,7 +3,7 @@ import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import {
   buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, findBottleneckEntry, loadBottleneckV3,
 } from "./bottleneck-v3";
-import { loadDetailedOptionObservation, loadOptionObservation, observationSymbol, optionTickerKeys } from "./market-observations";
+import { loadDetailedOptionObservation, loadOptionObservation, observationSymbol, optionStockholmQuery, optionTickerKeys } from "./market-observations";
 import { adrNote, adrRoute, GLOBAL_SOURCE_STATUS_COMMAND, isGlobalSourceStatusCommand, marketHasOptions, uncoveredReason } from "./option-routes";
 import { buildOptionsCoverageMessages, loadOptionsCoverage } from "./options-coverage";
 import { findUsIdentityConflict, parseIdentityRequest, resolveGlobalIdentity, type GlobalIdentityCatalog, type GlobalIdentityRecord } from "./global-identity";
@@ -610,9 +610,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
             // CALLER-B2: the identity target is ONLY the exact matched key the FOUND loader guarantees (quote + matchedKey): no case
             // folding, no separator rewriting, no invented alias, no fallback to the typed or shown text.
             const matchedKey = typeof detailed.ticker === "string" ? detailed.ticker : "";
-            const stockholmQuery = matchedKey.endsWith(".ST")
-              ? matchedKey                                                        // an existing .ST key stays exact as the query
-              : (detailed.quote!.currency === "SEK" ? `${matchedKey}.ST` : "");   // a legacy key gets ONLY ".ST" appended
+            const stockholmQuery = optionStockholmQuery(matchedKey, detailed.quote!.currency);
             const identityQuery = matchedKey.trim() === "" ? null : (stockholmQuery || `ticker ${matchedKey}`);
             let identityCatalog: GlobalIdentityCatalog | null = null;
             if (identityQuery !== null) {
@@ -706,8 +704,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
             record = resolution.record;
             route = adrRoute(observationSymbol(record));
           } else if (resolution.status === "NEEDS_MARKET_SELECTION") {
-            const listed = resolution.candidates.slice(0, 5).map(c => `${c.symbol}（${c.venue}）`).join("、");
-            return optionsUnavailableReport(ticker, period, `此名稱對應多個掛牌：${listed}；請以精確代號查詢期權。`, isText);
+            const shown = resolution.candidates.slice(0, 5);
+            const listed = shown.map(c => `${c.symbol}（${c.venue}）`).join("、");
+            const omitted = resolution.candidates.length > shown.length
+              ? `已顯示 ${shown.length}/${resolution.candidates.length} 筆候選，尚有其他掛牌未顯示；` : "";
+            return optionsUnavailableReport(ticker, period, `此名稱對應多個掛牌：${listed}；${omitted}請以精確代號查詢期權。`, isText);
           } else if (resolution.status === "UNAVAILABLE" && resolution.reason.startsWith("IDENTITY_CONFLICT:")) {
             // ICON1: contradictory sealed identity rows; no listing is chosen. This name-resolution conflict stays separate from the
             // direct ticker answer and the configured ADR route above (separate contract), and the ADR route only ever tests its
