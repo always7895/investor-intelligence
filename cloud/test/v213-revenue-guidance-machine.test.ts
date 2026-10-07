@@ -167,6 +167,56 @@ describe("TYPEFIX1 revenue-guidance machine fail-closed typing", () => {
 const pythonFixture = JSON.parse(readFileSync(resolve(__dirname, "../../tests/fixtures/revenue-guidance-machine-barrier-functional.json"), "utf8")) as {
   scope: string; report: string; binding: string;
 };
+const autoFixture = JSON.parse(readFileSync(resolve(__dirname, "../../tests/fixtures/revenue-guidance-machine-auto-functional.json"), "utf8")) as {
+  scope: string; report: string; binding: string;
+};
+const AUTO_CUTOFF = "2026-02-27T13:00:00Z";
+
+describe("BATCH03F genuine historical AUTO through the normal loader", () => {
+  it("admits the real producer financial payload without human approval", async () => {
+    const savedNow = Date.now;
+    Date.now = () => Date.parse(AUTO_CUTOFF);
+    try {
+      expect(autoFixture.scope).toBe("SYNTHETIC_HISTORICAL_AUTO_NOT_NATIVE_OR_LIVE");
+      const { view, requested } = fixtureView(autoFixture.report, autoFixture.binding);
+      const f = nvdaForecast(await loadBottleneckV3(view, { guidanceMachineEnabled: true }));
+      const payload = JSON.parse(autoFixture.report).top[0].outlook.order_forecast_v3.payload;
+      expect(requested).toEqual([[BOTTLENECK_V3_KEY], [GUIDANCE_BINDING_KEY]]);
+      expect(f.revenueStatus).toBe(payload.revenue_status);
+      expect(f.revenueReason).toBe(payload.revenue_reason);
+      expect(f.revenueDiagnostic).toBeNull();
+      expect(f.machineAdmitted).toBe(true);
+      expect(payload.evidence.approval_sha256).toBeNull();
+      expect(payload.evidence.approval_approved_at).toBeNull();
+      expect(payload.evidence.approval_decisions).toBeNull();
+      expect(f.cutoff).toBe(AUTO_CUTOFF);
+      expect(f.m6).toMatchObject({ status: "AVAILABLE", amount: 156e9 });
+      expect(f.m12).toMatchObject({ status: "AVAILABLE", amount: 312e9 });
+      expect(nvdaForecast(parseBottleneckV3(JSON.parse(autoFixture.report), Date.parse(AUTO_CUTOFF))).machineAdmitted).not.toBe(true);
+    } finally { Date.now = savedNow; }
+  });
+
+  it.each<[string, (v: any) => void]>([
+    ["producer-hash", v => { v.machine.producer_canonical_json += " "; }],
+    ["replayed-auto-cutoff", v => { v.machine.cutoff = "2026-02-26T13:00:00Z"; }],
+  ])("rejects AUTO %s after re-binding the outer report", async (_name, corrupt) => {
+    const savedNow = Date.now;
+    Date.now = () => Date.parse(AUTO_CUTOFF);
+    try {
+      const report = JSON.parse(autoFixture.report);
+      corrupt(report.top[0].outlook.order_forecast_v3);
+      const reportText = JSON.stringify(report);
+      const binding = JSON.parse(autoFixture.binding);
+      binding.report_sha256 = sha(reportText);
+      const f = nvdaForecast(await loadBottleneckV3(fixtureView(reportText, JSON.stringify(binding)).view,
+        { guidanceMachineEnabled: true }));
+      expect(f.revenueDiagnostic).toBe("MACHINE_INPUTS_UNAVAILABLE");
+      expect(f.revenueStatus).toBe("UNAVAILABLE");
+      expect(f.machineAdmitted).toBe(false);
+    } finally { Date.now = savedNow; }
+  });
+});
+
 function fixtureView(report = pythonFixture.report, binding: string | null = pythonFixture.binding) {
   const requested: string[][] = [];
   const view: PublicSnapshotView = {
