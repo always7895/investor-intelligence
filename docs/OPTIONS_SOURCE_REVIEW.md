@@ -50,6 +50,34 @@ Rows keep the raw strike, Delta and settlement-day text verbatim plus a lexical 
 
 The collector endpoint is merged only AFTER `DEFAULT_SOURCES` is captured, exactly like the EOD feed, so no default or scheduled collection changes; the staged adapter has no evidence builder and is in no source registry or reviewed runtime registry, so nothing reaches research, sealing or LINE. The manual importer keeps UNVERIFIED local origin even for a file that claims TAIFEX, a URL, a receipt or a hash, mints and reads no transport receipt, and reports `imported_at` only; the SHA-256 it reports is computed over the exact bytes it read and is not an authenticated origin. Dataset 11321 has its own free OGDLv1 attribution (carried once in the output envelope), but the canonical public-options catalog still covers dataset 11320 only and all of its flags stay off; nothing here is a public-admission or rights decision, and one authority with two endpoints is not independent confirmation. Nothing was fetched or run: no sample, fixture or value exists, the real response shape, value formats, delimiter conventions and update timing are unobserved, and an unsupported real payload refuses the whole batch.
 
+## Local caller verification and disabled scheduling template (BATCH06)
+
+2026-10-07 local amendment; independent acceptance pending. The earlier G1B `tests NOT_RUN`
+text describes its initial source-only checkpoint, not current verification evidence.
+`tests/test_batch06_taifex_callers.py` exercises the actual importer `main` and collector
+`main`/atomic writer with synthetic files and injected transports: bounded binary reads,
+exact raw-byte hashes, UNVERIFIED manual origin, all-or-nothing refusals, final serialized
+output budgets and preservation of non-Delta rows. Private-copy mutation checks are in
+`tests/test_batch06_mutations.py`. These are not real dataset-11321 compatibility, rights,
+transport-origin authentication or live collection proofs.
+
+`scripts/task-templates/taifex-options-eod.disabled.xml` is an inert, opt-in **template**,
+not an installer or registration command. Both task and trigger are disabled. No project
+entrypoint loads/registers it; no default collection changes. Its only action names the
+existing local collector with explicit `--fetch --source taifex_options_eod`. A separately
+reviewed/authorized copy must supply the exact Python/source paths, local start boundary
+and local output file (outside repository/installed/Production storage); the unresolved
+placeholders deliberately prevent direct use. Do not enable or register it without new
+scheduling authority. `tests/test_batch06_taifex_task.py` parses the action and fake-runs
+the real collector/writer in process, with an injected fixture transport and disposable
+output; it never calls Windows Task Scheduler. This is not installed-action/native proof.
+
+Public EOD option display remains BLOCKED by the separate O12 rights/scope contract:
+only delayed quotes and metadata-only coverage have public contracts, neither permits
+EOD/Delta values. All public admissions remain NONE. JP/HK/EU/AU adapter work (O5) waits
+for a pinned official wire specification from a separate bounded research task; no
+provider format is invented and no adapter or rights decision is added here.
+
 ## Independent delivery paths to investigate
 
 | Source | Evidence | Appropriate scope / unresolved limitation |
