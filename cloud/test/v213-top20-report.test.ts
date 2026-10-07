@@ -266,7 +266,8 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   });
 
   it("freezes admitted report objects and refuses malformed/oversized report text", async () => {
-    const kv = new MemoryKv(); const data = report(); data.generated_at = new Date().toISOString();
+    // TOP20_CARRY_FORWARD_V1: both report and rows must be within 14 h.
+    const kv = new MemoryKv(); const data = freshReport();
     const env = { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     kv.values.set("last_successful_pipeline_timestamp", data.generated_at);
     kv.values.set("v213:top20-report:latest", JSON.stringify(data));

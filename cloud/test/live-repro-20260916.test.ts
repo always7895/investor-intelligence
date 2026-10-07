@@ -1,9 +1,9 @@
-// Disposable live replay: real pinned reader + real freshness gate on current
-// local bytes of the latest sealed run against the 7200-second production env.
+// Offline replay: historical stale-row refusal plus synthetic fresh sealed data.
+// Real pinned reader/freshness gate; no current Production or acquisition claim.
 import { it, expect, vi, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
-import { loadV213FreshTop20Report, getV213ReportReference } from "../src/v213/top20-report";
+import { loadV213FreshTop20Report, getV213ReportReference, V213_STALE_RECORDS_MESSAGE } from "../src/v213/top20-report";
 import { asKv, MemoryKv } from "./fake-kv";
 import type { ParsedQuery } from "../src/core";
 
@@ -11,10 +11,16 @@ const RUN_DIR = "20260917T043132Z-3233b3055b9d";
 const objects = JSON.parse(readFileSync(new URL(`../../state/v213-snapshots/${RUN_DIR}/objects.json`, import.meta.url), "utf-8")) as Record<string, string>;
 const pointer = readFileSync(new URL(`../../state/v213-snapshots/${RUN_DIR}/pointer.raw.json`, import.meta.url), "utf-8").trim();
 
-function env() {
+function env(freshSynthetic = false) {
   const kv = new MemoryKv();
-  for (const [key, value] of Object.entries(objects)) kv.values.set(key, value);
-  kv.values.set("snapshot:current", pointer);
+  const bodies = freshSynthetic
+    ? JSON.parse(readFileSync(new URL("./fixtures/task0-phase1d/fresh-objects.json", import.meta.url), "utf-8")) as Record<string, string>
+    : objects;
+  const selectedPointer = freshSynthetic
+    ? readFileSync(new URL("./fixtures/task0-phase1d/fresh-pointer.raw.json", import.meta.url), "utf-8").trim()
+    : pointer;
+  for (const [key, value] of Object.entries(bodies)) kv.values.set(key, value);
+  kv.values.set("snapshot:current", selectedPointer);
   return {
     PUBLIC_CACHE: asKv(kv),
     TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
@@ -26,7 +32,7 @@ function env() {
 
 afterAll(() => { vi.useRealTimers(); });
 
-it("live replay: pinned sealed snapshot resolves and serves fresh Top20", async () => {
+it("pinned replay refuses stale historical rows and serves a synthetic fresh sealed Top20", async () => {
   // The replay run is pinned in time: evaluate the freshness gate inside the
   // run's own 7200s window (real wall clock will have moved past it later).
   // Run 3233b3055b9d is also the first run published under the current
@@ -39,7 +45,10 @@ it("live replay: pinned sealed snapshot resolves and serves fresh Top20", async 
   expect(view.kind).toBe("snapshot");
   expect(view.integrity).toBe("sealed");
   const q: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20 bottleneck" };
-  const report = await loadV213FreshTop20Report(e, q);
+  // TOP20_CARRY_FORWARD_V1.md:31,35-41: seal freshness is not row freshness.
+  expect(await loadV213FreshTop20Report(e, q)).toBe(V213_STALE_RECORDS_MESSAGE);
+  vi.setSystemTime(new Date("2026-09-17T09:29:10Z"));
+  const report = await loadV213FreshTop20Report(env(true), q);
   if (typeof report === "string") {
     console.log("STALE_OR_ERROR_STRING:", report.slice(0, 200));
   }

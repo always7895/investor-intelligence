@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createHmac, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { generalAnswer } from "../src/qa";
+import { V213_STALE_RECORDS_MESSAGE } from "../src/v213/top20-report";
 import { SMOKE_MARKER, minimalModelSmoke as minimumModelSmokeExport, compactGeneralAnswer } from "../src/v213/compact-qa";
 import {
   V213FreeRelayRoute,
@@ -163,11 +164,15 @@ const { default: productionWorker, freeRelayRequestEnv } = await import("../src/
 const RELAY_PATH = "./fixtures/task0-phase1d";
 const ASSEMBLY_AT = Date.parse("2026-09-17T09:24:10Z");
 
-function fixtureObjects(): Record<string, string> {
-  return JSON.parse(readFileSync(new URL(`${RELAY_PATH}/objects.json`, import.meta.url), "utf-8"));
+// Fresh acquisition is a synthetic, real-publisher-generated fixture, NOT a
+// re-stamp of the historical capture. Keep that original for the stale negative.
+function fixtureObjects(staleRows = false): Record<string, string> {
+  const name = staleRows ? "objects.json" : "fresh-objects.json";
+  return JSON.parse(readFileSync(new URL(`${RELAY_PATH}/${name}`, import.meta.url), "utf-8"));
 }
-function fixturePointer(): string {
-  return readFileSync(new URL(`${RELAY_PATH}/pointer.raw.json`, import.meta.url), "utf-8").trim();
+function fixturePointer(staleRows = false): string {
+  const name = staleRows ? "pointer.raw.json" : "fresh-pointer.raw.json";
+  return readFileSync(new URL(`${RELAY_PATH}/${name}`, import.meta.url), "utf-8").trim();
 }
 
 class FakeStorage {
@@ -234,12 +239,12 @@ type WorkerEnv = V211Env & FreeRelayEnv & { V213_MODEL_PROFILE_JSON?: string };
 
 function workerEnv(
   namespace: DurableObjectNamespace | null,
-  opts: { profile?: boolean; freshBase?: boolean; pairOwner?: boolean } = {},
+  opts: { profile?: boolean; freshBase?: boolean; pairOwner?: boolean; staleRows?: boolean } = {},
 ): WorkerEnv {
   const kv = new MemoryKv();
   if (opts.freshBase) {
-    for (const [k, v] of Object.entries(fixtureObjects())) kv.values.set(k, v);
-    kv.values.set("snapshot:current", fixturePointer());
+    for (const [k, v] of Object.entries(fixtureObjects(opts.staleRows))) kv.values.set(k, v);
+    kv.values.set("snapshot:current", fixturePointer(opts.staleRows));
   }
   return {
     PUBLIC_CACHE: asKv(kv),
@@ -480,6 +485,34 @@ describe("E1 formal-caller synthetic LINE webhook (signature-auth, owner, event 
     expect(res20.lines.join("\n")).toContain("GEV");
     const resMacro = await runWebhook(env, textMessage(3, "reply_macro", "宏觀產業分析 文字"));
     expect(resMacro.status).toBe(200);
+    expect(resMacro.lines.join("\n")).toContain("TOP5產業總覽");
+    expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
+    expect(BOUNDARY.forbidden.length).toBe(0);
+  });
+
+  it("no lease + fresh seal but rows older than 14 h: Top20 refuses while Macro still completes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(ASSEMBLY_AT + 3_600_000));
+    const pointer = JSON.parse(fixturePointer(true)) as { run_id: string };
+    const report = JSON.parse(fixtureObjects(true)[`snapshot:${pointer.run_id}:v213:top20-report:latest`]!) as {
+      generated_at: string; records: Array<{ retrieved_at: string }>;
+    };
+    expect(Date.now() - Date.parse(report.generated_at)).toBe(3_600_000);
+    expect(report.records).toHaveLength(2);
+    // Subtract the fixture UTC strings directly, never a locale-converted date.
+    const testClock = new Date(Date.now()).toISOString();
+    const ages = report.records.map(row => (Date.parse(testClock) - Date.parse(row.retrieved_at)) / 3_600_000);
+    for (const hours of ages) expect(hours).toBeGreaterThan(14);
+    const { namespace } = relayDevice();
+    const env = await paired(workerEnv(namespace, { freshBase: true, staleRows: true }), true);
+    const res20 = await runWebhook(env, textMessage(301, "reply_stale_top20", "Top 20"));
+    expect(res20.status).toBe(200);
+    expect(res20.rejects.rejected).toBe(0);
+    expect(res20.lines.join("\n")).toContain(V213_STALE_RECORDS_MESSAGE);
+    expect(res20.lines.join("\n")).not.toContain("GEV");
+    const resMacro = await runWebhook(env, textMessage(302, "reply_stale_macro", "宏觀產業分析 文字"));
+    expect(resMacro.status).toBe(200);
+    expect(resMacro.rejects.rejected).toBe(0);
     expect(resMacro.lines.join("\n")).toContain("TOP5產業總覽");
     expect(BOUNDARY.calls.filter((c) => c.url.endsWith("/v1/chat/completions")).length).toBe(0);
     expect(BOUNDARY.forbidden.length).toBe(0);

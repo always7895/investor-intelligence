@@ -41,6 +41,16 @@ readers (including certified `cloud/src/qa.ts`) have no report-age gate.
 | Carry bound | 14 h − one hourly seal | `load_top20_bundle` |
 | Evidence anchors | class windows (135 d / 7 d / 550 d) | Worker, `scripts/v213_evidence_policy.py` |
 
+BATCH05 local reader amendment (2026-10-07; verification/independent acceptance pending):
+both V213 qualified-bottleneck and seven-field readers apply the shared report-age gate to
+every row's `retrieved_at` as well as `generated_at`. A fresh report/seal cannot renew an
+older row still inside a longer evidence-class window. Diagnostic precedence is preserved:
+an invalid/stale report or seal keeps the existing report-stale message; a fresh report with
+an older-than-14-h row (or a row more than 300 s in the future) takes the existing row-specific
+`V213_STALE_RECORDS_MESSAGE` path. Auxiliary reports and federation
+remain placeholders, never carried. Certified `qa.ts` is unchanged; no live recertification
+was performed or claimed.
+
 A bundle that fails any check seals an honest INSUFFICIENT Top20 with a reason code; the macro overview is sealed
 either way. Every Top20 card carries the admission disclosure (研究候選 LIMITED_RESEARCH_CANDIDATE … 資料擷取).
 

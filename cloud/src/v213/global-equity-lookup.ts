@@ -20,7 +20,7 @@ import {
   evaluateCatalogAdmission,
 } from "./global-identity-reader";
 import { loadIdentityCatalogForQuery } from "./identity-shards";
-import { loadDelayedQuote, loadListingPrice, observationSymbol } from "./market-observations";
+import { loadDelayedQuote, loadListingPrice, observationSymbol, PRICE_SOURCE_LABEL } from "./market-observations";
 import { sourceZh } from "./source-labels";
 
 export type { SupportedMarket, GlobalIdentityRecord, GlobalIdentityResolution };
@@ -269,7 +269,7 @@ type ObservedQuote = { price: number; change_pct: number | null; currency: strin
  * Japan and Korea listings (market-observations.PRICE_SOURCE_LABEL["yahoo-daily-close"], returned by loadListingPrice) and the
  * hourly delayed quote (scripts/build_market_quotes_options.py writes "Yahoo Finance (unofficial, delayed)", which sourceZh maps).
  * A CLOSED list of known labels, not a hostname, URL, substring or brand rule. */
-const YAHOO_QUOTE_LABELS: ReadonlySet<string> = new Set(["Yahoo Finance 日收盤（非官方）", sourceZh("Yahoo Finance (unofficial, delayed)")]);
+const YAHOO_QUOTE_LABELS: ReadonlySet<string> = new Set([PRICE_SOURCE_LABEL["yahoo-daily-close"]!, sourceZh("Yahoo Finance (unofficial, delayed)")]);
 
 /** Operator 2026-09-26 (a lookup showed Yahoo only): the listing's price shard leads (an exchange feed, or for Japan and Korea a
  * Yahoo daily close); a second observation from a DIFFERENT provider is shown beside it, with the difference only when both are in

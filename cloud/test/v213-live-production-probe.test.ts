@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { loadV213FreshTop20Report } from "../src/v213/top20-report";
+import { loadV213FreshTop20Report, V213_STALE_RECORDS_MESSAGE } from "../src/v213/top20-report";
 import { INSUFFICIENT_EVIDENCE_MESSAGE } from "../src/v213/bottleneck-report";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
@@ -11,8 +11,10 @@ import type { ParsedQuery } from "../src/core";
 /**
  * TASK0 Phase-1D: Sealed snapshot replay — in-memory contract.
  *
- * The fixture is a byte-identical copy of the accepted local run
- * 20260917T092410Z-d9f86bda2053 (see fixtures/task0-phase1d/README.md).
+ * Positives use the separate real-publisher-generated synthetic fresh fixture;
+ * the byte-identical historical run is retained as a stale-row negative.
+ * TOP20_CARRY_FORWARD_V1.md:31,35-41 requires report AND row age <= 14 h.
+ * See fixtures/task0-phase1d/README.md; no historical evidence is re-stamped.
  * Clocks: each case sets the system Date deterministically (toFake ["Date"]
  * only) and restores the real runner clock afterwards. The runner clock is
  * never an input to pass/fail.
@@ -22,21 +24,23 @@ import type { ParsedQuery } from "../src/core";
 const FX = "fixtures/task0-phase1d";
 const ASSEMBLY_AT = Date.parse("2026-09-17T09:24:10Z"); // assembly anchor (single source)
 
-function fixtureObjects(): Record<string, string> {
-  return JSON.parse(readFileSync(new URL(`./${FX}/objects.json`, import.meta.url), "utf-8"));
+function fixtureObjects(staleRows = false): Record<string, string> {
+  const name = staleRows ? "objects.json" : "fresh-objects.json";
+  return JSON.parse(readFileSync(new URL(`./${FX}/${name}`, import.meta.url), "utf-8"));
 }
-function fixturePointer(): string {
-  return readFileSync(new URL(`./${FX}/pointer.raw.json`, import.meta.url), "utf-8").trim();
+function fixturePointer(staleRows = false): string {
+  const name = staleRows ? "pointer.raw.json" : "fresh-pointer.raw.json";
+  return readFileSync(new URL(`./${FX}/${name}`, import.meta.url), "utf-8").trim();
 }
 
 type LineEnv = Parameters<typeof v213PublicLineAnswer>[0];
 
-function envAt(offsetSeconds: number, mutate?: (kv: MemoryKv) => void): LineEnv {
+function envAt(offsetSeconds: number, mutate?: (kv: MemoryKv) => void, staleRows = false): LineEnv {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(ASSEMBLY_AT + offsetSeconds * 1000);
   const kv = new MemoryKv();
-  for (const [k, v] of Object.entries(fixtureObjects())) kv.values.set(k, v);
-  kv.values.set("snapshot:current", fixturePointer());
+  for (const [k, v] of Object.entries(fixtureObjects(staleRows))) kv.values.set(k, v);
+  kv.values.set("snapshot:current", fixturePointer(staleRows));
   mutate?.(kv);
   return {
     PUBLIC_CACHE: asKv(kv),
@@ -81,11 +85,17 @@ it("Top20 freshness boundary (deterministic Date only): 3600s / 7199s / 7200s ad
     expect(stale).toContain("fresh public data is required");
   }
   vi.useRealTimers();
+
+  // Fresh assembly cannot renew the historical rows: keep this negative.
+  const original = envAt(3600, undefined, true);
+  expect(await loadV213FreshTop20Report(original as never, RANKING)).toBe(V213_STALE_RECORDS_MESSAGE);
+  vi.useRealTimers();
 });
 
 it("seal/object tamper (in-memory copy) is rejected fail-closed", async () => {
   const e = envAt(3600, (kv) => {
-    const key = "snapshot:20260917T092410Z-d9f86bda2053:v213:top20-report:latest";
+    const run = (JSON.parse(fixturePointer()) as { run_id: string }).run_id;
+    const key = `snapshot:${run}:v213:top20-report:latest`;
     const body = kv.values.get(key);
     if (typeof body !== "string") throw new Error(`fixture missing: ${key}`);
     // Corrupt one character inside the sealed object body (exact-byte seal will fail).

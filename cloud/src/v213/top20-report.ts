@@ -213,6 +213,7 @@ export async function loadV213FreshTop20Report(
     if (!v213ReportTimesAreFresh(env, sealStamp, [bottleneck.generated_at])) {
       return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
     }
+    if (!v213ReportTimesAreFresh(env, sealStamp, bottleneck.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
     if (!(await v213PolicyBindingMatches(bottleneck.freshness_policy))) return V213_STALE_RECORDS_MESSAGE;
     if (!(await v213EvidenceWithinWindow(bottleneck.records.map(row => ({
       freshAsOf: row.orders_state_as_of,
@@ -252,6 +253,7 @@ export async function loadV213FreshTop20Report(
   }
   const stamp = await view.text(["last_successful_pipeline_timestamp"]);
   if (!v213ReportTimesAreFresh(env, stamp, [report.generated_at])) return "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+  if (!v213ReportTimesAreFresh(env, stamp, report.records.map(row => row.retrieved_at))) return V213_STALE_RECORDS_MESSAGE;
   if (!(await v213EvidenceWithinWindow(report.records.map(row => ({
     freshAsOf: row.orders_state_as_of,
     retrievedAt: row.retrieved_at,

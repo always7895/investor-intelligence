@@ -43,6 +43,23 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 
 ## US identity local SEC-cache fallback (2026-10-04)
 
+BATCH05 local amendment (2026-10-07; verification/independent acceptance pending): new
+`company_deep_report.ticker_ciks` keeps exact raw SEC bytes in the shared cache and writes a
+`sec-ticker-acquisition-v1` sidecar at `company_tickers_exchange.acquisition.json` with requested
+SEC origin URL, body SHA-256 and UTC acquisition instant. Old metadata is invalidated before
+replacement; the new body is written first, sidecar second. An interrupted write is UNVERIFIED.
+Both age-aware readers use acquisition time only for a strictly parsed, body-hash-matching sidecar
+(`retrieval_basis: ACQUISITION_SIDECAR`); touching either file cannot renew that age.
+Missing, malformed or mismatched sidecars leave raw SEC documents backward-readable for
+availability only, explicitly `cache_integrity: UNVERIFIED` /
+`retrieval_basis: LOCAL_CACHE_MTIME_UNVERIFIED`; reads never promote them or rewrite dates.
+The seven-day mtime bound in that case remains unverified. The three raw readers retain their format.
+Sidecar metadata is local integrity/provenance evidence, not a digital signature or proof against
+an actor rewriting both body and metadata; requested URL does not attest final redirect origin.
+All rows remain REVIEW_REQUIRED, partial and degraded, with no new corroboration or rights.
+The existing conservative fallback-card warning remains (no claim of authenticated listing).
+The dated raw-cache description below applies only to the legacy format.
+
 IMPLEMENTED_UNVERIFIED: source text only, never executed, no live proof and no second-source corroboration. This is a dated implementation note; the matrix above remains the 2026-09-26 audit and is not fresh evidence.
 
 - Trigger: either Nasdaq Trader US directory fails to fetch or parse, or has fewer rows than its minimum. Both US feeds are then replaced as a unit by ONE feed, never mixed. A healthy build never reads the local file; every other market failing still fails the build.
@@ -57,6 +74,11 @@ IMPLEMENTED_UNVERIFIED: source text only, never executed, no live proof and no s
 ## Quote cross-check provider rule (2026-10-04)
 
 QDIV1, IMPLEMENTED_UNVERIFIED (source text only, never executed, no live proof): the stock lookup card shows a cross-check only when the second observation comes from a different provider. `combineQuotes` in `cloud/src/v213/global-equity-lookup.ts` still compares the display labels first (equal labels are one source) and now also treats the two known labels of the same Yahoo provider, the Yahoo daily-close price shard that serves the Japan and Korea listings and the hourly Yahoo delayed quote, as one source: in either order and whatever the prices, times or currencies, the card then shows the primary quote without a cross-check or a difference. This is a closed list of those two labels, not a URL, hostname or substring rule; unknown labels and every other provider pair (Nasdaq, TWSE, TPEx, Nasdaq Nordic or Alpha Vantage against Yahoo) are compared exactly as before. A different label is not proof of independent retrieval, price discovery or authenticity: the cross-check remains a metadata-based observation comparison, never independent corroboration of a company claim. The Top20 publisher already skips Yahoo-derived price shards. No new source, fetch, key, cache or freshness window is added; the second US price source stays OPEN. Verification (tests, a live card check) remains a release prerequisite.
+
+BATCH05 anti-drift amendment (2026-10-07; verification pending): the lookup's closed Yahoo
+label set now imports `PRICE_SOURCE_LABEL["yahoo-daily-close"]`, the same contract used by
+`loadListingPrice`. Daily date-only and missing-date/acquisition-only wording stays in that
+one reader; no duplicate date inference, provider admission or freshness window is added.
 
 ## Ambiguous identity safe selection (2026-10-04)
 

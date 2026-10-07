@@ -6,8 +6,8 @@ content-addressed lazy objects; see scripts/publish_sealed_snapshot.py --identit
 
 - US: Nasdaq Trader symbol directories (nasdaqlisted.txt, otherlisted.txt; test issues excluded). Only when either
   directory fails or is too small are BOTH replaced as one unit by the already cached SEC raw file
-  company_tickers_exchange.json (Nasdaq and NYSE rows only, class REVIEW_REQUIRED, the cache's file mtime as retrieval
-  time, at most 7 days old; local read only, no new request). That build is DEGRADED_US_FALLBACK (exit 2): partial US
+  company_tickers_exchange.json (Nasdaq and NYSE rows only, class REVIEW_REQUIRED, envelope acquisition time or
+  legacy UNVERIFIED mtime, at most 7 days old; local read only, no new request). That build is DEGRADED_US_FALLBACK (exit 2): partial US
   coverage, availability only, not independent corroboration;
 - Taiwan: TWSE listed companies (t187ap03_L) and TPEx listed companies (mopsfin_t187ap03_O);
 - Sweden: Nasdaq Nordic share screener for Stockholm Main Market and First North (public exchange web API);
@@ -51,6 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from global_identity_index import classify_security  # noqa: E402
+import sec_ticker_cache  # noqa: E402
 
 OUTPUT = ROOT / "data" / "cache" / "identity_shards_latest.json"
 ZH_NAMES = ROOT / "data" / "cache" / "zh_names_latest.json"
@@ -85,7 +86,7 @@ _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9 .\-]{0,14}$")
 US_FEEDS = ("nasdaq-listed", "other-us-listed")
 # US availability fallback: the raw SEC file that company_deep_report.ticker_ciks already keeps; read locally, never fetched here.
 SEC_FEED = "sec-company-tickers-exchange"
-SEC_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+SEC_URL = sec_ticker_cache.ORIGIN
 SEC_CACHE = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
 SEC_MAX_BYTES = 32 * 1024 * 1024
 SEC_MAX_AGE = timedelta(days=7)  # the age policy of company_deep_report.ticker_ciks
@@ -268,11 +269,13 @@ def _sec_cik(value: Any) -> int | None:
     return number if 0 < number <= 9_999_999_999 else None
 
 
-def load_sec_cache(path: Path, now: datetime, minimum: int) -> tuple[bytes, datetime, list[list[Any]], int]:
-    """Rows of the already cached SEC company_tickers_exchange.json: (exact raw bytes, file mtime, rows, skipped count).
+def load_sec_cache(path: Path, now: datetime, minimum: int, *,
+                   provenance: dict[str, str] | None = None) -> tuple[bytes, datetime, list[list[Any]], int]:
+    """Return exact SEC body bytes, acquisition/legacy time, rows and skipped count.
 
-    Local read only: no request, no write, no SEC contact. The file's mtime is the only retrieval time (LOCAL_CACHE_MTIME);
-    it is neither an authenticated acquisition time nor proof of origin, and a before/after metadata comparison only observes
+    Strict matching sidecar origin/body/acquisition metadata supplies age, never mtime.
+    Missing/invalid sidecars are UNVERIFIED, with mtime only an availability bound, never origin authentication.
+    Local read only: no request, write or SEC contact. Before/after metadata comparison only observes
     drift (it is not a lock). Only the exact SEC exchanges in SEC_VENUES are kept, every row is REVIEW_REQUIRED (no class is
     guessed), unusable rows are skipped and counted, a malformed layout or conflicting duplicate rejects the file, and the
     unique accepted rows must reach `minimum` and cover both exchanges. A name must be 1..300 UTF-16 code units (the Worker's
@@ -293,7 +296,8 @@ def load_sec_cache(path: Path, now: datetime, minimum: int) -> tuple[bytes, date
         after = path.stat()
         if len(raw) != before.st_size or (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
             raise IdentityShardError("IDENTITY_SEC_CACHE_CHANGED")
-        modified = datetime.fromtimestamp(before.st_mtime, timezone.utc)
+        acquired = sec_ticker_cache.acquired_at(raw, path)
+        modified = acquired if acquired is not None else datetime.fromtimestamp(before.st_mtime, timezone.utc)
         if now - modified < timedelta(0):
             raise IdentityShardError("IDENTITY_SEC_CACHE_FUTURE")
         if now - modified > SEC_MAX_AGE:
@@ -339,6 +343,11 @@ def load_sec_cache(path: Path, now: datetime, minimum: int) -> tuple[bytes, date
                 for (venue, symbol), (name, _cik) in sorted(accepted.items(), key=lambda item: (item[0][1], item[0][0]))]
         if len(rows) < minimum or {row[1] for row in rows} != set(SEC_VENUES.values()):
             raise IdentityShardError(f"IDENTITY_SEC_CACHE_COVERAGE {len(rows)}")
+        if provenance is not None:
+            provenance.update(
+                retrieval_basis="ACQUISITION_SIDECAR" if acquired is not None else "LOCAL_CACHE_MTIME_UNVERIFIED",
+                cache_integrity="ORIGIN_BODY_ACQUISITION_BOUND" if acquired is not None else "UNVERIFIED",
+            )
         return raw, modified.replace(microsecond=0), rows, skipped
     except IdentityShardError:
         raise
@@ -407,12 +416,14 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[s
     else:
         if sec_cache is None:
             raise us_error
+        cache_provenance: dict[str, str] = {}
         try:
-            raw, retrieved, parsed, rows_skipped = load_sec_cache(sec_cache, now, minimums["nasdaq-listed"])
+            raw, retrieved, parsed, rows_skipped = load_sec_cache(
+                sec_cache, now, minimums["nasdaq-listed"], provenance=cache_provenance)
         except IdentityShardError as sec_error:
             raise us_error from sec_error  # the original US error stays the reported one
         entries.append(({"id": SEC_FEED, "url": SEC_URL, "retrieved_at": retrieved.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                         "sha256": hashlib.sha256(raw).hexdigest(), "rows": len(parsed), "retrieval_basis": "LOCAL_CACHE_MTIME",
+                         "sha256": hashlib.sha256(raw).hexdigest(), "rows": len(parsed), **cache_provenance,
                          "fallback_for": list(US_FEEDS), "fallback_reason": str(us_error), "rows_skipped": rows_skipped}, parsed))
     for feed, url in FEEDS.items():
         if feed in US_FEEDS:

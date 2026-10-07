@@ -36,6 +36,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import thesis_phase  # noqa: E402
+import sec_ticker_cache  # noqa: E402
 
 OUTPUT_PATH = ROOT / "data" / "cache" / "company_deep_reports_latest.json"
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
@@ -684,22 +685,37 @@ def build_reports(tickers: Mapping[str, str], fetch: Fetch, *, today: date, busi
             "as_of": today.isoformat(), "reports": reports, "failures": failures, "publication_eligible": False}
 
 
-TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+TICKERS_URL = sec_ticker_cache.ORIGIN
 TICKERS_CACHE = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
 
 
 def ticker_ciks(fetch: Fetch, *, today: date, cache: Path = TICKERS_CACHE, max_age_days: int = 7) -> dict[str, str]:
-    """Official SEC ticker -> CIK map, cached for a week."""
+    """SEC ticker -> CIK map; matching sidecar age is acquisition-based, else UNVERIFIED."""
     raw = None
     try:
-        if date.fromtimestamp(cache.stat().st_mtime) >= today - timedelta(days=max_age_days):
-            raw = cache.read_bytes()
-    except OSError:
+        with cache.open("rb") as handle:
+            cached = handle.read(sec_ticker_cache.MAX_BYTES + 1)
+        body = cached
+        acquired = sec_ticker_cache.acquired_at(body, cache)
+        if acquired is not None:
+            age = datetime.now(timezone.utc) - acquired
+            usable = timedelta(0) <= age <= timedelta(days=max_age_days)
+        else:
+            # Compatibility only: this time is NOT an authenticated acquisition.
+            modified = date.fromtimestamp(cache.stat().st_mtime)
+            usable = today - timedelta(days=max_age_days) <= modified <= today
+        if usable:
+            raw = body
+    except (OSError, ValueError, UnicodeError):
         pass
     if raw is None:
         raw = fetch(TICKERS_URL)
+        acquisition = sec_ticker_cache.acquisition_bytes(raw, datetime.now(timezone.utc))
         cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_bytes(raw)
+        sidecar = sec_ticker_cache.sidecar_path(cache)
+        sidecar.unlink(missing_ok=True)  # interrupted replacement must not retain an old attestation
+        cache.write_bytes(raw)  # shared raw SEC format: body first, acquisition record second
+        sidecar.write_bytes(acquisition)
     exchange = json.loads(raw)
     fields = exchange["fields"]
     return {str(row[fields.index("ticker")]).upper(): str(row[fields.index("cik")]).zfill(10) for row in exchange["data"]}

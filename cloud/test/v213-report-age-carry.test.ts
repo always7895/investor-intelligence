@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { v213Top20LineAnswer } from "../src/v213/top20-presentation";
-import { parseV213Top20Report, v213ReportMaxAgeSeconds, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
+import { parseV213Top20Report, v213ReportMaxAgeSeconds, V213_STALE_RECORDS_MESSAGE, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 
@@ -81,6 +81,37 @@ describe("report age is separate from seal liveness", () => {
       orders_state_as_of: iso(now - 2 * 24 * HOUR), retrieved_at: iso(now - 8 * 24 * HOUR) } });
     const env = await sealedEnv(new MemoryKv(), JSON.stringify(report), now - 5 * 60_000, RUN_A);
     expect(await v213Top20LineAnswer(env as never, parseQuery("Top20"))).not.toBeInstanceOf(Array);
+  });
+
+  it("B05-L5 checks every carried row at 14h, independent of a fresh report and seal", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
+    const now = Date.now();
+    for (const age of [14 * HOUR, 14 * HOUR + 1, -300_001]) {
+      const row = iso(now - age);
+      const report = limitedReport(now - HOUR, { 19: { retrieved_at: row } });
+      // The future-row case is also after the seal; neither seal nor report renews its time.
+      const env = await sealedEnv(new MemoryKv(), JSON.stringify(report), now, RUN_A);
+      for (const query of ["Top20", "Top20 文字"]) {
+        const result = await v213Top20LineAnswer(env as never, parseQuery(query));
+        if (age === 14 * HOUR) expect(Array.isArray(result)).toBe(true);
+        else expect(result).toBe(V213_STALE_RECORDS_MESSAGE);
+      }
+    }
+  });
+
+  it("keeps report-stale diagnostics ahead of stale/future row diagnostics", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
+    const now = Date.now();
+    const reportStale = "七欄 Top20 資料已過期或時間無效，請等待新鮮公開資料。 / Seven-field Top20 is stale or invalid; fresh public data is required.";
+    for (const generated of [now - 15 * HOUR, now + 300_001]) {
+      const report = limitedReport(generated, { 19: { retrieved_at: iso(now - 16 * HOUR) } });
+      const env = await sealedEnv(new MemoryKv(), JSON.stringify(report), now, RUN_A);
+      for (const query of ["Top20", "Top20 文字"]) {
+        expect(await v213Top20LineAnswer(env as never, parseQuery(query))).toBe(reportStale);
+      }
+    }
   });
 
   it("requires one admission value across all records", () => {
