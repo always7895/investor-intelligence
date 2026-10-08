@@ -524,6 +524,19 @@ class NbisParserBoundary(unittest.TestCase):
         f.observe_boundary(label, actual)
         self.assertEqual(actual, expected)
 
+
+    def test_f1_injection_non_utf8(self):
+        injection = (b'<script >bazadebezolkohpepadr="123"</script>'
+                     b'<script type="text/javascript" src="https://www.sec.gov/akam/123/abc"  defer></script>')
+        self.assertEqual(f.verify.EDGAR_INJECTION.fullmatch(injection) is not None, True)
+        raw = injection + f.html("f1", "<p>synthetic-g4-f1</p>") + b"\xff"
+        self.assertEqual(raw.index(b"\xff"), 266)
+        self.assertGreater(266, len(injection))
+        self.row("F1.package-links", lambda: f.verify._nbis_package_links(raw, f.ARCHIVES + "synthetic-g4-f1/"),
+                 ("BLOCKED", "BLOCKED", "CANONICALIZATION_FAILED", "not UTF-8 at byte 266"))
+        self.row("F1.document", lambda: f.verify.nbis_document(raw),
+                 ("BLOCKED", "BLOCKED", "CANONICALIZATION_FAILED", "not UTF-8 at byte 266"))
+
     def test_direct_rows(self):
         from html.parser import HTMLParser
         import sys
