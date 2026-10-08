@@ -166,7 +166,6 @@ class SyntheticRefusals(unittest.TestCase):
 
     def test_captured_body_refusals(self):
         rows = [
-            ('plain-html', 'Z', 'statement', 'UNSUPPORTED_TEMPLATE', 'not an inline XBRL document'),
             ('fy-heading', 'Z', 'letter', 'INPUT_MALFORMED', 'NBIS full positive heading'),
             ('fy-closed', 'Z', 'letter', 'PERIOD_MISMATCH', 'NBIS closed guidance block heading/FY'),
             ('fy-word-glued', 'Z', 'letter', 'PERIOD_MISMATCH', 'NBIS guidance versus first forward FY'),
@@ -189,9 +188,7 @@ class SyntheticRefusals(unittest.TestCase):
                 s.plan()
                 key = slot if slot == 'ir_copy' else s.event['packages'][0][slot]
                 raw = s.loaded()[key]['raw']
-                if name == 'plain-html':
-                    raw = raw.replace(b' xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"', b'')
-                elif name == 'fy-heading':
+                if name == 'fy-heading':
                     raw = raw.replace(b'revenue in 2032', b'revenue in 2033')
                 elif name == 'fy-closed':
                     raw = raw.replace(b'2032 Guidance update</p><p>', b'2032 Guidance update ').replace(b'revenue in 2032', b'revenue in 2033')
@@ -365,78 +362,258 @@ class SyntheticRefusals(unittest.TestCase):
 
 
 class MalformedCharacterization(unittest.TestCase):
+    """Typed parser refusals; marked-section preconditions require CPython 3.12.10."""
     refused = SyntheticRefusals.refused
+
+    def row(self, label, fn, expected):
+        actual = f.outcome_of(fn)
+        f.observe_boundary(label, actual)
+        with self.subTest(row=label):
+            self.assertEqual(actual, expected)
+
+    @staticmethod
+    def blocked(reason, detail):
+        return ("RESULT", {"outcome": "BLOCKED", "reason": reason, "detail": detail, "record": None, "decisions": []})
+
     def test_malformed_raw_builder_and_planner(self):
-        rows = [('non-utf8', 'INPUT_MALFORMED', 'UnicodeDecodeError'),
-                ('xml', 'UNSUPPORTED_TEMPLATE', 'not well-formed XML'),
+        rows = [('xml', 'UNSUPPORTED_TEMPLATE', 'not well-formed XML'),
                 ('unclosed-table', 'UNSUPPORTED_TEMPLATE', 'unclosed NBIS document')]
         for name, reason, detail in rows:
             with self.subTest(row=name), f.Scenario() as s:
                 s.plan()
                 key = s.event['packages'][0]['statement']
                 raw = s.loaded()[key]['raw']
-                raw = raw + b'\xff' if name == 'non-utf8' else raw.replace(b'</body>', b'<br></body>') if name == 'xml' else raw.replace(b'</table>', b'', 1)
+                raw = raw.replace(b'</body>', b'<br></body>') if name == 'xml' else raw.replace(b'</table>', b'', 1)
                 replace_capture(s, key, raw)
                 self.refused(s.build(), reason, detail)
-            if name == 'non-utf8':
-                with f.Scenario() as s:
-                    url = s.packages[0].base + s.packages[0].names[1]
-                    s.bodies[url] += b'\xff'
-                    with self.assertRaises(UnicodeDecodeError) as caught:
-                        s.plan()
-                    observe('planner-non-utf8', type(caught.exception).__name__)
 
-    def test_marked_section_escapes_builder_and_planner(self):
+    def test_non_utf8_is_typed_builder_and_planner(self):
         with f.Scenario() as s:
             s.plan()
-            key = s.event['packages'][0]['letter']
-            replace_capture(s, key, s.loaded()[key]['raw'] + b'<![bogus[')
-            with self.assertRaises(AssertionError) as caught:
-                s.build()
-            observe('builder-marked-section', str(caught.exception))
-            self.assertIn('unknown status keyword', str(caught.exception))
+            key = s.event["packages"][0]["statement"]
+            original = s.loaded()[key]["raw"]
+            replace_capture(s, key, original + b"\xff")
+            self.row("nbis.builder.non-utf8", s.build,
+                     self.blocked("CANONICALIZATION_FAILED", f"not UTF-8 at byte {len(original)}"))
         with f.Scenario() as s:
-            url = s.packages[0].base + s.packages[0].names[2]
-            s.bodies[url] += b'<![bogus['
-            with self.assertRaises(AssertionError) as caught:
+            p = s.packages[0]
+            url = p.base + p.names[1]
+            original = s.bodies[url]
+            s.bodies[url] += b"\xff"
+            captures = {}
+            self.row("nbis.planner.non-utf8", lambda: s.plan(captures=captures),
+                     ("BLOCKED", "BLOCKED", "CANONICALIZATION_FAILED", f"not UTF-8 at byte {len(original)}"))
+            self.assertEqual(s.transport.requests, [f.SUBMISSIONS, p.base + "index.json", p.base + p.names[0], url])
+            self.assertIn("nbis:" + p.accession + ":statement", captures)
+
+    def test_marked_section_is_typed_builder_and_planner(self):
+        from html.parser import HTMLParser
+        for name, marker in (("bogus", b"<![bogus["), ("endif", b"<![ endif]>")):
+            with self.assertRaises(AssertionError):
+                HTMLParser().feed(marker.decode("ascii"))
+            for slot in ("letter", "statement", "ir_copy", "nbis:0000000000-31-000305:wire_copy"):
+                with self.subTest(marker=name, slot=slot), f.Scenario() as s:
+                    s.plan()
+                    key = slot if slot in s.captures else s.event["packages"][0][slot]
+                    raw = f.insert_before_body(self, s.loaded()[key]["raw"], marker)
+                    replace_capture(s, key, raw)
+                    self.row("nbis.builder.marked." + slot + "." + name, s.build,
+                             self.blocked("UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE))
+            with f.Scenario() as s:
+                p = s.packages[0]
+                url = p.base + p.names[2]
+                s.bodies[url] = f.insert_before_body(self, s.bodies[url], marker)
+                self.row("nbis.planner.marked." + name, s.plan,
+                         ("BLOCKED", "BLOCKED", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE))
+                self.assertEqual(s.transport.requests, [f.SUBMISSIONS, p.base + "index.json"] + [p.base + n for n in p.names])
+
+    def test_unknown_xml_encoding_is_typed(self):
+        prefix = b'<?xml version="1.0" encoding="x-synthetic-unknown"?>'
+        with f.Scenario() as s:
+            s.plan()
+            key = s.event["packages"][0]["statement"]
+            replace_capture(s, key, prefix + s.loaded()[key]["raw"])
+            self.row("nbis.builder.xml-unknown", s.build, self.blocked("INPUT_MALFORMED", "LookupError"))
+        with f.Scenario() as s:
+            p = s.packages[0]
+            url = p.base + p.names[1]
+            s.bodies[url] = prefix + s.bodies[url]
+            self.row("nbis.planner.xml-unknown", s.plan, ("BLOCKED", "BLOCKED", "INPUT_MALFORMED", "LookupError"))
+            self.assertEqual(s.transport.requests, [f.SUBMISSIONS, p.base + "index.json"] + [p.base + n for n in p.names])
+
+    def test_accepted_sections_reach_planner_and_builder(self):
+        with f.Scenario() as s:
+            p = s.packages[0]
+            url = p.base + p.names[2]
+            s.bodies[url] = f.insert_before_body(self, s.bodies[url], b"<![if !supportLists]><![endif]>")
+            def invoke():
                 s.plan()
-            observe('planner-marked-section', str(caught.exception))
-            self.assertIn('unknown status keyword', str(caught.exception))
+                result = s.build()
+                return {"outcome": result["outcome"], "reason": result["reason"], "detail": result["detail"],
+                        "requests": s.transport.requests}
+            self.row("nbis.accepted-letter", invoke, ("RESULT", {"outcome": "VERIFIED", "reason": None,
+                     "detail": "", "requests": s.expected_requests()}))
 
+    def test_transport_assertion_propagates(self):
+        with f.Scenario() as s:
+            p = s.packages[0]
+            url = p.base + p.names[2]
+            del s.bodies[url]
+            self.row("nbis.transport-assertion", s.plan,
+                     ("RAISED", "AssertionError", "UNEXPECTED_SYNTHETIC_REQUEST " + url))
+            self.assertEqual(s.transport.requests, [f.SUBMISSIONS, p.base + "index.json"] + [p.base + n for n in p.names])
 
-    def test_enabled_sec_8k_shares_marked_section_escape(self):
-        # Only synthetic feed/index/exhibit bytes, never the retained replay corpus.
-        p = f.verify.validate_profiles(f.tracked())['NVDA']
-        acc, filed, name = '0000000000-32-000105', '2032-02-19', 'q4fy32pr.htm'
+    def test_enabled_sec_8k_parser_refusals_are_typed(self):
+        # Only synthetic bytes, never modified retained replay corpus outside TEMP.
+        p = f.verify.validate_profiles(f.tracked())["NVDA"]
+        acc, filed, name = "0000000000-32-000105", "2032-02-19", "q4fy32pr.htm"
         base = f'https://www.sec.gov/Archives/edgar/data/{p["cik"]}/{acc.replace("-", "")}/'
         submissions = f'https://data.sec.gov/submissions/CIK{p["cik"]:010d}.json'
-        bodies = {submissions: f.encoded({'_synthetic': f.MARKER, 'cik': p['cik'], 'filings': {'recent': {
-            'accessionNumber': [acc], 'form': ['8-K'], 'filingDate': [filed], 'reportDate': ['2031-12-31'],
-            'primaryDocument': [name], 'items': ['2.02']}}}),
-            base + 'index.json': f.encoded({'_synthetic': f.MARKER, 'directory': {'item': [{'name': name}]}}),
-            base + name: f.html('enabled-8k-marked-section', 'Synthetic only') + b'<![bogus['}
-        requests = []
-        case = self
-        class Transport:
-            replay = False
-            def get(self, url, profile, symbol):
-                requests.append(url)
-                case.assertEqual(symbol, 'NVDA')
-                kind = f.updater.url_rule(url, profile)
-                return bodies[url], f.updater.CONTENT_TYPES[kind][0]
-        with f.Scenario() as s:
-            captures = {}
-            lead = {'accession': acc, 'filed': filed, 'ir_item': None, 'wire_item': None, 'later_documents': []}
-            with self.assertRaises(AssertionError) as caught:
-                f.updater.plan_event(Transport(), s.root, p, lead, filed, s.clock, {'bytes': 0, 'store': 0}, captures=captures)
-            observe('enabled-8k-planner-escape', {'error': str(caught.exception), 'requests': requests})
-            self.assertIn('unknown status keyword', str(caught.exception))
-            self.assertEqual(requests, [submissions, base + 'index.json', base + name])
-            loaded = {key: f.overlay.load_capture(s.root, digest) for key, digest in captures.items()}
-            with self.assertRaises(AssertionError) as caught:
-                f.verify.build_successor(p, {}, lead, loaded, s.now)
-            observe('enabled-8k-builder-escape', str(caught.exception))
-            self.assertIn('unknown status keyword', str(caught.exception))
+        plain = f.html("enabled-8k-parser", "Synthetic only")
+        xhtml = f.html("enabled-8k-parser", "Synthetic only", xhtml=True)
+        rows = [
+            ("bogus", plain + b"<![bogus[", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("endif", plain + b"<![ endif]>", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("charref", b"<p>&#" + b"1" * 4301 + b";</p>", "INPUT_MALFORMED", "ValueError"),
+            ("table", b"<table><tr><td>x</table><table>", "INPUT_MALFORMED", "IndexError"),
+            ("xml-unknown", b'<?xml version="1.0" encoding="x-synthetic-unknown"?>' + xhtml, "INPUT_MALFORMED", "LookupError"),
+            ("xml-multibyte", b'<?xml version="1.0" encoding="Shift_JIS"?>' + xhtml, "INPUT_MALFORMED", "ValueError"),
+            ("non-utf8", plain + b"\xff", "CANONICALIZATION_FAILED", f"not UTF-8 at byte {len(plain)}"),
+        ]
+        for row_name, raw, reason, detail in rows:
+            with self.subTest(payload=row_name), f.Scenario() as s:
+                if row_name in ("bogus", "endif"):
+                    from html.parser import HTMLParser
+                    with self.assertRaises(AssertionError):
+                        HTMLParser().feed("<![bogus[" if row_name == "bogus" else "<![ endif]>")
+                bodies = {submissions: f.encoded({"_synthetic": f.MARKER, "cik": p["cik"], "filings": {"recent": {
+                    "accessionNumber": [acc], "form": ["8-K"], "filingDate": [filed], "reportDate": ["2031-12-31"],
+                    "primaryDocument": [name], "items": ["2.02"]}}}),
+                    base + "index.json": f.encoded({"_synthetic": f.MARKER, "directory": {"item": [{"name": name}]}}),
+                    base + name: raw}
+                requests, captures = [], {}
+                case = self
+                class Transport:
+                    replay = False
+                    def get(self, url, profile, symbol):
+                        requests.append(url)
+                        case.assertEqual(symbol, "NVDA")
+                        kind = f.updater.url_rule(url, profile)
+                        return bodies[url], f.updater.CONTENT_TYPES[kind][0]
+                lead = {"accession": acc, "filed": filed, "ir_item": None, "wire_item": None, "later_documents": []}
+                planned = [lead]
+                def plan():
+                    event, _ = f.updater.plan_event(Transport(), s.root, p, lead, filed, s.clock,
+                                                    {"bytes": 0, "store": 0}, captures=captures)
+                    planned[0] = event
+                    return {"periodic": event["periodic"], "calendar": event["calendar"],
+                            "allocation_sources": event["allocation_sources"],
+                            "captures": sorted(captures), "requests": requests}
+                self.row("a1.planner." + row_name, plan, ("RESULT", {"periodic": {}, "calendar": None,
+                    "allocation_sources": [], "captures": ["exhibit", "index", "submissions"],
+                    "requests": [submissions, base + "index.json", base + name]}))
+                loaded = {key: f.overlay.load_capture(s.root, digest) for key, digest in captures.items()}
+                self.row("a1.builder." + row_name,
+                         lambda: f.verify.build_successor(p, {}, planned[0], loaded, s.now), self.blocked(reason, detail))
+
+
+class NbisParserBoundary(unittest.TestCase):
+    """Raw unfinished-table rows are stability pins (BATCH10B AMEND1)."""
+    def row(self, label, fn, expected):
+        actual = f.outcome_of(fn)
+        f.observe_boundary(label, actual)
+        self.assertEqual(actual, expected)
+
+    def test_direct_rows(self):
+        from html.parser import HTMLParser
+        import sys
+        self.assertEqual(sys.version_info[:3], (3, 12, 10))
+        self.assertEqual(sys.get_int_max_str_digits(), 4300)
+        base = f.html("pb", "<p>x</p>")
+        rows = [
+            ("bogus", b"<![bogus[", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("endif", b"<![ endif]>", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("non-utf8", b"\xff", "CANONICALIZATION_FAILED", f"not UTF-8 at byte {len(base)}"),
+            ("charref", b"<p>&#" + b"1" * 4301 + b";</p>", "INPUT_MALFORMED", "ValueError"),
+            ("table", b"<table><tr><td>x</table><table>", "UNSUPPORTED_TEMPLATE", "unfinished NBIS table/span"),
+        ]
+        sites = [("nbis_document", f.verify.nbis_document),
+                 ("_nbis_package_links", lambda raw: f.verify._nbis_package_links(raw, f.ARCHIVES + "synthetic-g4-x/"))]
+        for site, parse in sites:
+            for name, suffix, reason, detail in rows:
+                with self.subTest(site=site, row=name):
+                    if name in ("bogus", "endif"):
+                        with self.assertRaises(AssertionError):
+                            HTMLParser().feed(suffix.decode("ascii"))
+                    self.row("nbis." + site + "." + name, lambda: parse(base + suffix),
+                             ("BLOCKED", "BLOCKED", reason, detail))
+
+    def test_dg41_must_still_refuse(self):
+        namespace = b"http://www.xbrl.org/2013/inlineXBRL"
+        encoded = "".join("&#" + str(c) + ";" for c in namespace).encode("ascii")
+        rows = [
+            ("ix-text-unclosed", "UNSUPPORTED_TEMPLATE", "not well-formed XML"),
+            ("rebound", "UNSUPPORTED_TEMPLATE", "namespace prefix 'ix' bound more than once"),
+            ("entity", "UNSUPPORTED_TEMPLATE", "unexpected markup before the inline XBRL document"),
+            ("duplicate-context", "SOURCE_DISAGREEMENT", "duplicate XBRL context/unit ids ['synthetic-duplicate']"),
+            ("charref-namespace-token", "UNSUPPORTED_TEMPLATE", f.PLAIN_HTML),
+            ("charref-namespace-element", "UNSUPPORTED_TEMPLATE", f.PLAIN_HTML),
+            ("charref-namespace-default", "UNSUPPORTED_TEMPLATE", f.PLAIN_HTML),
+        ]
+        for name, reason, detail in rows:
+            with self.subTest(row=name), f.Scenario() as s:
+                s.plan()
+                key = s.event["packages"][0]["statement"]
+                old = s.loaded()[key]["raw"]  # XHTML base for rebound/entity/duplicate.
+                self.assertEqual(old.count(namespace), 1)
+                raw = old
+                if name == "ix-text-unclosed":
+                    raw = old.replace(b' xmlns:ix="' + namespace + b'"', b"")
+                    raw = f.insert_before_body(self, raw, b"<p>" + namespace + b"</p><br>")
+                elif name == "rebound":
+                    raw = f.insert_before_body(self, raw, b'<span xmlns:ix="urn:synthetic:other"></span>')
+                elif name == "entity":
+                    raw = f.insert_before_body(self, raw, b'<!ENTITY synthetic "x">')
+                elif name == "duplicate-context":
+                    context = b'<xbrli:context xmlns:xbrli="http://www.xbrl.org/2003/instance" id="synthetic-duplicate"/>'
+                    raw = f.insert_before_body(self, raw, b"<ix:header>" + context * 2 + b"</ix:header>")
+                elif name == "charref-namespace-token":
+                    raw = old.replace(namespace, b"http&#58;//www.xbrl.org/2013/inlineXBRL")
+                else:
+                    raw = old.replace(namespace, encoded)
+                    fact = (b'<ix:nonFraction name="us-gaap:Revenues">1</ix:nonFraction>'
+                            if name == "charref-namespace-element" else
+                            b'<nonFraction xmlns="http://www.xbrl.org/2013/inline&#88;BRL" name="us-gaap:Revenues">1</nonFraction>')
+                    raw = f.insert_before_body(self, raw, b"<ix:header>" + fact + b"</ix:header>")
+                self.assertNotEqual(raw, old)
+                replace_capture(s, key, raw)
+                def invoke():
+                    result = s.build()
+                    if name == "ix-text-unclosed" and isinstance(result.get("detail"), str):
+                        result = dict(result, detail=result["detail"].partition(":")[0])
+                    return result
+                self.row("dg41.refuse." + name, invoke, ("RESULT", {"outcome": "BLOCKED",
+                    "reason": reason, "detail": detail, "record": None, "decisions": []}))
+
+    def test_feed_close_stubs(self):
+        from unittest import mock
+        sites = [("grid", f.verify._NbisGrid, f.verify.nbis_document),
+                 ("links", f.verify._NbisLinks, lambda raw: f.verify._nbis_package_links(raw, f.ARCHIVES + "synthetic-g4-x/"))]
+        for site, cls, parse in sites:
+            for method in ("feed", "close"):
+                for error, expected in f.parser_stubs():
+                    with self.subTest(site=site, method=method, error=type(error).__name__):
+                        seen = []
+                        def invoke():
+                            try:
+                                return parse(f.html("pb-stub", "<p>x</p>"))
+                            except f.verify.Blocked as caught:
+                                seen.append(caught)
+                                raise
+                        with mock.patch.object(cls, method, side_effect=error):
+                            self.row("nbis." + site + ".stub." + method + "." + type(error).__name__, invoke, expected)
+                        if isinstance(error, f.verify.Blocked):
+                            self.assertIs(seen[0], error)
 
 
 if __name__ == '__main__':

@@ -133,5 +133,56 @@ class SyntheticPositives(unittest.TestCase):
             self.assertEqual(f.verify.canonical_json(again), f.verify.canonical_json(result))
 
 
+class PlainHtmlAbsence(unittest.TestCase):
+    """D-G4-1 through real builder/admission rederive, never a direct guard call."""
+    def check_scenario(self, s, label):
+        def invoke():
+            result = s.build()
+            if result["outcome"] != "VERIFIED":
+                return result
+            calendar = next(d["operands"]["tagged_proofs"] for d in result["decisions"] if d["kind"] == "CALENDAR")
+            actuals = [d["operands"]["tagged"] for d in result["decisions"] if d["kind"] == "ACTUAL"]
+            absence = {"present": False, "policy": "FOREIGN_TABLE_TAGGED_ABSENCE_V1"}
+            attempt = f.updater._attempt(s.lead["accession"], s.now, s.baseline, s.event, s.captures, result)
+            valid = f.overlay.validate_attempt(attempt)
+            again = f.overlay.rederive(s.root, s.profile, s.baseline, attempt, allow_replay=False, baseline=s.baseline)
+            return {"outcome": result["outcome"], "reason": result["reason"], "detail": result["detail"],
+                    "calendar_absence": bool(calendar) and all(v["tagged"] == absence for v in calendar),
+                    "actuals_absence": bool(actuals) and all(v == absence for v in actuals),
+                    "attempt_valid": valid, "rederive_equal": f.verify.canonical_json(again) == f.verify.canonical_json(result),
+                    "requests": s.transport.requests}
+        actual = f.outcome_of(invoke)
+        f.observe_boundary(label, actual)
+        self.assertEqual(actual, ("RESULT", {"outcome": "VERIFIED", "reason": None, "detail": "",
+            "calendar_absence": True, "actuals_absence": True, "attempt_valid": None, "rederive_equal": True,
+            "requests": s.expected_requests()}))
+
+    def test_plain_html_statement_is_tagged_absence(self):
+        with f.Scenario() as s:
+            s.plan()
+            key = s.event["packages"][0]["statement"]
+            cap = s.loaded()[key]
+            declaration = b' xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"'
+            self.assertEqual(cap["raw"].count(declaration), 1)
+            raw = cap["raw"].replace(declaration, b"")
+            self.assertNotEqual(raw, cap["raw"])
+            s.captures[key] = f.overlay.store_capture(s.root, raw, cap)
+            self.check_scenario(s, "dg41.plain-current")
+
+    def test_plain_html_all_packages(self):
+        declaration = b' xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"'
+        for mode in ("Z", "R"):
+            with self.subTest(mode=mode), f.Scenario(mode) as s:
+                for package in s.packages:
+                    url = package.base + package.names[1]
+                    old = s.bodies[url]
+                    self.assertEqual(old.count(declaration), 1)
+                    raw = f.insert_before_body(self, old.replace(declaration, b""), b"<br>")
+                    self.assertNotEqual(raw, old)
+                    s.bodies[url] = raw
+                s.plan()
+                self.check_scenario(s, "dg41.plain-all-" + mode)
+
+
 if __name__ == '__main__':
     unittest.main()

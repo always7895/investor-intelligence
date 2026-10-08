@@ -39,6 +39,48 @@ FILLER = "Neutral synthetic spacer. " * 180
 BASELINE_REFERENCE_URL = ARCHIVES + "000000000031000305/tm3100305d1_ex99-2.htm"
 
 
+HTML_UNREADABLE = "HTML marked section or declaration not readable"
+PLAIN_HTML = "not an inline XBRL document"
+
+
+class _Sentinel(BaseException):
+    """Private propagation sentinel; never an interpreter interrupt."""
+
+
+def outcome_of(fn):
+    """Every new oracle compares this complete tuple, including parser escapes."""
+    try:
+        return ("RESULT", fn())
+    except verify.Blocked as error:
+        return ("BLOCKED", error.outcome, error.reason, error.detail)
+    except BaseException as error:
+        return ("RAISED", type(error).__name__, str(error))
+
+
+def observe_boundary(label, actual):
+    """Audit runner records raw tuples before the test's own assertion."""
+    return actual
+
+
+def insert_before_body(case, raw, markup):
+    case.assertEqual(raw.count(b"</body>"), 1)
+    new = raw.replace(b"</body>", markup + b"</body>")
+    case.assertNotEqual(new, raw)
+    return new
+
+
+def parser_stubs():
+    return [
+        (AssertionError("synthetic"), ("BLOCKED", "BLOCKED", "UNSUPPORTED_TEMPLATE", HTML_UNREADABLE)),
+        (ValueError("synthetic"), ("BLOCKED", "BLOCKED", "INPUT_MALFORMED", "ValueError")),
+        (IndexError("synthetic"), ("BLOCKED", "BLOCKED", "INPUT_MALFORMED", "IndexError")),
+        (KeyError("synthetic"), ("RAISED", "KeyError", "'synthetic'")),
+        (TypeError("synthetic"), ("RAISED", "TypeError", "synthetic")),
+        (_Sentinel("synthetic"), ("RAISED", "_Sentinel", "synthetic")),
+        (verify._block("CAPTURE_LIMIT", "synthetic"), ("BLOCKED", "BLOCKED", "CAPTURE_LIMIT", "synthetic")),
+    ]
+
+
 def tracked():
     return json.loads(PROFILE_PATH.read_bytes())
 

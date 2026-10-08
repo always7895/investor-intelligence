@@ -48,6 +48,9 @@ REASONS = (
 WATERMARK = re.compile(rb'bazadebezolkohpepadr="([0-9]+)"')
 SPACE = re.compile("[\\s\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]+")
 HIDDEN_TAGS = ("ix:header", "script", "style", "head")
+HTML_UNREADABLE = "HTML marked section or declaration not readable"
+PLAIN_HTML = "not an inline XBRL document"
+IXBRL_MARKUP = re.compile(rb"inlinexbrl|<(?:[^\s<>/!?:=\"']+:)?non(?:Fraction|Numeric)\b", re.I)
 # EDGAR serves every document with this one injected fragment (bot-detection watermark and script); it is the only
 # markup removed before the inline XBRL is read as XML (the watermark digits are already zeroed by canonical_bytes).
 EDGAR_INJECTION = re.compile(rb'<script >bazadebezolkohpepadr="[0-9]+"</script><script type="text/javascript" '
@@ -337,6 +340,10 @@ def parse_ixbrl(canonical: bytes) -> dict[str, Any]:
                 out["contexts"][cid] = _context_shape(item)
     except ET.ParseError as error:
         out["unsupported"].append(f"not well-formed XML: {error}")
+    except (ValueError, LookupError) as error:
+        if isinstance(error, (KeyError, IndexError)):
+            raise
+        raise _block("INPUT_MALFORMED", type(error).__name__) from None
     return out
 
 
@@ -372,17 +379,26 @@ def _context_shape(item: Any) -> Context:
                    has_segment=any(e.tag in (XBRLI + "segment", XBRLI + "scenario") for e in item.iter()))
 
 
+def _feed_html(parser, canonical: bytes) -> None:
+    try:
+        text = canonical.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise _block("CANONICALIZATION_FAILED", f"not UTF-8 at byte {error.start}") from error
+    try:
+        parser.feed(text)
+        parser.close()
+    except AssertionError:
+        raise _block("UNSUPPORTED_TEMPLATE", HTML_UNREADABLE) from None
+    except (ValueError, IndexError) as error:
+        raise _block("INPUT_MALFORMED", type(error).__name__) from None
+
+
 def parse_document(raw: bytes) -> Document:
     if len(raw) > MAX_DOCUMENT_BYTES:
         raise _block("CAPTURE_LIMIT", "document over 16 MiB")
     canonical = canonical_bytes(raw)
-    try:
-        html_text = canonical.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise _block("CANONICALIZATION_FAILED", f"not UTF-8 at byte {error.start}") from error
     parser = _Parser()
-    parser.feed(html_text)
-    parser.close()
+    _feed_html(parser, canonical)
     parser._flush()
     offsets: list[tuple[int, int]] = []
     position = 0
@@ -407,7 +423,7 @@ def parse_document(raw: bytes) -> Document:
         doc = Document(text=text, blocks=offsets, tables=tables, facts=x["facts"], contexts=x["contexts"], cover=x["cover"],
                        units=x["units"], namespaces=x["namespaces"], unsupported=x["unsupported"])
     else:
-        doc = Document(text=text, blocks=offsets, tables=tables, unsupported=["not an inline XBRL document"])
+        doc = Document(text=text, blocks=offsets, tables=tables, unsupported=[PLAIN_HTML])
     doc.canonical_sha256 = sha256(text.encode("utf-8"))
     return doc
 
@@ -824,7 +840,7 @@ def parse_submissions(raw: bytes, cik: int, *, foreign_items_absence: bool = Fal
         # Only the foreign 6-K adapter may represent an actually absent items
         # column as no items. Never manufacture 2.02 or change A1's strict feed.
         columns.append([""] * len(columns[0]) if foreign_items_absence and "items" not in recent else recent["items"])
-    except (UnicodeDecodeError, ValueError, KeyError, TypeError):
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
         raise _block("EVENT_UNRESOLVED", "submissions feed shape") from None
     if not all(isinstance(c, list) and len(c) == len(columns[0]) for c in columns):
         raise _block("EVENT_UNRESOLVED", "submissions feed columns")
@@ -841,7 +857,7 @@ def parse_submissions(raw: bytes, cik: int, *, foreign_items_absence: bool = Fal
 def parse_index(raw: bytes) -> list[str]:
     try:
         names = [item["name"] for item in json.loads(raw.decode("utf-8"))["directory"]["item"]]
-    except (UnicodeDecodeError, ValueError, KeyError, TypeError):
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
         raise _block("EVENT_UNRESOLVED", "accession index shape") from None
     if not all(isinstance(n, str) for n in names) or len(set(names)) != len(names):
         raise _block("EVENT_UNRESOLVED", "accession index names")
@@ -1345,8 +1361,7 @@ def nbis_document(raw):
     if type(raw) is not bytes or len(raw) > MAX_DOCUMENT_BYTES:
         raise _block("CAPTURE_LIMIT", "NBIS document bytes")
     grid = _NbisGrid()
-    grid.feed(canonical_bytes(raw).decode("utf-8"))
-    grid.close()
+    _feed_html(grid, canonical_bytes(raw))
     if grid.stack or grid.hidden:
         raise _block("UNSUPPORTED_TEMPLATE", "unclosed NBIS document")
     return parse_document(raw), grid.tables
@@ -1604,7 +1619,7 @@ def nbis_difference(longer, shorter, direct, operation):
                        "unit_multiplier": 1000000, "scope": "COMPANY", "accounting_basis": "GAAP", "precision": "0.1"}}
 
 
-def nbis_tagged_reconciliation(doc, operand, cik):
+def nbis_tagged_reconciliation(doc, operand, cik, has_ixbrl_markup: bool):
     """Comparable facts only; absence is permitted in THIS foreign table dialect.
 
     When a comparable US-GAAP concept/period exists, use the original namespace,
@@ -1612,6 +1627,8 @@ def nbis_tagged_reconciliation(doc, operand, cik):
     corresponds to [display-0.05M, display+0.05M), never a percentage tolerance.
     """
     concepts = ("us-gaap:Revenues", "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax")
+    if doc.unsupported == [PLAIN_HTML] and not has_ixbrl_markup:
+        return {"present": False, "policy": "FOREIGN_TABLE_TAGGED_ABSENCE_V1"}
     doc.check_xbrl_structure()
     comparable = []
     for fact in doc.facts:
@@ -1934,6 +1951,11 @@ class _NbisLinks(_NbisGrid):
 def _nbis_package_links(raw, base):
     if type(raw) is not bytes or len(raw) > MAX_DOCUMENT_BYTES or not isinstance(base, str) or len(base) > 400:
         raise _block("CAPTURE_LIMIT", "NBIS linked document")
+    # Check the original canonical bytes so planner and builder offsets agree.
+    try:
+        canonical_bytes(raw).decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise _block("CANONICALIZATION_FAILED", f"not UTF-8 at byte {error.start}") from error
     # The ORIGINAL exact EDGAR administrative injection is the only executable
     # fragment excluded from this inspectability preflight. Source/capture hashes
     # and the financial normalizer remain over the untouched original bytes.
@@ -1941,8 +1963,7 @@ def _nbis_package_links(raw, base):
     if re.search(rb"\b(?:url\s*\(|content\s*:)", inspectable, re.I):
         raise _block("UNSUPPORTED_TEMPLATE", "NBIS opaque CSS-generated/media content")
     reader = _NbisLinks(base)
-    reader.feed(canonical_bytes(inspectable).decode("utf-8"))
-    reader.close()
+    _feed_html(reader, canonical_bytes(inspectable))
     if reader.stack or reader.hidden:
         raise _block("UNSUPPORTED_TEMPLATE", "NBIS unclosed linked document")
     return reader.links
@@ -2091,11 +2112,15 @@ def _build_nbis(profile, predecessor, event, captures, verified_at):
     # Calendar carries every parsed source operand used below, not period-only
     # identities collapsing multiple original documents. Deduplicate FULL facts.
     tagged_by_identity = {}
+    markup_by_capture = {}
     for operand in calendar["proofs"]:
         identity = canonical_json(operand)
         if identity not in tagged_by_identity:
+            key = operand["capture"]
+            if key not in markup_by_capture:
+                markup_by_capture[key] = bool(IXBRL_MARKUP.search(decoded[key][0]["raw"]))
             tagged_by_identity[identity] = {"operand": dict(operand), "tagged": nbis_tagged_reconciliation(
-                decoded[operand["capture"]][1], operand, cik)}
+                decoded[key][1], operand, cik, markup_by_capture[key])}
     calendar["tagged_proofs"] = list(tagged_by_identity.values())
     aq, afy = anchor_day.month // 3, anchor_day.year
     trailing = []

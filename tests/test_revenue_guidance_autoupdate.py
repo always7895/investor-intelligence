@@ -34,6 +34,7 @@ import revenue_guidance_auto_verify as verify  # noqa: E402
 import revenue_guidance_autoupdate as updater  # noqa: E402
 import revenue_guidance_overlay as overlay  # noqa: E402
 import revenue_guidance_release_check as checker  # noqa: E402
+from tests import nbis_synthetic_sources as f  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "revenue-guidance-autoupdate"
 PROFILES = ROOT / "config" / "revenue-guidance-extraction-profiles-v1.json"
@@ -645,6 +646,78 @@ class VerifierTests(unittest.TestCase):
         self.assertNotEqual(raw, old)
         caps[key] = dict(caps[key], raw=raw, bytes=len(raw), raw_sha256=verify.sha256(raw), sha256=verify.sha256(verify.canonical_bytes(raw)))
         return event, caps
+
+    def boundary_row(self, label, fn, expected):
+        actual = f.outcome_of(fn)
+        f.observe_boundary(label, actual)
+        with self.subTest(row=label):
+            self.assertEqual(actual, expected)
+
+    def boundary_refusal(self, label, event, reason, detail):
+        self.boundary_row(label, lambda: self.build("NVDA", event),
+                          ("RESULT", {"outcome": "BLOCKED", "reason": reason, "detail": detail,
+                                      "record": None, "decisions": []}))
+
+    def test_boundary_marked_capture_roles(self):
+        from html.parser import HTMLParser
+        self.assertEqual(sys.version_info[:3], (3, 12, 10))
+        calendar = event_for("NVDA", FILED["NVDA"])[0]["calendar"]
+        roles = [("exhibit", "exhibit"), ("package", "package:q2fy27cfocommentary.htm"),
+                 ("10q", self.latest_10q("NVDA")), ("calendar", calendar),
+                 ("ir", "ir_copy"), ("wire", "wire_copy")]
+        for marker, payload in (("bogus", b"<![bogus["), ("endif", b"<![ endif]>")):
+            with self.assertRaises(AssertionError):
+                HTMLParser().feed(payload.decode("ascii"))
+            for role, key in roles:
+                with self.subTest(marker=marker, role=role):
+                    event = self.with_capture("NVDA", key, lambda raw: f.insert_before_body(self, raw, payload))
+                    self.boundary_refusal("a1.capture." + role + "." + marker, event,
+                                          "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE)
+
+    def test_boundary_encoding_and_plain_fence(self):
+        key = self.latest_10q("NVDA")
+        for encoding, name in ((b"x-synthetic-unknown", "LookupError"), (b"Shift_JIS", "ValueError")):
+            with self.subTest(encoding=encoding):
+                def mutate(raw):
+                    self.assertEqual(raw.count(b"encoding='ASCII'"), 1)
+                    return raw.replace(b"encoding='ASCII'", b"encoding='" + encoding + b"'", 1)
+                self.boundary_refusal("a1.capture.encoding." + name, self.with_capture("NVDA", key, mutate),
+                                      "INPUT_MALFORMED", name)
+        raw = release("NVDA")
+        self.boundary_refusal("a1.capture.non-utf8", self.with_capture("NVDA", "exhibit", lambda body: body + b"\xff"),
+                              "CANONICALIZATION_FAILED", "not UTF-8 at byte " + str(len(raw)))
+        def plain(body):
+            old = b"http://www.xbrl.org/2013/inlineXBRL"
+            self.assertEqual(body.count(old), 1)
+            return body.replace(old, b"urn:synthetic:not-inline", 1)
+        self.boundary_refusal("a1.capture.plain-10q", self.with_capture("NVDA", key, plain),
+                              "UNSUPPORTED_TEMPLATE", f.PLAIN_HTML)
+
+    def test_boundary_accepted_capture_invariance(self):
+        def summary(result):
+            claims = result["record"]["claims"] if result["record"] is not None else []
+            return {"outcome": result["outcome"], "reason": result["reason"], "detail": result["detail"],
+                    "claims": [(c["passage"], c["locator"]) for c in claims]}
+        nominal = summary(self.build("NVDA"))
+        self.assertEqual((nominal["outcome"], nominal["reason"], nominal["detail"]), ("VERIFIED", None, ""))
+        self.assertTrue(nominal["claims"])
+        for key in ("exhibit", "ir_copy", "wire_copy", self.latest_10q("NVDA")):
+            with self.subTest(key=key):
+                payload = b"<![CDATA[synthetic]]>"
+                if key != self.latest_10q("NVDA"):
+                    payload = b"<![if !supportLists]><![endif]>" + payload
+                event = self.with_capture("NVDA", key, lambda raw: f.insert_before_body(self, raw, payload))
+                self.boundary_row("a1.capture.accepted." + key, lambda: summary(self.build("NVDA", event)),
+                                  ("RESULT", nominal))
+
+    def test_boundary_json_builder(self):
+        rows = [("submissions", b"[" * 5000 + b"0" + b"]" * 5000, "nested", "submissions feed shape"),
+                ("index", b"[" * 5000 + b"0" + b"]" * 5000, "nested", "accession index shape"),
+                ("submissions", b'{"cik":1e400}', "overflow", "submissions feed shape")]
+        for key, raw, name, detail in rows:
+            with self.subTest(key=key, row=name):
+                event = self.with_capture("NVDA", key, lambda body: raw)
+                self.boundary_refusal("a1.json.builder." + key + "." + name, event, "EVENT_UNRESOLVED", detail)
 
     def test_nominal(self):
         for sym in ("NVDA", "MU"):
@@ -1340,6 +1413,125 @@ class B0Tests(unittest.TestCase):
     def run_with(self, transport, instant):
         return updater.run(self.chain.state, transport, at(instant), PROFILES, self.chain.registry, self.chain.approval, self.chain.receipts)
 
+    def boundary_row(self, label, fn, expected):
+        actual = f.outcome_of(fn)
+        f.observe_boundary(label, actual)
+        with self.subTest(row=label):
+            self.assertEqual(actual, expected)
+
+    def marked_replay(self, slot, marker):
+        target = (exhibit_row("NVDA", "2026-02-25") if slot == "exhibit" else
+                  row_of("NVDA", "IR_RELEASE_PAGE", filed="2026-02-25"))["url"]
+        class MarkedReplay(CountingReplay):
+            def get(inner, url, profile, symbol):
+                raw, kind = super().get(url, profile, symbol)
+                return (raw + marker if symbol == "NVDA" and url == target else raw), kind
+        return MarkedReplay("2026-02-26")
+
+    def marked_settlement(self, slot, marker):
+        from html.parser import HTMLParser
+        self.assertEqual(sys.version_info[:3], (3, 12, 10))
+        with self.assertRaises(AssertionError):
+            HTMLParser().feed(marker.decode("ascii"))
+        instant, later = "2026-02-26T12:00:00Z", "2026-02-26T13:00:00Z"
+        acc = "0001045810-26-000019"
+        self.chain.check(instant)
+        transport = self.marked_replay(slot, marker)
+        def invoke():
+            summary = self.run_with(transport, instant)
+            generation = overlay.generation_at(self.chain.state, instant)
+            entry = generation["issuers"]["NVDA"]
+            attempt = overlay.last_attempt(self.chain.state, entry)
+            resolved = self.chain.resolve(instant)["NVDA"]
+            clean = CountingReplay("2026-02-26")
+            second = self.run_with(clean, later)
+            return {"status": summary["status"], "generation_id_present": "generation_id" in summary,
+                    "nvda": summary["issuers"].get("NVDA"), "mu_outcome": summary["issuers"].get("MU", {}).get("outcome"),
+                    "detail": attempt["detail"], "exhibit_captured": "exhibit" in attempt["captures"],
+                    "settled": acc in {r["key"] for r in entry["index"]["settled"]},
+                    "resolved": (resolved["mode"], resolved["reason"]), "next_nvda": second["issuers"].get("NVDA"),
+                    "next_nvda_archive_requests": [u for u in clean.calls if u.startswith("https://www.sec.gov/Archives/") and "/1045810/" in u]}
+        self.boundary_row("b0.marked." + slot, invoke, ("RESULT", {
+            "status": "OK", "generation_id_present": True,
+            "nvda": {"action": "ATTEMPTED", "event": acc, "outcome": "BLOCKED", "reason": "UNSUPPORTED_TEMPLATE"},
+            "mu_outcome": "VERIFIED", "detail": f.HTML_UNREADABLE, "exhibit_captured": True, "settled": True,
+            "resolved": ("BLOCKED", "UNSUPPORTED_TEMPLATE"), "next_nvda": {"action": "SETTLED", "outcome": "BLOCKED"},
+            "next_nvda_archive_requests": []}))
+
+    def test_boundary_exhibit_settles_and_mu_continues(self):
+        self.marked_settlement("exhibit", b"<![bogus[")
+
+    def test_boundary_ir_settles_and_mu_continues(self):
+        self.marked_settlement("ir", b"<![ endif]>")
+
+    def test_boundary_main_returns_zero(self):
+        from html.parser import HTMLParser
+        marker = b"<![bogus["
+        with self.assertRaises(AssertionError):
+            HTMLParser().feed(marker.decode("ascii"))
+        instant = "2026-02-26T12:00:00Z"
+        self.chain.check(instant)
+        transport = self.marked_replay("exhibit", marker)
+        def invoke():
+            out = io.StringIO()
+            with mock.patch.object(updater, "ReplayTransport", lambda directory: transport), contextlib.redirect_stdout(out):
+                code = updater.main(["--state-root", str(self.chain.state), "--replay", str(FIXTURES),
+                                     "--as-of", instant, "--registry", str(self.chain.registry),
+                                     "--approval", str(self.chain.approval), "--receipts", str(self.chain.receipts),
+                                     "--profiles", str(PROFILES)])
+            summary = json.loads(out.getvalue())
+            return {"exit": code, "status": summary["status"], "error": summary.get("error"),
+                    "nvda": summary.get("issuers", {}).get("NVDA")}
+        self.boundary_row("b0.main", invoke, ("RESULT", {"exit": 0, "status": "OK", "error": None,
+            "nvda": {"action": "ATTEMPTED", "event": "0001045810-26-000019", "outcome": "BLOCKED", "reason": "UNSUPPORTED_TEMPLATE"}}))
+
+    def test_boundary_transport_assertion_propagates(self):
+        instant = "2026-02-26T12:00:00Z"
+        self.chain.check(instant)
+        class DefectReplay(CountingReplay):
+            def get(inner, url, profile, symbol):
+                if symbol == "NVDA":
+                    raise AssertionError("synthetic transport defect")
+                return super().get(url, profile, symbol)
+        self.boundary_row("b0.transport", lambda: self.run_with(DefectReplay("2026-02-26"), instant),
+                          ("RAISED", "AssertionError", "synthetic transport defect"))
+
+    def test_boundary_json_planner_and_run(self):
+        nested = b"[" * 5000 + b"0" + b"]" * 5000
+        cases = [("submissions", nested, "nested", "submissions feed shape"),
+                 ("index", nested, "nested", "accession index shape"),
+                 ("submissions", b'{"cik":1e400}', "overflow", "submissions feed shape")]
+        instant = "2026-02-26T12:00:00Z"
+        acc = "0001045810-26-000019"
+        for key, raw, name, detail in cases:
+            with self.subTest(key=key, row=name), tempfile.TemporaryDirectory() as tmp:
+                chain = Chain(Path(tmp))
+                target = ("https://data.sec.gov/submissions/CIK0001045810.json" if key == "submissions" else
+                          "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000019/index.json")
+                class ShapeReplay(CountingReplay):
+                    def get(inner, url, profile, symbol):
+                        body, kind = super().get(url, profile, symbol)
+                        return (raw if symbol == "NVDA" and url == target else body), kind
+                lead = {"accession": acc, "filed": "2026-02-25", "ir_item": None, "wire_item": None, "later_documents": []}
+                self.boundary_row("b0.json.planner." + key + "." + name,
+                    lambda: updater.plan_event(ShapeReplay("2026-02-26"), chain.state, PROFILES_BY_SYMBOL["NVDA"],
+                                                lead, instant[:10], at(instant), {"bytes": 0, "store": 0}),
+                    ("BLOCKED", "BLOCKED", "EVENT_UNRESOLVED", detail))
+                # A separate owned chain keeps the direct planner's objects out of run accounting.
+                with tempfile.TemporaryDirectory() as run_tmp:
+                    run_chain = Chain(Path(run_tmp))
+                    run_chain.check(instant)
+                    def invoke():
+                        summary = updater.run(run_chain.state, ShapeReplay("2026-02-26"), at(instant), PROFILES,
+                                              run_chain.registry, run_chain.approval, run_chain.receipts)
+                        entry = overlay.generation_at(run_chain.state, instant)["issuers"]["NVDA"]
+                        attempt = overlay.last_attempt(run_chain.state, entry)
+                        return {"status": summary["status"], "nvda": summary["issuers"].get("NVDA"),
+                                "mu_outcome": summary["issuers"].get("MU", {}).get("outcome"), "detail": attempt["detail"]}
+                    self.boundary_row("b0.json.run." + key + "." + name, invoke, ("RESULT", {
+                        "status": "OK", "nvda": {"action": "ATTEMPTED", "event": acc, "outcome": "BLOCKED", "reason": "EVENT_UNRESOLVED"},
+                        "mu_outcome": "VERIFIED", "detail": detail}))
+
     # shared reference
     def test_reference_is_shared_by_the_whole_active_claim_set(self):
         registry = json.loads((ROOT / "config" / "revenue-guidance-v1.json").read_text(encoding="utf-8"))
@@ -1837,6 +2029,91 @@ class FixtureInventoryTests(unittest.TestCase):
         for sym, filed in (("NVDA", "2025-11-19"), ("MU", "2025-09-23")):
             text = verify.parse_document(fixture_bytes(exhibit_row(sym, filed))).text
             self.assertIn(base[sym]["claims"][0]["passage"], text)
+
+
+class ParserBoundaryTests(unittest.TestCase):
+    """CPython 3.12.10 marked-section semantics are explicit, never skipped."""
+    def row(self, label, fn, expected):
+        actual = f.outcome_of(fn)
+        f.observe_boundary(label, actual)
+        with self.subTest(row=label):
+            self.assertEqual(actual, expected)
+
+    def test_literal_constants(self):
+        self.row("constants", lambda: (getattr(verify, "HTML_UNREADABLE", None), getattr(verify, "PLAIN_HTML", None)),
+                 ("RESULT", ("HTML marked section or declaration not readable", "not an inline XBRL document")))
+
+    def test_direct_document_rows(self):
+        from html.parser import HTMLParser
+        self.assertEqual(sys.version_info[:3], (3, 12, 10))
+        self.assertEqual(sys.get_int_max_str_digits(), 4300)
+        for name, raw, reason, detail in [
+            ("bogus", b"<![bogus[", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("endif", b"<![ endif]>", "UNSUPPORTED_TEMPLATE", f.HTML_UNREADABLE),
+            ("non-utf8", b"<p>x</p>\xff", "CANONICALIZATION_FAILED", "not UTF-8 at byte 8"),
+            ("charref", b"<p>&#" + b"1" * 4301 + b";</p>", "INPUT_MALFORMED", "ValueError"),
+            ("table", b"<table><tr><td>x</table><table>", "INPUT_MALFORMED", "IndexError"),
+        ]:
+            with self.subTest(row=name):
+                if name in ("bogus", "endif"):
+                    with self.assertRaises(AssertionError):
+                        HTMLParser().feed(raw.decode("ascii"))
+                self.row("document." + name, lambda: verify.parse_document(raw),
+                         ("BLOCKED", "BLOCKED", reason, detail))
+
+    def test_accepted_marked_sections(self):
+        raw = b"<p>a</p><![if !supportLists]><![endif]><![CDATA[synthetic]]><p>b</p>"
+        self.row("document.accepted", lambda: verify.parse_document(raw).text, ("RESULT", "a b"))
+
+    def test_parser_feed_close_stubs(self):
+        for method in ("feed", "close"):
+            for error, expected in f.parser_stubs():
+                with self.subTest(method=method, error=type(error).__name__):
+                    seen = []
+                    def invoke():
+                        try:
+                            return verify.parse_document(b"<p>x</p>")
+                        except verify.Blocked as caught:
+                            seen.append(caught)
+                            raise
+                    with mock.patch.object(verify._Parser, method, side_effect=error):
+                        self.row("document.stub." + method + "." + type(error).__name__, invoke, expected)
+                    if isinstance(error, verify.Blocked):
+                        self.assertIs(seen[0], error)
+
+    def test_xml_encoding_rows(self):
+        base = b'<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"><body/></html>'
+        for name, enc, error in [("unknown", b"x-synthetic-unknown", "LookupError"),
+                                 ("multibyte", b"Shift_JIS", "ValueError"), ("ascii", b"ASCII", None)]:
+            raw = b'<?xml version="1.0" encoding="' + enc + b'"?>' + base
+            for site in ("parse_ixbrl", "parse_document"):
+                with self.subTest(encoding=name, site=site):
+                    def invoke():
+                        value = getattr(verify, site)(raw)
+                        return value["unsupported"] if site == "parse_ixbrl" else value.unsupported
+                    expected = ("BLOCKED", "BLOCKED", "INPUT_MALFORMED", error) if error else ("RESULT", [])
+                    self.row("xml." + site + "." + name, invoke, expected)
+        for error in (KeyError("synthetic"), IndexError("synthetic")):
+            with self.subTest(stub=type(error).__name__), mock.patch.object(verify.ET, "iterparse", side_effect=error):
+                detail = "'synthetic'" if isinstance(error, KeyError) else "synthetic"
+                self.row("xml.stub." + type(error).__name__, lambda: verify.parse_ixbrl(base),
+                         ("RAISED", type(error).__name__, detail))
+
+    def test_json_shape_rows(self):
+        nested = b"[" * 5000 + b"0" + b"]" * 5000
+        sites = [("submissions", lambda raw: verify.parse_submissions(raw, 1045810), "submissions feed shape"),
+                 ("index", verify.parse_index, "accession index shape")]
+        for name, parse, detail in sites:
+            self.row("json." + name + ".nested", lambda: parse(nested),
+                     ("BLOCKED", "BLOCKED", "EVENT_UNRESOLVED", detail))
+            for cls in (RecursionError, OverflowError):
+                with self.subTest(site=name, error=cls.__name__), mock.patch.object(verify.json, "loads", side_effect=cls("synthetic")):
+                    self.row("json." + name + ".stub." + cls.__name__, lambda: parse(b"{}"),
+                             ("BLOCKED", "BLOCKED", "EVENT_UNRESOLVED", detail))
+        for token in (b"1e400", b"Infinity"):
+            self.row("json.submissions.cik." + token.decode("ascii"),
+                     lambda: verify.parse_submissions(b'{"cik":' + token + b"}", 1045810),
+                     ("BLOCKED", "BLOCKED", "EVENT_UNRESOLVED", "submissions feed shape"))
 
 
 if __name__ == "__main__":
