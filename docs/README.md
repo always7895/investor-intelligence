@@ -41,6 +41,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界規範（零錄取、時鐘分離、未驗證名稱相似群組）
 - [COMPANY_EVIDENCE_CANDIDATES](COMPANY_EVIDENCE_CANDIDATES.md) — 候選文本與引文位置驗證；不代表來源權威、獨立佐證或排名准入
 - [COMPANY_CLAIM_ADMISSION_BRIDGE](COMPANY_CLAIM_ADMISSION_BRIDGE.md) — 類型化公司主張准入橋接規範；嚴格區分候選文本比對、來源權威與四核心要素經濟許可
+- [PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT](PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT.md) — design only: pinned wording/generation/review and publication refusal; no model activation
 - [CARB_TYPED_SECTION_PARSER](CARB_TYPED_SECTION_PARSER.md) — CARB 氣體絕緣開關設備 SF6 逐步淘汰法規段落類型化解析規範與邊界（非准入、零權利）
 - [PROVIDER_RUNTIME_HOOK](PROVIDER_RUNTIME_HOOK.md) — 提供者執行時期掛鉤與信任邊界規範（工廠單次呼叫、分動作細粒度權利、未知嚴格暫緩、零公司准入）
 - [ECB_REFERENCE_SOURCE_ADMISSION](ECB_REFERENCE_SOURCE_ADMISSION.md)
@@ -66,6 +67,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — data-driven macro industry rotation from BLS PPI and SEC XBRL, refreshed daily
 - [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck-explosion Top20 (Serenity/Leopold leads, filings and market data) and the Leopold-led industry ranking
 - [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — machine renewal of revenue guidance from official filings after each results release (Part A slice 1, shadow only)
+- [F05B_PDF_EXTRACTION_CONTRACT](F05B_PDF_EXTRACTION_CONTRACT.md) — design only: parser artifact gaps, isolation/resources and raw-bound spans; no dependency adoption
 - [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — single-writer Top20: hourly seal of the validated LKG bundle, report-age contract, refresh after the pointer, rollback
 - [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — no single-source dependency: product-by-source matrix, rejected sources and the remediation order
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
