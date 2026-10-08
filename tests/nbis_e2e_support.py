@@ -124,6 +124,10 @@ class Chain:
         record = item.usable_record
         result = f.guidance.build_forward_quarters(
             "NBIS", record, CUTOFF, effective_inputs=self.snapshot)
-        return (result["status"], result["reason"], result["f1"], result["f2"],
-                result["f3"], result["f4"], len(result["forward_quarters"]),
-                record["fy_reconciliation"]["ytd_revenue"])
+        return (result["status"], result["reason"],
+                (type(result["f1"]).__name__, result["f1"]),
+                (type(result["f2"]).__name__, result["f2"]),
+                (type(result["f3"]).__name__, result["f3"]),
+                (type(result["f4"]).__name__, result["f4"]), len(result["forward_quarters"]),
+                (type(record["fy_reconciliation"]["ytd_revenue"]).__name__,
+                 record["fy_reconciliation"]["ytd_revenue"]))

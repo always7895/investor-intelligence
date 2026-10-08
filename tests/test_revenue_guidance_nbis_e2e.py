@@ -18,7 +18,7 @@ class NbisEndToEnd(unittest.TestCase):
                 chains.append(chain)
                 item = chain.produce().issuer("NBIS")
                 return (item.disposition, item.admission_kind,
-                        item.receipt_admission["decision"])
+                        (item.receipt_admission or {"decision": "ABSENT"})["decision"])
             actual = f.outcome_of(admission)
             f.observe_boundary("N3-1.a", actual)
             self.assertEqual(actual, ("RESULT", ("AUTO_VERIFIED", "MACHINE_REPLAY", None)))
@@ -28,8 +28,9 @@ class NbisEndToEnd(unittest.TestCase):
             self.assertEqual(actual, ("RESULT", "REVIEW_REQUIRED"))
             actual = f.outcome_of(chain.forward)
             f.observe_boundary("N3-1.c", actual)
-            self.assertEqual(actual, ("RESULT", ("AVAILABLE", None, 1850000000.0, 1850000000.0,
-                                                1850000000.0, 1850000000.0, 4, 0)))
+            self.assertEqual(actual, ("RESULT", ("AVAILABLE", None,
+                ("float", 1850000000.0), ("float", 1850000000.0),
+                ("float", 1850000000.0), ("float", 1850000000.0), 4, ("float", 0))))
 
 
     def test_n3_2_human_zero_ytd_refused(self):
@@ -62,11 +63,12 @@ class NbisEndToEnd(unittest.TestCase):
                 item = snapshot.issuer("NBIS")
                 record = item.usable_record
                 controls.append((record, snapshot))
-                return (item.disposition, item.admission_kind, item.usable_record is not None,
-                        record is item.usable_record)
+                return (item.disposition, item.admission_kind,
+                        item.usable_record == json.loads(
+                            (Path(tmp) / "human" / "registry.json").read_bytes())["issuers"][0])
             actual = f.outcome_of(control)
             f.observe_boundary("N3-2c.precondition", actual)
-            self.assertEqual(actual, ("RESULT", ("CURATED", "HUMAN_PROFILE", True, True)))
+            self.assertEqual(actual, ("RESULT", ("CURATED", "HUMAN_PROFILE", True)))
             record, snapshot = controls[0]
             actual = f.outcome_of(lambda: f.guidance.build_forward_quarters(
                 "NBIS", record, h.CUTOFF, effective_inputs=snapshot))
@@ -125,16 +127,17 @@ class NbisEndToEnd(unittest.TestCase):
                 chain.extra_ir = True
                 chain.check(h.T1)
                 item = chain.load(h.CUTOFF_TEXT).issuer("NBIS")
-                return item.disposition, item.receipt_admission["decision"] is None
+                return item.disposition, (item.receipt_admission or {"decision": "ABSENT"})["decision"]
             actual = f.outcome_of(invoke)
             f.observe_boundary("N3-6", actual)
-            self.assertEqual(actual, ("RESULT", ("SUSPENDED", False)))
+            self.assertEqual(actual, ("RESULT", ("SUSPENDED", "RECEIPT_REVIEW_REQUIRED")))
 
     def test_n3_7_temp_profile_changes_only_enabled_symbols(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-g4-profile-") as tmp:
             def invoke():
                 chain = h.Chain(Path(tmp))
-                tracked = f.tracked()
+                tracked = json.loads((Path(__file__).resolve().parents[1]
+                    / "config/revenue-guidance-extraction-profiles-v1.json").read_bytes())
                 temporary = json.loads(chain.profiles.read_bytes())
                 temporary_enabled = temporary.pop("enabled_symbols")
                 tracked_enabled = tracked.pop("enabled_symbols")
