@@ -20,10 +20,21 @@ IDENTITY_VARIANTS = dict(claim_id='other', metric='other', unit='other', period=
                          period_type='OBSERVED', product_or_spec='OTHER')
 
 
-def binding_run(field=None, reverse=False, nonsynthetic=False):
+def binding_run(field=None, reverse=False, nonsynthetic=False, equivalent=None):
     sec, ir = (copy.deepcopy(x) for x in binding._build_test_four_factor_records('SYNB08C'))
     if field:
         ir[0]['factor_binding'][field] = IDENTITY_VARIANTS[field]
+    if equivalent:
+        key, mode = equivalent
+        declaration = ir[0]['factor_binding']
+        if mode == 'absent':
+            declaration.pop(key)
+        elif mode == 'padded':
+            declaration[key] = '  ' + declaration[key] + '  '
+        elif mode == 'lower':
+            declaration[key] = declaration[key].lower()
+        else:
+            raise ValueError('unknown synthetic equivalence mode')
     sources = [binding.SRC_REGULATOR, binding.SRC_OFFICIAL]
     if reverse:
         sources.reverse()

@@ -31,7 +31,7 @@ def claim_lineage_qualified(
     # Same policy key as the builder's source-family threshold; no silent default.
     minimum = policy.get("minimum_claim_source_families_per_ticker")
     skew = policy.get("clock_skew_tolerance_minutes")
-    if (type(minimum) is not int or minimum < 1
+    if (type(minimum) is not int or minimum < 2
             or type(skew) is not int or skew < 0
             or validity_margin < timedelta(0)):
         return False

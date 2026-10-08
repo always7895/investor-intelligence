@@ -39,12 +39,23 @@ class IdentityGuards(unittest.TestCase):
             self.assertEqual(candidate, before)
 
     def test_nonempty_graph_components_are_equivalent_in_all_three_copies(self):
-        # Exhaustive three-vertex labelled graphs; only valid nonempty string keys.
-        for groups in itertools.product(range(2), repeat=6):
-            rows = [{'independence_group': str(groups[i]), 'origin_group': str(groups[i + 3]),
-                     'content_sha256': str(i)} for i in range(3)]
+        # All five equality partitions of three vertices, independently for each edge kind.
+        partitions = ((0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (0, 1, 2))
+        fields = ('independence_group', 'origin_group', 'content_sha256')
+        for labels in itertools.product(partitions, repeat=3):
+            rows = [{field: str(labels[k][i]) for k, field in enumerate(fields)} for i in range(3)]
+            # Independent graph reachability oracle, not one production copy as the oracle.
+            remaining, expected = set(range(3)), 0
+            while remaining:
+                frontier = [remaining.pop()]
+                expected += 1
+                while frontier:
+                    vertex = frontier.pop()
+                    linked = {j for j in remaining if any(rows[vertex][key] == rows[j][key] for key in fields)}
+                    remaining -= linked
+                    frontier.extend(linked)
             for order in itertools.permutations(rows):
-                expected = f.observation._research_families(list(order))
+                self.assertEqual(f.observation._research_families(list(order)), expected)
                 self.assertEqual(bridge.compute_independent_lineages(order), expected)
                 self.assertEqual(f.observation.compute_independent_lineages(order), expected)
         # Publisher-only final link makes this chain one component, not two.

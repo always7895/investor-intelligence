@@ -26,6 +26,9 @@ class BindingIdentityTests(unittest.TestCase):
         self.assertEqual(len(run.company_factor_bindings), 4)
         result = f.admission_result(run)
         self.assertEqual(result['admission_tier'], 'UNADMITTED')
+        self.assertEqual(result['missing_core'], [])
+        for factor in ('dependency', 'scarcity', 'pricing', 'capture'):
+            self.assertTrue(result[factor + '_licensed'], factor)
         self.assertFalse(result['core_admitted'])
 
     def test_default_fixture_detection_is_test_only_not_a_runtime_claim(self):
@@ -47,6 +50,38 @@ class BindingIdentityTests(unittest.TestCase):
                 self.assertEqual(len(call.args), 3, name)
             found.add(name)
         self.assertEqual(found, expected)
+
+
+def equivalent_case(field, mode):
+    def test(self):
+        for reverse in (False, True):
+            with self.subTest(field=field, mode=mode, reverse=reverse):
+                control = f.binding_run(reverse=reverse)
+                run = f.binding_run(reverse=reverse, equivalent=(field, mode))
+                self.assertIsNotNone(run.binding_for_factor('SYNB08C', 'dependency'))
+                self.assertEqual(len(run.company_factor_bindings), 4)
+                def binding_bytes(value):
+                    return json.dumps([asdict(b) for b in value.company_factor_bindings],
+                                      sort_keys=True, separators=(',', ':')).encode('utf-8')
+                # Compare within the same source order: historical metadata is first-source based.
+                self.assertEqual(binding_bytes(run), binding_bytes(control))
+                result = f.admission_result(run)
+                self.assertEqual(result, f.admission_result(control))
+                self.assertEqual(result['missing_core'], [])
+                self.assertEqual(result['admission_tier'], 'TEST_ONLY_NONRUNTIME')
+                self.assertTrue(result['core_admitted'])
+                for factor in ('dependency', 'scarcity', 'pricing', 'capture'):
+                    self.assertTrue(result[factor + '_licensed'], factor)
+    return test
+
+
+for _field in f.IDENTITY_VARIANTS:
+    for _mode in ('absent', 'padded'):
+        setattr(BindingIdentityTests, 'test_equivalent_' + _field + '_' + _mode,
+                equivalent_case(_field, _mode))
+for _field in ('period_type', 'product_or_spec'):
+    setattr(BindingIdentityTests, 'test_equivalent_' + _field + '_lower',
+            equivalent_case(_field, 'lower'))
 
 
 def identity_case(field):

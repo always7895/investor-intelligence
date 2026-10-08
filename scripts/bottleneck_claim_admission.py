@@ -34,8 +34,13 @@ def reconcile_factor_authority(
 
     Delegates to company_claim_admission_bridge.bridge_reconcile_factors while preserving
     backwards-compatible factor authority interface.
-    Eliminates trust bypass: default fixture_mode is strictly False unless the caller
-    is executing within an authoritative synthetic test fixture suite (e.g. test_top20_bottleneck_takeover).
+    The wrapper defaults fixture_mode to None and detects data shape, not caller identity:
+    observations must be nonempty with every canonical_url host ending in .example,
+    and every claim whose status is exactly SUPPORTED must declare at least two
+    independent_evidence_families. Other claim statuses are ignored by this check.
+    Otherwise, or with explicit False, the bridge requires an owned acquisition context;
+    without one it returns ADMISSION_DEFER. Auto-detected fixtures confer TEST_ONLY,
+    never runtime authority; the bridge independently checks observation lineages.
     """
     if fixture_mode is None:
         obs_list = candidate.get("source_observations") or []

@@ -1,6 +1,6 @@
 """Synthetic captured ranking/B7 caller gaps; no real provider bytes or publication."""
 import copy
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import unittest
 from unittest.mock import patch
@@ -20,7 +20,7 @@ def encoded(value):
 
 
 def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mismatch=False,
-             facts=None, korea_period='2026-06-30'):
+             facts=None, korea_period='2026-06-30', gross=None):
     days = old.daily('2024-01-02', '2026-09-25', lambda d: 10 + (d - datetime(2024, 1, 1).date()).days / 100)
     chart = {'chart': {'result': [{'meta': {'currency': 'USD'},
              'timestamp': [int(datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).timestamp()) for day, _ in days],
@@ -43,7 +43,8 @@ def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mism
     for i, symbol in enumerate(symbols):
         rows = []
         for kind, values in [('quarterlyTotalRevenue', revenues),
-                             ('quarterlyDilutedAverageShares', {} if no_shares else share_values)]:
+                             ('quarterlyDilutedAverageShares', {} if no_shares else share_values),
+                             *([('quarterlyGrossProfit', gross)] if gross is not None else [])]:
             rows.append({'meta': {'type': [kind]}, kind: [
                 {'asOfDate': day, 'reportedValue': {'raw': amount}} for day, amount in values.items()]})
         if mismatch:
@@ -71,6 +72,7 @@ class CapturedRankingTests(unittest.TestCase):
             if quarters == 4:
                 self.assertIsNone(row['fundamentals'])
             else:
+                self.assertIsNotNone(row['fundamentals'].get('shares_yoy'))
                 self.assertAlmostEqual(row['fundamentals']['shares_yoy'], .2)
                 self.assertEqual(row['fundamentals']['shares_basis'], 'DILUTED_WEIGHTED_AVERAGE')
                 self.assertEqual(row['score_parts']['penalty'], 4)
@@ -81,10 +83,14 @@ class CapturedRankingTests(unittest.TestCase):
             with self.subTest(quarters=quarters, mismatch=mismatch):
                 fund = rank(captured(quarters=quarters, mismatch=mismatch))['top'][0]['fundamentals']
                 self.assertEqual(fund['quarter_end'], '2026-06-30')
+                self.assertIsNotNone(fund.get('revenue_yoy'))
                 self.assertEqual(fund['revenue_yoy'], 2)
+                if quarters == 6:
+                    self.assertIsNotNone(fund.get('revenue_yoy_prev'))
                 self.assertEqual(fund['revenue_yoy_prev'], 4 if quarters == 6 else None)
                 self.assertEqual(fund['revenue_yoy_prev_basis'], basis)
                 self.assertEqual(fund.get('revenue_yoy_prev_reason'), reason)
+                self.assertIsNotNone(fund.get('shares_yoy'))
                 self.assertAlmostEqual(fund['shares_yoy'], .2)
                 if reason is None:
                     self.assertNotIn('revenue_yoy_prev_reason', fund)
@@ -96,13 +102,73 @@ class CapturedRankingTests(unittest.TestCase):
         for shares, expected in cases:
             with self.subTest(shares=shares):
                 fund = rank(captured(shares=shares))['top'][0]['fundamentals']
+                self.assertIsNotNone(fund.get('revenue_yoy'))
                 self.assertEqual(fund['revenue_yoy'], 2)
                 if expected is None:
                     self.assertIsNone(fund['shares_yoy'])
                     self.assertIsNone(fund['shares_basis'])
                 else:
+                    self.assertIsNotNone(fund.get('shares_yoy'))
                     self.assertAlmostEqual(fund['shares_yoy'], expected)
                     self.assertEqual(fund['shares_basis'], 'DILUTED_WEIGHTED_AVERAGE')
+
+    def test_captured_nearest_share_comparator_is_not_last_eligible(self):
+        values = {'2025-06-30': 100, '2025-07-15': 80, '2026-06-30': 120}
+        for reverse in (False, True):
+            shares = dict(reversed(list(values.items()))) if reverse else values
+            with self.subTest(reverse=reverse):
+                fund = rank(captured(shares=shares))['top'][0]['fundamentals']
+                self.assertIsNotNone(fund.get('shares_yoy'))
+                self.assertAlmostEqual(fund['shares_yoy'], .2)
+                self.assertEqual(fund['shares_basis'], 'DILUTED_WEIGHTED_AVERAGE')
+
+    def test_captured_share_window_includes_both_20_edges_not_21(self):
+        for offset in (-21, -20, 20, 21):
+            with self.subTest(offset=offset):
+                prior = (date(2025, 6, 30) + timedelta(days=offset)).isoformat()
+                shares = {prior: 100, '2026-06-30': 120}
+                fund = rank(captured(shares=shares))['top'][0]['fundamentals']
+                self.assertIsNotNone(fund.get('revenue'))
+                self.assertEqual(fund['revenue'], 180e6)
+                if abs(offset) == 20:
+                    self.assertIsNotNone(fund.get('shares_yoy'))
+                    self.assertAlmostEqual(fund['shares_yoy'], .2)
+                    self.assertEqual(fund['shares_basis'], 'DILUTED_WEIGHTED_AVERAGE')
+                else:
+                    self.assertIsNone(fund['shares_yoy'])
+                    self.assertIsNone(fund['shares_basis'])
+
+    def test_captured_gross_margin_and_revenue_parity(self):
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return NOW if tz else NOW.replace(tzinfo=None)
+        cases = [({'2025-06-30': 12e6, '2026-06-30': 90e6}, .5, .3),
+                 ({'2026-06-30': 90e6}, .5, None),
+                 ({'2025-06-30': 12e6}, None, None),
+                 ({'2025-06-30': 0, '2026-06-30': 0}, 0.0, 0.0)]
+        for gross, margin, change in cases:
+            with self.subTest(gross=gross), patch.object(engine, 'datetime', Clock), \
+                    patch.object(engine, 'utc_now', return_value=NOW), \
+                    patch('urllib.request.urlopen', side_effect=AssertionError('network forbidden')):
+                cap = rank(captured(symbols=('POET',), quarters=6, gross=gross))['top'][0]['fundamentals']
+                fixture = old.SharesDilutionTests()
+                statement = fixture._stmt({'2025-06-30': 100, '2026-06-30': 120})
+                statement.loc['Gross Profit'] = [gross.get(day.date().isoformat(), float('nan'))
+                                                 for day in statement.columns]
+                live_shape = fixture._yahoo(statement)['fundamentals']
+                self.assertIsNotNone(cap.get('revenue'))
+                self.assertEqual(cap['revenue'], 180e6)
+                for key, expected in (('gross_margin', margin), ('gross_margin_change', change)):
+                    if expected is None:
+                        self.assertIsNone(cap[key])
+                    else:
+                        self.assertIsNotNone(cap.get(key))
+                        self.assertAlmostEqual(cap[key], expected)
+                for key in ('gross_margin', 'gross_margin_change', 'revenue'):
+                    if cap[key] is not None:
+                        self.assertIsNotNone(live_shape.get(key), key)
+                    self.assertEqual(cap[key], live_shape[key], key)
 
     def test_parity_with_uncaptured_yahoo_producer(self):
         for quarters in (5, 6):
@@ -112,6 +178,9 @@ class CapturedRankingTests(unittest.TestCase):
                 live_shape = yahoo.YahooGapCallers().data('POET', quarters == 6)['fundamentals']
             for key in ('revenue_yoy', 'revenue_yoy_prev', 'revenue_yoy_prev_basis', 'revenue_yoy_prev_reason',
                         'shares_yoy', 'shares_basis', 'quarter_end'):
+                if key in ('revenue_yoy', 'shares_yoy') or (key == 'revenue_yoy_prev' and quarters == 6):
+                    self.assertIsNotNone(cap.get(key), key)
+                    self.assertIsNotNone(live_shape.get(key), key)
                 self.assertEqual(cap.get(key), live_shape.get(key), key)
 
 
@@ -163,6 +232,7 @@ class DilutedFallbackGaps(unittest.TestCase):
                 rows.reverse()
             fund = engine.sec_fundamentals('SYN', 1, facts)
             self.assertEqual(fund['shares_basis'], 'DILUTED_WEIGHTED_AVERAGE')
+            self.assertIsNotNone(fund.get('shares_yoy'))
             self.assertAlmostEqual(fund['shares_yoy'], 1.0)
 
     def test_missing_current_quarter_retains_but_refuses_ytd_and_annual(self):

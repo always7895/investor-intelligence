@@ -3,6 +3,7 @@ import copy
 import json
 import unittest
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 from tests import batch08b_fixtures as f
@@ -93,7 +94,7 @@ class ProducerIntegrationTests(unittest.TestCase):
                     self.assertTrue(all(row["serenity_factors"][name] == 0 for name in removed))
 
     def test_missing_or_invalid_policy_minimum_fails_closed_in_both_callers(self):
-        for value in (None, 0, -1, True, "2", 2.5, 3):
+        for value in (None, 0, 1, -1, True, "2", 2.5, 3):
             with self.subTest(value=value):
                 policy = f.builder._read_policy()
                 if value is None:
@@ -115,6 +116,36 @@ class ProducerIntegrationTests(unittest.TestCase):
         self.assertEqual(removed, [])
         self.assertEqual(result["mode"], "EVIDENCE_QUALIFIED")
         self.assertEqual(result["qualified_count"], 20)
+
+    def test_floor_two_matches_real_policy_validator_for_one_and_two_lineages(self):
+        for minimum in (1, 2):
+            for case in ('independent', 'origin'):
+                with self.subTest(minimum=minimum, case=case):
+                    policy = f.builder._read_policy()
+                    policy['minimum_claim_source_families_per_ticker'] = minimum
+                    original_read = Path.read_text
+                    def read(path, *args, **kwargs):
+                        if path == f.builder.FRESHNESS_POLICY_PATH:
+                            return json.dumps(policy)
+                        return original_read(path, *args, **kwargs)
+                    # Exercise the actual whole-policy validator, not a patched _read_policy.
+                    with mock.patch.object(Path, 'read_text', read):
+                        if minimum == 1:
+                            with self.assertRaises(f.builder.SerenityEvidenceError):
+                                f.builder._read_policy()
+                        else:
+                            self.assertEqual(f.builder._read_policy()['minimum_claim_source_families_per_ticker'], 2)
+                    docs = f.documents(case, positive=True)
+                    row = docs[-1]['records'][0]
+                    self.assertEqual(source_observation.compute_independent_lineages(
+                        row['claim_evidence_audit']['evidence']), 2 if case == 'independent' else 1)
+                    expected = minimum == 2 and case == 'independent'
+                    self.assertEqual(shared.claim_lineage_qualified(row, policy, f.NOW), expected)
+                    removed, top, result = guarded_result(docs, policy)
+                    self.assertNotIn('error', result)
+                    self.assertEqual(removed, [] if expected else ['demand_wave', 'tam_capture'])
+                    self.assertEqual(top['serenity_factors']['tam_capture'], 1 if expected else 0)
+                    self.assertEqual(result['mode'], 'EVIDENCE_QUALIFIED' if expected else 'LIMITED_RESEARCH_CANDIDATE')
 
     def test_shared_function_is_used_by_both_callers(self):
         self.assertIs(f.builder._claim_lineage_qualified, shared.claim_lineage_qualified)

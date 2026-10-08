@@ -20,6 +20,7 @@ class DeiAlignmentTests(unittest.TestCase):
         fund = f.engine.sec_fundamentals("SYN", 1, facts)
         self.assertIsNotNone(fund)
         self.assertEqual(fund["shares_basis"], "OUTSTANDING")
+        self.assertIsNotNone(fund.get('shares_yoy'))
         self.assertAlmostEqual(fund["shares_yoy"], expected)
         self.assertEqual(f.rank(facts)["top"][0]["fundamentals"], fund)
 
@@ -36,6 +37,26 @@ class DeiAlignmentTests(unittest.TestCase):
                 rows.reverse()
             with self.subTest(reverse=reverse):
                 self.assert_callers(facts, 1.0)
+
+    def test_dei_latest_filed_is_form_agnostic_on_current_and_prior(self):
+        for form in ('10-K', '20-F', '6-K', '8-K', '', None):
+            for reverse in (False, True):
+                with self.subTest(form=form, reverse=reverse):
+                    facts = f.share_facts()
+                    rows = facts['facts']['dei']['EntityCommonStockSharesOutstanding']['units']['shares']
+                    originals = copy.deepcopy(rows)
+                    for row in rows:
+                        row.update(filed='2026-08-01', form='10-Q')
+                    latest = [{**originals[0], 'filed': '2026-08-10', 'val': 80},
+                              {**originals[-1], 'filed': '2026-08-10', 'val': 160}]
+                    for row in latest:
+                        row.pop('form', None)
+                        if form is not None:
+                            row['form'] = form
+                    rows.extend(latest)
+                    if reverse:
+                        rows.reverse()
+                    self.assert_callers(facts, 1.0)
 
     def test_equal_filed_later_listed_wins_on_both_sides(self):
         facts = f.share_facts()
@@ -90,6 +111,7 @@ class DeiAlignmentTests(unittest.TestCase):
             with self.subTest(case=case):
                 fund = f.engine.sec_fundamentals("SYN", 1, f.share_facts(case))
                 self.assertEqual(fund["shares_basis"], "OUTSTANDING")
+                self.assertIsNotNone(fund.get('shares_yoy'))
                 self.assertAlmostEqual(fund["shares_yoy"], 0.2)
 
     def test_existing_prior_window_and_invalid_value_fallback(self):
@@ -98,6 +120,7 @@ class DeiAlignmentTests(unittest.TestCase):
                 valid = case in {"prior_lower", "prior_upper"}
                 fund = f.engine.sec_fundamentals("SYN", 1, f.share_facts(case))
                 self.assertEqual(fund["shares_basis"], "OUTSTANDING" if valid else "DILUTED_WEIGHTED_AVERAGE")
+                self.assertIsNotNone(fund.get('shares_yoy'))
                 self.assertAlmostEqual(fund["shares_yoy"], 0.2 if valid else 162/80-1)
 
 
@@ -107,6 +130,7 @@ def regression(case):
         basis, yoy = REGRESSIONS[case]
         fund = f.engine.sec_fundamentals("SYN", 1, facts)
         self.assertEqual(fund["shares_basis"], basis)
+        self.assertIsNotNone(fund.get('shares_yoy'))
         self.assertAlmostEqual(fund["shares_yoy"], yoy)
         ranked = f.rank(facts)["top"][0]
         self.assertEqual(ranked["fundamentals"], fund)
