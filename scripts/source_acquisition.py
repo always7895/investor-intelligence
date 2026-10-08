@@ -771,6 +771,17 @@ def acquire_runtime_sources(
         if subj and factor in {"dependency", "scarcity", "pricing", "capture"}:
             bindings_by_key.setdefault((subj, factor), []).append((obs, decl, src))
 
+    def binding_identity(obs, decl):
+        payload = obs.payload
+        return (
+            str(decl.get("claim_id") or (payload.get("claim_ids") or [""])[0]).strip(),
+            str(decl.get("metric") or payload.get("metric") or "").strip(),
+            str(decl.get("unit") or payload.get("unit") or "").strip(),
+            str(decl.get("period") or payload.get("period") or "").strip(),
+            str(decl.get("period_type") or "REALIZED").strip().upper(),
+            str(decl.get("product_or_spec") or payload.get("product_or_spec") or "").strip().upper(),
+        )
+
     for (subj, factor), group in bindings_by_key.items():
         valid_group_items = []
         for obs, decl, src in group:
@@ -791,13 +802,13 @@ def acquire_runtime_sources(
         if not valid_group_items:
             continue
 
+        identities = {binding_identity(obs, decl) for obs, decl in valid_group_items}
+        # One binding per factor: a mixed claim group cannot borrow lineages
+        # or resolve by declaration order. Refuse the entire ambiguous group.
+        if len(identities) != 1:
+            continue
+        cid, metric, unit, period, period_type, spec = next(iter(identities))
         first_obs, first_decl = valid_group_items[0]
-        cid = str(first_decl.get("claim_id") or (first_obs.payload.get("claim_ids") or [""])[0]).strip()
-        metric = str(first_decl.get("metric") or first_obs.payload.get("metric") or "").strip()
-        unit = str(first_decl.get("unit") or first_obs.payload.get("unit") or "").strip()
-        period = str(first_decl.get("period") or first_obs.payload.get("period") or "").strip()
-        period_type = str(first_decl.get("period_type") or "REALIZED").strip().upper()
-        spec = str(first_decl.get("product_or_spec") or first_obs.payload.get("product_or_spec") or "").strip().upper()
         region = str(first_decl.get("region") or first_obs.jurisdiction or "GLOBAL").strip().upper()
         entity = str(first_decl.get("entity") or "").strip() or None
         security = str(first_decl.get("security") or "").strip() or None

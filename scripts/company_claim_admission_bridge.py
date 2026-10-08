@@ -669,6 +669,11 @@ def bridge_reconcile_factors(
     else:
         admission_tier = "UNADMITTED"
 
+    # Consumers gate on this boolean, not the descriptive tier. A trusted
+    # transport/binding is not live admission authority.
+    if admission_tier == "UNADMITTED":
+        core_admitted = False
+
     diagnostics = dep_diags + scarcity_diags + pricing_diags + capture_diags
 
     return {

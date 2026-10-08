@@ -70,8 +70,8 @@ It enforces that candidate text matches (e.g. from `company_evidence_candidates.
 
 7. **Old Entrypoint Integration & Trust Bypass Elimination:**
    `bottleneck_claim_admission.reconcile_factor_authority` wraps `bridge_reconcile_factors` directly once without shadowing or fallback.
-   - `fixture_mode` defaults to `False`; auto-trust bypass is strictly eliminated.
-   - Synthetic fixture evaluation is only enabled for authoritative test fixture suites using reserved `.example` domains and corroborated research claims.
+   - The wrapper defaults `fixture_mode` to `None` and auto-detects synthetic `.example` observations plus corroborated claims; the bridge itself defaults to `False`. Explicit `False` requires an owned acquisition context. The default synthetic result is `TEST_ONLY`, not runtime authority.
+   - Runtime callers do not forward `acquisition_context`. A non-synthetic owned run remains `UNADMITTED` and `core_admitted=False`; canonical bindings alone confer no live admission. Synthetic owned-run wiring may return `TEST_ONLY_NONRUNTIME`.
 
 8. **Canonical Company Acquisition Factor Bindings (`CANONICAL_COMPANY_ACQUISITION_BINDING_V1`):**
    The architecture blocker is resolved by extending `AcquisitionRun` with process-local, factory-created `CompanyFactorBinding` tuples.
