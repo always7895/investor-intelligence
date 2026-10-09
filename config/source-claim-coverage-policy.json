@@ -158,5 +158,218 @@
         "value_or_status"
       ]
     }
+  },
+  "claim_family_semantics": {
+    "issuer_identity": {
+      "authority_classes": [
+        "securities_regulator",
+        "court_or_legal_registry",
+        "regulated_exchange"
+      ],
+      "evidence_roles": [
+        "company_registry",
+        "entity_registry",
+        "firm_registry",
+        "legal_status",
+        "issuer_information"
+      ],
+      "subject_binding_fields": [
+        "entity"
+      ]
+    },
+    "issuer_financial_statement": {
+      "authority_classes": [
+        "securities_regulator",
+        "regulated_exchange"
+      ],
+      "evidence_roles": [
+        "issuer_filings",
+        "financial_statements",
+        "company_filings"
+      ],
+      "subject_binding_fields": [
+        "entity"
+      ]
+    },
+    "issuer_guidance_or_contract": {
+      "authority_classes": [
+        "securities_regulator",
+        "regulated_exchange",
+        "finance_ministry_or_treasury"
+      ],
+      "evidence_roles": [
+        "issuer_disclosures",
+        "issuer_announcements",
+        "exchange_announcements",
+        "public_procurement",
+        "material_events"
+      ],
+      "subject_binding_fields": [
+        "entity"
+      ]
+    },
+    "macro_indicator": {
+      "authority_classes": [
+        "national_statistics_office",
+        "central_bank",
+        "international_organization",
+        "government_open_data"
+      ],
+      "evidence_roles": [
+        "gdp",
+        "inflation",
+        "employment",
+        "economic_data",
+        "macroeconomics",
+        "trade",
+        "balance_of_payments"
+      ],
+      "subject_binding_fields": []
+    },
+    "monetary_policy": {
+      "authority_classes": [
+        "central_bank"
+      ],
+      "evidence_roles": [
+        "monetary_policy",
+        "monetary_system",
+        "rates",
+        "treasury_yields"
+      ],
+      "subject_binding_fields": []
+    },
+    "regulatory_or_enforcement_event": {
+      "authority_classes": [
+        "securities_regulator",
+        "court_or_legal_registry",
+        "finance_ministry_or_treasury"
+      ],
+      "evidence_roles": [
+        "enforcement",
+        "regulatory_decisions",
+        "sanctions",
+        "insolvency",
+        "legal_status"
+      ],
+      "subject_binding_fields": []
+    },
+    "market_or_exchange_event": {
+      "authority_classes": [
+        "regulated_exchange",
+        "public_sector_industry_body"
+      ],
+      "evidence_roles": [
+        "exchange_announcements",
+        "corporate_actions",
+        "listed_companies",
+        "market_structure"
+      ],
+      "subject_binding_fields": []
+    },
+    "public_option_quote": {
+      "authority_classes": [
+        "regulated_exchange",
+        "public_sector_industry_body"
+      ],
+      "evidence_roles": [
+        "derivatives",
+        "market_statistics",
+        "securities"
+      ],
+      "subject_binding_fields": [
+        "symbol"
+      ]
+    },
+    "technology_patent_or_grant": {
+      "authority_classes": [
+        "patent_or_ip_office",
+        "academic_repository",
+        "government_open_data"
+      ],
+      "evidence_roles": [
+        "patents",
+        "grants",
+        "research_metadata",
+        "trademarks"
+      ],
+      "subject_binding_fields": [
+        "entity"
+      ]
+    },
+    "energy_grid_or_climate": {
+      "authority_classes": [
+        "national_statistics_office",
+        "government_open_data",
+        "public_sector_industry_body"
+      ],
+      "evidence_roles": [
+        "energy",
+        "electricity",
+        "grid",
+        "climate",
+        "renewable_energy",
+        "natural_gas",
+        "oil",
+        "gas"
+      ],
+      "subject_binding_fields": []
+    }
+  },
+  "lane_semantics": {
+    "regulator": {
+      "authority_classes": [
+        "securities_regulator",
+        "court_or_legal_registry",
+        "finance_ministry_or_treasury"
+      ]
+    },
+    "issuerIR": {
+      "evidence_roles": [
+        "issuer_filings",
+        "issuer_disclosures",
+        "issuer_announcements",
+        "issuer_information"
+      ]
+    },
+    "exchange": {
+      "authority_classes": [
+        "regulated_exchange"
+      ]
+    },
+    "clearing": {
+      "authority_classes": [
+        "clearing_house"
+      ]
+    },
+    "governmentStatistics": {
+      "authority_classes": [
+        "national_statistics_office",
+        "government_open_data"
+      ]
+    },
+    "centralBank": {
+      "authority_classes": [
+        "central_bank"
+      ]
+    },
+    "international": {
+      "authority_classes": [
+        "international_organization"
+      ]
+    },
+    "reputableMarketData": {
+      "evidence_roles": [
+        "market_context",
+        "market_statistics",
+        "market_structure"
+      ]
+    },
+    "majorFinancialMedia": {
+      "authority_classes": [
+        "reputable_financial_media",
+        "reputable_newswire",
+        "public_service_media"
+      ]
+    }
   }
 }

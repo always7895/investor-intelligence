@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_DEVELOPMENT_SOURCE_PROBE",
+  "recorded_at": "2026-09-08T16:31:56.093767+00:00",
+  "parent_head": "730f06fdf4b761f7f7c3f07b0d7d4924c4026d02",
+  "source_files_sha256": {
+    "scripts/fetch_public_source_observations.py": "de867960ce4ab8a162893f2254599c8520218ad8a604d2ad4edd8da0629837cb",
+    "scripts/adapters/staged_public.py": "9d616f24820e6e2e76303e4ee3eb583d03bdf2ded1128f67607c462d4caa3ebd",
+    "scripts/adapters/official_rss.py": "dce706bd4e4fe6f185dda91670170ab36dc5b971138725286c7caf5ec85f0709",
+    "scripts/adapters/taiwan_equities.py": "a2f9fd1f63ab3e10673c64948d853488be215359d75ee6c92f1045757df1b745",
+    "scripts/adapters/base.py": "f43aac6772cbefdb6272f998341bc6c54761b949e19489eb83476dea0cc03aa9",
+    "scripts/source_observation.py": "3a8a154d8fc6be80faa3f0d609056675cb61e62bfcc33697f16b094d4624d16b",
+    "scripts/source_registry.py": "746fc0443b52aefa40998cd167b581dc904c9899c5da3c3b7df7e29459e7d2cf"
+  },
+  "probe_output_sha256": "a30c63d6920de74b3f34f0cb07e46bd8540a09c2fafcc0ac15c1d7d9e9cfe9e3",
+  "status": "PARTIAL",
+  "sources": [
+    {
+      "record_count": 20,
+      "source_id": "federal_reserve_news",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "failure_kind": "TLS_VERIFICATION_FAILED",
+      "record_count": 0,
+      "source_id": "ecb_news",
+      "status": "FAILED",
+      "warning_count": 0
+    },
+    {
+      "record_count": 25,
+      "source_id": "sec_news",
+      "status": "OK",
+      "warning_count": 0
+    },
+    {
+      "failure_kind": "TLS_VERIFICATION_FAILED",
+      "record_count": 0,
+      "source_id": "twse_equity_eod",
+      "status": "FAILED",
+      "warning_count": 0
+    },
+    {
+      "record_count": 10991,
+      "records_with_close": 5375,
+      "source_id": "tpex_equity_eod",
+      "status": "OK",
+      "warning_count": 0
+    }
+  ],
+  "observations": 11036,
+  "publication_eligible": false,
+  "production_mutation": false,
+  "release_qualified": false,
+  "notes": [
+    "Strict TLS retained; failed sources not substituted.",
+    "Local development observations only; no claim of public redistribution rights or complete market coverage.",
+    "TPEx missing-close placeholders normalized to null; record count is not quoted-record count."
+  ]
+}

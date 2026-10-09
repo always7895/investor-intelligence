@@ -12,10 +12,16 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Exact reviewed compatibility bytes, not a moving hash of whatever is present.
+# storage.ts alone was migrated at 91fd323442e380f9c6322f44a0d5535cb1a0d71f
+# from ac4d67ed800e95bf4003c072f2c4def21603b013 to the pinned public reader.
+# Review: old pointer parsing/direct-key code removed; private encryption/epoch
+# code and certified qa.ts unchanged. Current storage/QA/pinned-reader runtime
+# tests and mutation guards are required; never admit both old/new readers.
 LEGACY_GIT_BLOBS = {
     "cloud/src/worker.ts": "4e0f78af402bcb6103812a3c1e06160cd838bdba",
     "cloud/src/line.ts": "618610bb277eb2949af0657609569ec5c490a1bb",
-    "cloud/src/storage.ts": "ac4d67ed800e95bf4003c072f2c4def21603b013",
+    "cloud/src/storage.ts": "5dac013712df2bea6dfcea9edecb71d31f22e43d",
     "cloud/src/qa.ts": "94184bc8937b413eb327b3d773926db00e22b3b9",
     "cloud/src/manual-options.ts": "798839536229943e6a5c2cbb19be7a8f1f198cd8",
 }
@@ -90,7 +96,7 @@ def audit_repository() -> list[str]:
     for relative, expected in LEGACY_GIT_BLOBS.items():
         actual = git_blob(relative)
         if actual != expected:
-            findings.append(f"{relative}: retained v2.0 blob changed ({actual})")
+            findings.append(f"{relative}: reviewed compatibility blob changed ({actual})")
 
     policy = load_policy()
     expected_policy = {
@@ -293,7 +299,7 @@ def main() -> int:
             print(f"- {finding}")
         return 1
     print(
-        "V21 OWNER LINE DELIVERY GATE PASSED: retained v2.0 shared worker bytes, "
+        "V21 OWNER LINE DELIVERY GATE PASSED: exact reviewed shared compatibility bytes, "
         "separate owner-only entrypoint, exact 08:00/21:00 schedule, encrypted pairing, "
         "signed public snapshot, Serenity-first Top20, 101-source truth boundary, no broker, "
         "portfolio, automatic trading, paid fallback, deployment or secret operation"

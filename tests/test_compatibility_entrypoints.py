@@ -28,8 +28,12 @@ class CompatibilityEntrypointTests(unittest.TestCase):
             text = (ROOT / name).read_text(encoding='utf-8-sig')
             self.assertNotRegex(text, r"'run-v213-local-source-diverse\.ps1'\s*=\s*'run-v213-local\.ps1'")
         installer = (ROOT / 'install-v213-runtime.ps1').read_text(encoding='utf-8-sig')
-        self.assertIn('The canonical stable refresh pipeline order is invalid', installer)
-        self.assertIn('source-independence gate', installer)
+        # Pipeline-order and source-gate validation now live in the shared
+        # install coordinator that every installer delegates to.
+        self.assertIn('v213_runtime_install_coordinator.ps1', installer)
+        coordinator = (ROOT / 'scripts' / 'v213_runtime_install_coordinator.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('RUNTIME_PIPELINE_ORDER_INVALID', coordinator)
+        self.assertIn('RUNTIME_SOURCE_GATE_NOT_ENFORCED', coordinator)
 
     def test_parameter_contracts_are_identical(self):
         for alias, canonical, *_ in PAIRS:

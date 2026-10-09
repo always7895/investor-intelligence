@@ -1,0 +1,1229 @@
+{
+  "blobs": {
+    "v213:identity:v2:name:0": "blob:v1:ff5d2abc6dbb2c851fd8ba34efaca6fb48af508ed77749ef7d8a7633d4c6735e",
+    "v213:identity:v2:name:1": "blob:v1:3aeaafa1c1ed41c664b60f077f4edbe5934c20bbd69d9fa5ee2e467a79e8331a",
+    "v213:identity:v2:name:10": "blob:v1:39392b738af3b772f8920093a9c513331fdf365290efeecd113018a5c62220d9",
+    "v213:identity:v2:name:14": "blob:v1:ae7b09f335c4cf82709e4866e23264d6cca5b452cc2f5f5ca98edbd15b6ca69d",
+    "v213:identity:v2:name:15": "blob:v1:e40f348d4235aac2d8929bf40e06d037102d57562f3cf7b6a3c46290057850ae",
+    "v213:identity:v2:name:5": "blob:v1:31832d5cb26df8917931898bfc3060c9dac8f5613e0849e400839ad5b9156810",
+    "v213:identity:v2:name:6": "blob:v1:b3d59e376f7d955bbe144c1cfea043ab0216f50e69ba2c713872b7c91791e2cd",
+    "v213:identity:v2:name:7": "blob:v1:d9f65bd5e69c16a8acbce5b0ee98d875a4bb1a198e82374d5c1223a791189364",
+    "v213:identity:v2:name:8": "blob:v1:023d0851c8727661d77e8e254fd23be0d97871eed88ed8258626aab61eea774f",
+    "v213:identity:v2:sym:0": "blob:v1:f26c1da87c73e630aabfbbd4fee02f1fbfa6ce4d15da8d98423ae8eb9d5a57ad",
+    "v213:identity:v2:sym:2": "blob:v1:8aef076f23de5f2f85f8eee5773fb783865edc8e3d41f53f3cd7907d9be7e1f8",
+    "v213:identity:v2:sym:6": "blob:v1:2b523ca78d48fc5a75f5f84af7da227c17d413a244bd3a5f60d57e9066f03b6b",
+    "v213:identity:v2:sym:A": "blob:v1:7d8f43c6f9e712afcc4cb3f2914d2ee09caff1e0b1a6b70ef743431cb26ef056",
+    "v213:identity:v2:sym:G": "blob:v1:51c909129f38105d666eb7dda37350145ecd0cada0ae45f324fc84b790133231",
+    "v213:identity:v2:sym:L": "blob:v1:471473c4e83d6748f1037ecfa38c345ba2a4c9adade02ebb4aa803d25d097fed",
+    "v213:identity:v2:sym:O": "blob:v1:9d6d41f4226cb8eaa64c91fa8edec92251d5eebcd910fb767ec982c4205a6e1a",
+    "v213:identity:v2:sym:P": "blob:v1:fb395485cfb91d416113e2caeaaa54e8176d4d3a2b7ebfd246e74faa3a71a5c3",
+    "v213:identity:v2:sym:S": "blob:v1:369495c4ab0158af594db58c820a43a472f68879224835a42424186216628cec"
+  },
+  "document": {
+    "feeds": [
+      {
+        "id": "nasdaq-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 4,
+        "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+        "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+      },
+      {
+        "id": "other-us-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+        "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+      },
+      {
+        "id": "twse-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+        "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+      },
+      {
+        "id": "tpex-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+        "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+      },
+      {
+        "id": "nasdaq-stockholm-main",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+        "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+      },
+      {
+        "id": "nasdaq-stockholm-first-north",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+        "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+      },
+      {
+        "id": "jpx-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+        "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+      },
+      {
+        "id": "krx-listed",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+        "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+      },
+      {
+        "id": "euronext-equities",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+        "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+      },
+      {
+        "id": "lse-main-market",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+        "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+      },
+      {
+        "id": "lse-aim",
+        "retrieved_at": "2026-09-15T12:00:00Z",
+        "rows": 1,
+        "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+        "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+      }
+    ],
+    "generated_at": "2026-09-15T12:00:00Z",
+    "name_shards": {
+      "0": {
+        "bucket": "0",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "synthetic orbit",
+            "S",
+            "SIVE",
+            "NASDAQ STOCKHOLM"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "1": {
+        "bucket": "1",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "other orbit",
+            "O",
+            "OMEGA",
+            "NYSE"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "10": {
+        "bucket": "10",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "aim orbit",
+            "A",
+            "AIM",
+            "LSE"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "14": {
+        "bucket": "14",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "acme variant",
+            "A",
+            "ACME",
+            "NASDAQ"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "15": {
+        "bucket": "15",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "\ud569\uc131",
+            "0",
+            "005930",
+            "KRX"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "5": {
+        "bucket": "5",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "tokyo orbit",
+            "2",
+            "2330",
+            "TSE"
+          ],
+          [
+            "\u5408\u6210",
+            "6",
+            "6000",
+            "TPEX"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "6": {
+        "bucket": "6",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "healthy orbit",
+            "G",
+            "GOOD",
+            "NASDAQ"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "7": {
+        "bucket": "7",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "\u53f0\u7a4d\u96fb",
+            "2",
+            "2330",
+            "TWSE"
+          ],
+          [
+            "acme orbit",
+            "A",
+            "ACME",
+            "NASDAQ"
+          ],
+          [
+            "london orbit",
+            "L",
+            "LON",
+            "LSE"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "8": {
+        "bucket": "8",
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "name",
+        "rows": [
+          [
+            "paris orbit",
+            "P",
+            "PAR",
+            "EURONEXT PARIS"
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      }
+    },
+    "records": 12,
+    "schema": "v213-identity-shard-v2",
+    "skipped_optional_feeds": [],
+    "symbol_shards": {
+      "0": {
+        "bucket": "0",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "005930",
+            "KRX",
+            "KOREA",
+            "Korea",
+            "\ud569\uc131",
+            "\ud569\uc131",
+            "COMMON_STOCK",
+            "KRW",
+            7,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "2": {
+        "bucket": "2",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "2330",
+            "TSE",
+            "JAPAN",
+            "Japan",
+            "Tokyo Orbit",
+            null,
+            "COMMON_STOCK",
+            "JPY",
+            6,
+            null
+          ],
+          [
+            "2330",
+            "TWSE",
+            "TAIWAN",
+            "Taiwan",
+            "\u53f0\u7a4d\u96fb",
+            null,
+            "COMMON_STOCK",
+            "TWD",
+            2,
+            [
+              "\u53f0\u7a4d\u96fb",
+              "TWSE"
+            ]
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "6": {
+        "bucket": "6",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "6000",
+            "TPEX",
+            "TAIWAN",
+            "Taiwan",
+            "\u5408\u6210",
+            null,
+            "COMMON_STOCK",
+            "TWD",
+            3,
+            [
+              "\u5408\u6210",
+              "TPEX"
+            ]
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "A": {
+        "bucket": "A",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "ACME",
+            "NASDAQ",
+            "US",
+            "United States",
+            "Acme Orbit",
+            null,
+            "REVIEW_REQUIRED",
+            "USD",
+            0,
+            null
+          ],
+          [
+            "ACME",
+            "NASDAQ",
+            "US",
+            "United States",
+            "Acme Variant",
+            null,
+            "REVIEW_REQUIRED",
+            "USD",
+            0,
+            null
+          ],
+          [
+            "AIM",
+            "LSE",
+            "UK",
+            "United Kingdom",
+            "AIM Orbit",
+            null,
+            "COMMON_STOCK",
+            "GBX",
+            10,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "G": {
+        "bucket": "G",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "GOOD",
+            "NASDAQ",
+            "US",
+            "United States",
+            "Healthy Orbit",
+            null,
+            "REVIEW_REQUIRED",
+            "USD",
+            0,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "L": {
+        "bucket": "L",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "LON",
+            "LSE",
+            "UK",
+            "United Kingdom",
+            "London Orbit",
+            null,
+            "COMMON_STOCK",
+            "GBX",
+            9,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "O": {
+        "bucket": "O",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "OMEGA",
+            "NYSE",
+            "US",
+            "United States",
+            "Other Orbit",
+            null,
+            "REVIEW_REQUIRED",
+            "USD",
+            1,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "P": {
+        "bucket": "P",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "PAR",
+            "EURONEXT PARIS",
+            "EUROPE",
+            "France",
+            "Paris Orbit",
+            null,
+            "COMMON_STOCK",
+            "EUR",
+            8,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      },
+      "S": {
+        "bucket": "S",
+        "feeds": [
+          {
+            "id": "nasdaq-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 4,
+            "sha256": "a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          },
+          {
+            "id": "other-us-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59",
+            "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+          },
+          {
+            "id": "twse-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106",
+            "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+          },
+          {
+            "id": "tpex-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9",
+            "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+          },
+          {
+            "id": "nasdaq-stockholm-main",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO"
+          },
+          {
+            "id": "nasdaq-stockholm-first-north",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1",
+            "url": "https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO"
+          },
+          {
+            "id": "jpx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16",
+            "url": "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
+          },
+          {
+            "id": "krx-listed",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c",
+            "url": "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+          },
+          {
+            "id": "euronext-equities",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02",
+            "url": "https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY"
+          },
+          {
+            "id": "lse-main-market",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET"
+          },
+          {
+            "id": "lse-aim",
+            "retrieved_at": "2026-09-15T12:00:00Z",
+            "rows": 1,
+            "sha256": "50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5",
+            "url": "https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM"
+          }
+        ],
+        "generated_at": "2026-09-15T12:00:00Z",
+        "kind": "symbol",
+        "rows": [
+          [
+            "SIVE",
+            "NASDAQ STOCKHOLM",
+            "SWEDEN",
+            "Sweden",
+            "Synthetic Orbit",
+            null,
+            "COMMON_STOCK",
+            "SEK",
+            4,
+            null
+          ]
+        ],
+        "schema": "v213-identity-shard-v2"
+      }
+    },
+    "zh_named_records": 2,
+    "zh_names": null
+  },
+  "run": "20260915T120000Z-b04b04b04b04",
+  "scope": "SYNTHETIC_OFFLINE_NOT_PUBLICATION",
+  "stamp": "2026-09-15T12:00:00Z",
+  "values": {
+    "blob:v1:023d0851c8727661d77e8e254fd23be0d97871eed88ed8258626aab61eea774f": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"8\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"paris orbit\",\"P\",\"PAR\",\"EURONEXT PARIS\"]]}",
+    "blob:v1:2b523ca78d48fc5a75f5f84af7da227c17d413a244bd3a5f60d57e9066f03b6b": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"6\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"6000\",\"TPEX\",\"TAIWAN\",\"Taiwan\",\"\u5408\u6210\",null,\"COMMON_STOCK\",\"TWD\",3,[\"\u5408\u6210\",\"TPEX\"]]]}",
+    "blob:v1:31832d5cb26df8917931898bfc3060c9dac8f5613e0849e400839ad5b9156810": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"5\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"tokyo orbit\",\"2\",\"2330\",\"TSE\"],[\"\u5408\u6210\",\"6\",\"6000\",\"TPEX\"]]}",
+    "blob:v1:369495c4ab0158af594db58c820a43a472f68879224835a42424186216628cec": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"S\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"SIVE\",\"NASDAQ STOCKHOLM\",\"SWEDEN\",\"Sweden\",\"Synthetic Orbit\",null,\"COMMON_STOCK\",\"SEK\",4,null]]}",
+    "blob:v1:39392b738af3b772f8920093a9c513331fdf365290efeecd113018a5c62220d9": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"10\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"aim orbit\",\"A\",\"AIM\",\"LSE\"]]}",
+    "blob:v1:3aeaafa1c1ed41c664b60f077f4edbe5934c20bbd69d9fa5ee2e467a79e8331a": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"1\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"other orbit\",\"O\",\"OMEGA\",\"NYSE\"]]}",
+    "blob:v1:471473c4e83d6748f1037ecfa38c345ba2a4c9adade02ebb4aa803d25d097fed": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"L\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"LON\",\"LSE\",\"UK\",\"United Kingdom\",\"London Orbit\",null,\"COMMON_STOCK\",\"GBX\",9,null]]}",
+    "blob:v1:51c909129f38105d666eb7dda37350145ecd0cada0ae45f324fc84b790133231": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"G\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"GOOD\",\"NASDAQ\",\"US\",\"United States\",\"Healthy Orbit\",null,\"REVIEW_REQUIRED\",\"USD\",0,null]]}",
+    "blob:v1:7d8f43c6f9e712afcc4cb3f2914d2ee09caff1e0b1a6b70ef743431cb26ef056": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"A\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"ACME\",\"NASDAQ\",\"US\",\"United States\",\"Acme Orbit\",null,\"REVIEW_REQUIRED\",\"USD\",0,null],[\"ACME\",\"NASDAQ\",\"US\",\"United States\",\"Acme Variant\",null,\"REVIEW_REQUIRED\",\"USD\",0,null],[\"AIM\",\"LSE\",\"UK\",\"United Kingdom\",\"AIM Orbit\",null,\"COMMON_STOCK\",\"GBX\",10,null]]}",
+    "blob:v1:8aef076f23de5f2f85f8eee5773fb783865edc8e3d41f53f3cd7907d9be7e1f8": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"2\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"2330\",\"TSE\",\"JAPAN\",\"Japan\",\"Tokyo Orbit\",null,\"COMMON_STOCK\",\"JPY\",6,null],[\"2330\",\"TWSE\",\"TAIWAN\",\"Taiwan\",\"\u53f0\u7a4d\u96fb\",null,\"COMMON_STOCK\",\"TWD\",2,[\"\u53f0\u7a4d\u96fb\",\"TWSE\"]]]}",
+    "blob:v1:9d6d41f4226cb8eaa64c91fa8edec92251d5eebcd910fb767ec982c4205a6e1a": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"O\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"OMEGA\",\"NYSE\",\"US\",\"United States\",\"Other Orbit\",null,\"REVIEW_REQUIRED\",\"USD\",1,null]]}",
+    "blob:v1:ae7b09f335c4cf82709e4866e23264d6cca5b452cc2f5f5ca98edbd15b6ca69d": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"14\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"acme variant\",\"A\",\"ACME\",\"NASDAQ\"]]}",
+    "blob:v1:b3d59e376f7d955bbe144c1cfea043ab0216f50e69ba2c713872b7c91791e2cd": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"6\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"healthy orbit\",\"G\",\"GOOD\",\"NASDAQ\"]]}",
+    "blob:v1:d9f65bd5e69c16a8acbce5b0ee98d875a4bb1a198e82374d5c1223a791189364": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"7\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"\u53f0\u7a4d\u96fb\",\"2\",\"2330\",\"TWSE\"],[\"acme orbit\",\"A\",\"ACME\",\"NASDAQ\"],[\"london orbit\",\"L\",\"LON\",\"LSE\"]]}",
+    "blob:v1:e40f348d4235aac2d8929bf40e06d037102d57562f3cf7b6a3c46290057850ae": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"15\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"\ud569\uc131\",\"0\",\"005930\",\"KRX\"]]}",
+    "blob:v1:f26c1da87c73e630aabfbbd4fee02f1fbfa6ce4d15da8d98423ae8eb9d5a57ad": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"0\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"005930\",\"KRX\",\"KOREA\",\"Korea\",\"\ud569\uc131\",\"\ud569\uc131\",\"COMMON_STOCK\",\"KRW\",7,null]]}",
+    "blob:v1:fb395485cfb91d416113e2caeaaa54e8176d4d3a2b7ebfd246e74faa3a71a5c3": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"symbol\",\"bucket\":\"P\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"feeds\":[{\"id\":\"nasdaq-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a9e35da50e2e94277035b01dcd6ba6da3fffa987bf4affbf5bca92649ef78373\",\"rows\":4},{\"id\":\"other-us-listed\",\"url\":\"https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"ec98bd2d725f57f5c5d3ac5cc9e60fff6a240f526c90034cf36bfc6942b9ac59\",\"rows\":1},{\"id\":\"twse-listed\",\"url\":\"https://openapi.twse.com.tw/v1/opendata/t187ap03_L\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8b64faa52af383a3016539a28899e9fcab2940a0637081a7ed3854ebd6750106\",\"rows\":1},{\"id\":\"tpex-listed\",\"url\":\"https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"838073e41e380d81d1575fbe177f92d148ebc2be8b8ae7c26371e926214ae1b9\",\"rows\":1},{\"id\":\"nasdaq-stockholm-main\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"nasdaq-stockholm-first-north\",\"url\":\"https://api.nasdaq.com/api/nordic/screener/shares?category=FIRST_NORTH&tableonly=false&market=STO\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"a2293367affb142726815650527c82f63d8304fcfeef7b518ce02b18bf2d0ce1\",\"rows\":1},{\"id\":\"jpx-listed\",\"url\":\"https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"d2c8a7f4986294f931b1509d9828c60d9c8294b5351b55407f0c6d70b6cb7f16\",\"rows\":1},{\"id\":\"krx-listed\",\"url\":\"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"8cfa9f36c6e3555cfd9581f8e2b26e8a91466197cf924ef940fc3a7ec58bfa8c\",\"rows\":1},{\"id\":\"euronext-equities\",\"url\":\"https://live.euronext.com/en/pd_es/data/stocks/download?mics=dm_all_stock&initialLetter=&fe_type=csv&fe_decimal_separator=.&fe_date_format=d%2Fm%2FY\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"cc7bb169fabff04ec5877282d9b5fe84d538fc8c1b9761c0ab5a47263df57a02\",\"rows\":1},{\"id\":\"lse-main-market\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=MAINMARKET\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"9e081f14964d8eeac6a166243bd4c78133005aa872bfcf41ed9ab7fa1500b39b\",\"rows\":1},{\"id\":\"lse-aim\",\"url\":\"https://api.londonstockexchange.com/api/v1/components/refresh#markets=AIM\",\"retrieved_at\":\"2026-09-15T12:00:00Z\",\"sha256\":\"50c68b67176a0235b8715d141c26cdd63a3a555c3ce9b78d85c04ee94e4c8ab5\",\"rows\":1}],\"rows\":[[\"PAR\",\"EURONEXT PARIS\",\"EUROPE\",\"France\",\"Paris Orbit\",null,\"COMMON_STOCK\",\"EUR\",8,null]]}",
+    "blob:v1:ff5d2abc6dbb2c851fd8ba34efaca6fb48af508ed77749ef7d8a7633d4c6735e": "{\"schema\":\"v213-identity-shard-v2\",\"kind\":\"name\",\"bucket\":\"0\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"rows\":[[\"synthetic orbit\",\"S\",\"SIVE\",\"NASDAQ STOCKHOLM\"]]}",
+    "snapshot:20260915T120000Z-b04b04b04b04:last_successful_pipeline_timestamp": "2026-09-15T12:00:00Z",
+    "snapshot:20260915T120000Z-b04b04b04b04:reports:evening:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:reports:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:reports:morning:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:scores:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:source_plan:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:source_views:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v212:top20-report:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:activation-claim": "{\"schema_version\":1,\"run_id\":\"20260915T120000Z-b04b04b04b04\",\"transaction_id\":\"44444444444444444444444444444444\",\"payload_digests\":{\"top20_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source_plan_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"report_text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"v212_top20_report_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"v213_top20_report_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source_federation_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source_independence_json\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"claimed_at\":\"2026-09-15T12:00:00Z\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:macro-industry:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:snapshot-seal:v1": "{\"schema_version\":1,\"contract_id\":\"v213-stored-snapshot-v1\",\"run_id\":\"20260915T120000Z-b04b04b04b04\",\"transaction_id\":\"44444444444444444444444444444444\",\"generated_at\":\"2026-09-15T12:00:00Z\",\"public_data_as_of\":\"2026-09-15T12:00:00Z\",\"provider_scope\":\"public_only\",\"owner_watchlist_inherited\":false,\"objects\":{\"v21:top20:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"scores:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"source_views:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"source_plan:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"reports:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"reports:morning:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"reports:evening:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"last_successful_pipeline_timestamp\":{\"sha256\":\"dac8cb9f656a83154a111fa51d7430d7b8fd7867fd7605b28373d8cabd6f0668\",\"utf8_bytes\":20},\"v212:top20-report:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"v213:top20-report:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"v213:source-federation:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"v213:source-independence:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"v213:activation-claim\":{\"sha256\":\"877fc19ea053f5ec3fe1637b6f4d18ca5b0da4db2431ab05164084b09bc73194\",\"utf8_bytes\":786},\"v213:macro-industry:latest\":{\"sha256\":\"368bfacb038398d9251247301532eeb85b20b5222a29361f76d3d8cace709f83\",\"utf8_bytes\":24},\"v213:identity:v2:name:0\":{\"sha256\":\"ff5d2abc6dbb2c851fd8ba34efaca6fb48af508ed77749ef7d8a7633d4c6735e\",\"utf8_bytes\":159},\"v213:identity:v2:name:1\":{\"sha256\":\"3aeaafa1c1ed41c664b60f077f4edbe5934c20bbd69d9fa5ee2e467a79e8331a\",\"utf8_bytes\":144},\"v213:identity:v2:name:10\":{\"sha256\":\"39392b738af3b772f8920093a9c513331fdf365290efeecd113018a5c62220d9\",\"utf8_bytes\":140},\"v213:identity:v2:name:14\":{\"sha256\":\"ae7b09f335c4cf82709e4866e23264d6cca5b452cc2f5f5ca98edbd15b6ca69d\",\"utf8_bytes\":147},\"v213:identity:v2:name:15\":{\"sha256\":\"e40f348d4235aac2d8929bf40e06d037102d57562f3cf7b6a3c46290057850ae\",\"utf8_bytes\":140},\"v213:identity:v2:name:5\":{\"sha256\":\"31832d5cb26df8917931898bfc3060c9dac8f5613e0849e400839ad5b9156810\",\"utf8_bytes\":171},\"v213:identity:v2:name:6\":{\"sha256\":\"b3d59e376f7d955bbe144c1cfea043ab0216f50e69ba2c713872b7c91791e2cd\",\"utf8_bytes\":147},\"v213:identity:v2:name:7\":{\"sha256\":\"d9f65bd5e69c16a8acbce5b0ee98d875a4bb1a198e82374d5c1223a791189364\",\"utf8_bytes\":209},\"v213:identity:v2:name:8\":{\"sha256\":\"023d0851c8727661d77e8e254fd23be0d97871eed88ed8258626aab61eea774f\",\"utf8_bytes\":152},\"v213:identity:v2:sym:0\":{\"sha256\":\"f26c1da87c73e630aabfbbd4fee02f1fbfa6ce4d15da8d98423ae8eb9d5a57ad\",\"utf8_bytes\":2808},\"v213:identity:v2:sym:2\":{\"sha256\":\"8aef076f23de5f2f85f8eee5773fb783865edc8e3d41f53f3cd7907d9be7e1f8\",\"utf8_bytes\":2902},\"v213:identity:v2:sym:6\":{\"sha256\":\"2b523ca78d48fc5a75f5f84af7da227c17d413a244bd3a5f60d57e9066f03b6b\",\"utf8_bytes\":2818},\"v213:identity:v2:sym:A\":{\"sha256\":\"7d8f43c6f9e712afcc4cb3f2914d2ee09caff1e0b1a6b70ef743431cb26ef056\",\"utf8_bytes\":2989},\"v213:identity:v2:sym:G\":{\"sha256\":\"51c909129f38105d666eb7dda37350145ecd0cada0ae45f324fc84b790133231\",\"utf8_bytes\":2820},\"v213:identity:v2:sym:L\":{\"sha256\":\"471473c4e83d6748f1037ecfa38c345ba2a4c9adade02ebb4aa803d25d097fed\",\"utf8_bytes\":2813},\"v213:identity:v2:sym:O\":{\"sha256\":\"9d6d41f4226cb8eaa64c91fa8edec92251d5eebcd910fb767ec982c4205a6e1a\",\"utf8_bytes\":2817},\"v213:identity:v2:sym:P\":{\"sha256\":\"fb395485cfb91d416113e2caeaaa54e8176d4d3a2b7ebfd246e74faa3a71a5c3\",\"utf8_bytes\":2819},\"v213:identity:v2:sym:S\":{\"sha256\":\"369495c4ab0158af594db58c820a43a472f68879224835a42424186216628cec\",\"utf8_bytes\":2826}}}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:source-federation:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:source-independence:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v213:top20-report:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:20260915T120000Z-b04b04b04b04:v21:top20:latest": "{\"synthetic\": \"BATCH04\"}",
+    "snapshot:current": "{\"schema_version\":2,\"run_id\":\"20260915T120000Z-b04b04b04b04\",\"transaction_id\":\"44444444444444444444444444444444\",\"seal_sha256\":\"1c6861e4aa95398738c35b1331ea4b9b284f977276bcf0c0ca64588bc69de948\",\"public_data_as_of\":\"2026-09-15T12:00:00Z\",\"promoted_at\":\"2026-09-15T12:00:00Z\",\"provider_scope\":\"public_only\",\"owner_watchlist_inherited\":false}"
+  }
+}

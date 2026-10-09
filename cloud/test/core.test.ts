@@ -43,6 +43,19 @@ describe("LINE bot public-only core", () => {
     expect(helpText()).not.toContain("SIVE");
   });
 
+  it("does not mistake macro abbreviations or ranking selectors for implicit stock selections", () => {
+    for (const text of ["分析 CPI 與 FOMC 對航運的影響", "GDP 成長對農業的影響", "比較 PMI 與 PPI", "OPEC 與能源供給", "TOP20", "TOP10", "Top 20"]) {
+      expect(extractTicker(text)).toBeNull();
+    }
+    expect(parseQuery("TOP20").intent).toBe("ranking");
+    expect(parseQuery("TOP20").ticker).toBeNull();
+    // Explicit instrument selection still wins when an abbreviation is also a symbol.
+    expect(extractTicker("$CPI 怎麼看")).toBe("CPI");
+    expect(extractTicker("ticker: CPI")).toBe("CPI");
+    expect(extractTicker("CPI 每週期權")).toBe("CPI");
+    expect(extractTicker("ALPHA 財報分析")).toBe("ALPHA");
+  });
+
   it("accepts arbitrary general questions", () => {
     expect(parseQuery("量子糾纏是什麼？").intent).toBe("general_qa");
   });

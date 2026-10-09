@@ -1,0 +1,407 @@
+US DOE Office of Electricity - DOE and Industry Team Up to Keep the Lights On for America
+Published: 2024-02-22; Author: Michael Pesin, Chief Engineer; Official: https://www.energy.gov/oe/articles/doe-and-industry-team-keep-lights-america; Public domain work under 17 U.S.C. 105.
+
+
+
+DOE and Industry Team Up to Keep the Lights On for America | Department of Energy
+
+ Skip to main content
+
+An official website of the United States government
+
+Here's how you know
+
+Here's how you know
+
+Official websites use .gov
+
+ A 
+.gov
+ website belongs to an official government organization in the United States.
+
+Secure .gov websites use HTTPS
+
+ A 
+lock
+ ( 
+
+Lock
+
+Locked padlock
+
+ ) or 
+https://
+ means you’ve safely connected to the .gov website. Share sensitive information only on official, secure websites.
+
+Policy & Priorities
+
+Main Menu
+
+Policy & Priorities
+
+View all Policy & Priorities
+
+Increase American Energy Production
+
+Expanding domestic energy resources to support national needs and economic growth.
+
+Energy Innovation
+
+Driving research and development to shape the future of energy systems and technologies.
+
+Energy Exports
+
+Supporting global energy markets through U.S. energy production and trade.
+
+Affordable Energy for Consumers
+
+Promoting access to reliable and cost-effective energy for households and businesses.
+
+Strategic Petroleum Reserve (SPR)
+
+Managing emergency fuel reserves to support national energy security.
+
+Nuclear Security
+
+Maintaining the safety, security, and effectiveness of the nation’s nuclear deterrent.
+
+Nuclear Energy
+
+Advancing nuclear technologies to support energy, security, and innovation goals.
+
+Energy Reliability
+
+Ensuring consistent and dependable energy delivery across the nation.
+
+Energy Infrastructure
+
+Strengthening and modernizing the systems that produce, deliver, and store energy.
+
+Leadership & Organization
+
+Main Menu
+
+Leadership & Organization
+
+View all Leadership & Organization
+
+ Chris Wright
+
+Secretary of Energy
+
+ James Danly
+
+Deputy Secretary of Energy
+
+Leadership & Organization Pages
+
+Staff Offices
+
+Supporting DOE operations through policy, administration, and mission services.
+
+Science and Innovation Program Offices
+
+Leading scientific research and technology development across priority areas.
+
+Independent Offices
+
+Providing oversight and specialized functions across key areas of the Department.
+
+Energy Program Offices
+
+Managing programs that support energy production, efficiency, and delivery.
+
+National Laboratories
+
+Advancing research and innovation through DOE’s National Laboratory System.
+
+Nuclear Security Offices
+
+Overseeing national security efforts related to nuclear safety and defense.
+
+ Featured
+
+Hydrocarbons and Geothermal Energy Office
+
+Topics
+
+Main Menu
+
+Topics
+
+View all Topics
+
+Energy Sources
+
+Learn about the resources and technologies used to produce power across the United States.
+
+Energy Usage
+
+Explore how energy is consumed in homes, businesses, transportation, and industry.
+
+Policy
+
+Understand the laws, regulations, and strategies that guide energy decisions and national priorities.
+
+Science & Innovation
+
+See how research, discovery, and new technologies are shaping the future of energy.
+
+Economy
+
+Discover how energy affects jobs, markets, investment, and economic growth.
+
+National Security & Safety
+
+Learn how energy systems support resilience, infrastructure protection, and public safety.
+
+News & Events
+
+Main Menu
+
+News & Events
+
+View all News & Events
+
+ Press Releases
+
+September 10, 2026
+
+Hydrocarbons and Geothermal Energy Office Announces $300,000 to Help Identify Hidden Geothermal Systems
+
+Competitors will develop models and algorithms to support geologic and geophysical… 
+Read more
+
+Geothermal
+
+View all Press Releases
+
+ Fact Sheets
+
+FACT SHEET: Delivering on President Trump's Promise to Unleash Prosperity and Security for the United States and Venezuela
+
+FACT SHEET: The Golden Era of American Nuclear Energy Has Arrived
+
+Fact Sheet: Operational Closure of Radioactive Liquid Waste Tanks
+
+View all Fact Sheets
+
+ Upcoming Events
+
+Sep 15
+
+10:00AM EDT - 6:00PM EDT
+
+Permian Energy Dialogues
+
+Sep 17
+
+6:30PM EDT - 8:00PM EDT
+
+Paducah EM SSAB Meeting (September 2026)
+
+Sep 14
+
+9:00AM EDT - 5:00PM EDT
+
+National Clean Energy Week (NCEW) 2026
+
+View all Events
+
+About
+
+Main Menu
+
+About
+
+Mission
+
+Supporting USA energy, science, and security priorities.
+
+History & Achievements
+
+Nobel Prize Laureates
+
+Contact Us
+
+Access general information and ways to connect with the Department of Energy.
+
+Careers
+
+Internships & Fellowships
+
+Apprenticeships & Workforce Development
+
+Work at DOE
+
+Funding Opportunities
+
+Breadcrumb
+
+Office of Electricity
+
+DOE and Industry Team Up to Keep the Lights On for America
+
+Blog
+
+DOE and Industry Team Up to Keep the Lights On for America
+
+The importance of transformer innovation and transformer supply chains to ensure grid reliability.
+
+Office of Electricity
+
+February 22, 2024
+
+Estimated Read Time 
+
+ min
+
+The electrical grid stands as a marvel of modern engineering, intricately designed to transmit power from various sources to end users across vast distances. It tirelessly supplies electricity to buildings, industries, schools, and households, ensuring uninterrupted service around the clock, every day of the year. One of the challenges is the aging grid infrastructure such as transformers—critical components of the power grid. That’s why 
+DOE is partnering with industry
+ and other stakeholders to ensure that our nation’s grid is reliable, resilient, secure, and affordable while meeting all the demands of the 21st century.
+
+Challenges to Today’s Grid 
+
+Much of our modern grid still relies on century old engineering principles and decades old infrastructure that must meet today’s grid demands–-this includes an unprecedented scale of deployment of renewable generation sources; emerging increase in load demand including new demand for electricity in the transportation sector; and increasing distributed generation (such as solar) that delivers electricity not only to consumers but also back to the grid. Today’s grid also provides never before seen opportunities for consumers to participate in the electricity market, and more.
+
+These new demands put additional pressure on equipment and systems that bring electricity directly to homes and businesses. That includes electrical transformers, the fundamental building blocks of the electric grid. Large power transformers make it possible to transport electric energy over long distances—from where it is produced to where it consumed—and distribution transformers bring electricity to every home, business, or factory.
+
+These distribution transformers present a special challenge. Transformers are ripe for innovation; the transformer design is based on the engineering principles of the 1800s when the electric power industry developed around the alternating current (AC) transformer. It’s long past time for transformer advancements, driven by the researchers and the electric utility industry.
+
+Transformers are one the most basic grid components that are critical for grid operation. As the nation’s commitment to clean energy continues to grow, we need to make sure that transformers can support all these new demands. We need to accelerate innovations in transformer designs, and we have a unique role at the Department of Energy to help the utility industry and manufacturers to advance transformers and the supply chain to ensure a resilient and reliable grid.
+
+ A truck hauls a transformer from EM’s West Valley Demonstration Project to a recycling facility. Funds from recycling are used to offset the site’s cleanup costs.
+
+Addressing Transformer Supply Chains
+
+On top of the new demands on distribution transformers are supply chain challenges for the transformers and their raw materials. It is crucial to ensure a robust supply chain. The lead times for transformer orders, particularly distribution transformers, increased from three to six months in 2019 to 12 to 30 months in 2023. The Covid-19 era revealed stresses on the supply chain for things all of us took for granted, including the equipment that makes up America’s power grid. These stresses were due in part to pent-up post-pandemic demand; difficulty recruiting, training, and retaining a skilled workforce; component supply chain challenges; and materials shortages (grain-oriented electrical steel, aluminum, and copper). Yet this era also spurred innovation in transformer design, which can support increased productivity in manufacturing. 
+
+Government/Industry Partnerships Create Opportunities
+
+This opportunity is being addressed by DOE’s unique convening power. To address supply chain challenges, DOE leaders are engaged with utilities, manufacturers, and other stakeholders. This includes DOE partnership with the Electricity Subsector Coordinating Council (ESCC) to form a Supply Chain Tiger Team of DOE offices, power associations, and a distribution transformer manufacturer. 
+
+The team identified distribution transformers as the most crucial supply chain constraint facing the power system today. Utility trade members reported that between 2020 and 2022, average lead times to purchase distribution transformers across the electric industry and all voltage classes rose a whopping 443%! These same orders that previously took two to four months to fulfill now take 22 to 33 months. This severely limits utilities’ ability to make repairs, order replacements, and connect new customers—all of which threatens reliability and resilience. 
+
+ Distribution line with transformer
+
+ Crews at H Canyon at the Savannah River Site remove an old transformer to make room for new equipment needed for an electrolytic dissolver.
+
+DOE convenes distribution transformers interoperability industry subgroup
+
+In March 2023, DOE convened the industry workshop led by the Office of Electricity with participation from multiple industry stakeholders. The workshop attendees concluded that determined that one contributing factor to the longer distribution transformer production times is the lack of the consistent transformer specifications across the utilities. DOE identified over 80,000 different distribution transformer varieties nationwide. Many are legacy specifications that utilities could modify if they would accept more universal transformer designs and standard accessories included with the distribution transformers. To identify key interoperability opportunities that would be acceptable to utilities and help with reducing production times, DOE convened the OE-led distribution transformer industry subgroup, which includes a diverse set of utility participants and transformer manufacturers.
+
+These opportunities include creating standard definitions and specifications; OE is uniquely positioned to bring together its partners in the utility and manufacturing sectors to agree on core transformer designs, the impact of critical components, and component interchangeability. All these efforts to remove manufacturing bottlenecks and increase transformers production and help to ensure grid reliability.
+
+Next Steps
+
+Whether it’s initiating innovation in transformer designs through recently announced 
+FITT
+ funding, continuing the work of the OE-led distribution transformer industry subgroup, or advancing research, development, and demonstration for the 21
+st
+ Century grid, DOE is collaborating with industry to drive the change necessary to ensure a reliable grid.
+
+Partnerships between DOE and the electric utility industry are the key to modernizing our nation’s power grid. The insight that our utility partners share will continue to advance transformers and other critical grid components. DOE is there to help the industry and to use our convening power and the national labs to ensure that electric grid keeps up with demands of the future and is reliable, resilient, secure, and affordable for all.
+
+Michael Pesin
+
+Chief Engineer
+
+As Chief Engineer in the U.S. Department of Energy (DOE)'s Office of Electricity, Michael Pesin brings over 35 years of distinguished experience to the forefront of electric utility innovation. His career is characterized by significant leadership in directing the development and execution of advanced technology programs. 
+
+Before joining DOE, Mr. Pesin spent the majority of his career leading technology organizations at a number of electric utilities, where he developed comprehensive technology strategies, managed complex research and development projects, and guided strategic programs and demonstration initiatives. He further extended his impact by founding and leading a technology management consulting company, serving electric utilities, technology companies, and investors across the U.S. and internationally. Mr. Pesin's commitment to advancing the industry is demonstrated through his board memberships in various technology organizations and his active participation as a frequent speaker within numerous electric power industry groups.
+
+ More By This Author
+
+Microgrids, Large Electric Loads & Grid Support: How to Leverage Microgrids to Support Utilities and Large Load Customers
+
+Lighting the Way at OE: Part 2 - Just like your house, we need a strong foundation for our grid
+
+The April 2019 Global Positioning System (GPS) Week Number Rollover
+
+Grid Innovation at PNNL and ORNL Recognized with Prestigious R&D 100 Awards
+
+Grid Innovation at Sandia National Laboratories Recognized with Two R&D 100 Awards
+
+Dynamic Partners are Essential for R&D Success
+
+Enabling a Smart Power Grid
+
+Explore more on these topics: 
+
+Supply Chains
+
+Energy Sources
+
+Industry
+
+More by this author
+
+ Michael Pesin
+
+ Chief Engineer
+
+ Committed to Restoring America’s Energy Dominance.
+
+Follow Us
+
+Link to Facebook
+
+Link to Instagram
+
+Link to Linkedin
+
+Link to Youtube
+
+Link to X
+
+Link to Flickr
+
+Quick Links 
+
+Leadership & Offices
+
+Newsroom
+
+Contact Us
+
+Careers
+
+Resources 
+
+Budget & Performance 
+
+Directives, Delegations, & Requirements 
+
+Freedom of Information Act (FOIA)
+
+Inspector General 
+
+Privacy Program
+
+Federal Government 
+
+USA.gov
+
+The White House 
+
+Open Gov
+
+Accessibility
+
+Privacy
+
+Information Quality
+
+No Fear Act
+
+Web Policies
+
+Vulnerability Disclosure Program
+
+Whistleblower Protection
+
+Equal Employment Opportunity
+
+Notice of Court Orders
+
+

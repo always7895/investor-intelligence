@@ -1,13 +1,15 @@
-"""Explicit opt-in isolated workers.dev -> leased tunnel -> Gateway -> existing Q6.
+"""Explicit opt-in isolated workers.dev -> leased tunnel -> Gateway -> existing Router.
 Creates/deletes ONLY uniquely named non-Production Worker/KV/DO. No real LINE,
 Production config/bindings, preset edits or second llama-server. Credentials are
-random process-only values, uploaded via stdin and never written to receipts.
+random isolated-run values, uploaded through a temporary secret-input file and
+never written to receipts; the temporary directory is removed during cleanup.
 """
 from __future__ import annotations
 import argparse
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -22,6 +24,7 @@ import requests
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from v213_compact_qa_gateway import POLICY, resolve_model_id
+from v213_model_profile import parse_profile, profile_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -69,9 +72,50 @@ def wait_isolated_origin(session, origin, clock=time.monotonic, sleep=time.sleep
                 raise RuntimeError("ISOLATED_ORIGIN_WRONG_APPLICATION")
             return {"status":"PASS_TEST_HOST_PROVISIONING", "attempts":attempts, "initial_empty_worker_404_count":attempts-1}
         if response.status_code != 404 or response.headers.get("server", "").lower() != "cloudflare" or "There is nothing here yet" not in response.text:
-            raise RuntimeError("ISOLATED_ORIGIN_UNEXPECTED_HTTP")
+            # Preserve bounded transport evidence, never arbitrary response text/headers.
+            status = response.status_code if type(response.status_code) is int and 100 <= response.status_code <= 599 else 0
+            raise RuntimeError(f"ISOLATED_ORIGIN_UNEXPECTED_HTTP; http_status={status}; attempts={attempts}")
         sleep(max(0, min(1, deadline-clock())))
     raise RuntimeError("ISOLATED_ORIGIN_PROVISIONING_TIMEOUT")
+
+
+def isolated_transport_diagnostics(session, origin, version):
+    """One observation per client, after a failed gate. Never retry/qualify it."""
+    if (not re.fullmatch(r'https://ii-r75-qa-bench-[0-9a-f]{10}\.[a-z0-9-]+\.workers\.dev', origin)
+            or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', version)):
+        raise RuntimeError('ISOLATED_DIAGNOSTIC_SCOPE_INVALID')
+    challenge = secrets.token_hex(16)
+    url = origin + '/v213/readiness?challenge=' + challenge + '&expected_version=' + version
+    rows = []
+    for shell, direct, http, agent in (('powershell.exe', False, False, False), ('pwsh', False, False, False),
+                                      ('pwsh', True, False, False), ('pwsh', True, True, False), ('pwsh', True, True, True)):
+        label = shell + ('-direct' if direct else '') + ('-http' if http else '') + ('-agent' if agent else '')
+        try:
+            helper = str(ROOT / 'scripts/v213_edge_readiness.ps1').replace("'", "''")
+            command = f"$ErrorActionPreference='Stop';. '{helper}';Get-V213IsolatedTransportDiagnostic -Origin '{origin}' -ExpectedVersion '{version}' -Challenge '{challenge}' {'-Direct' if direct else ''} {'-HttpClient' if http else ''} {'-Agent' if agent else ''}|ConvertTo-Json -Compress"
+            result = subprocess.run([shell, '-NoProfile', '-Command', command], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
+            if result.returncode: raise RuntimeError('DIAGNOSTIC_TRANSPORT_FAILED')
+            data = json.loads(result.stdout)
+            allowed = {'scope', 'release_qualified', 'http_status', 'body_kind', 'nonce_match', 'version_match', 'ready', 'proxy_bypassed', 'direct_requested'}
+            if set(data) != allowed or data['release_qualified'] is not False: raise RuntimeError('DIAGNOSTIC_SCHEMA_INVALID')
+            rows.append({'client': label, **data})
+        except Exception:
+            rows.append({'client': label, 'diagnostic_failed': True})
+    try:
+        response = session.get(url, headers={'cache-control': 'no-store', 'pragma': 'no-cache'}, timeout=10, allow_redirects=False)
+        text = response.text if len(response.content) <= 1048576 else ''
+        try: body = json.loads(text)
+        except ValueError: body = {}
+        if not isinstance(body, dict): body = {}
+        rows.append({'client': 'python', 'scope': 'ISOLATED_TRANSPORT_DIAGNOSTIC', 'release_qualified': False,
+                     'http_status': response.status_code,
+                     'body_kind': 'empty_worker' if 'There is nothing here yet' in text else 'not_found' if text.strip() == 'Not found' else 'html' if '<html' in text.lower() else 'other',
+                     'nonce_match': body.get('challenge') == challenge, 'version_match': body.get('worker_version') == version,
+                     'ready': body.get('ready') is True,
+                     'proxy_bypassed': requests.utils.select_proxy(url, requests.utils.get_environ_proxies(url)) is None})
+    except Exception:
+        rows.append({'client': 'python', 'diagnostic_failed': True})
+    return rows
 
 
 def main():
@@ -79,7 +123,13 @@ def main():
     p.add_argument("--live-isolated", action="store_true")
     p.add_argument("--readiness-only", action="store_true", help="Isolated edge diagnosis only; never qualifies a release or invokes a model")
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument('--model-profile', type=Path, help='Explicit versioned runtime profile; omission retains historical Q6 lane')
     args = p.parse_args()
+    profile = parse_profile(args.model_profile.read_text(encoding='utf-8-sig')) if args.model_profile else None
+    if profile and profile['enable_thinking']:
+        raise RuntimeError('LIVE_THINKING_CAPABILITY_UNPROVEN')
+    selected = profile['model'] if profile else 'qwen38-q6'
+    profile_json = json.dumps(profile, separators=(',', ':')) if profile else None
     if not args.live_isolated or args.output.exists():
         p.error("explicit opt-in and new evidence output required")
     router, canonical, catalog = None, None, None
@@ -88,10 +138,10 @@ def main():
         response = requests.get("http://127.0.0.1:8080/models", timeout=10, allow_redirects=False)
         if response.status_code != 200: raise RuntimeError("ROUTER_CATALOG_UNAVAILABLE")
         catalog = response.json().get("data")
-        canonical = resolve_model_id("qwen38-q6", catalog)
+        canonical = resolve_model_id(selected, catalog)
         if canonical is None: raise RuntimeError("ROUTER_ALIAS_IDENTITY_INVALID")
         loaded = [m["id"] for m in catalog if m.get("status", {}).get("value") == "loaded"]
-        if loaded != [canonical]: raise RuntimeError("Only catalog-proven qwen38-q6 may be loaded")
+        if loaded != [canonical]: raise RuntimeError('ONLY_SELECTED_CATALOG_MODEL_MAY_BE_LOADED')
     preset = Path(os.environ["LOCALAPPDATA"]) / "InvestorIntelligence/UserData/config/v213-llama-router.preset.ini"
     preset_sha = hashlib.sha256(preset.read_bytes()).hexdigest()
     manifest = source_manifest()
@@ -101,11 +151,13 @@ def main():
     gateway_domain = "v213-free-relay-gateway." + generation
     gateway_secret = hmac.new(synthetic_auth.encode(), gateway_domain.encode(), hashlib.sha256).hexdigest()
     session = requests.Session()
-    evidence = {"schema_version": 1, "status": "FAIL", "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
-                "exact_model": "qwen38-q6", "canonical_model": canonical,
+    evidence = {"schema_version": 2 if profile else 1, "status": "FAIL", "started_at": datetime.now(timezone.utc).isoformat(), "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
+                "exact_model": selected, "canonical_model": canonical,
                 "model_catalog": [{"id": m["id"], "aliases": m.get("aliases", [])} for m in catalog] if catalog else None,
-                "request_enable_thinking": False, "synthetic_public_fixture": True,
+                "request_enable_thinking": profile['enable_thinking'] if profile else False, "synthetic_public_fixture": True,
                 "production_mutation": False, "real_line_sent": False, "results": [], "worker_name": name}
+    if profile:
+        evidence.update(model_profile=profile, model_profile_sha256=profile_sha256(profile))
     wrangler = str(ROOT / "cloud/node_modules/.bin/wrangler.cmd")
     def wr(*argv, stdin=None):
         result = subprocess.run([wrangler, *argv], cwd=ROOT / "cloud", input=stdin, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120)
@@ -121,9 +173,10 @@ def main():
     gateway = tunnel = None
     namespace = None
     deployed = False
+    deployment_attempted = False
     metrics = []
     phase = "cold"
-    old_env = {k: os.environ.get(k) for k in ("II_LLAMA_BASE_URL", "II_LOCAL_LLM_MODEL", "II_LOCAL_LLM_SHARED_SECRET")}
+    old_env = {k: os.environ.get(k) for k in ("II_LLAMA_BASE_URL", "II_LOCAL_LLM_MODEL", "II_LOCAL_LLM_SHARED_SECRET", "V213_MODEL_PROFILE_JSON")}
     original_post = requests.post
     def measured_post(url, **kwargs):
         if str(url).startswith("http://127.0.0.1:8080/"):
@@ -132,7 +185,9 @@ def main():
             response = original_post(url, **kwargs)
             if response.ok:
                 body = response.json()
-                metrics.append({"usage": body.get("usage", {}), "timings": body.get("timings", {}), "upstream_ms": round(1000*(time.monotonic()-started),2), "model": body.get("model"), "finish_reason": body.get("choices", [{}])[0].get("finish_reason")})
+                message = (body.get('choices') or [{}])[0].get('message') or {}
+                reasoning_present = bool(message.get('reasoning') or message.get('reasoning_content') or '<think>' in (message.get('content') or ''))
+                metrics.append({"reasoning_present": reasoning_present, "usage": body.get("usage", {}), "timings": body.get("timings", {}), "upstream_ms": round(1000*(time.monotonic()-started),2), "model": body.get("model"), "finish_reason": body.get("choices", [{}])[0].get("finish_reason")})
             return response
         return original_post(url, **kwargs)
     try:
@@ -147,9 +202,10 @@ def main():
             found = re.search(r'(?:"id"\s*:|\bid\s*=)\s*"([0-9a-f]{32})"', namespace_output)
             if not found: raise RuntimeError("ISOLATED_KV_ID_UNAVAILABLE")
             namespace = found[1]
-            cfg.write_text(f'name = "{name}"\nmain = {json.dumps(str(ROOT / "cloud/test/r75-live-bench-worker.ts"))}\ncompatibility_date = "2026-01-01"\nworkers_dev = true\n[version_metadata]\nbinding = "CF_VERSION_METADATA"\n[vars]\nFREE_RELAY_ENABLED = "true"\nFREE_RELAY_MAX_TTL_SECONDS = "600"\nLOCAL_LLM_MODEL = "qwen38-q6"\nGENERAL_QA_ENABLED = "true"\nCURRENT_PUBLIC_DATA_ENABLED = "true"\nPUBLIC_DATA_MAX_AGE_SECONDS = "7200"\nMEMORY_FEATURE_AVAILABLE = "false"\nLINE_CHANNEL_ACCESS_TOKEN = "SYNTHETIC_TEST_ONLY"\n' + ''.join(f'\n[[kv_namespaces]]\nbinding = "{b}"\nid = "{namespace}"\n' for b in ("PUBLIC_CACHE", "TENANT_PRIVATE_CACHE", "EPHEMERAL_SECURITY_CACHE")) + '\n[[durable_objects.bindings]]\nname = "V213_FREE_RELAY_ROUTE"\nclass_name = "V213FreeRelayRoute"\n[[migrations]]\ntag = "isolated-bench-v1"\nnew_sqlite_classes = ["V213FreeRelayRoute"]\n', encoding="utf-8")
+            cfg.write_text(f'name = "{name}"\nmain = {json.dumps(str(ROOT / "cloud/test/r75-live-bench-worker.ts"))}\ncompatibility_date = "2026-01-01"\nworkers_dev = true\n[version_metadata]\nbinding = "CF_VERSION_METADATA"\n[vars]\nFREE_RELAY_ENABLED = "true"\nFREE_RELAY_MAX_TTL_SECONDS = "600"\nLOCAL_LLM_MODEL = {json.dumps(selected)}\n{('V213_MODEL_PROFILE_JSON = ' + json.dumps(profile_json) + chr(10)) if profile else ''}GENERAL_QA_ENABLED = "true"\nCURRENT_PUBLIC_DATA_ENABLED = "true"\nPUBLIC_DATA_MAX_AGE_SECONDS = "7200"\nMEMORY_FEATURE_AVAILABLE = "false"\nLINE_CHANNEL_ACCESS_TOKEN = "SYNTHETIC_TEST_ONLY"\n' + ''.join(f'\n[[kv_namespaces]]\nbinding = "{b}"\nid = "{namespace}"\n' for b in ("PUBLIC_CACHE", "TENANT_PRIVATE_CACHE", "EPHEMERAL_SECURITY_CACHE")) + '\n[[durable_objects.bindings]]\nname = "V213_FREE_RELAY_ROUTE"\nclass_name = "V213FreeRelayRoute"\n[[migrations]]\ntag = "isolated-bench-v1"\nnew_sqlite_classes = ["V213FreeRelayRoute"]\n', encoding="utf-8")
             synthetic_secrets = tmp / "synthetic-auth.json"
             synthetic_secrets.write_text(json.dumps({"V21_SYNC_HMAC_SECRET": synthetic_auth, "TENANT_DATA_ENCRYPTION_KEY": secrets.token_hex(32)}), encoding="utf-8")
+            deployment_attempted = True
             output = wr("deploy", "--config", str(cfg), "--secrets-file", str(synthetic_secrets))
             deployed = True
             origin_match = re.search(r'https://'+re.escape(name)+r'\.[a-z0-9-]+\.workers\.dev', output)
@@ -170,6 +226,8 @@ def main():
                 evidence["readiness_error_codes"] = codes
                 evidence["readiness_transport_statuses"] = re.findall(r'http_status=(\d{1,3})', check.stderr)
                 evidence["readiness_transport_exception_types"] = re.findall(r'exception_type=([A-Za-z]+)', check.stderr)
+                evidence['readiness_transport_body_kinds'] = re.findall(r'body_kind=([a-z_]+)', check.stderr)
+                evidence['failed_gate_transport_observations'] = isolated_transport_diagnostics(session, origin, version)
                 try:
                     diagnostic = session.get(origin+"/v213/readiness", params={"expected_version":version,"challenge":secrets.token_hex(16)}, timeout=15)
                     evidence["readiness_diagnostic_http_status"] = diagnostic.status_code
@@ -179,15 +237,24 @@ def main():
                 raise RuntimeError("ISOLATED_READINESS_GATE_FAILED:" + ",".join(codes))
             proof = json.loads(check.stdout[check.stdout.index('{'):])
             proofs = [proof]
+            if profile and proof.get('model_profile_sha256') != profile_sha256(profile):
+                raise RuntimeError('ISOLATED_READINESS_PROFILE_MISMATCH')
+            if profile:
+                wrong = session.get(origin+'/v213/readiness', params={'expected_version':version,'challenge':secrets.token_hex(16),'expected_model_profile_sha256':'0'*64}, timeout=15)
+                if wrong.status_code != 409: raise RuntimeError('NEGATIVE_PROFILE_ACCEPTED')
+                evidence['profile_mismatch'] = 'PASS'
             current = sorted(json.loads(wr("deployments", "list", "--json", "--config", str(cfg))), key=lambda d:d["created_on"])[-1]["versions"]
             if current != versions: raise RuntimeError("ISOLATED_ACTIVE_VERSION_CHANGED")
             mismatch = session.get(origin+"/v213/readiness", params={"expected_version": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "challenge": secrets.token_hex(16)}, timeout=15)
             if mismatch.status_code != 409: raise RuntimeError("VERSION_MISMATCH_ACCEPTED")
             evidence.update(worker_version=version, active_percentage=100, readiness=proofs, convergence="PASS_REAL_ISOLATED", compact_policy_sha256=policy_hash)
             if args.readiness_only:
+                evidence['readiness_only_transport_observations'] = isolated_transport_diagnostics(session, origin, version)
                 evidence.update(status="PASS_READINESS_ONLY", live_qa="NOT_RUN", release_ready=False)
                 return
-            os.environ.update(II_LLAMA_BASE_URL="http://127.0.0.1:8080", II_LOCAL_LLM_MODEL="qwen38-q6", II_LOCAL_LLM_SHARED_SECRET=gateway_secret)
+            os.environ.update(II_LLAMA_BASE_URL="http://127.0.0.1:8080", II_LOCAL_LLM_MODEL=selected, II_LOCAL_LLM_SHARED_SECRET=gateway_secret)
+            if profile_json: os.environ['V213_MODEL_PROFILE_JSON'] = profile_json
+            else: os.environ.pop('V213_MODEL_PROFILE_JSON', None)
             import v213_local_llm_gateway as gateway_module
             requests.post = measured_post
             gateway = ThreadingHTTPServer(("127.0.0.1", 0), gateway_module.V213GatewayHandler)
@@ -203,13 +270,13 @@ def main():
                         public = urls[0]
                         try:
                             h = session.get(public+"/health", timeout=5)
-                            if h.ok and h.json().get("selected_model") == "qwen38-q6": break
+                            if h.ok and h.json().get('selected_model') == selected and (not profile or h.json().get('model_profile_sha256') == profile_sha256(profile)): break
                         except requests.RequestException: pass
                     time.sleep(1)
                 else: raise RuntimeError("ISOLATED_TUNNEL_NOT_READY")
                 now = time.time()
                 iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
-                route = {"schema_version": 1, "tunnel_mode": "quick_free_relay", "model": "qwen38-q6", "public_url": public, "connected_at": iso(now), "expires_at": iso(now+550), "health_schema_version": 2, "route_generation": generation, "consecutive_health_checks": 3}
+                route = {"schema_version": 1, "tunnel_mode": "quick_free_relay", "model": selected, "public_url": public, "connected_at": iso(now), "expires_at": iso(now+550), "health_schema_version": 2, "route_generation": generation, "consecutive_health_checks": 3}
                 r = signed(origin, "/v213/admin/free-relay-route", route)
                 if not r.ok: raise RuntimeError("ISOLATED_ROUTE_FAILED:"+str(r.json().get("code")))
                 for key, value in [("model", "qwen38"), ("expires_at", iso(now-60))]:
@@ -234,6 +301,9 @@ def main():
                         answer = body.get("answer", "")
                         ok = r.ok and bool(metric) and metric.get("finish_reason") == "stop" and metric.get("model") == canonical and total <= 28000
                         ok = ok and (body.get("expected_token_observed") is True if case == "smoke" else len(answer) >= 25 and not answer.startswith("LOCAL_MODEL_"))
+                        if metric.get('reasoning_present'):
+                            ok = False
+                            answer = ''  # never retain an unexpected reasoning transcript
                         row = {"case": case, "phase": phase, "total_ms": total, "pass": ok, "http_status": r.status_code, **metric, "answer": answer}
                         evidence["results"].append(row)
                         print(json.dumps({k:v for k,v in row.items() if k != "answer"}), flush=True)
@@ -254,22 +324,37 @@ def main():
         raise
     finally:
         requests.post = original_post
+        local_cleanup = True
         if tunnel:
-            tunnel.terminate(); tunnel.wait(timeout=15)
-        if gateway: gateway.shutdown(); gateway.server_close()
+            try:
+                tunnel.terminate()
+                try: tunnel.wait(timeout=15)
+                except subprocess.TimeoutExpired: tunnel.kill(); tunnel.wait(timeout=5)
+            except Exception: local_cleanup = False
+        if gateway:
+            try: gateway.shutdown(); gateway.server_close()
+            except Exception: local_cleanup = False
         for key, value in old_env.items():
             if value is None: os.environ.pop(key, None)
             else: os.environ[key] = value
-        cleanup = True
+        cleanup = local_cleanup
+        operations = []
+        if deployment_attempted: operations.append(('delete', '--name', name, '--force'))
+        if namespace: operations.append(('kv', 'namespace', 'delete', '--namespace-id', namespace))
+        for operation in operations:
+            try: wr(*operation)
+            except Exception: cleanup = False
         try:
             if 'temp' in locals() and Path(temp).exists(): shutil.rmtree(temp)
-            if deployed: wr("delete", "--name", name, "--force")
-            if namespace: wr("kv", "namespace", "delete", "--namespace-id", namespace)
         except Exception: cleanup = False
+        if not cleanup:
+            evidence['cleanup_target_worker'] = name
+            evidence['cleanup_target_namespace'] = namespace
         evidence["isolated_resources_deleted"] = cleanup
         evidence["preset_unchanged"] = hashlib.sha256(preset.read_bytes()).hexdigest() == preset_sha
         evidence["source_unchanged_during_benchmark"] = source_manifest() == manifest
         if not cleanup or not evidence["preset_unchanged"] or not evidence["source_unchanged_during_benchmark"]: evidence["status"] = "FAIL"
+        evidence["completed_at"] = datetime.now(timezone.utc).isoformat()
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
         if args.readiness_only and evidence["status"] != "PASS_READINESS_ONLY":

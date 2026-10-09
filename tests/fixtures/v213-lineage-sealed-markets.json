@@ -1,0 +1,247 @@
+{
+ "schema": "v213-lineage-sealed-markets-v1",
+ "note": "Wire contract between scripts/publish_sealed_snapshot.py (tests/test_bottleneck_top20_v3.py) and the Worker parser (cloud/test/v213-bottleneck-v3.test.ts): input = producer market object, sealed = what the sealer emits, expect/absent = public text the Worker must / must not show.",
+ "cases": [
+  {
+   "name": "legacy producer, two-year value",
+   "expect": "+43%",
+   "absent": [
+    "+410%"
+   ],
+   "input": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "cagr_2y": 0.4321,
+    "history_start": "2023-09-26",
+    "currency": "USD",
+    "cagr_listed": 4.1
+   },
+   "sealed": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "history_start": "2023-09-26",
+    "currency": "USD",
+    "cagr_2y": 0.4321
+   }
+  },
+  {
+   "name": "legacy producer, unverified since-listing figure",
+   "expect": "可得價格自 2025-02-13；上市沿革未核實",
+   "absent": [
+    "+410%"
+   ],
+   "input": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "cagr_2y": null,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "cagr_listed": 4.1
+   },
+   "sealed": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "cagr_2y": null
+   }
+  },
+  {
+   "name": "verified spin-off",
+   "expect": "2025-02-24–2026-09-25 正常交易以來年化 +410%（非2年）",
+   "absent": [],
+   "input": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "cagr_2y": null,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "lineage": {
+     "kind": "SPINOFF",
+     "event_date": "2025-02-21",
+     "regular_way_start": "2025-02-24",
+     "related_entity": {
+      "name": "Western Digital",
+      "symbol": "WDC"
+     },
+     "sources": [
+      {
+       "url": "https://www.sec.gov/Archives/edgar/data/106040/000119312525033383/d847507d8k.htm",
+       "published_at": "2025-02-24",
+       "claims": [
+        "kind",
+        "event_date",
+        "regular_way_start",
+        "related_entity"
+       ],
+       "evidence": "on February 21, 2025 (the “Distribution Date”), the Company completed the Spin-Off ... Sandisk Common Stock commenced trading “regular way” under the symbol “SNDK” on the Nasdaq Stock Market LLC (“Nasdaq”) on February 24, 2025"
+      }
+     ]
+    },
+    "history_request_start": "2023-09-25",
+    "cagr_listed": 4.1,
+    "cagr_listed_start": "2025-02-24",
+    "cagr_listed_span_days": 578,
+    "long_term_basis": "SINCE_REGULAR_WAY",
+    "history_truncated": true,
+    "price": 150.0
+   },
+   "sealed": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "lineage": {
+     "kind": "SPINOFF",
+     "event_date": "2025-02-21",
+     "regular_way_start": "2025-02-24",
+     "related_entity": {
+      "name": "Western Digital",
+      "symbol": "WDC"
+     },
+     "sources": [
+      {
+       "url": "https://www.sec.gov/Archives/edgar/data/106040/000119312525033383/d847507d8k.htm",
+       "published_at": "2025-02-24",
+       "claims": [
+        "kind",
+        "event_date",
+        "regular_way_start",
+        "related_entity"
+       ],
+       "evidence": "on February 21, 2025 (the “Distribution Date”), the Company completed the Spin-Off ... Sandisk Common Stock commenced trading “regular way” under the symbol “SNDK” on the Nasdaq Stock Market LLC (“Nasdaq”) on February 24, 2025"
+      }
+     ]
+    },
+    "history_request_start": "2023-09-25",
+    "cagr_2y": null,
+    "cagr_listed": 4.1,
+    "cagr_listed_start": "2025-02-24",
+    "cagr_listed_span_days": 578,
+    "long_term_basis": "SINCE_REGULAR_WAY"
+   }
+  },
+  {
+   "name": "new producer, seasoned listing",
+   "expect": "+53%",
+   "absent": [],
+   "input": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "cagr_2y": 0.5321,
+    "history_start": "2023-09-26",
+    "currency": "USD",
+    "lineage": {
+     "kind": "UNKNOWN"
+    },
+    "history_request_start": "2023-09-25",
+    "cagr_listed": null,
+    "cagr_listed_start": null,
+    "cagr_listed_span_days": null,
+    "long_term_basis": "TWO_YEAR"
+   },
+   "sealed": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "history_start": "2023-09-26",
+    "currency": "USD",
+    "lineage": {
+     "kind": "UNKNOWN"
+    },
+    "history_request_start": "2023-09-25",
+    "cagr_2y": 0.5321,
+    "cagr_listed": null,
+    "cagr_listed_start": null,
+    "cagr_listed_span_days": null,
+    "long_term_basis": "TWO_YEAR"
+   }
+  },
+  {
+   "name": "present but contradictory: two years claimed for a 2025 spin-off",
+   "expect": "可得價格自 2025-02-13；上市沿革未核實",
+   "absent": [
+    "+93%",
+    "+410%"
+   ],
+   "input": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "cagr_2y": 0.9321,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "lineage": {
+     "kind": "SPINOFF",
+     "event_date": "2025-02-21",
+     "regular_way_start": "2025-02-24",
+     "related_entity": {
+      "name": "Western Digital",
+      "symbol": "WDC"
+     },
+     "sources": [
+      {
+       "url": "https://www.sec.gov/Archives/edgar/data/106040/000119312525033383/d847507d8k.htm",
+       "published_at": "2025-02-24",
+       "claims": [
+        "kind",
+        "event_date",
+        "regular_way_start",
+        "related_entity"
+       ],
+       "evidence": "on February 21, 2025 (the “Distribution Date”), the Company completed the Spin-Off ... Sandisk Common Stock commenced trading “regular way” under the symbol “SNDK” on the Nasdaq Stock Market LLC (“Nasdaq”) on February 24, 2025"
+      }
+     ]
+    },
+    "history_request_start": "2023-09-25",
+    "cagr_listed": null,
+    "cagr_listed_start": null,
+    "cagr_listed_span_days": null,
+    "long_term_basis": "TWO_YEAR"
+   },
+   "sealed": {
+    "source": "Yahoo Finance adjusted daily close (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/SNDK",
+    "asof": "2026-09-25",
+    "ret_6m": 1.9,
+    "ret_1y": 17.8,
+    "history_start": "2025-02-13",
+    "currency": "USD",
+    "lineage": {
+     "kind": "UNKNOWN"
+    },
+    "history_request_start": null,
+    "cagr_listed": null,
+    "cagr_listed_start": null,
+    "cagr_listed_span_days": null,
+    "cagr_2y": null,
+    "long_term_basis": "UNAVAILABLE"
+   }
+  }
+ ]
+}

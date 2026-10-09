@@ -57,6 +57,24 @@ class H6B1MetricSemanticGuardTests(unittest.TestCase):
         self.assertEqual(classification, "INFERENCE")
         self.assertIn("39%", future)
 
+    def test_will_be_recognized_without_next_twelve_months_stays_unavailable(self) -> None:
+        for horizon in ("next twenty-four months", "next 24 months", "a future period"):
+            with self.subTest(horizon=horizon):
+                metric = guard._extract_strict_metric(
+                    "Remaining performance obligations were $3.2 billion. "
+                    f"Approximately 39% will be recognized over {horizon}."
+                )
+                self.assertIsNotNone(metric)
+                self.assertEqual(guard._future_from_context(metric), (guard.base.FUTURE_FALLBACK, "UNAVAILABLE"))
+
+    def test_non_rpo_percentage_recognition_stays_unavailable(self) -> None:
+        metric = guard._extract_strict_metric(
+            "Backlog was $3.2 billion. Approximately 39% will be recognized over the next twelve months."
+        )
+        self.assertIsNotNone(metric)
+        self.assertEqual(metric["metric_type"], "BACKLOG")
+        self.assertEqual(guard._future_from_context(metric), (guard.base.FUTURE_FALLBACK, "UNAVAILABLE"))
+
     def test_unitless_amount_is_fail_closed(self) -> None:
         self.assertIsNone(guard._extract_strict_metric("remaining performance obligations were $946"))
 

@@ -14,6 +14,7 @@ param(
     [switch]$InstallCloudflared,
     [switch]$NoSync,
     [switch]$NoAutoActivation,
+    [switch]$AllowSealedActivation,
     [switch]$Synthetic,
     [switch]$SelfTest
 )
@@ -127,7 +128,9 @@ try {
         }
         else {
             Stage 4 'Five-field market and SEC report for provisional membership'
-            & $python 'scripts\v213_v212_progress_runner.py'
+            # Fail closed: unverified market acquisition (no receipt) must degrade to
+            # UNAVAILABLE so every row keeps a dated SEC-anchored retrieved_at.
+            & $python 'scripts\v213_v212_progress_runner.py' '--require-known-acquisition' '--business-profile'
             if ($LASTEXITCODE -ne 0) { throw 'v2.1.2 five-field report failed.' }
 
             Stage 5 'Current-membership order evidence and seven-field draft'
@@ -145,6 +148,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Diversified System operationalization failed.' }
             & $python 'scripts\v213_source_independence_gate_v3.py' '--enforce'
             if ($LASTEXITCODE -ne 0) { throw 'Claim-level source-independence gate failed.' }
+            Write-Host 'II_PROGRESS source independence PASS: company/claim diversity is blocking; unavailable free market cross-checks are disclosed and cap confidence' -ForegroundColor Green
             & $python 'scripts\v213_serenity_latest_multisource_audit.py' '--normalize'
             if ($LASTEXITCODE -ne 0) { throw 'Latest per-ticker multi-source normalization failed.' }
             & $python 'scripts\v213_tam_capture_claim_guard.py'
@@ -179,6 +183,9 @@ try {
                 }
                 elseif (-not (Test-Path -LiteralPath $syncConfig -PathType Leaf)) {
                     Write-Warning 'Formal v2.1.3 is installed, but signed-sync configuration is missing; local bundle retained.'
+                }
+                elseif (-not $AllowSealedActivation) {
+                    throw 'V213_SEALED_ACTIVATION_NOT_ALLOWED: the hourly sealed publisher is the single Production writer; rerun with -NoSync for a data-only refresh, or pass -AllowSealedActivation for an explicit operator activation.'
                 }
                 elseif ($bridgeReady) {
                     & .\activate-v213-seven-field-schedule.ps1 -ProjectRoot $ProjectRoot -ConfirmActivation -RequireLocalModel -ExpectedModel $Model

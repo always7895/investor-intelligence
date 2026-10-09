@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "catalog_id": "official-public-feeds",
+  "description": "Wave 1 official public feeds with reviewed rights and implemented adapters (docs/SOURCE_ACTIVATION_PLAN_V1.md).",
+  "sources": [
+    {
+      "source_id": "federal_reserve_news",
+      "display_name": "Federal Reserve Board press releases (RSS)",
+      "authority_class": "central_bank",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "monetary_policy",
+        "financial_regulation",
+        "macroeconomic_context"
+      ],
+      "jurisdictions": [
+        "US"
+      ],
+      "languages": [
+        "en"
+      ],
+      "canonical_urls": [
+        "https://www.federalreserve.gov/"
+      ],
+      "independence_group": "us_federal_reserve",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "federal_reserve_news",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 1.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 120,
+      "notes": "Public domain per the Board disclaimer (updated 2024-08-02); cite the Board as source. Canary 2026-09-25: fetched 20 items; NORMALIZATION_FAILED (news leads are not claim observations); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "ecb_news",
+      "display_name": "European Central Bank press releases (RSS)",
+      "authority_class": "central_bank",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "monetary_policy",
+        "financial_regulation",
+        "macroeconomic_context"
+      ],
+      "jurisdictions": [
+        "EA"
+      ],
+      "languages": [
+        "en"
+      ],
+      "canonical_urls": [
+        "https://www.ecb.europa.eu/"
+      ],
+      "independence_group": "eu_ecb",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "ecb_news",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 1.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 120,
+      "notes": "ECB disclaimer: reuse permitted when reproduced accurately with the ECB cited; modifications stated. Canary 2026-09-25: fetched 15 items; NORMALIZATION_FAILED (news leads are not claim observations); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "sec_news",
+      "display_name": "U.S. SEC press releases (RSS)",
+      "authority_class": "securities_regulator",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "securities_regulation",
+        "enforcement",
+        "regulatory_decisions"
+      ],
+      "jurisdictions": [
+        "US"
+      ],
+      "languages": [
+        "en"
+      ],
+      "canonical_urls": [
+        "https://www.sec.gov/"
+      ],
+      "independence_group": "us_sec",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "sec_news",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 0.2,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 115,
+      "notes": "sec.gov information is public and may be copied or distributed; fair access 10 req/s with declared contact. Canary 2026-09-25: fetched 25 items with declared SEC contact; NORMALIZATION_FAILED (news leads are not claim observations); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "twse_equity_eod",
+      "display_name": "TWSE listed stock daily trading (STOCK_DAY_ALL)",
+      "authority_class": "regulated_exchange",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "market_statistics",
+        "securities"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "languages": [
+        "zh-Hant"
+      ],
+      "canonical_urls": [
+        "https://openapi.twse.com.tw/"
+      ],
+      "independence_group": "tw_twse",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "twse_equity_eod",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 2.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 125,
+      "notes": "data.gov.tw/dataset/11549, Open Government Data License v1, free, daily; attribution required. Canary 2026-09-25: fetched; acquisition factory BATCH_OVERFLOW (bulk EOD exceeds the 100-record claim cap); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "tpex_equity_eod",
+      "display_name": "TPEx mainboard daily close quotes",
+      "authority_class": "regulated_exchange",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "market_statistics",
+        "securities"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "languages": [
+        "zh-Hant"
+      ],
+      "canonical_urls": [
+        "https://www.tpex.org.tw/"
+      ],
+      "independence_group": "tw_tpex",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "tpex_equity_eod",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 2.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 125,
+      "notes": "data.gov.tw/dataset/11371, Open Government Data License v1, free, daily; attribution required. Canary 2026-09-25: fetched; acquisition factory BATCH_OVERFLOW (bulk EOD exceeds the 100-record claim cap); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "twse_issuer_directory",
+      "display_name": "TWSE listed company profiles (t187ap03_L)",
+      "authority_class": "regulated_exchange",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "listed_companies",
+        "issuer_information",
+        "industry"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "languages": [
+        "zh-Hant"
+      ],
+      "canonical_urls": [
+        "https://openapi.twse.com.tw/"
+      ],
+      "independence_group": "tw_twse",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "twse_issuer_directory",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 2.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 120,
+      "notes": "data.gov.tw/dataset/18419, Open Government Data License v1 (reviewed 2026-09-09); attribution required. Canary 2026-09-25: fetched; acquisition factory BATCH_OVERFLOW (directory exceeds the 100-record claim cap); stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "tpex_issuer_directory",
+      "display_name": "TPEx listed company profiles (t187ap03_O)",
+      "authority_class": "regulated_exchange",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "listed_companies",
+        "issuer_information",
+        "industry"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "languages": [
+        "zh-Hant"
+      ],
+      "canonical_urls": [
+        "https://www.tpex.org.tw/"
+      ],
+      "independence_group": "tw_tpex",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "tpex_issuer_directory",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 2.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 120,
+      "notes": "data.gov.tw/dataset/25036, Open Government Data License v1 (reviewed 2026-09-09); attribution required. Canary 2026-09-25: canary TIMEOUT on 2026-09-25 run 1; stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    },
+    {
+      "source_id": "taifex_options_eod",
+      "display_name": "TAIFEX daily options market report",
+      "authority_class": "regulated_exchange",
+      "trust_tier": "T1_PRIMARY_OFFICIAL",
+      "evidence_roles": [
+        "derivatives",
+        "market_statistics"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "languages": [
+        "zh-Hant"
+      ],
+      "canonical_urls": [
+        "https://openapi.taifex.com.tw/"
+      ],
+      "independence_group": "tw_taifex",
+      "admission_status": "ADAPTER_CONTRACT_VALIDATED",
+      "adapter": {
+        "id": "taifex_options_eod",
+        "status": "implemented"
+      },
+      "access": {
+        "free_access_required": true,
+        "payment_required": false,
+        "terms_review_status": "approved"
+      },
+      "runtime": {
+        "enabled": false,
+        "per_host_concurrency": 1,
+        "minimum_request_interval_seconds": 2.0,
+        "maximum_retries": 2,
+        "freshness_seconds": 86400
+      },
+      "provenance": {
+        "required": true,
+        "correction_tracking": true
+      },
+      "priority": 115,
+      "notes": "data.gov.tw/dataset/11320, Open Government Data License v1 (reviewed 2026-09-09); EOD only, not executable quotes. Canary 2026-09-25: canary INVALID_PAYLOAD through the acquisition factory; stays out of the claim-evidence acquisition plane until a bulk/lead acquisition kind exists."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "policy_id": "v213-macro-industry-policy-v1",
+  "description": "Evidence-bound macro industry research and ranking policy for 12-36M horizon. System Operationalization scoring overlay only; not Serenity formula or probability.",
+  "required_top_count": 5,
+  "horizon_months_range": [12, 36],
+  "candidate_hypotheses_universe": [
+    "ai_datacenter_compute",
+    "optical_networking",
+    "grid_power_infrastructure",
+    "thermal_cooling_systems",
+    "semiconductor_equipment_materials",
+    "advanced_packaging_hbm",
+    "robotics_automation",
+    "energy_power_generation"
+  ],
+  "admission_rules": {
+    "require_sourced_growth_rate": true,
+    "require_growth_units": true,
+    "require_growth_period": true,
+    "require_growth_type": true,
+    "require_publisher_identity": true,
+    "require_publication_date": true,
+    "require_verifiable_date_format": true,
+    "require_verifiable_period_format": true,
+    "require_admitted_growth_source_lineage": true,
+    "require_source_binding_url_or_passage": true,
+    "prohibit_company_count_as_market_growth": true,
+    "missing_growth_state": "UNAVAILABLE"
+  },
+  "options_policy": {
+    "require_strict_finite_numbers": true,
+    "prohibit_type_coercion": true,
+    "require_calendar_dte_consistency": true,
+    "max_timestamp_freshness_seconds": 86400,
+    "asof_close_freshness_seconds": 345600,
+    "prohibit_caller_supplied_bare_quote_payoffs": true,
+    "require_currency_binding": "USD",
+    "require_contract_multiplier": 100,
+    "missing_greeks_state": "UNAVAILABLE",
+    "missing_strategy_payoff_state": "UNAVAILABLE"
+  },
+  "opportunity_rubric": {
+    "scale_max": 100,
+    "weights": {
+      "demand_growth_visibility": 25,
+      "supply_constraint_chokepoint": 25,
+      "pricing_power_defensibility": 20,
+      "value_chain_capex_capture": 15,
+      "catalyst_risk_lifecycle_balance": 15
+    },
+    "classification": "System Operationalization score, not investment probability or Serenity score"
+  },
+  "deep_analysis_sections": [
+    "demand",
+    "supply",
+    "bottleneck",
+    "pricing",
+    "capex",
+    "competition",
+    "beneficiaries",
+    "catalysts_6m_1y_2y",
+    "risks",
+    "thesis_killers"
+  ],
+  "fail_closed": {
+    "fewer_than_five_action": "REPORT_SHORTFALL_AND_FAIL_ACCEPTANCE",
+    "unverified_sources_action": "EXCLUDE_OR_UNAVAILABLE"
+  }
+}

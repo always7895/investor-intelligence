@@ -138,10 +138,32 @@ function derivedSourceViews(top20: V21Top20Record[]): Array<Record<string, unkno
   return result;
 }
 
+/** A signed admin request after its signature, age and size checks, before any replay bookkeeping. */
+export interface V21SignedAdminRequest { body: string; timestamp: number; nonce: string; maxAgeSeconds: number }
+
 export async function authenticateV21AdminRequest(
   request: Request,
   env: V21AdminEnv,
 ): Promise<string> {
+  const signed = await verifyV21AdminSignature(request, env);
+  const replayKey = `v21:sync-nonce:${await hashOpaqueId(signed.nonce)}`;
+  if (await env.EPHEMERAL_SECURITY_CACHE.get(replayKey)) throw new Error("V21_SYNC_REPLAY");
+  await env.EPHEMERAL_SECURITY_CACHE.put(replayKey, "used", { expirationTtl: signed.maxAgeSeconds * 2 });
+  return signed.body;
+}
+
+/** Signature, timestamp window and body size only; the caller MUST enforce replay protection itself.
+ *
+ * `purpose` binds a signature to one endpoint: the signed message is `<purpose>\n<timestamp>.<nonce>.<body>` instead of
+ * `<timestamp>.<nonce>.<body>` (which always starts with ten digits, so the two forms never collide). A purpose-bound
+ * signature therefore never authenticates at a generic admin endpoint, whose replay guard is the KV nonce of
+ * authenticateV21AdminRequest. Only the free-relay route refresh, which runs every minute and claims its nonce in the relay
+ * Durable Object (a KV write per heartbeat alone exceeds the free plan's 1,000 KV writes a day), uses a purpose. */
+export async function verifyV21AdminSignature(
+  request: Request,
+  env: V21AdminEnv,
+  purpose = "",
+): Promise<V21SignedAdminRequest> {
   const keyMaterial = (env.V21_SYNC_HMAC_SECRET ?? "").trim();
   if (keyMaterial.length < 32) throw new Error("V21_SYNC_KEY_NOT_CONFIGURED");
 
@@ -161,13 +183,10 @@ export async function authenticateV21AdminRequest(
   const maxBody = Math.max(4096, Math.min(5_000_000, Number(env.V21_MAX_SYNC_BODY_BYTES ?? "5000000") || 5_000_000));
   if (ENCODER.encode(body).length > maxBody) throw new Error("V21_SYNC_BODY_TOO_LARGE");
 
-  const expected = await hmac(keyMaterial, `${timestamp}.${nonce}.${body}`);
+  if (purpose && !/^[a-z0-9][a-z0-9-]{2,63}$/.test(purpose)) throw new Error("V21_SYNC_PURPOSE_INVALID");
+  const expected = await hmac(keyMaterial, `${purpose ? `${purpose}\n` : ""}${timestamp}.${nonce}.${body}`);
   if (!timingSafeEqual(expected, signature)) throw new Error("V21_SYNC_SIGNATURE_INVALID");
-
-  const replayKey = `v21:sync-nonce:${await hashOpaqueId(nonce)}`;
-  if (await env.EPHEMERAL_SECURITY_CACHE.get(replayKey)) throw new Error("V21_SYNC_REPLAY");
-  await env.EPHEMERAL_SECURITY_CACHE.put(replayKey, "used", { expirationTtl: maxAge * 2 });
-  return body;
+  return { body, timestamp: Number(timestamp), nonce, maxAgeSeconds: maxAge };
 }
 
 export async function ingestV21PublicSnapshot(

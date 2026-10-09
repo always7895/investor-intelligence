@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -32,13 +33,12 @@ def git(root: Path, *arguments: str, env: dict[str, str] | None = None) -> str:
 class FullHistoryPrivacyScanTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
         self.repo = Path(self.temporary.name)
+        self.enterContext(contextlib.chdir(self.repo))
         git(self.repo, "init", "-q")
         git(self.repo, "config", "user.name", "Synthetic Tester")
         git(self.repo, "config", "user.email", "tester@example.test")
-
-    def tearDown(self) -> None:
-        self.temporary.cleanup()
 
     def commit(self, message: str, *, email: str = "tester@example.test") -> None:
         environment = dict(os.environ)

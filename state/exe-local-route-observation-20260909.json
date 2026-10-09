@@ -1,0 +1,52 @@
+{
+  "scope": "EXE_LOCAL_ROUTE_CHECK_ONLY",
+  "release_qualified": false,
+  "production_mutation": false,
+  "real_line_sent": false,
+  "status": "PASS_LOCAL_EXE_ROUTE_ONLY",
+  "started_at": "2026-09-09T14:17:29.369167+00:00",
+  "results": [
+    {
+      "effort": "none",
+      "model_profile_sha256": "ef4f8beef93c913ae2a79b42f9c4da7e05b81f65166a720d12ee33537fdc38f9",
+      "exit_code": 0,
+      "elapsed_ms": 2328.0,
+      "runtime_config_created": false
+    },
+    {
+      "effort": "low",
+      "model_profile_sha256": "d625709ca91409c39f3a3e0347e8d0bbbb6614f65d11e2dfbedee93fc455e8a1",
+      "exit_code": 0,
+      "elapsed_ms": 5922.0,
+      "runtime_config_created": false
+    }
+  ],
+  "source_head": "ed0dcd1a9ea50b694f99f6412b3bf871a9e75283",
+  "source_dirty": true,
+  "source_files": {
+    "scripts/bootstrap_portable_python.ps1": "98b8eaef4d4a318d304e8d4007a14c7f525bbae571c99cd3e264a2b6db5b3534",
+    "scripts/v213_local_llm_gateway.py": "e8341cf2c101dd5fda55de1b830a4691e0d5e5d986a07767417c26dbb181dc3c",
+    "scripts/v213_free_relay.ps1": "8db968f84401be51734c8ec2a4b27e306a168d601874bfcceda76828181184f0",
+    "requirements-ci.txt": "54b7d4edbd37329ecab3c9b374c18e6fb35796d9ec26aeaa3d711a8a985566c7",
+    "run-v213-local.ps1": "45444a2ee08d280bd97ce640ed1a9d67c9fff458d9197cf95f256ac0e94097c8",
+    "activate-v213-seven-field-schedule.ps1": "4b15396d8b5c32ce1cd9508f9b70f4b8edd36a38049f66ba3ebd52047e5b892b",
+    "config/v213-model-profile-v1.json": "02e36c058ed8b24f88af3512b91f8cfcbcb5e613d4c6e3f6546c66738ad706e6",
+    "scripts/build_v213_scheduled_top20_report.py": "2e12412c1cc2478e4c780d85f7d6e7e0f1afddcac110f543165b301e0654b6d4",
+    "scripts/v213_compact_qa_gateway.py": "c2c9fdd1edc701f10b053d7f183aff9023585add86678eb4bcb0fd88ab012dad",
+    "run-v213-local-llm-bridge.ps1": "c35c427573af913861604e524f5bcb944fdebc3d39a4edc2c0a1cc3a773acba6",
+    "scripts/run_v213_local_llm_bridge_core.ps1": "3cadebf8c2d6e35fc7f5e8b9356204f9cbb1239b63e162b99138a476afede0c7",
+    "scripts/v213_named_tunnel_helpers.ps1": "12eda0d6b89d95e9f417bcafeb89addf83b17f9f2e0b8265ffa9d2d25913c034",
+    "sync-v213-top20-report.ps1": "6c939fcfd2b4ee0baeed479996fa3bef1469a1882ceef5c969ed51ba99462acd",
+    "scripts/v213_free_relay_heartbeat.ps1": "b30467808b3c1da31f9b55a030ca9ebd59a7ec1b4f0cc54b1b1b806439a6d43a",
+    "install-v213-runtime.ps1": "dd6af719929a7be46618d8112991a44da3404193551d33ed8d78326c67713f4c",
+    "register-v213-refresh-tasks.ps1": "877740fc53a1385d28c327b7c5a503fd7e0484abda0260c35cdda4e8fb574e23",
+    "config/v213-compact-qa-v1.json": "cbf5d35caeee04b8ad0ee51bf1a728c182c7c317877fb450189a14f2aa591bad",
+    "scripts/v213_windows_security.ps1": "caa77ade2d5b59087df8771e26298c0bcce71eff79f3cccac4a4133ed3dfefb7",
+    "scripts/v213_model_profile.py": "37963680ea8f42ac7f65624c9a682b28e74c092485c5cd98d57508f89a1646e3",
+    "scripts/setup_v213_named_tunnel.ps1": "f900e9e188177013c518b715c0f7190190c9b04beb0ffa6750a0f6b88d820784",
+    "register-v213-free-relay-task.ps1": "67263aa8d6447bedefdf81a6689a36f45b3be611dabafb3ed27b6d60f3a23d94",
+    "launcher/InvestorIntelligenceLauncher.cs": "13face7acfe384fe2482f143a29cd54c6f82c24052508804b66319f11f636732"
+  },
+  "exe_sha256": "0f864942822df8cd7ae815c0108aae2188d498955c4420c5176c1c80fa59fe2a",
+  "completed_at": "2026-09-09T14:17:38.187014+00:00"
+}

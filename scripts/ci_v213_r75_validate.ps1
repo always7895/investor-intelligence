@@ -14,6 +14,10 @@ $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 Push-Location $ProjectRoot
 try {
     $sha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+    $checkoutStatus = @(git status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $checkoutStatus.Count -ne 0) {
+        throw 'R75 validation requires a clean exact checkout; no source-bound receipt can be issued for a dirty tree.'
+    }
     if ($env:GITHUB_SHA -and $sha -ne $env:GITHUB_SHA.ToLowerInvariant()) {
         throw "Exact checkout mismatch: expected=$env:GITHUB_SHA actual=$sha"
     }
@@ -36,6 +40,8 @@ try {
         'scripts\workflow_supply_chain_gate.py',
         'scripts\actions_storage_policy_gate.py',
         'scripts\security_check.py',
+        'scripts\documentation_boundary_gate.py',
+        'scripts\documentation_structure_gate.py',
         'scripts\canonical_release_candidate_gate_v2.py'
     )) {
         & $env:PROJECT_PYTHON $gate

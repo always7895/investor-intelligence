@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveTenantId } from "../src/security";
+import { createHmac } from "node:crypto";
 import { asKv, MemoryKv } from "./fake-kv";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { broadcastV213Top20 } from "../src/v213/broadcast";
 import { ingestV213Top20Report } from "../src/v213/admin";
 import { formatV213Top20Report, parseV213Top20Report } from "../src/v213/top20-report";
-import { V213BroadcastDedupe } from "../src/v213/broadcast-dedupe";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import productionWorker from "../src/v213/production-worker";
 import { inspectSevenFieldFlex } from "./r75-line-presentation-proof";
 
@@ -66,6 +67,8 @@ function report() {
     schema_version: 2,
     product_version: "2.1.3",
     generated_at: generated,
+    freshness_policy: { policy_id: "v213-serenity-fresh-independent-evidence-v2", policy_sha256: "27ce461fae50218bb14e4d50ff283f6ed75b201e4a38d656643a5ed65d59c8d8" },
+    evidence_capture_at: "2026-09-15T11:00:00Z",
     display_columns: [
       "股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）",
       "行業別", "獲利簡述", "公司現在訂單", "未來訂單預估",
@@ -76,6 +79,7 @@ function report() {
       schema_version: 2,
       rank: index + 1,
       ticker: `T${String(index).padStart(2, "0")}`,
+      name: `Synthetic ${index}`,
       long_term_return_pct: 50 - index,
       short_term_return_pct: 20 - index,
       industry: "半導體",
@@ -92,6 +96,10 @@ function report() {
       future_order_source_urls: [],
       numeric_total_order_estimate_prohibited: true,
       retrieved_at: generated,
+      orders_state_as_of: generated,
+      evidence_class: "structural_claim",
+      freshness_policy_key: "structural_claim_max_age_days",
+      test_only_admission: true,
       provider_scope: "public_only",
       owner_watchlist_inherited: false,
     })),
@@ -100,33 +108,11 @@ function report() {
   };
 }
 
-function fakeDedupeNamespace(): DurableObjectNamespace {
-  const values = new Map<string, unknown>();
-  let chain = Promise.resolve();
-  const state = {
-    storage: {
-      get: async (key: string) => values.get(key),
-      put: async (key: string, value: unknown) => { values.set(key, value); },
-      delete: async (key: string) => values.delete(key),
-    },
-  } as unknown as DurableObjectState;
-  const instance = new V213BroadcastDedupe(state);
-  const stub = {
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = input instanceof Request ? input : new Request(input, init);
-      const result = chain.then(() => instance.fetch(request));
-      chain = result.then(() => undefined, () => undefined);
-      return result;
-    },
-  };
-  return {
-    idFromName: (name: string) => name,
-    get: () => stub,
-  } as unknown as DurableObjectNamespace;
+function fakeDedupeNamespace(failComplete = false): DurableObjectNamespace {
+  return memoryPushNamespace({ failComplete }).namespace;
 }
 
-function runtime() {
-  const publicKv = new MemoryKv();
+function runtime(publicKv = new MemoryKv()) {
   const privateKv = new MemoryKv();
   const securityKv = new MemoryKv();
   const env = {
@@ -136,6 +122,7 @@ function runtime() {
     TENANT_HASH_SECRET: HASH_KEY,
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
     V21_SCHEDULED_PUSH_ENABLED: "true",
     V21_TOP20_MAX_AGE_SECONDS: "7200",
     V213_BROADCAST_DEDUPE: fakeDedupeNamespace(),
@@ -146,9 +133,91 @@ function runtime() {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("v2.1.3 scheduled seven-field owner broadcast", () => {
+  it("blocks the actual manual push caller without a reviewed free plan before any LINE request", async () => {
+    const { publicKv, env } = runtime();
+    delete (env as any).LINE_FREE_PUSH_POLICY;
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    await expect(broadcastV213Top20(env, "test")).rejects.toThrow("LINE_FREE_PLAN_REVIEW_REQUIRED");
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("keeps both authenticated admin aliases inside the same free/manual attempt gate", async () => {
+    const { publicKv, env } = runtime();
+    const secret = "SYNTHETIC_PUSH_ADMIN_HMAC_NOT_REAL_123456";
+    const e = { ...env, V21_SYNC_HMAC_SECRET: secret };
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(e, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const post = vi.fn(async () => new Response("{}")); const network = withPushPreflight(post); vi.stubGlobal("fetch", network);
+    const call = async (path: string, number: number) => {
+      const stamp = String(Math.floor(Date.now() / 1000)); const nonce = String(number).padStart(32, "0");
+      const signature = createHmac("sha256", secret).update(`${stamp}.${nonce}.{}`).digest("hex");
+      return productionWorker.fetch(new Request(`https://synthetic.workers.dev${path}`, { method: "POST", body: "{}", headers: {
+        "x-ii-v21-timestamp": stamp, "x-ii-v21-nonce": nonce, "x-ii-v21-signature": signature,
+      } }), e as any, {} as ExecutionContext);
+    };
+    const approved = e.LINE_FREE_PUSH_POLICY; delete (e as any).LINE_FREE_PUSH_POLICY;
+    expect(await (await call("/v213/admin/test-push", 1)).json()).toMatchObject({ ok: false, code: "LINE_FREE_PLAN_REVIEW_REQUIRED" });
+    expect(network).not.toHaveBeenCalled();
+    e.LINE_FREE_PUSH_POLICY = approved;
+    expect(await (await call("/v213/admin/test-push", 2)).json()).toMatchObject({ status: "sent" });
+    expect(await (await call("/v21/admin/test-push", 3)).json()).toMatchObject({ ok: false, code: "LINE_PUSH_ALREADY_ATTEMPTED" });
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["transport", "complete"])("does not replay an ambiguous %s outcome through the actual scheduled caller", async failure => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-10T04:00:00Z"));
+    const { publicKv, env } = runtime();
+    env.V213_BROADCAST_DEDUPE = fakeDedupeNamespace(failure === "complete");
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => {
+      if (failure === "transport") throw new Error("SYNTHETIC_AMBIGUOUS_PUSH");
+      return new Response("{}");
+    });
+    vi.stubGlobal("fetch", withPushPreflight(send));
+    const run = async () => {
+      const pending: Promise<unknown>[] = [];
+      await productionWorker.scheduled({ cron: "0 0 * * *", scheduledTime: Date.now() } as ScheduledController,
+        env as any, { waitUntil(p: Promise<unknown>) { pending.push(p); } } as unknown as ExecutionContext);
+      return Promise.all(pending);
+    };
+    await expect(run()).rejects.toThrow(failure === "transport" ? "LINE_PUSH_TRANSPORT_UNCERTAIN" : "SYNTHETIC_COMPLETE_FAILED");
+    await run();
+    vi.setSystemTime(new Date(Date.now() + 11 * 60_000));
+    await run();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "delivery_unknown" });
+  });
+
+  it.each([-3 * 3600_000, 6 * 60_000])("blocks stale/future company retrievals despite fresh report and pipeline timestamps (%s)", async offset => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const data = report(); data.records[19]!.retrieved_at = new Date(Date.now() + offset).toISOString();
+    // Two-anchor contract: the stale direction must breach the source-state window
+    // (structural_claim = 550d); retrieved_at alone only bounds future/seal drift.
+    if (offset < 0) data.records[19]!.orders_state_as_of = "2000-01-01T00:00:00Z";
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(data));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "stale" });
+    expect(send).not.toHaveBeenCalled();
+  });
   it.each(["0 0 * * *", "0 13 * * *"])("runs the actual Production scheduled entrypoint for %s with seven bilingual fields and dedupe", async cron => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({type:"user",userId:LINE_TARGET}, HASH_KEY);
@@ -157,7 +226,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
     publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
     const calls: any[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (url: string, init: RequestInit) => {
       expect(String(url)).toBe("https://api.line.me/v2/bot/message/push");
       calls.push(JSON.parse(String(init.body)));
       return new Response("{}");
@@ -181,6 +250,18 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(formatV213Top20Report(parsed!, "bilingual")).toContain("公司現在訂單 / Current orders");
   });
 
+  it("refuses the retained transaction-shaped unsealed fixture before LINE transport", async () => {
+    const { publicKv, env } = runtime();
+    await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);
+    const runId = "20260901T122248Z-fccfd14d3c79";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
+    publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
   it("ingests only when the report order matches the promoted Top20", async () => {
     const { publicKv, env } = runtime();
     const runId = "20260901T122248Z-fccfd14d3c79";
@@ -191,11 +272,11 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(publicKv.values.has(`snapshot:${runId}:v213:top20-report:latest`)).toBe(true);
   });
 
-  it("sends all twenty seven-field cards in one request and deduplicates a scheduled slot", async () => {
+  it("retains twenty-card legacy unsealed presentation and mocked slot dedupe", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-cards"; // Not current sealed admission; actual ingestion is covered separately.
     const top = top20();
     const rep = report();
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
@@ -204,7 +285,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
 
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));
@@ -216,19 +297,101 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     const proof = inspectSevenFieldFlex(messages, parseV213Top20Report(rep)!);
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(JSON.stringify(messages)).not.toContain("Serenity");
+    // The bilingual push carries the admission disclosure on every card (it used to be added only for other locales).
+    expect(JSON.stringify(messages).split("TEST-ONLY").length - 1).toBeGreaterThanOrEqual(20);
   });
 
-  it("atomically sends exactly once under concurrent scheduled delivery", async () => {
+  it("keeps payload and dedupe on one run when the pointer changes mid-read", async () => {
+    class SwitchingKv extends MemoryKv {
+      pointerReads = 0;
+      override async get<T = string>(key: string, type?: "text" | "json"): Promise<T | string | null> {
+        if (key === "snapshot:current") this.pointerReads++;
+        const value = await super.get<T>(key, type);
+        if (key === "snapshot:run-a:v21:top20:latest") this.values.set("snapshot:current", JSON.stringify({ run_id: "run-b" }));
+        return value;
+      }
+    }
+    const kv = new SwitchingKv();
+    const { env } = runtime(kv);
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    kv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    for (const runId of ["run-a", "run-b"]) {
+      const rep = report(); rep.records[0]!.industry = `合成 ${runId}`;
+      expect(parseV213Top20Report(rep)).not.toBeNull();
+      kv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+      kv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(rep));
+      kv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
+    }
+    const payloads: string[] = [];
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      payloads.push(String(init?.body)); return new Response("{}");
+    }));
+    expect(await broadcastV213Top20(env, "morning")).toMatchObject({ status: "sent", run_id: "run-a" });
+    expect(kv.pointerReads).toBe(1);
+    expect(await broadcastV213Top20(env, "evening")).toMatchObject({ status: "sent", run_id: "run-b" });
+    expect((await broadcastV213Top20(env, "evening")).status).toBe("duplicate");
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]).toContain("合成 run-a");
+    expect(payloads[0]).not.toContain("合成 run-b");
+    expect(payloads[1]).toContain("合成 run-b");
+  });
+
+  it.each(["{}", "", '{"run_id":""}'])("does not broadcast legacy keys behind an invalid pointer %s", async pointer => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    publicKv.values.set("snapshot:current", pointer);
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(report()));
+    publicKv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("top20_unavailable");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not use a delayed cron's nominal clock to qualify stale data", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const nominal = Date.now() - 3 * 3600000;
+    const stamp = new Date(nominal).toISOString();
+    const top = top20(); top.forEach(row => { row.generated_at = stamp; });
+    const rep = report(); rep.generated_at = stamp; rep.records.forEach(row => { row.retrieved_at = stamp; });
+    publicKv.values.set("v21:top20:latest", JSON.stringify(top));
+    publicKv.values.set("v213:top20-report:latest", JSON.stringify(rep));
+    publicKv.values.set("last_successful_pipeline_timestamp", stamp);
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", send);
+    expect((await broadcastV213Top20(env, "morning", nominal)).status).toBe("stale");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not substitute report generation for a missing pipeline success stamp", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: "run-a" }));
+    publicKv.values.set("snapshot:run-a:v21:top20:latest", JSON.stringify(top20()));
+    publicKv.values.set("snapshot:run-a:v213:top20-report:latest", JSON.stringify(report()));
+    const send = vi.fn(async () => new Response("{}")); vi.stubGlobal("fetch", withPushPreflight(send));
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("stale");
+    expect(send).not.toHaveBeenCalled();
+    publicKv.values.set("snapshot:run-a:last_successful_pipeline_timestamp", new Date().toISOString());
+    expect((await broadcastV213Top20(env, "morning")).status).toBe("sent");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("reserves one mocked send under concurrent legacy unsealed scheduled calls", async () => {
+    const { publicKv, env } = runtime();
+    const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
+    await storeOwnerPairing(env, tenantId, LINE_TARGET);
+    const runId = "legacy-synthetic-concurrent"; // Not native DO or phone exactly-once proof.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     publicKv.values.set(`snapshot:${runId}:v213:top20-report:latest`, JSON.stringify(report()));
     publicKv.values.set(`snapshot:${runId}:last_successful_pipeline_timestamp`, new Date().toISOString());
     let sends = 0;
-    vi.stubGlobal("fetch", vi.fn(async () => {
+    vi.stubGlobal("fetch", withPushPreflight(async () => {
       sends += 1;
       await new Promise((resolve) => setTimeout(resolve, 20));
       return new Response("{}", { status: 200 });
@@ -241,11 +404,11 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(sends).toBe(1);
   });
 
-  it("fails closed when live Top20 order drifts", async () => {
+  it("retains the order-mismatch guard for legacy unsealed fixtures", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-order";
     const top = top20();
     [top[18], top[19]] = [top[19]!, top[18]!];
     top.forEach((item, index) => { item.rank = index + 1; item.serenity_score = 98 - index; item.serenity_raw_score = 98 - index; });

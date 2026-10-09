@@ -122,7 +122,12 @@ describe("v2.1.2 five-field Top 20", () => {
   it("answers Top 20 with the five-field report and refuses legacy fallback", async () => {
     const { publicKv, value } = env();
     await publicKv.put("snapshot:current", JSON.stringify({ run_id: "run-1" }));
-    await publicKv.put("snapshot:run-1:v212:top20-report:latest", JSON.stringify(report()));
+    const data = report(); // Synthetic current-clock legacy reader control only.
+    data.generated_at = new Date().toISOString();
+    for (const row of data.records) row.retrieved_at = data.generated_at;
+    await publicKv.put("snapshot:run-1:v212:top20-report:latest", JSON.stringify(data));
+    expect(await v212Top20ReportAnswer(value, parseQuery("Top 20"))).toContain("retrieval time is stale");
+    await publicKv.put("snapshot:run-1:last_successful_pipeline_timestamp", data.generated_at);
     const answer = await v212Top20ReportAnswer(value, parseQuery("Top 20"));
     expect(answer).toContain("長期投資報酬率（近2年年化）");
     expect(answer).toContain("短期投資報酬率（近6個月）");

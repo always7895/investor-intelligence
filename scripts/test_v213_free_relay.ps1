@@ -37,8 +37,43 @@ try {
         return [pscustomobject]@{ ok=$true; status='accepted' }
     }
     [void](Publish-V213FreeRelayRoute -Configuration $config -Record $record -Transport $transport)
-    $expected = Get-V213FreeRelaySignature -HmacSecret $hmac -Timestamp ([string]$capturedHeaders['x-ii-v21-timestamp']) -Nonce ([string]$capturedHeaders['x-ii-v21-nonce']) -Body $capturedBody
-    if ($expected -cne [string]$capturedHeaders['x-ii-v21-signature']) { throw 'FREE_RELAY HMAC signature mismatch.' }
+    $expected = Get-V213FreeRelaySignature -HmacSecret $hmac -Timestamp ([string]$capturedHeaders['x-ii-v21-timestamp']) -Nonce ([string]$capturedHeaders['x-ii-v21-nonce']) -Body $capturedBody -Purpose 'ii-v213-free-relay-route-v1'
+    if ($expected -cne [string]$capturedHeaders['x-ii-v21-signature']) { throw 'FREE_RELAY HMAC signature mismatch (purpose-bound route refresh).' }
+    $generic = Get-V213FreeRelaySignature -HmacSecret $hmac -Timestamp ([string]$capturedHeaders['x-ii-v21-timestamp']) -Nonce ([string]$capturedHeaders['x-ii-v21-nonce']) -Body $capturedBody
+    if ($generic -ceq [string]$capturedHeaders['x-ii-v21-signature']) { throw 'FREE_RELAY route refresh carried a generic admin signature.' }
+    # Signer x verifier compatibility: this (new) publisher against a Worker that verifies only the route-bound form (new),
+    # only the generic form (old, e.g. 16cb1b3 or a rollback) and neither (a forged-secret Worker: both attempts refused).
+    foreach ($workerKind in @('new','old','none')) {
+        $attempts = New-Object System.Collections.ArrayList
+        $verifier = {
+            param($Endpoint,$Headers,$Body)
+            $purposeBound = Get-V213FreeRelaySignature -HmacSecret $hmac -Timestamp ([string]$Headers['x-ii-v21-timestamp']) -Nonce ([string]$Headers['x-ii-v21-nonce']) -Body $Body -Purpose 'ii-v213-free-relay-route-v1'
+            $generic = Get-V213FreeRelaySignature -HmacSecret $hmac -Timestamp ([string]$Headers['x-ii-v21-timestamp']) -Nonce ([string]$Headers['x-ii-v21-nonce']) -Body $Body
+            $form = if ([string]$Headers['x-ii-v21-signature'] -ceq $purposeBound) { 'route' } elseif ([string]$Headers['x-ii-v21-signature'] -ceq $generic) { 'generic' } else { 'invalid' }
+            [void]$attempts.Add(@($form, [string]$Headers['x-ii-v21-nonce']))
+            $accepted = ($workerKind -eq 'new' -and $form -eq 'route') -or ($workerKind -eq 'old' -and $form -eq 'generic')
+            if ($accepted) { return [pscustomobject]@{ ok=$true; status='accepted' } }
+            return [pscustomobject]@{ ok=$false; code='V21_SYNC_SIGNATURE_INVALID' }
+        }.GetNewClosure()
+        $failed = $false
+        try { [void](Publish-V213FreeRelayRoute -Configuration $config -Record $record -Transport $verifier) } catch { $failed = $true }
+        $forms = ($attempts | ForEach-Object { $_[0] }) -join ','
+        $expected = @{ new = 'route'; old = 'route,generic'; none = 'route,generic' }[$workerKind]
+        if ($forms -ne $expected) { throw "FREE_RELAY compatibility ($workerKind): attempts $forms, expected $expected." }
+        if ($failed -ne ($workerKind -eq 'none')) { throw "FREE_RELAY compatibility ($workerKind): outcome mismatch." }
+        if ($attempts.Count -eq 2 -and $attempts[0][1] -eq $attempts[1][1]) { throw 'FREE_RELAY fallback reused the nonce.' }
+    }
+    # Any refusal other than a signature mismatch is final (no generic retry).
+    $refused = New-Object System.Collections.ArrayList
+    $refusing = { param($Endpoint,$Headers,$Body) [void]$refused.Add('x'); return [pscustomobject]@{ ok=$false; code='FREE_RELAY_PUBLIC_HEALTH_FAILED' } }.GetNewClosure()
+    try { [void](Publish-V213FreeRelayRoute -Configuration $config -Record $record -Transport $refusing); throw 'FREE_RELAY refusal was accepted.' }
+    catch { if ($_.Exception.Message -notmatch 'code=FREE_RELAY_PUBLIC_HEALTH_FAILED') { throw } }
+    if ($refused.Count -ne 1) { throw 'FREE_RELAY retried after a non-signature refusal.' }
+    # A failed registration logs only an upper-case error token; anything else becomes UNKNOWN.
+    foreach ($case in @(@('FREE_RELAY_PUBLIC_HEALTH_FAILED','FREE_RELAY_PUBLIC_HEALTH_FAILED'), @('free_relay_lower','UNKNOWN'), @("SAFE`n",'UNKNOWN'),
+                        @(('A' * 81),'UNKNOWN'), @('','UNKNOWN'), @('<html>','UNKNOWN'), @('CODE WITH SPACE','UNKNOWN'))) {
+        if ((Get-V213FreeRelayErrorCode $case[0]) -cne $case[1]) { throw ('FREE_RELAY error-code filter accepted: ' + $case[0].Length) }
+    }
     if ($capturedBody -match [regex]::Escape($hmac) -or $capturedBody -match 'encrypted_hmac') { throw 'FREE_RELAY route body leaked authentication material.' }
     $parsed = $capturedBody | ConvertFrom-Json
     if ([string]$parsed.tunnel_mode -ne 'quick_free_relay' -or [string]$parsed.model -ne 'qwen38-q6' -or [int]$parsed.health_schema_version -ne 2 -or [int]$parsed.consecutive_health_checks -ne 3) { throw 'FREE_RELAY route record contract mismatch.' }
@@ -62,7 +97,9 @@ try {
     $bridgeSource = Get-Content -LiteralPath $bridge -Raw -Encoding utf8
     $heartbeatSource = Get-Content -LiteralPath $heartbeat -Raw -Encoding utf8
     $activationSource = Get-Content -LiteralPath $activation -Raw -Encoding utf8
-    foreach ($marker in @("Model -cne 'qwen38-q6'", "mode -eq 'FreeRelay'", 'Start-HealthyQuickTunnel', 'Publish-V213FreeRelayRoute', 'Start-FreeRelayHeartbeat', 'heartbeatActivationFile')) {
+    # Since 57b9ea6 the relay follows the auto-detected model: an unprofiled FreeRelay derives its profile from the resolved
+    # model, and Test-SelectedModelRoute checks the exact served identity (the old qwen38-q6 pin is gone).
+    foreach ($marker in @('Set-FollowingModelProfile $Model', 'Test-SelectedModelRoute $llama $Model', "mode -eq 'FreeRelay'", 'Start-HealthyQuickTunnel', 'Publish-V213FreeRelayRoute', 'Start-FreeRelayHeartbeat', 'heartbeatActivationFile')) {
         if ($bridgeSource.IndexOf($marker,[StringComparison]::Ordinal) -lt 0) { throw "FREE_RELAY bridge marker missing: $marker" }
     }
     if ($bridgeSource.IndexOf('$heartbeat = Start-FreeRelayHeartbeat',[StringComparison]::Ordinal) -gt $bridgeSource.IndexOf('$freeRelayRegistration = Publish-V213FreeRelayRoute',[StringComparison]::Ordinal)) { throw 'Heartbeat startup must precede atomic Worker route publication.' }

@@ -94,14 +94,14 @@ Require ((Number (Get-Value $portfolio 'claim_primary_coverage_ratio' 0)) -ge 0.
 Require ((Integer (Get-Value $portfolio 'claim_source_families' 0)) -ge 2) 'Portfolio claim-source families are below 2.'
 Require ((Integer (Get-Value $portfolio 'claim_source_domains' 0)) -ge 2) 'Portfolio claim-source domains are below 2.'
 Require ((Number (Get-Value $portfolio 'maximum_single_family_share' 1) 1) -le 0.70) 'Single source-family concentration exceeds 70%.'
-Require ((Integer (Get-Value $portfolio 'market_conflict_ticker_count' -1) -eq 0) 'Unresolved market-source conflicts remain.'
+Require ((Integer (Get-Value $portfolio 'market_conflict_ticker_count' -1)) -eq 0) 'Unresolved market-source conflicts remain.'
 
 $freshRoot = Get-Value $audit 'freshness_audit' $null
 Require ($null -ne $freshRoot) 'Bundle source audit is missing the freshness audit sidecar.'
 Require ([string](Get-Value $freshRoot 'status' '') -eq 'PASS') 'Freshness audit did not pass.'
 Require ((Get-Value $freshRoot 'all_tickers_multi_source' $false) -eq $true) 'Not every ticker passed the multi-source gate.'
 Require ((Get-Value $freshRoot 'all_positive_advantages_fresh_multi_source' $false) -eq $true) 'A positive advantage lacks fresh multi-source evidence.'
-Require ((Integer (Get-Value $freshRoot 'stale_live_market_observation_count' -1) -eq 0) 'Stale LIVE/CACHED market observations remain.'
+Require ((Integer (Get-Value $freshRoot 'stale_live_market_observation_count' -1)) -eq 0) 'Stale LIVE/CACHED market observations remain.'
 Require (@(Get-Value $freshRoot 'records' @()).Count -eq 20) 'Freshness audit per-ticker count must be 20.'
 
 $topByTicker = @{}

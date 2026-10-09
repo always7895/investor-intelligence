@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "contract_id": "v213-global-identity-v1",
+  "mode": "on_demand_public_only",
+  "provider_scope": "public_only",
+  "owner_watchlist_inherited": false,
+  "portfolio_inherited": false,
+  "broker_symbol_discovery": false,
+  "raw_query_persistence": false,
+  "popular_query_analytics": false,
+  "cross_tenant_query_history": false,
+  "tenant_identifier_in_public_cache_key": false,
+  "allowed_ticker_pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,11}$",
+  "maximum_ticker_length": 12,
+  "maximum_company_name_length": 100,
+  "maximum_candidates_returned": 10,
+  "admitted_venues": [
+    "NASDAQ",
+    "NYSE",
+    "NYSE American",
+    "NYSE Arca",
+    "Cboe BZX",
+    "TWSE"
+  ],
+  "supported_market_schemes": [
+    "US",
+    "UK",
+    "SWEDEN",
+    "EUROPE",
+    "JAPAN",
+    "KOREA",
+    "CHINA_SHANGHAI",
+    "CHINA_SHENZHEN",
+    "CHINA_BEIJING",
+    "HK",
+    "TAIWAN"
+  ],
+  "quote_provider_status": "WITHHELD",
+  "unavailable_behavior": "fail_closed_without_model_or_fallback"
+}
