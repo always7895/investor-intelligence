@@ -89,8 +89,12 @@ def now_instant(clock: Callable[[], datetime]) -> str:
 
 def url_rule(url: str, profile: Mapping[str, Any]) -> str:
     """The kind of an allowed URL for this issuer's profile; anything else refuses."""
-    parts = urllib.parse.urlsplit(url)
-    if parts.scheme != "https" or parts.username or parts.password or parts.port not in (None, 443) or parts.fragment or parts.query:
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError:
+        raise NetworkBlocked("URL_SHAPE") from None
+    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443) or parts.fragment or parts.query:
         raise NetworkBlocked(f"URL_SHAPE {url[:120]}")
     host, path, cik = parts.hostname or "", parts.path, profile["cik"]
     if "%" in path or "\\" in path or "/./" in path or "/../" in path or path.endswith(("/..", "/.")):
@@ -234,7 +238,7 @@ class Transport:
                     if status == 429 or status >= 500:
                         response.read(ERROR_BODY_CAP)
                         retry_after = str(response.headers.get("retry-after", ""))
-                        raise _Transient(int(retry_after) if retry_after.isdigit() else 2)
+                        raise _Transient(int(retry_after) if re.fullmatch(r"[0-9]{1,4}", retry_after, re.ASCII) else (MAX_RETRY_AFTER + 1 if re.fullmatch(r"[0-9]+", retry_after, re.ASCII) else 2))
                     if status != 200:
                         response.read(ERROR_BODY_CAP)
                         raise NetworkBlocked(f"HTTP {status}")
