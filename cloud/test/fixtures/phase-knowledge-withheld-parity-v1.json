@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "vectors": [
+    {
+      "id": "v01-zero",
+      "json": "{\"affected_industries\":0,\"signals\":0}",
+      "py": "ACCEPT",
+      "ts": "ACCEPT"
+    },
+    {
+      "id": "v02-positive",
+      "json": "{\"affected_industries\":2,\"signals\":3}",
+      "py": "ACCEPT",
+      "ts": "ACCEPT"
+    },
+    {
+      "id": "v03-one-one",
+      "json": "{\"affected_industries\":1,\"signals\":1}",
+      "py": "ACCEPT",
+      "ts": "ACCEPT"
+    },
+    {
+      "id": "v04-max-safe",
+      "json": "{\"affected_industries\":9007199254740991,\"signals\":9007199254740991}",
+      "py": "ACCEPT",
+      "ts": "ACCEPT"
+    },
+    {
+      "id": "v05-over-safe",
+      "json": "{\"affected_industries\":9007199254740992,\"signals\":9007199254740992}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v06-zero-affected-positive-signals",
+      "json": "{\"affected_industries\":0,\"signals\":1}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v07-positive-affected-zero-signals",
+      "json": "{\"affected_industries\":1,\"signals\":0}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v08-affected-exceeds-signals",
+      "json": "{\"affected_industries\":3,\"signals\":2}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v09-negative",
+      "json": "{\"affected_industries\":-1,\"signals\":-1}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v10-strings",
+      "json": "{\"affected_industries\":\"1\",\"signals\":\"1\"}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v11-booleans",
+      "json": "{\"affected_industries\":true,\"signals\":true}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v12-float-integral",
+      "json": "{\"affected_industries\":1.0,\"signals\":1.0}",
+      "py": "REJECT",
+      "ts": "ACCEPT"
+    },
+    {
+      "id": "v13-fractional",
+      "json": "{\"affected_industries\":1.5,\"signals\":2}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v14-extra-key",
+      "json": "{\"affected_industries\":1,\"signals\":1,\"x\":1}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v15-missing-signals",
+      "json": "{\"affected_industries\":1}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v16-empty-object",
+      "json": "{}",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v17-null",
+      "json": "null",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v18-array",
+      "json": "[1,1]",
+      "py": "REJECT",
+      "ts": "REJECT"
+    },
+    {
+      "id": "v19-string",
+      "json": "\"x\"",
+      "py": "REJECT",
+      "ts": "REJECT"
+    }
+  ]
+}

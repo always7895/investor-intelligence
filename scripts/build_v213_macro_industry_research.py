@@ -365,6 +365,21 @@ def potential_ranking(rotation: dict | None) -> dict | None:
             "reports": reports}
 
 
+def validated_phase_knowledge_withheld(rotation):
+    """Missing metadata is UNKNOWN; a malformed present block is refused, never stripped."""
+    if not isinstance(rotation, dict) or "phase_knowledge_withheld" not in rotation:
+        return None
+    value = rotation["phase_knowledge_withheld"]
+    if not isinstance(value, dict) or set(value) != {"affected_industries", "signals"}:
+        raise ValueError("INVALID_PHASE_KNOWLEDGE_WITHHELD")
+    affected, signals = value["affected_industries"], value["signals"]
+    if any(type(number) is not int or not 0 <= number <= 9007199254740991 for number in (affected, signals)):
+        raise ValueError("INVALID_PHASE_KNOWLEDGE_WITHHELD")
+    if (affected == 0) != (signals == 0) or affected > signals:
+        raise ValueError("INVALID_PHASE_KNOWLEDGE_WITHHELD")
+    return {"affected_industries": affected, "signals": signals}
+
+
 def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,
                                 deep_analyses: dict | None = None, rotation: dict | None = None) -> dict:
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -405,6 +420,10 @@ def build_macro_overview_output(qualified: list[dict], disqualified: list[dict],
             f"短缺通報：符合完整可查證成長率、供給瓶頸與價值鏈證據之合格產業僅 {qualified_count} 個，"
             f"距 TOP5 門檻尚缺 {shortfall} 個。依規範拒絕湊數假裝滿額。"
         )
+
+    knowledge = validated_phase_knowledge_withheld(rotation)
+    if knowledge is not None:
+        report["phase_knowledge_withheld"] = knowledge
 
     return report
 

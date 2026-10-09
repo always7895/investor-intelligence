@@ -592,6 +592,39 @@ def rank_companies(rows: Sequence[Mapping[str, Any]], frames: Mapping[str, Mappi
     return ranked
 
 
+def phase_knowledge_withheld(rows: Sequence[Mapping[str, Any]]) -> dict[str, int] | None:
+    """Union valid whole lists by the producer's exact industry_id, including excluded rows.
+
+    Unknown rows never contribute partial ids or merge under a synthetic subject. Any unknown
+    prevents a verified zero; positive known counts remain lower bounds, not complete coverage.
+    """
+    if not rows:
+        return None
+    per_subject: dict[str, set[str]] = {}
+    unknown = False
+    for row in rows:
+        if not isinstance(row, Mapping):
+            unknown = True
+            continue
+        subject = row.get("industry_id")
+        if not isinstance(subject, str) or not subject or subject != subject.strip():
+            unknown = True
+            continue
+        phase = row.get("phase")
+        withheld = phase.get("withheld_signal_ids") if isinstance(phase, Mapping) else None
+        if not isinstance(withheld, list) or any(not isinstance(item, str) or not item.strip() for item in withheld):
+            unknown = True
+            continue
+        per_subject.setdefault(subject, set()).update(withheld)
+    affected = sum(bool(bucket) for bucket in per_subject.values())
+    signals = sum(len(bucket) for bucket in per_subject.values())
+    if affected > 9007199254740991 or signals > 9007199254740991:
+        return None
+    if signals == 0:
+        return None if unknown else {"affected_industries": 0, "signals": 0}
+    return {"affected_industries": affected, "signals": signals}
+
+
 def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Post, today: date,
                    member_cache: Path | None = MEMBER_CACHE_DIR, fetch_twse: Fetch | None = None,
                    tickers: Mapping[int, str] | None = None, bls_cache: Path | None = BLS_CACHE) -> dict[str, Any]:
@@ -652,7 +685,8 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
         companies = rank_companies(rows, frames, config, today, tickers, _month_end(date(year, q * 3, 1)).isoformat())
     for row in rows:
         row.pop("member_ciks", None)  # large; membership is cached separately
-    return {
+    knowledge_withheld = phase_knowledge_withheld(rows)
+    document = {
         "schema_version": 1, "policy_id": config["policy_id"], "generated_at": utc_now(), "as_of": today.isoformat(),
         "company_ranking": companies,
         "quarter": f"{year} Q{q}", "status": "COMPUTED", "publication_eligible": False,
@@ -660,6 +694,9 @@ def build_rotation(config: Mapping[str, Any], *, fetch_sec: Fetch, post_bls: Pos
         "industries": rows, "macro_candidates": cards, "deep_analyses": deep, "receipts": receipts,
         "unavailable_sic": sorted(set(unavailable_sic)),
     }
+    if knowledge_withheld is not None:
+        document["phase_knowledge_withheld"] = knowledge_withheld
+    return document
 
 
 def atomic_write(path: Path, value: Mapping[str, Any]) -> None:
