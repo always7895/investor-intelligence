@@ -423,6 +423,10 @@ def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Map
                 return overlay.load_capture(root, reuse[url])["raw"]
             except overlay.StateError:
                 del captures[key]
+        if budget["store"] is None:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown (--recount-store)")
+        if budget["store"] + budget["bytes"] >= STORE_QUOTA_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store quota")
         data, ctype = transport.get(url, profile, sym)
         budget["bytes"] += len(data)
         if budget["bytes"] > CYCLE_CAPTURE_BYTES:
@@ -808,6 +812,8 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
                 gen = dict(ident, schema=overlay.STATE_SCHEMA, generation_id=_new_generation_id(clock),
                            parent=None if state["pointer"] is None else {"generation_id": state["pointer"]["generation_id"], "sha256": state["pointer"]["sha256"]},
                            created_at=now_instant(clock), issuers=stored, detections=dict(detections))
+                if len(json.dumps(gen, ensure_ascii=False, sort_keys=True, indent=1).encode("utf-8")) > overlay.MAX_GENERATION_BYTES:
+                    raise SystemicFailure("PUBLISH GENERATION_TOO_LARGE")
                 digest = overlay.publish_generation(state_root, gen, state["pointer"], carried=frozenset(set(stored) - readable),
                                                     written=frozenset(written))
             except overlay.StateError as error:
