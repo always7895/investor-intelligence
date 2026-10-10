@@ -2,7 +2,7 @@
 
 [Current acceptance](../state/STATUS.md) · [Execution lanes / SKILL audit](RESEARCH_EXECUTION_AUDIT.md)
 
-F04 source bodies are **IMPLEMENTED_UNVERIFIED**, not functional or installed acceptance. Current phase is IMPLEMENTATION_FIRST_NO_TESTS: finish ALL functions before separately authorized final verification. No commands below have been executed as part of F04. No endpoint, resident model, GPU, complete answer or deployment is certified here.
+F04 source bodies are **IMPLEMENTED_UNVERIFIED**, not functional or installed acceptance. The F04 snapshot was written under the phase IMPLEMENTATION_FIRST_NO_TESTS, in which no command below was executed; the project phase is now INCREMENTAL_VERIFICATION (`state/STATUS.md`), and BATCH07 later added synthetic caller tests (see the M4 section). No endpoint, resident model, GPU, complete answer or deployment is certified here.
 
 ## Current intent versus history
 
@@ -114,7 +114,7 @@ Production, real LINE, schedules, credentials, billing and broker actions requir
 
 The preceding NOT_RUN statements describe the historical F04 implementation snapshot. BATCH07 adds local synthetic caller tests (`tests/test_batch07_{binding,catalog,gateway,callers}.py`, shared `tests/batch07_fixtures.py`); their fixed-snapshot results and remaining gaps belong in the batch receipt and [current acceptance](../state/STATUS.md). Source-wiring tripwires are not execution of PowerShell/EXE/UI bodies. Mocked path authority and byte locks are not native storage, race or OS-lock proof. Nothing in this section changes the runtime, gateway binding, profile, registry or installed payload.
 
-This is a proposed M4 design for independent acceptance, **not an implemented controller or a GO**. M5 stays `BLOCKED_EXCLUSIVITY_AND_NATIVE_ADMISSION`. The operator's conditional Q2 is usable only after executor and master accept the SAME design snapshot, and a separate bounded trial GO supplies exact executable/config/model/input pins, resource limits, ownership and rollback tests. Q3 remains dedicated-backend-only: gateway `:8814` stays unavailable; neither shared `:8080` nor `:8081` may become its backend. Repository endpoint strings are intent/history, not served-state evidence.
+This M4 design was accepted as a DESIGN ONLY (scoped) by the executor (`R/ASTRA-BATCH07-R2-RESULT.txt`: EXECUTOR_ACCEPT_SCOPED including the M4 design) and independently by the master (`R/BATCH07-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt`, which names the reviewed pre-D1 bytes of this file by SHA-256 and states the same snapshot as the executor's design acceptance), committed in `a15d1e2`; it is **not an implemented controller or a GO**. The design-acceptance condition below is therefore met; Q2 remains blocked on the separate bounded trial GO and on an owned instance and a cooperative reservation mechanism that do not exist (`R/BATCH07-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt`). M5 stays `BLOCKED_EXCLUSIVITY_AND_NATIVE_ADMISSION`. The operator's conditional Q2 is usable only after executor and master accept the SAME design snapshot, and a separate bounded trial GO supplies exact executable/config/model/input pins, resource limits, ownership and rollback tests. Q3 remains dedicated-backend-only: gateway `:8814` stays unavailable; neither shared `:8080` nor `:8081` may become its backend. Repository endpoint strings are intent/history, not served-state evidence.
 
 ### Ownership and admission prerequisites
 

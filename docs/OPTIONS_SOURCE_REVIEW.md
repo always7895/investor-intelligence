@@ -52,7 +52,7 @@ The collector endpoint is merged only AFTER `DEFAULT_SOURCES` is captured, exact
 
 ## Local caller verification and disabled scheduling template (BATCH06)
 
-2026-10-07 local amendment; independent acceptance pending. The earlier G1B `tests NOT_RUN`
+2026-10-07 local amendment; accepted (scoped O1/O9) by the executor (`R/ASTRA-BATCH06-R2-RESULT.txt`) and independently by the master (`R/BATCH06-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt`) on the same snapshot, committed in `6fb30da`. The earlier G1B `tests NOT_RUN`
 text describes its initial source-only checkpoint, not current verification evidence.
 `tests/test_batch06_taifex_callers.py` exercises the actual importer `main` and collector
 `main`/atomic writer with synthetic files and injected transports: bounded binary reads,
@@ -99,4 +99,4 @@ These are research candidates, not implemented adapters or independent economic 
 
 ## Bounded review allocation
 
-One writer integrates. Small-model reviewers, if available, receive only a file list and bounded read-only question (catalog rights, caller graph, or test gaps). Higher-capability review is reserved for privacy/publication invariants and final diffs. No reviewer tools were available in the current harness discovery, so no delegated model execution or token savings are claimed. Do not switch the existing inference Router or install another agent to simulate delegation.
+One writer integrates. Small-model reviewers, if available, receive only a file list and bounded read-only question (catalog rights, caller graph, or test gaps). Higher-capability review is reserved for privacy/publication invariants and final diffs. No reviewer tools were available in the harness discovery of this 2026-09 checkpoint (commit `ead246c`), so no delegated model execution or token savings were claimed; current review roles are recorded in `state/STATUS.md` (Identity / roles) and the current GO. Do not switch the existing inference Router or install another agent to simulate delegation.

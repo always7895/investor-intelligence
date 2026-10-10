@@ -1,12 +1,13 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
-Status: **Part A slice 1 (framework + NVDA + MU) accepted (`e89936f`); B0 accepted (`839f2f8`); B1 effective-input
-boundary under review; not deployed.** Source-only F03 caller/Worker composition and F05A's inactive NBIS adapter
+Status: **Part A slice 1 (framework + NVDA + MU) documented as accepted in this doc (`e89936f`); receipt not located in R; unverified. B0 documented as accepted in this doc (`839f2f8`); receipt not located in R; unverified. B1 effective-input boundary: the subject line of commit `77c0552` says "B1 accepted and committed"; receipt not located in R; unverified. No same-snapshot dual-acceptance receipt is claimed for any of the three. Not deployed or installed (`state/STATUS.md`: PRODUCTION_GO=false).** Source-only F03 caller/Worker composition and F05A's inactive NBIS adapter
 are not functional acceptance or activation. Installed defaults still do not select these machine paths;
 with no auto-update state root (the unchanged production case) every default build is byte-identical
 to the curated path over the curated registry and its human approval (`config/revenue-guidance-v1.json`,
 `config/revenue-guidance-approval-v1.json`, see [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md)). The contract is Astra's `astra-contract.result.md` Part 2 in the lane
 archive `_archive\lane-orders-v3-autoupdate\`; this page describes what slice 1 implements and what is still open.
+
+Status reconciliation (D1 closure, measured on the committed tree; evidence only, no new acceptance). The sections below that were written as source-only snapshots (F05A R2, F02C, F02D, F03) keep their historical `NOT_RUN`, `under review` and `pending` labels; those labels are not current evidence. At the D1 base (commit `9255297f`, G7) the test modules of this lane exist and PASS in the complete Python gate of the accepted G7 snapshot (`R/g7-a43bef58/all/all-r1/summary.json`: 282 modules, 265 PASS, 17 BLOCKED, 0 FAIL; BLOCKED is not PASS), among them test_revenue_guidance_autoupdate, _effective_inputs, _host_contract, _wire_integration, _release_check, _preview, _machine_parity, _machine_auto_parity, _machine_nbis_auto_parity, _machine_nbis_pairs, _nbis_auto, _nbis_e2e, _nbis_refusals, _g9a_service, _g9a_history and _batch10c_inputs; Vitest at the T11-F1A snapshot was 1275 total, 1273 passed, 2 pending, 0 failed (`R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`), and no later lane touches `cloud/`. The NBIS tests are SYNTHETIC offline replays, committed as G4a `62d61ae`, BATCH10B `8537afa`, G4b-1 `dfe3ef8`, G4b-2 `aa7e09c`, G4b-3 `11029e7` and G9a `292eb8f`, each after an executor receipt and an independent master receipt for the same snapshot (`R/ASTRA-COMMIT21-RESULT.txt` to `R/ASTRA-COMMIT26-RESULT.txt` and the matching `R/*-MASTER-INDEPENDENT-ACCEPT-*.txt`). Since then BATCH10C `2c6ca5d0` (URL and `Retry-After` input guards, see Limits and Outcomes below), T11-F1A `e27b4cb5`, T13-P1 `42770026` and G7 `9255297f` were each accepted (scoped to its own lane) by the writer and by the Fable 5.1 independent review of the same snapshot (writer receipts `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T13P1-RESULT-CLAUDECODE-a43bef58.txt` and `R/EXECUTOR-G7-RESULT-CLAUDECODE-a43bef58.txt`, with `R/EXECUTOR-COMMIT30-RESULT-CLAUDECODE-a43bef58.txt` for the commit of G7; review `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`); the last three do not change this lane. They are not real-NBIS evidence: NBIS stays disabled, `enabled_symbols` stays NVDA and MU, and F05A stays OPEN. No test module names `revenue_guidance_storage`, `revenue_guidance_provisioner` or `revenue_guidance_windows` (git grep: 0 hits in `tests/` and `cloud/test/`); native Windows protected storage stays unqualified. Nothing here is installed or deployed.
 
 Goal (operator 2026-09-29): after each results release the revenue-guidance record renews itself from official
 filings without a human step. Anything that cannot be proven from the filings keeps the issuer suspended; numbers are
@@ -14,15 +15,15 @@ never guessed and old numbers never return after a newer results event has been 
 
 ## F05A R2 source corrections — IMPLEMENTED_UNVERIFIED, exact FIVE-path GO
 
-Current authority: parent archive
+Historical authority of the R2 snapshot (superseded by `AGENTS.md` and `state/STATUS.md`; not a current permission): parent archive
 `autonomous-completion-20261002/FUNCTION-05A-R2-CORRECTIONS-GO-20261002T2320Z.txt`.
 Master's fixed80 static verdict was **CHANGES_REQUIRED**, not an executed test verdict: R1 checkpoint
 `6443C7DE4D7D8FA885710216564FC55B72A6AB32C718C99165792EE56D42B589`, independently80/80,
 7changed/73unchanged and all packet pins. R2 permits ONLY verifier/updater/TS-machine/docs/STATUS;
 other75—including financial core pair/profile/defaults/overlay/P1/native—are readonly. The older F05A
 seven/nine-path GO is semantic background, NOT current expansion permission. Historical partials/R1 stay
-immutable/unaccepted. Current source is **IMPLEMENTED_UNVERIFIED / independent review pending**, not lane
-or functional acceptance. Tests/parser/extraction/replay/qualification remain **NOT_RUN**; no activation.
+immutable/unaccepted. At the R2 snapshot the source was **IMPLEMENTED_UNVERIFIED / independent review pending**, not lane
+or functional acceptance, and tests/parser/extraction/replay/qualification were **NOT_RUN** (no activation); the later synthetic NBIS tests are listed in the status reconciliation at the top and do not make F05A accepted.
 
 Fresh partial packet: parent archive
 `autonomous-completion-20261002/function-05a-sol-20261002T2031350514628Z/`. Seven preimages were copied and
@@ -45,7 +46,7 @@ R1 before edits; ONLY the five authorized CURRENT preimages were copied once. Al
 failure/rollover evidence stays immutable. R2 fresh SAME80 identity is not functional/native/platform/capacity
 acceptance, all-functions/product completion or deployment permission.
 
-### R2 actual source corrections (no executed validation)
+### R2 actual source corrections (no executed validation at the R2 snapshot; see the status reconciliation at the top)
 
 - **F1:** alias capacity admission BEFORE BOTH cached and fresh insertion, before unnecessary request/persist.
   A reused raw still costs an attempt alias slot. Existing-key semantics, original byte/role/URL/clock checks and
@@ -135,11 +136,7 @@ company-wide GAAP scope; the implemented stricter documentary predicates do not 
 reaffirmation must preserve original numeric source and cannot erase unresolved same-day/later material.
 
 Each immutable packet's manifest/checkpoint/signoff/handoff, not this prose, pins its own actual identities. All completion,
-admission and production flags remain false; global P0 is NOT_REAUDITED and capacity UNQUALIFIED. Continue only
-under an exact master GO, checking actual persisted compactions after resumption/compaction and before EVERY
-source chunk. Fourth (>3) requires safely contained tools, immutable truthful partial handoff and FINAL STOP for
-master's actual `/new` in SAME writer pane; independently verify NEW identity/persisted0/SAME model/FULL reload.
-Missing JSONL is not zero. No `/compact`, duplicate writer, old-context work, side-effect replay or observer control.
+admission and production flags remain false; global P0 is NOT_REAUDITED and capacity UNQUALIFIED. Process rules of the F05A era (compaction counting, `/new` replacement of the writer pane, the roles of that era) are history, superseded by `AGENTS.md` and each current GO; work continues only under an exact current GO.
 
 ## Components
 
@@ -217,8 +214,8 @@ the in-memory `auto_update` evidence (B3 defines its sealed schema). Automatic m
 
 The profile file and the state files are validated in code (`validate_profiles`; `validate_generation` for the
 envelope, `validate_attempt` for every nested event, capture map, decision and detected document). There are no
-separate JSON Schema files: the runtime validators are the one definition (Astra accepted this substitution on the
-condition of equivalent strictness and malformed-input coverage).
+separate JSON Schema files: the runtime validators are the one definition (documented here as accepted by Astra on the
+condition of equivalent strictness and malformed-input coverage; receipt not located in R; unverified).
 
 ## Protected capability composition (F02C source boundary)
 
@@ -333,7 +330,7 @@ host, native entry, interpreter, HTTP request or model has been run in this impl
 The preserved F02D r1 and r2 whole67 checkpoints received **STATIC CHANGES_REQUIRED**, not acceptance.
 R2's real D1-D5 improvements remain; r3 corrects the E1 admission-sharing and E2 actual-output-accounting
 source blockers below. The new whole67/signoff remains **IMPLEMENTED_UNVERIFIED**, independent STATIC
-review pending. Tests/imports/dot-source/AST/parser/compile/gates/native/app/API/LINE probes are NOT_RUN.
+review pending. At that snapshot tests/imports/dot-source/AST/parser/compile/gates/native/app/API/LINE probes were NOT_RUN (historical; see the status reconciliation at the top).
 
 - The normal daily entry's `GuidanceAutoUpdateEnabled` and `GuidanceDirtyRebuildEnabled` switches both default
   false. Disabled mode performs the original checker/ranking once and creates no backend process/authority
@@ -592,7 +589,7 @@ release check (existing checker, over the effective records)
 | --- | --- | --- |
 | `CURATED` | No automatic attempt yet: the curated record with its human approval. | usable after the gate |
 | `AUTO_VERIFIED` | Admitted machine-verified successor. | usable after the gate |
-| `WAITING` | Detected event waiting: `EVENT_DETECTED`, `WAITING_PERIODIC_FILING`, `CALENDAR_ALLOCATION_UNPROVEN`, `INCOMPLETE_EVENT_COVERAGE` (IR copy not listed yet), `EVENT_UNRESOLVED`, `NETWORK_UNAVAILABLE`, `CAPTURE_LIMIT`. Retried by later ordinary runs; an unchanged wait writes nothing. | suspended |
+| `WAITING` | Detected event waiting: `EVENT_DETECTED`, `WAITING_PERIODIC_FILING`, `CALENDAR_ALLOCATION_UNPROVEN`, `INCOMPLETE_EVENT_COVERAGE` (IR copy not listed yet), `EVENT_UNRESOLVED`, `NETWORK_UNAVAILABLE` (since BATCH10C, `2c6ca5d0`, a URL for which `urlsplit` or its port raises `ValueError`, for example a port above 65535, waits here with the fixed detail `URL_SHAPE`, never the URL, and no new reason code; the older shape branch that echoes `url[:120]` is unchanged; reached end to end in that lane's synthetic test, `main` exit 0; `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`), `CAPTURE_LIMIT`. Retried by later ordinary runs; an unchanged wait writes nothing. | suspended |
 | `BLOCKED` | Deterministic refusal: `WITHDRAWAL`, `RESTATEMENT`, `REVISION`, `AMBIGUOUS`, `PERIOD_MISMATCH`, `UNIT_MISMATCH`, `SOURCE_DISAGREEMENT`, `NO_MATCH`, `UNSUPPORTED_TEMPLATE`, `OUT_OF_ORDER`, `CALENDAR_RULE_UNPROVEN`, `ACTUAL_NOT_FOUND`, `RELEASE_ROW_NOT_FOUND`, `INPUT_MISSING`, `INPUT_MALFORMED`, `RECORD_INVALID`, `APPROVAL_BINDING`, `STATE_CORRUPT`, ... Not re-fetched; a later results release can still renew the issuer. | suspended |
 | `SUSPENDED` | Usable record whose release check is missing, invalid, stale, incomplete or lists an unaccounted material document (`RECEIPT_*`), or whose detection set overflowed (`DETECTIONS_OVERFLOW`). | suspended |
 
@@ -628,9 +625,9 @@ followed** (a 3xx refuses); every resolved address must be public and the connec
 (TLS name and certificate verified for the host); SEC contact headers are sent only to SEC hosts, other hosts get a
 plain public user agent; `Accept-Encoding: identity`, other encodings and unexpected media types refused; bodies
 streamed under 8 MiB (submissions), 1 MiB (index), 16 MiB (documents), 4 MiB (IR and wire pages), error bodies read at
-most 64 KiB; 30 s timeout; at most 2 attempts for a transient failure, `Retry-After` honoured up to 30 s; 24 requests
+most 64 KiB; 30 s timeout; at most 2 attempts for a transient failure, `Retry-After` honoured up to 30 s (BATCH10C, `2c6ca5d0`, accepted by the writer and by the Fable 5.1 independent review of the same snapshot: `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`; a value of one to four ASCII digits is used as before and refuses as `TRANSIENT` when it exceeds 30, with no clamp; a string of five or more ASCII digits, including a zero-padded one such as `00005` that was honoured as 5 s before BATCH10C, refuses as `TRANSIENT` (a string of more than 4300 digits used to raise `ValueError`); any other value, including one with a non-ASCII digit (which used to raise `ValueError` or give a different delay), counts as absent and waits 2 s; `MAX_ATTEMPTS` stays 2); 24 requests
 per issuer and 120 per run; 10 minute wall budget; 0.5 s pacing; 128 MiB new captures per run; 2 GiB store quota
-(reaching it waits, nothing is deleted). Usage comes from a reservation journal, `store_usage.json`: a new object's
+(reaching it waits, nothing is deleted; G9a `292eb8f` adds to `plan_event`, the NVDA/MU planner, a check before each fetch of an uncached URL: unknown store accounting, or the store plus this cycle's new bytes at or above the quota, waits with `CAPTURE_LIMIT`, while `plan_nbis_event` still checks only after fetching (G9a finding N1, `R/ASTRA-G9A-R3-RESULT.txt`); and a generation whose serialization exceeds `overlay.MAX_GENERATION_BYTES`, 8 MiB, is refused before publishing as `SYSTEMIC_FAILURE` `PUBLISH GENERATION_TOO_LARGE`, exit 2). Usage comes from a reservation journal, `store_usage.json`: a new object's
 bytes are added and named pending before any file is written, and cleared after its raw and metadata commits, so an
 interruption in any window only over-counts; each run first settles the pending reservations (at most 16: a written
 object stays counted, an unwritten one is released and its incomplete temporary file removed) and enumerates nothing.
@@ -706,7 +703,7 @@ Explicit deferrals (this preview is none of them, and accepts none of them):
 
 - **A2:** CRWV (quarter and full-year guidance in the official IR outlook presentation) and NBIS (6-K EX-99.1 tables
   and EX-99.2 guidance/reaffirmation, 6M-minus-Q2 derivation) with explicit event/source adapters, active-claim
-  reference selection for concurrent claims and reaffirmations, and report-period-driven event plans (Astra A1-r2).
+  reference selection for concurrent claims and reaffirmations, and report-period-driven event plans (Astra A1-r2). The NBIS adapter `NBIS_6K_TABLE_REAFFIRMATION_V1` exists as source-only, inactive and unqualified (`enabled_symbols` is NVDA and MU) and is exercised only by synthetic offline tests; F05A stays OPEN.
   **A3:** LITE, CRDO, BE, AMD, MRVL profiles. Before scaling: a persisted fair queue and demonstrated total
   request/wall/disk budgets with several waiting issuers; bounded attempt-history growth without deleting evidence.
 - **Autonomy gap (Astra ruling 2026-09-29):** Part B may add a reviewed, versioned, positive-template classification of
@@ -714,8 +711,8 @@ Explicit deferrals (this preview is none of them, and accepts none of them):
   results date proven, whole-item exclusion checks, a distinct machine disposition bound to the bytes and replayed at
   admission). Unrelated same-day press releases and generic 8-Ks stay suspended until a later verified release or a
   human review; keyword absence never clears an item.
-- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (accepted: adapter enum, shared reference,
-  decision contract, fair queue, history segments), B1 effective-input loader (this batch, `astra-contract-b1.result.md`;
+- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (documented as accepted in this doc; receipt not located in R; unverified: adapter enum, shared reference,
+  decision contract, fair queue, history segments), B1 effective-input loader (a historical batch, `astra-contract-b1.result.md`;
   frozen production golden in the lane archive `b1-golden\`), then B2 daily caller and dirty state,
   B3 sealed evidence and Worker readers, B4 package/end-to-end/rollout plan, all for NVDA/MU; then A2a NBIS and A2b
   CRWV (`astra-contract-a2.result.md`) and A3. In detail: wire the checker over effective records and the updater into `run_daily_data_refresh.ps1`; the shared
@@ -760,11 +757,10 @@ explicitly enabled publisher output becomes `{"schema": "v213-order-forecast-tra
 
 ## F03 real same-owner machine/public-export caller (SOURCE ONLY)
 
-**IN_PROGRESS / IMPLEMENTED_UNVERIFIED; tests/fixtures/import/compile/gates/native/API/LINE/benchmarks NOT_RUN.**
+**IMPLEMENTED_UNVERIFIED (earlier label IN_PROGRESS; at that source-only snapshot tests/fixtures/import/compile/gates/native/API/LINE/benchmarks were NOT_RUN; later synthetic tests are in the status reconciliation at the top).**
 This is actual function-body composition, not a staged acquire callback or standalone decoder. It grants no
 installation/enrollment/production/admission/acceptance. Feature values/tasks/Worker bindings remain unchanged.
-Only Sol61-writer writes canonical source; Astra independently reviews one fixed source snapshot after delivery.
-All functions finish before explicitly opened final verification; later writer+Astra acceptance needs SAME bytes.
+Historical F03-era roles (the writer named in that contract is not a current role); current roles are recorded in `state/STATUS.md` (Identity / roles) and the current GO, and acceptance needs the writer and the independent reviewer to accept the SAME snapshot (`state/STATUS.md`).
 
 ### Actual caller/data order
 
@@ -916,8 +912,4 @@ exact three-path TS mirror/this reference documentation/STATUS correction; backe
 A fresh immutable r3 BEFORE3/SAME78 freeze binds actual pre/post identities against r2, never repeats r2 preservation.
 Source identity is not functional acceptance. Prior r1/r2/r3/failure/rollover receipts stay immutable.
 
-Count actual persisted JSONL compactions AFTER resumption/compaction and BEFORE EVERY source chunk. FOURTH (>3): safely
-contain tool, immutable accurate IN_PROGRESS handoff, STOP for master's actual /new SAME writer pane; verify new
-identity/actual persisted0/SAME model and reload COMPLETE rule/continuity/handoff/exact contract. Missing JSONL is
-NOT zero. No /compact substitute, duplicate writer, old-context dispatch/raw session output or side-effect replay.
-Observer control is separately owned: never prompt/reset/execute/edit. Include rule in every handoff/kickoff.
+Historical F03-era process rule (compaction counting and `/new` replacement of the writer pane); superseded by `AGENTS.md` and the current GO.
