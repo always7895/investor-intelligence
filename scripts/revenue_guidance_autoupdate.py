@@ -95,7 +95,9 @@ def url_rule(url: str, profile: Mapping[str, Any]) -> str:
     except ValueError:
         raise NetworkBlocked("URL_SHAPE") from None
     if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443) or parts.fragment or parts.query:
-        raise NetworkBlocked(f"URL_SHAPE {url[:120]}")
+        # Echo only scheme://host[:port]/path: userinfo, query and fragment may carry secrets (BATCH10C F1).
+        shown = f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}{parts.path}"
+        raise NetworkBlocked(f"URL_SHAPE {shown[:120]}")
     host, path, cik = parts.hostname or "", parts.path, profile["cik"]
     if "%" in path or "\\" in path or "/./" in path or "/../" in path or path.endswith(("/..", "/.")):
         raise NetworkBlocked("PATH_ENCODING")

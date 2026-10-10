@@ -4,7 +4,7 @@
 
 ## Identity / roles
 
-Branch fix/options-provenance-audit; HEAD basis 4e52bb61c9b3544782d844a3188442f41745ed02 (COMMIT31; R/EXECUTOR-COMMIT31-RESULT-CLAUDECODE-a43bef58.txt).
+Branch fix/options-provenance-audit; HEAD basis 686deed5594e3e49f7cbe26baca2ff974a2430bb (COMMIT32; R/EXECUTOR-COMMIT32-RESULT-CLAUDECODE-a43bef58.txt).
 Master + single tracked writer Claude Code a43bef58 (native,wF:p1C); Sonnet5.5/Haiku5.5 subagents. Astra gone (Codex subscription ended, R/OPERATOR-STATEMENT-CODEX-ENDED-20261010.txt); independent review = Fable 5.1 subagents (read-only, reruns in copies); Gemini (agy) may execute as a no-tool proposer. Earlier executors retired,histories kept. Qwen HOLD.
 JEV R/JEV-WORKFLOW-20261005-ASTRA-01a109a7.json SHA256 1443BE9D36018A351014B51ED7CC633329635F049747716797C1B28A8118EE14/9168 B; unused since Astra ended (ledger: `git show 42770026:state/STATUS.md`).
 
@@ -17,12 +17,13 @@ DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COM
 - D1 DUAL-ACCEPTED (writer + Fable 5.1, R/FABLE-D1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt; COMMIT31): docs-only rewording of 33 stale/unsupported claims in 8 docs; focused 4/4. Operator-owned AGENTS.md not edited: F1 Strata :8080 (PARENT) vs :8081 (S), F2 roles predate 2026-10-10.
 - D2 DUAL-ACCEPTED (R/FABLE-D2-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt): .pi/ and two .bak excluded locally; empty cloud/{-c,.exe,net use} removed after dependency proof; no tracked change.
 - Z1 DUAL-ACCEPTED (R/FABLE-Z1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt): COMMIT31 re-verified: static gates, orchestration 8/8, tsc 0, Vitest 1275/1273/2/0, Python 282/265/17/0 with the G7 BLOCKED signatures. Verification only; no open lane closed.
+- B10C-F1 DUAL-ACCEPTED (R/FABLE-B10CF1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt; COMMIT33): URL_SHAPE refusal shows only scheme://host[:port]/path, same refused set; 3 killed mutants; Python 283/266/17/0.
 
 **USER-VISIBLE BEHAVIOUR CHANGE, NOT INSTALLED:** with today's real gate output (UNAVAILABLE claim audits/0 claims, one runtime-enabled source), EVERY positive sensitive Serenity factor is withheld and Top20 rescored/reordered. Installed historical cache: TSEM tam_capture withheld, score7.0 -> 3.0, rank1 -> 16; TSEM/COHR EVIDENCE_QUALIFIED -> LIMITED; dev20/20 LIMITED unchanged. DEI penalties +2 for APLD/VSH/LEU; Top20 membership unchanged, watch order changes. Rollout needs separate current-session operator authorization + go/no-go and separate Worker/preflight C1 parity GO. Positive advantages stay withheld until claim-level company sources are runtime-admitted.
 
 ## Python gate method (PYGATE1-4)
 
-H5 R/pygate4-astra-1ad254da-02c3 policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs,detached load-aware WMI,no BREAKAWAY;installed root RO except _workspace/_archive;task/HKCU/source/index detectors;not OS sandbox. Z1 282 modules265/17/0,0regressions;17BLOCKED not PASS. Relaunch only in sibling roots; no heavy master work during gates; queue other projects below the 40 GiB floor. CTRL handler unchanged,prior deaths UNKNOWN/CTRL_CLOSE unqualified;avoid08:00 InvestorDailyBriefing.
+H5 R/pygate4-astra-1ad254da-02c3 policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs,detached load-aware WMI,no BREAKAWAY;installed root RO except _workspace/_archive;task/HKCU/source/index detectors;not OS sandbox. B10C-F1 283 modules266/17/0,0regressions;17BLOCKED not PASS. Relaunch only in sibling roots; no heavy master work during gates; queue other projects below the 40 GiB floor. CTRL handler unchanged,prior deaths UNKNOWN/CTRL_CLOSE unqualified;avoid08:00 InvestorDailyBriefing.
 Offline: pinned CPython3.12.10 -I -B -X utf8,fresh test_*.py children/private TEMP/HOME;loopback/registry reads only,no unadmitted children/repository ctypes/outside-root writes. Native-host/ACL/SACL/vault/B-C need observed allowlists or BLOCKED. tests/test_revenue_guidance_orchestration.ps1 outside discovery.
 
 ## Open work
@@ -30,10 +31,10 @@ Offline: pinned CPython3.12.10 -I -B -X utf8,fresh test_*.py children/private TE
 G7 findings (traced, not fixed): F-STAGE-STALE,F-STAGE-CURRENT-COLLISION,F-PB-DOCSTRING,F-STAGE-DOCSTRING-CLAIM.
 T13-P1 findings (traced, not fixed): F-RB-MSG,F-RB-NPX,F-PB-OVERWRITE,F-SY-OUTCOME-AFTER-PUBLISH,F-SY-TRAILING-LF; P6 NOT_EXERCISED.
 T11-F1A DEFERRED_WITH_REASON (R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt): thesis_phase fields/withheld flip, next_review_at, MACRO-COUNT-01, deep-report merge, stale TS files, other P hunks. Installed skill copy differs from S: F3 sync = operator boundary.
-BATCH10C findings F1-F4,F8,F9 still OPEN (R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt).
+BATCH10C findings F2-F4,F8,F9 still OPEN (R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt; F1 fixed by B10C-F1; F8 traced: receipt IR ids persist verbatim).
 G9a findings, all still OPEN (full text: `git show 42770026:state/STATUS.md`; R/ASTRA-G9A-RESULT.txt/R3): F1,F3,F4,F5,F6,F8,F10,N1,N2,REV-4; G9b segment reads(d)/(f),wait>=remaining,retry-after,account_bytes,capability,plan_nbis_event,queue errors NOT_EXERCISED.
 
-D5 present-tagged sub-lane NOT_ATTEMPTED. G4a P2 F1: wrong-FY reaffirmation mutant survives; F2: same-anchor reaffirmation disjuncts beyond the first untested. P3/optional:R/BATCH10A-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-dd95ab60.txt and R/ASTRA-BATCH10A-R6-RESULT.txt. G4b-2 LOW/INFO: TT approval-null checks read fixture payload, not loader output; MT2/MT4/MT8L share one killing expect; MP10 killed through degraded-payload KeyError, not direct evidence-limit assertion; envelope cap pinned by G4b-3 M10/M10c. G4b-3 INFO: M06b Python/TS edits paired by declared expectation, not identical edits; M12 TS_ADMITS_TODAY and D8-D11 asymmetries remain open product findings; TP omitReportDigest unused (LOW). R75 packaging omits AUTO/BARRIER/NBIS machine fixtures (report-only, unfixed). NBIS fixture binds implementation_sha256; revenue_guidance/auto_verify/overlay changes require producer regeneration. Synthetic evidence53416 B/envelope153868 B. G9 design: R/batch10-master-design-dd95ab60/g9-understand-wf_bbf6008f-d84.json; G9a local queue/budgets, G9b/A3 profiles need O-decisions/X research.
+D5 present-tagged sub-lane NOT_ATTEMPTED. G4a P2 F1: wrong-FY reaffirmation mutant survives; F2: same-anchor reaffirmation disjuncts beyond the first untested. P3/optional:R/BATCH10A-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-dd95ab60.txt and R/ASTRA-BATCH10A-R6-RESULT.txt. G4b-2/G4b-3 LOW/INFO (full text `git show 686deed5:state/STATUS.md`): M12 TS_ADMITS_TODAY and D8-D11 asymmetries remain open product findings. R75 packaging omits AUTO/BARRIER/NBIS machine fixtures (report-only, unfixed). NBIS fixture binds implementation_sha256; revenue_guidance/auto_verify/overlay changes require producer regeneration. Synthetic evidence53416 B/envelope153868 B. G9 design: R/batch10-master-design-dd95ab60/g9-understand-wf_bbf6008f-d84.json; G9a local queue/budgets, G9b/A3 profiles need O-decisions/X research.
 
 BATCH08 follow-ups, all still OPEN (full text: `git show 42770026:state/STATUS.md`): B5 QUALIFICATION_OPEN; B7 X_INPUTS 000660.KS/005930.KS/NBIS/POET; BATCH08D P3 (a) TEST_ONLY wording overstates the bridge,(b) amendment-precedence mutant survives,(c) final-gates.py:77 self-hash no-op; B6F1 null-timeseries X and binding_identity non-list claim_ids; dilution gaps; BATCH08B Worker/preflight C1 parity,rollout decision,44/124 lines without killing mutant,guard predicate weaker than builder,1800 s reserve vs <=30-min sources.
 
@@ -47,4 +48,4 @@ History: `git show 9255297f:state/STATUS.md` retains all earlier stops/deviation
 
 ## Next
 
-After COMMIT32: bounded lanes from Open work (BATCH10C F1 URL echo first); G11 CRWV after F05B. S1 and F3 installed sync are operator authorization boundaries. All other open lanes above remain. Same-snapshot dual acceptance;merge/tag/release need operator request;Production/LINE/credentials/billing/broker boundaries unchanged;no trades.
+After COMMIT33: bounded lanes from Open work (BATCH10C F3/F4, then F8 id persistence); G11 CRWV after F05B. S1 and F3 installed sync are operator authorization boundaries. All other open lanes above remain. Same-snapshot dual acceptance;merge/tag/release need operator request;Production/LINE/credentials/billing/broker boundaries unchanged;no trades.
