@@ -132,6 +132,16 @@ class PublisherCarryForwardTests(unittest.TestCase):
         self.assertEqual(objects["v213:source-independence:latest"], '{"status":"INSUFFICIENT_EVIDENCE","families":0}')
         self.assertEqual(objects["source_plan:latest"], "[]")
         self.assertEqual(objects["scores:latest"], "{}")
+        # Tripwire: the Worker readers of these objects have no report-age gate, so they stay placeholders and only
+        # the three Top20 objects are ever carried.
+        self.assertEqual(objects["reports:morning:latest"], '{"status":"SUPPRESSED_BY_SEALED_PROMOTION"}')
+        self.assertEqual(objects["reports:evening:latest"], '{"status":"SUPPRESSED_BY_SEALED_PROMOTION"}')
+        self.assertEqual(objects["source_views:latest"], "[]")
+        self.assertEqual(carry.CARRIED_OBJECTS, {
+            "top20_json": "v21:top20:latest",
+            "v212_top20_report_json": "v212:top20-report:latest",
+            "v213_top20_report_json": "v213:top20-report:latest",
+        })
         claim = json.loads(objects["v213:activation-claim"])
         self.assertEqual(claim["payload_digests"]["v213_top20_report_json"],
                          hashlib.sha256(objects["v213:top20-report:latest"].encode("utf-8")).hexdigest())
@@ -254,8 +264,10 @@ class StagedReplayTests(unittest.TestCase):
     def test_real_readers_replay_both_states(self):
         import shutil
         import stage_sealed_replay as replay
-        if not (shutil.which("npx") or shutil.which("npx.cmd")) or not (ROOT / "cloud" / "node_modules").is_dir():
-            self.skipTest("Worker toolchain not installed")
+        try:
+            replay._vitest_command()
+        except replay.LockedCliUnavailable:
+            self.skipTest("Worker toolchain not installed (locked local Vitest)")
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
 

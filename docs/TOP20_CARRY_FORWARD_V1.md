@@ -51,8 +51,9 @@ an older-than-14-h row (or a row more than 300 s in the future) takes the existi
 remain placeholders, never carried. Certified `qa.ts` is unchanged; no live recertification
 was performed or claimed.
 
-qa.ts recertification plan (remaining Lane5 qualification: carried-report and federation ages; a plan only, nothing in
-it is implemented or accepted). Today `build_bodies` in `scripts/publish_sealed_snapshot.py` seals `reports:*`,
+qa.ts recertification plan (remaining Lane5 qualification: carried-report and federation ages; a plan, of which only the
+uncertified `compact-qa.ts` reader and the publisher tripwire below are implemented; nothing is deployed or recertified).
+Today `build_bodies` in `scripts/publish_sealed_snapshot.py` seals `reports:*`,
 `scores:latest`, `source_views:latest`, `source_plan:latest`, `v213:source-federation:latest` and
 `v213:source-independence:latest` as placeholders in every sealed run (activation commits stay refused, see Topology),
 so the gap below is latent. Certified `cloud/src/qa.ts` checks only seal liveness (`publicFreshness`:
@@ -61,7 +62,9 @@ so the gap below is latent. Certified `cloud/src/qa.ts` checks only seal livenes
 `evening_report` and `latest_report` intents, and for `ranking`, `source_views` and the general answer (whose context
 `projectContext` reads `reports:latest`, `scores:latest` and `source_views:latest`) only on a current-data question.
 It has no report-age gate. `cloud/src/v213/compact-qa.ts` (not certified) reads `v213:source-independence:latest`
-under the same liveness rule and applies `v213ReportAgeFresh` only to the matched `v21:top20:latest` row. Before
+under the same liveness rule and applies `v213ReportAgeFresh` to the matched `v21:top20:latest` row and, when the audit
+is not the `INSUFFICIENT_EVIDENCE` placeholder, to the audit's own top-level `generated_at` (the field the audit
+producers and `scripts/v213_r75_activation_preflight.py` already require). Before
 any of these objects may be carried:
 
 1. Contract: every carried object gets a machine-readable generation time from the same bundle as the three carried
@@ -69,7 +72,11 @@ any of these objects may be carried:
    (`v213ReportAgeFresh`, `config/v213-top20-report-freshness-v1.json`), never re-stamped.
 2. Readers: qa.ts applies that bound wherever it reads these objects, after `requirePublicFreshness` (a stale seal
    keeps its existing reason first; an over-age or future report gets one fixed new reason), and compact-qa.ts applies
-   it to the audit it reads. The privacy, tenant-memory, option and model-routing code of qa.ts stays byte-identical.
+   it to the audit it reads (implemented in `compact-qa.ts`: after the seal-liveness check a non-placeholder audit whose
+   `generated_at` is over 14 h old, more than 300 s in the future, missing or invalid yields the fixed STALE context
+   `Source audit is older than the report bound; do not infer current company facts.`; the placeholder audit answers
+   unchanged; the qa.ts part is not implemented). The privacy, tenant-memory, option and model-routing code of qa.ts
+   stays byte-identical.
 3. Tests, written before the change: report-age negatives (older than 14 h, more than 300 s in the future, missing or
    invalid time) and the precedence case in `cloud/test/qa.test.ts` and `cloud/test/v213-compact-qa.test.ts`, plus a
    publisher test that every placeholder stays a placeholder until the readers are deployed.

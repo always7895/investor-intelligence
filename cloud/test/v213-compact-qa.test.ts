@@ -14,7 +14,7 @@ function runtime() {
     { ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }], private_field: "MUST_NOT_ENTER_PROMPT", generated_at: new Date().toISOString() },
     { ticker: "OTHER", evidence: [{ title: "UNRELATED_UNIVERSE_MUST_NOT_ENTER" }] },
   ]));
-  kv.values.set("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{
+  kv.values.set("v213:source-independence:latest", JSON.stringify({ generated_at: new Date().toISOString(), portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{
     ticker: "NVDA", publication_evidence_mode: "LIMITED_RESEARCH_CANDIDATE", eligible_for_high_confidence_model_inference: false,
     public_logic_state: { validated_company_thesis: false }, market_corroboration: { status: "UNAVAILABLE" }, missing_or_review: ["INDEPENDENT_CLAIM_CORROBORATION"],
   }] }));
@@ -75,6 +75,62 @@ describe("v213 bounded query-aware public context", () => {
     const { native } = transport();
     expect(await compactGeneralAnswer(env, parseQuery("NVDA目前有哪些風險？"), { tenantId: "synthetic", chatType: "group" })).toMatch(/STALE/);
     expect(native).not.toHaveBeenCalled();
+  });
+  describe("source-independence audit age", () => {
+    const AUDIT_STALE = "Source audit is older than the report bound; do not infer current company facts.";
+    function setAudit(kv: MemoryKv, patch: (audit: Record<string, unknown>) => void) {
+      const audit = JSON.parse(kv.values.get("v213:source-independence:latest")!);
+      patch(audit);
+      kv.values.set("v213:source-independence:latest", JSON.stringify(audit));
+    }
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+    it("refuses an audit older than the 14 h report bound, a future one, a missing and an invalid time", async () => {
+      for (const generated of [hoursAgo(15), new Date(Date.now() + 400_000).toISOString(), undefined, "not-a-time", 12345, null]) {
+        for (const text of ["NVDA有哪些需要驗證的風險？", "自由現金流與淨利有何差異？"]) {
+          const { env, kv } = runtime();
+          setAudit(kv, (audit) => { if (generated === undefined) delete audit.generated_at; else audit.generated_at = generated; });
+          const result = await compactPublicContext(env, parseQuery(text));
+          expect(result.freshness).toBe("STALE");
+          expect(result.facts).toBe(AUDIT_STALE);
+          expect(result.mode).toBeUndefined();
+          expect(result.sources).toBeUndefined();
+          expect(result.limited).toBeUndefined();
+        }
+      }
+    });
+    it("accepts an audit inside the bound and uses the explicit clock", async () => {
+      const { env, kv } = runtime();
+      setAudit(kv, (audit) => { audit.generated_at = hoursAgo(13); });
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"))).mode).toBe("LIMITED_RESEARCH_CANDIDATE");
+      expect((await compactPublicContext(env, parseQuery("自由現金流與淨利有何差異？"))).limited).toBe(20);
+      const later = Date.now() + 90 * 60_000;  // 13 h old now, 14.5 h old at the explicit clock
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"), later)).facts).toBe(AUDIT_STALE);
+    });
+    it("judges the seal age at the explicit clock", async () => {
+      const { env } = runtime();
+      const later = Date.now() + 3 * 3600_000;  // seal 3 h old at the explicit clock (bound 7200 s); audit and row stay inside 14 h
+      const result = await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"), later);
+      expect(result.freshness).toBe("STALE");
+      expect(result.facts).toBe("No current facts available. Explain concepts only; do not assert current company conditions.");
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"))).mode).toBe("LIMITED_RESEARCH_CANDIDATE");
+    });
+    it("a stale seal keeps its own reason first", async () => {
+      const { env, kv } = runtime();
+      setAudit(kv, (audit) => { audit.generated_at = hoursAgo(15); });
+      kv.values.set("last_successful_pipeline_timestamp", "2000-01-01T00:00:00Z");
+      const result = await compactPublicContext(env, parseQuery("NVDA風險？"));
+      expect(result.freshness).toBe("STALE");
+      expect(result.facts).toBe("No current facts available. Explain concepts only; do not assert current company conditions.");
+    });
+    it("the sealed placeholder audit answers exactly as before, without a time", async () => {
+      const { env, kv } = runtime();
+      kv.values.set("v213:source-independence:latest", JSON.stringify({ status: "INSUFFICIENT_EVIDENCE", families: 0 }));
+      const generic = await compactPublicContext(env, parseQuery("自由現金流與淨利有何差異？"));
+      expect(generic).toEqual({ v: 1, kind: "general", freshness: "FRESH", as_of: generic.as_of,
+        summary: "Public research only; no broker/portfolio access. Evidence is claim-specific, not an endorsement.", limited: null, evidence_qualified: null });
+      const ticker = await compactPublicContext(env, parseQuery("NVDA風險？"));
+      expect(ticker.facts).toBe("Ticker or claim audit unavailable; do not infer company facts.");
+    });
   });
   it("runs the unchanged certified sensitive-input guard without making model calls", async () => {
     const { env } = runtime(); const { native } = transport();

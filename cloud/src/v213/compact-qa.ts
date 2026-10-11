@@ -64,6 +64,13 @@ export async function compactPublicContext(env: QaEnv, query: ParsedQuery, now?:
   if (kind === "evidence") base.evidence_principles = policy.evidence_context;
   if (!fresh) return { ...base, ticker: query.ticker, facts: "No current facts available. Explain concepts only; do not assert current company conditions." };
   const audit = obj(await view.json(["v213:source-independence:latest"]));
+  // A sealed placeholder audit is not a report. Any other audit must carry its own bundle generation time inside the
+  // report bound (never in the future); a re-sealed audit keeps that time, so an old one is not current context.
+  // Checked after the seal-liveness gate above, so a stale seal keeps its own reason first.
+  if (audit.status !== "INSUFFICIENT_EVIDENCE" &&
+      !v213ReportAgeFresh([typeof audit.generated_at === "string" ? audit.generated_at : null], now ?? Date.now())) {
+    return { ...base, freshness: "STALE", ticker: query.ticker, facts: "Source audit is older than the report bound; do not infer current company facts." };
+  }
   if (!query.ticker) {
     const portfolio = obj(audit.portfolio);
     return { ...base, summary: "Public research only; no broker/portfolio access. Evidence is claim-specific, not an endorsement.",
