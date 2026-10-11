@@ -67,7 +67,7 @@ def _cli() -> list[str]:
 def wrangler_kv_get(key: str) -> str | None:
     p = subprocess.run(
         [*_cli(), "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
-        cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
+        cwd=str(ROOT / "cloud"), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
     )
     if p.returncode != 0:
         return None
@@ -82,7 +82,7 @@ def wrangler_kv_put(key: str, body: str) -> bool:
     p = subprocess.run(
         [*_cli(), "kv", "key", "put", key,
          "--path", str(stage), "--namespace-id", NS, "--remote"],
-        cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
+        cwd=str(ROOT / "cloud"), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
     )
     return p.returncode == 0
 
@@ -96,7 +96,7 @@ def load_target(run_id: str) -> dict:
         raise RollbackError(f"target run dir incomplete: {run_dir}")
     tracked = subprocess.run(
         ["git", "ls-files", "state/v213-snapshots/" + run_id + "/pointer.raw.json"],
-        cwd=str(ROOT), capture_output=True, text=True,
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
     ).stdout.strip()
     if tracked != "state/v213-snapshots/" + run_id + "/pointer.raw.json":
         raise RollbackError(f"target run {run_id} is not git-tracked (refusing uncommitted runs)")

@@ -20,7 +20,7 @@ import rollback_sealed_snapshot as RB  # noqa: E402
 import sync_sealed_snapshot_kv as SY  # noqa: E402
 from sealed_kv_fakes import (  # noqa: E402
     NOWRITE, POINTER_KEY, RUN, RUN2, WRITE_THEN_FAIL, FakeKV, Fixture, KvTestCase, Q_OK, cli_environment, make_cloud,
-    make_rb_root, run_rb, run_sy)
+    make_rb_root, rewrite_objects, run_rb, run_sy)
 
 GET_O = (("get", "O1"), ("get", "O2"), ("get", "O3"))
 GET_PTR = (("get", "POINTER"),)
@@ -215,6 +215,25 @@ class RbRows(KvTestCase):
         self.assertEqual(self.kv.argv_log, [])
         self.assertEqual("locked Wrangler CLI unavailable" in r.stderr, True)
         self.assertEqual(self.kv.store[POINTER_KEY], self.other_pointer)
+
+    # TR-8d, NEW-RB-STDOUT-LOCALE: RB 68-71 (get), 82-86 (put) and 97-100 (git ls-files) pass encoding="utf-8" on
+    # every call. A CJK object body round-trips through the seam-B CLI layer: FakeKV decodes stdout with the encoding
+    # kwarg when given and with the zh-TW stand-in (cp950) when absent, so a missing encoding garbles the body and
+    # the row aborts at the object readback (RB 115-123). The row pins the kwargs of all six kv calls and of the git call.
+    def test_TR_8d_cjk_body_round_trips_utf8_through_the_cli(self):
+        key = self.target.key["O1"]
+        cjk = '{"run":"%s","note":"回滾測試"}' % RUN
+        objects = dict(self.target.objects)
+        objects[key] = cjk
+        rewrite_objects(self.repo / "state" / "v213-snapshots" / RUN, objects)
+        self.kv.store[key] = cjk.encode("utf-8")
+        with mock.patch.object(SY, "_cli_command", lambda: ["synthetic-cli"]):
+            r = self.rollback("--apply", seam="B")
+        self.assertRow(r.row, (0, "ROLLED_BACK", GET_O + GET_PTR + PUT_PTR + GET_PTR, PTR_CHG, False, False))
+        self.assertEqual(self.kv.store[POINTER_KEY], self.target_pointer)
+        self.assertEqual(len(self.kv.kv_kwargs), 6)
+        self.assertEqual({(kw.get("encoding"), kw.get("errors")) for kw in self.kv.kv_kwargs}, {("utf-8", "replace")})
+        self.assertEqual([kw.get("encoding") for kw in self.kv.git_kwargs], ["utf-8"])
 
 
 if __name__ == "__main__":

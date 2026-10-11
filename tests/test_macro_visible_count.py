@@ -90,6 +90,13 @@ class VisibleCountTests(unittest.TestCase):
         self.assertEqual(list(report)[-2:], ["shortfall_report", "phase_knowledge_withheld"])
         self.assertEqual(mb.build_macro_overview_output([], [])["qualified_count"], 0)
 
+    def test_generated_at_is_explicit_or_the_wall_clock(self):
+        stamp = "2026-09-15T12:00:00Z"
+        self.assertEqual(mb.build_macro_overview_output([], [], generated_at=stamp)["generated_at"], stamp)
+        default = mb.build_macro_overview_output([], [])["generated_at"]
+        self.assertRegex(default, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        self.assertNotEqual(default, stamp)
+
 
 if __name__ == "__main__":
     unittest.main()

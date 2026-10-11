@@ -5,6 +5,7 @@ wall-clock globals PB rewrites under --live-clock are saved and restored around 
 a literal designed from the code; the comment above each row cites the lines it was designed from."""
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -27,21 +28,14 @@ def read(run_dir, name):
 
 
 class PublishRows(KvTestCase):
-    def setUp(self):
-        super().setUp()
-        # The golden path has one wall-clock stamp: the macro overview's generated_at (build_v213_macro_industry_research
-        # build_macro_overview_output). A second run in a later second would build different objects.json bytes under
-        # the same run id, which PB 1102-1104 refuse; pin that stamp to the golden GENERATED_AT (PB 60) for every row.
-        real = PB.macro_builder.build_macro_overview_output
-
-        def pinned(*args, **kwargs):
-            overview = real(*args, **kwargs)
-            overview["generated_at"] = PB.GENERATED_AT
-            return overview
-
-        patcher = mock.patch.object(PB.macro_builder, "build_macro_overview_output", pinned)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+    # The macro overview's generated_at follows the publisher clock (PB GENERATED_AT, passed to
+    # build_macro_overview_output), so no row pins a wall-clock stamp by mock.
+    def test_TP_2e_macro_overview_generated_at_follows_the_publisher_clock(self):
+        snap = self.tmp / "snap"
+        built = run_pb(PB, snap)
+        objects = json.loads(read(built.run_dir, "objects.json"))
+        stamps = [json.loads(body).get("generated_at") for key, body in objects.items() if key.endswith(PB.MACRO_KEY)]
+        self.assertRow(Row(("exit", "macro_stamps"), (built.exit, stamps)), (0, [PB.GENERATED_AT]))
 
     # PB 1098-1101 write objects.json, then pointer.raw.json (the pointer is committed LAST); 1102-1103 write
     # seven-field-projection.json (the golden path has a Top20 projection); 1135 writes summary.json.

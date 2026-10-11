@@ -398,8 +398,11 @@ def validate_overview_rows(qualified: list[dict]) -> None:
 
 
 def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,
-                                deep_analyses: dict | None = None, rotation: dict | None = None) -> dict:
-    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                deep_analyses: dict | None = None, rotation: dict | None = None, *,
+                                generated_at: str | None = None) -> dict:
+    # generated_at None keeps the wall clock (this script's own CLI); the sealed publisher passes its governed
+    # GENERATED_AT so a golden rerun builds identical bytes.
+    stamp = generated_at if generated_at is not None else datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     # Visible-count semantics: qualified_count is the validated visible admitted count N (len(visible)), never a
     # legacy upstream aggregate; candidate_pool_size stays existing context, never admission authority.
     validate_overview_rows(qualified)

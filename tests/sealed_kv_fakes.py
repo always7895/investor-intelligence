@@ -43,6 +43,7 @@ ROOT = TESTS_DIR.parent
 NOWRITE = "NOWRITE"
 WRITE_THEN_FAIL = "WRITE_THEN_FAIL"
 NETWORK = "NETWORK"
+LOCALE_CODEC = "cp950"  # zh-TW Windows locale stand-in: stdout decode when no encoding kwarg is given
 
 RUN = "20261001T000000Z-0123456789ab"
 RUN2 = "20261002T000000Z-0123456789cd"
@@ -122,6 +123,8 @@ class FakeKV:
         self.argv_log: list[list[str]] = []
         self.tracked: frozenset = frozenset()
         self.git_calls: list[tuple] = []
+        self.git_kwargs: list[dict] = []  # kwargs of every git ls-files call (encoding is observable)
+        self.kv_kwargs: list[dict] = []  # kwargs of every kv call (encoding/errors are observable)
         self._count: dict[tuple[str, str], int] = {}
         self._put_hooks: dict[str, dict] = {}
         self._get_hooks: dict[str, dict] = {}
@@ -199,8 +202,14 @@ class FakeKV:
         if not (isinstance(argv, list) and len(argv) == 3 and argv[0] == "git" and argv[1] == "ls-files"):
             return guard(argv)
         self.git_calls.append((tuple(argv), kwargs.get("cwd")))
+        self.git_kwargs.append(dict(kwargs))
         stdout = argv[2] + "\n" if argv[2] in self.tracked else ""
         return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    @staticmethod
+    def _stdout(raw: bytes, kwargs: dict) -> str:
+        """subprocess.run(text=True) decoding: the encoding kwarg when given, else the locale codec."""
+        return raw.decode(kwargs.get("encoding") or LOCALE_CODEC, kwargs.get("errors") or "strict")
 
     # seam B (subprocess.run) ----------------------------------------------
     def fake_run(self, *args, **kwargs):
@@ -209,6 +218,7 @@ class FakeKV:
             return self.git_run(*args, **kwargs)
         argv = [str(part) for part in argv]
         self.argv_log.append(list(argv))
+        self.kv_kwargs.append(dict(kwargs))
         rest = argv[argv.index("kv") + 1:]
         if len(rest) < 3 or rest[0] != "key" or rest[1] not in ("get", "put"):
             return subprocess.CompletedProcess(argv, 2, "", "unsupported kv argv")
@@ -225,7 +235,7 @@ class FakeKV:
         raw = self.do_get(key)
         if raw is None:
             return subprocess.CompletedProcess(argv, 1, "", "key not found")
-        return subprocess.CompletedProcess(argv, 0, raw.decode("utf-8"), "")
+        return subprocess.CompletedProcess(argv, 0, self._stdout(raw, kwargs), "")
 
 
 def store_diff(before: dict, after: dict, names: dict) -> tuple:

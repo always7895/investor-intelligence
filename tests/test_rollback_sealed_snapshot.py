@@ -2,7 +2,8 @@
 
 Covers: git-tracked-only target rule, live-object sha verification, NO-OP when the
 pointer already matches, dry-run never writes, --apply writes the pointer exactly
-once and readback-verifies, and every failure path leaves the pointer untouched.
+once and readback-verifies, and every failure before the pointer put leaves the pointer
+untouched (a put that fails after writing is UNKNOWN: see TR-3b in test_rollback_sealed_snapshot_txn).
 """
 import copy
 import hashlib

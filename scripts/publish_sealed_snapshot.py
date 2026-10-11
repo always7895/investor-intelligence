@@ -355,7 +355,8 @@ def build_bodies(carry: "dict | None" = None) -> "tuple[dict[str, str], dict]":
     # rotation publishes an honest shortfall, never hand-written industries.
     rotation_candidates, rotation_deep, rotation_doc = macro_builder.load_rotation_candidates()
     macro_doc = macro_builder.build_macro_overview_output(
-        *macro_builder.evaluate_candidates(rotation_candidates), deep_analyses=rotation_deep, rotation=rotation_doc)
+        *macro_builder.evaluate_candidates(rotation_candidates), deep_analyses=rotation_deep, rotation=rotation_doc,
+        generated_at=GENERATED_AT)
     bodies[MACRO_KEY] = _dumps(macro_doc)
     bodies["v213:activation-claim"] = _dumps(claim)
     return bodies, {"report": report, "top20": top20, "run_id": run_id, "transaction_id": transaction_id, "carry": carry}
