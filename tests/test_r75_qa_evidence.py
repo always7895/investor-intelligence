@@ -263,4 +263,45 @@ foreach($script:status in @(200,409,404)){
         data=copy.deepcopy(self.proof);data['results'][0]=copy.deepcopy(data['results'][1])
         with self.assertRaises(ValueError):verify(data,self.manifest)
 
+    def test_publication_contract_id_and_hash_must_match(self):
+        v1 = ('v213-r75-publication-mode-v1', '9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd')
+        v2 = ('v213-r75-publication-mode-v2', '5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21')
+        def with_proof(cid, digest):
+            data = copy.deepcopy(self.proof)
+            for row in data['readiness']:
+                row.pop('publication_contract_id', None)
+                if cid is not None: row['publication_contract_id'] = cid
+                row['publication_contract_sha256'] = digest
+            return data
+        verify(with_proof(*v1), self.manifest, now=self.now)
+        verify(with_proof(*v2), self.manifest, now=self.now)
+        verify(with_proof(None, v2[1]), self.manifest, now=self.now)
+        for label, data in [('v2 id with v1 hash', with_proof(v2[0], v1[1])), ('v1 id with v2 hash', with_proof(v1[0], v2[1])),
+                            ('unknown id', with_proof('v213-r75-publication-mode-v9', v2[1])), ('absent id with v1 hash', with_proof(None, v1[1])),
+                            ('non-string id', with_proof(['x'], v2[1])), ('non-string hash', with_proof(v2[0], 7))]:
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, 'READINESS_PROOF_INVALID'):
+                verify(data, self.manifest, now=self.now)
+
+    def test_release_lane_can_require_the_current_contract_id(self):
+        v1_proof = copy.deepcopy(self.proof)
+        for row in v1_proof['readiness']:
+            row['publication_contract_id'] = 'v213-r75-publication-mode-v1'
+            row['publication_contract_sha256'] = '9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd'
+        verify(v1_proof, self.manifest, now=self.now)
+        with self.assertRaisesRegex(ValueError, 'READINESS_PROOF_INVALID'):
+            verify(v1_proof, self.manifest, now=self.now, expected_contract_id='v213-r75-publication-mode-v2')
+        v2_proof = copy.deepcopy(v1_proof)
+        for row in v2_proof['readiness']:
+            row['publication_contract_id'] = 'v213-r75-publication-mode-v2'
+            row['publication_contract_sha256'] = '5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21'
+        verify(v2_proof, self.manifest, now=self.now, expected_contract_id='v213-r75-publication-mode-v2')
+
+    def test_committed_historical_receipts_carry_a_matching_contract_pair(self):
+        from verify_r75_qa_evidence import PUBLICATION_CONTRACT_HASHES
+        for path in sorted((ROOT / 'state').glob('r75-qa-live-*.json')):
+            data = json.loads(path.read_text(encoding='utf-8-sig'))
+            for row in data.get('readiness', []) if isinstance(data, dict) else []:
+                with self.subTest(path=path.name):
+                    self.assertEqual(PUBLICATION_CONTRACT_HASHES.get(row.get('publication_contract_id')), row.get('publication_contract_sha256'))
+
 if __name__=='__main__':unittest.main()

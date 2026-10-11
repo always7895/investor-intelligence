@@ -5,7 +5,7 @@ import { MACRO_PRODUCT_KEY } from "../src/v213/macro-industry-product";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { parseQuery } from "../src/core";
 import { asKv, MemoryKv } from "./fake-kv";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 
 const RUN = "20260925T120000Z-0123456789ab";
 const STAMP = "2026-09-25T12:00:00Z";

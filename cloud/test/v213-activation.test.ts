@@ -369,10 +369,31 @@ async function replacePayload(value: any, name: string, document: unknown): Prom
   value.sha256[name] = await digest(text);
 }
 
+// Structurally valid per-claim audit for an EVIDENCE_QUALIFIED row (contract v2): two independent
+// lineages, one agreeing value. Expiry is deliberately a producer concern, not part of the Worker recount.
+function eqAudit(ticker: string) {
+  const stamp = new Date().toISOString();
+  const claimId = `${ticker}:revenue`;
+  const evidence = [0, 1].map((i) => ({
+    observation_id: `${ticker}-obs-${i}`, source_id: `synthetic-source-${i}`, claim_ids: [claimId],
+    admitted: true, freshness: "CURRENT", value: 100, primary: i === 0,
+    independence_group: `${ticker}-publisher-${i}`, origin_group: `${ticker}-origin-${i}`,
+    content_sha256: String(i + 1).repeat(64), valid_until: stamp, published_at: stamp, as_of: stamp,
+  }));
+  return {
+    schema_version: 2, status: "SUPPORTED", all_material_claims_supported: true, full_research_eligible: false,
+    validated_at: stamp, valid_until: stamp,
+    claims: [{ claim_id: claimId, status: "SUPPORTED", high_confidence_eligible: true, value: 100, conflict_set: [],
+      evidence_ids: evidence.map((row) => row.observation_id) }],
+    evidence,
+  };
+}
+
 async function makeMixed(value: any, highEligible = true): Promise<void> {
   const source = JSON.parse(value.payloads.source_independence_json);
   for (let index = 0; index < 10; index += 1) {
     const row = source.records[index];
+    row.claim_evidence_audit = eqAudit(row.ticker);
     row.publication_evidence_mode = "EVIDENCE_QUALIFIED";
     row.public_logic_state.publication_evidence_mode = "EVIDENCE_QUALIFIED";
     row.freshness_state.publication_evidence_mode = "EVIDENCE_QUALIFIED";
@@ -1199,6 +1220,50 @@ describe("v2.1.3 atomic activation transaction", () => {
       await replacePayload(value, "source_independence_json", source);
       await expect(ingestV213ActivationBundle(JSON.stringify(value), runtime().env), field).rejects.toThrow("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
     }
+  });
+
+  it("recounts every EVIDENCE_QUALIFIED row from its claim audit instead of trusting saved counts", async () => {
+    const mutations: Array<[string, (audit: any, row: any) => void]> = [
+      ["absent audit", (_audit, row) => { delete row.claim_evidence_audit; }],
+      ["wrong schema version", (audit) => { audit.schema_version = 1; }],
+      ["claims not all supported", (audit) => { audit.all_material_claims_supported = false; }],
+      ["empty claims", (audit) => { audit.claims = []; }],
+      ["claim not SUPPORTED", (audit) => { audit.claims[0].status = "SINGLE_SOURCE"; }],
+      ["claim not HIGH eligible", (audit) => { audit.claims[0].high_confidence_eligible = false; }],
+      ["claim has a conflict set", (audit) => { audit.claims[0].conflict_set = [{ observation_id: "x", value: 99 }]; }],
+      ["duplicate claim id", (audit) => { audit.claims.push({ ...audit.claims[0] }); }],
+      ["publisher mirror merges lineages", (audit) => { audit.evidence[1].independence_group = audit.evidence[0].independence_group; }],
+      ["origin mirror merges lineages", (audit) => { audit.evidence[1].origin_group = audit.evidence[0].origin_group; }],
+      ["content hash mirror merges lineages", (audit) => { audit.evidence[1].content_sha256 = audit.evidence[0].content_sha256; }],
+      ["stale evidence is not bound", (audit) => { audit.evidence[1].freshness = "STALE"; }],
+      ["non-admitted evidence is not bound", (audit) => { audit.evidence[1].admitted = false; }],
+      ["bound values disagree", (audit) => { audit.evidence[1].value = 101; }],
+    ];
+    for (const [name, mutate] of mutations) {
+      const value: any = await bundle("a".repeat(32));
+      await makeMixed(value, false);
+      const source = JSON.parse(value.payloads.source_independence_json);
+      // The saved metrics keep passing (2 families, 3 domains, primary 1, ratio 1): only the recount can refuse.
+      expect(source.records[0].source_metrics.claim_relevant_independent_families).toBeGreaterThanOrEqual(2);
+      mutate(source.records[0].claim_evidence_audit, source.records[0]);
+      await replacePayload(value, "source_independence_json", source);
+      await expect(ingestV213ActivationBundle(JSON.stringify(value), runtime().env), name).rejects.toThrow("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
+    }
+  });
+
+  it("recounts structurally only: an expired audit that the producer sealed is still accepted", async () => {
+    const value: any = await bundle("b".repeat(32));
+    await makeMixed(value, true);
+    const source = JSON.parse(value.payloads.source_independence_json);
+    for (const row of source.records.slice(0, 10)) {
+      row.claim_evidence_audit.validated_at = "2020-01-01T00:00:00.000Z";
+      row.claim_evidence_audit.valid_until = "2020-01-01T01:00:00.000Z";
+      for (const evidence of row.claim_evidence_audit.evidence) evidence.valid_until = "2020-01-01T01:00:00.000Z";
+    }
+    for (const row of source.records.slice(10)) row.claim_evidence_audit = "LIMITED rows are never recounted";
+    await replacePayload(value, "source_independence_json", source);
+    const accepted = await ingestV213ActivationBundle(JSON.stringify(value), runtime().env);
+    expect(accepted.publication_mode).toEqual({ evidenceQualified: 10, limited: 10, highEligible: 1 });
   });
 
   it("rejects publication count, order, freshness, and digest defects", async () => {

@@ -178,7 +178,7 @@ EVIDENCE_QUALIFIED
 LIMITED_RESEARCH_CANDIDATE
 ```
 
-- Evidence-qualified row 需要 strict claim evidence、independence、freshness 與 primary support。
+- Evidence-qualified row 需要 strict claim evidence、independence、freshness 與 primary support。（contract v2 起，Worker 與 install preflight 會從該 row 的 `claim_evidence_audit` 重新計算，見 [PUBLICATION_MODE_CONTRACT_V2](PUBLICATION_MODE_CONTRACT_V2.md)）。
 - LIMITED row 需要 primary evidence 與 independent publication provenance，但 inference confidence 必須限制為 LIMITED。
 - LIMITED 不得 HIGH eligible、不得 validated thesis、不得保留 unsupported positive sensitive factors。
 - BLS 為 optional macro context；required family/count 與 claim independence gate 仍 fail closed。

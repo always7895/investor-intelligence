@@ -68,8 +68,8 @@ function Test-V213EdgeReadinessResponse($Response,[string]$ExpectedVersion,[stri
     if(($schema-isnot[int]-and$schema-isnot[long])-or$schema-ne1-or
        (Get-V213ReadyField $Response 'parser_schema' '')-cne'v213-r75-sec-filing-provenance-v1'-or
        (Get-V213ReadyField $Response 'compatibility' '')-cne'PASS'-or
-       (Get-V213ReadyField $Response 'publication_contract_id' '')-cne'v213-r75-publication-mode-v1'-or
-       (Get-V213ReadyField $Response 'publication_contract_sha256' '')-cne'9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd'-or
+       (Get-V213ReadyField $Response 'publication_contract_id' '')-cne'v213-r75-publication-mode-v2'-or
+       (Get-V213ReadyField $Response 'publication_contract_sha256' '')-cne'5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21'-or
        (Get-V213ReadyField $Response 'compact_policy_sha256' '')-cne$PolicyHash){throw 'V213_READINESS_SCHEMA_OR_CONTRACT_MISMATCH'}
     if($ExpectedVersion-and$version-cne$ExpectedVersion){return $false}
     return $true

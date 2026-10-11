@@ -4,7 +4,7 @@ import { MemoryKv, asKv } from "./fake-kv";
 import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { v213EvidencePolicyDigest, type V213Top20Env } from "../src/v213/top20-report";
 import type { V213BottleneckReport } from "../src/v213/bottleneck-report";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 import policy from "../../config/v213-serenity-evidence-freshness-policy.json";
 
 export const SYNTHETIC_RUN = "20260915T120000Z-012345abcdef";

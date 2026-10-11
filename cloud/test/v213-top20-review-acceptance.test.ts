@@ -18,7 +18,7 @@ import {
 import { buildTop20DeepAnalysisMessages } from "../src/v213/deep-analysis";
 import { asKv, MemoryKv } from "./fake-kv";
 import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
-import sealContract from "../../config/v213-r75-publication-mode-v1.json";
+import sealContract from "../../config/v213-r75-publication-mode-v2.json";
 
 function makeSyntheticReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   return {

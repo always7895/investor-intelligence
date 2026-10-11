@@ -5,7 +5,7 @@ import type { V21AdminEnv } from "../v21/admin";
 import { parseV21Top20, type V21Evidence, type V21Top20Record } from "../v21/top20";
 import { parseV212Top20Report } from "../v212/top20-report";
 import { parseV213Top20Report, v213TimesAreFresh } from "./top20-report";
-import contract from "../../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../../config/v213-r75-publication-mode-v2.json";
 import { r75PublicationModeContractHash, validateR75PublicationModes } from "./publication-mode";
 import { buildSnapshotSeal, parseSealedPointer, readSealedSnapshot, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
 

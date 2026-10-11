@@ -10,7 +10,7 @@ import {
   V213_STALE_RECORDS_MESSAGE,
 } from "../src/v213/top20-report";
 import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
 async function textFixture(overrides: Record<string, string> = {}) {

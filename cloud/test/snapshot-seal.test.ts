@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildSnapshotSeal, parseSealedPointer, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 import { asKv, MemoryKv } from "./fake-kv";
 
 // Storage-integrity fixtures only. Actual admission/read caller is tested in

@@ -136,7 +136,7 @@ class ArchiveModelBindingTests(unittest.TestCase):
             worker_version=version, readiness=[dict(
                 ready=True, no_write=True, worker_version=version, model_profile_sha256=profile_hash,
                 parser_schema="v213-r75-sec-filing-provenance-v1", compact_policy_sha256=policy_hash,
-                publication_contract_sha256="9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd")],
+                publication_contract_sha256="5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21")],
             results=[dict(case=case, phase=phase, **{"pass": True}, finish_reason="stop",
                           model=profile["model"], http_status=200, total_ms=1,
                           usage={"prompt_tokens": 1, "completion_tokens": 1}, reasoning_present=False,
@@ -159,7 +159,7 @@ register-v213-free-relay-task.ps1 scripts/v213_sealed_refresh.ps1
 run-v213-scheduled-refresh.ps1 register-v213-refresh-tasks.ps1
 cloud/src/v213/free-relay.ts cloud/src/v213/production-worker.ts
 cloud/wrangler.v213.production.template.toml run-v213-local.ps1
-config/v213-r75-publication-mode-v1.json scripts/v213_r75_activation_preflight.py
+config/v213-r75-publication-mode-v2.json scripts/v213_r75_activation_preflight.py
 cloud/src/v213/publication-mode.ts cloud/src/v213/activation-v2.ts
 skills/serenity-public-research/SKILL.md
 skills/serenity-public-research/references/RESEARCH_METHOD.md
@@ -177,7 +177,7 @@ cloud/src/v213/top20-report.ts docs/CURRENT_STATUS_BILINGUAL.md'''.split()
                     consecutive_public_health_required=3, health_schema_version=2,
                     exact_model='qwen38-q6', normal_production_tunnel_mode='quick_free_relay',
                     workers_dev_stable_entrypoint=True, custom_domain_required=False,
-                    publication_contract_sha256=VERIFIER.sha(files['config/v213-r75-publication-mode-v1.json']))
+                    publication_contract_sha256=VERIFIER.sha(files['config/v213-r75-publication-mode-v2.json']))
         receipts = [dict(common, status='PASS', release_ready=True, live_qa='PASS', live_free_relay_smoke='PASS'),
                     dict(common, status='PASS', extracted_zip_worker_gate='PASS', packaged_worker_typecheck='PASS',
                          packaged_worker_tests=refs['packaged_worker_test_count'], extracted_zip_runtime_install='PASS'),

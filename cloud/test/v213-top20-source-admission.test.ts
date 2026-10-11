@@ -16,7 +16,7 @@ import {
 } from "../src/v213/top20-return-evidence";
 import { asKv, MemoryKv } from "./fake-kv";
 import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
-import sealContract from "../../config/v213-r75-publication-mode-v1.json";
+import sealContract from "../../config/v213-r75-publication-mode-v2.json";
 
 function makeCandidateReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   return {

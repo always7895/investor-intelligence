@@ -2,7 +2,7 @@
  * The trusted pointer anchors these hashes; this is not source authenticity,
  * rights, freshness, a signature against a compromised KV writer, or a KV lock.
  */
-import contract from "../../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../../config/v213-r75-publication-mode-v2.json";
 
 export const SNAPSHOT_SEAL_KEY = "v213:snapshot-seal:v1";
 export const SNAPSHOT_RUN_RE = /^\d{8}T\d{6}Z-[0-9a-f]{12}$/;

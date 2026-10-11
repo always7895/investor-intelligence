@@ -7,7 +7,7 @@ import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS } from "../src/v213/snapshot-se
 import { MACRO_PRODUCT_KEY } from "../src/v213/macro-industry-product";
 import { validatePotentialRanking } from "../src/v213/potential-ranking";
 import { asKv, MemoryKv } from "./fake-kv";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 
 const RUN = "20260925T120000Z-0123456789ab";
 const STAMP = "2026-09-25T12:00:00Z";

@@ -253,7 +253,7 @@ def main() -> int:
         "V213_MARKET_CORROBORATION_QUALITY = DEGRADED",
         "market_quality_degraded",
         "v213_r75_activation_preflight.py",
-        "v213-r75-publication-mode-v1.json",
+        "v213-r75-publication-mode-v2.json",
         "Test-SourceIndependenceDocument",
     ))
     require_tokens(findings, "Shared R75 activation market-quality contract", r75_preflight, (

@@ -23,6 +23,62 @@ def _timestamp(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _claims_qualified(
+    claims: list, evidence: list, minimum: int, horizon: datetime | None = None,
+) -> bool:
+    """Per-claim bound, lineage-merged, value-agreeing check shared by both entries.
+
+    `horizon` is None for the structural-only recount (no time terms at all).
+    """
+    seen: set[str] = set()
+    for claim in claims:
+        if (not isinstance(claim, Mapping)
+                or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"].strip()
+                or claim["claim_id"] in seen
+                or claim.get("status") != "SUPPORTED"
+                or claim.get("high_confidence_eligible") is not True
+                or claim.get("conflict_set")
+                or not isinstance(claim.get("evidence_ids"), list)):
+            return False
+        seen.add(claim["claim_id"])
+        bound = [
+            row for row in evidence
+            if isinstance(row, Mapping) and row.get("admitted") is True
+            and row.get("freshness") == "CURRENT"
+            and row.get("observation_id") in claim["evidence_ids"]
+            and isinstance(row.get("claim_ids"), list)
+            and claim["claim_id"] in row["claim_ids"]
+            and (horizon is None or horizon < _timestamp(row.get("valid_until")))
+        ]
+        if (compute_independent_lineages(bound) < minimum
+                or any(row["value"] != claim["value"] for row in bound)):
+            return False
+    return True
+
+
+def claim_lineage_structurally_qualified(audit_row: Mapping[str, Any], minimum_families: int) -> bool:
+    """Structural-only recount for the Worker/preflight (contract v2); no time terms.
+
+    Expiry stays a producer concern (guard reserve, builder wall clock); consumers
+    run up to max_bundle_age_seconds after the build and must not re-judge expiry.
+    Fail closed on any missing field or wrong type.
+    """
+    if type(minimum_families) is not int or minimum_families < 2:
+        return False
+    audit = audit_row.get("claim_evidence_audit") if isinstance(audit_row, Mapping) else None
+    if not isinstance(audit, Mapping) or audit.get("schema_version") != 2:
+        return False
+    claims, evidence = audit.get("claims"), audit.get("evidence")
+    if (audit.get("all_material_claims_supported") is not True
+            or not isinstance(claims, list) or not claims
+            or not isinstance(evidence, list)):
+        return False
+    try:
+        return _claims_qualified(claims, evidence, minimum_families)
+    except (ValueError, OverflowError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def claim_lineage_qualified(
     audit_row: Mapping[str, Any], policy: Mapping[str, Any], now: datetime,
     *, validity_margin: timedelta = timedelta(0),
@@ -51,29 +107,8 @@ def claim_lineage_qualified(
                 and validated <= expiry <= validated + timedelta(hours=2)
                 and horizon < expiry):
             return False
-        seen: set[str] = set()
-        for claim in claims:
-            if (not isinstance(claim, Mapping)
-                    or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"].strip()
-                    or claim["claim_id"] in seen
-                    or claim.get("status") != "SUPPORTED"
-                    or claim.get("high_confidence_eligible") is not True
-                    or claim.get("conflict_set")
-                    or not isinstance(claim.get("evidence_ids"), list)):
-                return False
-            seen.add(claim["claim_id"])
-            bound = [
-                row for row in evidence
-                if isinstance(row, Mapping) and row.get("admitted") is True
-                and row.get("freshness") == "CURRENT"
-                and row.get("observation_id") in claim["evidence_ids"]
-                and isinstance(row.get("claim_ids"), list)
-                and claim["claim_id"] in row["claim_ids"]
-                and horizon < _timestamp(row.get("valid_until"))
-            ]
-            if (compute_independent_lineages(bound) < minimum
-                    or any(row["value"] != claim["value"] for row in bound)):
-                return False
+        if not _claims_qualified(claims, evidence, minimum, horizon):
+            return False
         return True
     except (ValueError, OverflowError, KeyError, TypeError, AttributeError):
         return False

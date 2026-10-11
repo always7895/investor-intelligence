@@ -9,7 +9,7 @@ import {
 } from "../src/v213/top20-report";
 import { asKv, MemoryKv } from "./fake-kv";
 import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
-import sealContract from "../../config/v213-r75-publication-mode-v1.json";
+import sealContract from "../../config/v213-r75-publication-mode-v2.json";
 
 const SENTINEL = "UNADMITTED_ACQUISITION_SENTINEL_999999";
 const SYNTHETIC_FORGED_ACQUISITION = JSON.stringify({

@@ -8,7 +8,7 @@ import { freeRelayRequestEnv } from "../src/v213/production-worker";
 import { RICH_MENU_ACTIONS, v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { V213_TOP20_DISPLAY_COLUMNS, V213_NO_CURRENT_ORDERS, V213_NO_FUTURE_ORDER_ESTIMATE } from "../src/v213/top20-report";
 import { buildSnapshotSeal, SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
-import contract from "../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../config/v213-r75-publication-mode-v2.json";
 import { MemoryKv, asKv } from "./fake-kv";
 
 async function fixture() {

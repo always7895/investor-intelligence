@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import v213_evidence_policy as policy  # noqa: E402
 
 LKG_DIR = ROOT / "data" / "cache" / "top20-lkg"
-PUBLICATION_MODE_PATH = ROOT / "config" / "v213-r75-publication-mode-v1.json"
+PUBLICATION_MODE_PATH = ROOT / "config" / "v213-r75-publication-mode-v2.json"
 STATE_NAME = "refresh-state.json"
 RUN_ID = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
 # The Top20 objects the publisher may carry; every other object keeps its sealed placeholder (reports:*,

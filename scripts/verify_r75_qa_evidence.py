@@ -17,7 +17,18 @@ MAX_LIVE_PROOF_AGE_SECONDS = 24 * 60 * 60
 FUTURE_TOLERANCE_SECONDS = 300
 
 
-def verify(data, manifest=None, *, now=None, expected_profile=None):
+# Contract id -> canonical-JSON hash. v1 is kept so committed historical live receipts stay verifiable;
+# a proof without an id is checked against the current contract only.
+PUBLICATION_CONTRACT_HASHES = {
+    "v213-r75-publication-mode-v1": "9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd",
+    "v213-r75-publication-mode-v2": "5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21",
+}
+CURRENT_PUBLICATION_CONTRACT_ID = "v213-r75-publication-mode-v2"
+
+
+def verify(data, manifest=None, *, now=None, expected_profile=None, expected_contract_id=None):
+    # expected_contract_id=None keeps historical receipts verifiable (v1 or v2); a release lane passes
+    # CURRENT_PUBLICATION_CONTRACT_ID so only a receipt produced against the v2 Worker qualifies.
     def require(ok, code):
         if not ok: raise ValueError(code)
     schema = data.get('schema_version')
@@ -76,7 +87,9 @@ def verify(data, manifest=None, *, now=None, expected_profile=None):
     for proof in proofs:
         if profile:
             require(proof.get('model_profile_sha256') == profile_sha256(profile), 'READINESS_PROFILE_MISMATCH')
-        require(proof.get("ready") is True and proof.get("no_write") is True and proof.get("worker_version") == data.get("worker_version") and proof.get("parser_schema") == "v213-r75-sec-filing-provenance-v1" and proof.get("compact_policy_sha256") == policy_hash and proof.get("publication_contract_sha256") == "9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd", "READINESS_PROOF_INVALID")
+        contract_id = proof.get("publication_contract_id", CURRENT_PUBLICATION_CONTRACT_ID)
+        require(isinstance(contract_id, str) and (expected_contract_id is None or contract_id == expected_contract_id), "READINESS_PROOF_INVALID")
+        require(proof.get("ready") is True and proof.get("no_write") is True and proof.get("worker_version") == data.get("worker_version") and proof.get("parser_schema") == "v213-r75-sec-filing-provenance-v1" and proof.get("compact_policy_sha256") == policy_hash and isinstance(proof.get("publication_contract_sha256"), str) and proof.get("publication_contract_sha256") == PUBLICATION_CONTRACT_HASHES.get(contract_id), "READINESS_PROOF_INVALID")
     expected = {(c,p) for c in ("smoke", "general", "ticker", "methodology", "evidence") for p in ("cold", "warm")}
     rows = data.get("results", [])
     require(len(rows) == len(expected) and {(r.get("case"),r.get("phase")) for r in rows} == expected, "LIVE_CASE_MATRIX_INCOMPLETE")

@@ -14,7 +14,7 @@ import { validateTwoYearReturnEvidence, type TwoYearReturnEvidence } from "../sr
 import { buildTop20DeepAnalysisMessages } from "../src/v213/deep-analysis";
 import { asKv, MemoryKv } from "./fake-kv";
 import { SNAPSHOT_OBJECT_KEYS, SNAPSHOT_SEAL_KEY, buildSnapshotSeal } from "../src/v213/snapshot-seal";
-import sealContract from "../../config/v213-r75-publication-mode-v1.json";
+import sealContract from "../../config/v213-r75-publication-mode-v2.json";
 
 function makeReturnEvidence(ticker: string, overrides: Partial<TwoYearReturnEvidence> = {}): TwoYearReturnEvidence {
   // Calendar-relative window: actual_end must remain inside the 7-day market
