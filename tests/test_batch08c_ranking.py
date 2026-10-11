@@ -20,7 +20,8 @@ def encoded(value):
 
 
 def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mismatch=False,
-             facts=None, korea_period='2026-06-30', gross=None):
+             facts=None, korea_period='2026-06-30', gross=None, revenues=None, extra_revenue_cells=(),
+             financial_currency='USD', official_quarters=None):
     days = old.daily('2024-01-02', '2026-09-25', lambda d: 10 + (d - datetime(2024, 1, 1).date()).days / 100)
     chart = {'chart': {'result': [{'meta': {'currency': 'USD'},
              'timestamp': [int(datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).timestamp()) for day, _ in days],
@@ -30,15 +31,17 @@ def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mism
                  {'symbol': symbol, 'role': 'synthetic', 'source_url': 'https://issuer.example/report',
                   'source_date': '2026-09'} for symbol in symbols]}
     entries = {name: None for name in ('serenity', 'leopold', 'cision', 'official_quarters', 'korea_orders')}
+    entries['official_quarters'] = official_quarters
     entries['layers'] = encoded({'layers': [layer]})
     entries['lineage'] = (f.ROOT / 'config/listing-lineage-v1.json').read_bytes()
     entries['tickers'] = encoded({'fields': ['ticker', 'cik'], 'data': [[symbol, i + 1] for i, symbol in enumerate(symbols)]})
     entries['korea_fundamentals'] = encoded({'companies': {symbol: {
         'period_end': korea_period, 'period': '2026Q2', 'source_url': 'https://issuer.example/kr',
         'revenue': {'amount': 200, 'prior': 100, 'currency': 'KRW'}} for symbol in symbols if symbol.endswith('.KS')}})
-    revenues = {day: 30e6 * (i + 1) for i, day in enumerate(PERIODS)}
-    if quarters < 6:
-        revenues = {day: revenues[day] for day in PERIODS[-quarters:]}
+    if revenues is None:
+        revenues = {day: 30e6 * (i + 1) for i, day in enumerate(PERIODS)}
+        if quarters < 6:
+            revenues = {day: revenues[day] for day in PERIODS[-quarters:]}
     share_values = {'2025-06-30': 100, '2026-06-30': 120} if shares is None else shares
     for i, symbol in enumerate(symbols):
         rows = []
@@ -47,11 +50,13 @@ def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mism
                              *([('quarterlyGrossProfit', gross)] if gross is not None else [])]:
             rows.append({'meta': {'type': [kind]}, kind: [
                 {'asOfDate': day, 'reportedValue': {'raw': amount}} for day, amount in values.items()]})
+        rows[0]['quarterlyTotalRevenue'].extend(
+            {'asOfDate': day, 'reportedValue': cell} for day, cell in extra_revenue_cells)
         if mismatch:
             rows[0]['timestamp'] = [int(datetime(2026, 9, 30, tzinfo=timezone.utc).timestamp())]
         entries['yahoo/chart/' + symbol] = encoded(chart)
         entries['yahoo/summary/' + symbol] = encoded({'quoteSummary': {'result': [
-            {'price': {'currency': 'USD', 'marketCap': {'raw': 1000}}, 'financialData': {'financialCurrency': 'USD'}}]}})
+            {'price': {'currency': 'USD', 'marketCap': {'raw': 1000}}, 'financialData': {'financialCurrency': financial_currency} if financial_currency is not None else {}}]}})
         entries['yahoo/financials/' + symbol] = encoded({'timeseries': {'result': rows}})
         entries[f'facts/CIK{i + 1:010d}'] = encoded(facts[symbol]) if facts and symbol in facts else None
     return publisher.CapturedPublicationInputs(entries)
@@ -94,6 +99,40 @@ class CapturedRankingTests(unittest.TestCase):
                 self.assertAlmostEqual(fund['shares_yoy'], .2)
                 if reason is None:
                     self.assertNotIn('revenue_yoy_prev_reason', fund)
+
+    def test_captured_later_null_revenue_cell_is_period_mismatch_not_no_record(self):
+        # A later quarterlyTotalRevenue CELL with a null reportedValue (not a timestamp column) is still a statement
+        # period: the previous comparator is withheld as PERIOD_MISMATCH, while the control stays NO_RECORD.
+        for cells, reason in (((), 'NO_RECORD'), ((('2026-09-30', None),), 'PERIOD_MISMATCH')):
+            with self.subTest(cells=cells):
+                fund = rank(captured(quarters=5, extra_revenue_cells=cells))['top'][0]['fundamentals']
+                self.assertEqual(fund['quarter_end'], '2026-06-30')
+                self.assertEqual(fund['revenue_yoy'], 2)
+                self.assertIsNone(fund['revenue_yoy_prev'])
+                self.assertIsNone(fund['revenue_yoy_prev_basis'])
+                self.assertIsNone(fund['revenue_yoy_prev_source'])
+                self.assertEqual(fund['revenue_yoy_prev_reason'], reason)
+
+    def test_captured_official_pair_needs_the_matching_financial_currency(self):
+        # The reviewed 5351.TWO record is in TWD; periods align, so only financialCurrency decides.
+        official = (f.ROOT / 'config/official-quarterly-revenue-v1.json').read_bytes()
+        revenues = {'2025-06-30': 744722000.0, '2025-09-30': 1.1e9, '2025-12-31': 1.9e9,
+                    '2026-03-31': 2735412000.0, '2026-06-30': 4898686000.0}
+        for currency, basis, reason in (('TWD', 'OFFICIAL_CURATED', None), ('USD', None, 'CURRENCY_UNVERIFIED'),
+                                        (None, None, 'CURRENCY_UNVERIFIED')):
+            with self.subTest(currency=currency):
+                fund = rank(captured(symbols=('5351.TWO',), revenues=revenues, financial_currency=currency,
+                                     official_quarters=official))['top'][0]['fundamentals']
+                self.assertEqual(fund['quarter_end'], '2026-06-30')
+                self.assertEqual(fund['revenue_yoy'], 4898686000.0 / 744722000.0 - 1)
+                self.assertEqual(fund['revenue_yoy_prev_basis'], basis)
+                self.assertEqual(fund.get('revenue_yoy_prev_reason'), reason)
+                if reason is None:
+                    self.assertEqual(fund['revenue_yoy_prev'], 2735412 / 627130 - 1)
+                    self.assertEqual(fund['revenue_yoy_prev_source']['record_id'], '5351.TWO-2026Q2-prev-2026Q1')
+                else:
+                    self.assertIsNone(fund['revenue_yoy_prev'])
+                    self.assertIsNone(fund['revenue_yoy_prev_source'])
 
     def test_share_window_nearest_exact_current_and_absent(self):
         cases = [({'2025-06-05': 100, '2026-06-30': 120}, None),

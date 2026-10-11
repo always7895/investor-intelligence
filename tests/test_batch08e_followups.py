@@ -1,8 +1,9 @@
 """BATCH08 follow-ups through the real callers; synthetic inputs, frozen clocks, no network."""
 import copy
 import json
+import sys
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest import mock
 
 from tests import batch08b_fixtures as f
@@ -115,6 +116,120 @@ class NonStringFactEndTests(unittest.TestCase):
                     self.fail(f"{type(exc).__name__}: {exc}")
                 self.assertEqual(fund, expected)
                 self.assertEqual(ranked, expected)
+
+
+class CanonicalIsoSpellingTests(unittest.TestCase):
+    """Python 3.12 `date.fromisoformat` also accepts compact and ISO-week spellings; the SEC paths key and sort the raw
+    string, so a non-canonical spelling must be skipped like any malformed date (never double-counted or misordered)."""
+
+    RPO = "RevenueRemainingPerformanceObligation"
+    DILUTED = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    REVENUE = "RevenueFromContractWithCustomerIncludingAssessedTax"
+
+    @staticmethod
+    def spellings(day):
+        year, week, weekday = day.isocalendar()
+        yday = day.timetuple().tm_yday
+        every = [day.strftime("%Y%m%d"), f"{year}-W{week:02d}-{weekday}", f"{year}W{week:02d}{weekday}",
+                 f"{year}-W{week:02d}", f"{year}W{week:02d}", f"{year}-{yday:03d}", f"{year}{yday:03d}"]
+        return [text for text in every if text != day.isoformat()]  # a rejected spelling is malformed either way
+
+    def assert_same(self, facts, expected):
+        try:
+            fund = f.engine.sec_fundamentals("SYN", 1, facts)
+            ranked = f.rank(facts)["top"][0]["fundamentals"]
+        except Exception as exc:  # the build must skip the row, never raise
+            self.fail(f"{type(exc).__name__}: {exc}")
+        self.assertEqual(fund, expected)
+        self.assertEqual(ranked, expected)
+
+    def revenue_rows(self, facts):
+        return facts["facts"]["us-gaap"][self.REVENUE]["units"]["USD"]
+
+    def with_rpo(self, extra=()):
+        facts = f.share_facts()
+        facts["facts"]["us-gaap"][self.RPO] = {"units": {"USD": [
+            {"end": "2025-06-28", "val": 100}, {"end": "2026-06-27", "val": 150}, *extra]}}
+        return facts
+
+    def diluted_facts(self):
+        facts = f.share_facts()
+        facts["facts"].pop("dei")
+        return facts
+
+    def diluted_rows(self, facts):
+        return facts["facts"]["us-gaap"][self.DILUTED]["units"]["shares"]
+
+    def test_the_gate_interpreter_accepts_non_canonical_spellings(self):
+        accepted = []
+        for text in self.spellings(date(2026, 6, 27)):
+            try:
+                parsed = date.fromisoformat(text)
+            except ValueError:
+                continue
+            self.assertNotEqual(parsed.isoformat(), text)
+            accepted.append(text)
+        if sys.version_info >= (3, 11):  # the pinned gate interpreter is CPython 3.12.10
+            for text in ("20260627", "2026-W26-6", "2026W266"):
+                self.assertIn(text, accepted)
+
+    def test_canonical_helper_accepts_only_the_canonical_day(self):
+        self.assertTrue(f.engine._canonical_day("2026-06-27"))
+        for value in ("20260627", "2026-W26-6", "2026-06-31", "2026-6-27", " 2026-06-27", "2026-06-27T00:00:00",
+                      None, 20260627, ["2026-06-27"], b"2026-06-27"):
+            with self.subTest(value=value):
+                self.assertFalse(f.engine._canonical_day(value))
+
+    def test_revenue_rows_with_non_canonical_end_or_start_are_skipped(self):
+        expected = f.engine.sec_fundamentals("SYN", 1, f.share_facts())
+        self.assertEqual(expected["quarter_end"], "2026-06-27")
+        for text in self.spellings(date(2026, 9, 26)) + self.spellings(date(2026, 6, 27)) + self.spellings(date(2026, 3, 29)):
+            junk = [{"start": "2026-06-28", "end": text, "val": 999, "filed": "2026-10-01", "form": "10-Q", "fp": "Q"},
+                    {"start": "2026-03-29", "end": text, "val": 5, "filed": "2026-10-01", "form": "10-Q", "fp": "Q"},
+                    {"start": text, "end": "2026-06-27", "val": 777, "filed": "2026-10-01", "form": "10-Q", "fp": "Q"}]
+            for index, row in enumerate(junk):
+                with self.subTest(spelling=text, row=index):
+                    facts = f.share_facts()
+                    self.revenue_rows(facts).append(row)
+                    self.assert_same(facts, expected)
+
+    def test_rpo_rows_with_non_canonical_end_are_skipped(self):
+        expected = f.engine.sec_fundamentals("SYN", 1, self.with_rpo())
+        self.assertAlmostEqual(expected["rpo_yoy"], 0.5)
+        self.assertEqual(expected["rpo_end"], "2026-06-27")
+        for text in self.spellings(date(2026, 9, 30)) + self.spellings(date(2026, 6, 27)):
+            with self.subTest(spelling=text):
+                self.assert_same(self.with_rpo([{"end": text, "val": 999}]), expected)
+
+    def test_dei_rows_with_non_canonical_end_are_skipped(self):
+        facts = f.share_facts()
+        facts["facts"].pop("dei")
+        expected = f.engine.sec_fundamentals("SYN", 1, facts)
+        self.assertEqual(expected["shares_basis"], "DILUTED_WEIGHTED_AVERAGE")
+        for prior, current in zip(self.spellings(date(2025, 8, 1)), self.spellings(date(2026, 8, 1))):
+            for label, ends in (("prior", (prior, "2026-08-01")), ("current", ("2025-08-01", current)),
+                                ("both", (prior, current))):
+                with self.subTest(prior=prior, current=current, replaced=label):
+                    facts = f.share_facts()
+                    for row, end in zip(dei_rows(facts), ends):
+                        row["end"] = end
+                    self.assert_same(facts, expected)
+
+    def test_diluted_rows_with_non_canonical_end_or_start_are_skipped(self):
+        clean = self.diluted_facts()
+        self.assertAlmostEqual(f.engine.sec_fundamentals("SYN", 1, clean)["shares_yoy"], 162e6 / 80e6 - 1)
+        absent = self.diluted_facts()
+        rows = self.diluted_rows(absent)
+        rows[:] = [row for row in rows if row["end"] != "2025-06-28"]
+        expected = f.engine.sec_fundamentals("SYN", 1, absent)
+        self.assertIsNone(expected["shares_yoy"])
+        for key, day in (("end", date(2025, 6, 28)), ("start", date(2025, 3, 30))):
+            for text in self.spellings(day):
+                with self.subTest(key=key, spelling=text):
+                    facts = self.diluted_facts()
+                    row = next(row for row in self.diluted_rows(facts) if row["end"] == "2025-06-28")
+                    row[key] = text
+                    self.assert_same(facts, expected)
 
 
 class MalformedPayloadClaimIdsTests(unittest.TestCase):

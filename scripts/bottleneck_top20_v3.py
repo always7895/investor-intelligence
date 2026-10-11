@@ -140,8 +140,11 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
             annual: list[dict[str, Any]] = []
             for row in rows:
                 try:
-                    days = (date.fromisoformat(row["end"]) - date.fromisoformat(row["start"])).days
-                except (KeyError, TypeError, ValueError):  # a non-string date skips the row, never the build
+                    end, start = row["end"], row["start"]
+                    if not (_canonical_day(end) and _canonical_day(start)):
+                        continue  # a non-string or non-canonical date spelling skips the row, never the build
+                    days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+                except (KeyError, TypeError, ValueError):
                     continue
                 if row.get("val") is None:
                     continue
@@ -171,13 +174,21 @@ def _near(series: dict[str, dict[str, Any]], end: str, days: int) -> dict[str, A
     return series[min(candidates, key=lambda key: abs((date.fromisoformat(key) - target).days))] if candidates else None
 
 
-def _iso_end(row: dict[str, Any]) -> bool:
-    """A non-string or malformed `end` is skipped before sorting, never raised out of the build."""
-    try:
-        date.fromisoformat(row.get("end"))
-    except (TypeError, ValueError):
+def _canonical_day(value: Any) -> bool:
+    """True only for the canonical `YYYY-MM-DD` spelling of a real day. Python 3.12 `date.fromisoformat` also accepts
+    compact (`20260627`) and ISO-week (`2026-W26-6`) spellings; rows are keyed, deduplicated and sorted by the raw
+    string, so equal periods would count twice and the latest period could be misordered."""
+    if not isinstance(value, str):
         return False
-    return True
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _iso_end(row: dict[str, Any]) -> bool:
+    """A non-string, malformed or non-canonical `end` is skipped before sorting, never raised out of the build."""
+    return _canonical_day(row.get("end"))
 
 
 def _instant_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, list[dict[str, Any]]]:
@@ -241,8 +252,9 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
             by_end: dict[str, dict[str, Any]] = {}
             for row in rows:
                 try:
-                    date.fromisoformat(row["end"])
-                except (KeyError, TypeError, ValueError):
+                    if not _canonical_day(row["end"]):
+                        continue
+                except (KeyError, TypeError):
                     continue
                 if row.get("val") is None:
                     continue
@@ -273,7 +285,10 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
         for unit_rows in facts.get("facts", {}).get(taxonomy, {}).get(diluted_tag, {}).get("units", {}).values():
             for row in unit_rows:
                 try:
-                    days = (date.fromisoformat(row["end"]) - date.fromisoformat(row.get("start"))).days
+                    end, start = row["end"], row.get("start")
+                    if not (_canonical_day(end) and _canonical_day(start)):
+                        continue
+                    days = (date.fromisoformat(end) - date.fromisoformat(start)).days
                 except (KeyError, TypeError, ValueError):
                     continue
                 if row.get("val") is None or not 80 <= days <= 100:

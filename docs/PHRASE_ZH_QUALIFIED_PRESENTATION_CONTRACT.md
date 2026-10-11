@@ -8,6 +8,15 @@ and [company claims](COMPANY_CLAIM_ADMISSION_BRIDGE.md) retain all admission and
 rollout boundaries. Qualification here means a reviewed translation, never a
 new company fact, independent source or trading recommendation.
 
+Implemented so far, all inert: `scripts/phrase_zh_policy.py` is a strict
+`phrase-zh-policy-v1` loader (`load(path, expected_file_sha256, decision_time=...)`)
+with acceptance item 1 negatives in `tests/test_phrase_zh_policy.py`. It has no
+caller, no policy file exists for it, its pin is an injected test dependency, and
+a successful load grants nothing (trust root stays BLOCKED_IMPLEMENTATION_TRUST_ROOT).
+Separately `company_business_profile._banned_phrases` now fails closed: an
+unreadable or malformed shared wording policy makes `validate_phrase` refuse every
+phrase. Neither change qualifies a phrase or alters public output.
+
 Phase-1 matrix: `R/batch09-astra-67a3153d/phase1-matrix.json`, SHA256
 `C307B28B2E9A6293F6C734778A27A37C730C80C92DA9C55BA2452B24D428E2C0`.
 R is the audit-runtime location in STATUS, not packaged evidence. Matrix entries
@@ -25,9 +34,11 @@ route context, carry/captured variants and policy migration were rechecked.
   consistency, not authentication. `resolve_business_profile` re-fetches source
   bytes, may reuse a candidate, and explicitly emits FORMAT_CHECKS_ONLY,
   model UNKNOWN, review NONE and UNVERIFIED translation. A digest cannot promote it.
-- Lines 504-525: `_banned_phrases` returns an empty tuple on policy-read failure;
-  `validate_phrase` checks format, selected wording and digit-set membership, not
-  semantic equivalence. Neither behaviour is a qualification predicate.
+- `_banned_phrases` / `validate_phrase`: the ban list loads through the strict shared
+  loader and any failure (missing, unreadable, malformed or empty) refuses every phrase
+  instead of an empty ban set. `validate_phrase` checks format, selected wording and
+  digit-set membership, not semantic equivalence. Neither behaviour is a
+  qualification predicate.
 - Lines 526-698: `local_translator` identity binding is distinct from generation
   provenance. Reply model ID/`translate.model` is not a weights hash or an attestation.
 - `scripts/company_deep_report.py:515-538,619-629,792-840`: public business section
