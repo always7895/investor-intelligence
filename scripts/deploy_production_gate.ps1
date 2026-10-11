@@ -19,13 +19,17 @@
 #
 # No secret, tenant, or credential material is read, stored, or printed.
 # Requires the cached Wrangler CLI session (same as the sync script).
+# -Phase post takes the Worker origin from -WorkerUrl or from public_snapshot_endpoint of the local Worker configuration
+# (-WorkerConfigPath, default under %LOCALAPPDATA%); the repository names no origin, because its workers.dev label is the
+# operator's Cloudflare account.
 
 [CmdletBinding()]
 param(
     [ValidateSet('pre', 'post')][Parameter(Mandatory)][string]$Phase,
     [string]$WorkerVersion = '',
     [string]$RepoRoot = '',
-    [string]$WorkerUrl = 'https://investor-intelligence-v21-owner-line.moon951753.workers.dev',
+    [string]$WorkerUrl = '',
+    [string]$WorkerConfigPath = '',
     [int]$CapSeconds = 7200,
     [int]$ExpectTop20Records = 0,
     [string]$WranglerConfig = 'wrangler.v213.production.local.toml')
@@ -42,9 +46,55 @@ $CloudDir = Join-Path $RepoRoot 'cloud'
 $NamespaceId = '96142af40b5d4213862d5483fe3a66da'
 if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
 
+# Locked local CLIs of cloud/ only (the rule of sync_sealed_snapshot_kv._cli_command): the version declared in
+# cloud/package.json, the lock's version and the installed package's version must be equal, and Node must exist
+# (PROJECT_NODE, NODE_FOR_RUNNER or node on PATH). Never `npx --yes`: from the repository root it downloads the latest
+# registry package and runs it with the cached Production session. Resolved before any Production read.
+function Get-LockedNodeCli([string]$Package, [string]$Entry) {
+    try {
+        $declared = [string](Get-Content -LiteralPath (Join-Path $CloudDir 'package.json') -Raw -Encoding utf8 | ConvertFrom-Json).devDependencies.$Package
+        $locked = [string](Get-Content -LiteralPath (Join-Path $CloudDir 'package-lock.json') -Raw -Encoding utf8 | ConvertFrom-Json).packages."node_modules/$Package".version
+        $dir = Join-Path (Join-Path $CloudDir 'node_modules') $Package
+        $installed = [string](Get-Content -LiteralPath (Join-Path $dir 'package.json') -Raw -Encoding utf8 | ConvertFrom-Json).version
+    } catch { throw "LOCKED_CLI_UNAVAILABLE $Package" }
+    $exe = @($env:PROJECT_NODE, $env:NODE_FOR_RUNNER) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+    if (-not $exe) {
+        $found = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) { $exe = $found.Source }
+    }
+    $cli = Join-Path $dir $Entry
+    if (-not $exe -or -not (Test-Path -LiteralPath $exe -PathType Leaf) -or -not (Test-Path -LiteralPath $cli -PathType Leaf) -or
+        [string]::IsNullOrEmpty($locked) -or $declared -cne $locked -or $installed -cne $locked) { throw "LOCKED_CLI_UNAVAILABLE $Package" }
+    return @([IO.Path]::GetFullPath($exe), $cli)
+}
+$node, $wrangler = Get-LockedNodeCli 'wrangler' 'bin/wrangler.js'
+$vitest = if ($Phase -eq 'post') { (Get-LockedNodeCli 'vitest' 'vitest.mjs')[1] } else { $null }
+
+# The Worker origin of -Phase post: -WorkerUrl, else public_snapshot_endpoint of the local Worker configuration (the file the
+# setup and relay scripts use). Only an HTTPS workers.dev origin on the default port without user info is accepted (the
+# rule of v213_free_relay.ps1); path and query are dropped. Resolved before any Production read.
+function Resolve-WorkerOrigin([string]$Explicit, [string]$ConfigPath) {
+    $value = $Explicit
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+            if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { throw 'WORKER_URL_UNAVAILABLE' }
+            $ConfigPath = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v21-owner-line.local.json'
+        }
+        try { $property = (Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json).PSObject.Properties['public_snapshot_endpoint'] }
+        catch { throw 'WORKER_URL_UNAVAILABLE' }
+        if ($null -eq $property -or [string]::IsNullOrWhiteSpace([string]$property.Value)) { throw 'WORKER_URL_UNAVAILABLE' }
+        $value = [string]$property.Value
+    }
+    $uri = $null
+    if (-not [uri]::TryCreate($value.Trim(), [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -cne 'https' -or $uri.UserInfo -or
+        -not $uri.IsDefaultPort -or $uri.Host -notmatch '^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.workers\.dev$') { throw 'WORKER_URL_INVALID' }
+    return $uri.GetLeftPart([UriPartial]::Authority)
+}
+if ($Phase -eq 'post') { $WorkerUrl = Resolve-WorkerOrigin $WorkerUrl $WorkerConfigPath }
+
 function Read-LivePointer {
     # Read-only. Wrangler 4 KV commands default to the local Miniflare store; the gate must read Production.
-    $bytes = & npx --yes wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --remote --cwd $CloudDir 2>$null
+    $bytes = & $node $wrangler kv key get 'snapshot:current' --namespace-id $NamespaceId --remote --cwd $CloudDir 2>$null
     $text = (($bytes -join '')).Trim()
     if ($text -notmatch '\{') { throw 'NO_LIVE_POINTER' }
     return ($text | ConvertFrom-Json)
@@ -77,8 +127,10 @@ function ConvertTo-UtcAnchor([object]$Value) {
 # State-aware replay acceptance: 'PASS', 'PASS_INSUFFICIENT' or a failure reason.
 function Test-ReplayAcceptance([object]$Replay, [string]$RunId, [int]$ExpectTop20Records, [double]$ReportMaxAgeSeconds) {
     if ($null -eq $Replay) { return 'REPLAY_RESULT_MISSING' }
-    if ([string]$Replay.reader_contract_version -ne 'v213-reader-replay-v3') { return 'READER_CONTRACT_VERSION' }
+    if ([string]$Replay.reader_contract_version -ne 'v213-reader-replay-v4') { return 'READER_CONTRACT_VERSION' }
     if ([string]$Replay.run_id -ne $RunId -or [string]$Replay.integrity -ne 'sealed') { return 'REPLAY_RUN_MISMATCH' }
+    # A sealed index that names a machine binding the machine loader cannot read is never deployable (ABSENT: no binding).
+    if ([string]$Replay.guidance_machine_probe -eq 'REFUSED') { return 'GUIDANCE_MACHINE_BINDING' }
     if ([bool]$Replay.fresh) {
         if ($ExpectTop20Records -gt 0 -and [int]$Replay.top20_records -ne $ExpectTop20Records) {
             return ('TOP20_RECORDS {0} expected {1}' -f [int]$Replay.top20_records, $ExpectTop20Records)
@@ -158,15 +210,17 @@ try {
         $env:V213_LIVE_REPLAY_DIR = $replayDir
         $env:V213_LIVE_REPLAY_OUT = $replayArtifact
         $env:V213_LIVE_REPLAY_MAX_AGE = [string]$CapSeconds
-        try { $replayLog = & npx --yes vitest run test/live-kv-replay.test.ts --root $CloudDir 2>&1 | Out-String; $replayExit = $LASTEXITCODE }
+        try { $replayLog = & $node $vitest run test/live-kv-replay.test.ts --root $CloudDir 2>&1 | Out-String; $replayExit = $LASTEXITCODE }
         finally { Remove-Item Env:V213_LIVE_REPLAY_DIR, Env:V213_LIVE_REPLAY_OUT, Env:V213_LIVE_REPLAY_MAX_AGE -ErrorAction SilentlyContinue }
         $replay = $null
         if (Test-Path -LiteralPath $replayArtifact) {
             $replay = Get-Content -LiteralPath $replayArtifact -Raw -Encoding utf8 | ConvertFrom-Json
+            $gmp = $replay.PSObject.Properties['guidance_machine_probe']
             $results.replay = [ordered]@{ runId = [string]$replay.run_id; fresh = [bool]$replay.fresh; refusal = [string]$replay.refusal
                 readerContractVersion = [string]$replay.reader_contract_version; top20Records = [int]$replay.top20_records
                 reportGeneratedAt = [string]$replay.report_generated_at; testOnlyAdmission = $replay.test_only_admission
-                macroOverviewSealed = [bool]$replay.macro_overview_sealed; potentialRankingRecords = [int]$replay.potential_ranking_records }
+                macroOverviewSealed = [bool]$replay.macro_overview_sealed; potentialRankingRecords = [int]$replay.potential_ranking_records
+                guidanceMachineProbe = $(if ($null -ne $gmp) { [string]$gmp.Value } else { $null }) }
         }
         Remove-Item -LiteralPath $replayDir -Recurse -Force -ErrorAction SilentlyContinue
         $reportMaxAge = [double]((Get-Content -LiteralPath (Join-Path $RepoRoot 'config\v213-top20-report-freshness-v1.json') -Raw |

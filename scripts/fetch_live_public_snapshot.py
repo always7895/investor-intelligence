@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import sync_sealed_snapshot_kv as sync  # noqa: E402  the sync's locked Wrangler CLI (no registry download)
 NS = "96142af40b5d4213862d5483fe3a66da"
 RUN_ID = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
 LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-9]))|quotes:v1|options:v[12]|options-coverage:v1|bottleneck-top20:v3|revenue-guidance-binding:v1"
@@ -30,12 +31,14 @@ Getter = Callable[[str], bytes]
 
 
 def remote_getter() -> Getter:
-    npx = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+    # The locked local Wrangler of cloud/ (declared == locked == installed); sync.CliUnavailable before any read.
+    # Never a registry download run with the cached Production session.
+    cli = sync._cli_command()
 
     def get(key: str) -> bytes:
         # A transient Cloudflare/network failure is retried; only a key absent on every attempt is reported missing.
         for attempt in range(ATTEMPTS):
-            done = subprocess.run([npx, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
+            done = subprocess.run([*cli, "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
                                   cwd=str(ROOT / "cloud"), capture_output=True, timeout=300)
             if done.returncode == 0 and done.stdout:
                 return done.stdout
@@ -77,6 +80,9 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = copy_snapshot(remote_getter(), args.out)
+    except sync.CliUnavailable:
+        print(json.dumps({"status": "FAIL", "error": "LOCKED_CLI_UNAVAILABLE wrangler"}))
+        return 1
     except (LookupError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(json.dumps({"status": "FAIL", "error": str(error)[:120]}))
         return 1

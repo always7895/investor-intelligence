@@ -164,9 +164,12 @@ class LiveSnapshotCopyTests(unittest.TestCase):
         original = live.subprocess.run
         live.subprocess.run = lambda args, **kw: calls.append(args) or subprocess.CompletedProcess(args, 0, b"{}", b"")
         try:
-            live.remote_getter()("snapshot:current")
+            with patch.object(live.sync, "_cli_command", return_value=["NODE", "LOCKED_WRANGLER_JS"]):
+                live.remote_getter()("snapshot:current")
         finally:
             live.subprocess.run = original
+        self.assertEqual(calls[0][:2], ["NODE", "LOCKED_WRANGLER_JS"])  # the sync's locked CLI, never npx --yes
+        self.assertEqual([part for part in calls[0] if "npx" in part or part == "--yes"], [])
         self.assertIn("--remote", calls[0])
         self.assertNotIn("put", calls[0])
 
@@ -185,6 +188,14 @@ class ReplayAcceptanceTests(unittest.TestCase):
         "other_refusal": ({"fresh": False, "refusal_is_insufficient": False}, 0, "READER_REPLAY_NOT_FRESH"),
         "old_reader": ({"fresh": True, "top20_records": 20, "age_hours": 1, "reader_contract_version": "v1"}, 0,
                        "READER_CONTRACT_VERSION"),
+        "previous_v3_reader": ({"fresh": True, "top20_records": 20, "age_hours": 1, "reader_contract_version": "v213-reader-replay-v3"}, 0,
+                               "READER_CONTRACT_VERSION"),
+        "machine_binding_refused": ({"fresh": True, "top20_records": 20, "age_hours": 1, "guidance_machine_probe": "REFUSED"}, 20,
+                                    "GUIDANCE_MACHINE_BINDING"),
+        "machine_binding_admitted": ({"fresh": True, "top20_records": 20, "age_hours": 1, "guidance_machine_probe": "ADMITTED"}, 20,
+                                     "PASS"),
+        "machine_binding_absent": ({"fresh": True, "top20_records": 20, "age_hours": 1, "guidance_machine_probe": "ABSENT"}, 20,
+                                   "PASS"),
         "other_run": ({"fresh": True, "top20_records": 20, "age_hours": 1, "run_id": "20260101T000000Z-000000000000"}, 0,
                       "REPLAY_RUN_MISMATCH"),
     }
@@ -199,7 +210,7 @@ class ReplayAcceptanceTests(unittest.TestCase):
         probe = functions
         now = datetime.now(timezone.utc)
         for name, (fields, expected, _) in self.CASES.items():
-            replay = {"reader_contract_version": "v213-reader-replay-v3", "run_id": RUN, "integrity": "sealed",
+            replay = {"reader_contract_version": "v213-reader-replay-v4", "run_id": RUN, "integrity": "sealed",
                       "macro_overview_sealed": True, **{k: v for k, v in fields.items() if k != "age_hours"}}
             if "age_hours" in fields:
                 replay["report_generated_at"] = (now - timedelta(hours=fields["age_hours"])).strftime("%Y-%m-%dT%H:%M:%S.000Z")
