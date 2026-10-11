@@ -2,9 +2,10 @@ import { parseV21Top20 } from "../v21/top20";
 import { R75_PUBLICATION_MODE_CONTRACT_ID, r75PublicationModeContractHash } from "./publication-mode";
 import policy from "../../../config/v213-compact-qa-v1.json";
 import { configuredModelProfile, modelProfileSha256, type ModelProfileEnv } from './model-profile';
+import { lineAccessMode } from "../v211/line-access";
 
 export const PARSER_SCHEMA = "v213-r75-sec-filing-provenance-v1";
-export type VersionEnv = ModelProfileEnv & { CF_VERSION_METADATA?: { id: string } };
+export type VersionEnv = ModelProfileEnv & { CF_VERSION_METADATA?: { id: string }; V213_LINE_ACCESS_MODE?: string };
 const VERSION = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function servingVersion(env: VersionEnv): string | null {
   const id = env.CF_VERSION_METADATA?.id;
@@ -61,7 +62,7 @@ export async function edgeReadiness(request: Request, env: VersionEnv): Promise<
     schema_version: 1, ready: true, worker_version: version, challenge, parser_schema: PARSER_SCHEMA,
     publication_contract_id: R75_PUBLICATION_MODE_CONTRACT_ID,
     publication_contract_sha256: await r75PublicationModeContractHash(), compact_policy_sha256: await compactPolicyHash(),
-    compatibility: "PASS", no_write: true,
+    compatibility: "PASS", no_write: true, line_access_mode: lineAccessMode(env),
     ...(profileHash ? { model_profile_sha256: profileHash } : {}),
   };
   return new Response(JSON.stringify(result), { status: code ? 409 : 200,

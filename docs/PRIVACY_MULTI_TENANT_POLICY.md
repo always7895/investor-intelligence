@@ -62,6 +62,7 @@ LINE secrets, HMAC keys, encryption keys, Cloudflare tokens and local broker cre
 - Invalid configuration, missing secrets and unauthorized users fail silently and closed.
 - The shared bot contains no owner/operator privilege role.
 - The model cannot alter authorization.
+- The Production owner-line Worker may be switched (`V213_LINE_ACCESS_MODE=all_friends`, default `owner_only`, separately authorized) to serve every direct-chat friend. Isolation then rests on the same HMAC tenant ids: no KV key, gate row, log or prompt carries a raw LINE id; a friend's parked answers are readable only from the same chat; owner-only commands answer a neutral text; portfolio, IBKR and push data stay owner-only. Details and tests: [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md). Rights note: the free Alpha Vantage key is personal, non-commercial use, so in that mode Alpha Vantage derived prices are shown to the owner only and friends see 「現價暫不可用」 (operator 2026-10-11, `OPERATOR-DECISION-S1-AND-ALPHAVANTAGE-FRIENDS-20261011.txt`, Q2).
 
 ## Tenant identity
 

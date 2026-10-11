@@ -25,6 +25,17 @@ V21_SCHEDULED_PUSH_ENABLED = "false"
 # One Production writer (hourly sealed publisher): signed activation commits are refused unless "true".
 V213_ACTIVATION_COMMIT_ENABLED = "false"
 V213_FIELD_LOCALE = "bilingual"
+# LINE access: only the exact value "all_friends" opens public features and local-model Q&A to every direct-chat friend;
+# anything else (missing, empty, wrong case) is owner-only. Ships "owner_only": enabling is a separate, operator-authorized
+# rollout (docs/LINE_ALL_FRIENDS_ACCESS.md, docs/OPERATOR_RUNBOOK.md section 8). Rollback = set it back and redeploy config.
+V213_LINE_ACCESS_MODE = "owner_only"
+# Friend model lane (used only in all_friends mode). GLOBAL_INFLIGHT is coupled to the gateway's
+# II_GATEWAY_MAX_CONCURRENT_GENERATIONS (default 1): keep it <= that value, and leave one gateway slot for the owner.
+V213_FRIEND_QA_GLOBAL_INFLIGHT = "1"
+V213_FRIEND_QA_QUEUE_MAX = "2"
+V213_FRIEND_QA_ACQUIRE_WAIT_MS = "5000"
+# Friend slow-job KV writes per Taipei day (two per parked job). Over the cap: busy reply, no parked job.
+V213_FRIEND_JOB_WRITES_PER_DAY = "150"
 # FREE relay keeps workers.dev as the stable entrypoint and leases only a
 # validated ephemeral TryCloudflare route. No custom domain is required.
 FREE_RELAY_ENABLED = "true"
@@ -59,6 +70,10 @@ class_name = "V213BroadcastDedupe"
 name = "V213_FREE_RELAY_ROUTE"
 class_name = "V213FreeRelayRoute"
 
+[[durable_objects.bindings]]
+name = "V213_FRIEND_QA_GATE"
+class_name = "V213FriendQaGate"
+
 [[migrations]]
 tag = "v213-r75-broadcast-dedupe-v1"
 new_sqlite_classes = ["V213BroadcastDedupe"]
@@ -66,3 +81,7 @@ new_sqlite_classes = ["V213BroadcastDedupe"]
 [[migrations]]
 tag = "v213-r75-free-relay-route-v1"
 new_sqlite_classes = ["V213FreeRelayRoute"]
+
+[[migrations]]
+tag = "v213-friend-qa-gate-v1"
+new_sqlite_classes = ["V213FriendQaGate"]

@@ -453,7 +453,7 @@ describe("v2.1.3 seven-field Top20 contract and production routing", () => {
   });
 
   it("production health truthfully advertises v213 and seven bilingual fields without reading storage", async () => {
-    const env = new Proxy({}, { get(_target, key) { if (key === "V213_FIELD_LOCALE") return undefined; throw new Error("UNEXPECTED_HEALTH_STORAGE"); } });
+    const env = new Proxy({}, { get(_target, key) { if (key === "V213_FIELD_LOCALE" || key === "V213_LINE_ACCESS_MODE" || key === "V213_FRIEND_QA_GATE") return undefined; throw new Error("UNEXPECTED_HEALTH_STORAGE"); } });
     const response = await worker.fetch(new Request("https://synthetic.workers.dev/health"), env as any, {} as ExecutionContext);
     expect(await response.json()).toMatchObject({ product_version: "2.1.3", top20_presentation: "seven_fields", top20_field_locale: "bilingual" });
   });

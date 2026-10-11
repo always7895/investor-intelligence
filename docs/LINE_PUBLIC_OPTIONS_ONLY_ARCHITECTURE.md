@@ -46,6 +46,8 @@ Removing account identifiers or share quantities is not enough. A record derived
 - Both tenant-hash and tenant-data encryption secrets must exist before allowlist operation can answer.
 - The model cannot elevate a tenant or alter the allowlist.
 
+The Production owner-line Worker is a different entrypoint with its own switch, `V213_LINE_ACCESS_MODE` (default `owner_only`; see [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)); the shared bot's `LINE_ACCESS_MODE` values and silent-denial rules above are unchanged by it.
+
 The silent-denial rule protects the free LINE reply quota and prevents an unapproved user from probing friend membership or bot readiness through different error messages.
 
 ## Owner-data minimization

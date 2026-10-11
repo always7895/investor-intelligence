@@ -1,5 +1,6 @@
 export { V213BroadcastDedupe } from "./broadcast-dedupe";
 export { V213FreeRelayRoute } from "./free-relay";
+export { V213FriendQaGate } from "./friend-qa-gate";
 import v211Worker, { V211_GENERAL_QA, V211_TOP20_REPORT, type V211Env } from "../v211/worker";
 import { compactGeneralAnswer, compactCompletionBody, minimalModelSmoke } from "./compact-qa";
 import { v213FieldLocale } from "./top20-report";

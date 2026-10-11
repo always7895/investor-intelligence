@@ -28,7 +28,7 @@ EVIDENCE: probe `data/cache/probe-live-26.json` → `sive/aaoi_source_sealed_una
 ## 2. Rich Menu / UX (3)
 
 G-06 / UX / No Rich Menu is configured for the owner channel (direct-chat-only by design). / P2 / BY DESIGN.
-EVIDENCE: `production-worker.ts` allowlist-only direct-chats; `/health` reports `owner_only: true, direct_chat_only: true`; no Rich Menu handler in tree (grep 0). / ACTION: deferred — a Rich Menu requires a LINE channel-menu object + device matrix; not authorized scope. / TEST: n/a (absence pin: public-boundary gate). / RESULT: ACCEPTED-LIMIT — re-evaluate when the supervisor approves Public UI.
+EVIDENCE: `production-worker.ts` allowlist-only direct-chats; `/health` reports `line_access_mode` (default `owner_only`; `all_friends` only through the separately authorized switch in [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)), `owner_only` derived from it, and `direct_chat_only: true`; no Rich Menu handler in tree (grep 0). / ACTION: deferred — a Rich Menu requires a LINE channel-menu object + device matrix; not authorized scope. / TEST: n/a (absence pin: public-boundary gate). / RESULT: ACCEPTED-LIMIT — re-evaluate when the supervisor approves Public UI.
 
 G-07 / UX / Seven-field Top20 card labels vs presentation spec misalignment (historical). / P2 / DONE.
 EVIDENCE: commit `f031c36` (deterministic option clocks + reader label alignment); `v213-flex-builder.ts` seven-fields pins; `top20_presentation: "seven_fields"`, `top20_field_locale: "bilingual"` live in `/health`. / ACTION: alignment commit. / TEST: flex-builder tests + locale tests. / RESULT: GREEN.

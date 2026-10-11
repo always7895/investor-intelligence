@@ -1,4 +1,5 @@
 import type { StorageEnv } from "../storage";
+import { withAlphaVantageOwnerOnly } from "./alpha-vantage-viewer";
 import { readLazySealedObject, readSealedSnapshot, SNAPSHOT_RUN_RE, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
 
 interface SnapshotPointer { run_id?: unknown; runId?: unknown; }
@@ -24,18 +25,30 @@ function invalidView(): PublicSnapshotView {
 // Opt-in per-question cache, never keyed by the reusable Worker env/KV binding.
 // The state is module-private; configuration or request text cannot supply a view.
 const questionViews = new WeakMap<StorageEnv, { pending?: Promise<PublicSnapshotView> }>();
-export function scopePublicSnapshot<T extends StorageEnv>(env: T): T {
+// Module-private marker of a non-owner viewer (all_friends mode). A symbol-keyed own property survives object spread, so a copy of
+// the scoped env still reads the restricted view; no request text or configuration can set it.
+const NON_OWNER_VIEWER = Symbol("v213.publicSnapshot.nonOwnerViewer");
+
+/** `viewer` "friend" (every non-owner in all_friends mode, including a failed owner lookup): Alpha Vantage derived values are
+ * withheld (alpha-vantage-viewer.ts). The default "owner" is today's behaviour. */
+export function scopePublicSnapshot<T extends StorageEnv>(env: T, viewer: "owner" | "friend" = "owner"): T {
   const scoped = { ...env };
+  if (viewer === "friend") (scoped as unknown as Record<symbol, unknown>)[NON_OWNER_VIEWER] = true;
   questionViews.set(scoped, {});
   return scoped;
 }
 
+async function readViewerSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
+  const view = await readPublicSnapshot(env);
+  return (env as unknown as Record<symbol, unknown>)[NON_OWNER_VIEWER] === true ? withAlphaVantageOwnerOnly(view) : view;
+}
+
 export function pinPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
   const state = questionViews.get(env);
-  if (!state) return readPublicSnapshot(env);
+  if (!state) return readViewerSnapshot(env);
   // Cache in-flight, invalid and rejected results too. No retry or scope repair
   // inside an answer; a subsequent question gets a new scope and a new read.
-  return state.pending ??= readPublicSnapshot(env);
+  return state.pending ??= readViewerSnapshot(env);
 }
 
 /** Pin related public reads. Current transaction snapshots verify all stored
