@@ -39,8 +39,8 @@ def reconcile_factor_authority(
     and every claim whose status is exactly SUPPORTED must declare at least two
     independent_evidence_families. Other claim statuses are ignored by this check.
     Otherwise, or with explicit False, the bridge requires an owned acquisition context;
-    without one it returns ADMISSION_DEFER. Auto-detected fixtures confer TEST_ONLY,
-    never runtime authority; the bridge independently checks observation lineages.
+    without one it returns ADMISSION_DEFER. TEST_ONLY is a descriptive tier: a TEST_ONLY
+    result keeps core_admitted=True, which consumers gate on; lineages are still checked.
     """
     if fixture_mode is None:
         obs_list = candidate.get("source_observations") or []

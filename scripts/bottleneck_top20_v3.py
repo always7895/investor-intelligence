@@ -141,7 +141,7 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
             for row in rows:
                 try:
                     days = (date.fromisoformat(row["end"]) - date.fromisoformat(row["start"])).days
-                except (KeyError, ValueError):
+                except (KeyError, TypeError, ValueError):  # a non-string date skips the row, never the build
                     continue
                 if row.get("val") is None:
                     continue
@@ -171,11 +171,20 @@ def _near(series: dict[str, dict[str, Any]], end: str, days: int) -> dict[str, A
     return series[min(candidates, key=lambda key: abs((date.fromisoformat(key) - target).days))] if candidates else None
 
 
+def _iso_end(row: dict[str, Any]) -> bool:
+    """A non-string or malformed `end` is skipped before sorting, never raised out of the build."""
+    try:
+        date.fromisoformat(row.get("end"))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _instant_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, list[dict[str, Any]]]:
     for taxonomy, tag in tags:
         units = facts.get("facts", {}).get(taxonomy, {}).get(tag, {}).get("units", {})
         for unit, rows in units.items():
-            dated = sorted((row for row in rows if row.get("end") and row.get("val") is not None), key=lambda row: row["end"])
+            dated = sorted((row for row in rows if _iso_end(row) and row.get("val") is not None), key=lambda row: row["end"])
             if dated:
                 return f"{taxonomy}:{tag}", [{**row, "unit": unit} for row in dated]
     return None, []

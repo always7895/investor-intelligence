@@ -554,7 +554,8 @@ def bridge_reconcile_factors(
             o_cids = o.get("claim_ids") or (o.get("payload") or {}).get("claim_ids") or []
             if isinstance(o_cids, str):
                 o_cids = [o_cids]
-            if cid in o_cids:
+            # A malformed (non-list) claim_ids value binds nothing and never raises.
+            if isinstance(o_cids, list) and cid in o_cids:
                 bound_obs.append(o)
 
         if not bound_obs:

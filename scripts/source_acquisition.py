@@ -773,8 +773,11 @@ def acquire_runtime_sources(
 
     def binding_identity(obs, decl):
         payload = obs.payload
+        # Only a list's first string id counts; a malformed value is absent, never a crash.
+        ids = payload.get("claim_ids")
+        first_id = ids[0] if isinstance(ids, list) and ids and isinstance(ids[0], str) else ""
         return (
-            str(decl.get("claim_id") or (payload.get("claim_ids") or [""])[0]).strip(),
+            str(decl.get("claim_id") or first_id).strip(),
             str(decl.get("metric") or payload.get("metric") or "").strip(),
             str(decl.get("unit") or payload.get("unit") or "").strip(),
             str(decl.get("period") or payload.get("period") or "").strip(),
