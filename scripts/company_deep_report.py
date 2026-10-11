@@ -338,6 +338,178 @@ def extract_metrics(facts: Mapping[str, Any], today: date | None = None) -> dict
     return out
 
 
+SEC_ACCESSION_RE = re.compile(r"[0-9]{10}-[0-9]{2}-[0-9]{6}")
+CALENDAR_QUARTER_BOUNDS = {1: ("01-01", "03-31"), 2: ("04-01", "06-30"), 3: ("07-01", "09-30"), 4: ("10-01", "12-31")}
+
+
+def _strict_day(value: Any) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _calendar_dependency(row: Mapping[str, Any] | None, tag_rows: Sequence[Mapping[str, Any]], unit: str,
+                         instant: bool) -> dict[str, Any] | None:
+    """Knowledge-time provenance of ONE legacy-selected us-gaap row, or None (PRODUCER-CLOCK-03).
+
+    Exact calendar quarters only: a duration row is framed CYyyyyQq and runs exactly from Jan 1/Apr 1/Jul 1/Oct 1 to
+    Mar 31/Jun 30/Sep 30/Dec 31 of that year; an instant row is framed CYyyyyQqI, ends on that quarter end and has no
+    start. No fiscal or 52/53-week tolerance. The row needs a finite non-bool value, an SEC accession and a filed day on
+    or after its end. Another row of the selected tag in the same frame with a different value, filing, accession or
+    period makes the legacy last-row selection input-order dependent, so the dependency is unknown.
+    """
+    if not isinstance(row, Mapping):
+        return None
+    frame = row.get("frame")
+    match = re.fullmatch(r"CY([0-9]{4})Q([1-4])(I?)", frame) if isinstance(frame, str) else None
+    if match is None or bool(match.group(3)) != instant:
+        return None
+    first, last = CALENDAR_QUARTER_BOUNDS[int(match.group(2))]
+    end, filed = _strict_day(row.get("end")), _strict_day(row.get("filed"))
+    if end is None or filed is None or row["end"] != f"{match.group(1)}-{last}" or end > filed:
+        return None
+    if instant and row.get("start") is not None:
+        return None
+    if not instant and (_strict_day(row.get("start")) is None or row["start"] != f"{match.group(1)}-{first}"):
+        return None
+    value, accession, tag = row.get("val"), row.get("accn"), row.get("tag")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or (isinstance(value, float) and not math.isfinite(value)):
+        return None
+    if not isinstance(accession, str) or not SEC_ACCESSION_RE.fullmatch(accession) or not isinstance(tag, str):
+        return None
+    identities = {tuple(repr(other.get(key)) for key in ("val", "filed", "accn", "start", "end"))
+                  for other in tag_rows if other.get("frame") == frame}
+    if len(identities) != 1:
+        return None
+    return {"taxonomy": "us-gaap", "tag": tag, "unit": unit, "frame": frame, "start": row.get("start"), "end": row["end"],
+            "value": value, "filed": row["filed"], "accession": accession}
+
+
+def _calendar_pair(now: Mapping[str, Any] | None, prior: Mapping[str, Any] | None, tag_rows: Sequence[Mapping[str, Any]],
+                   unit: str, instant: bool) -> list[dict[str, Any]] | None:
+    """Current and year-ago dependencies of one legacy pair: same tag and unit, same quarter of the previous year."""
+    current = _calendar_dependency(now, tag_rows, unit, instant)
+    previous = _calendar_dependency(prior, tag_rows, unit, instant)
+    if current is None or previous is None or current["tag"] != previous["tag"] or previous["frame"] != _year_ago(current["frame"]):
+        return None
+    return [current, previous]
+
+
+def _clocked(dependencies: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    return {"announced_at": max(dependency["filed"] for dependency in dependencies),
+            "dependencies": [dict(dependency) for dependency in dependencies]}
+
+
+def signal_provenance(facts: Mapping[str, Any], metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """Private knowledge-time provenance of the four company signals (RPO, MARGIN, DILUTION, INVENTORY).
+
+    Re-binds the EXACT operands extract_metrics selected (the same _rows/_by_frame/_latest_pair calls) and keeps a
+    signal's clock only when every dependency is an exact-calendar companyfacts row and the operands reproduce the
+    legacy metric. announced_at is the latest dependency filing day, never clipped to the evaluation date; any other
+    case is None (the signal stays withheld). Metrics, selection and signal values are unchanged; never public text.
+    """
+    result: dict[str, Any] = {"RPO": None, "MARGIN": None, "DILUTION": None, "INVENTORY": None}
+    revenue_rows = _rows(facts, REVENUE_TAGS, "USD")
+    revenue = _calendar_pair(*_latest_pair(_by_frame(revenue_rows, instant=False)), revenue_rows, "USD", False)
+    if revenue and (revenue[0]["frame"] != metrics.get("quarter_frame") or revenue[0]["end"] != metrics.get("quarter_end")
+                    or revenue[0]["value"] != metrics.get("revenue") or revenue[1]["value"] != metrics.get("revenue_prior")):
+        revenue = None
+
+    rpo_rows = _rows(facts, TAGS["rpo"], "USD")
+    rpo = _calendar_pair(*_latest_pair(_by_frame(rpo_rows, instant=True)), rpo_rows, "USD", True)
+    if (rpo and metrics.get("rpo_yoy_pct") is not None and rpo[0]["end"] == metrics.get("rpo_as_of")
+            and rpo[0]["tag"] == metrics.get("rpo_tag") and rpo[0]["value"] == metrics.get("rpo")
+            and _pct(rpo[0]["value"], rpo[1]["value"]) == metrics["rpo_yoy_pct"]):
+        result["RPO"] = _clocked(rpo)
+
+    if revenue and metrics.get("gross_margin_change_pp") is not None and revenue[0]["value"] and revenue[1]["value"]:
+        gross_rows = _rows(facts, TAGS["gross_profit"], "USD")
+        gross_frames = _by_frame(gross_rows, instant=False)
+        gross = _calendar_pair(gross_frames.get(revenue[0]["frame"]), gross_frames.get(revenue[1]["frame"]), gross_rows, "USD", False)
+        if (gross and gross[0]["value"] == metrics.get("gross_profit") and gross[1]["value"] == metrics.get("gross_profit_prior")
+                and all(g["start"] == r["start"] and g["end"] == r["end"] for g, r in zip(gross, revenue))
+                and round(gross[0]["value"] / revenue[0]["value"] * 100 - gross[1]["value"] / revenue[1]["value"] * 100, 2)
+                == metrics["gross_margin_change_pp"]):
+            result["MARGIN"] = _clocked(gross + revenue)
+
+    share_rows = _rows(facts, TAGS["diluted_shares"], "shares")
+    shares = _calendar_pair(*_latest_pair(_by_frame(share_rows, instant=False)), share_rows, "shares", False)
+    if (shares and metrics.get("dilution_yoy_pct") is not None and shares[0]["frame"] == metrics.get("quarter_frame")
+            and shares[0]["end"] == metrics.get("quarter_end") and shares[0]["value"] == metrics.get("diluted_shares")
+            and _pct(shares[0]["value"], shares[1]["value"]) == metrics["dilution_yoy_pct"]):
+        result["DILUTION"] = _clocked(shares)
+
+    inventory_rows = _rows(facts, TAGS["inventory"], "USD")
+    inventory = _calendar_pair(*_latest_pair(_by_frame(inventory_rows, instant=True)), inventory_rows, "USD", True)
+    if (revenue and inventory and metrics.get("inventory_minus_revenue_pp") is not None
+            and inventory[0]["frame"] == revenue[0]["frame"] + "I" and inventory[0]["end"] == revenue[0]["end"]
+            and inventory[0]["end"] == metrics.get("inventory_as_of") and inventory[0]["value"] == metrics.get("inventory")):
+        inventory_yoy = _pct(inventory[0]["value"], inventory[1]["value"])
+        revenue_yoy = _pct(revenue[0]["value"], revenue[1]["value"])
+        if (inventory_yoy is not None and revenue_yoy is not None
+                and round(inventory_yoy - revenue_yoy, 2) == metrics["inventory_minus_revenue_pp"]):
+            result["INVENTORY"] = _clocked(inventory + revenue)
+    return result
+
+
+def _announced(provenance: Mapping[str, Any] | None, key: str) -> dict[str, str]:
+    """announced_at only from a complete, well-formed private provenance entry; anything else returns {} (unannounced).
+
+    Re-checks the exact entry and dependency key sets, the signal's dependency count and pair order, allowed tags and
+    units, every dependency against the producer's own exact-calendar predicate (_calendar_pair), period alignment
+    across pairs, and announced_at == max(dependency filed). This is a structural consistency check, NOT authentication:
+    only signal_provenance (the in-process producer) binds the original selected rows, and internally consistent
+    forged input cannot be detected here.
+    """
+    # Complete-provenance contract: per signal, the dependency pairs in producer order, each as (allowed legacy tags,
+    # unit, instant); exactly two dependencies per pair (RPO 2, MARGIN 4, DILUTION 2, INVENTORY 4).
+    shapes = {
+        "RPO": ((TAGS["rpo"], "USD", True),),
+        "MARGIN": ((TAGS["gross_profit"], "USD", False), (REVENUE_TAGS, "USD", False)),
+        "DILUTION": ((TAGS["diluted_shares"], "shares", False),),
+        "INVENTORY": ((TAGS["inventory"], "USD", True), (REVENUE_TAGS, "USD", False)),
+    }
+    # Closed dependency identity schema written by signal_provenance.
+    dependency_keys = {"taxonomy", "tag", "unit", "frame", "start", "end", "value", "filed", "accession"}
+    shape = shapes.get(key)
+    entry = provenance.get(key) if shape is not None and isinstance(provenance, Mapping) else None
+    if not isinstance(entry, Mapping) or set(entry) != {"announced_at", "dependencies"}:
+        return {}
+    dependencies = entry["dependencies"]
+    if not isinstance(dependencies, list) or len(dependencies) != 2 * len(shape):
+        return {}
+    pairs: list[list[dict[str, Any]]] = []
+    for index, (tags, unit, instant) in enumerate(shape):
+        claimed = dependencies[2 * index:2 * index + 2]
+        rows = []
+        for dependency in claimed:
+            if not isinstance(dependency, Mapping) or set(dependency) != dependency_keys:
+                return {}
+            if dependency["taxonomy"] != "us-gaap" or dependency["unit"] != unit or dependency["tag"] not in tags:
+                return {}
+            rows.append({"frame": dependency["frame"], "start": dependency["start"], "end": dependency["end"],
+                         "val": dependency["value"], "filed": dependency["filed"], "accn": dependency["accession"],
+                         "tag": dependency["tag"]})
+        pair = _calendar_pair(rows[0], rows[1], rows, unit, instant)
+        if pair is None or pair != [dict(dependency) for dependency in claimed]:
+            return {}
+        pairs.append(pair)
+    if key == "MARGIN" and any(gross["frame"] != revenue["frame"] or gross["start"] != revenue["start"]
+                               or gross["end"] != revenue["end"] for gross, revenue in zip(*pairs)):
+        return {}
+    if key == "INVENTORY" and any(stock["frame"] != revenue["frame"] + "I" or stock["end"] != revenue["end"]
+                                  for stock, revenue in zip(*pairs)):
+        return {}
+    announced = entry["announced_at"]
+    if (not isinstance(announced, str) or _strict_day(announced) is None
+            or announced != max(dependency["filed"] for pair in pairs for dependency in pair)):
+        return {}
+    return {"announced_at": announced}
+
+
 PHASE_ZH = {"INSUFFICIENT_EVIDENCE": "資料不足", "DISCOVERY": "初現（單一來源）", "EARLY_VALIDATION": "驗證中（雙來源確認）",
             "COMMERCIAL_VALIDATION": "商業驗證（公司開始獲利）", "INSTITUTIONAL_VALIDATION": "法人進場", "CONSENSUS": "共識擁擠",
             "RELIEVING": "緩解中", "BROKEN": "已失效"}
@@ -363,7 +535,9 @@ def _pctx(value: float | None, suffix: str = "%") -> str:
     return "未申報" if value is None else f"{value:+.1f}{suffix}"
 
 
-def company_signals(ticker: str, metrics: Mapping[str, Any], cik: str, industry: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def company_signals(ticker: str, metrics: Mapping[str, Any], cik: str, industry: Mapping[str, Any] | None, *,
+                    provenance: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Company signals; announced_at only from signal_provenance (without it every company signal stays unannounced)."""
     url = FACTS_URL.format(cik=cik)
     end = metrics.get("quarter_end")
     signals: list[dict[str, Any]] = []
@@ -371,19 +545,21 @@ def company_signals(ticker: str, metrics: Mapping[str, Any], cik: str, industry:
         value = metrics["rpo_yoy_pct"]
         direction = "UP" if value >= 10 else "DOWN" if value <= -10 else "FLAT"
         signals.append({"signal_id": f"{ticker}:RPO", "kind": "BACKLOG", "as_of": metrics["rpo_as_of"], "direction": direction,
-                        "value": value, "evidence_family": "sec_issuer", "source_url": url})
+                        "value": value, "evidence_family": "sec_issuer", "source_url": url, **_announced(provenance, "RPO")})
     if metrics.get("gross_margin_change_pp") is not None and end:
         value = metrics["gross_margin_change_pp"]
         direction = "UP" if value >= 1 else "DOWN" if value <= -1 else "FLAT"
         signals.append({"signal_id": f"{ticker}:MARGIN", "kind": "COMPANY_MARGIN", "as_of": end, "direction": direction,
-                        "value": value, "evidence_family": "sec_issuer", "source_url": url})
+                        "value": value, "evidence_family": "sec_issuer", "source_url": url, **_announced(provenance, "MARGIN")})
     if metrics.get("dilution_yoy_pct") is not None and end and metrics["dilution_yoy_pct"] > 0:
         signals.append({"signal_id": f"{ticker}:DILUTION", "kind": "DILUTION", "as_of": end,
-                        "value": metrics["dilution_yoy_pct"], "evidence_family": "sec_issuer", "source_url": url})
+                        "value": metrics["dilution_yoy_pct"], "evidence_family": "sec_issuer", "source_url": url,
+                        **_announced(provenance, "DILUTION")})
     gap = metrics.get("inventory_minus_revenue_pp")
     if gap is not None and gap >= 10 and metrics.get("inventory_as_of"):
         signals.append({"signal_id": f"{ticker}:INVENTORY", "kind": "INVENTORY_BUILD", "as_of": metrics["inventory_as_of"],
-                        "value": gap, "evidence_family": "sec_issuer_inventory", "source_url": url})
+                        "value": gap, "evidence_family": "sec_issuer_inventory", "source_url": url,
+                        **_announced(provenance, "INVENTORY")})
     for signal in (industry or {}).get("signals", []):
         if signal["kind"] in ("PRICE", "SUPPLIER_REVENUE"):  # same industry families as the potential ranking
             signals.append(dict(signal, signal_id=f"{ticker}:{signal['signal_id']}"))
@@ -614,6 +790,55 @@ def ifrs_annual_reference(metrics: Mapping[str, Any], cik: str) -> dict[str, str
     return reference if len(reference["source"]) <= 80 and len(reference["period"]) <= 40 else None
 
 
+def phase_withheld_notice(phase: Any) -> str:
+    """Public bounded notice; validate the whole list before exact-id deduplication."""
+    withheld = phase.get("withheld_signal_ids") if isinstance(phase, Mapping) else None
+    if not isinstance(withheld, list) or any(not isinstance(item, str) or not item.strip() for item in withheld):
+        return "；知悉時間覆蓋未確認（不假設零；不代表論點失效）"
+    ids = set(withheld)
+    if not ids:
+        return ""
+    shown = str(len(ids)) if len(ids) <= 9999 else "9999+"
+    return f"；時間證據提醒：至少 {shown} 筆訊號未確認截至評估日已知，未計入階段（非完整覆蓋；缺口本身不代表論點失效）"
+
+
+_OPERATING_PHASE_ZH = {**PHASE_ZH, "BROKEN": "營運證偽訊號成立"}
+_LEGACY_GATE_ZH = {**PHASE_ZH, "BROKEN": "受阻（可能含融資條件，不等同營運論點失效）"}
+# Validated company-scope (financing_status, known_financing_entry_blocked) pairs; anything else reads as unknown.
+_FINANCING_ZH = {
+    ("ENTRY_BLOCK_OBSERVED", True): "觀察到達准入阻擋門檻的融資條件",
+    ("OVERHANG_OBSERVED", False): "觀察到稀釋疑慮；已提供觀察僅未達准入阻擋門檻（非進場許可、非安全證明）",
+    ("OVERHANG_OBSERVED", None): "觀察到稀釋疑慮；無法確定是否達准入阻擋門檻",
+    ("BELOW_OVERHANG_OBSERVED", False): "僅已提供觀察未達准入阻擋門檻（非進場許可、非安全證明、非完整融資覆蓋）",
+}
+_FINANCING_UNKNOWN_ZH = "未知或不完整（無法確定是否受阻，不推定無融資風險）"
+
+
+def _phase_presentation(phase: Any) -> str:
+    """資料階段 labels: the legacy admission gate, the operating phase and the financing observation, shown apart.
+
+    Fixed labels only (no raw enums, reasons, signal IDs or provenance). Missing, malformed or inconsistent fields read
+    as unknown; an operating conclusion is never derived from the legacy gate. Never raises on malformed input.
+    """
+    fields = phase if isinstance(phase, Mapping) else {}
+    legacy, operating = fields.get("phase"), fields.get("operating_phase")
+    reasons, scope = fields.get("operating_reasons"), fields.get("scope")
+    status, blocked = fields.get("financing_status"), fields.get("known_financing_entry_blocked")
+    legacy_text = _LEGACY_GATE_ZH.get(legacy, "未知") if type(legacy) is str else "未知"
+    if type(operating) is str and operating in _OPERATING_PHASE_ZH:
+        operating_text = _OPERATING_PHASE_ZH[operating]
+    elif (operating is None and "operating_phase" in fields and type(reasons) is list and len(reasons) == 1
+          and type(reasons[0]) is str and reasons[0] == "OPERATING_POLICY_THRESHOLD_UNAVAILABLE"):
+        operating_text = "未知（政策門檻不可用，未推論）"
+    else:
+        operating_text = "未知"
+    financing_text = _FINANCING_UNKNOWN_ZH
+    if (type(scope) is str and scope == "company" and type(status) is str and "known_financing_entry_blocked" in fields
+            and (blocked is None or blocked is True or blocked is False)):
+        financing_text = _FINANCING_ZH.get((status, blocked), _FINANCING_UNKNOWN_ZH)
+    return f"舊版准入狀態：{legacy_text}；營運階段：{operating_text}；融資觀察：{financing_text}"
+
+
 def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions: Mapping[str, Any],
                  business: Mapping[str, Any] | None, rotation: Mapping[str, Any] | None,
                  rotation_config: Mapping[str, Any] | None, today: date, timing: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -621,7 +846,8 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
     orders = order_scenario(metrics, timing)
     sic = str(submissions.get("sic") or "") or None
     industry = industry_for(sic, rotation, rotation_config)
-    signals = company_signals(ticker, metrics, cik, industry)
+    provenance = signal_provenance(facts, metrics)
+    signals = company_signals(ticker, metrics, cik, industry, provenance=provenance)
     phase = thesis_phase.assess_phase(signals, today, scope="company")
     frame = metrics.get("quarter_frame") or "未知季度"
     name = facts.get("entityName") or submissions.get("name") or ticker
@@ -641,12 +867,16 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
                        f"成員 RPO 年增 {_pctx(industry['backlog']['yoy_pct'])}（{industry['quarter']}）"
                        + (f"，臺灣上市櫃同業 {industry['taiwan']['count']} 家 {industry['taiwan']['month']} 營收年增 {_pctx(industry['taiwan']['yoy_pct'])}"
                           if (industry.get("taiwan") or {}).get("yoy_pct") is not None else "")
+                       + (phase_withheld_notice(industry.get("phase")) if industry else "")
                        if industry else f"SIC {sic or '未知'} 不在產業輪替範圍或輪替資料不可用")),
-        ("資料階段", (f"{PHASE_ZH.get(phase['phase'], phase['phase'])}（吃緊來源：{_families(phase['constraint_families'])}；"
-                   f"公司捕捉：{_families(phase['capture_families'])}；緩解：{_families(phase['relief_families'])}）"
-                   f"；下次檢查 {phase['next_review_at'] or '下一份財報'}"
-                   + ("；稀釋疑慮" if phase["dilution_overhang"] else ""))),
-        ("證偽條件", "RPO 年增降至 -10% 以下；毛利率年減 1 個百分點以上；稀釋後股數年增 20% 以上；存貨成長超過營收 10 個百分點；所屬產業 PPI 年增降至 -3% 以下"),
+        ("資料階段", (f"{_phase_presentation(phase)}"
+                   + ("；舊版稀釋疑慮旗標（與融資觀察分開計算）" if phase["dilution_overhang"] else "")
+                   + phase_withheld_notice(phase)
+                   + f"；下次檢查 {phase['next_review_at'] or '下一份財報'}"
+                   f"；訊號家族（吃緊來源：{_families(phase['constraint_families'])}；"
+                   f"公司捕捉：{_families(phase['capture_families'])}；緩解：{_families(phase['relief_families'])}）")),
+        ("證偽條件", "營運警示條件：RPO 年增降至 -10% 以下；毛利率年減 1 個百分點以上；存貨成長超過營收 10 個百分點；所屬產業 PPI 年增降至 -3% 以下。"
+                 "融資准入阻擋條件（舊版准入狀態）：稀釋後股數年增 20% 以上。以上為觀察條件，不是交易指令"),
     ]
     references = [{"source": "SEC XBRL company facts", "url": FACTS_URL.format(cik=cik), "period": frame},
                   {"source": "SEC EDGAR submissions", "url": SUBMISSIONS_URL.format(cik=cik)}]
@@ -662,7 +892,7 @@ def build_report(ticker: str, cik: str, *, facts: Mapping[str, Any], submissions
                           for row in industry["price"]["series"])
     return {"schema_version": 1, "ticker": ticker, "cik": cik, "name": name, "sic": sic,
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "as_of": today.isoformat(),
-            "metrics": metrics, "signals": signals, "phase": phase, "orders": orders,
+            "metrics": metrics, "signals": signals, "signal_provenance": provenance, "phase": phase, "orders": orders,
             "sections": [{"title": title, "text": text} for title, text in sections], "source_references": references,
             "boundary": "官方資料的計算與整理；不是投資建議、價格預測或機率"}
 

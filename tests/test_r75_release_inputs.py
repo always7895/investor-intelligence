@@ -95,10 +95,13 @@ class ReleaseInputsTests(unittest.TestCase):
         self.git('add', '-A')
         self.git('diff', '--cached', '--check')  # CRLF evidence stays byte-exact, not a whitespace waiver.
         self.commit()
-        clone = Path(self.temp.name) / 'clone'
-        subprocess.run(['git', '-c', 'core.autocrlf=true', 'clone', '-q', str(self.root), str(clone)], check=True, capture_output=True)
-        self.assertEqual((clone / relative).read_bytes(), payload)
-        self.assertEqual(select_receipt(clone)['receipt_sha256'], hashlib.sha256(payload).hexdigest())
+        # Fresh checkout without `git clone` (no clone in the gate's temp-repository git grammar): remove the committed
+        # receipt, its reference and the attributes from the work tree, then check them out again under core.autocrlf=true.
+        for name in (relative, REFERENCE, '.gitattributes'):
+            (self.root / name).unlink()
+        self.git('reset', '--hard', 'HEAD')
+        self.assertEqual((self.root / relative).read_bytes(), payload)
+        self.assertEqual(select_receipt(self.root)['receipt_sha256'], hashlib.sha256(payload).hexdigest())
         (self.root / relative).write_bytes(payload + b' \r\n')
         self.git('add', relative)
         bad = subprocess.run(['git', '-C', str(self.root), 'diff', '--cached', '--check'], capture_output=True)

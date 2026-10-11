@@ -196,8 +196,12 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         script = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text()
         baseline = re.search(r"\$r75Commit\s*=\s*'([0-9a-f]{40})'", script).group(1)
         relative = 'cloud/src/v213/activation-v2.ts'
-        frozen = subprocess.check_output(['git', '-C', str(ROOT), 'show', baseline + ':' + relative])
-        self.assertEqual((ROOT / relative).read_bytes(), frozen)
+        # Pinned identity of `git show <baseline>:<relative>` (git blob id and SHA-256), so the row needs no git child
+        # process against the repository; a different baseline commit needs a reviewed new pin, never a silent refresh.
+        self.assertEqual(baseline, '536644d22ef3534be1c4b8a9e1ff969df4d580fa')
+        frozen = (ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha1(b'blob %d\0' % len(frozen) + frozen).hexdigest(), '7475f6cf94380843b4fe57d59e6330a147a33b45')
+        self.assertEqual(hashlib.sha256(frozen).hexdigest(), '588d80a7bfeccf1e110ebd065632ff40b0106e6b5559ff366b23a02d99014922')
         self.assertIn('from "./activation-v3"', (ROOT / 'cloud/src/v213/production-worker.ts').read_text())
         for path in (ROOT / 'cloud/src').rglob('*.ts'):
             self.assertNotRegex(path.read_text(encoding='utf-8-sig'), r'''(?:from\s*|(?:import|require)\s*\(\s*)["'][^"']*activation-v2["']''', str(path))
@@ -693,7 +697,9 @@ class CurrentReleaseLaneTests(unittest.TestCase):
                 return FakeLifecycleProcess(args, kwargs['cwd'])
 
             stream = io.StringIO()
-            with patch.object(subprocess, 'Popen', side_effect=fake_popen_4):
+            # Both shells resolve whatever the host PATH holds (the gate's has neither), so the fake-only run never skips.
+            with patch.object(subprocess, 'Popen', side_effect=fake_popen_4), \
+                    patch.object(shutil, 'which', side_effect=lambda name, *a, **k: name if name in ('powershell.exe', 'pwsh') else None):
                 suite = unittest.TestSuite([
                     CurrentReleaseLaneTests('test_operation_lock_independent_concurrency_and_contention')
                 ])
@@ -777,7 +783,9 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         try:
             with patch.object(subprocess, 'Popen',
                               side_effect=lambda args, **kw: FakeHolderProofProcess(args, kw['cwd'])), \
-                    patch.object(subprocess, 'run', side_effect=primary):
+                    patch.object(subprocess, 'run', side_effect=primary), \
+                    patch.object(shutil, 'which', side_effect=lambda name, *a, **k: name if name in ('powershell.exe', 'pwsh') else None):
+                # Both shells resolve whatever the host PATH holds (the gate's has neither), so the proof never skips.
                 CurrentReleaseLaneTests(
                     'test_operation_lock_independent_concurrency_and_contention'
                 ).run(RecordingResult())

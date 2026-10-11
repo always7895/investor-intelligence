@@ -5,7 +5,7 @@
 - Scope; required depth; source capability matrix
 - Claim-level reconciliation states
 - Dynamic discovery and retirement; source roles, freshness and concentration
-- Leopold Aschenbrenner: auxiliary only; source activation
+- Leopold Aschenbrenner: context evidence and authorized lead ranking; source activation
 - Historical retrieval log (dated records, not instructions)
 
 ## Scope / 範圍
@@ -71,9 +71,9 @@ These are acceptance requirements, not claims that the live pipeline implements 
 - Reuse unchanged admitted content by hash; deduplicate syndicated stories; use permitted conditional requests, bounded queues, rate limits and backoff. Re-evaluate when evidence changes, not by resending the entire archive to the model. Failed refresh keeps its failed state and must not advance last-success time.
 - Report per-claim lineage counts and per-candidate coverage, stale/conflicting/missing fields, provider failure rates and provider/domain concentration at discovery, evidence and publication stages. Multiple APIs of the same publisher are not independent. Global website counts never substitute for these metrics.
 
-### Leopold Aschenbrenner: auxiliary only
+### Leopold Aschenbrenner: context evidence and authorized lead ranking
 
-Label this layer CONTEXT_ONLY and keep it out of Serenity scoring. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio. Scenario variables, the dated scorecard and filing snapshots are in ASCHENBRENNER_CONTEXT.md.
+CONTEXT_ONLY for company proof and thesis-phase evidence. This layer supplies no company-fact corroboration or phase/constraint-family evidence. Separately, the operator decision of 2026-09-26 permits scaling-chain and dated 13F LEAD weights in industry/layer/company discovery and ranking. This documentation correction does not change those existing weights. Use public, dated deployment/capital/energy scenarios as hypotheses to test against current regulated statistics, actual customer budgets and supplier capacity. His AI-focused examples must not restrict the discovery universe to AI. A historical prediction is not a realized statistic; a delayed13F is not proof of a current position or endorsement. We study transferable reasoning, not copy a portfolio. Scenario variables, the dated scorecard and filing snapshots are in ASCHENBRENNER_CONTEXT.md.
 
 ## Source activation
 

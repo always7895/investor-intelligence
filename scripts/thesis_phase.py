@@ -15,10 +15,11 @@ inference: no probability, no price target, no score bonus.
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "thesis-phase-policy-v1.json"
@@ -96,6 +97,24 @@ def _relief(signal: Mapping[str, Any]) -> bool:
     return signal["group"] == "constraint_or_relief" and signal["direction"] == "DOWN"
 
 
+class _ThresholdUnavailable(Exception):
+    """Private: a policy threshold needed only by a NEW display field is missing or not a finite non-bool number."""
+
+
+def _display_threshold(limits: Mapping[str, Any], name: str) -> int | float:
+    """Strict threshold reader for NEW display fields only (FINANCE-SPLIT-03-R1); legacy code keeps its own lookups.
+
+    No default, repair or float conversion: a Python int (not bool) or a finite float is returned as configured;
+    anything else raises _ThresholdUnavailable, which is caught only around the new display evaluations.
+    """
+    if name not in limits:
+        raise _ThresholdUnavailable(name)
+    value = limits[name]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or (isinstance(value, float) and not math.isfinite(value)):
+        raise _ThresholdUnavailable(name)
+    return value
+
+
 def assess_phase(signals: Iterable[Mapping[str, Any]], as_of: Any, *, policy: Mapping[str, Any] | None = None,
                  scope: str = "company") -> dict[str, Any]:
     """Phase at ``as_of`` from the signals dated on or before it and still inside their window.
@@ -130,61 +149,123 @@ def assess_phase(signals: Iterable[Mapping[str, Any]], as_of: Any, *, policy: Ma
         s["direction"] == "UP" or (s["kind"] == "RAMP_EVIDENCE" and s["direction"] != "DOWN"))]
     latest = {kind: max((s for s in counted if s["kind"] == kind), key=lambda s: s["as_of"], default=None)
               for kind in ("VALUATION_PERCENTILE", "COVERAGE_INITIATIONS", "HOLDER_CROWDING", "DILUTION", "ATM_CAPACITY")}
-    reasons: list[str] = []
-
     dilution, atm = latest["DILUTION"], latest["ATM_CAPACITY"]
     killers = [s for s in counted if s["kind"] in ("THESIS_KILLER", "CUSTOMER_LOSS")]
     diluted = bool(dilution and (dilution["value"] or 0) >= limits["dilution_broken_pct"])
     # An active ATM near half of market cap blocks a long entry until it completes (later reading of 0 lifts it).
     atm_blocked = bool(atm and (atm["value"] or 0) >= limits["atm_block_pct_of_market_cap"])
-    if killers or diluted or atm_blocked:
-        phase = "BROKEN"
-        causes = sorted({s["kind"] for s in killers} | ({"DILUTION"} if diluted else set()) | ({"ATM_CAPACITY"} if atm_blocked else set()))
-        reasons.append("falsifier active: " + ", ".join(causes))
-    elif len(families(relief)) >= limits["relief_families"] and relief and (
-            not tightening or max(s["as_of"] for s in relief) >= max(s["as_of"] for s in tightening)):
-        phase = "RELIEVING"
-        reasons.append(f"relief confirmed by {len(families(relief))} families and newer than the latest tightening signal")
-    elif not tightening:
-        phase = "INSUFFICIENT_EVIDENCE"
-        reasons.append("no active constraint signal")
-    elif len(families(tightening)) < limits["confirmed_constraint_families"]:
-        phase = "DISCOVERY"
-        reasons.append("constraint seen by one independent family only")
-    elif scope == "industry":
-        phase = "EARLY_VALIDATION"
-        reasons.append(f"constraint confirmed by {len(families(tightening))} independent families")
-    elif not capture:
-        phase = "EARLY_VALIDATION"
-        reasons.append("constraint confirmed; no company-level capture (pricing or margin) yet")
-    else:
+
+    def classify_core(threshold: Callable[[str], Any]) -> tuple[str, list[str], list[Mapping[str, Any]]]:
+        """The original phase chain without the numeric DILUTION/ATM entry blocks (FINANCE-SPLIT-03-R1).
+
+        Thesis killers and customer loss stay operating falsifiers. Thresholds are read through ``threshold`` in the
+        original order and short-circuits; it is the legacy lookup when this chain is the legacy result.
+        """
+        if killers:
+            return "BROKEN", ["falsifier active: " + ", ".join(sorted({s["kind"] for s in killers}))], killers
+        if len(families(relief)) >= threshold("relief_families") and relief and (
+                not tightening or max(s["as_of"] for s in relief) >= max(s["as_of"] for s in tightening)):
+            return ("RELIEVING",
+                    [f"relief confirmed by {len(families(relief))} families and newer than the latest tightening signal"], relief)
+        if not tightening:
+            return "INSUFFICIENT_EVIDENCE", ["no active constraint signal"], []
+        if len(families(tightening)) < threshold("confirmed_constraint_families"):
+            return "DISCOVERY", ["constraint seen by one independent family only"], tightening
+        if scope == "industry":
+            return "EARLY_VALIDATION", [f"constraint confirmed by {len(families(tightening))} independent families"], tightening
+        if not capture:
+            return "EARLY_VALIDATION", ["constraint confirmed; no company-level capture (pricing or margin) yet"], tightening
         valuation = latest["VALUATION_PERCENTILE"]["value"] if latest["VALUATION_PERCENTILE"] else None
         coverage = latest["COVERAGE_INITIATIONS"]["value"] if latest["COVERAGE_INITIATIONS"] else None
         holders = latest["HOLDER_CROWDING"]["value"] if latest["HOLDER_CROWDING"] else None
-        crowded = (valuation is not None and valuation >= limits["valuation_crowded_percentile"]) or (
-            coverage is not None and coverage >= limits["coverage_initiations_institutional"]
-            and holders is not None and holders >= limits["holder_crowding_pct"])
-        institutional = (valuation is not None and valuation >= limits["valuation_institutional_percentile"]) or (
-            coverage is not None and coverage >= limits["coverage_initiations_institutional"])
+        crowded = (valuation is not None and valuation >= threshold("valuation_crowded_percentile")) or (
+            coverage is not None and coverage >= threshold("coverage_initiations_institutional")
+            and holders is not None and holders >= threshold("holder_crowding_pct"))
+        institutional = (valuation is not None and valuation >= threshold("valuation_institutional_percentile")) or (
+            coverage is not None and coverage >= threshold("coverage_initiations_institutional"))
         if crowded:
-            phase = "CONSENSUS"
-            reasons.append("capture visible and consensus crowded (valuation percentile or coverage plus holder crowding)")
-        elif institutional:
-            phase = "INSTITUTIONAL_VALIDATION"
-            reasons.append("capture visible; institutions arriving")
-        else:
-            phase = "COMMERCIAL_VALIDATION"
-            reasons.append("constraint confirmed and company capture visible before consensus")
+            return ("CONSENSUS", ["capture visible and consensus crowded (valuation percentile or coverage plus holder crowding)"],
+                    tightening + capture)
+        if institutional:
+            return "INSTITUTIONAL_VALIDATION", ["capture visible; institutions arriving"], tightening + capture
+        return "COMMERCIAL_VALIDATION", ["constraint confirmed and company capture visible before consensus"], tightening + capture
+
+    # Legacy gate, unchanged: the original numeric financing blocks (original latest picks and value-or-zero tests)
+    # override the core exactly as before. Without a block the core IS the legacy result: it reads thresholds with the
+    # original lookups and any original error propagates. With a block the core is a NEW display-only evaluation the old
+    # code never reached: a threshold it needs that is missing or not a finite non-bool number makes only the new
+    # operating fields unavailable (no default, no repair); every legacy field keeps the original BROKEN result.
+    reasons: list[str]
+    if diluted or atm_blocked:
+        try:
+            operating_phase, operating_reasons, operating_supporting = classify_core(
+                lambda name: _display_threshold(limits, name))
+        except _ThresholdUnavailable:
+            operating_phase, operating_reasons, operating_supporting = None, ["OPERATING_POLICY_THRESHOLD_UNAVAILABLE"], []
+        phase = "BROKEN"
+        causes = sorted({s["kind"] for s in killers} | ({"DILUTION"} if diluted else set()) | ({"ATM_CAPACITY"} if atm_blocked else set()))
+        reasons = ["falsifier active: " + ", ".join(causes)]
+        supporting = killers + ([dilution] if diluted else []) + ([atm] if atm_blocked else [])
+    else:
+        operating_phase, operating_reasons, operating_supporting = classify_core(lambda name: limits[name])
+        phase, reasons, supporting = operating_phase, list(operating_reasons), operating_supporting
     overhang = bool(
         (dilution and limits["dilution_overhang_pct"] <= (dilution["value"] or 0) < limits["dilution_broken_pct"])
         or (atm and limits["atm_overhang_pct_of_market_cap"] <= (atm["value"] or 0) < limits["atm_block_pct_of_market_cap"]))
     if overhang:
         reasons.append("dilution overhang: equity capture at risk")
 
-    supporting = {"BROKEN": killers + ([dilution] if diluted else []) + ([atm] if atm_blocked else []), "RELIEVING": relief,
-                  "INSUFFICIENT_EVIDENCE": [], "DISCOVERY": tightening, "EARLY_VALIDATION": tightening,
-                  "COMMERCIAL_VALIDATION": tightening + capture, "INSTITUTIONAL_VALIDATION": tightening + capture,
-                  "CONSENSUS": tightening + capture}[phase]
+    # Financing observations (FINANCE-SPLIT-03-R1), display only and never fed to the legacy gate, screen or preference.
+    # Per kind, the latest as_of DATE GROUP of counted signals: any invalid value -> unknown, different valid values ->
+    # conflict, no fallback to older rows; only then are thresholds read, each strictly and only when needed (an entry
+    # block needs no overhang threshold). False below states only that both supplied observations are under the entry
+    # block thresholds; it is never an entry permission, a safety certificate or complete financing coverage.
+    financing_reason_codes: list[str] = []
+    financing_support: set[str] = set()
+    financing_blocked: bool | None = None
+    if scope == "industry":
+        financing_status = "NA"
+        financing_reason_codes.append("FINANCING_NOT_APPLICABLE")
+    else:
+        levels: dict[str, str] = {}
+        for kind, block_key, overhang_key in (("DILUTION", "dilution_broken_pct", "dilution_overhang_pct"),
+                                              ("ATM_CAPACITY", "atm_block_pct_of_market_cap", "atm_overhang_pct_of_market_cap")):
+            rows = [s for s in counted if s["kind"] == kind]
+            if not rows:
+                financing_reason_codes.append(f"{kind}_NO_APPLICABLE_OBSERVATION")
+                continue
+            newest = max(s["as_of"] for s in rows)
+            group = [s for s in rows if s["as_of"] == newest]
+            values = [s["value"] for s in group]
+            if any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or (isinstance(value, float) and not math.isfinite(value))
+                   or (kind == "ATM_CAPACITY" and value < 0) for value in values):
+                financing_reason_codes.append(f"{kind}_LATEST_VALUE_INVALID")
+                continue
+            if len(set(values)) != 1:
+                financing_reason_codes.append(f"{kind}_LATEST_VALUE_CONFLICT")
+                continue
+            try:
+                if values[0] >= _display_threshold(limits, block_key):
+                    level = "ENTRY_BLOCK_OBSERVED"
+                elif values[0] >= _display_threshold(limits, overhang_key):
+                    level = "OVERHANG_OBSERVED"
+                else:
+                    level = "BELOW_OVERHANG_OBSERVED"
+            except _ThresholdUnavailable:
+                financing_reason_codes.append(f"{kind}_POLICY_THRESHOLD_UNAVAILABLE")
+                continue
+            levels[kind] = level
+            financing_reason_codes.append(f"{kind}_{level}")
+            financing_support.update(s["signal_id"] for s in group)
+        if "ENTRY_BLOCK_OBSERVED" in levels.values():
+            financing_status, financing_blocked = "ENTRY_BLOCK_OBSERVED", True
+        elif "OVERHANG_OBSERVED" in levels.values():
+            financing_status, financing_blocked = "OVERHANG_OBSERVED", (False if len(levels) == 2 else None)
+        elif len(levels) == 2:
+            financing_status, financing_blocked = "BELOW_OVERHANG_OBSERVED", False
+        else:
+            financing_status = "UNKNOWN"
     # Only catalysts already announced by the evaluation date may schedule a review;
     # any other future-dated signal is unknown at that date (no look-ahead).
     catalysts = sorted(s["as_of"] for s in future if s["kind"] == "CATALYST" and s["announced_at"] <= today)
@@ -205,6 +286,13 @@ def assess_phase(signals: Iterable[Mapping[str, Any]], as_of: Any, *, policy: Ma
         "expired_signal_ids": sorted(s["signal_id"] for s in expired),
         "next_review_at": next_review.isoformat() if next_review else None,
         "authorship": policy["authorship"],
+        "operating_phase": operating_phase,
+        "operating_reasons": operating_reasons,
+        "operating_supporting_signal_ids": sorted({s["signal_id"] for s in operating_supporting}),
+        "financing_status": financing_status,
+        "financing_reason_codes": financing_reason_codes,
+        "financing_supporting_signal_ids": sorted(financing_support),
+        "known_financing_entry_blocked": financing_blocked,
     }
 
 

@@ -380,10 +380,35 @@ def validated_phase_knowledge_withheld(rotation):
     return {"affected_industries": affected, "signals": signals}
 
 
+def validate_overview_rows(qualified: list[dict]) -> None:
+    """MACRO-COUNT-01: reject duplicate or non-string industry ids across ALL qualified rows before slicing.
+
+    A legacy aggregate above five distinct rows is not itself fraudulent: the visible overview is the first
+    five ranked rows, and every published count below is derived from that visible subset only.
+    """
+    seen: set[str] = set()
+    for row in qualified:
+        raw_id = row.get("industry_id") if isinstance(row, dict) else None
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise ValueError("OVERVIEW_INDUSTRY_ID_INVALID")
+        key = raw_id.strip()
+        if key in seen:
+            raise ValueError("OVERVIEW_INDUSTRY_ID_DUPLICATE")
+        seen.add(key)
+
+
 def build_macro_overview_output(qualified: list[dict], disqualified: list[dict], is_synthetic=False,
                                 deep_analyses: dict | None = None, rotation: dict | None = None) -> dict:
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    qualified_count = len(qualified)
+    # Visible-count semantics: qualified_count is the validated visible admitted count N (len(visible)), never a
+    # legacy upstream aggregate; candidate_pool_size stays existing context, never admission authority.
+    validate_overview_rows(qualified)
+    visible = qualified[:5]
+    for position, row in enumerate(visible, 1):
+        rank = row.get("rank")
+        if row.get("admission_status") != "ADMITTED" or isinstance(rank, bool) or not isinstance(rank, int) or rank != position:
+            raise ValueError("OVERVIEW_VISIBLE_RANK_INVALID")
+    qualified_count = len(visible)
     shortfall = max(0, 5 - qualified_count)
     is_top5_admitted = shortfall == 0 and qualified_count >= 5
 
@@ -397,11 +422,11 @@ def build_macro_overview_output(qualified: list[dict], disqualified: list[dict],
         "status": "ADMITTED_TOP5" if is_top5_admitted else "SHORTFALL_NOT_QUALIFIED",
         "publication_qualified": is_top5_admitted and not is_synthetic,
         "synthetic_contract_fixture": is_synthetic,
-        "candidate_pool_size": qualified_count + len(disqualified),
-        "industries": qualified[:5],
-        # Deep analyses travel inside the sealed overview (the seal admits one macro object).
+        "candidate_pool_size": len(qualified) + len(disqualified),
+        "industries": visible,
+        # Deep analyses travel inside the sealed overview (the seal admits one macro object), same visible subset.
         "deep_analyses": {c["industry_id"]: (deep_analyses or {})[c["industry_id"]]
-                          for c in qualified[:5] if c.get("industry_id") in (deep_analyses or {})},
+                          for c in visible if c.get("industry_id") in (deep_analyses or {})},
         "data_basis": ({"method": rotation.get("method"), "as_of": rotation.get("as_of"), "quarter": rotation.get("quarter"),
                         "receipt_count": len(rotation.get("receipts", []))} if rotation else None),
         "potential_ranking": potential_ranking(rotation),

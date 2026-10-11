@@ -1,6 +1,6 @@
 # Leopold Aschenbrenner — context model (CONTEXT_ONLY)
 
-Auxiliary hypothesis layer. It never adds score, never restricts the discovery universe to AI and never counts as company evidence or as a second witness for a Serenity view. Essay figures are 2024 scenarios; fund filings are delayed, partial disclosures, not endorsements or current holdings. Project-authored interpretation is labelled INFERENCE.
+Auxiliary hypothesis layer. It is CONTEXT_ONLY: never company-fact proof, never company evidence or a second witness for a Serenity view, and never counted toward any phase or constraint family; it never restricts the discovery universe to AI. Separately, the operator decision of 2026-09-26 permits scaling-chain and dated 13F LEAD weights in industry/layer/company discovery and ranking; these separately authorized lead weights may influence ranking, and this documentation correction changes no existing weights. Essay figures are 2024 scenarios; fund filings are delayed, partial disclosures, not endorsements or current holdings. Project-authored interpretation is labelled INFERENCE.
 
 ## Contents
 
@@ -51,7 +51,7 @@ Situational Awareness LP (SEC CIK 0002045724). Retrieved from EDGAR on 2026-09-2
 
 **July 2026 deleveraging (secondary, verified in the report).** 24/7 Wall St (2026-08-03) reports positions "financed with significant leverage, as much as four times its equity", that "margin requirements forced the liquidation of those positions", that the portfolio was sold to Citadel Advisors, and that the fund still showed about 80% year to date because roughly 25% of net assets sat in Anthropic, reportedly up 620%. Other outlets give conflicting fund sizes (about $20B versus $45B before the event); those figures are CONFLICTED and not used. The Core Scientific 13D/A (below 5% on 2026-07-15) is consistent with the timing; the event's size is not established by a primary source.
 
-INFERENCE (project-authored): the Q1 book paired long exposure to physical constraints (power, memory, powered hosting sites) with large put notional on crowded compute beta; by Q2 the hedges were removed and memory became the dominant exposure, while power, powered-site and neocloud capacity stayed core. The Q2 13F predates the July liquidation, so it no longer proxies current exposure; the Q3 13F (due by 2026-11-14) is the next primary snapshot. What failed in July was trade construction — leverage and correlated legs — which neither confirms nor refutes the physical-constraint thesis; the SharonAI stake kept rising afterwards. Limits: a 13F cannot show whether puts hedged longs, omits shorts, foreign listings and private positions, and lags by up to 45 days; positions may already differ.
+INFERENCE (project-authored): the Q1 book paired long exposure to physical constraints (power, memory, powered hosting sites) with large put notional on crowded compute beta; by Q2 the hedges were removed and memory became the dominant exposure, while power, powered-site and neocloud capacity stayed core. The Q2 13F predates the July liquidation, so it no longer proxies current exposure; a later published Q3 Form 13F would describe that quarter-end, not current holdings; filing deadlines are subject to SEC weekend/holiday rules. What failed in July was trade construction — leverage and correlated legs — which neither confirms nor refutes the physical-constraint thesis; the SharonAI stake kept rising afterwards. Limits: a 13F cannot show whether puts hedged longs, omits shorts, foreign listings and private positions, and lags by up to 45 days; positions may already differ.
 
 ## 5. How research may use this layer
 
@@ -60,8 +60,8 @@ INFERENCE (project-authored): the Q1 book paired long exposure to physical const
 3. Treat fund positions as dated opinions of one investor. They are not company facts, independent corroboration or a reason to buy.
 4. When Serenity and this layer point at the same constraint, record two views of one question, not two evidence families.
 5. Refresh section 4 after each new 13F, 13D/A, 13G or Form 4 and move superseded snapshots to history.
-6. In the phase engine (`scripts/thesis_phase.py`) signals from this layer carry the `ASCHENBRENNER_CONTEXT` lens: they are listed for context and never counted toward any phase, constraint family or ranking.
-7. Leverage lesson for sizing guidance: a correct physical-constraint view can still be liquidated by leverage and correlated legs; options and sizing guidance stay unlevered with position caps.
+6. In the phase engine (`scripts/thesis_phase.py`) signals from this layer carry the `ASCHENBRENNER_CONTEXT` lens: they are listed for context and never counted toward any phase or constraint family. Separately authorized lead weights (operator 2026-09-26) may influence ranking as LEAD inputs; that ranking influence is distinct from, and never counts as, phase or constraint-family evidence.
+7. Leverage lesson for sizing guidance: a correct physical-constraint view can still be liquidated by leverage and correlated legs. Funding requirements, economic exposure and position caps are separate constraints. Fully paid options can still provide economically leveraged exposure and lose the entire premium; absence of a margin loan is not absence of leverage. This risk clarification changes no position cap, options-admission policy or no-trade boundary.
 
 ## Sources
 
