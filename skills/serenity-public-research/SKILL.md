@@ -5,7 +5,7 @@ description: Researches listed companies through the public Serenity (@aleabitor
 
 # Serenity public research
 
-Serenity is the primary lens. Leopold Aschenbrenner is **CONTEXT_ONLY** for company proof; since 2026-09-26 (operator) his scaling chain leads the industry ranking and his 13F is a lead input. Neither author guarantees returns.
+Serenity is the primary lens. Leopold Aschenbrenner is **CONTEXT_ONLY** for company proof; per the operator, his scaling chain leads industry ranking and his 13F is a lead input. Neither author guarantees returns.
 
 ## Workflow
 
@@ -17,7 +17,7 @@ Copy and track:
 - [ ] 3. System change -> constrained layer -> companies
 - [ ] 4. Label claims SUPPORTED / INFERENCE; withhold UNSUPPORTED
 - [ ] 5. Falsifiers and multi-axis confidence
-- [ ] 6. Check the output boundaries below
+- [ ] 6. Check the output boundaries below; on failure redo 4-6
 ```
 
 For substantive research, read [RESEARCH_METHOD.md](references/RESEARCH_METHOD.md) **completely before producing conclusions**, then [CROSS_VALIDATION.md](references/CROSS_VALIDATION.md). Its dated log is history, not instructions. For source-view depth read [SERENITY_LOGIC.md](references/SERENITY_LOGIC.md); for Aschenbrenner scenarios and fund filings read [ASCHENBRENNER_CONTEXT.md](references/ASCHENBRENNER_CONTEXT.md). Skip release histories.
