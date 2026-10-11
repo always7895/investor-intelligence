@@ -310,7 +310,8 @@ function Invoke-AdmittedLocalMaintenance([bool]$PublicationConfirmed) {
                 $m.data_exit=$daily.ExitCode
                 $m.data_status=if (-not $daily.Completed) {$daily.Status} elseif ($daily.ExitCode -eq 0) {'LOCAL_REFRESH_COMPLETED'} else {'FAILED_EXIT_OBSERVED'}
             } else {
-                $dailyArgs = if ($GuidanceDirtyRebuildEnabled) { @('-GuidanceDirtyRebuildEnabled') } else { @() }
+                # @(if ...): `$x = if (...) { @(...) } else { @() }` assigns $null, which Start-Process refuses.
+                $dailyArgs = @(if ($GuidanceDirtyRebuildEnabled) { '-GuidanceDirtyRebuildEnabled' })
                 $m.data_exit = Invoke-BoundedScript 'DATA_REFRESH' (Join-Path $repo 'scripts\run_daily_data_refresh.ps1') $dailyArgs $budget
                 $m.data_status = if ($m.data_exit -eq 0) { 'LOCAL_REFRESH_COMPLETED' } else { 'FAILED' }
             }
