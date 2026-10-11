@@ -1,7 +1,7 @@
 /**
  * B2 caller regression: REAL sealed route/loader/identity/renderers. Synthetic-only, no network.
  * D1-D5: timed admission proves expiry ORDER, not catalog review_valid_through; fault cases are
- * defensive boundaries, NOT sealed-reachable states. Direct-query dot rewriting is outside B2.
+ * defensive boundaries, NOT sealed-reachable states. Direct-query dot rewriting (before FOUND) is pinned by B2-18.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import catalog from "../../config/public-options-provider-candidates.json";
@@ -589,6 +589,16 @@ describe("B2 integrated caller (D1-D5 synthetic seam scope)", () => {
     expect(found).toBeGreaterThanOrEqual(0);
     expect(trace.events.slice(found + 1).filter(e => e.startsWith("read:"))).toEqual(["read:" + SYM + "B"]);
     expect(trace.queries).not.toContain("BRK-B.ST");
+  });
+  it("B2-18: direct BRK.B.ST query reaches the sealed dash key BRK-B.ST before FOUND", async () => {
+    // Real optionTickerKeys: a class-share dot becomes the sealed "-" key (BRK.B.ST -> ["BRK-B.ST"]); the identity target is
+    // that matched key, and the dot-spelled rows in the same shard are not its evidence.
+    optIn("BRK-B.ST");
+    const f = await sealed({ key: "BRK-B.ST", currency: "SEK", rows: [stockholm("BRK-B"), ...pair(stockholm("BRK.B"))] });
+    positive(await answer(f, "BRK.B.ST \u6bcf\u6708\u671f\u6b0a"), "SEK");  // the same monthly-options command as above
+    expect(trace.events).toContain("found:BRK-B.ST");
+    expect(trace.queries).toEqual(["BRK-B.ST"]);
+    reads(f, [SYM + "B"]);
   });
 
   it("B2-14: authentic eleven-character Stockholm body is no-evidence with zero reads", async () => {

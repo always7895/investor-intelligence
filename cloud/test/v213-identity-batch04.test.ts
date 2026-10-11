@@ -9,12 +9,25 @@ import { resolveGlobalIdentity } from "../src/v213/global-identity";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { asKv, MemoryKv } from "./fake-kv";
 
-const trace = vi.hoisted(() => ({ queries: [] as string[] }));
+const trace = vi.hoisted(() => ({ queries: [] as string[], failures: {} as Record<string, string>, legacy: 0 }));
 vi.mock("../src/v213/identity-shards", async importOriginal => {
   const real = await importOriginal<typeof import("../src/v213/identity-shards")>();
   return { ...real, loadIdentityCatalogForQuery: vi.fn(async (view, query) => {
     trace.queries.push(query);
-    return real.loadIdentityCatalogForQuery(view, query);
+    // U1-03: an injected read outcome for one exact query; every other query reads the real sealed shards.
+    const failure = trace.failures[query];
+    if (failure === "throw") throw new Error("U1_SYNTHETIC_READ_FAILURE");
+    if (failure === "null") return null;
+    const catalog = await real.loadIdentityCatalogForQuery(view, query);
+    return failure === "mismatch" && catalog
+      ? { ...catalog, records: catalog.records.map(r => ({ ...r, security_name: `${r.security_name} (other)` })) } : catalog;
+  }) };
+});
+vi.mock("../src/v213/global-identity-reader", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/global-identity-reader")>();
+  return { ...real, loadGlobalIdentityCatalog: vi.fn(async view => {
+    trace.legacy += 1;
+    return real.loadGlobalIdentityCatalog(view);
   }) };
 });
 const SEAL = `snapshot:${fixture.run}:v213:snapshot-seal:v1`;
@@ -67,6 +80,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-15T12:01:00Z"));
   trace.queries = [];
+  trace.failures = {};
+  trace.legacy = 0;
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("BATCH04_NETWORK_FORBIDDEN"); }));
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -152,5 +167,46 @@ describe("BATCH04 identity real caller", () => {
     const result = resolveGlobalIdentity(catalog!, "公司 Acme Orbit");
     expect(result.status).toBe("UNAVAILABLE");
     expect("reason" in result && result.reason).toContain("IDENTITY_CONFLICT:");
+  });
+
+  it("U1-03 a failed, missing or different certification read reuses neither the name catalog nor a legacy catalog", async () => {
+    const query = "\u516c\u53f8 \u8ecc\u9053";
+    // Non-vacuous: the name-query catalog DOES hold A01, so reusing it would certify A01.ST.
+    const seed = await loadIdentityCatalogForQuery(await pinPublicSnapshot((await environment("text", ambiguityObjects())).env as never), query);
+    expect(resolveGlobalIdentity(seed, "A01.ST").status).toBe("RESOLVED");
+    for (const style of ["text", "flex"] as const) for (const failure of ["throw", "null", "mismatch"]) {
+      trace.queries = [];
+      trace.failures = { "A01.ST": failure };
+      trace.legacy = 0;
+      const reply = await answer(await environment(style, ambiguityObjects()), query);
+      // A failure still spends its validation call (sequential, no retry); the fourth candidate stays unchecked.
+      expect(trace.queries, failure).toEqual([query, "A00.ST", "A01.ST", "A02.ST"]);
+      expect(trace.legacy, failure).toBe(0);
+      expect(reply.text, failure).toContain("A00.ST");
+      expect(reply.text, failure).toContain("A02.ST");
+      expect(reply.text, failure).not.toContain("A01.ST");
+      if (style === "flex") {
+        expect(reply.raw, failure).toContain('"text":"A00.ST"');
+        expect(reply.raw, failure).toContain('"text":"A02.ST"');
+        expect(reply.raw, failure).not.toContain('"text":"A01.ST"');
+      }
+    }
+  });
+
+  it("U1-03 no certified route leaves only the safe navigation", async () => {
+    const query = "\u516c\u53f8 \u8ecc\u9053";
+    for (const style of ["text", "flex"] as const) {
+      trace.queries = [];
+      trace.failures = { "A00.ST": "throw", "A01.ST": "null", "A02.ST": "mismatch" };
+      const reply = await answer(await environment(style, ambiguityObjects()), query);
+      expect(trace.queries).toEqual([query, "A00.ST", "A01.ST", "A02.ST"]);
+      expect(trace.legacy).toBe(0);
+      expect(reply.text).not.toMatch(/A\d\d\.ST/);
+      if (style === "flex") {
+        expect(reply.raw).toContain('"text":"TOP20"');
+        expect(reply.raw).toContain('"text":"\u9078\u55ae"');
+        expect(reply.raw).not.toMatch(/"text":"A\d\d\.ST"/);
+      }
+    }
   });
 });

@@ -29,6 +29,10 @@ CASES = (
     ('https://zqauser:S3CRETPW@www.sec.gov' + PX, 'URL_SHAPE https://www.sec.gov' + PX),
     ('https://zqauser@www.sec.gov' + PX, 'URL_SHAPE https://www.sec.gov' + PX),
     ('https://zqauser:S3C@RETPW@www.sec.gov' + PX, 'URL_SHAPE https://www.sec.gov' + PX),
+    # B10C-F1-NB1: an empty userinfo (falsy username and password) is refused too.
+    ('https://:@www.sec.gov' + PX, 'URL_SHAPE https://www.sec.gov' + PX),
+    ('https://@www.sec.gov' + PX, 'URL_SHAPE https://www.sec.gov' + PX),
+    ('https://:@www.sec.gov:443' + PX, 'URL_SHAPE https://www.sec.gov:443' + PX),
     (DOC + '?t=T0KEN', 'URL_SHAPE ' + DOC),
     (DOC + '#FR4G', 'URL_SHAPE ' + DOC),
     ('http://zqauser:S3CRETPW@www.sec.gov' + PX + '?t=T0KEN#FR4G', 'URL_SHAPE http://www.sec.gov' + PX),
@@ -42,20 +46,22 @@ def secret_free(text):
     return not any(s in text for s in SECRETS)
 
 
-def end_to_end():
+def end_to_end(ir_id=IR_SECRET):
     serial = itertools.count(1)
     with mock.patch.object(updater.secrets, 'token_hex', side_effect=lambda n: f'{next(serial):0{2*n}x}'), W(1, 0) as world:
         raw = world.receipts.read_text(encoding='utf-8')
         assert raw.count(IR) >= 1
-        world.receipts.write_text(raw.replace(IR, IR_SECRET, 1), encoding='utf-8')
+        world.receipts.write_text(raw.replace(IR, ir_id, 1), encoding='utf-8')
         first = world.run(1)
-        last = world.last('ZQA')
+        issuer = first[1]['issuers']['ZQA']
+        events = [world.last('ZQA')] if world.pointer() is not None and 'ZQA' in world.pg()['issuers'] else []  # no attempt: no entry
         generations = [p.read_text(encoding='utf-8') for p in world.files('generations')]
         return {
-            'outcome': (last['outcome'], last['reason']),
-            'detail': last['detail'],
-            'detail_secret_free': secret_free(last['detail']),
-            'event_secret_free': secret_free(json.dumps(last['event'])),
+            'issuer': issuer,
+            'attempts': len(events),
+            'detail': events[-1]['detail'] if events else None,
+            'detail_secret_free': all(secret_free(e['detail']) for e in events),
+            'event_secret_free': all(secret_free(json.dumps(e['event'])) for e in events),
             'run_secret_free': secret_free(json.dumps(first)),
             'summary_secret_free': secret_free(json.dumps(world.summary())),
             'generations': len(generations),
@@ -85,17 +91,27 @@ class UrlShapeRedaction(unittest.TestCase):
         outcome = f.outcome_of(lambda: updater.url_rule('http://zqauser:S3CRETPW@www.sec.gov' + long_path, NV))
         self.assertEqual(outcome, ('RAISED', 'NetworkBlocked', 'URL_SHAPE ' + ('http://www.sec.gov' + long_path)[:120]))
 
-    def test_end_to_end_waiting_detail_never_carries_userinfo_query_or_fragment(self):
+    def test_end_to_end_control_plain_ir_id_is_still_planned(self):
+        # The same world with the unmodified (plain) IR id plans and attempts the event as before the F8 barrier.
+        actual = f.outcome_of(lambda: end_to_end(IR))
+        self.assertEqual(actual[0], 'RESULT', actual)
+        r = actual[1]
+        self.assertEqual((r['issuer']['action'], r['attempts'] > 0, r['generations'] > 0), ('ATTEMPTED', True, True), r)
+        for key in ('detail_secret_free', 'event_secret_free', 'run_secret_free', 'summary_secret_free', 'generations_secret_free'):
+            self.assertTrue(r[key], key)
+
+    def test_end_to_end_secret_bearing_receipt_id_is_refused_before_anything_is_planned_or_persisted(self):
+        # BATCH10C F8 fixed: a receipt listing a raw id with userinfo, query or fragment (as written before F8-N1; the
+        # persisted form is not one, F8-AMEND1) is a barrier; the updater plans, fetches and attempts nothing for the
+        # issuer (no attempt event); its material documents are recorded in the persisted form only
+        # (tests/test_revenue_guidance_receipt_id_safety.py), so every generation file is secret-free.
         actual = f.outcome_of(end_to_end)
         self.assertEqual(actual[0], 'RESULT', actual)
         r = actual[1]
-        self.assertEqual(r['outcome'], ('WAITING', 'NETWORK_UNAVAILABLE'))
-        self.assertTrue(r['detail'].startswith('URL_SHAPE https://ir.zqa.synthetic-g9.example/'), r['detail'])
-        for key in ('detail_secret_free', 'run_secret_free', 'summary_secret_free'):
+        self.assertEqual(r['issuer'], {'action': 'WAITING', 'reason': 'RECEIPT_DOCUMENT_ID_UNSAFE'})
+        self.assertEqual((r['attempts'], r['generations']), (0, 1))  # the detections, in their persisted form; no attempt event
+        for key in ('detail_secret_free', 'event_secret_free', 'run_secret_free', 'summary_secret_free', 'generations_secret_free'):
             self.assertTrue(r[key], key)
-        # Traced, NOT fixed (BATCH10C F8, a separate lane): the receipts-provided IR item id is persisted verbatim in the
-        # attempt event and the generation files, so an id that itself carries userinfo stays there.
-        self.assertEqual((r['event_secret_free'], r['generations_secret_free'], r['generations'] > 0), (False, False, True))
 
 
 if __name__ == '__main__':

@@ -68,11 +68,14 @@ class HistoryRows(unittest.TestCase):
                 trace = []
                 for hour in (13, 14):
                     o = w.run(instant=datetime(2026, 3, 2, hour, tzinfo=timezone.utc))
-                    trace.append((o, w.req(), w.cur(), w.last(B)["reason"], len(w.pg()["issuers"][B]["index"]["settled"])))
-                return trace[0], trace[1], trace[0][0] == trace[1][0]
+                    trace.append((o[0], w.summary()["issuers"].get(B) if o[0] == "RESULT" else o, w.req(), w.cur(),
+                                  w.last(B)["reason"], len(w.pg()["issuers"][B]["index"]["settled"]), w.counts()[0]))
+                return trace[0], trace[1]
+        # G9a F3 fixed: the overflow refuses B alone (entry unchanged, nothing recorded) and every run completes.
+        blocked = {"action": "BLOCKED", "reason": "SETTLED_OVERFLOW"}
         self.assertEqual(f.observe_boundary("R6.4", f.outcome_of(lambda: row())),
-                         ("RESULT", ((("RAISED", "SystemicFailure", "STATE SETTLED_OVERFLOW"), ((A, 2), (B, 1)), B, "EVENT_DETECTED", 256),
-                                     (("RAISED", "SystemicFailure", "STATE SETTLED_OVERFLOW"), ((C, 2), (A, 2), (B, 1)), B, "EVENT_DETECTED", 256), True)))
+                         ("RESULT", (("RESULT", blocked, ((A, 2), (B, 1), (C, 2)), C, "EVENT_DETECTED", 256, 8),
+                                     ("RESULT", blocked, ((A, 2), (B, 1), (C, 2)), C, "EVENT_DETECTED", 256, 8))))
 
     def test_r6_5(self):
         def row():
@@ -85,10 +88,13 @@ class HistoryRows(unittest.TestCase):
                            "record_sha256": h.overlay.record_sha256(w.records[A]), "record": w.records[A], "decisions": []}
                 entry = {"head": None, "sealed": 0, "open": [attempt],
                          "index": {"verified": [{"segment": None, "position": 0}], "truncated": False, "settled": h.settled()}}
-                return f.outcome_of(lambda: h.updater.reverify(w.root, {A: w.profs[A]}, {A: w.records[A]},
-                                                               {A: entry}, {A}, False, "2026-03-02T12:00:00Z"))
+                entries, readable, original = {A: entry}, {A}, deepcopy(entry)
+                o = f.outcome_of(lambda: h.updater.reverify(w.root, {A: w.profs[A]}, {A: w.records[A]},
+                                                            entries, readable, False, "2026-03-02T12:00:00Z"))
+                return o, entries[A] == original, sorted(readable)
+        # G9a F4 fixed: no raw StateError; the history is carried unchanged and leaves the readable set.
         self.assertEqual(f.observe_boundary("R6.5", f.outcome_of(lambda: row())),
-                         ("RESULT", ("RAISED", "StateError", "SETTLED_OVERFLOW")))
+                         ("RESULT", (("RESULT", None), True, [])))
 
 
 if __name__ == "__main__":

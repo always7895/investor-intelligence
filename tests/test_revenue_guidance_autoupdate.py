@@ -878,6 +878,93 @@ class VerifierTests(unittest.TestCase):
         self.assertIsNone(routing["wire_item"])
         self.assertNotIn("WIRE_PRESS_RELEASES", {c["channel"] for c in routing["consumed"]})
 
+    def test_plan_event_wire_refusals_drop_the_optional_copy(self):
+        # BATCH10C F3, accepted by design: a wire URL that url_rule refuses (URL_SHAPE) and a refused page (HTTP 404) both
+        # plan the event without the optional copy; a deterministic refusal must not wait, since a wait never settles and
+        # would stall the issuer for every later quarter (a wait was tried and refuted in lane B10C-F3F4).
+        refused_page = "https://www.nasdaq.com/press-release/nvidia-announces-2026-08-26"
+        self.assertEqual(updater.url_rule(refused_page, PROFILES_BY_SYMBOL["NVDA"]), "wire_page")
+
+        class RefusingWire(CountingReplay):
+            def get(self, url, profile, symbol):
+                if url == refused_page:
+                    raise updater.NetworkBlocked("HTTP 404")
+                return super().get(url, profile, symbol)
+
+        for wire_url in ("https://www.nasdaq.com:99999/press-release/bad", "https://user:pw@www.nasdaq.com/press-release/bad",
+                         "https://www.nasdaq.com/press-release/bad?utm_source=x", refused_page):
+            with self.subTest(url=wire_url):
+                if wire_url != refused_page:
+                    with self.assertRaises(updater.NetworkBlocked) as ctx:
+                        updater.url_rule(wire_url, PROFILES_BY_SYMBOL["NVDA"])
+                    self.assertTrue(str(ctx.exception).startswith("URL_SHAPE"), str(ctx.exception))
+                lead = {"accession": "0001045810-26-000019", "filed": "2026-02-25", "ir_item": None,
+                        "wire_item": {"id": wire_url, "title": "Wire Title", "date": "2026-02-25"}, "later_documents": []}
+                instant = "2026-02-26T12:00:00Z"
+                with tempfile.TemporaryDirectory() as tmp:
+                    try:
+                        event, captures = updater.plan_event(RefusingWire("2026-02-26"), Path(tmp) / "state", PROFILES_BY_SYMBOL["NVDA"],
+                                                             lead, instant[:10], at(instant), {"bytes": 0, "store": 0})
+                    except updater.NetworkBlocked as error:
+                        self.fail(f"a refused optional wire copy must be dropped, got {error}")
+                self.assertNotIn("wire_copy", captures)
+                self.assertEqual(event["wire_item"]["id"], wire_url)
+
+    def test_plan_event_wire_budget_and_transient_refusals_wait(self):
+        # B10C-F3F4 finding N1: a per-run budget or a transient failure while the optional wire copy is read is not a
+        # property of the URL (a wire page alone, capped at 4 MiB, cannot reach the 128 MiB capture budget), so the
+        # attempt waits for the next run instead of dropping the copy. RUN_CAPTURE_BUDGET comes from the real transport
+        # of a capability run whose lease already holds the run's whole capture-byte budget.
+        wire_url = "https://www.nasdaq.com/press-release/nvidia-announces-2026-08-26"
+        self.assertEqual(updater.url_rule(wire_url, PROFILES_BY_SYMBOL["NVDA"]), "wire_page")
+
+        class Budget:
+            deadline = float(updater.RUN_BUDGET_SECONDS)
+
+            def _check_time(self):
+                pass
+
+        class Lease:
+            def __init__(self):
+                self.budget = Budget()
+                self._network_work = {"requests": 0, "bytes": updater.CYCLE_CAPTURE_BYTES, "last": -1.0, "issuers": {}}
+
+        live = updater.Transport({"User-Agent": "N1-SYNTHETIC"}, connector=lambda *args: FakeResponse(b"<html><body>wire</body></html>"),
+                                 resolver=lambda host: ["162.159.140.1"], sleep=lambda seconds: None, monotonic=lambda: 0.0)
+        live.lease = Lease()
+
+        class CapabilityWire(CountingReplay):
+            def get(self, url, profile, symbol):
+                if url == wire_url:
+                    return live.get(url, profile, symbol)
+                return super().get(url, profile, symbol)
+
+        class FailingWire(CountingReplay):
+            def __init__(self, day, reason):
+                super().__init__(day)
+                self.reason = reason
+
+            def get(self, url, profile, symbol):
+                if url == wire_url:
+                    raise updater.NetworkBlocked(self.reason)
+                return super().get(url, profile, symbol)
+
+        cases = [(reason, FailingWire("2026-02-26", reason)) for reason in (
+            "RUN_BUDGET", "RUN_REQUEST_BUDGET", "ISSUER_REQUEST_BUDGET", "TRANSIENT", "UNREACHABLE TimeoutError", "DNS www.nasdaq.com")]
+        for reason, transport in cases + [("RUN_CAPTURE_BUDGET", CapabilityWire("2026-02-26"))]:
+            with self.subTest(reason=reason):
+                lead = {"accession": "0001045810-26-000019", "filed": "2026-02-25", "ir_item": None,
+                        "wire_item": {"id": wire_url, "title": "Wire Title", "date": "2026-02-25"}, "later_documents": []}
+                instant, captures = "2026-02-26T12:00:00Z", {}
+                with tempfile.TemporaryDirectory() as tmp:
+                    with self.assertRaises(updater.NetworkBlocked) as ctx:
+                        updater.plan_event(transport, Path(tmp) / "state", PROFILES_BY_SYMBOL["NVDA"], lead, instant[:10],
+                                           at(instant), {"bytes": 0, "store": 0}, captures=captures)
+                self.assertEqual(str(ctx.exception), reason)
+                self.assertNotIn("wire_copy", captures)
+                self.assertIn("submissions", captures)  # what the plan stored stays referenced by the waiting attempt
+        self.assertGreater(live.lease._network_work["bytes"], updater.CYCLE_CAPTURE_BYTES)
+
     # copies are whole publications (R3-2)
     def test_copy_with_a_transition_or_competing_outlook_blocks(self):
         for key in ("ir_copy", "wire_copy"):

@@ -7,7 +7,7 @@ to the curated path over the curated registry and its human approval (`config/re
 `config/revenue-guidance-approval-v1.json`, see [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md)). The contract is Astra's `astra-contract.result.md` Part 2 in the lane
 archive `_archive\lane-orders-v3-autoupdate\`; this page describes what slice 1 implements and what is still open.
 
-Status reconciliation (D1 closure, measured on the committed tree; evidence only, no new acceptance). The sections below that were written as source-only snapshots (F05A R2, F02C, F02D, F03) keep their historical `NOT_RUN`, `under review` and `pending` labels; those labels are not current evidence. At the D1 base (commit `9255297f`, G7) the test modules of this lane exist and PASS in the complete Python gate of the accepted G7 snapshot (`R/g7-a43bef58/all/all-r1/summary.json`: 282 modules, 265 PASS, 17 BLOCKED, 0 FAIL; BLOCKED is not PASS), among them test_revenue_guidance_autoupdate, _effective_inputs, _host_contract, _wire_integration, _release_check, _preview, _machine_parity, _machine_auto_parity, _machine_nbis_auto_parity, _machine_nbis_pairs, _nbis_auto, _nbis_e2e, _nbis_refusals, _g9a_service, _g9a_history and _batch10c_inputs; Vitest at the T11-F1A snapshot was 1275 total, 1273 passed, 2 pending, 0 failed (`R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`), and no later lane touches `cloud/`. The NBIS tests are SYNTHETIC offline replays, committed as G4a `62d61ae`, BATCH10B `8537afa`, G4b-1 `dfe3ef8`, G4b-2 `aa7e09c`, G4b-3 `11029e7` and G9a `292eb8f`, each after an executor receipt and an independent master receipt for the same snapshot (`R/ASTRA-COMMIT21-RESULT.txt` to `R/ASTRA-COMMIT26-RESULT.txt` and the matching `R/*-MASTER-INDEPENDENT-ACCEPT-*.txt`). Since then BATCH10C `2c6ca5d0` (URL and `Retry-After` input guards, see Limits and Outcomes below), T11-F1A `e27b4cb5`, T13-P1 `42770026` and G7 `9255297f` were each accepted (scoped to its own lane) by the writer and by the Fable 5.1 independent review of the same snapshot (writer receipts `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T13P1-RESULT-CLAUDECODE-a43bef58.txt` and `R/EXECUTOR-G7-RESULT-CLAUDECODE-a43bef58.txt`, with `R/EXECUTOR-COMMIT30-RESULT-CLAUDECODE-a43bef58.txt` for the commit of G7; review `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`); the last three do not change this lane. They are not real-NBIS evidence: NBIS stays disabled, `enabled_symbols` stays NVDA and MU, and F05A stays OPEN. No test module names `revenue_guidance_storage`, `revenue_guidance_provisioner` or `revenue_guidance_windows` (git grep: 0 hits in `tests/` and `cloud/test/`); native Windows protected storage stays unqualified. Nothing here is installed or deployed.
+Status reconciliation (D1 closure, measured on the committed tree; evidence only, no new acceptance). The sections below that were written as source-only snapshots (F05A R2, F02C, F02D, F03) keep their historical `NOT_RUN`, `under review` and `pending` labels; those labels are not current evidence. At the D1 base (commit `9255297f`, G7) the test modules of this lane exist and PASS in the complete Python gate of the accepted G7 snapshot (`R/g7-a43bef58/all/all-r1/summary.json`: 282 modules, 265 PASS, 17 BLOCKED, 0 FAIL; BLOCKED is not PASS), among them test_revenue_guidance_autoupdate, _effective_inputs, _host_contract, _wire_integration, _release_check, _preview, _machine_parity, _machine_auto_parity, _machine_nbis_auto_parity, _machine_nbis_pairs, _nbis_auto, _nbis_e2e, _nbis_refusals, _g9a_service, _g9a_history and _batch10c_inputs; Vitest at the T11-F1A snapshot was 1275 total, 1273 passed, 2 pending, 0 failed (`R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`), and no later lane touches `cloud/`. The NBIS tests are SYNTHETIC offline replays, committed as G4a `62d61ae`, BATCH10B `8537afa`, G4b-1 `dfe3ef8`, G4b-2 `aa7e09c`, G4b-3 `11029e7` and G9a `292eb8f`, each after an executor receipt and an independent master receipt for the same snapshot (`R/ASTRA-COMMIT21-RESULT.txt` to `R/ASTRA-COMMIT26-RESULT.txt` and the matching `R/*-MASTER-INDEPENDENT-ACCEPT-*.txt`). Since then BATCH10C `2c6ca5d0` (URL and `Retry-After` input guards, see Limits and Outcomes below), T11-F1A `e27b4cb5`, T13-P1 `42770026` and G7 `9255297f` were each accepted (scoped to its own lane) by the writer and by the Fable 5.1 independent review of the same snapshot (writer receipts `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt`, `R/EXECUTOR-T13P1-RESULT-CLAUDECODE-a43bef58.txt` and `R/EXECUTOR-G7-RESULT-CLAUDECODE-a43bef58.txt`, with `R/EXECUTOR-COMMIT30-RESULT-CLAUDECODE-a43bef58.txt` for the commit of G7; review `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`); the last three do not change this lane. They are not real-NBIS evidence: NBIS stays disabled, `enabled_symbols` stays NVDA and MU, and F05A stays OPEN. Mocked-contract modules now name `revenue_guidance_storage` and `revenue_guidance_windows` (`tests/test_revenue_guidance_storage_contract.py`, `tests/test_revenue_guidance_windows_contract.py`, `tests/test_revenue_guidance_host_contract_p2.py`): in-memory journal I/O, fake owners and a failing native-binding sentinel, not native evidence; `tests/test_revenue_guidance_auth_contract.py` drives `revenue_guidance_provisioner`, `revenue_guidance_enroll` and the lease/issuer authority admission over a fake HKLM64, token, security-descriptor and handle machine and pins the bootstrap import guard as a refusal only, likewise not native evidence; native Windows protected storage and the PowerShell installer stay unqualified. Nothing here is installed or deployed.
 
 Goal (operator 2026-09-29): after each results release the revenue-guidance record renews itself from official
 filings without a human step. Anything that cannot be proven from the filings keeps the issuer suspended; numbers are
@@ -611,23 +611,87 @@ Scheduling: after the detection phase, issuers with work are served in a fair or
 served last; that position (`queue.json`, a scheduling hint, never an admission input) is written before fetching
 for an issuer, so a source that crashes or exhausts its own budget cannot starve the others across runs. When the
 run's shared budget (wall time, requests, new capture bytes) is spent, the remaining issuers are not attempted and an
-issuer that got no service keeps its place at the head of the next run. A plan interrupted by a budget, quota or
+issuer that got no service keeps its place at the head of the next run; when nothing was stored for it in that run it
+records no attempt either, so its stored wait and the generations stay unchanged (G9a F1). A plan interrupted by a budget, quota or
 network failure keeps the captures it stored referenced by its attempt; EDGAR archive documents captured by any
 earlier attempt are reused from the store (re-hashed and re-verified), feeds and IR/wire pages are always read again,
 so repeated interruptions still make progress (a superseding wait keeps the captures already referenced). A wire
-page that cannot be fetched because of a budget or a transient failure makes the attempt wait for the next run; only a
-refused page (for example HTTP 404) leaves the wire copy unconsumed. An issuer whose history cannot be read (for example a missing or
+page that cannot be fetched because of a time, request or capture-byte budget of the run or a transient network
+failure (`RUN_BUDGET`, `RUN_REQUEST_BUDGET`, `ISSUER_REQUEST_BUDGET`, `RUN_CAPTURE_BUDGET`, `TRANSIENT`, `UNREACHABLE`,
+`DNS`) makes the attempt wait for the next run, which starts with fresh budgets. A wire page alone (capped at 4 MiB)
+cannot reach the 128 MiB capture budget, so that refusal depends on the run, not on the URL; the capture-byte count of
+a capability run's transport (which also counts the release check's bytes when it ran on the same lease) dropped the copy until
+the fix of B10C-F3F4 finding N1, while the planner's own count already waited as `CAPTURE_LIMIT`. Every other refusal
+of the optional wire copy leaves it unconsumed and the event is planned without it: a refused
+page (for example HTTP 404), a redirect, a content type, encoding or size cap, a non-public address, a URL that
+`url_rule` refuses (`URL_SHAPE`, `PATH_ENCODING`, an unlisted host or path), or in replay a missing recording. The wire
+document then stays unaccounted, so the issuer stays suspended at admission for that release until a later producer's
+filing day passes it. A deterministic refusal deliberately does not wait (BATCH10C F3, accepted by design): the same URL
+would refuse on every run and a wait never settles, so waiting would stall the issuer for every later quarter. An issuer whose history cannot be read (for example a missing or
 altered segment) is carried forward unchanged as its own fail-closed barrier while the other issuers keep committing.
+A release receipt is a barrier, never an input, when a `later_documents` id carries userinfo (`@`), a query (`?`) or
+a fragment (`#`) raw, that is, not in the persisted form below, or when the list is malformed (BATCH10C F8;
+`revenue_guidance.raw_unsafe_document_id`): `recompute_receipt_status` returns
+`FRESHNESS_UNVERIFIED` for it (so a claimed `OK`, `REVIEW_REQUIRED` or `RESULTS_PUBLISHED` fails `validate_receipt` as
+`STATUS_RECOMPUTE_MISMATCH` and the terminal statuses stay unreachable; a reviewed list cannot launder such an id),
+`receipt_admission` bars the record with `RECEIPT_DOCUMENT_ID_UNSAFE` while any retained row of its reference carries
+one (the newest or an older row; the decision echoes nothing of the row), and the updater plans, fetches and attempts
+nothing for that issuer (summary `WAITING` / `RECEIPT_DOCUMENT_ID_UNSAFE`; no attempt event, no capture). Its material
+documents are still recorded as detections before that stop, so none can disappear when the row ages out of the
+retained history (`KEEP` rows): every document id that carries one of the three characters is persisted (detections,
+attempt events `ir_item` / `wire_item` / `later_documents`, consumed identities, the automatic lane's
+admission evidence and machine attachment) only as `overlay.safe_document_id` makes it,
+`<shown>#sha256:<SHA-256 of the exact original>` with `<shown>` the id cut before its first `?` or `#`
+and after its last `@` (at most 200 characters); two originals stay two identities, the form is
+idempotent, every other id is unchanged, and receipt rows, stored detections, consumed identities and
+`reviewed_later_documents` are compared in this form (the receipt recompute, in Python and in the Worker, links a
+reviewed raw id to its persisted form too; BATCH10C F8-AMEND1). The barrier lifts only when no retained row of the
+reference carries a raw such id. A document recorded in the persisted form then leaves accounting only as any other detection
+does: when the admitted producer consumes it, or when a later producer's filing day passes it (items dated strictly
+before the admitted producer's filing day, `routing_filed`, are dropped by `admit` and by the updater's detection
+phase). A lead that carries the persisted form is refused by `url_rule` (`URL_SHAPE`) as its original would be and
+can never be fetched: `plan_event` drops such a wire copy as above (it does not wait), and the wire document stays
+unaccounted. The public machine attachment of a barred record carries no receipt history and its admission summary
+lists no rows. The release checker writes every later-document id in this persisted form too (BATCH10C F8-N1: SEC
+accessions, wire and IR item ids alike, through `overlay.safe_document_id`) and compares the record's
+`reviewed_later_documents` in it, so a receipt written since lists no such id verbatim, neither in `receipts.json`
+nor in `data/cache/revenue_guidance_release_checks.json` nor in the curated path's `evidence.latest_release_check`.
+The persisted form never bars (BATCH10C F8-AMEND1): it is a safe id for `receipt_admission`, the updater's guard,
+`recompute_receipt_status` and the checker's own status alike, so such a receipt states the status a clean id would
+give it (its recompute agrees); the Worker's receipt recompute applies the same rule (a non-string id, or one with
+`@`, `?` or `#` that is not the persisted form `^[^@?#]*#sha256:[0-9a-f]{64}$`, is `FRESHNESS_UNVERIFIED`), and an SEC
+feed whose accession list holds a non-string makes the SEC channel `FAILED`. A feed that keeps listing a link with a
+query or a fragment therefore never stalls the issuer (every new row lists the persisted form; before F8-AMEND1 that
+form barred, no row ever aged out and the issuer waited for every later quarter). A raw id bars only while a legacy
+row is retained: a receipt written before F8-N1 keeps its original id while it stays in the retained history, and with
+the canonicalising checker every new row carries the persisted form, so such a row bars the record for at most `KEEP`
+(8) receipts the checker writes for the issuer (a check that writes no receipt, `NOT_CHECKABLE`, does not advance
+it; the checker and the barrier change deploy together). A `REVIEWED_IRRELEVANT` entry for
+the raw id (an official IR item URL on the record's IR host may carry a query in `reviewed_later_documents`; a wire id
+may not) accounts the persisted-form detection once that row has aged out. Residual (documented, not fixed): a legacy
+raw row that is the issuer's newest receipt at the cutoff can still reach the curated path's
+`evidence.latest_release_check`, for at most one check cycle after the deploy (0 such ids in the offline real caches);
+generation files written before this lane keep the ids they were written with; the digest of a low-entropy secret can
+be guessed offline; a receipt id that already has the persisted shape (`<text>#sha256:<64 lowercase hex>` with no `@`,
+`?` or `#` in `<text>`) is kept as it is (it is a safe id). The F8 change alters the implementation identity
+(`revenue_guidance.py` and `revenue_guidance_overlay.py` are implementation files), so stored generations re-verify on
+the next run; F8-N1 changes no implementation file; F8-AMEND1 changes both again (the transform and its pattern moved
+into `revenue_guidance.persisted_document_id`, `overlay.safe_document_id` keeps its behaviour).
+An issuer whose settled-event index is full (256 events since its producer's filing day) and whose next outcome would
+settle one more is refused alone (summary `BLOCKED` `SETTLED_OVERFLOW`, its entry unchanged, nothing recorded) instead
+of failing the run; in a re-verification the same overflow carries its history unchanged and admission blocks it
+(G9a F3, F4).
 
-HTTPS on 443 only; hosts `www.sec.gov`, `data.sec.gov`, the profile's IR host and `www.nasdaq.com`, each with
+HTTPS on 443 only (an empty port as in `https://host:/path` is equivalent to an omitted port, RFC 3986 section 3.2.3,
+so it means the https default 443; accepted by design, BATCH10C F4; any other port refuses); hosts `www.sec.gov`, `data.sec.gov`, the profile's IR host and `www.nasdaq.com`, each with
 issuer-bound or reviewed path patterns; no query, userinfo, percent-encoding or traversal; **no redirects are
 followed** (a 3xx refuses); every resolved address must be public and the connection is made to that checked address
 (TLS name and certificate verified for the host); SEC contact headers are sent only to SEC hosts, other hosts get a
 plain public user agent; `Accept-Encoding: identity`, other encodings and unexpected media types refused; bodies
 streamed under 8 MiB (submissions), 1 MiB (index), 16 MiB (documents), 4 MiB (IR and wire pages), error bodies read at
-most 64 KiB; 30 s timeout; at most 2 attempts for a transient failure, `Retry-After` honoured up to 30 s (BATCH10C, `2c6ca5d0`, accepted by the writer and by the Fable 5.1 independent review of the same snapshot: `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`; a value of one to four ASCII digits is used as before and refuses as `TRANSIENT` when it exceeds 30, with no clamp; a string of five or more ASCII digits, including a zero-padded one such as `00005` that was honoured as 5 s before BATCH10C, refuses as `TRANSIENT` (a string of more than 4300 digits used to raise `ValueError`); any other value, including one with a non-ASCII digit (which used to raise `ValueError` or give a different delay), counts as absent and waits 2 s; `MAX_ATTEMPTS` stays 2); 24 requests
+most 64 KiB; 30 s timeout; at most 2 attempts for a transient failure, `Retry-After` honoured up to 30 s (BATCH10C, `2c6ca5d0`, accepted by the writer and by the Fable 5.1 independent review of the same snapshot: `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`; a value of one to four ASCII digits, not counting leading zeros, is used as before and refuses as `TRANSIENT` when it exceeds 30, with no clamp (leading zeros are ignored since the fix of BATCH10C finding F2, a later change than BATCH10C: BATCH10C itself refused a zero-padded value such as `00005` as `TRANSIENT`, which was honoured as 5 s before BATCH10C and is again); a string with five or more ASCII digits after its leading zeros refuses as `TRANSIENT` (a string of more than 4300 digits used to raise `ValueError`); any other value, including one with a non-ASCII digit (which used to raise `ValueError` or give a different delay), counts as absent and waits 2 s; `MAX_ATTEMPTS` stays 2); 24 requests
 per issuer and 120 per run; 10 minute wall budget; 0.5 s pacing; 128 MiB new captures per run; 2 GiB store quota
-(reaching it waits, nothing is deleted; G9a `292eb8f` adds to `plan_event`, the NVDA/MU planner, a check before each fetch of an uncached URL: unknown store accounting, or the store plus this cycle's new bytes at or above the quota, waits with `CAPTURE_LIMIT`, while `plan_nbis_event` still checks only after fetching (G9a finding N1, `R/ASTRA-G9A-R3-RESULT.txt`); and a generation whose serialization exceeds `overlay.MAX_GENERATION_BYTES`, 8 MiB, is refused before publishing as `SYSTEMIC_FAILURE` `PUBLISH GENERATION_TOO_LARGE`, exit 2). Usage comes from a reservation journal, `store_usage.json`: a new object's
+(reaching it waits, nothing is deleted; G9a `292eb8f` adds to `plan_event`, the NVDA/MU planner, a check before each fetch of an uncached URL: unknown store accounting, or the store plus this cycle's new bytes at or above the quota, waits with `CAPTURE_LIMIT`, and `plan_nbis_event` makes the same check before each request (G9a finding N1); and a generation whose serialization exceeds `overlay.MAX_GENERATION_BYTES`, 8 MiB, is refused before publishing as `SYSTEMIC_FAILURE` `PUBLISH GENERATION_TOO_LARGE`, exit 2, and later runs refuse the same way as long as the pending generation stays over the limit, since nothing is compacted (G9a F10); a segment sealed for a refused generation stays unreferenced, and sealing the same attempts again, by a repeated refusal or by the next successful publication, reuses that content-addressed file (F5)). Usage comes from a reservation journal, `store_usage.json`: a new object's
 bytes are added and named pending before any file is written, and cleared after its raw and metadata commits, so an
 interruption in any window only over-counts; each run first settles the pending reservations (at most 16: a written
 object stays counted, an unwritten one is released and its incomplete temporary file removed) and enumerates nothing.

@@ -856,6 +856,19 @@ export function computeReceiptDigest(receipt: any): string {
   return sha256Hex(canonicalJson(withoutDigest));
 }
 
+// BATCH10C F8-AMEND1: the persisted form of a later-document id (scripts/revenue_guidance.py persisted_document_id,
+// PERSISTED_DOCUMENT_ID_RE): <shown>#sha256:<64 lowercase hex> with no "@", "?" or "#" in <shown>. It is a safe id.
+const PERSISTED_DOCUMENT_ID_RE = /^[^@?#]*#sha256:[0-9a-f]{64}$/;
+
+// The Python transform: an id with "@", "?" or "#" that is not yet the persisted form becomes <shown>#sha256:<SHA-256
+// of the exact original>, <shown> cut before its first "?" or "#" and after its last "@", at most 200 code points.
+function persistedDocumentId(value: string): string {
+  if (PERSISTED_DOCUMENT_ID_RE.test(value) || !/[@?#]/.test(value)) return value;
+  const head = value.split(/[?#]/, 1)[0] ?? "";
+  const shown = Array.from(head.slice(head.lastIndexOf("@") + 1)).slice(0, 200).join("");
+  return `${shown}#sha256:${sha256Hex(value)}`;
+}
+
 function recomputeReceiptStatus(
   receipt: any,
   reviewedLater?: any[],
@@ -927,6 +940,8 @@ function recomputeReceiptStatus(
         if (cutoffMs !== undefined && rAt > cutoffMs) continue; // exact millisecond comparison!
         if (cutoffDay && rld.reviewed_at.slice(0, 10) > cutoffDay) continue;
         reviewedIds.add(rld.id);
+        // BATCH10C F8-AMEND1: the checker writes and matches ids in the persisted form, so a reviewed raw id links it.
+        reviewedIds.add(persistedDocumentId(rld.id));
       }
     }
   }
@@ -946,6 +961,10 @@ function recomputeReceiptStatus(
     if (!claimDay(ldoc.date) || (cutoffDay && ldoc.date > cutoffDay)) return "FRESHNESS_UNVERIFIED";
     const lid = String(ldoc.id ?? "");
     if (!cleanText(lid, 400)) return "FRESHNESS_UNVERIFIED";
+    // BATCH10C F8-N1: the Python raw-unsafe-id rule (scripts/revenue_guidance.py raw_unsafe_document_id), fail closed: a
+    // non-string id, or one with userinfo ("@"), a query ("?") or a fragment ("#"), is never a freshness proof, unless
+    // it is the persisted form, which is a safe id (F8-AMEND1).
+    if (typeof ldoc.id !== "string" || (/[@?#]/.test(lid) && !PERSISTED_DOCUMENT_ID_RE.test(lid))) return "FRESHNESS_UNVERIFIED";
     const disp = ldoc.disposition;
     if (typeof disp !== "string" || !VALID_V3_LATER_DISPOSITIONS.has(disp)) return "FRESHNESS_UNVERIFIED";
 

@@ -1932,3 +1932,28 @@ describe("producer-to-reader regressions of Astra's r7 acceptance (A1, A2, A4; w
     }
   });
 });
+
+describe("G4c MT7: the sealed zero-YTD degenerate guard on the HUMAN quarter-claim-only path", () => {
+  // The default makeSyntheticV3 record is the AVAILABLE quarter-claim carrier of Oracle 1. Its derivation never reads
+  // fy_reconciliation, so the sealed shape check V3_FY_ZERO_YTD_DEGENERATE is the only denier here; a machine envelope
+  // cannot isolate it (the NBIS machine validator denies first). Synthetic HUMAN record only.
+  const withYtd = (ytdStart: string, ytdEnd: string, ytdRevenue: number) => parseOrderForecast(makeSyntheticV3({
+    evidence: { fy_reconciliation: { fy_claim_id: "CLAIM-1", ytd_start: ytdStart, ytd_end: ytdEnd, ytd_revenue: ytdRevenue,
+      ytd_quarter_ends: [] } },
+  }), REPORT_DAY, "NVDA", GENERATED);
+
+  it("control: the exact zero-day span with zero revenue stays AVAILABLE with the Oracle 1 figures", () => {
+    const f = withYtd("2026-07-01", "2026-07-01", 0);
+    expect([f.m6.status, f.m6.amount, f.m12.amount]).toEqual(["AVAILABLE", 240.0, 480.0]);
+  });
+
+  it("an empty quarter-end list with a non-degenerate span or non-zero revenue is INVALID", () => {
+    // Every row keeps start <= end and a finite non-negative revenue, so only the degenerate rule can refuse it.
+    for (const [start, end, revenue] of [["2026-07-01", "2026-07-02", 0], ["2026-07-01", "2026-07-01", 1],
+      ["2026-07-01", "2026-07-01", 0.5], ["2026-07-01", "2026-09-30", 120]] as const) {
+      const f = withYtd(start, end, revenue);
+      expect([f.m6.status, f.m6.reason, f.m12.status, f.m12.reason], `${start} ${end} ${revenue}`)
+        .toEqual(["UNAVAILABLE", "INVALID", "UNAVAILABLE", "INVALID"]);
+    }
+  });
+});

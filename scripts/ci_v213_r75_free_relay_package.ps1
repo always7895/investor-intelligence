@@ -66,7 +66,10 @@ try {
         'tests/fixtures/v213-order-forecast-v2-sealed.json','tests/fixtures/v213-lineage-sealed-markets.json','tests/fixtures/v213-official-quarterly-revenue.json',
         'tests/fixtures/source-acquisition-reports.json','tests/fixtures/v213-orders-v3-golden-sealed.json','tests/fixtures/v213-orders-v3-proof-rpo.json',
         'tests/fixtures/v213-orders-v3-proof-states.json','tests/fixtures/v213-orders-v3-probes.json',
-        'tests/fixtures/v213-r75-publication-mode/all-limited.json','tests/fixtures/v213-r75-publication-mode/mixed.json'
+        'tests/fixtures/v213-r75-publication-mode/all-limited.json','tests/fixtures/v213-r75-publication-mode/mixed.json',
+        'tests/fixtures/identity-batch04-functional.json','tests/fixtures/revenue-guidance-machine-auto-functional.json',
+        'tests/fixtures/revenue-guidance-machine-barrier-functional.json','tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json',
+        'tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json'
     )
     $wireTest = 'cloud/test/v213-revenue-guidance-wire-integration.test.ts'; $wireFixture = 'tests/fixtures/revenue-guidance-wire-v1-functional.json'
     $fixtureMaxBytes = 2097152; $fixtureTotalMaxBytes = 16777216
@@ -141,7 +144,7 @@ try {
         if((Get-FileHash $destination).Hash-ne(Get-FileHash (Join-Path $ProjectRoot $relative)).Hash){throw 'Public research payload digest mismatch.'}
     }
     # Activation runs npm test on the installed package. These are runtime gate
-    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 13 always-required test fixtures, plus the
+    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 18 always-required test fixtures, plus the
     # revenue-guidance wire fixture when the exact commit carries the wire pair) with the exact bounded archive-stage bytes captured before the prune.
     foreach ($relative in $fixturePaths) {
         $packaged = Join-Path $stage $relative

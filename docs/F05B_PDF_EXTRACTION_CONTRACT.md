@@ -26,9 +26,11 @@ R2 input hashes, updater retry policy and further consumers were rechecked.
 - `build_successor` / `_Inputs.raw` at lines 871-917 re-establish source identity
   from captured bytes. NBIS lines 1922 and 1975-1994 refuse PDF links/non-HTML members;
   A1 `package_names:851-854` filters for HTML, not universal PDF inspection/refusal.
-- `scripts/revenue_guidance_autoupdate.py:634,708,936-940` dispatches closed
+- `scripts/revenue_guidance_autoupdate.py` (`PLANNERS`, dispatched in `run`, and the
+  `verify.build_successor` calls in `reverify` and `run`) dispatches closed
   planners/builders. Extraction does not add an adapter, issuer, source or fetch.
-- CRWV IR-package scope remains a later slice (guidance doc lines 707-724).
+- CRWV IR-package scope remains a later slice (guidance doc section "Open (later
+  slices and Part B)", items A2 and Part B order).
   Neither successful extraction nor this contract supplies original IR bodies,
   dates, units, period/basis, independence, rights or positive qualification.
 
@@ -241,7 +243,7 @@ allowance or excluded time. Distinguish the actual expired limiter:
 - `TRUNCATED/RUN_PACKAGE_BUDGET`: the enclosing run or package's remaining budget
   expired first (including no time to launch). A later adapter must map this to
   existing updater `WAITING` / reason `RUN_BUDGET`; that prefix is RETRYABLE in
-  `scripts/revenue_guidance_autoupdate.py:64-65` (`remaining:176-183`). Retain the
+  `scripts/revenue_guidance_autoupdate.py` (`RETRYABLE`; `Transport.remaining` raises it). Retain the
   attempt/captures and fair-queue place, then wait for a later ordinary invocation
   with genuinely fresh budgets. No in-run restart, refund, partial success or
   retry of a separately recorded deterministic document/resource failure.

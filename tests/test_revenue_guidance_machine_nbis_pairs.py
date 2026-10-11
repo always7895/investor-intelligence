@@ -1,8 +1,9 @@
 """Synthetic NBIS paired declarations, not genuine/native/live qualification.
 
 D8-D11 are characterization pins, not fixes. The cross-language table checks
-DECLARED expectations only. M12 TS_ADMITS_TODAY is owned by a later product lane.
-M13 and Scenario R are NOT_EXERCISED. No tracked profile is enabled here.
+DECLARED expectations only. M12/M12q: TS now denies an edited form-body quote.
+M13 and Scenario R are NOT_EXERCISED here (Scenario R rows: G4c,
+tests/test_revenue_guidance_machine_nbis_reaffirm_pairs.py). No tracked profile is enabled here.
 """
 import copy
 import json
@@ -36,7 +37,8 @@ ROW_TABLE = [
     {"id": "M10c", "kind": "CTRL", "py_a": ["RESULT", "dict"], "py_b": None, "ts": [True, "AVAILABLE"]},
     {"id": "M10", "kind": "NEG", "py_a": ["RAISED", "MachinePublicationBlocked", "MACHINE_EVIDENCE_LIMIT"], "py_b": None, "ts": [False, "UNAVAILABLE"]},
     {"id": "M11", "kind": "CHAR", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
-    {"id": "M12", "kind": "CHAR", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [True, "AVAILABLE"]},
+    {"id": "M12", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
+    {"id": "M12q", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
 ]
 
 
@@ -105,6 +107,11 @@ def prepare(root, row_id):
     elif row_id == "M12":
         body = membership["report_period"]["body"][0]
         body["quote"] = "X" + body["quote"][1:]
+    elif row_id == "M12q":
+        # Grammar-valid sentence naming another quarter; offsets keep the quote length.
+        body = membership["report_period"]["body"][0]
+        body["quote"] = body["quote"].replace("fourth", "third")
+        body["offsets"] = [body["offsets"][0], body["offsets"][0] + len(body["quote"])]
     elif row_id != "C0":
         raise ValueError("UNKNOWN_ROW")
     return state, gen, profiles, curated, ident, entries, producer
@@ -175,7 +182,7 @@ class NbisPairTests(unittest.TestCase):
             return (declared == ROW_TABLE and len({r["id"] for r in declared}) == len(declared), len(declared))
         actual = f.outcome_of(compare)
         f.observe_boundary("PP-DRIFT", actual)
-        self.assertEqual(actual, ("RESULT", (True, 16)))
+        self.assertEqual(actual, ("RESULT", (True, 17)))
 
 
 def row_test(row):

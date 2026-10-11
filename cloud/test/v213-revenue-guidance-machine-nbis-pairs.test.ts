@@ -86,6 +86,10 @@ function repin(id: string, omitReportDigest = false): {report: string; binding: 
   else if (id === "M11") event.later_documents.push({...extraTriple(), label: "Synthetic later material", disposition: "POSSIBLY_RELEVANT"});
   else if (id === "M12") {
     const body = member.report_period.body[0]; body.quote = "X" + body.quote.slice(1);
+  } else if (id === "M12q") {
+    // Grammar-valid sentence naming another quarter; offsets keep the quote length.
+    const body = member.report_period.body[0]; body.quote = body.quote.replace("fourth", "third");
+    body.offsets = [body.offsets[0], body.offsets[0] + body.quote.length];
   } else if (!["C0", "M10c", "M10"].includes(id)) throw new Error("UNKNOWN_ROW");
 
   attempt.decisions = decisions; attempt.event = event;
@@ -416,7 +420,7 @@ const ROW_TABLE = [
   },
   {
     "id": "M12",
-    "kind": "CHAR",
+    "kind": "NEG",
     "py_a": [
       "RESULT",
       null
@@ -429,8 +433,27 @@ const ROW_TABLE = [
       ]
     ],
     "ts": [
-      true,
-      "AVAILABLE"
+      false,
+      "UNAVAILABLE"
+    ]
+  },
+  {
+    "id": "M12q",
+    "kind": "NEG",
+    "py_a": [
+      "RESULT",
+      null
+    ],
+    "py_b": [
+      "RESULT",
+      [
+        "BLOCKED",
+        "APPROVAL_BINDING"
+      ]
+    ],
+    "ts": [
+      false,
+      "UNAVAILABLE"
     ]
   }
 ];
@@ -438,7 +461,7 @@ const ROW_TABLE = [
 
 describe("G4b-3 synthetic NBIS paired declarations", () => {
   it("T0 frozen synthetic fixture SHA256 and scope", () => {
-    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("c73665dc0a201c82c7b766edb4e08c31500a706e36b5d6e1e3d066643021cd5d");
+    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("0d10abfd3f8de37c1e4cbf7c01128b5f3be2f93a5c0968b6b8df5a7982db51de");
     expect(fixture.scope).toBe("SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE");
   });
   for (const row of ROW_TABLE) it(row.id + " " + row.kind, async () => {
@@ -447,8 +470,18 @@ describe("G4b-3 synthetic NBIS paired declarations", () => {
     try {
       // Every negative/characterization requires its own no-op C0 in this test.
       expect(await tuple(repin("C0"))).toEqual([true, "AVAILABLE"]);
-      // M12 TS_ADMITS_TODAY: characterization, NOT correct behaviour. Later product lane.
+      // M12/M12q: the TS form-body grammar and quarter deny the edited body quote.
       expect(await tuple(repin(row.id))).toEqual(row.ts);
+    } finally { Date.now = savedNow; }
+  });
+  it("D0 stale report digest withholds the whole report", async () => {
+    const savedNow = Date.now;
+    Date.now = () => Date.parse(NBIS_CUTOFF);
+    try {
+      // The repin report digest is load-bearing: a stale one never reaches a row,
+      // so no [false, "UNAVAILABLE"] negative above is a stale-digest artefact.
+      expect(await tuple(repin("C0", true))).toEqual([null, null]);
+      expect(await tuple(repin("C0"))).toEqual([true, "AVAILABLE"]);
     } finally { Date.now = savedNow; }
   });
 });

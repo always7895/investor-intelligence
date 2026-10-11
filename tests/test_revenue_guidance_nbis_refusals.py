@@ -77,7 +77,7 @@ class SyntheticHygiene(unittest.TestCase):
             return
         self.assertNotIn(value, deny['urls'])
         if value == 'https://data.sec.gov/submissions/CIK0001513845.json':
-            # autoupdate.py:546 and auto_verify.py:2013 exact issuer endpoint.
+            # autoupdate.py plan_nbis_event submissions fetch and auto_verify.py _build_nbis exact issuer endpoint.
             return
         if urlsplit(value).hostname == 'www.sec.gov':
             self.assertRegex(value, r'^https://www\.sec\.gov/Archives/edgar/data/1513845/0000000000[0-9]{8}/[A-Za-z0-9._-]+$')

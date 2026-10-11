@@ -51,6 +51,38 @@ an older-than-14-h row (or a row more than 300 s in the future) takes the existi
 remain placeholders, never carried. Certified `qa.ts` is unchanged; no live recertification
 was performed or claimed.
 
+qa.ts recertification plan (remaining Lane5 qualification: carried-report and federation ages; a plan only, nothing in
+it is implemented or accepted). Today `build_bodies` in `scripts/publish_sealed_snapshot.py` seals `reports:*`,
+`scores:latest`, `source_views:latest`, `source_plan:latest`, `v213:source-federation:latest` and
+`v213:source-independence:latest` as placeholders in every sealed run (activation commits stay refused, see Topology),
+so the gap below is latent. Certified `cloud/src/qa.ts` checks only seal liveness (`publicFreshness`:
+`last_successful_pipeline_timestamp` against
+`PUBLIC_DATA_MAX_AGE_SECONDS`, default 1800 s, which every hourly seal renews): always for the `morning_report`,
+`evening_report` and `latest_report` intents, and for `ranking`, `source_views` and the general answer (whose context
+`projectContext` reads `reports:latest`, `scores:latest` and `source_views:latest`) only on a current-data question.
+It has no report-age gate. `cloud/src/v213/compact-qa.ts` (not certified) reads `v213:source-independence:latest`
+under the same liveness rule and applies `v213ReportAgeFresh` only to the matched `v21:top20:latest` row. Before
+any of these objects may be carried:
+
+1. Contract: every carried object gets a machine-readable generation time from the same bundle as the three carried
+   Top20 objects (the plain-text `reports:*` bodies have none today), checked against the shared 14 h bound
+   (`v213ReportAgeFresh`, `config/v213-top20-report-freshness-v1.json`), never re-stamped.
+2. Readers: qa.ts applies that bound wherever it reads these objects, after `requirePublicFreshness` (a stale seal
+   keeps its existing reason first; an over-age or future report gets one fixed new reason), and compact-qa.ts applies
+   it to the audit it reads. The privacy, tenant-memory, option and model-routing code of qa.ts stays byte-identical.
+3. Tests, written before the change: report-age negatives (older than 14 h, more than 300 s in the future, missing or
+   invalid time) and the precedence case in `cloud/test/qa.test.ts` and `cloud/test/v213-compact-qa.test.ts`, plus a
+   publisher test that every placeholder stays a placeholder until the readers are deployed.
+4. Recertification record, in the same change: the new qa.ts sha256 replaces the current pin
+   `0107aca61f8a881192d1747a6cc31e87aeadf3c00cf19e8bbc10d9ba3f681eb2` in `state/r75-qa-live-qualification.json` and
+   `state/r75-qa-live-activation-v3-20260909.json`; the protected R75 source check of
+   `scripts/ci_v213_r75_free_relay_validate.ps1` (its `$protected` list, compared with `git diff --quiet` against
+   `$r75Commit`; `tests/test_current_release_lane.py` keeps qa.ts listed) moves to the recertified commit; a new receipt records the new
+   blob next to the R75 one (`94184bc8`, kept as history in `state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md`); the
+   writer's acceptance and the independent review accept the same snapshot.
+5. Rollout: Worker readers first, publisher carry second, each an operator-authorized production step checked by
+   `scripts/deploy_production_gate.ps1 -Phase post`. Until then the placeholders stay and nothing here is claimed.
+
 A bundle that fails any check seals an honest INSUFFICIENT Top20 with a reason code; the macro overview is sealed
 either way. Every Top20 card carries the admission disclosure (研究候選 LIMITED_RESEARCH_CANDIDATE … 資料擷取).
 

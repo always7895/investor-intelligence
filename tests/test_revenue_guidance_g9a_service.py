@@ -71,20 +71,22 @@ class ServiceRows(unittest.TestCase):
                                      (9, 21, 21, 0), {"bytes": 21000, "files": 21, "pending": {}}, G)))
 
     def test_r2_1(self):
+        # G9a F1: the first issuer refused by the spent run budget is skipped like the ones after it (no attempt);
+        # the last element counts the issuers in the pointed generation (EVENT_DETECTED is still committed first).
         self.assertEqual(f.observe_boundary("R2.1", f.outcome_of(lambda: h.rings()[0])),
-                         ("RESULT", [(((A, 4),), (C, D, E, F, G), A),
-                                     (((B, 4),), (D, E, F, G, A), B),
-                                     (((C, 4),), (E, F, G, A, B), C),
-                                     (((D, 4),), (F, G, A, B, C), D),
-                                     (((E, 4),), (G, A, B, C, D), E),
-                                     (((F, 4),), (A, B, C, D, E), F),
-                                     (((G, 4),), (B, C, D, E, F), G),
-                                     (((A, 2), (B, 2)), (D, E, F, G), B)]))
+                         ("RESULT", [(((A, 4),), (B, C, D, E, F, G), A, 2),
+                                     (((B, 4),), (C, D, E, F, G, A), B, 3),
+                                     (((C, 4),), (D, E, F, G, A, B), C, 4),
+                                     (((D, 4),), (E, F, G, A, B, C), D, 5),
+                                     (((E, 4),), (F, G, A, B, C, D), E, 6),
+                                     (((F, 4),), (G, A, B, C, D, E), F, 7),
+                                     (((G, 4),), (A, B, C, D, E, F), G, 7),
+                                     (((A, 2), (B, 2)), (C, D, E, F, G), B, 7)]))
 
     def test_r2_1b(self):
-        # Characterization F1; pinned only after the audit-side BASE observation.
+        # G9a F1 fixed: an issuer that got no service keeps its stored wait (no flip to RUN_REQUEST_BUDGET).
         self.assertEqual(f.observe_boundary("R2.1b", f.outcome_of(lambda: h.rings()[1])),
-                         ("RESULT", ([(H4, 3)] * 6 + [("RUN_REQUEST_BUDGET", 3), (H4, 3)], True, True)))
+                         ("RESULT", ([(H4, 3)] * 8, True, True)))
 
     def test_r2_2(self):
         def row():

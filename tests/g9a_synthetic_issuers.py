@@ -96,6 +96,13 @@ class Response:
 class World:
     def __init__(self, n, k_pkg, periodic=0):
         self.tmp = tempfile.TemporaryDirectory()
+        try:
+            self._build(n, k_pkg, periodic)
+        except BaseException:
+            self.tmp.cleanup()  # a construction error never leaves the directory to the finalizer (G9a REV-4)
+            raise
+
+    def _build(self, n, k_pkg, periodic):
         self.root = Path(self.tmp.name)
         self.state = self.root / "state"
         self.syms = SYMS[:n]
@@ -273,7 +280,7 @@ def rings():
                 continue
             skips = tuple(s for s, entry in w.summary()["issuers"].items()
                           if entry == {"action": "WAITING", "reason": "RUN_BUDGET"})
-            trace.append((w.req(), skips, w.cur()))
+            trace.append((w.req(), skips, w.cur(), len(w.pg()["issuers"])))
             waits.append(w.detail("ZQA"))
             keys.append(tuple(sorted(w.last("ZQA")["captures"])))
             generations.append(w.counts()[0])

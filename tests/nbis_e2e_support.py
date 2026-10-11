@@ -16,6 +16,8 @@ T0 = "2032-02-19T23:00:00Z"
 T1 = "2032-02-20T12:00:00Z"
 CUTOFF_TEXT = "2032-02-20T13:00:00Z"
 CUTOFF = datetime(2032, 2, 20, 13, tzinfo=timezone.utc)
+# Per-scenario (T0, T1, CUTOFF_TEXT); Scenario R (G4c) starts at its own Scenario("R").now.
+CLOCKS = {"Z": (T0, T1, CUTOFF_TEXT), "R": ("2034-08-13T23:00:00Z", "2034-08-14T12:00:00Z", "2034-08-14T13:00:00Z")}
 
 
 def moment(instant):
@@ -24,13 +26,15 @@ def moment(instant):
 
 class Chain:
     """All writable objects are beneath the caller's owned disposable temp root."""
-    def __init__(self, base: Path, *, tracked=False):
+    def __init__(self, base: Path, *, tracked=False, mode="Z"):
         self.base = base
         self.state = base / "state"
         self.registry = base / "registry.json"
         self.approval = base / "approval.json"
         self.receipts = base / "receipts.json"
-        self.scenario = f.Scenario("Z")
+        self.t0, self.t1, self.cutoff_text = CLOCKS[mode]
+        self.cutoff = moment(self.cutoff_text)
+        self.scenario = f.Scenario(mode)
         self.transport = self.scenario.transport
         self.registry.write_bytes(f.encoded({"schema": "revenue-guidance-v1", "version": 1,
                                            "issuers": [self.scenario.baseline]}))
@@ -83,15 +87,15 @@ class Chain:
         with mock.patch.object(f.updater.secrets, "token_hex",
                                side_effect=lambda n: f"{next(sequence):0{2 * n}x}"):
             self.update_result = f.updater.run(
-                self.state, self.transport, lambda: moment(T0),
+                self.state, self.transport, lambda: moment(self.t0),
                 self.profiles, self.registry, self.approval, self.receipts)
         return self.update_result
 
     def produce(self):
-        self.check(T0)
+        self.check(self.t0)
         self.update()
-        self.check(T1)
-        self.snapshot = self.load(CUTOFF_TEXT)
+        self.check(self.t1)
+        self.snapshot = self.load(self.cutoff_text)
         return self.snapshot
 
     def receipt(self):
@@ -101,7 +105,7 @@ class Chain:
         """Fresh registry/receipt/state, tracked profiles, no effective_inputs."""
         record = copy.deepcopy(self.snapshot.issuer("NBIS").usable_record)
         record["reviewed_later_documents"] = [
-            {"id": row["id"], "disposition": "REVIEWED_IRRELEVANT", "reviewed_at": T1}
+            {"id": row["id"], "disposition": "REVIEWED_IRRELEVANT", "reviewed_at": self.t1}
             for row in self.receipt()["later_documents"]
             if row["disposition"] == "POSSIBLY_RELEVANT"]
         human = self.base / "human"
@@ -110,11 +114,11 @@ class Chain:
         state.mkdir()
         registry.write_bytes(f.encoded({"schema": "revenue-guidance-v1", "version": 1,
                                        "issuers": [record]}))
-        checker.run(registry, receipts, moment(T1), self.sec_fetch, self.wire_fetch,
+        checker.run(registry, receipts, moment(self.t1), self.sec_fetch, self.wire_fetch,
                     self.ir_fetch, state_root=state)
         cache = json.loads(receipts.read_bytes())
         snapshot = f.overlay.load_effective_inputs(
-            cutoff=CUTOFF_TEXT, state_root=state, registry_path=registry,
+            cutoff=self.cutoff_text, state_root=state, registry_path=registry,
             approval_path=self.approval, profiles_path=f.PROFILE_PATH,
             receipts_path=receipts, symbols=("NBIS",), allow_replay=False)
         return record, cache, snapshot
@@ -123,7 +127,7 @@ class Chain:
         item = self.snapshot.issuer("NBIS")
         record = item.usable_record
         result = f.guidance.build_forward_quarters(
-            "NBIS", record, CUTOFF, effective_inputs=self.snapshot)
+            "NBIS", record, self.cutoff, effective_inputs=self.snapshot)
         return (result["status"], result["reason"],
                 (type(result["f1"]).__name__, result["f1"]),
                 (type(result["f2"]).__name__, result["f2"]),

@@ -351,6 +351,17 @@ function nbisLetterActual(v: any): {start: string; end: string; value: number} {
   need(quarter !== undefined);
   return {...nbisQuarter(Number(yearText), quarter), value: nbisShown(shown)};
 }
+/** Form-body period proof: the same sentence grammar and quarter as the Python builder, not arbitrary quote text. */
+function nbisReportBody(v: any, end: string): void {
+  nbisQuote(v);
+  const m = /^financial results for (?:the )?(first|second|third|fourth) quarter (?:of )?(20[0-9]{2})$/i.exec(v.quote);
+  need(m !== null && m[0] === v.quote);
+  const [, ordinalWord, yearText] = m; // mandatory captures; absence fails closed below
+  need(ordinalWord !== undefined && yearText !== undefined);
+  const ordinals: Record<string, number> = {first: 1, second: 2, third: 3, fourth: 4};
+  const quarter = ordinals[ordinalWord.toLowerCase()];
+  need(quarter !== undefined && nbisQuarter(Number(yearText), quarter).end === end);
+}
 function nbisDecimalIdentity(v: any): string {
   nbisDecimal(v); const [whole, fraction = ""] = (v as string).split(".");
   need(whole !== undefined); // split always yields a first element; explicit narrowing
@@ -461,7 +472,7 @@ function validateNbisSourceDecisions(record: any, attempt: any, decisions: any[]
     need(op.accession === p.accession && op.filed === p.filed && op.form === p.form && equal(op.members, p.members)
       && keys(op.report_period, ["end", "body"]) && referenceDay(op.report_period.end)
       && Array.isArray(op.report_period.body) && op.report_period.body.length > 0 && op.report_period.body.length <= 16);
-    op.report_period.body.forEach(nbisQuote);
+    for (const v of op.report_period.body) nbisReportBody(v, op.report_period.end);
     const basis = op.basis;
     need(keys(basis, ["gaap", "continuing_revenue", "company", "corroboration"]) && basis.company === "Nebius Group N.V.");
     for (const k of ["gaap", "continuing_revenue"]) {

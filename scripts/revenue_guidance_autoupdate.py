@@ -62,7 +62,7 @@ MAX_RETRY_AFTER = 30
 CYCLE_CAPTURE_BYTES = 128 * 1024 * 1024
 STORE_QUOTA_BYTES = 2 * 1024 * 1024 * 1024
 # Network failures that a later ordinary run can overcome (as opposed to a refused resource).
-RETRYABLE = ("RUN_BUDGET", "RUN_REQUEST_BUDGET", "ISSUER_REQUEST_BUDGET", "TRANSIENT", "UNREACHABLE", "DNS")
+RETRYABLE = ("RUN_BUDGET", "RUN_REQUEST_BUDGET", "ISSUER_REQUEST_BUDGET", "RUN_CAPTURE_BUDGET", "TRANSIENT", "UNREACHABLE", "DNS")
 STATE_ENTRIES = {"captures", "generations", "segments", "current.json", "queue.json", "lock", "store_usage.json"}
 TEMP_ENTRY_RE = re.compile(r"^(current|queue|store_usage)\.json\.tmp-\d+$")  # an interrupted atomic write
 
@@ -94,7 +94,8 @@ def url_rule(url: str, profile: Mapping[str, Any]) -> str:
         port = parts.port
     except ValueError:
         raise NetworkBlocked("URL_SHAPE") from None
-    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443) or parts.fragment or parts.query:
+    # Any "@" in the authority refuses, an empty userinfo ("https://:@host/") included (B10C-F1-NB1).
+    if parts.scheme != "https" or "@" in parts.netloc or port not in (None, 443) or parts.fragment or parts.query:
         # Echo only scheme://host[:port]/path: userinfo, query and fragment may carry secrets (BATCH10C F1).
         shown = f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}{parts.path}"
         raise NetworkBlocked(f"URL_SHAPE {shown[:120]}")
@@ -240,7 +241,7 @@ class Transport:
                     if status == 429 or status >= 500:
                         response.read(ERROR_BODY_CAP)
                         retry_after = str(response.headers.get("retry-after", ""))
-                        raise _Transient(int(retry_after) if re.fullmatch(r"[0-9]{1,4}", retry_after, re.ASCII) else (MAX_RETRY_AFTER + 1 if re.fullmatch(r"[0-9]+", retry_after, re.ASCII) else 2))
+                        raise _Transient(int(retry_after.lstrip("0") or "0") if re.fullmatch(r"0*[0-9]{1,4}", retry_after, re.ASCII) else (MAX_RETRY_AFTER + 1 if re.fullmatch(r"[0-9]+", retry_after, re.ASCII) else 2))
                     if status != 200:
                         response.read(ERROR_BODY_CAP)
                         raise NetworkBlocked(f"HTTP {status}")
@@ -367,7 +368,7 @@ def candidate_events(documents: list[Mapping[str, Any]], ref_accession: str | No
         def lead(channel: str, pattern: str) -> dict[str, str] | None:
             same = [x for x in documents if x.get("channel") == channel and x.get("date") == item.get("date")
                     and re.fullmatch(pattern, str(x.get("label", "")))]
-            return {"id": same[0]["id"], "title": same[0]["label"], "date": same[0]["date"]} if len(same) == 1 else None
+            return {"id": overlay.safe_document_id(same[0]["id"]), "title": same[0]["label"], "date": same[0]["date"]} if len(same) == 1 else None
         event = {"accession": item["id"], "filed": item["date"],
                  "ir_item": lead("ISSUER_IR", profile["ir_title_pattern"]),
                  "wire_item": lead("WIRE_PRESS_RELEASES", profile["wire_title_pattern"]), "later_documents": []}
@@ -437,8 +438,6 @@ def plan_event(transport: Any, root: Path, profile: Mapping[str, Any], lead: Map
         budget["bytes"] += len(data)
         if budget["bytes"] > CYCLE_CAPTURE_BYTES:
             raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "RUN_CAPTURE_BUDGET")
-        if budget["store"] is None:
-            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown (--recount-store)")
         if budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
             raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store quota")
         if getattr(transport, "replay", False):
@@ -542,11 +541,14 @@ def plan_nbis_event(transport, root, profile, lead, today, clock, budget, reuse=
                     return cap["raw"]
             except overlay.StateError:
                 pass
+        # Store accounting before any request, as in plan_event (G9a N1): unknown or already at the quota waits.
+        if budget["store"] is None or budget["store"] + budget["bytes"] >= STORE_QUOTA_BYTES:
+            raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown or quota")
         data, content_type = transport.get(url, profile, sym)
         budget["bytes"] += len(data)
         if budget["bytes"] > CYCLE_CAPTURE_BYTES:
             raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "RUN_CAPTURE_BUDGET")
-        if budget["store"] is None or budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
+        if budget["store"] + budget["bytes"] > STORE_QUOTA_BYTES:
             raise verify.Blocked("WAITING", "CAPTURE_LIMIT", "store accounting unknown or quota")
         role = "REPLAY_" + role if getattr(transport, "replay", False) else role
         captures[key] = overlay.store_capture(root, data, {"url": url, "retrieved_at": now_instant(clock),
@@ -720,8 +722,15 @@ def reverify(root: Path, profiles: Mapping[str, Mapping[str, Any]], curated: Map
                 result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": str(error), "record": None, "decisions": []}
         else:
             result = {"outcome": "BLOCKED", "reason": "APPROVAL_BINDING", "detail": "verified attempt without captures", "record": None, "decisions": []}
+        prior = json.loads(json.dumps(entry))
         verified.pop()
-        overlay.append_attempt(entry, _attempt(a["event_key"], now, previous, a["event"], a.get("captures") or {}, result))
+        try:
+            overlay.append_attempt(entry, _attempt(a["event_key"], now, previous, a["event"], a.get("captures") or {}, result))
+        except overlay.StateError:
+            # G9a F4: a decision the index cannot take (a full settled list) leaves this history carried unchanged, as
+            # an unreadable one (admission blocks it); it never escapes the run as a raw StateError.
+            entries[sym] = prior
+            readable.discard(sym)
 
 
 def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profiles_path: Path = PROFILES_PATH,
@@ -875,6 +884,12 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
             if updated != store and (material or sym in detections):
                 detections[sym] = updated
                 state["changed"] = True
+            if any(overlay.revenue_guidance.receipt_has_unsafe_document_id(r) for r in rows):
+                # BATCH10C F8: the material documents of such a receipt are recorded above (in their persisted form, so
+                # none can disappear when the row ages out of the retained history), but nothing is planned, fetched or
+                # attempted for the issuer; receipt_admission bars the record for the same rows, so it stays non-admitted.
+                summary["issuers"][sym] = {"action": "WAITING", "reason": "RECEIPT_DOCUMENT_ID_UNSAFE"}
+                continue
             if overflow:
                 summary["issuers"][sym] = {"action": "WAITING", "reason": "DETECTIONS_OVERFLOW"}
                 continue
@@ -964,10 +979,22 @@ def run(state_root: Path, transport: Any, clock: Callable[[], datetime], profile
                 if not captures and before != sym:
                     queue["last_served"] = before  # not served: keep this issuer at the head of the next run
                     write_queue(state_root, queue)
+                if not captures:
+                    # G9a F1: nothing was stored for it, so like the issuers after it it records no attempt (its stored
+                    # wait and the generations stay unchanged instead of flipping to the budget detail).
+                    summary["issuers"][sym] = {"action": "WAITING", "reason": "RUN_BUDGET"}
+                    continue
+            prior = json.loads(json.dumps(entry))
             try:
                 state["changed"] |= _record(entry, _attempt(lead["accession"], decided, effective, event, captures, result))
             except overlay.StateError as error:
-                raise SystemicFailure(f"STATE {error}") from error
+                if str(error) != "SETTLED_OVERFLOW":
+                    raise SystemicFailure(f"STATE {error}") from error
+                # G9a F3: a full settled index refuses this issuer alone (its entry as before, nothing recorded); the
+                # run goes on for the others instead of failing every run.
+                entries[sym] = prior
+                summary["issuers"][sym] = {"action": "BLOCKED", "reason": "SETTLED_OVERFLOW"}
+                continue
             summary["issuers"][sym] = {"action": "ATTEMPTED", "event": lead["accession"], "outcome": result["outcome"], "reason": result["reason"]}
         if state["changed"]:
             publish()

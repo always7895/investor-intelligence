@@ -202,6 +202,7 @@ class Batch10CInputs(unittest.TestCase):
             ('RESULT', 'document'), ('RAISED', 'NetworkBlocked', 'URL_SHAPE ' + DOC.replace('https', 'http')), False)))
 
     def test_a2b(self):
+        # BATCH10C F4, accepted by design: an empty port ('https://host:/path') parses as port None, i.e. an omitted port (RFC 3986 section 3.2.3), so the https default 443.
         actual = f.outcome_of(lambda: f.outcome_of(lambda: updater.url_rule('https://www.sec.gov:' + PX, NV)))
         self.assertEqual(f.observe_boundary('A2b', actual), ('RESULT', ('RESULT', 'document')))
 
@@ -219,7 +220,7 @@ class Batch10CInputs(unittest.TestCase):
 
     def test_b1(self):
         actual = f.outcome_of(lambda: tuple(retry_case(value) for value in ('\u00b2', '\u0663', '\uff11', '1' * 4301, '00005', '12345')))
-        self.assertEqual(f.observe_boundary('B1', actual), ('RESULT', ((OK_OUT, 2, [2]),) * 3 + ((TRANSIENT, 1, []),) * 3))
+        self.assertEqual(f.observe_boundary('B1', actual), ('RESULT', ((OK_OUT, 2, [2]),) * 3 + ((TRANSIENT, 1, []), (OK_OUT, 2, [5]), (TRANSIENT, 1, []))))
 
     def test_b2(self):
         values = ('0', '1', '5', '0005', '030', '30', '0030', '31', '600', '999', '1000', '9999', '1' * 4300,
@@ -232,6 +233,14 @@ class Batch10CInputs(unittest.TestCase):
     def test_b3(self):
         actual = f.outcome_of(lambda: (retry_case('\u00b2', twice=True), retry_case(None, twice=True)))
         self.assertEqual(f.observe_boundary('B3', actual), ('RESULT', ((TRANSIENT, 2, [2]),) * 2))
+
+    def test_b4(self):
+        # BATCH10C F2: leading zeros do not count toward the four digits (RFC 9110 delay-seconds = 1*DIGIT), so a zero-padded value is its own delay, as before BATCH10C; int() never sees more than four digits.
+        values = ('00005', '0' * 8 + '5', '00030', '00000', '0' * 4301, '0' * 4300 + '31', '000031', '0' * 4301 + '12345')
+        actual = f.outcome_of(lambda: tuple(retry_case(value) for value in values))
+        self.assertEqual(f.observe_boundary('B4', actual), ('RESULT', (
+            (OK_OUT, 2, [5]), (OK_OUT, 2, [5]), (OK_OUT, 2, [30]), (OK_OUT, 2, [0]), (OK_OUT, 2, [0]),
+            (TRANSIENT, 1, []), (TRANSIENT, 1, []), (TRANSIENT, 1, []))))
 
 
 if __name__ == '__main__':

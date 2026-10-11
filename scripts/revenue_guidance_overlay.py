@@ -868,8 +868,23 @@ def consumed_identities(producer: Mapping[str, Any] | None) -> set[tuple[str, st
     for decision in (producer or {}).get("decisions") or []:
         if decision.get("kind") == "ROUTING":
             for c in (decision.get("operands") or {}).get("consumed") or []:
-                out.add((str(c.get("channel")), str(c.get("id")), str(c.get("date"))))
+                out.add((str(c.get("channel")), str(safe_document_id(c.get("id"))), str(c.get("date"))))
     return out
+
+
+def safe_document_id(value: Any) -> Any:
+    """The persisted form of a receipt document id (BATCH10C F8). An id that is unsafe by the textual rule of
+    `revenue_guidance.unsafe_document_id` (it carries '@', '?' or '#': userinfo, a query or a fragment, whatever a URL
+    parser would make of it) is never written verbatim into detections, attempt events, consumed identities or the
+    AutoAdmissionEvidence: it becomes <shown>#sha256:<SHA-256 of the exact original>, where <shown> is the original cut
+    before its first '?' or '#' and after its last '@' (so it carries none of the three characters), at most 200
+    characters. Distinct originals stay distinct identities, the same original always maps to the same value, the form
+    is idempotent, every clean id and every non-string is returned unchanged, and the fetch layer still refuses the
+    result (URL_SHAPE: a fragment), so it can never be fetched. Receipt rows written before F8-N1 stay raw; rows are
+    compared in this form (`_material_documents`, `consumed_identities`, the reviewed list in `unaccounted`). The
+    transform and its pattern (`revenue_guidance.PERSISTED_DOCUMENT_ID_RE`) live in `revenue_guidance.persisted_document_id`
+    (BATCH10C F8-AMEND1), where the persisted form is a safe id: it never bars (`revenue_guidance.raw_unsafe_document_id`)."""
+    return revenue_guidance.persisted_document_id(value)
 
 
 def _material_documents(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -877,10 +892,11 @@ def _material_documents(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         for d in row.get("later_documents") or []:
             if isinstance(d, Mapping) and d.get("disposition") in MATERIAL:
-                key = (d.get("channel"), d.get("id"), d.get("date"))
+                safe = dict(d, id=safe_document_id(d["id"])) if "id" in d else dict(d)  # BATCH10C F8: the persisted form
+                key = (safe.get("channel"), safe.get("id"), safe.get("date"))
                 if key not in seen:
                     seen.add(key)
-                    out.append(dict(d))
+                    out.append(safe)
     return out
 
 
@@ -900,7 +916,7 @@ def unaccounted(record: Mapping[str, Any], rows: list[Mapping[str, Any]], produc
     consumed = consumed_identities(producer)
     # A human review list accounts for items of a curated record only; a machine record inherits no human disposition.
     reviewed = set() if producer is not None else {
-        str(d.get("id")) for d in record.get("reviewed_later_documents") or [] if d.get("disposition") == "REVIEWED_IRRELEVANT"}
+        str(safe_document_id(d.get("id"))) for d in record.get("reviewed_later_documents") or [] if d.get("disposition") == "REVIEWED_IRRELEVANT"}
     out = []
     for d in _material_documents(list(rows) + [{"later_documents": list(detections)}]):
         if (str(d.get("channel")), str(d.get("id")), str(d.get("date"))) in consumed or str(d.get("id")) in reviewed:
@@ -928,6 +944,14 @@ def receipt_admission(receipts: Mapping[str, Any] | None, symbol: str, record: M
                            "consumed": sorted([list(c) for c in consumed_identities(producer)]), "unaccounted": [], "decision": None}
     if not rows:
         out["decision"] = "RECEIPT_MISSING"
+        return out
+    if any(revenue_guidance.receipt_has_unsafe_document_id(r) for r in rows):
+        # BATCH10C F8: any retained row of this reference listing a raw id with userinfo, query or fragment (or a
+        # malformed list) bars the record, newest or not; an id in the persisted form never does (F8-AMEND1: the
+        # release checker writes every id so, a legacy raw row ages out within KEEP checks). It is a barrier, never an
+        # input: nothing of the row is echoed.
+        out["decision"] = "RECEIPT_DOCUMENT_ID_UNSAFE"
+        out["rows"] = []  # the public machine attachment must not carry the barred rows, so the summary lists none either
         return out
     newest = max(rows, key=lambda r: r["checked_at"])
     channels = record.get("release_channels") or {}

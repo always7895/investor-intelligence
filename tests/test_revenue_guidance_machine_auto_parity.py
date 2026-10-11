@@ -27,7 +27,7 @@ CUTOFF = datetime(2026, 2, 27, 13, tzinfo=timezone.utc)
 FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-auto-functional.json"
 
 
-def produce(root: Path) -> dict:
+def produce(root: Path, taint=None) -> dict:
     chain = replay.Chain(root)
     sequence = itertools.count(1)
     with mock.patch.object(replay.updater.secrets, "token_hex", side_effect=lambda n: f"{next(sequence):0{2 * n}x}"):
@@ -41,6 +41,8 @@ def produce(root: Path) -> dict:
             replay.updater.run(chain.state, FixtureTransport(), replay.at(instant),
                                replay.PROFILES, chain.registry, chain.approval, chain.receipts)
         chain.check("2026-02-27T12:00:00Z")
+        if taint is not None:
+            taint(chain)
     shell = json.loads((ROOT / "tests/fixtures/revenue-guidance-wire-v1-functional.json").read_text(encoding="utf-8"))
     report = json.loads(shell["expected_legacy_body"][machine.REPORT_KEY])
     report["generated_at"] = "2026-02-27T13:00:00Z"
@@ -48,7 +50,7 @@ def produce(root: Path) -> dict:
     snapshot = overlay.load_effective_inputs(cutoff=report["generated_at"], state_root=chain.state,
         registry_path=chain.registry, approval_path=chain.approval, profiles_path=replay.PROFILES,
         receipts_path=chain.receipts, symbols=symbols, allow_replay=False)
-    assert snapshot.issuer("NVDA").disposition == "AUTO_VERIFIED"
+    assert taint is not None or snapshot.issuer("NVDA").disposition == "AUTO_VERIFIED"
     resolved = machine.resolve_machine_inputs(snapshot, CUTOFF, symbols)
     claims = order_claims.load(root / "missing-synthetic-order-claims.json")
     for row in report["top"]:

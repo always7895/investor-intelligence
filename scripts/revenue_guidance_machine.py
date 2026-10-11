@@ -251,7 +251,9 @@ def make_machine_envelope(payload, symbol, resolved):
             producer = verify.canonical_json(item.producer)
             decisions = verify.canonical_json(item.producer["decisions"])
         reference = None if item.evidence["receipt"] is None else item.evidence["receipt"]["reference"]
-        history = [] if reference is None else overlay.receipt_rows(snapshot.release_checks, symbol, reference, snapshot.cutoff)
+        # BATCH10C F8: the rows of a receipt barred for an unsafe document id (admission lists no rows then) are never attached.
+        barred = item.receipt_admission is not None and item.receipt_admission["decision"] == "RECEIPT_DOCUMENT_ID_UNSAFE"
+        history = [] if reference is None or barred else overlay.receipt_rows(snapshot.release_checks, symbol, reference, snapshot.cutoff)
         attachment = {"schema": MACHINE_ATTACHMENT, "issuer": symbol, "cutoff": snapshot.cutoff,
                       "input_digest": snapshot.input_digest, "generation_id": snapshot.generation_id,
                       "generation_sha256": snapshot.generation_sha256, "identity": dict(binding.identity),

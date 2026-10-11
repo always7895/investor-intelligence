@@ -255,6 +255,52 @@ VALID_RECEIPT_CHANNELS = {"SEC_SUBMISSIONS", "WIRE_PRESS_RELEASES", "ISSUER_IR"}
 # channels without an official IR channel, plus ISSUER_IR when the registry record carries one.
 CLASSIC_RECEIPT_CHANNELS = {"SEC_SUBMISSIONS", "WIRE_PRESS_RELEASES"}
 VALID_LATER_DISPOSITIONS = {"RESULTS_RELEASE", "POSSIBLY_RELEVANT", "IRRELEVANT", "REVIEWED_IRRELEVANT"}
+# BATCH10C F8: a later-document id is an accession or a bare URL. Userinfo ('@'), a query ('?') or a fragment ('#') may
+# carry secrets and are refused by the fetch layer (URL_SHAPE) anyway, so a receipt listing one verbatim is not a usable
+# freshness proof: it recomputes to FRESHNESS_UNVERIFIED and the overlay and the updater treat it as a barrier, never as
+# input. The persisted form of such an id (`persisted_document_id`) is safe everywhere (BATCH10C F8-AMEND1): only a raw
+# unsafe id (`raw_unsafe_document_id`) bars.
+UNSAFE_DOCUMENT_ID_CHARS = "@?#"
+# The persisted form <shown>#sha256:<64 lowercase hex>, with no '@', '?' or '#' in <shown> (always matched in full).
+PERSISTED_DOCUMENT_ID_RE = re.compile(r"[^@?#]*#sha256:[0-9a-f]{64}")
+
+
+def unsafe_document_id(value: Any) -> bool:
+    """True for any later-document id that is not a plain string free of userinfo, query and fragment (fail closed:
+    a non-string id is unsafe too). This is the textual rule, so the persisted form is unsafe by it as well (it carries
+    '#'); the barrier, the updater guard and the receipt recompute use `raw_unsafe_document_id`."""
+    return not isinstance(value, str) or any(c in value for c in UNSAFE_DOCUMENT_ID_CHARS)
+
+
+def raw_unsafe_document_id(value: Any) -> bool:
+    """True for an unsafe id (see `unsafe_document_id`) that is not the persisted form (BATCH10C F8-AMEND1): the
+    persisted form flows like a clean id, a raw userinfo, query or fragment and a non-string stay unsafe."""
+    return unsafe_document_id(value) and not (isinstance(value, str) and PERSISTED_DOCUMENT_ID_RE.fullmatch(value) is not None)
+
+
+def persisted_document_id(value: Any) -> Any:
+    """The persisted form of a receipt document id (BATCH10C F8; revenue_guidance_overlay.safe_document_id): an id that
+    is unsafe by the textual rule of `unsafe_document_id` becomes <shown>#sha256:<SHA-256 of the exact original>, where
+    <shown> is the original cut before its first '?' or '#' and after its last '@' (at most 200 characters); the form is
+    idempotent, and every clean id and every non-string is returned unchanged. It lives here so the receipt recompute
+    can match a reviewed id in it (BATCH10C F8-AMEND1)."""
+    if not isinstance(value, str) or PERSISTED_DOCUMENT_ID_RE.fullmatch(value) or not unsafe_document_id(value):
+        return value
+    shown = re.split(r"[?#]", value, maxsplit=1)[0].rpartition("@")[2]
+    return f"{shown[:200]}#sha256:{hashlib.sha256(value.encode('utf-8', 'surrogatepass')).hexdigest()}"
+
+
+def receipt_has_unsafe_document_id(receipt: Any) -> bool:
+    """True when a receipt row lists a later document whose id is raw unsafe (see `raw_unsafe_document_id`; the
+    persisted form is not); malformed later_documents are unsafe as well, so no document can hide from this check."""
+    if not isinstance(receipt, Mapping):
+        return True
+    later = receipt.get("later_documents")
+    if later is None:
+        return False
+    if not isinstance(later, list):
+        return True
+    return any(not isinstance(d, Mapping) or raw_unsafe_document_id(d.get("id")) for d in later)
 # The official IR channel kinds (scripts/issuer_ir_feeds.py); the registry's release_channels.ir binds one.
 IR_CHANNEL_KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML")
 
@@ -352,6 +398,9 @@ def recompute_receipt_status(
                 if cutoff_day and r_at.date() > cutoff_day:
                     continue
                 reviewed_ids[str(rld["id"])] = "REVIEWED_IRRELEVANT"
+                # BATCH10C F8-AMEND1: the release checker writes and matches ids in their persisted form, so a review
+                # of a raw id links that form as well (a clean id is its own persisted form).
+                reviewed_ids[persisted_document_id(str(rld["id"]))] = "REVIEWED_IRRELEVANT"
 
     later_docs = receipt.get("later_documents")
     if later_docs is None:
@@ -375,7 +424,7 @@ def recompute_receipt_status(
         if not l_date or (cutoff_day and l_date > cutoff_day):
             return "FRESHNESS_UNVERIFIED"
         lid = ldoc.get("id")
-        if not isinstance(lid, str) or not clean_text(lid, 400):
+        if not isinstance(lid, str) or not clean_text(lid, 400) or raw_unsafe_document_id(lid):
             return "FRESHNESS_UNVERIFIED"
         disp = ldoc.get("disposition")
         if disp not in VALID_LATER_DISPOSITIONS:

@@ -16,7 +16,10 @@ channel is missing, failed or incomplete keeps its projection unavailable (FRESH
 Nothing found here becomes a number: a results release makes the record RESULTS_PUBLISHED and anything possibly relevant
 REVIEW_REQUIRED until the writer reviews it (`reviewed_later_documents` in the registry). A channel that fails or cannot
 be read to the guidance date makes the receipt FRESHNESS_UNVERIFIED. A run that cannot read the registry changes nothing
-(the previous receipts keep their original times and age out).
+(the previous receipts keep their original times and age out). Every later-document id is written in the persisted form
+of revenue_guidance_overlay.safe_document_id (BATCH10C F8-N1): an id with userinfo, a query or a fragment never reaches
+the receipt verbatim. The persisted form is a safe id (BATCH10C F8-AMEND1), so such a receipt states its status as any
+other receipt does (its recompute agrees) and bars nothing.
 """
 from __future__ import annotations
 
@@ -146,9 +149,10 @@ def sec_channel(cik: int, since: str, anchor_end: str, reviewed: set[str], fetch
         recent = fetch(url)["filings"]["recent"]
         forms, dates, accs = recent["form"], recent["filingDate"], recent["accessionNumber"]
         # A truncated feed is an unverified channel, never a complete one: every parallel array must be present and
-        # exactly as long as the form list (a shorter items array used to zip-truncate later filings away).
+        # exactly as long as the form list (a shorter items array used to zip-truncate later filings away). An accession
+        # becomes a receipt id, so a non-string one is a malformed feed too (BATCH10C F8-N1: no non-string id written).
         if not (isinstance(forms, list) and isinstance(dates, list) and isinstance(accs, list)
-                and len(forms) == len(dates) == len(accs)):
+                and len(forms) == len(dates) == len(accs) and all(isinstance(a, str) for a in accs)):
             raise ValueError("SEC_FEED_INCOMPLETE")
         items_raw = recent.get("items")
         reports_raw = recent.get("reportDate")
@@ -192,6 +196,7 @@ def sec_channel(cik: int, since: str, anchor_end: str, reviewed: set[str], fetch
             disposition = "POSSIBLY_RELEVANT"
         else:
             continue  # ownership, registration and proxy filings carry no revenue statement
+        accession = overlay.safe_document_id(accession)  # BATCH10C F8-N1: the persisted form (see receipt_for)
         if disposition == "POSSIBLY_RELEVANT" and accession in reviewed:
             disposition = "REVIEWED_IRRELEVANT"
         later.append({"channel": "SEC_SUBMISSIONS", "date": filed, "id": accession,
@@ -218,7 +223,7 @@ def wire_channel(symbol: str, names: list[str], since: str, reviewed: set[str], 
                 # never dropped and never auto-classified (Astra r5 item 2).
                 if day < since or not any(name.lower() in title.lower() for name in names):
                     continue
-                item_id = "https://www.nasdaq.com" + str(row.get("url") or "")
+                item_id = overlay.safe_document_id("https://www.nasdaq.com" + str(row.get("url") or ""))
                 relevant = is_wire_title_possibly_relevant(title)
                 disposition = "POSSIBLY_RELEVANT" if relevant else "IRRELEVANT"
                 if day == since and relevant:
@@ -256,7 +261,7 @@ def ir_channel(ir_spec: Mapping[str, Any], ir_title: str, since: str, today: dat
         channel["complete"] = False
     later: list[dict] = []
     for item in result["items"]:
-        day, title, item_id = str(item["date"]), str(item["title"]), str(item["id"])
+        day, title, item_id = str(item["date"]), str(item["title"]), overlay.safe_document_id(str(item["id"]))
         if day == since:
             if title == ir_title:
                 continue  # the guidance release itself, not a later document
@@ -287,7 +292,9 @@ def receipt_for(record: Mapping[str, Any], now: datetime, sec_fetch: Callable[[s
     if not ref_doc_id or ref_doc_id not in docs_by_id:
         return None
     since, anchor_end = docs_by_id[ref_doc_id]["published_date"], quarters[-1]["end"]
-    reviewed = {str(r.get("id")) for r in record.get("reviewed_later_documents") or [] if r.get("disposition") == "REVIEWED_IRRELEVANT"}
+    # BATCH10C F8-N1: reviewed ids compare in the persisted form the ids are written in (as overlay.unaccounted does).
+    reviewed = {str(overlay.safe_document_id(r.get("id"))) for r in record.get("reviewed_later_documents") or []
+                if r.get("disposition") == "REVIEWED_IRRELEVANT"}
     # The official IR channel (Astra W1 ruling): present when the record names a known kind, an https feed URL and the
     # reviewed guidance-release title; a missing title makes the channel unusable, never a silent skip.
     ir_spec = channels.get("ir")
@@ -311,7 +318,11 @@ def receipt_for(record: Mapping[str, Any], now: datetime, sec_fetch: Callable[[s
             channel["checked_through"] = now.date().isoformat()
     later = sorted(sec_later + wire_later + ir_later, key=lambda d: (d["date"], d["channel"], d["id"]))
     dispositions = {d["disposition"] for d in later}
-    if any(c["status"] != "OK" or not c["complete"] for c in all_channels):
+    # BATCH10C F8-N1 / F8-AMEND1: every listed id is in its persisted form, which is a safe id; one that is still raw
+    # unsafe would be no freshness proof, and the receipt would say so itself, exactly as
+    # revenue_guidance.recompute_receipt_status recomputes it.
+    if any(c["status"] != "OK" or not c["complete"] for c in all_channels) or any(
+            revenue_guidance.raw_unsafe_document_id(d["id"]) for d in later):
         status = "FRESHNESS_UNVERIFIED"
     elif "RESULTS_RELEASE" in dispositions:
         status = "RESULTS_PUBLISHED"

@@ -100,6 +100,11 @@ ALWAYS_FIXTURES = (
     "tests/fixtures/v213-orders-v3-probes.json",
     "tests/fixtures/v213-r75-publication-mode/all-limited.json",
     "tests/fixtures/v213-r75-publication-mode/mixed.json",
+    "tests/fixtures/identity-batch04-functional.json",
+    "tests/fixtures/revenue-guidance-machine-auto-functional.json",
+    "tests/fixtures/revenue-guidance-machine-barrier-functional.json",
+    "tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json",
+    "tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json",
 )
 
 
