@@ -215,7 +215,8 @@ class ModelProfileTests(unittest.TestCase):
             req = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/v1/chat/completions',
                 data=json.dumps(body).encode(), headers={'content-type': 'application/json', 'x-investor-shared-secret': auth})
             try:
-                result = urllib.request.urlopen(req, timeout=5)
+                # Direct to the in-process gateway, never through a host proxy (urllib reads the Windows registry proxy).
+                result = urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=5)
             except urllib.error.HTTPError as exc:
                 result = exc
             with result:

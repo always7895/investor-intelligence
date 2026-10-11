@@ -132,7 +132,8 @@ class GatewayIntegrationTests(unittest.TestCase):
                 request = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
                                                  data=json.dumps(self.body()).encode(),
                                                  headers={"content-type": "application/json", "x-investor-shared-secret": auth})
-                with urllib.request.urlopen(request, timeout=10) as result:
+                # Direct to the in-process gateway, never through a host proxy (urllib reads the Windows registry proxy).
+                with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=10) as result:
                     return result.status, json.load(result), upstream.call_args_list
             finally:
                 server.shutdown(); server.server_close(); thread.join(timeout=5)

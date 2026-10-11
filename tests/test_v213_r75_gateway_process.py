@@ -97,7 +97,8 @@ def request(url: str, *, body: dict | None = None, secret: str = "") -> tuple[in
         headers["x-investor-shared-secret"] = secret
     req = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
     try:
-        response = urllib.request.urlopen(req, timeout=5)
+        # Direct to the gateway under test, never through a host proxy (urllib reads the Windows registry proxy).
+        response = urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=5)
     except urllib.error.HTTPError as exc:
         response = exc
     with response:

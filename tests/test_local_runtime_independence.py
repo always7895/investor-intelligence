@@ -452,6 +452,39 @@ class C_D_AlternateIdentityTests(_LocalRuntimeBase):
         # Same business code; model label is diagnostic/selection only.
         self.assertEqual(gw.capability_report("fixture-reasoner-alt-q5")["capability"], "READY")
 
+    def test_served_model_changes_to_an_unrelated_id_on_another_port_and_the_gateway_labels_the_served_id(self):
+        # What the bridge does after the resolver follows a swap: the new base and the SERVED id are handed to the gateway
+        # (II_LLAMA_BASE_URL / II_LOCAL_LLM_MODEL). Real gateway handler, fake loopback servers, synthetic ids.
+        moved = ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
+        moved.behavior = {"model": "synthetic-served-unrelated-x"}
+        moved.calls = []
+        moved.product_calls = []
+        threading.Thread(target=moved.serve_forever, daemon=True).start()
+        try:
+            self.assertEqual(self.chat()[0], 200)  # the previous model on the previous port
+            before = len(self.upstream.calls)
+            os.environ["II_LLAMA_BASE_URL"] = f"http://127.0.0.1:{_port(moved)}"
+            os.environ["II_LOCAL_LLM_MODEL"] = "synthetic-served-unrelated-x"
+            status, body = self.chat(model="synthetic-served-unrelated-x")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["model"], "synthetic-served-unrelated-x")  # replies carry the model actually served
+            self.assertTrue(moved.calls)
+            self.assertEqual(len(self.upstream.calls), before)  # the old server is not used any more
+            status, body = self.chat(model="fixture-reasoner-v2")  # a caller naming another model is refused, never relabelled
+            self.assertEqual(status, 409)
+            self.assertEqual(body["error"], "MODEL_PIN_MISMATCH")
+        finally:
+            moved.shutdown()
+            moved.server_close()
+
+    def test_no_configured_model_and_no_follow_pin_is_unavailable_never_a_hardcoded_or_cloud_fallback(self):
+        os.environ.pop("II_LOCAL_LLM_MODEL", None)
+        self.assertEqual(gw.selected_model_id(), "")  # the shipped config carries no id
+        before = len(self.upstream.calls)
+        status, body = self.chat(model="anything-else")
+        self.assertEqual((status, body["error"]), (503, "SELECTED_MODEL_NOT_CONFIGURED"))
+        self.assertEqual(len(self.upstream.calls), before)  # nothing was forwarded to any server
+
     def test_alternate_decider_identity_via_config_drives_actual_http(self):
         # Config-swapped decider endpoint + identity driving the ACTUAL
         # gateway HTTP path (legacy lane) and the compact lane; the decider
@@ -580,7 +613,8 @@ class E_FailClosedNegativesTests(_LocalRuntimeBase):
                     method="POST",
                 )
                 try:
-                    with urllib.request.urlopen(r, timeout=10) as resp:
+                    # Control client direct to the gateway, never through a host proxy.
+                    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(r, timeout=10) as resp:
                         status, body = resp.status, json.loads(resp.read().decode())
                 except urllib.error.HTTPError as exc:
                     status, body = exc.code, json.loads(exc.read().decode() or "{}")
@@ -645,7 +679,11 @@ class F_ReviewGapClosureTests(_LocalRuntimeBase):
         shipped = SCRIPTS.parent / "config" / "local-runtime-independence-v1.json"
         cfg = json.loads(shipped.read_text(encoding="utf-8-sig"))
         self.assertEqual(cfg["primary_reasoner"]["base_url"], "http://127.0.0.1:8080/v1")
-        self.assertEqual(cfg["primary_reasoner"]["model"], "qwen3.8-flash-next-iq3_s")
+        # Operator 2026-10-11: nothing is hardcoded. The configured id is empty (a hint address only) and the model is chosen by
+        # detection (saved selection, then what is actually served); no shipped config value names a served model.
+        self.assertEqual(cfg["primary_reasoner"]["model"], "")
+        self.assertEqual(cfg["primary_reasoner"]["model_selection"], "FOLLOW_DETECTED")
+        self.assertNotIn("qwen3.8-flash-next-iq3_s", shipped.read_text(encoding="utf-8-sig"))
         self.assertEqual(cfg["decision_router"]["model"], "Mapika-decider-2b-v9")
         self.assertEqual(cfg["decision_router"]["alias_diagnostic_only"], "decider-v8")
 
@@ -749,7 +787,10 @@ class F_ReviewGapClosureTests(_LocalRuntimeBase):
                  patch.object(v212, "collect_world_bank", return_value=ok("world_bank_indicators")), \
                  patch.dict(os.environ, {"II_LLAMA_BASE_URL": f"http://127.0.0.1:{_port(self.upstream)}",
                                          "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy, "ALL_PROXY": proxy}):
-                health = urllib.request.urlopen(f"http://127.0.0.1:{_port(server)}/health", timeout=10)
+                # Control client: explicit no-proxy opener, so only the gateway's own AI transport meets the proxy env
+                # (otherwise this request itself would go to the proxy server instead of the gateway).
+                direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                health = direct.open(f"http://127.0.0.1:{_port(server)}/health", timeout=10)
                 self.assertEqual(health.status, 200)
                 self.assertTrue(json.loads(health.read().decode())["llama_reachable"])
                 r = urllib.request.Request(
@@ -759,7 +800,7 @@ class F_ReviewGapClosureTests(_LocalRuntimeBase):
                     headers={"content-type": "application/json", "x-investor-shared-secret": TEST_SECRET},
                     method="POST",
                 )
-                with urllib.request.urlopen(r, timeout=10) as resp:
+                with direct.open(r, timeout=10) as resp:
                     self.assertEqual(resp.status, 200)
                     self.assertEqual(json.loads(resp.read().decode())["model"], self.behavior["model"])
         finally:

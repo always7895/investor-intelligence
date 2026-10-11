@@ -944,9 +944,9 @@ class V213GatewayHandler(base.GatewayHandler):
             return
         selected = runtime_profile['model'] if runtime_profile else os.getenv("II_LOCAL_LLM_MODEL", "").strip()
         try:
-            response = requests.get(
+            response = _LOOPBACK_SESSION.get(  # loopback AI HTTP: never a host proxy (env or registry)
                 base.llama_base_url() + "/health",
-                timeout=(2, 5),
+                timeout=(2, 5), proxies={"http": None, "https": None},
             )
             upstream_health = response.ok
         except Exception:
@@ -1263,7 +1263,9 @@ def verify_served_model(host: str, deadline_seconds: float = 30.0) -> None:
     last_seen: list[str] = []
     while True:
         try:
-            response = requests.get(url, timeout=(2, 6), allow_redirects=False)
+            # Loopback AI HTTP: never a host proxy (env or the Windows registry proxy requests would read).
+            response = _LOOPBACK_SESSION.get(url, timeout=(2, 6), allow_redirects=False,
+                                             proxies={"http": None, "https": None})
             rows = response.json().get("data", [])
             rows = rows if isinstance(rows, list) else []
             last_seen = [
