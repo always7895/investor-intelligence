@@ -61,22 +61,79 @@ output budgets and preservation of non-Delta rows. Private-copy mutation checks 
 `tests/test_batch06_mutations.py`. These are not real dataset-11321 compatibility, rights,
 transport-origin authentication or live collection proofs.
 
-`scripts/task-templates/taifex-options-eod.disabled.xml` is an inert, opt-in **template**,
-not an installer or registration command. Both task and trigger are disabled. No project
-entrypoint loads/registers it; no default collection changes. Its only action names the
-existing local collector with explicit `--fetch --source taifex_options_eod`. A separately
-reviewed/authorized copy must supply the exact Python/source paths, local start boundary
-and local output file (outside repository/installed/Production storage); the unresolved
-placeholders deliberately prevent direct use. Do not enable or register it without new
-scheduling authority. `tests/test_batch06_taifex_task.py` parses the action and fake-runs
-the real collector/writer in process, with an injected fixture transport and disposable
-output; it never calls Windows Task Scheduler. This is not installed-action/native proof.
+### O10 local collection task (authorized 2026-10-11; not registered yet, rollout v10)
+
+`scripts/task-templates/taifex-options-eod.disabled.xml` stays an inert, disabled **template** with placeholders.
+`scripts/register_taifex_options_eod_task.ps1` (library `scripts/taifex_options_eod_task.ps1`) is the only entrypoint
+that renders it, and it is opt-in: no installer or default refresh calls it, and the operator-authorized rollout runs it
+once. It registers `InvestorIntelligence-TaifexOptionsEod`: one daily local trigger (default 17:30), interactive token,
+least privilege, no password, five minute limit, `StartWhenAvailable` left at the template's false (a run missed while the host was off is skipped, so no catch-up lands in the 07:45-08:30 window; the next day's run replaces the file). Its single action is
+`<python> -I -B -X utf8 <SourceRoot>/scripts/fetch_public_source_observations.py --fetch --source taifex_options_eod --output
+<DataRoot>/taifex-options-eod-latest.json`, with `DataRoot` = `%LOCALAPPDATA%\InvestorIntelligence\local-observations\taifex`
+(outside the installed payload; each run atomically replaces the file, so only the latest observation set is kept).
+
+- Registration refuses when any `__PLACEHOLDER__` remains, a path is relative, contains `..`, quotes or placeholders, the
+  Python or collector file is missing, the output is not a `.json` under `DataRoot`, `DataRoot` and the installed payload
+  contain one another, or any output path segment is named like Production/publication storage (`production`, `kv`,
+  `public`, `sealed`, `cloud`, `_workspace`, ...). Times from 07:45 to 08:30 are refused (08:00 briefing/Worker window).
+- It is idempotent (`-Force` re-registration of an identical definition), captures the previous definition first and
+  restores it (or unregisters a fresh task) when the readback of action, arguments, working directory, trigger or
+  enabled flags differs. `-Unregister` removes only this task and keeps collected files; `-ValidateOnly` renders and checks
+  without touching the scheduler.
+- Time choice: the regular session closes 13:45 and the TAIFEX daily options report attributes the after-hours session
+  (15:00 to 05:00 next day) to the next trade date. Neither the TAIFEX report page nor data.gov.tw dataset 11320 (update
+  frequency "every 1 day") states an exact publication time; the only official timing found (a 2021 TAIFEX rule for the
+  institutional statistics, not re-verified) puts open-interest figures at about 15:00. 17:30 is therefore a conservative
+  margin of two and a half hours, not an official guarantee. Every item carries its own `trade_date`, and a run that finds
+  an earlier date records that date; nothing is inferred from the run time.
+- Rights: dataset 11320 is under 政府資料開放授權條款-第1版 (free, attribution), reviewed in
+  [PUBLIC_SOURCE_RIGHTS_REVIEW_20260909](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md). The task selects only `taifex_options_eod`
+  (dataset 11320); dataset 11321 (Delta) is not collected by any schedule and its rights remain an open item.
+- Honest limits: collection only. Output is `publication_eligible=false`, `line_quote_eligible=false`,
+  `executable_quote=false`; nothing reads the file for publication, KV or LINE. The task runs only while the owning user is
+  logged on. `tests/test_taifex_task_registration.py` drives the real registration code over a fake scheduler; it is not
+  native Task Scheduler proof, which is the rollout readback (task exists with the expected action/trigger, first run result).
+  `tests/test_batch06_taifex_task.py` still fake-runs the real collector/writer in process.
+
+### O10 activation plan (PLAN ONLY: registers nothing, enables nothing)
+
+This section is a source-bound plan that a Fable 5.1 review and then the operator's explicit current-session authorization must clear before anything is registered. Registering or enabling the task changes the installed runtime's schedules and is a separate authorization; the operator gave it on 2026-10-11 for rollout v10 (`state/STATUS.md`), which has not run, so nothing is registered. `scripts/register_taifex_options_eod_task.ps1` (O10 local collection task above) renders the template and registers the task enabled in one step; the values below are its defaults unless the operator passes `-DailyTime` or `-DataRoot`. Collected rows stay local (`publication_eligible=false`); while public display is blocked by O11/O12 ([scope decision, design only](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md)) the operator may reasonably decline activation.
+
+O10 template arguments (byte-equal to the XML): `-I -B -X utf8 "__SOURCE_ROOT__/scripts/fetch_public_source_observations.py" --fetch --source taifex_options_eod --output "__LOCAL_OUTPUT__"`
+
+`tests/test_batch06_taifex_task.py` compares the line above with the template's `Arguments` text. `<LOCALAPPDATA>` below stands for the operator profile's local application data directory; the registered copy must contain the literal absolute path with forward slashes, because Task Scheduler does not reliably expand user environment variables in `Arguments`.
+
+| Template placeholder | Resolved value (plan) | Source of the value |
+| --- | --- | --- |
+| `__PROJECT_PYTHON__` (`Command`) | `<LOCALAPPDATA>/InvestorIntelligence/Runtime/Python-3.12.10/python.exe` | `python_executable` of the installed `install-state.json`; the file existed when read on 2026-10-11 |
+| `__SOURCE_ROOT__` (`Arguments`, `WorkingDirectory`) | `<LOCALAPPDATA>/InvestorIntelligence/V213Runtime` | Installed source root that holds `scripts/fetch_public_source_observations.py`; the script puts its own directory on `sys.path`, so `-I` works |
+| `__LOCAL_OUTPUT__` | `<LOCALAPPDATA>/InvestorIntelligence/local-observations/taifex/taifex-options-eod-latest.json` (registrar default `DataRoot`) | Outside the repository, the installed payload (`V213Runtime`), the workspace and any Production or public storage; the registrar refuses a `DataRoot` that contains or lies inside the installed payload, and the collector creates the parent directory |
+| `__LOCAL_START_BOUNDARY__` | `<registration day>T17:30:00` local time, daily (registrar default `-DailyTime 17:30`) | After the 13:45 Taiwan day-session close, clear of the 07:20/20:20 local refresh tasks, the 08:00 `InvestorDailyBriefing` window and the 21:00 schedule; the operator may pass another `-DailyTime` (07:45 to 08:30 is refused) |
+
+Fixed by the template and unchanged: principal `Collector` with `InteractiveToken` and `LeastPrivilege` and no `UserId` (the task registers under the operator's own account and runs only while that account is logged on), `MultipleInstancesPolicy` `IgnoreNew`, `StartWhenAvailable` false (a missed run is skipped, not replayed), `WakeToRun` false, `ExecutionTimeLimit` `PT5M`, one `Exec` action. The only network access is the public HTTPS read of the TAIFEX open-data host named in `scripts/provider_runtime_hook.py`; no credential is used.
+
+One fixed output file means each run replaces the previous one (the writer is a same-directory temporary file plus `os.replace`; a failed run leaves the previous file intact). History is not kept by the task; keeping any run requires a separate reviewed step. This limitation is part of the plan, not hidden.
+
+**Pre-checks (all must hold, otherwise stop).**
+
+1. Installed collector equals source. Observed 2026-10-11: the installed `V213Runtime/scripts/fetch_public_source_observations.py` has SHA-256 `f574c85bd2914ac248fee210e29a896a039299c84dde48443cdafd4e7cf962f9`, the committed source at `f7d6353` has `6af912a11384d5e2045b8ebd2ac263fa967b29ef552a2ad00a3e1892711c78c9`, and the installed `LOCAL-SOURCE-REFS.json` names source commit `e0492613f6d1` exported 2026-09-28. The check therefore FAILS today. Activation first needs the logged installed-payload sync (back up the old bytes to `_archive/instruction-sync-<UTC>/` with a RECEIPT, then copy the committed source) and a hash comparison of the collector's whole import closure (the collector, `scripts/adapters/*`, `scripts/taifex_contract.py`, `scripts/source_observation.py` and whatever the then-current imports name), listed from the source at plan time.
+2. The Python path and source root above exist; `--output` parent is outside the repository, the installed tree and Production storage.
+3. No `InvestorDailyBriefing`, refresh or rollout window overlaps the trigger; no registered task of the same name exists.
+4. The XML registered is the registrar's render of the template: only the four placeholders replaced (it refuses any that remain) and both Enabled values set true in the same authorized step (registration and enabling are one step; the readback refuses a disabled task or trigger); its action `Arguments` equal the line above after substitution.
+
+**Post-run verification (first manual run, then each scheduled run).** Task Scheduler last result 0; stdout summary line shows `publication_eligible` false; the output file parses as JSON with top-level `status` `OK`, a source row (health row) for `taifex_options_eod` with status OK and zero warnings, `publication_eligible` false at the top level, `item_count` greater than zero and of the same order as the first manual run (12,488 rows were observed for 2026-09-09; the exact count varies by date and is not a pass bound), every item with `line_quote_eligible` false, `executable_quote` false and `quote_time` null, a single `trade_date` inside the collector's seven-calendar-day ceiling, and no other source or Production path touched. A failure or deviation is recorded and the task is disabled; there is no retry loop.
+
+**Rollback.** Disable then unregister the task (export its XML first as a receipt); leave the output directory in place as evidence; if the installed-payload sync was part of the activation, restore the backed-up preimage from `_archive/instruction-sync-<UTC>/` through the same logged sync. Nothing else (Worker, KV, LINE, other tasks) is touched, so nothing else needs rolling back.
+
+**Authorization list (each explicit, current session, operator).** (1) The installed-payload sync, if the pre-check fails. (2) Registering and enabling the task with the resolved values above and the exact trigger time (one registrar step). (3) The first manual run. The operator's 2026-10-11 decision covers O10 activation through the installer or a logged installed-payload change within rollout v10 (`state/STATUS.md`); none of these steps has run. Not covered: any Production Worker, KV, storage or schedule change, any LINE delivery, adding the feed to default sources, and any public display. The paragraph for `docs/OPERATOR_RUNBOOK.md` is a separate documentation request.
 
 Public EOD option display remains BLOCKED by the separate O12 rights/scope contract:
 only delayed quotes and metadata-only coverage have public contracts, neither permits
 EOD/Delta values. All public admissions remain NONE. JP/HK/EU/AU adapter work (O5) waits
 for a pinned official wire specification from a separate bounded research task; no
 provider format is invented and no adapter or rights decision is added here.
+
+The public-EOD options (keep local-only versus a date-only reference surface) are laid out for the operator in [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md); it is design only, grants no rights or admission and changes no code or catalog.
 
 ## Independent delivery paths to investigate
 

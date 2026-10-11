@@ -44,13 +44,16 @@ class TaifexTaskTests(unittest.TestCase):
         self.assertEqual(shlex.split(action.findtext('t:Arguments', namespaces=NS)), [
             '-I', '-B', '-X', 'utf8', '__SOURCE_ROOT__/scripts/fetch_public_source_observations.py',
             '--fetch', '--source', 'taifex_options_eod', '--output', '__LOCAL_OUTPUT__'])
-        # No product entrypoint refers to this template/directory. Existing XML
-        # registration branches restore exported task preimages, not template files.
+        # The template stays inert. Exactly one product entrypoint (the O10 registrar and its library) renders it; no
+        # other entrypoint refers to the template or directory (tests/test_taifex_task_registration.py covers the registrar).
+        allowed = {'register_taifex_options_eod_task.ps1', 'taifex_options_eod_task.ps1'}
         paths = list(ROOT.glob('*.ps1'))
         for directory in (ROOT / 'scripts', ROOT / 'launcher'):
             for suffix in ('*.ps1', '*.py', '*.cs'):
                 paths.extend(directory.rglob(suffix))
         for path in paths:
+            if path.name in allowed:
+                continue
             text = path.read_text(encoding='utf-8-sig')
             self.assertNotIn('taifex-options-eod.disabled.xml', text, str(path))
             self.assertNotIn('task-templates', text, str(path))
@@ -87,6 +90,15 @@ class TaifexTaskTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue())['item_count'], 1)
         self.assertNotIn(fixture.EOD, fixture.collector.DEFAULT_SOURCES)
         self.assertNotIn(fixture.DELTA, fixture.collector.DEFAULT_SOURCES)
+
+    def test_documented_o10_arguments_equal_template_arguments(self):
+        text = (ROOT / 'docs/OPTIONS_SOURCE_REVIEW.md').read_text(encoding='utf-8')
+        marker = 'O10 template arguments (byte-equal to the XML): `'
+        self.assertEqual(text.count(marker), 1)
+        start = text.index(marker) + len(marker)
+        documented = text[start:text.index('`', start)]
+        action = read_template().find('t:Actions/t:Exec', NS)
+        self.assertEqual(documented, action.findtext('t:Arguments', namespaces=NS))
 
     def test_without_fetch_flag_cli_stops_before_transport_or_write(self):
         with tempfile.TemporaryDirectory() as tmp:
