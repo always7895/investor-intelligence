@@ -142,11 +142,12 @@ admission and production flags remain false; global P0 is NOT_REAUDITED and capa
 
 | File | Role |
 | --- | --- |
-| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: the enumerated source/event/actuals adapter (`SEC_8K_202_INLINE_XBRL_V1` plus source-only inactive/unqualified `NBIS_6K_TABLE_REAFFIRMATION_V1`; other values refuse), enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs writer + Astra review. |
+| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: the enumerated source/event/actuals adapter (`SEC_8K_202_INLINE_XBRL_V1` plus source-only inactive/unqualified `NBIS_6K_TABLE_REAFFIRMATION_V1`; other values refuse), enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs the writer and an independent Fable 5.1 review. |
 | `scripts/revenue_guidance_auto_verify.py` | Pure verifier: captured bytes of one results event + profile + predecessor -> successor record and one decision per input, or a typed WAITING/BLOCKED outcome. No network, no writes, no clock. |
 | `scripts/revenue_guidance_overlay.py` | State root: content-addressed captures, immutable generations, pointer; admission by re-derivation (`admit`, shared by readers and the updater); per-issuer resolution at a cutoff; the release-check gate. |
 | `scripts/revenue_guidance_autoupdate.py` | Updater: reads the release-check cache, discovers the results filing, captures under hard limits, runs the verifier, publishes generations. CLI with an explicit state root and a hermetic replay mode. |
 | `tests/test_revenue_guidance_autoupdate.py` | Replay chains through the real checker, adversarial cases, transport, lock, CLI and state tests. |
+| `tests/test_revenue_guidance_autoupdate_b0.py` | B0 segment, admission and bound tests (`B0Tests`), split out of `tests/test_revenue_guidance_autoupdate.py` so each module stays inside the complete gate's per-module time limit. |
 | `scripts/revenue_guidance_preview.py` | Local in-memory diagnostic preview (`build_report_bundle`): a pure projection over already loaded `build_v3` results with a deterministic human worklist (see below). |
 | `tests/fixtures/revenue-guidance-autoupdate/` | Public SEC, IR and wire bytes (gzip, named by the SHA-256 of the exact entity bytes), `inventory.json` with the genuine capture instants, `bootstrap-registry.json` (test baseline). Built by `tests/fixtures/make_revenue_guidance_autoupdate_fixtures.py` and `make_revenue_guidance_autoupdate_bootstrap.py` from the writer's capture directory `_workspace\audit-runtime\autoupdate-fixtures`. |
 
@@ -282,6 +283,9 @@ is implied. All functions must be implemented before final verification is opene
   `__fspath__`, temporary-directory facade or arbitrary file callback. Every capture/metadata/segment/generation,
   pointer, config/code/history read and usage/queue/receipt write uses actual held capabilities or their bounded
   captured bytes. Mutable publication compares the actual captured expected identity/bytes and reads back;
+  the usage journal (`store_usage.json`) is captured before it is read, so its reservation and reconcile writes compare the
+  bytes the caller read, and the settle write is refused (`STORE_ACCOUNTING_CHANGED`) when the journal is no longer the bytes
+  the same call wrote;
   immutable publication uses exact B1 names with independent 32-byte content digests. Existing metadata is admitted
   and deliberately reused with its **original** retrieved_at. The financial validators/admission/snapshot assembler
   are shared with explicit legacy callers; there is no legacy fallback inside the capability branch.
@@ -472,7 +476,7 @@ review pending. At that snapshot tests/imports/dot-source/AST/parser/compile/gat
 
 This is source-only composition, NOT execution/functional/ABI/NTFS/security/lifetime/durability/network or
 end-to-end acceptance. Real approved installation, runtime principal, initialized enrollment, independently
-selected genuine public data, platform qualification and fresh same-snapshot writer+Astra acceptance remain
+selected genuine public data, platform qualification and fresh same-snapshot acceptance by the writer and the independent reviewer (Fable 5.1; holders: `state/STATUS.md`) remain
 later prerequisites. No source installer/enrollment/task change, runtime activation, Worker publication, LINE
 delivery, credentials, model/GPU mutation or trades occurred. Stable gir1 is distinct from B1 `input_digest`;
 no manual `EffectiveInputs`/seal construction. Ready/admission/capacity/publication/release flags remain false.
@@ -589,7 +593,7 @@ release check (existing checker, over the effective records)
 | --- | --- | --- |
 | `CURATED` | No automatic attempt yet: the curated record with its human approval. | usable after the gate |
 | `AUTO_VERIFIED` | Admitted machine-verified successor. | usable after the gate |
-| `WAITING` | Detected event waiting: `EVENT_DETECTED`, `WAITING_PERIODIC_FILING`, `CALENDAR_ALLOCATION_UNPROVEN`, `INCOMPLETE_EVENT_COVERAGE` (IR copy not listed yet), `EVENT_UNRESOLVED`, `NETWORK_UNAVAILABLE` (since BATCH10C, `2c6ca5d0`, a URL for which `urlsplit` or its port raises `ValueError`, for example a port above 65535, waits here with the fixed detail `URL_SHAPE`, never the URL, and no new reason code; the older shape branch (wrong scheme, userinfo, port, query or fragment) echoes only `scheme://host[:port]/path` since lane B10C-F1, never userinfo, query or fragment (`tests/test_revenue_guidance_url_redaction.py`); reached end to end in that lane's synthetic test, `main` exit 0; `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`), `CAPTURE_LIMIT`. Retried by later ordinary runs; an unchanged wait writes nothing. | suspended |
+| `WAITING` | Detected event waiting: `EVENT_DETECTED`, `WAITING_PERIODIC_FILING`, `CALENDAR_ALLOCATION_UNPROVEN`, `INCOMPLETE_EVENT_COVERAGE` (IR copy not listed yet), `EVENT_UNRESOLVED`, `NETWORK_UNAVAILABLE` (since BATCH10C, `2c6ca5d0`, a URL for which `urlsplit` or its port raises `ValueError`, for example a port above 65535, waits here with the fixed detail `URL_SHAPE`, never the URL, and no new reason code; the same wait, kept by decision, also covers the REQUIRED official IR copy when the feed item id carries `?`, `#` or `@`: its persisted id `<shown>#sha256:<hex>` is refused by `url_rule` because of the fragment, so the attempt waits with detail `URL_SHAPE` (echo bounded to 120 characters) on every run while the feed lists that link, and the user-visible state is the stale wait, not a block; only the optional wire copy is dropped instead of waiting; the older shape branch (wrong scheme, userinfo, port, query or fragment) echoes only `scheme://host[:port]/path` since lane B10C-F1, never userinfo, query or fragment (`tests/test_revenue_guidance_url_redaction.py`); reached end to end in that lane's synthetic test, `main` exit 0; `R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt`, `R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt`), `CAPTURE_LIMIT`. Retried by later ordinary runs; an unchanged wait writes nothing. | suspended |
 | `BLOCKED` | Deterministic refusal: `WITHDRAWAL`, `RESTATEMENT`, `REVISION`, `AMBIGUOUS`, `PERIOD_MISMATCH`, `UNIT_MISMATCH`, `SOURCE_DISAGREEMENT`, `NO_MATCH`, `UNSUPPORTED_TEMPLATE`, `OUT_OF_ORDER`, `CALENDAR_RULE_UNPROVEN`, `ACTUAL_NOT_FOUND`, `RELEASE_ROW_NOT_FOUND`, `INPUT_MISSING`, `INPUT_MALFORMED`, `RECORD_INVALID`, `APPROVAL_BINDING`, `STATE_CORRUPT`, ... Not re-fetched; a later results release can still renew the issuer. | suspended |
 | `SUSPENDED` | Usable record whose release check is missing, invalid, stale, incomplete or lists an unaccounted material document (`RECEIPT_*`), or whose detection set overflowed (`DETECTIONS_OVERFLOW`). | suspended |
 
@@ -626,8 +630,8 @@ of the optional wire copy leaves it unconsumed and the event is planned without 
 page (for example HTTP 404), a redirect, a content type, encoding or size cap, a non-public address, a URL that
 `url_rule` refuses (`URL_SHAPE`, `PATH_ENCODING`, an unlisted host or path), or in replay a missing recording. The wire
 document then stays unaccounted, so the issuer stays suspended at admission for that release until a later producer's
-filing day passes it. A deterministic refusal deliberately does not wait (BATCH10C F3, accepted by design): the same URL
-would refuse on every run and a wait never settles, so waiting would stall the issuer for every later quarter. An issuer whose history cannot be read (for example a missing or
+filing day passes it. A deterministic refusal of the optional wire copy deliberately does not wait (BATCH10C F3, accepted by design): the same URL
+would refuse on every run and a wait never settles, so waiting would stall the issuer for every later quarter. The REQUIRED official IR copy is the exception and stays WAITING by decision: its fetch is not guarded, so a `url_rule` refusal of its persisted `#sha256:` id surfaces as `NETWORK_UNAVAILABLE` with detail `URL_SHAPE`; the attempt is retried each run and settles only when the feed stops listing that link or an admitted producer with a later filing day (`routing_filed`) drops the event; a later results filing does not supersede it, because the lead is the oldest unresolved event (turning it into a block would change the user-visible label and needs a rollout). An issuer whose history cannot be read (for example a missing or
 altered segment) is carried forward unchanged as its own fail-closed barrier while the other issuers keep committing.
 A release receipt is a barrier, never an input, when a `later_documents` id carries userinfo (`@`), a query (`?`) or
 a fragment (`#`) raw, that is, not in the persisted form below, or when the list is malformed (BATCH10C F8;
@@ -651,7 +655,7 @@ does: when the admitted producer consumes it, or when a later producer's filing 
 before the admitted producer's filing day, `routing_filed`, are dropped by `admit` and by the updater's detection
 phase). A lead that carries the persisted form is refused by `url_rule` (`URL_SHAPE`) as its original would be and
 can never be fetched: `plan_event` drops such a wire copy as above (it does not wait), and the wire document stays
-unaccounted. The public machine attachment of a barred record carries no receipt history and its admission summary
+unaccounted; a required IR copy with such an id waits instead (`NETWORK_UNAVAILABLE`, detail `URL_SHAPE`, see above). The detail is `URL_SHAPE <scheme>://<host>[:port]<path>` (no query, fragment or digest; bounded to 120 characters), the wait repeats on every run while the feed lists that link and lifts when the feed stops listing it or an admitted producer with a later filing day (`routing_filed`) drops the event (as above), and the issuer stays suspended either way (BATCH10C F3, decision `R/DECISION-B10C-F3-URL_SHAPE-WAIT.md`; the raw link waited identically before F8). The public machine attachment of a barred record carries no receipt history and its admission summary
 lists no rows. The release checker writes every later-document id in this persisted form too (BATCH10C F8-N1: SEC
 accessions, wire and IR item ids alike, through `overlay.safe_document_id`) and compares the record's
 `reviewed_later_documents` in it, so a receipt written since lists no such id verbatim, neither in `receipts.json`
@@ -660,9 +664,11 @@ The persisted form never bars (BATCH10C F8-AMEND1): it is a safe id for `receipt
 `recompute_receipt_status` and the checker's own status alike, so such a receipt states the status a clean id would
 give it (its recompute agrees); the Worker's receipt recompute applies the same rule (a non-string id, or one with
 `@`, `?` or `#` that is not the persisted form `^[^@?#]*#sha256:[0-9a-f]{64}$`, is `FRESHNESS_UNVERIFIED`), and an SEC
-feed whose accession list holds a non-string makes the SEC channel `FAILED`. A feed that keeps listing a link with a
-query or a fragment therefore never stalls the issuer (every new row lists the persisted form; before F8-AMEND1 that
-form barred, no row ever aged out and the issuer waited for every later quarter). A raw id bars only while a legacy
+feed whose accession list holds a non-string makes the SEC channel `FAILED`. A feed that keeps listing a wire link with a
+query or a fragment therefore never stalls the issuer through the wire copy (the wire copy is dropped; every new row lists the
+persisted form; before F8-AMEND1 that form barred, no row ever aged out and the issuer waited for every later quarter). A required
+IR copy in that form waits instead, and because only `VERIFIED` and `BLOCKED` settle an event and the oldest unsettled event is
+served first, the later quarters stay behind it while the feed lists the link (pinned by `PostRotationIrCopy`). A raw id bars only while a legacy
 row is retained: a receipt written before F8-N1 keeps its original id while it stays in the retained history, and with
 the canonicalising checker every new row carries the persisted form, so such a row bars the record for at most `KEEP`
 (8) receipts the checker writes for the issuer (a check that writes no receipt, `NOT_CHECKABLE`, does not advance
@@ -783,7 +789,8 @@ Explicit deferrals (this preview is none of them, and accepts none of them):
   effective-input loader for `order_forecast.py`/`publish_sealed_snapshot.py` with the release-check gate; the
   guidance-input dirty marker and ranking rebuild; the sealed `auto_update` evidence subrecord and Worker readers
   (`「官方財報自動核對（發布 YYYY-MM-DD）」`, typed `AUTO_UPDATE_BLOCKED`/`AUTO_UPDATE_WAITING` reasons); packaging;
-  reader-first rollout under its own plan and Astra go/no-go.
+  reader-first rollout under its own plan, a Fable 5.1 go/no-go review and then the operator's authorization in the executing session.
+- **G9 capability lane (O7/O10/R11, decision `R/DECISION-G9-O7-LEASE-DEADLINE.md`):** when the B1 lease deadline passes, `Transport.remaining()` raises the storage `BudgetExceededError` (every non-cleanup lease operation checks the strict deadline), so the run stops with the last published pointer and the next run on a fresh lease serves the interrupted issuer in its queue turn; no WAITING outcome can be published after the deadline. Open: a publish reserve before the lease deadline (G9-O10-PUBLISH-RESERVE, needs measured native timing) and who seeds the first generation, because the capability branch requires an existing pointer (G9B-CAPABILITY-BOOTSTRAP). The mocked capability cycle (`tests/test_revenue_guidance_g9b_capability.py`) proves branch logic only; native storage, lease and readback stay G3.
 
 ## B3-WIRE-01 (disabled versioned transport)
 
@@ -813,7 +820,9 @@ explicitly enabled publisher output becomes `{"schema": "v213-order-forecast-tra
   `cloud/test/v213-revenue-guidance-wire-integration.test.ts` (3 tests, real parser/loader) share
   `tests/fixtures/revenue-guidance-wire-v1-functional.json` (exact legacy and enveloped body strings from the
   real publisher). No security, boundary, native, adversarial or full-suite coverage; unknown/malformed
-  negotiation and full protocol proof remain deferred.
+  negotiation and full protocol proof remain deferred. The persisted receipt-id form is pinned across languages by
+  `tests/fixtures/receipt-id-persisted-form-vectors.json` (`tests/test_revenue_guidance_receipt_id_safety.py`,
+  `cloud/test/v213-order-forecast-v3-receipt-ids.test.ts`).
 - **Not B3 complete**: this is transport plumbing with disabled defaults
   (`MACHINE_ADMISSION_ENABLED=false`, `B3_AUTOUPDATE_WIRE_ACCEPTED=false`). Sealed wire schema acceptance,
   machine-evidence semantics (the separate versioned machine contract), B2 orchestration, B4 and any production

@@ -207,7 +207,7 @@ These are instrumented-backend proof obligations; metadata is not such proof.
 
 ### Reconciliation with A2b CRWV (design precedence, not admission)
 
-[Guidance A2b](REVENUE_GUIDANCE_AUTOUPDATE.md) at lines 720-721 references
+[Guidance A2b](REVENUE_GUIDANCE_AUTOUPDATE.md) (section "Open (later slices and Part B)", the "Part B order" bullet's A2b CRWV entry) references
 `_archive/lane-orders-v3-autoupdate/astra-contract-a2.result.md`, section 6
 (SHA256 `DE949739CBCC28B5075E71CA4CE9152A423FEA40E1CF2AFAB816FEDBA3B21AB3`).
 This extraction-only design proposes the following refinements for a LATER GO;
