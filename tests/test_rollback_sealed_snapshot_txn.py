@@ -4,12 +4,13 @@ ROOT (RB.ROOT and RB.SNAP_DIR patched, never the real repository; no git reposit
 literal (exit, outcome, ops, store diff, ledger, stage) designed from the code; RB's tracked check
 (`git ls-files`, RB 87-92) is served by a subprocess fake from the row's declared tracked set. The comment
 above each row cites the lines it was designed from. TR-7 chains the real sync (SY.main) and rollback over
-one fake KV; TR-8 is the characterized unpatched-kv-layer row. Synthetic values only."""
+one fake KV; TR-8 runs the unpatched kv layer (RB's locked CLI argv). Synthetic values only."""
 from __future__ import annotations
 
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -18,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rollback_sealed_snapshot as RB  # noqa: E402
 import sync_sealed_snapshot_kv as SY  # noqa: E402
 from sealed_kv_fakes import (  # noqa: E402
-    NOWRITE, POINTER_KEY, RUN, RUN2, WRITE_THEN_FAIL, FakeKV, Fixture, KvTestCase, Q_OK, make_rb_root, run_rb,
-    run_sy)
+    NOWRITE, POINTER_KEY, RUN, RUN2, WRITE_THEN_FAIL, FakeKV, Fixture, KvTestCase, Q_OK, cli_environment, make_cloud,
+    make_rb_root, run_rb, run_sy)
 
 GET_O = (("get", "O1"), ("get", "O2"), ("get", "O3"))
 GET_PTR = (("get", "POINTER"),)
@@ -66,13 +67,14 @@ class RbRows(KvTestCase):
         self.assertRow(r.row, (1, "ABORT", GET_O + GET_PTR + PUT_PTR, (), False, False))
         self.assertEqual(self.kv.store[POINTER_KEY], self.other_pointer)
 
-    # F-RB-MSG: RB 136 says "previous pointer untouched" for every failed put, but a put that wrote and then
-    # failed has already replaced the pointer; the row asserts the stored bytes, never the message.
+    # F-RB-MSG fixed: a false put cannot prove the pointer untouched (a put that wrote and then failed has already
+    # replaced it, as the stored bytes show), so RB 145-147 report the pointer state UNKNOWN, never "untouched".
     def test_TR_3b_pointer_put_write_then_fail(self):
         self.kv.fail_put(POINTER_KEY, 1, WRITE_THEN_FAIL)
         r = self.rollback("--apply")
         self.assertRow(r.row, (1, "ABORT", GET_O + GET_PTR + PUT_PTR, PTR_CHG, False, False))
         self.assertEqual(self.kv.store[POINTER_KEY], self.target_pointer)
+        self.assertEqual(("untouched" in r.stderr, "pointer state UNKNOWN" in r.stderr), (False, True))
 
     # RB 105-113: the first unverified object aborts the run; no later object is read and nothing is written.
     def test_TR_4a_object_missing(self):
@@ -167,24 +169,52 @@ class RbRows(KvTestCase):
         r = self.rollback("--apply", run=RUN2, kv=self.chain_kv, names=sy_two.names)
         self.assertRow(r.row, (1, "ABORT", (("get", "B1"), ("get", "B2")), (), False, False))
 
-    # TR-8 CHARACTERIZED, F-RB-NPX: RB runs an unlocked `npx --yes wrangler` (SY 48 forbids npx --yes). The row
-    # leaves RB.wrangler_kv_get/put unpatched; only subprocess.run is faked (kv argv by FakeKV, `git ls-files` by the
-    # tracked set; nothing is launched). Argv pins are symbolic (RB 59, 73-74).
-    def test_TR_8_characterized_real_kv_layer_argv(self):
+    # TR-8, F-RB-NPX fixed: RB.wrangler_kv_get/put stay unpatched and start with the sync's locked CLI (RB 59-64 ->
+    # SY._cli_command, stubbed here as one synthetic token) instead of `npx --yes wrangler`; only subprocess.run is
+    # faked (kv argv by FakeKV, `git ls-files` by the tracked set; nothing is launched). Argv pins: RB 69, 83-84.
+    def test_TR_8_real_kv_layer_uses_the_locked_cli(self):
         stage = self.repo / "data" / "cache" / "rollback-stage.txt"
 
         def get_argv(key):
-            return [RB.NPX, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", RB.NS, "--remote"]
+            return ["synthetic-cli", "kv", "key", "get", key, "--namespace-id", RB.NS, "--remote"]
 
         def put_argv(key):
-            return [RB.NPX, "--yes", "wrangler", "kv", "key", "put", key, "--path", str(stage), "--namespace-id", RB.NS, "--remote"]
+            return ["synthetic-cli", "kv", "key", "put", key, "--path", str(stage), "--namespace-id", RB.NS, "--remote"]
 
-        r = self.rollback("--apply", seam="B")
+        with mock.patch.object(SY, "_cli_command", lambda: ["synthetic-cli"]):
+            r = self.rollback("--apply", seam="B")
         self.assertRow(r.row, (0, "ROLLED_BACK", GET_O + GET_PTR + PUT_PTR + GET_PTR, PTR_CHG, False, False))
         keys = [self.target.key["O1"], self.target.key["O2"], self.target.key["O3"], POINTER_KEY]
         self.assertEqual(self.kv.argv_log, [get_argv(k) for k in keys] + [put_argv(POINTER_KEY), get_argv(POINTER_KEY)])
         self.assertEqual(stage.read_bytes(), self.target_pointer)
         self.assertEqual(all("--remote" in argv and RB.NS in argv for argv in self.kv.argv_log), True)
+        self.assertEqual([part for argv in self.kv.argv_log for part in argv if "npx" in part or part == "--yes"], [])
+
+    # TR-8b: the REAL SY._cli_command over a synthetic cloud dir (manifest == lock == installed 4.0.0, PROJECT_NODE
+    # stub file): every RB argv starts with [node, cloud/node_modules/wrangler/bin/wrangler.js] (SY 45-62).
+    def test_TR_8b_real_locked_cli_command(self):
+        cloud = make_cloud(self.tmp, "4.0.0")
+        node = self.tmp / "node-stub"
+        node.write_bytes(b"")
+        with cli_environment(node), mock.patch.object(SY, "CLOUD_DIR", cloud):
+            r = self.rollback("--apply", seam="B")
+        self.assertRow(r.row, (0, "ROLLED_BACK", GET_O + GET_PTR + PUT_PTR + GET_PTR, PTR_CHG, False, False))
+        heads = {tuple(argv[:2]) for argv in self.kv.argv_log}
+        self.assertEqual(heads, {(str(node.resolve()), str(cloud / "node_modules" / "wrangler" / "bin" / "wrangler.js"))})
+        self.assertEqual(len(self.kv.argv_log), 6)
+
+    # TR-8c: a locked CLI that cannot be selected (declared 4.0.1 != locked 4.0.0, SY 58) raises RollbackError at the
+    # first kv read (RB 61-64): exit 1, ABORT, no argv, no op, nothing written, the pointer stays the other run's.
+    def test_TR_8c_unavailable_locked_cli_aborts_before_any_call(self):
+        cloud = make_cloud(self.tmp, "4.0.0", declared="4.0.1")
+        node = self.tmp / "node-stub"
+        node.write_bytes(b"")
+        with cli_environment(node), mock.patch.object(SY, "CLOUD_DIR", cloud):
+            r = self.rollback("--apply", seam="B")
+        self.assertRow(r.row, (1, "ABORT", (), (), False, False))
+        self.assertEqual(self.kv.argv_log, [])
+        self.assertEqual("locked Wrangler CLI unavailable" in r.stderr, True)
+        self.assertEqual(self.kv.store[POINTER_KEY], self.other_pointer)
 
 
 if __name__ == "__main__":

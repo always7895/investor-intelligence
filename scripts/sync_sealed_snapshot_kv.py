@@ -221,6 +221,8 @@ def sync_run(run_dir: Path, record: dict) -> int:
     # Even malformed input must never smuggle the serving pointer into the
     # object-upload phase or cross a run boundary. Lazy blob bytes bind to key.
     for key, body in objects.items():
+        if body.endswith(("\r", "\n")):
+            raise ValueError()  # client_get strips trailing CR/LF from every readback: such a body could never verify
         if key.startswith(BLOB_PREFIX):
             digest = key[len(BLOB_PREFIX):]
             if not re.fullmatch(r"[0-9a-f]{64}", digest) or sha(body) != digest:
@@ -342,8 +344,18 @@ def main() -> int:
     ap.add_argument("--outcome-path", type=Path, help="New safe outcome file; never overwrite an older result")
     args = ap.parse_args()
     record = _outcome("WATCHDOG" if args.read_freshness else "SYNC")
+    stream = None
+    if args.outcome_path is not None:
+        try:
+            # Caller owns a unique path. CreateNew BEFORE any KV call prevents stale-result replacement and stops an
+            # existing or unwritable path while the pointer is still NOT_ATTEMPTED, never after a publish.
+            stream = args.outcome_path.open("x", encoding="utf-8")
+        except (OSError, ValueError):
+            _finish_call(record, "OUTCOME_WRITE_FAILED")
+    code = 1  # an outcome path that could not be reserved runs nothing
     try:
-        code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir).resolve(), record)
+        if args.outcome_path is None or stream is not None:
+            code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir).resolve(), record)
     except (ValueError, KeyError, TypeError):
         _finish_call(record, "PARSE_FAILED" if args.read_freshness else "INPUT_INVALID")
         code = 1
@@ -354,12 +366,12 @@ def main() -> int:
         # Fail closed without serializing exception messages, CLI arguments or streams.
         _finish_call(record, "UNKNOWN")
         code = 1
-    if args.outcome_path is not None:
+    if stream is not None:
         try:
-            # Caller owns a unique path. CreateNew prevents stale-result replacement.
-            with args.outcome_path.open("x", encoding="utf-8") as stream:
+            with stream:
                 json.dump(record, stream, separators=(",", ":"), allow_nan=False)
         except (OSError, ValueError):
+            # A late write failure fails the run; phase and pointer_state keep what was observed.
             record.update(status="FAILED", error_category="OUTCOME_WRITE_FAILED")
             code = 1
     marker = "WATCHDOG_OUTCOME" if args.read_freshness else "SYNC_OUTCOME"

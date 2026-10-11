@@ -169,6 +169,9 @@ class KeysetRows(KeysetCase):
         want = (tuple(EXPECTED_BODY_KEYS[:13]), "v213:macro-industry:latest", "v213:snapshot-seal:v1", "blob:v1:",
                 "v213:options-coverage:v1", "v213:bottleneck-top20:v3", True, 15)
         self.assertEqual(got, want, diff_fields(FIELDS_0, got, want))
+        # F-PB-DOCSTRING fixed: header item 3 counts the 14 bodies (13 OBJECT_KEYS + macro), no longer "13-object".
+        self.assertEqual(("13-object" in publisher.__doc__, "14 bodies (the 13 OBJECT_KEYS" in publisher.__doc__),
+                         (False, True))
 
     # KS-1 golden path: no carry (1069-1075), no lazy flag (1076-1088), so objects = 13 OBJECT_KEYS + MACRO_KEY under
     # snapshot:<run_id>: (1093-1094) + the seal (1095) = 15 keys, no blob key (1096-1097 loop over an empty dict).

@@ -163,17 +163,26 @@ class StageRows(StageCase):
                 ("snapshot:current",))
         self.assertEqual(got, want, diff_fields(FIELDS_LIST, got, want))
 
-    # SR 39 exist_ok=True: an existing out directory is accepted; 41-45 overwrite k0..k3 and index.json but nothing
-    # removes other files, so k9.txt survives and index.json does not list it (F-STAGE-STALE, traced behaviour).
-    def test_SR_4_existing_out_directory_keeps_stale_files(self):
+    # F-STAGE-STALE fixed, SR 43-44: an existing out directory that is not empty is refused before any write, so a
+    # stale k9.txt can never sit next to a new index; the old files stay as they were and no index.json appears.
+    def test_SR_4_existing_nonempty_out_directory_is_refused(self):
         self.fixture()
         self.out.mkdir(parents=True)
         (self.out / "k0.txt").write_bytes(b"OLD")
         (self.out / "k9.txt").write_bytes(b"STALE")
         seen = self.staged()
         got = tuple(seen[name] for name in FIELDS_LIST)
-        want = (("RESULT", RUN), FULL_LISTING + (("k9.txt", b"STALE"),),
-                ("snapshot:current", K_SEAL, K_BLOB, K_MACRO))
+        want = (("RAISED", "FileExistsError"), (("k0.txt", b"OLD"), ("k9.txt", b"STALE")), None)
+        self.assertEqual(got, want, diff_fields(FIELDS_LIST, got, want))
+        self.assertEqual(seen["write_log"], ())
+
+    # SR 43 and 45 (exist_ok=True): an existing EMPTY out directory is still accepted and staged as in SR-1.
+    def test_SR_4b_existing_empty_out_directory_is_used(self):
+        self.fixture()
+        self.out.mkdir(parents=True)
+        seen = self.staged()
+        got = tuple(seen[name] for name in FIELDS_LIST)
+        want = (("RESULT", RUN), FULL_LISTING, ("snapshot:current", K_SEAL, K_BLOB, K_MACRO))
         self.assertEqual(got, want, diff_fields(FIELDS_LIST, got, want))
 
     # SR 36-39 read objects (36), pointer (37) and the run id (38) before mkdir (39): a failure leaves no out directory.
@@ -218,6 +227,16 @@ class StageRows(StageCase):
         got = (seen["outcome"], k0)
         want = (("RESULT", "12345"), pointer)
         self.assertEqual(got, want, diff_fields(names, got, want))
+
+    # F-STAGE-CURRENT-COLLISION fixed, SR 41-42: an objects.json key equal to the pointer key would replace the
+    # pointer's index entry (46/50) and orphan k0.txt, so stage() raises ValueError before the mkdir at 45.
+    def test_SR_7_object_named_like_the_pointer_is_refused(self):
+        objects = json.dumps({K_SEAL: BODY_SEAL, "snapshot:current": BODY_BLOB}, separators=(",", ":")).encode("utf-8")
+        self.fixture(objects=objects)
+        seen = self.staged()
+        got = (seen["outcome"], seen["out_exists"])
+        want = (("RAISED", "ValueError"), False)
+        self.assertEqual(got, want, diff_fields(FIELDS_FAIL, got, want))
 
 
 if __name__ == "__main__":

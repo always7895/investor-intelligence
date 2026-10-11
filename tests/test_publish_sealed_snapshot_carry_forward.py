@@ -234,8 +234,8 @@ class LkgHelperTests(unittest.TestCase):
 
 
 class StagedReplayTests(unittest.TestCase):
-    """stage_sealed_replay: exact staged bytes, state-aware expectations, and (when Node is installed) the real
-    Worker readers over a synthetic carried run and an INSUFFICIENT run."""
+    """stage_sealed_replay: state-aware expectations and (when Node is installed) the real Worker readers over a
+    synthetic carried run and an INSUFFICIENT run (the exact staged bytes: tests/test_stage_sealed_replay.py)."""
 
     def test_expectations_are_state_aware(self):
         import stage_sealed_replay as replay

@@ -36,6 +36,12 @@ def stage(run_dir: Path, out: Path) -> str:
     objects = json.loads((run_dir / "objects.json").read_bytes().decode("utf-8"))
     pointer = (run_dir / "pointer.raw.json").read_bytes()
     run_id = str(json.loads(pointer)["run_id"])
+    # Fail closed before any write: an object named like the pointer would take over k0.txt's index entry, and files
+    # left in a reused directory would sit next to this run's index as if they belonged to it.
+    if "snapshot:current" in objects:
+        raise ValueError("objects.json names the serving pointer key")
+    if out.is_dir() and any(out.iterdir()):
+        raise FileExistsError("staging directory is not empty")
     out.mkdir(parents=True, exist_ok=True)
     index = {"snapshot:current": "k0.txt"}
     (out / "k0.txt").write_bytes(pointer)

@@ -27,6 +27,7 @@ Tool: `scripts/rollback_sealed_snapshot.py` — the ONLY mutation it can perform
    → expect `"status": "ROLLED_BACK"`, `"applied": true`; the previous run id is echoed in `from_run`.
 3. Re-run step 1 of Section 1 against the *rolled-back* run.
 Guards (all abort with `ROLLBACK ABORT`): target dir not git-tracked and any object byte mismatch abort before the pointer write (pointer untouched); a pointer put failure or pointer readback mismatch happens after the write was attempted — the script reports it, and the live pointer must be classified from fresh bytes before any retry (section 7.6).
+The tool's default kv layer runs only the locked Wrangler CLI that `scripts/sync_sealed_snapshot_kv.py` selects (the installed `cloud/node_modules` Wrangler matching `cloud/package.json` and `cloud/package-lock.json`, never `npx --yes`); when it cannot be selected the tool aborts before any KV call (pointer untouched).
 Hourly carry-forward runs live under the runtime's `data\v213-snapshots` and are not git-tracked, so this tool cannot target them. To stop carrying the Top20, re-register the hourly task without `-CarryForwardTop20` (Section 4); the next seal publishes INSUFFICIENT Top20 plus macro within about an hour.
 
 ## 3. Worker rollback (version)

@@ -149,13 +149,25 @@ class SyRows(KvTestCase):
                         (("put", "B1"), ("put", "B1"), ("put", "B1")), (), False, True, (5.0, 10.0), (3, 3, 1)))
         self.assertEqual(len(r.argv_log), 3)
 
-    # F-SY-TRAILING-LF (SY 172 rstrips CR/LF from every readback while SY 236 stages the exact body):
-    # an object body ending in LF can never read back identical, so the sync fails at that object.
-    def test_TS_1L_body_ending_in_lf_fails_readback(self):
+    # F-SY-TRAILING-LF fixed: SY 172 rstrips CR/LF from every readback while SY 238 stages the exact body, so a body
+    # ending in LF or CR could never read back identical; SY 224-225 refuse it as input before the stage dir and any call.
+    def test_TS_1L_body_ending_in_lf_is_refused_as_input(self):
         fx = self.fixture(s1_body='{"slot":"a"}\n')
         r = self.sync(fx, seam="B")
-        self.assertRow(r.row(), (1, ("FAILED", "OBJECT_READBACK", "READBACK_MISMATCH", "NOT_ATTEMPTED"),
-                                 PUT5 + (("get", "B1"), ("get", "B2"), ("get", "B3"), ("get", "S1")), NEW5, False, True))
+        self.assertRow(r.row(), (1, INPUT_INVALID, (), (), False, False))
+        self.assertEqual((r.argv_log, r.record["run_id"]), ([], RUN))
+
+    def test_TS_1Lb_body_ending_in_cr_is_refused_as_input(self):
+        fx = self.fixture(s1_body='{"slot":"a"}\r')
+        r = self.sync(fx, seam="B")
+        self.assertRow(r.row(), (1, INPUT_INVALID, (), (), False, False))
+
+    # Control for SY 224: only a TRAILING CR/LF is refused; an embedded LF survives the readback strip and syncs.
+    def test_TS_1Lc_body_with_embedded_lf_syncs(self):
+        fx = self.fixture(s1_body='{"slot":\n"a"}')
+        r = self.sync(fx, seam="B")
+        self.assertRow(r.row(), (0, Q_OK, HAPPY_OPS, NEW5_PTR_CHG, True, False))
+        self.assertEqual(self.kv.store[fx.key["S1"]], b'{"slot":\n"a"}')
 
     # SY 211-229 and main 347-349: input validation happens before the stage dir (231-232) and any call.
     def _input_invalid(self, fx):
@@ -243,7 +255,7 @@ class SyRows(KvTestCase):
     def test_TS_10d_project_node_nonexistent(self):
         self._refusal(self._cli_row(node=self.tmp / "no-such-node")[3])  # SY 57-58: PROJECT_NODE wins, is_file() false
 
-    # TS-11: --outcome-path (SY 357-364).
+    # TS-11: --outcome-path (SY main 347-355 reserve the file before any call, 369-376 write it after the run).
     def test_TS_11a_outcome_path_new_file(self):
         fx = self.fixture()
         target = self.tmp / "outcome-new.json"
@@ -251,18 +263,37 @@ class SyRows(KvTestCase):
         self.assertRow(r.row(), (0, Q_OK, HAPPY_OPS, NEW5_PTR_CHG, True, False))
         self.assertEqual(json.loads(target.read_text(encoding="utf-8")), r.record)
 
-    # F-SY-OUTCOME-AFTER-PUBLISH: the outcome file is written AFTER the pointer is published (SY 360 'x' mode
-    # raises on an existing file at 357-364), so a completed publish is reported as exit 1 / OUTCOME_WRITE_FAILED.
+    # F-SY-OUTCOME-AFTER-PUBLISH fixed: SY 348-354 reserve the outcome file ('x' mode) BEFORE any call, so an existing
+    # file stops the run at INPUT with the pointer NOT_ATTEMPTED (355-358 run nothing): no KV op, no ledger, no stage
+    # dir, the old pointer stays and the older result bytes are left as they were.
     def test_TS_11b_outcome_path_existing_file(self):
         fx = self.fixture()
         target = self.tmp / "outcome-old.json"
         target.write_bytes(b"older result bytes")
         r = self.sync(fx, outcome_path=target)
+        self.assertRow(r.row("counters"), (1, ("FAILED", "INPUT", "OUTCOME_WRITE_FAILED", "NOT_ATTEMPTED"), (), (), False,
+                                           False, (0, 0, None)))
+        self.assertEqual(self.kv.store[POINTER_KEY], OLD_POINTER)
+        self.assertEqual(target.read_bytes(), b"older result bytes")
+
+    # SY 352-354: an outcome path whose directory does not exist cannot be reserved either; nothing runs or appears.
+    def test_TS_11c_outcome_path_unwritable(self):
+        fx = self.fixture()
+        target = self.tmp / "missing-dir" / "outcome.json"
+        r = self.sync(fx, outcome_path=target)
+        self.assertRow(r.row(), (1, ("FAILED", "INPUT", "OUTCOME_WRITE_FAILED", "NOT_ATTEMPTED"), (), (), False, False))
+        self.assertEqual(target.parent.exists(), False)
+
+    # SY 369-376: a write failure AFTER a completed publish (json.dump raising) still fails the run, but keeps the
+    # observed phase COMPLETE and pointer_state READBACK_CONFIRMED; the reserved file stays empty.
+    def test_TS_11d_late_outcome_write_failure_keeps_the_observed_state(self):
+        fx = self.fixture()
+        target = self.tmp / "outcome-late.json"
+        with mock.patch.object(SY.json, "dump", side_effect=OSError("synthetic")):
+            r = self.sync(fx, outcome_path=target)
         self.assertRow(r.row(), (1, ("FAILED", "COMPLETE", "OUTCOME_WRITE_FAILED", "READBACK_CONFIRMED"), HAPPY_OPS,
                                  NEW5_PTR_CHG, True, False))
-        self.assertEqual(r.record["status"], "FAILED")
-        self.assertEqual(self.kv.store[POINTER_KEY], fx.ptr_raw.encode("utf-8"))
-        self.assertEqual(target.read_bytes(), b"older result bytes")
+        self.assertEqual((target.read_bytes(), self.kv.store[POINTER_KEY]), (b"", fx.ptr_raw.encode("utf-8")))
 
     # TS-12: the real publisher output (PB.main, --snapshot-root tmp) synced by SY over the fake KV.
     def test_TS_12_publisher_output_syncs(self):

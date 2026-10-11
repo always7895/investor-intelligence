@@ -7,17 +7,19 @@ Contract (strict fail-closed; the ONLY mutation ever performed is the pointer ke
   1. The target run dir must exist locally AND be tracked in git
      (`git ls-files` must list its pointer.raw.json) — we only roll back to
      committed integrity-proven runs.
-  2. The target's committed pointer seal is recomputed-checkable: the 14 object
-     keys of the run's objects.json are read back live from KV and verified
-     byte-identical (sha256) against the committed body bytes.
+  2. The target's committed pointer seal is recomputed-checkable: every key
+     of the run's objects.json (bodies, seal, lazy blobs) is read back live from
+     KV and verified byte-identical (sha256) against the committed body bytes.
   3. If the live pointer already equals the target pointer text -> NO-OP.
   4. Only then is `snapshot:current` written with the target's committed pointer
      bytes (canonical, stripped), followed by a readback verification.
 
-Any failure exits non-zero WITHOUT touching the pointer. Default mode is
-`--apply` (trailed flag); a plain invocation is a dry-run that verifies and
-reports only. The kv layer is injectable for tests (get/put callables);
-the default uses `wrangler kv key ... --namespace-id <PUBLIC_CACHE>` via the
+A failure before the pointer put exits non-zero WITHOUT touching the pointer;
+a failed put or readback exits non-zero with the pointer state UNKNOWN (classify
+the live bytes before re-running). A plain invocation is a dry-run that verifies
+and reports only; only `--apply` writes. The kv layer is injectable for tests
+(get/put callables); the default runs the sync's locked Wrangler CLI
+(`kv key ... --namespace-id <PUBLIC_CACHE> --remote`, never npx --yes) via the
 cached session. No credentials are read or printed.
 """
 from __future__ import annotations
@@ -26,7 +28,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,7 +36,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SNAP_DIR = ROOT / "state" / "v213-snapshots"
 NS = "96142af40b5d4213862d5483fe3a66da"
 POINTER_KEY = "snapshot:current"
-NPX = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+sys.path.insert(0, str(ROOT / "scripts"))
+import sync_sealed_snapshot_kv as sync  # noqa: E402  the sync's locked Wrangler CLI (never npx --yes)
 
 
 class RollbackError(RuntimeError):
@@ -54,9 +56,17 @@ def clean(raw: str) -> str:
 
 
 # ---------------------------------------------------------------- kv layer
+def _cli() -> list[str]:
+    """The sync's locked CLI (Wrangler matching manifest and lock, managed Node); no install, no npx --yes."""
+    try:
+        return sync._cli_command()
+    except sync.CliUnavailable:
+        raise RollbackError("locked Wrangler CLI unavailable - no KV call was made") from None
+
+
 def wrangler_kv_get(key: str) -> str | None:
     p = subprocess.run(
-        [NPX, "--yes", "wrangler", "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
+        [*_cli(), "kv", "key", "get", key, "--namespace-id", NS, "--remote"],
         cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
     )
     if p.returncode != 0:
@@ -70,7 +80,7 @@ def wrangler_kv_put(key: str, body: str) -> bool:
     stage.parent.mkdir(parents=True, exist_ok=True)
     stage.write_bytes(body.encode("utf-8"))
     p = subprocess.run(
-        [NPX, "--yes", "wrangler", "kv", "key", "put", key,
+        [*_cli(), "kv", "key", "put", key,
          "--path", str(stage), "--namespace-id", NS, "--remote"],
         cwd=str(ROOT / "cloud"), capture_output=True, text=True, errors="replace", timeout=300,
     )
@@ -133,7 +143,8 @@ def rollback(run_id: str, apply: bool, kv_get=None, kv_put=None) -> dict:
         result["status"] = "DRY_RUN"
         return result
     if not kv_put(POINTER_KEY, target["pointer_text"]):
-        raise RollbackError("pointer put failed — previous pointer untouched")
+        raise RollbackError("pointer put failed - pointer state UNKNOWN (the put may have been applied), "
+                            "classify the live bytes before re-running")
     if kv_get(POINTER_KEY) != target["pointer_text"]:
         raise RollbackError("pointer readback mismatch — state UNKNOWN, investigate before re-running")
     result["status"] = "ROLLED_BACK"

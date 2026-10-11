@@ -4,16 +4,16 @@ Builds, from OFFLINE assets only (no provider calls):
   1. the qualified v213 bottleneck report (GEV rank 1, 6501 rank 2,
      admitted_count = 2, ranked_count = 2, zero padding absent);
   2. the certified seven-field v213 Top20 projection;
-  3. the 13-object sealed snapshot (SHAs, sizes, activation claim, seal
-     manifest) per cloud/src/v213/snapshot-seal.ts contract v1;
+  3. the sealed snapshot: 14 bodies (the 13 OBJECT_KEYS, activation claim included, plus the
+     macro overview) and their seal manifest (SHAs, sizes) per cloud/src/v213/snapshot-seal.ts contract v1;
   4. the schema-v2 sealed pointer.
 
 Artifacts (pointer is committed LAST, in its own commit):
-  state/v213-snapshots/<run_id>/objects.json   (15 store keys: 14 bodies + seal)
+  state/v213-snapshots/<run_id>/objects.json   (15 store keys: 14 bodies + seal; + one blob:v1:<sha256> per distinct lazy body)
   state/v213-snapshots/<run_id>/pointer.raw.json   (exact pointer text)
 
-Deterministic for a fixed evaluation clock; fails closed on any engine or
-corpus drift.
+Deterministic for a fixed evaluation clock; fails closed on any engine or corpus drift, and never
+replaces an existing run's objects.json/pointer.raw.json with different bytes (SEALED_RUN_DIR_CONFLICT).
 
 Carry-forward mode (``--top20-bundle``, single-writer design T5, used only by
 run_production_sealed_refresh.ps1 -CarryForwardTop20): the Top20 objects
@@ -1089,15 +1089,21 @@ def main(argv=None) -> None:
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
     out_dir = args.snapshot_root / meta["run_id"]
-    out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
     for body in lazy.values():
         objects[LAZY_BLOB_PREFIX + _sha(body)] = body
     objects_path = out_dir / "objects.json"
-    objects_path.write_bytes(_dumps(objects).encode("utf-8"))
+    objects_bytes = _dumps(objects).encode("utf-8")
     pointer_path = out_dir / "pointer.raw.json"
+    # One run id names one sealed byte set (a synced run may be serving, a git-tracked one is a rollback target): an
+    # identical re-run may rewrite it, different bytes never replace it. Checked before the mkdir and before any write.
+    for path, data in ((objects_path, objects_bytes), (pointer_path, pointer.encode("utf-8"))):
+        if path.is_file() and path.read_bytes() != data:
+            raise SystemExit("SEALED_RUN_DIR_CONFLICT")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    objects_path.write_bytes(objects_bytes)
     pointer_path.write_bytes(pointer.encode("utf-8"))
     if meta["top20"] is not None:
         (out_dir / "seven-field-projection.json").write_bytes(_dumps(meta["top20"]).encode("utf-8"))
