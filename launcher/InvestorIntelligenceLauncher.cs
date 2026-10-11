@@ -710,7 +710,9 @@ namespace InvestorIntelligence
                 if (root.ContainsKey("engine") || root.ContainsKey("runtime_binding_sha256")) throw new InvalidOperationException("BINDING_SELECTION_WITHOUT_INTENT");
 
                 return new ModelSelection {
-                    Model = !String.IsNullOrEmpty(PreferredModel) ? PreferredModel : (root.ContainsKey("model") ? Convert.ToString(root["model"]) ?? "" : ""),
+                    // Operator 2026-10-11: the saved selection (kept current by the bridge and the UI scan) leads; the profile's model is only a
+                    // fallback preference and never overrides a saved or auto-followed model.
+                    Model = (root.ContainsKey("model") && !String.IsNullOrEmpty(Convert.ToString(root["model"]))) ? Convert.ToString(root["model"]) : PreferredModel,
                     LlamaBaseUrl = root.ContainsKey("llama_base_url")
                         ? Convert.ToString(root["llama_base_url"]) ?? ""
                         : ""

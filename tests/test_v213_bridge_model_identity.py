@@ -135,18 +135,30 @@ $names=@('Get-ObjectPropertyValue','Invoke-SharedModelIdentity','Resolve-Model',
 $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $node.Name},$true))
 if($functions.Count-ne7){throw 'FUNCTION_INVENTORY_MISMATCH'}
 foreach($function in $functions){. ([scriptblock]::Create($function.Extent.Text))}
+# The core initialises this at script scope (legacy path = no explicit binding); the extracted functions read it under strict mode.
+$script:ExplicitBinding=$null
 function Read-ModelSelection { return $null }
 function Get-ModelCatalog { param($Base) return $script:Catalog }
-function Set-FollowingModelProfile { param($Model) return $null }  # tested separately below
+# The real function is tested separately below; this stand-in keeps the settings of the profile in the environment and replaces
+# only its model, as the real one does (the profile's model never pins in the legacy path).
+function Set-FollowingModelProfile {
+ param($Model)
+ if([string]::IsNullOrWhiteSpace($env:V213_MODEL_PROFILE_JSON)){return $null}
+ $rebuilt=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json
+ $rebuilt.model=$Model
+ $env:V213_MODEL_PROFILE_JSON=$rebuilt|ConvertTo-Json -Compress
+ return Get-RuntimeModelProfile
+}
 Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $script:ProfileActive=$false
+$script:ProfileModel='profile-model-test'
 function Invoke-RestMethod {
  param($Method,$Uri,$ContentType,$Body,$TimeoutSec,$MaximumRedirection)
  if($MaximumRedirection-cne0){throw 'PROBE_REDIRECTS_NOT_DISABLED'}
  if($Uri-cne'http://127.0.0.1:1/v1/chat/completions'){throw 'UNEXPECTED_ENDPOINT'}
  $request=[Text.Encoding]::UTF8.GetString([byte[]]$Body)|ConvertFrom-Json
  if($script:ProfileActive){
-  if($request.model-cne'profile-model-test'-or$request.max_tokens-ne128-or$request.chat_template_kwargs.enable_thinking-ne$true-or$request.reasoning_effort-cne'xhigh'-or$TimeoutSec-ne18){throw 'PROFILE_PROBE_INVALID'}
+  if($request.model-cne$script:ProfileModel-or$request.max_tokens-ne128-or$request.chat_template_kwargs.enable_thinking-ne$true-or$request.reasoning_effort-cne'xhigh'-or$TimeoutSec-ne18){throw 'PROFILE_PROBE_INVALID'}
  }elseif($request.model-cne$script:ExpectedModel-or$request.max_tokens-ne32-or$request.chat_template_kwargs.enable_thinking-ne$false){throw 'PROBE_REQUEST_INVALID'}
  return $script:Response
 }
@@ -182,6 +194,22 @@ $script:Catalog+=@([pscustomobject]@{id='other';aliases=@('QWEN38-Q6')})
 $failed=$false
 try{$null=Resolve-Model 'http://127.0.0.1:1' 'qwen38-q6'}catch{$failed=$true}
 if(-not$failed){throw 'AMBIGUOUS_ALIAS_ACCEPTED'}
+# Operator 2026-10-11: no shipped preferred id. Several unrelated models and no request or saved selection need an explicit
+# selection even when the old preferred variable names one of them; one served model is simply followed.
+$preferredModel='model-a'
+$script:Catalog=@([pscustomobject]@{id='model-a';aliases=@()},[pscustomobject]@{id='model-b';aliases=@()})
+$failed=$false
+try{$null=Resolve-Model 'http://127.0.0.1:1' ''}catch{$failed=($_.Exception.Message-like'*explicit selection required*')}
+if(-not$failed){throw 'PREFERRED_MODEL_CONSTANT_STILL_CHOOSES'}
+$script:Catalog=@([pscustomobject]@{id='only-model-c';aliases=@()})
+$only=Resolve-Model 'http://127.0.0.1:1' ''
+if($only.model-cne'only-model-c'){throw 'ONLY_SERVED_MODEL_NOT_FOLLOWED'}
+# Find-LocalModelServer never accepts a server on a blank wanted id and only a server that serves the wanted id otherwise.
+if($null-ne(Find-LocalModelServer 'http://127.0.0.1:1' '')){throw 'BLANK_WANTED_ACCEPTED_ANY_SERVER'}
+if($null-ne(Find-LocalModelServer 'http://127.0.0.1:1' 'saved-model-gone')){throw 'UNRELATED_SERVER_ACCEPTED'}
+if((Find-LocalModelServer 'http://127.0.0.1:1' 'only-model-c')-cne'http://127.0.0.1:8080'){throw 'WANTED_SERVER_NOT_FOUND'}
+$preferredModel='qwen38-q6'
+$script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
 # Execute the real startup decision block, not just its internal formatter/probe.
 $source=$ast.Extent.Text
 $start=$source.IndexOf('$runtimeProfile = Get-RuntimeModelProfile')
@@ -203,17 +231,45 @@ $failure=''
 try{. $startup}catch{$failure=$_.Exception.Message}
 if($failure-notlike'MODEL_ROUTING_PROBE_FAILED;*'){throw 'STARTUP_INCOMPLETE_RESPONSE_ACCEPTED'}
 $script:Response.choices[0].finish_reason='stop'
-$Model='other-model'
+# Operator 2026-10-11 (LINE Q&A follows the detected model): outside an explicit binding the profile supplies SETTINGS only. A
+# stale profile id never pins the model: the served id is used and the profile is rebuilt with it, keeping the settings.
+$script:ProfileModel='follow-served-model-z'
+$script:Catalog=@([pscustomobject]@{id='follow-served-model-z';aliases=@()})
+$script:Response=@{model='follow-served-model-z';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+$Model=''
+. $startup
+if($Model-cne'follow-served-model-z'){throw 'STARTUP_STALE_PROFILE_PINNED_THE_MODEL'}
+$followed=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json
+if($followed.model-cne'follow-served-model-z'-or$followed.reasoning_effort-cne'xhigh'-or$followed.max_output_tokens-ne1024){throw 'FOLLOW_PROFILE_NOT_REBUILT_WITH_THE_SETTINGS'}
+if($script:RuntimeProfileHash-cne(($env:V213_MODEL_PROFILE_JSON|& $python (Join-Path $ProjectRoot 'scripts/v213_model_profile.py') --env|ConvertFrom-Json).profile_sha256)){throw 'FOLLOW_PROFILE_HASH_STALE'}
+# The startup block has no tunnel-mode condition any more (text gate in test_local_model_follow.py); each mode re-runs it against a stale env profile.
+foreach($mode in @('Named','QuickTest','None')){
+ $tunnelPolicy=@{mode=$mode}
+ $stale=$env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json
+ $stale.model='stale-model-q'
+ $env:V213_MODEL_PROFILE_JSON=$stale|ConvertTo-Json -Compress
+ $Model=''
+ . $startup
+ if($Model-cne'follow-served-model-z'-or($env:V213_MODEL_PROFILE_JSON|ConvertFrom-Json).model-cne'follow-served-model-z'){throw ('FOLLOW_PROFILE_NOT_REBUILT_FROM_STALE_ENV_'+$mode)}
+}
+$tunnelPolicy=@{mode='FreeRelay'}
+# A requested id that nothing serves is still refused (no silent substitution through the stale profile or any default).
+$Model='never-served-follow-model'
 $failure=''
 try{. $startup}catch{$failure=$_.Exception.Message}
-if($failure-cne'MODEL_PROFILE_SELECTION_MISMATCH'){throw 'STARTUP_PROFILE_CONFLICT_NOT_REJECTED'}
+if(-not$failure){throw 'STARTUP_UNSERVED_REQUEST_ACCEPTED_UNDER_PROFILE'}
+$script:ProfileModel='profile-model-test'
+$script:Catalog=$profileCatalog
+$script:Response=@{model='profile-model-test';choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
 Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $script:ProfileActive=$false
 $Model=''
 $script:Catalog=@([pscustomobject]@{id=$canonical;aliases=@('qwen38-q6')})
 $script:Response=@{model=$canonical;choices=@(@{finish_reason='stop';message=@{content='R75_FREE_RELAY_E2E_OK'}})}
+function Read-ModelSelection { return [pscustomobject]@{model='qwen38-q6';llama_base_url=''} }
 . $startup
 if($Model-cne'qwen38-q6'){throw 'LEGACY_STARTUP_MODEL_CHANGED'}
+function Read-ModelSelection { return $null }
 # Operator 2026-09-26: an unprofiled relay publishes the served model it verified (the Worker decides whether to
 # follow it); a model the server does not serve is still refused before anything starts.
 $Model='profile-model-test'
@@ -251,13 +307,21 @@ $stateRoot=STATE_VALUE
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $ProjectRoot 'scripts/run_v213_local_llm_bridge_core.ps1'),[ref]$tokens,[ref]$errors)
 foreach($function in @($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and @('Set-FollowingModelProfile','Get-RuntimeModelProfile') -contains $node.Name},$true))){. ([scriptblock]::Create($function.Extent.Text))}
+# The core initialises this at script scope (legacy path = no explicit binding); the extracted functions read it under strict mode.
+$script:ExplicitBinding=$null
 Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $default=Set-FollowingModelProfile 'Qwen3.8-27B'
 if($default.model-cne'Qwen3.8-27B'-or$default.enable_thinking-ne$false-or$default.max_output_tokens-ne1024-or$default.timeout_ms-ne18000){throw 'DEFAULT_SETTINGS_NOT_USED'}
 @{schema_version=1;model='old';enable_thinking=$true;reasoning_effort='high';max_output_tokens=2048;smoke_output_tokens=64;timeout_ms=19000}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $stateRoot 'v213-model-profile-v1.json') -Encoding utf8
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 $launcher=Set-FollowingModelProfile 'Other-8B'
 if($launcher.model-cne'Other-8B'-or$launcher.enable_thinking-ne$true-or$launcher.reasoning_effort-cne'high'-or$launcher.max_output_tokens-ne2048){throw 'LAUNCHER_SETTINGS_NOT_USED'}
 if(([Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')|ConvertFrom-Json).model-cne'Other-8B'){throw 'GATEWAY_PROFILE_NOT_SET'}
+# A launcher that passes its profile in the environment: its settings count, its model never does.
+$env:V213_MODEL_PROFILE_JSON=@{schema_version=1;model='stale-launcher-model';enable_thinking=$true;reasoning_effort='high';max_output_tokens=512;smoke_output_tokens=64;timeout_ms=15000}|ConvertTo-Json -Compress
+$fromEnv=Set-FollowingModelProfile 'Newer-8B'
+if($fromEnv.model-cne'Newer-8B'-or$fromEnv.reasoning_effort-cne'high'-or$fromEnv.max_output_tokens-ne512-or$fromEnv.timeout_ms-ne15000){throw 'ENV_SETTINGS_NOT_USED_OR_MODEL_PINNED'}
+Remove-Item Env:V213_MODEL_PROFILE_JSON -ErrorAction SilentlyContinue
 Write-Output 'FOLLOWING_PROFILE=PASS'
 '''
         with tempfile.TemporaryDirectory(prefix='Profile (1) ') as directory:

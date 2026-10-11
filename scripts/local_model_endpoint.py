@@ -517,6 +517,7 @@ def resolve(want: str = "", base: str = "", *, catalog_reader: Callable[[str], l
     bases = candidate_bases(base)
     best: dict[str, Any] | None = None
     seen: list[dict[str, Any]] = []
+    only_servers: list[tuple[str, str]] = []  # (server, id) of every server that offered just an unrelated single model
 
     def scan(batch: list[str]) -> None:
         nonlocal best
@@ -527,6 +528,8 @@ def resolve(want: str = "", base: str = "", *, catalog_reader: Callable[[str], l
                 continue
             seen.append({"base_url": server, "models": [row["id"] for row in catalog][:16]})
             choice = choose_model(catalog, wanted)
+            if choice and choice[1] == "only":
+                only_servers.append((server, choice[0]))
             if choice and (best is None or RANK[choice[1]] < RANK[best["match"]]):
                 best = {"base_url": server, "model": choice[0], "match": choice[1]}
 
@@ -536,6 +539,16 @@ def resolve(want: str = "", base: str = "", *, catalog_reader: Callable[[str], l
         extra = [server for server in extra if server not in bases][:MAX_LISTENERS]
         scan(extra)
         bases += extra
+    if best is not None and best["match"] == "only" and len({model.lower() for _, model in only_servers}) > 1:
+        # Operator 2026-10-11 (follow the detected model): several servers each offering one UNRELATED model are not a choice
+        # the resolver may make (another project's server could be bound by port order). The operator's own address (explicit
+        # base, env, saved selection) breaks the tie; otherwise there is no automatic choice (select_local_model.ps1 picks).
+        own = [loopback_base(value) for value in (base, os.getenv("II_LLAMA_BASE_URL", ""), saved_selection()["base"])]
+        winner = next((entry for hint in own if hint for entry in only_servers if entry[0] == hint), None)
+        if winner is None:
+            best = None
+        else:
+            best = {"base_url": winner[0], "model": winner[1], "match": "only"}
     if best is None:
         return {"error": "LOCAL_MODEL_NOT_FOUND" if not seen else "LOCAL_MODEL_AMBIGUOUS", "wanted": wanted,
                 "servers": seen, "probed": len(bases)}

@@ -501,11 +501,21 @@ def cache_entry(cik: str, *, cache_root: Path = CACHE_ROOT) -> dict[str, Any] | 
             "source_facts": CACHE_ONLY_NOT_FRESH}
 
 
-def _banned_phrases() -> tuple[str, ...]:
+def _banned_phrases() -> tuple[str, ...] | None:
+    """Chinese ban list from the shared wording policy, or None when it cannot be trusted.
+
+    The strict shared loader checks the policy shape; a missing, unreadable,
+    malformed or empty ban list is never an empty ban set (fail closed).
+    """
     try:
-        return tuple(json.loads(WORDING_POLICY.read_text(encoding="utf-8"))["banned_phrases_zh"])
-    except (OSError, ValueError, KeyError):
-        return ()
+        import v213_sourced_wording_guard as guard  # sibling script, imported lazily like v213_model_profile
+
+        banned = guard.load_policy(WORDING_POLICY)["banned_phrases_zh"]
+    except Exception:  # noqa: BLE001 - every load failure refuses the phrase
+        return None
+    if not banned or not all(isinstance(item, str) and item for item in banned):
+        return None
+    return tuple(banned)
 
 
 def validate_phrase(phrase: str, sentence: str) -> str | None:
@@ -518,7 +528,10 @@ def validate_phrase(phrase: str, sentence: str) -> str | None:
         return None
     if not set(re.findall(r"\d", text)) <= set(re.findall(r"\d", sentence)):
         return None
-    if any(banned in text for banned in _banned_phrases()) or _VAGUE_QUANTITY.search(text):
+    banned_phrases = _banned_phrases()
+    if banned_phrases is None:  # wording policy unavailable: no phrase is accepted
+        return None
+    if any(banned in text for banned in banned_phrases) or _VAGUE_QUANTITY.search(text):
         return None
     return text
 
@@ -547,6 +560,8 @@ def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float
     config = json.loads(config_path.read_text(encoding="utf-8"))
     reasoner = config["primary_reasoner"]
     configured = str(reasoner["base_url"]).rstrip("/")
+    # The configured id is a non-binding preference (operator 2026-10-11: follow the detected model); it may be empty.
+    configured_model = str(reasoner.get("model") or "")
     if urlsplit(configured).hostname not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError("LOCAL_REASONER_NOT_LOOPBACK")
     opener = build_opener(ProxyHandler({}))
@@ -580,11 +595,13 @@ def local_translator(config_path: Path = LOCAL_RUNTIME_CONFIG, *, timeout: float
             return True
         if endpoint.get("mode") != "LEGACY":
             forget()  # an explicit identity never survives a removed binding
-            found = (resolver or local_model_endpoint.resolve)(str(reasoner["model"]), configured)
+            found = (resolver or local_model_endpoint.resolve)(configured_model, configured)
             if found.get("mode") == "EXPLICIT_STRATA" or found.get("error") == "LOCAL_MODEL_BINDING_UNAVAILABLE":
                 return False  # intent appeared meanwhile: unavailable, not the configured fallback
             if "error" in found:  # nothing answers: the configured target fails closed below
-                endpoint.update(chat=configured + "/chat/completions", model=str(reasoner["model"]))
+                if not configured_model:
+                    return False  # nothing detected and no configured id: unavailable, never a blind request to the hint address
+                endpoint.update(chat=configured + "/chat/completions", model=configured_model)
             else:
                 endpoint.update(chat=found["base_url"] + "/v1/chat/completions", model=found["model"])
             endpoint["mode"] = "LEGACY"

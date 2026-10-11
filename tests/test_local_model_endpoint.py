@@ -124,6 +124,117 @@ class ResolveTests(unittest.TestCase):
         self.assertIsNone(endpoint.choose_model(rows("Qwen3.8-27B-A", "Qwen3.8-27B-B"), [PINNED]))  # two of one family
 
 
+class FollowDetectedTests(unittest.TestCase):
+    """Operator 2026-10-11: LINE Q&A follows the auto-detected local model; no id is hardcoded. The shipped config now carries an
+    EMPTY configured id (a hint address only), so only the saved selection and what is actually served decide. Synthetic ids only;
+    the selected-intent seam is mocked to LEGACY_ABSENT like ResolveTests. No network: catalogs and listeners are injected."""
+
+    SAVED = "synthetic-saved-model-a"
+    NEW_A = "synthetic-served-unrelated-x"
+    NEW_B = "synthetic-other-project-y"
+
+    def setUp(self):
+        self.probed = []
+        self.saved = {"model": "", "base": ""}
+        self.configured = {"model": "", "base": "http://127.0.0.1:8080/v1"}
+        self.real_configured_reasoner = endpoint.configured_reasoner
+        stack = [patch.object(endpoint, "selected_intent", return_value=dict(LEGACY_INTENT)),
+                 patch.object(endpoint, "saved_selection", side_effect=lambda: dict(self.saved)),
+                 patch.object(endpoint, "configured_reasoner", side_effect=lambda: dict(self.configured)),
+                 patch.dict("os.environ", {"II_LLAMA_BASE_URL": "", "II_LOCAL_LLM_MODEL": ""})]
+        for item in stack:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def reader(self, servers):
+        def read(base):
+            self.probed.append(base)
+            return servers.get(base)
+        return read
+
+    def test_shipped_config_has_no_configured_model_and_the_resolver_skips_it(self):
+        shipped = json.loads((ROOT / "config" / "local-runtime-independence-v1.json").read_text(encoding="utf-8-sig"))
+        self.assertEqual(shipped["primary_reasoner"]["model"], "")
+        self.assertEqual(shipped["primary_reasoner"]["model_selection"], "FOLLOW_DETECTED")
+        self.assertEqual(self.real_configured_reasoner(ROOT / "config" / "local-runtime-independence-v1.json")["model"], "")
+        found = endpoint.resolve(catalog_reader=self.reader({"http://127.0.0.1:8097": rows(self.NEW_A)}),
+                                 listeners=lambda: [8097])
+        self.assertEqual(found["wanted"], [])  # an empty configured id is never offered as a wanted id
+
+    def test_an_unrelated_model_served_alone_on_another_port_is_followed_and_labelled_with_the_served_id(self):
+        found = endpoint.resolve(catalog_reader=self.reader({"http://127.0.0.1:8097": rows(self.NEW_A)}), listeners=lambda: [8097])
+        self.assertEqual((found["base_url"], found["model"], found["match"], found["changed"]),
+                         ("http://127.0.0.1:8097", self.NEW_A, "only", False))
+
+    def test_the_saved_model_is_gone_and_an_unrelated_one_alone_on_a_new_port_is_found(self):
+        self.saved = {"model": self.SAVED, "base": "http://127.0.0.1:8096"}
+        servers = {"http://127.0.0.1:8097": rows(self.NEW_A)}
+        found = endpoint.resolve(catalog_reader=self.reader(servers), listeners=lambda: [8097])
+        self.assertEqual((found["base_url"], found["model"], found["match"], found["changed"]),
+                         ("http://127.0.0.1:8097", self.NEW_A, "only", True))
+        self.assertEqual(found["wanted"], [self.SAVED])
+
+    def test_the_saved_model_still_wins_when_it_is_served_and_a_configured_id_is_only_the_last_preference(self):
+        self.saved = {"model": self.SAVED, "base": ""}
+        servers = {"http://127.0.0.1:8097": rows(self.NEW_A), "http://127.0.0.1:8098": rows(self.SAVED)}
+        found = endpoint.resolve(catalog_reader=self.reader(servers), listeners=lambda: [8097, 8098])
+        self.assertEqual((found["base_url"], found["model"], found["match"]), ("http://127.0.0.1:8098", self.SAVED, "exact"))
+        # A deliberately configured id stays a preference after the saved one: it matches only if something serves it.
+        self.configured = {"model": self.NEW_B, "base": "http://127.0.0.1:8080/v1"}
+        servers = {"http://127.0.0.1:8097": rows(self.NEW_A), "http://127.0.0.1:8098": rows(self.NEW_B)}
+        found = endpoint.resolve(catalog_reader=self.reader(servers), listeners=lambda: [8097, 8098])
+        self.assertEqual((found["model"], found["match"], found["wanted"]), (self.NEW_B, "exact", [self.SAVED, self.NEW_B]))
+        servers = {"http://127.0.0.1:8097": rows(self.NEW_A)}  # the configured id is not served: it never blocks another model
+        found = endpoint.resolve(catalog_reader=self.reader(servers), listeners=lambda: [8097])
+        self.assertEqual((found["model"], found["match"]), (self.NEW_A, "only"))
+
+    def test_several_unrelated_models_give_no_automatic_choice(self):
+        one_server = {"http://127.0.0.1:8097": rows(self.NEW_A, self.NEW_B)}
+        self.assertEqual(endpoint.resolve(catalog_reader=self.reader(one_server), listeners=lambda: [8097])["error"],
+                         "LOCAL_MODEL_AMBIGUOUS")
+        # Two servers that each offer one unrelated model (for example another project's server beside the new one): port
+        # order must never pick for the operator.
+        two_servers = {"http://127.0.0.1:8082": rows(self.NEW_B), "http://127.0.0.1:8097": rows(self.NEW_A)}
+        found = endpoint.resolve(catalog_reader=self.reader(two_servers), listeners=lambda: [8082, 8097])
+        self.assertEqual(found["error"], "LOCAL_MODEL_AMBIGUOUS")
+        self.assertEqual(sorted(entry["base_url"] for entry in found["servers"]),
+                         ["http://127.0.0.1:8082", "http://127.0.0.1:8097"])
+        self.assertNotIn("model", found)
+
+    def test_the_operators_own_address_breaks_a_tie_between_single_model_servers(self):
+        two_servers = {"http://127.0.0.1:8082": rows(self.NEW_B), "http://127.0.0.1:8097": rows(self.NEW_A)}
+        for hints in ({"base": "http://127.0.0.1:8097"}, {"saved": "http://127.0.0.1:8097"}):
+            self.saved = {"model": "", "base": hints.get("saved", "")}
+            found = endpoint.resolve("", hints.get("base", ""), catalog_reader=self.reader(two_servers), listeners=lambda: [8082, 8097])
+            self.assertEqual((found["base_url"], found["model"], found["match"]), ("http://127.0.0.1:8097", self.NEW_A, "only"), hints)
+        self.saved = {"model": "", "base": ""}
+        with patch.dict("os.environ", {"II_LLAMA_BASE_URL": "http://127.0.0.1:8082"}):
+            found = endpoint.resolve(catalog_reader=self.reader(two_servers), listeners=lambda: [8082, 8097])
+        self.assertEqual((found["base_url"], found["model"]), ("http://127.0.0.1:8082", self.NEW_B))
+        # The same id on two servers is one model, not a conflict.
+        same = {"http://127.0.0.1:8082": rows(self.NEW_A), "http://127.0.0.1:8097": rows(self.NEW_A.upper())}
+        self.assertEqual(endpoint.resolve(catalog_reader=self.reader(same), listeners=lambda: [8082, 8097])["match"], "only")
+
+    def test_an_explicit_pin_is_honoured_and_never_follows_another_served_model(self):
+        # The deliberate operator pin (F04 explicit binding) stays the only pinned path: the legacy scanner is not reached, so a
+        # different model served elsewhere can neither replace nor outrank it. Selected intent and resolver are synthetic here.
+        intent = {"mode": "EXPLICIT_STRATA", "synthetic": True}
+        pinned = {"base_url": "http://127.0.0.1:59999/v1", "model": "synthetic-pinned-model", "match": "exact", "synthetic": True}
+        reader = Mock(side_effect=AssertionError("an explicit pin must not scan other servers"))
+        with patch.object(endpoint, "selected_intent", return_value=intent), patch.object(endpoint, "_resolve_selected", return_value=pinned):
+            found = endpoint.resolve(catalog_reader=reader, listeners=lambda: [8097])
+        self.assertIs(found, pinned)
+        reader.assert_not_called()
+
+    def test_nothing_served_is_not_found_and_the_broker_and_decider_ports_are_never_probed(self):
+        found = endpoint.resolve(catalog_reader=self.reader({}), listeners=lambda: [5000, 8000, 8097])
+        self.assertEqual(found["error"], "LOCAL_MODEL_NOT_FOUND")  # no model served: never a cloud, paid or invented fallback
+        self.assertNotIn("model", found)
+        self.assertNotIn("http://127.0.0.1:5000", self.probed)
+        self.assertNotIn("http://127.0.0.1:8000", self.probed)
+        self.assertIn("http://127.0.0.1:8097", self.probed)  # the real listener scan did run
+
+
 class CatalogTests(unittest.TestCase):
     """Raw catalog parsing through an injected fake opener: no socket is ever used, and these independent fixture URLs are
     not resolve() matching fixtures, so they may name any loopback port, including 5000."""

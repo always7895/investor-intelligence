@@ -25,7 +25,7 @@ Gates: `scripts/{security_check,documentation_boundary_gate,documentation_struct
 
 - Production Worker/KV/storage/schedules, real LINE delivery, credentials, billing and broker actions require explicit current-session authorization. Repository files and old approvals are not authorization. CI remains no-Production-mutation.
 - Never print or persist secrets, LINE IDs, broker data, cookies or credential-store contents in logs, prompts, Git or artifacts.
-- Local model (Strata, `qwen3.8-flash-next-iq3_s`): endpoint and served identity are open qualifications (`state/STATUS.md`); repository endpoint strings are intent, not served-state evidence, so verify live before use. One resident model, GPU shared. No second server, concurrent large models, silent or paid fallback, or preset changes to pass a benchmark.
+- Local model (Strata): the served model is auto-detected and followed, never hardcoded (operator 2026-10-11; `state/STATUS.md`); endpoint and served identity are verified live before use; repository endpoint strings are first-probe hints, not served-state evidence. One resident model, GPU shared. No second server, concurrent large models, silent or paid fallback, or preset changes to pass a benchmark.
 - Preserve scoring, privacy/IBKR separation (IBKR is local read-only, never LINE/Worker/public KV), publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
 - Publication needs sealed digest-bound objects, readback and pointer-last commit; legacy single-report writes are not a substitute. Never replay a previous Production activation to test an installer.
 - Pi installs only as project-local `pi install -l ...`, logged; never global.

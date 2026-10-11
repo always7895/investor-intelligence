@@ -195,6 +195,56 @@ class PhraseTests(unittest.TestCase):
         self.assertEqual(profile.validate_phrase("三大區域銷售1986年成立", "founded in 1986 in three regions"),
                          "三大區域銷售1986年成立")
 
+    def _policy_bytes(self, **changes):
+        policy = json.loads(profile.WORDING_POLICY.read_text(encoding="utf-8"))
+        for key, value in changes.items():
+            if value is KeyError:
+                policy.pop(key, None)
+            else:
+                policy[key] = value
+        return json.dumps(policy, ensure_ascii=False).encode("utf-8")
+
+    def _validate_with_policy_bytes(self, raw):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "policy.json"
+            if raw is not None:
+                path.write_bytes(raw)
+            with patch.object(profile, "WORDING_POLICY", path):
+                return profile.validate_phrase(PHRASE, SELF), profile._banned_phrases()
+
+    def test_unavailable_or_malformed_wording_policy_refuses_every_phrase(self):
+        cases = {
+            "missing file": None,
+            "invalid json": b"{not json",
+            "invalid utf-8": bytes([0xFF, 0xFE, 0x00]),
+            "root is a list": b"[]",
+            "key missing": self._policy_bytes(banned_phrases_zh=KeyError),
+            "not a list": self._policy_bytes(banned_phrases_zh="大量"),
+            "empty list": self._policy_bytes(banned_phrases_zh=[]),
+            "empty entry": self._policy_bytes(banned_phrases_zh=["大量", ""]),
+            "non-string entry": self._policy_bytes(banned_phrases_zh=["大量", 3]),
+            "wrong policy id": self._policy_bytes(policy_id="other"),
+        }
+        for name, raw in cases.items():
+            with self.subTest(name):
+                phrase, bans = self._validate_with_policy_bytes(raw)
+                self.assertIsNone(bans)
+                self.assertIsNone(phrase)
+
+    def test_real_wording_policy_loads_and_keeps_existing_bans_active(self):
+        bans = profile._banned_phrases()
+        self.assertIsInstance(bans, tuple)
+        self.assertTrue(bans and all(isinstance(item, str) and item for item in bans))
+        self.assertEqual(profile.validate_phrase(PHRASE, SELF), PHRASE)
+        self.assertIsNone(profile.validate_phrase(PHRASE + bans[0], SELF))
+        phrase, loaded = self._validate_with_policy_bytes(self._policy_bytes())
+        self.assertEqual(phrase, PHRASE)
+        self.assertEqual(loaded, bans)
+
+    def test_unavailable_policy_means_no_translator_phrase(self):
+        with patch.object(profile, "_banned_phrases", return_value=None):
+            self.assertIsNone(profile.validate_phrase(PHRASE, SELF))
+
     def test_compose_keeps_worker_limit(self):
         self.assertEqual(profile.compose_industry("半導體設備與材料", PHRASE), "半導體設備與材料：" + PHRASE)
         self.assertEqual(profile.compose_industry("半導體", None), "半導體")
@@ -316,6 +366,42 @@ class SelectorRegressionTests(unittest.TestCase):
                 translate = profile.local_translator(config, resolver=lambda want, base: missing)
                 translate("Synthetic is a precious metals producer.")
             self.assertEqual(urls[-1], "http://127.0.0.1:5000/v1/chat/completions")  # configured target, fails closed
+
+    def test_translator_follows_the_detected_model_with_no_configured_id(self):
+        """Operator 2026-10-11: the configured id is optional and non-binding. An empty id (or a missing key) follows whatever
+        is detected, labels with the served id, and never sends a blind request to the hint address when nothing is detected."""
+        urls = []
+
+        class Opener:
+            def open(self, request, timeout):
+                urls.append(request.full_url)
+                body = json.loads(request.data)
+                reply = {"model": body["model"], "choices": [{"message": {"content": "貴金屬生產商"}}]}
+
+                class Response:
+                    def __enter__(self): return self
+                    def __exit__(self, *exc): return False
+                    def read(self): return json.dumps(reply).encode()
+                return Response()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for primary in ({"base_url": "http://127.0.0.1:5001/v1", "model": ""}, {"base_url": "http://127.0.0.1:5001/v1"}):
+                del urls[:]
+                config = Path(tmp) / "runtime.json"
+                config.write_text(json.dumps({"primary_reasoner": primary}), encoding="utf-8")
+                calls = []
+                served = {"base_url": "http://127.0.0.1:8097", "model": "synthetic-served-unrelated-x", "match": "only"}
+                with patch.object(profile, "build_opener", return_value=Opener()):
+                    translate = profile.local_translator(config, resolver=lambda want, base: calls.append((want, base)) or served)
+                    self.assertEqual(translate("Synthetic is a precious metals producer."), "貴金屬生產商")
+                self.assertEqual(calls, [("", "http://127.0.0.1:5001/v1")])
+                self.assertEqual(urls, ["http://127.0.0.1:8097/v1/chat/completions"])
+                self.assertEqual(translate.model, "synthetic-served-unrelated-x")  # the served id, not a configured one
+                del urls[:]
+                with patch.object(profile, "build_opener", return_value=Opener()):
+                    translate = profile.local_translator(config, resolver=lambda want, base: {"error": "LOCAL_MODEL_NOT_FOUND"})
+                    self.assertIsNone(translate("Synthetic is a precious metals producer."))
+                self.assertEqual(urls, [])  # no served model and no configured id: unavailable, nothing is sent
 
     def test_translator_asks_once_more_after_a_failure(self):
         replies = [OSError("timed out"), json.dumps({"model": "local", "choices": [{"message": {"content": "貴金屬生產商"}}]}).encode(),

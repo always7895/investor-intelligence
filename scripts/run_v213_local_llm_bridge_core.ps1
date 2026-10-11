@@ -82,7 +82,9 @@ Set-StrictMode -Version Latest
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8NoBom
 $OutputEncoding = $utf8NoBom
-$preferredModel = 'RVN-Q6_K-multilingual-mtp'
+# Operator 2026-10-11: no preferred model id is shipped. The model is the explicit request, else the saved selection, else the
+# only model served; several unrelated models with no match need an explicit selection (select_local_model.ps1), as in the resolver.
+$preferredModel = ''
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $namedTunnelHelpers = Join-Path $scriptRoot 'v213_named_tunnel_helpers.ps1'
 if (Test-Path -LiteralPath $namedTunnelHelpers -PathType Leaf) { . $namedTunnelHelpers }
@@ -174,11 +176,11 @@ function Test-HealthModel {
     $reportedProfile = [string](Get-ObjectPropertyValue $Health 'model_profile_sha256' '')
     $profileMatches = if ($ExpectedProfileHash) { $ExpectedProfileHash -cmatch '^[0-9a-f]{64}$' -and $reportedProfile -ceq $ExpectedProfileHash } else { $reportedProfile -ceq '' }
     if ($script:ExplicitBinding) {
-        return ($profileMatches -and $ok -is [bool] -and $ok -eq $true -and $reachable -is [bool] -and $reachable -eq $true
-            -and $available -is [bool] -and $available -eq $true -and $service -ceq 'v213-local-llm-gateway' -and $schema -ge 2
-            -and $reportedModel -ceq $SelectedModel
-            -and [string](Get-ObjectPropertyValue $Health 'runtime_binding_sha256' '') -ceq [string]$script:ExplicitBinding.binding_sha256
-            -and [string](Get-ObjectPropertyValue $Health 'qualification' '') -ceq 'UNQUALIFIED')
+        return ($profileMatches -and $ok -is [bool] -and $ok -eq $true -and $reachable -is [bool] -and $reachable -eq $true -and
+            $available -is [bool] -and $available -eq $true -and $service -ceq 'v213-local-llm-gateway' -and $schema -ge 2 -and
+            $reportedModel -ceq $SelectedModel -and
+            [string](Get-ObjectPropertyValue $Health 'runtime_binding_sha256' '') -ceq [string]$script:ExplicitBinding.binding_sha256 -and
+            [string](Get-ObjectPropertyValue $Health 'qualification' '') -ceq 'UNQUALIFIED')
     }
     return (
         $profileMatches -and
@@ -332,12 +334,15 @@ function Get-ModelCatalog {
 # Ollama, LM Studio, alternates); 5000 (IBKR Client Portal) and 8000 (retired System One decider) are never probed.
 function Find-LocalModelServer {
     param([string]$Current, [string]$WantedModel)
+    # A blank wanted id never accepts "any server": the caller derives it from the request or the saved selection, and without
+    # one the shared resolver (exact, family, the only served model) decides, so the bridge and the watchdog agree.
+    if ([string]::IsNullOrWhiteSpace($WantedModel)) { return $null }
     foreach ($port in @(8080, 11434, 1234, 5001, 8081)) {
         $candidate = "http://127.0.0.1:$port"
         if ($candidate -eq $Current.TrimEnd('/')) { continue }
         try { $catalog = @(Get-ModelCatalog $candidate) } catch { continue }
         $names = @($catalog | ForEach-Object { [string](Get-ObjectPropertyValue $_ 'id' ''); @(Get-ObjectPropertyValue $_ 'aliases' @()) })
-        if ([string]::IsNullOrWhiteSpace($WantedModel) -or @($names | Where-Object { $_ -ieq $WantedModel }).Count -gt 0) { return $candidate }
+        if (@($names | Where-Object { $_ -ieq $WantedModel }).Count -gt 0) { return $candidate }
     }
     return $null
 }
@@ -348,17 +353,21 @@ function Resolve-ModelWithDiscovery {
     catch {
         # An explicitly passed address is honoured exactly; only saved/default addresses may move.
         if (-not [string]::IsNullOrWhiteSpace($LlamaBaseUrl)) { throw }
-        $found = Find-LocalModelServer $Base $Requested
+        $wanted = $Requested
+        if ([string]::IsNullOrWhiteSpace($wanted)) { $wanted = [string](Get-ObjectPropertyValue (Read-ModelSelection) 'model' '') }
+        $found = Find-LocalModelServer $Base $wanted
         if ($found) {
             Write-Host "II_PROGRESS local model server auto-detected at $found (was $Base)" -ForegroundColor Yellow
-            return [pscustomobject]@{ base=$found; resolution=(Resolve-Model $found $Requested) }
+            return [pscustomobject]@{ base=$found; resolution=(Resolve-Model $found $wanted) }
         }
         # Operator 2026-09-26: the model itself changes too (TabbyAPI EXL3 on :5000 replaced by ninfer Qwen3.8-27B on
         # :8080). The shared resolver also scans the other loopback listeners and accepts the same family or the only
         # served model; the identity proof and route probe below still run on the model it names.
-        $wanted = $Requested
-        if ([string]::IsNullOrWhiteSpace($wanted)) { $wanted = [string](Get-ObjectPropertyValue (Read-ModelSelection) 'model' '') }
-        $raw = & $python (Join-Path $ProjectRoot 'scripts/local_model_endpoint.py') --want $wanted --base $Base 2>$null
+        # An empty argument is dropped by Windows PowerShell 5.1, so --want is passed only when there is a wanted id.
+        $resolverArguments = @()
+        if (-not [string]::IsNullOrWhiteSpace($wanted)) { $resolverArguments += @('--want', $wanted) }
+        $resolverArguments += @('--base', $Base)
+        $raw = & $python (Join-Path $ProjectRoot 'scripts/local_model_endpoint.py') @resolverArguments 2>$null
         if ($LASTEXITCODE -ne 0) { throw "LOCAL_MODEL_NOT_FOUND; resolver_exit=$LASTEXITCODE; wanted=$wanted; no_model_substitution=true" }
         $resolved = ($raw | Select-Object -Last 1) | ConvertFrom-Json
         Write-Host "II_PROGRESS local model auto-detected: $($resolved.model) at $($resolved.base_url) (was $wanted at $Base; match=$($resolved.match))" -ForegroundColor Yellow
@@ -398,9 +407,16 @@ function Set-FollowingModelProfile {
     # of its model profile. The relay builds the same profile from the same settings (the launcher's profile file, else
     # the project default) and the model it detected, so both sides hash to the same profile. None when no file exists.
     param([string]$Model)
+    # Operator 2026-10-11: outside an explicit binding the profile's model field is never a pin; only its SETTINGS count (the
+    # environment copy a launcher passed, else the launcher's file, else the project default). The model is always the one detected.
+    $sources = @()
+    $envProfile = [Environment]::GetEnvironmentVariable('V213_MODEL_PROFILE_JSON')
+    if (-not [string]::IsNullOrWhiteSpace($envProfile)) { $sources += ,@('env', $envProfile) }
     foreach ($path in @((Join-Path $stateRoot 'v213-model-profile-v1.json'), (Join-Path $ProjectRoot 'config\v213-model-profile-v1.json'))) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-        $settings = Get-Content -LiteralPath $path -Raw -Encoding utf8 | ConvertFrom-Json
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $sources += ,@('file', $path) }
+    }
+    foreach ($source in $sources) {
+        $settings = if ($source[0] -eq 'env') { $source[1] | ConvertFrom-Json } else { Get-Content -LiteralPath $source[1] -Raw -Encoding utf8 | ConvertFrom-Json }
         $profileJson = [ordered]@{
             schema_version = [int]$settings.schema_version; model = $Model; enable_thinking = [bool]$settings.enable_thinking
             reasoning_effort = [string]$settings.reasoning_effort; max_output_tokens = [int]$settings.max_output_tokens
@@ -427,9 +443,7 @@ function Resolve-Model {
         if (-not [string]::IsNullOrWhiteSpace($saved)) { $candidate = $saved.Trim() }
     }
     if (-not $candidate) {
-        $preferred = @($names | Where-Object { $_ -ieq $preferredModel }) | Select-Object -First 1
-        if ($preferred) { $candidate = [string]$preferred }
-        elseif ($catalog.Count -eq 1) { $candidate = [string]$ids[0] }
+        if ($catalog.Count -eq 1) { $candidate = [string]$ids[0] }
         else { throw 'Multiple llama.cpp models are available; explicit selection required.' }
     }
     if ($candidate -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$') {
@@ -697,11 +711,14 @@ if ($RoutingCheckOnly) {
     & $python -c "import requests,sys,struct; assert sys.version_info[:3] == (3,12,10) and struct.calcsize('P') == 8" 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'ROUTING_CHECK_PYTHON_UNQUALIFIED' }
     $checkProfile = Get-RuntimeModelProfile
-    if (-not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
-    if ($Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
+    # An explicit binding brings its own profile; otherwise the following profile is built below from the detected model.
+    if ($script:ExplicitBinding -and -not $checkProfile) { throw 'MODEL_PROFILE_REQUIRED' }
+    # Only an explicit binding pins the model; otherwise the profile supplies settings and the model is the one detected.
+    if ($script:ExplicitBinding -and $Model -and $Model -cne $checkProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
     $checkFound = if ($script:ExplicitBinding) {
         [pscustomobject]@{base=$LlamaBaseUrl;resolution=[pscustomobject]@{model=$Model;identity_catalog=@($script:ExplicitBinding.metadata.selected_catalog)}}
-    } else { Resolve-ModelWithDiscovery (Resolve-Llama) ([string]$checkProfile.model) }
+    } else { Resolve-ModelWithDiscovery (Resolve-Llama) $Model }
+    if (-not $script:ExplicitBinding -and -not (Set-FollowingModelProfile ([string]$checkFound.resolution.model))) { throw 'MODEL_PROFILE_REQUIRED' }
     $checkBase = [string]$checkFound.base
     $checkModel = $checkFound.resolution
     Test-SelectedModelRoute $checkBase ([string]$checkModel.model) @($checkModel.identity_catalog)
@@ -733,13 +750,17 @@ $GatewayPort = Resolve-GatewayPort $GatewayPort
 # Explicit intent keeps the interpreter already validated at preflight (no PATH/py re-resolution).
 $python = if ($script:ExplicitBinding) { $script:ExplicitPython } else { Resolve-Python }
 $runtimeProfile = Get-RuntimeModelProfile
+# Operator 2026-10-11 (LINE Q&A follows the auto-detected local model, nothing hardcoded): only an explicit binding (F04) pins the
+# model through its profile. Otherwise the profile (a launcher's environment copy, the launcher file or the project default)
+# supplies SETTINGS only; the model is -Model, else the saved selection, else what is served, and the profile is rebuilt with it.
+if ($runtimeProfile -and -not $script:ExplicitBinding) { $runtimeProfile = $null }
 if ($runtimeProfile) {
     if ($Model -and $Model -cne $runtimeProfile.model) { throw 'MODEL_PROFILE_SELECTION_MISMATCH' }
     $Model = [string]$runtimeProfile.model
 }
 $llama = if ($script:ExplicitBinding) { $LlamaBaseUrl } else { Resolve-Llama }
 # Operator 2026-09-26: without a profile the model is -Model, else the saved selection (launcher or desktop model
-# selector), else the preferred id, else the only model served; a changed port or model is auto-detected. The Worker
+# selector), else the only model served (several unrelated models need an explicit selection); a changed port or model is auto-detected. The Worker
 # accepts the route's model when LOCAL_LLM_MODEL_FROM_ROUTE is on and refuses the route otherwise.
 $discovered = if ($script:ExplicitBinding) {
     # Exact id already proven loaded at selected metadata preflight; no alias/
@@ -752,7 +773,7 @@ $llama = [string]$discovered.base
 $modelResolution = $discovered.resolution
 $Model = [string]$modelResolution.model
 $modelCatalog = @($modelResolution.catalog)
-if (-not $script:ExplicitBinding -and $tunnelPolicy.mode -eq 'FreeRelay' -and -not $runtimeProfile) { $runtimeProfile = Set-FollowingModelProfile $Model }
+if (-not $script:ExplicitBinding -and -not $runtimeProfile) { $runtimeProfile = Set-FollowingModelProfile $Model }
 # A validated profile owns the exact model; Test-SelectedModelRoute below rechecks profile agreement and requires a
 # complete response with the exact served identity before the gateway or a route is started.
 Test-SelectedModelRoute $llama $Model @($modelResolution.identity_catalog)

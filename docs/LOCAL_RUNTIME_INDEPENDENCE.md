@@ -7,10 +7,16 @@ This is a LOCAL-gateway capability, not a Cloudflare Worker change.
 
 Two roles, one runtime config (`config/local-runtime-independence-v1.json`):
 
-- **PRIMARY_REASONER** — the local reasoner (current default ninfer
-  `http://127.0.0.1:8080/v1`, model `Qwen3.8-27B`), run with
-  `--max-concurrency 1` and shared with the LINE gateway on `:8814` — a local
-  task delays LINE answers. No live qualification of ninfer is claimed here.
+- **PRIMARY_REASONER** — the local reasoner. The served model is auto-detected at run time, so a model or port change
+  needs no config edit (mechanism and limits: [Local model auto-detection](MODEL_RUNTIME_MIGRATION.md#local-model-auto-detection)).
+  `primary_reasoner.model` is empty by design (`model_selection=FOLLOW_DETECTED`, operator 2026-10-11) and `base_url`
+  (`http://127.0.0.1:8080/v1`) is only a loopback first-probe hint; a model id set there is a non-binding preference that never
+  pins or blocks a different served model. The gateway refuses to start without `II_LOCAL_LLM_MODEL` (the
+  bridge always sets it to the served id); a handler without a selected id answers 503 `SELECTED_MODEL_NOT_CONFIGURED` and
+  forwards nothing. The deliberate pin is the explicit Strata binding (F04: runtime binding plus model profile), which stays
+  exact and refuses any other model. Servers run with `--max-concurrency 1`; while the LINE
+  gateway on `:8814` shares the server, a local task delays LINE answers (backend decision: section M7 of that document).
+  No live qualification is claimed here.
 - **DECISION_ROUTER** — the Mapika / System One CPU decider
   (`Mapika-decider-2b-v9`; `alias_diagnostic_only: decider-v8`) is retired in
   the shipped config (`decision_router.retired: true`): the gateway's gate uses
