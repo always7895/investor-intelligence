@@ -1,5 +1,9 @@
 # PROJECT GAP LEDGER — Investor Intelligence v213 (2026-09-16, Task #28)
 
+> **Historical record** as of 2026-09-16 (worker `928539bd`), kept as evidence. It is not the current state: current
+> identity, findings, P0/P1 status, publication eligibility and roles live in `state/STATUS.md`, which supersedes every
+> present-tense statement below (for example `publication_eligible`, `DEPLOYMENT_READY` and the Gemini/Qwen roles).
+
 Project-wide gap audit across the 13 required areas. Format per item:
 ID / AREA / ISSUE / SEVERITY / CURRENT_STATE / EVIDENCE / ACTION / TEST / RESULT.
 Statuses as of: worker `928539bd-e351-4832-9ad7-cebaeae7be37`, live pointer run-bound

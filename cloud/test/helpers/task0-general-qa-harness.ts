@@ -17,8 +17,8 @@ export type GatewayChild = {
  * imported exclusively by test/manual/v213-task0-general-qa-live.manual.ts.
  *
  * Hard rules (no caller can relax):
- * - Approved Python executable only (II_TASK0_PYTHON_EXE override or the
- *   operator host interpreter); shell: false; explicit minimal env only —
+ * - Approved Python executable only (II_TASK0_PYTHON_EXE must name it; no
+ *   machine- or account-specific default is embedded); shell: false; explicit minimal env only —
  *   the full process.env is never inherited by the gateway child.
  * - fileURLToPath for every URL->OS path (Windows-safe; no manual
  *   pathname mangling).
@@ -91,10 +91,14 @@ export function startDrain(
   };
 }
 
-export const APPROVED_PYTHON_DEFAULT = "C:\\Users\\moon9\\AppData\\Local\\Programs\\Python\\Python312\\python.exe";
-
+/**
+ * The approved interpreter is named explicitly by II_TASK0_PYTHON_EXE. No
+ * user-profile path is embedded in the repository; an unset or blank value
+ * fails closed with a clear message instead of guessing an interpreter.
+ */
 export function resolveApprovedPython(): string {
-  const exe = process.env.II_TASK0_PYTHON_EXE ?? APPROVED_PYTHON_DEFAULT;
+  const exe = (process.env.II_TASK0_PYTHON_EXE ?? "").trim();
+  if (exe === "") throw new Error("TASK0_APPROVED_PYTHON_UNSET:set II_TASK0_PYTHON_EXE to the approved python executable");
   if (!existsSync(exe)) throw new Error(`TASK0_APPROVED_PYTHON_MISSING:${exe}`);
   return exe;
 }

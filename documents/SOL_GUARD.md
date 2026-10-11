@@ -1,6 +1,9 @@
 # SOL_GUARD — SoL-Pi small-session compaction guard (source-bound receipt)
 
-Status: IMPLEMENTED in the active project-local runtime; verified; **ACCEPTED scoped** (Master ACCEPT 2026-09-19, Mapika ACCEPT .9228; pre-commit base `9cd22fe2c737a7088002941b10b8226128af8084`; pre-commit evidence below, no invented final SHA). No Production mutation, no upstream Pi patch, no reinstall, no global registration.
+> **Historical record** (2026-09-19), kept as evidence; not the current state (`state/STATUS.md`). Sol and Mapika are
+> retired reviewers, the Pi runtime is on HOLD, and no receipt for the acceptance below is kept with the current receipts.
+
+Status as recorded on 2026-09-19: IMPLEMENTED in the then-active project-local runtime; verified; ACCEPTED scoped as claimed then (Master ACCEPT 2026-09-19, Mapika ACCEPT .9228; pre-commit base `9cd22fe2c737a7088002941b10b8226128af8084`; pre-commit evidence below, no invented final SHA). No Production mutation, no upstream Pi patch, no reinstall, no global registration.
 
 ## Identity
 

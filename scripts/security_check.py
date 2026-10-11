@@ -29,6 +29,18 @@ SENSITIVE_NAME = (
     "access[_-]?token|channel[_-]?secret|channel[_-]?access[_-]?token|app[_-]?password)"
 )
 
+# A Windows profile path as written in source: one backslash (PowerShell, text),
+# two or more backslashes (the escaped form inside Python/TypeScript/JSON string
+# literals) or forward slashes. Public, Default, All Users, the `*` wildcard, an
+# angle-bracket placeholder and %USERNAME% stay exempt in every form.
+_WIN_SEP = r"(?:\\{1,}|/)"
+WINDOWS_PROFILE_PATH_PATTERN = re.compile(
+    rf"(?i)C:{_WIN_SEP}Users{_WIN_SEP}"
+    rf"(?!Public(?:{_WIN_SEP}|$)|Default(?: User)?(?:{_WIN_SEP}|$)|All Users(?:{_WIN_SEP}|$)"
+    rf"|\*(?:{_WIN_SEP}|$)|<[^>]+>{_WIN_SEP}|%USERNAME%{_WIN_SEP})"
+    rf"[^\\/\s\"']+{_WIN_SEP}"
+)
+
 PATTERNS: list[tuple[str, re.Pattern[str], bool]] = [
     (
         "private key",
@@ -70,11 +82,20 @@ PATTERNS: list[tuple[str, re.Pattern[str], bool]] = [
     ),
     (
         "user-specific Windows profile path",
-        re.compile(
-            r"(?i)C:\\Users\\(?!Public(?:\\|$)|Default(?: User)?(?:\\|$)|All Users(?:\\|$)|\*(?:\\|$)|<[^>]+>\\|%USERNAME%\\)[^\\\s\"']+\\"
-        ),
+        WINDOWS_PROFILE_PATH_PATTERN,
         False,
     ),
+]
+
+# Current tree only, never in PATTERNS (scripts/full_history_privacy_scan.py applies PATTERNS to every pushed blob, and
+# published history is not rewritten): a <worker>.<account>.workers.dev host names the operator's Cloudflare account. The
+# origin lives in the local Worker configuration; documents and tests use a synthetic, example, test, invalid or
+# placeholder label.
+WORKERS_DEV_ACCOUNT_PATTERN = re.compile(
+    r"(?i)\b[a-z0-9-]+\.(?!(?:synthetic|example|test|invalid|placeholder)\.workers\.dev\b)[a-z0-9-]+\.workers\.dev\b"
+)
+CURRENT_TREE_PATTERNS: list[tuple[str, re.Pattern[str], bool]] = [
+    ("workers.dev account subdomain", WORKERS_DEV_ACCOUNT_PATTERN, False),
 ]
 
 # Only unmistakable placeholders and narrowly defined runtime retrieval forms
@@ -144,7 +165,7 @@ def value_is_allowed(match: re.Match[str]) -> bool:
 def scan_text(relative: Path, text: str) -> list[str]:
     """Scan one decoded tracked file and return stable, content-free findings."""
     findings: list[str] = []
-    for label, pattern, has_value in PATTERNS:
+    for label, pattern, has_value in [*PATTERNS, *CURRENT_TREE_PATTERNS]:
         for match in pattern.finditer(text):
             if has_value and value_is_allowed(match):
                 continue

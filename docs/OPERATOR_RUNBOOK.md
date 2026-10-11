@@ -7,7 +7,9 @@ pointer where it was; once a pointer write has been attempted (sync, rollback), 
 verification means the live state is unknown until fresh live bytes are classified (section 7.6). Operators
 never patch live state by hand.
 
-Reference: worker base URL `https://investor-intelligence-v21-owner-line.moon951753.workers.dev`
+Reference: worker base URL `https://investor-intelligence-v21-owner-line.<account>.workers.dev`, where `<account>` is the
+operator's Cloudflare workers.dev label (never recorded in the repository; the exact origin is `public_snapshot_endpoint` in
+`%LOCALAPPDATA%\InvestorIntelligence\UserData\config\v21-owner-line.local.json`, which `deploy_production_gate.ps1` reads)
 (authenticated browser; plain curl may hit CF 1010 — use a real browser).
 
 ## 1. Health check & verification
@@ -65,7 +67,7 @@ Escalation: if two rollback attempts fail, HALT; do not assume which run is serv
 4. Never echo token values into logs, git, or handoffs; if a secret ever leaked, treat as incident: rotate again, then Section 5 audit + supervisor notification (outside this runbook's authority to classify).
 
 ## 7. Rollouts (runtime or Worker update) — lessons of 2026-09-28
-Authority first: a production rollout needs the operator's authorization in the executing session and an Astra go/no-go on a fixed plan; receipts in `_archive\rollout-2026-09-28\`.
+Authority first: a production rollout needs the operator's authorization in the executing session and a Fable 5.1 go/no-go review of a fixed, source-bound plan with rollback (holders: `state/STATUS.md`; Astra is retired); receipts in `_archive\rollout-2026-09-28\`.
 1. Order by compatibility: a reader that ignores new fields goes second (data first); a reader that would mislabel new fields goes first (Worker first). Prove both readers on the exact bytes (`scripts/stage_sealed_replay.py` from each checkout) before publishing.
 2. Exclusion: disable SealedFreshness, FreshnessWatchdog and v213-FreeRelay; wait until no refresh runs (post-seal work can last ~35 min after :12); stop only the relay's own processes (gateway under the runtime, heartbeat script, tunnel on the gateway port; never `D:\ninfer` or other projects); take the operation mutex with `hold-operation-lock.ps1`. The runtime install cannot rename the root while relay processes run.
 3. Resume order: **release the operation mutex before starting FreeRelay** — the bridge takes the same mutex at start (`V213_OPERATION_LOCK_BUSY`, watchdog exit 1 otherwise). Then enable the tasks and check one gateway/tunnel/heartbeat and heartbeat PASS.
@@ -74,6 +76,18 @@ Authority first: a production rollout needs the operator's authorization in the 
 6. After any sync, classify the live bytes (`EXACT_<run>` / previous / UNKNOWN) before any claim; the sync writes the pointer before its final readback, so a nonzero exit does not prove the pointer stayed. UNKNOWN stops automation.
 7. Worker commands always name the production Worker: `--name investor-intelligence-v21-owner-line -c wrangler.v213.production.local.toml` (the default `wrangler.toml` name does not exist on the account).
 8. Lessons of rollout v9 (2026-09-29): a failed step or gate follows the plan's written branch; a retry, a different route or any re-interpretation of a branch needs a reviewed plan amendment or the operator before it happens, even when the cause is understood and harmless. When the executor shell is PowerShell 7, start Windows PowerShell 5.1 children (runtime scripts) with the Windows PowerShell module path (`$env:PSModulePath = "$HOME\Documents\WindowsPowerShell\Modules;" + [Environment]::GetEnvironmentVariable('PSModulePath','Machine')`), otherwise `ConvertTo-SecureString` is missing and the SEC steps are skipped. PowerShell drops a bare `--` in function arguments; quote it (`'--'`).
+
+### Local TAIFEX EOD collection (opt-in, disabled by default)
+The template `scripts/task-templates/taifex-options-eod.disabled.xml` is registered only after the plan in [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md) (O10 activation plan) is reviewed and the operator authorizes it in the current session: installed-payload sync if the installed collector hash differs from source, registration, enabling, first manual run. Verify the output file (`status` OK; `publication_eligible`, `line_quote_eligible` and `executable_quote` all false). Rollback: disable and unregister the task, keep the output.
+
+## 8. All-friends LINE access (V213_LINE_ACCESS_MODE) — switch, budget, migration, rollback
+Spec: [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md). The template ships `owner_only`; enabling is a Production change that needs a Fable 5.1 GO/NO-GO of a source-bound plan with rollback and then current-session operator authorization.
+1. Switch: `V213_LINE_ACCESS_MODE`, exactly `all_friends` to open, anything else is `owner_only`. Check `/health` (`line_access_mode`, `owner_only`, `friend_queue_configured` must be `true` before opening) and `/v213/readiness` (`line_access_mode`) after the deploy.
+2. Durable Object migration: deploy the version containing migration `v213-friend-qa-gate-v1` (`new_sqlite_classes = ["V213FriendQaGate"]`, binding `V213_FRIEND_QA_GATE`) while the mode is still `owner_only`; confirm the binding with `/health`, then change the mode in a second step. An unbound or failing gate fails closed (friends get the busy text), it never opens access.
+3. KV budget (free plan 1,000 writes/UTC day, shared with the hourly publisher; rule from section 7.4): estimate + reservations + 50 <= 1,000. Friend traffic itself writes no KV; add the friend allowance to the reservations: parked-job writes at most `V213_FRIEND_JOB_WRITES_PER_DAY` (default 150, two per job) plus the data commands (`刪除我的資料`, memory) at most 5 per friend per Taipei day. The owner keeps three KV writes per message. KV reads: every friend event costs three owner-lookup reads (pointer, epoch, target) before the Durable Object dedupe and caps, and every friend model question adds one epoch read before the gate decides, so include redeliveries and floods in the 100,000 reads/day estimate.
+4. GPU: `V213_FRIEND_QA_GLOBAL_INFLIGHT` (default 1) must not exceed the gateway's `II_GATEWAY_MAX_CONCURRENT_GENERATIONS`; do not raise either without the shared-host owner (the RTX 5090 is shared). The owner is never queued behind friends but a saturated gateway answers HTTP 429 to anyone, owner included; consider the gateway value as friend value + 1 only with the shared-host owner's agreement.
+5. LINE reply quota: replies use the single-use replyToken; verify the account plan and current LINE terms before opening (rollout checklist item). Push stays owner-only.
+6. Rollback: set `V213_LINE_ACCESS_MODE = "owner_only"` (or remove it) and redeploy config. The branch is the pre-existing owner-only code: non-owners are silent, no Durable Object call, the same KV path. The gate class and its rows may stay; they are never read in that mode. If the rollout itself must be reverted, use section 3 (Worker rollback).
 
 ## Standing invariants (verify after ANY of the above)
 - `git diff HEAD --stat cloud/src/worker.ts cloud/src/qa.ts` = 0 (certified blobs).

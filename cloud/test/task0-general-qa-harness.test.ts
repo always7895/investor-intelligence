@@ -328,7 +328,12 @@ describe("TASK0 1G-R: suite separation + opt-in gate (offline)", () => {
 });
 
 describe("TASK0 1I: bounded release + forward budget (mandatory offline cases)", () => {
-  beforeEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useRealTimers();
+    // startLocalGateway() resolves the approved interpreter first; spawn is mocked, so any existing file works.
+    vi.stubEnv("II_TASK0_PYTHON_EXE", process.execPath);
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
   type FakeChild = {
     exitCode: number | null;
     signalCode: NodeJS.Signals | null;

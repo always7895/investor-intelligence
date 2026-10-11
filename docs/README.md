@@ -46,6 +46,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [PROVIDER_RUNTIME_HOOK](PROVIDER_RUNTIME_HOOK.md) — 提供者執行時期掛鉤與信任邊界規範（工廠單次呼叫、分動作細粒度權利、未知嚴格暫緩、零公司准入）
 - [ECB_REFERENCE_SOURCE_ADMISSION](ECB_REFERENCE_SOURCE_ADMISSION.md)
 - [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md)
+- [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md) — O11/O12 design only: keep EOD local-only (A) or a public date-only reference surface (B); grants no rights or admission
 - [PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW](PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md)
 - [SOURCE_POLICY_INDEX](SOURCE_POLICY_INDEX.md)
 - [SECURITY](SECURITY.md)
@@ -72,6 +73,7 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — no single-source dependency: product-by-source matrix, rejected sources and the remediation order
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
+- [PUBLICATION_MODE_CONTRACT_V2](PUBLICATION_MODE_CONTRACT_V2.md) — C1 parity: Worker and install preflight recount EVIDENCE_QUALIFIED rows structurally; shared vectors; contract hash and deploy order
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
 - [KV_DEPLOYMENT_PREFLIGHT](KV_DEPLOYMENT_PREFLIGHT.md)
 - [KV_NAMESPACE_ISOLATION](KV_NAMESPACE_ISOLATION.md)
@@ -102,8 +104,9 @@ Preserve these original observations and technical rationale. Their older deploy
 - [R75_SEVEN_FIELD_MIGRATION](R75_SEVEN_FIELD_MIGRATION.md)
 - [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — Objective A/B statutory authority & external citation typing resolution (GOV/CCR provenance, 17 U.S.C. 102(b) edicts doctrine, CCR 17 95350-95359.1 timeline, 7 typed citations, preserved 404/301 states)
 - [LINE_GAP_LEDGER](LINE_GAP_LEDGER.md) — 31-item gap ledger across 8 scopes (Messaging, Rich Menu/UX, Investor Intelligence, Production, Security, Reliability, Tests, Latest Specs), format ID/AREA/ISSUE/SEVERITY/CURRENT_STATE/EVIDENCE/ACTION/TEST/RESULT per item; P0s closed at worker `928539bd…` / run `131939Z-897a86efa733`
+- [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (default `owner_only`), access policy table, friend-lane limits and Durable Object gate, reviewed zh-TW texts, privacy invariants and the separate rollout steps for opening public features and Q&A to all LINE friends
 - [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health/readiness checks, sealed-snapshot rollback (`scripts/rollback_sealed_snapshot.py`), worker rollback, refresh-task recreation, emergency incident response, secret rotation
-- [PROJECT_GAP_LEDGER](PROJECT_GAP_LEDGER.md) — project-wide gap audit, 13 required areas (PG-01…PG-13), P0s closed; companion to LINE_GAP_LEDGER
+- [PROJECT_GAP_LEDGER](PROJECT_GAP_LEDGER.md) — historical record (2026-09-16; current state in STATUS): project-wide gap audit, 13 required areas (PG-01…PG-13), P0s closed; companion to LINE_GAP_LEDGER
 - [V213_ALL_IN_ONE.en](V213_ALL_IN_ONE.en.md)
 - [V213_ALL_IN_ONE.zh-TW](V213_ALL_IN_ONE.zh-TW.md)
 - [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)
@@ -119,4 +122,4 @@ Preserve these original observations and technical rationale. Their older deploy
 - [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — snapshot pointer pre-honesty back-up container (archive of retired pointer bytes; operational, not an artifact)
 - [TASK0_PHASE1D_SEALED_SNAPSHOT_FIXTURE](../cloud/test/fixtures/task0-phase1d/README.md) — byte-identical fixed sealed-snapshot fixture for deterministic-clock tests (test fixture, not a product artifact)
 - [HANDOFF_SOURCE_FEDERATION](../documents/HANDOFF_SOURCE_FEDERATION.md) — TASK0-3L source-federation full-autopilot handoff (current roles reconciled 2026-09-19)
-- [SOL_GUARD](../documents/SOL_GUARD.md) — SoL-Pi small-session compaction guard source-bound receipt (hashes, apply recipe, verification record)
+- [SOL_GUARD](../documents/SOL_GUARD.md) — historical record (2026-09-19; runtime on HOLD): SoL-Pi small-session compaction guard (hashes, apply recipe, verification record)

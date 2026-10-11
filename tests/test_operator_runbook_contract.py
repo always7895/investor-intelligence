@@ -42,6 +42,14 @@ class OperatorRunbookContractTests(unittest.TestCase):
         self.assertNotIn("wrangler", replay)
         self.assertNotRegex(replay, r"urlopen|requests\.")
 
+    def test_the_rollout_authority_names_the_current_holders(self):
+        line = next(l for l in RUNBOOK.splitlines() if l.startswith("Authority first:"))
+        self.assertIn("operator", line)
+        self.assertIn("Fable", line)
+        for path in DOCS:
+            for number, text in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                self.assertNotRegex(text, r"Astra go/no-go|writer ?\+ ?Astra", f"{path.name}:{number}")
+
 
 if __name__ == "__main__":
     unittest.main()

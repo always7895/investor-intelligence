@@ -13,7 +13,7 @@ import sync_sealed_snapshot_kv as sync  # noqa: E402
 
 LIMIT_STDERR = ("✘ [ERROR] A request to the Cloudflare API (/accounts/0123456789abcdef0123456789abcdef/storage/kv/namespaces/x/values/k)"
                 " failed.\n  your account has reached the free usage limit for this operation for today [code: 10048]\n"
-                "🪵  Logs were written to \"C:\\Users\\someone\\AppData\\Roaming\\xdg.config\\.wrangler\\logs\\wrangler.log\"\n")
+                "🪵  Logs were written to \"C:\\Users\\<user>\\AppData\\Roaming\\xdg.config\\.wrangler\\logs\\wrangler.log\"\n")
 
 
 def completed(code: int, stderr: str) -> subprocess.CompletedProcess:
