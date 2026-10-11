@@ -121,6 +121,21 @@ function triples(rows: any[]): Set<string> {
   const set = new Set<string>(); for (const row of rows) set.add(triple(row)); return set;
 }
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every(x => b.has(x));
+/** Mirrors NORMALIZER_VERSION (scripts/revenue_guidance_auto_verify.py:31); the Python R-DRIFT guard
+ * (tests/test_revenue_guidance_machine_nbis_reaffirm_pairs.py) fails if the two ever differ. */
+export const NBIS_NORMALIZER_VERSION = "rg-canon-1";
+/** Order by Unicode CODE POINT, the order of Python str comparison and sorted() (scripts/revenue_guidance_machine.py:180-183).
+ * Neither localeCompare nor the UTF-16 code-unit order of `<` / default sort is equivalent for astral characters. */
+export function compareCodePoints(a: string, b: string): number {
+  const x = Array.from(a), y = Array.from(b), n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) if (x[i] !== y[i]) return x[i]!.codePointAt(0)! < y[i]!.codePointAt(0)! ? -1 : 1;
+  return x.length === y.length ? 0 : x.length < y.length ? -1 : 1;
+}
+/** Python list order of [channel, id, date] rows: element by element, each by code point. */
+export function compareConsumedRows(a: readonly string[], b: readonly string[]): number {
+  for (let i = 0; i < 3; i++) { const c = compareCodePoints(a[i]!, b[i]!); if (c !== 0) return c; }
+  return 0;
+}
 export function machineBarrierReason(disposition: string, reason: string | null): "STALE" | "FRESHNESS_UNVERIFIED" | "INVALID" {
   if (disposition === "WAITING") return "STALE";
   if (disposition === "SUSPENDED") {
@@ -585,6 +600,7 @@ function validateNbisSourceDecisions(record: any, attempt: any, decisions: any[]
     && nbisDecimal(cop.low) === claim.low && nbisDecimal(cop.high) === claim.high && claim.low > 0 && claim.low <= claim.high);
   const source = docs.get(claim.document_id), sourceCapture = captures.get(cd[0].capture);
   need(source && sourceCapture && sourceCapture.role === "NBIS_SHAREHOLDER_LETTER" && sourceCapture.url === source.url && sourceCapture.sha256 === source.sha256);
+  const reaffirm = decisions.filter(d => d.kind === "REAFFIRMATION");
   for (const pkg of route.packages) {
     const state = decisions.find(d => d.kind === "MEMBERSHIP" && d.ref === pkg.accession).operands.guidance_state;
     if (pkg.filed < source.published_date) { need(state === null); continue; }
@@ -594,8 +610,9 @@ function validateNbisSourceDecisions(record: any, attempt: any, decisions: any[]
       && equal(state.scope_context, cop.scope_context) && state.passage === claim.passage);
     else need(pkg.filed > source.published_date && keys(state, ["kind", "year", "offsets", "passage"]) && state.kind === "REAFFIRMATION"
       && state.passage === `We are reaffirming our full-year ${cop.fiscal_year} guidance across all metrics.`);
+    // G4c-M13s: the package whose letter is the REAFFIRMATION capture carries the very span the decision declares.
+    if (reaffirm.length > 0 && pkg.letter === reaffirm[0].capture) need(equal(state.offsets, reaffirm[0].operands?.current?.offsets));
   }
-  const reaffirm = decisions.filter(d => d.kind === "REAFFIRMATION");
   if (reaffirm.length === 0) need((claim.reaffirmed_by ?? []).length === 0 && source.published_date === route.filed);
   else {
     const r = reaffirm[0], op = r.operands;
@@ -605,8 +622,11 @@ function validateNbisSourceDecisions(record: any, attempt: any, decisions: any[]
       && op.original.low === cop.low && op.original.high === cop.high && equal(op.original.offsets, cop.offsets)
       && equal(op.original.scope_context, cop.scope_context) && op.original.passage === claim.passage);
     nbisSpan(op.current.offsets); nbisScope(op.original.scope_context);
+    // G4c-M13: the offsets span exactly the passage and equal the locator the record carries (auto_verify.py:2217-2219).
     need(op.current.passage === `We are reaffirming our full-year ${cop.fiscal_year} guidance across all metrics.`
-      && Array.isArray(claim.reaffirmed_by) && claim.reaffirmed_by.length === 1 && claim.reaffirmed_by[0].passage === op.current.passage);
+      && op.current.offsets[1] - op.current.offsets[0] === Array.from(op.current.passage as string).length
+      && Array.isArray(claim.reaffirmed_by) && claim.reaffirmed_by.length === 1 && claim.reaffirmed_by[0].passage === op.current.passage
+      && claim.reaffirmed_by[0].locator === `canonical[${op.current.offsets[0]}:${op.current.offsets[1]}] ${NBIS_NORMALIZER_VERSION}`);
     const ref = docs.get(claim.reaffirmed_by[0].document_id), cap = captures.get(r.capture);
     need(ref && cap && cap.role === "NBIS_SHAREHOLDER_LETTER" && ref.url === cap.url && ref.sha256 === cap.sha256
       && ref.published_date === route.filed && source.published_date < ref.published_date);
@@ -753,6 +773,8 @@ export function validateMachineEnvelope(envelope: any, expected: MachineBindings
     const consumed = triples(route.consumed);
     const publicConsumed = triples(auto.consumed.map((t: any) => { need(Array.isArray(t) && t.length === 3); return {channel: t[0], id: t[1], date: t[2]}; }));
     need(sameSet(consumed, publicConsumed));
+    // G1-17: the Python serializer emits the sorted, duplicate-free list; the reader accepts only that exact order.
+    need(auto.consumed.every((t: any, i: number) => i === 0 || compareConsumedRows(auto.consumed[i - 1], t) < 0));
     need(Array.isArray(record.documents) && record.documents.length > 0 && record.documents.length <= 16
       && Array.isArray(record.claims) && Array.isArray(record.reported_quarters)
       && Array.isArray(record.forward_intervals) && record.reviewed_later_documents.length === 0);

@@ -74,7 +74,7 @@ function validatorContext(texts: { report: string; binding: string }) {
 
 describe("G4b-2 synthetic NBIS AUTO frozen producer parity", () => {
   it("T1 pins unmodified fixture bytes and the non-first NBIS row", () => {
-    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("0d10abfd3f8de37c1e4cbf7c01128b5f3be2f93a5c0968b6b8df5a7982db51de");
+    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("9f96105494a7c431d200c54240c838fee87eec3e070af4d735e2416435990e37");
     expect(nbisFixture.scope).toBe("SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE");
     const top = JSON.parse(nbisFixture.report).top;
     expect(top).toHaveLength(10);

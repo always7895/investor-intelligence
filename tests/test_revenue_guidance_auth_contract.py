@@ -1,6 +1,7 @@
 """Protected authority admission through the real provisioner/enroll callers over a fake OS.
 
-03f rows G2-04, G2-05, G2-06, G2-08, G2-09, G2-13 and G2-14. ctypes.WinDLL, the winreg
+03f rows G2-04, G2-05, G2-06, G2-08, G2-09, G2-13 and G2-14, plus the mocked part of G2-20
+(the real capture_public_input of PublicInputs data). ctypes.WinDLL, the winreg
 calls and the provisioner's sys/os/__file__ view are replaced per test by an in-memory
 machine: HKLM64 values and key security, file security descriptors, the process token,
 synthetic protected release/data trees and handles. The real _apis, _machine, _policy,
@@ -26,6 +27,7 @@ import ctypes
 import dataclasses
 import hashlib
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import struct
@@ -186,6 +188,7 @@ class Node:
     info_fail: bool = False
     later_identity: tuple | None = None  # reported from the second open on: a replaced object
     opens: int = 0
+    last_write: int = 3  # basic-information LastWriteTime (FILETIME)
 
     @property
     def label(self):
@@ -257,6 +260,7 @@ class FakeMachine:
         self.handles, self.closed, self.positions, self.identities = {}, set(), {}, {}
         self.next_handle, self.next_file = 0x1000, 1
         self.close_fail, self.close_raise, self.key_close_raise, self.read_raise = set(), {}, {}, {}
+        self.create_errors = {}  # path -> GetLastError code returned by a failing CreateFileW
         self.localfree_fail, self.convert_fail = set(), set()
         self.proc_token = SimpleNamespace(user=RUNTIME, elevation=0, admin=False, open_ok=True, user_ok=True,
                                      elevation_ok=True)
@@ -417,6 +421,9 @@ class FakeMachine:
     # kernel32 ----------------------------------------------------------------------------------------
     def create_file(self, path, access, share, attributes, disposition, flags, template):
         self.events.append(("CreateFileW", path, access, share, disposition, flags))
+        if Path(path) in self.create_errors:
+            self.last_error = self.create_errors[Path(path)]
+            return INVALID_HANDLE
         node = self.nodes.get(Path(path))
         if node is None or attributes is not None or template is not None:
             self.last_error = 2
@@ -455,7 +462,7 @@ class FakeMachine:
             serial, file_id = self.identities[handle]
             raw = struct.pack("<Q", serial) + file_id
         elif cls == 0 and size == 40:
-            raw = struct.pack("<qqqqI4x", 1, 2, 3, 4, attributes)
+            raw = struct.pack("<qqqqI4x", 1, 2, node.last_write, 4, attributes)
         else:
             self.unexpected.append(("information class", cls, size))
             return 0
@@ -1103,6 +1110,505 @@ class HeldObjectTests(_AuthorityDomain):
         self.refused(origin.read, handle)
         origin.close()
         self.assertSettled()
+
+
+PUBLIC_ROOT = Path(r"C:\PublicData")
+PUBLIC_SELECTOR = {"schema": "guidance-public-inputs-v1", "root": str(PUBLIC_ROOT)}
+PUBLIC_REL = "yahoo/chart/AAPL.json"
+DIRECTORY_WRITE_TIME, FILE_WRITE_TIME = 0x01D8000000000001, 0x01DB0000000000A7
+CAPTURE_EVENTS = {"OpenKey", "GetSecurityInfo", "QueryValueEx", "CreateFileW", "ReadFile", "budget"}
+
+
+def selector_digest(selector):
+    return sha(json.dumps(selector, sort_keys=True).encode())
+
+
+class BudgetStop(Exception):
+    """A budget refusal that is not the provisioner's own error: it must reach the caller unchanged."""
+
+
+class RecordingBudget:
+    """Budget double with the exact NativeBudget call signatures; every call joins the machine event log."""
+
+    def __init__(self, machine, *, stop_time_at=None, stop_consume=False, stop_admit=False):
+        self.machine, self.stop_time_at, self.stop_consume, self.stop_admit = machine, stop_time_at, stop_consume, stop_admit
+        self.times, self.consumed, self.admitted = 0, [], []
+
+    def _check_time(self):
+        self.times += 1
+        self.machine.events.append(("budget", "check_time"))
+        if self.times == self.stop_time_at:
+            raise BudgetStop()
+
+    def consume_read(self, size, *, owner=None, reservation=None):
+        self.machine.events.append(("budget", "consume_read", size))
+        self.consumed.append(size)
+        if self.stop_consume:
+            raise BudgetStop()
+
+    def admit_capture(self, size, *, historical=False, raw_document=False):
+        self.machine.events.append(("budget", "admit_capture", size))
+        self.admitted.append((size, historical, raw_document))
+        if self.stop_admit:
+            raise BudgetStop()
+
+
+class PublicInputCaptureTests(_AuthorityDomain):
+    """G2-20 (mocked part): the real ControlledOrigin.capture_public_input over the fake HKLM and kernel32.
+
+    The selector comes from the HKLM64 PublicInputs value; every object on the way is opened held, read-only and
+    checked, absence is only a missing object, and the exact captured bytes bind the digest. Real HKLM64 seeding
+    and the real ACL evaluation of the PublicInputs root stay native (G3/G2-04); the fake never evaluates them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.m.set_value("PublicInputs", PUBLIC_SELECTOR)
+        self.origin = provisioner.controlled_origin()
+        self.addCleanup(self.origin.close)  # idempotent; runs before the patches are undone
+
+    # fixtures ------------------------------------------------------------------------------------------
+    def seed(self, relative, data=b"", *, root=PUBLIC_ROOT, leaf=True, **fields):
+        """Create the root, the intermediate directories and (optionally) the leaf file; return (chain, leaf)."""
+        path = Path(root)
+        self.m.ensure_directories(path)
+        chain = []
+        for part in [None, *relative.split("/")[:-1]]:
+            path = path if part is None else path / part
+            if path not in self.m.nodes:
+                self.m.add(path, True, last_write=DIRECTORY_WRITE_TIME)
+            chain.append(self.m.node(path))
+        node = self.m.add(path / relative.split("/")[-1], False, data, **fields) if leaf else None
+        return chain, node
+
+    def select(self, value, kind=None):
+        self.m.set_value("PublicInputs", value, kind)
+
+    def select_root(self, root):
+        selector = {"schema": "guidance-public-inputs-v1", "root": str(root)}
+        self.select(selector)
+        return selector
+
+    def walk_paths(self, relative, root=PUBLIC_ROOT):
+        path = Path(root)
+        result = [*reversed(path.parents), path]
+        for part in relative.split("/"):
+            path = path / part
+            result.append(path)
+        return [str(item) for item in result]
+
+    def capture(self, relative=PUBLIC_REL, **kwargs):
+        return self.origin.capture_public_input(relative, kwargs.pop("budget", None) or RecordingBudget(self.m), **kwargs)
+
+    def assertUntouched(self, mark, budget):
+        self.assertEqual(self.calls("CreateFileW", mark) + self.calls("ReadFile", mark) + self.calls("budget", mark), [])
+        self.assertEqual(budget.consumed + budget.admitted, [])
+
+    def assertAbsent(self, result, selector, mark, budget):
+        self.assertEqual(result, (None, {"status": "ABSENT", "selector_sha256": selector_digest(selector)}))
+        self.assertEqual(self.calls("ReadFile", mark), [])
+        self.assertEqual(budget.consumed + budget.admitted, [])
+
+    def assertOpened(self, mark, budget, handles_before, count):
+        """count objects were opened (the failing one included), each preceded by one time check."""
+        self.assertEqual(len(self.calls("CreateFileW", mark)), count)
+        self.assertEqual(budget.times, count)
+        self.assertEqual(self.calls("CloseHandle", mark), [])  # held until the origin closes
+        return len(self.origin.handles) - handles_before
+
+    # positive contract -------------------------------------------------------------------------------------
+    def test_capture_returns_the_exact_bytes_bound_to_digest_write_time_and_selector(self):
+        data = b'{"close": 1.5}\r\n\x00\xff'
+        chain, leaf = self.seed(PUBLIC_REL, data, last_write=FILE_WRITE_TIME,
+                                security=file_security(Ace(USERS, FULL_CONTROL)))  # public data may be writable
+        budget = RecordingBudget(self.m)
+        before, mark = len(self.origin.handles), self.mark()
+        raw, actual = self.origin.capture_public_input(PUBLIC_REL, budget)
+        self.assertEqual(raw, data)
+        self.assertEqual(actual, {"status": "CAPTURED", "sha256": sha(data), "last_write_filetime": FILE_WRITE_TIME,
+                                  "selector_sha256": selector_digest(PUBLIC_SELECTOR)})
+        paths = self.walk_paths(PUBLIC_REL)
+        self.assertEqual(paths[:2], ["C:\\", str(PUBLIC_ROOT)])
+        self.assertEqual(self.calls("CreateFileW", mark), [  # read-only, share read+write for directories, open existing
+            ("CreateFileW", path, 0x80000000, 1 if path == str(leaf.path) else 3, 3, 0x02200000) for path in paths])
+        sequence = [event[1] if event[0] == "budget" else event[0] for event in self.m.events[mark:]
+                    if event[0] in ("budget", "CreateFileW", "ReadFile")]
+        self.assertEqual(sequence, ["check_time", "CreateFileW"] * 4 +
+                         ["check_time", "CreateFileW", "consume_read", "ReadFile", "admit_capture"])
+        self.assertEqual(budget.consumed, [len(data)])
+        self.assertEqual(budget.admitted, [(len(data), True, False)])  # historical, not a raw document
+        self.assertEqual(self.calls("ReadFile", mark), [("ReadFile", leaf.label, len(data))])
+        self.assertEqual(len(self.origin.handles), before + len(paths))
+        self.assertIs(self.m.handles[self.origin.handles[-1]], leaf)
+        self.assertEqual(self.calls("CloseHandle", mark), [])
+        access = winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+        self.assertEqual([event[2:] for event in self.calls("OpenKey", mark)], [(path, 0, access) for path in KEY_CHAIN])
+        self.assertEqual([event[1:] for event in self.calls("QueryValueEx", mark)], [(LEAF_KEY, "PublicInputs")])
+        self.assertEqual([(event[1], event[2]) for event in self.calls("GetSecurityInfo", mark)],
+                         [(path, 4) for path in KEY_CHAIN])  # registry keys only: public objects are never ACL-judged
+        self.assertEqual(self.calls("walk", mark) + self.calls("listdir", mark), [])  # no discovery or enumeration
+        self.assertLessEqual({event[0] for event in self.m.events[mark:]}, CAPTURE_EVENTS)
+        self.assertNoAuthorityWrite()
+        self.origin.close()
+        self.assertSettled()
+
+    def test_the_write_time_comes_from_the_target_object_not_a_directory(self):
+        self.seed("times/t.json", b"1", last_write=FILE_WRITE_TIME)
+        self.assertNotEqual(DIRECTORY_WRITE_TIME, FILE_WRITE_TIME)
+        self.assertEqual(self.capture("times/t.json")[1]["last_write_filetime"], FILE_WRITE_TIME)
+
+    def test_empty_and_exact_cap_files_are_captured_and_reads_stay_exact(self):
+        self.seed("edge/empty.json", b"", last_write=FILE_WRITE_TIME)
+        self.seed("edge/exact.json", b"0123456789abcdef")
+        self.seed("edge/zero-cap.json", b"")
+        for relative, cap, data in (("edge/empty.json", 8 * 1024 * 1024, b""), ("edge/exact.json", 16, b"0123456789abcdef"),
+                                    ("edge/zero-cap.json", 0, b"")):
+            with self.subTest(relative):
+                budget, mark = RecordingBudget(self.m), self.mark()
+                raw, actual = self.origin.capture_public_input(relative, budget, cap)
+                self.assertEqual((raw, actual["sha256"], actual["status"]), (data, sha(data), "CAPTURED"))
+                self.assertEqual((budget.consumed, budget.admitted), ([len(data)], [(len(data), True, False)]))
+                self.assertEqual(len(self.calls("ReadFile", mark)), 1 if data else 0)
+
+    def test_attribute_link_and_security_noise_on_public_objects_does_not_block_a_capture(self):
+        chain, leaf = self.seed("noise/dir/n.json", b"n", attributes=0x1 | 0x2 | 0x20,
+                                security=file_security(Ace(USERS, FULL_CONTROL), Ace(OTHER_USER, FULL_CONTROL)))
+        chain[1].links = 3  # a directory link count is not a leaf hard link
+        chain[2].security = file_security(Ace(USERS, FULL_CONTROL))
+        self.assertEqual(self.capture("noise/dir/n.json")[0], b"n")
+
+    def test_the_selector_is_read_fresh_on_every_call_and_its_digest_is_key_order_independent(self):
+        self.seed("fresh/a.json", b"one")
+        other = Path(r"C:\OtherData")
+        self.seed("fresh/a.json", b"two", root=other)
+        mark = self.mark()
+        first_raw, first = self.capture("fresh/a.json")
+        self.select({"root": str(other), "schema": "guidance-public-inputs-v1"})  # reversed member order
+        second_raw, second = self.capture("fresh/a.json")
+        self.assertEqual((first_raw, second_raw), (b"one", b"two"))
+        self.assertEqual(first["selector_sha256"], selector_digest(PUBLIC_SELECTOR))
+        self.assertEqual(second["selector_sha256"], selector_digest({"schema": "guidance-public-inputs-v1", "root": str(other)}))
+        self.assertNotEqual(first["selector_sha256"], second["selector_sha256"])
+        self.assertEqual([event[2] for event in self.calls("QueryValueEx", mark)], ["PublicInputs"] * 2)  # no cache
+        self.assertEqual(len(self.calls("OpenKey", mark)), 6)
+
+    def test_deep_roots_are_walked_from_the_drive_down_without_repeating_an_object(self):
+        deep = Path(r"C:\Data\Public\Inputs")
+        self.seed("x/y/z.json", b"z", root=deep)
+        self.select_root(deep)
+        mark = self.mark()
+        self.assertEqual(self.capture("x/y/z.json")[0], b"z")
+        paths = [event[1] for event in self.calls("CreateFileW", mark)]
+        self.assertEqual(paths, ["C:\\", r"C:\Data", r"C:\Data\Public", r"C:\Data\Public\Inputs",
+                                 r"C:\Data\Public\Inputs\x", r"C:\Data\Public\Inputs\x\y", r"C:\Data\Public\Inputs\x\y\z.json"])
+        self.assertEqual(paths, self.walk_paths("x/y/z.json", deep))
+
+    # selector shape ----------------------------------------------------------------------------------------
+    def test_a_malformed_or_untrusted_selector_is_refused_before_any_object_is_opened(self):
+        absent, root = object(), PUBLIC_SELECTOR["root"]
+        schema = PUBLIC_SELECTOR["schema"]
+        rows = [("absent value", absent, None), ("expand string", PUBLIC_SELECTOR, winreg.REG_EXPAND_SZ),
+                ("dword", 5, winreg.REG_DWORD), ("binary", PUBLIC_SELECTOR, winreg.REG_BINARY),
+                ("not an object: null", None, None), ("not an object: list", [schema, root], None),
+                ("not an object: string", json.dumps(root), None),
+                ("wrong schema", {"schema": "guidance-public-inputs-v2", "root": root}, None),
+                ("non-string schema", {"schema": 1, "root": root}, None),
+                ("missing root", {"schema": schema}, None), ("missing schema", {"root": root}, None),
+                ("empty object", {}, None), ("extra member", {"schema": schema, "root": root, "extra": 1}, None),
+                ("non-string root: int", {"schema": schema, "root": 7}, None),
+                ("non-string root: null", {"schema": schema, "root": None}, None),
+                ("non-string root: list", {"schema": schema, "root": [root]}, None),
+                ("drive only", {"schema": schema, "root": "C:"}, None),
+                ("drive root with nothing below", {"schema": schema, "root": "C:\\"}, None),
+                ("UNC root", {"schema": schema, "root": "\\\\host\\share\\data"}, None),
+                ("relative root", {"schema": schema, "root": "PublicData\\x"}, None),
+                ("rooted without drive", {"schema": schema, "root": "\\PublicData"}, None),
+                ("forward slash after the drive", {"schema": schema, "root": "C:/PublicData"}, None),
+                ("drive-relative root", {"schema": schema, "root": "C:PublicData"}, None),
+                ("control character in root", {"schema": schema, "root": "C:\\Public\x01Data"}, None),
+                ("newline in root", {"schema": schema, "root": "C:\\PublicData\n"}, None),
+                ("root over 230 characters", {"schema": schema, "root": "C:\\" + "a" * 231}, None),
+                ("duplicate member text", ('{"schema": "%s", "schema": "%s", "root": "C:\\\\PublicData"}' % (schema, schema),
+                                           winreg.REG_SZ), None),
+                ("NaN member", ('{"schema": "%s", "root": NaN}' % schema, winreg.REG_SZ), None)]
+        for label, value, kind in rows:
+            with self.subTest(label):
+                if value is absent:
+                    del self.m.values["PublicInputs"]
+                elif type(value) is tuple:
+                    self.select(*value)
+                else:
+                    self.select(value, kind)
+                budget, mark = RecordingBudget(self.m), self.mark()
+                self.refused(self.origin.capture_public_input, PUBLIC_REL, budget)
+                self.assertUntouched(mark, budget)
+                self.assertEqual([event[2] for event in self.calls("QueryValueEx", mark)], ["PublicInputs"])
+        self.select(PUBLIC_SELECTOR)
+        self.assertEqual(self.capture(PUBLIC_REL)[1]["status"], "ABSENT")  # the origin stays usable after refusals
+
+    def test_selector_length_bounds_are_exact(self):
+        boundary = {"schema": "guidance-public-inputs-v1", "root": "C:\\" + "a" * 230}
+        self.select(boundary)  # 230 characters after the drive are admitted; the missing root is plain absence
+        budget, mark = RecordingBudget(self.m), self.mark()
+        self.assertAbsent(self.capture(PUBLIC_REL, budget=budget), boundary, mark, budget)
+        self.select(PUBLIC_SELECTOR)
+        self.assertEqual(self.capture("a" * 240)[1]["status"], "ABSENT")  # 240 characters admitted
+        budget, mark = RecordingBudget(self.m), self.mark()
+        self.refused(self.origin.capture_public_input, "a" * 241, budget)
+        self.assertUntouched(mark, budget)
+        budget, mark = RecordingBudget(self.m), self.mark()
+        self.refused(self.origin.capture_public_input, "/".join(["a"] * 121), budget)  # 241 characters with separators
+        self.assertUntouched(mark, budget)
+        self.assertEqual(self.capture("/".join(["a"] * 120))[1]["status"], "ABSENT")  # 239 characters, 120 components
+
+    def test_a_malformed_relative_selector_is_refused_before_any_object_is_opened(self):
+        rows = [("empty", ""), ("leading slash", "/a"), ("trailing slash", "a/"), ("empty component", "a//b"),
+                ("dot", "."), ("dot component", "a/./b"), ("parent", ".."), ("parent first", "../x"),
+                ("parent middle", "a/../b"), ("parent last", "a/.."), ("backslash", "a\\b"), ("drive prefix", "C:x"),
+                ("alternate stream", "a:b"), ("absolute", "C:\\Windows\\win.ini"), ("space", "a b"), ("wildcard", "a*"),
+                ("question mark", "a?"), ("quote", 'a"b'), ("angle", "a<b"), ("pipe", "a|b"), ("non-ASCII", "caf\u00e9"),
+                ("Arabic-Indic digit", "a\u0660"), ("trailing newline", "a\n"), ("NUL", "a\x00"), ("tab", "a\tb"),
+                ("None", None), ("int", 5), ("bytes", b"a"), ("list", ["a"]),
+                ("str subclass", type("Text", (str,), {})("a"))]
+        for label, relative in rows:
+            with self.subTest(label):
+                budget, mark = RecordingBudget(self.m), self.mark()
+                self.refused(self.origin.capture_public_input, relative, budget)
+                self.assertUntouched(mark, budget)
+
+    def test_a_target_outside_the_root_is_refused_before_any_open(self):
+        class Escaping(type(Path())):
+            """No validated relative can leave the root, so the containment guard needs a path double to fire."""
+            def joinpath(self, *parts):
+                return Path(self.drive + "\\Elsewhere", *parts)
+
+        self.seed(PUBLIC_REL, b"inside")
+        self.seed(PUBLIC_REL, b"outside", root=Path(r"C:\Elsewhere"))
+        budget, mark = RecordingBudget(self.m), self.mark()
+        with mock.patch.object(provisioner, "Path", Escaping):
+            self.refused(self.origin.capture_public_input, PUBLIC_REL, budget)
+        self.assertUntouched(mark, budget)
+        self.assertEqual(self.capture(PUBLIC_REL)[0], b"inside")  # the same call without the double captures the root's file
+
+    # absence semantics -------------------------------------------------------------------------------------
+    def test_only_a_missing_object_is_absence_and_it_keeps_every_opened_handle(self):
+        self.seed("gone/chart/x.json", leaf=False)
+        self.seed("keep/y.json", b"y")
+        leaf, directory = PUBLIC_ROOT / "keep" / "y.json", PUBLIC_ROOT / "keep"
+        cases = [("missing leaf", "gone/chart/x.json", None, 5), ("missing intermediate directory", "nodir/chart/x.json", None, 3),
+                 ("leaf error 3", "keep/y.json", {leaf: 3}, 4), ("leaf error 2", "keep/y.json", {leaf: 2}, 4),
+                 ("directory error 3", "keep/y.json", {directory: 3}, 3)]
+        for label, relative, errors, opens in cases:
+            with self.subTest(label):
+                self.m.create_errors = dict(errors or {})
+                budget, mark, before = RecordingBudget(self.m), self.mark(), len(self.origin.handles)
+                result = self.origin.capture_public_input(relative, budget)
+                self.assertAbsent(result, PUBLIC_SELECTOR, mark, budget)
+                self.assertEqual(self.assertOpened(mark, budget, before, opens), opens - 1)  # the failed open has no handle
+        self.m.create_errors = {}
+
+    def test_a_missing_root_is_absence_after_the_drive_only(self):
+        selector = self.select_root(r"C:\NoSuchPublicRoot")
+        budget, mark, before = RecordingBudget(self.m), self.mark(), len(self.origin.handles)
+        self.assertAbsent(self.capture(PUBLIC_REL, budget=budget), selector, mark, budget)
+        self.assertEqual(self.assertOpened(mark, budget, before, 2), 1)
+
+    def test_every_other_open_failure_is_refused_never_absence(self):
+        self.seed("keep/y.json", b"y")
+        leaf, directory = PUBLIC_ROOT / "keep" / "y.json", PUBLIC_ROOT / "keep"
+        codes = (0, 1, 4, 5, 21, 32, 53, 87, 123, 161, 1920, 0x5AA)  # 0 is an unexplained failure, not a missing object
+        for code in codes:
+            for where, path, opens in (("leaf", leaf, 4), ("directory", directory, 3), ("drive", Path("C:\\"), 1)):
+                with self.subTest(code=code, where=where):
+                    self.m.create_errors = {path: code}
+                    budget, mark, before = RecordingBudget(self.m), self.mark(), len(self.origin.handles)
+                    self.refused(self.origin.capture_public_input, "keep/y.json", budget)
+                    self.assertEqual(self.assertOpened(mark, budget, before, opens), opens - 1)
+                    self.assertEqual(self.calls("ReadFile", mark), [])
+                    self.assertEqual(budget.consumed + budget.admitted, [])
+        self.m.create_errors = {}
+
+    def test_a_null_or_zero_handle_is_a_failure_decided_by_the_last_error_alone(self):
+        for value, error, absent in ((0, 5, False), (None, 5, False), (INVALID_HANDLE, 5, False), (0, 0, False),
+                                     (0, 2, True), (None, 3, True), (INVALID_HANDLE, 2, True)):
+            with self.subTest(handle=value, error=error):
+                self.m.last_error = error
+                budget, mark, before = RecordingBudget(self.m), self.mark(), len(self.origin.handles)
+                with mock.patch.object(self.m.kernel32, "CreateFileW", _Export(lambda *args, result=value: result)):
+                    if absent:
+                        self.assertAbsent(self.capture(PUBLIC_REL, budget=budget), PUBLIC_SELECTOR, mark, budget)
+                    else:
+                        self.refused(self.origin.capture_public_input, PUBLIC_REL, budget)
+                self.assertEqual(len(self.origin.handles), before)  # nothing to retain
+                self.assertEqual(budget.times, 1)
+        self.m.last_error = 0
+
+    # object checks -----------------------------------------------------------------------------------------
+    def test_unsafe_public_objects_are_refused_with_their_handle_retained_and_nothing_after_them_opened(self):
+        rows = [("root reparse attribute", 0, {"attributes": 0x400}), ("root reparse tag", 0, {"reparse_tag": 0xA000000C}),
+                ("root is a file", 0, {"directory": False}), ("root delete pending", 0, {"delete_pending": True}),
+                ("root metadata query fails", 0, {"info_fail": True}),
+                ("directory reparse attribute", 1, {"attributes": 0x400}), ("directory reparse tag", 1, {"reparse_tag": 0xA0000003}),
+                ("directory is a file", 1, {"directory": False}), ("directory delete pending", 1, {"delete_pending": True}),
+                ("directory metadata query fails", 1, {"info_fail": True}),
+                ("leaf reparse attribute", 2, {"attributes": 0x400}), ("leaf reparse tag", 2, {"reparse_tag": 0x80000017}),
+                ("leaf is a directory", 2, {"directory": True}), ("leaf delete pending", 2, {"delete_pending": True}),
+                ("leaf hard link", 2, {"links": 2}), ("leaf zero links", 2, {"links": 0}),
+                ("leaf metadata query fails", 2, {"info_fail": True})]
+        for index, (label, position, fields) in enumerate(rows):
+            with self.subTest(label):
+                root = Path(r"C:\ObjectRoot%d" % index)
+                chain, leaf = self.seed("d/leaf.json", b"payload", root=root)
+                self.select_root(root)
+                nodes = [*chain, leaf]
+                vars(nodes[position]).update(fields)
+                budget, mark, before = RecordingBudget(self.m), self.mark(), len(self.origin.handles)
+                self.refused(self.origin.capture_public_input, "d/leaf.json", budget)
+                opens = position + 2  # the drive, then the objects of the chain up to the failing one
+                self.assertEqual(self.assertOpened(mark, budget, before, opens), opens)  # failing handle retained
+                self.assertEqual([node.opens for node in nodes], [1 if i <= position else 0 for i in range(3)])
+                self.assertEqual(self.calls("ReadFile", mark), [])
+                self.assertEqual(budget.consumed + budget.admitted, [])
+        self.select(PUBLIC_SELECTOR)
+
+    def test_file_information_is_queried_with_the_exact_classes_and_sizes_or_the_object_is_refused(self):
+        self.seed("info/i.json", b"i")
+        rows = [("class 9 reparse tag", 9, 8), ("class 1 standard", 1, 24), ("class 18 identity", 18, 24), ("class 0 basic", 0, 40)]
+        for label, cls, size in rows:
+            with self.subTest(label):
+                real, seen = self.m.file_information, []
+
+                def intercept(handle, requested, buffer, length, real=real, seen=seen, cls=cls):
+                    seen.append((requested, length))
+                    return 0 if requested == cls else real(handle, requested, buffer, length)
+
+                with mock.patch.object(self.m.kernel32, "GetFileInformationByHandleEx", _Export(intercept)):
+                    budget, mark = RecordingBudget(self.m), self.mark()
+                    self.refused(self.origin.capture_public_input, "info/i.json", budget)
+                self.assertIn((cls, size), seen)
+                self.assertEqual(budget.consumed + budget.admitted, [])
+                self.assertEqual(self.calls("ReadFile", mark), [])
+
+    # caps and budget order ---------------------------------------------------------------------------------
+    def test_a_size_over_the_cap_is_refused_before_the_budget_is_charged_or_a_byte_is_read(self):
+        default = 8 * 1024 * 1024
+        rows = [("one over the default cap", default, default + 1, b"tiny"), ("one over a small cap", 16, 17, b"x" * 17),
+                ("negative size", default, -1, b"tiny"), ("size far over a 256 MiB cap", 256 * 1024 * 1024, 2 ** 40, b"x")]
+        for index, (label, cap, size, data) in enumerate(rows):
+            with self.subTest(label):
+                relative = "caps/over%d.json" % index
+                self.seed(relative, data, size=size)
+                budget, mark = RecordingBudget(self.m), self.mark()
+                self.refused(self.origin.capture_public_input, relative, budget, cap)
+                self.assertEqual(budget.consumed + budget.admitted, [])
+                self.assertEqual(self.calls("ReadFile", mark), [])
+
+    def test_the_default_cap_is_eight_mebibytes_and_a_larger_cap_marks_a_raw_document(self):
+        self.seed("caps/three.json", b"abc")
+        rows = [("default", {}, False), ("exactly 8 MiB", {"cap": 8 * 1024 * 1024}, False),
+                ("one over 8 MiB", {"cap": 8 * 1024 * 1024 + 1}, True), ("256 MiB", {"cap": 256 * 1024 * 1024}, True)]
+        for label, kwargs, raw_document in rows:
+            with self.subTest(label):
+                budget = RecordingBudget(self.m)
+                self.assertEqual(self.origin.capture_public_input("caps/three.json", budget, **kwargs)[0], b"abc")
+                self.assertEqual(budget.admitted, [(3, True, raw_document)])
+        budget = RecordingBudget(self.m)
+        self.seed("caps/big.json", b"b", size=8 * 1024 * 1024 + 1)
+        self.refused(self.origin.capture_public_input, "caps/big.json", budget)  # the default stays 8 MiB
+
+    def test_the_budget_is_charged_with_the_exact_size_before_the_read_and_admitted_after_it(self):
+        data = b"z" * 1000
+        self.seed("order/o.json", data)
+        budget, mark = RecordingBudget(self.m), self.mark()
+        self.assertEqual(self.origin.capture_public_input("order/o.json", budget)[0], data)
+        names = [event[1] if event[0] == "budget" else event[0] for event in self.m.events[mark:]
+                 if event[0] in ("budget", "ReadFile")]
+        self.assertEqual(names[names.index("consume_read"):], ["consume_read", "ReadFile", "admit_capture"])
+        self.assertEqual(names.count("consume_read"), 1)
+        self.assertEqual(names.count("admit_capture"), 1)
+        self.assertEqual([event[2] for event in self.calls("budget", mark) if event[1] != "check_time"], [1000, 1000])
+
+    def test_budget_refusals_reach_the_caller_unchanged_and_stop_the_capture_at_their_step(self):
+        self.seed("stops/s.json", b"stop")
+        budget, mark = RecordingBudget(self.m, stop_consume=True), self.mark()
+        with self.assertRaises(BudgetStop):
+            self.origin.capture_public_input("stops/s.json", budget)
+        self.assertEqual((budget.consumed, budget.admitted, self.calls("ReadFile", mark)), ([4], [], []))  # no read after refusal
+        budget, mark = RecordingBudget(self.m, stop_admit=True), self.mark()
+        with self.assertRaises(BudgetStop):
+            self.origin.capture_public_input("stops/s.json", budget)
+        self.assertEqual((budget.consumed, budget.admitted), ([4], [(4, True, False)]))
+        self.assertEqual(len(self.calls("ReadFile", mark)), 1)
+        for stop in (1, 2, 3):  # the deadline is checked before each of the objects on the path
+            with self.subTest(deadline=stop):
+                budget, mark, before = RecordingBudget(self.m, stop_time_at=stop), self.mark(), len(self.origin.handles)
+                with self.assertRaises(BudgetStop):
+                    self.origin.capture_public_input("stops/s.json", budget)
+                self.assertEqual(len(self.calls("CreateFileW", mark)), stop - 1)
+                self.assertEqual(len(self.origin.handles) - before, stop - 1)
+                self.assertEqual((budget.consumed, budget.admitted), ([], []))
+
+    def test_a_short_read_after_the_charge_is_refused_without_an_admitted_capture(self):
+        self.seed("short/s.json", b"abcd", short_read=True)
+        budget, mark = RecordingBudget(self.m), self.mark()
+        self.refused(self.origin.capture_public_input, "short/s.json", budget)
+        self.assertEqual((budget.consumed, budget.admitted), ([4], []))
+        self.assertEqual(len(self.calls("ReadFile", mark)), 1)
+
+    def test_the_budget_double_has_the_real_call_signatures(self):
+        for name in ("_check_time", "consume_read", "admit_capture"):
+            self.assertEqual(inspect.signature(getattr(storage.NativeBudget, name)),
+                             inspect.signature(getattr(RecordingBudget, name)), name)
+
+    # handle bound and liveness ---------------------------------------------------------------------------
+    def test_the_held_handle_bound_is_checked_after_the_time_check_and_before_each_open(self):
+        self.seed(PUBLIC_REL, b"bound")
+        saved, opened = list(self.origin.handles), []
+        try:
+            self.origin.handles = saved + [0] * (8192 - len(saved))
+            budget, mark = RecordingBudget(self.m), self.mark()
+            self.refused(self.origin.capture_public_input, PUBLIC_REL, budget)
+            self.assertEqual((self.calls("CreateFileW", mark), budget.times), ([], 1))
+            self.origin.handles = saved + [0] * (8191 - len(saved))
+            budget, mark = RecordingBudget(self.m), self.mark()
+            self.refused(self.origin.capture_public_input, PUBLIC_REL, budget)
+            self.assertEqual(len(self.calls("CreateFileW", mark)), 1)  # one slot left: the drive opens, the root does not
+            self.assertEqual(budget.times, 2)
+            opened = self.origin.handles[8191:]
+            self.assertEqual(len(opened), 1)
+        finally:
+            self.origin.handles = saved + opened
+        self.origin.close()
+        self.assertSettled()
+
+    def test_an_origin_that_is_not_live_is_refused_before_the_registry_or_any_object_is_touched(self):
+        gone = provisioner.controlled_origin()
+        gone.close()
+        mark = self.mark()
+        self.refused(gone.capture_public_input, PUBLIC_REL, RecordingBudget(self.m))
+        self.assertEqual(self.m.events[mark:], [])
+        for name, empty in (("handles", []), ("registry", []), ("policy", None)):
+            with self.subTest(name):
+                saved = getattr(self.origin, name)
+                setattr(self.origin, name, empty)
+                try:
+                    mark = self.mark()
+                    self.refused(self.origin.capture_public_input, PUBLIC_REL, RecordingBudget(self.m))
+                    self.assertEqual(self.m.events[mark:], [])
+                finally:
+                    setattr(self.origin, name, saved)
+        self.assertEqual(self.capture(PUBLIC_REL)[1]["status"], "ABSENT")  # the restored origin is live again
+        self.origin.close()
+        self.assertSettled()
+
+    def test_the_capture_never_writes_authority_or_reaches_native_bindings(self):
+        self.seed(PUBLIC_REL, b"clean")
+        mark = self.mark()
+        self.capture(PUBLIC_REL)
+        self.assertNoAuthorityWrite()
+        self.assertEqual(self.m.unexpected, [])
+        self.assertLessEqual({event[0] for event in self.m.events[mark:]}, CAPTURE_EVENTS)
+        self.bind.assert_not_called()
 
 
 class ControlledOriginTests(_AuthorityDomain):

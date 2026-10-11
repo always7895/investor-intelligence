@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { BOTTLENECK_V3_KEY, loadBottleneckV3 } from "../src/v213/bottleneck-v3";
 import type { PublicSnapshotView } from "../src/v213/public-snapshot";
-import { GUIDANCE_BINDING_KEY } from "../src/v213/revenue-guidance-machine";
+import { GUIDANCE_BINDING_KEY, compareConsumedRows } from "../src/v213/revenue-guidance-machine";
 import { describe, expect, it } from "vitest";
 
 // Synthetic, frozen, test-only. No genuine/native/live qualification or enablement.
@@ -108,7 +108,7 @@ function repin(id: string, omitReportDigest = false): {report: string; binding: 
   binding.issuers.NBIS.attempt_sha256 = producerPin.attempt_sha256;
   if (recordChanged) binding.issuers.NBIS.record_sha256 = producerPin.record_sha256;
   auto.decisions = decisions.map((d: any) => ({kind: d.kind, ref: d.ref, decision: d.decision, capture: d.capture, operands: d.operands}));
-  auto.consumed = op("ROUTING").consumed.map((v: any) => [v.channel, v.id, v.date]).sort((a: any, b: any) => canon(a) < canon(b) ? -1 : canon(a) > canon(b) ? 1 : 0);
+  auto.consumed = op("ROUTING").consumed.map((v: any) => [v.channel, v.id, v.date]).sort((a: any, b: any) => compareConsumedRows(a, b));
   if (recordChanged) {
     const evidence = envelope.payload.evidence;
     for (const key of ["documents", "claims", "reported_quarters", "forward_intervals"]) {
@@ -461,7 +461,7 @@ const ROW_TABLE = [
 
 describe("G4b-3 synthetic NBIS paired declarations", () => {
   it("T0 frozen synthetic fixture SHA256 and scope", () => {
-    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("0d10abfd3f8de37c1e4cbf7c01128b5f3be2f93a5c0968b6b8df5a7982db51de");
+    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("9f96105494a7c431d200c54240c838fee87eec3e070af4d735e2416435990e37");
     expect(fixture.scope).toBe("SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE");
   });
   for (const row of ROW_TABLE) it(row.id + " " + row.kind, async () => {

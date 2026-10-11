@@ -12,12 +12,15 @@ import json
 from pathlib import Path
 import socket
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
 
 from tests import g9a_synthetic_issuers as h
 from tests import nbis_synthetic_sources as f
+
+import revenue_guidance_storage as storage  # noqa: E402 (tests.nbis_synthetic_sources put scripts/ on sys.path)
 
 updater, overlay = f.updater, f.overlay
 A, B, C = h.SYMS[:3]
@@ -28,6 +31,7 @@ OK = ("RESULT", "text/html")
 RB = ("RAISED", "NetworkBlocked", "RUN_BUDGET")
 TOO_LARGE = ("RAISED", "SystemicFailure", "PUBLISH GENERATION_TOO_LARGE")
 UQ = ("BLOCKED", "WAITING", "CAPTURE_LIMIT", "store accounting unknown or quota")
+LEASE_OVER = ("RAISED", "BudgetExceededError", "Elapsed admission budget exceeded (not kernel cancellation)")
 
 
 def at_hour(hour):
@@ -325,6 +329,48 @@ def construction_failure():
             t.cleanup()
 
 
+def expiring_lease(deadline, clock):
+    """A fake lease whose _check_time mirrors NativeBudget._check_time: strictly past the deadline it raises."""
+    def check():
+        if clock() > deadline:
+            raise storage.BudgetExceededError("Elapsed admission budget exceeded (not kernel cancellation)")
+
+    return SimpleNamespace(budget=SimpleNamespace(_check_time=check, deadline=deadline, start_time=0.0),
+                           _network_work={"requests": 0, "bytes": 0, "last": -updater.PACING_SECONDS, "issuers": {}})
+
+
+def lease_deadline():
+    def request(deadline, now):
+        clock = Clock()
+        t, calls = transport([Reply()], clock)
+        t.lease = expiring_lease(deadline, clock)
+        clock.now = now
+        return get(t), len(calls), clock.sleeps
+
+    def left(deadline, now):
+        clock = Clock()
+        t, _ = transport([], clock)
+        t.lease = expiring_lease(deadline, clock)
+        clock.now = now
+        return f.outcome_of(t.remaining)
+
+    return ((request(100.0, 99.0), request(100.0, 100.0), request(100.0, 100.5)),
+            (left(100.0, 0.0), left(10.0 ** 9, 0.0), left(700.0, 599.0), left(100.0, 100.0), left(100.0, 100.5)))
+
+
+def lease_budget():
+    fresh = storage.NativeBudget(storage.NativeLimits.b1(900000), [])
+    window = round(fresh.deadline - fresh.start_time, 6)
+    fresh.deadline = time.monotonic() + 3600.0
+    live = fresh._check_time()
+    fresh.deadline = time.monotonic() - 1.0
+    expired = f.outcome_of(fresh._check_time)
+    short = storage.NativeBudget(storage.NativeLimits.b1(5000), [])
+    return (window, round(short.deadline - short.start_time, 6), live, expired,
+            issubclass(storage.BudgetExceededError, storage.StorageLeaseError),
+            issubclass(storage.BudgetExceededError, (updater.NetworkBlocked, updater.SystemicFailure, OSError, ValueError)))
+
+
 class G9bOfflineRows(unittest.TestCase):
     maxDiff = None
 
@@ -364,6 +410,21 @@ class G9bOfflineRows(unittest.TestCase):
         self.assertEqual(f.observe_boundary("G9B-CAPABILITY", f.outcome_of(capability_gates)),
                          ("RESULT", (("RAISED", "SystemicFailure", "CAPABILITY_INPUT_SOURCE_CONFLICT"), required, required,
                                      ("RAISED", "EffectiveInputsError", "CAPABILITY_EPOCH"), [])))
+
+    def test_lease_deadline_is_a_storage_stop_and_only_the_exact_instant_is_the_orderly_budget(self):
+        # G9 O7 (R/DECISION-G9-O7-LEASE-DEADLINE): remaining() runs the lease's strict `now > deadline` check first, so a
+        # request past the lease deadline raises the storage error (no WAITING outcome; no lease operation, including a
+        # publication, is admitted after it); only now == deadline reaches the orderly RUN_BUDGET. The effective
+        # deadline is the smaller of started + RUN_BUDGET_SECONDS and the lease deadline, both ways.
+        self.assertEqual(f.observe_boundary("G9B-O7-DEADLINE", f.outcome_of(lease_deadline)),
+                         ("RESULT", (((OK, 1, []), (RB, 0, []), (LEASE_OVER, 0, [])),
+                                     (("RESULT", 100.0), ("RESULT", 600.0), ("RESULT", 1.0), RB, LEASE_OVER))))
+
+    def test_lease_budget_window_and_error_class_are_the_ones_the_run_relies_on(self):
+        # R11 local facts: a B1 lease window is min(600 s, parent remaining), the check is strict, and the error is a
+        # StorageLeaseError that no handler of the updater run catches (NetworkBlocked, SystemicFailure, OSError, ValueError).
+        self.assertEqual(f.observe_boundary("G9B-O7-BUDGET", f.outcome_of(lease_budget)),
+                         ("RESULT", (600.0, 5.0, None, LEASE_OVER, True, False)))
 
     def test_queue_file_errors_only_reset_the_order(self):
         default = {"last_served": None}

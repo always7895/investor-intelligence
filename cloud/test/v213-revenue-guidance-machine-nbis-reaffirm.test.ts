@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { BOTTLENECK_V3_KEY, loadBottleneckV3 } from "../src/v213/bottleneck-v3";
 import type { PublicSnapshotView } from "../src/v213/public-snapshot";
-import { GUIDANCE_BINDING_KEY } from "../src/v213/revenue-guidance-machine";
+import { GUIDANCE_BINDING_KEY, compareConsumedRows } from "../src/v213/revenue-guidance-machine";
 import { describe, expect, it } from "vitest";
 
 // G4c Scenario R (REAFFIRMATION): synthetic, frozen, test-only; never genuine/native/live qualification or
 // enablement. The fixture is produced by tests/test_revenue_guidance_machine_nbis_reaffirm_parity.py (its
-// frozen-bytes row is the pin). Rows pin DECLARED, designed expectations only; M13/M13s are characterizations
-// (TS_ADMITS_TODAY: the REAFFIRMATION offsets are checked by shape only, an open product finding).
+// frozen-bytes row is the pin). Rows pin DECLARED, designed expectations only. M13/M13s were characterizations
+// (TS_ADMITS_TODAY) and are now NEG; M13c (both decision copies shifted, record untouched) is the row that only the
+// locator bind can refuse. The Worker binds op.current.offsets to the record locator
+// `canonical[a:b] <NBIS_NORMALIZER_VERSION>` and to the MEMBERSHIP guidance_state.offsets of the reaffirmed package.
 const rawFixture = readFileSync(resolve(__dirname, "../../tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json"));
 const fixture = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawFixture)) as {
   scope: string; report: string; binding: string;
@@ -55,6 +57,7 @@ function repin(id: string): {report: string; binding: string} {
   const current = reaffirmation.operands.current;
   if (id === "M13") current.offsets = shift(current.offsets);
   else if (id === "M13s") currentState.offsets = shift(currentState.offsets);
+  else if (id === "M13c") { current.offsets = shift(current.offsets); currentState.offsets = shift(currentState.offsets); }
   else if (id === "R01") current.passage = current.passage.replace(String(current.year), String(current.year + 1));
   else if (id === "R02") decisions = decisions.filter((d: any) => d !== reaffirmation);
   else if (id === "R03") currentState.kind = "ORIGINAL_RANGE";
@@ -71,7 +74,7 @@ function repin(id: string): {report: string; binding: string} {
   binding.issuers.NBIS.attempt_sha256 = producerPin.attempt_sha256;
   auto.decisions = decisions.map((d: any) => ({kind: d.kind, ref: d.ref, decision: d.decision, capture: d.capture, operands: d.operands}));
   const routing = decisions.find((d: any) => d.kind === "ROUTING").operands;
-  auto.consumed = routing.consumed.map((v: any) => [v.channel, v.id, v.date]).sort((a: any, b: any) => canon(a) < canon(b) ? -1 : canon(a) > canon(b) ? 1 : 0);
+  auto.consumed = routing.consumed.map((v: any) => [v.channel, v.id, v.date]).sort(compareConsumedRows);
   const reportText = JSON.stringify(report);
   binding.report_sha256 = H(reportText);
   return {report: reportText, binding: JSON.stringify(binding)};
@@ -86,8 +89,9 @@ async function tuple(texts: {report: string; binding: string}): Promise<[boolean
 // ROWTABLE-BEGIN
 const ROW_TABLE = [
   {"id": "C0", "kind": "CTRL", "py_a": ["RESULT", null], "py_b": ["RESULT", ["AUTO_VERIFIED", null]], "ts": [true, "AVAILABLE"]},
-  {"id": "M13", "kind": "CHAR", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [true, "AVAILABLE"]},
-  {"id": "M13s", "kind": "CHAR", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [true, "AVAILABLE"]},
+  {"id": "M13", "kind": "NEG", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [false, "UNAVAILABLE"]},
+  {"id": "M13s", "kind": "NEG", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [false, "UNAVAILABLE"]},
+  {"id": "M13c", "kind": "NEG", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [false, "UNAVAILABLE"]},
   {"id": "R01", "kind": "NEG", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [false, "UNAVAILABLE"]},
   {"id": "R02", "kind": "NEG", "py_a": ["RESULT", null], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [false, "UNAVAILABLE"]},
   {"id": "R03", "kind": "NEG", "py_a": ["RAISED", "StateError", "ATTEMPT_NBIS_SCHEMA"], "py_b": ["RESULT", ["BLOCKED", "STATE_CORRUPT"]], "ts": [false, "UNAVAILABLE"]}

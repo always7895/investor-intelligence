@@ -860,13 +860,36 @@ export function computeReceiptDigest(receipt: any): string {
 // PERSISTED_DOCUMENT_ID_RE): <shown>#sha256:<64 lowercase hex> with no "@", "?" or "#" in <shown>. It is a safe id.
 const PERSISTED_DOCUMENT_ID_RE = /^[^@?#]*#sha256:[0-9a-f]{64}$/;
 
+// Python's value.encode("utf-8", "surrogatepass"): well-formed text (surrogate pairs included) is the ordinary UTF-8
+// encoding, a lone surrogate code unit is written as its 3-byte form instead of U+FFFD (Node's string encoder). Used
+// only to digest the exact original in persistedDocumentId; every other digest here is over well-formed text.
+function utf8SurrogatePass(text: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    let cp = text.charCodeAt(i);
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+        i += 1;
+      }
+    }
+    if (cp < 0x80) bytes.push(cp);
+    else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+    else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+  }
+  return Uint8Array.from(bytes);
+}
+
 // The Python transform: an id with "@", "?" or "#" that is not yet the persisted form becomes <shown>#sha256:<SHA-256
-// of the exact original>, <shown> cut before its first "?" or "#" and after its last "@", at most 200 code points.
+// of the exact original (UTF-8, surrogatepass)>, <shown> cut before its first "?" or "#" and after its last "@", at
+// most 200 code points. Parity vectors: tests/fixtures/receipt-id-persisted-form-vectors.json.
 function persistedDocumentId(value: string): string {
   if (PERSISTED_DOCUMENT_ID_RE.test(value) || !/[@?#]/.test(value)) return value;
   const head = value.split(/[?#]/, 1)[0] ?? "";
   const shown = Array.from(head.slice(head.lastIndexOf("@") + 1)).slice(0, 200).join("");
-  return `${shown}#sha256:${sha256Hex(value)}`;
+  return `${shown}#sha256:${createHash("sha256").update(utf8SurrogatePass(value)).digest("hex")}`;
 }
 
 function recomputeReceiptStatus(

@@ -166,6 +166,8 @@ def store_capture(root: Path, raw: bytes, meta: Mapping[str, Any]) -> str:
         return raw_sha
     # Reservation first: the counter already includes these bytes (and names them pending) before any file is written,
     # so an interruption at any later point can only over-count; `reconcile_usage` settles pending reservations.
+    if type(root) is B1Store:
+        root.capture_mutable((USAGE_FILE,))  # bind the state this read sees to the reservation write
     usage = _read_usage_file(root)
     if usage is None:
         if (root / "captures").exists():
@@ -177,11 +179,17 @@ def store_capture(root: Path, raw: bytes, meta: Mapping[str, Any]) -> str:
     usage["files"] += 1
     usage["pending"][raw_sha] = {"bytes": len(raw), "pid": os.getpid()}
     _write_usage(root, usage)
+    reserved = _usage_bytes(usage)
     if type(root) is B1Store:
         root.ensure_capture_bucket(raw_sha)
     _durable_write(path, raw)
     _durable_write(path.with_name(raw_sha + ".json"), json.dumps(full, sort_keys=True).encode("utf-8"))
     del usage["pending"][raw_sha]
+    if type(root) is B1Store:
+        # The settle write binds the journal this call wrote, never whatever is present at the write: a changed
+        # journal is refused before the settle (the reservation stays pending, over-counted, never adopted).
+        if root.capture_mutable((USAGE_FILE,)).data != reserved:
+            raise StateError("STORE_ACCOUNTING_CHANGED")
     _write_usage(root, usage)
     return raw_sha
 
@@ -205,9 +213,13 @@ def _read_usage_file(root: Path) -> dict[str, Any] | None:
     return data
 
 
+def _usage_bytes(usage: Mapping[str, Any]) -> bytes:
+    return json.dumps({"bytes": usage["bytes"], "files": usage["files"], "pending": usage["pending"]},
+                      sort_keys=True).encode("utf-8")
+
+
 def _write_usage(root: Path, usage: Mapping[str, Any]) -> None:
-    _durable_write(root / USAGE_FILE, json.dumps({"bytes": usage["bytes"], "files": usage["files"], "pending": usage["pending"]},
-                                                 sort_keys=True).encode("utf-8"))
+    _durable_write(root / USAGE_FILE, _usage_bytes(usage))
 
 
 def _capability_pending_usage(root, usage):
@@ -238,6 +250,8 @@ def reconcile_usage(root: Path) -> int | None:
     and its temporary file (an incomplete write, never referenced) removed. Work is bounded by MAX_PENDING; nothing is
     enumerated. None when the journal is missing or malformed for a non-empty store: new captures then wait until
     `recount_usage` (the `--recount-store` maintenance command) rebuilds it."""
+    if type(root) is B1Store:
+        root.capture_mutable((USAGE_FILE,))  # the ledger read here is the state the settle write compares
     usage = _read_usage_file(root)
     if type(root) is B1Store:
         if usage is None:

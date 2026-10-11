@@ -3,7 +3,7 @@
 D8-D11 are characterization pins, not fixes. The cross-language table checks
 DECLARED expectations only. M12/M12q: TS now denies an edited form-body quote.
 M13 and Scenario R are NOT_EXERCISED here (Scenario R rows: G4c,
-tests/test_revenue_guidance_machine_nbis_reaffirm_pairs.py). No tracked profile is enabled here.
+tests/test_revenue_guidance_machine_nbis_reaffirm_pairs.py; there M13/M13s are now NEG, refused by TS). No tracked profile is enabled here.
 """
 import copy
 import json

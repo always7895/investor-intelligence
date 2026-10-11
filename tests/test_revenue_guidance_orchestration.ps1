@@ -48,6 +48,10 @@ function New-B2Store {
         Operations      = New-Object System.Collections.Generic.List[string]
         Acknowledged    = New-Object System.Collections.Generic.List[string]
         ClosedCount     = 0
+        # Fault injection (CASE 9-11): CheckMode/UpdateMode ok|fail|null|throw; CloseThrows throws after counting.
+        CheckMode       = 'ok'
+        UpdateMode      = 'ok'
+        CloseThrows     = $false
     }
 }
 
@@ -70,10 +74,16 @@ function New-B2InMemoryProvider {
                 BeginRefresh = { $script:Store.Operations.Add('BeginRefresh') }
                 CheckRelease = {
                     $script:Store.Operations.Add('CheckRelease')
+                    if ($script:Store.CheckMode -eq 'throw') { throw 'RAW_PROVIDER_TEXT_CHECK' }
+                    if ($script:Store.CheckMode -eq 'null') { return $null }
+                    if ($script:Store.CheckMode -eq 'fail') { return [pscustomobject]@{ Succeeded = $false; Reason = 'RAW_PROVIDER_TEXT_CHECK' } }
                     [pscustomobject]@{ Succeeded = $true; Reason = '' }
                 }
                 Update = {
                     $script:Store.Operations.Add('Update')
+                    if ($script:Store.UpdateMode -eq 'throw') { throw 'RAW_PROVIDER_TEXT_UPDATE' }
+                    if ($script:Store.UpdateMode -eq 'null') { return $null }
+                    if ($script:Store.UpdateMode -eq 'fail') { return [pscustomobject]@{ Succeeded = $false; Reason = 'RAW_PROVIDER_TEXT_UPDATE' } }
                     [pscustomobject]@{ Succeeded = $true; Reason = '' }
                 }
                 FinishRefresh = {
@@ -120,7 +130,11 @@ function New-B2InMemoryProvider {
                         }
                     }
                 }
-                Close = { $script:Store.Operations.Add('Close'); $script:Store.ClosedCount++ }
+                Close = {
+                    $script:Store.Operations.Add('Close')
+                    $script:Store.ClosedCount++
+                    if ($script:Store.CloseThrows) { throw 'RAW_PROVIDER_TEXT_CLOSE' }
+                }
             }
             [pscustomobject]@{ Available = $true; Session = $session }
         }
@@ -175,6 +189,20 @@ function Get-StepSignatures {
     $sigs = @()
     foreach ($s in $Rec) { $sigs += ($s.Name + '|' + ($s.Arguments -join ' ')) }
     $sigs
+}
+
+function Invoke-B2FaultDaily {
+    # Runs the REAL daily function with auto mode on and captures the host (information) stream, so the bounded
+    # B2 line can be checked for raw provider text. Returns the single daily result object.
+    param([bool]$Dirty, [object]$Provider)
+    $all = @(Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+        -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $Dirty -GuidanceProvider $Provider `
+        -RunGuidanceRanking (New-FakeRunGuidanceRanking) 6>&1)
+    $script:HostText = (@($all | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+        ForEach-Object { [string]$_.MessageData }) -join "`n")
+    $results = @($all | Where-Object { $_ -isnot [System.Management.Automation.InformationRecord] })
+    Assert-Equal $results.Count 1 'fault harness: exactly one daily result object'
+    $results[0]
 }
 
 $ranking3h = 'bottleneck_v3|scripts\bottleneck_top20_v3.py --if-older-than-hours 3'
@@ -393,5 +421,106 @@ Assert-Equal $script:Store.ClosedCount 1 'case8 incomplete recovery closes sessi
 Assert-Equal $script:Store.Acknowledged.Count 1 'case8 actual acknowledgement attempted'
 Assert-RankingCall 0 'Dirty' 'input-v2'
 
-Write-Output 'B2 ORCHESTRATION: 8/8 caller case groups passed (synthetic collaborators only)'
+# CASE 9/10: a failed, null or throwing release check / updater stops ONLY the B2 work. Header rules: no
+# Update (case 9), no FinishRefresh, ranking or acknowledgement, independent daily steps still run, pending
+# retained, bounded reason token only, truthful attempt flags.
+foreach ($faultCase in @(
+        [pscustomobject]@{ Number = 9;  Stage = 'check';  Reason = 'FAILED_AT_RELEASE_CHECK'; Update = $false },
+        [pscustomobject]@{ Number = 10; Stage = 'update'; Reason = 'FAILED_AT_UPDATER';       Update = $true })) {
+    $n = $faultCase.Number
+    Write-Output ("CASE {0}: {1} fails (false result / null result / throw), dirty rebuild off and on -> bounded {2}, later B2 work skipped, independent steps run, pending retained" -f $n, $faultCase.Stage, $faultCase.Reason)
+    foreach ($dirty in @($false, $true)) {
+        foreach ($mode in @('fail', 'null', 'throw')) {
+            $label = "case$n/$mode/dirty=$dirty"
+            $script:Store = New-B2Store -InputRevision 'input-v2' -InitialPending 'input-v2' -ChangedThisRun $true -NewPending 'input-v3'
+            $script:Store.TraceSteps = $true
+            if ($faultCase.Stage -eq 'check') { $script:Store.CheckMode = $mode } else { $script:Store.UpdateMode = $mode }
+            $script:Rec = New-Object System.Collections.Generic.List[object]
+            $r = Invoke-B2FaultDaily -Dirty $dirty -Provider (New-B2InMemoryProvider)
+            $sigs = (Get-StepSignatures $script:Rec) -join '; '
+            Assert-Equal $r.ExitCode 1 "$label aggregate nonzero"
+            Assert-Equal $r.B2.Disposition 'FAILED' "$label disposition"
+            Assert-Equal $r.B2.Reason $faultCase.Reason "$label bounded stage reason"
+            Assert-Equal $r.B2.ExitCode 1 "$label B2 nonzero"
+            Assert-True $r.B2.ReleaseCheckAttempted "$label release check attempted flag"
+            Assert-True ($r.B2.UpdateAttempted -eq $faultCase.Update) "$label update attempted flag is truthful"
+            Assert-True (-not $r.B2.RankingAttempted) "$label no ranking attempted"
+            Assert-True (-not $r.B2.ForcedRebuildAttempted) "$label no forced rebuild attempted"
+            Assert-True (-not $r.B2.RebuildCompleted) "$label no rebuild completion"
+            Assert-True ($null -eq $r.B2.Changed) "$label Changed stays unknown (FinishRefresh never ran)"
+            $expectedOps = if ($faultCase.Update) { 'Acquire,ReadState,BeginRefresh,CheckRelease,Update,Close' } else { 'Acquire,ReadState,BeginRefresh,CheckRelease,Close' }
+            Assert-Equal ($script:Store.Operations -join ',') $expectedOps "$label provider trace stops at the failed stage and closes"
+            $expectedAttempts = if ($faultCase.Update) { 'release_check,updater' } else { 'release_check' }
+            Assert-Equal (@($r.B2.AttemptedSteps) -join ',') $expectedAttempts "$label attempted steps are truthful"
+            Assert-Equal $script:Store.RankingCalls.Count 0 "$label no same-owner ranking"
+            Assert-Equal $script:Store.Acknowledged.Count 0 "$label no acknowledgement"
+            Assert-Equal $script:Store.ClosedCount 1 "$label session closed once"
+            Assert-Equal $r.B2.PendingRevision 'input-v2' "$label result retains pending"
+            Assert-Equal $script:Store.PendingRevision 'input-v2' "$label store retains pending"
+            Assert-Equal $script:Store.InputRevision 'input-v2' "$label no FinishRefresh transition to the new input"
+            Assert-True ($sigs -notlike '*bottleneck_v3*') "$label no generic ranking fallback"
+            Assert-True ($sigs -notlike '*guidance_release_check*') "$label no legacy checker fallback"
+            Assert-True ($sigs -like '*price_shards*' -and $sigs -like '*market_observations*' -and $sigs -like '*leopold_13f*') "$label independent daily steps still run"
+            Assert-True ($sigs.IndexOf('leopold_13f') -lt $sigs.IndexOf('price_shards')) "$label independent steps keep their order"
+            Assert-True ($r.B2.Reason -notlike '*RAW_PROVIDER_TEXT*') "$label result reason carries no raw provider text"
+            Assert-True ($script:HostText -like ('*B2 GUIDANCE_ORCHESTRATION disposition=FAILED reason=' + $faultCase.Reason + ' exit=1*')) "$label bounded B2 log line"
+            Assert-True ($script:HostText -notlike '*RAW_PROVIDER_TEXT*') "$label raw provider/exception text never surfaced in the log"
+        }
+    }
+}
+
+Write-Output 'CASE 11: Close throws after an otherwise successful run -> FAILED_AT_CLOSE, truthful flags, pending kept or cleared exactly as the provider state says'
+# 11a: clean unchanged refresh (would be NO_CHANGE) with a failing Close.
+$script:Store = New-B2Store -ChangedThisRun $false -NewPending $null
+$script:Store.TraceSteps = $true
+$script:Store.CloseThrows = $true
+$script:Rec = New-Object System.Collections.Generic.List[object]
+$r = Invoke-B2FaultDaily -Dirty $false -Provider (New-B2InMemoryProvider)
+Assert-Equal $r.ExitCode 1 'case11a aggregate nonzero'
+Assert-Equal $r.B2.Disposition 'FAILED' 'case11a close failure is not NO_CHANGE'
+Assert-Equal $r.B2.Reason 'FAILED_AT_CLOSE' 'case11a bounded close reason'
+Assert-Equal $r.B2.ExitCode 1 'case11a B2 nonzero'
+Assert-True ($r.B2.ReleaseCheckAttempted -and $r.B2.UpdateAttempted -and $r.B2.RankingAttempted) 'case11a completed attempt flags stay truthful'
+Assert-True (-not $r.B2.ForcedRebuildAttempted -and -not $r.B2.RebuildCompleted) 'case11a no rebuild claimed'
+Assert-True ($r.B2.Changed -eq $false) 'case11a known Changed=false retained'
+Assert-True ($null -eq $r.B2.PendingRevision) 'case11a no invented pending state'
+Assert-Equal $script:Store.RankingCalls.Count 1 'case11a ranking ran before close'
+Assert-Equal $script:Store.ClosedCount 1 'case11a close attempted exactly once, never retried'
+Assert-Equal ($script:Store.Operations -join ',') 'Acquire,ReadState,BeginRefresh,CheckRelease,Update,FinishRefresh,Ranking:Cadence,Close' 'case11a full trace then the single close'
+Assert-True ($script:HostText -like '*B2 GUIDANCE_ORCHESTRATION disposition=FAILED reason=FAILED_AT_CLOSE exit=1*') 'case11a bounded B2 log line'
+Assert-True ($script:HostText -notlike '*RAW_PROVIDER_TEXT*') 'case11a raw close text never surfaced'
+
+# 11b: changed input, rebuild off (would be CHANGED_REBUILD_PENDING): pending is retained, no ranking or ack.
+$script:Store = New-B2Store -ChangedThisRun $true -NewPending 'input-v2'
+$script:Store.TraceSteps = $true
+$script:Store.CloseThrows = $true
+$script:Rec = New-Object System.Collections.Generic.List[object]
+$r = Invoke-B2FaultDaily -Dirty $false -Provider (New-B2InMemoryProvider)
+Assert-Equal $r.ExitCode 1 'case11b aggregate nonzero'
+Assert-Equal $r.B2.Disposition 'FAILED' 'case11b disposition'
+Assert-Equal $r.B2.Reason 'FAILED_AT_CLOSE' 'case11b bounded close reason'
+Assert-Equal $r.B2.PendingRevision 'input-v2' 'case11b result retains pending'
+Assert-Equal $script:Store.PendingRevision 'input-v2' 'case11b store retains pending'
+Assert-True ($r.B2.ReleaseCheckAttempted -and $r.B2.UpdateAttempted -and -not $r.B2.RankingAttempted) 'case11b attempt flags stay truthful (no ranking)'
+Assert-Equal $script:Store.RankingCalls.Count 0 'case11b no ranking'
+Assert-Equal $script:Store.Acknowledged.Count 0 'case11b no acknowledgement'
+Assert-Equal $script:Store.ClosedCount 1 'case11b close attempted exactly once'
+
+# 11c: completed rebuild (ranking + acknowledgement done) then a failing Close: never reported as success.
+$script:Store = New-B2Store -InputRevision 'input-v2' -InitialPending 'input-v2'
+$script:Store.TraceSteps = $true
+$script:Store.CloseThrows = $true
+$script:Rec = New-Object System.Collections.Generic.List[object]
+$r = Invoke-B2FaultDaily -Dirty $true -Provider (New-B2InMemoryProvider)
+Assert-Equal $r.ExitCode 1 'case11c aggregate nonzero'
+Assert-Equal $r.B2.Disposition 'FAILED' 'case11c close failure overrides REBUILD_COMPLETED'
+Assert-Equal $r.B2.Reason 'FAILED_AT_CLOSE' 'case11c bounded close reason'
+Assert-Equal $r.B2.ExitCode 1 'case11c B2 nonzero'
+Assert-True ($r.B2.RankingAttempted -and $r.B2.ForcedRebuildAttempted) 'case11c ranking and forced rebuild flags stay truthful'
+Assert-Equal $script:Store.Acknowledged.Count 1 'case11c the acknowledgement that actually happened is recorded once'
+Assert-Equal $script:Store.ClosedCount 1 'case11c close attempted exactly once'
+Assert-True ($r.B2.RebuildCompleted -eq ($null -eq $script:Store.PendingRevision)) 'case11c result flag matches the provider state (pending cleared only by the real acknowledgement)'
+Assert-True ($script:HostText -notlike '*RAW_PROVIDER_TEXT*') 'case11c raw close text never surfaced'
+
+Write-Output 'B2 ORCHESTRATION: 11/11 caller case groups passed (synthetic collaborators only)'
 exit 0

@@ -1,9 +1,9 @@
-"""Byte-layout tests for stage() of scripts/stage_sealed_replay.py (offline; replay() and vitest never run).
+"""Byte-layout tests for stage() of scripts/stage_sealed_replay.py (offline; vitest never runs, replay() only with a fake runner).
 
 stage(run_dir, out) turns a sealed run (objects.json + pointer.raw.json) into the k<N>.txt files plus index.json that
 cloud/test/live-kv-replay.test.ts reads. No test of the repository executes it, so these rows pin the exact bytes,
 the file numbering, the index key order, the write order and the failure behaviour. Every output root is a temporary
-directory outside the repository; subprocess.run, vitest_runner and the network are guarded. Each row compares a
+directory outside the repository; subprocess.run, vitest_runner and the network are guarded (StageCase, also the base of the machine-binding rows). Each row compares a
 literal designed from the code; the comment above each row cites the lines it was designed from."""
 from __future__ import annotations
 
@@ -237,6 +237,81 @@ class StageRows(StageCase):
         got = (seen["outcome"], seen["out_exists"])
         want = (("RAISED", "ValueError"), False)
         self.assertEqual(got, want, diff_fields(FIELDS_FAIL, got, want))
+
+
+class MachineBindingExpectationRows(StageCase):
+    """F06-REPLAY-GATE-BINDING: a staged run whose seal carries the machine binding must read it through the real machine
+    loader (reader contract v4, guidance_machine_probe); a run without the binding is judged exactly as before."""
+
+    BASE = {"reader_contract_version": replay.READER_CONTRACT_VERSION, "integrity": "sealed", "run_id": "R",
+            "macro_overview_sealed": True, "fresh": True}
+
+    def test_MB_1_contract_version_is_v4(self):
+        self.assertEqual(replay.READER_CONTRACT_VERSION, "v213-reader-replay-v4")
+
+    def test_MB_2_binding_present_and_admitted_passes(self):
+        result = {**self.BASE, "guidance_machine_probe": "ADMITTED"}
+        self.assertEqual(replay.expectations(result, "OTHER", "R", machine=True), [])
+
+    def test_MB_3_binding_present_but_not_admitted_names_only_the_new_expectation(self):
+        for probe in ("REFUSED", "ABSENT", None, "admitted"):
+            result = {**self.BASE, "guidance_machine_probe": probe}
+            self.assertEqual(replay.expectations(result, "OTHER", "R", machine=True), ["GUIDANCE_MACHINE_BINDING"], probe)
+        self.assertEqual(replay.expectations(self.BASE, "OTHER", "R", machine=True), ["GUIDANCE_MACHINE_BINDING"])
+
+    def test_MB_4_binding_absent_does_not_require_the_expectation(self):
+        for probe in ("ABSENT", "REFUSED", None):
+            result = {**self.BASE, "guidance_machine_probe": probe}
+            self.assertEqual(replay.expectations(result, "OTHER", "R"), [], probe)
+            self.assertEqual(replay.expectations(result, "OTHER", "R", False, False, False), [], probe)
+
+    def test_MB_5_other_tiers_keep_their_expectation_lists(self):
+        carried = {**self.BASE, "top20_records": 20, "line_flex_messages": 1, "line_text_messages": 1, "broadcast_ready": True,
+                   "v21_records": 20, "v212_records": 20, "test_only_admission": False}
+        self.assertEqual(replay.expectations({**carried, "top20_records": 2}, "CARRIED_FORWARD", "R", True, True),
+                         ["TOP20_RECORDS", "IDENTITY_NVDA", "IDENTITY_2330", "IDENTITY_TW_NAME", "BOTTLENECK_V3", "INDUSTRY_V3"])
+        self.assertEqual(replay.expectations({**carried, "top20_records": 2}, "CARRIED_FORWARD", "R", True, True, True),
+                         ["TOP20_RECORDS", "IDENTITY_NVDA", "IDENTITY_2330", "IDENTITY_TW_NAME", "BOTTLENECK_V3", "INDUSTRY_V3",
+                          "GUIDANCE_MACHINE_BINDING"])
+
+    def test_MB_6_replay_detects_the_binding_in_the_seal_and_carries_the_probe(self):
+        seal = json.dumps({"schema_version": 1, "objects": {"v213:revenue-guidance-binding:v1": {}}})
+        outputs = {}
+        for name, with_binding, probe in (("tier_machine_ok", True, "ADMITTED"), ("tier_machine_bad", True, "REFUSED"),
+                                          ("tier_plain", False, "ABSENT")):
+            run = self.base / name
+            run.mkdir()
+            objects = {K_SEAL: seal if with_binding else BODY_SEAL}
+            (run / "objects.json").write_bytes(json.dumps(objects).encode("utf-8"))
+            (run / "pointer.raw.json").write_bytes(POINTER_BYTES)
+            (run / "summary.json").write_text(json.dumps({"top20_state": None}), encoding="utf-8")
+
+            def fake_runner(replay_dir, result_path, probe=probe):
+                result_path.write_text(json.dumps({**self.BASE, "run_id": RUN, "guidance_machine_probe": probe}), encoding="utf-8")
+                return 0
+
+            outputs[name] = replay.replay(run, fake_runner)
+        self.assertEqual([(k, v["status"], v["failed"], v["guidance_machine_probe"]) for k, v in outputs.items()],
+                         [("tier_machine_ok", "PASS", [], "ADMITTED"),
+                          ("tier_machine_bad", "FAIL", ["GUIDANCE_MACHINE_BINDING"], "REFUSED"),
+                          ("tier_plain", "PASS", [], "ABSENT")])
+
+    # F06-REPLAY-GATE-BINDING (wiring): the only code that computes the probe is the operator-gate reader, which is
+    # skipped without V213_LIVE_REPLAY_DIR, so the wiring is pinned statically, together with the cross-language
+    # parity of the binding key and of the reader contract version.
+    def test_MB_7_live_replay_reader_wires_the_probe_and_the_key_matches_the_producer(self):
+        reader = (ROOT / "cloud" / "test" / "live-kv-replay.test.ts").read_text(encoding="utf-8")
+        helper = (ROOT / "cloud" / "test" / "helpers" / "guidance-machine-probe.ts").read_text(encoding="utf-8")
+        worker = (ROOT / "cloud" / "src" / "v213" / "revenue-guidance-machine.ts").read_text(encoding="utf-8")
+        import revenue_guidance_machine as producer
+        self.assertEqual(replay.GUIDANCE_BINDING_KEY, producer.BINDING_KEY)
+        for needle in ('const READER_CONTRACT_VERSION = "' + replay.READER_CONTRACT_VERSION + '";',
+                       'import { probeGuidanceMachine } from "./helpers/guidance-machine-probe";',
+                       "const guidanceMachineProbe = await probeGuidanceMachine(view);",
+                       "guidance_machine_probe: guidanceMachineProbe,"):
+            self.assertIn(needle, reader)
+        self.assertIn("loadBottleneckV3(view, { guidanceMachineEnabled: true })", helper)
+        self.assertIn('export const GUIDANCE_BINDING_KEY = "' + replay.GUIDANCE_BINDING_KEY + '";', worker)
 
 
 if __name__ == "__main__":

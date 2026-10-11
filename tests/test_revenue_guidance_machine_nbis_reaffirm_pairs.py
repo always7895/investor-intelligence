@@ -3,9 +3,11 @@
 Python rows mutate the live Scenario R chain's VERIFIED producer (validate_attempt = A, admit = B);
 the TS rows of cloud/test/v213-revenue-guidance-machine-nbis-reaffirm.test.ts mutate the frozen
 Scenario R fixture. The cross-language table checks DECLARED expectations only. Every literal is
-designed from the code, not yet observed. M13/M13s are characterizations: the TS validator checks
-the REAFFIRMATION offsets by shape only (TS_ADMITS_TODAY, an open product finding); Python refuses
-them only by rederivation. No tracked profile is enabled here.
+designed from the code, not yet observed. M13/M13s/M13c are NEG rows (M13c moves both decision copies together and leaves the record, so only the locator bind refuses it): the TS validator binds the
+REAFFIRMATION offsets to the record locator (canonical[a:b] plus the normalizer version, guarded below
+against verify.NORMALIZER_VERSION) and to the reaffirmed package's MEMBERSHIP offsets, so TS now refuses
+them; Python still refuses them only by rederivation (A shape-only; a validate_attempt bind stays deferred).
+No tracked profile is enabled here.
 """
 import copy
 import json
@@ -23,12 +25,14 @@ from tests import nbis_synthetic_sources as f
 
 CUTOFF_TEXT = h.CLOCKS["R"][2]
 TS_ROWS = ROOT / "cloud/test/v213-revenue-guidance-machine-nbis-reaffirm.test.ts"
+TS_MACHINE = ROOT / "cloud/src/v213/revenue-guidance-machine.ts"
 
 # JSON-shaped values deliberately distinguish declared lists from runtime tuples.
 ROW_TABLE = [
     {"id": "C0", "kind": "CTRL", "py_a": ["RESULT", None], "py_b": ["RESULT", ["AUTO_VERIFIED", None]], "ts": [True, "AVAILABLE"]},
-    {"id": "M13", "kind": "CHAR", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [True, "AVAILABLE"]},
-    {"id": "M13s", "kind": "CHAR", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [True, "AVAILABLE"]},
+    {"id": "M13", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
+    {"id": "M13s", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
+    {"id": "M13c", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
     {"id": "R01", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
     {"id": "R02", "kind": "NEG", "py_a": ["RESULT", None], "py_b": ["RESULT", ["BLOCKED", "APPROVAL_BINDING"]], "ts": [False, "UNAVAILABLE"]},
     {"id": "R03", "kind": "NEG", "py_a": ["RAISED", "StateError", "ATTEMPT_NBIS_SCHEMA"], "py_b": ["RESULT", ["BLOCKED", "STATE_CORRUPT"]], "ts": [False, "UNAVAILABLE"]},
@@ -61,6 +65,9 @@ def prepare(root, row_id):
         # Both ends move together: span length and passage are unchanged, only the source position is wrong.
         current["offsets"] = shift(current["offsets"])
     elif row_id == "M13s":
+        current_state["offsets"] = shift(current_state["offsets"])
+    elif row_id == "M13c":
+        current["offsets"] = shift(current["offsets"])
         current_state["offsets"] = shift(current_state["offsets"])
     elif row_id == "R01":
         current["passage"] = current["passage"].replace(str(current["year"]), str(current["year"] + 1))
@@ -108,10 +115,13 @@ class NbisReaffirmPairTests(unittest.TestCase):
             block = text.split("// ROWTABLE-BEGIN\n")[1].split("// ROWTABLE-END")[0].strip()
             match = re.fullmatch(r"const ROW_TABLE = (\[.*\]);", block, re.S)
             declared = json.loads(match.group(1))
-            return (declared == ROW_TABLE and len({r["id"] for r in declared}) == len(declared), len(declared))
+            # The TS locator version constant must mirror the Python normalizer exactly once.
+            consts = re.findall(r'^export const NBIS_NORMALIZER_VERSION = "([^"]*)";$', TS_MACHINE.read_text(encoding="utf-8"), re.M)
+            mirrored = consts == [f.verify.NORMALIZER_VERSION]
+            return (declared == ROW_TABLE and len({r["id"] for r in declared}) == len(declared) and mirrored, len(declared))
         actual = f.outcome_of(compare)
         f.observe_boundary("R-DRIFT", actual)
-        self.assertEqual(actual, ("RESULT", (True, 6)))
+        self.assertEqual(actual, ("RESULT", (True, 7)))
 
 
 def row_test(row):

@@ -23,10 +23,12 @@ import { validateCoveredCallCycle } from "../src/v213/covered-call";
 import { loadOptionObservation, optionTickerKeys } from "../src/v213/market-observations";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { asKv, MemoryKv } from "./fake-kv";
+import { probeGuidanceMachine } from "./helpers/guidance-machine-probe";
 
 // Bumped whenever the fields below change, so the gate and the staged replay can refuse an older reader.
 // v3: product probes (v3 official cross-checks and detail lines, order schedules, covered-call status, LINE aliases).
-const READER_CONTRACT_VERSION = "v213-reader-replay-v3";
+// v4: guidance_machine_probe (ADMITTED/REFUSED/ABSENT): the sealed revenue-guidance machine binding read through the real machine loader.
+const READER_CONTRACT_VERSION = "v213-reader-replay-v4";
 const dir = process.env.V213_LIVE_REPLAY_DIR;
 const out = process.env.V213_LIVE_REPLAY_OUT;
 const query: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20" };
@@ -62,6 +64,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
     }
     const records = fresh ? (report as { records: { test_only_admission?: unknown }[] }).records : [];
     const bottleneck = await loadBottleneckV3(view);
+    const guidanceMachineProbe = await probeGuidanceMachine(view);
     // Identity lookups through the sealed shards (the LINE stock/options entry): status and resolved listing.
     const identityProbe: Record<string, string> = {};
     // Prices the lookup would show for listings outside the watch universe (market price shards).
@@ -119,6 +122,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       industry_v3_flex: bottleneck ? messageCount(buildIndustryExplosionMessages(bottleneck, "flex")) : 0,
       macro_overview_sealed: !!overview, potential_ranking_records: ranking?.records.length ?? 0,
       v3_cross_checks: crossChecks, v3_detail_probe: detailProbe, order_probe: orderProbe, option_probe: optionProbe, alias_probe: aliasProbe,
+      guidance_machine_probe: guidanceMachineProbe,
       evaluated_at: new Date().toISOString(),
     };
     writeFileSync(out!, JSON.stringify(result, null, 1));

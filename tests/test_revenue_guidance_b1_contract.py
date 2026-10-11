@@ -30,10 +30,12 @@ from pathlib import Path
 import socket
 import ssl
 import sys
+import tempfile
 import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -60,6 +62,12 @@ CONTROL = {
     "revenue_guidance_auto_verify.py": b"# synthetic protected control copy 2\n",
     "revenue_guidance_overlay.py": b"# synthetic protected control copy 3\n",
 }
+
+class CallerCapViolation(storage.BudgetExceededError, AssertionError):
+    """The native refusal of a caller that asks for more bytes than the lease cap. It is also an assertion failure, so
+    a product read that requests the wrong cap FAILS the row that issued it instead of ending in an unrelated error."""
+
+
 MUTATIONS = ("create_directory", "replace_mutable", "publish_named_immutable")
 OPERATIONS = ("open_directory", "close_owned", "create_directory", "enumerate_directory", "capture_bytes",
               "capture_mutable", "replace_mutable", "publish_named_immutable")
@@ -129,6 +137,7 @@ class FakeNamespace:
         self.schema = schema
         self.log, self.open, self.results = [], [], []
         self.faults, self.tamper = [], {}
+        self.cap_violations = []
         self.on_enumerate = None
         self.lease = None
         self.reopen()
@@ -281,6 +290,9 @@ class FakeNamespace:
         cap = lease.budget.object_cap(raw_document)
         if type(historical) is not bool:
             raise windows.StorageValidationFault("historical must be exact bool")
+        if type(max_bytes) is int and max_bytes > cap:
+            self.cap_violations.append((tuple(components), max_bytes, cap, raw_document))
+            raise CallerCapViolation("Requested bytes exceed the hard limit of the lease profile")
         if type(max_bytes) is not int or not 0 <= max_bytes <= cap:
             raise storage.BudgetExceededError("Requested bytes invalid or exceeds hard limit")
         if expected_sha256 is not None and (type(expected_sha256) is not bytes or len(expected_sha256) != 32):
@@ -394,6 +406,7 @@ class FakeLeaseCase(unittest.TestCase):
     def fresh(self, **options):
         space = FakeNamespace(**options)
         self.addCleanup(lambda: self.assertEqual(space.open, [], "owned directory handle leaked"))
+        self.addCleanup(lambda: self.assertEqual(space.cap_violations, [], "a read requested more than the lease cap"))
         return space
 
 
@@ -1027,6 +1040,102 @@ class CapabilityAccountingTests(FakeLeaseCase):
             with self.assertRaises(storage.NamespaceConflictError):
                 overlay.recount_usage(overlay.B1Store(moved.lease))
         self.assertEqual(moved.get(("store_usage.json",)), foreign)
+
+    # OBS1: every mutable write of store_usage.json binds the bytes its caller read, not the state present at the write.
+    FOREIGN_USAGE = {"bytes": 999, "files": 9, "pending": {}}
+
+    def after_usage_read(self, space, action):
+        """Run `action` once, right after the journal was read and parsed (between the read and the next write)."""
+        real, fired = overlay._read_usage_file, []
+
+        def read(root):
+            value = real(root)
+            if not fired:
+                fired.append(True)
+                action()
+            return value
+        self.enterContext(mock.patch.object(overlay, "_read_usage_file", read))
+        return fired
+
+    def assert_journal_read_was_captured(self):
+        """The journal was read through the captured mutable state (the bound expectation), never a separate capture."""
+        log = self.space.log
+        self.assertEqual([entry[1] for entry in log if entry[0] == "capture_mutable"][0], ("store_usage.json",))
+        self.assertEqual([entry for entry in log if entry[0] == "capture_bytes" and entry[1] == ("b1", "store_usage.json")], [])
+
+    def test_a_foreign_journal_change_between_the_read_and_the_reservation_write_is_refused(self):
+        raw = b"reservation race entity"
+        digest = sha(raw)
+        self.space.mkdir("captures")
+        self.space.put(("store_usage.json",), encode({"bytes": 0, "files": 0, "pending": {}}))
+        foreign = encode(self.FOREIGN_USAGE)
+        fired = self.after_usage_read(self.space, lambda: self.space.put(("store_usage.json",), foreign))
+        with self.lease.namespace_operation():
+            with self.assertRaises(storage.NamespaceConflictError):
+                overlay.store_capture(overlay.B1Store(self.lease), raw,
+                                      {"url": "https://www.sec.gov/a.htm", "retrieved_at": "2026-10-10T01:02:03Z"})
+        self.assertEqual(fired, [True])
+        self.assertEqual(self.space.get(("store_usage.json",)), foreign)  # never adopted or overwritten
+        self.assertEqual(self.space.mutations(), [])
+        self.assertFalse(self.space.exists(("captures", digest[:2])))
+        self.assert_journal_read_was_captured()
+
+    def test_a_foreign_journal_change_between_the_reservation_and_the_settle_is_refused(self):
+        raw = b"settle race entity"
+        digest = sha(raw)
+        self.space.mkdir("captures")
+        self.space.put(("store_usage.json",), encode({"bytes": 0, "files": 0, "pending": {}}))
+        foreign = encode(self.FOREIGN_USAGE)
+        real, fired = self.lease.publish_named_immutable, []
+
+        def publish(parent, name, staging, payload, content, **options):
+            result = real(parent, name, staging, payload, content, **options)
+            if name == digest + ".json" and not fired:
+                fired.append(True)
+                self.space.put(("store_usage.json",), foreign)  # after the object pair, before the settle
+            return result
+        self.lease.publish_named_immutable = publish
+        with self.lease.namespace_operation():
+            with self.assertRaises(overlay.StateError) as raised:
+                overlay.store_capture(overlay.B1Store(self.lease), raw,
+                                      {"url": "https://www.sec.gov/a.htm", "retrieved_at": "2026-10-10T01:02:03Z"})
+        self.assertEqual(str(raised.exception), "STORE_ACCOUNTING_CHANGED")
+        self.assertEqual(fired, [True])
+        self.assertEqual(self.space.get(("store_usage.json",)), foreign)
+        self.assertEqual([(entry[0], entry[1]) for entry in self.space.mutations() if entry[0] == "replace_mutable"],
+                         [("replace_mutable", ("store_usage.json",))])  # only the reservation was written
+        # A missing journal at the settle is a changed journal too.
+        space = self.fresh()
+        space.mkdir("captures")
+        space.put(("store_usage.json",), encode({"bytes": 0, "files": 0, "pending": {}}))
+        real_publish = space.lease.publish_named_immutable
+
+        def publish_then_remove(parent, name, staging, payload, content, **options):
+            result = real_publish(parent, name, staging, payload, content, **options)
+            if name == digest + ".json":
+                space.remove(("store_usage.json",))
+            return result
+        space.lease.publish_named_immutable = publish_then_remove
+        with space.lease.namespace_operation():
+            with self.assertRaises(overlay.StateError) as raised:
+                overlay.store_capture(overlay.B1Store(space.lease), raw,
+                                      {"url": "https://www.sec.gov/a.htm", "retrieved_at": "2026-10-10T01:02:03Z"})
+        self.assertEqual(str(raised.exception), "STORE_ACCOUNTING_CHANGED")
+
+    def test_a_foreign_journal_change_between_the_read_and_the_reconcile_write_is_refused(self):
+        complete = b"complete admitted capture"
+        digest = put_capture(self.space, complete)
+        self.space.put(("store_usage.json",), encode({"bytes": 100, "files": 3, "pending": {
+            digest: {"bytes": len(complete), "pid": 77}}}))
+        foreign = encode(self.FOREIGN_USAGE)
+        fired = self.after_usage_read(self.space, lambda: self.space.put(("store_usage.json",), foreign))
+        with self.lease.namespace_operation():
+            with self.assertRaises(storage.NamespaceConflictError):
+                overlay.reconcile_usage(overlay.B1Store(self.lease))
+        self.assertEqual(fired, [True])
+        self.assertEqual(self.space.get(("store_usage.json",)), foreign)
+        self.assertEqual(self.space.mutations(), [])
+        self.assert_journal_read_was_captured()
 
 
 # ------------------------------------------------------------------ G2-26 B1Outputs layout and accounting
@@ -1906,24 +2015,31 @@ class HostPublicCaptureTests(FakeLeaseCase):
                 if error is None:
                     self.assertIs(connection.sock.tls, plain)
 
+    @staticmethod
+    def outcome(call):
+        """The exact raised object (BaseException included), so a wrong exception type is an assertion FAIL and an
+        unexpected control-flow exception is never converted into a passing assertRaises."""
+        try:
+            call()
+        except BaseException as error:  # noqa: BLE001 - inspected by exact type by the caller
+            return error
+        return None
+
     def test_dynamic_fetch_keeps_control_faults_and_staged_pauses_distinct(self):
         capture = self.capture()
         capture.network_allowed = False
         other = "https://query1.finance.yahoo.com/v8/finance/chart/AMD"
         with network([FakeResponse(200, b"{}")]) as net:
-            with self.assertRaises(host._CaptureControlFault):
-                capture.dynamic_fetch("https://evil.example/x")
+            self.assertIs(type(self.outcome(lambda: capture.dynamic_fetch("https://evil.example/x"))), host._CaptureControlFault)
             self.assertFalse(capture.network_allowed)
             self.lease._network_work = {"requests": 120, "bytes": 0, "last": None, "issuers": {}}
-            with self.assertRaises(host._AcquisitionDeferred):
-                capture.dynamic_fetch(YAHOO)
+            self.assertIs(type(self.outcome(lambda: capture.dynamic_fetch(YAHOO))), host._AcquisitionDeferred)
             self.assertFalse(capture.network_allowed)
             self.lease._network_work = {"requests": 0, "bytes": 0, "last": None, "issuers": {}}
             self.assertEqual(capture.dynamic_fetch(YAHOO), b"{}")
             self.assertEqual(self.lease._network_work["issuers"], {"dynamic/query1.finance.yahoo.com": 1})
             capture.owner.deadline = time.monotonic() + 20
-            with self.assertRaises(host._AcquisitionDeferred):
-                capture.dynamic_fetch(other)
+            self.assertIs(type(self.outcome(lambda: capture.dynamic_fetch(other))), host._AcquisitionDeferred)
             self.assertEqual(capture.progress_state, {"Stage": "dynamic", "Cursor": 0, "Slots": 1})
             self.assertEqual(capture.dynamic_fetch(YAHOO), b"{}")  # already captured: no pause, no new request
         self.assertEqual(len(net.connections), 1)
@@ -2062,6 +2178,368 @@ class HostAcquisitionTests(FakeLeaseCase):
                 self.assertEqual(str(raised.exception), "ACQUISITION_PLAN_BOUND")
             self.assertEqual(len(self.space.log), count)
         self.assertFalse(capture.network_allowed)
+
+
+# ------------------------------------------------------------------ G2-22 Cision cadence through B1Outputs
+
+CISION_SLUG = "sivers-semiconductors"
+CISION_REPORT_Q2 = "https://news.cision.com/x/r/q2,c2"
+CISION_REPORT_Q3 = "https://news.cision.com/x/r/q3,c5"
+
+
+def cision_feed(items):
+    return ("<rss><channel>" + "".join(f"<item><title>{title}</title><link>{link}</link></item>" for title, link in items)
+            + "</channel></rss>")
+
+
+CISION_ITEMS = (
+    ("Sivers Semiconductors Makes Changes to Senior Leadership Team", "https://news.cision.com/x/r/a,c1"),
+    ("Sivers Semiconductors Reports Q2 2026 Results as Product Growth", CISION_REPORT_Q2),
+    ("Invitation to Presentation of Sivers Semiconductors' Q2 2026 Report", "https://news.cision.com/x/r/inv,c3"),
+    ("Sivers Semiconductors AB (publ), Publishes Interim Report Q1, January - March 2026", "https://news.cision.com/x/r/q1,c4"),
+)
+CISION_PAGE_Q2 = ('<h1>Sivers Reports Q2 2026 Results</h1><p>Sivers today announced its interim report for the second quarter of '
+                  '2026.</p><p>Financial Highlights:</p>'
+                  '<li style=" margin-bottom:3pt;"><span>Net sales amounted to SEK 53.8 m (61.4), corresponding to a decrease of '
+                  '12% year-over-year.</span></li>')
+CISION_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+
+
+class CisionCadenceTests(FakeLeaseCase):
+    """The 20 h feed cadence and the three page attempts when the held cache comes from captured_cache and every save
+    goes to a real B1Outputs over the fake lease (one namespace epoch and one new lease per invocation)."""
+    def runners(self):
+        import bottleneck_top20_v3 as ranking
+        import publish_sealed_snapshot as publisher
+        space = self.fresh()
+
+        def through_b1(symbols, moment, fetch):
+            lease = space.reopen()
+            with lease.namespace_operation():
+                outputs = overlay.B1Outputs(overlay.B1Store(lease))
+                operand = publisher.CapturedPublicationInputs({"cision": outputs.load_cision()}).operand("cision")
+                return ranking.cision_interim_revenue(symbols, moment, fetch, None, captured_cache=operand,
+                                                      output_store=outputs)
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "cision.json"
+
+        def through_file(symbols, moment, fetch):
+            return ranking.cision_interim_revenue(symbols, moment, fetch, path)
+
+        def cache():
+            return json.loads(space.get(("outputs", "cision.json"))), json.loads(path.read_text(encoding="utf-8"))
+        return ranking, space, through_b1, through_file, cache
+
+    def sequence(self, ranking, run, feed_text):
+        feed = ranking.CISION_RSS.format(slug=CISION_SLUG)
+        replies, urls, trace = {feed: feed_text, CISION_REPORT_Q2: CISION_PAGE_Q2}, [], []
+
+        def fetch(url):
+            urls.append(url)
+            return replies[url]
+
+        def down(url):
+            urls.append(url)
+            raise OSError("down")
+
+        def step(moment, source=fetch, symbols=("SIVE.ST",)):
+            before = len(urls)
+            trace.append((run(list(symbols), moment, source), len(urls) - before))
+
+        step(CISION_NOW, symbols=("SIVE.ST", "NVDA"))
+        step(CISION_NOW + timedelta(hours=2))
+        step(CISION_NOW + timedelta(hours=21))
+        step(CISION_NOW + timedelta(hours=45), down)
+        replies[feed] = feed_text.replace("q2,c2", "q3,c5").replace("Q2 2026", "Q3 2026")
+        replies[CISION_REPORT_Q3] = "<p>Net sales grew strongly.</p>"  # unreadable: no figure, no guess
+        step(CISION_NOW + timedelta(days=3))
+        replies[CISION_REPORT_Q3] = (CISION_PAGE_Q2.replace("53.8 m (61.4)", "70.0 m (56.0)")
+                                     .replace("second quarter", "third quarter").replace("Q2", "Q3"))
+        step(CISION_NOW + timedelta(days=4))
+        return trace, urls
+
+    def test_the_feed_cadence_and_page_attempts_match_the_plain_cache_through_b1_outputs(self):
+        ranking, space, through_b1, through_file, cache = self.runners()
+        feed_text = cision_feed(CISION_ITEMS)
+        q2 = {"SIVE.ST": {"source_id": "CISION", "source_url": CISION_REPORT_Q2, "period": "2026-Q2",
+                          "revenue_yoy": round(53.8 / 61.4 - 1, 6), "cumulative_yoy": None, "currency": "SEK"}}
+        held = self.sequence(ranking, through_b1, feed_text)
+        plain = self.sequence(ranking, through_file, feed_text)
+        self.assertEqual(held, plain)  # identical results and request counts at every step
+        trace, urls = held
+        self.assertEqual([count for _, count in trace], [2, 0, 1, 1, 2, 2])
+        self.assertEqual([result for result, _ in trace[:5]], [q2] * 5)  # the Q2 report keeps serving meanwhile
+        q3 = trace[5][0]["SIVE.ST"]
+        self.assertEqual((q3["period"], q3["revenue_yoy"], q3["source_url"]), ("2026-Q3", 0.25, CISION_REPORT_Q3))
+        saved = space.get(("outputs", "cision.json"))
+        self.assertEqual(saved, json.dumps(json.loads(saved), ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        through_b1_cache, through_file_cache = cache()
+        self.assertEqual(through_b1_cache, through_file_cache)  # the same persisted state, whichever the writer
+        self.assertEqual(through_b1_cache["SIVE.ST"]["parser"], ranking.CISION_PARSER_VERSION)
+        self.assertEqual((through_b1_cache["SIVE.ST"]["link"], through_b1_cache["SIVE.ST"]["pending"]), (CISION_REPORT_Q3, None))
+
+    def test_an_unreadable_page_is_read_three_times_and_failures_still_count_through_b1_outputs(self):
+        for label, page in (("challenge-page", lambda url: "<p>challenge</p>"), ("reset", None)):
+            with self.subTest(page=label):
+                ranking, space, through_b1, _, _ = self.runners()
+                feed = ranking.CISION_RSS.format(slug=CISION_SLUG)
+                feed_text = cision_feed([("Sivers Reports Q3 2026 Results", CISION_REPORT_Q3)])
+                urls = []
+
+                def fetch(url, page=page):
+                    urls.append(url)
+                    if url == feed:
+                        return feed_text
+                    if page is None:
+                        raise OSError("reset")
+                    return page(url)
+                for day in range(5):
+                    through_b1(["SIVE.ST"], CISION_NOW + timedelta(days=day), fetch)
+                self.assertEqual(sum(url == CISION_REPORT_Q3 for url in urls), 3)
+                self.assertEqual(sum(url == feed for url in urls), 5)
+                entry = json.loads(space.get(("outputs", "cision.json")))["SIVE.ST"]
+                self.assertEqual((entry["pending"], entry["attempts"]), (CISION_REPORT_Q3, 3))
+        ranking, space, through_b1, _, _ = self.runners()
+        feed = ranking.CISION_RSS.format(slug=CISION_SLUG)
+        urls = []
+
+        def down(url):
+            urls.append(url)
+            raise TimeoutError("timeout")
+        for hour in range(5):  # a feed that times out is read once, not five times
+            through_b1(["SIVE.ST"], CISION_NOW + timedelta(hours=hour), down)
+        self.assertEqual(urls, [feed])
+        self.assertIsNotNone(json.loads(space.get(("outputs", "cision.json")))["SIVE.ST"]["rss_read_at"])
+
+    def test_a_non_exact_output_operand_is_refused_before_any_request_or_write(self):
+        import bottleneck_top20_v3 as ranking
+        calls = []
+
+        class Derived(overlay.B1Outputs):
+            def save_cision(self, raw):
+                calls.append(raw)
+
+        duck = SimpleNamespace(save_cision=calls.append)
+        urls = []
+        with self.lease.namespace_operation():
+            exact = overlay.B1Outputs(overlay.B1Store(self.lease))
+            subclass = object.__new__(Derived)  # B1Outputs.__new__ itself refuses a subclass: bypass it for the operand
+            start = len(self.space.log)
+            for operand in (subclass, duck, object()):
+                with self.subTest(operand=type(operand).__name__):
+                    with self.assertRaises(ValueError) as raised:
+                        ranking.cision_interim_revenue(["SIVE.ST"], CISION_NOW, lambda url: urls.append(url) or "", None,
+                                                       output_store=operand)
+                    self.assertEqual(str(raised.exception), "CISION_OUTPUT_OPERAND")
+            self.assertEqual((calls, urls), ([], []))
+            self.assertEqual(self.space.mutations(start), [])
+            self.assertIsNone(exact.load_cision())
+        self.assertFalse(self.space.exists(("outputs", "cision.json")))
+
+
+# ------------------------------------------------------------------ G2-21 complete real plan over several invocations
+
+SEK_MEMBER, JPY_MEMBER = "SIVE.ST", "3110.T"
+
+
+def synthetic_web(feed_text, page=CISION_PAGE_Q2):
+    """Routes every planned public URL to a tiny synthetic body (and refuses any URL the plan does not contain)."""
+    currencies = {SEK_MEMBER: "SEK", JPY_MEMBER: "JPY"}
+
+    def route(url):
+        parts = urlsplit(url)
+        path = unquote(parts.path)
+        if parts.hostname == "query1.finance.yahoo.com":
+            if path.startswith("/v8/finance/chart/"):
+                symbol = path.rsplit("/", 1)[1]
+                currency = "USD" if symbol.endswith("USD=X") else currencies.get(symbol, "USD")
+                return encode({"chart": {"result": [{"meta": {"currency": currency}}]}})
+            if path.startswith("/v10/finance/quoteSummary/"):
+                return encode({"quoteSummary": {"result": [{}]}})
+            if path.startswith("/ws/fundamentals-timeseries/"):
+                return encode({"timeseries": {"result": []}})
+        elif parts.hostname == "api.nasdaq.com":
+            return encode({"data": None})
+        elif parts.hostname == "efts.sec.gov":
+            return encode({"hits": {"hits": []}})
+        elif parts.hostname in ("openapi.twse.com.tw", "www.tpex.org.tw"):
+            return b"[]"
+        elif parts.hostname == "news.cision.com":
+            return (feed_text if path.endswith("/rss/releases") else page).encode("utf-8")
+        raise AssertionError("a URL outside the planned slots was requested: " + url)
+    return route
+
+
+class RoutedConnection(FakeConnection):
+    def getresponse(self):
+        url = "https://" + self.host + self.requests[-1][1]
+        self.net.served.append(url)
+        return FakeResponse(200, self.net.route(url))
+
+
+class RoutedTLS(FakeTLS):
+    def __init__(self, route):
+        super().__init__([])
+        self.route, self.served = route, []
+
+    def __call__(self, host_name, address, timeout):
+        connection = RoutedConnection(self, host_name, address, timeout)
+        self.connections.append(connection)
+        return connection
+
+
+@contextmanager
+def routed_network(route, address=PUBLIC_ADDRESS):
+    net = RoutedTLS(route)
+
+    def getaddrinfo(name, port, *args, **kwargs):
+        net.lookups.append((name, port))
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))]
+
+    with mock.patch.object(host, "_PinnedTLS", net), \
+            mock.patch.object(host.socket, "getaddrinfo", getaddrinfo), \
+            mock.patch.object(host.socket, "create_connection", side_effect=AssertionError("real socket reached")), \
+            mock.patch.object(host.time, "sleep", net.sleeps.append):
+        yield net
+
+
+class CompletePlanTests(FakeLeaseCase):
+    """The real _Capture.collect over the repository's 60-member universe, finished across invocations: every
+    invocation is a new lease (a fresh 112-request shared budget) over the same persisted capture index."""
+    INSTANT = datetime(2026, 10, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+    def origin(self):
+        layers = (ROOT / "config" / "bottleneck-layers-v3.json").read_bytes()
+        files = {"config/" + relative: b"{}" for relative in host.CONFIG_FILES.values()}
+        files["config/" + host.CONFIG_FILES["layers"]] = layers
+        return FakeOrigin(public={host.PUBLIC_FILES["tickers"]: encode({"fields": ["ticker", "cik"], "data": []})}, files=files)
+
+    def finish(self, feed_text, limit=8):
+        """Run collect invocation after invocation until it returns; one record per invocation."""
+        space = self.fresh()
+        records = []
+        for _ in range(limit):
+            seen, real = [], host._Capture._acquire
+
+            def spy(capture, plan, outputs, name, seen=seen, real=real):
+                seen.append((name, list(plan)))
+                return real(capture, plan, outputs, name)
+
+            lease = space.reopen()
+            with lease.namespace_operation(), routed_network(synthetic_web(feed_text)) as net, \
+                    mock.patch.object(host, "now", return_value=self.INSTANT), \
+                    mock.patch.object(host._Capture, "_acquire", spy):
+                outputs = overlay.B1Outputs(overlay.B1Store(lease))
+                capture = make_capture(owner_over(lease), self.origin())
+                try:
+                    day, paused = capture.collect(outputs), False
+                except host._AcquisitionDeferred:
+                    day, paused = None, True
+            records.append(SimpleNamespace(paused=paused, day=day, served=list(net.served), plans=seen,
+                                           state=dict(capture.progress_state or {}), capture=capture,
+                                           progress=dict(space.json(("outputs", "capture-index.json"))["progress"]),
+                                           requests=lease._network_work["requests"]))
+            if not paused:
+                return space, records
+        self.fail("the plan did not complete within the invocation limit")
+
+    def real_pages(self, feed_text):
+        """The page URLs the real Cision parser itself requests for this feed (the parity oracle for the host)."""
+        import bottleneck_top20_v3 as ranking
+        feed, urls = ranking.CISION_RSS.format(slug=CISION_SLUG), []
+
+        def fetch(url):
+            urls.append(url)
+            return feed_text if url == feed else "<p>no figure</p>"
+        ranking.cision_interim_revenue(["SIVE.ST"], CISION_NOW, fetch, None)
+        return [url for url in urls if url != feed]
+
+    def test_the_whole_plan_completes_over_four_invocations_without_dropping_or_repeating_a_slot(self):
+        import bottleneck_top20_v3 as ranking
+        feed_text = cision_feed((("Invitation to the presentation of Sivers Semiconductors Interim Report Q2, April - June 2026",
+                                  "https://news.cision.com/x/r/inv,c3"),) + CISION_ITEMS)
+        space, records = self.finish(feed_text)
+        self.assertEqual([record.paused for record in records], [True, True, True, False])
+        base = records[0].plans[0][1]
+        self.assertEqual(len(base), 336)
+        layers = json.loads((ROOT / "config" / "bottleneck-layers-v3.json").read_text(encoding="utf-8"))["layers"]
+        members = sorted({row["symbol"] for layer in layers for row in layer["capturers"]})
+        self.assertEqual(len(members), 60)
+        # Fair slices of the same base plan: 112 requests, then the persisted cursor resumes, then wraps over held slots.
+        urls = [url for _, url, _, _ in base]
+        self.assertEqual([record.served for record in records[:3]], [urls[0:112], urls[112:224], urls[224:336]])
+        self.assertEqual([record.requests for record in records], [112, 112, 112, 4])
+        self.assertEqual([record.progress[plan_id("base")] for record in records], [112, 224, 224, 224])
+        self.assertEqual([record.state for record in records[:3]], [
+            {"Stage": "base", "Cursor": 112, "Slots": 336}, {"Stage": "base", "Cursor": 224, "Slots": 336},
+            {"Stage": "auxiliary", "Cursor": 0, "Slots": 3}])
+        for record in records[:3]:
+            self.assertEqual(record.capture.batch, [])
+            self.assertFalse(record.capture.network_allowed)
+        # Third invocation: the base plan finishes from held slots and the auxiliary stage pauses before its first request.
+        self.assertEqual([name for name, _ in records[2].plans], ["base", "auxiliary"])
+        self.assertEqual([name for name, _ in records[3].plans], ["base", "auxiliary", "cision-pages"])
+        fx = [(sha(f"fx/{currency}".encode()),
+               f"https://query1.finance.yahoo.com/v8/finance/chart/{currency}USD%3DX?range=5d&interval=1d",
+               f"fx/{currency}", 8 * MiB) for currency in ("JPY", "SEK")]
+        feed = ranking.CISION_RSS.format(slug=CISION_SLUG)
+        rss_row = (sha(b"cision/rss/SIVE.ST"), feed, "SIVE.ST", 8 * MiB)
+        self.assertEqual(records[2].plans[1][1], fx + [rss_row])
+        self.assertEqual(records[3].plans[1][1], fx + [rss_row])
+        # The pages slot comes from the held feed through the real predicates: not the invitation, not the news item.
+        page_row = (sha(b"cision/report/SIVE.ST"), CISION_REPORT_Q2, "SIVE.ST", 8 * MiB)
+        self.assertEqual(records[3].plans[2][1], [page_row])
+        self.assertEqual(records[3].served, [fx[0][1], fx[1][1], feed, CISION_REPORT_Q2])
+        self.assertEqual(self.real_pages(feed_text), [CISION_REPORT_Q2])
+        # Every slot was served by the network exactly once overall, and every member kept its three Yahoo channels.
+        served = [url for record in records for url in record.served]
+        self.assertEqual(len(served), 340)
+        self.assertEqual(len(set(served)), 340)
+        self.assertEqual(set(served), set(urls) | {row[1] for row in fx} | {feed, CISION_REPORT_Q2})
+        for symbol in members:
+            for prefix in ("https://query1.finance.yahoo.com/v8/finance/chart/",
+                           "https://query1.finance.yahoo.com/v10/finance/quoteSummary/",
+                           "https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/"):
+                self.assertEqual(sum(url.startswith(prefix + symbol + "?") for url in urls), 1, (symbol, prefix))
+        index = space.json(("outputs", "capture-index.json"))
+        slots = {slot for slot, _, _, _ in base} | {row[0] for row in fx} | {rss_row[0], page_row[0]}
+        self.assertEqual(set(index["entries"]), slots)
+        self.assertEqual({row["status"] for row in index["entries"].values()}, {"CAPTURED"})
+        self.assertEqual(index["entries"][page_row[0]]["url"], CISION_REPORT_Q2)
+        self.assertEqual(index["progress"], {plan_id("base"): 224, plan_id("auxiliary"): 0, plan_id("cision-pages"): 0})
+        final = records[3].capture
+        self.assertEqual(final.entries["http/" + CISION_REPORT_Q2], CISION_PAGE_Q2.encode())
+        self.assertEqual({key for key in final.entries if key.startswith("fx/")}, {"fx/JPY", "fx/SEK"})
+        self.assertTrue(all(final.entries[key] is not None for key in ("fx/JPY", "fx/SEK")))
+        self.assertEqual(records[3].day, self.INSTANT.date())
+
+    def test_a_cision_pages_slot_exists_only_for_the_newest_qualifying_report_on_the_issuer_host(self):
+        valid = "Sivers Semiconductors Reports Q2 2026 Results as Product Growth"
+        invitation = "Invitation to the presentation of Sivers Semiconductors Interim Report Q2, April - June 2026"
+        leadership = "Sivers Semiconductors Makes Changes to Senior Leadership Team"
+        rows = (
+            ("invitation-and-news-only", cision_feed([(invitation, "https://news.cision.com/x/r/inv,c3"),
+                                                      (leadership, "https://news.cision.com/x/r/a,c1")])),
+            ("lookalike-host", cision_feed([(valid, "https://news.cision.com.evil.example/x/r/q2,c2")])),
+            ("plain-http", cision_feed([(valid, "http://news.cision.com/x/r/q2,c2")])),
+            ("newest-report-foreign-no-fall-through", cision_feed([(valid, "https://example.com/x/r/q3"),
+                                                                   ("Sivers Semiconductors Reports Q1 2026 Results",
+                                                                    "https://news.cision.com/x/r/q1,c4")])),
+            ("malformed-feed", "<rss><channel><item><title>" + valid),
+        )
+        for label, feed_text in rows:
+            with self.subTest(feed=label):
+                self.assertEqual(self.real_pages(feed_text), [])  # the real parser requests no page either
+                space, records = self.finish(feed_text)
+                self.assertEqual([record.paused for record in records], [True, True, True, False])
+                self.assertEqual([name for name, _ in records[3].plans], ["base", "auxiliary"])
+                self.assertEqual(len(records[3].served), 3)  # two FX charts and the feed, no page
+                index = space.json(("outputs", "capture-index.json"))
+                self.assertNotIn(plan_id("cision-pages"), index["progress"])
+                self.assertNotIn(sha(b"cision/report/SIVE.ST"), index["entries"])
+                self.assertEqual(index["entries"][sha(b"cision/rss/SIVE.ST")]["status"], "CAPTURED")  # the feed itself was held
 
 
 class RankingPauseTests(FakeLeaseCase):

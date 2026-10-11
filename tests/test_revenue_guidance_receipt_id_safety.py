@@ -22,7 +22,7 @@ from tests import nbis_synthetic_sources as f
 from tests import test_revenue_guidance_autoupdate as replay
 from tests import test_revenue_guidance_machine_auto_parity as auto_parity
 
-updater, overlay, guidance = f.updater, f.overlay, f.guidance
+updater, overlay, guidance, verify = f.updater, f.overlay, f.guidance, f.verify
 W = h.World
 SECRETS = ('zqauser', 'S3CRETPW', 'T0KEN', 'FR4G')
 IR = 'https://ir.zqa.synthetic-g9.example/'
@@ -41,6 +41,10 @@ NEAR_MISSES = (H + '?x#sha256:' + 'a' * 64, 'u@' + H + '#sha256:' + 'a' * 64, H 
 QUERY = '?utm_source=feed'
 ROOT = Path(__file__).resolve().parents[1]
 NV = next(p for p in json.loads((ROOT / 'config/revenue-guidance-extraction-profiles-v1.json').read_bytes())['profiles'] if p['symbol'] == 'NVDA')
+# Frozen Python/Worker parity vectors (cloud/test/v213-order-forecast-v3-receipt-ids.test.ts reads the same file).
+VECTORS = json.loads((ROOT / 'tests/fixtures/receipt-id-persisted-form-vectors.json').read_bytes())['vectors']
+LONE_SURROGATE_DIGEST = 'b348245d7885e90c93531848b86e39be698433705a1a1ea853f20144939b4b11'  # surrogatepass (CS-4)
+REPLACEMENT_CHARACTER_DIGEST = '126d57611770b3571c965f256c4942b259351403f44831956483f571f9e81ea0'  # what Node's string encoder gives
 
 
 def state_bytes(world):
@@ -83,6 +87,8 @@ def run_world(raw_id, edit=None):
             'summary': first['issuers']['ZQA'], 'second': second['issuers']['ZQA'], 'calls': len(world.calls),
             'pointer': world.pointer(), 'files': (len(world.files('generations')), len(world.files('captures'))),
             'issuers': gen.get('issuers'), 'detections': gen.get('detections'),
+            'attempts': [(a['event_key'], a['outcome'], a['reason'], a['detail'])
+                         for a in ((gen.get('issuers') or {}).get('ZQA') or {}).get('open', [])],
             'state_secret_free': secret_free(state_bytes(world)), 'run_secret_free': secret_free(json.dumps([first, second]).encode()),
         }
 
@@ -293,6 +299,17 @@ class UpdaterNeverPersists(unittest.TestCase):
         self.assertNotIn('RECEIPT_DOCUMENT_ID_UNSAFE', (r['summary'].get('reason'), r['second'].get('reason')), r)
         self.assertNotEqual(r['summary'].get('action'), 'WAITING', r)
         self.assertEqual((r['state_secret_free'], r['run_secret_free']), (True, True))
+        # BATCH10C F3 (decision: R/DECISION-B10C-F3-URL_SHAPE-WAIT.md, B10C-F3-CLASS-URL_SHAPE-WAIT): the REQUIRED IR copy
+        # in the persisted form is refused by url_rule on its fragment (URL_SHAPE), a deterministic refusal that waits as
+        # NETWORK_UNAVAILABLE, as the raw link would (query), and every run again. The wait echoes only
+        # scheme://host/path, never the query, the fragment or the digest; this is the triple A5_PIN pins
+        # (tests/test_revenue_guidance_batch10c_inputs.py) for a refused IR page.
+        event = h.acc(0, 1)
+        waiting = {'action': 'ATTEMPTED', 'event': event, 'outcome': 'WAITING', 'reason': 'NETWORK_UNAVAILABLE'}
+        self.assertEqual((r['summary'], r['second']), (waiting, waiting))
+        self.assertEqual(r['attempts'], [(event, 'WAITING', 'NETWORK_UNAVAILABLE', 'URL_SHAPE ' + h.ir_url('ZQA'))])
+        self.assertFalse(any(c in r['attempts'][0][3] for c in ('?', '#', '@', 'T0KEN', 'sha256')), r['attempts'])
+        self.assertGreater(r['calls'], 0)  # the plan reached the IR copy: SEC feeds, index and exhibit were read first
 
 
 class PersistedForm(unittest.TestCase):
@@ -348,6 +365,60 @@ class PersistedForm(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]['ir_item']['id'], self.safe(UNSAFE_IDS[3]))
         self.assertTrue(secret_free(json.dumps(events).encode()))
+
+
+    def test_frozen_parity_vectors_match_the_python_transform(self):
+        # ROLLOUT-PERSISTED-ID-PARITY-VECTORS: the same frozen file is read by the Worker's Vitest (persistedDocumentId and
+        # PERSISTED_DOCUMENT_ID_RE). The frozen values were computed once with UTF-8 surrogatepass over the exact original.
+        self.assertGreaterEqual(len(VECTORS), 30)
+        self.assertEqual(len({v['name'] for v in VECTORS}), len(VECTORS))
+        unsafe_out = []
+        for v in VECTORS:
+            raw, frozen = v['raw'], v['persisted']
+            with self.subTest(vector=v['name']):
+                self.assertEqual(guidance.persisted_document_id(raw), frozen)
+                self.assertEqual(self.safe(raw), frozen)
+                self.assertEqual(guidance.persisted_document_id(frozen), frozen)  # idempotent
+                self.assertEqual(guidance.raw_unsafe_document_id(raw), v['raw_unsafe'])
+                self.assertFalse(guidance.raw_unsafe_document_id(frozen))
+                if v['raw_unsafe']:
+                    shown, separator, digest = frozen.rpartition('#sha256:')
+                    self.assertEqual(separator, '#sha256:')
+                    self.assertEqual(digest, hashlib.sha256(raw.encode('utf-8', 'surrogatepass')).hexdigest())
+                    self.assertLessEqual(len(shown), 200)  # code points, not bytes or UTF-16 units
+                    self.assertFalse(any(c in shown for c in '@?#'))
+                    unsafe_out.append(frozen)
+                else:
+                    self.assertEqual(frozen, raw)  # a clean id and an id already in the persisted form are unchanged
+        self.assertEqual(len(set(unsafe_out)), len(unsafe_out))  # distinct originals stay distinct identities
+
+    def test_frozen_parity_vectors_cover_the_contract_classes(self):
+        by_name = {v['name']: v for v in VECTORS}
+        for name in ('query', 'fragment', 'userinfo', 'several-at', 'at-after-query', 'query-before-fragment',
+                     'fragment-before-query', 'already-persisted', 'near-miss-uppercase-hex', 'near-miss-63-hex',
+                     'near-miss-65-hex', 'near-miss-trailing-fragment', 'near-miss-fragment-before-digest',
+                     'near-miss-query-then-persisted-tail', 'near-miss-userinfo-persisted-tail', 'lone-high-after-query'):
+            self.assertIn(name, by_name)
+        # the shown part is cut at 200 code points (astral characters count once), not at 199 or 201, and not by bytes
+        for name in ('astral-over-200', 'ascii-over-200', 'exactly-200-then-query', '201-then-query'):
+            self.assertEqual(len(by_name[name]['persisted'].rpartition('#sha256:')[0]), 200, name)
+        self.assertEqual(sum(1 for c in by_name['astral-over-200']['raw'] if ord(c) > 0xffff), 180)
+        self.assertTrue(any(0xd800 <= ord(c) <= 0xdfff for v in VECTORS for c in v['raw']))
+
+    def test_a_lone_surrogate_is_hashed_as_surrogatepass_not_as_a_replacement_character(self):
+        # ENDPHASE-CS4-LONE-SURROGATE: Python hashes a lone surrogate as its 3-byte form; the Worker used to hash the JS
+        # string with Node's encoder (U+FFFD), so the digests differed for such ids only. Both literals are pinned here and
+        # in the Vitest, which also asserts that the Worker now produces the first one.
+        raw = {v['name']: v for v in VECTORS}['lone-high-after-query']['raw']
+        self.assertEqual(guidance.persisted_document_id(raw).rpartition('#sha256:')[2], LONE_SURROGATE_DIGEST)
+        self.assertEqual(hashlib.sha256(raw.encode('utf-8', 'surrogatepass')).hexdigest(), LONE_SURROGATE_DIGEST)
+        self.assertEqual(hashlib.sha256(raw.replace(chr(0xd800), chr(0xfffd)).encode('utf-8')).hexdigest(), REPLACEMENT_CHARACTER_DIGEST)
+        self.assertNotEqual(LONE_SURROGATE_DIGEST, REPLACEMENT_CHARACTER_DIGEST)
+        self.assertEqual(raw.encode('utf-8', 'surrogatepass')[-3:], bytes([0xed, 0xa0, 0x80]))
+        for v in VECTORS:  # every lone-surrogate vector differs from its replacement-character twin
+            if any(0xd800 <= ord(c) <= 0xdfff for c in v['raw']) and v['raw_unsafe']:
+                twin = ''.join(chr(0xfffd) if 0xd800 <= ord(c) <= 0xdfff else c for c in v['raw'])
+                self.assertNotEqual(v['persisted'].rpartition('#sha256:')[2], hashlib.sha256(twin.encode('utf-8')).hexdigest(), v['name'])
 
 
 class RotationKeepsAccounting(unittest.TestCase):
@@ -548,6 +619,223 @@ class LegacyRawRowBound(unittest.TestCase):
         # the eighth canonical check dropped the legacy row: the barrier lifts in that very run
         self.assertEqual(runs[7][2], verified('0001045810-26-000019'))
         self.assertNotEqual(runs[7][3], 'RECEIPT_DOCUMENT_ID_UNSAFE')
+
+
+def ir_link_with(suffix, raws):
+    """The replay IR feed (Q4 GetPressReleaseList) as ir_fetch_as_of serves it, except that every read lists NVDA's
+    2026-02-25 results release with `suffix` on its LinkToDetailPage (the feed keeps listing it); `raws` collects the
+    listed originals as the checker forms them."""
+    original = replay.ir_fetch_as_of
+
+    def as_of(day):
+        inner = original(day)
+
+        def fetch(url):
+            data = json.loads(inner(url).decode('utf-8'))
+            for row in data['GetPressReleaseListResult']:
+                if row['PressReleaseDate'][:10] == '02/25/2026' and row['Headline'].startswith('NVIDIA Announces Financial Results'):
+                    row['LinkToDetailPage'] += suffix
+                    raw = 'https://investor.nvidia.com' + row['LinkToDetailPage']
+                    if raw not in raws:
+                        raws.append(raw)
+            return json.dumps(data).encode('utf-8')
+        return fetch
+    return mock.patch.object(replay, 'ir_fetch_as_of', as_of)
+
+
+class PostRotationIrCopy(unittest.TestCase):
+    """F8-POST-ROTATION-IR-COPY-SCENARIO (the F8 GO's required probe) and the characterization behind the decision
+    B10C-F3-CLASS-URL_SHAPE-WAIT: the real NVDA replay chain while the official IR index keeps listing the 2026-02-25
+    results release with a query (or a fragment) on its link. The checker writes that link in the persisted form, the
+    lead's REQUIRED IR copy therefore carries '#sha256:' and url_rule refuses it (URL_SHAPE: a fragment), exactly as the
+    raw link would be refused (a query), so a pre-F8 updater waited the same way. The refusal is deterministic and the
+    wait is a retry every run: it echoes only scheme://host/path, never settles while the feed lists the link, and the
+    oldest unsettled event is always the one served, so the later quarters are not reached (WAITING keeps the issuer
+    suspended, as BLOCKED would; BLOCKED would settle the event). The clean-link control is the replay chain itself
+    (ReplayChainTests: 000019, 000051, 000073 VERIFIED).
+
+    The expected literals were derived from the code and are pinned here; a mismatch at the first run is evidence for
+    the decision record, not a reason to loosen a row."""
+    EVENT = '0001045810-26-000019'
+    LATER_EVENT = '0001045810-26-000051'
+    WAITING = {'action': 'ATTEMPTED', 'event': EVENT, 'outcome': 'WAITING', 'reason': 'NETWORK_UNAVAILABLE'}
+    # 'URL_SHAPE ' + scheme://host/path of the 2026-02-25 results release, cut at the 120 characters the attempt keeps
+    DETAIL = 'URL_SHAPE https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Fourth-Quar'
+    LATER = ('2026-05-21T12:00:00Z', '2026-08-27T12:00:00Z')
+
+    def assert_waiting(self, chain, instant, summary, raws):
+        self.assertEqual(summary, self.WAITING, instant)
+        pointer = overlay.read_pointer(chain.state)
+        entry = overlay.read_generation(chain.state, pointer['generation_id'], pointer['sha256'])['issuers']['NVDA']
+        self.assertEqual([(a['event_key'], a['outcome'], a['reason'], a['detail']) for a in entry['open']],
+                         [(self.EVENT, 'WAITING', 'NETWORK_UNAVAILABLE', self.DETAIL)], instant)
+        self.assertEqual(entry['index']['settled'], [], instant)  # a wait settles nothing, so the later quarters stay behind it
+        self.assertNotIn(self.LATER_EVENT, [a['event_key'] for a in entry['open']], instant)
+        item = entry['open'][0]['event']['ir_item']
+        self.assertEqual(item['id'], overlay.safe_document_id(raws[0]), instant)  # the lead carries the persisted form
+        self.assertIn('#sha256:', item['id'])
+        self.assertTrue(all(c not in entry['open'][0]['detail'] for c in ('?', '#', '@', 'utm_source', 'sha256')), instant)
+        gated = chain.resolve(instant, receipts=True)['NVDA']
+        self.assertNotEqual(gated.get('reason'), 'RECEIPT_DOCUMENT_ID_UNSAFE', instant)
+        self.assertNotEqual(gated.get('mode'), 'AUTO_VERIFIED', instant)
+        state = state_bytes_of(chain.state)
+        self.assertTrue(all(raw.encode('utf-8') not in state for raw in raws), instant)
+        self.assertNotIn(b'utm_source', state, instant)
+
+    def test_after_the_legacy_row_ages_out_the_required_ir_copy_waits_in_every_quarter(self):
+        self.assertEqual(replay.checker.KEEP, 8)
+        raws, runs, later = [], [], []
+        with tempfile.TemporaryDirectory() as tmp, ir_link_with(QUERY, raws):
+            chain = replay.Chain(Path(tmp))
+            sequence = itertools.count(1)
+            with mock.patch.object(updater.secrets, 'token_hex', side_effect=lambda n: f'{next(sequence):0{2 * n}x}'):
+                chain.check('2026-02-26T11:00:00Z')
+                self.assertEqual(len(raws), 1)
+                data = json.loads(chain.receipts.read_text(encoding='utf-8'))
+                legacy = json.loads(json.dumps(data['issuers']['NVDA'][-1]))
+                swapped = [d for d in legacy['later_documents'] if d['channel'] == 'ISSUER_IR' and d['id'] == overlay.safe_document_id(raws[0])]
+                self.assertEqual(len(swapped), 1)
+                swapped[0]['id'] = raws[0]  # what the checker wrote before F8-N1: the raw link with its query
+                legacy['checked_at'] = '2026-02-26T11:30:00Z'
+                legacy['digest'] = guidance.compute_receipt_digest(legacy)
+                self.assertTrue(guidance.receipt_has_unsafe_document_id(legacy))
+                data['issuers']['NVDA'].append(legacy)
+                chain.receipts.write_text(json.dumps(data), encoding='utf-8')
+                for k in range(1, replay.checker.KEEP + 1):
+                    instant = f'2026-02-26T{11 + k}:00:00Z'
+                    chain.check(instant)
+                    retained = '2026-02-26T11:30:00Z' in [r['checked_at'] for r in nvda_rows(chain)]
+                    runs.append((k, retained, chain.update(instant)['issuers']['NVDA']))
+                # the legacy row is gone: the first run after rotation (and every later quarter) meets the persisted lead
+                self.assert_waiting(chain, '2026-02-26T19:00:00Z', runs[-1][2], raws)
+                for instant in self.LATER:
+                    chain.check(instant)
+                    summary = chain.update(instant)['issuers']['NVDA']
+                    later.append((instant, summary))
+                    self.assert_waiting(chain, instant, summary, raws)
+        self.assertEqual([(k, retained) for k, retained, _ in runs], [(k, k < 8) for k in range(1, 9)])
+        self.assertEqual([summary for _, _, summary in runs[:7]], [BARRED] * 7)  # barred while the raw row is retained
+        self.assertEqual([instant for instant, _ in later], list(self.LATER))
+        self.assertTrue(all(summary == self.WAITING for _, summary in later))  # three quarters, none of them VERIFIED
+
+    def test_a_fragment_link_waits_the_same_way_without_any_legacy_row(self):
+        raws = []
+        with tempfile.TemporaryDirectory() as tmp, ir_link_with('#feed', raws):
+            chain = replay.Chain(Path(tmp))
+            sequence = itertools.count(1)
+            with mock.patch.object(updater.secrets, 'token_hex', side_effect=lambda n: f'{next(sequence):0{2 * n}x}'):
+                instant = '2026-02-26T12:00:00Z'
+                chain.check(instant)
+                self.assertEqual(len(raws), 1)
+                self.assertFalse(any(guidance.receipt_has_unsafe_document_id(r) for r in nvda_rows(chain)))
+                for _ in range(2):  # the second run is the retry: the same wait, nothing new
+                    self.assert_waiting(chain, instant, chain.update(instant)['issuers']['NVDA'], raws)
+
+
+class LegacyUpdaterStateMigration(unittest.TestCase):
+    """ROLLOUT-F8-WAITING-REKEY (fake-only part): an updater state written before F8 holds the raw secret-bearing IR id in
+    its detections and in its attempt, keyed (for an unresolved wait) from the raw ids. The pre-F8 run is emulated by the
+    old behaviour of its two seams (overlay.safe_document_id the identity, no receipt barrier). After the raw receipt row
+    has been replaced by its persisted form (what KEEP canonical checks do), the F8 updater canonicalises the stored
+    detection, re-keys the unresolved wait (the previous one is popped, not kept beside the new one) or rewrites the
+    event attempt's lead, writes no secret into any new generation, and a further run appends nothing. Synthetic ZQA
+    only; no live state exists (the auto-update does not run in production)."""
+    RAW_A = 'https://zqauser:S3CRETPW@ir.zqa.synthetic-g9.example/news/2026/zqa-results/default.aspx?t=T0KEN#FR4G'
+    RAW_B = h.ir_url('ZQA') + '?t=T0KEN'
+    UNRESOLVED = {'action': 'WAITING', 'reason': 'EVENT_UNRESOLVED'}
+
+    def setUp(self):
+        serial = itertools.count(1)
+        self.enterContext(mock.patch.object(updater.secrets, 'token_hex', side_effect=lambda n: f'{next(serial):0{2 * n}x}'))
+
+    @staticmethod
+    def unresolved(identity):
+        return 'unresolved:' + verify.sha256(verify.canonical_json(sorted([['ISSUER_IR', identity, h.D]])).encode('utf-8'))[:16]
+
+    @staticmethod
+    def edit_ir(world, identity, only_ir):
+        data = json.loads(world.receipts.read_bytes())
+        docs = data['issuers']['ZQA'][0]['later_documents']
+        ir = next(d for d in docs if d['channel'] == 'ISSUER_IR')
+        ir['id'] = identity
+        if only_ir:
+            docs[:] = [ir]
+        world.receipts.write_text(json.dumps(data), encoding='utf-8')
+
+    def legacy_run(self, world, raw, only_ir):
+        self.edit_ir(world, raw, only_ir)
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(overlay, 'safe_document_id', lambda v: v))  # raw ids persisted
+            stack.enter_context(mock.patch.object(guidance, 'receipt_has_unsafe_document_id', lambda r: False))  # no barrier yet
+            return world.run(1)
+
+    def test_an_unresolved_wait_is_rekeyed_from_the_persisted_ids_and_the_old_one_is_popped(self):
+        raw, safe = self.RAW_A, overlay.safe_document_id(self.RAW_A)
+        self.assertNotEqual(safe, raw)
+        with W(1, 0) as world:
+            first = self.legacy_run(world, raw, only_ir=True)  # no SEC filing: no supported event, the unresolved branch
+            self.assertEqual((first[0], first[1]['issuers']['ZQA']), ('RESULT', self.UNRESOLVED))
+            self.assertFalse(secret_free(state_bytes(world)))  # the legacy state really holds the raw id
+            legacy = world.last('ZQA')
+            self.assertEqual((legacy['event_key'], legacy['outcome'], legacy['reason']), (self.unresolved(raw), 'WAITING', 'EVENT_UNRESOLVED'))
+            self.assertEqual([d['id'] for d in legacy['event']['later_documents']], [raw])
+            # the F8 updater with the raw row still retained: barred, and the stored detection is canonicalised at once
+            barred = world.run(2)
+            self.assertEqual((barred[0], barred[1]['issuers']['ZQA']), ('RESULT', BARRED))
+            self.assertEqual([d['id'] for d in world.pg()['detections']['ZQA']['documents']], [safe])
+            seen = {p.name for p in world.files('generations')}
+            # the raw row ages out: the persisted form takes its place
+            self.edit_ir(world, safe, only_ir=True)
+            moved = world.run(3)
+            self.assertEqual((moved[0], moved[1]['issuers']['ZQA']), ('RESULT', self.UNRESOLVED))
+            current = world.pg()
+            opened = current['issuers']['ZQA']['open']
+            self.assertEqual([(a['event_key'], a['outcome'], a['reason']) for a in opened], [(self.unresolved(safe), 'WAITING', 'EVENT_UNRESOLVED')])
+            self.assertNotEqual(opened[0]['event_key'], legacy['event_key'])  # re-keyed, and the previous wait was popped
+            self.assertEqual([d['id'] for d in opened[0]['event']['later_documents']], [safe])
+            self.assertEqual([d['id'] for d in current['detections']['ZQA']['documents'] if d['channel'] == 'ISSUER_IR'], [safe])
+            self.assertTrue(secret_free(json.dumps(current).encode('utf-8')))
+            fresh = [p for p in world.files('generations') if p.name not in seen]
+            self.assertTrue(fresh and all(secret_free(p.read_bytes()) for p in fresh))
+            pointer, count = world.pointer(), len(world.files('generations'))
+            again = world.run(4)
+            self.assertEqual((again[0], again[1]['issuers']['ZQA']), ('RESULT', self.UNRESOLVED))
+            self.assertEqual((world.pointer(), len(world.files('generations'))), (pointer, count))  # one more run appends nothing
+            self.assertEqual(len(world.pg()['issuers']['ZQA']['open']), 1)
+
+    def test_an_event_attempt_is_rewritten_with_the_persisted_lead_and_waits_as_before(self):
+        raw, safe = self.RAW_B, overlay.safe_document_id(self.RAW_B)
+        event = h.acc(0, 1)
+        waiting = {'action': 'ATTEMPTED', 'event': event, 'outcome': 'WAITING', 'reason': 'NETWORK_UNAVAILABLE'}
+        detail = 'URL_SHAPE ' + h.ir_url('ZQA')
+        with W(1, 0) as world:
+            first = self.legacy_run(world, raw, only_ir=False)
+            self.assertEqual((first[0], first[1]['issuers']['ZQA']), ('RESULT', waiting))
+            self.assertFalse(secret_free(state_bytes(world)))
+            legacy = world.last('ZQA')
+            self.assertEqual((legacy['event_key'], legacy['detail']), (event, detail))  # the raw link is refused too (a query)
+            self.assertEqual(legacy['event']['ir_item']['id'], raw)
+            barred = world.run(2)
+            self.assertEqual((barred[0], barred[1]['issuers']['ZQA']), ('RESULT', BARRED))
+            seen = {p.name for p in world.files('generations')}
+            self.edit_ir(world, safe, only_ir=False)
+            moved = world.run(3)
+            self.assertEqual((moved[0], moved[1]['issuers']['ZQA']), ('RESULT', waiting))
+            current = world.pg()
+            opened = current['issuers']['ZQA']['open']
+            self.assertEqual([(a['event_key'], a['outcome'], a['reason'], a['detail']) for a in opened],
+                             [(event, 'WAITING', 'NETWORK_UNAVAILABLE', detail)])  # the same wait, its attempt rewritten
+            self.assertEqual(opened[0]['event']['ir_item']['id'], safe)
+            self.assertTrue(all(not guidance.raw_unsafe_document_id(d['id']) for d in opened[0]['event']['later_documents']))
+            self.assertEqual([d['id'] for d in current['detections']['ZQA']['documents'] if d['channel'] == 'ISSUER_IR'], [safe])
+            self.assertTrue(secret_free(json.dumps(current).encode('utf-8')))
+            fresh = [p for p in world.files('generations') if p.name not in seen]
+            self.assertTrue(fresh and all(secret_free(p.read_bytes()) for p in fresh))
+            pointer, count = world.pointer(), len(world.files('generations'))
+            again = world.run(4)
+            self.assertEqual((again[0], again[1]['issuers']['ZQA']), ('RESULT', waiting))
+            self.assertEqual((world.pointer(), len(world.files('generations'))), (pointer, count))
+            self.assertEqual(len(world.pg()['issuers']['ZQA']['open']), 1)
 
 
 class Ordinary:

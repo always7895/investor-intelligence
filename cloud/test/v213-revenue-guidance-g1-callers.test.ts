@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BOTTLENECK_V3_KEY, loadBottleneckV3, parseBottleneckV3, type BottleneckReadOptions } from "../src/v213/bottleneck-v3";
 import type { PublicSnapshotView } from "../src/v213/public-snapshot";
-import { GUIDANCE_BINDING_KEY, resolveSealedMachineBindings } from "../src/v213/revenue-guidance-machine";
+import { GUIDANCE_BINDING_KEY, compareCodePoints, compareConsumedRows, resolveSealedMachineBindings } from "../src/v213/revenue-guidance-machine";
 import { TRANSPORT_V1_ADMISSION_MODE, TRANSPORT_V1_SCHEMA } from "../src/v213/revenue-guidance-wire";
 
 // G1 caller rows over the genuine Python AUTO and BARRIER producer fixtures read by the real sealed
@@ -81,6 +81,14 @@ describe("G1-11 forged, scoped and double-wrapped AUTO payloads cannot improve a
       v.payload.evidence.auto_update.consumed.push(["ISSUER_IR", "https://example.invalid/synthetic-g1", "2026-02-26"]);
     }],
     ["consumed-triple-removed", v => { v.payload.evidence.auto_update.consumed.pop(); }],
+    // G1-17: same SET as the route, but never the sorted, duplicate-free list the Python serializer emits.
+    ["consumed-reordered", v => { v.payload.evidence.auto_update.consumed.reverse(); }],
+    ["consumed-adjacent-swap", v => {
+      const c = v.payload.evidence.auto_update.consumed; [c[1], c[2]] = [c[2], c[1]];
+    }],
+    ["consumed-duplicated", v => {
+      const c = v.payload.evidence.auto_update.consumed; c.push([...c[c.length - 1]]);
+    }],
   ])("rejects %s after re-binding the outer report", async (name, corrupt) => {
     const f = await forecast(rebound(AUTO, report => corrupt(envelopeOf(report))), AUTO_CUTOFF);
     expect(f.revenueDiagnostic, name).toBe("MACHINE_INPUTS_UNAVAILABLE");
@@ -106,6 +114,32 @@ describe("G1-11 forged, scoped and double-wrapped AUTO payloads cannot improve a
       expect(unwrapped.m6.reason).toBe("INVALID");
       expect(unwrapped.machineAdmitted).not.toBe(true);
     }
+  });
+});
+
+describe("G1-17 consumed ordering is Unicode code point order, as Python sorted()", () => {
+  it("compares by code point, not UTF-16 code unit and not locale", () => {
+    const astral = "a\u{10000}", bmp = "a\uE000"; // U+10000 > U+E000 by code point, but its first code unit D800 < E000
+    expect(astral < bmp).toBe(true); // UTF-16 code-unit order (what `<` and default sort do) is the WRONG order here
+    expect(compareCodePoints(astral, bmp)).toBe(1);
+    expect(compareCodePoints(bmp, astral)).toBe(-1);
+    expect(compareConsumedRows(["ISSUER_IR", bmp, "2026-02-25"], ["ISSUER_IR", astral, "2026-02-25"])).toBe(-1);
+    expect(compareConsumedRows(["ISSUER_IR", astral, "2026-02-25"], ["ISSUER_IR", bmp, "2026-02-25"])).toBe(1);
+  });
+
+  it("orders element by element, prefix first, equal rows equal", () => {
+    expect(compareCodePoints("abc", "abcd")).toBe(-1);
+    expect(compareCodePoints("abc!", "abc")).toBe(1); // a JSON-string comparison would order these the other way
+    expect(compareCodePoints("B", "a")).toBe(-1);
+    expect(compareConsumedRows(["ISSUER_IR", "z", "2026-01-01"], ["SEC_SUBMISSIONS", "a", "2025-01-01"])).toBe(-1);
+    expect(compareConsumedRows(["SEC_SUBMISSIONS", "a", "2026-01-01"], ["SEC_SUBMISSIONS", "a", "2026-01-02"])).toBe(-1);
+    expect(compareConsumedRows(["SEC_SUBMISSIONS", "a", "2026-01-01"], ["SEC_SUBMISSIONS", "a", "2026-01-01"])).toBe(0);
+  });
+
+  it("the genuine AUTO consumed list is strictly ascending in that order, so the control stays admitted", () => {
+    const consumed = envelopeOf(JSON.parse(AUTO.report)).payload.evidence.auto_update.consumed as string[][];
+    expect(consumed.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < consumed.length; i++) expect(compareConsumedRows(consumed[i - 1]!, consumed[i]!)).toBe(-1);
   });
 });
 

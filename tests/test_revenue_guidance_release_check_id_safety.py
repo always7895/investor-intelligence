@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest import mock
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -199,6 +200,31 @@ class CheckerWritesThePersistedForm(unittest.TestCase):
         self.assertIn("https://www.nasdaq.com/press-release/results", [d["id"] for d in r["later_documents"]])
         # the unreviewed same-day 8-K and wire results release make it a review item, as with clean ids
         self.assertEqual((r["status"], recompute(r, rec)), ("REVIEW_REQUIRED", "REVIEW_REQUIRED"))
+
+    def test_a_raw_unsafe_id_that_escapes_canonicalisation_is_no_freshness_proof(self):
+        # N6 (BATCH10C F8-N1 mutant N6_status_ignores_unsafe): every later-document id is canonicalised by
+        # overlay.safe_document_id before receipt_for sees it, so the clause that makes a raw unsafe id in `later` a
+        # FRESHNESS_UNVERIFIED receipt (release_check receipt_for) is unreachable on the shipped code: it is defence in
+        # depth. This row simulates the regression that clause guards against (the canonicaliser lets the raw id through)
+        # and requires the checker's own status to agree with the registry's recompute, which never trusts such an id.
+        rec = check_tests.record()
+        with mock.patch.object(overlay, "safe_document_id", lambda value: value):
+            r = check.receipt_for(rec, NOW, base_sec(), wire_feed(WIRE_ROWS))
+        wire = [d for d in r["later_documents"] if d["channel"] == "WIRE_PRESS_RELEASES"]
+        # preconditions: the patch reached the checker (the raw ids are in the receipt) and nothing else made it unverified
+        self.assertTrue(set(WIRE_UNSAFE) <= {d["id"] for d in wire})
+        self.assertTrue(all(revenue_guidance.raw_unsafe_document_id(i) for i in WIRE_UNSAFE))
+        self.assertEqual(sum(1 for d in r["later_documents"] if revenue_guidance.raw_unsafe_document_id(d["id"])), len(WIRE_UNSAFE))
+        self.assertTrue(all(c["status"] == "OK" and c["complete"] for c in r["channels"]))
+        self.assertTrue(any(d["disposition"] == "POSSIBLY_RELEVANT" for d in r["later_documents"]))  # a clean id would give REVIEW_REQUIRED
+        # the receipt says it is no freshness proof, and the registry's recompute of the very same bytes agrees
+        self.assertEqual(r["status"], "FRESHNESS_UNVERIFIED")
+        self.assertEqual(recompute(r, rec), "FRESHNESS_UNVERIFIED")
+        self.assertTrue(revenue_guidance.receipt_has_unsafe_document_id(r))
+        self.assertEqual(r["digest"], check.canonical_digest(r))
+        # control: with the canonicaliser in place the same feeds give the usable, persisted-form receipt
+        safe = check.receipt_for(rec, NOW, base_sec(), wire_feed(WIRE_ROWS))
+        self.assertEqual((safe["status"], recompute(safe, rec)), ("REVIEW_REQUIRED", "REVIEW_REQUIRED"))
 
     def test_a_reviewed_unsafe_id_is_matched_in_the_persisted_form(self):
         raw = RSS_ITEM + "1015/?token=" + SECRET
