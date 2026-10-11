@@ -6,162 +6,162 @@
   {
    "id": "HIST-20260910",
    "to": "8c08dfddab5885f06ebac50fd202f7e20b10a3a5",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260911",
    "to": "f4558a96834555bf39a11df26a5c151dfe8ee57c",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260912",
    "to": "b96167af641e103018b4b63203777715a70c61e2",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260913",
    "to": "f418f370ab8b4d019d0d14193e4cdfb3e24b36d5",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260914",
    "to": "a536c1656a2d5950402a89731c6d66471b53c6e2",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260915",
    "to": "d15577d1f459d8e5ada70169da5c998cf8b64dd1",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260916",
    "to": "8e017b7ba6d94849420cfbbe70642f347e889704",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260917",
    "to": "babdd099ba1fecccb0ef42f3aa813df5c80d229d",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260918",
    "to": "7070152604a5b3fd963e88e33980e7cb1c8bd92b",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260919",
    "to": "977057d910898e0e1a88cf9b70fd69155df93469",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260920",
    "to": "1a76f1e55273ed4fe0502ea7adff1972920aa034",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260921",
    "to": "6922278ac865727fdcdded96535f94aaaabeb8b3",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260924",
    "to": "c6ce5272d5c47ada716ecf194af06a15df3b9d97",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260925",
    "to": "de595a9588de8abbf1f5238cf9cc2c8e1c4848d9",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260926",
    "to": "f9fad0ef557ecc8cfd23f81b653281c10b74bdbc",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260927",
    "to": "06a7f28d78de6a035297019ab4a69d8d4e3b06d1",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260928",
    "to": "b0860c949b406e3b327dbe7cff4d80f02a08298b",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260929",
    "to": "7dab435f973ee43dc68e03fc2fda09432ab99b6f",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20260930",
    "to": "9e00f3bee23ad7462ad6d6721f10e73b4d2fc701",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "HIST-20261001",
    "to": "6f52eac2c09614440a2a472b5c20e2205dedeb9d",
-   "status": "UNREVIEWED",
-   "kind": "NONE",
-   "receipt": "",
-   "note": "No per-commit dual-acceptance receipt was located in R for this day (Astra and Gemini era). The STATUS history at the range end (git show <to>:state/STATUS.md) records the lane acceptances of the era. Review the paths whose last change is here with a Fable 5.1 read-only review, or cite an operator decision, then set status ACCEPTED with that receipt."
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
   },
   {
    "id": "COMMIT3",
@@ -418,6 +418,134 @@
    "kind": "FABLE_INDEPENDENT_ACCEPT",
    "receipt": "R/FABLE-ENDPHASE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
    "note": "End-phase batch (c028462..f7d6353) dual-accepted with writer R/EXECUTOR-ENDPHASE-RESULT-CLAUDECODE-a43bef58.txt; includes the F3 instruction sync commits. Snapshot basis: the receipt names no commit SHA for the two docs commits; the end-phase write_s-write3.json (SHA-256 E30612E7...) records AGENTS.md, CLAUDE.md, SKILL.md and state/STATUS.md byte-equal to the f7d6353 blobs, which covers 07612b4 and f7d6353. A receipt file existing in R (--receipts-root) is not SHA binding."
+  },
+  {
+   "id": "NEXT1-rg",
+   "to": "8957e7ecb5c32da29077821ba1b24e486c990706",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group rg (31 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-prodtools",
+   "to": "f456b96ebeb7228ede4c2b7e6c2af422eeb51f89",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group prodtools (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-sealed",
+   "to": "a22bcf59320993cc63d38485fef214626abd8ba0",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group sealed (8 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-refresh",
+   "to": "08d59e26a5b305c3c3938758a852ac05a17055c1",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group refresh (2 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-ranking",
+   "to": "ae895380df479f0a32eafdbdaa6a640e40f43319",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group ranking (6 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-qa",
+   "to": "f72d5ace2dbe7582a1b21c895ed280909572c5c3",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group qa (4 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-tests",
+   "to": "1301118236259f4c460fd9701d5ca233d8814f94",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group tests (10 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-options",
+   "to": "aaa584bdac6d75b6b48c45db8b82e35ae68a2e2f",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group options (29 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-model",
+   "to": "737084900d1fc6275c34252f0092b2bdeb836786",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group model (14 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-loopback",
+   "to": "1f479f0deeffe8303462d7782dd539f35c64c3ee",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group loopback (6 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-line",
+   "to": "0d58ec30586f4c106f38a165fa36f0ed6e34af13",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group line (20 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-c1",
+   "to": "ccf8ee6e42c86ee96d4ec7aae33b7647b737f034",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group c1 (43 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-taifex",
+   "to": "63a341dc80349d27d4b8bd66126481eefe71a625",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group taifex (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-release",
+   "to": "59e48b38dcfe40a9d2c099f4cdc848b8aded2771",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group release (9 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-docs",
+   "to": "c989bc73ecf036680a37eb774a97bc7a6bdcdaa2",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group docs (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-security",
+   "to": "e180f28c95fd77834c64445c4bbbc98a25f76650",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group security (12 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
   }
  ]
 }
