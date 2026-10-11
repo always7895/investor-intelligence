@@ -415,7 +415,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
     const statusTextBase = view.integrity === "sealed"
-      ? "備兌買權建議（持有100股賣買權收權利金）：觀察清單內美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm（交易所公開 API，延遲）每小時更新；每個週期給兩個價格：高履約價（不易被賣掉）與平衡型。清單外標的或無雙邊報價時維持不可用。"
+      ? "備兌買權建議（持有100股賣買權收權利金）：觀察清單內美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm（交易所公開 API，延遲）每小時更新；每個週期最多給三個價格：高履約價（不易被賣掉）、中間型與平衡型（缺少中間履約價時只顯示兩個）；每週＝當週到期。清單外標的或無雙邊報價時維持不可用。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
     const statusText = `${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`;
 
@@ -430,7 +430,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       const overviewMessages = panelTextMessages("期權與個股快查", "股票代號 → 每週／每月 → 報價與風險", [
         statusText,
         "查詢例：NVDA 每週期權、AAPL 每月期權（僅格式範例，不是推薦）。個股資訊請輸入股票代號；完整深度產品仍須封存驗收。",
-        "「代號 每週期權／每月期權」只顯示已封存的延遲觀察：到期日/DTE、履約價、Bid/Ask、建議賣出限價、Delta、OI/成交量及年化收益；限價不保證成交。未註明週期時顯示每週。",
+        "「代號 每週期權／每月期權」只顯示已封存的延遲觀察：到期日/DTE、履約價、Bid/Ask、建議賣出限價、Delta、OI/成交量及年化收益；限價不保證成交。未註明週期時顯示每週；每週為當週最近的到期日，本週已無週選才顯示下週。",
         "無自動報價時可用「期權試算說明」做本次輸入的算術試算；結果標示未驗證，不存持倉、不連IBKR、不下單。",
         "以下提供 4 種標準期權教學策略卡片（教學範例，非推薦）：",
       ], navActions);

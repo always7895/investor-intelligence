@@ -1,4 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { effectiveDays, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET } from "./option-recommendation-rules";
 import { LINE_THEME as T, chip, divider, footnote, kpiTile, labelValue, panel, productHeader, section, uiBox, uiText } from "./line-theme";
 
 /**
@@ -17,9 +18,11 @@ export type SizingArchetype = "STEADY_CORE_COMPOUNDER" | "BOTTLENECK_CHOKEPOINT"
 export type OptionCycle = "WEEKLY" | "MONTHLY";
 export type DteWindowStatus = "WITHIN_CYCLE_WINDOW" | "OUTSIDE_CYCLE_WINDOW";
 
-/** DTE windows shared with scripts/fetch_options.py and market-product-schema.ts (weekly 3-14, monthly 21-45). */
+/** DTE windows shared with option-recommendation-rules.ts and market-product-schema.ts (weekly 0-14: the current calendar
+ * week's expiry, or next week's when this week has none left; monthly 21-45). A correct current-week expiry (DTE 0-2 included)
+ * is therefore never reported as outside the standard window. */
 export const OPTION_CYCLE_DTE_WINDOW: Readonly<Record<OptionCycle, readonly [number, number]>> = Object.freeze({
-  WEEKLY: [3, 14] as const, MONTHLY: [21, 45] as const,
+  WEEKLY: WEEKLY_DTE_BUCKET, MONTHLY: MONTHLY_DTE_BUCKET,
 });
 
 export const CONSERVATIVE_DELTA_BAND: readonly [number, number] = [0.2, 0.3];
@@ -163,8 +166,9 @@ export function generateOptionsOrderGuidance(params: GenerateOptionsOrderGuidanc
     throw new Error("OPTIONS_GUIDANCE_INVALID_TICKER");
   }
   const strike = requireFinitePositive("STRIKE", params.strike);
-  const dte = requireFinitePositive("DTE", params.dte);
-  if (!Number.isInteger(dte)) throw new Error("OPTIONS_GUIDANCE_INVALID_DTE");
+  // DTE 0 is the expiry day and is allowed; negative or fractional DTE is not.
+  if (!Number.isFinite(params.dte) || params.dte < 0 || !Number.isInteger(params.dte)) throw new Error("OPTIONS_GUIDANCE_INVALID_DTE");
+  const dte = params.dte;
   const bid = requireFinitePositive("BID", params.bid);
   const ask = requireFinitePositive("ASK", params.ask);
   const mid = requireFinitePositive("MID", params.mid);
@@ -205,12 +209,14 @@ export function generateOptionsOrderGuidance(params: GenerateOptionsOrderGuidanc
     mid,
     ask,
     limit_reference_band: { lower: bid, upper: ask, recommended_limit: mid },
-    // premium sold at mid (fair value): (premium/strike) * (365/dte) * 100
-    annualized_yield_pct: (mid / strike) * (365 / dte) * 100,
+    // premium sold at mid (fair value): (premium/strike) * (365/days) * 100, days = max(dte, 1) so DTE 0 never divides by zero
+    annualized_yield_pct: (mid / strike) * (365 / effectiveDays(dte)) * 100,
     liquidity_status: assessLiquidity(params.openInterest, params.volume, bid, mid, ask),
     expiry_cycle: expiryCycle,
     requested_cycle: requestedCycle,
-    cycle_matches_request: requestedCycle === null ? null : requestedCycle === expiryCycle,
+    // A weekly request whose current-week expiry is also the standard third-Friday monthly still matches (it is this week's weekly).
+    cycle_matches_request: requestedCycle === null ? null
+      : requestedCycle === expiryCycle || (requestedCycle === "WEEKLY" && expiryCycle === "MONTHLY" && dte <= WEEKLY_DTE_BUCKET[1]),
     dte_window: window,
     dte_window_status: dte >= window[0] && dte <= window[1] ? "WITHIN_CYCLE_WINDOW" : "OUTSIDE_CYCLE_WINDOW",
     caveat_disclaimer: CAVEAT_DISCLAIMER,
@@ -242,7 +248,10 @@ function cycleLine(guidance: OptionsOrderGuidance): string {
   const [low, high] = guidance.dte_window;
   const mismatch = guidance.cycle_matches_request === false && guidance.requested_cycle
     ? `｜查詢為${CYCLE_LABEL[guidance.requested_cycle]}，此到期日屬${CYCLE_LABEL[guidance.expiry_cycle]}` : "";
-  return `${CYCLE_LABEL[guidance.expiry_cycle]}｜DTE ${guidance.dte}（標準區間 ${low}-${high} 天，${WINDOW_LABEL[guidance.dte_window_status]}）${mismatch}`;
+  const alsoMonthly = guidance.requested_cycle === "WEEKLY" && guidance.expiry_cycle === "MONTHLY" && guidance.cycle_matches_request
+    ? "｜本週到期，同時是標準月選到期日" : "";
+  const short = guidance.dte <= SHORT_DTE_NOTICE_MAX ? "｜到期日極近，年化收益以至少 1 天換算而被放大" : "";
+  return `${CYCLE_LABEL[guidance.requested_cycle && guidance.cycle_matches_request ? guidance.requested_cycle : guidance.expiry_cycle]}｜DTE ${guidance.dte}（標準區間 ${low}-${high} 天，${WINDOW_LABEL[guidance.dte_window_status]}）${mismatch}${alsoMonthly}${short}`;
 }
 
 function fmt(n: number): string {

@@ -76,7 +76,7 @@ async function sealedEnv(options: {
       AZN: { weekly: { unavailable: "合成：美股 AZN 週期權" } },
       "AZN.ST": { weekly: { unavailable: "合成：斯德哥爾摩 AZN 週期權" } },
       SIVE: {  // the older unsuffixed Stockholm key still answers a bare SIVE
-      weekly: { unavailable: "Nasdaq Stockholm 無 3-14 天到期的上市期權" },
+      weekly: { unavailable: "Nasdaq Stockholm 無本週或下週到期的上市期權" },
       monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte: 21, spot: 32.78, currency: "SEK", multiplier: 100,
         quote_basis: "delayed", timestamp: obsStamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
         provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
@@ -153,7 +153,7 @@ describe("sealed market observations", () => {
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
     expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每週期權")));
-    expect(weekly).toContain("無 3-14 天到期的上市期權");
+    expect(weekly).toContain("無本週或下週到期的上市期權");
   });
 
   it("maps typed and looked-up tickers to option keys", () => {

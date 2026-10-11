@@ -21,6 +21,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import option_recommendation_rules as rules
+
 
 class MarketProductValidationError(Exception):
     pass
@@ -244,14 +246,18 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
 # The high-strike suggestion's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA).
 MAX_HIGH_STRIKE_DELTA = 0.20
 # Producer DTE buckets for the requested cycle window (scripts/build_market_quotes_options.py): a weekly/monthly request
-# must carry a DTE inside its own bucket. Not a third-Friday calendar classification.
-PERIOD_DTE_BUCKETS = {"weekly": (3, 14), "monthly": (21, 45)}
+# must carry a DTE inside its own bucket (weekly 0-14 is the outer bound; with asof_date the exact calendar-week rule of
+# option_recommendation_rules applies: this week's remaining expiry or, only when none, next week's). Not a third-Friday
+# calendar classification.
+PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 
 
 def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None = None, document_at: str | datetime | None = None,
                                 period: str | None = None) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
-    strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices."""
+    strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices. The
+    optional additive middle_suggestion (role MIDDLE, strictly between the two suggestions' strikes), asof_date (exchange-local
+    YYYY-MM-DD) and weekly_week (CURRENT or NEXT) are validated strictly when present and never required (older sealed rows)."""
     def finite(value, name):
         # Strict finite scalar, robust to every out-of-range numeric *representation*, not just one spelling. Reject
         # bool/str/collections up front, then convert to float inside a guard so an out-of-float-range magnitude in
@@ -318,7 +324,7 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             raise MarketProductValidationError("ROW_TIMESTAMP_LATER_THAN_DOCUMENT")
 
     dte = cycle.get("dte")
-    if not isinstance(dte, int) or isinstance(dte, bool) or not 1 <= dte <= 60:
+    if not isinstance(dte, int) or isinstance(dte, bool) or not 0 <= dte <= 60:  # 0 is the expiry day
         raise MarketProductValidationError("INVALID_DTE")
     if period is not None:
         bucket = PERIOD_DTE_BUCKETS.get(period)
@@ -333,7 +339,34 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     if evaluated_at:
         if abs((expiry.date() - eval_dt.date()).days - dte) > 1:
             raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
+        # An expiry-day row recommends selling a contract that stops trading at the regular-session close: reject it afterwards.
+        if dte == 0 and not rules.expiry_day_open(eval_dt.astimezone(timezone.utc), "STOCKHOLM" if cycle.get("currency") == "SEK" else "US"):
+            raise MarketProductValidationError("EXPIRY_DAY_SESSION_CLOSED")
+    asof_raw = cycle.get("asof_date")
+    week_raw = cycle.get("weekly_week")
+    if asof_raw is not None:
+        # The exchange-local as-of date the producer applied the expiry rule on: a real calendar date, exactly consistent with
+        # expiry and dte, and within one day of the row's own UTC instant (exchange dates differ from UTC by under a day).
+        try:
+            asof = datetime.strptime(asof_raw, "%Y-%m-%d").date() if isinstance(asof_raw, str) else None
+        except ValueError:
+            asof = None
+        if asof is None or asof.isoformat() != asof_raw:
+            raise MarketProductValidationError("INVALID_ASOF_DATE")
+        if (expiry.date() - asof).days != dte:
+            raise MarketProductValidationError("ASOF_DTE_INCONSISTENT")
+        if abs((asof - dt.date()).days) > 1:
+            raise MarketProductValidationError("ASOF_DATE_NOT_NEAR_TIMESTAMP")
+        expected_week = rules.weekly_week_for(expiry.date(), asof)
+        if period == "weekly" and expected_week is None:
+            raise MarketProductValidationError("DTE_OUTSIDE_PERIOD_BUCKET")  # beyond next week's Sunday, or before the as-of date
+        if week_raw is not None and week_raw != expected_week:
+            raise MarketProductValidationError("WEEKLY_WEEK_INCONSISTENT")
+    if week_raw is not None:
+        if week_raw not in (rules.WEEK_CURRENT, rules.WEEK_NEXT) or period == "monthly":
+            raise MarketProductValidationError("INVALID_WEEKLY_WEEK")
     spot = finite(cycle.get("spot"), "spot")
+    annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
     suggestions = cycle.get("suggestions")
     if not isinstance(suggestions, list) or not 1 <= len(suggestions) <= 2:
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
@@ -342,14 +375,14 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     roles = [item.get("role") for item in suggestions]
     if roles not in (["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
         raise MarketProductValidationError("COVERED_CALL_ROLES")
-    for item in suggestions:
+    def check_item(item: dict) -> float:
         strike, bid, ask, mid, limit = (finite(item.get(key), key) for key in ("strike", "bid", "ask", "mid", "limit_price"))
         if not strike > spot > 0:
             raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_OUT_OF_THE_MONEY")
         if not 0 < bid <= ask or abs(mid - (bid + ask) / 2) > 0.001 or not bid - 1e-9 <= limit <= mid + 1e-9:
             raise MarketProductValidationError("COVERED_CALL_PRICES_INCONSISTENT")
         checks = {"premium_per_contract": limit * 100, "period_yield": limit / spot,
-                  "annualized_yield": limit / spot * 365 / dte, "upside_to_strike": strike / spot - 1}
+                  "annualized_yield": limit / spot * 365 / annual_days, "upside_to_strike": strike / spot - 1}
         for key, expected in checks.items():
             if abs(finite(item.get(key), key) - expected) > max(1e-4, abs(expected) * 1e-3):
                 raise MarketProductValidationError(f"COVERED_CALL_DERIVED_MISMATCH: {key}")
@@ -371,8 +404,26 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             value = item.get(key)
             if value is not None and finite(value, key) < 0:
                 raise MarketProductValidationError(f"INVALID_LIQUIDITY_FIELD: {key}")
+        return strike
+
+    for item in suggestions:
+        check_item(item)
     if len(suggestions) == 2 and not suggestions[0]["strike"] > suggestions[1]["strike"]:
         raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_NOT_HIGHER")
+    middle = cycle.get("middle_suggestion")
+    if middle is not None:
+        # The middle tier needs both neighbours (HIGH_STRIKE and BALANCED), carries the role MIDDLE, passes the same per-item
+        # checks and sits STRICTLY between their strikes (HIGH > MIDDLE > BALANCED). Its limit price is not required to be
+        # ordered against the others (spread rules can legitimately break that), only the strike order is.
+        if not isinstance(middle, dict):
+            raise MarketProductValidationError("COVERED_CALL_MIDDLE_SHAPE")
+        if len(suggestions) != 2:
+            raise MarketProductValidationError("COVERED_CALL_MIDDLE_NEEDS_TWO_NEIGHBOURS")
+        if middle.get("role") != "MIDDLE":
+            raise MarketProductValidationError("COVERED_CALL_MIDDLE_ROLE")
+        middle_strike = check_item(middle)
+        if not suggestions[0]["strike"] > middle_strike > suggestions[1]["strike"]:
+            raise MarketProductValidationError("COVERED_CALL_MIDDLE_NOT_BETWEEN")
 
 
 COVERAGE_SCHEMA = "v213-options-coverage-v1"

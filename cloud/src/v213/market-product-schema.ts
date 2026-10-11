@@ -4,6 +4,7 @@
  * no ungrounded probability scores, no fake live quotes, and strict validation.
  */
 
+import { MONTHLY_DTE_BUCKET, WEEKLY_DTE_BUCKET } from "./option-recommendation-rules";
 import { admitPublicOption } from "./public-options-admission";
 
 export interface MacroGrowthRate {
@@ -571,12 +572,13 @@ export function validateOptionContractQuote(
   const dte = requireStrictInteger(obj.dte, "dte");
   if (dte < 0 || dte > 1000) throw new Error("INVALID_DTE");
 
-  // Enforce period matching (weekly 3-14 DTE, monthly 21-45 DTE per options policy)
+  // Enforce period matching: weekly 0-14 DTE outer bound (the weekly is the current calendar week's expiry; see
+  // option-recommendation-rules.ts), monthly 21-45 DTE per options policy.
   if (validationOptions?.period) {
-    if (validationOptions.period === "weekly" && (dte < 3 || dte > 14)) {
+    if (validationOptions.period === "weekly" && (dte < WEEKLY_DTE_BUCKET[0] || dte > WEEKLY_DTE_BUCKET[1])) {
       throw new Error("QUOTE_PERIOD_MISMATCH");
     }
-    if (validationOptions.period === "monthly" && (dte < 21 || dte > 45)) {
+    if (validationOptions.period === "monthly" && (dte < MONTHLY_DTE_BUCKET[0] || dte > MONTHLY_DTE_BUCKET[1])) {
       throw new Error("QUOTE_PERIOD_MISMATCH");
     }
   }

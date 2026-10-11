@@ -1,3 +1,5 @@
+import { limitMiddle, roundTick, WEEKLY_DTE_BUCKET } from "./v213/option-recommendation-rules";
+
 export type ManualOptionType = "call" | "put";
 
 export interface ManualOptionInput {
@@ -131,7 +133,7 @@ function annualized(credit: number, capital: number, dte: number): number {
 }
 
 function periodLabel(dte: number): string {
-  if (dte >= 3 && dte <= 14) return "每週觀察區間";
+  if (dte >= WEEKLY_DTE_BUCKET[0] && dte <= WEEKLY_DTE_BUCKET[1]) return "每週觀察區間";
   if (dte >= 21 && dte <= 45) return "每月觀察區間";
   return "自訂到期區間";
 }
@@ -233,7 +235,8 @@ export function formatManualOptionQuote(input: ManualOptionInput): string {
     `現價 ${money(input.spot, input.currency)}｜履約價 ${money(input.strike, input.currency)}｜距現價 ${percent(distance)}`,
     `Bid ${money(input.bid, input.currency)}｜Ask ${money(input.ask, input.currency)}｜Mid ${money(midpoint, input.currency)}`,
     `Spread ${money(spread, input.currency)}｜Spread / Mid ${percent(spreadPct)}`,
-    `非約束性限價觀察 ${money(observedLow, input.currency)}–${money(midpoint, input.currency)}`,
+    // Two prices (one quarter of the spread above Bid, and Mid) plus the middle tier between them, on the 0.01 tick (lower <= middle <= upper).
+    `非約束性限價觀察 ${money(observedLow, input.currency)}–${money(midpoint, input.currency)}｜中間檔 ${money(limitMiddle(roundTick(observedLow), roundTick(midpoint)), input.currency)}`,
     `Bid / Mid / Ask 年化權利金觀察 ${percent(yields[0]!)} / ${percent(yields[1]!)} / ${percent(yields[2]!)}`,
   ];
 

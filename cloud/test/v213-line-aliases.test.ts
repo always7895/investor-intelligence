@@ -46,7 +46,7 @@ async function sealedEnv(v3 = doc(now - HOUR)) {
   const lazy: Record<string, unknown> = {
     [BOTTLENECK_V3_KEY]: v3,
     "v213:options:v2": { schema: "v213-options-v2", generated_at: stamp, options: {
-      "SIVE.ST": { weekly: { unavailable: "Nasdaq Stockholm 無 3-14 天到期的上市期權" }, monthly: SIVE_MONTHLY } } },
+      "SIVE.ST": { weekly: { unavailable: "Nasdaq Stockholm 無本週或下週到期的上市期權" }, monthly: SIVE_MONTHLY } } },
   };
   const sealKey = `snapshot:${RUN}:${SNAPSHOT_SEAL_KEY}`;
   const seal = JSON.parse(kv.values.get(sealKey)!);
@@ -124,7 +124,7 @@ describe("LINE aliases for the current products", () => {
       expect(body, text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
     }
     for (const text of ["SIVE.ST 期權", "SIVE.ST期權", "SIVE.ST 選擇權"]) {
-      expect(await answer(env, text), text).toContain("無 3-14 天到期的上市期權");  // no cycle word: weekly, as before
+      expect(await answer(env, text), text).toContain("無本週或下週到期的上市期權");  // no cycle word: weekly, as before
     }
     for (const text of ["call options", "sell options"]) {
       expect(await answer(env, text), text).not.toContain("備兌買權");  // English words are never read as tickers

@@ -73,7 +73,7 @@ class BridgeFixtureTests(unittest.TestCase):
             self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
 
     def test_policy_constants_agree_with_the_validator_and_worker_windows(self):
-        self.assertEqual(builder.CYCLES, {"weekly": (3, 14), "monthly": (21, 45)})
+        self.assertEqual(builder.CYCLES, {"weekly": (0, 14), "monthly": (21, 45)})  # weekly: outer bound of the calendar-week rule
 
     def test_every_body_hash_matches_its_exact_string_and_provenance_is_embedded(self):
         self.assertEqual(self.doc["schema"], generator.BRIDGE_SCHEMA)
@@ -106,7 +106,7 @@ class BridgeFixtureTests(unittest.TestCase):
         self.assertIn("2026-10-16（16天）", monthly)
         self.assertIn("2026-11-20（51天）", monthly)
         self.assertNotIn("年化權利金", monthly)
-        self.assertIn("所列到期不在3–14天策略範圍", options["SIVE.ST"]["weekly"]["unavailable"])
+        self.assertIn("所列到期不在本週或下週策略範圍", options["SIVE.ST"]["weekly"]["unavailable"])
         for key, currency in (("VOLV-B.ST", "SEK"), ("AZN.ST", "SEK"), ("AZN", "USD"), ("SYNTHUS00", "USD")):
             cycle = options[key]["monthly"]
             self.assertEqual((cycle["ticker"], cycle["currency"], cycle["multiplier"]), (key, currency, 100), key)
@@ -135,7 +135,7 @@ class BridgeFixtureTests(unittest.TestCase):
         admitted = sorted(k for k, cycles in options.items() if k.endswith(".ST") and any("unavailable" not in v for v in cycles.values()))
         self.assertEqual(admitted, ["SYMCTL.ST", "SYMMON.ST", "SYMWEEK.ST", "VOLV-B.ST"])
         control = options["SYMCTL.ST"]["weekly"]
-        self.assertEqual((control["ticker"], control["currency"], control["dte"], control["suggestions"][0]["strike"]), ("SYMCTL.ST", "SEK", 14, 15.5))
+        self.assertEqual((control["ticker"], control["currency"], control["dte"], control["suggestions"][0]["strike"]), ("SYMCTL.ST", "SEK", 9, 15.5))
         for root in ("SYMSTRIKE", "SYMMONTH", "SYMYEAR", "SYMPUT", "SYMPREFIX", "SYMDAY", "SYMUNSUP", "SYMEMPTY", "SYMTYPE", "SYMNONE",
                      "SYMTAGZ", "SYMTAGA", "SYMTAGW", "SYMPREC"):
             for cycle in ("weekly", "monthly"):
@@ -161,8 +161,8 @@ class BridgeFixtureTests(unittest.TestCase):
 
     def test_the_retained_weekly_volvb_shape_is_a_proven_listing_in_the_real_pipeline(self):
         weekly = self.options("retained_sive_sept30")["VOLV-B.ST"]["weekly"]["unavailable"]
-        self.assertIn("所列到期不在3–14天策略範圍", weekly)
-        self.assertIn("2026-10-02（2天）", weekly)
+        self.assertIn("2026-10-02（2天）週選上市買權", weekly)  # this calendar week's weekly, refused for unconfirmed contract terms
+        self.assertIn("合約單位或幣別來源未確認", weekly)
         self.assertNotIn("無法解析", weekly)
         self.assertIn("volvb_option_chain", self.doc["provenance"]["retained_source_samples"])
 
@@ -203,7 +203,7 @@ class BridgeFixtureTests(unittest.TestCase):
             options = self.options(case)
             for key in keys:
                 dte = int(re.search(r"(\d+)", key.split(".")[0]).group(1))
-                for cycle, (low, high) in (("weekly", (3, 14)), ("monthly", (21, 45))):
+                for cycle, (low, high) in (("weekly", generator.WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
                     emitted = "unavailable" not in options[key][cycle]
                     self.assertEqual(emitted, low <= dte <= high, f"{case} {key} {cycle}")
                     if emitted:

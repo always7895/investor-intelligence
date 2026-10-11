@@ -182,7 +182,7 @@ class BroadUniverseTests(unittest.TestCase):
         self.assertEqual(seen, [builder.NORDIC_CHAIN.format(orderbook="TX100")])  # known order book: no search
         self.assertEqual(out["monthly"]["ticker"], "VOLV-B.ST")
         self.assertEqual(out["monthly"]["suggestions"][0]["strike"], 330.0)
-        self.assertIn("unavailable", out["weekly"])  # no call expires within 3-14 days
+        self.assertIn("unavailable", out["weekly"])  # no call expires this week or next (as of Sat 2026-09-26: 2026-09-28..2026-10-04)
 
     def test_markets_never_share_a_key_and_one_failure_never_aborts_the_run(self):
         class FakeTicker:
@@ -461,7 +461,7 @@ class FallbackTests(unittest.TestCase):
         builder.http_json = fake_http
         out = builder.nasdaq_us_options("BRK-B", 225.0, self.TODAY, self.STAMP)
         self.assertIn("/quote/brk.b/option-chain", self.urls[0])
-        self.assertIn("fromdate=2026-09-29", self.urls[0])
+        self.assertIn("fromdate=2026-09-26", self.urls[0])  # the window starts at the as-of date (weekly DTE 0 is allowed)
         self.assertEqual((out["weekly"]["expiry"], out["weekly"]["dte"]), ("2026-10-02", 6))
         self.assertEqual((out["monthly"]["expiry"], out["monthly"]["suggestions"][0]["strike"]), ("2026-10-23", 250.0))
         weekly = out["weekly"]["suggestions"][0]
@@ -1802,7 +1802,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         standard16_nonstandard28 = self.nordic([self.call(16), self.call(28, contractSize="50")])
         self.assertIn("合約單位非標準100股", standard16_nonstandard28["monthly"]["unavailable"])
         self.assertNotIn("所列到期不在21", standard16_nonstandard28["monthly"]["unavailable"])
-        self.assertIn("所列到期不在3–14天策略範圍", standard16_nonstandard28["weekly"]["unavailable"])
+        self.assertIn("所列到期不在本週或下週策略範圍", standard16_nonstandard28["weekly"]["unavailable"])
         self.assertIn("2026-10-16（16天）", standard16_nonstandard28["weekly"]["unavailable"])
         unknown = self.nordic([self.call(16), self.call(28, contractSize=None)])
         self.assertIn("合約單位或幣別來源未確認", unknown["monthly"]["unavailable"])
@@ -1838,10 +1838,11 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_nordic_policy_window_boundaries_and_native_identity(self):
-        for dte in (3, 14, 15, 20, 21, 45, 46, 60):
+        for dte in (3, 11, 12, 14, 15, 20, 21, 45, 46, 60):
             out = self.nordic([self.call(dte, bid="1.06" if dte > 10 else "0.80", ask="1.13" if dte > 10 else "0.90")])
             weekly, monthly = "unavailable" not in out["weekly"], "unavailable" not in out["monthly"]
-            self.assertEqual(weekly, 3 <= dte <= 14, f"weekly {dte}")
+            # calendar-week rule as of Wed 2026-09-30 after the Stockholm close: a single listed expiry is a weekly for 1 <= DTE <= 11
+            self.assertEqual(weekly, 1 <= dte <= 11, f"weekly {dte}")
             self.assertEqual(monthly, 21 <= dte <= 45, f"monthly {dte}")
             for cycle in ("weekly", "monthly"):
                 if "unavailable" not in out[cycle]:
@@ -1993,8 +1994,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
 
     def test_a_sub_cent_contract_keeps_its_quote_health_and_gets_a_truthful_precision_reason(self):
         def row(strike_text: str, bid="0.12", ask="0.14"):
-            day = date(2026, 9, 30) + timedelta(days=14)
-            return {**self.call(14, float(strike_text), bid=bid, ask=ask), "strikePrice": strike_text,
+            day = date(2026, 9, 30) + timedelta(days=9)  # Fri 2026-10-09: next week's weekly as of Wed 2026-09-30 (14 DTE is no weekly)
+            return {**self.call(9, float(strike_text), bid=bid, ask=ask), "strikePrice": strike_text,
                     "fullName": f"SIVE {day.day:02d}{day.strftime('%b').upper()}{day.year % 100:02d} {strike_text}C",
                     "symbol": self.native("SIVE", day, float(strike_text), weekly=True).replace(f"{float(strike_text):g}", strike_text)}
         saved = builder.http_json
@@ -2025,7 +2026,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
     def test_yahoo_sub_cent_strike_gets_the_precision_reason_and_keeps_read_health(self):
         import types
         from unittest import mock
-        expiry = (self.TODAY + timedelta(days=14)).isoformat()
+        expiry = (self.TODAY + timedelta(days=9)).isoformat()  # Fri 2026-10-09 (next week's weekly as of Wed 2026-09-30)
 
         def chain(rows):
             calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=1, volume=1) for k, b, a in rows]

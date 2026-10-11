@@ -164,7 +164,7 @@ describe("v213 Market Product Financial Safety Suite", () => {
       expect(() => validateOptionContractQuote(oldQuote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STALE_TIMESTAMP_REJECTED");
     });
 
-    it("enforces period filter matching weekly (3-14 DTE) vs monthly (21-45 DTE)", () => {
+    it("enforces period filter matching weekly (0-14 DTE) vs monthly (21-45 DTE)", () => {
       const weeklyQuoteWithMonthlyDte = createValidBareQuote({
         expiry: "2026-10-16",
         dte: 32,

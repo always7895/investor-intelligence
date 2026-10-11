@@ -126,7 +126,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     for (const command of ["Sive 每週期權", "SIVE.ST 每週期權"]) {
       const text = textOf(await reply(env, command));
       expect(text).toContain("SIVE.ST 每週期權");
-      expect(text).toContain("所列到期不在3–14天策略範圍");
+      expect(text).toContain("所列到期不在本週或下週策略範圍");
     }
     const flexEnv = await sealedEnv("retained_sive_sept30", { flex: true });
     const flex = await reply(flexEnv, "SIVE.ST 每月期權");
@@ -226,8 +226,8 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   it("shows the real weekly VOLVB source shape as a listed out-of-window contract and Yahoo read chains without a usable quote truthfully", async () => {
     const sive = await sealedEnv("retained_sive_sept30");
     const weekly = textOf(await reply(sive, "VOLV-B.ST 每週期權"));
-    expect(weekly).toContain("所列到期不在3–14天策略範圍");
-    expect(weekly).toContain("2026-10-02（2天）");
+    expect(weekly).toContain("2026-10-02（2天）週選上市買權");
+    expect(weekly).toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
     const us = await sealedEnv("dte_us_matrix");
     for (const command of ["UYZERO 每週期權", "UYZERO 每月期權", "UYONESIDED 每月期權"]) {

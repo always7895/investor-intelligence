@@ -20,6 +20,8 @@ from typing import Any
 
 import yfinance as yf
 
+import option_recommendation_rules as rules
+
 from local_research_config import (
     DEFAULT_LOCAL_UNIVERSE_PATH,
     UNIVERSE_ENV,
@@ -39,7 +41,11 @@ DEFAULT_MARKET_PATH = DATA_DIR / "market_latest.json"
 DEFAULT_POLICY: dict[str, Any] = {
     "schema_version": 1,
     "periods": {
-        "weekly": {"target_dte": 7, "minimum_dte": 3, "maximum_dte": 14},
+        # weekly: the current calendar week's earliest listed expiry (next week's only when this week has none left); the
+        # DTE bounds are the outer window (option_recommendation_rules) and are ignored by that selection (an older
+        # config/options-policy.json that still says minimum 3 is overridden by this default key). DTE 0 is the expiry day
+        # (annualized over one day, max(DTE, 1)).
+        "weekly": {"selection": "calendar_week", "target_dte": 7, "minimum_dte": 0, "maximum_dte": 14},
         "monthly": {"target_dte": 30, "minimum_dte": 21, "maximum_dte": 45},
     },
     "covered_call": {
@@ -205,13 +211,27 @@ def parse_expiration(value: str) -> date:
 
 
 def days_to_expiration(expiration: str, today: date | None = None) -> int:
-    return (parse_expiration(expiration) - (today or datetime.now(timezone.utc).date())).days
+    return (parse_expiration(expiration) - (today or rules.exchange_date(datetime.now(timezone.utc), "US"))).days
 
 
 def select_expiration(
     expirations: list[str], period: dict[str, Any], today: date | None = None
 ) -> tuple[str | None, int | None, str]:
-    current = today or datetime.now(timezone.utc).date()
+    now_utc = datetime.now(timezone.utc)
+    current = today or rules.exchange_date(now_utc, "US")  # the exchange-local date, not the UTC date
+    # Without an explicit date, the expiry day only counts while the US session is open (same cut-off as the producer).
+    day_open = rules.expiry_day_open(now_utc, "US") if today is None else True
+    if period.get("selection") == "calendar_week":
+        listed: dict[date, str] = {}
+        for value in expirations:
+            try:
+                listed.setdefault(parse_expiration(value), value)
+            except (TypeError, ValueError):
+                continue
+        choice = rules.select_weekly_expiry(listed, current, expiry_day_open_now=day_open)
+        if choice is None:
+            return None, None, "NO_EXPIRATION_IN_WINDOW"
+        return listed[choice.expiry], (choice.expiry - current).days, "OK"
     target = int(period.get("target_dte", 7))
     minimum = int(period.get("minimum_dte", 1))
     maximum = int(period.get("maximum_dte", 60))
@@ -248,9 +268,9 @@ def parse_timestamp(value: Any) -> datetime | None:
 
 
 def annualized_yield_pct(credit: float | None, capital_per_share: float, dte: int) -> float | None:
-    if credit is None or credit < 0 or capital_per_share <= 0 or dte <= 0:
+    if credit is None or credit < 0 or capital_per_share <= 0 or dte < 0:
         return None
-    return round(credit / capital_per_share * (365 / dte) * 100, 2)
+    return round(credit / capital_per_share * (365 / rules.effective_days(dte)) * 100, 2)  # DTE 0 annualizes over one day (labelled on the card)
 
 
 def sell_limit_observation(

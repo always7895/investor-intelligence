@@ -1,16 +1,20 @@
-/** Covered-call sell suggestions (operator 2026-09-26): for a holder of 100 shares, two strikes that collect premium
- * while keeping the strike as high as possible so the shares are not called away. Produced hourly by
+/** Covered-call sell suggestions (operator 2026-09-26; middle tier and current-week weekly 2026-10-11): for a holder of 100
+ * shares, up to three strikes (HIGH_STRIKE, an optional MIDDLE, BALANCED) that collect premium while keeping the strike as high
+ * as possible so the shares are not called away. Produced hourly by
  * scripts/build_market_quotes_options.py from delayed public option chains and sealed in `v213:options:v2`.
  * Observation only: the bot never places an order. Mirror of validate_covered_call_cycle (Python). */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
+import {
+  effectiveDays, dayMs, expiryDayOpen, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET, weeklyWeekFor, type WeeklyWeek,
+} from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
   LINE_THEME as T, chip, footerStyle, footnote, menuAction, meter, productHeader, section, statTile, uiBox, uiText,
 } from "./line-theme";
 
 export interface CoveredCallSuggestion {
-  role: "HIGH_STRIKE" | "BALANCED"; strike: number; bid: number; ask: number; mid: number; limit_price: number;
+  role: "HIGH_STRIKE" | "MIDDLE" | "BALANCED"; strike: number; bid: number; ask: number; mid: number; limit_price: number;
   premium_per_contract: number; period_yield: number; annualized_yield: number; upside_to_strike: number;
   delta: number | null; iv: number | null; oi: number | null; volume: number | null; spread_pct: number | null;
   /** QUOTED: the venue's delta; QUOTED_IV: Black-Scholes from the quoted implied volatility; QUOTE_IMPLIED: Black-Scholes
@@ -23,6 +27,11 @@ export interface CoveredCallCycle {
   /** Producer-CLAIMED join identity for public admission (never authority; absent on local candidates). */
   provider_id?: string; jurisdiction?: string; venue?: string; instrument_kind?: string; publication_scope?: string;
   suggestions: CoveredCallSuggestion[];
+  /** Optional additive middle tier (role MIDDLE, strike strictly between the two suggestions); absent in older sealed rows. */
+  middle_suggestion?: CoveredCallSuggestion;
+  /** Exchange-local date (YYYY-MM-DD) the expiry rule was applied on, and for weekly cycles whether the expiry is in the
+   * CURRENT calendar week or (only when this week has no remaining weekly) the NEXT; both absent in older sealed rows. */
+  asof_date?: string; weekly_week?: WeeklyWeek;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -42,8 +51,9 @@ export function isValidUtcIsoInstant(raw: unknown): raw is string {
 }
 
 /** Producer DTE buckets (scripts/build_market_quotes_options.py): the selected cycle window a row must fall in. Not a
- * third-Friday calendar classification; the producer's own weekly/monthly DTE ranges. */
-const PERIOD_DTE_BUCKETS: Record<string, [number, number]> = { weekly: [3, 14], monthly: [21, 45] };
+ * third-Friday calendar classification; weekly 0-14 is the outer bound (with asof_date the exact current-week rule of
+ * option-recommendation-rules.ts applies), monthly 21-45. */
+const PERIOD_DTE_BUCKETS: Record<string, readonly [number, number]> = { weekly: WEEKLY_DTE_BUCKET, monthly: MONTHLY_DTE_BUCKET };
 
 /** UTC midnight epoch ms of a YYYY-MM-DD calendar date, or null for an impossible date (e.g. 2026-02-30) that the shape
  * regex alone would admit. */
@@ -60,7 +70,7 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
   if (cycle.strategy !== "COVERED_CALL" || (cycle.currency !== "USD" && cycle.currency !== "SEK") || cycle.multiplier !== 100
     || cycle.quote_basis !== "delayed" || typeof cycle.ticker !== "string" || !/^[A-Z0-9.\- ]{1,16}$/.test(cycle.ticker)
     || typeof cycle.expiry !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(cycle.expiry) || !Number.isInteger(cycle.dte)
-    || cycle.dte < 1 || cycle.dte > 60 || !finite(cycle.spot) || cycle.spot <= 0 || typeof cycle.source !== "string"
+    || cycle.dte < 0 || cycle.dte > 60 || !finite(cycle.spot) || cycle.spot <= 0 || typeof cycle.source !== "string"
     || typeof cycle.provenance !== "string" || !cycle.provenance.startsWith("https://")
     || !isValidUtcIsoInstant(cycle.timestamp)
     || !Array.isArray(cycle.suggestions) || cycle.suggestions.length < 1 || cycle.suggestions.length > 2) return null;
@@ -77,7 +87,7 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     if (Number.isFinite(docTime) && rowTime - docTime > 300_000) return null;
   }
 
-  // Selected cycle window: the row's DTE must fall in the requested period's producer bucket (weekly 3-14 / monthly
+  // Selected cycle window: the row's DTE must fall in the requested period's producer bucket (weekly 0-14 / monthly
   // 21-45). No period substitution and no third-Friday relabelling of producer DTE buckets.
   if (period) {
     const bucket = PERIOD_DTE_BUCKETS[period];
@@ -91,32 +101,60 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     const nowDateMs = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
     const dayDiff = Math.round((expiryMs - nowDateMs) / 86_400_000);
     if (dayDiff < 0) return null;                        // expired contract
+    // An expiry-day (DTE 0) row is a sell recommendation for a contract that stops trading at the regular-session close: reject
+    // it once the venue's session is over (the UTC-date check above only fires after UTC midnight).
+    if (cycle.dte === 0 && !expiryDayOpen(now, cycle.currency === "SEK" ? "STOCKHOLM" : "US")) return null;
     if (Math.abs(dayDiff - cycle.dte) > 1) return null;  // calendar-DTE inconsistent (+/-1 tolerance, mirrors Python)
   }
 
+  // Optional exchange-local as-of date and weekly week marker (older sealed rows carry neither). The date must be a real calendar
+  // date, exactly consistent with expiry and dte, and within one day of the row's own instant; a weekly row must then satisfy
+  // the current-week rule (this week's remaining expiry, or only when none, next week's); the week marker must agree.
+  const asofMs = cycle.asof_date === undefined || cycle.asof_date === null ? null : dayMs(cycle.asof_date);
+  if (cycle.asof_date !== undefined && cycle.asof_date !== null) {
+    if (asofMs === null || Math.round((expiryMs - asofMs) / 86_400_000) !== cycle.dte
+      || Math.abs(asofMs - Date.parse(`${new Date(rowTime).toISOString().slice(0, 10)}T00:00:00Z`)) > 86_400_000) return null;
+    const expectedWeek = weeklyWeekFor(cycle.expiry, cycle.asof_date);
+    if (period === "weekly" && expectedWeek === null) return null;
+    if (cycle.weekly_week !== undefined && cycle.weekly_week !== null && cycle.weekly_week !== expectedWeek) return null;
+  }
+  if (cycle.weekly_week !== undefined && cycle.weekly_week !== null
+    && ((cycle.weekly_week !== "CURRENT" && cycle.weekly_week !== "NEXT") || period === "monthly")) return null;
+
   const roles = cycle.suggestions.map((item: any) => item?.role).join(",");
   if (roles !== "HIGH_STRIKE" && roles !== "HIGH_STRIKE,BALANCED") return null;
-  for (const item of cycle.suggestions as any[]) {
+  /** Per-item checks shared by the two suggestions and the optional middle tier. */
+  const itemValid = (item: any): boolean => {
+    if (!item || typeof item !== "object") return false;
     if (!["strike", "bid", "ask", "mid", "limit_price", "premium_per_contract", "period_yield", "annualized_yield", "upside_to_strike"]
-      .every(key => finite(item[key]))) return null;
+      .every(key => finite(item[key]))) return false;
     if (!(item.strike > cycle.spot) || !(item.bid > 0 && item.bid <= item.ask) || !close(item.mid, (item.bid + item.ask) / 2)
-      || item.limit_price < item.bid - 1e-9 || item.limit_price > item.mid + 1e-9) return null;
+      || item.limit_price < item.bid - 1e-9 || item.limit_price > item.mid + 1e-9) return false;
     if (!close(item.premium_per_contract, item.limit_price * 100) || !close(item.period_yield, item.limit_price / cycle.spot)
-      || !close(item.annualized_yield, item.limit_price / cycle.spot * 365 / cycle.dte)
-      || !close(item.upside_to_strike, item.strike / cycle.spot - 1)) return null;
-    if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return null;
-    if (item.role === "HIGH_STRIKE" && !(finite(item.delta) && item.delta <= MAX_HIGH_STRIKE_DELTA)) return null;
-    if (item.delta_basis !== null && item.delta_basis !== undefined && !DELTA_BASES.has(item.delta_basis)) return null;
-    if (item.iv !== null && item.iv !== undefined && !(finite(item.iv) && item.iv > 0)) return null;
+      || !close(item.annualized_yield, item.limit_price / cycle.spot * 365 / effectiveDays(cycle.dte))
+      || !close(item.upside_to_strike, item.strike / cycle.spot - 1)) return false;
+    if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return false;
+    if (item.role === "HIGH_STRIKE" && !(finite(item.delta) && item.delta <= MAX_HIGH_STRIKE_DELTA)) return false;
+    if (item.delta_basis !== null && item.delta_basis !== undefined && !DELTA_BASES.has(item.delta_basis)) return false;
+    if (item.iv !== null && item.iv !== undefined && !(finite(item.iv) && item.iv > 0)) return false;
     // Optional supplied liquidity/spread fields must be a finite, non-negative number when present (amendment-02):
     // reject nonfinite (JSON 1e309 -> Infinity), wrong type (bool/string/array/object) and negatives, so a malformed
     // value can never reach text/Flex; a legitimate null/missing stays unknown (未提供).
     for (const key of ["oi", "volume", "spread_pct"] as const) {
       const value = item[key];
-      if (value !== null && value !== undefined && !(finite(value) && value >= 0)) return null;
+      if (value !== null && value !== undefined && !(finite(value) && value >= 0)) return false;
     }
-  }
+    return true;
+  };
+  for (const item of cycle.suggestions as any[]) if (!itemValid(item)) return null;
   if (cycle.suggestions.length === 2 && !(cycle.suggestions[0].strike > cycle.suggestions[1].strike)) return null;
+  if (cycle.middle_suggestion !== undefined && cycle.middle_suggestion !== null) {
+    // The middle tier needs both neighbours, carries the role MIDDLE, passes the same checks and sits strictly between their
+    // strikes (HIGH > MIDDLE > BALANCED). Limit prices are not required to be ordered, only strikes. Malformed: the cycle is null.
+    const middle = cycle.middle_suggestion;
+    if (cycle.suggestions.length !== 2 || middle.role !== "MIDDLE" || !itemValid(middle)
+      || !(cycle.suggestions[0].strike > middle.strike && middle.strike > cycle.suggestions[1].strike)) return null;
+  }
   return cycle as CoveredCallCycle;
 }
 
@@ -135,10 +173,34 @@ function deltaBasisZh(item: CoveredCallSuggestion): string | null {
   if (item.delta_basis === "QUOTE_IMPLIED") return item.iv ? `模型值，波動率由買賣報價反推 ${pct(item.iv, 0)}` : "模型值，由買賣報價反推";
   return "模型值";
 }
+/** Role label and note. The visible title is numbered by display position (一／二／三) so numbering never has a gap: the middle
+ * tier is shown only when it exists, and without it the two original titles are unchanged. */
 const ROLE = {
-  HIGH_STRIKE: ["建議一：高履約價（不易被賣掉）", "在年化權利金至少 6% 的前提下選最高履約價；股價需上漲超過右側幅度才會被指派。"],
-  BALANCED: ["建議二：平衡型（收較多權利金）", "履約價較低、權利金較高；被指派機率也較高。"],
+  HIGH_STRIKE: ["高履約價（不易被賣掉）", "在年化權利金至少 6% 的前提下選最高履約價；股價需上漲超過右側幅度才會被指派。"],
+  MIDDLE: ["中間型（權利金與被指派機率居中）", "履約價與權利金介於高履約價與平衡型之間；被指派機率也居中。"],
+  BALANCED: ["平衡型（收較多權利金）", "履約價較低、權利金較高；被指派機率也較高。"],
 } as const;
+const ORDINAL_ZH = ["一", "二", "三"] as const;
+
+/** The tiers in display order: HIGH_STRIKE, the optional MIDDLE, BALANCED (strikes strictly descending). */
+function displayTiers(cycle: CoveredCallCycle): CoveredCallSuggestion[] {
+  const [high, balanced] = cycle.suggestions;
+  return [high!, ...(cycle.middle_suggestion ? [cycle.middle_suggestion] : []), ...(balanced ? [balanced] : [])];
+}
+const tierTitle = (item: CoveredCallSuggestion, index: number) => `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${ROLE[item.role][0]}`;
+
+/** Weekly marker: only rows that carry weekly_week (current producer) say which calendar week the expiry is in. */
+function weekNoteZh(cycle: CoveredCallCycle): string | null {
+  if (cycle.weekly_week === "CURRENT") return "本週到期";
+  if (cycle.weekly_week === "NEXT") return "本週已無剩餘週選，顯示下週最早到期日";
+  return null;
+}
+
+/** DTE 0-2: the annualized yield is computed over at least one day and is strongly amplified; say so on the card. */
+function shortDteNoticeZh(cycle: CoveredCallCycle): string | null {
+  if (cycle.dte > SHORT_DTE_NOTICE_MAX) return null;
+  return `${cycle.dte === 0 ? "今日到期" : `距到期僅 ${cycle.dte} 天`}：年化收益以至少 1 天換算，數字被大幅放大，只供比較，不代表可持續收益。`;
+}
 
 function assignmentText(item: CoveredCallSuggestion): string {
   if (item.delta === null || item.delta === undefined) return "被指派機率參考：報價不足以推算 Delta";
@@ -146,8 +208,9 @@ function assignmentText(item: CoveredCallSuggestion): string {
   return `被指派機率參考：Delta ${item.delta.toFixed(2)}（約 ${Math.round(item.delta * 100)}%${basis ? `，${basis}` : ""}）`;
 }
 
-function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion) {
-  const [title, note] = ROLE[item.role];
+function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index: number) {
+  const title = tierTitle(item, index);
+  const note = ROLE[item.role][1];
   const assignment = assignmentText(item);
   return section(title, [
     uiBox([statTile("履約價", money(item.strike, cycle.currency), undefined, `距現價 +${pct(item.upside_to_strike)}`),
@@ -171,8 +234,10 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   if (style === "text") {
     const lines = [
       `【備兌買權建議｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${cycle.dte} 天）｜現價 ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
-      ...cycle.suggestions.map(item => [
-        ROLE[item.role][0],
+      ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
+      ...(shortDteNoticeZh(cycle) ? [shortDteNoticeZh(cycle)!] : []),
+      ...displayTiers(cycle).map((item, index) => [
+        tierTitle(item, index),
         `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}）`,
         `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${deltaBasisZh(item) ? `（${deltaBasisZh(item)}）` : ""}`}`,
         `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`,
@@ -188,10 +253,12 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   const bubble = {
     type: "bubble", size: "mega",
     header: productHeader(`備兌買權建議 · ${periodLabel} · 延遲報價`, `${cycle.ticker}｜到期 ${cycle.expiry}`, [
-      uiBox([chip(`${cycle.dte} 天`), chip(`現價 ${money(cycle.spot, cycle.currency)}`), chip(`計價 ${cycle.currency}`)], { layout: "horizontal", spacing: "sm" }),
+      uiBox([chip(cycle.dte === 0 ? "今日到期" : `${cycle.dte} 天`), chip(`現價 ${money(cycle.spot, cycle.currency)}`), chip(`計價 ${cycle.currency}`)], { layout: "horizontal", spacing: "sm" }),
+      ...(weekNoteZh(cycle) ? [uiBox([chip(weekNoteZh(cycle)!)], { layout: "horizontal", spacing: "sm" })] : []),
     ]),
     body: uiBox([
-      ...cycle.suggestions.map(item => suggestionSection(cycle, item)),
+      ...displayTiers(cycle).map((item, index) => suggestionSection(cycle, item, index)),
+      ...(shortDteNoticeZh(cycle) ? [footnote(shortDteNoticeZh(cycle)!)] : []),
       footnote("前提：持有 100 股、賣出 1 口買權收取權利金；股價超過履約價可能被指派，上漲收益封頂於履約價。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([

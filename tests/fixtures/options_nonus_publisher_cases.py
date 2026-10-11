@@ -352,8 +352,10 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
         expect_unavailable(case, bodies, "SIVE.ST", "monthly", "本次回應有上市買權；所列到期不在21–45天策略範圍", "2026-10-16（16天）", "2026-11-20（51天）")
-        expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在3–14天策略範圍", "2026-10-16（16天）")
-        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly", "所列到期不在3–14天策略範圍", "2026-10-02（2天）", forbid=("無法解析",))  # the real weekly shape is a proven listing
+        expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
+        # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its contract currency is not
+        # provided, so it is refused for unconfirmed terms instead of being skipped for next week's expiry.
+        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly", "2026-10-02（2天）週選上市買權", "合約單位或幣別來源未確認", forbid=("無法解析", "所列到期不在"))  # the real weekly shape is a proven listing
         for symbol in ("VOLV-B.ST", "AZN.ST"):
             expect_available(case, bodies, symbol, "monthly", currency="SEK")
         expect_available(case, bodies, "AZN", "monthly", currency="USD")
@@ -397,28 +399,28 @@ def case_currency_evidence_matrix() -> tuple[str, str, list[dict[str, Any]], Any
 
 def case_native_symbol_identity_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
     specs: list[dict[str, Any]] = [healthy_st("VOLV-B.ST", 310.0), *healthy_us(2)]
-    k, b, a = qualifying(13.7, 14, strike=15.5)
-    week = lambda root: [nordic_row(root, 14, k, bid=b, ask=a)]  # noqa: E731 - the reviewed decimal-strike weekly shape (15.50, 14 DTE)
+    k, b, a = qualifying(13.7, 9, strike=15.5)
+    week = lambda root: [nordic_row(root, 9, k, bid=b, ask=a)]  # noqa: E731 - the reviewed decimal-strike weekly shape (15.50, 9 DTE)
     specs.append(st("SYMCTL.ST", week("SYMCTL"), spot=13.7))
     specs.append(st("SYMMON.ST", [qualifying_row("SYMMON", 28, 100.0)]))
     specs.append(st("SYMWEEK.ST", [qualifying_row("SYMWEEK", 7, 100.0)]))
-    day14 = TODAY + timedelta(days=14)
-    wrong = {"SYMSTRIKE": native_symbol("SYMSTRIKE", 14, 16.0), "SYMMONTH": f"SYMMONTH{day14.year % 10}K{_strike_text(k)}",
+    day14 = TODAY + timedelta(days=9)
+    wrong = {"SYMSTRIKE": native_symbol("SYMSTRIKE", 9, 16.0), "SYMMONTH": f"SYMMONTH{day14.year % 10}K{_strike_text(k)}",
              "SYMYEAR": f"SYMYEAR{(day14.year + 1) % 10}{_CALL_LETTERS[day14.month - 1]}{day14.day:02d}Y{_strike_text(k)}",
-             "SYMPUT": f"SYMPUT{day14.year % 10}V{day14.day:02d}Y{_strike_text(k)}", "SYMPREFIX": native_symbol("SYMPREFIXR", 14, k),
+             "SYMPUT": f"SYMPUT{day14.year % 10}V{day14.day:02d}Y{_strike_text(k)}", "SYMPREFIX": native_symbol("SYMPREFIXR", 9, k),
              "SYMDAY": f"SYMDAY{day14.year % 10}{_CALL_LETTERS[day14.month - 1]}{(day14.day % 28) + 1:02d}Y{_strike_text(k)}",
              "SYMUNSUP": f"SYMUNSUP-6J-{_strike_text(k)}", "SYMEMPTY": "", "SYMTYPE": 7}
     for root, symbol in wrong.items():
-        specs.append(st(f"{root}.ST", [nordic_row(root, 14, k, bid=b, ask=a, symbol=symbol)], spot=13.7))
-    none_row = nordic_row("SYMNONE", 14, k, bid=b, ask=a)
+        specs.append(st(f"{root}.ST", [nordic_row(root, 9, k, bid=b, ask=a, symbol=symbol)], spot=13.7))
+    none_row = nordic_row("SYMNONE", 9, k, bid=b, ask=a)
     del none_row["symbol"]
     specs.append(st("SYMNONE.ST", [none_row], spot=13.7))
     tags = {}
     for tag in ("Z", "A", "W"):  # the ONLY evidenced weekly tag is Y: every other tag is unproven, never a free slot
         root = f"SYMTAG{tag}"
         tags[root] = f"{root}{day14.year % 10}{_CALL_LETTERS[day14.month - 1]}{day14.day:02d}{tag}{_strike_text(k)}"
-        specs.append(st(f"{root}.ST", [nordic_row(root, 14, k, bid=b, ask=a, symbol=tags[root])], spot=13.7))
-    specs.append(st("SYMPREC.ST", [nordic_row("SYMPREC", 14, k, bid=b, ask=a, strikePrice="15.5000000001")], spot=13.7))  # 1e-10 off 15.5
+        specs.append(st(f"{root}.ST", [nordic_row(root, 9, k, bid=b, ask=a, symbol=tags[root])], spot=13.7))
+    specs.append(st("SYMPREC.ST", [nordic_row("SYMPREC", 9, k, bid=b, ask=a, strikePrice="15.5000000001")], spot=13.7))  # 1e-10 off 15.5
     refused = (*wrong, "SYMNONE", *tags, "SYMPREC")
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
@@ -437,18 +439,18 @@ def case_native_symbol_identity_matrix() -> tuple[str, str, list[dict[str, Any]]
 def case_strike_precision_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
     specs: list[dict[str, Any]] = [healthy_st("VOLV-B.ST", 310.0), *healthy_us(3)]
     spot = 13.7
-    ksub, bsub, asub = qualifying(spot, 14, strike=15.505)  # coherent supported sub-cent contract: valid listing, valid quotes
-    kcent, bcent, acent = qualifying(spot, 14, strike=15.6)
-    ktrail, btrail, atrail = qualifying(spot, 14, strike=15.5)
-    subcent = lambda root, **kw: nordic_row(root, 14, ksub, bid=bsub, ask=asub, strikePrice="15.505", **kw)  # noqa: E731
+    ksub, bsub, asub = qualifying(spot, 9, strike=15.505)  # coherent supported sub-cent contract: valid listing, valid quotes
+    kcent, bcent, acent = qualifying(spot, 9, strike=15.6)
+    ktrail, btrail, atrail = qualifying(spot, 9, strike=15.5)
+    subcent = lambda root, **kw: nordic_row(root, 9, ksub, bid=bsub, ask=asub, strikePrice="15.505", **kw)  # noqa: E731
     specs.append(st("SUBCENT.ST", [subcent("SUBCENT")], spot=spot))
-    trailing_symbol = native_symbol("TRAIL", 14, 15.5)[: -len("15.5")] + "15.5000"
-    specs.append(st("TRAIL.ST", [nordic_row("TRAIL", 14, ktrail, bid=btrail, ask=atrail, fullName=f"TRAIL {_name_date(14)} 15.5000C",
+    trailing_symbol = native_symbol("TRAIL", 9, 15.5)[: -len("15.5")] + "15.5000"
+    specs.append(st("TRAIL.ST", [nordic_row("TRAIL", 9, ktrail, bid=btrail, ask=atrail, fullName=f"TRAIL {_name_date(9)} 15.5000C",
                                               strikePrice="15.5000", symbol=trailing_symbol)], spot=spot))
-    specs.append(st("MIXED.ST", [subcent("MIXED"), nordic_row("MIXED", 14, kcent, bid=bcent, ask=acent)], spot=spot))
-    specs.append(st("SUBZERO.ST", [nordic_row("SUBZERO", 14, ksub, bid="0.00", ask="0.00", strikePrice="15.505")], spot=spot))
-    specs.append(us("YSUBCENT", {14: [(ksub, bsub, asub)]}, spot=spot))
-    specs.append(us("YCENT", {14: [(ktrail, btrail, atrail)]}, spot=spot))
+    specs.append(st("MIXED.ST", [subcent("MIXED"), nordic_row("MIXED", 9, kcent, bid=bcent, ask=acent)], spot=spot))
+    specs.append(st("SUBZERO.ST", [nordic_row("SUBZERO", 9, ksub, bid="0.00", ask="0.00", strikePrice="15.505")], spot=spot))
+    specs.append(us("YSUBCENT", {9: [(ksub, bsub, asub)]}, spot=spot))
+    specs.append(us("YCENT", {9: [(ktrail, btrail, atrail)]}, spot=spot))
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
@@ -546,7 +548,7 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
         expect_unavailable(case, bodies, "TSIZE50.ST", "monthly", NONSTANDARD, forbid=("所列到期不在21",))
-        expect_unavailable(case, bodies, "TSIZE50.ST", "weekly", "所列到期不在3–14天策略範圍", "2026-10-16（16天）")
+        expect_unavailable(case, bodies, "TSIZE50.ST", "weekly", "所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
         expect_unavailable(case, bodies, "TSIZE1005.ST", "monthly", NONSTANDARD)
         expect_unavailable(case, bodies, "TSIZENONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD, "所列到期不在21"))
         expect_unavailable(case, bodies, "TCCYNONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=("所列到期不在21",))
@@ -566,7 +568,14 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
     return ("terms_and_quote_states", "SYNTHETIC: mixed contract terms versus DTE reasoning and raw quote states (lastSale/settlement/OI are never quotes)", specs, check)
 
 
-NORDIC_DTES = (3, 14, 15, 20, 21, 45, 46, 60)
+# Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11: through
+# next Sunday); monthly stays 21-45 DTE.
+WEEKLY_DTE_RANGE = (1, 11)
+NORDIC_DTES = (3, 11, 12, 14, 15, 20, 21, 45, 46, 60)
+
+
+def window_needle(cycle: str, low: int, high: int) -> str:
+    return "所列到期不在本週或下週策略範圍" if cycle == "weekly" else f"所列到期不在{low}–{high}天策略範圍"
 
 
 def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
@@ -580,16 +589,16 @@ def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         assert result.rc == 0, result.status
         for dte in NORDIC_DTES:
             symbol = f"ND{dte}.ST"
-            for cycle, (low, high) in (("weekly", (3, 14)), ("monthly", (21, 45))):
+            for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
                 if low <= dte <= high:
                     expect_available(case, bodies, symbol, cycle, currency="SEK")
                     assert cycle_of(bodies, symbol, cycle)["dte"] == dte
                 else:
-                    expect_unavailable(case, bodies, symbol, cycle, f"所列到期不在{low}–{high}天策略範圍", dte_date(dte))
-    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm selector boundaries weekly 3/14/15 and monthly 15/20/21/45/46/60 through real main", specs, check)
+                    expect_unavailable(case, bodies, symbol, cycle, window_needle(cycle, low, high), dte_date(dte))
+    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm selector boundaries weekly 3/11/12/14/15 (calendar-week rule) and monthly 15/20/21/45/46/60 through real main", specs, check)
 
 
-US_DTES = (3, 14, 15, 20, 21, 45, 46, 60)
+US_DTES = (3, 11, 12, 14, 15, 20, 21, 45, 46, 60)
 
 
 def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
@@ -612,7 +621,7 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         for prefix in ("UY", "UN"):
             for dte in US_DTES:
                 symbol = f"{prefix}{dte}"
-                for cycle, (low, high) in (("weekly", (3, 14)), ("monthly", (21, 45))):
+                for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
                     if low <= dte <= high:
                         expect_available(case, bodies, symbol, cycle, currency="USD")
                         assert cycle_of(bodies, symbol, cycle)["dte"] == dte, (symbol, cycle)

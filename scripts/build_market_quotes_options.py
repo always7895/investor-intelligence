@@ -11,11 +11,19 @@ screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange 
 - US-listed options: Yahoo Finance option chains (unofficial, delayed); a cycle Yahoo cannot read falls back to the
   Nasdaq US option chain (operator 2026-09-26: Nasdaq data stays in use). Alpha Vantage option chains are premium-only.
 - Nasdaq Stockholm options (for example SIVE.ST): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
-Per underlying and cycle (weekly 3-14 DTE, monthly 21-45 DTE): two covered-call sell suggestions for a holder of 100
-shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the shares are not called away):
+Per underlying and cycle (weekly = the CURRENT calendar week's expiry, monthly 21-45 DTE): up to three covered-call sell
+suggestions for a holder of 100 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the
+shares are not called away; operator 2026-10-11: a middle tier and the current-week weekly):
 - HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD with delta <=
   MAX_HIGH_STRIKE_DELTA; strikes with a spread wider than the mid, or without a delta, are ignored;
-- BALANCED: a lower strike nearest delta BALANCED_DELTA (or BALANCED_MONEYNESS without a delta) for more premium.
+- BALANCED: a lower strike nearest delta BALANCED_DELTA (or BALANCED_MONEYNESS without a delta) for more premium;
+- MIDDLE (optional cycle key middle_suggestion): a strike strictly between the two, nearest MIDDLE_DELTA (or
+  MIDDLE_MONEYNESS); absent when no listed strike lies between. Defined in option_recommendation_rules.py.
+Weekly (operator 2026-10-11): the earliest listed expiry from the exchange-local as-of date through that calendar week's
+Sunday; only when none remains (weekend, after the week's last weekly, or after the expiry-day close) the earliest expiry of
+the next calendar week; never a later one. The as-of date is the exchange-local date (US: New York, Stockholm: Stockholm),
+recorded in each cycle as asof_date together with weekly_week (CURRENT or NEXT). Tiny DTE (0-2) annualizes over at least one
+day. The rules live in option_recommendation_rules.py (twin: cloud/src/v213/option-recommendation-rules.ts).
 Each carries a sell limit (mid rounded down to the tick, or bid + a quarter of the spread when the spread exceeds 25% of
 the mid; never below the bid), premium per contract, period and
 annualized yield on the current price, the upside kept up to the strike, delta as the assignment reference, OI, volume
@@ -46,6 +54,8 @@ from decimal import Decimal
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
+
+import option_recommendation_rules as rules
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "cache" / "market_quotes_options.json"
@@ -79,12 +89,16 @@ _DEADLINE = [math.inf]  # the run's deadline (monotonic), for threads that carry
 _LOCAL = threading.local()  # .deadline: the deadline of the work this thread does
 # A run that finished fewer underlyings than this is not published: the previous file stays (the sealer bounds its age).
 MIN_COMPLETED_SHARE = 0.5
-CYCLES = {"weekly": (3, 14), "monthly": (21, 45)}  # monthly: the expiry nearest 30 days within 21-45 DTE
+# weekly: the current-week rule of option_recommendation_rules (the window is only the fetch/validator outer bound, 0-14 DTE);
+# monthly: the expiry nearest 30 days within 21-45 DTE
+CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.06   # premium worth collecting versus cash (annualized, on the current price)
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
 BALANCED_DELTA = 0.30
 BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
+MIDDLE_DELTA = rules.MIDDLE_DELTA          # the middle tier sits between HIGH_STRIKE (<= 0.20) and BALANCED (0.30)
+MIDDLE_MONEYNESS = rules.MIDDLE_MONEYNESS  # when the candidates between have no delta
 TICK = 0.01
 MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
 WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
@@ -315,7 +329,7 @@ def with_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
     """The row with its assignment reference: the quoted delta, else Black-Scholes from the quoted implied volatility,
     else from the volatility implied by its own bid/ask mid (labelled QUOTE_IMPLIED). delta_exact keeps full precision
     for the limit check (a rounded 0.200 must not admit 0.2003); delta and iv are rounded for display."""
-    years = dte / 365
+    years = rules.effective_days(dte) / 365  # a same-day expiry is modelled over one day, never zero
     if row.get("delta") is not None:  # the Yahoo path computes it from the quoted IV when parsing
         exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None) if row.get("iv") else row["delta"]
         return {**row, "delta_exact": exact, "delta_basis": "QUOTED_IV" if row.get("iv") else "QUOTED"}
@@ -347,6 +361,7 @@ def _float(value: Any) -> float | None:
 
 
 def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
+    days = rules.effective_days(dte)  # annualization never uses fewer than one day (DTE 0 is the expiry day)
     bid, ask = row["bid"], row["ask"]
     mid = round((bid + ask) / 2, 4)
     spread_pct = (ask - bid) / mid if mid > 0 else 0.0
@@ -355,72 +370,124 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
     period_yield = limit / spot
     return {"role": role, "strike": row["strike"], "bid": bid, "ask": ask, "mid": mid, "limit_price": limit,
             "premium_per_contract": round(limit * 100, 2), "period_yield": round(period_yield, 6),
-            "annualized_yield": round(period_yield * 365 / dte, 6), "upside_to_strike": round(row["strike"] / spot - 1, 6),
+            "annualized_yield": round(period_yield * 365 / days, 6), "upside_to_strike": round(row["strike"] / spot - 1, 6),
             "delta": row.get("delta"), "delta_basis": row.get("delta_basis"), "iv": row.get("iv") or None, "oi": row.get("oi"), "volume": row.get("volume"),
             "spread_pct": round((ask - bid) / mid, 4) if mid > 0 else None}
 
 
-def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, *, cent_exact_only: bool = True) -> list[dict[str, Any]]:
-    """Up to two sell-call suggestions for a holder of 100 shares: the highest strike still worth selling, then a
-    balanced strike below it. Only out-of-the-money strikes with a two-sided quote qualify, and the high strike needs a
-    delta (quoted or implied by its quote) within MAX_HIGH_STRIKE_DELTA. Only a strike the two-decimal display represents exactly
-    is recommended (cent_exact_only); health is computed before and never depends on this fence."""
-    if dte <= 0:
-        return []
+def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
+                       cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """(suggestions, middle): the highest strike still worth selling (HIGH_STRIKE), a balanced strike below it (BALANCED), and
+    the optional MIDDLE strike strictly between the two (never padded, never a duplicate strike). Only out-of-the-money
+    strikes with a two-sided quote qualify, and the high strike needs a delta (quoted or implied by its quote) within
+    MAX_HIGH_STRIKE_DELTA. Only a strike the two-decimal display represents exactly is recommended (cent_exact_only); health
+    is computed before and never depends on this fence. DTE 0 (the expiry day) annualizes over one day."""
+    if dte < 0:
+        return [], None
+    days = rules.effective_days(dte)
     usable = [with_delta(row, spot, dte) for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid")
               and row.get("ask") and row["ask"] >= row["bid"] > 0
               and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT
               and (not cent_exact_only or _cent_exact(row["strike"]))]
     if not usable:
-        return []
-    annual = lambda row: row["bid"] / spot * 365 / dte  # noqa: E731 - on the bid: premium that is actually collectable
+        return [], None
+    annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - on the bid: premium that is actually collectable
     high = [row for row in usable if annual(row) >= MIN_ANNUALIZED_YIELD
             and row.get("delta_exact") is not None and row["delta_exact"] <= MAX_HIGH_STRIKE_DELTA]
     if not high:
-        return []
+        return [], None
     first = max(high, key=lambda row: row["strike"])
     suggestions = [_suggestion("HIGH_STRIKE", first, spot, dte)]
     lower = [row for row in usable if row["strike"] < first["strike"] and annual(row) > annual(first)]
+    middle: dict[str, Any] | None = None
     if lower:
         if all(row.get("delta") is not None for row in lower):
             second = min(lower, key=lambda row: abs(row["delta"] - BALANCED_DELTA))
         else:
             second = min(lower, key=lambda row: abs(row["strike"] / spot - BALANCED_MONEYNESS))
         suggestions.append(_suggestion("BALANCED", second, spot, dte))
-    return suggestions
+        between = rules.pick_middle(lower, first["strike"], second["strike"], spot)
+        if between is not None:
+            middle = _suggestion("MIDDLE", between, spot, dte)
+    return suggestions, middle
+
+
+def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, *, cent_exact_only: bool = True) -> list[dict[str, Any]]:
+    """The HIGH_STRIKE and BALANCED suggestions of covered_call_tiers (the contract of `suggestions`: one or two entries)."""
+    return covered_call_tiers(rows, spot, dte, cent_exact_only=cent_exact_only)[0]
 
 
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
-                 provenance: str, rights: str, stamp: str) -> dict[str, Any]:
-    suggestions = covered_call_suggestions(rows, spot, dte)
+                 provenance: str, rights: str, stamp: str, asof: str | None = None, week: str | None = None) -> dict[str, Any]:
+    suggestions, middle = covered_call_tiers(rows, spot, dte)
     if not suggestions:
         if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):  # the unchanged filters accept it; only the display precision cannot
             return {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含兩位以上小數，顯示無法如實呈現；不提供建議")}
         return {"unavailable": f"{expiry} 到期的價外買權中，沒有年化權利金達 {MIN_ANNUALIZED_YIELD:.0%} 且有雙邊報價的履約價"}
-    return {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
-            "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
-            "rights_status": rights, "suggestions": suggestions}
+    result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
+              "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
+              "rights_status": rights, "suggestions": suggestions}
+    if middle is not None:  # additive and optional: older readers ignore it and still render the two original tiers
+        result["middle_suggestion"] = middle
+    if asof is not None:  # the exchange-local as-of date the expiry rule was applied on (YYYY-MM-DD)
+        result["asof_date"] = asof
+    if week is not None:  # weekly only: CURRENT (this calendar week) or NEXT (this week has no remaining weekly)
+        result["weekly_week"] = week
+    return result
+
+
+def _missing_text(template: str, cycle: str, low: int, high: int) -> str:
+    """A 'no listed expiry' reason: the weekly cycle is the calendar week (this one, else next), not a DTE range."""
+    text = template.format(low=low, high=high)
+    return text.replace(f" {low}-{high} 天", "本週或下週") if cycle == "weekly" else text
+
+
+def _weekly_choice(expiries: Iterable[str], today: date | None, stamp: str, venue: str) -> "rules.WeeklyChoice | None":
+    """The weekly rule on listed expiry dates: today is the exchange-local as-of date; the expiry day counts only before the
+    venue's session close at the stamp's instant."""
+    if today is None:
+        return None
+    days: set[date] = set()
+    for text in expiries:
+        try:
+            days.add(date.fromisoformat(str(text)))
+        except ValueError:
+            continue
+    return rules.select_weekly_expiry(days, today, expiry_day_open_now=rules.expiry_day_open(rules.parse_utc_instant(stamp), venue))
 
 
 def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, stamp: str, *, currency: str, source: str,
                        provenance: str, rights: str, missing: str, venue: str = "US",
                        underlying: str | None = None,
-                       no_window: Callable[[str, int, int], tuple[str, str]] | None = None) -> CyclesResult:
-    """Weekly: the nearest expiry in its window; monthly: the expiry nearest 30 days within 21-45 DTE. Standard 100-share
-    contracts only. A cycle without a qualifying expiry takes its reason and health status from no_window(cycle, low,
-    high) when the caller proved more about its source than 'nothing listed'."""
+                       no_window: Callable[[str, int, int], tuple[str, str]] | None = None,
+                       today: date | None = None, week_expiries: Iterable[str] | None = None) -> CyclesResult:
+    """Weekly: the current calendar week's earliest listed expiry (the next week's only when this week has none left; see
+    option_recommendation_rules); monthly: the expiry nearest 30 days within 21-45 DTE. Standard 100-share contracts only.
+    today is the exchange-local as-of date (derived from the rows' expiry and dte when absent); week_expiries lets the caller
+    decide the week from every listed expiry, so a contract with refused terms is never silently skipped for the next week. A
+    cycle without a qualifying expiry takes its reason and health status from no_window(cycle, low, high) when the caller
+    proved more about its source than 'nothing listed'."""
     out: dict[str, Any] = {}
     health_records: list[dict[str, Any]] = []
     und = underlying or ticker
+    if today is None and calls:
+        today = date.fromisoformat(calls[0]["expiry"]) - timedelta(days=int(calls[0]["dte"]))
     for cycle, (low, high) in CYCLES.items():
-        window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
+        week: str | None = None
+        if cycle == "weekly":
+            choice = _weekly_choice(week_expiries if week_expiries is not None
+                                    else [row["expiry"] for row in calls if row["strike"] and row["size"] == 100], today, stamp, venue)
+            week = choice.week if choice else None
+            window = [row for row in calls if choice and row["expiry"] == choice.expiry.isoformat() and row["strike"] and row["size"] == 100]
+        else:
+            window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
         if not window:
-            message, status = no_window(cycle, low, high) if no_window else (missing.format(low=low, high=high), "NO_EXPIRY")
+            message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
             health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
                                    "status": status, "read": False, "two_sided": False})
             out[cycle] = {"unavailable": _diag(message)}
             continue
-        target = min(row["dte"] for row in window) if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
+        target = window[0]["dte"] if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
         chosen = [row for row in window if row["dte"] == target]
         chosen_expiry = chosen[0]["expiry"]
         eligible = [r for r in chosen if _is_finite_positive(r.get("strike")) and r.get("size") == 100]
@@ -436,7 +503,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             out[cycle] = {"unavailable": _diag(f"本次回應有 {chosen_expiry}（{target}天）標準買權上市，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）")}
         else:
             out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
-                                      provenance=provenance, rights=rights, stamp=stamp)
+                                      provenance=provenance, rights=rights, stamp=stamp,
+                                      asof=today.isoformat() if today else None, week=week)
     return CyclesResult(out, health=health_records)
 
 
@@ -457,7 +525,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     if not rows:
         empty_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                          "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
-        return CyclesResult({c: {"unavailable": f"Nasdaq 無 {CYCLES[c][0]}-{CYCLES[c][1]} 天到期的上市期權"} for c in CYCLES},
+        return CyclesResult({c: {"unavailable": _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])} for c in CYCLES},
                             health=empty_health)
     calls: list[dict[str, Any]] = []
     expiry: date | None = None
@@ -477,7 +545,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
                               rights="candidate_local_review", missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
-                              venue="US", underlying=symbol)
+                              venue="US", underlying=symbol, today=today)
 
 
 def _yahoo_unread(value: dict[str, Any] | None) -> bool:
@@ -605,21 +673,29 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
         if expiry_list_error:
             health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
                                    "status": "EXPIRY_LIST_ERROR", "read": False, "two_sided": False})
-            out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
+            out[cycle] = {"unavailable": _missing_text("無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）", cycle, low, high)}
             continue
         if not expiries:
             health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
                                    "status": "EMPTY_RESPONSE", "read": False, "two_sided": False})
-            out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
+            out[cycle] = {"unavailable": _missing_text("無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）", cycle, low, high)}
             continue
-        candidates = [(expiry, (date.fromisoformat(expiry) - today).days) for expiry in expiries]
-        candidates = [item for item in candidates if low <= item[1] <= high]
+        week: str | None = None
+        candidates = []
+        if cycle == "weekly":  # the current calendar week's earliest listed expiry, else next week's (never a later one)
+            choice = _weekly_choice(expiries, today, stamp, "US")
+            if choice:
+                week = choice.week
+                candidates = [(choice.expiry.isoformat(), (choice.expiry - today).days)]
+        else:
+            candidates = [(expiry, (date.fromisoformat(expiry) - today).days) for expiry in expiries]
+            candidates = [item for item in candidates if low <= item[1] <= high]
         if not candidates:
             health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
                                    "status": "NO_EXPIRY", "read": False, "two_sided": False})
-            out[cycle] = {"unavailable": f"無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
+            out[cycle] = {"unavailable": _missing_text("無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）", cycle, low, high)}
             continue
-        expiry, dte = min(candidates, key=lambda item: item[1]) if cycle == "weekly" else min(candidates, key=lambda item: abs(item[1] - 30))
+        expiry, dte = candidates[0] if cycle == "weekly" else min(candidates, key=lambda item: abs(item[1] - 30))
         try:
             chain = ticker.option_chain(expiry).calls
         except Exception:
@@ -638,7 +714,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             vol = _int(getattr(row, "volume", None))
             if strike is not None and _is_finite_positive(strike):
                 r_dict = {"strike": float(strike), "bid": bid, "ask": ask, "iv": iv,
-                          "delta": bs_call_delta(spot, float(strike), dte / 365, iv), "oi": oi, "volume": vol}
+                          "delta": bs_call_delta(spot, float(strike), rules.effective_days(dte) / 365, iv), "oi": oi, "volume": vol}
                 rows.append(r_dict)
                 eligible_rows.append(r_dict)
         if not eligible_rows:
@@ -654,7 +730,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
                                   provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
-                                  rights="unadmitted_third_party", stamp=stamp)
+                                  rights="unadmitted_third_party", stamp=stamp, asof=today.isoformat(), week=week)
     return CyclesResult(out, health=health_records)
 
 
@@ -820,8 +896,17 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
             return _nordic_unavailable(symbol, "MALFORMED_ROWS", "本次來源回應之買權資料無法解析；不推斷是否上市")
         return _nordic_unavailable(symbol, "NO_EXPIRY", "本次來源回應無可用之買權紀錄；是否上市未確認")
 
+    session_open = rules.expiry_day_open(rules.parse_utc_instant(stamp), "STOCKHOLM")
+
     def no_window(cycle: str, low: int, high: int) -> tuple[str, str]:
-        inside = [call for call in listed if low <= call["dte"] <= high]
+        if cycle == "weekly":  # the week is decided from every listed expiry; its contracts then need confirmed terms
+            choice = _weekly_choice([call["expiry"] for call in listed], today, stamp, "STOCKHOLM")
+            inside = [call for call in listed if choice and call["expiry"] == choice.expiry.isoformat()]
+            label = f"{choice.expiry.isoformat()}（{inside[0]['dte']}天）週選" if choice else ""
+            low, high = 0, (rules.weekly_window_end(today) - today).days
+        else:
+            inside = [call for call in listed if low <= call["dte"] <= high]
+            label = f"{low}–{high} 天"
         if inside:  # listed in the window, but no contract with confirmed standard terms
             parts = []
             if any(call["size"] == "NONSTANDARD" for call in inside):
@@ -830,20 +915,22 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
                 parts.append("合約幣別與 SEK 不符")
             if any(call["size"] == "UNKNOWN" or call["ccy"] == "UNKNOWN" for call in inside):
                 parts.append("合約單位或幣別來源未確認")
-            return f"本次回應有 {low}–{high} 天上市買權；{'、'.join(parts)}，不推薦", "TERMS_REFUSED"
+            return f"本次回應有 {label}上市買權；{'、'.join(parts)}，不推薦", "TERMS_REFUSED"
         if malformed:
-            return f"本次來源回應含無法解析之列；無法確認 {low}–{high} 天是否有買權", "MALFORMED_ROWS"
-        upcoming = {call["expiry"]: call["dte"] for call in listed if call["dte"] >= 0}
+            return f"本次來源回應含無法解析之列；無法確認{'本週或下週' if cycle == 'weekly' else f' {low}–{high} 天'}是否有買權", "MALFORMED_ROWS"
+        upcoming = {call["expiry"]: call["dte"] for call in listed if call["dte"] >= (0 if session_open else 1)}
         nearest = sorted(upcoming.items(), key=lambda item: (min(abs(item[1] - low), abs(item[1] - high)), item[1]))[:2]
         context = "、".join(f"{expiry}（{days}天）" for expiry, days in nearest)
-        return f"本次回應有上市買權；所列到期不在{low}–{high}天策略範圍" + (f"（最近到期 {context}）" if context else ""), "NO_EXPIRY"
+        scope = "本週或下週" if cycle == "weekly" else f"{low}–{high}天"
+        return f"本次回應有上市買權；所列到期不在{scope}策略範圍" + (f"（最近到期 {context}）" if context else ""), "NO_EXPIRY"
 
     usable = [{"expiry": call["expiry"], "dte": call["dte"], "strike": call["strike"], "bid": call["bid"], "ask": call["ask"],
                "oi": call["oi"], "volume": call["volume"], "size": 100}
               for call in listed if call["ccy"] == "OK" and call["size"] == "OK"]
     return _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
                               provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
-                              missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window)
+                              missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window, today=today,
+                              week_expiries=[call["expiry"] for call in listed])
 
 
 def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> Observation | None:
@@ -932,13 +1019,14 @@ def _build(now: datetime, deadline_seconds: float) -> dict[str, Any]:
     deadline = started + deadline_seconds
     _DEADLINE[0] = deadline
     stamp = iso(now)
-    today = now.date()
+    # The as-of date of the expiry rules is the EXCHANGE-LOCAL date (not the UTC date): New York for US listings, Stockholm for .ST.
+    today_for = lambda symbol: rules.exchange_date(now, "STOCKHOLM" if symbol.endswith(".ST") else "US")  # noqa: E731
     # Universe discovery on its own daemon thread within the first share of the budget; an overrun uses the cached list.
     found = collect(["universe"], lambda _: broad_universe(now), started + deadline_seconds * DISCOVERY_SHARE)
     broad = found.get("universe") or cached_universe(now)
     orderbooks: dict[str, str] = dict(broad.get("sweden") or {})
     symbols = list(dict.fromkeys(universe() + list(broad.get("us") or []) + list(orderbooks)))
-    finished = collect(symbols, lambda symbol: _observe_safely(symbol, today, stamp, orderbooks.get(symbol), deadline), deadline)
+    finished = collect(symbols, lambda symbol: _observe_safely(symbol, today_for(symbol), stamp, orderbooks.get(symbol), deadline), deadline)
     results = [finished.get(symbol) for symbol in symbols]
     unfinished = len(symbols) - len(finished)
     quotes: dict[str, Any] = {}

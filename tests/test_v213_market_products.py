@@ -472,24 +472,24 @@ class TestV213MarketProducts(unittest.TestCase):
             "suggestions": [{
                 "role": "HIGH_STRIKE", "strike": 330.0, "bid": 2.0, "ask": 2.1, "mid": 2.05, "limit_price": limit,
                 "premium_per_contract": limit * 100, "period_yield": limit / spot,
-                "annualized_yield": limit / spot * 365 / dte, "upside_to_strike": 330.0 / spot - 1,
+                "annualized_yield": limit / spot * 365 / max(dte, 1), "upside_to_strike": 330.0 / spot - 1,
                 "delta": 0.18, "delta_basis": "QUOTED_IV", "iv": 0.4,
             }],
         }
 
     def test_covered_call_period_dte_bucket(self) -> None:
-        """B2: a weekly/monthly request must carry a DTE inside its producer bucket (weekly 3-14, monthly 21-45)."""
+        """B2: a weekly/monthly request must carry a DTE inside its producer bucket (weekly 0-14 outer bound, monthly 21-45)."""
         from datetime import datetime, timezone, timedelta
         base_dt = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
         base_stamp = "2026-09-30T12:00:00Z"
         exp = lambda dte: (base_dt + timedelta(days=dte)).date().isoformat()
         # In-bucket boundaries pass for the matching period.
-        for dte in (3, 14):
+        for dte in (0, 2, 3, 14):  # DTE 0-2 is a valid current-week weekly (operator 2026-10-11)
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="weekly")
         for dte in (21, 45):
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
         # Out-of-bucket in both directions is rejected (21-day contract under weekly is the concrete B2 case).
-        for dte, period in ((2, "weekly"), (15, "weekly"), (21, "weekly"), (20, "monthly"), (46, "monthly"), (7, "monthly")):
+        for dte, period in ((15, "weekly"), (21, "weekly"), (20, "monthly"), (46, "monthly"), (7, "monthly")):
             with self.assertRaises(MarketProductValidationError) as ctx:
                 validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period=period)
             self.assertEqual(str(ctx.exception), "DTE_OUTSIDE_PERIOD_BUCKET")
@@ -617,7 +617,7 @@ class TestV213MarketProducts(unittest.TestCase):
             tsm = doc["options"]["TSM"][case["period"]]
             self.assertEqual("suggestions" in tsm, case["admitted"])
             admitted += 1 if case["admitted"] else 0
-        self.assertEqual(admitted, 6)  # healthy, edge_5h, weekly 3/14, monthly 21/45
+        self.assertEqual(admitted, 7)  # healthy, edge_5h, weekly 2/3/14 (2 = current-week weekly), monthly 21/45
 
         # I2/I2a focus: both the exponent (1e309) and the big-integer (10**309) representation reject only the TSM
         # cycle with an explicit reason; the sibling and quotes survive and no big-integer literal leaks either.

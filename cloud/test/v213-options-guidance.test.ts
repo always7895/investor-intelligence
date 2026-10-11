@@ -111,9 +111,13 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
   });
 
   describe("Input validation (fail closed)", () => {
-    it("rejects non-positive strike, dte, quotes", () => {
+    it("rejects non-positive strike, negative dte, quotes (DTE 0 is the valid expiry day)", () => {
       expect(() => gd({ strike: 0 })).toThrow("OPTIONS_GUIDANCE_INVALID_STRIKE");
-      expect(() => gd({ dte: 0 })).toThrow("OPTIONS_GUIDANCE_INVALID_DTE");
+      expect(() => gd({ dte: -1 })).toThrow("OPTIONS_GUIDANCE_INVALID_DTE");
+      const expiryDay = gd({ expiry: "2026-10-09", dte: 0, cycle: "weekly", mid: 1, strike: 100 });
+      expect(Number.isFinite(expiryDay.annualized_yield_pct)).toBe(true);
+      expect(expiryDay.annualized_yield_pct).toBeCloseTo(365, 6);  // annualized over at least one day: 1/100 x 365 x 100 %
+      expect(expiryDay.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
       expect(() => gd({ bid: -1 })).toThrow("OPTIONS_GUIDANCE_INVALID_BID");
     });
     it("rejects non-integer dte and malformed expiry/ticker/strategy", () => {
@@ -205,7 +209,7 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
   });
 
   it("uses the collector's DTE windows and reports whether the contract fits", () => {
-    expect(OPTION_CYCLE_DTE_WINDOW).toEqual({ WEEKLY: [3, 14], MONTHLY: [21, 45] });
+    expect(OPTION_CYCLE_DTE_WINDOW).toEqual({ WEEKLY: [0, 14], MONTHLY: [21, 45] });
     const weekly = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
     expect(weekly.expiry_cycle).toBe("WEEKLY");
     expect(weekly.cycle_matches_request).toBe(true);
@@ -221,7 +225,7 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
     const g = gd({ expiry: "2026-10-16", dte: 30, cycle: "weekly" });
     expect(g.expiry_cycle).toBe("MONTHLY");
     expect(g.cycle_matches_request).toBe(false);
-    expect(g.dte_window).toEqual([3, 14]);
+    expect(g.dte_window).toEqual([0, 14]);
     const text = buildOptionsGuidanceText(g);
     expect(text).toContain("查詢為週期權 Weekly，此到期日屬月期權 Monthly");
     expect(() => gd({ cycle: "quarterly" as never })).toThrow("OPTIONS_GUIDANCE_INVALID_CYCLE");
@@ -231,7 +235,7 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
     const g = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
     const card = JSON.stringify(buildOptionsGuidanceFlexBubble(g));
     expect(card).toContain("週期權 Weekly");
-    expect(card).toContain("標準區間 3-14 天，符合標準區間");
+    expect(card).toContain("標準區間 0-14 天，符合標準區間");
     expect(buildOptionsGuidanceText(g)).toContain("週期：週期權 Weekly｜DTE 7");
   });
 

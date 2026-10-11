@@ -150,7 +150,8 @@ def _cases():
     for name, patch in base:
         out.append((name, "monthly", patched(**patch), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
 
-    # Period DTE bucket boundaries (weekly 3-14, monthly 21-45): just inside and just outside both ends.
+    # Period DTE bucket boundaries (weekly 0-14 outer bound, monthly 21-45): just inside and just outside both ends. weekly dte 2 is now
+    # inside (a Friday expiry seen on a Wednesday is the current-week weekly); the committed JSON is regenerated from the real publisher.
     for period, dtes in (("weekly", (2, 3, 14, 15, 21)), ("monthly", (7, 20, 21, 45, 46))):
         for dte in dtes:
             out.append((f"{period}_dte_{dte}", period, _cycle("TSM", dte, _expiry(dte)), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
