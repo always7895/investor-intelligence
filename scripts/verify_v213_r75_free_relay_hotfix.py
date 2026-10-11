@@ -19,6 +19,8 @@ from v213_model_profile import parse_profile, profile_sha256
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BASE = "43f3be048cedf228cfe9e8e31f7b9901895838be"
+DEFAULT_ARTIFACT_NAME = "Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix"
+ARTIFACT_NAME = re.compile(r"^Investor-Intelligence-v2\.1\.3-R75-[A-Za-z0-9][A-Za-z0-9-]{0,60}$")
 
 
 class VerificationError(RuntimeError):
@@ -100,6 +102,8 @@ ALWAYS_FIXTURES = (
     "tests/fixtures/v213-orders-v3-probes.json",
     "tests/fixtures/v213-r75-publication-mode/all-limited.json",
     "tests/fixtures/v213-r75-publication-mode/mixed.json",
+    "tests/fixtures/v213-r75-publication-mode/claim-recount-vectors.json",
+    "tests/fixtures/receipt-id-persisted-form-vectors.json",
     "tests/fixtures/identity-batch04-functional.json",
     "tests/fixtures/revenue-guidance-machine-auto-functional.json",
     "tests/fixtures/revenue-guidance-machine-barrier-functional.json",
@@ -218,13 +222,32 @@ def verify_qa_binding(files, refs, receipts, qa_receipt):
         raise VerificationError('external QA qualification failed') from None
 
 
-def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path], qa_receipt: Path | None = None) -> dict:
+def verify_scope_binding(refs: dict, manifest: dict, verified: list[dict], artifact_name: str) -> None:
+    """Successor (reviewed-inventory) archives bind the artifact name and the scope inventory digest in refs, manifest and Windows receipt."""
+    if "scope_mode" not in refs and artifact_name == DEFAULT_ARTIFACT_NAME and not any("scope_mode" in r for r in verified):
+        return  # legacy allowlist archive
+    digest = refs.get("scope_inventory_sha256")
+    windows = [r for r in verified if r.get("release_ready") is True]
+    if (refs.get("scope_mode") != "reviewed_inventory" or refs.get("artifact_name") != artifact_name
+            or artifact_name == DEFAULT_ARTIFACT_NAME or not isinstance(digest, str) or not HEX64.fullmatch(digest)
+            or manifest.get("artifact_name") != artifact_name or manifest.get("scope_inventory_sha256") != digest
+            or len(windows) != 1 or windows[0].get("scope_mode") != "reviewed_inventory"
+            or windows[0].get("artifact_name") != artifact_name or windows[0].get("scope_inventory_sha256") != digest
+            or windows[0].get("scope_baseline_commit") != refs.get("scope_baseline_commit")
+            or not isinstance(refs.get("scope_baseline_commit"), str) or not HEX40.fullmatch(refs["scope_baseline_commit"])
+            or windows[0].get("scope_covered_head") != refs.get("scope_covered_head")
+            or not isinstance(refs.get("scope_covered_head"), str) or not HEX40.fullmatch(refs["scope_covered_head"])):
+        raise VerificationError("scope binding mismatch")
+
+
+def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path], qa_receipt: Path | None = None,
+           artifact_name: str = DEFAULT_ARTIFACT_NAME) -> dict:
     commit = commit.lower()
-    if not HEX40.fullmatch(commit) or not run_id.isdigit():
+    if not HEX40.fullmatch(commit) or not run_id.isdigit() or not ARTIFACT_NAME.fullmatch(artifact_name):
         raise VerificationError("invalid immutable identity")
     if len(receipts) != 3:
         raise VerificationError("exactly three external receipts are required")
-    stem = f"Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-{commit}-{run_id}"
+    stem = f"{artifact_name}-{commit}-{run_id}"
     if archive.name != stem + ".zip":
         raise VerificationError("archive name mismatch")
     parts = checksum.read_text(encoding="ascii").strip().split()
@@ -256,7 +279,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "scripts/v213_sealed_refresh.ps1", "run-v213-scheduled-refresh.ps1", "register-v213-refresh-tasks.ps1",
         "cloud/src/v213/free-relay.ts", "cloud/src/v213/production-worker.ts",
         "cloud/wrangler.v213.production.template.toml", "run-v213-local.ps1",
-        "config/v213-r75-publication-mode-v1.json", "scripts/v213_r75_activation_preflight.py",
+        "config/v213-r75-publication-mode-v2.json", "scripts/v213_r75_activation_preflight.py",
         "cloud/src/v213/publication-mode.ts", "cloud/src/v213/activation-v2.ts",
     }
     if not required.issubset(files):
@@ -277,7 +300,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("workers_dev_stable_entrypoint") is not True or refs.get("custom_domain_required") is not False):
         raise VerificationError("hotfix refs mismatch")
     verify_worker_test_payload(files, refs)
-    contract_sha = sha(files["config/v213-r75-publication-mode-v1.json"][1])
+    contract_sha = sha(files["config/v213-r75-publication-mode-v2.json"][1])
     if refs.get("publication_contract_sha256") != contract_sha:
         raise VerificationError("publication contract binding mismatch")
 
@@ -313,6 +336,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         raise VerificationError("SHA256SUMS digest mismatch")
 
     verified = [verify_receipt(path, commit, run_id) for path in receipts]
+    verify_scope_binding(refs, manifest, verified, artifact_name)
     deployment = [r for r in verified if r.get("extracted_zip_worker_gate") == "PASS"]
     if (len(deployment) != 1 or deployment[0].get("packaged_worker_typecheck") != "PASS" or
             deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"] or
@@ -346,9 +370,11 @@ def main() -> int:
     parser.add_argument("--receipt", action="append", default=[], type=Path)
     parser.add_argument("--qa-live-receipt", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--artifact-name", default=DEFAULT_ARTIFACT_NAME)
     args = parser.parse_args()
     try:
-        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt, args.qa_live_receipt)
+        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt, args.qa_live_receipt,
+                        args.artifact_name)
     except (OSError, UnicodeError, zipfile.BadZipFile, VerificationError) as exc:
         print(f"V213_R75_FREE_RELAY_ARTIFACT_VERIFICATION = FAIL; reason={type(exc).__name__}")
         return 1

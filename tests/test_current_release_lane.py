@@ -1,6 +1,8 @@
 from pathlib import Path
 import hashlib
+import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -18,6 +20,74 @@ CANONICAL_LOCK_PS_SHA256 = '886e2407d7e3b7677e6e84c5cbe6eeab01cd6d77c7942f073120
 PRODUCTION_MUTEX_CONSTRUCTION = b"$mutex = New-Object Threading.Mutex($false, 'Local\\InvestorIntelligence_V213_R75_OPERATION')"
 PRODUCTION_MUTEX_LITERAL = b"'Local\\InvestorIntelligence_V213_R75_OPERATION'"
 PRODUCTION_MUTEX_UNQUOTED = b"Local\\InvestorIntelligence_V213_R75_OPERATION"
+LEGACY_ARTIFACT_NAME = 'Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix'
+SCOPE_GIT = ['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'commit.gpgsign=false',
+             '-c', 'core.hooksPath=nonexistent-synthetic-hooks', '-c', 'core.autocrlf=false']
+
+
+def isolated_git_env(**extra):
+    """The environment for every Git child of a synthetic repository: no user or system Git configuration (core.autocrlf, safe.*, hooks, aliases)."""
+    return {**os.environ, 'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1', **extra}
+
+
+def load_scope_module():
+    path = ROOT / 'scripts/r75_release_scope.py'
+    spec = importlib.util.spec_from_file_location('r75_release_scope_under_test', path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules['r75_release_scope_under_test'] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def synthetic_scope_repo(directory: Path, *, status: str = 'ACCEPTED', late_path: str | None = None, foreign_baseline: bool = False):
+    """A tiny repository with the real scope script, one reviewed runtime change and a committed inventory (C_inv)."""
+    def git(*args):
+        result = subprocess.run([*SCOPE_GIT, '-C', str(directory), *args], capture_output=True, text=True, timeout=60,
+                                env=isolated_git_env())
+        if result.returncode:
+            raise AssertionError(result.stderr)
+        return result.stdout.strip()
+
+    def write(relative, data):
+        target = directory / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data if isinstance(data, bytes) else data.encode('utf-8'))
+
+    git('init', '-q')
+    write('scripts/r75_release_scope.py', (ROOT / 'scripts/r75_release_scope.py').read_bytes())
+    write('README.md', 'base\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'baseline')
+    base = git('rev-parse', 'HEAD')
+    branch = git('rev-parse', '--abbrev-ref', 'HEAD')
+    write('scripts/v213_free_relay.ps1', 'reviewed change\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'reviewed runtime change')
+    head = git('rev-parse', 'HEAD')
+    accepted = status == 'ACCEPTED'
+    ranges = {'schema_version': 1, 'lane': 't2', 'baseline': base, 'ranges': [{
+        'id': 'R1', 'to': head, 'status': status, 'kind': 'FABLE_INDEPENDENT_ACCEPT' if accepted else 'NONE',
+        'receipt': 'R/FABLE-R1-INDEPENDENT-ACCEPT-CLAUDECODE-00000000.txt' if accepted else '', 'note': 'synthetic'}]}
+    write('state/r75-release-acceptance-ranges-t2.json', json.dumps(ranges, indent=1) + '\n')
+    inventory = 'state/r75-release-reviewed-scope-t2.json'
+    build = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/r75_release_scope.py'), 'build', '--project-root', str(directory),
+                            '--ranges', 'state/r75-release-acceptance-ranges-t2.json', '--output', inventory],
+                           capture_output=True, text=True, timeout=60, env=isolated_git_env())
+    if build.returncode not in (0, 3):
+        raise AssertionError(build.stderr)
+    if foreign_baseline:
+        # Re-point the committed inventory at a commit that is not an ancestor of HEAD (a side-branch commit).
+        git('checkout', '-q', '-b', 'side', base)
+        write('side.txt', 'side\n')
+        git('add', 'side.txt'); git('commit', '-q', '-m', 'side')
+        side = git('rev-parse', 'HEAD')
+        git('checkout', '-q', branch)
+        document = json.loads((directory / inventory).read_text())
+        document['baseline'] = side
+        write(inventory, json.dumps(document, indent=1) + '\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'reviewed scope inventory')
+    if late_path:
+        write(late_path, 'late\n')
+        git('add', '-A'); git('commit', '-q', '-m', 'late change')
+    return inventory
 
 
 def transform_operation_lock_module(raw_bytes: bytes, test_id: str) -> bytes:
@@ -144,7 +214,15 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         script = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8-sig')
         allowed = script.split('$allowed = @(', 1)[1].split('\n    )', 1)[0]
         paths = re.findall(r"'([^']+)'", allowed)
-        self.assertIn(reference['receipt_path'], paths)
+        # Legacy lane: the pointer's receipt is an exact allowlist entry. Successor lane: it is either that or a new receipt that the
+        # narrow tail rule admits (state/r75-qa-live-*.json named by this pointer); there is no wildcard anywhere else.
+        scope = load_scope_module()
+        # Exact admission stays mandatory unless a committed successor inventory is in play and the receipt is new relative to it.
+        inventories = sorted((ROOT / 'state').glob('r75-release-reviewed-scope-*.json'))
+        tail_new = bool(inventories) and bool(scope.TAIL_QA_RECEIPT.fullmatch(reference['receipt_path'])) and all(
+            reference['receipt_path'] not in {entry['path'] for entry in json.loads(inventory.read_text(encoding='utf-8'))['paths']}
+            for inventory in inventories)
+        self.assertTrue(reference['receipt_path'] in paths or tail_new, reference['receipt_path'])
         self.assertFalse(any('*' in path for path in paths))
 
     def setUp(self):
@@ -847,6 +925,223 @@ class CurrentReleaseLaneTests(unittest.TestCase):
             self.assertNotIn(wildcard, validator)
         self.assertIn("'cloud/src/qa.ts'", validator)
         self.assertIn('FREE_RELAY changed protected R75 source', validator)
+
+    # ---- Successor lane: reviewed-scope inventory instead of the hard-coded base and allowlist ----------------------------
+
+    def require_shell_and_git(self):
+        # The H5 child environment has PATH = the Python directory only (no Git, no PowerShell): skip with a reason instead of
+        # raising FileNotFoundError from a synthetic-repository helper that runs before the shell check.
+        shells = [shell for shell in ('powershell.exe', 'pwsh') if shutil.which(shell)]
+        if not shells or not shutil.which('git'):
+            self.skipTest('PowerShell and Git required for the actual caller regression')
+        return shells
+
+    def powershell_block(self, block, *, cwd, prelude, expect_ok, message=None):
+        shells = self.require_shell_and_git()
+        command = "$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;" + prelude + '\n' + block
+        for shell in shells:
+            result = subprocess.run([shell, '-NoProfile', '-NonInteractive', '-Command', command], cwd=cwd, capture_output=True,
+                                    text=True, errors='replace', timeout=90, env=isolated_git_env(PROJECT_PYTHON=sys.executable))
+            with self.subTest(shell=shell, expect_ok=expect_ok, message=message):
+                self.assertEqual(result.returncode == 0, expect_ok, result.stdout + result.stderr)
+                if message:
+                    self.assertIn(message, result.stdout + result.stderr)
+
+    def scope_block(self):
+        validator = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8')
+        return validator[validator.index('    # SCOPE-BEGIN'):validator.index('    # SCOPE-END')]
+
+    def scope_prelude(self, inventory):
+        return ("$ProjectRoot=(Get-Location).Path;$sha=(git rev-parse HEAD).Trim();$scopeMode='reviewed_inventory';"
+                f"$ScopeInventory='{inventory}';$ScopeInventorySha256='';$scope=$null;")
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_validator_scope_block_accepts_only_a_reviewed_checkout(self):
+        self.require_shell_and_git()
+        block = self.scope_block() + '\nWrite-Output "SCOPE_STATUS=$($scope.status)"'
+        with tempfile.TemporaryDirectory(prefix='r75-scope-ok-') as directory:
+            inventory = synthetic_scope_repo(Path(directory))
+            self.powershell_block(block, cwd=directory, prelude=self.scope_prelude(inventory), expect_ok=True, message='SCOPE_STATUS=PASS')
+        # The old behaviour (hard-coded exact list) has no way to admit this checkout; the successor refuses each of these.
+        refusals = (
+            ({'late_path': 'cloud/src/unlisted.ts'}, 'reviewed release scope refused'),
+            ({'status': 'UNREVIEWED'}, 'reviewed release scope refused'),
+            ({'foreign_baseline': True}, 'reviewed release scope refused'),
+        )
+        for options, message in refusals:
+            with tempfile.TemporaryDirectory(prefix='r75-scope-bad-') as directory:
+                inventory = synthetic_scope_repo(Path(directory), **options)
+                self.powershell_block(block, cwd=directory, prelude=self.scope_prelude(inventory), expect_ok=False, message=message)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_validator_scope_block_binds_the_recorded_inventory_digest(self):
+        self.require_shell_and_git()
+        block = self.scope_block()
+        with tempfile.TemporaryDirectory(prefix='r75-scope-digest-') as directory:
+            inventory = synthetic_scope_repo(Path(directory))
+            wrong = self.scope_prelude(inventory).replace("$ScopeInventorySha256='';", "$ScopeInventorySha256='" + '1' * 64 + "';")
+            self.powershell_block(block, cwd=directory, prelude=wrong, expect_ok=False, message='reviewed release scope refused')
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_legacy_allowlist_behaviour_is_reproduced_for_the_legacy_artifact_name(self):
+        self.require_shell_and_git()
+        validator = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8')
+        block = validator[validator.index('    $changed = @()'):validator.index('    $scope = $null')]
+        for relative, text, expect_ok, message in (
+                ('scripts/v213_free_relay.ps1', 'allowlisted exact path\n', True, None),
+                ('docs/Anything.md', 'documentation pattern\n', True, None),
+                ('cloud/src/unlisted.ts', 'outside the allowlist\n', False, 'FREE_RELAY changed an unreviewed runtime path: cloud/src/unlisted.ts'),
+                ('scripts/r75_release_scope.py', 'new scripts are not in the hard-coded list\n', False, 'FREE_RELAY changed an unreviewed runtime path')):
+            with tempfile.TemporaryDirectory(prefix='r75-legacy-scope-') as directory:
+                root = Path(directory)
+                def git(*args):
+                    subprocess.run([*SCOPE_GIT, '-C', directory, *args], check=True, capture_output=True, timeout=60, env=isolated_git_env())
+                git('init', '-q')
+                (root / 'README.md').write_text('base\n', encoding='utf-8')
+                git('add', '-A'); git('commit', '-q', '-m', 'base')
+                base = subprocess.run([*SCOPE_GIT, '-C', directory, 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                                      env=isolated_git_env()).stdout.strip()
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text(text, encoding='utf-8')
+                git('add', '-A'); git('commit', '-q', '-m', 'change')
+                prelude = f"$sha=(git rev-parse HEAD).Trim();$baseCommit='{base}';$scopeMode='legacy_allowlist';"
+                self.powershell_block(block, cwd=directory, prelude=prelude, expect_ok=expect_ok, message=message)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_mode_and_artifact_name_guards(self):
+        validator = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8')
+        start = validator.index('$defaultArtifactName =')
+        guards = validator[start:validator.index("'Scope inventory digest is invalid.' }", start) + len("'Scope inventory digest is invalid.' }")]
+        legacy = LEGACY_ARTIFACT_NAME
+        cases = (
+            (legacy, '', '', False, True, None),
+            ('Investor-Intelligence-v2.1.3-R75-next1', '', '', False, False, 'legacy allowlist lane accepts only'),
+            (legacy, '', 'a' * 64, False, False, 'legacy allowlist lane accepts only'),
+            (legacy, '', '', True, False, 'legacy allowlist lane accepts only'),
+            (legacy, 'state/r75-release-reviewed-scope-next1.json', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', False, False, 'must not reuse the legacy artifact name'),
+            ('Investor-Intelligence-v2.1.3-R75-next1', 'state/r75-release-reviewed-scope-next1.json', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', False, True, None),
+            ('Investor-Intelligence-v2.1.3-R75-next1', 'state/r75-release-reviewed-scope-next1.json', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', True, True, None),
+            ('Investor-Intelligence-v2.1.3-R75-next1', 'state/r75-release-reviewed-scope-next1.json', '', False, False, 'requires -ScopeInventorySha256'),
+            ('Investor-Intelligence-v2.1.3-R75-next1', 'state/r75-release-reviewed-scope-next1.json', '', True, False, 'requires -ScopeInventorySha256'),
+            ('Investor-Intelligence-v2.1.3-R75-next1', 'state/r75-release-reviewed-scope-next1.json', 'XYZ', False, False, 'Scope inventory digest is invalid'),
+            ('..\\evil', 'state/r75-release-reviewed-scope-next1.json', '', False, False, 'artifact name is invalid'),
+            ('Investor-Intelligence-v9.9.9-R75-next1', 'state/r75-release-reviewed-scope-next1.json', '', False, False, 'artifact name is invalid'),
+        )
+        for name, inventory, digest, scope_only, expect_ok, message in cases:
+            prelude = (f"$ArtifactName='{name}';$ScopeInventory='{inventory}';$ScopeInventorySha256='{digest}';"
+                       f"$ScopeOnly=${str(scope_only).lower()};")
+            self.powershell_block(guards, cwd=str(ROOT), prelude=prelude, expect_ok=expect_ok, message=message)
+
+    # ---- Successor lane: the protected-source step checks only the frozen certified set -------------------------------------
+
+    def protected_block(self, validator_name):
+        text = (ROOT / 'scripts' / validator_name).read_text(encoding='utf-8')
+        return text[text.index('    # PROTECTED-BEGIN'):text.index('    # PROTECTED-END')]
+
+    def protected_step(self, validator_name, mode, changed_path):
+        """Commit a synthetic R75 base holding every protected path, change one path in the working tree, return the real protected-source step."""
+        self.require_shell_and_git()
+        block = self.protected_block(validator_name)
+        paths = ('config/v213-r75-publication-mode-v1.json', 'scripts/v213_r75_activation_preflight.py', 'cloud/src/qa.ts',
+                 'cloud/src/v213/publication-mode.ts', 'cloud/src/v213/activation-v2.ts', 'scripts/ci_v213_r75_package.ps1',
+                 'scripts/verify_v213_r75_artifact.py')
+        directory = tempfile.mkdtemp(prefix='r75-protected-')
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        root = Path(directory)
+
+        def git(*args):
+            subprocess.run([*SCOPE_GIT, '-C', directory, *args], check=True, capture_output=True, timeout=60, env=isolated_git_env())
+        git('init', '-q')
+        for relative in paths:
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_bytes(('frozen ' + relative + '\n').encode('utf-8'))
+        git('add', '-A'); git('commit', '-q', '-m', 'synthetic R75 base')
+        base = subprocess.run([*SCOPE_GIT, '-C', directory, 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                              env=isolated_git_env()).stdout.strip()
+        (root / changed_path).write_bytes(b'changed after R75\n')
+        return block, directory, f"$r75Commit='{base}';$scopeMode='{mode}';"
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_successor_mode_admits_a_change_to_the_c1_v2_files(self):
+        self.require_shell_and_git()
+        for name in ('ci_v213_r75_free_relay_validate.ps1', 'ci_v213_r75_free_relay_package.ps1'):
+            for changed in ('cloud/src/v213/publication-mode.ts', 'scripts/v213_r75_activation_preflight.py',
+                            'scripts/ci_v213_r75_package.ps1', 'scripts/verify_v213_r75_artifact.py'):
+                block, directory, prelude = self.protected_step(name, 'reviewed_inventory', changed)
+                self.powershell_block(block, cwd=directory, prelude=prelude, expect_ok=True)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_successor_mode_still_refuses_a_change_to_the_certified_set(self):
+        self.require_shell_and_git()
+        for name, message in (('ci_v213_r75_free_relay_validate.ps1', 'FREE_RELAY changed protected R75 source: '),
+                              ('ci_v213_r75_free_relay_package.ps1', 'Protected R75 release source changed: ')):
+            for changed in ('cloud/src/qa.ts', 'cloud/src/v213/activation-v2.ts', 'config/v213-r75-publication-mode-v1.json'):
+                block, directory, prelude = self.protected_step(name, 'reviewed_inventory', changed)
+                self.powershell_block(block, cwd=directory, prelude=prelude, expect_ok=False, message=message + changed)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native PS caller blocks')
+    def test_actual_legacy_mode_keeps_the_full_protected_list(self):
+        self.require_shell_and_git()
+        for name, message in (('ci_v213_r75_free_relay_validate.ps1', 'FREE_RELAY changed protected R75 source: '),
+                              ('ci_v213_r75_free_relay_package.ps1', 'Protected R75 release source changed: ')):
+            for changed in ('cloud/src/v213/publication-mode.ts', 'scripts/v213_r75_activation_preflight.py',
+                            'scripts/ci_v213_r75_package.ps1', 'scripts/verify_v213_r75_artifact.py', 'cloud/src/v213/activation-v2.ts'):
+                block, directory, prelude = self.protected_step(name, 'legacy_allowlist', changed)
+                self.powershell_block(block, cwd=directory, prelude=prelude, expect_ok=False, message=message + changed)
+
+    def test_workflow_dispatches_the_successor_lane_without_new_triggers_or_runner_changes(self):
+        header = self.workflow.split('\npermissions:', 1)[0]
+        self.assertIn('\n  workflow_dispatch:\n', header)
+        # Dispatch from the working branch needs no push trigger: the push list is unchanged and has no fix/** entry.
+        push = header.split('\n  push:\n', 1)[1]
+        self.assertEqual(re.findall(r"^      - (.+)$", push, flags=re.MULTILINE),
+                         ["'pi/**'", 'development/v2.1.3-serenity-public-logic-fidelity'])
+        self.assertNotIn('fix/', header)
+        self.assertNotIn('pull_request', header)
+        inputs = header.split('\n    inputs:\n', 1)[1].split('\n  push:\n', 1)[0]
+        for name, default in (('validation_only', 'false'), ('artifact_name', "'" + LEGACY_ARTIFACT_NAME + "'"),
+                              ('scope_inventory', "''"), ('scope_inventory_sha256', "''")):
+            block = re.split(r'\n      (?=\S)', inputs.split('      ' + name + ':\n', 1)[1], maxsplit=1)[0]
+            self.assertIn('default: ' + default, block, name)
+        self.assertIn("github.actor == 'always7895'", self.workflow)
+        self.assertIn('runs-on: [self-hosted, Windows, X64, investor-intelligence-reviewed]', self.workflow)
+        self.assertIn("PRODUCTION_MUTATION_BY_CI: 'false'", self.workflow)
+        self.assertNotIn('gh release', self.workflow)
+        scope = self.step('Check reviewed release scope')
+        self.assertIn("if: inputs.validation_only == true && inputs.scope_inventory != ''", scope)
+        self.assertIn('ScopeOnly = $true', scope)
+        for name in ('Run current R75 release validation', 'Build and independently verify current immutable R75 package'):
+            block = self.step(name)
+            for variable in ('R75_ARTIFACT_NAME: ${{ inputs.artifact_name }}', 'R75_SCOPE_INVENTORY: ${{ inputs.scope_inventory }}',
+                             'R75_SCOPE_INVENTORY_SHA256: ${{ inputs.scope_inventory_sha256 }}'):
+                self.assertIn(variable, block)
+            self.assertIn('@arguments', block)
+        upload = self.step('Upload current immutable R75 package and receipts')
+        self.assertIn("name: ${{ inputs.artifact_name || '" + LEGACY_ARTIFACT_NAME + "' }}-${{ github.sha }}-${{ github.run_id }}", upload)
+
+    def test_successor_scripts_keep_every_legacy_protection(self):
+        validator = (ROOT / 'scripts/ci_v213_r75_free_relay_validate.ps1').read_text(encoding='utf-8')
+        package = (ROOT / 'scripts/ci_v213_r75_free_relay_package.ps1').read_text(encoding='utf-8')
+        # The legacy base, allowlist, protected-source and live-QA gates are still present and still run in the default mode.
+        self.assertIn("$baseCommit = '43f3be048cedf228cfe9e8e31f7b9901895838be'", validator)
+        self.assertIn("$changed = @(git diff --name-only \"$baseCommit..$sha\")", validator)
+        for marker in ('FREE_RELAY changed protected R75 source', 'Live Q&A is not release-qualified.', 'Committed QA input selection failed.',
+                       'production_mutation_by_ci=$false', 'FREE_RELAY validation requires a clean checkout.'):
+            self.assertIn(marker, validator)
+        for marker in ('Protected R75 release source changed:', 'Fresh source-bound live proof required before packaging.',
+                       'FREE_RELAY Windows receipt identity, cost, or no-mutation gate failed.', 'Exact checkout changed during packaging.'):
+            self.assertIn(marker, package)
+        # The successor path re-checks the scope at packaging time, bound to the digest the Windows receipt recorded.
+        self.assertIn('scripts/r75_release_scope.py check', package)
+        self.assertIn("--expect-sha256 ([string]$windows.scope_inventory_sha256)", package)
+        self.assertIn('FREE_RELAY Windows receipt scope mode differs from the package request.', package)
+        self.assertIn('--artifact-name $ArtifactName', package)
+        # The artifact name defaults are identical in every place that names the legacy artifact.
+        for text in (validator, package):
+            self.assertIn("[string]$ArtifactName = '" + LEGACY_ARTIFACT_NAME + "'", text)
+        # The workflow never publishes: no release creation, no new write permission.
+        self.assertIn('contents: read', self.workflow)
+        self.assertNotIn('actions/create-release', self.workflow)
 
 
 if __name__ == '__main__':

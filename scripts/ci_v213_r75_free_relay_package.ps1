@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([string]$ProjectRoot = '', [string]$OutputRoot = '')
+param([string]$ProjectRoot = '', [string]$OutputRoot = '', [string]$ArtifactName = 'Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix',
+    [string]$ScopeInventory = '', [string]$ScopeInventorySha256 = '')
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
@@ -7,6 +8,15 @@ if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Split-Path -Par
 $ProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
 $baseCommit = '43f3be048cedf228cfe9e8e31f7b9901895838be'
 $r75Commit = '536644d22ef3534be1c4b8a9e1ff969df4d580fa'
+# Same scope modes as ci_v213_r75_free_relay_validate.ps1; the Windows receipt must name the mode this package was asked for.
+$defaultArtifactName = 'Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix'
+if ($ArtifactName -cnotmatch '^Investor-Intelligence-v2\.1\.3-R75-[A-Za-z0-9][A-Za-z0-9-]{0,60}$') { throw 'FREE_RELAY artifact name is invalid.' }
+$scopeMode = if ([string]::IsNullOrWhiteSpace($ScopeInventory)) { 'legacy_allowlist' } else { 'reviewed_inventory' }
+if ($scopeMode -ceq 'legacy_allowlist' -and ($ArtifactName -cne $defaultArtifactName -or $ScopeInventorySha256 -ne '')) { throw 'The legacy allowlist lane accepts only the legacy artifact name and no scope options.' }
+if ($scopeMode -ceq 'reviewed_inventory' -and $ArtifactName -ceq $defaultArtifactName) { throw 'A reviewed-inventory release must not reuse the legacy artifact name.' }
+if ($scopeMode -ceq 'reviewed_inventory' -and $ScopeInventorySha256 -eq '') { throw 'A reviewed-inventory release requires -ScopeInventorySha256 (the digest recorded by the master).' }
+if ($ScopeInventorySha256 -ne '' -and $ScopeInventorySha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Scope inventory digest is invalid.' }
+$sbomLane = $ArtifactName -replace '^Investor-Intelligence-v2\.1\.3-', ''
 Push-Location $ProjectRoot
 try {
     $sha = (git rev-parse HEAD).Trim().ToLowerInvariant()
@@ -17,12 +27,33 @@ try {
     if (-not $env:R75_FREE_RELAY_WINDOWS_RECEIPT -or -not (Test-Path -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -PathType Leaf)) { throw 'FREE_RELAY Windows receipt is missing.' }
     $windows = Get-Content -LiteralPath $env:R75_FREE_RELAY_WINDOWS_RECEIPT -Raw -Encoding utf8 | ConvertFrom-Json
     if ([string]$windows.status -ne 'PASS' -or [string]$windows.source_commit -ne $sha -or [string]$windows.workflow_run_id -ne $runId -or $windows.production_mutation_by_ci -ne $false -or $windows.custom_domain_required -ne $false) { throw 'FREE_RELAY Windows receipt identity, cost, or no-mutation gate failed.' }
+    $receiptScopeMode = if ($windows.PSObject.Properties['scope_mode']) { [string]$windows.scope_mode } else { 'legacy_allowlist' }
+    if ($receiptScopeMode -cne $scopeMode) { throw 'FREE_RELAY Windows receipt scope mode differs from the package request.' }
+    if ($scopeMode -ceq 'reviewed_inventory') {
+        foreach ($field in @('artifact_name', 'scope_baseline_commit', 'scope_covered_head', 'scope_inventory_path', 'scope_inventory_sha256')) {
+            if (-not $windows.PSObject.Properties[$field]) { throw "FREE_RELAY Windows receipt lacks $field." }
+        }
+        if ([string]$windows.artifact_name -cne $ArtifactName -or [string]$windows.scope_inventory_path -cne $ScopeInventory -or
+            ($ScopeInventorySha256 -ne '' -and [string]$windows.scope_inventory_sha256 -cne $ScopeInventorySha256)) { throw 'FREE_RELAY Windows receipt scope binding mismatch.' }
+    }
     . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
     Assert-V213QaReleaseQualification $windows
-    foreach ($protected in @('config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts','scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py')) {
+    # PROTECTED-BEGIN
+    # Successor (reviewed_inventory) mode: the C1 v2 contract legitimately changes publication-mode.ts, v213_r75_activation_preflight.py,
+    # ci_v213_r75_package.ps1 and verify_v213_r75_artifact.py, so only the frozen certified set must stay byte-identical to R75. Every other
+    # changed path is bound by the validator's scope check, whose digest the Windows receipt records (bound above), and by the
+    # re-check below (net-changed, ACCEPTED in the committed inventory and blob-pinned at HEAD).
+    # The legacy default mode keeps the original list unchanged.
+    $protectedPaths = if ($scopeMode -ceq 'reviewed_inventory') {
+        @('cloud/src/qa.ts','cloud/src/v213/activation-v2.ts','config/v213-r75-publication-mode-v1.json')
+    } else {
+        @('config/v213-r75-publication-mode-v1.json','scripts/v213_r75_activation_preflight.py','cloud/src/v213/publication-mode.ts','cloud/src/v213/activation-v2.ts','scripts/ci_v213_r75_package.ps1','scripts/verify_v213_r75_artifact.py')
+    }
+    foreach ($protected in $protectedPaths) {
         git diff --quiet $r75Commit -- $protected
         if ($LASTEXITCODE -ne 0) { throw "Protected R75 release source changed: $protected" }
     }
+    # PROTECTED-END
     if (-not $env:PROJECT_PYTHON -or -not (Test-Path -LiteralPath $env:PROJECT_PYTHON -PathType Leaf)) {
         $verifiedCandidate = if ($env:RUNNER_TEMP) { Join-Path $env:RUNNER_TEMP 'ii-r75-python-3.12.10\python.exe' } else { '' }
         if ($verifiedCandidate -and (Test-Path -LiteralPath $verifiedCandidate -PathType Leaf)) { $env:PROJECT_PYTHON = $verifiedCandidate }
@@ -31,6 +62,15 @@ try {
             if (-not $python) { $python = Get-Command python -ErrorAction Stop | Select-Object -First 1 }
             $env:PROJECT_PYTHON = $python.Source
         }
+    }
+    $scopeRecord = $null
+    if ($scopeMode -ceq 'reviewed_inventory') {
+        # Re-check at packaging time against the digest the Windows receipt recorded; a drifting inventory or tail refuses.
+        $scopeRaw = & $env:PROJECT_PYTHON scripts/r75_release_scope.py check --project-root $ProjectRoot --inventory $ScopeInventory --head $sha --expect-sha256 ([string]$windows.scope_inventory_sha256)
+        if ($LASTEXITCODE -ne 0) { throw 'FREE_RELAY reviewed release scope refused the package checkout.' }
+        $scopeRecord = $scopeRaw | ConvertFrom-Json
+        if ($scopeRecord.status -cne 'PASS' -or $scopeRecord.head -cne $sha -or $scopeRecord.baseline -cne [string]$windows.scope_baseline_commit -or
+            $scopeRecord.covered_head -cne [string]$windows.scope_covered_head) { throw 'FREE_RELAY reviewed release scope differs from the Windows receipt.' }
     }
     $qaInputRaw = & $env:PROJECT_PYTHON scripts/r75_release_inputs.py --project-root $ProjectRoot
     if ($LASTEXITCODE -ne 0) { throw 'Committed QA input selection failed.' }
@@ -67,6 +107,8 @@ try {
         'tests/fixtures/source-acquisition-reports.json','tests/fixtures/v213-orders-v3-golden-sealed.json','tests/fixtures/v213-orders-v3-proof-rpo.json',
         'tests/fixtures/v213-orders-v3-proof-states.json','tests/fixtures/v213-orders-v3-probes.json',
         'tests/fixtures/v213-r75-publication-mode/all-limited.json','tests/fixtures/v213-r75-publication-mode/mixed.json',
+        'tests/fixtures/v213-r75-publication-mode/claim-recount-vectors.json',
+        'tests/fixtures/receipt-id-persisted-form-vectors.json',
         'tests/fixtures/identity-batch04-functional.json','tests/fixtures/revenue-guidance-machine-auto-functional.json',
         'tests/fixtures/revenue-guidance-machine-barrier-functional.json','tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json',
         'tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json'
@@ -144,7 +186,7 @@ try {
         if((Get-FileHash $destination).Hash-ne(Get-FileHash (Join-Path $ProjectRoot $relative)).Hash){throw 'Public research payload digest mismatch.'}
     }
     # Activation runs npm test on the installed package. These are runtime gate
-    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 18 always-required test fixtures, plus the
+    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 20 always-required test fixtures, plus the
     # revenue-guidance wire fixture when the exact commit carries the wire pair) with the exact bounded archive-stage bytes captured before the prune.
     foreach ($relative in $fixturePaths) {
         $packaged = Join-Path $stage $relative
@@ -185,7 +227,7 @@ try {
         if ($process.ExitCode -ne 0) { throw "Packaged launcher test failed: $argument" }
     }
 
-    $contractSha = (Get-FileHash -LiteralPath (Join-Path $stage 'config\v213-r75-publication-mode-v1.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+    $contractSha = (Get-FileHash -LiteralPath (Join-Path $stage 'config\v213-r75-publication-mode-v2.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     $refs = [ordered]@{
         schema_version = 1; artifact_kind = 'R75_FREE_WORKERS_RELAY_HOTFIX'; package_version = '2.1.3'
         base_named_tunnel_commit = $baseCommit; source_commit = $sha; workflow_run_id = $runId; workflow_run_attempt = $attempt
@@ -199,12 +241,17 @@ try {
         protected_release_semantics_unchanged = $true; sealed_bundle_contents_changed = $false; release_evidence_rules_changed = $true; live_proof_max_age_seconds = 86400
         production_mutation_by_ci = $false; worker_deployed = $false; production_kv_or_do_written = $false; line_message_sent = $false; schedules_registered = $false
     }
+    if ($scopeMode -ceq 'reviewed_inventory') {
+        $refs['artifact_name'] = $ArtifactName; $refs['scope_mode'] = $scopeMode
+        $refs['scope_baseline_commit'] = [string]$scopeRecord.baseline; $refs['scope_covered_head'] = [string]$scopeRecord.covered_head
+        $refs['scope_inventory_path'] = $ScopeInventory; $refs['scope_inventory_sha256'] = [string]$scopeRecord.inventory_sha256
+    }
     [IO.File]::WriteAllText((Join-Path $stage 'HOTFIX-REFS.json'), (($refs | ConvertTo-Json -Depth 8) + "`n"), [Text.UTF8Encoding]::new($false))
     $sbom = [ordered]@{
-        spdxVersion='SPDX-2.3'; dataLicense='CC0-1.0'; SPDXID='SPDXRef-DOCUMENT'; name="Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-$sha-$runId"
-        documentNamespace="https://github.com/always7895/investor-intelligence/spdx/R75-Free-Relay-Hotfix/$sha/$runId"
+        spdxVersion='SPDX-2.3'; dataLicense='CC0-1.0'; SPDXID='SPDXRef-DOCUMENT'; name="$ArtifactName-$sha-$runId"
+        documentNamespace="https://github.com/always7895/investor-intelligence/spdx/$sbomLane/$sha/$runId"
         creationInfo=[ordered]@{creators=@('Tool: scripts/ci_v213_r75_free_relay_package.ps1');created=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')}
-        packages=@([ordered]@{name='Investor Intelligence';SPDXID='SPDXRef-Package-Investor-Intelligence';versionInfo='2.1.3-R75-Free-Relay-Hotfix';downloadLocation='NOASSERTION';filesAnalyzed=$false;licenseConcluded='NOASSERTION';licenseDeclared='NOASSERTION';copyrightText='NOASSERTION'})
+        packages=@([ordered]@{name='Investor Intelligence';SPDXID='SPDXRef-Package-Investor-Intelligence';versionInfo="2.1.3-$sbomLane";downloadLocation='NOASSERTION';filesAnalyzed=$false;licenseConcluded='NOASSERTION';licenseDeclared='NOASSERTION';copyrightText='NOASSERTION'})
         relationships=@([ordered]@{spdxElementId='SPDXRef-DOCUMENT';relationshipType='DESCRIBES';relatedSpdxElement='SPDXRef-Package-Investor-Intelligence'})
     }
     [IO.File]::WriteAllText((Join-Path $stage 'SBOM.spdx.json'), (($sbom | ConvertTo-Json -Depth 10) + "`n"), [Text.UTF8Encoding]::new($false))
@@ -212,11 +259,14 @@ try {
     $manifestPath = Join-Path $stage 'MANIFEST.json'; $sumsPath = Join-Path $stage 'SHA256SUMS.txt'
     $rows = @(Get-ChildItem -LiteralPath $stage -File -Recurse | Where-Object { $_.FullName -notin @($manifestPath,$sumsPath) } | Sort-Object FullName | ForEach-Object { [ordered]@{path=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()} })
     $manifest = [ordered]@{schema_version=1;artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;base_named_tunnel_commit=$baseCommit;production_mutation_by_ci=$false;files=$rows}
+    if ($scopeMode -ceq 'reviewed_inventory') {
+        $manifest['artifact_name'] = $ArtifactName; $manifest['scope_inventory_sha256'] = [string]$scopeRecord.inventory_sha256
+    }
     [IO.File]::WriteAllText($manifestPath, (($manifest | ConvertTo-Json -Depth 10) + "`n"), [Text.UTF8Encoding]::new($false))
     $sumLines = @(Get-ChildItem -LiteralPath $stage -File -Recurse | Where-Object { $_.FullName -ne $sumsPath } | Sort-Object FullName | ForEach-Object { '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(),$_.FullName.Substring($stage.Length+1).Replace('\','/') })
     [IO.File]::WriteAllLines($sumsPath,$sumLines,[Text.Encoding]::ASCII)
 
-    $stem = "Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-$sha-$runId"
+    $stem = "$ArtifactName-$sha-$runId"
     $zip = Join-Path $OutputRoot "$stem.zip"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip,[IO.Compression.CompressionLevel]::Optimal,$false)
@@ -294,7 +344,7 @@ try {
     $delivery = [ordered]@{schema_version=1;status='PASS';artifact_kind='R75_FREE_WORKERS_RELAY_HOTFIX';source_commit=$sha;workflow_run_id=$runId;workflow_run_attempt=$attempt;package="$stem.zip";zip_sha256=$zipSha;bytes=(Get-Item $zip).Length;immutable_identity="$sha-$runId";zero_cost=$true;custom_domain_required=$false;production_mutation_by_ci=$false;external_mutation=$false}
     [IO.File]::WriteAllText($deliveryReceipt,(($delivery|ConvertTo-Json -Depth 8)+"`n"),[Text.UTF8Encoding]::new($false))
     $verificationReceipt = Join-Path $OutputRoot "$stem.Independent-Verification.json"
-    & $env:PROJECT_PYTHON scripts\verify_v213_r75_free_relay_hotfix.py --archive $zip --checksum $shaPath --source-commit $sha --workflow-run-id $runId --receipt $windowsReceipt --receipt $deploymentReceipt --receipt $deliveryReceipt --qa-live-receipt $qaReceipt --output $verificationReceipt
+    & $env:PROJECT_PYTHON scripts\verify_v213_r75_free_relay_hotfix.py --artifact-name $ArtifactName --archive $zip --checksum $shaPath --source-commit $sha --workflow-run-id $runId --receipt $windowsReceipt --receipt $deploymentReceipt --receipt $deliveryReceipt --qa-live-receipt $qaReceipt --output $verificationReceipt
     if ($LASTEXITCODE -ne 0) { throw 'Independent FREE_RELAY hotfix artifact verification failed.' }
     $artifacts = @($zip,$shaPath,(Join-Path $OutputRoot "$stem.MANIFEST.json"),(Join-Path $OutputRoot "$stem.SHA256SUMS.txt"),(Join-Path $OutputRoot "$stem.SBOM.spdx.json"),$qaReceipt,$windowsReceipt,$deploymentReceipt,$deliveryReceipt,$verificationReceipt)
     foreach ($path in $artifacts) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Hotfix evidence missing: $path" } }
