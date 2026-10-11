@@ -173,22 +173,34 @@ def names_for(symbols: list[str], identity_path: Path | None = None, names_path:
     the weekly name cache or the identity shards."""
     keys = {symbol: listing_key(symbol) for symbol in symbols}
     wanted, found = set(keys.values()), {}
+    conflicted: set[str] = set()
     try:
         found.update({key: value for key, value in load_official(official_path or OFFICIAL).items() if key in wanted})
     except (OSError, ValueError, KeyError, TypeError):
         pass
     try:
         document = json.loads((identity_path or IDENTITY).read_bytes().decode("utf-8"))
+        retained: dict[tuple[str, str], int] = {}
+        first_named: dict[str, list[str]] = {}
         for shard in document["symbol_shards"].values():
             for row in shard["rows"]:
                 key = f"{row[2]}:{row[0]}"
-                if key in wanted and key not in found and len(row) >= 10 and row[9]:
-                    found[key] = list(row[9])
+                if key in wanted and key not in found:
+                    retained[(str(row[1]), key)] = retained.get((str(row[1]), key), 0) + 1
+                    if key not in first_named and len(row) >= 10 and row[9]:
+                        first_named[key] = list(row[9])
+        # ICON12: the identity build keeps a contradictory variant of one venue:symbol (an equal row is collapsed), so more than one
+        # retained row for the same venue and symbol means that identity itself is contested. Such a key gets no identity or
+        # name-cache Chinese name (the first variant is not known to be the listing the report means); a sourced config entry above
+        # is explicit and still wins. The same symbol on two venues of one market is two clean venue:symbol keys and keeps the
+        # first-row behaviour.
+        conflicted.update(key for (_venue, key), count in retained.items() if count > 1)
+        found.update({key: name for key, name in first_named.items() if key not in conflicted})
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
     try:
         names = json.loads((names_path or OUTPUT).read_bytes().decode("utf-8"))["names"]
-        for key in wanted - set(found):
+        for key in wanted - set(found) - conflicted:
             if isinstance(names.get(key), list):
                 found[key] = list(names[key])
     except (OSError, ValueError, KeyError, TypeError):

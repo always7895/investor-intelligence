@@ -134,6 +134,13 @@ describe("option routes outside the sealed option markets", () => {
     expect(body).toContain("IQE 在英國（倫敦）（LSE AIM）掛牌");
     expect(body).toContain("只涵蓋美股與Nasdaq Stockholm");
     expect(body).toContain("本服務尚未採用此市場的個股期權報價來源");  // the service's coverage, not a claim about the market
+    // ABS-WORDING decision A: the hedge below is a caveat about the stock, not an absence inference from the snapshot (this branch has
+    // no snapshot evidence about the listing at all, unlike a covered market whose answer states only what the snapshot proves,
+    // v213-options-nonus.test.ts "no speculative 'may have no options'"). It stays, and it never becomes an absence claim.
+    expect(body).toContain("（該股也可能沒有掛牌期權）；不以模型推估。");
+    expect(body).not.toContain("沒有掛牌期權。");
+    expect(body).not.toContain("本輪封存資料沒有此掛牌的期權觀察");  // the covered-market sentence is not reused for an uncovered market
+    expect(body).not.toContain("不在觀察範圍");
     expect(body).not.toContain("OPTION_DATA_NOT_ADMITTED");
     expect(await answer(env, "每月期權")).not.toContain("以其美國 ADR");  // a cycle word alone is not a company name
   });

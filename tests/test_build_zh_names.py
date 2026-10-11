@@ -74,6 +74,38 @@ class ZhNameTests(unittest.TestCase):
             self.assertEqual(zh.names_for(["5351.TWO", "NVDA", "SIVE.ST"], identity, names),
                              {"5351.TWO": ["鈺創", "TPEX"], "NVDA": ["輝達", "ZHWIKI"]})
 
+    def test_a_contested_identity_key_gets_no_identity_or_cache_chinese_name(self):
+        # ICON12: the identity build keeps a contradictory variant of one venue:symbol after the first row, so a key with more than
+        # one retained row is contested: no identity Chinese name (first variant) and no name-cache name; a clean key and a sourced
+        # config entry are unchanged.
+        def row(symbol, venue, market, name, klass, zh_pair):
+            return [symbol, venue, market, "Country", name, None, klass, "USD", 0, zh_pair]
+        with tempfile.TemporaryDirectory() as tmp:
+            identity = Path(tmp) / "identity.json"
+            identity.write_text(json.dumps({"symbol_shards": {"A": {"rows": [
+                row("ACME", "NASDAQ", "US", "Acme Orbit", "COMMON_STOCK", ["頂點", "ZHWIKI"]),
+                row("ACME", "NASDAQ", "US", "Acme Orbit ETF", "ETF", ["頂點基金", "ZHWIKI"]),
+                row("CLEAN", "NASDAQ", "US", "Clean Corp", "COMMON_STOCK", ["乾淨", "ZHWIKI"]),
+                row("NONAME", "NASDAQ", "US", "No Name", "COMMON_STOCK", None),
+                row("MU", "NASDAQ", "US", "Micron", "COMMON_STOCK", ["假美光", "ZHWIKI"]),
+                row("MU", "NASDAQ", "US", "Micron Alt", "ETF", ["別名美光", "ZHWIKI"]),
+                row("ONLYSECOND", "NASDAQ", "US", "Only Second", "COMMON_STOCK", None),
+                row("ONLYSECOND", "NASDAQ", "US", "Only Second B", "ETF", ["第二", "ZHWIKI"]),
+                row("TWOVENUE", "NASDAQ", "US", "Two Venue", "COMMON_STOCK", ["雙場一", "ZHWIKI"]),
+                row("TWOVENUE", "NYSE", "US", "Two Venue B", "COMMON_STOCK", ["雙場二", "ZHWIKI"])]}}},
+                ensure_ascii=False), encoding="utf-8")
+            names = Path(tmp) / "names.json"
+            names.write_text(json.dumps({"names": {"US:ACME": ["快取頂點", "ZHWIKI"], "US:CLEAN": ["快取乾淨", "ZHWIKI"],
+                                                   "US:NONAME": ["快取無名", "ZHWIKI"], "US:ONLYSECOND": ["快取第二", "ZHWIKI"]}},
+                                        ensure_ascii=False), encoding="utf-8")
+            found = zh.names_for(["ACME", "CLEAN", "NONAME", "MU", "ONLYSECOND", "TWOVENUE"], identity, names)
+            self.assertNotIn("ACME", found)  # contested: neither the first variant nor the cache name is shown
+            self.assertNotIn("ONLYSECOND", found)  # the named variant is the later one: still contested
+            self.assertEqual(found["CLEAN"], ["乾淨", "ZHWIKI"])  # a single retained row keeps its identity name
+            self.assertEqual(found["NONAME"], ["快取無名", "ZHWIKI"])  # a clean key without an identity name still falls back to the cache
+            self.assertEqual(found["MU"], ["美光科技", "ZHWIKI"])  # a sourced config entry is explicit and wins even for a contested key
+            self.assertEqual(found["TWOVENUE"], ["雙場一", "ZHWIKI"])  # two venues of one market are two clean keys: first row, as before
+
     def test_official_entries_cite_a_source_and_are_chinese(self):
         entries = json.loads(zh.OFFICIAL.read_text(encoding="utf-8"))["names"]
         self.assertTrue(entries)

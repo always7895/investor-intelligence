@@ -413,7 +413,17 @@ class OwnedStrataControllerTests(unittest.TestCase):
                         {'lease_seconds': 100, 'ack_seconds': 80, 'startup_seconds': 10}):
             with self.subTest(limits=changes), self.assertRaisesRegex(owned.OwnedInstanceUnavailable, '^PINS_LIMITS_INVALID$'):
                 owned.validate_pins(pins(limits=dict(limits, **changes)))
-        self.assertEqual(owned.validate_pins(pins(limits=dict(limits, lease_seconds=152)))['limits']['lease_seconds'], 152)
+        # Lease bound (validate_pins, scripts/v213_owned_strata.py:245): refuse when
+        # lease_seconds <= poll_seconds + max(ack_seconds + answer_seconds, 2 * stop_seconds, startup_seconds + answer_seconds).
+        # Default pins (ack 30, stop 30, startup 120, answer 30): 1 + max(60, 60, 150) = 151; poll 2 -> 152; poll 10 -> 160.
+        for poll, bound in ((1, 151), (2, 152), (10, 160)):
+            for lease in (bound - 1, bound):
+                with self.subTest(poll=poll, lease=lease):
+                    with self.assertRaisesRegex(owned.OwnedInstanceUnavailable, '^PINS_LIMITS_INVALID$'):
+                        owned.validate_pins(pins(limits=dict(limits, lease_seconds=lease, poll_seconds=poll)))
+            with self.subTest(poll=poll, lease=bound + 1):
+                admitted = owned.validate_pins(pins(limits=dict(limits, lease_seconds=bound + 1, poll_seconds=poll)))
+                self.assertEqual(admitted['limits']['lease_seconds'], bound + 1)
         with self.assertRaisesRegex(owned.OwnedInstanceUnavailable, '^PINS_REQUESTERS_INVALID$'):
             owned.validate_pins(pins(requesters=[]))
         rig = self.make()

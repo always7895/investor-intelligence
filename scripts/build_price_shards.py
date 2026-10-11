@@ -214,14 +214,21 @@ def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any
 
 
 def yahoo_symbols(identity: Path = IDENTITY) -> dict[str, dict[str, str]]:
-    """{market: {yahoo_symbol: identity_symbol}} for the common stocks of the Yahoo-priced markets."""
+    """{market: {yahoo_symbol: identity_symbol}} for the common stocks of the Yahoo-priced markets. ICON12: the identity build keeps a
+    contradictory variant of one venue:symbol, so a key enters the price universe only when EVERY retained row of it is a COMMON_STOCK of
+    the same market; a key whose variants disagree on class or market is left out (no price is fetched for a contested identity)."""
     document = json.loads(identity.read_bytes().decode("utf-8"))
     out: dict[str, dict[str, str]] = {market: {} for market in YAHOO_MARKETS}
+    variants: dict[tuple[str, str], list[list[Any]]] = {}
     for shard in document["symbol_shards"].values():
         for row in shard["rows"]:
-            suffix = YAHOO_MARKETS.get(row[2], {}).get(row[1])
-            if suffix and row[6] == "COMMON_STOCK":
-                out[row[2]][f"{row[0]}.{suffix}"] = row[0]
+            variants.setdefault((row[1], row[0]), []).append(row)
+    for (venue, symbol), rows in variants.items():
+        markets = {row[2] for row in rows}
+        market = rows[0][2]
+        suffix = YAHOO_MARKETS.get(market, {}).get(venue)
+        if suffix and len(markets) == 1 and all(row[6] == "COMMON_STOCK" for row in rows):
+            out[market][f"{symbol}.{suffix}"] = symbol
     return out
 
 
