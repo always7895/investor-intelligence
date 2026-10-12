@@ -41,13 +41,19 @@ def code_lines(path: Path) -> list[str]:
 
 def layout(root: Path, package: str, entry: str, declared: str = "1.2.3", locked: str | None = "1.2.3",
            installed: str = "1.2.3", cli: bool = True) -> tuple[Path, Path]:
-    """A synthetic cloud/ with one devDependency, its lock entry and installed package; returns (cloud, node)."""
+    """A synthetic cloud/ with one devDependency, its lock entry and installed package; returns (cloud, node).
+
+    The lock has the npm lockfile v3 shape: the root package sits under the empty key "" of `packages`, which
+    ConvertFrom-Json refuses in both PowerShell hosts (the gate failed on the real lock with LOCKED_CLI_UNAVAILABLE)."""
     cloud = root / "cloud"
     package_dir = cloud / "node_modules" / package
     package_dir.mkdir(parents=True)
     (cloud / "package.json").write_text(json.dumps({"devDependencies": {package: declared}}), encoding="utf-8")
-    packages = {} if locked is None else {f"node_modules/{package}": {"version": locked}}
-    (cloud / "package-lock.json").write_text(json.dumps({"packages": packages}), encoding="utf-8")
+    packages = {"": {"name": "synthetic", "devDependencies": {package: declared}}}
+    if locked is not None:
+        packages[f"node_modules/{package}"] = {"version": locked}
+    lock = {"name": "synthetic", "lockfileVersion": 3, "requires": True, "packages": packages}
+    (cloud / "package-lock.json").write_text(json.dumps(lock, indent=2), encoding="utf-8")
     (package_dir / "package.json").write_text(json.dumps({"version": installed}), encoding="utf-8")
     if cli:
         (package_dir / entry).parent.mkdir(parents=True, exist_ok=True)
@@ -200,6 +206,25 @@ class GateResolverTests(unittest.TestCase):
                 # A named PROJECT_NODE that does not exist refuses; it never falls back to a node on PATH.
                 out = self.run_resolver(shell, cloud, node, "wrangler", "bin/wrangler.js").stdout.strip()
                 self.assertEqual(out, "ERR LOCKED_CLI_UNAVAILABLE wrangler")
+
+    def test_resolver_reads_the_repository_lock(self):
+        """The real cloud/package.json and package-lock.json, with an installed package of the locked version."""
+        shells = [s for s in ("powershell", "pwsh") if shutil.which(s)]
+        if not shells:
+            self.skipTest("PowerShell not available")
+        manifest = (ROOT / "cloud" / "package.json").read_bytes()
+        lock_bytes = (ROOT / "cloud" / "package-lock.json").read_bytes()
+        lock = json.loads(lock_bytes)
+        self.assertIn("", lock["packages"])  # the shape that broke ConvertFrom-Json
+        for shell in shells:
+            for package, entry in (("wrangler", "bin/wrangler.js"), ("vitest", "vitest.mjs")):
+                with self.subTest(shell=shell, package=package), tempfile.TemporaryDirectory() as tmp:
+                    cloud, node = layout(Path(tmp), package, entry, installed=lock["packages"][f"node_modules/{package}"]["version"])
+                    (cloud / "package.json").write_bytes(manifest)
+                    (cloud / "package-lock.json").write_bytes(lock_bytes)
+                    lines = self.run_resolver(shell, cloud, node, package, entry).stdout.strip().splitlines()
+                    self.assertEqual(lines[0], "OK", lines)
+                    self.assertEqual(Path(lines[2]).resolve(), (cloud / "node_modules" / package / entry).resolve())
 
 
 

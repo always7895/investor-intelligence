@@ -50,12 +50,23 @@ if ($CapSeconds -lt 60) { throw 'CAP_SECONDS_INVALID' }
 # cloud/package.json, the lock's version and the installed package's version must be equal, and Node must exist
 # (PROJECT_NODE, NODE_FOR_RUNNER or node on PATH). Never `npx --yes`: from the repository root it downloads the latest
 # registry package and runs it with the cached Production session. Resolved before any Production read.
+# The files are read as dictionaries: npm keeps the root package under the empty key "" of `packages` (lockfile v2 and
+# v3), and ConvertFrom-Json refuses an empty property name in both hosts, so PowerShell 7 uses -AsHashtable and Windows
+# PowerShell 5.1 the .NET Framework serializer. A missing key fails the lookup and refuses.
 function Get-LockedNodeCli([string]$Package, [string]$Entry) {
+    function Read-JsonDictionary([string]$Path) {
+        $text = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+        if ($PSVersionTable.PSVersion.Major -ge 6) { return , ($text | ConvertFrom-Json -AsHashtable) }
+        Add-Type -AssemblyName System.Web.Extensions
+        $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $serializer.MaxJsonLength = [int]::MaxValue
+        return , $serializer.DeserializeObject($text)
+    }
     try {
-        $declared = [string](Get-Content -LiteralPath (Join-Path $CloudDir 'package.json') -Raw -Encoding utf8 | ConvertFrom-Json).devDependencies.$Package
-        $locked = [string](Get-Content -LiteralPath (Join-Path $CloudDir 'package-lock.json') -Raw -Encoding utf8 | ConvertFrom-Json).packages."node_modules/$Package".version
+        $declared = [string](Read-JsonDictionary (Join-Path $CloudDir 'package.json'))['devDependencies'][$Package]
+        $locked = [string](Read-JsonDictionary (Join-Path $CloudDir 'package-lock.json'))['packages']["node_modules/$Package"]['version']
         $dir = Join-Path (Join-Path $CloudDir 'node_modules') $Package
-        $installed = [string](Get-Content -LiteralPath (Join-Path $dir 'package.json') -Raw -Encoding utf8 | ConvertFrom-Json).version
+        $installed = [string](Read-JsonDictionary (Join-Path $dir 'package.json'))['version']
     } catch { throw "LOCKED_CLI_UNAVAILABLE $Package" }
     $exe = @($env:PROJECT_NODE, $env:NODE_FOR_RUNNER) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
     if (-not $exe) {
