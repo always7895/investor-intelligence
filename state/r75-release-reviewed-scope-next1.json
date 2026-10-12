@@ -2,9 +2,9 @@
  "schema_version": 1,
  "lane": "next1",
  "baseline": "ec03f0443290a623aeb0173388475147d3773856",
- "covered_head": "e180f28c95fd77834c64445c4bbbc98a25f76650",
+ "covered_head": "75f4f2f1a4fe6b2304a18f795f6b1bd51bbe78e7",
  "tail_rule": "TAIL_RULE_V1",
- "commit_count": 483,
+ "commit_count": 488,
  "ranges": [
   {
    "id": "HIST-20260910",
@@ -549,6 +549,14 @@
    "kind": "FABLE_INDEPENDENT_ACCEPT",
    "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
    "note": "Batch next1 + FIX-R1 commit group security (12 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-fixgate",
+   "to": "75f4f2f1a4fe6b2304a18f795f6b1bd51bbe78e7",
+   "status": "ACCEPTED",
+   "kind": "DUAL_ACCEPT_RECEIPT",
+   "receipt": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "State records b1147b9, 6a1123c and 46b2e8f plus lane FIXGATE: the deploy-gate lockfile v3 fix and the documents naming Sonnet 5.5 as reviewer (operator decision 2026-10-12), dual-accepted by the writer (R/EXECUTOR-FIXGATE-RESULT-CLAUDECODE-a43bef58.txt) and a Sonnet 5.5 reviewer on the same snapshot."
   }
  ],
  "ranges_used": [
@@ -619,7 +627,8 @@
   "NEXT1-taifex",
   "NEXT1-release",
   "NEXT1-docs",
-  "NEXT1-security"
+  "NEXT1-security",
+  "NEXT1-fixgate"
  ],
  "paths": [
   {
@@ -3538,16 +3547,17 @@
   {
    "path": "docs/BOTTLENECK_TOP20_V3.md",
    "change": "A",
-   "blob": "a91f433aef65a2938f5272bd024e10c97d7f8afa",
-   "range": "NEXT1-docs",
+   "blob": "a4efd9a68ea999557ccd6296c7bf6c8bc792a595",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260926",
     "HIST-20260927",
     "HIST-20260929",
-    "NEXT1-docs"
+    "NEXT1-docs",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/CANONICAL_RELEASE_CANDIDATE_V2.md",
@@ -3786,13 +3796,14 @@
   {
    "path": "docs/LINE_ALL_FRIENDS_ACCESS.md",
    "change": "A",
-   "blob": "d08beca1d33994411eaa8d3b7719ca30672d4193",
-   "range": "NEXT1-line",
+   "blob": "a6286b4634d0afa20990d2f93fe08700230c63b7",
+   "range": "NEXT1-fixgate",
    "touched_by": [
-    "NEXT1-line"
+    "NEXT1-line",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/LINE_BOT_QA_SPEC.md",
@@ -3882,8 +3893,8 @@
   {
    "path": "docs/MODEL_RUNTIME_MIGRATION.md",
    "change": "M",
-   "blob": "887b73750d95ee7a354da367ba19769d81ed2e49",
-   "range": "NEXT1-model",
+   "blob": "ff1e4e211d83c97098425161e670eb6e2a54f3b0",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260912",
     "HIST-20260925",
@@ -3892,16 +3903,17 @@
     "COMMIT15",
     "COMMIT31",
     "ENDPHASE",
-    "NEXT1-model"
+    "NEXT1-model",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/OPERATOR_RUNBOOK.md",
    "change": "A",
-   "blob": "d172f3e51fc1f44bd469a0b2abd1736c10060125",
-   "range": "NEXT1-security",
+   "blob": "8b81c803cf9ebed05c2a0c99cbb3d9aba89513e1",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260916",
     "HIST-20260926",
@@ -3909,10 +3921,11 @@
     "HIST-20260928",
     "HIST-20260929",
     "ENDPHASE",
-    "NEXT1-security"
+    "NEXT1-security",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/OPTIONS_RECOMMENDATION_SPEC.md",
@@ -3928,17 +3941,18 @@
   {
    "path": "docs/OPTIONS_SOURCE_REVIEW.md",
    "change": "M",
-   "blob": "1d123cb9b22c593df20bb3da55138031a62d6c0a",
-   "range": "NEXT1-taifex",
+   "blob": "db3bebf92ec2ac0ff671447170261331c909aa5f",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260910",
     "COMMIT3",
     "COMMIT14",
     "COMMIT31",
-    "NEXT1-taifex"
+    "NEXT1-taifex",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/PERSONA_LOGIC_FULL.md",
@@ -4011,13 +4025,14 @@
   {
    "path": "docs/PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md",
    "change": "A",
-   "blob": "3d0f1e5d0d3fa384f0e34032f4c26334609a1dee",
-   "range": "NEXT1-model",
+   "blob": "a972710bcb90683b63ba2fc95424b08a77ab0f5e",
+   "range": "NEXT1-fixgate",
    "touched_by": [
-    "NEXT1-model"
+    "NEXT1-model",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
@@ -4118,8 +4133,8 @@
   {
    "path": "docs/REVENUE_GUIDANCE_AUTOUPDATE.md",
    "change": "A",
-   "blob": "56e04f45288d4e94afed962a9325696eddfb29b2",
-   "range": "NEXT1-docs",
+   "blob": "65eb763cfcff1fda8cff7a423862c4ea69bd357c",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260929",
     "HIST-20260930",
@@ -4127,10 +4142,11 @@
     "COMMIT31",
     "COMMIT33",
     "ENDPHASE",
-    "NEXT1-docs"
+    "NEXT1-docs",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "docs/SERENITY_H2_SHADOW_EVIDENCE_ADAPTERS.md",
@@ -5439,17 +5455,18 @@
   {
    "path": "scripts/deploy_production_gate.ps1",
    "change": "A",
-   "blob": "56cc8d77f9303a1c480b5a115a83faf6e9fcb7ad",
-   "range": "NEXT1-prodtools",
+   "blob": "2b5af52fe2ff937ca95783800d80bff1665340fe",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260917",
     "HIST-20260925",
     "HIST-20260926",
     "HIST-20260927",
-    "NEXT1-prodtools"
+    "NEXT1-prodtools",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "scripts/documentation_structure_gate.py",
@@ -7348,8 +7365,8 @@
   {
    "path": "state/STATUS.md",
    "change": "M",
-   "blob": "141c9f41a2ebf4123902acc42f140112082a5f97",
-   "range": "ENDPHASE",
+   "blob": "74af72c76efeab2338d75bda33400a706b857b09",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260910",
     "HIST-20260912",
@@ -7399,10 +7416,11 @@
     "COMMIT31",
     "COMMIT32",
     "COMMIT33",
-    "ENDPHASE"
+    "ENDPHASE",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-ENDPHASE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "state/qwen-routing-resolution-v1.json",
@@ -7418,13 +7436,25 @@
   {
    "path": "state/r75-release-acceptance-ranges-next1.json",
    "change": "A",
-   "blob": "e80da8b36a6afc7983b1b24303a5a0e0d4f9ff22",
-   "range": "NEXT1-release",
+   "blob": "367476918aae6e77ba6cc1da489c5025efc20ff2",
+   "range": "NEXT1-fixgate",
    "touched_by": [
-    "NEXT1-release"
+    "NEXT1-release",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+  },
+  {
+   "path": "state/r75-release-reviewed-scope-next1.json",
+   "change": "A",
+   "blob": "4446a4b5a586c6eacbe08bfe42eb0d96861d6e8c",
+   "range": "NEXT1-fixgate",
+   "touched_by": [
+    "NEXT1-fixgate"
+   ],
+   "status": "ACCEPTED",
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "state/rollback-jars/README.md",
@@ -10132,14 +10162,15 @@
   {
    "path": "tests/test_operator_runbook_contract.py",
    "change": "A",
-   "blob": "b92fa1f40585f6e9cb21e75a2b0c38f83dcf84a6",
-   "range": "NEXT1-security",
+   "blob": "10875ac928e3106466544b0d85563f6e592ec825",
+   "range": "NEXT1-fixgate",
    "touched_by": [
     "HIST-20260929",
-    "NEXT1-security"
+    "NEXT1-security",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "tests/test_option_tiers_weekly.py",
@@ -10262,13 +10293,14 @@
   {
    "path": "tests/test_production_tool_locked_cli.py",
    "change": "A",
-   "blob": "15ea60ff44b75730bb47aad27b43c7cadb4cd61e",
-   "range": "NEXT1-prodtools",
+   "blob": "6f25c4ca872f6c1e30a27ee64209329a58cc4d10",
+   "range": "NEXT1-fixgate",
    "touched_by": [
-    "NEXT1-prodtools"
+    "NEXT1-prodtools",
+    "NEXT1-fixgate"
    ],
    "status": "ACCEPTED",
-   "evidence": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
+   "evidence": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt"
   },
   {
    "path": "tests/test_provider_runtime_hook.py",

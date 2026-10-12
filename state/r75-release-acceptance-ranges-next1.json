@@ -546,6 +546,14 @@
    "kind": "FABLE_INDEPENDENT_ACCEPT",
    "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
    "note": "Batch next1 + FIX-R1 commit group security (12 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-fixgate",
+   "to": "75f4f2f1a4fe6b2304a18f795f6b1bd51bbe78e7",
+   "status": "ACCEPTED",
+   "kind": "DUAL_ACCEPT_RECEIPT",
+   "receipt": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "State records b1147b9, 6a1123c and 46b2e8f plus lane FIXGATE: the deploy-gate lockfile v3 fix and the documents naming Sonnet 5.5 as reviewer (operator decision 2026-10-12), dual-accepted by the writer (R/EXECUTOR-FIXGATE-RESULT-CLAUDECODE-a43bef58.txt) and a Sonnet 5.5 reviewer on the same snapshot."
   }
  ]
 }
