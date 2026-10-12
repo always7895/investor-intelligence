@@ -142,7 +142,7 @@ admission and production flags remain false; global P0 is NOT_REAUDITED and capa
 
 | File | Role |
 | --- | --- |
-| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: the enumerated source/event/actuals adapter (`SEC_8K_202_INLINE_XBRL_V1` plus source-only inactive/unqualified `NBIS_6K_TABLE_REAFFIRMATION_V1`; other values refuse), enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs the writer and an independent Fable 5.1 review. |
+| `config/revenue-guidance-extraction-profiles-v1.json` | Reviewed per-issuer policy: the enumerated source/event/actuals adapter (`SEC_8K_202_INLINE_XBRL_V1` plus source-only inactive/unqualified `NBIS_6K_TABLE_REAFFIRMATION_V1`; other values refuse), enabled symbols, CIK, exhibit naming, guidance grammar, actuals concepts and measure, fiscal-calendar rule and quotes, IR/wire title grammar, the official IR host and page pattern, the wire page pattern. Runtime never edits it; any change needs the writer and an independent Sonnet 5.5 review. |
 | `scripts/revenue_guidance_auto_verify.py` | Pure verifier: captured bytes of one results event + profile + predecessor -> successor record and one decision per input, or a typed WAITING/BLOCKED outcome. No network, no writes, no clock. |
 | `scripts/revenue_guidance_overlay.py` | State root: content-addressed captures, immutable generations, pointer; admission by re-derivation (`admit`, shared by readers and the updater); per-issuer resolution at a cutoff; the release-check gate. |
 | `scripts/revenue_guidance_autoupdate.py` | Updater: reads the release-check cache, discovers the results filing, captures under hard limits, runs the verifier, publishes generations. CLI with an explicit state root and a hermetic replay mode. |
@@ -476,7 +476,7 @@ review pending. At that snapshot tests/imports/dot-source/AST/parser/compile/gat
 
 This is source-only composition, NOT execution/functional/ABI/NTFS/security/lifetime/durability/network or
 end-to-end acceptance. Real approved installation, runtime principal, initialized enrollment, independently
-selected genuine public data, platform qualification and fresh same-snapshot acceptance by the writer and the independent reviewer (Fable 5.1; holders: `state/STATUS.md`) remain
+selected genuine public data, platform qualification and fresh same-snapshot acceptance by the writer and the independent reviewer (Sonnet 5.5; holders: `state/STATUS.md`) remain
 later prerequisites. No source installer/enrollment/task change, runtime activation, Worker publication, LINE
 delivery, credentials, model/GPU mutation or trades occurred. Stable gir1 is distinct from B1 `input_digest`;
 no manual `EffectiveInputs`/seal construction. Ready/admission/capacity/publication/release flags remain false.
@@ -789,7 +789,7 @@ Explicit deferrals (this preview is none of them, and accepts none of them):
   effective-input loader for `order_forecast.py`/`publish_sealed_snapshot.py` with the release-check gate; the
   guidance-input dirty marker and ranking rebuild; the sealed `auto_update` evidence subrecord and Worker readers
   (`「官方財報自動核對（發布 YYYY-MM-DD）」`, typed `AUTO_UPDATE_BLOCKED`/`AUTO_UPDATE_WAITING` reasons); packaging;
-  reader-first rollout under its own plan, a Fable 5.1 go/no-go review and then the operator's authorization in the executing session.
+  reader-first rollout under its own plan, a Sonnet 5.5 go/no-go review and then the operator's authorization in the executing session.
 - **G9 capability lane (O7/O10/R11, decision `R/DECISION-G9-O7-LEASE-DEADLINE.md`):** when the B1 lease deadline passes, `Transport.remaining()` raises the storage `BudgetExceededError` (every non-cleanup lease operation checks the strict deadline), so the run stops with the last published pointer and the next run on a fresh lease serves the interrupted issuer in its queue turn; no WAITING outcome can be published after the deadline. Open: a publish reserve before the lease deadline (G9-O10-PUBLISH-RESERVE, needs measured native timing) and who seeds the first generation, because the capability branch requires an existing pointer (G9B-CAPABILITY-BOOTSTRAP). The mocked capability cycle (`tests/test_revenue_guidance_g9b_capability.py`) proves branch logic only; native storage, lease and readback stay G3.
 
 ## B3-WIRE-01 (disabled versioned transport)

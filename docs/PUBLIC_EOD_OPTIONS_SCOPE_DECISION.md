@@ -43,6 +43,6 @@ Option A for now: it needs nothing, loses nothing, and the 11320 evidence stays 
 
 1. Choose A or B (rights and public-output scope; this document cannot).
 2. If B: approve the mechanism amendment as a bounded implementation lane, the freshness pin, and the attribution wording after a licence-annex check.
-3. Separately, for any production display: Fable 5.1 go/no-go and current-session Production authorization (Worker, schedules, LINE delivery stay separate boundaries).
+3. Separately, for any production display: Sonnet 5.5 go/no-go and current-session Production authorization (Worker, schedules, LINE delivery stay separate boundaries).
 
 Status line for the record: O11 DESIGN_PROPOSED; O12 11320 licence evidence ALREADY_DONE (not an admission), scope decision awaiting the operator, 11321 licence review NEEDS_EXTERNAL.

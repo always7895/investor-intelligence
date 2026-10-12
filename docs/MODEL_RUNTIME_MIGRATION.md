@@ -126,7 +126,7 @@ The spawned [gateway](../scripts/v213_local_llm_gateway.py) consumes the same bi
 
 Normal answers retain compact profile/request/source sufficiency, served-context minimum, structured-JSON capability, finish/content, adaptive THINK ceilings/deadlines, concurrency and no-paid/no-cloud gates. A healthy endpoint is not an answer; a marker is not research/native/source qualification. Adaptive thinking remains bounded by the unchanged profile; late/incomplete/failed evidence stays failed. Worker/certified QA, privacy/IBKR separation and publication/freshness/provenance are unchanged.
 
-Required future verification remains: real UI/offline save/removal and torn-write negatives; both wrappers/core/direct GUI/gateway propagation; strict presence/endpoint/profile/environment/catalog/returned-model negatives; actual complete answers under latency/resource limits; full source/native/Windows/installed/archive/readback/rollback evidence; and acceptance of the SAME snapshot by the writer and the independent reviewer (Fable 5.1; holders: `state/STATUS.md`). Historical tests/markers/native EXEs/CI are not acceptance of these new bytes. No tests/import/compile/native/API probes, runtime sync, commit/push or production mutation occurred in F04.
+Required future verification remains: real UI/offline save/removal and torn-write negatives; both wrappers/core/direct GUI/gateway propagation; strict presence/endpoint/profile/environment/catalog/returned-model negatives; actual complete answers under latency/resource limits; full source/native/Windows/installed/archive/readback/rollback evidence; and acceptance of the SAME snapshot by the writer and the independent reviewer (Sonnet 5.5; holders: `state/STATUS.md`). Historical tests/markers/native EXEs/CI are not acceptance of these new bytes. No tests/import/compile/native/API probes, runtime sync, commit/push or production mutation occurred in F04.
 
 Production, real LINE, schedules, credentials, billing and broker actions require fresh explicit authorization and a qualified reviewed rollout. F04 source intent does not authorize any of them.
 
@@ -194,7 +194,7 @@ Line numbers are source locations in `scripts/v213_owned_strata.py` at the commi
 
 ### M5 trial plan (PLAN ONLY; carries no execution authority)
 
-This is a source-bound plan to be reviewed (Fable 5.1 GO or NO-GO), then separately authorized by the operator in the executing session. The Q2 text of `R/OPERATOR-DECISIONS-Q1-Q3-20261006.txt` allows one conditional owned weight-replacement trial; it is not an authorization to run it now, and nothing here starts, probes or stops any server.
+This is a source-bound plan to be reviewed (Sonnet 5.5 GO or NO-GO), then separately authorized by the operator in the executing session. The Q2 text of `R/OPERATOR-DECISIONS-Q1-Q3-20261006.txt` allows one conditional owned weight-replacement trial; it is not an authorization to run it now, and nothing here starts, probes or stops any server.
 
 1. **Prerequisites that do not exist yet.** The native adapters of M5-NATIVE (Windows ownership, exact-handle exit, job containment, GPU observer, HTTP transport, lock provider) built and qualified separately, with the observer excluding the controller's own selected-only connections and the readers' file share mode pinned; every GPU participant acknowledging the cooperative reservation (M5-RESERVATION-ADOPTION); requesters wired to the admission gate (M5-REQUESTER-WIRING). Until all three hold the trial cannot start.
 2. **What it can replace.** Only an instance this controller launched itself under the admitted harness. A shared server such as the one observed on `:8097` is not owned and is never adopted, stopped or replaced (M4 ownership rule); the trial therefore starts one owned candidate on a free dedicated port and rolls back to a pinned former owned instance.
@@ -205,7 +205,7 @@ This is a source-bound plan to be reviewed (Fable 5.1 GO or NO-GO), then separat
 7. **Rollback.** Close admission, drain, stop the owned candidate by its retained handle, wait for exit and GPU release under the held reservation, start only the pinned former instance, restore intent with the pending barrier, verify metadata and a complete answer, then reopen.
 8. **After RELEASED (decision 11).** An explicit intent-restore step re-points the request intent at the chosen endpoint or removes it, with readback, before any gateway caller is expected to answer; without it every caller refuses.
 9. **Receipts.** One hash-bound receipt per transition (the M4 field list) plus a final receipt naming the pins, the run ID and the outcome; no secrets, prompts, answers, LINE ids or unrelated command lines.
-10. **Authorization.** Fable 5.1 GO or NO-GO on the pinned plan, then explicit current-session operator authorization. Production, real LINE, schedules and release stay separate authorizations. The 14 decisions above must be confirmed first.
+10. **Authorization.** Sonnet 5.5 GO or NO-GO on the pinned plan, then explicit current-session operator authorization. Production, real LINE, schedules and release stay separate authorizations. The 14 decisions above must be confirmed first.
 
 ## M7: LINE Q&A gateway `:8814` backend (decided: follow the detected model)
 
