@@ -88,6 +88,9 @@ function Build-TaifexTaskXml {
     # StartWhenAvailable stays at the reviewed template value (false): no catch-up run can land in the refused 07:45-08:30 window.
     # The template's "disabled" header comment must not describe the live task.
     foreach ($c in @($doc.SelectNodes('//comment()'))) { [void]$c.ParentNode.RemoveChild($c) }
+    # Register-ScheduledTask hands the string to the scheduler as UTF-16, which refuses a declaration naming another
+    # encoding ("(1,40): unable to switch the encoding"); the rendered definition carries no declaration.
+    if ($doc.FirstChild -is [System.Xml.XmlDeclaration]) { [void]$doc.RemoveChild($doc.FirstChild) }
     $text = $doc.OuterXml
     $left = @(Get-TaifexUnresolvedPlaceholders $text)
     if ($left.Count) { throw "TAIFEX_TASK_PLACEHOLDER_UNRESOLVED: $($left -join ',')" }
