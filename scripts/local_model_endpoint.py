@@ -200,6 +200,10 @@ def _reason(error: BaseException) -> str:
 
 
 def _shared() -> Any:
+    # The helper is a sibling file; an embedded interpreter (python312._pth) does not put the script directory on sys.path.
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
     try:
         import v213_model_profile as shared  # the ONE binding/profile schema, hash and transport
     except Exception:
