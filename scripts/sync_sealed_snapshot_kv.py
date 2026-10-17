@@ -36,6 +36,13 @@ LEDGER = ROOT / "data" / "cache" / "kv-blob-ledger.json"
 RUN_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
 KV_DAILY_LIMIT = "DAILY_KV_LIMIT"
 TRANSIENT_CATEGORIES = {"NETWORK_FAILURE", "TRANSIENT_HTTP", "TIMEOUT"}
+# Wrangler's KV value GET reports any non-OK HTTP answer as "Failed to fetch <url> - <status>: <text>"
+# (wrangler-dist fetchKVGetValueBase); only the three-digit status is ever read from that line.
+KV_GET_HTTP_STATUS = re.compile(r"Failed to fetch \S+ - (\d{3}):")
+# A rejected credential gets the same bounded attempts with a longer wait: every rejection in the Wrangler logs of
+# 2026-10-16/17 (15 KV GETs answered 401, 2 KV PUTs answered code 10000) came from the invocation that had just
+# refreshed the expired OAuth token, and the next invocation succeeded with the stored token. Same credential, no fallback.
+AUTH_RETRY_SECONDS = 15.0
 
 
 class CliUnavailable(RuntimeError):
@@ -112,7 +119,21 @@ def classify_cli_error(stdout: str, stderr: str) -> str:
         return "NETWORK_FAILURE"
     if re.search(r"(?:HTTP(?:\s+status)?|status(?:\s+code)?)[\s:=]+(?:429|5\d\d)\b", text, re.IGNORECASE):
         return "TRANSIENT_HTTP"
+    status = _kv_get_http_status(stdout, stderr)
+    if status is not None and (status == 429 or 500 <= status <= 599):
+        return "TRANSIENT_HTTP"
     return "UNKNOWN"
+
+
+def _kv_get_http_status(stdout: str, stderr: str) -> int | None:
+    match = KV_GET_HTTP_STATUS.search(f"{stdout or ''}\n{stderr or ''}")
+    return int(match.group(1)) if match else None
+
+
+def _credential_rejected(category: str, p: subprocess.CompletedProcess) -> bool:
+    """An authentication rejection: code 10000/AuthenticationError, or a KV GET answered 401 (still reported UNKNOWN)."""
+    return category == "AUTHENTICATION_ERROR" or (
+        category == "UNKNOWN" and p.returncode is not None and _kv_get_http_status(p.stdout, p.stderr) == 401)
 
 
 def _daily_limit(p: subprocess.CompletedProcess) -> bool:
@@ -151,11 +172,12 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
         if p.returncode == 0:
             break
         LAST_ERROR[:] = [category]
-        # Auth/quota/UNKNOWN/local launch failures are terminal. Only a named
-        # transient gets bounded retries; there is no credential/account fallback.
-        if category not in TRANSIENT_CATEGORIES or attempt == ATTEMPTS:
+        # Quota/UNKNOWN/local launch failures are terminal. A named transient and a
+        # rejected credential (AUTH_RETRY_SECONDS) get bounded retries; there is no credential/account fallback.
+        rejected = _credential_rejected(category, p)
+        if (category not in TRANSIENT_CATEGORIES and not rejected) or attempt == ATTEMPTS:
             break
-        time.sleep(RETRY_SECONDS * attempt)
+        time.sleep((AUTH_RETRY_SECONDS if rejected else RETRY_SECONDS) * attempt)
     TOTAL_ATTEMPTS += launched
     return p
 
