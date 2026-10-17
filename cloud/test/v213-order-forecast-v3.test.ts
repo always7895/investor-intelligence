@@ -371,6 +371,8 @@ describe("version-3 order & revenue forecast", () => {
           consensus: {
             symbol: "NVDA",
             captured_at: "2026-09-28T10:00:00Z",
+            // A sealed capture names its provider by its own source URL (operator 2026-10-13: labelled analyst consensus).
+            source_url: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/NVDA?modules=earningsTrend,financialData",
             currency: "USD",
             quarters: [
               { period: "0q", end: "2026-09-30", revenue: 120.0, analysts: 10 },
@@ -1571,6 +1573,7 @@ describe("version-3 forecast under the official-IR third release-check channel (
     const v3 = clone(makeSyntheticV3());
     v3.evidence.consensus = {
       symbol: "NVDA", captured_at: "2026-09-28T10:00:00Z", currency: "USD",
+      source_url: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/NVDA?modules=earningsTrend,financialData",
       quarters: [{ period: "0q", end: "2026-09-30", revenue: 120.0, analysts: 10 }],
     };
     v3.evidence.latest_release_check = null; // no receipt at all: the suspension, not a consensus rescue

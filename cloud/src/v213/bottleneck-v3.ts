@@ -689,7 +689,7 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   const c = outlook?.consensus;
   const forecast = forecastOf(doc, entry);
   const footnoteText = forecast.version === 3
-    ? "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬。預估推算不代表公司保證或實際回報。"
+    ? `條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬。預估推算不代表公司保證或實際回報。${forecast.revenueBasis === "CONSENSUS" ? "分析師共識為第三方分析師估計平均，非公司財測、非官方，可能與公司實際營收不同。" : ""}`
     : "預計認列＝公司揭露將於半年／1年內認列的已簽約訂單（RPO×揭露比例，自量測日起，非今日起）；公司未揭露時顯示未揭露，不以外推代替。股價情境＝訂單如期實現時的條件變動，非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。";
   if (compact) {
     return section("訂單與成長情境", [

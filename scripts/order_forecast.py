@@ -497,9 +497,34 @@ def build_v2(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
 
 # ---------------------------------------------------------------- version 3 (Astra contract ORDERS-V3-01)
 # Version 3 distinguishes orders from revenue:
-# Tile 2: 訂單認列／營收推估 (basis: 公司營收財測＋模型（非訂單） / 非公司揭露、非訂單：分析師季度營收共識＋模型 / 已簽約預計認列)
+# Tile 2: 訂單認列／營收推估 (basis: 公司營收財測＋模型（非訂單） / 分析師共識（非公司財測、非官方）｜<來源>，<n> 位分析師，截至 <日期> / 已簽約預計認列)
 # Tile 3: 營收實現後股價情境 (TTM constant-P/S formula: TTM6/B - 1, TTM12/B - 1)
 # Contracted recognition from v2 is retained independently and never added to guidance or consensus.
+
+# Operator 2026-10-13 (R/OPERATOR-DECISION-CONSENSUS-AND-OFFHOURS-OPTIONS-20261013.txt A1): the analyst-consensus revenue
+# route serves every NOT_DISCLOSED registry record once the registry gate is on, always labelled as analyst consensus, not
+# company guidance, unofficial. A capture names its provider by its own source URL: the host must be a known provider
+# (cloud/src/v213/order-forecast.ts CONSENSUS_SOURCES is the same table), or the capture is not a usable source.
+CONSENSUS_SOURCE_HOSTS = {"query1.finance.yahoo.com": "Yahoo Finance", "query2.finance.yahoo.com": "Yahoo Finance",
+                          "finance.yahoo.com": "Yahoo Finance"}
+CONSENSUS_LABEL = "分析師共識（非公司財測、非官方）"
+
+
+def consensus_source_name(entry: Any) -> str | None:
+    """The provider of a consensus capture from its source URL, or None when the capture names no known provider."""
+    url = _https(entry.get("source_url")) if isinstance(entry, Mapping) else None
+    return CONSENSUS_SOURCE_HOSTS.get(urlparse(url).hostname or "") if url else None
+
+
+def consensus_basis_label(entry: Mapping[str, Any], forward_quarters: list[Mapping[str, Any]]) -> str:
+    """分析師共識（非公司財測、非官方）｜<來源>，<n> 位分析師，截至 <YYYY-MM-DD>: n is the smallest analyst count among the
+    consensus quarters the model actually uses (the first always, the second only when it is a valid consensus quarter)."""
+    quarters = entry["quarters"]
+    used = [quarters[0]]
+    if len(quarters) > 1 and len(forward_quarters) > 1 and forward_quarters[1].get("derivation") == "分析師共識":
+        used.append(quarters[1])
+    captured = str(entry.get("captured_at") or entry.get("retrieved_at"))[:10]
+    return f"{CONSENSUS_LABEL}｜{consensus_source_name(entry)}，{min(int(q['analysts']) for q in used)} 位分析師，截至 {captured}"
 
 
 def _auto_barrier_reason(disposition: str, reason: str | None) -> str:
@@ -532,9 +557,12 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     config/revenue-guidance-approval-v1.json) is the admission boundary: a missing/malformed approval, a changed
     registry or record, a missing decision or a time incoherence suspends the revenue path as UNAVAILABLE / INVALID
     with the distinct UNREVIEWED_INPUTS diagnostic, while the independent order recognition is never affected.
-    A3/A6: the registry root's ``consensus_enabled`` gate (missing fails closed to disabled) defers the Korean
-    analyst-consensus route for the first rollout: NOT_DISCLOSED records then seal the CONSENSUS_DEFERRED
-    diagnostic and build_v3 never routes to the consensus cache, even when a capture exists.
+    A3/A6: the registry root's ``consensus_enabled`` gate (missing fails closed to disabled) defers the analyst-consensus
+    route: NOT_DISCLOSED records then seal the CONSENSUS_DEFERRED diagnostic and build_v3 never routes to the consensus
+    cache, even when a capture exists. Operator 2026-10-13 turns the gate on (labelled, unofficial): the route then serves
+    every NOT_DISCLOSED record (any market) with a validated capture; company guidance always takes precedence and
+    contracted recognition stays separate. A capture refused as expired (older than 24 hours, or its quarter already
+    ended) or for a period mismatch seals its bounded projection beside that reason so the Worker re-derives the state.
 
     B1 (ORDERS-V3-AUTOUPDATE-01): ``effective_inputs`` is the one pinned snapshot of every revenue-guidance input at
     this cutoff (revenue_guidance_overlay.load_effective_inputs). Its curated registry, reviewed profile and receipts
@@ -584,6 +612,7 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     revenue_diagnostic: str | None = None
     rec_status = None
     fw_result: dict[str, Any] | None = None
+    rejected_consensus: Mapping[str, Any] | None = None  # a capture refused as STALE / PERIOD_MISMATCH (sealed with the reason)
 
     # A1: the reviewed profile beside the registry (loaded once by the caller, default the tracked config file).
     approval: Mapping[str, Any] | None = None
@@ -670,7 +699,10 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
     elif revenue_status != "AVAILABLE" and rec_status == "NOT_DISCLOSED" and revenue_reason == "NOT_DISCLOSED" and consensus_entry:
         try:
             valid_record = revenue_guidance.validate_issuer_record(record, expected_symbol=issuer)
-            # Check all Korean/nondisclosure documents: retrieved at or before cutoff, and a date-only publication is
+            # The labelled rendering names the provider: a capture without a known source URL is not a usable source.
+            if consensus_source_name(consensus_entry) is None:
+                raise revenue_guidance.GuidanceError("CONSENSUS_SOURCE_UNKNOWN")
+            # Check all nondisclosure documents: retrieved at or before cutoff, and a date-only publication is
             # only eligible after the end of its UTC day (Astra r5 item 12: end-of-day eligibility, not <= reportDay).
             cutoff_day = cutoff.date()
             for doc in valid_record.get("documents", []):
@@ -730,6 +762,8 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
             else:
                 revenue_status = "UNAVAILABLE"
                 revenue_reason = c_res["reason"]
+                if revenue_reason in ("STALE", "PERIOD_MISMATCH"):
+                    rejected_consensus = consensus_entry
         except revenue_guidance.GuidanceError:
             revenue_status = "UNAVAILABLE"
             revenue_reason = "INVALID"
@@ -811,7 +845,8 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
                     revenue_status = "UNAVAILABLE"
                     revenue_reason = "INVALID"
                 else:
-                    basis_label = "公司營收財測＋模型（非訂單）" if revenue_basis == "COMPANY_GUIDANCE" else "非公司揭露、非訂單：分析師季度營收共識＋模型"
+                    basis_label = ("公司營收財測＋模型（非訂單）" if revenue_basis == "COMPANY_GUIDANCE"
+                                   else consensus_basis_label(consensus_entry, f_quarters))
 
                     for key, (f_end_idx, amt, ttm_val, chg_val, h_lbl) in (
                         ("m6", (1, arith["amount6"], arith.get("ttm6"), arith.get("change6"), "約6個月（2財季）")),
@@ -997,7 +1032,8 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
         "fy_reconciliation": projected_fy_rec,
         "latest_release_check": fw_result.get("receipt") if fw_result else None,
         "reviewed_later_documents": projected_reviewed,
-        "consensus": _consensus_projection(fw_result.get("consensus")) if (fw_result and revenue_basis == "CONSENSUS") else None,
+        "consensus": (_consensus_projection(fw_result.get("consensus")) if (fw_result and revenue_basis == "CONSENSUS")
+                      else _consensus_projection(rejected_consensus)),
         "order_evidence": v2_forecast.get("evidence"),
         "release_channels": _release_channels_projection(record),
         "consensus_fault": consensus_fault,
