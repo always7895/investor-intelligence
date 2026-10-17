@@ -53,6 +53,35 @@ YAHOO_ENTRY: dict[str, Any] = {
     "operator_decision": {"decision_id": DECISION_ID, "decided_at": "2026-10-13", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"},
 }
 
+# V13 (operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt): the second pinned provider, Nasdaq Nordic Stockholm.
+NORDIC_ID = "nasdaq_nordic_option_chain"
+NORDIC_DECISION_ID = "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017"
+NORDIC_TODAY = date(2026, 10, 19)
+NORDIC_IDENTITY = {"provider_id": NORDIC_ID, "jurisdiction": "SE", "venue": "NASDAQ_STOCKHOLM_OPTIONS", "instrument_kind": "equity_option",
+                   "publication_scope": "public_line_quote"}
+NORDIC_ENTRY: dict[str, Any] = {
+    "id": NORDIC_ID,
+    "name": "Nasdaq Nordic Stockholm option chains (exchange public web data, delayed; operator-accepted display)",
+    "authority": "Nasdaq Nordic",
+    "jurisdictions": ["SE"],
+    "data_roles": ["delayed_option_quotes"],
+    "official_url": "https://www.nasdaq.com/european-market-activity",
+    "rights_evidence_url": "https://www.nasdaq.com/legal",
+    "rights_status": "operator_accepted_unlicensed",
+    "automated_access_allowed": None,
+    "rights_reviewed_at": "2026-10-17",
+    "review_notes": "TEST COPY: not a rights review and not a licence; the operator decision of 2026-10-17 accepts the exposure.",
+    "adapter_status": "candidate_implemented",
+    "runtime_enabled": True,
+    "line_quote_eligible": True,
+    "review_valid_through": "2027-10-17",
+    "admitted_scopes": [
+        {"jurisdiction": "SE", "venue": "NASDAQ_STOCKHOLM_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "delayed",
+         "publication_scope": "public_line_quote"},
+    ],
+    "operator_decision": {"decision_id": NORDIC_DECISION_ID, "decided_at": "2026-10-17", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"},
+}
+
 ROOT_FILES = (
     "config/public-options-provider-candidates.json",
     "config/public-options-development-provider.json",
@@ -62,12 +91,15 @@ ROOT_FILES = (
 )
 
 
-def catalog_document(*, with_yahoo: bool = True) -> dict[str, Any]:
-    """The repository catalog with the test copy of the Yahoo entry (replacing a repository one) and the matching root selection."""
+def catalog_document(*, with_yahoo: bool = True, with_nordic: bool = False) -> dict[str, Any]:
+    """The repository catalog with the test copies of the operator-accepted entries (replacing repository ones) and the matching root
+    selection. The Nordic entry is opt-in so the Yahoo rows keep proving the Yahoo behaviour on its own."""
     document = json.loads((ROOT / "config" / "public-options-provider-candidates.json").read_text(encoding="utf-8"))
-    document["providers"] = [item for item in document["providers"] if item["id"] != YAHOO_ID]
+    document["providers"] = [item for item in document["providers"] if item["id"] not in (YAHOO_ID, NORDIC_ID)]
     if with_yahoo:
         document["providers"].append(copy.deepcopy(YAHOO_ENTRY))
+    if with_nordic:
+        document["providers"].append(copy.deepcopy(NORDIC_ENTRY))
     document["production_quote_provider_selected"] = any(
         item.get("runtime_enabled") is True and item.get("line_quote_eligible") is True and (
             gate._rights_reviewed(item) or gate._operator_accepted(item)) for item in document["providers"])
@@ -90,6 +122,12 @@ def catalog_root(document: dict[str, Any] | None = None) -> Iterator[Path]:
 def write_catalog(root: Path, document: dict[str, Any]) -> None:
     (root / "config" / "public-options-provider-candidates.json").write_text(
         json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def both_policy(today: date = NORDIC_TODAY) -> Any:
+    """The admission policy of a test catalog carrying both operator-accepted providers."""
+    with catalog_root(catalog_document(with_nordic=True)) as root:
+        return gate.load_public_option_policy(root, today=today)
 
 
 def yahoo_policy(today: date = TODAY) -> Any:

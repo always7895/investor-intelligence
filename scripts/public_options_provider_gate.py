@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fail closed until a reviewed free public option-quote provider is selected, or the operator has accepted the pinned
-unlicensed Yahoo display (operator 2026-10-13, docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md)."""
+unlicensed Yahoo display (operator 2026-10-13) or Nasdaq Nordic display (operator 2026-10-17), docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md."""
 from __future__ import annotations
 
 import copy
@@ -55,7 +55,8 @@ AUTOMATION_PROHIBITED_PROVIDER_IDS = {
     "tradier_broker_market_data_api",
 }
 ADAPTER_REVIEWED = "adapter_reviewed"
-# Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt,
+# Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
+# operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
 # recorded in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). It is NOT a rights review and never a licence. It is pinned like the
 # automation-prohibited decisions: only these provider ids, with exactly this decision, and only (a subset of) these admitted scopes
 # can carry the status; any other provider claiming it is a finding and is never admitted. Mirrored in
@@ -71,6 +72,16 @@ OPERATOR_ACCEPTED_PROVIDERS = {
         "scopes": frozenset({
             ("US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"),
             ("US", "US_LISTED_OPTIONS", "equity_option", "previous_session_last", "public_line_quote"),
+        }),
+    },
+    "nasdaq_nordic_option_chain": {
+        "operator_decision": {
+            "decision_id": "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017",
+            "decided_at": "2026-10-17",
+            "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
+        },
+        "scopes": frozenset({
+            ("SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"),
         }),
     },
 }

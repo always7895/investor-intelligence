@@ -123,7 +123,7 @@ describe("OPTIONS_TEST_POLICY1 real catalog: public options rights NONE", () => 
     // Yahoo entry, and the root selection follows the enabled set. The rows below claim no Yahoo identity, so they are denied either way.
     const enabled = providers.filter(provider => provider.runtime_enabled === true || provider.line_quote_eligible === true);
     for (const provider of enabled) {
-      expect(provider.id).toBe("yahoo_finance_option_chain");
+      expect(["yahoo_finance_option_chain", "nasdaq_nordic_option_chain"]).toContain(provider.id);  // V13: exactly the two pinned providers
       expect(provider.rights_status).toBe("operator_accepted_unlicensed");
     }
     expect((catalog as unknown as { production_quote_provider_selected: unknown }).production_quote_provider_selected).toBe(enabled.length > 0);

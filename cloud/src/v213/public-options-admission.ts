@@ -51,10 +51,11 @@ const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const PROHIBITED_IDS = ["cboe_public_options_market_data", "marketdata_app_free_forever", "occ_public_market_data",
   "tradier_broker_market_data_api"];
-// Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt,
+// Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
+// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
 // docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). Not a rights review and never a licence. Safety-invariant constants mirrored from
-// scripts/public_options_provider_gate.py (OPERATOR_ACCEPTED_PROVIDERS), not a second approval catalog: only this provider id, with
-// exactly this decision and a subset of these scopes, can carry the status; any other provider claiming it invalidates the catalog.
+// scripts/public_options_provider_gate.py (OPERATOR_ACCEPTED_PROVIDERS), not a second approval catalog: only these provider ids, each with
+// exactly its own decision and a subset of these scopes, can carry the status; any other provider claiming it invalidates the catalog.
 const OPERATOR_ACCEPTED_ADAPTERS = new Set(["candidate_implemented", "adapter_reviewed"]);
 const OPERATOR_ACCEPTED: Readonly<Record<string, { readonly decision: Readonly<Record<string, string>>; readonly scopes: ReadonlySet<string> }>> = {
   yahoo_finance_option_chain: {
@@ -62,6 +63,12 @@ const OPERATOR_ACCEPTED: Readonly<Record<string, { readonly decision: Readonly<R
     scopes: new Set([
       JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
       JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "previous_session_last", "public_line_quote"]),
+    ]),
+  },
+  nasdaq_nordic_option_chain: {
+    decision: { decision_id: "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017", decided_at: "2026-10-17", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
+    scopes: new Set([
+      JSON.stringify(["SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
     ]),
   },
 };

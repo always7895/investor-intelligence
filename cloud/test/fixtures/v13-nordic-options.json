@@ -1,0 +1,176 @@
+{
+  "schema": "v13-nordic-options-fixture-v1",
+  "description": "A slice (SIVE.ST and one US sibling) of the sealed v213:options:v2 object that the real producer and the real sealer emit for a Stockholm run under a catalog carrying both pinned operator-accepted providers: SIVE.ST claims the Nasdaq Nordic identity with quote_basis delayed, the US sibling the Yahoo identity. SYNTHETIC prices, real shape.",
+  "operator_decision": "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017",
+  "both": {
+    "generated_at": "2026-10-19T08:00:00Z",
+    "options": {
+      "SIVE.ST": {
+        "weekly": {
+          "ticker": "SIVE.ST",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-10-23",
+          "dte": 4,
+          "spot": 13.7,
+          "currency": "SEK",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T08:00:00Z",
+          "source": "Nasdaq Nordic option chain (exchange public web API, delayed)",
+          "provenance": "https://api.nasdaq.com/api/nordic/instruments/SYNTH-SHARE-SIVE/option-chain",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 15.0,
+              "bid": 0.02,
+              "ask": 0.04,
+              "mid": 0.03,
+              "limit_price": 0.02,
+              "premium_per_contract": 2.0,
+              "period_yield": 0.00146,
+              "annualized_yield": 0.133212,
+              "upside_to_strike": 0.094891,
+              "delta": 0.079,
+              "delta_basis": "QUOTE_IMPLIED",
+              "iv": 0.5979,
+              "oi": null,
+              "volume": null,
+              "spread_pct": 0.6667
+            }
+          ],
+          "provider_id": "nasdaq_nordic_option_chain",
+          "jurisdiction": "SE",
+          "venue": "NASDAQ_STOCKHOLM_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19",
+          "weekly_week": "CURRENT"
+        },
+        "monthly": {
+          "ticker": "SIVE.ST",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-11-16",
+          "dte": 28,
+          "spot": 13.7,
+          "currency": "SEK",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T08:00:00Z",
+          "source": "Nasdaq Nordic option chain (exchange public web API, delayed)",
+          "provenance": "https://api.nasdaq.com/api/nordic/instruments/SYNTH-SHARE-SIVE/option-chain",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 17.0,
+              "bid": 0.11,
+              "ask": 0.13,
+              "mid": 0.12,
+              "limit_price": 0.12,
+              "premium_per_contract": 12.0,
+              "period_yield": 0.008759,
+              "annualized_yield": 0.114181,
+              "upside_to_strike": 0.240876,
+              "delta": 0.116,
+              "delta_basis": "QUOTE_IMPLIED",
+              "iv": 0.6001,
+              "oi": null,
+              "volume": null,
+              "spread_pct": 0.1667
+            }
+          ],
+          "provider_id": "nasdaq_nordic_option_chain",
+          "jurisdiction": "SE",
+          "venue": "NASDAQ_STOCKHOLM_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19"
+        }
+      },
+      "SYNTHUS00": {
+        "weekly": {
+          "ticker": "SYNTHUS00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-10-26",
+          "dte": 7,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T08:00:00Z",
+          "source": "Yahoo Finance option chain (unofficial, delayed)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-10-26; delta=Black-Scholes(quoted IV)",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 109.0,
+              "bid": 0.66,
+              "ask": 0.71,
+              "mid": 0.685,
+              "limit_price": 0.68,
+              "premium_per_contract": 68.0,
+              "period_yield": 0.0068,
+              "annualized_yield": 0.354571,
+              "upside_to_strike": 0.09,
+              "delta": 0.162,
+              "delta_basis": "QUOTED_IV",
+              "iv": 0.6,
+              "oi": 10,
+              "volume": 5,
+              "spread_pct": 0.073
+            }
+          ],
+          "provider_id": "yahoo_finance_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19",
+          "weekly_week": "NEXT"
+        },
+        "monthly": {
+          "ticker": "SYNTHUS00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-11-16",
+          "dte": 28,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T08:00:00Z",
+          "source": "Yahoo Finance option chain (unofficial, delayed)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-11-16; delta=Black-Scholes(quoted IV)",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 119.0,
+              "bid": 1.38,
+              "ask": 1.47,
+              "mid": 1.425,
+              "limit_price": 1.42,
+              "premium_per_contract": 142.0,
+              "period_yield": 0.0142,
+              "annualized_yield": 0.185107,
+              "upside_to_strike": 0.19,
+              "delta": 0.172,
+              "delta_basis": "QUOTED_IV",
+              "iv": 0.6,
+              "oi": 10,
+              "volume": 5,
+              "spread_pct": 0.0632
+            }
+          ],
+          "provider_id": "yahoo_finance_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19"
+        }
+      }
+    }
+  }
+}

@@ -35,7 +35,9 @@ const YAHOO_ENTRY: Doc = {
 /** The repository catalog with the test copy of the Yahoo entry (replacing a repository one) and the matching root selection. */
 function catalogWith(mutate?: (yahoo: Doc, doc: Doc) => void, withYahoo = true): Doc {
   const doc = clone(repository);
-  doc.providers = doc.providers.filter((item: Doc) => item.id !== YAHOO_ID);
+  // V13: the Nasdaq Nordic entry (decided 2026-10-17) lies after this file's 2026-10-13 clocks, where it would make the whole catalog unusable;
+  // its own rows live in v13-nordic-options-operator-accepted.test.ts. Dropping it here keeps these rows proving the Yahoo behaviour alone.
+  doc.providers = doc.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain");
   const yahoo = clone(YAHOO_ENTRY);
   if (withYahoo) doc.providers.push(yahoo);
   doc.production_quote_provider_selected = withYahoo;
@@ -192,7 +194,7 @@ describe("W1 admission: the pinned operator decision, through the catalog", () =
   });
 
   it("any other provider claiming the operator status invalidates the catalog, whatever it copies", async () => {
-    const others = repository.providers.filter((item: Doc) => item.id !== YAHOO_ID).map((item: Doc) => item.id as string);
+    const others = repository.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain").map((item: Doc) => item.id as string);
     expect(others.length).toBeGreaterThanOrEqual(12);
     for (const id of others) {
       const doc = catalogWith((_yahoo, root) => {

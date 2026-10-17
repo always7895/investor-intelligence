@@ -90,7 +90,7 @@ class OperatorAcceptedPositiveTests(unittest.TestCase):
         self.assertTrue(repository["production_quote_provider_selected"])
         findings, summary = gate.audit_public_options_providers(ROOT)
         self.assertEqual(findings, [])
-        self.assertEqual(summary["fully_eligible_provider_ids"], [support.YAHOO_ID])
+        self.assertEqual(summary["fully_eligible_provider_ids"], sorted([support.NORDIC_ID, support.YAHOO_ID]))  # V13: the second pinned provider
 
     def test_the_worker_constants_mirror_the_python_pins(self) -> None:
         source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")

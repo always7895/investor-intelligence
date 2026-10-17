@@ -230,7 +230,7 @@ class DeltaCallerTests(unittest.TestCase):
         self.assertEqual(findings, [])
         # V11: only the pinned operator-accepted Yahoo provider may be enabled; the TAIFEX delta/EOD sources never are.
         eligible = summary['fully_eligible_provider_ids']
-        self.assertTrue(set(eligible) <= {'yahoo_finance_option_chain'}, eligible)
+        self.assertTrue(set(eligible) <= {'yahoo_finance_option_chain', 'nasdaq_nordic_option_chain'}, eligible)
         for key in ('fully_eligible_count', 'runtime_enabled_count', 'line_quote_eligible_count'):
             self.assertEqual(summary[key], len(eligible))
         self.assertIs(summary['production_provider_selected'], bool(eligible))
