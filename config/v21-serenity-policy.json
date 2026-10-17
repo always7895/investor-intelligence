@@ -7,7 +7,7 @@
     "Nasdaq Global Market",
     "Nasdaq Global Select"
   ],
-  "candidate_cache_hours": 12,
+  "candidate_cache_hours": 168,
   "candidate_screeners": [
     {
       "name": "undervalued_growth_stocks",
@@ -32,6 +32,26 @@
     "tam_capture": 15,
     "valuation_expectations": 15
   },
+  "fallback_seed_screen": {
+    "source_id": "nasdaq_us_stock_screener",
+    "slices": [
+      {
+        "name": "nasdaq_largest_market_cap",
+        "sort_field": "marketCap",
+        "weight": 5
+      },
+      {
+        "name": "nasdaq_most_active",
+        "sort_field": "volume",
+        "weight": 2
+      },
+      {
+        "name": "nasdaq_day_gainers",
+        "sort_field": "pctchange",
+        "weight": 1
+      }
+    ]
+  },
   "maximum_risk_penalty": 20,
   "methodology": "system-operationalization-v2.1.3-diversified",
   "methodology_display_label": "System operationalization score",
@@ -41,7 +61,7 @@
   "minimum_market_cap": 500000000,
   "minimum_price": 5,
   "per_screener_count": 100,
-  "required_catalog_count": 102,
+  "required_catalog_count": 103,
   "schema_version": 2,
   "sec_candidate_limit": 50,
   "sec_companyfacts_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
