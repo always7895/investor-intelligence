@@ -4,7 +4,7 @@
  * intervals, the sealed fundamentals). Nothing here is sealed, nothing changes a sealed status, a tile, a score or a rank:
  * the guidance / consensus state stays UNAVAILABLE with its failed-evidence rows, and this block is appended beside them.
  * Guidance or consensus, when admitted, always wins (the inputs are only ever attached to an unavailable revenue state).
- * The Python reference is tests/test_v13_history_reference.py (shared vectors tests/fixtures/v13-history-vectors.json).
+ * The Python reference is tests/test_v13_history_reference.py (shared vectors cloud/test/fixtures/v13-history-vectors.json).
  */
 
 export interface HistoryActual { start: string; end: string; revenue: number; currency: string }

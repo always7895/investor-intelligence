@@ -2,7 +2,7 @@
 
 The production model lives in cloud/src/v213/revenue-history-model.ts and is not sealed, so this independent
 implementation of the same formula guards drift: both languages must reproduce the shared vectors in
-tests/fixtures/v13-history-vectors.json (the TypeScript side is cloud/test/v213-revenue-history-model.test.ts), and the
+cloud/test/fixtures/v13-history-vectors.json (the TypeScript side is cloud/test/v213-revenue-history-model.test.ts), and the
 reference must accept the calendar of every issuer in config/revenue-guidance-v1.json.
 
 Regenerate the vectors after a deliberate formula change with:
@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VECTORS = ROOT / "tests" / "fixtures" / "v13-history-vectors.json"
+VECTORS = ROOT / "cloud" / "test" / "fixtures" / "v13-history-vectors.json"
 REGISTRY = ROOT / "config" / "revenue-guidance-v1.json"
 
 MAX_ANCHOR_DAYS = 200

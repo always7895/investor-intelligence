@@ -1,6 +1,7 @@
 // V13 item 1: the Worker-only HISTORY_YOY_V1 revenue estimate drawn from an issuer's own reported quarters.
-// Python twin: tests/test_v13_history_reference.py (shared vectors tests/fixtures/v13-history-vectors.json).
+// Python twin: tests/test_v13_history_reference.py (shared vectors cloud/test/fixtures/v13-history-vectors.json, packaged with cloud/test).
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildHistoryEstimate, evaluateHistory, historyBlockLines, historyViewOf, HISTORY_ELIGIBLE_REASONS, HISTORY_HEADING,
@@ -13,7 +14,7 @@ import {
 import { assertLineMessages } from "../src/line-messages";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
 
-const vectors = JSON.parse(readFileSync("../tests/fixtures/v13-history-vectors.json", "utf-8"));
+const vectors = JSON.parse(readFileSync(resolve(__dirname, "fixtures/v13-history-vectors.json"), "utf-8"));
 const golden = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-golden-sealed.json", "utf-8"));
 const GOLDEN_GENERATED = "2026-09-28T15:00:00Z";
 const GOLDEN_DAY = "2026-09-28";
