@@ -160,7 +160,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   });
 
   it("carries every producer diagnostic verbatim and never a price for an unavailable record", async () => {
-    admitSyntheticTickers("CURSEK.ST", "IDMIXED.ST", "ND21.ST", "ND45.ST", "NF0.ST", "NF1.ST", "NF2.ST", "QGOOD.ST", "SYMMON.ST", "TOUTSIDE.ST", "TSZEXACT.ST", "VOLV-B.ST"); // Explicit quote subjects for this test only.
+    admitSyntheticTickers("CURSEK.ST", "CUREMPTY.ST", "CURMISSING.ST", "IDMIXED.ST", "ND21.ST", "ND45.ST", "NF0.ST", "NF1.ST", "NF2.ST", "QGOOD.ST", "SYMMON.ST", "TOUTSIDE.ST", "TSZEXACT.ST", "VOLV-B.ST"); // Explicit quote subjects for this test only.
     let unavailableSeen = 0;
     for (const caseId of ["currency_evidence_matrix", "identity_matrix", "terms_and_quote_states", "dte_nordic_matrix", "native_symbol_identity_matrix"]) {
       const env = await sealedEnv(caseId);
@@ -226,8 +226,10 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   it("shows the real weekly VOLVB source shape as a listed out-of-window contract and Yahoo read chains without a usable quote truthfully", async () => {
     const sive = await sealedEnv("retained_sive_sept30");
     const weekly = textOf(await reply(sive, "VOLV-B.ST 每週期權"));
-    expect(weekly).toContain("2026-10-02（2天）週選上市買權");
-    expect(weekly).toContain("合約單位或幣別來源未確認");
+    // V13: the blank contract currency follows the confirmed SEK underlying; the retained row has no two-sided quote.
+    expect(weekly).toContain("2026-10-02（2天）");
+    expect(weekly).toContain("無有效雙邊報價");
+    expect(weekly).not.toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
     const us = await sealedEnv("dte_us_matrix");
     for (const command of ["UYZERO 每週期權", "UYZERO 每月期權", "UYONESIDED 每月期權"]) {

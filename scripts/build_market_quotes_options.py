@@ -757,6 +757,12 @@ _NO_SEARCH = object()
 _NORDIC_CALL_NAME = re.compile(r"^([A-Z0-9]{1,12}) ([0-3][0-9])([A-Z]{3})([0-9]{2}) ([0-9]{1,6}(?:\.[0-9]{1,4})?)C$")
 _MONTH_NUMBER = {name: number for number, name in enumerate(("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"), 1)}
 NORDIC_SOURCE = "Nasdaq Nordic option chain (exchange public web API, delayed)"
+# V13: the chain sends every option row with currency "" (retained 2026-10-17, R/v13-evidence-a43bef58). Nasdaq's contract
+# specification for options on Swedish shares: the premium "Shall be expressed in Swedish Kronor or Euro depending on the
+# underlying shares". A blank (exactly "" or an absent key) contract currency therefore follows the underlying, which
+# nordic_options confirms as SEK before any row is read; every other unconfirmed form stays UNKNOWN.
+NORDIC_BLANK_CURRENCY = "BLANK_FOLLOWS_UNDERLYING"
+_ABSENT = object()
 
 
 def _diag(text: str) -> str:
@@ -862,9 +868,17 @@ def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[st
         return "MALFORMED", None  # a missing, unsupported or contradictory native identity proves nothing
     strike = float(strike_exact)
     return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
-                    "ccy": _typed_currency(row.get("currency")), "size": _typed_size(row.get("contractSize")),
+                    "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
                     "bid": _float(row.get("bidPrice")), "ask": _float(row.get("askPrice")),
                     "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
+
+
+def _nordic_contract_currency(value: Any) -> str:
+    """A contract's own currency: the typed SEK states, or NORDIC_BLANK_CURRENCY for exactly "" or an absent key (the
+    exchange rule ties the premium currency to the underlying share). None, whitespace and every other form stay UNKNOWN."""
+    if value is _ABSENT or (isinstance(value, str) and value == ""):
+        return NORDIC_BLANK_CURRENCY
+    return _typed_currency(value)
 
 
 def _nordic_unavailable(symbol: str, status: str, message: str) -> CyclesResult:
@@ -944,7 +958,7 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
 
     usable = [{"expiry": call["expiry"], "dte": call["dte"], "strike": call["strike"], "bid": call["bid"], "ask": call["ask"],
                "oi": call["oi"], "volume": call["volume"], "size": 100}
-              for call in listed if call["ccy"] == "OK" and call["size"] == "OK"]
+              for call in listed if call["ccy"] in ("OK", NORDIC_BLANK_CURRENCY) and call["size"] == "OK"]  # underlying SEK confirmed above
     return _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
                               provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
                               missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window, today=today,

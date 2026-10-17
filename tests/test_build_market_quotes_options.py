@@ -1739,22 +1739,46 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         for label, (row, expected) in cases.items():
             self.assertEqual(builder._nordic_row_evidence(row, "SIVE", self.TODAY)[0], expected, label)
 
-    def test_only_an_explicit_agreeing_sek_contract_becomes_a_native_sek_strategy(self):
+    def test_an_explicit_sek_or_source_blank_contract_becomes_a_native_sek_strategy(self):
         ok = self.nordic([self.call(28)])
         self.assertNotIn("unavailable", ok["monthly"])
         self.assertEqual((ok["monthly"]["ticker"], ok["monthly"]["currency"], ok["monthly"]["multiplier"]), ("SIVE.ST", "SEK", 100))
-        for label, value in {"null": None, "empty": "", "whitespace": "  ", "False": False, "zero": 0, "list": [], "dict": {}, "nan": float("nan"),
-                             "int": 752, "lowercase": "sek"}.items():
+        for label, value in {"null": None, "whitespace": "  ", "False": False, "zero": 0, "list": [], "dict": {}, "nan": float("nan"),
+                             "int": 752, "lowercase": "sek", "padded": " SEK"}.items():
             out = self.nordic([self.call(28, currency=value)])
             self.assertIn("合約單位或幣別來源未確認", out["monthly"]["unavailable"], label)
             for h in out.health:
                 self.assertFalse(h["read"], label)
+        # V13: the exchange sends currency "" on every option row; the premium currency follows the underlying (SEK, confirmed first)
         missing = self.call(28)
         del missing["currency"]
-        self.assertIn("合約單位或幣別來源未確認", self.nordic([missing])["monthly"]["unavailable"])
+        for label, row in (("empty string", self.call(28, currency="")), ("absent key", missing)):
+            out = self.nordic([row])
+            self.assertNotIn("unavailable", out["monthly"], label)
+            self.assertEqual((out["monthly"]["currency"], out["monthly"]["multiplier"]), ("SEK", 100), label)
         usd = self.nordic([self.call(28, currency="USD")])
         self.assertIn("合約幣別與 SEK 不符", usd["monthly"]["unavailable"])
         self.assertNotIn("所列到期不在", usd["monthly"]["unavailable"])
+
+    def test_a_blank_contract_currency_never_overrides_unconfirmed_or_other_terms(self):
+        blank = self.call(28, currency="")
+        for label, spot in (("USD", "USD"), ("null", None), ("empty", "")):
+            out = self.nordic([blank], spot_currency=spot)
+            self.assertIn("unavailable", out["monthly"], label)
+            self.assertIn("標的報價或上市幣別", out["monthly"]["unavailable"], label)
+        self.assertIn("合約單位非標準100股", self.nordic([self.call(28, currency="", contractSize="50")])["monthly"]["unavailable"])
+        self.assertIn("合約單位或幣別來源未確認", self.nordic([self.call(28, currency="", contractSize=None)])["monthly"]["unavailable"])
+        self.assertIn("合約幣別與 SEK 不符", self.nordic([self.call(28, currency="EUR")])["monthly"]["unavailable"])
+        self.assertEqual(builder._nordic_contract_currency(""), builder.NORDIC_BLANK_CURRENCY)
+        self.assertEqual(builder._typed_currency(""), "UNKNOWN", "the generic SEK typing is unchanged")
+        one_sided = self.nordic([self.call(28, currency="", bid="", ask="1.13")])
+        self.assertIn("unavailable", one_sided["monthly"], "quotes stay real two-sided bid/ask")
+
+    def test_the_retained_live_source_form_is_a_sek_100_contract(self):
+        row = {**self.call(28), "currency": "", "openInterest": "", "volume": ""}
+        out = self.nordic([row])
+        self.assertNotIn("unavailable", out["monthly"])
+        self.assertEqual((out["monthly"]["currency"], out["monthly"]["multiplier"]), ("SEK", 100))
 
     def test_underlying_currency_evidence_from_spot_and_search_must_also_agree(self):
         for label, spot in (("USD", "USD"), ("null", None), ("empty", ""), ("bool", False), ("list", [])):
