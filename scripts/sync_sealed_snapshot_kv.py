@@ -40,7 +40,7 @@ TRANSIENT_CATEGORIES = {"NETWORK_FAILURE", "TRANSIENT_HTTP", "TIMEOUT"}
 # (wrangler-dist fetchKVGetValueBase); only the three-digit status is ever read from that line.
 KV_GET_HTTP_STATUS = re.compile(r"Failed to fetch \S+ - (\d{3}):")
 # A rejected credential gets the same bounded attempts with a longer wait: every rejection in the Wrangler logs of
-# 2026-10-16/17 (15 KV GETs answered 401, 2 KV PUTs answered code 10000) came from the invocation that had just
+# 2026-10-16/17 (17 KV GETs answered 401, 5 KV PUTs answered code 10000) came from the invocation that had just
 # refreshed the expired OAuth token, and the next invocation succeeded with the stored token. Same credential, no fallback.
 AUTH_RETRY_SECONDS = 15.0
 
