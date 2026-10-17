@@ -6,7 +6,8 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
 import {
-  effectiveDays, dayMs, expiryDayOpen, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET, weeklyWeekFor, type WeeklyWeek,
+  effectiveDays, dayMs, exchangeDate, expiryDayOpen, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, usRegularSessionOpen, WEEKLY_DTE_BUCKET, weeklyWeekFor,
+  type WeeklyWeek,
 } from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
@@ -21,9 +22,17 @@ export interface CoveredCallSuggestion {
    * from the volatility implied by the strike's own bid/ask mid (chains without Greeks). */
   delta_basis?: "QUOTED" | "QUOTED_IV" | "QUOTE_IMPLIED" | null;
 }
+/** Quote basis of the previous-session carry-forward (scripts/options_carry_forward.py): when the current chain has no valid two-sided
+ * quote, the last valid in-session cycle of the most recent regular US session for the same ticker, period and expiry. The row keeps the
+ * capture's own timestamp, spot, dte and asof_date; only this reader accepts it, and only through validateCoveredCallCycle's
+ * allowPreviousSession option (an older reader refuses any basis but "delayed"). */
+export const PREVIOUS_SESSION_BASIS = "previous_session_last";
+/** Its own age bound (four calendar days, spanning a weekend or a holiday); live quotes keep the 6-hour bound. */
+export const PREVIOUS_SESSION_MAX_AGE_MS = 4 * 86_400_000;
+
 export interface CoveredCallCycle {
   ticker: string; strategy: "COVERED_CALL"; expiry: string; dte: number; spot: number; currency: "USD" | "SEK";
-  multiplier: 100; quote_basis: "delayed"; timestamp: string; source: string; provenance: string; rights_status: string;
+  multiplier: 100; quote_basis: "delayed" | typeof PREVIOUS_SESSION_BASIS; timestamp: string; source: string; provenance: string; rights_status: string;
   /** Producer-CLAIMED join identity for public admission (never authority; absent on local candidates). */
   provider_id?: string; jurisdiction?: string; venue?: string; instrument_kind?: string; publication_scope?: string;
   suggestions: CoveredCallSuggestion[];
@@ -63,24 +72,31 @@ function parseCalendarDateUtcMidnight(raw: string): number | null {
   return new Date(ms).toISOString().slice(0, 10) === raw ? ms : null;
 }
 
-/** A strictly validated cycle, or null (the caller then shows the option as unavailable). */
-export function validateCoveredCallCycle(raw: unknown, now?: number, documentGeneratedAt?: string, period?: "weekly" | "monthly"): CoveredCallCycle | null {
+/** A strictly validated cycle, or null (the caller then shows the option as unavailable). The previous-session carry-forward basis is
+ * refused unless the caller opts in (the sealed-options loader does; format-only and coverage callers do not) AND passes `now`: a
+ * carried row is a USD (US-listed) capture taken inside a regular US session within four days, with its asof_date, whose contract
+ * is still listed on the New York date of `now` (its dte and asof_date describe the capture, so the live dte rule does not apply). */
+export function validateCoveredCallCycle(raw: unknown, now?: number, documentGeneratedAt?: string, period?: "weekly" | "monthly",
+  options?: { readonly allowPreviousSession?: boolean }): CoveredCallCycle | null {
   if (!raw || typeof raw !== "object") return null;
   const cycle = raw as Record<string, any>;
+  const carried = cycle.quote_basis === PREVIOUS_SESSION_BASIS && options?.allowPreviousSession === true;
   if (cycle.strategy !== "COVERED_CALL" || (cycle.currency !== "USD" && cycle.currency !== "SEK") || cycle.multiplier !== 100
-    || cycle.quote_basis !== "delayed" || typeof cycle.ticker !== "string" || !/^[A-Z0-9.\- ]{1,16}$/.test(cycle.ticker)
+    || (cycle.quote_basis !== "delayed" && !carried) || typeof cycle.ticker !== "string" || !/^[A-Z0-9.\- ]{1,16}$/.test(cycle.ticker)
     || typeof cycle.expiry !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(cycle.expiry) || !Number.isInteger(cycle.dte)
     || cycle.dte < 0 || cycle.dte > 60 || !finite(cycle.spot) || cycle.spot <= 0 || typeof cycle.source !== "string"
     || typeof cycle.provenance !== "string" || !cycle.provenance.startsWith("https://")
     || !isValidUtcIsoInstant(cycle.timestamp)
     || !Array.isArray(cycle.suggestions) || cycle.suggestions.length < 1 || cycle.suggestions.length > 2) return null;
+  if (carried && (typeof now !== "number" || !Number.isFinite(now) || cycle.currency !== "USD" || typeof cycle.asof_date !== "string")) return null;
 
   const rowTime = Date.parse(cycle.timestamp);
   if (typeof now === "number" && Number.isFinite(now)) {
-    // Worker 6h maximum observation age
-    if (now - rowTime > 6 * 3600_000) return null;
+    // Worker 6h maximum observation age (a carried row: its own four-day bound, and the capture must lie inside a regular US session)
+    if (now - rowTime > (carried ? PREVIOUS_SESSION_MAX_AGE_MS : 6 * 3600_000)) return null;
     // Worker <=5min clock tolerance into future
     if (rowTime - now > 300_000) return null;
+    if (carried && !usRegularSessionOpen(rowTime)) return null;
   }
   if (typeof documentGeneratedAt === "string" && documentGeneratedAt.length > 0) {
     const docTime = Date.parse(documentGeneratedAt);
@@ -101,10 +117,17 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     const nowDateMs = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
     const dayDiff = Math.round((expiryMs - nowDateMs) / 86_400_000);
     if (dayDiff < 0) return null;                        // expired contract
-    // An expiry-day (DTE 0) row is a sell recommendation for a contract that stops trading at the regular-session close: reject
-    // it once the venue's session is over (the UTC-date check above only fires after UTC midnight).
-    if (cycle.dte === 0 && !expiryDayOpen(now, cycle.currency === "SEK" ? "STOCKHOLM" : "US")) return null;
-    if (Math.abs(dayDiff - cycle.dte) > 1) return null;  // calendar-DTE inconsistent (+/-1 tolerance, mirrors Python)
+    if (carried) {
+      // dte and asof_date describe the capture (checked against each other below); here the contract must still be listed: not expired
+      // by the New York date, and on its expiry day only until the regular-session close.
+      const today = exchangeDate(now, "US");
+      if (cycle.expiry < today || (cycle.expiry === today && !expiryDayOpen(now, "US"))) return null;
+    } else {
+      // An expiry-day (DTE 0) row is a sell recommendation for a contract that stops trading at the regular-session close: reject
+      // it once the venue's session is over (the UTC-date check above only fires after UTC midnight).
+      if (cycle.dte === 0 && !expiryDayOpen(now, cycle.currency === "SEK" ? "STOCKHOLM" : "US")) return null;
+      if (Math.abs(dayDiff - cycle.dte) > 1) return null;  // calendar-DTE inconsistent (+/-1 tolerance, mirrors Python)
+    }
   }
 
   // Optional exchange-local as-of date and weekly week marker (older sealed rows carry neither). The date must be a real calendar
@@ -225,15 +248,33 @@ function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion,
   ], item.role === "HIGH_STRIKE" ? "key" : "detail");
 }
 
+/** "YYYY-MM-DD HH:mm" in New York for an instant, with the same Intl style the Worker uses for other local times (formatToParts, h23). */
+function newYorkStampZh(ms: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms));
+  const part = (type: string) => parts.find(item => item.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+}
+/** The exact label every carried card carries, in flex and text: the capture time of the previous session's last valid quote. */
+export const previousSessionLabelZh = (captureIso: string) => `前一交易時段最後報價（${newYorkStampZh(Date.parse(captureIso))} 美東）；開盤後價格會變動`;
+/** The short disclosure of an operator-accepted provider (no redistribution licence); the source line already says unofficial and delayed. */
+export const OPERATOR_ACCEPTED_NOTICE_ZH = "依營運者決定顯示；本資料未取得再散布授權。";
+
 export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: string, style: "flex" | "text"): LineOutboundMessage[] {
   // Independent public-rights guard (validateCoveredCallCycle stays format-only for local data): the trusted catalog decides, never
   // rights_status, source text or a caller flag, so a new caller cannot bypass the loader's enforcement.
   // Judged against the real current time: if the review window closes after the loader admitted the row, this dedicated typed error
   // (the only one a public caller converts to an unavailable report) denies instead of rendering.
-  if (!admitPublicOption(cycle).ok) throw new OptionRightsNotAdmittedError();
+  const admission = admitPublicOption(cycle);
+  if (!admission.ok) throw new OptionRightsNotAdmittedError();
+  const carried = cycle.quote_basis === PREVIOUS_SESSION_BASIS;
+  const carriedLabel = carried ? previousSessionLabelZh(cycle.timestamp) : null;
+  const operatorNotice = admission.operator_accepted === true ? OPERATOR_ACCEPTED_NOTICE_ZH : null;
+  const dteZh = carried ? `擷取時 ${cycle.dte} 天` : cycle.dte === 0 ? "今日到期" : `${cycle.dte} 天`;
+  const spotLabel = carried ? "前一時段現價" : "現價";
   if (style === "text") {
     const lines = [
-      `【備兌買權建議｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${cycle.dte} 天）｜現價 ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
+      `【備兌買權建議｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${carried ? dteZh : `${cycle.dte} 天`}）｜${spotLabel} ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
+      ...(carriedLabel ? [carriedLabel] : []),
       ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
       ...(shortDteNoticeZh(cycle) ? [shortDteNoticeZh(cycle)!] : []),
       ...displayTiers(cycle).map((item, index) => [
@@ -243,7 +284,8 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
         `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`,
       ].join("\n")),
       `前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`,
-      `來源：${sourceZh(cycle.source)}（延遲報價，擷取時間 ${cycle.timestamp}；來源報價時間未提供）${cycle.provenance}`,
+      `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}；來源報價時間未提供）${cycle.provenance}`,
+      ...(operatorNotice ? [operatorNotice] : []),
       "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；本服務不下單。",
     ];
     const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
@@ -252,24 +294,26 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   }
   const bubble = {
     type: "bubble", size: "mega",
-    header: productHeader(`備兌買權建議 · ${periodLabel} · 延遲報價`, `${cycle.ticker}｜到期 ${cycle.expiry}`, [
-      uiBox([chip(cycle.dte === 0 ? "今日到期" : `${cycle.dte} 天`), chip(`現價 ${money(cycle.spot, cycle.currency)}`), chip(`計價 ${cycle.currency}`)], { layout: "horizontal", spacing: "sm" }),
+    header: productHeader(`備兌買權建議 · ${periodLabel} · ${carried ? "前一時段報價" : "延遲報價"}`, `${cycle.ticker}｜到期 ${cycle.expiry}`, [
+      uiBox([chip(dteZh), chip(`${spotLabel} ${money(cycle.spot, cycle.currency)}`), chip(`計價 ${cycle.currency}`)], { layout: "horizontal", spacing: "sm" }),
       ...(weekNoteZh(cycle) ? [uiBox([chip(weekNoteZh(cycle)!)], { layout: "horizontal", spacing: "sm" })] : []),
     ]),
     body: uiBox([
+      ...(carriedLabel ? [uiText(carriedLabel, "xs", T.ink)] : []),
       ...displayTiers(cycle).map((item, index) => suggestionSection(cycle, item, index)),
       ...(shortDteNoticeZh(cycle) ? [footnote(shortDteNoticeZh(cycle)!)] : []),
       footnote("前提：持有 100 股、賣出 1 口買權收取權利金；股價超過履約價可能被指派，上漲收益封頂於履約價。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([
-      footnote(`來源：${sourceZh(cycle.source)}，擷取時間 ${cycle.timestamp}（來源報價時間未提供）`),
+      footnote(`來源：${sourceZh(cycle.source)}，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（來源報價時間未提供）`),
       footnote(`資料出處：${cycle.provenance}`),
+      ...(operatorNotice ? [footnote(operatorNotice)] : []),
       footnote("公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；本服務不下單。"),
       menuAction("期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),
     ], footerStyle),
   };
-  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `備兌買權建議：${cycle.ticker} ${cycle.expiry}`,
+  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `備兌買權建議：${cycle.ticker} ${cycle.expiry}${carried ? "（前一時段報價）" : ""}`,
     contents: { type: "carousel", contents: [bubble] } }];
   assertLineMessages(messages);
   return messages;

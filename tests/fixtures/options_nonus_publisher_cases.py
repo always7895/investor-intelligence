@@ -271,7 +271,7 @@ def run_main(specs: list[dict[str, Any]], now: datetime, directory: Path, *, pri
         output.write_bytes(prior)
     captured = io.StringIO()
     with _sealed_world(specs, now, requests), contextlib.redirect_stdout(captured):
-        rc = builder.main(["--output", str(output)])
+        rc = builder.main(["--output", str(output), "--no-carry"])  # the fixture pins live behaviour: the previous-session carry is off here
     status = json.loads(captured.getvalue().strip().splitlines()[-1])
     doc = json.loads(output.read_text(encoding="utf-8")) if rc == 0 else None
     return _Result(rc, status, doc, output, requests)

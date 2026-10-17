@@ -19,6 +19,8 @@ export type WeeklyWeek = "CURRENT" | "NEXT";
 export type OptionVenue = "US" | "STOCKHOLM" | "TAIFEX";
 /** Regular-session close in exchange-local minutes after midnight (expiry-day cut-off; no holiday calendar is inferred). */
 export const EXPIRY_DAY_CLOSE_LOCAL_MINUTES: Readonly<Record<OptionVenue, number>> = { US: 16 * 60, STOCKHOLM: 17 * 60 + 30, TAIFEX: 13 * 60 + 30 };
+/** Regular US session: Monday-Friday from this local minute up to the US close above (the previous-session carry-forward rule). */
+export const US_SESSION_OPEN_LOCAL_MINUTES = 9 * 60 + 30;
 
 const DAY_MS = 86_400_000;
 
@@ -73,6 +75,14 @@ export const exchangeDate = (nowMs: number, venue: OptionVenue): string => excha
 /** True while an option expiring today (exchange local) is still tradable: before the regular-session close. */
 export function expiryDayOpen(nowMs: number, venue: OptionVenue): boolean {
   return exchangeLocal(nowMs, venue).minutes < EXPIRY_DAY_CLOSE_LOCAL_MINUTES[venue];
+}
+
+/** True when the instant lies inside a regular US equity-options session: a New York weekday from 09:30 up to, not including, 16:00.
+ * Early closes and exchange holidays are NOT inferred (a closed weekday has no two-sided quotes, so no capture qualifies there). */
+export function usRegularSessionOpen(nowMs: number): boolean {
+  const local = exchangeLocal(nowMs, "US");
+  return mondayIndex(Date.parse(`${local.date}T00:00:00Z`)) < 5 && local.minutes >= US_SESSION_OPEN_LOCAL_MINUTES
+    && local.minutes < EXPIRY_DAY_CLOSE_LOCAL_MINUTES.US;
 }
 
 /** Sunday of the Monday-Sunday calendar week containing the date (ms in, ms out). */

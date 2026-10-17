@@ -252,12 +252,21 @@ MAX_HIGH_STRIKE_DELTA = 0.20
 PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 
 
+# The previous-session carry-forward basis (scripts/options_carry_forward.py; Worker twin PREVIOUS_SESSION_BASIS in covered-call.ts):
+# the last valid in-session cycle of the most recent regular US session, kept with its own capture timestamp, spot, dte and asof_date.
+CARRIED_QUOTE_BASIS = "previous_session_last"
+CARRIED_MAX_AGE_SECONDS = 4 * 86400  # four calendar days (a weekend or a holiday); live rows keep the 5-hour bound
+
+
 def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None = None, document_at: str | datetime | None = None,
-                                period: str | None = None) -> None:
+                                period: str | None = None, *, allow_previous_session: bool = False) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
     strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices. The
     optional additive middle_suggestion (role MIDDLE, strictly between the two suggestions' strikes), asof_date (exchange-local
-    YYYY-MM-DD) and weekly_week (CURRENT or NEXT) are validated strictly when present and never required (older sealed rows)."""
+    YYYY-MM-DD) and weekly_week (CURRENT or NEXT) are validated strictly when present and never required (older sealed rows).
+    The carried basis (previous_session_last) is refused unless allow_previous_session is true (the sealer opts in; coverage does not).
+    A carried row is a USD capture taken inside a regular US session within four days, with its asof_date, whose contract is still
+    listed on the New York date of evaluated_at; its dte and asof_date describe the capture, so the live dte rule does not apply."""
     def finite(value, name):
         # Strict finite scalar, robust to every out-of-range numeric *representation*, not just one spelling. Reject
         # bool/str/collections up front, then convert to float inside a guard so an out-of-float-range magnitude in
@@ -277,8 +286,11 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
 
     if not isinstance(cycle, dict) or cycle.get("strategy") != "COVERED_CALL":
         raise MarketProductValidationError("COVERED_CALL_CYCLE_INVALID")
-    if cycle.get("currency") not in ("USD", "SEK") or cycle.get("multiplier") != 100 or cycle.get("quote_basis") != "delayed":
+    carried = allow_previous_session and cycle.get("quote_basis") == CARRIED_QUOTE_BASIS
+    if cycle.get("currency") not in ("USD", "SEK") or cycle.get("multiplier") != 100 or (cycle.get("quote_basis") != "delayed" and not carried):
         raise MarketProductValidationError("COVERED_CALL_CONTRACT_TERMS_INVALID")
+    if carried and (evaluated_at is None or cycle.get("currency") != "USD" or not isinstance(cycle.get("asof_date"), str)):
+        raise MarketProductValidationError("CARRIED_QUOTE_US_CAPTURE_REQUIRED")
     if not str(cycle.get("source", "")).strip() or not str(cycle.get("provenance", "")).startswith("https://"):
         raise MarketProductValidationError("MISSING_QUOTE_PROVENANCE")
 
@@ -305,9 +317,11 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     if dt > eval_dt:
         raise MarketProductValidationError("FUTURE_TIMESTAMP_REJECTED")
 
-    # Publisher max observation age: 5 hours
-    if (eval_dt - dt).total_seconds() > 5 * 3600:
+    # Publisher max observation age: 5 hours (a carried row: its own four-day bound, and the capture must lie in a regular US session)
+    if (eval_dt - dt).total_seconds() > (CARRIED_MAX_AGE_SECONDS if carried else 5 * 3600):
         raise MarketProductValidationError("STALE_TIMESTAMP_REJECTED")
+    if carried and not rules.us_regular_session_open(dt):
+        raise MarketProductValidationError("CARRIED_QUOTE_CAPTURE_NOT_IN_SESSION")
 
     # Row time cannot be later than document time beyond 5 min (300s) tolerance
     if document_at is not None:
@@ -336,7 +350,13 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         raise MarketProductValidationError("INVALID_EXPIRY_FORMAT") from error
     if expiry.date() < eval_dt.date():
         raise MarketProductValidationError("EXPIRED_CONTRACT_REJECTED")
-    if evaluated_at:
+    if evaluated_at and carried:
+        # dte and asof_date describe the capture (checked against each other below); here the contract must still be listed: not expired
+        # by the New York date, and on its expiry day only until the regular-session close.
+        today = rules.exchange_date(eval_dt.astimezone(timezone.utc), "US")
+        if expiry.date() < today or (expiry.date() == today and not rules.expiry_day_open(eval_dt.astimezone(timezone.utc), "US")):
+            raise MarketProductValidationError("EXPIRY_DAY_SESSION_CLOSED" if expiry.date() == today else "EXPIRED_CONTRACT_REJECTED")
+    elif evaluated_at:
         if abs((expiry.date() - eval_dt.date()).days - dte) > 1:
             raise MarketProductValidationError("EXPIRY_DTE_INCONSISTENT")
         # An expiry-day row recommends selling a contract that stops trading at the regular-session close: reject it afterwards.
@@ -434,7 +454,7 @@ COVERAGE_NOTES = frozenset({
     "CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
     "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
 })
-_COVERAGE_RIGHTS = frozenset({"review_before_enable", "reviewed_public_access", "automated_access_prohibited"})
+_COVERAGE_RIGHTS = frozenset({"review_before_enable", "reviewed_public_access", "automated_access_prohibited", "operator_accepted_unlicensed"})
 _COVERAGE_ADAPTERS = frozenset({"not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"})
 _COVERAGE_ID = re.compile(r"[a-z0-9_]{1,64}")
 _COVERAGE_CODE = re.compile(r"[A-Z0-9_]{1,12}")

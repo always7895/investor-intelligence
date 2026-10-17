@@ -38,7 +38,7 @@ export function sourceZh(source: string | null | undefined): string {
 const QUOTE_BASIS: Record<string, string> = { realtime: "即時", delayed: "延遲", asof_close: "收盤" };
 const RIGHTS: Record<string, string> = {
   reviewed_public_access: "已審查的公開取用", candidate_local_review: "候選來源（本機審查）", unadmitted_third_party: "未納入的第三方來源",
-  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取",
+  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取", operator_accepted_unlicensed: "營運者決定顯示（無再散布授權）",
 };
 export const quoteBasisZh = (value: string) => QUOTE_BASIS[value] ?? value;
 export const rightsZh = (value: string) => RIGHTS[value] ?? value;

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fail closed until a reviewed free public option-quote provider is selected."""
+"""Fail closed until a reviewed free public option-quote provider is selected, or the operator has accepted the pinned
+unlicensed Yahoo display (operator 2026-10-13, docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md)."""
 from __future__ import annotations
 
 import copy
@@ -34,10 +35,12 @@ REQUIRED_PROVIDER_FIELDS = {
     "runtime_enabled",
     "line_quote_eligible",
 }
+OPERATOR_ACCEPTED_STATUS = "operator_accepted_unlicensed"
 ALLOWED_RIGHTS_STATUSES = {
     "review_before_enable",
     "reviewed_public_access",
     "automated_access_prohibited",
+    OPERATOR_ACCEPTED_STATUS,
 }
 ALLOWED_ADAPTER_STATUSES = {
     "not_implemented",
@@ -51,13 +54,36 @@ AUTOMATION_PROHIBITED_PROVIDER_IDS = {
     "occ_public_market_data",
     "tradier_broker_market_data_api",
 }
+ADAPTER_REVIEWED = "adapter_reviewed"
+# Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt,
+# recorded in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). It is NOT a rights review and never a licence. It is pinned like the
+# automation-prohibited decisions: only these provider ids, with exactly this decision, and only (a subset of) these admitted scopes
+# can carry the status; any other provider claiming it is a finding and is never admitted. Mirrored in
+# cloud/src/v213/public-options-admission.ts (safety-invariant constants, not a second approval catalog).
+OPERATOR_ACCEPTED_PROVIDERS = {
+    "yahoo_finance_option_chain": {
+        "operator_decision": {
+            "decision_id": "OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013",
+            "decided_at": "2026-10-13",
+            "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
+        },
+        # (jurisdiction, venue, instrument_kind, quote_basis, publication_scope)
+        "scopes": frozenset({
+            ("US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"),
+            ("US", "US_LISTED_OPTIONS", "equity_option", "previous_session_last", "public_line_quote"),
+        }),
+    },
+}
+OPERATOR_ACCEPTED_ADAPTER_STATUSES = {"candidate_implemented", ADAPTER_REVIEWED}  # an unreviewed local adapter is acceptable here only
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Optional-while-disabled fields (L-RIGHTS): REQUIRED, and fully validated, before a provider may be enabled. No value is inserted
-# into the catalog by this module; real scope and review window come only from an actual rights review.
-OPTIONAL_PROVIDER_FIELDS = {"admitted_scopes", "review_valid_through"}
+# into the catalog by this module; real scope and review window come only from an actual rights review (or, for the pinned
+# operator-accepted providers, from the pinned operator decision).
+OPTIONAL_PROVIDER_FIELDS = {"admitted_scopes", "review_valid_through", "operator_decision"}
 SCOPE_KEYS = {"jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"}
 ALLOWED_INSTRUMENT_KINDS = {"equity_option"}  # only real equity-option quotes; EOD/theoretical/settlement are never upgraded
-ALLOWED_QUOTE_BASES = {"delayed"}
+CARRIED_QUOTE_BASIS = "previous_session_last"  # the last valid two-sided quote of the most recent regular US session (carry-forward)
+ALLOWED_QUOTE_BASES = {"delayed", CARRIED_QUOTE_BASIS}
 ALLOWED_PUBLICATION_SCOPES = {"public_line_quote"}
 VENUE_RE = re.compile(r"^[A-Z0-9][A-Z0-9_.-]{0,31}$")
 IDENTITY_FIELDS = ("provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope")
@@ -119,8 +145,39 @@ def _rights_reviewed(provider: dict[str, Any]) -> bool:
     return (
         provider.get("rights_status") == "reviewed_public_access"
         and provider.get("automated_access_allowed") is True
-        and provider.get("adapter_status") == "adapter_reviewed"
+        and provider.get("adapter_status") == ADAPTER_REVIEWED
     )
+
+
+def _scope_tuple(entry: Any) -> tuple[Any, ...] | None:
+    if not isinstance(entry, dict) or set(entry) != SCOPE_KEYS or not all(isinstance(entry[key], str) for key in SCOPE_KEYS):
+        return None
+    return tuple(entry[key] for key in ("jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"))
+
+
+def _operator_accepted(provider: dict[str, Any]) -> bool:
+    """The ONE definition of an operator-accepted (unlicensed) display provider: the pinned id, the exact pinned decision, no
+    rights review (automated_access_allowed null), a local or reviewed adapter, and admitted scopes that are a non-empty subset of the
+    pinned ones. It is shared by the audit and public admission, exactly as _rights_reviewed is."""
+    provider_id = provider.get("id")
+    pinned = OPERATOR_ACCEPTED_PROVIDERS.get(provider_id) if isinstance(provider_id, str) else None
+    scopes = provider.get("admitted_scopes")
+    if pinned is None or not isinstance(scopes, list) or not scopes:
+        return False
+    tuples = [_scope_tuple(entry) for entry in scopes]
+    return (
+        provider.get("rights_status") == OPERATOR_ACCEPTED_STATUS
+        and provider.get("automated_access_allowed") is None
+        and provider.get("adapter_status") in OPERATOR_ACCEPTED_ADAPTER_STATUSES
+        and provider.get("rights_reviewed_at") == pinned["operator_decision"]["decided_at"]
+        and provider.get("operator_decision") == pinned["operator_decision"]
+        and all(item in pinned["scopes"] for item in tuples)
+    )
+
+
+def _display_admissible(provider: dict[str, Any]) -> bool:
+    """A provider that may show quotes in LINE: rights-reviewed public access, or the pinned operator-accepted decision."""
+    return _rights_reviewed(provider) or _operator_accepted(provider)
 
 
 def _scope_findings(label: str, provider: dict[str, Any], *, enabled: bool, today: date) -> list[str]:
@@ -212,10 +269,13 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
     authorities: set[str] = set()
     roles: set[str] = set()
     fully_eligible = 0
+    reviewed_eligible = 0
+    eligible_ids: list[str] = []
     attempted_activation = 0
     rejected_count = 0
     pending_count = 0
     reviewed_access_count = 0
+    operator_accepted_count = 0
 
     for index, provider in enumerate(providers):
         label = f"providers[{index}]"
@@ -292,6 +352,29 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
                 findings.append(f"{provider_id}: reviewed public access requires a review date")
             if adapter_status == "not_permitted":
                 findings.append(f"{provider_id}: reviewed public access cannot use a not_permitted adapter")
+        elif rights_status == OPERATOR_ACCEPTED_STATUS:
+            # Operator decision, not a rights review: only the pinned provider, the exact pinned decision and a subset of the pinned scopes.
+            operator_accepted_count += 1
+            pinned = OPERATOR_ACCEPTED_PROVIDERS.get(provider_id)
+            if pinned is None:
+                findings.append(f"{provider_id}: {OPERATOR_ACCEPTED_STATUS} is accepted only for the pinned operator decisions")
+            if automation_allowed is not None:
+                findings.append(f"{provider_id}: operator-accepted provider requires automated_access_allowed=null (no rights review exists)")
+            if adapter_status not in OPERATOR_ACCEPTED_ADAPTER_STATUSES:
+                findings.append(f"{provider_id}: operator-accepted provider requires a candidate or reviewed adapter")
+            if not _review_date(reviewed_at):
+                findings.append(f"{provider_id}: operator-accepted provider requires a real, non-future decision date")
+            if pinned is not None:
+                decision = pinned["operator_decision"]
+                if provider.get("operator_decision") != decision:
+                    findings.append(f"{provider_id}: operator_decision must equal the pinned operator decision")
+                if reviewed_at != decision["decided_at"]:
+                    findings.append(f"{provider_id}: operator-accepted provider requires rights_reviewed_at equal to the decision date")
+                scopes = provider.get("admitted_scopes")
+                if isinstance(scopes, list) and not all(_scope_tuple(entry) in pinned["scopes"] for entry in scopes):
+                    findings.append(f"{provider_id}: admitted_scopes must be a subset of the pinned operator-accepted scopes")
+        if "operator_decision" in provider and rights_status != OPERATOR_ACCEPTED_STATUS:
+            findings.append(f"{provider_id or label}: operator_decision is allowed only with rights_status {OPERATOR_ACCEPTED_STATUS}")
 
         if provider_id in AUTOMATION_PROHIBITED_PROVIDER_IDS:
             if rights_status != "automated_access_prohibited":
@@ -307,20 +390,28 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
         enabled = provider.get("runtime_enabled") is True
         line_eligible = provider.get("line_quote_eligible") is True
         reviewed = _rights_reviewed(provider)
+        accepted = _operator_accepted(provider)
         if enabled or line_eligible:
             attempted_activation += 1
-            if rights_status != "reviewed_public_access":
-                findings.append(f"{provider_id}: enabled/eligible provider lacks rights review")
-            if automation_allowed is not True:
-                findings.append(f"{provider_id}: enabled/eligible provider does not allow automation")
-            if adapter_status != "adapter_reviewed":
-                findings.append(f"{provider_id}: enabled/eligible provider lacks reviewed adapter")
+            if rights_status == OPERATOR_ACCEPTED_STATUS:
+                if not accepted:
+                    findings.append(f"{provider_id}: enabled/eligible operator-accepted provider does not satisfy its pinned decision")
+            else:
+                if rights_status != "reviewed_public_access":
+                    findings.append(f"{provider_id}: enabled/eligible provider lacks rights review")
+                if automation_allowed is not True:
+                    findings.append(f"{provider_id}: enabled/eligible provider does not allow automation")
+                if adapter_status != ADAPTER_REVIEWED:
+                    findings.append(f"{provider_id}: enabled/eligible provider lacks reviewed adapter")
         if enabled != line_eligible:
             findings.append(
                 f"{provider_id}: runtime_enabled and line_quote_eligible must change atomically"
             )
-        if enabled and line_eligible and reviewed:
+        if enabled and line_eligible and (reviewed or accepted):
             fully_eligible += 1
+            eligible_ids.append(provider_id)
+            if reviewed:
+                reviewed_eligible += 1
         findings.extend(_scope_findings(provider_id or label, provider, enabled=enabled or line_eligible, today=day))
 
     missing_pinned = sorted(AUTOMATION_PROHIBITED_PROVIDER_IDS.difference(ids))
@@ -355,7 +446,9 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
 
     vars_document = wrangler.get("vars") if isinstance(wrangler.get("vars"), dict) else {}
     current_enabled = str(vars_document.get("CURRENT_PUBLIC_DATA_ENABLED") or "").casefold() == "true"
-    if fully_eligible == 0 and current_enabled:
+    # The live current-data switch needs a RIGHTS-REVIEWED provider: an operator-accepted one is admitted only for the sealed covered-call
+    # display and never enables live fetching.
+    if reviewed_eligible == 0 and current_enabled:
         findings.append(
             "cloud/wrangler.toml: CURRENT_PUBLIC_DATA_ENABLED must remain false without an eligible provider"
         )
@@ -384,6 +477,7 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
         "pending_rights_count": pending_count,
         "automation_prohibited_count": rejected_count,
         "reviewed_public_access_count": reviewed_access_count,
+        "operator_accepted_count": operator_accepted_count,
         "runtime_enabled_count": sum(
             isinstance(value, dict) and value.get("runtime_enabled") is True for value in providers
         ),
@@ -392,6 +486,7 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
         ),
         "attempted_activation_count": attempted_activation,
         "fully_eligible_count": fully_eligible,
+        "fully_eligible_provider_ids": sorted(eligible_ids),
         "development_provider": development.get("provider_id"),
         "production_provider_selected": candidates.get("production_quote_provider_selected"),
     }
@@ -436,7 +531,7 @@ def load_public_option_policy(root: Path = ROOT, today: date | None = None) -> P
         for provider in providers:
             if not isinstance(provider, dict):
                 return PublicOptionPolicy({})
-            if not (provider.get("runtime_enabled") is True and provider.get("line_quote_eligible") is True and _rights_reviewed(provider)):
+            if not (provider.get("runtime_enabled") is True and provider.get("line_quote_eligible") is True and _display_admissible(provider)):
                 continue
             reviewed = _date_value(provider.get("rights_reviewed_at"))
             through = _date_value(provider.get("review_valid_through"))

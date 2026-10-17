@@ -391,6 +391,12 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
             return {}
         bodies = {f"v213:identity:v2:sym:{bucket}": _dumps(shard) for bucket, shard in sorted(document["symbol_shards"].items())}
         bodies.update({f"v213:identity:v2:name:{bucket}": _dumps(shard) for bucket, shard in sorted(document["name_shards"].items())})
+        # Leading-word lookup shards (kind "token", buckets 0-7 of the Worker's lazy-key whitelist); a document built before them has
+        # none, which only means exact-name lookups. A bucket outside the whitelist would make the whole seal invalid: no identity then.
+        token_shards = document.get("token_shards", {})
+        if not set(token_shards) <= {str(bucket) for bucket in range(8)}:
+            return {}
+        bodies.update({f"v213:identity:v2:tok:{bucket}": _dumps(shard) for bucket, shard in sorted(token_shards.items())})
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
     if "v213:identity:v2:sym:A" not in bodies or any(len(body.encode("utf-8")) > 2_000_000 for body in bodies.values()):
@@ -867,7 +873,10 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                         continue
                     # A non-record cycle (e.g. suggestions=[null]) must raise the domain error here, not an
                     # AttributeError that escapes to the whole-document catch and discards healthy cycles.
-                    validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle)
+                    # The sealer is the one caller that also accepts the previous-session carry-forward basis (its own age, session and
+                    # expiry rules live in the validator; the claimed basis must be an admitted scope of the catalog above).
+                    validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle,
+                                                allow_previous_session=True)
                     options[ticker][cycle] = value
                 except MarketProductValidationError as error:
                     options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}

@@ -164,16 +164,19 @@ class TaifexOptionsEodTests(unittest.TestCase):
             with patch.object(gate, '_object', side_effect=lambda path: document if path.name == 'public-options-provider-candidates.json' else real_object(path)):
                 findings, summary = gate.audit_public_options_providers(ROOT)
             self.assertTrue(any('lacks reviewed adapter' in value for value in findings))
-            self.assertEqual(summary['fully_eligible_count'], 0)
+            self.assertNotIn('taifex_public_options', summary['fully_eligible_provider_ids'])  # V11: only the pinned Yahoo provider can be eligible
             if paid: self.assertTrue(any('paid_fallback' in value for value in findings))
 
     def test_candidate_does_not_enable_runtime_or_line_quotes(self):
         findings, summary = audit_public_options_providers(ROOT)
         self.assertEqual(findings, [])
-        self.assertEqual(summary['fully_eligible_count'], 0)
-        self.assertEqual(summary['runtime_enabled_count'], 0)
-        self.assertEqual(summary['line_quote_eligible_count'], 0)
-        self.assertFalse(summary['production_provider_selected'])
+        # V11: only the pinned operator-accepted Yahoo provider may be enabled; the TAIFEX candidate never is.
+        eligible = summary['fully_eligible_provider_ids']
+        self.assertTrue(set(eligible) <= {'yahoo_finance_option_chain'}, eligible)
+        self.assertEqual(summary['fully_eligible_count'], len(eligible))
+        self.assertEqual(summary['runtime_enabled_count'], len(eligible))
+        self.assertEqual(summary['line_quote_eligible_count'], len(eligible))
+        self.assertIs(summary['production_provider_selected'], bool(eligible))
         from adapters import ADAPTERS
         self.assertNotIn(SOURCE, ADAPTERS)
 
