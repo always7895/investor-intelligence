@@ -56,3 +56,15 @@
   4. 單一公共快照視圖釘選與報告讀取，無 Double-pin。
   5. 未完成來源核對之中文名稱嚴格顯示「未完成來源核對（不猜譯）」。
   6. 未封存報價之 `QUOTE_UNAVAILABLE` 防護，絕不顯現假報價或將查詢時鐘偽充為報價時間。
+
+---
+
+## 5. 名稱開頭字詞查詢 (Leading-word name lookup, V11 W5)
+輸入公司英文名稱的開頭字詞（如 `Sivers`、`Astera Labs`、`Micron`）時，快查依下列固定順序解析，不使用模糊比對或模型猜測：
+1. 今日的代號比對；有結果即結束（同時是單字的代號優先，如 `META`）。
+2. 今日的精確名稱比對（`normalizeCompanyName` 後完全相同）。
+3. 僅限拉丁字母輸入且至少 4 個字母：以封存的 token shard 比對「名稱開頭字詞」（NFKC 折疊、不分大小寫、以非字母數字切詞，整詞比對，如 `Sivers` 符合 `Sivers Semiconductors`，`Sive` 不符合）。僅一個掛牌符合時顯示該標的並附「名稱比對」說明；多個掛牌符合時只列候選（最多 5 筆，含市場與代號；超過 5 筆時標示「已顯示 5/N」，不挑選）。中日韓文字輸入仍維持精確名稱比對，不做開頭字詞比對。
+4. 其餘維持今日的 `IDENTIFIER_UNAVAILABLE` 回覆。
+
+**封存方案**：`scripts/build_identity_shards.py` 另產生 8 個 token shard（`token_shards`，每個 `kind: "token"`），由 `scripts/publish_sealed_snapshot.py --identity-shards` 以 lazy 物件 `v213:identity:v2:tok:0`..`7` 封存（白名單 `SNAPSHOT_LAZY_KEY_RE` 與 `fetch_live_public_snapshot.LAZY_KEY` 同步放行，lazy 物件上限 80 個內）。每列 `[詞以單一空白連接的名稱, 代號 shard, 代號, 市場]`，形狀同 name shard；shard 依「第一個詞」的 FNV-1a（UTF-16 code unit）mod 8 選定，只收 `security_name` 與 `native_name` 且第一個詞為拉丁字母者，不收中文名稱。Worker 只在 `handleGlobalEquityLookup` 以 `leadingToken` 選項啟用；seal 沒有 token shard、shard 缺漏或不一致時一律退回精確名稱行為（不報錯、不猜測），每個符合的掛牌還須在其封存代號 shard 的列中確實以該詞開頭，否則整個步驟放棄。矛盾的身分變體仍不解析（`IDENTITY_CONFLICT`）。
+**相容性**：新 Worker 讀今日（8d98136）產生的 seal 行為不變；舊 Worker 遇到含 `tok` 物件的 seal 會判定 seal 無效並拒絕該快照（fail-closed），故需先部署 Worker 再安裝新 runtime。
