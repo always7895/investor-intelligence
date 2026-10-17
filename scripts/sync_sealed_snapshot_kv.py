@@ -115,6 +115,10 @@ def classify_cli_error(stdout: str, stderr: str) -> str:
         return "AUTHENTICATION_ERROR"
     if 10048 in codes or re.search(r"\[ERROR\][^\r\n]*\bfree usage limit\b", text, re.IGNORECASE):
         return KV_DAILY_LIMIT
+    # Cloudflare's own transient answer on a KV call, "Upstream service unavailable [code: 7009]" (V14: the 2026-10-17
+    # 13:12Z and 14:12Z object PUTs, each the only failed call of its cycle): the named transient retries apply.
+    if re.search(r"\[\s*code\s*:\s*7009\s*\]", text):
+        return "TRANSIENT_HTTP"
     if re.search(r"\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|FetchError)\b|fetch failed|network error", text, re.IGNORECASE):
         return "NETWORK_FAILURE"
     if re.search(r"(?:HTTP(?:\s+status)?|status(?:\s+code)?)[\s:=]+(?:429|5\d\d)\b", text, re.IGNORECASE):

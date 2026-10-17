@@ -49,6 +49,45 @@ def get_failure(status: str) -> str:
             f"namespaces/fedcba9876543210fedcba9876543210/values/snapshot%3Acurrent - {status}\n\n")
 
 
+UPSTREAM_STDERR = ("✘ [ERROR] A request to the Cloudflare API (/accounts/0123456789abcdef0123456789abcdef/storage/kv/namespaces/x/values/k)"
+                   " failed.\n\n  Upstream service unavailable [code: 7009]\n\n")
+
+
+class KvUpstreamUnavailableTests(unittest.TestCase):
+    """V14: Cloudflare's code 7009 (Upstream service unavailable) is a named transient with the usual bounded retries."""
+
+    def setUp(self):
+        self.saved = (sync._run_cli, sync.time.sleep)
+        self.sleeps = []
+        sync.time.sleep = self.sleeps.append
+
+    def tearDown(self):
+        sync._run_cli, sync.time.sleep = self.saved
+
+    def run_put(self, *results):
+        queue = list(results)
+        calls = []
+        sync._run_cli = lambda args: calls.append(args) or queue.pop(0)
+        return sync._run_with_retry(["kv", "key", "put", "k", "--path", "f", "--remote"]), calls, queue
+
+    def test_code_7009_is_transient_and_the_next_attempt_publishes(self):
+        self.assertEqual(sync.classify_cli_error("", UPSTREAM_STDERR), "TRANSIENT_HTTP")
+        p, calls, queue = self.run_put(completed(1, UPSTREAM_STDERR), completed(0, ""))
+        self.assertEqual((p.returncode, len(calls), queue), (0, 2, []))
+        self.assertEqual(self.sleeps, [sync.RETRY_SECONDS])
+        self.assertEqual(sync.LAST_CALL, dict(attempts=2, exit_code=0, error_category="NONE"))
+
+    def test_a_persistent_7009_stops_at_the_bound(self):
+        p, calls, queue = self.run_put(*[completed(1, UPSTREAM_STDERR)] * 4)
+        self.assertEqual((p.returncode, len(calls), len(queue)), (1, sync.ATTEMPTS, 1))
+        self.assertEqual(self.sleeps, [sync.RETRY_SECONDS, 2 * sync.RETRY_SECONDS])
+        self.assertEqual(sync.LAST_ERROR, ["TRANSIENT_HTTP"])
+
+    def test_credential_and_daily_limit_codes_keep_their_precedence(self):
+        self.assertEqual(sync.classify_cli_error("", UPSTREAM_STDERR + "Authentication error [code: 10000]"), "AUTHENTICATION_ERROR")
+        self.assertEqual(sync.classify_cli_error("", UPSTREAM_STDERR + LIMIT_STDERR), sync.KV_DAILY_LIMIT)
+
+
 class KvGetFailureFormTests(unittest.TestCase):
     """V13: the KV GET failure form is classified by its status; a rejected credential is retried within the same bound."""
 
