@@ -13,7 +13,7 @@ Release source：92c97f97694e6e39c7a16986630d248c9ee744fe
 Windows CI：33896931576 / PASS
 ZIP SHA-256：8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
 Production Worker：27121388-1e6e-445a-b45e-104a867ca70d / 100%
-Stable entrypoint：https://investor-intelligence-v21-owner-line.moon951753.workers.dev
+Stable entrypoint：https://investor-intelligence-v21-owner-line.<account>.workers.dev（<account> 是操作者的 workers.dev 帳號標籤，不寫入 repository）
 Exact model：qwen38-q6
 Custom domain required：false
 P0/P1/P2：0/0/0

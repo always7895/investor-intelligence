@@ -41,7 +41,7 @@ base = r13.base
 _BASE_R13_GENERIC = r13.generic_sec_outlook_semantic_v8
 
 QUANTITATIVE_FUTURE_RE = re.compile(
-    r"(?:\d+(?:\.\d+)?%|\$\s*\d[\d,]*(?:\.\d+)?\s*(?:million|billion|m|b)\b|三分之一|幾乎全部|202\d)",
+    r"(?:\d+(?:\.\d+)?%|\$\s*\d[\d,]*(?:\.\d+)?\s*(?:million|billion|m|b)(?![A-Za-z])|三分之一|幾乎全部|202\d)",
     re.I,
 )
 

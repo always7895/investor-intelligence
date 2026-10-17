@@ -36,6 +36,7 @@ describe("ephemeral user-supplied option calculator", () => {
     expect(answer).toContain("ALPHA");
     expect(answer).toContain("CALL");
     expect(answer).toContain("Mid USD 2.65");
+    expect(answer).toContain("USD 2.65｜中間檔 USD 2.62");  // the middle between the low (one quarter spread above Bid) and the high (Mid), on the 0.01 tick
     expect(answer).toContain("每週觀察區間");
     expect(answer).toContain("有效出售價觀察");
     expect(answer).toContain("沒有抓取或驗證行情");

@@ -72,7 +72,7 @@ try {
         if ($process.ExitCode -ne 0) { throw "Packaged launcher test failed: $argument" }
     }
 
-    $contract = Join-Path $stage 'config\v213-r75-publication-mode-v1.json'
+    $contract = Join-Path $stage 'config\v213-r75-publication-mode-v2.json'
     $contractSha = (Get-FileHash -LiteralPath $contract -Algorithm SHA256).Hash.ToLowerInvariant()
     $validationSha = (Get-FileHash -LiteralPath $env:R75_WINDOWS_RECEIPT -Algorithm SHA256).Hash.ToLowerInvariant()
     $versionPath = Join-Path $stage 'VERSION-REFS.json'

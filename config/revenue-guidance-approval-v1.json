@@ -1,0 +1,942 @@
+{
+ "schema": "revenue-guidance-approval-v1",
+ "registry_sha256": "819a2c8a1551aa9e29449740cd0a802039fe4ac610606af6bc5f9a4b00b482c2",
+ "approved_at": "2026-10-13T16:10:09Z",
+ "reviewer": "Claude Code (sole tracked writer), re-verified against _archive/lane-v11-guidance/sources 2026-10-13T16:10:09Z",
+ "records": {
+  "SNDK": {
+   "record_sha256": "4913ef463884bf4ff7bb624c02b7154a85560adc8e3917ec291759ea4f32d73c",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "SNDK-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-10-03",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-01-02",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-04-03",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-07-03",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "NVDA": {
+   "record_sha256": "9cfca1fb7e5694fb86477683bf94abd5fc6d733873c1e3f3dd6906f77364c814",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "NVDA-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-10-26",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-01-25",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-04-26",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-07-26",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "MU": {
+   "record_sha256": "0330ca74befe393c32094e816ab62dcc2a141d6a3eda05f52adcdd23eef1f883",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "MU-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-11-27",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-02-26",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-05-28",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-09-03",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  },
+  "LITE": {
+   "record_sha256": "f5849678596ad5cde3c2f3bc07e320d87b6d1ec06d45b089dc44a43712c147d7",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "LITE-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-27",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-27",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-28",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-27",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "MRVL": {
+   "record_sha256": "5803ace0be39f7823c737e3c70e93570a64f2a59f2f90113b9f0e61200ab9abf",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "MRVL-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-11-01",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-01-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-05-02",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-08-01",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "AMD": {
+   "record_sha256": "b7831812b469bc9ca3b83d10c4f419d72e019478916705c929ea2839feb82988",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "AMD-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-27",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-27",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-28",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-27",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "AVGO": {
+   "record_sha256": "7af757371751199cc0ab05278c61025a10d34331ffb9e01498beae798bcf4559",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "AVGO-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-11-02",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-02-01",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-05-03",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-08-02",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "MTSI": {
+   "record_sha256": "b6bc03ed4c0509145a954a83c9c788142bb0ad026a20ea4ba977f0889b7e2ef0",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "MTSI-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-10-03",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-01-02",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-04-03",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-07-03",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "CRDO": {
+   "record_sha256": "2ef5e532ea79ca62834d4e5261cbacb5ae17fea5f9e9983c756a1a1a31361fa7",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "CRDO-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-11-01",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-01-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-05-02",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-08-01",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "AAOI": {
+   "record_sha256": "17aa4df21dd594563aa8ad38740213fafe8e74d3de9f233ba38fa147687bd348",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "AAOI-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "ALAB": {
+   "record_sha256": "92915aa75da4aa933ac6375f6e2f54168c600fed4a3ce93d7241713f40cf7ca7",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "ALAB-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "BE": {
+   "record_sha256": "9d58219ae624a5ae4a7f88131a150d5740d58d4f3c33a774c3138cd8049b04f0",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "BE-FY-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "FY_RECONCILIATION",
+     "ref": "fy_reconciliation",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "000660.KS": {
+   "record_sha256": "ef829aef9fb0951b1226caa9169f3cd78885d31242753b21193b7cb88ec0565d",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "005930.KS": {
+   "record_sha256": "fbccdc9ba9997595e2d11b1ea75be58d08cf9dbfbd5c8eec6a461d1dac2c3c74",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "NBIS": {
+   "record_sha256": "7c9ed31ba725075965d6e71c75631df4218636a770847e865ba55c2dc9964921",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "NBIS-FY-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "REAFFIRMATION",
+     "ref": "NBIS-FY-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "FY_RECONCILIATION",
+     "ref": "fy_reconciliation",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "CRWV": {
+   "record_sha256": "0bca4cb4afe1b32ccf7a1c097b25b6429c678f1e18210ecab135192de14d703e",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "CRWV-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CLAIM",
+     "ref": "CRWV-FY-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "FY_RECONCILIATION",
+     "ref": "fy_reconciliation",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-09-28T16:32:10Z"
+    }
+   ]
+  },
+  "AXTI": {
+   "record_sha256": "9f83225b7053bf3861814746d1b96f7ec7dcdb3983c36fef7b1e2e7660f3ecfa",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  },
+  "CORZ": {
+   "record_sha256": "5cfd6b8e9e0fe8d0dc72c84a72ebb9e8c1dbddba5debdca3f893928cc5b6316f",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  },
+  "3006.TW": {
+   "record_sha256": "f5718daaeef958a1e1aea2127a237b6fbb96b29882571df2103c5bed70c17266",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  },
+  "SIVE.ST": {
+   "record_sha256": "b90ef82962c326d1206b63346975db9f65e6d7feb6794780cf435c1a1a2b7d80",
+   "decisions": [
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "NONDISCLOSURE_CONFIRMED",
+     "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  }
+ }
+}

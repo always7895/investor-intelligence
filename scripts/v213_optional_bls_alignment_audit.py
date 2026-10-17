@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "v213-source-federation-policy.json"
-CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v1.json"
+CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v2.json"
 WRAPPERS = (
     ROOT / "activate-v213-seven-field-schedule.ps1",
     ROOT / "activate-v213-seven-field-schedule-serenity-latest.ps1",
@@ -16,7 +16,7 @@ WRAPPERS = (
 STALE_REQUIRED = "$required=@('us_sec','nasdaq','world_bank','us_bls','ecb')"
 SHARED_PREFLIGHT_MARKERS = (
     "v213_r75_activation_preflight.py",
-    "v213-r75-publication-mode-v1.json",
+    "v213-r75-publication-mode-v2.json",
     "test-sourceindependencedocument",
 )
 

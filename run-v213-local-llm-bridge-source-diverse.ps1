@@ -14,7 +14,10 @@ param(
     [string]$NamedTunnelConfig = '',
     [string]$FreeRelayConfigPath = '',
     [int]$FreeRelayLeaseTtlSeconds = 180,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$RoutingCheckOnly,
+    [AllowNull()][AllowEmptyString()][string]$BindingJson,
+    [switch]$BindingMetadataCheckOnly
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest

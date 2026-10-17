@@ -20,11 +20,11 @@ The calculator performs arithmetic only:
 
 - midpoint and bid/ask spread;
 - spread as a percentage of midpoint;
-- a non-binding sell-limit observation from one quarter of the spread above bid through midpoint;
+- a non-binding sell-limit observation from one quarter of the spread above bid through midpoint, plus the middle price between them on the 0.01 tick (low ≤ middle ≤ high);
 - annualized premium observations using spot for calls and strike for puts;
 - call effective-sale-price observations;
 - put break-even and one-standard-contract cash-requirement observations;
-- weekly, monthly or custom DTE classification.
+- weekly (0–14 DTE as typed; the calculator only labels the DTE you supply and never picks an expiry), monthly (21–45 DTE) or custom DTE classification.
 
 It does not fetch or verify a quote, infer Delta, use open interest or volume, recommend a trade, guarantee execution or place an order. Every response is marked `USER_SUPPLIED_NOT_VERIFIED`.
 

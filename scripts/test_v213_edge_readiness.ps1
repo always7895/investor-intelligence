@@ -5,7 +5,7 @@ if(-not$ProjectRoot){$ProjectRoot=Split-Path -Parent $PSScriptRoot}
 . (Join-Path $ProjectRoot 'scripts/v213_edge_readiness.ps1')
 $version='12345678-1234-1234-1234-123456789abc'
 $policy=Get-V213CompactPolicyHash $ProjectRoot
-function Proof([string]$nonce){return [pscustomobject]@{schema_version=1;ready=$true;worker_version=$version;challenge=$nonce;parser_schema='v213-r75-sec-filing-provenance-v1';compatibility='PASS';no_write=$true;publication_contract_id='v213-r75-publication-mode-v1';publication_contract_sha256='9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd';compact_policy_sha256=$policy}}
+function Proof([string]$nonce){return [pscustomobject]@{schema_version=1;ready=$true;worker_version=$version;challenge=$nonce;parser_schema='v213-r75-sec-filing-provenance-v1';compatibility='PASS';no_write=$true;publication_contract_id='v213-r75-publication-mode-v2';publication_contract_sha256='5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21';compact_policy_sha256=$policy}}
 function Must-Fail([scriptblock]$Action,[string]$Name){$failed=$false;try{& $Action|Out-Null}catch{$failed=$true};if(-not$failed){throw "Negative invariant accepted: $Name"}}
 foreach ($receipt in @([pscustomobject]@{}, [pscustomobject]@{release_ready=$false}, [pscustomobject]@{release_ready='true';live_qa='PASS';live_free_relay_smoke='PASS'}, [pscustomobject]@{release_ready=$true;live_qa='PASS_SYNTHETIC';live_free_relay_smoke='PASS'})) {
     Must-Fail {Assert-V213QaReleaseQualification $receipt} 'unqualified release forbidden'
@@ -29,6 +29,11 @@ foreach($name in @('schema_version','parser_schema','publication_contract_id','p
     $bad.$name=if($name-eq'no_write'){$false}elseif($name-eq'schema_version'){99}else{'INVALID'}
     Must-Fail {Test-V213EdgeReadinessResponse $bad $version $nonce $policy} $name
 }
+foreach($name in @('no_write','ready','challenge','schema_version')){
+    $bad=Proof $nonce;$bad.$name=@($bad.$name)
+    Must-Fail {Test-V213EdgeReadinessResponse $bad $version $nonce $policy} 'scalar array must not unwrap'
+}
+Must-Fail {Get-V213IsolatedTransportDiagnostic 'https://production.synthetic.workers.dev' $version $nonce} 'diagnostic cannot probe production'
 $script:calls=0
 $script:nonces=@{}
 $transport={param($uri)

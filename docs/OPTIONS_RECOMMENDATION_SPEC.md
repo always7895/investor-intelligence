@@ -90,9 +90,18 @@ No provider may create orders, mutate transfers/funding/subscriptions, activate 
 
 ### Weekly
 
-- target: 7 DTE;
-- accepted range: 3–14 DTE;
-- select the expiration nearest the target inside the range.
+The weekly is the current calendar week's expiry (operator 2026-10-11; the earlier "nearest 7 DTE inside 3–14 DTE" rule skipped a Friday expiry two days away and showed the next week's, for example 2026-10-16 on Wednesday 2026-10-07):
+
+- the as-of date is the exchange-local calendar date of the observation instant (US listings: New York, Stockholm: Stockholm, TAIFEX: Taipei), not the UTC date and not the requester's date;
+- the week is Monday to Sunday in exchange-local time;
+- select the earliest listed expiration from the as-of date through that week's Sunday (Wednesday 2026-10-07 with 2026-10-09 and 2026-10-16 listed selects 2026-10-09);
+- only when the current week has no remaining listed expiration (weekend, after the week's last weekly, or the expiry day after the regular-session close) select the earliest listed expiration of the next calendar week (Saturday 2026-10-10 selects 2026-10-16) and mark it as next week (`weekly_week` NEXT);
+- nothing later than the next week's Sunday is ever a weekly, and an index or ETF series with Monday, Wednesday and Friday expirations simply returns the earliest of them;
+- the expiry day (DTE 0) counts only before the regular-session close (US 16:00, Stockholm 17:30, TAIFEX 13:30, exchange local; no holiday calendar is inferred); both validators also reject a DTE 0 row whose evaluation instant is past that close (`EXPIRY_DAY_SESSION_CLOSED` / Worker null), and the local `fetch_options*` paths apply the same cut-off when no date is passed;
+- the rule uses listed expiration dates only and never infers one (it applies unchanged to TAIFEX Wednesday and Friday weeklies once an adapter provides them);
+- the accepted DTE range is 0–14 as the outer bound, and each public covered-call row records the exchange-local `asof_date` and `weekly_week` so the validators re-check the rule from the sealed row.
+
+Annualized figures use at least one day (`max(DTE, 1)`), so a same-day expiry never divides by zero; a cycle with DTE 0–2 is labelled on the card because its annualized yield is strongly amplified and is not a sustainable return.
 
 ### Monthly
 
@@ -100,7 +109,7 @@ No provider may create orders, mutate transfers/funding/subscriptions, activate 
 - accepted range: 21–45 DTE;
 - select the expiration nearest the target inside the range.
 
-If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW`. Never relabel another expiration as weekly or monthly. Use actual DTE for every calculation.
+If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW` (for the weekly: no listed expiration this week or next). Never relabel another expiration as weekly or monthly. Use actual DTE for every calculation. When the current week's expiry is also the standard third-Friday monthly expiry, a weekly request still shows it as the week's weekly and notes that it is also the monthly expiry; the monthly request is unchanged.
 
 ## Quote fields and calculations
 
@@ -140,6 +149,18 @@ Public mode:
 
 Local owner mode may label coverage only from authenticated local whole-share data and keeps the result local.
 
+#### Covered-call price tiers (public LINE cards)
+
+Per underlying and cycle the sealed `v213:options:v2` row carries up to three strike tiers (operator 2026-09-26 and 2026-10-11):
+
+- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike whose bid pays at least 6% annualized with model Delta at most 0.20;
+- `MIDDLE` (optional, "中間型（權利金與被指派機率居中）"): a strike strictly between the two others, the one whose Delta is nearest 0.25 (the strike nearest 2.5% out of the money when a Delta is missing); absent when no listed strike lies between, never padded or duplicated;
+- `BALANCED` ("平衡型（收較多權利金）"): the lower strike whose Delta is nearest 0.30.
+
+Strikes are strictly descending HIGH > MIDDLE > BALANCED. Titles are numbered by display position (一, 二, 三) without gaps, so a row without a middle shows exactly the two earlier titles. Every tier carries its own sell limit (mid rounded down to the 0.01 tick when the spread is within 25% of mid, otherwise Bid plus a quarter of the spread, never below Bid or above mid); limit prices are not required to be ordered across tiers, only the strikes are.
+
+Compatibility: `suggestions` keeps one or two entries with the roles `HIGH_STRIKE` or `HIGH_STRIKE`,`BALANCED`, so a Worker that predates the middle tier ignores the additive `middle_suggestion` key and renders the two original tiers; rows sealed before the change simply have no middle tier and render two. The Python publish gate and the Worker validator both reject a malformed middle tier (wrong role, not strictly between, fewer than two neighbours, any failed per-item check) for that cycle only. The shared definition lives in `scripts/option_recommendation_rules.py` and its TypeScript twin `cloud/src/v213/option-recommendation-rules.ts`.
+
 ### Cash-secured put
 
 Public mode may show hypothetical full cash obligation and break-even, but never claims that cash is available or that the strategy is secured.
@@ -171,6 +192,8 @@ For a valid two-sided quote:
 
 - seller reference: one-quarter spread above BID through midpoint;
 - buyer reference: midpoint through ASK.
+
+The manual calculator additionally shows a middle price of the seller range: `(low + high) / 2` rounded to the 0.01 tick and clamped into the range, so low ≤ middle ≤ high always holds (`limit_middle` / `limitMiddle` in the shared rules modules). The local report and the public candidate DTO (`sell_limit_observation`) keep the two-value range until the closed field allowlists are changed together.
 
 This is quote navigation, not an order instruction, fill guarantee or authorization to trade. Market/order submission paths do not exist.
 

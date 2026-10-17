@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Create the exact-head final cleanup/package receipt outside the source tree."""
+"""Create an unverified legacy release-receipt template outside the source tree.
+
+The ephemeral document preserves the legacy schema, not release authority.
+No evidence is supplied to build_receipt: qualification flags remain False and
+cleanup_authorized remains False. Explicit cleanup authorization is refused
+without source-bound release evidence; qualification belongs to the
+authoritative source-bound release pipeline.
+"""
 from __future__ import annotations
 
 import argparse
@@ -39,6 +46,8 @@ def build_receipt(
         raise ValueError("final_package_sha256 must be a lowercase SHA-256")
     if not isinstance(cleanup_authorized, bool):
         raise ValueError("cleanup_authorized must be boolean")
+    if cleanup_authorized:
+        raise ValueError("SOURCE_BOUND_RELEASE_EVIDENCE_REQUIRED")
     try:
         timestamp = datetime.fromisoformat(completed_utc.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -51,17 +60,17 @@ def build_receipt(
         "candidate_tree": candidate_tree,
         "candidate_version": f"v{version}",
         "completed_utc": completed_utc,
-        "cleanup_authorized": cleanup_authorized,
-        "release_ready": True,
+        "cleanup_authorized": False,
+        "release_ready": False,
         "deployed": False,
         "billing_enabled": False,
         "external_users_admitted": False,
-        "post_rewrite_fresh_clone": True,
-        "full_history_scope_all_clean": True,
-        "canonical_acceptance": True,
-        "clean_install": True,
-        "reproducible_package": True,
-        "sbom_manifest_checksums": True,
+        "post_rewrite_fresh_clone": False,
+        "full_history_scope_all_clean": False,
+        "canonical_acceptance": False,
+        "clean_install": False,
+        "reproducible_package": False,
+        "sbom_manifest_checksums": False,
         "final_package_sha256": final_package_sha256,
     }
 
@@ -83,6 +92,8 @@ def main() -> int:
     parser.add_argument("--authorize-cleanup", action="store_true")
     args = parser.parse_args()
     try:
+        if args.authorize_cleanup:
+            raise ValueError("SOURCE_BOUND_RELEASE_EVIDENCE_REQUIRED")
         if not args.archive.is_file():
             raise FileNotFoundError(args.archive)
         candidate_commit = _git("rev-parse", "HEAD").casefold()
@@ -97,7 +108,7 @@ def main() -> int:
             version=args.version,
             final_package_sha256=digest,
             completed_utc=completed,
-            cleanup_authorized=args.authorize_cleanup,
+            cleanup_authorized=False,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
@@ -114,7 +125,7 @@ def main() -> int:
                 "candidate_tree": candidate_tree,
                 "candidate_version": f"v{args.version}",
                 "final_package_sha256": digest,
-                "cleanup_authorized": args.authorize_cleanup,
+                "cleanup_authorized": False,
                 "deployed": False,
             },
             ensure_ascii=False,

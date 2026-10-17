@@ -1,0 +1,422 @@
+{
+ "origin": "Frozen real NVDA inputs of the ORDERS-V3-01 genuine rebuild (2026-09-28T16:33:24Z): registry record and approval decisions from config/, RPO recognition schedule (company_deep_report.load_order_scenarios) and order figure from the rebuilt v3 document, official IR rows from tests/fixtures/ir-feeds/q4-nvidia-2026.json on or after the guidance day; SEC and wire rows are the reviewed guidance-day filings/release plus one older item each (quiet channels).",
+ "cutoff": "2026-09-28T16:33:24Z",
+ "checked_at": "2026-09-28T16:32:30Z",
+ "approved_at": "2026-09-28T16:32:10Z",
+ "reviewer": "Claude Code (sole tracked writer), re-verified against _archive/lane-orders-v3/sources",
+ "registry": {
+  "schema": "revenue-guidance-v1",
+  "version": 1,
+  "consensus_enabled": false,
+  "issuers": [
+   {
+    "symbol": "NVDA",
+    "company_name": "NVIDIA Corporation",
+    "status": "GUIDANCE",
+    "reason": null,
+    "url_prefixes": [
+     "https://www.sec.gov/Archives/edgar/data/"
+    ],
+    "documents": [
+     {
+      "id": "NVDA-GUIDANCE",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation earnings release with outlook",
+      "source_kind": "SEC_8K_EXHIBIT",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000073/q2fy27pr.htm",
+      "published_date": "2026-08-26",
+      "retrieved_at": "2026-09-28T14:23:14Z",
+      "sha256": "fb05a634c9bfaac87eeffbacefd28ee0745bf2b3d4b4007fcc29724ef4970255",
+      "byte_size": 341587,
+      "lineage_id": "NVDA-GUIDANCE"
+     },
+     {
+      "id": "NVDA-10K",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation Form 10-K",
+      "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+      "published_date": "2026-02-25",
+      "retrieved_at": "2026-09-28T14:23:15Z",
+      "sha256": "9b1ff60b94afa49a6cd95b72253aa835d0a9454a7e71d1227b4535404651f838",
+      "byte_size": 1968290,
+      "lineage_id": "NVDA-10K"
+     },
+     {
+      "id": "NVDA-0001045810-25-000230",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation Form 10-Q (0001045810-25-000230)",
+      "source_kind": "SEC_PERIODIC",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm",
+      "published_date": "2025-11-19",
+      "retrieved_at": "2026-09-28T14:23:16Z",
+      "sha256": "1a159f6cdb535c06dc9b87f1760dcde75960aa86d7354316bf91a30e6f3d1a23",
+      "byte_size": 1381804,
+      "lineage_id": "NVDA-0001045810-25-000230"
+     },
+     {
+      "id": "NVDA-0001045810-26-000021",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation Form 10-K (0001045810-26-000021)",
+      "source_kind": "SEC_PERIODIC",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+      "published_date": "2026-02-25",
+      "retrieved_at": "2026-09-28T14:23:18Z",
+      "sha256": "9b1ff60b94afa49a6cd95b72253aa835d0a9454a7e71d1227b4535404651f838",
+      "byte_size": 1968290,
+      "lineage_id": "NVDA-0001045810-26-000021"
+     },
+     {
+      "id": "NVDA-0001045810-26-000052",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation Form 10-Q (0001045810-26-000052)",
+      "source_kind": "SEC_PERIODIC",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+      "published_date": "2026-05-20",
+      "retrieved_at": "2026-09-28T14:23:19Z",
+      "sha256": "e65f74075b880bb97459af0f894015b9fb742998038d3c920735fcad350dd68b",
+      "byte_size": 1167527,
+      "lineage_id": "NVDA-0001045810-26-000052"
+     },
+     {
+      "id": "NVDA-0001045810-26-000075",
+      "issuer": "NVDA",
+      "publisher": "NVIDIA Corporation",
+      "title": "NVIDIA Corporation Form 10-Q (0001045810-26-000075)",
+      "source_kind": "SEC_PERIODIC",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+      "published_date": "2026-08-26",
+      "retrieved_at": "2026-09-28T14:23:20Z",
+      "sha256": "8b12547c47b4924069b1f6a515589a976913dd0f0a1889e0a20964b07d1d7013",
+      "byte_size": 1517521,
+      "lineage_id": "NVDA-0001045810-26-000075"
+     }
+    ],
+    "claims": [
+     {
+      "id": "NVDA-Q-GUIDANCE",
+      "document_id": "NVDA-GUIDANCE",
+      "locator": "Outlook",
+      "passage": "NVIDIA’s outlook for the third quarter of fiscal 2027 is as follows: • Revenue is expected to be $108.0 billion, plus or minus 2%.",
+      "metric": "REVENUE",
+      "assertion_kind": "COMPANY_GUIDANCE",
+      "currency": "USD",
+      "unit_multiplier": 1,
+      "amount": null,
+      "low": 105840000000.0,
+      "high": 110160000000.0,
+      "stated_point": 108000000000.0,
+      "original_representation": "$108.0 billion, plus or minus 2%",
+      "scope": "COMPANY",
+      "scope_label": "全公司",
+      "accounting_basis": "GAAP",
+      "fiscal_label": "Q3 FY27",
+      "period_kind": "QUARTER",
+      "period_start": "2026-07-27",
+      "period_end": "2026-10-25"
+     }
+    ],
+    "reported_quarters": [
+     {
+      "fiscal_label": "Q3 FY26",
+      "start": "2025-07-28",
+      "end": "2025-10-26",
+      "revenue": 57006000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-25-000230",
+      "locator": "XBRL us-gaap:Revenues 2025-07-28..2025-10-26"
+     },
+     {
+      "fiscal_label": "Q4 FY26",
+      "start": "2025-10-27",
+      "end": "2026-01-25",
+      "revenue": 68127000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000021",
+      "locator": "XBRL us-gaap:Revenues 2025-01-27..2026-01-25 minus ..2025-10-26",
+      "derivation": {
+       "kind": "YTD_DIFFERENCE",
+       "longer_document_id": "NVDA-0001045810-26-000021",
+       "longer_value": 215938000000.0,
+       "longer_start": "2025-01-27",
+       "shorter_document_id": "NVDA-0001045810-25-000230",
+       "shorter_value": 147811000000.0,
+       "shorter_end": "2025-10-26"
+      }
+     },
+     {
+      "fiscal_label": "Q1 FY27",
+      "start": "2026-01-26",
+      "end": "2026-04-26",
+      "revenue": 81615000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000052",
+      "locator": "XBRL us-gaap:Revenues 2026-01-26..2026-04-26"
+     },
+     {
+      "fiscal_label": "Q2 FY27",
+      "start": "2026-04-27",
+      "end": "2026-07-26",
+      "revenue": 96221000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000075",
+      "locator": "XBRL us-gaap:Revenues 2026-04-27..2026-07-26"
+     }
+    ],
+    "forward_intervals": [
+     {
+      "fiscal_label": "Q3 FY27",
+      "start": "2026-07-27",
+      "end": "2026-10-25",
+      "calendar_document_id": "NVDA-10K",
+      "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+     },
+     {
+      "fiscal_label": null,
+      "start": "2026-10-26",
+      "end": "2027-01-31",
+      "calendar_document_id": "NVDA-10K",
+      "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+     },
+     {
+      "fiscal_label": null,
+      "start": "2027-02-01",
+      "end": "2027-05-02",
+      "calendar_document_id": "NVDA-10K",
+      "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+     },
+     {
+      "fiscal_label": null,
+      "start": "2027-05-03",
+      "end": "2027-08-01",
+      "calendar_document_id": "NVDA-10K",
+      "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+     }
+    ],
+    "fy_reconciliation": null,
+    "release_channels": {
+     "sec_cik": 1045810,
+     "wire_symbol": "NVDA",
+     "wire_names": [
+      "NVIDIA"
+     ],
+     "ir": {
+      "kind": "Q4_PRESS_RELEASES",
+      "url": "https://investor.nvidia.com/feed/PressRelease.svc/GetPressReleaseList"
+     },
+     "ir_guidance_release_title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027"
+    },
+    "reviewed_later_documents": [
+     {
+      "id": "0001045810-26-000078",
+      "disposition": "REVIEWED_IRRELEVANT",
+      "reviewed_at": "2026-09-28T14:26:45Z",
+      "note": "8-K Item 8.01: agreement to acquire Hugging Face; no revenue, outlook or guidance statement"
+     },
+     {
+      "id": "https://investor.nvidia.com/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx",
+      "disposition": "REVIEWED_IRRELEVANT",
+      "reviewed_at": "2026-09-28T15:32:15Z",
+      "note": "guidance-day product/partnership release; no revenue, results or guidance statement"
+     },
+     {
+      "id": "0001045810-26-000073",
+      "disposition": "REVIEWED_IRRELEVANT",
+      "reviewed_at": "2026-09-28T15:32:15Z",
+      "note": "8-K items 2.02,9.01: the filing that furnishes the reviewed guidance document itself (NVDA-GUIDANCE)"
+     },
+     {
+      "id": "0001045810-26-000075",
+      "disposition": "REVIEWED_IRRELEVANT",
+      "reviewed_at": "2026-09-28T15:32:15Z",
+      "note": "10-Q on the guidance day: the periodic report / interim statements for the latest reported quarter (the reviewed actuals), not a newer period"
+     },
+     {
+      "id": "https://www.nasdaq.com/press-release/nvidia-announces-financial-results-second-quarter-fiscal-2027-2026-08-26",
+      "disposition": "REVIEWED_IRRELEVANT",
+      "reviewed_at": "2026-09-28T15:32:15Z",
+      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+     }
+    ]
+   }
+  ]
+ },
+ "approval_decisions": [
+  {
+   "kind": "CLAIM",
+   "ref": "NVDA-Q-GUIDANCE",
+   "decision": "VERBATIM_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "ACTUAL",
+   "ref": "2025-10-26",
+   "decision": "VALUE_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "ACTUAL",
+   "ref": "2026-01-25",
+   "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "ACTUAL",
+   "ref": "2026-04-26",
+   "decision": "VALUE_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "ACTUAL",
+   "ref": "2026-07-26",
+   "decision": "VALUE_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "CALENDAR",
+   "ref": "calendar",
+   "decision": "RULE_QUOTED",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  },
+  {
+   "kind": "ROUTING",
+   "ref": "routing",
+   "decision": "VERBATIM_IN_SOURCE",
+   "reviewed_at": "2026-09-28T16:32:10Z"
+  }
+ ],
+ "stock_orders": {
+  "kind": "RPO",
+  "amount": 3200000000,
+  "currency": "USD",
+  "as_of": "2026-07-26",
+  "yoy": 0.6842105263157894,
+  "source": "SEC EDGAR XBRL companyfacts",
+  "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+  "scope_kind": "COMPANY",
+  "yoy_prior_amount": 1900000000,
+  "yoy_prior_as_of": "2025-07-27"
+ },
+ "recognition": {
+  "status": "DISCLOSED",
+  "form": "10-Q",
+  "filed": "2026-08-26",
+  "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+  "rpo": 3200000000,
+  "rpo_as_of": "2026-07-26",
+  "quarter_revenue": 96221000000,
+  "quarter_end": "2026-07-26",
+  "quarter_start": "2026-04-27",
+  "quarter_basis": "FRAME",
+  "accession": "0001045810-26-000075",
+  "passage": "Approximately 39 % of revenue from contracts greater than one year in length will be recognized over the next twelve months",
+  "report_date": "2026-07-26",
+  "horizons": {
+   "m6": null,
+   "m12": {
+    "share_pct": 39.0,
+    "contracted": 1248000000,
+    "run_rate": 384884000000,
+    "coverage_pct": 0.3,
+    "floor_growth_pct": null,
+    "derived": false
+   },
+   "m24": null
+  },
+  "premises": [
+   "目前營收水準＝最近一季營收 × 期間季數",
+   "只計已簽約訂單（RPO）依揭露時程認列，未計新接訂單，因此是下限",
+   "股價對應成長假設利潤率、稀釋後股數與本益比不變"
+  ]
+ },
+ "sec_rows": [
+  [
+   "8-K",
+   "2026-08-26",
+   "2.02,9.01",
+   "0001045810-26-000073",
+   ""
+  ],
+  [
+   "10-Q",
+   "2026-08-26",
+   "",
+   "0001045810-26-000075",
+   "2026-07-26"
+  ],
+  [
+   "10-Q",
+   "2026-05-28",
+   "",
+   "0001045810-26-000050",
+   "2026-04-26"
+  ]
+ ],
+ "wire_rows": [
+  [
+   "Aug 26, 2026",
+   "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+   "/press-release/nvidia-announces-financial-results-second-quarter-fiscal-2027-2026-08-26"
+  ],
+  [
+   "May 20, 2026",
+   "NVIDIA Announces Financial Results for First Quarter Fiscal 2027",
+   "/press-release/nvidia-announces-financial-results-first-quarter-fiscal-2027-2026-05-20"
+  ]
+ ],
+ "ir_rows": [
+  {
+   "PressReleaseDate": "09/28/2026 07:00:00",
+   "Headline": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/28/2026 05:00:00",
+   "Headline": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Open-Agent-Safety-Platform-to-Secure-Agents-From-Testing-to-Deployment/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/14/2026 09:00:00",
+   "Headline": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-Open-Source-CUDA-Q-Platform-for-Fault-Tolerant-Quantum-Computing/default.aspx"
+  },
+  {
+   "PressReleaseDate": "09/09/2026 20:00:00",
+   "Headline": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-AI-Infrastructure-Capacity-in-Partnership-With-Australias-Data-Center-Ecosystem/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/31/2026 08:30:00",
+   "Headline": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-MediaTek-Deepen-Long-Standing-Partnership-to-Build-AI-Edge-to-Cloud-Computing-Platforms/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/27/2026 17:00:00",
+   "Headline": "NVIDIA Announces Upcoming Event for Financial Community",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Upcoming-Event-for-Financial-Community/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/26/2026 17:05:00",
+   "Headline": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+   "LinkToDetailPage": "/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx"
+  },
+  {
+   "PressReleaseDate": "08/26/2026 16:20:00",
+   "Headline": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+   "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/default.aspx"
+  }
+ ]
+}

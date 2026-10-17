@@ -184,6 +184,8 @@ def main() -> int:
     args = parser.parse_args()
 
     install_optional_dependency_stubs()
+    if str(ROOT) not in sys.path:
+        sys.path.insert(1, str(ROOT))  # tests import scripts.* / tests.* from the repository root, as with -m unittest
     repository_available = (ROOT / ".git").exists() and (ROOT / ".github" / "workflows").is_dir()
     distribution_mode = args.distribution or (not args.repository and not repository_available)
 

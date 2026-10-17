@@ -16,11 +16,11 @@ import argparse
 import copy
 import html
 import json
-import os
 import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
@@ -32,6 +32,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import v213_top20_order_outlook_contract as contract
+from sec_contact_headers import SecContactError, sec_identity_headers
+from secure_public_url import PublicUrlError, normalize_host
 
 POLICY_PATH = ROOT / "config" / "v213-serenity-h6b-policy.json"
 DISPLAY_COLUMNS = contract.DISPLAY_COLUMNS
@@ -110,30 +112,103 @@ def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
     return policy
 
 
-def _user_agent() -> str:
-    email = str(os.environ.get("SEC_CONTACT_EMAIL") or "").strip()
-    if email and "@" in email:
-        return f"InvestorIntelligence/2.1.3 H6B public research {email}"
-    return "InvestorIntelligence/2.1.3 H6B public research"
+# URL-scoped SEC identity boundary. Only the exact SEC EDGAR hosts below
+# (compared after pure IDNA normalization, so case and trailing-dot
+# equivalents match) may carry the shared SEC contact identity; every other
+# host gets the fixed generic label and never reads the SEC contact env.
+H6B_PRODUCT_LABEL = "InvestorIntelligence/2.1.3 H6B public research"
+SEC_HOSTS = frozenset({"sec.gov", "www.sec.gov", "data.sec.gov"})
+REFUSED_SCHEME = "fetch refused: only HTTPS public source URLs are allowed"
+REFUSED_AUTHORITY = "fetch refused: invalid or missing authority"
+REFUSED_USERINFO = "fetch refused: credential-free authority required"
+REFUSED_PORT = "fetch refused: default port 443 required"
+REFUSED_HOST = "fetch refused: invalid host"
+REFUSED_REDIRECT = "fetch refused: HTTP redirect not allowed"
 
 
-def fetch_raw(url: str, *, timeout: float = 20.0) -> str:
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """Deliberately refuse every redirect (including non-SEC -> SEC)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise H6BError(REFUSED_REDIRECT)
+
+
+def _build_opener() -> urllib.request.OpenerDirector:
+    # Standard per-call build_opener composition: explicit empty proxy map
+    # (no ambient proxy env), standard verified-TLS HTTPS handler, and the
+    # local redirect refusal. No global opener, no install_opener.
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(),
+        _RefuseRedirects(),
+    )
+
+
+def _request_headers(url: str) -> dict[str, str]:
+    """Build URL-scoped headers BEFORE any opener or network contact.
+
+    SEC identity comes only from the shared stdlib-only helper and only for
+    exact SEC hosts; every failure is a sanitized H6BError with a fixed
+    message and no value echo.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(str(url))
+    except (ValueError, TypeError):
+        raise H6BError(REFUSED_AUTHORITY) from None
+    if parsed.scheme.casefold() != "https":
+        raise H6BError(REFUSED_SCHEME)
+    # Reject '%' and backslash in the authority BEFORE classification: they
+    # make urlsplit and urllib's own unquoting disagree on the effective
+    # host, so such URLs are refused before any opener or network contact.
+    if "%" in parsed.netloc or "\\" in parsed.netloc:
+        raise H6BError(REFUSED_AUTHORITY)
+    host = parsed.hostname
+    if host is None or not str(host):
+        raise H6BError(REFUSED_AUTHORITY)
+    if parsed.username is not None or parsed.password is not None:
+        raise H6BError(REFUSED_USERINFO)
+    try:
+        port = parsed.port
+    except ValueError:
+        raise H6BError(REFUSED_PORT) from None
+    if port is not None and port != 443:
+        raise H6BError(REFUSED_PORT)
+    try:
+        normalized = normalize_host(host)
+    except PublicUrlError:
+        raise H6BError(REFUSED_HOST) from None
     headers = {
-        "User-Agent": _user_agent(),
+        "User-Agent": H6B_PRODUCT_LABEL,
         "Accept": "text/html,application/json,text/plain,*/*",
         "Accept-Language": "en-US,en;q=0.8",
         "Cache-Control": "no-cache",
     }
+    if normalized in SEC_HOSTS:
+        try:
+            identity = sec_identity_headers(product=H6B_PRODUCT_LABEL)
+        except SecContactError as exc:
+            raise H6BError(str(exc)) from None
+        headers["User-Agent"] = identity["User-Agent"]
+        headers["From"] = identity["From"]
+    return headers
+
+
+def fetch_raw(url: str, *, timeout: float = 20.0) -> str:
+    headers = _request_headers(url)
     request = urllib.request.Request(url, headers=headers)
+    opener = _build_opener()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             data = response.read(24 * 1024 * 1024 + 1)
             if len(data) > 24 * 1024 * 1024:
                 raise H6BError(f"response too large: {url}")
             charset = response.headers.get_content_charset() or "utf-8"
             return data.decode(charset, errors="replace")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise H6BError(f"fetch failed: {url}: {exc.__class__.__name__}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError, UnicodeError) as exc:
+        # Sanitized: retain only the failure class name; never chain or echo
+        # the transport exception (it may carry URLs, proxy or reason text,
+        # or — for UnicodeError — the full offending header value).
+        raise H6BError(f"fetch failed: {url}: {exc.__class__.__name__}") from None
 
 
 def fetch_text(url: str, *, timeout: float = 20.0) -> str:

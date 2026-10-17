@@ -130,7 +130,7 @@ def verify_r75_artifact(
         "version-refs.json",
         "sbom.spdx.json",
         "investorintelligence.exe",
-        "config/v213-r75-publication-mode-v1.json",
+        "config/v213-r75-publication-mode-v2.json",
         "scripts/v213_r75_activation_preflight.py",
         "cloud/src/v213/publication-mode.ts",
         "cloud/src/v213/activation-v2.ts",
@@ -192,7 +192,7 @@ def verify_r75_artifact(
             raise R75ArtifactError("SHA256SUMS digest mismatch")
 
     version = load_json_bytes(files["version-refs.json"][1], "VERSION-REFS.json")
-    contract_sha = digest(files["config/v213-r75-publication-mode-v1.json"][1])
+    contract_sha = digest(files["config/v213-r75-publication-mode-v2.json"][1])
     if (
         version.get("release") != "R75"
         or version.get("package_version") != "2.1.3"

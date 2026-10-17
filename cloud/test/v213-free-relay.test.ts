@@ -5,6 +5,8 @@ import * as sevenFieldBroadcast from "../src/v213/broadcast";
 import { generalAnswer } from "../src/qa";
 import {
   V213FreeRelayRoute,
+  applyFreeRelayClaim,
+  FREE_RELAY_SIGNATURE_PURPOSE,
   applyFreeRelayUpdate,
   freeRelayGatewaySecret,
   parseFreeRelayRoute,
@@ -65,8 +67,7 @@ function namespace(object: V213FreeRelayRoute): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
-function env(object: V213FreeRelayRoute): V211Env & FreeRelayEnv {
-  const kv = new MemoryKv();
+function env(object: V213FreeRelayRoute, kv = new MemoryKv()): V211Env & FreeRelayEnv {
   return {
     PUBLIC_CACHE: asKv(kv),
     TENANT_PRIVATE_CACHE: asKv(new MemoryKv()),
@@ -88,11 +89,12 @@ function hex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function signedAdminRequest(path: string, value: unknown, nonce: string): Promise<Request> {
+async function signedAdminRequest(path: string, value: unknown, nonce: string, at = Math.floor(Date.now() / 1000), purpose = ""): Promise<Request> {
   const body = JSON.stringify(value);
-  const timestamp = String(Math.floor(Date.now() / 1000));
+  const timestamp = String(at);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(HMAC_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${nonce}.${body}`)));
+  const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${purpose ? `${purpose}
+` : ""}${timestamp}.${nonce}.${body}`)));
   return new Request(`https://stable-worker.workers.dev${path}`, {
     method: "POST",
     headers: {
@@ -105,8 +107,9 @@ async function signedAdminRequest(path: string, value: unknown, nonce: string): 
   });
 }
 
-async function signedRequest(record: FreeRelayRouteRecord, nonce = "1234567890abcdef1234567890abcdef"): Promise<Request> {
-  return signedAdminRequest("/v213/admin/free-relay-route", record, nonce);
+/** A route refresh as the heartbeat signs it (purpose-bound). */
+async function signedRequest(record: FreeRelayRouteRecord, nonce = "1234567890abcdef1234567890abcdef", at = Math.floor(Date.now() / 1000)): Promise<Request> {
+  return signedAdminRequest("/v213/admin/free-relay-route", record, nonce, at, FREE_RELAY_SIGNATURE_PURPOSE);
 }
 
 function healthy(model = MODEL): Response {
@@ -176,6 +179,184 @@ describe("R75 FREE_RELAY route lease", () => {
     expect(rejected.status).toBe(401);
     expect(await rejected.json()).toMatchObject({ ok: false, code: "V21_SYNC_REPLAY" });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes the route every minute without a single KV write (the replay guard lives in the Durable Object)", async () => {
+    // 2026-09-26: a KV nonce per heartbeat (~1,400 a day) alone exceeded the free plan's 1,000 KV writes a day.
+    const relay = relayObject();
+    const kv = new MemoryKv();
+    const put = vi.spyOn(kv, "put");
+    vi.stubGlobal("fetch", vi.fn(async () => healthy()));
+    const runtime = env(relay.object, kv);
+    const first = route("13131313131313131313131313131313", -10_000, 60);
+    const now = Math.floor(Date.now() / 1000);
+    for (let beat = 0; beat < 5; beat += 1) {
+      const record = { ...first, expires_at: new Date(Date.now() + 60_000 + beat * 10_000).toISOString() };
+      const response = await productionWorker.fetch(await signedRequest(record, `${String(beat).repeat(32)}`, now - 4 + beat), runtime, context());
+      expect(response.status, `beat ${beat}`).toBe(200);
+    }
+    expect(put).not.toHaveBeenCalled();
+    expect(kv.values.size).toBe(0);
+    expect(relay.storage.values.get("route:admin-claims")).toMatchObject({ timestamp: now });
+  });
+
+  it("refuses an older signed refresh with a fresh nonce and a reused nonce within the same second, before any health check", async () => {
+    const relay = relayObject();
+    const fetchMock = vi.fn(async () => healthy());
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = env(relay.object);
+    const now = Math.floor(Date.now() / 1000);
+    const record = route("14141414141414141414141414141414", -10_000, 60);
+    expect((await productionWorker.fetch(await signedRequest(record, "a".repeat(32), now), runtime, context())).status).toBe(200);
+    const later = { ...record, expires_at: new Date(Date.now() + 90_000).toISOString() };
+    const older = await productionWorker.fetch(await signedRequest(later, "b".repeat(32), now - 1), runtime, context());
+    expect(older.status).toBe(401);
+    expect(await older.json()).toMatchObject({ ok: false, code: "V21_SYNC_REPLAY" });
+    const sameSecondReused = await productionWorker.fetch(await signedRequest(later, "a".repeat(32), now), runtime, context());
+    expect(sameSecondReused.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(3);  // only the first request reached the health checks
+    const sameSecondFresh = await productionWorker.fetch(await signedRequest(later, "c".repeat(32), now), runtime, context());
+    expect(sameSecondFresh.status).toBe(200);
+    const unsigned = await productionWorker.fetch(new Request("https://stable-worker.workers.dev/v213/admin/free-relay-route", { method: "POST", body: JSON.stringify(later) }), runtime, context());
+    expect(unsigned.status).toBe(401);
+    expect(await unsigned.json()).toMatchObject({ ok: false, code: "V21_SYNC_AUTH_INVALID" });
+  });
+
+  it("never lets a route refresh authenticate at another admin endpoint, in either direction (delivery mocked)", async () => {
+    const spy = vi.spyOn(sevenFieldBroadcast, "broadcastV213Top20").mockResolvedValue({ status: "synthetic_no_send", format: "v213_seven_fields" });
+    vi.stubGlobal("fetch", vi.fn(async () => healthy()));
+    try {
+      for (const alias of ["/v213/admin/test-push", "/v21/admin/test-push"]) {
+        const relay = relayObject();
+        const kv = new MemoryKv();
+        const runtime = env(relay.object, kv);
+        const record = route("15151515151515151515151515151515", -10_000, 60);
+        // (1) A purpose-bound refresh succeeds without KV; its exact bytes are refused at test-push (signature mismatch).
+        const refresh = await signedRequest(record, "d".repeat(32));
+        const captured = refresh.clone();
+        expect((await productionWorker.fetch(refresh, runtime, context())).status).toBe(200);
+        expect(kv.values.size).toBe(0);
+        const replayed = await productionWorker.fetch(new Request(`https://stable-worker.workers.dev${alias}`, {
+          method: "POST", headers: captured.headers, body: await captured.text() }), runtime, context());
+        expect(replayed.status, alias).toBe(401);
+        expect(await replayed.json()).toMatchObject({ ok: false, code: "V21_SYNC_SIGNATURE_INVALID" });
+        // (2) A generic admin signature at the route endpoint takes the legacy path and spends its KV nonce there, so the same
+        // bytes are then refused at test-push as a replay; and a test-push first makes the route endpoint refuse them.
+        const later = { ...record, expires_at: new Date(Date.now() + 100_000).toISOString() };
+        const legacy = await signedAdminRequest("/v213/admin/free-relay-route", later, "e".repeat(32));
+        const legacyCopy = legacy.clone();
+        expect((await productionWorker.fetch(legacy, runtime, context())).status).toBe(200);
+        expect([...kv.values.keys()].some(key => key.startsWith("v21:sync-nonce:"))).toBe(true);
+        const legacyReplay = await productionWorker.fetch(new Request(`https://stable-worker.workers.dev${alias}`, {
+          method: "POST", headers: legacyCopy.headers, body: await legacyCopy.text() }), runtime, context());
+        expect(await legacyReplay.json()).toMatchObject({ ok: false, code: "V21_SYNC_REPLAY" });
+        const push = await signedAdminRequest(alias, later, "f".repeat(32));
+        const pushCopy = push.clone();
+        expect((await productionWorker.fetch(push, runtime, context())).status).toBe(200);
+        const pushReplay = await productionWorker.fetch(new Request("https://stable-worker.workers.dev/v213/admin/free-relay-route", {
+          method: "POST", headers: pushCopy.headers, body: await pushCopy.text() }), runtime, context());
+        expect(pushReplay.status).toBe(401);
+        expect(await pushReplay.json()).toMatchObject({ ok: false, code: "V21_SYNC_REPLAY" });
+      }
+      expect(spy).toHaveBeenCalledTimes(2);  // only the two genuinely signed test-push requests
+    } finally { spy.mockRestore(); }
+  });
+
+  it("admits concurrent same-second refreshes once each, survives a restart on the same storage, and recovers from a clock step back", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => healthy()));
+    const storage = new FakeStorage();
+    const first = relayObject(storage);
+    const kv = new MemoryKv();
+    const runtime = env(first.object, kv);
+    const now = Math.floor(Date.now() / 1000);
+    const record = route("16161616161616161616161616161616", -10_000, 60);
+    const beats = [0, 1, 2].map(i => ({ ...record, expires_at: new Date(Date.now() + 70_000 + i * 5_000).toISOString() }));
+    const requests = await Promise.all(beats.map((beat, i) => signedRequest(beat, String(i + 1).repeat(32), now)));
+    const copies = requests.map(request => request.clone());
+    const results = await Promise.all(requests.map(request => productionWorker.fetch(request, runtime, context())));
+    expect(results.every(response => response.status < 500)).toBe(true);
+    expect(results.filter(response => response.status === 200).length).toBeGreaterThanOrEqual(1);
+    expect(kv.values.size).toBe(0);
+    // A fresh object on the same durable storage (eviction/restart) still refuses every admitted request.
+    const restarted = relayObject(storage);
+    const afterRestart = env(restarted.object, kv);
+    for (const copy of copies) {
+      const replay = await productionWorker.fetch(copy as any, afterRestart, context());
+      expect(replay.status).toBe(401);
+    }
+    // A signer whose clock stepped back is refused until it passes the stored second again (bounded by the 300 s window).
+    const stepped = await productionWorker.fetch(await signedRequest(beats[2]!, "7".repeat(32), now - 30), afterRestart, context());
+    expect(stepped.status).toBe(401);
+    const recovered = await productionWorker.fetch(await signedRequest({ ...record, expires_at: new Date(Date.now() + 90_000).toISOString() },
+      "8".repeat(32), now + 1), afterRestart, context());
+    expect(recovered.status).toBe(200);
+  });
+
+  it("models a skewed PC clock end to end: lease dates and signature both from the PC, fail closed, recover after resync", async () => {
+    // The heartbeat builds connected_at/expires_at AND the signed timestamp from the PC clock (New-V213FreeRelayRouteRecord,
+    // Publish-V213FreeRelayRoute). The Worker judges them against its own clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => healthy()));
+      const worker = Date.UTC(2026, 8, 27, 6, 0, 0);
+      vi.setSystemTime(worker);
+      const relay = relayObject();
+      const runtime = env(relay.object);
+      let nonce = 0;
+      const connected = new Date(worker - 600_000).toISOString();  // fixed when the tunnel connected (same generation)
+      const beat = async (skewSeconds: number) => {
+        const pc = Date.now() + skewSeconds * 1000;  // the PC's idea of "now"
+        const record = { ...route("17171717171717171717171717171717"), connected_at: connected, expires_at: new Date(pc + 180_000).toISOString() };
+        nonce += 1;
+        return productionWorker.fetch(await signedRequest(record, nonce.toString(16).padStart(32, "0"), Math.floor(pc / 1000)), runtime, context());
+      };
+      expect((await beat(0)).status).toBe(200);
+      // PC 180 s behind: every lease it writes expires on arrival (expires_at <= Worker now + 15 s) -> refused, every beat.
+      vi.setSystemTime(worker + 400_000);
+      for (let i = 0; i < 3; i += 1) expect((await beat(-180)).status, `behind ${i}`).not.toBe(200);
+      // Resynchronized: the next beat succeeds (the claim's high-water mark is in the past, the lease dates are valid again).
+      expect((await beat(0)).status).toBe(200);
+      // PC 120 s ahead: its signed second is admitted as the new high-water mark and its lease is still acceptable, so it works
+      // while skewed; after a resync that steps the clock back 120 s, beats are refused until Worker time passes that mark...
+      vi.setSystemTime(worker + 500_000);
+      expect((await beat(120)).status).toBe(200);
+      vi.setSystemTime(worker + 560_000);
+      expect((await beat(0)).status).toBe(401);  // V21_SYNC_REPLAY: older than the admitted second
+      // ...and succeed again one heartbeat after it (bounded by the skew, itself bounded by the 300 s signature window).
+      vi.setSystemTime(worker + 500_000 + 121_000);
+      expect((await beat(0)).status).toBe(200);
+      // PC 240 s ahead: signature valid, lease refused (it would end 420 s ahead) BEFORE the claim, so the mark does not move
+      // and the corrected PC succeeds at once (Astra batch 30).
+      vi.setSystemTime(worker + 800_000);
+      const mark = relay.storage.values.get("route:admin-claims") as { timestamp: number };
+      const far = await beat(240);
+      expect(far.status).toBe(400);
+      expect(await far.json()).toMatchObject({ ok: false, code: "FREE_RELAY_ROUTE_INVALID" });
+      expect(relay.storage.values.get("route:admin-claims")).toEqual(mark);
+      expect((await beat(0)).status).toBe(200);
+      // A PC more than the 300 s signature window off is refused outright until it is resynchronized.
+      expect((await beat(-400)).status).toBe(401);
+      expect((await beat(400)).status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("claims nonces monotonically and boundedly", () => {
+    const digest = (c: string) => c.repeat(64);
+    const first = applyFreeRelayClaim(null, 100, digest("a"));
+    expect(first).toEqual({ timestamp: 100, nonces: [digest("a")] });
+    expect(applyFreeRelayClaim(first, 101, digest("a"))).toEqual({ timestamp: 101, nonces: [digest("a")] });
+    expect(() => applyFreeRelayClaim(first, 99, digest("b"))).toThrow("V21_SYNC_REPLAY");
+    expect(() => applyFreeRelayClaim(first, 100, digest("a"))).toThrow("V21_SYNC_REPLAY");
+    let state = first;
+    const distinct = (i: number) => i.toString(16).padStart(64, "0");
+    for (let i = 1; i < 16; i += 1) state = applyFreeRelayClaim(state, 100, distinct(i));
+    expect(state.nonces).toHaveLength(16);
+    expect(() => applyFreeRelayClaim(state, 100, distinct(99))).toThrow("V21_SYNC_REPLAY");  // at most 16 a second
+    for (const [time, nonce] of [[0, digest("a")], [1.5, digest("a")], [100, "z".repeat(64)], [100, "a".repeat(63)]] as const) {
+      expect(() => applyFreeRelayClaim(null, time, nonce)).toThrow("FREE_RELAY_CLAIM_INVALID");
+    }
   });
 
   it("rejects unsigned registration and exact-model mismatch without changing the old route", async () => {
@@ -269,6 +450,31 @@ describe("R75 FREE_RELAY route lease", () => {
     })).rejects.toThrow("V213_LOCAL_MODEL_REDIRECT_REJECTED");
   });
 
+  it("follows the route's authenticated model only when LOCAL_LLM_MODEL_FROM_ROUTE is on (a profile keeps its settings only)", async () => {
+    const relay = relayObject();
+    const moved = { ...route("abababababababababababababababab", -1_000), model: "Qwen3.8-27B" } as FreeRelayRouteRecord;
+    const pinned = env(relay.object);
+    expect(() => parseFreeRelayRoute(JSON.stringify(moved), pinned)).toThrow("FREE_RELAY_ROUTE_INVALID");
+    const following = { ...pinned, LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    expect(parseFreeRelayRoute(JSON.stringify(moved), following).model).toBe("Qwen3.8-27B");
+    expect(() => parseFreeRelayRoute(JSON.stringify({ ...moved, model: "bad model!" }), following)).toThrow("FREE_RELAY_ROUTE_INVALID");
+    const profiled = { ...following, V213_MODEL_PROFILE_JSON: JSON.stringify({ schema_version: 1, model: "profile-model", enable_thinking: false,
+      reasoning_effort: "none", max_output_tokens: 1024, smoke_output_tokens: 128, timeout_ms: 18000 }) };
+    expect(parseFreeRelayRoute(JSON.stringify(moved), profiled).model).toBe("Qwen3.8-27B");  // settings only in route mode
+    const { LOCAL_LLM_MODEL_FROM_ROUTE: _off, ...profiledPinned } = profiled;
+    expect(() => parseFreeRelayRoute(JSON.stringify(moved), profiledPinned)).toThrow("FREE_RELAY_ROUTE_INVALID");  // pinned without it
+    await relay.object.fetch(new Request("https://free-relay.internal/update", { method: "POST", body: JSON.stringify(moved) }));
+    let sent: RequestInit | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = init;
+      return Response.json({ choices: [{ message: { content: "relay answer" } }] });
+    }));
+    expect((await freeRelayRequestEnv(pinned)).LOCAL_LLM_BASE_URL).toBe("");  // pinned Worker ignores the moved route
+    const answer = await generalAnswer(await freeRelayRequestEnv(following), parseQuery("explain photonics"), { tenantId: "synthetic", chatType: "user" });
+    expect(answer).toBe("relay answer");
+    expect(JSON.parse(String(sent?.body))).toMatchObject({ model: "Qwen3.8-27B" });
+  });
+
   it("routes Q&A through the current lease with exact model and per-generation authentication", async () => {
     const relay = relayObject();
     const current = route("dddddddddddddddddddddddddddddddd", -1_000);
@@ -315,6 +521,21 @@ describe("R75 FREE_RELAY route lease", () => {
       stable_entrypoint: "workers_dev",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the KV nonce for every other admin request (the smoke runs rarely)", async () => {
+    const relay = relayObject();
+    await relay.object.fetch(new Request("https://free-relay.internal/update", { method: "POST", body: JSON.stringify(route("fdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfd", -1_000)) }));
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content: "R75_FREE_RELAY_E2E_OK" } }],
+      ii_exact_model_pin: { selected_model: "qwen38-q6", request_model_substitution_allowed: false } })));
+    const kv = new MemoryKv();
+    const runtime = env(relay.object, kv);
+    const request = await signedAdminRequest("/v213/admin/free-relay-smoke", { schema_version: 1 }, "1".repeat(32));
+    const replay = request.clone();
+    expect((await productionWorker.fetch(request, runtime, context())).status).toBe(200);
+    expect([...kv.values.keys()].some(key => key.startsWith("v21:sync-nonce:"))).toBe(true);
+    const rejected = await productionWorker.fetch(replay as any, runtime, context());
+    expect(await rejected.json()).toMatchObject({ ok: false, code: "V21_SYNC_REPLAY" });
   });
 
   it("derives the same non-persisted per-generation gateway secret deterministically", async () => {

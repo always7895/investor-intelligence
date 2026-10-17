@@ -14,7 +14,10 @@ param(
     [string]$NamedTunnelConfig = '',
     [string]$FreeRelayConfigPath = '',
     [int]$FreeRelayLeaseTtlSeconds = 180,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$RoutingCheckOnly,
+    [AllowNull()][AllowEmptyString()][string]$BindingJson,
+    [switch]$BindingMetadataCheckOnly
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -24,8 +27,33 @@ if([string]::IsNullOrWhiteSpace($ProjectRoot)){
 $ProjectRoot=[IO.Path]::GetFullPath($ProjectRoot)
 $core=Join-Path $ProjectRoot 'scripts\run_v213_local_llm_bridge_core.ps1'
 if(-not(Test-Path -LiteralPath $core -PathType Leaf)){throw "Missing bridge core: $core"}
-if($SelfTest){
+# Presence-driven explicit path BEFORE any Python/import/install/bootstrap probe.
+$bindingFile = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v213-runtime-binding-v1.json'
+$selectionFile = Join-Path $env:LOCALAPPDATA 'InvestorIntelligence\UserData\config\v213-model-selection.json'
+$explicit = $PSBoundParameters.ContainsKey('BindingJson') -or $null -ne [Environment]::GetEnvironmentVariable('V213_RUNTIME_BINDING_JSON') -or (Test-Path -LiteralPath $bindingFile)
+if (Test-Path -LiteralPath $selectionFile) {
+    if (-not (Test-Path -LiteralPath $selectionFile -PathType Leaf) -or (Get-Item -LiteralPath $selectionFile).Length -gt 16384) { throw 'MODEL_SELECTION_INVALID' }
+    # Raw top-level object check BEFORE decoding: never infer the type from pipeline-enumerated output (version-independent).
+    try {
+        $selectionText = [IO.File]::ReadAllText($selectionFile)
+        if ($selectionText -cnotmatch '\A[ \t\r\n]*\{') { throw 'MODEL_SELECTION_INVALID' }
+        $selection = $selectionText | ConvertFrom-Json -ErrorAction Stop
+    } catch { throw 'MODEL_SELECTION_INVALID' }
+    if ($null -eq $selection -or $selection -isnot [pscustomobject]) { throw 'MODEL_SELECTION_INVALID' }
+    $explicit = $explicit -or $null -ne $selection.PSObject.Properties['engine'] -or $null -ne $selection.PSObject.Properties['runtime_binding_sha256']
+}
+if ($SelfTest) {
+    if ($explicit -or $BindingMetadataCheckOnly -or $RoutingCheckOnly) { throw 'BINDING_OPERATION_CONFLICT' }
     & $core -ProjectRoot $ProjectRoot -SelfTest
+    exit $LASTEXITCODE
+}
+if ($explicit -or $BindingMetadataCheckOnly) {
+    $forward = @{}
+    foreach ($key in $PSBoundParameters.Keys) { $forward[$key] = $PSBoundParameters[$key] }
+    $forward['ProjectRoot'] = $ProjectRoot
+    # Core validates locally then selected metadata before any actuation, and
+    # explicitly refuses missing existing Python; never call the installer lane.
+    & $core @forward
     exit $LASTEXITCODE
 }
 
@@ -66,7 +94,10 @@ if(-not(Test-GatewayPython $python)){throw 'No verified Python runtime with requ
 $oldProjectPython=$env:PROJECT_PYTHON
 try{
     $env:PROJECT_PYTHON=$python
-    & $core -ProjectRoot $ProjectRoot -LlamaBaseUrl $LlamaBaseUrl -GatewayPort $GatewayPort -Model $Model -NoTunnel:$NoTunnel -InstallCloudflared:$InstallCloudflared -StopExisting:$StopExisting -FinalizeCutover:$FinalizeCutover -TunnelMode $TunnelMode -NamedTunnelName $NamedTunnelName -NamedTunnelHostname $NamedTunnelHostname -NamedTunnelConfig $NamedTunnelConfig -FreeRelayConfigPath $FreeRelayConfigPath -FreeRelayLeaseTtlSeconds $FreeRelayLeaseTtlSeconds
+    $forward = @{}
+    foreach ($key in $PSBoundParameters.Keys) { $forward[$key] = $PSBoundParameters[$key] }
+    $forward['ProjectRoot'] = $ProjectRoot
+    & $core @forward
     if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
 }finally{
     $env:PROJECT_PYTHON=$oldProjectPython

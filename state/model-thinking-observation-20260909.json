@@ -1,0 +1,39 @@
+{
+  "scope": "LOCAL_MODEL_CAPABILITY_OBSERVATION_ONLY",
+  "status": "PASS_OBSERVATION",
+  "release_qualified": false,
+  "production_mutation": false,
+  "real_line_sent": false,
+  "preset_modified": false,
+  "started_at": "2026-09-09T13:33:43.689479+00:00",
+  "results": [
+    {
+      "requested_effort": "none",
+      "profile_sha256": "ef4f8beef93c913ae2a79b42f9c4da7e05b81f65166a720d12ee33537fdc38f9",
+      "status": "PASS_OBSERVATION",
+      "http_status": 200,
+      "elapsed_ms": 9594.0,
+      "reasoning_present": false,
+      "complete_exact_marker": true
+    },
+    {
+      "requested_effort": "low",
+      "profile_sha256": "d625709ca91409c39f3a3e0347e8d0bbbb6614f65d11e2dfbedee93fc455e8a1",
+      "status": "PASS_OBSERVATION",
+      "http_status": 200,
+      "elapsed_ms": 4703.0,
+      "reasoning_present": true,
+      "complete_exact_marker": true
+    }
+  ],
+  "initial_model_state": true,
+  "source_head": "8e9e52aa904a65e7e488de76aa97d7baa4db9354",
+  "source_dirty": true,
+  "source_files": {
+    "scripts/v213_compact_qa_gateway.py": "c2c9fdd1edc701f10b053d7f183aff9023585add86678eb4bcb0fd88ab012dad",
+    "scripts/v213_model_profile.py": "37963680ea8f42ac7f65624c9a682b28e74c092485c5cd98d57508f89a1646e3",
+    "config/v213-compact-qa-v1.json": "cbf5d35caeee04b8ad0ee51bf1a728c182c7c317877fb450189a14f2aa591bad",
+    "config/v213-model-profile-v1.json": "02e36c058ed8b24f88af3512b91f8cfcbcb5e613d4c6e3f6546c66738ad706e6"
+  },
+  "completed_at": "2026-09-09T13:33:58.056102+00:00"
+}

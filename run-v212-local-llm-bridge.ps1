@@ -41,6 +41,47 @@ foreach ($path in @($ApplicationRoot, $UserConfigRoot)) {
 foreach ($path in @($PythonExe, $GatewayScript)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing required file: $path" }
 }
+# L1: the retired v212 path cannot honor an explicit runtime intent or the EXE model registry. Refuse BEFORE any log directory, model
+# probe, process, secret, tunnel, npx or deploy action. Presence only (never validity); no fallback to the legacy path.
+function Test-StatePresent([string]$Path) {
+    # File.GetAttributes does not follow a final link: a file, a directory, a reparse point or a broken link is PRESENT. Only the two
+    # not-found exceptions mean absent; every other fault is a finite refusal. Static .NET semantics; native PS 5.1 behavior NOT_RUN.
+    try { [void][IO.File]::GetAttributes($Path); return $true }
+    catch [IO.FileNotFoundException] { return $false }
+    catch [IO.DirectoryNotFoundException] { return $false }
+    catch { throw 'MODEL_STATE_UNAVAILABLE' }
+}
+function Assert-NoUnsupportedIntent([string]$ConfigFolder) {
+    if (Test-StatePresent (Join-Path $ConfigFolder 'v213-model-registry-v1.json')) { throw 'USE_V213_MODEL_REGISTRY' }
+    if (Test-StatePresent (Join-Path $ConfigFolder 'v213-runtime-binding-v1.json')) { throw 'EXPLICIT_RUNTIME_INTENT_UNSUPPORTED_BY_V212' }
+    $selection = Join-Path $ConfigFolder 'v213-model-selection.json'
+    if (-not (Test-StatePresent $selection)) { return }
+    $value = $null
+    try {
+        $attributes = [IO.File]::GetAttributes($selection)
+        if (($attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) -ne 0) { throw 'invalid' }
+        $stream = [IO.FileStream]::new($selection, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $buffer = New-Object byte[] 16385
+            $count = 0
+            while ($count -lt $buffer.Length) {
+                $read = $stream.Read($buffer, $count, $buffer.Length - $count)
+                if ($read -le 0) { break }
+                $count += $read
+            }
+        } finally { $stream.Dispose() }
+        if ($count -gt 16384) { throw 'invalid' }
+        $skip = if ($count -ge 3 -and $buffer[0] -eq 0xEF -and $buffer[1] -eq 0xBB -and $buffer[2] -eq 0xBF) { 3 } else { 0 }
+        $text = [Text.UTF8Encoding]::new($false, $true).GetString($buffer, $skip, $count - $skip)
+        if ($text -cnotmatch '\A[ \t\r\n]*\{') { throw 'invalid' }
+        $value = $text | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $value -or $value -isnot [pscustomobject]) { throw 'invalid' }
+    } catch { throw 'MODEL_SELECTION_INVALID' }
+    if ($null -ne $value.PSObject.Properties['engine'] -or $null -ne $value.PSObject.Properties['runtime_binding_sha256']) { throw 'EXPLICIT_RUNTIME_INTENT_UNSUPPORTED_BY_V212' }
+}
+if ($null -ne [Environment]::GetEnvironmentVariable('V213_RUNTIME_BINDING_JSON')) { throw 'EXPLICIT_RUNTIME_INTENT_UNSUPPORTED_BY_V212' }
+Assert-NoUnsupportedIntent (Join-Path $BaseInstallRoot 'UserData\config')
+Assert-NoUnsupportedIntent $UserConfigRoot
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 
 function Test-LocalLlama([string]$Base) {
@@ -60,14 +101,18 @@ function Resolve-LlamaBaseUrl {
         if ($LlamaBaseUrl -notmatch '^http://(?:127\.0\.0\.1|localhost):\d{2,5}$') {
             throw 'LlamaBaseUrl must be a loopback HTTP endpoint.'
         }
+        # L1: ports 5000 (IBKR Client Portal) and 8000 (retired System One decider) are never model backends; refused BEFORE any network call.
+        $llamaPort = [int]$LlamaBaseUrl.Substring($LlamaBaseUrl.LastIndexOf(':') + 1)
+        if ($llamaPort -lt 1 -or $llamaPort -gt 65535 -or $llamaPort -eq 5000 -or $llamaPort -eq 8000) {
+            throw 'LlamaBaseUrl port is not an allowed model port.'
+        }
         if (-not (Test-LocalLlama $LlamaBaseUrl)) { throw "llama.cpp is not reachable at $LlamaBaseUrl" }
         return $LlamaBaseUrl.TrimEnd('/')
     }
     foreach ($candidate in @(
         'http://127.0.0.1:8813',
         'http://127.0.0.1:8080',
-        'http://127.0.0.1:8081',
-        'http://127.0.0.1:8000'
+        'http://127.0.0.1:8081'
     )) {
         if (Test-LocalLlama $candidate) { return $candidate }
     }

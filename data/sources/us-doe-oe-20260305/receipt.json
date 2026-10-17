@@ -1,0 +1,14 @@
+{
+  "schema": "SOURCE_INGEST_RECEIPT_V1",
+  "lineage": "US_DOE_OFFICE_OF_ELECTRICITY",
+  "canonical_url": "https://www.energy.gov/oe/distribution-transformer-webinar-text-alternative",
+  "event_date": "2026-03-05",
+  "page_posted": "2026-04-03",
+  "speaker": "Catherine (Katie) Jereza, Assistant Secretary, Office of Electricity",
+  "rights": "U.S. federal government work; public domain (17 U.S.C. 105)",
+  "file": "doe-oe-distribution-transformer-webinar-2026-03-05.txt",
+  "byte_length": 106457,
+  "content_sha256": "2ed1b95e3def2595cde6cb70336642ee442669e0ed5be519795b0def71ffb928",
+  "ingested_at": "2026-09-16",
+  "ingest_note": "one-time authorized acquisition (task #17); in-window corroboration source; zero provider calls inside tests"
+}

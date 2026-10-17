@@ -1,0 +1,43 @@
+{
+  "schema": "order-claims-v2",
+  "issuers": {
+    "MU": {"name": "Micron Technology, Inc.", "url_prefixes": ["https://investors.micron.com/", "https://s25.q4cdn.com/621799436/"]}
+  },
+  "documents": [
+    {
+      "id": "MU-FQ3-26-REMARKS",
+      "issuer": "MU",
+      "publisher": "Micron Technology, Inc.",
+      "title": "Micron Technology, Inc. Fiscal Q3 2026 Earnings Call Prepared Remarks",
+      "source_kind": "ISSUER_PREPARED_REMARKS",
+      "url": "https://s25.q4cdn.com/621799436/files/doc_financials/2026/q3/Q3-FY26-Prepared-Remarks.pdf",
+      "published_date": "2026-06-24",
+      "retrieved_at": "2026-09-27T10:56:11Z",
+      "sha256": "a3ce62b84a059e35fae80c2bfd5c89f9af334193fd6aceff698fc3008e7d4c27",
+      "byte_size": 119859,
+      "lineage_id": "MU-FQ3-26-RESULTS"
+    }
+  ],
+  "claims": [
+    {
+      "id": "MU-SCA-RPO-2026-06-24",
+      "symbol": "MU",
+      "document_id": "MU-FQ3-26-REMARKS",
+      "locator": "p.7, Strategic customer agreements",
+      "passage": "RPO at the end of fiscal Q3 (FQ3) was over $5 billion. For the SCAs that we have entered into so far, including ones executed after the end of FQ3, RPO is approximately $100 billion. RPO is determined based on minimum committed volumes and minimum pricing, and reflects inherently conservative estimates.",
+      "summary": "已簽策略客戶協議（SCA）RPO 約 US$100B（含 FQ3 後新簽，最低量×最低價）",
+      "metric": "SIGNED_CONTRACT_VALUE",
+      "assertion_kind": "DISCLOSED_FACT",
+      "currency": "USD",
+      "unit_multiplier": 1000000000,
+      "amount": 100,
+      "as_of": "2026-06-24",
+      "scope": "CONTRACT",
+      "scope_label": "已簽 SCA（含 FQ3 後新簽；公司說明日，非資產負債表日）",
+      "series_id": "MU:SCA-RPO",
+      "basis": "minimum committed volumes x minimum pricing (issuer statement, approximate)",
+      "revision": {"kind": "SUPPLEMENTS", "overlap": "INCLUDED"},
+      "review": {"checked_at": "2026-09-27T11:25:00Z", "receipt": "lane-dispatch-20260927T0905Z-mu-writer-verify"}
+    }
+  ]
+}

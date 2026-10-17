@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -299,13 +300,13 @@ def validate_universe(records: Sequence[Mapping[str, Any]]) -> None:
             raise base.PipelineError(f"Forbidden public field in research universe: {forbidden}")
 
 
-def _write_public_symbol_catalog(records: Sequence[Mapping[str, Any]], limit: int) -> int:
+def _write_public_symbol_catalog(records: Sequence[Mapping[str, Any]], limit: int, *, output_path: Path | None = None) -> int:
     symbols = [
         {"ticker": str(item["ticker"]), "market_data_ticker": str(item["ticker"]), "currency": "USD"}
         for item in records[: max(0, limit)]
     ]
     base.atomic_json(
-        GENERATED_SYMBOLS_PATH,
+        output_path if output_path is not None else GENERATED_SYMBOLS_PATH,
         {
             "schema_version": 1,
             "owner_watchlist_inheritance": False,
@@ -315,7 +316,12 @@ def _write_public_symbol_catalog(records: Sequence[Mapping[str, Any]], limit: in
     return len(symbols)
 
 
-def run(*, synthetic: bool) -> dict[str, Any]:
+def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
+    paths = base.public_output_paths(synthetic=synthetic, output_root=output_root)
+    universe_path = Path(output_root).resolve() / UNIVERSE_PATH.name if output_root is not None else UNIVERSE_PATH
+    symbols_path = Path(output_root).resolve() / GENERATED_SYMBOLS_PATH.name if output_root is not None else GENERATED_SYMBOLS_PATH
+    if synthetic and (universe_path.resolve() == UNIVERSE_PATH.resolve() or symbols_path.resolve() == GENERATED_SYMBOLS_PATH.resolve()):
+        raise base.PipelineError('SYNTHETIC_DEFAULT_OUTPUT_FORBIDDEN')
     policy, activation = v211_policy()
     plan = base.source_plan(policy, activation)
     generated = base.iso_now()
@@ -402,14 +408,15 @@ def run(*, synthetic: bool) -> dict[str, Any]:
         "- No owner watchlist or owner-specific ticker is inherited.\n"
     )
 
-    base.atomic_json(base.TOP20_PATH, top20)
-    base.atomic_json(UNIVERSE_PATH, scored)
-    base.atomic_json(base.PLAN_PATH, plan)
-    base.atomic_json(base.METADATA_PATH, metadata)
-    base.atomic_text(base.REPORT_PATH, report)
+    base.atomic_json(paths['top20'], top20)
+    base.atomic_json(universe_path, scored)
+    base.atomic_json(paths['plan'], plan)
+    base.atomic_json(paths['metadata'], metadata)
+    base.atomic_text(paths['report'], report)
     public_option_symbols = _write_public_symbol_catalog(
         scored,
         int(policy["public_option_symbol_limit"]),
+        output_path=symbols_path,
     )
 
     return {
@@ -418,21 +425,22 @@ def run(*, synthetic: bool) -> dict[str, Any]:
         "thematic_discovered_count": thematic_discovered,
         "public_option_symbol_count": public_option_symbols,
         "catalog_count": plan["catalog_count"],
-        "top20_path": str(base.TOP20_PATH),
-        "universe_path": str(UNIVERSE_PATH),
-        "public_symbols_path": str(GENERATED_SYMBOLS_PATH),
-        "source_plan_path": str(base.PLAN_PATH),
-        "report_path": str(base.REPORT_PATH),
+        "top20_path": str(paths['top20']),
+        "universe_path": str(universe_path),
+        "public_symbols_path": str(symbols_path),
+        "source_plan_path": str(paths['plan']),
+        "report_path": str(paths['report']),
         "macro_status": macro.get("status"),
     }
 
 
 def self_test() -> None:
-    output = run(synthetic=True)
-    if output["top20_count"] != 20 or output["catalog_count"] != 101:
-        raise base.PipelineError("v2.1.1 synthetic acceptance failed")
-    if output["research_universe_count"] < 20:
-        raise base.PipelineError("v2.1.1 synthetic universe is incomplete")
+    with tempfile.TemporaryDirectory(prefix='ii-v211-self-test-') as temporary:
+        output = run(synthetic=True, output_root=Path(temporary))
+        if output["top20_count"] != 20 or output["catalog_count"] != 102:
+            raise base.PipelineError("v2.1.1 synthetic acceptance failed")
+        if output["research_universe_count"] < 20:
+            raise base.PipelineError("v2.1.1 synthetic universe is incomplete")
     if "AAOI" in V211_POLICY_PATH.read_text(encoding="utf-8").upper() or "SIVE" in V211_POLICY_PATH.read_text(encoding="utf-8").upper():
         raise base.PipelineError("Owner-specific ticker leaked into thematic discovery policy")
     print("V211_SERENITY_UNIVERSE_SELF_TEST = PASS")
@@ -441,13 +449,14 @@ def self_test() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--synthetic", action="store_true")
+    parser.add_argument("--output-root", type=Path, help="Required non-default output directory for synthetic data only")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test()
         else:
-            print(json.dumps(run(synthetic=args.synthetic), ensure_ascii=False, indent=2))
+            print(json.dumps(run(synthetic=args.synthetic, output_root=args.output_root), ensure_ascii=False, indent=2))
         return 0
     except (base.PipelineError, OSError, ValueError, base.requests.RequestException) as exc:
         base.LOGGER.error("V2.1.1 Serenity universe failed: %s", exc)

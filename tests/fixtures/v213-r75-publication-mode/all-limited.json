@@ -25,8 +25,8 @@
     },
     "transaction_id": "11111111111111111111111111111111"
   },
-  "contract_id": "v213-r75-publication-mode-v1",
-  "contract_sha256": "9b96f2fd68318e6476dc00d0d003162c0343d2aece5ef25f522fe7c33dca7bfd",
+  "contract_id": "v213-r75-publication-mode-v2",
+  "contract_sha256": "5826a9790f95a891c3a0bf996dce4806b6d4b04d18a916a00013445ab5e41a21",
   "evaluated_at": "2026-01-02T03:04:05Z",
   "expected": {
     "bls_present": false,
