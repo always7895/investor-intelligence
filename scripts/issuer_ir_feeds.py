@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from xml.etree import ElementTree
@@ -24,6 +25,9 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+# Several IR sites (the Drupal-hosted ones: Sandisk, Broadcom, MACOM, AOI, Astera Labs) answer the browser string with 403 and the
+# plain observation string with the feed, so a 403 is retried once with it (the wire channel and the controlled checker use it too).
+FALLBACK_USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public observation)"
 MAX_BYTES = 8_000_000
 TIMEOUT_SECONDS = 30
 KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML")
@@ -36,10 +40,19 @@ class IrFeedError(RuntimeError):
     """A channel that could not be read completely (never an empty success)."""
 
 
-def fetch_bytes(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+def _read(url: str, user_agent: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "*/*"})
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-        body = response.read(MAX_BYTES + 1)
+        return response.read(MAX_BYTES + 1)
+
+
+def fetch_bytes(url: str) -> bytes:
+    try:
+        body = _read(url, USER_AGENT)
+    except urllib.error.HTTPError as error:
+        if error.code != 403:
+            raise
+        body = _read(url, FALLBACK_USER_AGENT)
     if len(body) > MAX_BYTES:
         raise IrFeedError("IR_RESPONSE_TOO_LARGE")
     return body
@@ -97,6 +110,8 @@ def newsroom_items(url: str, since: date, fetch: Callable[[str], bytes]) -> tupl
     base = urllib.parse.urlsplit(url)
     items = []
     for href, inner in re.findall(r'<a[^>]+href="(/newsroom/[^"#?]+)"[^>]*>(.*?)</a>', text, re.S):
+        # Since October 2026 each card carries a category tag ("Press release") in front of its title: it is not part of the title.
+        inner = re.sub(r'<div class="pc-basic-card__labels">(?:<div class="pc-tag[^"]*"[^>]*>.*?</div>)*</div>', " ", inner, flags=re.S)
         label = _clean(inner)
         found = re.search(r"(" + "|".join(MONTHS) + r") (\d{1,2}), (20\d\d)$", label)
         if not found:

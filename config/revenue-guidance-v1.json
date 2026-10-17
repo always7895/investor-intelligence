@@ -1,7 +1,7 @@
 {
  "schema": "revenue-guidance-v1",
  "version": 1,
- "consensus_enabled": false,
+ "consensus_enabled": true,
  "issuers": [
   {
    "symbol": "SNDK",
@@ -206,7 +206,12 @@
     "wire_symbol": "SNDK",
     "wire_names": [
      "Sandisk"
-    ]
+    ],
+    "ir": {
+     "kind": "RSS",
+     "url": "https://investor.sandisk.com/rss.xml"
+    },
+    "ir_guidance_release_title": "Sandisk Reports Fiscal Fourth Quarter 2026 Financial Results"
    },
    "reviewed_later_documents": [
     {
@@ -220,6 +225,18 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-09-28T15:32:15Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+    },
+    {
+     "id": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-details-growth-strategy-and-long-term-financial-model",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-13T14:43:17Z",
+     "note": "2026 Investor Day release: a multi-year FY2028-FY2030 financial model (revenue growth mid-to-high teens, margins); no FQ1-27 or FY27 revenue guidance stated or changed"
+    },
+    {
+     "id": "https://www.nasdaq.com/press-release/sandisk-details-growth-strategy-and-long-term-financial-model-2026-investor-day-2026",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-13T14:43:17Z",
+     "note": "wire distribution of the 2026 Investor Day release (same event as the reviewed IR item): FY2028-FY2030 model only, no change to the FQ1-27 outlook"
     }
    ]
   },
@@ -481,11 +498,11 @@
      "publisher": "Micron Technology, Inc.",
      "title": "Micron Technology, Inc. earnings release with outlook",
      "source_kind": "SEC_8K_EXHIBIT",
-     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000013/a2026q3ex991-pressrelease.htm",
-     "published_date": "2026-06-24",
-     "retrieved_at": "2026-09-28T14:23:22Z",
-     "sha256": "6c03d927cbe1f8e6a89f683963854ee6b4cdffdb7f9b061107366ac6b21657ee",
-     "byte_size": 292002,
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000018/a2026q4ex991-pressrelease.htm",
+     "published_date": "2026-09-30",
+     "retrieved_at": "2026-10-13T14:30:05Z",
+     "sha256": "0bc8cccffb1895ef104e952fca877ffae12ee7e1a835d2f2b398ad212d799529",
+     "byte_size": 357009,
      "lineage_id": "MU-GUIDANCE"
     },
     {
@@ -494,38 +511,25 @@
      "publisher": "Micron Technology, Inc.",
      "title": "Micron Technology, Inc. Form 10-K",
      "source_kind": "OFFICIAL_FISCAL_CALENDAR",
-     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
-     "published_date": "2025-10-03",
-     "retrieved_at": "2026-09-28T14:23:23Z",
-     "sha256": "0faf0bc798049e5c5454a4ab6e6565aa9581178ea300f752e1c80756f6bd2459",
-     "byte_size": 2439584,
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/mu-20260903.htm",
+     "published_date": "2026-10-09",
+     "retrieved_at": "2026-10-13T14:30:05Z",
+     "sha256": "a22e4bb649e1eb6420126ca7144542ebc23773d4563bb5b9257975a4dd5bce03",
+     "byte_size": 2062356,
      "lineage_id": "MU-10K"
     },
     {
-     "id": "MU-0000723125-25-000028",
+     "id": "MU-0000723125-26-000023",
      "issuer": "MU",
      "publisher": "Micron Technology, Inc.",
-     "title": "Micron Technology, Inc. Form 10-K (0000723125-25-000028)",
+     "title": "Micron Technology, Inc. Form 10-K (0000723125-26-000023)",
      "source_kind": "SEC_PERIODIC",
-     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
-     "published_date": "2025-10-03",
-     "retrieved_at": "2026-09-28T14:23:24Z",
-     "sha256": "0faf0bc798049e5c5454a4ab6e6565aa9581178ea300f752e1c80756f6bd2459",
-     "byte_size": 2439584,
-     "lineage_id": "MU-0000723125-25-000028"
-    },
-    {
-     "id": "MU-0000723125-26-000015",
-     "issuer": "MU",
-     "publisher": "Micron Technology, Inc.",
-     "title": "Micron Technology, Inc. Form 10-Q (0000723125-26-000015)",
-     "source_kind": "SEC_PERIODIC",
-     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm",
-     "published_date": "2026-06-25",
-     "retrieved_at": "2026-09-28T14:23:26Z",
-     "sha256": "1931e2d558b8960accd709d6ec15975f02fb25b67c01b742fd712f6fe0e32276",
-     "byte_size": 1532182,
-     "lineage_id": "MU-0000723125-26-000015"
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/mu-20260903.htm",
+     "published_date": "2026-10-09",
+     "retrieved_at": "2026-10-13T14:30:05Z",
+     "sha256": "a22e4bb649e1eb6420126ca7144542ebc23773d4563bb5b9257975a4dd5bce03",
+     "byte_size": 2062356,
+     "lineage_id": "MU-0000723125-26-000023"
     },
     {
      "id": "MU-0000723125-25-000046",
@@ -552,6 +556,19 @@
      "sha256": "e2f60672775d423133be75790cf54bf7fb7bf3233bca47e5e4b2316d83e222b4",
      "byte_size": 1517513,
      "lineage_id": "MU-0000723125-26-000006"
+    },
+    {
+     "id": "MU-0000723125-26-000015",
+     "issuer": "MU",
+     "publisher": "Micron Technology, Inc.",
+     "title": "Micron Technology, Inc. Form 10-Q (0000723125-26-000015)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm",
+     "published_date": "2026-06-25",
+     "retrieved_at": "2026-09-28T14:23:26Z",
+     "sha256": "1931e2d558b8960accd709d6ec15975f02fb25b67c01b742fd712f6fe0e32276",
+     "byte_size": 1532182,
+     "lineage_id": "MU-0000723125-26-000015"
     }
    ],
    "claims": [
@@ -559,46 +576,26 @@
      "id": "MU-Q-GUIDANCE",
      "document_id": "MU-GUIDANCE",
      "locator": "Outlook",
-     "passage": "FQ4-26 GAAP (1) Outlook Non-GAAP (2) Outlook Revenue $50.0 billion ± $1.0 billion $50.0 billion ± $1.0 billion",
+     "passage": "FQ1-27 GAAP (1) Outlook Non-GAAP (2) Outlook Revenue $61.5 billion ± $1.5 billion $61.5 billion ± $1.5 billion",
      "metric": "REVENUE",
      "assertion_kind": "COMPANY_GUIDANCE",
      "currency": "USD",
      "unit_multiplier": 1,
      "amount": null,
-     "low": 49000000000.0,
-     "high": 51000000000.0,
-     "stated_point": 50000000000.0,
-     "original_representation": "$50.0 billion ± $1.0 billion",
+     "low": 60000000000.0,
+     "high": 63000000000.0,
+     "stated_point": 61500000000.0,
+     "original_representation": "$61.5 billion ± $1.5 billion",
      "scope": "COMPANY",
      "scope_label": "全公司",
      "accounting_basis": "GAAP",
-     "fiscal_label": "FQ4-26",
+     "fiscal_label": "FQ1-27",
      "period_kind": "QUARTER",
-     "period_start": "2026-05-29",
-     "period_end": "2026-09-03"
+     "period_start": "2026-09-04",
+     "period_end": "2026-12-03"
     }
    ],
    "reported_quarters": [
-    {
-     "fiscal_label": "FQ4-25",
-     "start": "2025-05-30",
-     "end": "2025-08-28",
-     "revenue": 11315000000.0,
-     "currency": "USD",
-     "scope": "COMPANY",
-     "accounting_basis": "GAAP",
-     "document_id": "MU-0000723125-25-000028",
-     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-08-30..2025-08-28 minus ..2025-05-29",
-     "derivation": {
-      "kind": "YTD_DIFFERENCE",
-      "longer_document_id": "MU-0000723125-25-000028",
-      "longer_value": 37378000000.0,
-      "longer_start": "2024-08-30",
-      "shorter_document_id": "MU-0000723125-26-000015",
-      "shorter_value": 26063000000.0,
-      "shorter_end": "2025-05-29"
-     }
-    },
     {
      "fiscal_label": "FQ1-26",
      "start": "2025-08-29",
@@ -631,18 +628,31 @@
      "accounting_basis": "GAAP",
      "document_id": "MU-0000723125-26-000015",
      "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-02-27..2026-05-28"
-    }
-   ],
-   "forward_intervals": [
+    },
     {
      "fiscal_label": "FQ4-26",
      "start": "2026-05-29",
      "end": "2026-09-03",
-     "calendar_document_id": "MU-10K",
-     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
-    },
+     "revenue": 54229000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "MU-0000723125-26-000023",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-08-29..2026-09-03 minus ..2026-05-28",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "MU-0000723125-26-000023",
+      "longer_value": 133188000000.0,
+      "longer_start": "2025-08-29",
+      "shorter_document_id": "MU-0000723125-26-000015",
+      "shorter_value": 78959000000.0,
+      "shorter_end": "2026-05-28"
+     }
+    }
+   ],
+   "forward_intervals": [
     {
-     "fiscal_label": null,
+     "fiscal_label": "FQ1-27",
      "start": "2026-09-04",
      "end": "2026-12-03",
      "calendar_document_id": "MU-10K",
@@ -661,6 +671,13 @@
      "end": "2027-06-03",
      "calendar_document_id": "MU-10K",
      "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2027-06-04",
+     "end": "2027-09-02",
+     "calendar_document_id": "MU-10K",
+     "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
     }
    ],
    "fy_reconciliation": null,
@@ -674,26 +691,20 @@
      "kind": "Q4_PRESS_RELEASES",
      "url": "https://investors.micron.com/feed/PressRelease.svc/GetPressReleaseList"
     },
-    "ir_guidance_release_title": "Micron Technology, Inc. Reports Record Results for the Third Quarter of Fiscal 2026"
+    "ir_guidance_release_title": "Micron Technology, Inc. Reports Record Fiscal Fourth-Quarter and Full-Year 2026 Results"
    },
    "reviewed_later_documents": [
     {
-     "id": "0000723125-26-000013",
+     "id": "0000723125-26-000018",
      "disposition": "REVIEWED_IRRELEVANT",
-     "reviewed_at": "2026-09-28T15:32:15Z",
+     "reviewed_at": "2026-10-13T14:43:17Z",
      "note": "8-K items 2.02,9.01: the filing that furnishes the reviewed guidance document itself (MU-GUIDANCE)"
     },
     {
-     "id": "https://www.nasdaq.com/press-release/micron-technology-inc-reports-record-results-third-quarter-fiscal-2026-2026-06-24",
+     "id": "https://www.nasdaq.com/press-release/micron-technology-inc-reports-record-fiscal-fourth-quarter-and-full-year-2026-results",
      "disposition": "REVIEWED_IRRELEVANT",
-     "reviewed_at": "2026-09-28T15:32:15Z",
+     "reviewed_at": "2026-10-13T14:43:17Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
-    },
-    {
-     "id": "https://investors.micron.com/news/press-release/2026/Micron-Technology-to-Report-Fiscal-Fourth-Quarter-Results-on-September-30-2026/default.aspx",
-     "disposition": "REVIEWED_IRRELEVANT",
-     "reviewed_at": "2026-09-28T15:32:15Z",
-     "note": "scheduling notice of the next results date (2026-09-30); carries no results or guidance"
     }
    ]
   },
@@ -919,6 +930,18 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-09-28T15:32:15Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+    },
+    {
+     "id": "https://investor.lumentum.com/financial-news-releases/news-details/2026/Lumentum-Announces-Reporting-Date-for-Fiscal-First-Quarter-2027-Financial-Results/default.aspx",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-13T14:43:17Z",
+     "note": "notice of the fiscal first quarter 2027 reporting date (2026-11-05) and webcast; carries no results or guidance"
+    },
+    {
+     "id": "https://www.nasdaq.com/press-release/lumentum-announces-reporting-date-fiscal-first-quarter-2027-financial-results-2026-10",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-13T14:43:17Z",
+     "note": "wire distribution of the fiscal first quarter 2027 reporting-date notice; carries no results or guidance"
     }
    ]
   },
@@ -1582,7 +1605,12 @@
     "wire_symbol": "AVGO",
     "wire_names": [
      "Broadcom"
-    ]
+    ],
+    "ir": {
+     "kind": "RSS",
+     "url": "https://investors.broadcom.com/rss.xml"
+    },
+    "ir_guidance_release_title": "Broadcom Inc. Announces Third Quarter Fiscal Year 2026 Financial Results and Quarterly Dividend"
    },
    "reviewed_later_documents": [
     {
@@ -1802,7 +1830,12 @@
     "wire_symbol": "MTSI",
     "wire_names": [
      "MACOM"
-    ]
+    ],
+    "ir": {
+     "kind": "RSS",
+     "url": "https://ir.macom.com/rss.xml"
+    },
+    "ir_guidance_release_title": "MACOM Reports Fiscal Third Quarter 2026 Financial Results"
    },
    "reviewed_later_documents": [
     {
@@ -2253,7 +2286,12 @@
     "wire_symbol": "AAOI",
     "wire_names": [
      "Applied Optoelectronics"
-    ]
+    ],
+    "ir": {
+     "kind": "RSS",
+     "url": "https://investors.ao-inc.com/rss.xml"
+    },
+    "ir_guidance_release_title": "Applied Optoelectronics Reports Second Quarter 2026 Results"
    },
    "reviewed_later_documents": [
     {
@@ -2479,7 +2517,12 @@
     "wire_symbol": "ALAB",
     "wire_names": [
      "Astera Labs"
-    ]
+    ],
+    "ir": {
+     "kind": "RSS",
+     "url": "https://ir.asteralabs.com/rss.xml"
+    },
+    "ir_guidance_release_title": "Astera Labs Reports Second Quarter 2026 Financial Results"
    },
    "reviewed_later_documents": [
     {
@@ -3291,6 +3334,12 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-09-28T15:32:15Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+    },
+    {
+     "id": "0001104659-26-112824",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-13T14:43:17Z",
+     "note": "6-K: press release on the acquisition of Inferize (terms not disclosed); no results, revenue or guidance statement"
     }
    ]
   },
@@ -3601,6 +3650,696 @@
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
     }
    ]
+  },
+  {
+   "symbol": "AXTI",
+   "company_name": "AXT, Inc.",
+   "status": "NOT_DISCLOSED",
+   "reason": "NO_NUMERIC_REVENUE_GUIDANCE",
+   "url_prefixes": [
+    "https://www.sec.gov/Archives/edgar/data/"
+   ],
+   "documents": [
+    {
+     "id": "AXTI-Q2-26",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. second quarter 2026 results release (8-K Ex. 99.1)",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774926025061/ex_974537.htm",
+     "published_date": "2026-07-30",
+     "retrieved_at": "2026-10-13T14:38:56Z",
+     "sha256": "2e9e14bda52571634dd4a663c62015feedc74a566e291f78e70d2766a7cca213",
+     "byte_size": 215971,
+     "lineage_id": "AXTI-Q2-26"
+    },
+    {
+     "id": "AXTI-10K",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. Form 10-K",
+     "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774926008612/axti20251231_10k.htm",
+     "published_date": "2026-03-17",
+     "retrieved_at": "2026-10-13T14:46:01Z",
+     "sha256": "cf1267f24128367bdf555a4a9d5415712184744e60098261884a9e74d22d0c9b",
+     "byte_size": 3214844,
+     "lineage_id": "AXTI-10K"
+    },
+    {
+     "id": "AXTI-0001437749-26-008612",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. Form 10-K (0001437749-26-008612)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774926008612/axti20251231_10k.htm",
+     "published_date": "2026-03-17",
+     "retrieved_at": "2026-10-13T14:46:01Z",
+     "sha256": "cf1267f24128367bdf555a4a9d5415712184744e60098261884a9e74d22d0c9b",
+     "byte_size": 3214844,
+     "lineage_id": "AXTI-0001437749-26-008612"
+    },
+    {
+     "id": "AXTI-0001437749-25-034843",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. Form 10-Q (0001437749-25-034843)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774925034843/axti20250930_10q.htm",
+     "published_date": "2025-11-13",
+     "retrieved_at": "2026-10-13T14:46:01Z",
+     "sha256": "0fabb6b5016a32a376ade99dc08352f3e204e8ac4b95e7b35ea5aaf57f273eb4",
+     "byte_size": 2823038,
+     "lineage_id": "AXTI-0001437749-25-034843"
+    },
+    {
+     "id": "AXTI-0001437749-26-017054",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. Form 10-Q (0001437749-26-017054)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774926017054/axti20260331_10q.htm",
+     "published_date": "2026-05-14",
+     "retrieved_at": "2026-10-13T14:46:02Z",
+     "sha256": "14c2f75f179e41f723b4023efca72958c1cefa0736c732609a3c91055776a868",
+     "byte_size": 1765734,
+     "lineage_id": "AXTI-0001437749-26-017054"
+    },
+    {
+     "id": "AXTI-0001437749-26-027677",
+     "issuer": "AXTI",
+     "publisher": "AXT, Inc.",
+     "title": "AXT, Inc. Form 10-Q (0001437749-26-027677)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1051627/000143774926027677/axti20260630_10q.htm",
+     "published_date": "2026-08-13",
+     "retrieved_at": "2026-10-13T14:46:03Z",
+     "sha256": "4463104f112c5f1ab44bb2da0719f249c68551594d60789b493e4305ed556253",
+     "byte_size": 2170868,
+     "lineage_id": "AXTI-0001437749-26-027677"
+    }
+   ],
+   "claims": [],
+   "reported_quarters": [
+    {
+     "fiscal_label": "Q3 2025",
+     "start": "2025-07-01",
+     "end": "2025-09-30",
+     "revenue": 27955000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "AXTI-0001437749-25-034843",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-07-01..2025-09-30"
+    },
+    {
+     "fiscal_label": "Q4 2025",
+     "start": "2025-10-01",
+     "end": "2025-12-31",
+     "revenue": 23041000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "AXTI-0001437749-26-008612",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-01-01..2025-12-31 minus ..2025-09-30",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "AXTI-0001437749-26-008612",
+      "longer_value": 88326000.0,
+      "longer_start": "2025-01-01",
+      "shorter_document_id": "AXTI-0001437749-25-034843",
+      "shorter_value": 65285000.0,
+      "shorter_end": "2025-09-30"
+     }
+    },
+    {
+     "fiscal_label": "Q1 2026",
+     "start": "2026-01-01",
+     "end": "2026-03-31",
+     "revenue": 26924000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "AXTI-0001437749-26-017054",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-01-01..2026-03-31"
+    },
+    {
+     "fiscal_label": "Q2 2026",
+     "start": "2026-04-01",
+     "end": "2026-06-30",
+     "revenue": 47589000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "AXTI-0001437749-26-027677",
+     "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-04-01..2026-06-30"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "Q3 2026",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "calendar_document_id": "AXTI-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q4 2026",
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "calendar_document_id": "AXTI-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q1 2027",
+     "start": "2027-01-01",
+     "end": "2027-03-31",
+     "calendar_document_id": "AXTI-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q2 2027",
+     "start": "2027-04-01",
+     "end": "2027-06-30",
+     "calendar_document_id": "AXTI-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {},
+   "reviewed_later_documents": [],
+   "nondisclosure_evidence": {
+    "document_ids": [
+     "AXTI-Q2-26"
+    ],
+    "note": "The 2Q26 results release states no numeric revenue guidance (management qualitative comments only)."
+   }
+  },
+  {
+   "symbol": "CORZ",
+   "company_name": "Core Scientific, Inc.",
+   "status": "NOT_DISCLOSED",
+   "reason": "NO_NUMERIC_REVENUE_GUIDANCE",
+   "url_prefixes": [
+    "https://www.sec.gov/Archives/edgar/data/"
+   ],
+   "documents": [
+    {
+     "id": "CORZ-Q2-26",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. second quarter 2026 results release (8-K Ex. 99.1)",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000183934126000013/q22026corescientificinc-ea.htm",
+     "published_date": "2026-07-28",
+     "retrieved_at": "2026-10-13T14:39:18Z",
+     "sha256": "e366fc03e5368bd222f2945600bb09b51c3b04b1ae74c30e4fc529b03e4ff4cc",
+     "byte_size": 426919,
+     "lineage_id": "CORZ-Q2-26"
+    },
+    {
+     "id": "CORZ-Q2-26-DECK",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. second quarter 2026 earnings presentation (8-K Ex. 99.2)",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000183934126000013/q2fy26earningsdeck728am.htm",
+     "published_date": "2026-07-28",
+     "retrieved_at": "2026-10-13T14:39:18Z",
+     "sha256": "9180cd209bf5c6cb50fd8cee0f052aeaf3d5da9e391cda52866542c9ac36e6bc",
+     "byte_size": 18344,
+     "lineage_id": "CORZ-Q2-26-DECK"
+    },
+    {
+     "id": "CORZ-10K",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. Form 10-K",
+     "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000162828026013305/core-20251231.htm",
+     "published_date": "2026-03-02",
+     "retrieved_at": "2026-10-13T14:46:29Z",
+     "sha256": "55e206344cb8fed33d62593a83a2999c73c47ade69000a7aaad43874cdb53d90",
+     "byte_size": 4367221,
+     "lineage_id": "CORZ-10K"
+    },
+    {
+     "id": "CORZ-0001628280-26-013305",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. Form 10-K (0001628280-26-013305)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000162828026013305/core-20251231.htm",
+     "published_date": "2026-03-02",
+     "retrieved_at": "2026-10-13T14:46:29Z",
+     "sha256": "55e206344cb8fed33d62593a83a2999c73c47ade69000a7aaad43874cdb53d90",
+     "byte_size": 4367221,
+     "lineage_id": "CORZ-0001628280-26-013305"
+    },
+    {
+     "id": "CORZ-0001628280-26-013301",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. Form 10-Q/A (0001628280-26-013301)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000162828026013301/core-20250930.htm",
+     "published_date": "2026-03-02",
+     "retrieved_at": "2026-10-13T14:46:30Z",
+     "sha256": "4841ac5cacc46489954aaf17e292a5333810b691a7cb1cec92ce23f113987d3e",
+     "byte_size": 2260548,
+     "lineage_id": "CORZ-0001628280-26-013301"
+    },
+    {
+     "id": "CORZ-0001628280-26-031396",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. Form 10-Q (0001628280-26-031396)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000162828026031396/core-20260331.htm",
+     "published_date": "2026-05-06",
+     "retrieved_at": "2026-10-13T14:46:30Z",
+     "sha256": "dc19e239603fd4fb3d56d1ad3690937e1bfafe68cf6d88943f0bf2f12bbb42f5",
+     "byte_size": 2151563,
+     "lineage_id": "CORZ-0001628280-26-031396"
+    },
+    {
+     "id": "CORZ-0001839341-26-000014",
+     "issuer": "CORZ",
+     "publisher": "Core Scientific, Inc.",
+     "title": "Core Scientific, Inc. Form 10-Q (0001839341-26-000014)",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1839341/000183934126000014/core-20260630.htm",
+     "published_date": "2026-07-28",
+     "retrieved_at": "2026-10-13T14:46:30Z",
+     "sha256": "181877cb5ec834d360d8932778730330ff01b5ded86781107f4a1983f98fcce9",
+     "byte_size": 1531561,
+     "lineage_id": "CORZ-0001839341-26-000014"
+    }
+   ],
+   "claims": [],
+   "reported_quarters": [
+    {
+     "fiscal_label": "Q3 2025",
+     "start": "2025-07-01",
+     "end": "2025-09-30",
+     "revenue": 81103000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "CORZ-0001628280-26-013301",
+     "locator": "XBRL us-gaap:Revenues 2025-07-01..2025-09-30"
+    },
+    {
+     "fiscal_label": "Q4 2025",
+     "start": "2025-10-01",
+     "end": "2025-12-31",
+     "revenue": 79763000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "CORZ-0001628280-26-013305",
+     "locator": "XBRL us-gaap:Revenues 2025-01-01..2025-12-31 minus ..2025-09-30",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "CORZ-0001628280-26-013305",
+      "longer_value": 319019000.0,
+      "longer_start": "2025-01-01",
+      "shorter_document_id": "CORZ-0001628280-26-013301",
+      "shorter_value": 239256000.0,
+      "shorter_end": "2025-09-30"
+     }
+    },
+    {
+     "fiscal_label": "Q1 2026",
+     "start": "2026-01-01",
+     "end": "2026-03-31",
+     "revenue": 115244000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "CORZ-0001628280-26-031396",
+     "locator": "XBRL us-gaap:Revenues 2026-01-01..2026-03-31"
+    },
+    {
+     "fiscal_label": "Q2 2026",
+     "start": "2026-04-01",
+     "end": "2026-06-30",
+     "revenue": 164201000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "CORZ-0001839341-26-000014",
+     "locator": "XBRL us-gaap:Revenues 2026-04-01..2026-06-30"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "Q3 2026",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "calendar_document_id": "CORZ-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q4 2026",
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "calendar_document_id": "CORZ-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q1 2027",
+     "start": "2027-01-01",
+     "end": "2027-03-31",
+     "calendar_document_id": "CORZ-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q2 2027",
+     "start": "2027-04-01",
+     "end": "2027-06-30",
+     "calendar_document_id": "CORZ-10K",
+     "calendar_locator": "ANNUAL REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIES EXCHANGE ACT OF 1934 For the fiscal year ended December 31, 2025"
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {},
+   "reviewed_later_documents": [],
+   "nondisclosure_evidence": {
+    "document_ids": [
+     "CORZ-Q2-26",
+     "CORZ-Q2-26-DECK"
+    ],
+    "note": "The 2Q26 results release and earnings presentation state no numeric revenue guidance (capacity, billing and contracted-revenue metrics only)."
+   }
+  },
+  {
+   "symbol": "3006.TW",
+   "company_name": "Elite Semiconductor Microelectronics Technology Inc.",
+   "status": "NOT_DISCLOSED",
+   "reason": "NO_NUMERIC_REVENUE_GUIDANCE",
+   "url_prefixes": [
+    "https://www.esmt.com.tw/"
+   ],
+   "documents": [
+    {
+     "id": "3006-3Q25",
+     "issuer": "3006.TW",
+     "publisher": "Elite Semiconductor Microelectronics Technology Inc.",
+     "title": "ESMT consolidated financial statements for the three and nine months ended September 30, 2025",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.esmt.com.tw/download/ESMT-2025-Q3-Consolidated?open=1",
+     "published_date": "2025-10-29",
+     "retrieved_at": "2026-10-13T14:47:45Z",
+     "sha256": "e4aa48ff09fdc8d1d545224d1196d42777ae812082c15d97965b27f28ded8f6b",
+     "byte_size": 938011,
+     "lineage_id": "3006-3Q25"
+    },
+    {
+     "id": "3006-4Q25",
+     "issuer": "3006.TW",
+     "publisher": "Elite Semiconductor Microelectronics Technology Inc.",
+     "title": "ESMT consolidated financial statements for the year ended December 31, 2025 (company page link labelled Q4 Unconsolidated)",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.esmt.com.tw/download/ESMT-2025-Q4-Unconsolidated?open=1",
+     "published_date": "2026-02-26",
+     "retrieved_at": "2026-10-13T14:48:36Z",
+     "sha256": "0b760550325b23b7b30f187d2973b3941a88567c9d1f550b81685b56f5692006",
+     "byte_size": 781055,
+     "lineage_id": "3006-4Q25"
+    },
+    {
+     "id": "3006-1Q26",
+     "issuer": "3006.TW",
+     "publisher": "Elite Semiconductor Microelectronics Technology Inc.",
+     "title": "ESMT consolidated financial statements for the three months ended March 31, 2026",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.esmt.com.tw/download/ESMT-2026-Q1-Consolidated?open=1",
+     "published_date": "2026-04-30",
+     "retrieved_at": "2026-10-13T14:47:46Z",
+     "sha256": "b55142aa899b07bb9f07980c2d929840daf413866fa7bfc3dabc70d9c032b221",
+     "byte_size": 724242,
+     "lineage_id": "3006-1Q26"
+    },
+    {
+     "id": "3006-2Q26",
+     "issuer": "3006.TW",
+     "publisher": "Elite Semiconductor Microelectronics Technology Inc.",
+     "title": "ESMT consolidated financial statements for the three and six months ended June 30, 2026",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.esmt.com.tw/upload/2026_09_15/26_202609151358568cfkqgDRF0.pdf",
+     "published_date": "2026-07-30",
+     "retrieved_at": "2026-10-13T14:47:46Z",
+     "sha256": "0f75359a4f08d97e665749989ce4870ae98d21d27f2f176f2bae30db0f48fd18",
+     "byte_size": 921679,
+     "lineage_id": "3006-2Q26"
+    }
+   ],
+   "claims": [],
+   "reported_quarters": [
+    {
+     "fiscal_label": "3Q25",
+     "start": "2025-07-01",
+     "end": "2025-09-30",
+     "revenue": 3577106000.0,
+     "currency": "TWD",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "3006-3Q25",
+     "locator": "Consolidated income statement, three months ended 2025-09-30, 4000 Operating revenue 3,577,106 (TWD thousands)"
+    },
+    {
+     "fiscal_label": "4Q25",
+     "start": "2025-10-01",
+     "end": "2025-12-31",
+     "revenue": 4806802000.0,
+     "currency": "TWD",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "3006-4Q25",
+     "locator": "Consolidated income statement, 4000 Operating revenue FY2025 14,575,272 minus 9M 9,768,470 (TWD thousands)",
+     "derivation": {
+      "kind": "YTD_DIFFERENCE",
+      "longer_document_id": "3006-4Q25",
+      "longer_value": 14575272000.0,
+      "longer_start": "2025-01-01",
+      "shorter_document_id": "3006-3Q25",
+      "shorter_value": 9768470000.0,
+      "shorter_end": "2025-09-30"
+     }
+    },
+    {
+     "fiscal_label": "1Q26",
+     "start": "2026-01-01",
+     "end": "2026-03-31",
+     "revenue": 7266900000.0,
+     "currency": "TWD",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "3006-1Q26",
+     "locator": "Consolidated income statement, three months ended 2026-03-31, 4000 Operating revenue 7,266,900 (TWD thousands)"
+    },
+    {
+     "fiscal_label": "2Q26",
+     "start": "2026-04-01",
+     "end": "2026-06-30",
+     "revenue": 13946218000.0,
+     "currency": "TWD",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "3006-2Q26",
+     "locator": "Consolidated income statement, three months ended 2026-06-30, 4000 Operating revenue 13,946,218 (TWD thousands)"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "3Q26",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "calendar_document_id": "3006-4Q25",
+     "calendar_locator": "CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME YEARS ENDED DECEMBER 31, 2025 AND 2024"
+    },
+    {
+     "fiscal_label": "4Q26",
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "calendar_document_id": "3006-4Q25",
+     "calendar_locator": "CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME YEARS ENDED DECEMBER 31, 2025 AND 2024"
+    },
+    {
+     "fiscal_label": "1Q27",
+     "start": "2027-01-01",
+     "end": "2027-03-31",
+     "calendar_document_id": "3006-4Q25",
+     "calendar_locator": "CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME YEARS ENDED DECEMBER 31, 2025 AND 2024"
+    },
+    {
+     "fiscal_label": "2Q27",
+     "start": "2027-04-01",
+     "end": "2027-06-30",
+     "calendar_document_id": "3006-4Q25",
+     "calendar_locator": "CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME YEARS ENDED DECEMBER 31, 2025 AND 2024"
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {},
+   "reviewed_later_documents": [],
+   "nondisclosure_evidence": {
+    "document_ids": [
+     "3006-2Q26"
+    ],
+    "note": "ESMT publishes consolidated quarterly financial statements and monthly revenue figures; neither states numeric revenue guidance for a future period."
+   }
+  },
+  {
+   "symbol": "SIVE.ST",
+   "company_name": "Sivers Semiconductors AB",
+   "status": "NOT_DISCLOSED",
+   "reason": "NO_NUMERIC_REVENUE_GUIDANCE",
+   "url_prefixes": [
+    "https://www.sivers-semiconductors.com/",
+    "https://mb.cision.com/"
+   ],
+   "documents": [
+    {
+     "id": "SIVE-3Q25",
+     "issuer": "SIVE.ST",
+     "publisher": "Sivers Semiconductors AB",
+     "title": "Sivers Semiconductors interim report Q3 2025",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://mb.cision.com/Main/11695/4255867/3742781.pdf",
+     "published_date": "2025-10-24",
+     "retrieved_at": "2026-10-13T14:49:43Z",
+     "sha256": "ef26e3c3d7aca7362cf710323fe24bd1cdd92210b8fe58cb9c0db1ef7de60256",
+     "byte_size": 1378307,
+     "lineage_id": "SIVE-3Q25"
+    },
+    {
+     "id": "SIVE-4Q25",
+     "issuer": "SIVE.ST",
+     "publisher": "Sivers Semiconductors AB",
+     "title": "Sivers Semiconductors interim report Q4 2025 (corrected version)",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://mb.cision.com/Main/11695/4313288/3953694.pdf",
+     "published_date": "2026-02-26",
+     "retrieved_at": "2026-10-13T14:49:46Z",
+     "sha256": "6a29b5905ee948bd877839f40954ae397deab1e45679c4869f79e98305ccd600",
+     "byte_size": 16777689,
+     "lineage_id": "SIVE-4Q25"
+    },
+    {
+     "id": "SIVE-1Q26",
+     "issuer": "SIVE.ST",
+     "publisher": "Sivers Semiconductors AB",
+     "title": "Sivers Semiconductors interim report Q1 2026",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.sivers-semiconductors.com/wp-content/uploads/2026/05/Sivers-Interim-report-Q126_FINAL_ENG.pdf",
+     "published_date": "2026-05-28",
+     "retrieved_at": "2026-10-13T14:49:34Z",
+     "sha256": "61ea18fc20e4258787d5a58c618ab14da9778bbe813976cedfc5214ccafc9235",
+     "byte_size": 925120,
+     "lineage_id": "SIVE-1Q26"
+    },
+    {
+     "id": "SIVE-2Q26",
+     "issuer": "SIVE.ST",
+     "publisher": "Sivers Semiconductors AB",
+     "title": "Sivers Semiconductors interim report Q2 2026",
+     "source_kind": "OFFICIAL_FINANCIAL_STATEMENT",
+     "url": "https://www.sivers-semiconductors.com/wp-content/uploads/2026/08/Sivers-Interim-report-Q226.pdf",
+     "published_date": "2026-08-27",
+     "retrieved_at": "2026-10-13T14:49:34Z",
+     "sha256": "7dd6d1aae9444bc8a98a276a1039df94cc16e2996770154c55f1c3a2a69285c3",
+     "byte_size": 1366582,
+     "lineage_id": "SIVE-2Q26"
+    }
+   ],
+   "claims": [],
+   "reported_quarters": [
+    {
+     "fiscal_label": "Q3 2025",
+     "start": "2025-07-01",
+     "end": "2025-09-30",
+     "revenue": 72500000.0,
+     "currency": "SEK",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "SIVE-3Q25",
+     "locator": "Interim report Q3 2025, Third quarter, Net sales SEK 72.5 m (as originally reported)"
+    },
+    {
+     "fiscal_label": "Q4 2025",
+     "start": "2025-10-01",
+     "end": "2025-12-31",
+     "revenue": 80700000.0,
+     "currency": "SEK",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "SIVE-4Q25",
+     "locator": "Interim report Q4 2025, Fourth quarter, Net sales SEK 80.7 m (as originally reported)"
+    },
+    {
+     "fiscal_label": "Q1 2026",
+     "start": "2026-01-01",
+     "end": "2026-03-31",
+     "revenue": 61900000.0,
+     "currency": "SEK",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "SIVE-1Q26",
+     "locator": "Interim report Q1 2026, First quarter, Net sales SEK 61.9 m"
+    },
+    {
+     "fiscal_label": "Q2 2026",
+     "start": "2026-04-01",
+     "end": "2026-06-30",
+     "revenue": 53800000.0,
+     "currency": "SEK",
+     "scope": "CONSOLIDATED",
+     "accounting_basis": "IFRS",
+     "document_id": "SIVE-2Q26",
+     "locator": "Interim report Q2 2026, Second quarter, Net sales SEK 53.8 m"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "Q3 2026",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "calendar_document_id": "SIVE-4Q25",
+     "calendar_locator": "The following Interim Report relates to the period January 1 to December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q4 2026",
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "calendar_document_id": "SIVE-4Q25",
+     "calendar_locator": "The following Interim Report relates to the period January 1 to December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q1 2027",
+     "start": "2027-01-01",
+     "end": "2027-03-31",
+     "calendar_document_id": "SIVE-4Q25",
+     "calendar_locator": "The following Interim Report relates to the period January 1 to December 31, 2025"
+    },
+    {
+     "fiscal_label": "Q2 2027",
+     "start": "2027-04-01",
+     "end": "2027-06-30",
+     "calendar_document_id": "SIVE-4Q25",
+     "calendar_locator": "The following Interim Report relates to the period January 1 to December 31, 2025"
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {},
+   "reviewed_later_documents": [],
+   "nondisclosure_evidence": {
+    "document_ids": [
+     "SIVE-2Q26"
+    ],
+    "note": "The Q2 2026 interim report states under Outlook: \"The Board does not publish forward-looking financial forecasts.\""
+   }
   }
  ]
 }
